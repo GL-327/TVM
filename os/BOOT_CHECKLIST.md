@@ -20,7 +20,9 @@ Run `./scripts/qemu-smoke.sh`.
 - [ ] The firmware hands over to systemd-boot without a menu timeout
 - [ ] No kernel log scrolls past; the screen stays dark until TVM paints
 - [ ] The TVM splash appears within 30 seconds of power-on
-- [ ] No mouse cursor is visible
+- [ ] No mouse cursor is visible, unless a pointer device is genuinely
+      attached. QEMU attaches one by default, so this box only means something
+      on hardware
 - [ ] No terminal, login prompt or desktop is reachable
 - [ ] The core status in the footer reads green, not "Core unavailable"
 - [ ] Arrow keys move focus between Continue and System info
@@ -63,3 +65,31 @@ These belong to later phases and must not block Phase 1.
 
 Note the machine, firmware version, television model, boot time and anything
 that misbehaved. The hardware matrix in Phase 10 is built from these notes.
+
+### 2026-08-15, QEMU, first run
+
+Sections A and B passed, driven headlessly: QEMU with OVMF and KVM under WSL2,
+screenshots taken through the monitor's `screendump`, keys sent with `sendkey`.
+
+- Boot reaches the splash with no console output and no login prompt
+- Core reports healthy, so the session waited correctly before painting
+- Right, OK, Back and Left all behave, and Back restores previous focus
+- Reported display 1280x800, which is the virtio-vga default rather than a bug
+
+What a correct boot looks like, and the panel reached with OK:
+
+![Splash after boot](../docs/images/first-boot-qemu.png)
+![System information panel](../docs/images/first-boot-system-info.png)
+
+Not covered: section C recovery behaviour, and all of section D.
+
+Four defects found and fixed during this run, kept here because each one
+produced a confusing failure rather than a clear error:
+
+1. No kernel in the package list. mkosi built the entire image and only then
+   said "a bootable image was requested but no kernel was found".
+2. `systemd-firstboot` held the boot open on tty1 asking the television to
+   configure itself. Now preset in `mkosi.conf` and masked in `mkosi.postinst`.
+3. `Output=tvm-appliance.raw` produced `tvm-appliance.raw.raw`, because mkosi
+   appends the format suffix itself.
+4. No DRI drivers, so nothing could render in a VM without a GPU.

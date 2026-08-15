@@ -11,6 +11,10 @@ staging="$os_dir/staging"
 
 echo "==> Building workspace"
 cd "$repo"
+# The appliance session is Chromium under Cage; the Electron shell is the
+# Windows SKU. Downloading a Linux Electron runtime here would cost a hundred
+# megabytes and never be used.
+export ELECTRON_SKIP_BINARY_DOWNLOAD=1
 pnpm install --frozen-lockfile
 pnpm --filter @tvm/core run build
 pnpm --filter @tvm/ui run build

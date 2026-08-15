@@ -9,4 +9,8 @@ mkosi-chroot systemctl set-default multi-user.target
 # The kiosk owns tty1; a login prompt there would fight it for the display.
 mkosi-chroot systemctl mask getty@tty1.service
 
+# Belt and braces on top of the presets in mkosi.conf: nothing may ever hold
+# the boot open waiting for a keyboard.
+mkosi-chroot systemctl mask systemd-firstboot.service
+
 chmod 0755 "$BUILDROOT/usr/lib/tvm/start-session.sh"
