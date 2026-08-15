@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependencies allowed to run install scripts. Electron downloads its runtime
+# this way; everything else stays blocked.
+onlyBuiltDependencies:
+  - electron
+  - esbuild

@@ -1,0 +1,17 @@
+{
+  "name": "@tvm/shell",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc -p tsconfig.json && electron dist/main.js",
+    "start": "electron dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"shell is covered by the Phase 2 UI suite and the os/ boot checklist\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "electron": "github:castlabs/electron-releases#v43.2.0+wvcus"
+  }
+}

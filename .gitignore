@@ -21,6 +21,8 @@ out/
 os/**/*.img
 os/**/*.iso
 os/**/*.raw
+os/output/
+os/staging/
 os/mkosi.output/
 os/mkosi.cache/
 

@@ -1,0 +1,19 @@
+{
+  "name": "tvm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TVM - a remote-first TV media appliance",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
