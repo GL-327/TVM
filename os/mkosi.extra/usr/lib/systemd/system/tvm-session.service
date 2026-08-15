@@ -1,0 +1,31 @@
+[Unit]
+Description=TVM session (kiosk on the HDMI output)
+Documentation=https://github.com/GL-327/TVM
+After=tvm-core.service systemd-user-sessions.service
+Wants=tvm-core.service
+# The appliance owns tty1. There is no getty and no login prompt.
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/tvm/start-session.sh
+User=tvm
+Group=tvm
+
+# logind grants seat, DRM and input access to the session on this tty.
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+
+# A dead picture is the worst failure an appliance can have, so the session
+# always comes back. Crash-loop detection and safe mode arrive in Phase 9.
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

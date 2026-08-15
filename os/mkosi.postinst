@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs after packages are installed and the extra trees are copied in.
+set -eu
+
+mkosi-chroot systemctl enable tvm-core.service
+mkosi-chroot systemctl enable tvm-session.service
+mkosi-chroot systemctl set-default multi-user.target
+
+# The kiosk owns tty1; a login prompt there would fight it for the display.
+mkosi-chroot systemctl mask getty@tty1.service
+
+chmod 0755 "$BUILDROOT/usr/lib/tvm/start-session.sh"
