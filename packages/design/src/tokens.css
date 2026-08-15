@@ -1,0 +1,93 @@
+/*
+ * TVM design tokens.
+ *
+ * Sizes are in rem so the whole interface scales with one root font-size
+ * change: 16px at 1080p, 24px on 4K panels. Nothing below should be
+ * expressed in raw pixels except border hairlines.
+ */
+
+:root {
+  /* Dark cinema surfaces */
+  --tvm-bg: #0a0d12;
+  --tvm-bg-elevated: #141922;
+  --tvm-surface: #1d2430;
+  --tvm-surface-hover: #253040;
+  --tvm-border: #2a3341;
+
+  /* Text */
+  --tvm-text: #f4f7fb;
+  --tvm-text-muted: #9ba7b8;
+  --tvm-text-faint: #6b7686;
+
+  /* Warm highlight - deliberately not Netflix red, not Stremio purple */
+  --tvm-accent: #f2b355;
+  --tvm-accent-strong: #ffc978;
+  --tvm-accent-ink: #2b1d07;
+
+  /* Status */
+  --tvm-danger: #e5484d;
+  --tvm-success: #46a758;
+  --tvm-warning: #f5a623;
+
+  /* Type scale for the 10-foot experience */
+  --tvm-font-family: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
+  --tvm-font-size-caption: 1.375rem;
+  --tvm-font-size-body: 1.75rem;
+  --tvm-font-size-body-lg: 2.125rem;
+  --tvm-font-size-title: 3rem;
+  --tvm-font-size-display: 4.5rem;
+  --tvm-line-height-tight: 1.1;
+  --tvm-line-height-body: 1.45;
+  --tvm-letter-spacing-display: -0.02em;
+
+  /* 8px grid */
+  --tvm-space-1: 0.5rem;
+  --tvm-space-2: 1rem;
+  --tvm-space-3: 1.5rem;
+  --tvm-space-4: 2rem;
+  --tvm-space-5: 3rem;
+  --tvm-space-6: 4rem;
+  --tvm-space-7: 6rem;
+
+  /* Safe area: TVs overscan, so never paint content to the panel edge */
+  --tvm-safe-x: 4rem;
+  --tvm-safe-y: 3rem;
+
+  --tvm-radius-sm: 0.5rem;
+  --tvm-radius-md: 0.875rem;
+  --tvm-radius-lg: 1.25rem;
+  --tvm-radius-pill: 999rem;
+
+  /* Focus: must be unmistakable from three metres away */
+  --tvm-focus-ring-width: 0.3125rem;
+  --tvm-focus-ring-color: var(--tvm-accent-strong);
+  --tvm-focus-ring-offset: 0.25rem;
+  --tvm-focus-scale: 1.07;
+
+  /* Motion: restrained. Anything slower than 280ms feels broken on a remote. */
+  --tvm-motion-fast: 160ms;
+  --tvm-motion-base: 220ms;
+  --tvm-motion-slow: 280ms;
+  --tvm-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --tvm-shadow-card: 0 1rem 2.5rem rgba(0, 0, 0, 0.55);
+}
+
+html {
+  font-size: 16px;
+}
+
+@media (min-width: 2560px) {
+  html {
+    font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tvm-motion-fast: 1ms;
+    --tvm-motion-base: 1ms;
+    --tvm-motion-slow: 1ms;
+    --tvm-focus-scale: 1;
+  }
+}

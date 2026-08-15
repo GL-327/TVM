@@ -1,0 +1,15 @@
+{
+  "name": "@tvm/design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css"
+  },
+  "scripts": {
+    "build": "echo \"@tvm/design is consumed as source by the UI bundler\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests in @tvm/design\""
+  }
+}

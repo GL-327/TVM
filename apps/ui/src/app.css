@@ -1,0 +1,206 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--tvm-bg);
+  color: var(--tvm-text);
+  font-family: var(--tvm-font-family);
+  font-size: var(--tvm-font-size-body);
+  line-height: var(--tvm-line-height-body);
+  /* An appliance is driven by a remote; a stray pointer must not be visible. */
+  cursor: none;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100vh;
+}
+
+/* Splash ------------------------------------------------------------------ */
+
+.splash {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: var(--tvm-safe-y) var(--tvm-safe-x);
+  background:
+    radial-gradient(120% 90% at 12% 0%, #16202e 0%, transparent 55%),
+    linear-gradient(160deg, #0d1219 0%, var(--tvm-bg) 60%);
+  overflow: hidden;
+}
+
+/* A single warm light source, so the panel reads as cinema rather than as a
+   dashboard with a dark theme. */
+.splash__glow {
+  position: absolute;
+  right: -10%;
+  bottom: -35%;
+  width: 70vw;
+  height: 70vw;
+  background: radial-gradient(circle, rgba(242, 179, 85, 0.16) 0%, transparent 62%);
+  pointer-events: none;
+}
+
+.splash__brand {
+  position: relative;
+  margin-bottom: var(--tvm-space-6);
+}
+
+.splash__wordmark {
+  margin: 0;
+  font-size: var(--tvm-font-size-display);
+  font-weight: 700;
+  line-height: var(--tvm-line-height-tight);
+  letter-spacing: 0.12em;
+  background: linear-gradient(100deg, var(--tvm-text) 30%, var(--tvm-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.splash__tagline {
+  margin: var(--tvm-space-2) 0 0;
+  max-width: 34ch;
+  font-size: var(--tvm-font-size-body-lg);
+  color: var(--tvm-text-muted);
+}
+
+.splash__actions {
+  position: relative;
+  display: flex;
+  gap: var(--tvm-space-3);
+}
+
+.splash__footer {
+  position: absolute;
+  left: var(--tvm-safe-x);
+  right: var(--tvm-safe-x);
+  bottom: var(--tvm-safe-y);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--tvm-font-size-caption);
+  color: var(--tvm-text-faint);
+}
+
+.splash__hint {
+  color: var(--tvm-text-faint);
+}
+
+/* Buttons ----------------------------------------------------------------- */
+
+.tvm-button {
+  padding: var(--tvm-space-2) var(--tvm-space-5);
+  border: none;
+  border-radius: var(--tvm-radius-pill);
+  background: var(--tvm-surface);
+  color: var(--tvm-text);
+  font-family: inherit;
+  font-size: var(--tvm-font-size-body);
+  font-weight: 600;
+  cursor: none;
+  transition:
+    transform var(--tvm-motion-base) var(--tvm-motion-ease),
+    background-color var(--tvm-motion-base) var(--tvm-motion-ease),
+    box-shadow var(--tvm-motion-base) var(--tvm-motion-ease);
+}
+
+.tvm-button--primary {
+  background: var(--tvm-accent);
+  color: var(--tvm-accent-ink);
+}
+
+/* :focus, not :focus-visible — there is no pointer, so the focused control
+   must always be obvious from across the room. */
+.tvm-button:focus {
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: var(--tvm-focus-ring-offset);
+  transform: scale(var(--tvm-focus-scale));
+  box-shadow: var(--tvm-shadow-card);
+}
+
+.tvm-button:focus:not(.tvm-button--primary) {
+  background: var(--tvm-surface-hover);
+}
+
+/* Core status ------------------------------------------------------------- */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tvm-space-1);
+}
+
+.status__dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status--online {
+  color: var(--tvm-success);
+}
+
+.status--connecting {
+  color: var(--tvm-warning);
+}
+
+.status--offline {
+  color: var(--tvm-danger);
+}
+
+/* Panel ------------------------------------------------------------------- */
+
+.panel-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--tvm-safe-y) var(--tvm-safe-x);
+  background: rgba(5, 7, 10, 0.72);
+  backdrop-filter: blur(0.5rem);
+}
+
+.panel {
+  width: min(46rem, 100%);
+  padding: var(--tvm-space-5);
+  border: 1px solid var(--tvm-border);
+  border-radius: var(--tvm-radius-lg);
+  background: var(--tvm-bg-elevated);
+  box-shadow: var(--tvm-shadow-card);
+}
+
+.panel__title {
+  margin: 0 0 var(--tvm-space-4);
+  font-size: var(--tvm-font-size-title);
+  line-height: var(--tvm-line-height-tight);
+}
+
+.panel__rows {
+  margin: 0 0 var(--tvm-space-4);
+}
+
+.panel__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--tvm-space-3);
+  padding: var(--tvm-space-2) 0;
+  border-bottom: 1px solid var(--tvm-border);
+}
+
+.panel__row dt {
+  color: var(--tvm-text-muted);
+}
+
+.panel__row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
