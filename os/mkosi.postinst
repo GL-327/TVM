@@ -13,4 +13,13 @@ mkosi-chroot systemctl mask getty@tty1.service
 # the boot open waiting for a keyboard.
 mkosi-chroot systemctl mask systemd-firstboot.service
 
+# mkosi enables systemd-networkd and Debian enables NetworkManager, which
+# leaves two daemons claiming the same interfaces. TVM keeps NetworkManager,
+# because the Wi-Fi setup screen needs to scan, join and forget networks from
+# the interface, and NetworkManager exposes that over D-Bus.
+#
+# Masked rather than disabled: something re-enables it after this script runs,
+# and a mask wins over a wants symlink whatever the ordering turns out to be.
+mkosi-chroot systemctl mask systemd-networkd.service systemd-networkd.socket
+
 chmod 0755 "$BUILDROOT/usr/lib/tvm/start-session.sh"

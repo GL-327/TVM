@@ -6,6 +6,28 @@ what is actually built, what is blocked, and what to do next.
 
 Read the plan's section O before writing code. Nothing here overrides it.
 
+## Start here
+
+If you are picking this up cold, in this order:
+
+1. **Section 7, the gotchas table.** Every row cost time once already. Reading
+   it takes two minutes and saves more.
+2. **Section 4, Phase 2.** This is the work. The hard part, the view stack
+   reducer, is finished and tested; what remains is wiring it to React and
+   building screens on top.
+3. **Section 5, the provider contract**, before touching anything to do with
+   media. Getting this shape wrong is expensive to undo later.
+
+Do not start with the operating system image. It builds and boots, and the only
+thing left there needs physical hardware.
+
+Two rules that are not negotiable, both from the plan:
+
+- **No secrets in the repository, in a bundle, or in a log.** The Real-Debrid
+  token is the user's and lives in the OS credential store.
+- **No torrent scraping and no Torrentio.** Real-Debrid is limited to the
+  user's own cloud files and links they supply.
+
 ---
 
 ## 1. Where the project actually is
@@ -90,7 +112,15 @@ of `os/BOOT_CHECKLIST.md`.
 **What remains is section D: real hardware.** Flash the image to a USB stick,
 boot a mini-PC from it into a television, and work through every box. Expect to
 find things a VM cannot show: overscan, HDMI-CEC, audio routing, the cursor,
-and the real boot time.
+and the real boot time. `os/README.md` has a stage-by-stage walkthrough and,
+more importantly, two ways to find out why a black screen is black.
+
+That section is waiting on hardware, not on skill: the image is 2.7 GB and the
+only sticks currently available here are 2 GB. It is not worth slimming to fit
+one. Around 400 MB could go by dropping locales, docs and Vulkan, which still
+would not fit, and the next saving after that means an initrd built for one
+machine's hardware, which defeats the purpose of a portable stick. Phase 8's
+A/B slots need roughly 8 GB anyway. The measurements are in `os/README.md`.
 
 Two known problems to pick up there:
 
@@ -262,6 +292,14 @@ These cost time once. They should not cost it twice.
 | Ports | Core 7345, Vite 5173. `strictPort` is on because the shell polls that exact origin |
 | Driving the shell for verification | Launch Electron with `--remote-debugging-port=9222`, then use the DevTools protocol over the WebSocket built into Node. This is how remote navigation was verified without a browser |
 | `TVM_WINDOWED=1` | Runs the shell in a window instead of fullscreen. Essential when developing on a desktop |
+| pnpm inside WSL2 | Debian's Node 20 has a corepack too old for pnpm 11; it dies with `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`. Install Node 22 and then pnpm with npm. Delete any leftover `/usr/bin/pnpm` shim first, or npm refuses to overwrite it |
+| Build in the Linux filesystem | `git clone /mnt/c/Users/Gathe/Desktop/TVM ~/TVM`. Building on `/mnt/c` is slow, and cloning has the side effect of proving the committed tree builds. Bundle hashes came out identical to the Windows build |
+| mkosi fails late, not early | A missing kernel is only reported after the whole image is built. Read the last line of the log, not the first error you see |
+| mkosi appends the format suffix | `Output=tvm-appliance`, not `tvm-appliance.raw`, or you get `.raw.raw` |
+| Nothing may prompt at boot | `systemd-firstboot` will stop the boot and ask the television to configure itself. It is preset and masked. Any new unit that can ask a question is a bug |
+| Debugging on hardware | There is no console, so the journal is configured to persist. Power off, read the stick from WSL2 with `wsl --mount`, and use `journalctl -D`. `os/README.md` has the commands |
+| A 2 GB stick is too small | The image is 2.7 GB, roughly 1.6 GB of it real content. Do not shrink it by building a machine-specific initrd; that breaks the one thing a USB appliance must do |
+| One network manager only | mkosi enables systemd-networkd and Debian enables NetworkManager. Both together race for the interfaces and look like flaky internet rather than a misconfiguration. TVM keeps NetworkManager, for the Wi-Fi screen's sake. Check `multi-user.target.wants` after changing packages |
 
 ---
 
