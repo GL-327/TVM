@@ -64,6 +64,38 @@ mkosi vm                          # quickest loop
 
 Work through [BOOT_CHECKLIST.md](BOOT_CHECKLIST.md) rather than eyeballing it.
 
+## How big a stick, and why
+
+Measured on the first real build:
+
+| Part | Size |
+| --- | --- |
+| Root filesystem, used | 1.6 GB |
+| Chromium | 371 MB |
+| Graphics libraries, mostly Mesa and Vulkan | 698 MB |
+| Kernel modules | 119 MB |
+| Locales, docs and manuals | 116 MB |
+| Whole disk image | 2.7 GB |
+
+**A 2 GB stick will not work, and is not worth making work.** Roughly 400 MB
+could be cut by deleting locales, documentation and the Vulkan drivers, but
+that still does not fit, and the obvious remaining saving is a trap: shrinking
+the 125 MB initrd means building it for one machine's hardware with
+`MODULES=dep`, which is precisely wrong for a stick whose purpose is to boot
+on any machine. Keep the generic initrd.
+
+The architecture also outgrows a small stick almost immediately. Phase 8 wants
+A/B update slots, which means two root partitions plus a persistent data
+partition, so the real floor is more like 8 GB.
+
+**Buy a 32 GB USB 3.0 stick.** It costs a few pounds, and a USB 2.0 stick would
+make the already-slow boot considerably worse, since everything above has to be
+read before anything appears on the television.
+
+Trimming the image is still worthwhile later, for faster writes and cheaper A/B
+updates. That is Phase 10 work, and it should never be done by making the image
+less portable.
+
 ## Writing it to USB
 
 The image is a raw disk image. Write it to the **whole device**, not to a
@@ -87,13 +119,84 @@ partition such as `/dev/sdX1`, and picking the wrong device destroys a disk.
 
 ## Booting on real hardware
 
-1. Plug the USB stick and an HDMI cable into the mini-PC, and a USB or
-   Bluetooth remote receiver into a spare port.
-2. Enter firmware setup, usually Del, F2, F10 or F12 at power-on.
+### Before you start
+
+Have these to hand, because discovering one is missing mid-way wastes a reboot:
+
+- A mini-PC with UEFI firmware, plugged into the television by HDMI
+- A 32 GB USB 3.0 stick, written as above
+- **A USB keyboard.** Not optional for the first boot. The remote is what is
+  being tested, so it cannot also be the thing you rely on when the test fails
+- The television's own remote, to select the right HDMI input
+
+### What should happen, stage by stage
+
+Knowing what each stage looks like is what makes a failure diagnosable, since
+each one fails at a recognisable point.
+
+| Stage | On screen | If it stalls here |
+| --- | --- | --- |
+| 1. Firmware | Manufacturer logo | The stick is not being booted from. Recheck boot order and Secure Boot |
+| 2. systemd-boot | Brief menu, or straight past it | The stick was written to a partition rather than the whole device |
+| 3. Kernel and initrd | Blank, or a cursor blink | Hardware the generic initrd cannot handle. Note the model |
+| 4. systemd starts | Blank, deliberately | See "when it fails" below |
+| 5. Kiosk | The TVM splash | Core never answered, or Cage could not open the display |
+
+Under QEMU stage 5 arrived about 150 seconds after power-on. Real hardware with
+a real disk should be faster, but **time it**, because that number is the
+baseline for every future claim about boot speed.
+
+### The steps
+
+1. Plug in the USB stick, HDMI, the keyboard, and the remote's receiver.
+2. Power on and enter firmware setup, usually Del, F2, F10 or F12.
 3. **Disable Secure Boot.** The image is unsigned in v1; signed UKIs come later.
 4. Set the USB device first in the boot order, or use the one-off boot menu.
-5. Save and reboot. TVM should appear without a boot log, a cursor or a login
-   prompt.
+5. Save and reboot, then work through [BOOT_CHECKLIST.md](BOOT_CHECKLIST.md)
+   box by box rather than deciding it looks fine.
+
+Expect the first attempt on any new machine to reveal something. That is the
+point of doing it.
+
+### When it fails: how to find out why
+
+The appliance has no console by design, so there are two ways in. Neither
+requires guessing.
+
+**Read the journal from the stick afterwards.** The journal is configured to
+persist, so power the machine off, put the stick in the development PC, and
+read it from WSL2:
+
+```powershell
+wsl --mount \\.\PHYSICALDRIVE2 --partition 2   # confirm the number in Disk Management
+```
+
+```bash
+sudo journalctl -D /mnt/wsl/PHYSICALDRIVE2p2/var/log/journal -b -1 -p warning
+sudo journalctl -D /mnt/wsl/PHYSICALDRIVE2p2/var/log/journal -u tvm-core -u tvm-session
+```
+
+This answers most questions: whether core started, whether Cage found a
+display, whether Chromium exited.
+
+**Or build a debug image** when you need a live shell. Never flash one of these
+for normal use:
+
+```bash
+mkosi --force --root-password=debug
+```
+
+Then at the systemd-boot menu press `e` and append `systemd.unit=rescue.target`
+to get a root shell instead of the kiosk, and from there:
+
+```bash
+systemctl status tvm-core tvm-session
+journalctl -b -u tvm-session
+```
+
+Whatever the fault turns out to be, fix it in the image configuration and
+rebuild. Do not fix it by leaving a desktop, a login prompt or a shell behind
+on the television.
 
 ## Status
 
