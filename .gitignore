@@ -1,0 +1,43 @@
+# Secrets — never commit credentials. .env.example must contain empty keys only.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+**/realdebridDefaultKey.ts
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Appliance images and boot artifacts
+os/**/*.img
+os/**/*.iso
+os/**/*.raw
+os/mkosi.output/
+os/mkosi.cache/
+
+# Test and tooling output
+coverage/
+playwright-report/
+test-results/
+
+# Local runtime data
+*.sqlite
+*.sqlite-journal
+*.log
+logs/
+cache/
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
