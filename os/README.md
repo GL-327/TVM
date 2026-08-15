@@ -97,10 +97,21 @@ partition such as `/dev/sdX1`, and picking the wrong device destroys a disk.
 
 ## Status
 
-Everything above is configuration and documentation, written but **not yet
-built**, because mkosi cannot run on Windows directly. The first WSL2 build is
-the remaining Phase 1 task, and its acceptance criteria are in
-[BOOT_CHECKLIST.md](BOOT_CHECKLIST.md).
+**Built and booted.** The image was built with mkosi 25.3 under WSL2 Debian 13
+and booted in QEMU with OVMF and KVM. It reaches the TVM splash with no
+desktop, no login prompt and no boot log, core reports healthy, and a keyboard
+drives the interface: arrows move focus, OK opens the system panel, and Back
+closes it and restores focus to where it was.
 
-The Windows half of Phase 1 is verified: `pnpm dev` shows the focusable splash,
-and the Electron shell loads the interface from core.
+Not yet done: **real hardware**. Section D of
+[BOOT_CHECKLIST.md](BOOT_CHECKLIST.md) needs a mini-PC, a television and a
+remote, and nothing below substitutes for it.
+
+Two things to know before the next build:
+
+- **Boot to splash took roughly 150 seconds** in QEMU on a first boot. That is
+  far too slow for an appliance. It has not been measured on a second boot or
+  on real hardware, so measure before optimising. Boot time is a Phase 11 item.
+- **A pointer cursor is visible under QEMU**, because QEMU attaches a mouse.
+  This matches the intent, which is no cursor unless a pointer exists, but it
+  means the cursor question can only really be settled on hardware.

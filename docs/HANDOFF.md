@@ -13,7 +13,7 @@ Read the plan's section O before writing code. Nothing here overrides it.
 | Phase | State |
 | --- | --- |
 | 0. Plan in repo | **Done.** Committed |
-| 1. Skeleton and bootable hello | **Half done.** Windows verified, appliance image written but never built |
+| 1. Skeleton and bootable hello | **Done except real hardware.** Builds, boots in QEMU, remote-driven |
 | 2. Shell and remote navigation | **Started.** The view stack is built and tested; nothing is wired to React yet |
 | 3-11 | Not started |
 
@@ -27,73 +27,78 @@ Read the plan's section O before writing code. Nothing here overrides it.
   clamps at both ends, OK opens the panel, Back closes it and restores focus
 - Path traversal against the static file server returns 404
 - The Vite dev server proxies `/api` to core
+- **The appliance image builds and boots.** mkosi 25.3 under WSL2 Debian 13
+  produces a 2.7 GB UEFI image that boots in QEMU to the splash with no
+  desktop, no login prompt and no boot log, with core healthy and the keyboard
+  driving focus, OK and Back
 
-### Written but never executed
+### Not yet done
 
-Everything in `os/`. mkosi cannot run on Windows, so the appliance image has
-never been built or booted. Treat all of it as a first draft.
+**Real hardware.** Section D of `os/BOOT_CHECKLIST.md`: a mini-PC, a
+television, a USB stick and a remote. Nothing in a VM substitutes for it, and
+the cursor and overscan questions can only be settled there.
 
----
-
-## 2. The blocker: virtualization is off
-
-**WSL2 cannot be installed on this machine right now.** Both `systeminfo` and
-WMI report `Virtualization Enabled In Firmware: No`. The processor is an Intel
-i5-14600KF, which supports VT-x, so this is purely a BIOS setting.
-
-To unblock, on the development PC:
-
-1. Reboot and enter BIOS setup (Del or F2 on most boards at power-on)
-2. Enable **Intel Virtualization Technology (VT-x)**, usually under Advanced,
-   CPU Configuration, or an OC/Tweaker menu
-3. Optionally enable **VT-d** as well
-4. Save and exit
-5. Confirm in Windows: `systeminfo` should now report
-   `Virtualization Enabled In Firmware: Yes`
-
-Then, in an **administrator** terminal:
-
-```powershell
-wsl --install -d Debian
-# reboot when prompted, then set a username and password
-```
-
-Until that is done, every task in section 3 is blocked and section 4 is not.
+Boot to splash took roughly 150 seconds in QEMU on a first boot, which is far
+too slow. Measure a second boot before optimising; it is a Phase 11 concern,
+not a Phase 1 blocker.
 
 ---
 
-## 3. Finish Phase 1: build the appliance image
+## 2. The build environment, already working
 
-Blocked by section 2. Mechanical once unblocked; follow `os/README.md`.
-
-Inside WSL2 Debian:
+WSL2 Debian 13 is installed and the image builds there. This is the exact
+environment, recorded because two of these steps are not obvious.
 
 ```bash
-sudo apt update
 sudo apt install -y mkosi systemd-ukify systemd-boot-efi ovmf \
-                    qemu-system-x86 mtools dosfstools e2fsprogs
-cd /mnt/c/Users/Gathe/Desktop/TVM/os
+                    qemu-system-x86 mtools dosfstools e2fsprogs \
+                    debian-archive-keyring netpbm socat git curl
+
+# Debian ships Node 20, whose bundled corepack cannot launch pnpm 11.
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt install -y nodejs
+sudo npm install -g pnpm@11.22.0
+```
+
+Two traps worth knowing:
+
+- **Do not use corepack here.** It fails with
+  `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`. Install pnpm with npm instead. If a
+  broken `/usr/bin/pnpm` shim is left behind, npm refuses to install over it,
+  so delete it first.
+- **Do not build on `/mnt/c`.** It is slow. Clone into the Linux filesystem
+  with `git clone /mnt/c/Users/Gathe/Desktop/TVM ~/TVM`, which has the pleasant
+  side effect of proving the committed tree builds.
+
+Nested virtualization works, so QEMU runs with `accel=kvm`.
+
+---
+
+## 3. Phase 1 is built and booted
+
+```bash
+cd ~/TVM/os
 ./scripts/stage-app.sh
 mkosi --force
 ./scripts/qemu-smoke.sh
 ```
 
-Then work through every box in `os/BOOT_CHECKLIST.md`.
+This produces a 2.7 GB `output/tvm-appliance.raw` that boots to the splash.
+Results and the four defects fixed on the first run are recorded at the bottom
+of `os/BOOT_CHECKLIST.md`.
 
-Expect problems on the first build. Likely ones, in rough order:
+**What remains is section D: real hardware.** Flash the image to a USB stick,
+boot a mini-PC from it into a television, and work through every box. Expect to
+find things a VM cannot show: overscan, HDMI-CEC, audio routing, the cursor,
+and the real boot time.
 
-- **`stage-app.sh` cannot find pnpm.** Install Node and pnpm inside WSL2 too;
-  the Windows install is not on the Linux PATH.
-- **Building on `/mnt/c` is slow and may hit permission errors.** If mkosi
-  complains about ownership or extended attributes, clone the repo into the
-  WSL2 filesystem (`~/TVM`) and build there instead.
-- **Package names drift.** If a package in `mkosi.conf` does not exist in
-  trixie, find the current name rather than dropping the package silently.
-- **`cage` may not start under QEMU without GPU acceleration.** Try
-  `qemu-smoke.sh` with software rendering, or test the session on real
-  hardware, before concluding the session script is wrong.
-- **Firmware for hardware decode is non-free.** Adding it means enabling the
-  `non-free-firmware` component. That is Phase 10 work, not a Phase 1 fix.
+Two known problems to pick up there:
+
+- **Boot to splash took about 150 seconds** in QEMU on a first boot. Measure a
+  second boot before optimising, then find where the time actually goes with
+  `systemd-analyze blame` rather than guessing.
+- **Hardware decode firmware is non-free.** Adding it means enabling the
+  `non-free-firmware` component. Phase 10 work, not a Phase 1 fix.
 
 Do not paper over a failure by disabling the kiosk and leaving a desktop
 behind. A visible desktop is a failed appliance.

@@ -13,6 +13,10 @@ ExecStart=/usr/lib/tvm/start-session.sh
 User=tvm
 Group=tvm
 
+# The browser profile lives under the persistent data root, alongside core's.
+StateDirectory=tvm
+Environment=TVM_DATA_DIR=/var/lib/tvm
+
 # logind grants seat, DRM and input access to the session on this tty.
 PAMName=login
 TTYPath=/dev/tty1
