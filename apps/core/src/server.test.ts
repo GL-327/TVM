@@ -202,9 +202,9 @@ describe('resolveBindHost', () => {
     expect(resolveBindHost({ TVM_ENV: 'production' })).toBe(CORE_HOST);
   });
 
-  it('LAN-binds in development so a Roku can reach Core', () => {
-    expect(resolveBindHost({ TVM_ENV: 'development' })).toBe('0.0.0.0');
-    expect(resolveBindHost({ TVM_ENV: 'development', TVM_CORE_BIND: '' })).toBe('0.0.0.0');
+  it('stays on loopback even in development so a laptop without Wi-Fi can start', () => {
+    expect(resolveBindHost({ TVM_ENV: 'development' })).toBe(CORE_HOST);
+    expect(resolveBindHost({ TVM_ENV: 'development', TVM_CORE_BIND: '' })).toBe(CORE_HOST);
     expect(resolveBindHost({ TVM_ENV: 'development', TVM_CORE_BIND: '127.0.0.1' })).toBe('127.0.0.1');
   });
 

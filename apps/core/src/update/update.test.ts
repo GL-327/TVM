@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CORE_HOST } from '../config.ts';
 import { startCoreServer, type RunningCore } from '../server.ts';
-import { applyPolicy } from './paths.ts';
+import { applyPolicy, resolveDataDir } from './paths.ts';
 import { isNewer, parseSemver } from './semver.ts';
 import { createUpdateService } from './service.ts';
 import { extractTarGz, isSafeTarName, packTarGz, parseSha256File } from './tar.ts';
@@ -63,6 +63,16 @@ describe('apply policy', () => {
 
   it('allows production', () => {
     expect(applyPolicy({ TVM_ENV: 'production' }).allowed).toBe(true);
+  });
+});
+
+describe('data directory', () => {
+  it('uses a user-writable folder on every desktop OS', () => {
+    expect(resolveDataDir({ TVM_DATA_DIR: '/var/lib/tvm' }, 'linux')).toBe('/var/lib/tvm');
+    expect(resolveDataDir({ LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, 'win32')).toMatch(/TVM$/);
+    expect(resolveDataDir({ HOME: '/Users/me' }, 'darwin')).toBe('/Users/me/Library/Application Support/TVM');
+    expect(resolveDataDir({ HOME: '/home/me' }, 'linux')).toBe('/home/me/.local/share/tvm');
+    expect(resolveDataDir({ XDG_DATA_HOME: '/tmp/xdg', HOME: '/home/me' }, 'linux')).toBe('/tmp/xdg/tvm');
   });
 });
 

@@ -2,7 +2,8 @@
 
 This folder is the **laptop copy** of TVM: a windowed desktop app and a Roku
 sideload package. It is not the living-room kiosk (`TVM.cmd` in the repo root
-still goes fullscreen).
+still goes fullscreen). Both launchers bind Core to `127.0.0.1`, so they open
+without Wi-Fi and without Windows asking to allow Node on public networks.
 
 | File | What it does |
 | --- | --- |
