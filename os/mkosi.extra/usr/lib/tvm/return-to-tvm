@@ -1,0 +1,5 @@
+#!/bin/sh
+# Written by the desktop "Return to TVM" launcher. Core is not required.
+set -eu
+
+printf 'kiosk\n%s\n' "$(date +%s)" > /var/lib/tvm/session-request

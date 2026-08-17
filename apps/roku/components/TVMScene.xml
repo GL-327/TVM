@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="TVMScene" extends="Scene">
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/viewStack.brs" />
+  <script type="text/brightscript" uri="pkg:/source/config.brs" />
+  <script type="text/brightscript" uri="pkg:/source/api.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/layout.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="TVMScene.brs" />
+  <children>
+    <Rectangle id="letterbox" width="1920" height="1080" color="0x000000FF" />
+    <Group id="uiRoot">
+      <Rectangle id="bg" width="3840" height="2160" color="0x0B0B0BFF" />
+      <Group id="screenHost" />
+      <Group id="overlayHost" />
+      <Label
+        id="bootLabel"
+        text="Starting..."
+        width="3840"
+        height="2160"
+        horizAlign="center"
+        vertAlign="center"
+        color="0xF5F5F5FF"
+      />
+    </Group>
+  </children>
+</component>

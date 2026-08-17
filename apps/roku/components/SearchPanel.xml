@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SearchPanel" extends="Group">
+  <interface>
+    <field id="results" type="array" onChange="onResults" />
+    <field id="message" type="string" onChange="onMessage" />
+    <field id="query" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="SearchPanel.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000E0" />
+    <Rectangle width="3360" height="1840" translation="[240, 160]" color="0x161616FF" cornerRadius="40" />
+    <Label id="heading" text="Search" translation="[360, 240]" color="0xF5F5F5FF" />
+    <Label id="lede" translation="[360, 340]" width="2800" color="0xC4C4C4FF" />
+    <Label id="queryLabel" translation="[360, 440]" width="2800" color="0xFFFFFFFF" />
+    <Group id="keys" translation="[360, 600]" />
+    <PosterRail id="rail" translation="[200, 1280]" />
+    <FocusButton id="close" translation="[2960, 240]" />
+  </children>
+</component>

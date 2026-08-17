@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch TVM session-request for kiosk or desktop
+
+[Path]
+PathModified=/var/lib/tvm/session-request
+MakeDirectory=yes
+Unit=tvm-session-switch.service
+
+[Install]
+WantedBy=multi-user.target

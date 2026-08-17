@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<openbox_menu>
+  <menu id="root-menu" label="TVM Linux">
+    <item label="Return to TVM">
+      <action name="Execute"><execute>/usr/lib/tvm/return-to-tvm</execute></action>
+    </item>
+    <item label="Files">
+      <action name="Execute"><execute>pcmanfm</execute></action>
+    </item>
+    <item label="Terminal">
+      <action name="Execute"><execute>foot</execute></action>
+    </item>
+  </menu>
+</openbox_menu>

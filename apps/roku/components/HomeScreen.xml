@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeScreen" extends="Group">
+  <interface>
+    <field id="mode" type="string" value="loading" onChange="onMode" />
+    <field id="payload" type="assocarray" onChange="onPayload" />
+    <field id="errorTitle" type="string" />
+    <field id="errorBody" type="string" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" onChange="onRestoreKey" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="HomeScreen.brs" />
+  <children>
+    <Poster id="heroArt" width="3840" height="1440" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
+    <Poster id="heroArtB" width="3840" height="1440" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" opacity="0" />
+    <Rectangle id="heroFallback" width="3840" height="1440" color="0x14183AFF" visible="false" />
+    <Poster id="heroVignetteLeft" width="1960" height="1440" uri="pkg:/images/chrome/hero-vignette-left.png" />
+    <Poster id="heroVignetteBottom" width="3840" height="640" translation="[0, 800]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
+    <Group id="heroCopy" translation="[160, 400]">
+      <Label id="heroTitle" width="2200" height="280" wrap="true" maxLines="2" color="0xF5F5F5FF" />
+      <Group id="watchline" translation="[0, 300]">
+        <FocusButton id="watchNow" translation="[0, 0]" />
+        <Label id="heroRule" text="|" translation="[428, 20]" color="0xFFFFFFB3" />
+        <BrandLockup id="heroBrand" translation="[472, 12]" />
+        <Label id="heroSource" translation="[472, 20]" width="840" color="0x00A8E1FF" visible="false" />
+      </Group>
+      <FocusButton id="learnMore" translation="[0, 420]" />
+      <Group id="dots" translation="[0, 620]">
+        <Rectangle id="dot0" width="16" height="16" cornerRadius="8" color="0xFFFFFFFF" />
+        <Rectangle id="dot1" width="16" height="16" cornerRadius="8" translation="[32, 0]" color="0xFFFFFF59" />
+        <Rectangle id="dot2" width="16" height="16" cornerRadius="8" translation="[64, 0]" color="0xFFFFFF59" />
+        <Rectangle id="dot3" width="16" height="16" cornerRadius="8" translation="[96, 0]" color="0xFFFFFF59" />
+      </Group>
+    </Group>
+    <RibbonBar id="ribbon" translation="[0, 1236]" />
+    <Group id="rails" translation="[0, 1504]" />
+    <Group id="status" translation="[0, 1504]" visible="false">
+      <ErrorState id="error" />
+      <EmptyState id="empty" translation="[0, 0]" />
+      <Label id="loading" text="Loading..." color="0xC4C4C4FF" translation="[160, 80]" />
+    </Group>
+    <Timer id="heroTimer" duration="8" repeat="true" />
+    <Animation id="heroFade" duration="0.55" easeFunction="inOutQuad" optional="true">
+      <FloatFieldInterpolator id="heroFadeA" key="[0.0, 1.0]" keyValue="[1.0, 0.0]" fieldToInterp="heroArt.opacity" />
+      <FloatFieldInterpolator id="heroFadeB" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroArtB.opacity" />
+    </Animation>
+    <Animation id="railsAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="railsInterp" key="[0.0, 1.0]" keyValue="[[0.0, 1504.0], [0.0, 1504.0]]" fieldToInterp="rails.translation" />
+    </Animation>
+  </children>
+</component>

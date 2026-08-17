@@ -1,8 +1,19 @@
-import { app, BrowserWindow, Menu, shell } from 'electron';
+import { join } from 'node:path';
+import { app, BrowserWindow, ipcMain, Menu, shell, type IpcMainInvokeEvent } from 'electron';
 import { bootErrorPage } from './bootError';
 import { LOAD_RETRY_DELAY_MS, LOAD_RETRY_LIMIT, uiOrigin } from './config';
+import {
+  NativePlayerHost,
+  type NativePlaybackInput,
+  type NativePlayerCommand,
+} from './nativePlayerHost';
+import { ServiceHost, type ServiceStartInput } from './serviceHost';
+import { createCrashWatch, urlForLoad } from './watchdog';
 
 const TARGET = uiOrigin();
+let mainWindow: BrowserWindow | null = null;
+let nativePlayer: NativePlayerHost | null = null;
+let serviceHost: ServiceHost | null = null;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,25 +64,111 @@ function createWindow(): BrowserWindow {
     width: 1280,
     height: 720,
     fullscreen: !windowed,
-    kiosk: !windowed && process.env['TVM_ENV'] === 'production',
+    kiosk: !windowed,
     autoHideMenuBar: true,
-    // Matches the UI background so there is no flash between paint and load.
     backgroundColor: '#0a0d12',
+    ...(windowed && process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: { color: '#0b0b0b', symbolColor: '#f5f5f5', height: 36 },
+        }
+      : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webviewTag: false,
+      preload: join(__dirname, 'preload.js'),
     },
   });
 
   window.once('ready-to-show', () => window.show());
+  window.once('closed', () => {
+    if (mainWindow === window) {
+      nativePlayer?.dispose();
+      serviceHost?.dispose();
+      nativePlayer = null;
+      serviceHost = null;
+      mainWindow = null;
+    }
+  });
   hardenNavigation(window);
+  attachWatchdog(window);
+  mainWindow = window;
+  nativePlayer = new NativePlayerHost(window);
+  serviceHost = new ServiceHost(window);
 
   return window;
 }
 
+function attachWatchdog(window: BrowserWindow): void {
+  const watch = createCrashWatch();
+  window.webContents.on('render-process-gone', (_event, details) => {
+    if (window.isDestroyed()) return;
+    console.error(`tvm-shell: renderer gone (${details.reason})`);
+    const mode = watch.noteCrash();
+    void window.loadURL(urlForLoad(TARGET, mode));
+  });
+}
+
 Menu.setApplicationMenu(null);
+
+function playerFor(event: IpcMainInvokeEvent): NativePlayerHost {
+  if (mainWindow === null || nativePlayer === null || event.sender !== mainWindow.webContents) {
+    throw new Error('Native playback is unavailable.');
+  }
+  return nativePlayer;
+}
+
+ipcMain.handle('tvm:native-player:start', async (event, input: unknown) => {
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    typeof (input as Partial<NativePlaybackInput>).url !== 'string' ||
+    typeof (input as Partial<NativePlaybackInput>).title !== 'string'
+  ) {
+    throw new Error('Invalid native playback request.');
+  }
+  serviceHost?.stop(false);
+  return playerFor(event).start(input as NativePlaybackInput);
+});
+
+ipcMain.handle('tvm:native-player:command', (event, command: unknown) => {
+  const allowed: readonly NativePlayerCommand[] = ['togglePause', 'pause', 'play', 'seekBack', 'seekForward', 'stop'];
+  if (typeof command !== 'string' || !allowed.includes(command as NativePlayerCommand)) {
+    throw new Error('Invalid native player command.');
+  }
+  playerFor(event).command(command as NativePlayerCommand);
+});
+
+ipcMain.handle('tvm:native-player:stop', (event) => {
+  playerFor(event).stop(false);
+});
+
+function serviceFor(event: IpcMainInvokeEvent): ServiceHost {
+  if (mainWindow === null || serviceHost === null || event.sender !== mainWindow.webContents) {
+    throw new Error('In-app services are unavailable.');
+  }
+  return serviceHost;
+}
+
+ipcMain.handle('tvm:service:start', (event, input: unknown) => {
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    typeof (input as Partial<ServiceStartInput>).id !== 'string' ||
+    typeof (input as Partial<ServiceStartInput>).url !== 'string' ||
+    typeof (input as Partial<ServiceStartInput>).title !== 'string'
+  ) {
+    throw new Error('Invalid service request.');
+  }
+  nativePlayer?.stop(false);
+  return serviceFor(event).start(input as ServiceStartInput);
+});
+
+ipcMain.handle('tvm:service:stop', (event) => {
+  serviceFor(event).stop(false);
+});
 
 void app.whenReady().then(async () => {
   const window = createWindow();

@@ -1,23 +1,19 @@
 #!/bin/sh
-# Starts the TVM kiosk: one compositor, one window, no desktop.
+# Starts the TVM kiosk: one compositor, one fullscreen window, no desktop.
 #
-# Phase 1 uses Chromium under Cage. The Electron shell and the mpv video plane
-# replace this browser in Phase 6, but the session contract stays the same:
-# systemd starts this script, it never returns, and systemd restarts it if it
-# does.
+# Core is Type=notify, so this unit only starts once the API is listening.
+# A short health loop remains as a belt-and-braces against a raced READY=1.
 set -eu
 
 CORE_URL="http://127.0.0.1:${TVM_CORE_PORT:-7345}"
 
-# Core owns the interface as well as the API, so there is nothing to show until
-# it answers. Waiting here beats a browser error page on the television.
 attempt=0
-while [ "$attempt" -lt 60 ]; do
+while [ "$attempt" -lt 50 ]; do
     if curl --silent --fail --max-time 1 "$CORE_URL/api/health" >/dev/null 2>&1; then
         break
     fi
     attempt=$((attempt + 1))
-    sleep 1
+    sleep 0.2
 done
 
 exec cage -d -- chromium \

@@ -4,7 +4,7 @@ Documentation=https://github.com/GL-327/TVM
 After=tvm-core.service systemd-user-sessions.service
 Wants=tvm-core.service
 # The appliance owns tty1. There is no getty and no login prompt.
-Conflicts=getty@tty1.service
+Conflicts=getty@tty1.service tvm-desktop.service
 After=getty@tty1.service
 
 [Service]

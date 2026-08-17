@@ -8,10 +8,11 @@
     "start": "electron dist/main.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"shell is covered by the Phase 2 UI suite and the os/ boot checklist\""
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "electron": "github:castlabs/electron-releases#v43.2.0+wvcus"
+    "electron": "github:castlabs/electron-releases#v43.2.0+wvcus",
+    "vitest": "^4.1.10"
   }
 }

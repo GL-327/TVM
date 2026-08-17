@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ProfileScreen" extends="Group">
+  <interface>
+    <field id="rd" type="assocarray" onChange="onRd" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="ProfileScreen.brs" />
+  <children>
+    <Label translation="[160, 144]" color="0x8A8A8AFF" font="font:SmallSystemFont" text="Local profile" />
+    <Label translation="[160, 220]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" text="Household" />
+    <Label id="lede" translation="[160, 380]" width="2800" wrap="true" maxLines="3" color="0xC4C4C4FF" font="font:MediumSystemFont" text="TVM currently has one local household. Watch progress and settings belong to this device and are never uploaded by TVM." />
+    <Label id="account" translation="[160, 640]" width="2800" color="0xF5F5F5FF" font="font:MediumSystemFont" />
+    <Label id="premium" translation="[160, 740]" width="2800" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+    <FocusButton id="manage" translation="[160, 920]" />
+    <FocusButton id="back" translation="[696, 920]" />
+  </children>
+</component>

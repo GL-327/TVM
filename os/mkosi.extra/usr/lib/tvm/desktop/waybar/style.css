@@ -1,0 +1,25 @@
+* {
+  font-family: DejaVu Sans, sans-serif;
+  font-size: 15px;
+  color: #f5f5f5;
+}
+
+window#waybar {
+  background: rgba(11, 11, 11, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#custom-tvm,
+#custom-files,
+#custom-terminal,
+#clock {
+  padding: 0 16px;
+  margin: 4px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#custom-tvm {
+  background: #e50914;
+  font-weight: 700;
+}

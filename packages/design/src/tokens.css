@@ -7,38 +7,44 @@
  */
 
 :root {
-  /* Dark cinema surfaces */
-  --tvm-bg: #0a0d12;
-  --tvm-bg-elevated: #141922;
-  --tvm-surface: #1d2430;
-  --tvm-surface-hover: #253040;
-  --tvm-border: #2a3341;
+  /* Fire TV charcoal: near-black stage, glass chrome, white focus. */
+  --tvm-bg: #0b0b0b;
+  --tvm-bg-deep: #000000;
+  --tvm-bg-elevated: #161616;
+  --tvm-surface: #1d1d1d;
+  --tvm-surface-hover: #2b2b2b;
+  --tvm-surface-glass: rgba(28, 28, 28, 0.78);
+  --tvm-border: #3a3a3a;
+  --tvm-border-soft: rgba(255, 255, 255, 0.12);
 
   /* Text */
-  --tvm-text: #f4f7fb;
-  --tvm-text-muted: #9ba7b8;
-  --tvm-text-faint: #6b7686;
+  --tvm-text: #f5f5f5;
+  --tvm-text-muted: #c4c4c4;
+  --tvm-text-faint: #8a8a8a;
 
-  /* Warm highlight - deliberately not Netflix red, not Stremio purple */
-  --tvm-accent: #f2b355;
-  --tvm-accent-strong: #ffc978;
-  --tvm-accent-ink: #2b1d07;
+  --tvm-accent: #ffffff;
+  --tvm-accent-strong: #ffffff;
+  --tvm-accent-blue: #00a8e1;
+  --tvm-accent-ink: #111111;
+  --tvm-mark: #00a8e1;
+  --tvm-mark-glow: rgba(0, 168, 225, 0.5);
 
   /* Status */
-  --tvm-danger: #e5484d;
-  --tvm-success: #46a758;
-  --tvm-warning: #f5a623;
+  --tvm-danger: #ff6b7d;
+  --tvm-success: #59d69a;
+  --tvm-warning: #ffbf69;
+  --tvm-info: #6fa8ff;
 
-  /* Type scale for the 10-foot experience */
-  --tvm-font-family: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
-  --tvm-font-size-caption: 1.375rem;
-  --tvm-font-size-body: 1.75rem;
-  --tvm-font-size-body-lg: 2.125rem;
-  --tvm-font-size-title: 3rem;
-  --tvm-font-size-display: 4.5rem;
-  --tvm-line-height-tight: 1.1;
-  --tvm-line-height-body: 1.45;
-  --tvm-letter-spacing-display: -0.02em;
+  /* Type: readable at 10 feet without shouting */
+  --tvm-font-family: "Segoe UI Variable Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --tvm-font-size-caption: 0.8125rem;
+  --tvm-font-size-body: 1.0625rem;
+  --tvm-font-size-body-lg: 1.25rem;
+  --tvm-font-size-title: 1.75rem;
+  --tvm-font-size-display: 2.75rem;
+  --tvm-line-height-tight: 1.12;
+  --tvm-line-height-body: 1.4;
+  --tvm-letter-spacing-display: -0.03em;
 
   /* 8px grid */
   --tvm-space-1: 0.5rem;
@@ -50,8 +56,8 @@
   --tvm-space-7: 6rem;
 
   /* Safe area: TVs overscan, so never paint content to the panel edge */
-  --tvm-safe-x: 4rem;
-  --tvm-safe-y: 3rem;
+  --tvm-safe-x: 2.5rem;
+  --tvm-safe-y: 1.5rem;
 
   --tvm-radius-sm: 0.5rem;
   --tvm-radius-md: 0.875rem;
@@ -59,18 +65,18 @@
   --tvm-radius-pill: 999rem;
 
   /* Focus: must be unmistakable from three metres away */
-  --tvm-focus-ring-width: 0.3125rem;
-  --tvm-focus-ring-color: var(--tvm-accent-strong);
-  --tvm-focus-ring-offset: 0.25rem;
-  --tvm-focus-scale: 1.07;
+  --tvm-focus-ring-width: 0.18rem;
+  --tvm-focus-ring-color: #ffffff;
+  --tvm-focus-ring-offset: 0.14rem;
+  --tvm-focus-scale: 1.08;
 
-  /* Motion: restrained. Anything slower than 280ms feels broken on a remote. */
-  --tvm-motion-fast: 160ms;
-  --tvm-motion-base: 220ms;
-  --tvm-motion-slow: 280ms;
-  --tvm-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tvm-motion-fast: 140ms;
+  --tvm-motion-base: 200ms;
+  --tvm-motion-slow: 260ms;
+  --tvm-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --tvm-shadow-card: 0 1rem 2.5rem rgba(0, 0, 0, 0.55);
+  --tvm-shadow-card: 0 0.8rem 2rem rgba(0, 0, 0, 0.55);
+  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(0, 0, 0, 0.55);
 }
 
 html {

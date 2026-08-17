@@ -1,8 +1,9 @@
 # TVM appliance image
 
 This directory builds the bootable TVM operating system: a Debian image that
-powers on straight into the TVM interface, with no desktop, no login prompt and
-no visible operating system.
+powers on straight into the TVM interface, fullscreen, with no login prompt.
+A Linux desktop exists behind the app and is opened from Settings; it is not
+shown at boot.
 
 ## Read this first: what "USB boot" actually means
 
@@ -28,8 +29,9 @@ which is also the machine already sitting behind the kitchen TV.
 | Debian 13 (trixie) | Base system, kernel, drivers |
 | systemd-boot | UEFI boot, and later A/B slots for updates |
 | `tvm-core.service` | The local service on `127.0.0.1`, which also serves the interface |
-| `tvm-session.service` | Owns tty1 and starts the kiosk |
-| Cage + Chromium | One compositor, one fullscreen window, nothing else |
+| `tvm-session.service` | Owns tty1 and starts the fullscreen kiosk |
+| Cage + Chromium | One compositor, one fullscreen window at boot |
+| labwc desktop | Optional, opened from Settings → Linux desktop |
 | `/var/lib/tvm` | Persistent settings, credentials, cache. Survives updates |
 
 The user `tvm` owns everything. Nothing in the product runs as root.
@@ -100,6 +102,9 @@ less portable.
 
 The image is a raw disk image. Write it to the **whole device**, not to a
 partition, and note that this erases the stick.
+
+On this development PC the stick is usually **D:**. Step-by-step flashing,
+including a copy of the kit onto that drive, is in [USB.md](USB.md).
 
 **Windows**
 
