@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=TVM
+Comment=Return to TVM fullscreen
+Exec=/usr/lib/tvm/return-to-tvm
+Terminal=false
+Type=Application
+Categories=AudioVideo;AudioVideoEditing;
+StartupNotify=false

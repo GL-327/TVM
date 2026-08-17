@@ -1,14 +1,14 @@
 [Unit]
 Description=TVM core (local media service)
 Documentation=https://github.com/GL-327/TVM
-After=network-online.target
-Wants=network-online.target
+After=local-fs.target
 Before=tvm-session.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node /usr/lib/tvm/core/index.js
+ExecStart=/usr/lib/tvm/start-core.sh
 Environment=NODE_ENV=production
+Environment=TVM_ENV=production
 Environment=TVM_UI_DIST=/usr/lib/tvm/ui
 User=tvm
 Group=tvm

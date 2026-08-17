@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SettingsScreen" extends="Group">
+  <interface>
+    <field id="coreUrl" type="string" onChange="onCoreUrl" />
+    <field id="health" type="assocarray" onChange="onHealth" />
+    <field id="focusKey" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="SettingsScreen.brs" />
+  <children>
+    <Label id="kicker" text="Device and services" translation="[160, 144]" color="0x8A8A8AFF" font="font:SmallSystemFont" />
+    <Label id="heading" text="Settings" translation="[160, 220]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
+    <Group id="list" translation="[160, 440]" />
+  </children>
+</component>

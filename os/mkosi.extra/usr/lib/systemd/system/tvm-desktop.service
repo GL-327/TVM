@@ -1,0 +1,23 @@
+[Unit]
+Description=TVM Linux desktop (opt-in from Settings)
+Documentation=https://github.com/GL-327/TVM
+After=tvm-core.service systemd-user-sessions.service
+Wants=tvm-core.service
+Conflicts=getty@tty1.service tvm-session.service
+After=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/tvm/start-desktop.sh
+User=tvm
+Group=tvm
+StateDirectory=tvm
+Environment=TVM_DATA_DIR=/var/lib/tvm
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+Restart=no

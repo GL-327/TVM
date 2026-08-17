@@ -15,8 +15,9 @@ before changing anything structural.
 | Path | What it is |
 | --- | --- |
 | `apps/ui` | React interface, built for a ten-foot viewing distance |
-| `apps/core` | Local service on `127.0.0.1`. Owns all business logic, and serves the interface in production |
+| `apps/core` | Local service on `127.0.0.1` by default. Owns all business logic, and serves the interface in production |
 | `apps/shell` | Electron kiosk window for the Windows SKU |
+| `apps/roku` | Roku SceneGraph client. Talks to Core over HTTP on the LAN; see [apps/roku/README.md](apps/roku/README.md) |
 | `packages/design` | Design tokens: colour, type scale, spacing, motion, focus |
 | `packages/nav` | Remote input normalised into intents |
 | `os/` | The Debian appliance image, USB flashing and the boot checklist |
@@ -53,23 +54,31 @@ Useful environment variables:
 | Variable | Effect |
 | --- | --- |
 | `TVM_CORE_PORT` | Core's port. Default 7345 |
+| `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. In `TVM_ENV=development` the default is `0.0.0.0` so a Roku can reach Core. Pin loopback with `127.0.0.1`. Core has no API auth |
 | `TVM_UI_URL` | Origin the shell loads |
-| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen |
-| `TVM_ENV=production` | Shell goes kiosk and loads the interface from core |
+| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd` sets this; `TVM.cmd` does not |
+| `TVM_ENV=production` | Shell loads the interface from core |
+| `TVM_ROKU_HOST` / `TVM_ROKU_PASSWORD` | Optional. `TVM-roku.cmd` uses these to sideload `apps/roku/tvm-roku.zip` onto a developer-mode Roku |
+
+On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the **desktop interface** in a 1920×1080 TV frame at `http://127.0.0.1:5173/?tv=1`. That is the same React app as `TVM.cmd`, not a separate channel mock. A Roku cannot run that UI; sideload `apps/roku/tvm-roku.zip` only to exercise SceneGraph on hardware.
 
 ## The appliance
 
-See [os/README.md](os/README.md). In short: a flash drive plugged into a
-television's USB port cannot boot an operating system. TVM boots a small x86
-computer from USB, and that computer drives the television over HDMI.
+See [os/README.md](os/README.md) and [os/USB.md](os/USB.md). In short: a flash
+drive plugged into a television's USB port cannot boot an operating system.
+TVM boots a small x86 computer from USB, and that computer drives the
+television over HDMI. On this PC run `os/scripts/prepare-usb.ps1` to copy the
+flash kit onto D:.
 
 ## Rules that are not negotiable
 
 - **No secrets in the repository.** Not in source, not in committed env files,
   never in the interface bundle. Credentials belong in the operating system's
   credential store, reached only by core.
-- **Core binds `127.0.0.1`.** It holds credentials, so it is never exposed to
-  the network.
+- **Core binds `127.0.0.1` by default.** It holds credentials, so the appliance
+  and production Electron SKU never expose it. Development (`TVM_ENV=development`)
+  binds `0.0.0.0` so a Roku on the LAN can reach Core; pin loopback with
+  `TVM_CORE_BIND=127.0.0.1`.
 - **No torrent indexing, magnet search or scraping.** Real-Debrid is a client
   for files the user already owns and links the user supplies, not a search
   engine.

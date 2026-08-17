@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AppTile" extends="Group">
+  <interface>
+    <field id="appId" type="string" onChange="onAppId" />
+    <field id="hasFocusStyle" type="boolean" onChange="onFocusStyle" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="AppTile.brs" />
+  <children>
+    <Group id="body">
+      <Rectangle id="ring" color="0x00000000" cornerRadius="28" />
+      <MaskGroup id="mask" maskUri="pkg:/images/chrome/app-tile-mask.png">
+        <Poster id="art" width="284" height="155" loadDisplayMode="scaleToFill" />
+      </MaskGroup>
+    </Group>
+    <Animation id="focusAnim" duration="0.2" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="scaleInterp" key="[0.0, 1.0]" keyValue="[[1.0, 1.0], [1.1, 1.1]]" fieldToInterp="body.scale" />
+    </Animation>
+  </children>
+</component>

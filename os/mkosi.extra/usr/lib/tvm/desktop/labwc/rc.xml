@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <core>
+    <gap>10</gap>
+  </core>
+  <desktops>
+    <popupTime>0</popupTime>
+  </desktops>
+  <keyboard>
+    <keybind key="W-t">
+      <action name="Execute" command="/usr/lib/tvm/return-to-tvm" />
+    </keybind>
+    <keybind key="W-Return">
+      <action name="Execute" command="foot" />
+    </keybind>
+    <keybind key="W-e">
+      <action name="Execute" command="pcmanfm" />
+    </keybind>
+    <keybind key="A-F4">
+      <action name="Close" />
+    </keybind>
+  </keyboard>
+  <theme>
+    <name>Clearlooks</name>
+    <cornerRadius>8</cornerRadius>
+  </theme>
+</labwc_config>

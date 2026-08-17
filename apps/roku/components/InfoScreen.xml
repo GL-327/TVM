@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="InfoScreen" extends="Group">
+  <interface>
+    <field id="kicker" type="string" onChange="onKicker" />
+    <field id="heading" type="string" onChange="onHeading" />
+    <field id="body" type="string" onChange="onBody" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="InfoScreen.brs" />
+  <children>
+    <Label id="kickerLabel" translation="[160, 144]" color="0x8A8A8AFF" font="font:SmallSystemFont" />
+    <Label id="headingLabel" translation="[160, 220]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
+    <Label id="lede" translation="[160, 440]" width="2800" wrap="true" maxLines="12" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+    <FocusButton id="back" translation="[160, 1560]" />
+  </children>
+</component>

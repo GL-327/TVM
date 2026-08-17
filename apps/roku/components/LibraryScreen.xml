@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="LibraryScreen" extends="Group">
+  <interface>
+    <field id="payload" type="assocarray" onChange="onPayload" />
+    <field id="profile" type="assocarray" onChange="onProfile" />
+    <field id="mode" type="string" value="loading" onChange="onMode" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="LibraryScreen.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000FF" />
+    <Poster id="heroArt" width="3840" height="1320" translation="[0, 0]" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
+    <Poster id="heroArtB" width="3840" height="1320" translation="[0, 0]" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" opacity="0" />
+    <Rectangle id="heroFallback" width="3840" height="1320" color="0x141414FF" visible="false" />
+    <Poster id="heroVignetteLeft" width="1960" height="1320" uri="pkg:/images/chrome/hero-vignette-left.png" />
+    <Poster id="heroVignetteBottom" width="3840" height="640" translation="[0, 680]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
+    <Group id="chrome" translation="[160, 48]">
+      <ProfileOrb id="avatar" />
+      <FocusButton id="searchBtn" translation="[200, 8]" />
+      <FocusButton id="homeBtn" translation="[520, 8]" />
+      <FocusButton id="showsBtn" translation="[840, 8]" />
+      <FocusButton id="moviesBtn" translation="[1160, 8]" />
+      <BrandLockup id="mark" kind="wordmark" translation="[3180, 16]" />
+    </Group>
+    <Group id="heroCopy" translation="[160, 420]">
+      <Label id="heroTitle" width="2200" height="240" wrap="true" maxLines="2" color="0xF5F5F5FF" />
+      <Group id="watchline" translation="[0, 260]">
+        <FocusButton id="watchNow" />
+        <Label id="heroRule" text="|" translation="[428, 20]" color="0xFFFFFFB3" />
+        <BrandLockup id="heroBrand" translation="[472, 12]" />
+      </Group>
+      <FocusButton id="learnMore" translation="[0, 380]" />
+    </Group>
+    <Group id="gate" translation="[160, 560]" visible="false">
+      <Label id="gateTitle" width="2800" color="0xF5F5F5FF" />
+      <Label id="gateBody" translation="[0, 112]" width="2200" wrap="true" maxLines="3" color="0xC4C4C4FF" />
+      <FocusButton id="tokenBtn" translation="[0, 360]" />
+    </Group>
+    <Group id="rails" translation="[0, 1320]" />
+    <Label id="loading" translation="[160, 560]" color="0xC4C4C4FF" text="Loading..." />
+    <Animation id="heroFade" duration="0.55" easeFunction="inOutQuad" optional="true">
+      <FloatFieldInterpolator id="heroFadeA" key="[0.0, 1.0]" keyValue="[1.0, 0.0]" fieldToInterp="heroArt.opacity" />
+      <FloatFieldInterpolator id="heroFadeB" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroArtB.opacity" />
+    </Animation>
+    <Animation id="railsAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="railsInterp" key="[0.0, 1.0]" keyValue="[[0.0, 1320.0], [0.0, 1320.0]]" fieldToInterp="rails.translation" />
+    </Animation>
+  </children>
+</component>

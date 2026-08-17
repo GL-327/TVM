@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+import {
+  canonicalFocusId,
+  conveyorWrapDelta,
+  isWrapAcross,
+  loopPitch,
+  loopSetWidth,
+  normalizeLoopScroll,
+  shouldLoopRail,
+} from './loopingRail';
+
+describe('looping rail', () => {
+  it('loops only when there is more than one card', () => {
+    expect(shouldLoopRail(0)).toBe(false);
+    expect(shouldLoopRail(1)).toBe(false);
+    expect(shouldLoopRail(2)).toBe(true);
+  });
+
+  it('treats the track as three equal copies', () => {
+    expect(loopSetWidth(900, 3)).toBe(300);
+    expect(loopPitch(300, 6)).toBe(50);
+  });
+
+  it('teleports scroll back into the middle copy', () => {
+    expect(normalizeLoopScroll(40, 300)).toBe(340);
+    expect(normalizeLoopScroll(620, 300)).toBe(320);
+    expect(normalizeLoopScroll(300, 300)).toBe(300);
+  });
+
+  it('keeps wrap motion in the same direction', () => {
+    expect(conveyorWrapDelta('right', 48)).toBe(48);
+    expect(conveyorWrapDelta('left', 48)).toBe(-48);
+    expect(isWrapAcross(4, 'right', 5)).toBe(true);
+    expect(isWrapAcross(0, 'left', 5)).toBe(true);
+    expect(isWrapAcross(1, 'right', 5)).toBe(false);
+  });
+
+  it('maps conveyor clones back to the focusable copy', () => {
+    expect(canonicalFocusId('home-tt123')).toBe('home-tt123');
+    expect(canonicalFocusId('home-tt123--0')).toBe('home-tt123');
+    expect(canonicalFocusId('home-tt123--2')).toBe('home-tt123');
+    expect(canonicalFocusId('home-tt123--1')).toBe('home-tt123--1');
+  });
+});

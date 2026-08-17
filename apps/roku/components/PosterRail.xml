@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="PosterRail" extends="Group">
+  <interface>
+    <field id="title" type="string" onChange="onTitle" />
+    <field id="items" type="array" onChange="onItems" />
+    <field id="focusCol" type="integer" value="-1" onChange="onFocusCol" />
+    <field id="layout" type="string" value="portrait" onChange="onItems" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="PosterRail.brs" />
+  <children>
+    <Label id="heading" translation="[160, 0]" color="0xF5F5F5FF" />
+    <Group id="track" translation="[160, 88]" />
+    <Animation id="slideAnim" duration="0.2" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="slideInterp" key="[0.0, 1.0]" keyValue="[[160.0, 88.0], [160.0, 88.0]]" fieldToInterp="track.translation" />
+    </Animation>
+  </children>
+</component>

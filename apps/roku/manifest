@@ -1,0 +1,15 @@
+title=TVM
+major_version=0
+minor_version=1
+build_version=0
+mm_icon_focus_hd=pkg:/images/icon_focus_hd.png
+mm_icon_focus_sd=pkg:/images/icon_focus_sd.png
+splash_screen_sd=pkg:/images/splash_sd.png
+splash_screen_hd=pkg:/images/splash_hd.png
+splash_screen_fhd=pkg:/images/splash_fhd.png
+splash_screen_uhd=pkg:/images/splash_fhd.png
+splash_color=#0b0b0b
+splash_min_time=1500
+ui_resolutions=hd,fhd
+confirm_partner_button=1
+rsg_version=1.2

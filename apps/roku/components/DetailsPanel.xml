@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="DetailsPanel" extends="Group">
+  <interface>
+    <field id="item" type="assocarray" onChange="onItem" />
+    <field id="children" type="array" onChange="onChildren" />
+    <field id="saved" type="boolean" onChange="onSaved" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="DetailsPanel.brs" />
+  <children>
+    <Poster id="backdrop" width="3840" height="2160" loadDisplayMode="scaleToZoom" />
+    <Rectangle id="backdropFill" width="3840" height="2160" color="0x0B0B0BFF" visible="false" />
+    <Poster id="vignetteLeft" width="2200" height="2160" uri="pkg:/images/chrome/details-vignette-left.png" />
+    <Poster id="vignetteBottom" width="3840" height="840" translation="[0, 1320]" uri="pkg:/images/chrome/details-vignette-bottom.png" />
+    <Poster id="poster" width="352" height="528" translation="[160, 336]" loadDisplayMode="scaleToZoom" />
+    <Rectangle id="posterFill" width="352" height="528" translation="[160, 336]" color="0x1D1D1DFF" />
+    <Label id="kicker" translation="[584, 336]" width="3000" color="0xF5F5F5FF" />
+    <Label id="title" translation="[584, 408]" width="3000" wrap="true" maxLines="2" color="0xF5F5F5FF" />
+    <Label id="imdb" translation="[584, 680]" width="440" color="0xF5C518FF" />
+    <Label id="meta" translation="[1024, 680]" width="2560" color="0xC4C4C4FF" />
+    <FocusButton id="play" translation="[584, 780]" />
+    <FocusButton id="imdbBtn" translation="[1120, 780]" />
+    <FocusButton id="save" translation="[1656, 780]" />
+    <FocusButton id="back" translation="[2192, 780]" />
+    <Label id="synopsis" translation="[584, 980]" width="2200" wrap="true" maxLines="3" color="0xD8D9E8FF" />
+    <Group id="picker" translation="[160, 1240]" />
+  </children>
+</component>

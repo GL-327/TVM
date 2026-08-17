@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="NoticePanel" extends="Group">
+  <interface>
+    <field id="title" type="string" onChange="onTitle" />
+    <field id="body" type="string" onChange="onBody" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="NoticePanel.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000CC" />
+    <Rectangle width="1960" height="840" translation="[940, 660]" color="0x161616FF" cornerRadius="36" />
+    <Label id="heading" translation="[1060, 740]" width="1720" wrap="true" maxLines="2" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
+    <Label id="lede" translation="[1060, 920]" width="1720" wrap="true" maxLines="4" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+    <FocusButton id="close" translation="[1060, 1240]" />
+  </children>
+</component>

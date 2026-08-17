@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="CatalogScreen" extends="Group">
+  <interface>
+    <field id="kind" type="string" />
+    <field id="heading" type="string" onChange="onHeading" />
+    <field id="mode" type="string" value="loading" onChange="onMode" />
+    <field id="items" type="array" onChange="onItems" />
+    <field id="errorTitle" type="string" />
+    <field id="errorBody" type="string" />
+    <field id="emptyTitle" type="string" />
+    <field id="emptyBody" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="CatalogScreen.brs" />
+  <children>
+    <RibbonBar id="ribbon" translation="[0, 0]" />
+    <BrandLockup id="kicker" kind="wordmark" translation="[160, 280]" />
+    <Label id="title" translation="[160, 352]" color="0xF5F5F5FF" />
+    <PosterRail id="rail" translation="[0, 520]" />
+    <ErrorState id="error" translation="[0, 520]" visible="false" />
+    <EmptyState id="empty" translation="[0, 520]" visible="false" />
+    <Label id="loading" translation="[160, 560]" color="0xC4C4C4FF" text="Loading..." />
+  </children>
+</component>

@@ -49,6 +49,25 @@ export function contentTypeFor(filePath: string): string {
   return CONTENT_TYPES[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
 }
 
+async function sendFile(
+  filePath: string,
+  response: ServerResponse,
+  cache: 'entry' | 'immutable' | 'none' = 'entry',
+): Promise<boolean> {
+  const isEntryDocument = filePath.endsWith('index.html');
+  const cacheControl =
+    cache === 'none' || (cache === 'entry' && isEntryDocument)
+      ? 'no-store'
+      : 'public, max-age=31536000, immutable';
+  response.writeHead(200, {
+    'content-type': contentTypeFor(filePath),
+    'cache-control': cacheControl,
+    'x-content-type-options': 'nosniff',
+  });
+  createReadStream(filePath).pipe(response);
+  return true;
+}
+
 /**
  * Serves a file from the UI bundle. Unknown paths fall back to index.html so
  * the client-side view stack survives a reload. Returns false when there is
@@ -64,16 +83,24 @@ export async function serveStatic(
 
   const filePath = await firstReadableFile([requested, join(root, 'index.html')]);
   if (filePath === null) return false;
+  return sendFile(filePath, response);
+}
 
-  const isEntryDocument = filePath.endsWith('index.html');
-  response.writeHead(200, {
-    'content-type': contentTypeFor(filePath),
-    'cache-control': isEntryDocument ? 'no-store' : 'public, max-age=31536000, immutable',
-    'x-content-type-options': 'nosniff',
-  });
+/**
+ * Serves one file from a directory with no SPA fallback. Used for the
+ * development-only Roku preview, which must not leak the React UI index.
+ */
+export async function serveExactStatic(
+  root: string,
+  urlPath: string,
+  response: ServerResponse,
+): Promise<boolean> {
+  const requested = resolveStaticPath(root, urlPath === '/' ? '/index.html' : urlPath);
+  if (requested === null) return false;
 
-  createReadStream(filePath).pipe(response);
-  return true;
+  const filePath = await firstReadableFile([requested]);
+  if (filePath === null) return false;
+  return sendFile(filePath, response, 'none');
 }
 
 async function firstReadableFile(candidates: readonly string[]): Promise<string | null> {

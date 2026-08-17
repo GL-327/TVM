@@ -5,19 +5,24 @@
 
 export const color = {
   bg: 'var(--tvm-bg)',
+  bgDeep: 'var(--tvm-bg-deep)',
   bgElevated: 'var(--tvm-bg-elevated)',
   surface: 'var(--tvm-surface)',
   surfaceHover: 'var(--tvm-surface-hover)',
+  surfaceGlass: 'var(--tvm-surface-glass)',
   border: 'var(--tvm-border)',
+  borderSoft: 'var(--tvm-border-soft)',
   text: 'var(--tvm-text)',
   textMuted: 'var(--tvm-text-muted)',
   textFaint: 'var(--tvm-text-faint)',
   accent: 'var(--tvm-accent)',
   accentStrong: 'var(--tvm-accent-strong)',
+  accentBlue: 'var(--tvm-accent-blue)',
   accentInk: 'var(--tvm-accent-ink)',
   danger: 'var(--tvm-danger)',
   success: 'var(--tvm-success)',
   warning: 'var(--tvm-warning)',
+  info: 'var(--tvm-info)',
 } as const;
 
 export const fontSize = {
