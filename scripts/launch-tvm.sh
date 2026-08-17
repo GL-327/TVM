@@ -30,10 +30,9 @@ wait_http() {
 
 if ! http_ok "$core_health"; then
   echo "Starting TVM core..."
-  if [ "$windowed" -eq 1 ]; then
-    export TVM_ENV=development
-  fi
-  (cd "$repo/apps/core" && node --watch src/index.ts >/dev/null 2>&1 &)
+  export TVM_ENV=development
+  export TVM_CORE_BIND=127.0.0.1
+  (cd "$repo/apps/core" && TVM_ENV=development TVM_CORE_BIND=127.0.0.1 node --watch src/index.ts >/dev/null 2>&1 &)
   if ! wait_http "$core_health" 40; then
     echo "TVM core did not start on http://127.0.0.1:7345" >&2
     exit 1
@@ -70,14 +69,22 @@ do
 done
 
 if [ -z "$electron" ]; then
-  echo "Electron is not installed. From the TVM folder run: corepack pnpm --filter @tvm/shell install" >&2
-  exit 1
+  echo "Electron is not installed on this device. Opening TVM in the browser..."
+  url="http://127.0.0.1:5173/"
+  if [ "$windowed" -eq 1 ]; then url="http://127.0.0.1:5173/?desktop=1"; fi
+  if command -v xdg-open >/dev/null; then
+    xdg-open "$url" >/dev/null 2>&1 || true
+  elif command -v open >/dev/null; then
+    open "$url" || true
+  fi
+  exit 0
 fi
 
 user_data="${XDG_CONFIG_HOME:-$HOME/.config}/TVM/shell"
 mkdir -p "$user_data"
 
 export TVM_ENV=development
+export TVM_CORE_BIND=127.0.0.1
 if [ "$windowed" -eq 1 ]; then
   export TVM_WINDOWED=1
   echo "Opening TVM (windowed)..."

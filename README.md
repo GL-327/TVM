@@ -54,7 +54,7 @@ Useful environment variables:
 | Variable | Effect |
 | --- | --- |
 | `TVM_CORE_PORT` | Core's port. Default 7345 |
-| `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. In `TVM_ENV=development` the default is `0.0.0.0` so a Roku can reach Core. Pin loopback with `127.0.0.1`. Core has no API auth |
+| `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1` so TVM opens with no Wi-Fi. Set `0.0.0.0` only when a Roku on the LAN must reach Core. Core has no API auth |
 | `TVM_UI_URL` | Origin the shell loads |
 | `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd`, `Desktop/TVM.cmd`, and the Desktop copies set this; `TVM.cmd` does not |
 | `TVM_ENV=production` | Shell loads the interface from core |
@@ -91,9 +91,9 @@ flash kit onto D:.
   never in the interface bundle. Credentials belong in the operating system's
   credential store, reached only by core.
 - **Core binds `127.0.0.1` by default.** It holds credentials, so the appliance
-  and production Electron SKU never expose it. Development (`TVM_ENV=development`)
-  binds `0.0.0.0` so a Roku on the LAN can reach Core; pin loopback with
-  `TVM_CORE_BIND=127.0.0.1`.
+  and production Electron SKU never expose it. A Roku on the LAN needs
+  `TVM_CORE_BIND=0.0.0.0`; laptop launchers do not, so Windows never asks to
+  allow Node on Wi-Fi.
 - **No torrent indexing, magnet search or scraping.** Real-Debrid is a client
   for files the user already owns and links the user supplies, not a search
   engine.

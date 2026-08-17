@@ -3,15 +3,28 @@ import { join, resolve } from 'node:path';
 export const UPDATE_REPO = 'GL-327/TVM';
 export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-export function resolveDataDir(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveDataDir(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
   const raw = env['TVM_DATA_DIR'];
   if (raw !== undefined && raw.trim() !== '') return resolve(raw);
 
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     const root = env['LOCALAPPDATA'] ?? env['APPDATA'] ?? resolve('.');
     return join(root, 'TVM');
   }
-  return '/var/lib/tvm';
+
+  if (platform === 'darwin') {
+    const home = env['HOME'] ?? resolve('.');
+    return join(home, 'Library', 'Application Support', 'TVM');
+  }
+
+  const xdg = env['XDG_DATA_HOME'];
+  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'tvm');
+  const home = env['HOME'];
+  if (home !== undefined && home.trim() !== '') return join(home, '.local', 'share', 'tvm');
+  return join(resolve('.'), 'tvm-data');
 }
 
 export function applyPolicy(env: NodeJS.ProcessEnv = process.env): { allowed: boolean; reason: string | null } {
