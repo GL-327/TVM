@@ -164,6 +164,9 @@ and restart**.
 If you created `config.json` before packaging, it is included in the zip. If
 not, use the on-device setup screen after sideload.
 
+Laptop copies of both the windowed desktop app and this Roku zip live in
+`Desktop/` at the repo root. `Install-to-Desktop.cmd` puts them on your Desktop.
+
 Check the project without a Roku:
 
 ```bash

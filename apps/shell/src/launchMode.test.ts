@@ -23,8 +23,29 @@ describe('living-room launch', () => {
     expect(script).toContain('[switch]$Windowed');
     expect(script).toMatch(/\$envPrefix = if \(\$Windowed\) \{[\s\S]*TVM_WINDOWED=1/);
     expect(script).toMatch(/else \{\s*"set TVM_ENV=development&& "\s*\}/);
-    expect(main).toContain("process.env['TVM_WINDOWED'] === '1'");
+    expect(script).toContain('electron.exe');
+    expect(script).toContain('electron\\dist\\electron');
+    expect(main).toContain('isWindowedShell');
+    expect(main).toContain('windowedBounds');
     expect(main).toContain('fullscreen: !windowed');
     expect(main).toContain('kiosk: !windowed');
+  });
+});
+
+describe('laptop desktop copies', () => {
+  it('ships windowed desktop and Roku launchers in Desktop/', () => {
+    const repo = repoRoot();
+    const desktop = readFileSync(join(repo, 'Desktop/TVM.cmd'), 'utf8');
+    const roku = readFileSync(join(repo, 'Desktop/TVM-roku.cmd'), 'utf8');
+    const copy = readFileSync(join(repo, 'scripts/copy-to-desktop.ps1'), 'utf8');
+    const install = readFileSync(join(repo, 'Install-to-Desktop.cmd'), 'utf8');
+
+    expect(desktop).toContain('-Windowed');
+    expect(roku).toContain('roku-dev.ps1');
+    expect(copy).toContain('TVM.cmd');
+    expect(copy).toContain('TVM Roku.cmd');
+    expect(copy).toContain('TVM-roku.zip');
+    expect(copy).toContain('-Windowed');
+    expect(install).toContain('copy-to-desktop.ps1');
   });
 });
