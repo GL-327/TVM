@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="FocusButton" extends="Group">
+  <interface>
+    <field id="label" type="string" onChange="onLabel" />
+    <field id="detail" type="string" onChange="onDetail" />
+    <field id="itemId" type="string" />
+    <field id="iconUri" type="string" onChange="onIcon" />
+    <field id="variant" type="string" value="glass" onChange="layout" />
+    <field id="hasFocusStyle" type="boolean" onChange="onFocusStyle" />
+    <field id="active" type="boolean" onChange="onFocusStyle" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="FocusButton.brs" />
+  <children>
+    <Rectangle id="ring" color="0x00000000" cornerRadius="32" />
+    <Rectangle id="bg" color="0x1D1D1DFF" cornerRadius="24" />
+    <Poster id="glyph" loadDisplayMode="scaleToFit" visible="false" />
+    <Label id="text" color="0xF5F5F5FF" font="font:MediumBoldSystemFont" />
+    <Label id="sub" color="0xC4C4C4FF" font="font:SmallSystemFont" />
+  </children>
+</component>

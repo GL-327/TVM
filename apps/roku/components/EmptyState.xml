@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="EmptyState" extends="Group">
+  <interface>
+    <field id="title" type="string" onChange="onTitle" />
+    <field id="body" type="string" onChange="onBody" />
+  </interface>
+  <script type="text/brightscript" uri="EmptyState.brs" />
+  <children>
+    <Label id="heading" translation="[160, 0]" width="2800" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
+    <Label id="lede" translation="[160, 144]" width="1800" wrap="true" maxLines="3" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+  </children>
+</component>

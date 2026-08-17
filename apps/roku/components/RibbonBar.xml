@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="RibbonBar" extends="Group">
+  <interface>
+    <field id="activeId" type="string" value="home" onChange="paint" />
+    <field id="focusCol" type="integer" value="3" onChange="paint" />
+    <field id="hasBarFocus" type="boolean" value="true" onChange="paint" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="RibbonBar.brs" />
+  <children>
+    <Rectangle id="bar" width="3840" height="248" color="0x141414E0" />
+    <Group id="items" translation="[80, 16]" />
+    <Animation id="slideAnim" duration="0.2" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="slideInterp" key="[0.0, 1.0]" keyValue="[[80.0, 16.0], [80.0, 16.0]]" fieldToInterp="items.translation" />
+    </Animation>
+  </children>
+</component>

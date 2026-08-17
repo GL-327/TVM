@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="RealDebridScreen" extends="Group">
+  <interface>
+    <field id="status" type="assocarray" onChange="onStatus" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="RealDebridScreen.brs" />
+  <children>
+    <Label id="kicker" translation="[160, 144]" color="0x8A8A8AFF" text="TVM Stream" />
+    <Label id="heading" translation="[160, 220]" color="0xF5F5F5FF" text="Real-Debrid" />
+    <Label id="lede" translation="[160, 360]" width="3200" wrap="true" maxLines="4" color="0xC4C4C4FF" text="The token is stored on the computer that runs Core, not on this Roku. Paste it here to connect TVM Stream." />
+    <Label id="account" translation="[160, 640]" width="3200" color="0xF5F5F5FF" />
+    <Label id="premium" translation="[160, 720]" width="3200" color="0xC4C4C4FF" />
+    <FocusButton id="paste" translation="[160, 920]" />
+    <FocusButton id="back" translation="[720, 920]" />
+  </children>
+</component>

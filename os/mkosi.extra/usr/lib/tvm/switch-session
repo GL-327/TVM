@@ -1,0 +1,19 @@
+#!/bin/sh
+# Root helper started by tvm-session-switch.path when core writes session-request.
+set -eu
+
+REQUEST=/var/lib/tvm/session-request
+[ -f "$REQUEST" ] || exit 0
+mode=$(head -n1 "$REQUEST" | tr -d '[:space:]')
+
+case "$mode" in
+    desktop)
+        systemctl start tvm-desktop.service
+        ;;
+    kiosk)
+        systemctl start tvm-session.service
+        ;;
+    *)
+        exit 0
+        ;;
+esac

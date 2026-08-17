@@ -12,11 +12,10 @@ If you are picking this up cold, in this order:
 
 1. **Section 7, the gotchas table.** Every row cost time once already. Reading
    it takes two minutes and saves more.
-2. **Section 4, Phase 2.** This is the work. The hard part, the view stack
-   reducer, is finished and tested; what remains is wiring it to React and
-   building screens on top.
-3. **Section 5, the provider contract**, before touching anything to do with
+2. **Section 5, the provider contract**, before touching anything to do with
    media. Getting this shape wrong is expensive to undo later.
+3. Phase 2 is done: the view stack is wired, Home/Library/Settings exist with
+   dummy data, and app updates check GitHub Releases.
 
 Do not start with the operating system image. It builds and boots, and the only
 thing left there needs physical hardware.
@@ -36,8 +35,9 @@ Two rules that are not negotiable, both from the plan:
 | --- | --- |
 | 0. Plan in repo | **Done.** Committed |
 | 1. Skeleton and bootable hello | **Done except real hardware.** Builds, boots in QEMU, remote-driven |
-| 2. Shell and remote navigation | **Started.** The view stack is built and tested; nothing is wired to React yet |
-| 3-11 | Not started |
+| 2. Shell and remote navigation | **Done.** View stack wired, focus engine, dummy Home, Playwright |
+| 3-4. Design / homepage | **Started.** Home/Library/Settings exist with placeholder titles |
+| 5-11 | Not started. App update channel (GitHub Releases) is in core now |
 
 ### Verified working
 
@@ -130,8 +130,9 @@ Two known problems to pick up there:
 - **Hardware decode firmware is non-free.** Adding it means enabling the
   `non-free-firmware` component. Phase 10 work, not a Phase 1 fix.
 
-Do not paper over a failure by disabling the kiosk and leaving a desktop
-behind. A visible desktop is a failed appliance.
+Do not paper over a failure by leaving a desktop on screen at boot. Settings
+may open the Linux desktop behind TVM; the default power-on path is still the
+fullscreen kiosk.
 
 ---
 
@@ -272,7 +273,9 @@ contradicts them. Two notes worth carrying forward:
   changes.
 - **Phase 7 must not regress the credential boundary.** The Real-Debrid token
   is entered in the wizard, stored by the operating system, and used only for
-  `/user`, `/downloads` and `/unrestrict/link`.
+  `/user`, `/downloads`, `/torrents`, `/torrents/info/{id}` and
+  `/unrestrict/link`. Listing the user's own finished torrents is in scope.
+  `/torrents/addMagnet` is not.
 
 ---
 

@@ -348,7 +348,7 @@ Do these in order. Do not skip ahead to Torrentio-shaped catalogs, and do not "j
 ### Phase 7 — Accounts, apps and Real-Debrid (legal subset)
 
 - **Objective:** service tiles, plus user-entered Real-Debrid for cloud files and unrestricting user-supplied links
-- **Tasks:** isolated webview, a wizard field for the RD token, and only the `/user`, `/downloads` and `/unrestrict/link` endpoints
+- **Tasks:** isolated webview, a wizard field for the RD token, and only the `/user`, `/downloads`, `/torrents`, `/torrents/info/{id}` and `/unrestrict/link` endpoints
 - **Forbidden:** Torrentio, `/torrents/addMagnet` driven by title search, and Cinemeta used as catalog-plus-streams
 - **Done:** the Netflix tile opens the official site, and the RD token never reaches the UI bundle
 

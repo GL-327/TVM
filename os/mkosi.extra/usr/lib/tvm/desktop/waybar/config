@@ -1,0 +1,24 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 42,
+  "modules-left": ["custom/tvm", "custom/files", "custom/terminal"],
+  "modules-center": ["clock"],
+  "modules-right": [],
+  "clock": {
+    "format": "{:%H:%M}"
+  },
+  "custom/tvm": {
+    "format": "TVM",
+    "tooltip-format": "Return to TVM fullscreen",
+    "on-click": "/usr/lib/tvm/return-to-tvm"
+  },
+  "custom/files": {
+    "format": "Files",
+    "on-click": "pcmanfm"
+  },
+  "custom/terminal": {
+    "format": "Terminal",
+    "on-click": "foot"
+  }
+}

@@ -7,3 +7,4 @@ packages:
 onlyBuiltDependencies:
   - electron
   - esbuild
+  - playwright

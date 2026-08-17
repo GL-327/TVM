@@ -23,7 +23,7 @@ Run `./scripts/qemu-smoke.sh`.
 - [ ] No mouse cursor is visible, unless a pointer device is genuinely
       attached. QEMU attaches one by default, so this box only means something
       on hardware
-- [ ] No terminal, login prompt or desktop is reachable
+- [ ] No terminal or login prompt. The Linux desktop is only reachable from Settings, not at boot
 - [ ] The core status in the footer reads green, not "Core unavailable"
 - [ ] Arrow keys move focus between Continue and System info
 - [ ] Enter opens System information; Escape closes it

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="PlayerScreen" extends="Group">
+  <interface>
+    <field id="streamUrl" type="string" />
+    <field id="streamTitle" type="string" />
+    <field id="streamFormat" type="string" />
+    <field id="mediaId" type="string" />
+    <field id="startAt" type="float" value="0" />
+    <field id="message" type="string" onChange="onMessage" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="PlayerScreen.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000FF" />
+    <Video id="video" width="3840" height="2160" />
+    <Group id="chrome">
+      <Rectangle width="3840" height="440" color="0x000000CC" />
+      <FocusButton id="back" translation="[80, 80]" />
+      <Label id="heading" translation="[280, 104]" width="3200" color="0xF5F5F5FF" />
+      <Rectangle id="barTrack" width="3200" height="16" translation="[320, 1720]" color="0xFFFFFF33" cornerRadius="8" />
+      <Rectangle id="barFill" width="8" height="16" translation="[320, 1720]" color="0xE50914FF" cornerRadius="8" />
+      <Label id="time" translation="[320, 1760]" width="800" color="0xC4C4C4FF" />
+      <FocusButton id="rewind" translation="[1400, 1880]" />
+      <FocusButton id="pause" translation="[1600, 1880]" />
+      <FocusButton id="forward" translation="[1800, 1880]" />
+      <Rectangle id="buffer" width="3840" height="8" translation="[0, 0]" color="0xE50914FF" />
+    </Group>
+    <Label id="status" translation="[160, 1920]" width="3520" color="0xF5F5F5FF" />
+  </children>
+</component>

@@ -1,0 +1,43 @@
+name: USB appliance kit
+
+# Custom instructions for putting TVM on a USB stick live in os/USB.md.
+# GitHub-hosted runners cannot run privileged mkosi, so this workflow stages
+# the app and the flash scripts. The raw disk image is built in WSL/Linux.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "os/**"
+      - "apps/core/**"
+      - "apps/ui/**"
+      - ".github/workflows/appliance.yml"
+
+jobs:
+  usb-kit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Stage app (same layout mkosi copies into the image)
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @tvm/core run build
+          pnpm --filter @tvm/ui run build
+          mkdir -p usb-kit/usr/lib/tvm/core usb-kit/usr/lib/tvm/ui
+          cp -r apps/core/dist/. usb-kit/usr/lib/tvm/core/
+          cp -r apps/ui/dist/. usb-kit/usr/lib/tvm/ui/
+          cp os/USB.md usb-kit/README.md
+          cp os/BOOT_CHECKLIST.md os/scripts/flash-usb.sh os/scripts/flash-usb.ps1 os/scripts/prepare-usb.ps1 usb-kit/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvm-usb-kit
+          path: usb-kit

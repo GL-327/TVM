@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ProfileOrb" extends="Group">
+  <interface>
+    <field id="name" type="string" onChange="paint" />
+    <field id="hue" type="integer" value="220" onChange="paint" />
+    <field id="hasFocusStyle" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="ProfileOrb.brs" />
+  <children>
+    <Rectangle id="ring" width="336" height="336" translation="[-16, -16]" cornerRadius="36" color="0x00000000" />
+    <Rectangle id="tile" width="304" height="304" cornerRadius="24" color="0x7C3AEDFF" />
+    <Rectangle id="eyeL" width="20" height="20" cornerRadius="10" color="0x111111FF" translation="[88, 104]" />
+    <Rectangle id="eyeR" width="20" height="20" cornerRadius="10" color="0x111111FF" translation="[196, 104]" />
+    <Rectangle id="mouth" width="96" height="16" cornerRadius="8" color="0x111111FF" translation="[104, 192]" />
+    <Label id="caption" translation="[0, 328]" width="304" horizAlign="center" color="0xC4C4C4FF" />
+  </children>
+</component>

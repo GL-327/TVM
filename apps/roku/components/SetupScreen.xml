@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SetupScreen" extends="Group">
+  <interface>
+    <field id="message" type="string" onChange="onMessage" />
+    <field id="focusKey" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="SetupScreen.brs" />
+  <children>
+    <Label text="TVM" translation="[160, 320]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
+    <Label id="lede" translation="[160, 480]" width="2400" wrap="true" maxLines="4" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+    <Label id="status" translation="[160, 840]" width="2400" wrap="true" maxLines="3" color="0xFFBF69FF" font="font:SmallSystemFont" />
+    <FocusButton id="enter" translation="[160, 1040]" />
+  </children>
+</component>

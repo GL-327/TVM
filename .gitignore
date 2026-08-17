@@ -13,6 +13,7 @@ node_modules/
 
 # Build output
 dist/
+dist-release/
 build/
 out/
 *.tsbuildinfo
@@ -37,6 +38,10 @@ test-results/
 *.log
 logs/
 cache/
+
+# Roku sideload: machine-specific Core URL and zip
+apps/roku/config.json
+apps/roku/*.zip
 
 # Editor and OS
 .DS_Store

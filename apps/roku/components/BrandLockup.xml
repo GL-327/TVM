@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="BrandLockup" extends="Group">
+  <interface>
+    <field id="kind" type="string" value="stream" onChange="layout" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="BrandLockup.brs" />
+  <children>
+    <Poster id="mark" uri="pkg:/images/chrome/lockup-mark.png" loadDisplayMode="scaleToFit" />
+    <Label id="word" color="0x00A8E1FF" />
+  </children>
+</component>

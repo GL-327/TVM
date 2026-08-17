@@ -4,6 +4,7 @@ set -eu
 
 mkosi-chroot systemctl enable tvm-core.service
 mkosi-chroot systemctl enable tvm-session.service
+mkosi-chroot systemctl enable tvm-session-switch.path
 mkosi-chroot systemctl set-default multi-user.target
 
 # The kiosk owns tty1; a login prompt there would fight it for the display.
@@ -23,3 +24,8 @@ mkosi-chroot systemctl mask systemd-firstboot.service
 mkosi-chroot systemctl mask systemd-networkd.service systemd-networkd.socket
 
 chmod 0755 "$BUILDROOT/usr/lib/tvm/start-session.sh"
+chmod 0755 "$BUILDROOT/usr/lib/tvm/start-core.sh"
+chmod 0755 "$BUILDROOT/usr/lib/tvm/start-desktop.sh"
+chmod 0755 "$BUILDROOT/usr/lib/tvm/switch-session"
+chmod 0755 "$BUILDROOT/usr/lib/tvm/return-to-tvm"
+chmod 0755 "$BUILDROOT/usr/lib/tvm/desktop/labwc/autostart"
