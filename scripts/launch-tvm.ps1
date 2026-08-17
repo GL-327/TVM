@@ -58,8 +58,12 @@ if (-not (Test-Path $mainJs)) {
     }
 }
 
-$electron = Join-Path $shellDir "node_modules\electron\dist\electron.exe"
-if (-not (Test-Path $electron)) {
+$electron = @(
+    (Join-Path $shellDir "node_modules\electron\dist\electron.exe"),
+    (Join-Path $shellDir "node_modules\electron\dist\electron"),
+    (Join-Path $shellDir "node_modules\electron\dist\Electron.app\Contents\MacOS\Electron")
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $electron) {
     throw "Electron is not installed. From the TVM folder run: corepack pnpm --filter @tvm/shell install"
 }
 

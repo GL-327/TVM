@@ -2264,3 +2264,19 @@ html.tv-preview #root {
   background: #000;
   zoom: var(--tv-scale, 1);
 }
+
+/* Laptop / windowed Electron: a pointer is expected. */
+html.desktop-shell,
+html.desktop-shell body {
+  cursor: default;
+}
+
+html.desktop-shell button,
+html.desktop-shell .poster,
+html.desktop-shell .tvm-button {
+  cursor: pointer;
+}
+
+html.desktop-shell .token-field__input {
+  cursor: text;
+}
