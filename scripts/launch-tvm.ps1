@@ -65,6 +65,23 @@ $electron = @(
 
 $uiOpen = if ($Windowed) { "http://127.0.0.1:5173/?desktop=1" } else { "http://127.0.0.1:5173/" }
 if (-not $electron) {
+    $installJs = Join-Path $shellDir "node_modules\electron\install.js"
+    if (Test-Path $installJs) {
+        Write-Host "Downloading Electron..."
+        Push-Location (Join-Path $shellDir "node_modules\electron")
+        try {
+            & node install.js
+        } finally {
+            Pop-Location
+        }
+        $electron = @(
+            (Join-Path $shellDir "node_modules\electron\dist\electron.exe"),
+            (Join-Path $shellDir "node_modules\electron\dist\electron"),
+            (Join-Path $shellDir "node_modules\electron\dist\Electron.app\Contents\MacOS\Electron")
+        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    }
+}
+if (-not $electron) {
     Write-Host "Electron is not installed on this device. Opening TVM in the browser..."
     Start-Process $uiOpen
     return

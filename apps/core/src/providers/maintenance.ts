@@ -2,11 +2,17 @@ import { existsSync, rmSync, unlinkSync } from 'node:fs';
 import {
   artworkCachePath,
   catalogCachePath,
+  entitlementPath,
+  billingPath,
+  usagePath,
   livePlaylistPath,
+  planPath,
   profilesPath,
   progressPath,
   rdTokenPath,
   watchlistPath,
+  poolRdPath,
+  devUnlockPath,
 } from '../update/paths.ts';
 import { join } from 'node:path';
 
@@ -36,5 +42,11 @@ export function factoryResetDir(dataDir: string): void {
   remove(progressPath(dataDir));
   remove(watchlistPath(dataDir));
   remove(livePlaylistPath(dataDir));
+  remove(planPath(dataDir));
+  remove(entitlementPath(dataDir));
+  remove(billingPath(dataDir));
+  remove(usagePath(dataDir));
+  remove(poolRdPath(dataDir));
+  remove(devUnlockPath(dataDir));
   removeTree(join(dataDir, 'profiles'));
 }

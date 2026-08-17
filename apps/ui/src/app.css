@@ -1362,12 +1362,13 @@ body,
 .ribbon__icon[data-focused='true']::before {
   content: '';
   position: absolute;
-  top: -0.55rem;
   left: 50%;
-  width: 2.4rem;
-  height: 1.1rem;
+  bottom: 1.05rem;
+  width: 1.15rem;
+  height: 0.14rem;
   transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.85), transparent 70%);
+  border-radius: 999px;
+  background: var(--tvm-accent-blue);
   pointer-events: none;
 }
 
@@ -1401,6 +1402,7 @@ body,
 }
 
 .app-card__art {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1477,6 +1479,19 @@ body,
   box-shadow:
     0 0 0 0.18rem #fff,
     0 0.75rem 1.5rem rgba(0, 0, 0, 0.5);
+}
+
+.app-card__lock {
+  position: absolute;
+  right: 0.28rem;
+  bottom: 0.28rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.2rem;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .season-row {
@@ -2280,3 +2295,94 @@ html.desktop-shell .tvm-button {
 html.desktop-shell .token-field__input {
   cursor: text;
 }
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.85rem;
+  padding: 0.5rem 0 2rem;
+}
+
+.plan-card {
+  align-items: flex-start;
+  min-height: 14rem;
+  padding: 1rem 1.1rem;
+  text-align: left;
+}
+
+.plan-card .tvm-button__label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.plan-card__price {
+  color: var(--tvm-accent-blue);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.plan-card__name {
+  font-size: 1.05rem;
+}
+
+.plan-card__now {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tvm-success);
+}
+
+.plan-card__list {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--tvm-text-muted);
+  font-size: 0.82rem;
+}
+
+.plan-card--on {
+  box-shadow: 0 0 0 0.16rem #fff;
+}
+
+.player__queue,
+.player__ad {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  background: rgba(5, 5, 8, 0.92);
+  text-align: center;
+}
+
+.player__queue h2,
+.player__ad h2 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.player__queue p,
+.player__ad p {
+  margin: 0;
+  color: var(--tvm-text-muted);
+}
+
+.player__badges {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--tvm-text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-lock {
+  max-width: 36rem;
+}
+

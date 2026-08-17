@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { TopBar } from '../components/TopBar';
 import { fetchLive, fetchSession } from '../data/media';
-import { applyPlanClass, fetchPlan, savePlan, type PlanStatus } from '../data/plan';
+import { applyPlanClass, FALLBACK_PLAN, fetchPlan, saveStyle, styleMinPlanLabel, styleUnlocked, type PlanStatus, type StyleId } from '../data/plan';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -11,7 +11,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [liveDetail, setLiveDetail] = useState('M3U / M3U8');
   const [desktopDetail, setDesktopDetail] = useState('TVM stick only');
   const [appliance, setAppliance] = useState(false);
-  const [plan, setPlan] = useState<PlanStatus>({ id: 'premium', name: 'Premium', mocks: true, stream: 'premium' });
+  const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
 
   useEffect(() => {
     void fetchLive().then((status) => {
@@ -40,17 +40,52 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton
           id="plan"
           className="settings-row"
-          detail={plan.name}
-          onSelect={() => {
-            const order: PlanStatus['id'][] = ['basic', 'premium', 'tvm-max'];
-            const next = order[(order.indexOf(plan.id) + 1) % order.length] ?? 'premium';
-            void savePlan(next).then((status) => {
-              applyPlanClass(status);
-              setPlan(status);
-            });
-          }}
+          detail={`${plan.name} · ${plan.price}`}
+          onSelect={() => navigate.push('plans')}
         >
           Plan
+        </FocusButton>
+        {(plan.styles.length > 0 ? plan.styles : FALLBACK_PLAN.styles).map((style) => {
+          const unlocked = styleUnlocked(plan, style.id as StyleId);
+          return (
+            <FocusButton
+              key={style.id}
+              id={`style-${style.id}`}
+              className="settings-row"
+              detail={
+                !unlocked
+                  ? `Locked · ${style.minPlan}`
+                  : plan.styleId === style.id
+                    ? 'On'
+                    : 'Apply'
+              }
+              onSelect={() => {
+                if (!unlocked) {
+                  navigate.pushModal('notice', {
+                    params: {
+                      title: style.name,
+                      body: `This style unlocks on ${styleMinPlanLabel(style.minPlan)}.`,
+                    },
+                  });
+                  return;
+                }
+                void saveStyle(style.id as StyleId).then((status) => {
+                  applyPlanClass(status);
+                  setPlan(status);
+                });
+              }}
+            >
+              Style · {style.name}
+            </FocusButton>
+          );
+        })}
+        <FocusButton
+          id="developer"
+          className="settings-row"
+          detail={plan.developer ? 'Open' : 'Locked'}
+          onSelect={() => navigate.push(plan.developer ? 'developer' : 'developer-unlock')}
+        >
+          Developer
         </FocusButton>
         <FocusButton id="profiles" className="settings-row" detail="TVM Stream only" onSelect={() => navigate.push('profiles')}>
           Profiles
@@ -82,7 +117,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         >
           Live TV playlist
         </FocusButton>
-        <FocusButton id="updates" className="settings-row" detail="GitHub Releases" onSelect={() => navigate.push('updates')}>
+        <FocusButton id="updates" className="settings-row" detail="GLogic Studios" onSelect={() => navigate.push('updates')}>
           Updates
         </FocusButton>
         <FocusButton

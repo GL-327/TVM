@@ -94,4 +94,18 @@ describe('apps hubs', () => {
     expect(ids).toEqual(['tvm-stream', 'netflix', 'prime', 'max', 'appletv', 'disney', 'hulu', 'peacock']);
     expect(apps.list().ribbon.find((app) => app.id === 'max')?.name).toBe('HBO Max');
   });
+
+  it('still returns a playable hub when catalogs are empty', async () => {
+    const apps = createAppsService({
+      fetch: async () => new Response('{}', { status: 404 }),
+      catalog: {
+        bundle: async () => emptyBundle([]),
+        meta: async () => null,
+      },
+    });
+    const hub = await apps.hub('disney');
+    expect(hub).not.toBeNull();
+    expect(hub?.hero).toBeTruthy();
+    expect(hub?.layout).toBe('disney');
+  });
 });

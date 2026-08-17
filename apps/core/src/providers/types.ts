@@ -30,7 +30,7 @@ export type PlaybackResolution =
     }
   | {
       kind: 'unavailable';
-      reason: 'not-in-library' | 'not-configured' | 'needs-auth' | 'region-blocked' | 'unsupported' | 'empty';
+      reason: 'not-in-library' | 'not-configured' | 'needs-auth' | 'region-blocked' | 'unsupported' | 'empty' | 'hours-cap';
     };
 
 export interface MediaItem {

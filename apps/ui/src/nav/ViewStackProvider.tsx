@@ -285,8 +285,9 @@ interface EntryHostProps {
 
 function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
   const definition = screenDefinition(entry.name);
-  const preferredChildFocusKey =
-    definition.defaultFocus === undefined ? undefined : `${entry.key}/${definition.defaultFocus}`;
+  const focusId =
+    typeof definition.defaultFocus === 'function' ? definition.defaultFocus(entry.params) : definition.defaultFocus;
+  const preferredChildFocusKey = focusId === undefined ? undefined : `${entry.key}/${focusId}`;
 
   const { ref, focusKey } = useFocusable<object, HTMLDivElement>({
     focusKey: entry.key,

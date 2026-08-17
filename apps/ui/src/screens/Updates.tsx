@@ -108,11 +108,11 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
   return (
     <main className="page page--settings">
       <TopBar title="Updates" />
-      <p className="stage__kicker">App delivery</p>
+      <p className="stage__kicker">GLogic Studios</p>
       <h1 className="page__heading">Updates</h1>
       <p className="page__lede">
-        App builds come from public GitHub Releases on {status.channel}. A token is only needed if that repo is
-        private. The operating system image is a separate, rarer update.
+        GLogic Studios publishes app builds on public GitHub Releases ({status.channel}). A token is only needed if that
+        repo is private. The operating system image is a separate, rarer update.
       </p>
 
       <dl className="panel__rows settings-summary">

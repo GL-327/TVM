@@ -5,6 +5,7 @@ import { FocusButton } from '../components/FocusButton';
 import { Ribbon } from '../components/Ribbon';
 import { Skeleton } from '../components/Skeleton';
 import { fetchLive, type LiveStatus } from '../data/media';
+import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -13,11 +14,14 @@ const EMPTY: LiveStatus = { url: null, channels: [], error: null };
 export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const [status, setStatus] = useState<LiveStatus>(EMPTY);
+  const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [loading, setLoading] = useState(true);
 
   const load = (): void => {
     setLoading(true);
-    void fetchLive().then((next) => {
+    void Promise.all([fetchLive(), fetchPlan()]).then(([next, nextPlan]) => {
+      applyPlanClass(nextPlan);
+      setPlan(nextPlan);
       setStatus(next ?? { url: null, channels: [], error: 'unreachable' });
       setLoading(false);
     });
@@ -27,13 +31,16 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
     load();
   }, []);
 
+  const channels = status.channels;
+  const locked = !plan.liveTv && channels.length === 0;
+
   return (
     <main className="page page--library">
       <Ribbon active="live" />
       <header className="page__toolbar">
         <div>
           <p className="stage__kicker">Live TV</p>
-          <h1 className="page__heading">Channels</h1>
+          <h1 className="page__heading">{plan.liveTv ? 'Sports and live' : 'Channels'}</h1>
         </div>
         <FocusButton id="live-settings" variant="quiet" onSelect={() => navigate.push('live-playlist')}>
           Playlist
@@ -46,6 +53,25 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           <Skeleton className="skeleton--landscape" />
           <Skeleton className="skeleton--landscape" />
         </div>
+      ) : locked ? (
+        <EmptyState
+          eyebrow="TVM MAX"
+          title="Live TV is on TVM MAX"
+          body="Sky Sports, TNT Sports, beIN Sports and USA Network are a mock live pack on MAX, using licensed sample streams. Lower plans can still add a playlist you are allowed to use."
+          actions={
+            <>
+              <FocusButton id="live-upgrade" variant="primary" onSelect={() => navigate.push('plans')}>
+                View plans
+              </FocusButton>
+              <FocusButton id="add-playlist" onSelect={() => navigate.push('live-playlist')}>
+                Add a playlist
+              </FocusButton>
+              <FocusButton id="back" onSelect={() => navigate.pop()}>
+                Back
+              </FocusButton>
+            </>
+          }
+        />
       ) : status.error === 'unreachable' ? (
         <ErrorState
           title="Playlist could not be loaded"
@@ -53,7 +79,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           onRetry={load}
           onBack={() => navigate.pop()}
         />
-      ) : status.channels.length === 0 ? (
+      ) : channels.length === 0 ? (
         <EmptyState
           eyebrow="No live source connected"
           title="Add a playlist you are allowed to use"
@@ -62,9 +88,6 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
             <>
               <FocusButton id="add-playlist" variant="primary" onSelect={() => navigate.push('live-playlist')}>
                 Add a playlist
-              </FocusButton>
-              <FocusButton id="open-iplayer" onSelect={() => navigate.push('service', { params: { id: 'iplayer' } })}>
-                Open BBC iPlayer
               </FocusButton>
               <FocusButton id="back" onSelect={() => navigate.pop()}>
                 Back
@@ -75,17 +98,18 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
       ) : (
         <>
           <p className="page__lede">
-            {status.channels.length} channels from your playlist. Now/next appears only when the playlist includes it.
+            {channels.length} channels
+            {plan.liveTv ? ' including the MAX sports pack. Sample streams are for layout, not licensed matches.' : '.'}
           </p>
           <div className="channel-grid" aria-label="Live channels">
-            {status.channels.map((channel) => (
+            {channels.map((channel) => (
               <FocusButton
                 key={channel.id}
-                id={channel.id.replace(':', '-')}
+                id={channel.id.replaceAll(':', '-')}
                 className="app-tile"
                 onSelect={() => navigate.pushModal('player', { params: { id: channel.id } })}
               >
-                <span className="app-tile__mark" style={{ background: '#7c6cff' }} />
+                <span className="app-tile__mark" style={{ background: channel.group === 'Sports' ? '#e50914' : '#7c6cff' }} />
                 <strong>{channel.name}</strong>
                 <span>{channel.group ?? 'Live'}</span>
               </FocusButton>

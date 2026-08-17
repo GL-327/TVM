@@ -4,6 +4,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
+    "postinstall": "node ./node_modules/electron/install.js",
     "dev": "tsc -p tsconfig.json && electron dist/main.js",
     "start": "electron dist/main.js",
     "build": "tsc -p tsconfig.json",

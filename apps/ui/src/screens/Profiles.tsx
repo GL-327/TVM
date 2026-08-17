@@ -3,6 +3,7 @@ import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
 import { fieldValue } from '../components/FocusField';
 import { ProfileOrb } from '../components/ProfileOrb';
+import { fetchPlan } from '../data/plan';
 import {
   createProfile,
   fetchProfiles,
@@ -23,9 +24,13 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [profilesMax, setProfilesMax] = useState(1);
 
   useEffect(() => {
-    void fetchProfiles().then(setRegistry);
+    void Promise.all([fetchProfiles(), fetchPlan()]).then(([next, plan]) => {
+      setRegistry(next);
+      setProfilesMax(plan.profilesMax);
+    });
   }, []);
 
   const finish = (): void => {
@@ -90,7 +95,7 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
             )}
           </div>
         ))}
-        {registry.profiles.length < 5 && !creating && (
+        {registry.profiles.length < profilesMax && !creating && (
           <FocusButton id="profile-add" className="profile-tile__pick" onSelect={() => setCreating(true)}>
             <span className="profile-orb profile-orb--lg profile-orb--add">+</span>
             <span className="profile-tile__name">Add profile</span>

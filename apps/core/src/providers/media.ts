@@ -4,7 +4,7 @@ import { artworkCachePath } from '../update/paths.ts';
 import { artworkFor, type ArtworkUrls } from './artwork.ts';
 import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, type CatalogService } from './cinemeta.ts';
 import { clearCacheDir, factoryResetDir } from './maintenance.ts';
-import { createProfileService, type ProfileRegistry, type ProfileService } from './profiles.ts';
+import { createProfileService, MAX_PROFILES, type ProfileRegistry, type ProfileService } from './profiles.ts';
 import { pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
 import type { RdDownload, RdTorrent, RdUnrestrict, RealDebrid } from './realdebrid.ts';
 import { becauseYouWatched, interleaveUnused, pickYouMightLike, takeUnused } from './recommend.ts';
@@ -29,6 +29,7 @@ import {
   parsePlayId,
   parseSeasonEpisode,
   PLAYABLE_STREAM_LIMIT,
+  capStreamsToHeight,
   rankDebridStreams,
   resolveTorrentioUrl,
 } from './torrentio.ts';
@@ -68,6 +69,8 @@ export interface MediaServiceOptions {
   dataDir: string;
   rd: RealDebrid;
   fetch?: typeof fetch;
+  plan?: () => { id: string; maxHeight: number; profilesMax: number };
+  poolToken?: () => string | null;
 }
 
 const artCache = new Map<string, ArtworkUrls>();
@@ -497,7 +500,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     mediaId?: string,
   ): Promise<PlaybackResolution> => {
     try {
-      const token = rd.tokenValue();
+      const personal = rd.tokenValue();
+      const pooled = options.plan?.().id === 'free' ? options.poolToken?.() ?? null : null;
+      const token = personal ?? pooled;
       if (token === null) return { kind: 'unavailable', reason: 'not-configured' };
       let seasonNo = season;
       let episodeNo = episode;
@@ -511,7 +516,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       }
       const streams = await fetchTorrentioStreams(token, imdb, seasonNo, episodeNo, fetchImpl);
       if (streams.length === 0) return { kind: 'unavailable', reason: 'empty' };
-      const ranked = rankDebridStreams(streams).slice(0, PLAYABLE_STREAM_LIMIT);
+      const height = options.plan?.().maxHeight ?? 2160;
+      const ranked = capStreamsToHeight(rankDebridStreams(streams), height).slice(0, PLAYABLE_STREAM_LIMIT);
       if (ranked.length === 0) return { kind: 'unavailable', reason: 'empty' };
       const id =
         mediaId ?? (seasonNo !== undefined && episodeNo !== undefined ? `${imdb}:${seasonNo}:${episodeNo}` : imdb);
@@ -665,7 +671,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     addToWatchlist: (item) => addWatchlist(scope(), item),
     removeFromWatchlist: (id) => removeWatchlist(scope(), id),
     profiles: () => profiles.list(),
-    createProfile: (name) => profiles.create(name),
+    createProfile: (name) => profiles.create(name, options.plan?.().profilesMax ?? MAX_PROFILES),
     renameProfile: (id, name) => profiles.rename(id, name),
     removeProfile: (id) => profiles.remove(id),
     switchProfile: (id) => profiles.switchTo(id),

@@ -58,24 +58,6 @@
   object-fit: contain;
 }
 
-.service-side {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-right: 0.4rem;
-}
-
-.service-side__dot {
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.28);
-}
-
-.service-side__dot--on {
-  background: #fff;
-}
-
 .service-hero {
   position: relative;
   min-height: 28rem;
@@ -163,18 +145,68 @@
   background: #141414;
 }
 
+.service--netflix .service-nav {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.92), transparent);
+}
+
 .service--netflix .service-nav__brand {
   color: #e50914;
   text-transform: none;
+  font-size: 1.35rem;
+}
+
+.service--netflix .service-hero {
+  min-height: 34rem;
 }
 
 .service--netflix .service-hero__play {
   background: #e50914;
   color: #fff;
+  border-radius: 0.2rem;
 }
 
 .service--prime {
+  display: grid;
+  grid-template-columns: 6.4rem minmax(0, 1fr);
   background: #0f171e;
+}
+
+.service--prime > :not(.service-nav) {
+  grid-column: 2;
+}
+
+.service--prime .service-nav {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  position: sticky;
+  top: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  width: 6.4rem;
+  min-height: 100vh;
+  padding: 1rem 0.45rem;
+  background: #0b141b;
+}
+
+.service--prime .service-nav__brand {
+  justify-content: center;
+  color: #00a8e1;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.service--prime .service-nav__tabs {
+  flex-direction: column;
+  width: auto;
+  padding: 0;
+}
+
+.service--prime .service-nav .tvm-button.service-nav__tab {
+  justify-content: center;
+  padding: 0.55rem 0.2rem;
+  font-size: 0.78rem;
 }
 
 .service--prime .service-hero__play {
@@ -182,12 +214,27 @@
   color: #041018;
 }
 
+.service--prime .service-hero__kicker {
+  color: #00a8e1;
+}
+
 .service--max {
   background: #050714;
 }
 
+.service--max .service-nav__brand {
+  letter-spacing: 0.28em;
+  text-transform: lowercase;
+}
+
 .service--max .service-hero__kicker {
   color: #7ad7ff;
+}
+
+.service--max .service-hero__play {
+  background: #fff;
+  color: #050714;
+  border-radius: 999px;
 }
 
 .service--appletv {
@@ -199,16 +246,30 @@
   font-weight: 600;
 }
 
-.service--appletv .service-hero__play {
+.service--appletv .service-hero__play,
+.service--appletv .service-hero__more {
   border-radius: 999px;
 }
 
 .service--disney {
-  background: #071129;
+  background:
+    radial-gradient(80% 80% at 50% 0%, #1a3d8f, transparent 62%),
+    #071129;
 }
 
 .service--disney .service-nav {
-  background: linear-gradient(180deg, rgba(7, 17, 41, 0.9), transparent);
+  background: transparent;
+  justify-content: center;
+}
+
+.service--disney .service-nav .tvm-button.service-nav__tab {
+  min-width: 2.6rem;
+  border-radius: 999px;
+}
+
+.service--disney .service-hero__badge {
+  background: linear-gradient(90deg, #5b8def, #113cc4);
+  color: #fff;
 }
 
 .service--hulu {
@@ -218,6 +279,12 @@
 .service--hulu .service-nav__brand,
 .service--hulu .service-hero__kicker {
   color: #1ce783;
+}
+
+.service--hulu .service-nav .tvm-button.service-nav__tab--on,
+.service--hulu .service-nav .tvm-button.service-nav__tab[data-focused='true'] {
+  background: #1ce783;
+  color: #04140c;
 }
 
 .service--hulu .service-hero__play {
@@ -238,25 +305,28 @@
   color: #f4d03f;
 }
 
-html[data-plan='basic'] .home.stream-page .stage {
+html[data-plan='basic'] .home.stream-page .stage,
+html[data-plan='free'] .home.stream-page .stage {
   display: none;
 }
 
-html[data-plan='basic'] .home.stream-page {
+html[data-plan='basic'] .home.stream-page,
+html[data-plan='free'] .home.stream-page {
   background: #2a2a2a;
 }
 
-html[data-plan='basic'] .home.stream-page .rail__title {
+html[data-plan='basic'] .home.stream-page .rail__title,
+html[data-plan='free'] .home.stream-page .rail__title {
   font-weight: 500;
   letter-spacing: 0;
   color: #c8c8c8;
 }
 
-html[data-plan='tvm-max'] .home.stream-page .stage__title {
+html[data-plan='max'] .home .stage__title {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-html[data-plan='tvm-max'] .home.stream-page .stage {
+html[data-plan='max'] .home .stage {
   min-height: 34rem;
 }
