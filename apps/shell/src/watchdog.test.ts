@@ -28,4 +28,13 @@ describe('urlForLoad', () => {
     expect(urlForLoad('http://127.0.0.1:5173', 'recovery')).toBe('http://127.0.0.1:5173/?recovery=1');
     expect(urlForLoad('http://127.0.0.1:5173/?recovery=1', 'reload')).toBe('http://127.0.0.1:5173/');
   });
+
+  it('keeps the laptop desktop flag across a recovery reload', () => {
+    expect(urlForLoad('http://127.0.0.1:5173/?desktop=1', 'recovery')).toBe(
+      'http://127.0.0.1:5173/?desktop=1&recovery=1',
+    );
+    expect(urlForLoad('http://127.0.0.1:5173/?desktop=1&recovery=1', 'reload')).toBe(
+      'http://127.0.0.1:5173/?desktop=1',
+    );
+  });
 });

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen, shell, type IpcMainInvokeEvent } from 'electron';
 import { bootErrorPage } from './bootError';
 import { LOAD_RETRY_DELAY_MS, LOAD_RETRY_LIMIT, uiOrigin } from './config';
 import {
@@ -9,8 +9,11 @@ import {
 } from './nativePlayerHost';
 import { ServiceHost, type ServiceStartInput } from './serviceHost';
 import { createCrashWatch, urlForLoad } from './watchdog';
+import { isWindowedShell, uiLoadUrl, windowedBounds } from './windowedBounds';
 
-const TARGET = uiOrigin();
+const windowed = isWindowedShell();
+const ORIGIN = uiOrigin();
+const TARGET = uiLoadUrl(ORIGIN, windowed);
 let mainWindow: BrowserWindow | null = null;
 let nativePlayer: NativePlayerHost | null = null;
 let serviceHost: ServiceHost | null = null;
@@ -50,23 +53,29 @@ function hardenNavigation(window: BrowserWindow): void {
   });
 
   window.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(TARGET) && !url.startsWith('data:text/html')) event.preventDefault();
+    if (!url.startsWith(ORIGIN) && !url.startsWith('data:text/html')) event.preventDefault();
   });
 }
 
 function createWindow(): BrowserWindow {
-  // TVM_WINDOWED keeps the shell in a normal window while developing on a
-  // desktop. The appliance never sets it.
-  const windowed = process.env['TVM_WINDOWED'] === '1';
+  // TVM_WINDOWED keeps the shell in a normal window on a laptop. The
+  // appliance and living-room TVM.cmd never set it.
+  const bounds = windowed
+    ? windowedBounds(screen.getPrimaryDisplay().workAreaSize)
+    : { width: 1280, height: 720 };
 
   const window = new BrowserWindow({
     show: false,
-    width: 1280,
-    height: 720,
+    title: 'TVM',
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: 640,
+    minHeight: 360,
     fullscreen: !windowed,
     kiosk: !windowed,
     autoHideMenuBar: true,
     backgroundColor: '#0a0d12',
+    ...(windowed ? { center: true, resizable: true } : {}),
     ...(windowed && process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,

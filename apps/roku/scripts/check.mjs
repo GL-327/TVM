@@ -1,8 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
-
 const rokuRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const errors = [];
 const notes = [];
@@ -271,13 +269,8 @@ if (!existsSync(zipPath)) {
 } else {
   let listing = [];
   try {
-    listing = execSync(
-      `powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::OpenRead('${zipPath.replaceAll("\\", "\\\\")}').Entries | ForEach-Object { $_.FullName }"`,
-      { encoding: "utf8" },
-    )
-      .trim()
-      .split(/\r?\n/)
-      .filter(Boolean);
+    const { listZipNames } = await import("./package.mjs");
+    listing = listZipNames(readFileSync(zipPath));
   } catch (error) {
     fail(`tvm-roku.zip could not be read (${error instanceof Error ? error.message : "unknown error"})`);
   }

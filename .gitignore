@@ -42,6 +42,7 @@ cache/
 # Roku sideload: machine-specific Core URL and zip
 apps/roku/config.json
 apps/roku/*.zip
+Desktop/*.zip
 
 # Editor and OS
 .DS_Store

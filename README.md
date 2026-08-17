@@ -56,11 +56,26 @@ Useful environment variables:
 | `TVM_CORE_PORT` | Core's port. Default 7345 |
 | `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. In `TVM_ENV=development` the default is `0.0.0.0` so a Roku can reach Core. Pin loopback with `127.0.0.1`. Core has no API auth |
 | `TVM_UI_URL` | Origin the shell loads |
-| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd` sets this; `TVM.cmd` does not |
+| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd`, `Desktop/TVM.cmd`, and the Desktop copies set this; `TVM.cmd` does not |
 | `TVM_ENV=production` | Shell loads the interface from core |
 | `TVM_ROKU_HOST` / `TVM_ROKU_PASSWORD` | Optional. `TVM-roku.cmd` uses these to sideload `apps/roku/tvm-roku.zip` onto a developer-mode Roku |
 
 On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the **desktop interface** in a 1920×1080 TV frame at `http://127.0.0.1:5173/?tv=1`. That is the same React app as `TVM.cmd`, not a separate channel mock. A Roku cannot run that UI; sideload `apps/roku/tvm-roku.zip` only to exercise SceneGraph on hardware.
+
+## Laptop / Desktop copies
+
+The living-room launcher (`TVM.cmd`) is a fullscreen kiosk. For a laptop, use the windowed copies:
+
+| Copy | How to run |
+| --- | --- |
+| Desktop app (windowed) | `Desktop/TVM.cmd` (Windows) or `Desktop/TVM.sh` (Linux/macOS) |
+| Roku preview + zip | `Desktop/TVM-roku.cmd` or `Desktop/TVM-roku.sh` |
+
+Double-click `Install-to-Desktop.cmd` (or run `scripts/copy-to-desktop.sh`) to put **both** the windowed desktop app and the Roku sideload zip on your Desktop:
+
+- `TVM.cmd` / `TVM.sh` — window sized to the laptop work area, mouse cursor visible
+- `TVM Roku.cmd` / `TVM-roku.sh` — TV-frame preview of the same UI
+- `TVM-roku.zip` — sideload onto a developer-mode Roku
 
 ## The appliance
 

@@ -126,7 +126,7 @@ describe('core serving the UI bundle', () => {
     await writeFile(join(uiDist, 'index.html'), '<!doctype html><title>TVM</title>');
     await writeFile(join(uiDist, 'app.js'), 'export const ok = true;');
 
-    core = await startCoreServer(0, { uiDist });
+    core = await startCoreServer(0, { uiDist, dataDir: uiDist });
     baseUrl = `http://${CORE_HOST}:${core.port}`;
   });
 

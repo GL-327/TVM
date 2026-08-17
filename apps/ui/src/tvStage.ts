@@ -5,6 +5,10 @@ export function isTvPreview(search = window.location.search): boolean {
   return new URLSearchParams(search).get('tv') === '1';
 }
 
+export function isDesktopShell(search = window.location.search): boolean {
+  return new URLSearchParams(search).get('desktop') === '1';
+}
+
 export function tvScale(width: number, height: number, stageW = STAGE_W, stageH = STAGE_H): number {
   if (width <= 0 || height <= 0) return 1;
   return Math.min(width / stageW, height / stageH);
@@ -20,4 +24,10 @@ export function startTvStage(): void {
   };
   fit();
   window.addEventListener('resize', fit);
+}
+
+/** Windowed laptop shell: show the pointer. Living-room kiosk stays cursor-less. */
+export function startDesktopShell(): void {
+  if (!isDesktopShell()) return;
+  document.documentElement.classList.add('desktop-shell');
 }
