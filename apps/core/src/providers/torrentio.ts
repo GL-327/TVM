@@ -85,6 +85,19 @@ export function parseDebridStream(raw: Record<string, unknown>): DebridStream | 
 
 export const PLAYABLE_STREAM_LIMIT = 5;
 
+export function streamHeight(label: string): number {
+  if (/\b2160p|4k|uhd\b/i.test(label)) return 2160;
+  if (/\b1080p\b/i.test(label)) return 1080;
+  if (/\b720p\b/i.test(label)) return 720;
+  if (/\b480p\b/i.test(label)) return 480;
+  return 1080;
+}
+
+export function capStreamsToHeight(streams: readonly DebridStream[], maxHeight: number): DebridStream[] {
+  const capped = streams.filter((stream) => streamHeight(`${stream.title}`) <= maxHeight);
+  return capped.length > 0 ? capped : streams.filter((stream) => stream.quality <= 15);
+}
+
 export function rankDebridStreams(streams: readonly DebridStream[]): DebridStream[] {
   return [...streams].sort((left, right) => {
     if (left.cached !== right.cached) return left.cached ? -1 : 1;

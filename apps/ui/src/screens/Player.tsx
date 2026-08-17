@@ -12,6 +12,7 @@ import {
   IconVolumeMute,
 } from '../components/Icons';
 import { requestPlayback, saveProgress, type PlaybackResult } from '../data/media';
+import { FALLBACK_PLAN, fetchPlan, tickUsage, type PlanStatus } from '../data/plan';
 import { playbackErrorMessage } from '../data/playbackErrors';
 import { revealFocused } from '../nav/revealFocused';
 import { useNavigate, useScopedFocusKey } from '../nav/ViewStackContext';
@@ -106,6 +107,13 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [engine, setEngine] = useState<Engine>('loading');
   const [attempt, setAttempt] = useState(0);
+  const [overlay, setOverlay] = useState<'queue' | 'ad' | null>('queue');
+  const [queuePos, setQueuePos] = useState(12);
+  const [skipRecap, setSkipRecap] = useState(false);
+  const [badges, setBadges] = useState<string[]>([]);
+  const planRef = useRef<PlanStatus>(FALLBACK_PLAN);
+  const billableRef = useRef(false);
+  const lastTick = useRef(0);
   const id = typeof params['id'] === 'string' ? params['id'] : '';
   const link = typeof params['link'] === 'string' ? params['link'] : '';
   const playbackTitle = typeof params['title'] === 'string' ? params['title'] : '';
@@ -195,6 +203,13 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         hls.loadSource(stream.url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          const cap = planRef.current.maxHeight;
+          const capped = hls.levels.reduce((max, level, index) => {
+            if (typeof level.height === 'number' && level.height > cap) return max;
+            return index;
+          }, 0);
+          hls.autoLevelCapping = capped;
+          if (planRef.current.startDelayMs >= 4000) hls.currentLevel = 0;
           setLoadProgress(78);
           void video.play().catch(() => {
             fallbackTried.current = true;
@@ -236,19 +251,94 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     fallbackTried.current = false;
+    billableRef.current = false;
     setEngine('loading');
     setBuffering(true);
     setLoadProgress(12);
-    void requestPlayback({
-      id: id === '' ? undefined : id,
-      link: link === '' ? undefined : link,
-      title: playbackTitle === '' ? undefined : playbackTitle,
-      season: playbackSeason,
-      episode: playbackEpisode,
-    })
-      .then((result) => {
+    setOverlay('queue');
+
+    const wait = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+    const runQueue = async (plan: PlanStatus): Promise<void> => {
+      if (id.startsWith('live:') || plan.queueMs <= 0) {
+        setOverlay(null);
+        return;
+      }
+      setOverlay('queue');
+      if (plan.queueSkipToTop) {
+        setQueuePos(12);
+        await wait(400);
+        if (cancelled) return;
+        setQueuePos(1);
+        await wait(plan.queueMs);
+        return;
+      }
+      let pos = 12;
+      setQueuePos(pos);
+      const step = Math.max(400, Math.floor(plan.queueMs / 11));
+      while (pos > 1 && !cancelled) {
+        await wait(step);
+        pos -= 1;
+        setQueuePos(pos);
+      }
+    };
+
+    const runAd = async (plan: PlanStatus): Promise<void> => {
+      if (id.startsWith('live:') || !plan.ads) return;
+      try {
+        const response = await fetch('/api/ads/preroll');
+        if (!response.ok) return;
+        const body = (await response.json()) as { url?: string };
+        if (typeof body.url !== 'string' || body.url === '') return;
+        const adUrl = body.url;
+        setOverlay('ad');
+        const video = videoRef.current;
+        if (video === null) return;
+        await new Promise<void>((resolve) => {
+          const done = (): void => {
+            video.removeEventListener('ended', done);
+            video.removeEventListener('error', done);
+            resolve();
+          };
+          video.addEventListener('ended', done);
+          video.addEventListener('error', done);
+          video.src = adUrl;
+          video.load();
+          void video.play().catch(done);
+        });
+      } catch {
+        // Content still plays if the sample tag is unreachable.
+      }
+    };
+
+    void (async () => {
+      const plan = await fetchPlan();
+      if (cancelled) return;
+      planRef.current = plan;
+      setSkipRecap(plan.skipRecap);
+      setBadges(plan.badges);
+      await runQueue(plan);
+      if (cancelled) return;
+      await runAd(plan);
+      if (cancelled) return;
+      if (plan.startDelayMs > 0) await wait(plan.startDelayMs);
+      if (cancelled) return;
+      setOverlay(null);
+      try {
+        const result = await requestPlayback({
+          id: id === '' ? undefined : id,
+          link: link === '' ? undefined : link,
+          title: playbackTitle === '' ? undefined : playbackTitle,
+          season: playbackSeason,
+          episode: playbackEpisode,
+        });
         if (cancelled) return;
         if (result.kind !== 'stream') {
+          if (result.reason === 'hours-cap') {
+            setBuffering(false);
+            setError(playbackErrorMessage(result.reason));
+            return;
+          }
           if (result.reason === 'not-configured' || result.reason === 'needs-auth') {
             navigate.pop();
             navigate.pushModal('notice', {
@@ -265,14 +355,17 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           return;
         }
         startAtRef.current = result.startAt ?? 0;
+        billableRef.current = true;
+        lastTick.current = Date.now();
         startStreamRef.current(result);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setBuffering(false);
           setError(playbackErrorMessage('network'));
         }
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
@@ -305,6 +398,17 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         if (now - lastSaved.current >= 10_000) {
           lastSaved.current = now;
           persist(event.position, event.duration);
+        }
+        if (billableRef.current && now - lastTick.current >= 10_000) {
+          const elapsed = (now - lastTick.current) / 1000;
+          lastTick.current = now;
+          void tickUsage(elapsed, true).then((status) => {
+            if (status.weeklyRemainingSeconds === 0) {
+              billableRef.current = false;
+              setError(playbackErrorMessage('hours-cap'));
+              void window.tvmNativePlayer?.command('pause');
+            }
+          });
         }
         return;
       }
@@ -500,6 +604,17 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           if (now - lastSaved.current < 10_000) return;
           lastSaved.current = now;
           persist(nextPosition, nextDuration);
+          if (billableRef.current && now - lastTick.current >= 10_000) {
+            const elapsed = (now - lastTick.current) / 1000;
+            lastTick.current = now;
+            void tickUsage(elapsed, true).then((status) => {
+              if (status.weeklyRemainingSeconds === 0) {
+                billableRef.current = false;
+                event.currentTarget.pause();
+                setError(playbackErrorMessage('hours-cap'));
+              }
+            });
+          }
         }}
         onError={() => {
           const stream = streamRef.current;
@@ -509,7 +624,19 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           }
         }}
       />
-      {busy && (
+      {overlay === 'queue' && (
+        <div className="player__queue" aria-live="polite">
+          <h2>You’re in the queue</h2>
+          <p>{planRef.current.queueSkipToTop ? 'Always skipping to the top…' : `Position ${queuePos}`}</p>
+        </div>
+      )}
+      {overlay === 'ad' && (
+        <div className="player__ad" aria-live="polite">
+          <h2>Advertisement</h2>
+          <p>This does not use Free weekly watch hours.</p>
+        </div>
+      )}
+      {busy && overlay === null && (
         <div className="player__loader" aria-live="polite">
           <p className="player__loader-label">{engine === 'loading' ? 'Preparing stream…' : 'Loading…'}</p>
           <div className="player__loader-track" aria-label="Loading playback">
@@ -522,9 +649,21 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           <PlayerIcon id="close" label="Back" onSelect={close}>
             <IconChevronLeft className="player__glyph" />
           </PlayerIcon>
-          <p className="player__title">{title}</p>
+          <p className="player__title">
+            {title}
+            {badges.length > 0 ? <span className="player__badges">{badges.join(' · ')}</span> : null}
+          </p>
         </div>
-        {error !== null && <p className="player__error">{error}</p>}
+        {error !== null && (
+          <div className="player__error-block">
+            <p className="player__error">{error}</p>
+            {error.includes('watch hours') && (
+              <FocusButton id="hours-plans" variant="primary" onSelect={() => navigate.push('plans')}>
+                View plans
+              </FocusButton>
+            )}
+          </div>
+        )}
         <div className="player__bottom">
           <div className="player__seek-row">
             <span className="player__time">{formatTime(position)}</span>
@@ -611,6 +750,21 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
               >
                 <IconForward className="player__glyph" />
               </PlayerIcon>
+              {skipRecap && overlay === null && engine === 'html5' && error === null && position < 90 && (
+                <FocusButton
+                  id="skip-recap"
+                  variant="primary"
+                  onSelect={() => {
+                    const video = videoRef.current;
+                    if (video === null) return;
+                    const target = Math.min(Number.isFinite(video.duration) ? video.duration : 90, 90);
+                    video.currentTime = Math.max(target, video.currentTime + 1);
+                    showControls();
+                  }}
+                >
+                  Skip recap
+                </FocusButton>
+              )}
               {error !== null && (
                 <FocusButton id="retry" variant="primary" onSelect={retry}>
                   Retry

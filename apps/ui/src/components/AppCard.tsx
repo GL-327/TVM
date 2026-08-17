@@ -6,9 +6,10 @@ interface AppCardProps {
   id: string;
   onSelect: () => void;
   size?: 'ribbon' | 'grid';
+  locked?: boolean;
 }
 
-export function AppCard({ app, id, onSelect, size = 'ribbon' }: AppCardProps): React.JSX.Element {
+export function AppCard({ app, id, onSelect, size = 'ribbon', locked = false }: AppCardProps): React.JSX.Element {
   return (
     <FocusButton id={id} className={`app-card app-card--${size} app-card--${app.id}`} onSelect={onSelect}>
       <span className="app-card__art" style={{ background: app.accent }}>
@@ -18,6 +19,7 @@ export function AppCard({ app, id, onSelect, size = 'ribbon' }: AppCardProps): R
           <span className="app-card__wordmark">{app.wordmark ?? app.name}</span>
         )}
         {size === 'grid' && <span className="app-card__name">{app.name}</span>}
+        {locked ? <span className="app-card__lock">Locked</span> : null}
       </span>
     </FocusButton>
   );

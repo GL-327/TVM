@@ -8,7 +8,7 @@ describe('playback errors', () => {
     expect(playbackErrorMessage('needs-auth')).toMatch(/token/);
     expect(playbackErrorMessage('network')).toMatch(/core/);
     expect(playbackErrorMessage('unsupported')).toMatch(/Real-Debrid/);
-    expect(playbackErrorMessage('internal_error')).toBe(playbackErrorMessage('internal'));
+    expect(playbackErrorMessage('hours-cap')).toMatch(/watch hours/);
   });
 
   it('shows core error text instead of a generic unavailable line', () => {

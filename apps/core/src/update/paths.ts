@@ -1,30 +1,38 @@
-import { join, resolve } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 
 export const UPDATE_REPO = 'GL-327/TVM';
 export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+function pathFor(platform: NodeJS.Platform) {
+  return platform === 'win32' ? win32 : posix;
+}
 
 export function resolveDataDir(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ): string {
+  const path = pathFor(platform);
   const raw = env['TVM_DATA_DIR'];
-  if (raw !== undefined && raw.trim() !== '') return resolve(raw);
+  if (raw !== undefined && raw.trim() !== '') {
+    const dir = raw.trim();
+    return posix.isAbsolute(dir) || win32.isAbsolute(dir) ? dir : path.resolve(dir);
+  }
 
   if (platform === 'win32') {
-    const root = env['LOCALAPPDATA'] ?? env['APPDATA'] ?? resolve('.');
-    return join(root, 'TVM');
+    const root = env['LOCALAPPDATA'] ?? env['APPDATA'] ?? path.resolve('.');
+    return path.join(root, 'TVM');
   }
 
   if (platform === 'darwin') {
-    const home = env['HOME'] ?? resolve('.');
-    return join(home, 'Library', 'Application Support', 'TVM');
+    const home = env['HOME'] ?? path.resolve('.');
+    return path.join(home, 'Library', 'Application Support', 'TVM');
   }
 
   const xdg = env['XDG_DATA_HOME'];
-  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'tvm');
+  if (xdg !== undefined && xdg.trim() !== '') return path.join(xdg, 'tvm');
   const home = env['HOME'];
-  if (home !== undefined && home.trim() !== '') return join(home, '.local', 'share', 'tvm');
-  return join(resolve('.'), 'tvm-data');
+  if (home !== undefined && home.trim() !== '') return path.join(home, '.local', 'share', 'tvm');
+  return path.join(path.resolve('.'), 'tvm-data');
 }
 
 export function applyPolicy(env: NodeJS.ProcessEnv = process.env): { allowed: boolean; reason: string | null } {
@@ -82,6 +90,30 @@ export function tmdbKeyPath(dataDir: string): string {
 
 export function planPath(dataDir: string): string {
   return join(dataDir, 'plan.json');
+}
+
+export function masterKeyPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'master.key');
+}
+
+export function entitlementPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'entitlement.enc');
+}
+
+export function billingPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'billing.enc');
+}
+
+export function usagePath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'usage.enc');
+}
+
+export function poolRdPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'pool-rd.enc');
+}
+
+export function devUnlockPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'dev-unlock.enc');
 }
 
 export function cacheDir(dataDir: string): string {

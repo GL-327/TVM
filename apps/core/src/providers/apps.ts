@@ -484,13 +484,14 @@ export function createAppsService(options: AppsServiceOptions = {}) {
       ]);
 
       const pool = uniqueItems([...originals, ...licensedMovies, ...licensedSeries]);
-      const hero = pool.find((item) => item.backdrop !== '') ?? pool[0] ?? null;
+      const seeded = pool.length > 0 ? pool : uniqueItems(await hydrate([...(seeds?.movies ?? spec.movies), ...(seeds?.originals ?? [])], 'movie'));
+      const hero = seeded.find((item) => item.backdrop !== '') ?? seeded[0] ?? stubItem(spec.id, spec.name, 'movie');
 
       let continueWatching: MediaItem[] = [];
       if (options.continueWatching !== undefined) {
         try {
           const watching = await options.continueWatching();
-          const ids = new Set(pool.map((item) => item.id.replace(/:.*$/, '')));
+          const ids = new Set(seeded.map((item) => item.id.replace(/:.*$/, '')));
           continueWatching = watching.filter((item) => ids.has(item.id.replace(/:.*$/, ''))).slice(0, 12);
         } catch {
           continueWatching = [];
@@ -506,6 +507,9 @@ export function createAppsService(options: AppsServiceOptions = {}) {
       }
       if (licensedSeries.length > 0) {
         rails.push({ id: `${id}-shows`, title: `Popular series`, items: licensedSeries.slice(0, 16) });
+      }
+      if (rails.length === 0 && seeded.length > 0) {
+        rails.push({ id: `${id}-films`, title: 'Popular now', items: seeded.slice(0, 16) });
       }
 
       const hub: AppHub = {

@@ -87,6 +87,49 @@ const PROFILE = {
   profiles: [{ id: 'profile-1', name: 'Profile 1', hue: 350, created: '2026-01-01T00:00:00.000Z' }],
 };
 
+const E2E_PLAN = {
+  id: 'premium',
+  name: 'TVM Premium',
+  price: '£8.99',
+  pricePence: 899,
+  mocks: true,
+  liveTv: false,
+  ads: false,
+  stream: 'premium',
+  maxHeight: 1080,
+  queueMs: 0,
+  queueSkipToTop: false,
+  startDelayMs: 0,
+  weeklySeconds: null,
+  weeklyUsedSeconds: 0,
+  weeklyRemainingSeconds: null,
+  profilesMax: 4,
+  skipRecap: false,
+  extras: ['No ads'],
+  badges: [],
+  styleIds: ['classic', 'cinema', 'midnight'],
+  styleId: 'classic',
+  developer: false,
+  catalog: [
+    { id: 'free', name: 'TVM Free', price: 'Free', pricePence: 0, mocks: false, liveTv: false, extras: ['TVM Stream only'] },
+    { id: 'basic', name: 'TVM Basic', price: '£4.99', pricePence: 499, mocks: false, liveTv: false, extras: [] },
+    { id: 'premium', name: 'TVM Premium', price: '£8.99', pricePence: 899, mocks: false, liveTv: false, extras: [] },
+    { id: 'ultra', name: 'TVM Ultra', price: '£12.99', pricePence: 1299, mocks: true, liveTv: false, extras: [] },
+    { id: 'max', name: 'TVM MAX', price: '£15.99', pricePence: 1599, mocks: true, liveTv: true, extras: [] },
+  ],
+  styles: [
+    { id: 'classic', name: 'Classic', minPlan: 'premium' },
+    { id: 'cinema', name: 'Cinema', minPlan: 'premium' },
+    { id: 'midnight', name: 'Midnight', minPlan: 'premium' },
+    { id: 'ember', name: 'Ember', minPlan: 'ultra' },
+    { id: 'forest', name: 'Forest', minPlan: 'ultra' },
+    { id: 'slate', name: 'Slate', minPlan: 'ultra' },
+    { id: 'contrast', name: 'High contrast', minPlan: 'ultra' },
+    { id: 'gold', name: 'MAX Gold', minPlan: 'max' },
+    { id: 'aurora', name: 'Aurora', minPlan: 'max' },
+  ],
+};
+
 const HOME = {
   rd: { configured: true, username: 'e2e', premium: true, error: null },
   featured: SAMPLE,
@@ -134,7 +177,7 @@ async function pressUntil(page: Page, id: string): Promise<void> {
       if (CHROME.has((await focusedId(page)) ?? '')) break;
     }
     for (const direction of ['ArrowLeft', 'ArrowRight'] as const) {
-      for (let step = 0; step < 8; step += 1) {
+      for (let step = 0; step < 14; step += 1) {
         if ((await focusedId(page)) === id) return;
         await tap(page, direction);
       }
@@ -165,9 +208,16 @@ async function stubReady(page: Page): Promise<void> {
     }),
   );
   await page.route('**/api/home', (route) => route.fulfill({ json: HOME }));
-  await page.route('**/api/plan', (route) =>
-    route.fulfill({ json: { id: 'premium', name: 'Premium', mocks: true, stream: 'premium' } }),
+  await page.route('**/api/plan', (route) => route.fulfill({ json: E2E_PLAN }));
+  await page.route('**/api/billing/checkout', (route) =>
+    route.fulfill({ json: { ...E2E_PLAN, id: 'free', name: 'TVM Free', price: 'Free', mocks: false } }),
   );
+  await page.route('**/api/dev/status', (route) => route.fulfill({ json: { unlocked: false } }));
+  await page.route('**/api/dev/unlock', (route) =>
+    route.fulfill({ status: 403, json: { unlocked: false, error: 'That code is not valid.' } }),
+  );
+  await page.route('**/api/usage/tick', (route) => route.fulfill({ json: E2E_PLAN }));
+  await page.route('**/api/ads/preroll', (route) => route.fulfill({ json: { url: '', mimeType: 'video/mp4', duration: 0 } }));
   await page.route('**/api/apps', (route) =>
     route.fulfill({
       json: {
@@ -489,4 +539,89 @@ test('a series poster opens seasons, then an episode plays with tt:s:e', async (
   expect(playback?.episode).toBe(1);
   await expect(page.getByText('Playback is unavailable.')).toHaveCount(0);
   await expect(page.getByText(/No playable stream was found/)).toBeVisible();
+});
+
+test('Settings opens Plans', async ({ page }) => {
+  await pressUntil(page, 'settings');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await waitForFocus(page);
+  expect(await focusedId(page)).toBe('plan');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="plans"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose a plan' })).toBeVisible();
+  await expect(page.locator('[data-focus-id="plan-free"]')).toBeVisible();
+});
+
+test('Free plan confirms without a card', async ({ page }) => {
+  await pressUntil(page, 'settings');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await waitForFocus(page);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="plans"]')).toBeVisible();
+  await pressUntil(page, 'plan-free');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="checkout"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'TVM Free' })).toBeVisible();
+  await expect(page.locator('[data-focus-id="card-name"]')).toHaveCount(0);
+  await pressUntil(page, 'pay');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="checkout"]')).toHaveCount(0);
+  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+});
+
+test('Developer rejects a wrong password', async ({ page }) => {
+  await pressUntil(page, 'settings');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await pressUntil(page, 'developer');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="developer-unlock"]')).toBeVisible();
+  await page.locator('[data-focus-id="dev-password"]').fill('nope');
+  await pressUntil(page, 'dev-unlock');
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('That code is not valid.')).toBeVisible();
+  await expect(page.locator('[data-screen="developer"]')).toHaveCount(0);
+});
+
+test('MAX shows the mock live pack', async ({ page }) => {
+  await page.unroute('**/api/plan');
+  await page.unroute('**/api/live');
+  await page.route('**/api/plan', (route) =>
+    route.fulfill({
+      json: {
+        ...E2E_PLAN,
+        id: 'max',
+        name: 'TVM MAX',
+        price: '£15.99',
+        mocks: true,
+        liveTv: true,
+      },
+    }),
+  );
+  await page.route('**/api/live', (route) =>
+    route.fulfill({
+      json: {
+        url: null,
+        error: null,
+        channels: [
+          { id: 'live:mock:sky-sports', name: 'Sky Sports', url: 'https://example.com/a.m3u8', group: 'Sports' },
+          { id: 'live:mock:tnt-sports', name: 'TNT Sports', url: 'https://example.com/b.m3u8', group: 'Sports' },
+          { id: 'live:mock:bein-sports', name: 'beIN Sports', url: 'https://example.com/c.m3u8', group: 'Sports' },
+          { id: 'live:mock:usa-network', name: 'USA Network', url: 'https://example.com/d.m3u8', group: 'Entertainment' },
+        ],
+      },
+    }),
+  );
+  await page.goto('/');
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await waitForFocus(page);
+  await pressUntil(page, 'live');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="live"]')).toBeVisible();
+  await expect(page.getByText('Sky Sports')).toBeVisible();
+  await expect(page.getByText('TNT Sports')).toBeVisible();
+  await expect(page.getByText('beIN Sports')).toBeVisible();
+  await expect(page.getByText('USA Network')).toBeVisible();
 });

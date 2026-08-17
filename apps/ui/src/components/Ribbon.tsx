@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fallbackApps, fetchApps, isMockApp } from '../data/apps';
-import { applyPlanClass, fetchPlan } from '../data/plan';
+import { applyPlanClass, fetchPlan, mockAppLocked } from '../data/plan';
 import { TVM_STREAM, type AppTile } from '../data/catalog';
 import { enterTvmStream } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
@@ -39,7 +39,7 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
     };
   }, []);
 
-  const visible = allowMocks ? apps : apps.filter((app) => !isMockApp(app.id));
+  const visible = apps;
 
   return (
     <nav className="ribbon" aria-label="TVM">
@@ -115,6 +115,7 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
           key={app.id}
           app={app}
           id={`app-${app.id}`}
+          locked={mockAppLocked(allowMocks, isMockApp(app.id))}
           onSelect={() => navigate.push('service', { params: { id: app.id } })}
         />
       ))}

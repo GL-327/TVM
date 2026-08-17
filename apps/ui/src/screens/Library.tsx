@@ -17,7 +17,7 @@ import {
   type RdStatus,
 } from '../data/media';
 import { openDetails } from '../data/openDetails';
-import { applyPlanClass, fetchPlan, type PlanStatus } from '../data/plan';
+import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { fetchProfiles, type Profile } from '../data/profiles';
 import { requestFocus } from '../nav/focusEngine';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
@@ -47,7 +47,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [plan, setPlan] = useState<PlanStatus>({ id: 'premium', name: 'Premium', mocks: true, stream: 'premium' });
+  const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [slow, setSlow] = useState(false);
 
   const reload = useCallback(async (): Promise<void> => {

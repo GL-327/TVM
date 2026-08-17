@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { profileDir, profilesPath, progressPath, watchlistPath } from '../update/paths.ts';
 
-export const MAX_PROFILES = 5;
+export const MAX_PROFILES = 10;
 
 export interface Profile {
   id: string;
@@ -82,9 +82,10 @@ export function createProfileService(dataDir: string) {
     scope(): string {
       return profileDir(dataDir, registry.activeId);
     },
-    create(name: string): ProfileRegistry {
-      if (registry.profiles.length >= MAX_PROFILES) {
-        throw new Error(`TVM holds ${MAX_PROFILES} profiles.`);
+    create(name: string, max = MAX_PROFILES): ProfileRegistry {
+      const cap = Math.max(1, Math.min(MAX_PROFILES, max));
+      if (registry.profiles.length >= cap) {
+        throw new Error(`TVM holds ${cap} profiles.`);
       }
       const trimmed = name.trim() === '' ? `Profile ${registry.profiles.length + 1}` : name.trim();
       const index = registry.profiles.length;

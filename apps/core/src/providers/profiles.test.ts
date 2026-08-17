@@ -29,13 +29,13 @@ describe('profiles', () => {
     expect(moved['rd:1']?.position).toBe(90);
   });
 
-  it('caps the household at five profiles', async () => {
+  it('caps the household at ten profiles', async () => {
     const profiles = createProfileService(await dataDir());
     for (let index = 0; index < MAX_PROFILES - 1; index += 1) {
       profiles.create(`Kid ${index + 1}`);
     }
     expect(profiles.list().profiles).toHaveLength(MAX_PROFILES);
-    expect(() => profiles.create('Extra')).toThrow(/5 profiles/);
+    expect(() => profiles.create('Extra')).toThrow(/10 profiles/);
   });
 
   it('will not delete the last profile', async () => {

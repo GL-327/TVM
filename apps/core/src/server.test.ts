@@ -44,21 +44,12 @@ describe('core API', () => {
     expect(body.items).toEqual([]);
   });
 
-  it('starts with one profile and will not exceed five', async () => {
+  it('starts with one profile and will not exceed the Free plan', async () => {
     const listed = await fetch(`${baseUrl}/api/profiles`);
     expect(listed.status).toBe(200);
     const body = (await listed.json()) as { activeId: string; profiles: { id: string }[] };
     expect(body.profiles).toHaveLength(1);
     expect(body.activeId).toBe('profile-1');
-
-    for (let index = 0; index < 4; index += 1) {
-      const created = await fetch(`${baseUrl}/api/profiles`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: `Kid ${index + 1}` }),
-      });
-      expect(created.status).toBe(200);
-    }
 
     const extra = await fetch(`${baseUrl}/api/profiles`, {
       method: 'POST',
@@ -113,6 +104,53 @@ describe('core API', () => {
   it('binds loopback only, never the LAN', () => {
     expect(CORE_HOST).toBe('127.0.0.1');
     expect(resolveBindHost({})).toBe('127.0.0.1');
+  });
+
+  it('refuses plan changes without developer unlock', async () => {
+    const response = await fetch(`${baseUrl}/api/plan`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'max' }),
+    });
+    expect(response.status).toBe(403);
+    const plan = await fetch(`${baseUrl}/api/plan`);
+    expect(await plan.json()).toMatchObject({ id: 'free' });
+  });
+
+  it('checks out Free and rejects a garbage card without echoing digits', async () => {
+    const free = await fetch(`${baseUrl}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planId: 'free' }),
+    });
+    expect(free.status).toBe(200);
+    expect(await free.json()).toMatchObject({ id: 'free', mocks: false });
+
+    const bad = await fetch(`${baseUrl}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        planId: 'premium',
+        name: 'Arthur',
+        number: '1111111111111111',
+        expiry: '12/99',
+        cvc: '123',
+      }),
+    });
+    expect(bad.status).toBe(400);
+    const body = (await bad.json()) as { error: string };
+    expect(body.error).toMatch(/card number/i);
+    expect(JSON.stringify(body)).not.toContain('1111111111111111');
+  });
+
+  it('rejects a wrong developer code without a hint', async () => {
+    const response = await fetch(`${baseUrl}/api/dev/unlock`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: 'nope' }),
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ unlocked: false, error: 'That code is not valid.' });
   });
 });
 
@@ -249,6 +287,8 @@ describe('roku client contract', () => {
     const unknownApp = await fetch(`${baseUrl}/api/apps/not-a-studio`);
     const appsList = await fetch(`${baseUrl}/api/apps`);
     const plan = await fetch(`${baseUrl}/api/plan`);
+    expect(plan.status).toBe(200);
+    expect(await plan.json()).toMatchObject({ id: 'free', name: 'TVM Free', mocks: false });
 
     const fatItem = {
       id: 'tt0000001',

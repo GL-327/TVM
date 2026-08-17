@@ -3,7 +3,7 @@ export interface ArtworkUrls {
   backdrop: string;
 }
 
-const UA = 'TVM/0.1 (https://github.com/GL-327/TVM)';
+const UA = 'TVM/0.1 (GLogic Studios; https://github.com/GL-327/TVM)';
 const METAHUB = 'https://images.metahub.space';
 
 export function imdbIdFrom(value: string): string | null {
