@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { CORE_HOST, CORE_VERSION, resolveBindHost } from './config.ts';
 import { readJson, sendJson } from './http.ts';
 import { createAppsService, type AppsService } from './providers/apps.ts';
@@ -422,29 +423,50 @@ export interface RunningCore {
   close: () => Promise<void>;
 }
 
-export function startCoreServer(port: number, options: CoreOptions = {}): Promise<RunningCore> {
-  const server = createCoreServer(options);
-  const host = resolveBindHost(options.env ?? process.env);
-
+function listen(server: Server, port: number, host: string): Promise<AddressInfo> {
   return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, () => {
-      server.removeListener('error', reject);
-
+    const onError = (error: Error): void => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      server.off('error', onError);
       const address = server.address();
       if (address === null || typeof address === 'string') {
         reject(new Error('Core server did not bind to a TCP address'));
         return;
       }
-
-      resolve({
-        port: address.port,
-        host: address.address,
-        close: () =>
-          new Promise<void>((done, fail) => {
-            server.close((error) => (error ? fail(error) : done()));
-          }),
-      });
-    });
+      resolve(address);
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
   });
+}
+
+function canFallBackToLoopback(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false;
+  const code = String((error as { code?: unknown }).code);
+  return code === 'EADDRNOTAVAIL' || code === 'EAFNOSUPPORT' || code === 'EINVAL';
+}
+
+export async function startCoreServer(port: number, options: CoreOptions = {}): Promise<RunningCore> {
+  const server = createCoreServer(options);
+  const requested = resolveBindHost(options.env ?? process.env);
+  let address: AddressInfo;
+  try {
+    address = await listen(server, port, requested);
+  } catch (error) {
+    if (requested === CORE_HOST || !canFallBackToLoopback(error)) throw error;
+    address = await listen(server, port, CORE_HOST);
+  }
+
+  return {
+    port: address.port,
+    host: address.address,
+    close: () =>
+      new Promise<void>((done, fail) => {
+        server.close((error) => (error ? fail(error) : done()));
+      }),
+  };
 }

@@ -77,9 +77,8 @@ Double-click `TVM-roku.cmd` in the repo root, or:
 .\TVM-roku.cmd
 ```
 
-That starts Core with `TVM_ENV=development` (LAN bind), starts the Vite UI if
-needed, rebuilds `apps/roku/tvm-roku.zip`, prints the Core URL to type on the
-TV, and opens the **desktop interface** at:
+That starts Core on loopback (`127.0.0.1`, no Wi-Fi required), starts the Vite UI if
+needed, rebuilds `apps/roku/tvm-roku.zip`, and opens the **desktop interface** at:
 
 ```
 http://127.0.0.1:5173/?tv=1
@@ -104,35 +103,35 @@ $env:TVM_ROKU_PASSWORD = "your-rokudev-password"
 .\TVM-roku.cmd -Sideload
 ```
 
-Do not commit those values. The helper also tries SSDP (`roku:ecp`) to find a
-Roku on the LAN.
+Do not commit those values. Sideload is opt-in (`-Sideload`); the helper does
+not probe Wi-Fi adapters just to open the PC preview.
 
 ## Run Core so the Roku can reach it
 
-Core binds `127.0.0.1` in production. Windowed / `pnpm dev` sets
-`TVM_ENV=development`, which binds `0.0.0.0` so this Roku channel can reach
-Core. Core has **no API authentication**; use that only on a trusted network.
-Pin loopback with `TVM_CORE_BIND=127.0.0.1`.
+Core binds `127.0.0.1` so TVM opens on a laptop with no Wi-Fi and Windows does
+not ask to allow Node on public networks. A Roku cannot use `127.0.0.1` (that
+is the Roku itself), so only when you are sideloading set:
+
+```powershell
+$env:TVM_CORE_BIND = "0.0.0.0"
+$env:TVM_ENV = "development"
+```
+
+Core has **no API authentication**; use that only on a trusted network.
 
 If you already have windowed TVM running, leave it running. After a Core
-restart you should see:
+restart on loopback you should see:
 
 ```
-tvm-core listening on http://0.0.0.0:7345
-tvm-core: LAN bind is on; Core has no API auth. Use only while developing a Roku client.
+tvm-core listening on http://127.0.0.1:7345
 ```
 
 To start Core alone:
 
 ```powershell
 $env:TVM_ENV = "development"
+$env:TVM_CORE_BIND = "127.0.0.1"
 corepack pnpm --filter @tvm/core dev
-```
-
-Allow inbound TCP **7345** in Windows Firewall the first time Node asks, or:
-
-```powershell
-netsh advfirewall firewall add rule name="TVM Core (Roku)" dir=in action=allow protocol=TCP localport=7345
 ```
 
 Leave `pnpm dev` (Electron) as it is for the existing UI. You can run Core with

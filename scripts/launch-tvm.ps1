@@ -27,9 +27,8 @@ function Wait-Http([string]$Url, [int]$Seconds) {
 
 if (-not (Test-Http "http://127.0.0.1:7345/api/health")) {
     Write-Host "Starting TVM core..."
-    if ($Windowed) {
-        $env:TVM_ENV = "development"
-    }
+    $env:TVM_ENV = "development"
+    $env:TVM_CORE_BIND = "127.0.0.1"
     Start-Process -FilePath "node" -ArgumentList "--watch", "src/index.ts" -WorkingDirectory (Join-Path $repo "apps\core") -WindowStyle Hidden
     if (-not (Wait-Http "http://127.0.0.1:7345/api/health" 40)) {
         throw "TVM core did not start on http://127.0.0.1:7345"
@@ -63,17 +62,22 @@ $electron = @(
     (Join-Path $shellDir "node_modules\electron\dist\electron"),
     (Join-Path $shellDir "node_modules\electron\dist\Electron.app\Contents\MacOS\Electron")
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+$uiOpen = if ($Windowed) { "http://127.0.0.1:5173/?desktop=1" } else { "http://127.0.0.1:5173/" }
 if (-not $electron) {
-    throw "Electron is not installed. From the TVM folder run: corepack pnpm --filter @tvm/shell install"
+    Write-Host "Electron is not installed on this device. Opening TVM in the browser..."
+    Start-Process $uiOpen
+    return
 }
 
-$userData = Join-Path $env:LOCALAPPDATA "TVM\shell"
+$localApp = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
+$userData = Join-Path $localApp "TVM\shell"
 New-Item -ItemType Directory -Force -Path $userData | Out-Null
 
 $envPrefix = if ($Windowed) {
-    "set TVM_WINDOWED=1&& set TVM_ENV=development&& "
+    "set TVM_WINDOWED=1&& set TVM_CORE_BIND=127.0.0.1&& set TVM_ENV=development&& "
 } else {
-    "set TVM_ENV=development&& "
+    "set TVM_CORE_BIND=127.0.0.1&& set TVM_ENV=development&& "
 }
 
 Write-Host $(if ($Windowed) { "Opening TVM (windowed)..." } else { "Opening TVM fullscreen..." })

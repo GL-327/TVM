@@ -22,7 +22,8 @@ describe('living-room launch', () => {
     expect(windowed).toContain('-Windowed');
     expect(script).toContain('[switch]$Windowed');
     expect(script).toMatch(/\$envPrefix = if \(\$Windowed\) \{[\s\S]*TVM_WINDOWED=1/);
-    expect(script).toMatch(/else \{\s*"set TVM_ENV=development&& "\s*\}/);
+    expect(script).toContain('TVM_CORE_BIND=127.0.0.1');
+    expect(script).toContain('Opening TVM in the browser');
     expect(script).toContain('electron.exe');
     expect(script).toContain('electron\\dist\\electron');
     expect(main).toContain('isWindowedShell');
@@ -47,5 +48,16 @@ describe('laptop desktop copies', () => {
     expect(copy).toContain('TVM-roku.zip');
     expect(copy).toContain('-Windowed');
     expect(install).toContain('copy-to-desktop.ps1');
+  });
+
+  it('opens on loopback without probing Wi-Fi adapters', () => {
+    const repo = repoRoot();
+    const roku = readFileSync(join(repo, 'scripts/roku-dev.ps1'), 'utf8');
+    const launch = readFileSync(join(repo, 'scripts/launch-tvm.ps1'), 'utf8');
+    expect(roku).toContain('TVM_CORE_BIND = "127.0.0.1"');
+    expect(roku).toContain('no Wi-Fi required');
+    expect(roku).not.toContain('Get-NetIPAddress');
+    expect(roku).toMatch(/if \(-not \$Sideload\) \{ return \}/);
+    expect(launch).toContain('TVM_CORE_BIND = "127.0.0.1"');
   });
 });

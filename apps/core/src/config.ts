@@ -5,14 +5,10 @@
  * is reachable by anything on the LAN, but TVM holds provider credentials, so
  * it stays on 127.0.0.1 unless a developer opts in.
  *
- * TVM_CORE_BIND=0.0.0.0 (or a specific IPv4 address) is for Roku development
- * on the same LAN. It has no API authentication. Do not use it as the
- * appliance default.
- *
- * `TVM_ENV=development` also binds 0.0.0.0 when TVM_CORE_BIND is unset, so
- * `pnpm dev` / windowed TVM can serve a Roku without a separate env var.
- * Production and unset TVM_ENV stay on loopback. Pin loopback in development
- * with TVM_CORE_BIND=127.0.0.1.
+ * TVM_CORE_BIND=0.0.0.0 (or a specific IPv4 address) is opt-in for a Roku on
+ * the same LAN. It has no API authentication and makes Windows ask to allow
+ * Node on Wi-Fi / public networks. Laptop and desktop launchers stay on
+ * loopback so TVM opens with no network adapter at all.
  */
 export const CORE_HOST = '127.0.0.1' as const;
 
@@ -44,6 +40,5 @@ export function resolveBindHost(env: NodeJS.ProcessEnv = process.env): string {
     );
   }
 
-  if (env['TVM_ENV'] === 'development') return '0.0.0.0';
   return CORE_HOST;
 }
