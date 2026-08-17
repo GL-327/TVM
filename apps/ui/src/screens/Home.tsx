@@ -19,6 +19,7 @@ import { HeroArt } from '../components/HeroArt';
 import { preferBackdrop } from '../data/artwork';
 import { asTitle, fetchHome, peekHome, type CatalogRail } from '../data/media';
 import { openDetails } from '../data/openDetails';
+import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { watchSource } from '../data/services';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
@@ -36,6 +37,14 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   );
   const [slide, setSlide] = useState(0);
   const [tick, setTick] = useState(0);
+  const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
+
+  useEffect(() => {
+    void fetchPlan().then((status) => {
+      applyPlanClass(status);
+      setPlan(status);
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +172,13 @@ export function Home(_props: ScreenProps): React.JSX.Element {
 
         {watchlist.length > 0 && (
           <Rail title="Watchlist">{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
+        )}
+
+        {plan.id === 'max' && extraFilms.length > 0 && (
+          <Rail title="MAX Exclusive">{mapRailPosters(extraFilms, 'max-exclusive', openTitle)}</Rail>
+        )}
+        {plan.id === 'ultra' && extraShows.length > 0 && (
+          <Rail title="Ultra picks">{mapRailPosters(extraShows, 'ultra-picks', openTitle)}</Rail>
         )}
 
         {catalogRails.length > 0 ? (

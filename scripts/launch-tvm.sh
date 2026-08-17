@@ -68,6 +68,21 @@ do
   fi
 done
 
+if [ -z "$electron" ] && [ -f "$shell_dir/node_modules/electron/install.js" ]; then
+  echo "Downloading Electron..."
+  (cd "$shell_dir/node_modules/electron" && node install.js)
+  for candidate in \
+    "$shell_dir/node_modules/electron/dist/electron" \
+    "$shell_dir/node_modules/electron/dist/electron.exe" \
+    "$shell_dir/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+  do
+    if [ -x "$candidate" ] || [ -f "$candidate" ]; then
+      electron="$candidate"
+      break
+    fi
+  done
+fi
+
 if [ -z "$electron" ]; then
   echo "Electron is not installed on this device. Opening TVM in the browser..."
   url="http://127.0.0.1:5173/"

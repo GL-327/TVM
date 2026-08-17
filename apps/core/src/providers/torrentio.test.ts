@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  capStreamsToHeight,
   extractImdb,
   fetchTorrentioStreams,
   isTorrentioHost,
@@ -45,6 +46,7 @@ describe('torrentio stream pick', () => {
       'https://real-debrid.com/d/OPP',
       'https://real-debrid.com/d/LOW',
     ]);
+    expect(capStreamsToHeight([cached!, hd!], 720).map((stream) => stream.url)).toEqual(['https://real-debrid.com/d/LOW']);
   });
 
   it('returns no streams when Torrentio fetch aborts', async () => {

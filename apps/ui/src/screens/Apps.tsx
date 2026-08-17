@@ -3,7 +3,7 @@ import { AppCard } from '../components/AppCard';
 import { Ribbon } from '../components/Ribbon';
 import { fallbackApps, fetchApps, isMockApp } from '../data/apps';
 import { TVM_STREAM, type AppTile } from '../data/catalog';
-import { applyPlanClass, fetchPlan } from '../data/plan';
+import { applyPlanClass, fetchPlan, mockAppLocked } from '../data/plan';
 import { enterTvmStream } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
@@ -26,7 +26,7 @@ export function Apps(_props: ScreenProps): React.JSX.Element {
     };
   }, []);
 
-  const visible = allowMocks ? grid : grid.filter((app) => !isMockApp(app.id));
+  const visible = grid;
 
   return (
     <main className="page page--library">
@@ -37,6 +37,9 @@ export function Apps(_props: ScreenProps): React.JSX.Element {
           <h1 className="page__heading">Apps</h1>
         </div>
       </header>
+      {!allowMocks && (
+        <p className="page__lede">Mock streamer hubs are locked on this plan. Open one for Ultra and MAX details, or stay on TVM Stream.</p>
+      )}
       <div className="app-grid" aria-label="Apps">
         <AppCard app={TVM_STREAM} id="app-tvm-stream" size="grid" onSelect={() => void enterTvmStream(navigate)} />
         {visible.map((app) => (
@@ -45,6 +48,7 @@ export function Apps(_props: ScreenProps): React.JSX.Element {
             app={app}
             id={`app-${app.id}`}
             size="grid"
+            locked={mockAppLocked(allowMocks, isMockApp(app.id))}
             onSelect={() => navigate.push('service', { params: { id: app.id } })}
           />
         ))}

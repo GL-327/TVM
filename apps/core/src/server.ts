@@ -2,10 +2,18 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { CORE_HOST, CORE_VERSION, resolveBindHost } from './config.ts';
 import { readJson, sendJson } from './http.ts';
+import { fetchVastPreroll } from './providers/ads.ts';
 import { createAppsService, type AppsService } from './providers/apps.ts';
+import { createDevUnlockService, type DevUnlockService } from './providers/devUnlock.ts';
 import { createLiveService, type LiveService } from './providers/live.ts';
 import { createMediaService, type MediaService } from './providers/media.ts';
-import { createPlanService, isPlanId, type PlanService } from './providers/plans.ts';
+import {
+  createPlanService,
+  isPlanId,
+  isStyleId,
+  type DevOverrides,
+  type PlanService,
+} from './providers/plans.ts';
 import { createRealDebrid } from './providers/realdebrid.ts';
 import { createSessionService, type SessionService } from './providers/session.ts';
 import { serveExactStatic, serveStatic } from './static.ts';
@@ -40,6 +48,7 @@ export interface CoreOptions {
   apps?: AppsService;
   session?: SessionService;
   plans?: PlanService;
+  developer?: DevUnlockService;
   dataDir?: string;
   env?: NodeJS.ProcessEnv;
 }
@@ -54,6 +63,7 @@ async function handleApi(
   session: SessionService,
   apps: AppsService,
   plans: PlanService,
+  developer: DevUnlockService,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -290,6 +300,10 @@ async function handleApi(
       episode?: unknown;
     };
     const id = typeof body.id === 'string' ? body.id : undefined;
+    if (id !== undefined && !id.startsWith('live:') && plans.hoursBlocked()) {
+      sendJson(response, 409, { kind: 'unavailable', reason: 'hours-cap' });
+      return true;
+    }
     const result =
       id !== undefined && id.startsWith('live:')
         ? await live.play(id)
@@ -333,12 +347,98 @@ async function handleApi(
   }
 
   if (path === '/api/plan' && request.method === 'PUT') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
     const body = (await readJson(request)) as { id?: unknown };
     if (!isPlanId(body.id)) {
       sendJson(response, 400, { error: 'unknown_plan' });
       return true;
     }
-    sendJson(response, 200, plans.set(body.id));
+    sendJson(response, 200, plans.set(body.id, 'dev'));
+    return true;
+  }
+
+  if (path === '/api/plan/style' && request.method === 'POST') {
+    const body = (await readJson(request)) as { id?: unknown };
+    if (!isStyleId(body.id)) {
+      sendJson(response, 400, { error: 'unknown_style' });
+      return true;
+    }
+    try {
+      sendJson(response, 200, plans.setStyle(body.id));
+    } catch (error) {
+      sendJson(response, 403, { error: error instanceof Error ? error.message : 'style locked' });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/checkout' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as {
+        planId?: unknown;
+        name?: unknown;
+        number?: unknown;
+        expiry?: unknown;
+        cvc?: unknown;
+      };
+      sendJson(response, 200, plans.checkout(body));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'checkout failed' });
+    }
+    return true;
+  }
+
+  if (path === '/api/usage/tick' && request.method === 'POST') {
+    const body = (await readJson(request)) as { seconds?: unknown; billable?: unknown };
+    const seconds = typeof body.seconds === 'number' ? body.seconds : 0;
+    const billable = body.billable !== false;
+    sendJson(response, 200, plans.tickUsage(seconds, billable));
+    return true;
+  }
+
+  if (path === '/api/usage/reset' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    sendJson(response, 200, plans.resetUsage());
+    return true;
+  }
+
+  if (path === '/api/ads/preroll' && request.method === 'GET') {
+    sendJson(response, 200, await fetchVastPreroll());
+    return true;
+  }
+
+  if (path === '/api/dev/status' && request.method === 'GET') {
+    sendJson(response, 200, { unlocked: developer.unlocked() });
+    return true;
+  }
+
+  if (path === '/api/dev/unlock' && request.method === 'POST') {
+    const body = (await readJson(request)) as { password?: unknown };
+    const password = typeof body.password === 'string' ? body.password : '';
+    const ok = developer.unlock(password);
+    sendJson(response, ok ? 200 : 403, { unlocked: ok, error: ok ? undefined : 'That code is not valid.' });
+    return true;
+  }
+
+  if (path === '/api/dev/lock' && request.method === 'POST') {
+    developer.lock();
+    plans.clearOverrides();
+    sendJson(response, 200, { unlocked: false });
+    return true;
+  }
+
+  if (path === '/api/dev/overrides' && request.method === 'PUT') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    const body = (await readJson(request)) as DevOverrides;
+    sendJson(response, 200, plans.setOverrides(body));
     return true;
   }
 
@@ -361,13 +461,17 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   const env = options.env ?? process.env;
   const dataDir = options.dataDir ?? resolveDataDir(env);
   const update = options.update ?? createUpdateService({ dataDir, env });
-  const live = options.live ?? createLiveService({ dataDir });
+  const developer = options.developer ?? createDevUnlockService({ dataDir });
+  const plans = options.plans ?? createPlanService({ dataDir, developer: () => developer.unlocked() });
+  const live = options.live ?? createLiveService({ dataDir, includeMock: () => plans.status().liveTv });
   const session = options.session ?? createSessionService({ dataDir });
   const media =
     options.media ??
     createMediaService({
       dataDir,
       rd: createRealDebrid({ dataDir, env }),
+      plan: () => plans.status(),
+      poolToken: () => plans.poolToken(),
     });
   const apps =
     options.apps ??
@@ -376,13 +480,12 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       env,
       continueWatching: async () => (await media.home()).continueWatching,
     });
-  const plans = options.plans ?? createPlanService({ dataDir });
 
   return createServer((request, response) => {
     void (async () => {
       const path = new URL(request.url ?? '/', `http://${CORE_HOST}`).pathname;
 
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });

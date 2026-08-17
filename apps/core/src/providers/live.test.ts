@@ -32,6 +32,22 @@ describe('live service', () => {
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
+  it('serves the MAX mock pack when entitled', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-max-'));
+    dirs.push(dir);
+    const live = createLiveService({ dataDir: dir, includeMock: () => true, fetch: async () => new Response('no', { status: 404 }) });
+    const status = await live.status();
+    expect(status.channels.map((channel) => channel.name)).toEqual([
+      'Sky Sports',
+      'TNT Sports',
+      'beIN Sports',
+      'USA Network',
+    ]);
+    const play = await live.play('live:mock:sky-sports');
+    expect(play.kind).toBe('stream');
+    if (play.kind === 'stream') expect(play.engine).toBe('html5');
+  });
+
   it('returns an empty status until a playlist is stored', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-live-'));
     dirs.push(dir);
