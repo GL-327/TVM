@@ -72,7 +72,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   diagnostics: { component: DiagnosticsModal, defaultFocus: 'close' },
   confirm: { component: ConfirmModal, defaultFocus: 'confirm' },
   notice: { component: NoticeModal, defaultFocus: 'close' },
-  search: { component: SearchModal, defaultFocus: 'query' },
+  search: { component: SearchModal, defaultFocus: 'key-a' },
   player: { component: Player, defaultFocus: 'pause' },
 };
 

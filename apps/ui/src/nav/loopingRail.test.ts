@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalFocusId,
+  contentOverflows,
   conveyorAfterWrap,
   conveyorWrapDelta,
   isWrapAcross,
@@ -15,6 +16,13 @@ describe('looping rail', () => {
     expect(shouldLoopRail(0)).toBe(false);
     expect(shouldLoopRail(1)).toBe(false);
     expect(shouldLoopRail(2)).toBe(true);
+  });
+
+  it('does not clone a row that already fits on screen', () => {
+    expect(contentOverflows(900, 1920, 1)).toBe(false);
+    expect(contentOverflows(2700, 1920, 3)).toBe(false);
+    expect(contentOverflows(2400, 800, 1)).toBe(true);
+    expect(contentOverflows(2400, 800, 3)).toBe(true);
   });
 
   it('treats the track as three equal copies', () => {

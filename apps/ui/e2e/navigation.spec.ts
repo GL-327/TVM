@@ -107,7 +107,21 @@ const E2E_PLAN = {
   skipRecap: false,
   extras: ['No ads'],
   badges: [],
-  styleIds: ['classic', 'cinema', 'midnight'],
+  styleIds: [
+    'classic',
+    'cinema',
+    'midnight',
+    'light',
+    'ocean',
+    'ice',
+    'eagles',
+    'ember',
+    'forest',
+    'slate',
+    'contrast',
+    'gold',
+    'aurora',
+  ],
   styleId: 'classic',
   developer: false,
   catalog: [
@@ -118,15 +132,17 @@ const E2E_PLAN = {
     { id: 'max', name: 'TVM MAX', price: '£15.99', pricePence: 1599, mocks: true, liveTv: true, extras: [] },
   ],
   styles: [
-    { id: 'classic', name: 'Classic', minPlan: 'premium' },
-    { id: 'cinema', name: 'Cinema', minPlan: 'premium' },
-    { id: 'midnight', name: 'Midnight', minPlan: 'premium' },
-    { id: 'ember', name: 'Ember', minPlan: 'ultra' },
-    { id: 'forest', name: 'Forest', minPlan: 'ultra' },
-    { id: 'slate', name: 'Slate', minPlan: 'ultra' },
-    { id: 'contrast', name: 'High contrast', minPlan: 'ultra' },
-    { id: 'gold', name: 'MAX Gold', minPlan: 'max' },
-    { id: 'aurora', name: 'Aurora', minPlan: 'max' },
+    { id: 'classic', name: 'Classic', minPlan: 'free' },
+    { id: 'cinema', name: 'Cinema', minPlan: 'free' },
+    { id: 'midnight', name: 'Midnight', minPlan: 'free' },
+    { id: 'light', name: 'Light', minPlan: 'free' },
+    { id: 'eagles', name: 'Eagles', minPlan: 'free' },
+    { id: 'ember', name: 'Ember', minPlan: 'free' },
+    { id: 'forest', name: 'Forest', minPlan: 'free' },
+    { id: 'slate', name: 'Slate', minPlan: 'free' },
+    { id: 'contrast', name: 'High contrast', minPlan: 'free' },
+    { id: 'gold', name: 'MAX Gold', minPlan: 'free' },
+    { id: 'aurora', name: 'Aurora', minPlan: 'free' },
   ],
 };
 
@@ -245,7 +261,7 @@ async function stubReady(page: Page): Promise<void> {
       },
     }),
   );
-  await page.route('**/api/library', (route) => route.fulfill({ json: { items: [] } }));
+  await page.route('**/api/search**', (route) => route.fulfill({ json: { items: [] } }));
   await page.route('**/api/media/children**', (route) => {
     const url = route.request().url();
     if (url.includes('tt1230051')) {
@@ -362,19 +378,27 @@ test('a modal traps focus and Back closes the modal', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="search"]')).toBeVisible();
   await waitForFocus(page);
-  expect(await focusedId(page)).toBe('query');
+  expect(await focusedId(page)).toBe('key-a');
 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowDown');
   await waitForFocus(page);
   const trapped = await focusedId(page);
-  expect(trapped === 'close' || trapped === 'open' || trapped === 'query' || trapped?.startsWith('key-')).toBe(true);
+  expect(trapped === 'open' || trapped === 'query' || trapped?.startsWith('key-')).toBe(true);
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
 
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-screen="search"]')).toHaveCount(0);
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await waitForFocus(page);
+});
+
+test('Search lists a local catalogue title', async ({ page }) => {
+  await pressUntil(page, 'search');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="search"]')).toBeVisible();
+  await page.locator('[data-focus-id="query"]').fill('dune');
+  await expect(page.getByText('Dune: Part Two')).toBeVisible();
 });
 
 test('focus is restored to the same element after returning', async ({ page }) => {

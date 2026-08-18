@@ -79,11 +79,8 @@ export function SearchModal(_props: ScreenProps): React.JSX.Element {
           <FocusButton id="open" variant="primary" onSelect={() => void open(fieldValue('query'))}>
             Open
           </FocusButton>
-          <FocusButton id="close" onSelect={() => navigate.pop()}>
-            Close
-          </FocusButton>
         </div>
-        <OnScreenKeyboard value={query} onChange={setQuery} onSubmit={() => void open()} />
+        <OnScreenKeyboard value={query} onChange={setQuery} onSubmit={() => void open()} onClose={() => navigate.pop()} />
         {results.length > 0 && (
           <div className="search-results" aria-label="Search results">
             {results.slice(0, 24).map((item) => (

@@ -208,7 +208,11 @@ export function createCatalogService(options: CatalogServiceOptions) {
   const fetchCatalog = async (path: string, kind: 'movie' | 'series'): Promise<MediaItem[]> => {
     const response = await fetchImpl(`${CINEMETA}${path}`, {
       signal: AbortSignal.timeout(FETCH_MS),
-      headers: { accept: 'application/json', 'user-agent': 'tvm-core' },
+      headers: {
+        accept: 'application/json',
+        'user-agent':
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      },
     });
     if (!response.ok) return [];
     const body = (await response.json()) as { metas?: Array<Record<string, unknown>> };

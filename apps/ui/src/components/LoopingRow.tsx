@@ -1,6 +1,12 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef } from 'react';
-import { LOOP_COPIES, isWrappingTrack, normalizeLoopScroll, shouldLoopRail } from '../nav/loopingRail';
+import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  LOOP_COPIES,
+  contentOverflows,
+  isWrappingTrack,
+  normalizeLoopScroll,
+  shouldLoopRail,
+} from '../nav/loopingRail';
 import { jumpAxis } from '../nav/revealFocused';
 
 interface LoopingRowProps {
@@ -12,7 +18,8 @@ interface LoopingRowProps {
 export function LoopingRow({ className, children, label }: LoopingRowProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const items = Children.toArray(children).filter(isValidElement);
-  const looping = shouldLoopRail(items.length);
+  const [looping, setLooping] = useState(false);
+  const canLoop = shouldLoopRail(items.length);
 
   const painted = looping
     ? [0, 1, 2].flatMap((copy) =>
@@ -27,10 +34,29 @@ export function LoopingRow({ className, children, label }: LoopingRowProps): Rea
 
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el === null || !looping) return;
-    const setWidth = el.scrollWidth / LOOP_COPIES;
-    if (setWidth > 0) jumpAxis(el, 'x', setWidth);
-  }, [looping, items.length]);
+    if (el === null) {
+      return undefined;
+    }
+
+    const measure = (): void => {
+      if (!canLoop) {
+        setLooping(false);
+        return;
+      }
+      const copies = el.dataset.looping === 'true' ? LOOP_COPIES : 1;
+      const needs = contentOverflows(el.scrollWidth, el.clientWidth, copies);
+      setLooping(needs);
+      if (needs && copies === LOOP_COPIES) {
+        const setWidth = el.scrollWidth / LOOP_COPIES;
+        if (setWidth > 0) jumpAxis(el, 'x', setWidth);
+      }
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [canLoop, items.length]);
 
   useEffect(() => {
     const el = ref.current;

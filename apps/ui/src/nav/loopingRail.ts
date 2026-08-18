@@ -8,6 +8,13 @@ export function shouldLoopRail(count: number): boolean {
   return count >= 2;
 }
 
+/** Triple clones only when one set is wider than the viewport. Otherwise the copies sit on-screen as extra shapes. */
+export function contentOverflows(scrollWidth: number, clientWidth: number, copies = 1): boolean {
+  if (clientWidth <= 0 || scrollWidth <= 0) return false;
+  const setWidth = copies > 1 ? scrollWidth / copies : scrollWidth;
+  return setWidth > clientWidth + 8;
+}
+
 export function loopSetWidth(scrollWidth: number, copies = LOOP_COPIES): number {
   if (copies < 2 || scrollWidth <= 0) return 0;
   return scrollWidth / copies;

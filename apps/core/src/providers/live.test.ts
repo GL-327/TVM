@@ -110,4 +110,25 @@ describe('live service', () => {
       engine: 'html5',
     });
   });
+
+  it('accepts a pasted M3U body without fetching', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-paste-'));
+    dirs.push(dir);
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async () => {
+        throw new Error('should not fetch');
+      },
+    });
+    const status = await live.setPlaylist(`#EXTM3U
+#EXTINF:-1 group-title="UK",BBC One
+https://example.com/bbc1.m3u8
+`);
+    expect(status.url).toBe('m3u:inline');
+    expect(status.channels).toEqual([
+      { id: 'live:0', name: 'BBC One', url: 'https://example.com/bbc1.m3u8', group: 'UK' },
+    ]);
+    expect(await live.status()).toEqual(status);
+    expect(await live.play('live:0')).toMatchObject({ kind: 'stream', url: 'https://example.com/bbc1.m3u8' });
+  });
 });

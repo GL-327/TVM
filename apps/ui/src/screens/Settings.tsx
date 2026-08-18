@@ -74,13 +74,14 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
       <p className="stage__kicker">{section === 'hub' ? 'Device and services' : 'Settings'}</p>
       <h1 className="page__heading">{sectionTitle(section)}</h1>
       {section === 'hub' && (
-        <div className="settings-list">
+        <div className="settings-hub">
           <FocusButton
             id="cat-appearance"
             className="settings-row settings-cat"
             detail={currentStyle}
             onSelect={() => openSection(navigate, 'appearance')}
           >
+            <span className="settings-cat__kicker">Look</span>
             Appearance
           </FocusButton>
           <FocusButton
@@ -89,6 +90,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
             detail={plan.name}
             onSelect={() => openSection(navigate, 'account')}
           >
+            <span className="settings-cat__kicker">Plan</span>
             Account
           </FocusButton>
           <FocusButton
@@ -97,6 +99,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
             detail={liveDetail}
             onSelect={() => openSection(navigate, 'livetv')}
           >
+            <span className="settings-cat__kicker">Channels</span>
             Live TV
           </FocusButton>
           <FocusButton
@@ -105,6 +108,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
             detail={`${window.innerWidth} × ${window.innerHeight}`}
             onSelect={() => openSection(navigate, 'device')}
           >
+            <span className="settings-cat__kicker">This box</span>
             Device
           </FocusButton>
           <FocusButton
@@ -113,6 +117,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
             detail="Updates and recovery"
             onSelect={() => openSection(navigate, 'system')}
           >
+            <span className="settings-cat__kicker">Maintain</span>
             System
           </FocusButton>
         </div>
@@ -149,38 +154,39 @@ function AppearanceSettings({
 
   return (
     <div className="settings-list">
-      <p className="page__lede">Themes tint chrome and accents. Artwork stays as shot.</p>
-      {styles.map((style) => {
-        const unlocked = styleUnlocked(plan, style.id as StyleId);
-        return (
-          <FocusButton
-            key={style.id}
-            id={`style-${style.id}`}
-            className="settings-row theme-row"
-            detail={
-              !unlocked ? `Locked · ${style.minPlan}` : plan.styleId === style.id ? 'On' : 'Apply'
-            }
-            onSelect={() => {
-              if (!unlocked) {
-                navigate.pushModal('notice', {
-                  params: {
-                    title: style.name,
-                    body: `This style unlocks on ${styleMinPlanLabel(style.minPlan)}.`,
-                  },
+      <p className="page__lede">Themes tint the chrome. Artwork stays as shot. Eagles is mint on navy.</p>
+      <div className="theme-grid">
+        {styles.map((style) => {
+          const unlocked = styleUnlocked(plan, style.id as StyleId);
+          const on = plan.styleId === style.id;
+          return (
+            <FocusButton
+              key={style.id}
+              id={`style-${style.id}`}
+              className={`theme-card${on ? ' theme-card--on' : ''}`}
+              detail={!unlocked ? `Locked · ${style.minPlan}` : on ? 'On' : 'Apply'}
+              onSelect={() => {
+                if (!unlocked) {
+                  navigate.pushModal('notice', {
+                    params: {
+                      title: style.name,
+                      body: `This style unlocks on ${styleMinPlanLabel(style.minPlan)}.`,
+                    },
+                  });
+                  return;
+                }
+                void saveStyle(style.id as StyleId).then((status) => {
+                  applyPlanClass(status);
+                  setPlan(status);
                 });
-                return;
-              }
-              void saveStyle(style.id as StyleId).then((status) => {
-                applyPlanClass(status);
-                setPlan(status);
-              });
-            }}
-          >
-            <span className="theme-swatch" data-theme={style.id} aria-hidden="true" />
-            {style.name}
-          </FocusButton>
-        );
-      })}
+              }}
+            >
+              <span className="theme-swatch" data-theme={style.id} aria-hidden="true" />
+              {style.name}
+            </FocusButton>
+          );
+        })}
+      </div>
       <FocusButton id="back" className="settings-row" onSelect={() => navigate.pop()}>
         Back
       </FocusButton>

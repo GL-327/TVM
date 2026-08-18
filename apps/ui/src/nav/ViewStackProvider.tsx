@@ -23,6 +23,7 @@ import {
   conveyorWrapNeeded,
   focusKeyFor,
   isVerticalNavContext,
+  loopingTrackOf,
   neighborFocusTarget,
   neighborInTrack,
   neighborInTrackFocusTarget,
@@ -184,7 +185,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
             if (intent === 'left' || intent === 'right') {
               if (conveyorWrapNeeded(active, intent)) {
                 const wrapped = neighborInTrack(active, intent);
-                const track = active.closest<HTMLElement>('.rail__track');
+                const track = loopingTrackOf(active);
                 const key = wrapped === null ? null : focusKeyFor(wrapped);
                 if (track !== null && key !== null) {
                   wrapLoopingTrack(track, intent, () => requestFocus(key));

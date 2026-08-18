@@ -32,18 +32,34 @@ const MAX_CHANNELS = 4_000;
 const PLAYLIST_UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
-function readStoredUrl(dataDir: string): string | null {
+const INLINE_PLAYLIST = 'm3u:inline';
+
+function readStored(dataDir: string): { url: string | null; text?: string } {
   try {
-    const parsed = JSON.parse(readFileSync(livePlaylistPath(dataDir), 'utf8')) as { url?: unknown };
-    return typeof parsed.url === 'string' && isHttpUrl(parsed.url) ? parsed.url : null;
+    const parsed = JSON.parse(readFileSync(livePlaylistPath(dataDir), 'utf8')) as {
+      url?: unknown;
+      text?: unknown;
+    };
+    const text = typeof parsed.text === 'string' && looksLikePlaylistBody(parsed.text) ? parsed.text : undefined;
+    const url = typeof parsed.url === 'string' && isHttpUrl(parsed.url) ? parsed.url : null;
+    return text !== undefined ? { url: null, text } : { url };
   } catch {
-    return null;
+    return { url: null };
   }
 }
 
-function writeStoredUrl(dataDir: string, url: string): void {
+function writeStored(dataDir: string, stored: { url: string | null; text?: string }): void {
   mkdirSync(dirname(livePlaylistPath(dataDir)), { recursive: true });
-  writeFileSync(livePlaylistPath(dataDir), JSON.stringify({ url }));
+  if (stored.url === null && stored.text === undefined) {
+    writeFileSync(livePlaylistPath(dataDir), JSON.stringify({ url: null }));
+    return;
+  }
+  writeFileSync(livePlaylistPath(dataDir), JSON.stringify(stored));
+}
+
+function looksLikePlaylistBody(value: string): boolean {
+  const text = value.trim();
+  return /^#EXTM3U/i.test(text) || text.includes('#EXTINF:');
 }
 
 function quotedAttribute(line: string, name: string): string | undefined {
@@ -220,7 +236,15 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
 
   const load = async (): Promise<LiveStatus> => {
     const mock = mockChannels();
-    const url = readStoredUrl(dataDir);
+    const stored = readStored(dataDir);
+    if (stored.text !== undefined) {
+      const channels = parseM3u(stored.text);
+      if (channels.length === 0 && mock.length === 0) {
+        return { url: INLINE_PLAYLIST, channels: [], error: 'invalid' };
+      }
+      return { url: INLINE_PLAYLIST, channels: [...mock, ...channels], error: null };
+    }
+    const url = stored.url;
     if (url === null) return { url: null, channels: mock, error: null };
 
     try {
@@ -249,11 +273,22 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
     async setPlaylist(value: string): Promise<LiveStatus> {
       const trimmed = value.trim();
       if (trimmed === '') {
-        writeStoredUrl(dataDir, '');
+        writeStored(dataDir, { url: null });
         return { url: null, channels: mockChannels(), error: null };
       }
-      if (!isHttpUrl(trimmed)) return { url: readStoredUrl(dataDir), channels: mockChannels(), error: 'invalid' };
-      writeStoredUrl(dataDir, trimmed);
+      if (looksLikePlaylistBody(trimmed)) {
+        if (trimmed.length > MAX_PLAYLIST_BYTES) {
+          return { url: readStored(dataDir).url, channels: mockChannels(), error: 'invalid' };
+        }
+        const channels = parseM3u(trimmed);
+        if (channels.length === 0) {
+          return { url: readStored(dataDir).url, channels: mockChannels(), error: 'invalid' };
+        }
+        writeStored(dataDir, { url: null, text: trimmed });
+        return { url: INLINE_PLAYLIST, channels: [...mockChannels(), ...channels], error: null };
+      }
+      if (!isHttpUrl(trimmed)) return { url: readStored(dataDir).url, channels: mockChannels(), error: 'invalid' };
+      writeStored(dataDir, { url: trimmed });
       return load();
     },
 

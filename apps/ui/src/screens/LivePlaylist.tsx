@@ -49,13 +49,15 @@ export function LivePlaylist(_props: ScreenProps): React.JSX.Element {
       <p className="stage__kicker">Your source</p>
       <h1 className="page__heading">Live TV playlist</h1>
       <p className="page__lede">
-        Paste an M3U or M3U8 URL you are allowed to use. TVM stores the address on this machine and does not scrape
-        BBC, sports, or any other channel.
+        Paste an M3U URL, or paste the playlist text itself. TVM stores it on this machine and does not scrape BBC,
+        sports, or any other channel.
       </p>
       <dl className="panel__rows settings-summary">
         <div className="panel__row">
           <dt>Playlist</dt>
-          <dd>{status.url === null ? 'Not added' : 'Saved on this machine'}</dd>
+          <dd>
+            {status.url === null ? 'Not added' : status.url === 'm3u:inline' ? 'Pasted playlist' : 'Saved on this machine'}
+          </dd>
         </div>
         <div className="panel__row">
           <dt>Channels</dt>
@@ -64,15 +66,15 @@ export function LivePlaylist(_props: ScreenProps): React.JSX.Element {
       </dl>
       {message !== null && <p className="page__message">{message}</p>}
       <label className="token-field">
-        <span>M3U or M3U8 URL</span>
+        <span>M3U URL or playlist text</span>
         <FocusField
           id="url"
-          type="url"
           value={url}
           onChange={setUrl}
           onConfirm={(value) => void save(value)}
           afterPasteFocusId="save"
-          placeholder="Paste URL, then press OK"
+          multiline
+          placeholder="https://… or paste #EXTM3U"
         />
       </label>
       <div className="hero__actions">
