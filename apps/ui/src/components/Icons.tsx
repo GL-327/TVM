@@ -5,16 +5,9 @@ interface IconProps {
 export function IconProfile({ className }: IconProps): React.JSX.Element {
   return (
     <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
-      <circle cx="24" cy="24" r="24" fill="url(#tvm-avatar)" />
-      <circle cx="17" cy="20" r="2.2" fill="#2a1248" />
-      <circle cx="31" cy="20" r="2.2" fill="#2a1248" />
-      <path d="M16 30c2.4 4 13.6 4 16 0" fill="none" stroke="#2a1248" strokeWidth="2.2" strokeLinecap="round" />
-      <defs>
-        <linearGradient id="tvm-avatar" x1="8" y1="4" x2="40" y2="44">
-          <stop stopColor="#c084fc" />
-          <stop offset="1" stopColor="#7c3aed" />
-        </linearGradient>
-      </defs>
+      <circle cx="24" cy="24" r="24" fill="currentColor" opacity="0.22" />
+      <circle cx="24" cy="18" r="7" fill="currentColor" />
+      <path d="M10 40c2.2-8 9-12 14-12s11.8 4 14 12" fill="currentColor" />
     </svg>
   );
 }

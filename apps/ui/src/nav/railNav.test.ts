@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { neighborRowIndex, pickClosestIndex, wrapIndex } from './railNav';
+import { adjacentIndex, neighborRowIndex, pickClosestIndex, wrapIndex } from './railNav';
 
 describe('rail vertical nav', () => {
   it('picks the centre closest to the current card', () => {
@@ -23,5 +23,9 @@ describe('rail vertical nav', () => {
     expect(wrapIndex(1, 'right', 5)).toBe(2);
     expect(wrapIndex(1, 'left', 5)).toBe(0);
     expect(wrapIndex(0, 'right', 1)).toBe(0);
+    expect(adjacentIndex(0, 'left', 5, true)).toBe(4);
+    expect(adjacentIndex(0, 'left', 5, false)).toBeNull();
+    expect(adjacentIndex(4, 'right', 5, false)).toBeNull();
+    expect(adjacentIndex(1, 'right', 5, false)).toBe(2);
   });
 });

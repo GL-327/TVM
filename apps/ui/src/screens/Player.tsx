@@ -198,7 +198,19 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       video.muted = muted;
       const hlsSource = stream.mimeType.includes('mpegurl') || /\.m3u8(\?|$)/i.test(stream.url);
       if (hlsSource && Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true, maxBufferLength: 30 });
+        const headers = stream.headers;
+        const hls = new Hls({
+          enableWorker: true,
+          maxBufferLength: 60,
+          xhrSetup:
+            headers === undefined
+              ? undefined
+              : (xhr) => {
+                  for (const [key, value] of Object.entries(headers)) {
+                    xhr.setRequestHeader(key, value);
+                  }
+                },
+        });
         hlsRef.current = hls;
         hls.loadSource(stream.url);
         hls.attachMedia(video);
@@ -321,7 +333,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       if (cancelled) return;
       await runAd(plan);
       if (cancelled) return;
-      if (plan.startDelayMs > 0) await wait(plan.startDelayMs);
+      if (!id.startsWith('live:') && plan.startDelayMs > 0) await wait(plan.startDelayMs);
       if (cancelled) return;
       setOverlay(null);
       try {

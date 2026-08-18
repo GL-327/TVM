@@ -23,11 +23,17 @@ export function SearchModal(_props: ScreenProps): React.JSX.Element {
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      void searchLibrary(trimmed).then((items) => {
-        if (cancelled) return;
-        setResults(items);
-        setMessage(items.length === 0 ? 'Nothing matched that search.' : `${items.length} titles`);
-      });
+      void searchLibrary(trimmed)
+        .then((items) => {
+          if (cancelled) return;
+          setResults(items);
+          setMessage(items.length === 0 ? 'Nothing matched that search.' : `${items.length} titles`);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResults([]);
+          setMessage('Search could not run. Check that TVM is running, then try again.');
+        });
     }, 180);
     return () => {
       cancelled = true;
@@ -73,11 +79,8 @@ export function SearchModal(_props: ScreenProps): React.JSX.Element {
           <FocusButton id="open" variant="primary" onSelect={() => void open(fieldValue('query'))}>
             Open
           </FocusButton>
-          <FocusButton id="close" onSelect={() => navigate.pop()}>
-            Close
-          </FocusButton>
         </div>
-        <OnScreenKeyboard value={query} onChange={setQuery} onSubmit={() => void open()} />
+        <OnScreenKeyboard value={query} onChange={setQuery} onSubmit={() => void open()} onClose={() => navigate.pop()} />
         {results.length > 0 && (
           <div className="search-results" aria-label="Search results">
             {results.slice(0, 24).map((item) => (

@@ -12,6 +12,9 @@ import { canonicalFocusId, isLoopClone, isWrapAcross } from './loopingRail';
 export const VERTICAL_ROW_SELECTOR =
   '.stage__copy, .ribbon, .stream-chrome, .rail__track, .service-nav, .service-hero__actions, .service-side';
 
+export const HORIZONTAL_TRACK_SELECTOR =
+  '.rail__track, .ribbon, .service-nav__tabs, .live-cats, .search-results, .season-row';
+
 export function pickClosestIndex(centers: readonly number[], target: number): number {
   if (centers.length === 0) return -1;
   let best = 0;
@@ -38,6 +41,18 @@ export function wrapIndex(index: number, direction: 'left' | 'right', count: num
   return (index - 1 + count) % count;
 }
 
+export function adjacentIndex(
+  index: number,
+  direction: 'left' | 'right',
+  count: number,
+  loop: boolean,
+): number | null {
+  if (loop) return wrapIndex(index, direction, count);
+  if (count < 1 || index < 0 || index >= count) return null;
+  if (direction === 'right') return index < count - 1 ? index + 1 : null;
+  return index > 0 ? index - 1 : null;
+}
+
 export function isVerticalNavContext(element: HTMLElement): boolean {
   return element.closest(VERTICAL_ROW_SELECTOR) !== null;
 }
@@ -50,10 +65,14 @@ export function focusKeyFor(element: HTMLElement): string | null {
   return `${scope}/${id}`;
 }
 
+export function loopingTrackOf(element: HTMLElement): HTMLElement | null {
+  return element.closest<HTMLElement>('[data-looping="true"]');
+}
+
 export function logicalCard(element: HTMLElement): HTMLElement {
   if (!isLoopClone(element)) return element;
   const id = canonicalFocusId(element.getAttribute('data-focus-id') ?? '');
-  const track = element.closest('.rail__track');
+  const track = loopingTrackOf(element) ?? element.closest<HTMLElement>(HORIZONTAL_TRACK_SELECTOR);
   if (track === null || id === '') return element;
   const real = track.querySelector<HTMLElement>(`[data-focus-id="${CSS.escape(id)}"]:not([data-loop-clone="true"])`);
   return real ?? element;
@@ -99,7 +118,7 @@ export function neighborFocusTarget(element: HTMLElement, direction: 'up' | 'dow
 
 export function neighborInTrack(element: HTMLElement, direction: 'left' | 'right'): HTMLElement | null {
   const card = logicalCard(element);
-  const track = card.closest<HTMLElement>('.rail__track');
+  const track = card.closest<HTMLElement>(HORIZONTAL_TRACK_SELECTOR);
   if (track === null) return null;
   const items = focusablesIn(track);
   if (items.length === 0) return null;
@@ -107,10 +126,6 @@ export function neighborInTrack(element: HTMLElement, direction: 'left' | 'right
   const nextIndex = wrapIndex(index, direction, items.length);
   if (nextIndex === null) return null;
   return items[nextIndex] ?? null;
-}
-
-export function loopingTrackOf(element: HTMLElement): HTMLElement | null {
-  return element.closest<HTMLElement>('.rail__track[data-looping="true"]');
 }
 
 export function neighborInTrackFocusTarget(element: HTMLElement, direction: 'left' | 'right'): string | null {

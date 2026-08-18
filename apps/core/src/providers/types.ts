@@ -84,6 +84,8 @@ export interface LiveChannel {
   name: string;
   url: string;
   group?: string;
+  logo?: string;
+  headers?: Record<string, string>;
 }
 
 export interface LiveStatus {

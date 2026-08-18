@@ -54,6 +54,8 @@ describe('plans', () => {
     expect(plans.status().id).toBe('free');
     expect(plans.status().mocks).toBe(false);
     expect(plans.status().weeklySeconds).toBe(12 * 60 * 60);
+    expect(plans.status().styleIds).toContain('eagles');
+    expect(plans.status().styleIds).toContain('light');
     expect(migratePlanId('tvm-max')).toBe('max');
     expect(isPlanId('gold')).toBe(false);
 

@@ -24,12 +24,14 @@ describe('plan helpers', () => {
   });
 
   it('lists styles with the plan that unlocks them', () => {
-    expect(STYLE_CATALOG.find((style) => style.id === 'cinema')?.minPlan).toBe('premium');
-    expect(STYLE_CATALOG.find((style) => style.id === 'ember')?.minPlan).toBe('ultra');
-    expect(STYLE_CATALOG.find((style) => style.id === 'gold')?.minPlan).toBe('max');
+    expect(STYLE_CATALOG.find((style) => style.id === 'cinema')?.minPlan).toBe('free');
+    expect(STYLE_CATALOG.find((style) => style.id === 'ember')?.minPlan).toBe('free');
+    expect(STYLE_CATALOG.find((style) => style.id === 'eagles')?.minPlan).toBe('free');
+    expect(STYLE_CATALOG.find((style) => style.id === 'light')?.minPlan).toBe('free');
     expect(styleMinPlanLabel('max')).toBe('TVM MAX');
-    expect(styleUnlocked(FALLBACK_PLAN, 'cinema')).toBe(false);
-    expect(styleUnlocked({ ...FALLBACK_PLAN, styleIds: ['cinema'] }, 'cinema')).toBe(true);
+    expect(styleUnlocked(FALLBACK_PLAN, 'cinema')).toBe(true);
+    expect(styleUnlocked(FALLBACK_PLAN, 'eagles')).toBe(true);
+    expect(styleUnlocked({ ...FALLBACK_PLAN, styleIds: ['cinema'] }, 'gold')).toBe(false);
     expect(styleUnlocked({ ...FALLBACK_PLAN, developer: true }, 'gold')).toBe(true);
   });
 

@@ -45,7 +45,18 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   profile: { component: Profile, defaultFocus: 'realdebrid' },
   profiles: { component: Profiles, defaultFocus: 'profile-pick' },
   details: { component: Details, defaultFocus: 'back' },
-  settings: { component: Settings, defaultFocus: 'plan' },
+  settings: {
+    component: Settings,
+    defaultFocus: (params) => {
+      const section = params['section'];
+      if (section === 'appearance') return 'style-classic';
+      if (section === 'account') return 'plan';
+      if (section === 'livetv') return 'livetv';
+      if (section === 'device') return 'network';
+      if (section === 'system') return 'updates';
+      return 'cat-appearance';
+    },
+  },
   plans: { component: Plans, defaultFocus: 'plan-free' },
   checkout: {
     component: Checkout,
@@ -61,7 +72,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   diagnostics: { component: DiagnosticsModal, defaultFocus: 'close' },
   confirm: { component: ConfirmModal, defaultFocus: 'confirm' },
   notice: { component: NoticeModal, defaultFocus: 'close' },
-  search: { component: SearchModal, defaultFocus: 'close' },
+  search: { component: SearchModal, defaultFocus: 'key-a' },
   player: { component: Player, defaultFocus: 'pause' },
 };
 

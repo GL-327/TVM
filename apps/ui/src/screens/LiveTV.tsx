@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
+import { LoopingRow } from '../components/LoopingRow';
 import { Ribbon } from '../components/Ribbon';
 import { Skeleton } from '../components/Skeleton';
-import { fetchLive, type LiveStatus } from '../data/media';
+import { fetchLive, liveGroups, type LiveStatus } from '../data/media';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
@@ -16,6 +17,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const [status, setStatus] = useState<LiveStatus>(EMPTY);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [loading, setLoading] = useState(true);
+  const [group, setGroup] = useState('All');
 
   const load = (): void => {
     setLoading(true);
@@ -32,7 +34,16 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   }, []);
 
   const channels = status.channels;
+  const groups = useMemo(() => liveGroups(channels), [channels]);
+  const visible = useMemo(
+    () => (group === 'All' ? channels : channels.filter((channel) => (channel.group ?? '').trim() === group)),
+    [channels, group],
+  );
   const locked = !plan.liveTv && channels.length === 0;
+
+  useEffect(() => {
+    if (!groups.includes(group)) setGroup('All');
+  }, [group, groups]);
 
   return (
     <main className="page page--library">
@@ -98,18 +109,40 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
       ) : (
         <>
           <p className="page__lede">
-            {channels.length} channels
+            {visible.length} of {channels.length} channels
             {plan.liveTv ? ' including the MAX sports pack. Sample streams are for layout, not licensed matches.' : '.'}
           </p>
+          {groups.length > 1 && (
+            <LoopingRow className="live-cats" label="Categories">
+              {groups.map((name) => (
+                <FocusButton
+                  key={name}
+                  id={`live-cat-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                  className={`live-cats__chip${group === name ? ' live-cats__chip--on' : ''}`}
+                  onFocus={() => setGroup(name)}
+                  onSelect={() => setGroup(name)}
+                >
+                  {name}
+                </FocusButton>
+              ))}
+            </LoopingRow>
+          )}
           <div className="channel-grid" aria-label="Live channels">
-            {channels.map((channel) => (
+            {visible.map((channel) => (
               <FocusButton
                 key={channel.id}
                 id={channel.id.replaceAll(':', '-')}
                 className="app-tile"
                 onSelect={() => navigate.pushModal('player', { params: { id: channel.id } })}
               >
-                <span className="app-tile__mark" style={{ background: channel.group === 'Sports' ? '#e50914' : '#7c6cff' }} />
+                {channel.logo !== undefined && channel.logo !== '' ? (
+                  <img className="app-tile__logo" src={channel.logo} alt="" />
+                ) : (
+                  <span
+                    className="app-tile__mark"
+                    style={{ background: channel.group === 'Sports' ? 'var(--tvm-danger)' : 'var(--tvm-accent-blue)' }}
+                  />
+                )}
                 <strong>{channel.name}</strong>
                 <span>{channel.group ?? 'Live'}</span>
               </FocusButton>

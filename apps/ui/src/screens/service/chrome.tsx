@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { FocusButton } from '../../components/FocusButton';
+import { LoopingRow } from '../../components/LoopingRow';
 import type { AppHubPayload } from '../../data/apps';
 import { navTabs, type Lane } from './layouts';
 
@@ -15,19 +16,26 @@ function Tabs({
   lane: Lane;
   onLane: (lane: Lane) => void;
 }): React.JSX.Element {
+  const tabs = navTabs(layout).map((tab) => (
+    <FocusButton
+      key={tab.id}
+      id={`service-tab-${tab.id}`}
+      className={`service-nav__tab${lane === tab.id ? ' service-nav__tab--on' : ''}`}
+      onSelect={() => onLane(tab.id)}
+      onFocus={() => onLane(tab.id)}
+    >
+      {tab.label}
+    </FocusButton>
+  ));
+
+  if (layout === 'prime') {
+    return <div className="service-nav__tabs">{tabs}</div>;
+  }
+
   return (
-    <div className="service-nav__tabs">
-      {navTabs(layout).map((tab) => (
-        <FocusButton
-          key={tab.id}
-          id={`service-tab-${tab.id}`}
-          className={`service-nav__tab${lane === tab.id ? ' service-nav__tab--on' : ''}`}
-          onSelect={() => onLane(tab.id)}
-        >
-          {tab.label}
-        </FocusButton>
-      ))}
-    </div>
+    <LoopingRow className="service-nav__tabs" label="Categories">
+      {tabs}
+    </LoopingRow>
   );
 }
 

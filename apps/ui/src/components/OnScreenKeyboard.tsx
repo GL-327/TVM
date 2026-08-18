@@ -11,6 +11,7 @@ interface OnScreenKeyboardProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onClose?: () => void;
   idPrefix?: string;
 }
 
@@ -18,6 +19,7 @@ export function OnScreenKeyboard({
   value,
   onChange,
   onSubmit,
+  onClose,
   idPrefix = 'key',
 }: OnScreenKeyboardProps): React.JSX.Element {
   return (
@@ -53,6 +55,11 @@ export function OnScreenKeyboard({
         <FocusButton id={`${idPrefix}-search`} className="osk__key osk__key--wide" variant="primary" onSelect={onSubmit}>
           Search
         </FocusButton>
+        {onClose !== undefined && (
+          <FocusButton id={`${idPrefix}-close`} className="osk__key osk__key--wide" onSelect={onClose}>
+            Close
+          </FocusButton>
+        )}
       </div>
     </section>
   );

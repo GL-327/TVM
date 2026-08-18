@@ -8,6 +8,13 @@ export function shouldLoopRail(count: number): boolean {
   return count >= 2;
 }
 
+/** Triple clones only when one set is wider than the viewport. Otherwise the copies sit on-screen as extra shapes. */
+export function contentOverflows(scrollWidth: number, clientWidth: number, copies = 1): boolean {
+  if (clientWidth <= 0 || scrollWidth <= 0) return false;
+  const setWidth = copies > 1 ? scrollWidth / copies : scrollWidth;
+  return setWidth > clientWidth + 8;
+}
+
 export function loopSetWidth(scrollWidth: number, copies = LOOP_COPIES): number {
   if (copies < 2 || scrollWidth <= 0) return 0;
   return scrollWidth / copies;
@@ -18,17 +25,26 @@ export function loopPitch(setWidth: number, count: number): number {
   return setWidth / count;
 }
 
-/** Keep scrollLeft inside the middle copy so the seam is never on screen. */
+/**
+ * Keep scroll inside the cloned strip, but not so tightly that centering the
+ * first or last card teleports to the other end (that is the snap-back).
+ */
 export function normalizeLoopScroll(scrollLeft: number, setWidth: number): number {
   if (setWidth <= 1) return scrollLeft;
   let x = scrollLeft;
-  while (x < setWidth * 0.5) x += setWidth;
-  while (x >= setWidth * 1.5) x -= setWidth;
+  while (x < setWidth * 0.2) x += setWidth;
+  while (x >= setWidth * 2.2) x -= setWidth;
   return x;
 }
 
 export function conveyorWrapDelta(direction: 'left' | 'right', pitch: number): number {
   return direction === 'right' ? pitch : -pitch;
+}
+
+/** After sliding one card past the seam, land on the same card in the middle copy. */
+export function conveyorAfterWrap(scrollLeft: number, direction: 'left' | 'right', setWidth: number): number {
+  if (setWidth <= 1) return scrollLeft;
+  return direction === 'left' ? scrollLeft + setWidth : scrollLeft - setWidth;
 }
 
 const wrapping = new WeakSet<HTMLElement>();
@@ -49,10 +65,12 @@ export function wrapLoopingTrack(
   wrapping.add(track);
   track.dataset.wrapping = 'true';
   scrollAxis(track, 'x', track.scrollLeft + conveyorWrapDelta(direction, pitch), () => {
-    jumpAxis(track, 'x', normalizeLoopScroll(track.scrollLeft, setWidth));
-    wrapping.delete(track);
-    delete track.dataset.wrapping;
+    jumpAxis(track, 'x', conveyorAfterWrap(track.scrollLeft, direction, setWidth));
     thenFocus();
+    window.requestAnimationFrame(() => {
+      wrapping.delete(track);
+      delete track.dataset.wrapping;
+    });
   });
 }
 
