@@ -22,7 +22,8 @@ describe('looping rail', () => {
     expect(contentOverflows(900, 1920, 1)).toBe(false);
     expect(contentOverflows(2700, 1920, 3)).toBe(false);
     expect(contentOverflows(2400, 800, 1)).toBe(true);
-    expect(contentOverflows(2400, 800, 3)).toBe(true);
+    expect(contentOverflows(2700, 800, 3)).toBe(true);
+    expect(contentOverflows(2400, 800, 3)).toBe(false);
   });
 
   it('treats the track as three equal copies', () => {
