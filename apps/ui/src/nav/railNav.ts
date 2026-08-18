@@ -10,7 +10,7 @@
 import { canonicalFocusId, isLoopClone, isWrapAcross } from './loopingRail';
 
 export const VERTICAL_ROW_SELECTOR =
-  '.stage__copy, .ribbon, .stream-chrome, .rail__track, .service-nav, .service-hero__actions, .service-side, .live-cats, .settings-list';
+  '.stage__copy, .ribbon, .stream-chrome, .rail__track, .service-nav, .service-hero__actions, .service-side';
 
 export const HORIZONTAL_TRACK_SELECTOR =
   '.rail__track, .ribbon, .service-nav__tabs, .live-cats, .search-results, .season-row';
