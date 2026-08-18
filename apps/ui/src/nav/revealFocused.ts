@@ -113,7 +113,7 @@ export function rowCameraTop(scrollTop: number, railTop: number, viewTop: number
 }
 
 export function revealFocused(element: HTMLElement): void {
-  const row = element.closest<HTMLElement>('.rail__track, .ribbon');
+  const row = element.closest<HTMLElement>('.rail__track, .ribbon, .live-cats, .service-nav__tabs');
   if (row !== null) centerInRow(row, element);
 
   const scroller = element.closest<HTMLElement>('.home, .page, .details');

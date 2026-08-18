@@ -206,7 +206,10 @@ export function createCatalogService(options: CatalogServiceOptions) {
   const metaInflight = new Map<string, Promise<TitleMeta | null>>();
 
   const fetchCatalog = async (path: string, kind: 'movie' | 'series'): Promise<MediaItem[]> => {
-    const response = await fetchImpl(`${CINEMETA}${path}`, { signal: AbortSignal.timeout(FETCH_MS) });
+    const response = await fetchImpl(`${CINEMETA}${path}`, {
+      signal: AbortSignal.timeout(FETCH_MS),
+      headers: { accept: 'application/json', 'user-agent': 'tvm-core' },
+    });
     if (!response.ok) return [];
     const body = (await response.json()) as { metas?: Array<Record<string, unknown>> };
     return (body.metas ?? [])
@@ -353,10 +356,12 @@ export function createCatalogService(options: CatalogServiceOptions) {
       const needle = query.trim();
       if (needle.length < 2) return [];
       const encoded = encodeURIComponent(needle);
-      const [movies, series] = await Promise.all([
-        fetchCatalog(`/catalog/movie/top/search=${encoded}.json`, 'movie'),
-        fetchCatalog(`/catalog/series/top/search=${encoded}.json`, 'series'),
-      ]);
+      const read = async (kind: 'movie' | 'series'): Promise<MediaItem[]> => {
+        const primary = await fetchCatalog(`/catalog/${kind}/top/search=${encoded}.json`, kind);
+        if (primary.length > 0) return primary;
+        return fetchCatalog(`/catalog/${kind}/imdbRating/search=${encoded}.json`, kind);
+      };
+      const [movies, series] = await Promise.all([read('movie'), read('series')]);
       return dedupeItems([...movies, ...series]);
     },
 

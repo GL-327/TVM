@@ -25,6 +25,9 @@
   display: flex;
   gap: 0.35rem;
   flex: 1;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .service-nav .tvm-button.service-nav__tab,

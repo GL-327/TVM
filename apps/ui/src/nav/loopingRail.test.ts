@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalFocusId,
+  conveyorAfterWrap,
   conveyorWrapDelta,
   isWrapAcross,
   loopPitch,
@@ -21,10 +22,11 @@ describe('looping rail', () => {
     expect(loopPitch(300, 6)).toBe(50);
   });
 
-  it('teleports scroll back into the middle copy', () => {
+  it('teleports only when a clone copy is actually on screen', () => {
     expect(normalizeLoopScroll(40, 300)).toBe(340);
-    expect(normalizeLoopScroll(620, 300)).toBe(320);
+    expect(normalizeLoopScroll(680, 300)).toBe(380);
     expect(normalizeLoopScroll(300, 300)).toBe(300);
+    expect(normalizeLoopScroll(500, 300)).toBe(500);
   });
 
   it('keeps wrap motion in the same direction', () => {
@@ -33,6 +35,11 @@ describe('looping rail', () => {
     expect(isWrapAcross(4, 'right', 5)).toBe(true);
     expect(isWrapAcross(0, 'left', 5)).toBe(true);
     expect(isWrapAcross(1, 'right', 5)).toBe(false);
+  });
+
+  it('lands wrap on the matching card in the middle copy', () => {
+    expect(conveyorAfterWrap(250, 'left', 300)).toBe(550);
+    expect(conveyorAfterWrap(610, 'right', 300)).toBe(310);
   });
 
   it('maps conveyor clones back to the focusable copy', () => {

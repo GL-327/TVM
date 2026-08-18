@@ -679,11 +679,30 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     async search(query: string): Promise<MediaItem[]> {
       const needle = query.trim();
       if (needle === '') return [];
+      const q = needle.toLowerCase();
+      const hits: MediaItem[] = [];
       try {
-        return await catalog.search(needle);
+        hits.push(...(await catalog.search(needle)));
       } catch {
-        return [];
+        // Remote search is best-effort.
       }
+      try {
+        const bundle = await catalog.bundle();
+        hits.push(...bundle.catalog.filter((item) => item.title.toLowerCase().includes(q)));
+      } catch {
+        // Cached catalog is optional.
+      }
+      try {
+        const owned = await loadLibrary();
+        hits.push(
+          ...owned.filter((item) =>
+            [item.title, item.showTitle ?? '', item.filename ?? ''].some((name) => name.toLowerCase().includes(q)),
+          ),
+        );
+      } catch {
+        // Library search is optional.
+      }
+      return dedupeItems(hits).slice(0, 48);
     },
 
     async play(input: {

@@ -56,6 +56,8 @@ export interface LiveChannel {
   name: string;
   url: string;
   group?: string;
+  logo?: string;
+  headers?: Record<string, string>;
 }
 
 export interface LiveStatus {
@@ -75,6 +77,7 @@ export type PlaybackResult =
       startAt?: number;
       fallbackUrl?: string;
       fallbackEngine?: 'html5' | 'native';
+      headers?: Record<string, string>;
     }
   | { kind: 'unavailable'; reason: string };
 
@@ -281,10 +284,24 @@ export async function fetchMedia(id: string): Promise<MediaItem | null> {
 }
 
 export async function searchLibrary(query: string): Promise<MediaItem[]> {
-  const response = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
-  if (!response.ok) return [];
-  const body = (await response.json()) as { items?: MediaItem[] };
-  return body.items ?? [];
+  const needle = query.trim();
+  if (needle.length < 2) return [];
+  const local = TITLES.filter((title) => {
+    const hay = `${title.title} ${title.genres.join(' ')}`.toLowerCase();
+    return hay.includes(needle.toLowerCase());
+  })
+    .slice(0, 24)
+    .map(toMediaItem);
+  try {
+    const response = await apiFetch(`/api/search?q=${encodeURIComponent(needle)}`);
+    if (!response.ok) return local;
+    const body = (await response.json()) as { items?: MediaItem[] };
+    const remote = body.items ?? [];
+    const seen = new Set(remote.map((item) => item.id));
+    return [...remote, ...local.filter((item) => !seen.has(item.id))].slice(0, 48);
+  } catch {
+    return local;
+  }
 }
 
 export async function requestPlayback(input: {
@@ -366,6 +383,16 @@ export async function removeWatchlist(id: string): Promise<MediaItem[]> {
   });
   const body = (await response.json()) as { items?: MediaItem[] };
   return body.items ?? [];
+}
+
+export function liveGroups(channels: readonly LiveChannel[]): string[] {
+  const seen = new Set<string>();
+  for (const channel of channels) {
+    const group = (channel.group ?? '').trim();
+    if (group !== '') seen.add(group);
+  }
+  if (seen.size === 0) return ['All'];
+  return ['All', ...seen];
 }
 
 export async function fetchLive(): Promise<LiveStatus | null> {

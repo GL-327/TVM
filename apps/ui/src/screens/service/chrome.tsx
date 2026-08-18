@@ -23,6 +23,7 @@ function Tabs({
           id={`service-tab-${tab.id}`}
           className={`service-nav__tab${lane === tab.id ? ' service-nav__tab--on' : ''}`}
           onSelect={() => onLane(tab.id)}
+          onFocus={() => onLane(tab.id)}
         >
           {tab.label}
         </FocusButton>

@@ -3,12 +3,25 @@ export type StyleId =
   | 'classic'
   | 'cinema'
   | 'midnight'
+  | 'light'
+  | 'ocean'
+  | 'ice'
   | 'ember'
   | 'forest'
   | 'slate'
   | 'contrast'
+  | 'rose'
+  | 'violet'
+  | 'sand'
+  | 'copper'
   | 'gold'
-  | 'aurora';
+  | 'aurora'
+  | 'eagles'
+  | 'crimson'
+  | 'royal'
+  | 'sunset'
+  | 'neon'
+  | 'graphite';
 export type StreamTier = 'basic' | 'premium' | 'luxury';
 
 export interface StyleSpec {
@@ -21,12 +34,25 @@ export const STYLE_CATALOG: readonly StyleSpec[] = [
   { id: 'classic', name: 'Classic', minPlan: 'premium' },
   { id: 'cinema', name: 'Cinema', minPlan: 'premium' },
   { id: 'midnight', name: 'Midnight', minPlan: 'premium' },
+  { id: 'light', name: 'Light', minPlan: 'premium' },
+  { id: 'ocean', name: 'Ocean', minPlan: 'premium' },
+  { id: 'ice', name: 'Ice', minPlan: 'premium' },
   { id: 'ember', name: 'Ember', minPlan: 'ultra' },
   { id: 'forest', name: 'Forest', minPlan: 'ultra' },
   { id: 'slate', name: 'Slate', minPlan: 'ultra' },
   { id: 'contrast', name: 'High contrast', minPlan: 'ultra' },
+  { id: 'rose', name: 'Rose', minPlan: 'ultra' },
+  { id: 'violet', name: 'Violet', minPlan: 'ultra' },
+  { id: 'sand', name: 'Sand', minPlan: 'ultra' },
+  { id: 'copper', name: 'Copper', minPlan: 'ultra' },
   { id: 'gold', name: 'MAX Gold', minPlan: 'max' },
   { id: 'aurora', name: 'Aurora', minPlan: 'max' },
+  { id: 'eagles', name: 'Eagles', minPlan: 'max' },
+  { id: 'crimson', name: 'Crimson', minPlan: 'max' },
+  { id: 'royal', name: 'Royal', minPlan: 'max' },
+  { id: 'sunset', name: 'Sunset', minPlan: 'max' },
+  { id: 'neon', name: 'Neon', minPlan: 'max' },
+  { id: 'graphite', name: 'Graphite', minPlan: 'max' },
 ];
 
 export interface PlanDefinition {

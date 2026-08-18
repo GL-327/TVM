@@ -16,6 +16,9 @@ interface FocusButtonProps {
   detail?: string;
   disabled?: boolean;
   onArrowPress?: (direction: string) => boolean;
+  /** Conveyor clone index. Copy 1 is the focusable original. */
+  loopCopy?: number;
+  onFocus?: () => void;
 }
 
 /**
@@ -34,13 +37,18 @@ export function FocusButton({
   detail,
   disabled = false,
   onArrowPress,
+  loopCopy = 1,
+  onFocus,
 }: FocusButtonProps): React.JSX.Element {
-  const focusKey = useScopedFocusKey(id);
+  const clone = loopCopy !== 1;
+  const focusId = clone ? `${id}--${loopCopy}` : id;
+  const focusKey = useScopedFocusKey(focusId);
   const { ref, focused } = useFocusable<object, HTMLButtonElement>({
     focusKey,
-    focusable: !disabled,
+    focusable: !clone && !disabled,
     onArrowPress,
     onFocus: () => {
+      onFocus?.();
       const node = ref.current;
       if (node !== null) requestAnimationFrame(() => revealFocused(node));
     },
@@ -56,8 +64,10 @@ export function FocusButton({
       // Kept out of the tab order: the appliance is driven by a D-pad, and
       // the focus engine moves focus itself.
       tabIndex={-1}
-      data-focus-id={id}
+      data-focus-id={focusId}
       data-focused={focused ? 'true' : undefined}
+      data-loop-clone={clone ? 'true' : undefined}
+      data-loop-copy={String(loopCopy)}
       disabled={disabled}
       onClick={onSelect}
     >

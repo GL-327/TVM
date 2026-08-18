@@ -23,11 +23,17 @@ export function SearchModal(_props: ScreenProps): React.JSX.Element {
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      void searchLibrary(trimmed).then((items) => {
-        if (cancelled) return;
-        setResults(items);
-        setMessage(items.length === 0 ? 'Nothing matched that search.' : `${items.length} titles`);
-      });
+      void searchLibrary(trimmed)
+        .then((items) => {
+          if (cancelled) return;
+          setResults(items);
+          setMessage(items.length === 0 ? 'Nothing matched that search.' : `${items.length} titles`);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResults([]);
+          setMessage('Search could not run. Check that TVM is running, then try again.');
+        });
     }, 180);
     return () => {
       cancelled = true;

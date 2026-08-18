@@ -46,10 +46,17 @@ body,
 .app {
   position: relative;
   isolation: isolate;
-  background: #000;
+  background: var(--tvm-bg-deep);
 }
 
-.screen-layer,
+.screen-layer[data-nav='push'] {
+  animation: view-push var(--tvm-motion-slow) var(--tvm-motion-ease) both;
+}
+
+.screen-layer[data-nav='pop'] {
+  animation: none;
+}
+
 .modal-layer {
   animation: view-enter var(--tvm-motion-base) var(--tvm-motion-ease) both;
 }
@@ -65,7 +72,7 @@ body,
   gap: var(--tvm-space-4);
   padding: var(--tvm-safe-y) var(--tvm-safe-x);
   overflow: hidden;
-  background: #0b0b0b;
+  background: var(--tvm-bg);
 }
 
 .page--library,
@@ -134,8 +141,7 @@ body,
   overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
-  background: #000;
-  scroll-padding-top: 5.5rem;
+  background: var(--tvm-bg-deep);
 }
 
 .stage {
@@ -166,9 +172,7 @@ body,
 }
 
 .stage__art--fallback {
-  background:
-    radial-gradient(70% 80% at 70% 20%, hsl(var(--poster-hue, 260) 55% 38%), transparent 62%),
-    linear-gradient(160deg, #14183a, #070914 70%);
+  background: linear-gradient(165deg, var(--tvm-bg-elevated), var(--tvm-bg-deep));
 }
 
 .stage__vignette {
@@ -382,7 +386,7 @@ body,
   gap: 0.3rem;
   padding: 0.5rem var(--tvm-safe-x) 0.65rem;
   border-bottom: 1px solid var(--tvm-border-soft);
-  background: linear-gradient(180deg, rgba(7, 9, 20, 0.62) 0%, rgba(7, 9, 20, 0.96) 100%);
+  background: color-mix(in srgb, var(--tvm-bg-deep) 62%, transparent);
   backdrop-filter: blur(1rem);
 }
 
@@ -418,7 +422,7 @@ body,
   flex-direction: column;
   gap: 0.85rem;
   padding: 0.15rem 0 4rem;
-  background: #000;
+  background: var(--tvm-bg-deep);
 }
 
 /* Top bar (settings / updates) -------------------------------------------- */
@@ -490,7 +494,7 @@ body,
   height: 16.5rem;
   overflow: hidden;
   border-radius: var(--tvm-radius-lg);
-  background: linear-gradient(160deg, hsl(var(--poster-hue, 28) 40% 28%), hsl(var(--poster-hue, 28) 55% 12%));
+  background: linear-gradient(160deg, var(--tvm-bg-elevated), var(--tvm-bg-deep));
   box-shadow: var(--tvm-shadow-card);
 }
 
@@ -656,7 +660,7 @@ body,
   aspect-ratio: 2 / 3;
   border: 1px solid var(--tvm-border-soft);
   border-radius: var(--tvm-radius-sm);
-  background: linear-gradient(160deg, hsl(var(--poster-hue, 245) 42% 32%), hsl(var(--poster-hue, 245) 50% 12%));
+  background: linear-gradient(160deg, var(--tvm-bg-elevated), var(--tvm-bg-deep));
   box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.45);
   filter: brightness(0.82);
   transform: scale(1);
@@ -992,9 +996,7 @@ body,
   padding: var(--tvm-space-5);
   border: 1px solid var(--tvm-border);
   border-radius: var(--tvm-radius-lg);
-  background:
-    radial-gradient(75% 85% at 100% 0%, rgba(91, 77, 190, 0.14), transparent 65%),
-    var(--tvm-bg-elevated);
+  background: var(--tvm-bg-elevated);
   box-shadow: var(--tvm-shadow-card);
 }
 
@@ -1078,6 +1080,18 @@ body,
   }
 }
 
+@keyframes view-push {
+  from {
+    opacity: 0;
+    transform: translateX(1.1rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes scrim-in {
   from {
     opacity: 0;
@@ -1137,9 +1151,7 @@ body,
   padding: var(--tvm-space-5);
   border: 1px solid var(--tvm-border-soft);
   border-radius: var(--tvm-radius-lg);
-  background:
-    radial-gradient(80% 120% at 100% 0%, rgba(94, 72, 198, 0.18), transparent 64%),
-    var(--tvm-surface-glass);
+  background: var(--tvm-surface-glass);
   box-shadow: var(--tvm-shadow-card);
 }
 
@@ -2385,4 +2397,103 @@ html.desktop-shell .token-field__input {
 .live-lock {
   max-width: 36rem;
 }
+
+.live-cats {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding: 0.15rem 0 0.85rem;
+  scrollbar-width: none;
+}
+
+.live-cats::-webkit-scrollbar {
+  display: none;
+}
+
+.live-cats__chip {
+  flex: 0 0 auto;
+  min-height: 2.4rem;
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  background: var(--tvm-surface);
+}
+
+.live-cats__chip--on,
+.live-cats__chip[data-focused='true'] {
+  background: var(--tvm-accent);
+  color: var(--tvm-accent-ink);
+}
+
+.app-tile__logo {
+  display: block;
+  width: 2.4rem;
+  height: 1.5rem;
+  object-fit: contain;
+  margin-bottom: 0.35rem;
+}
+
+.settings-cat {
+  width: 100%;
+}
+
+.settings-list--nested {
+  margin: 0.15rem 0 0.75rem 0.4rem;
+  padding-left: 0.75rem;
+  border-left: 0.16rem solid var(--tvm-border-soft);
+}
+
+.theme-swatch[data-theme='classic'] { background: #00a8e1; }
+.theme-swatch[data-theme='cinema'] { background: #d4af37; }
+.theme-swatch[data-theme='midnight'] { background: #0a1628; box-shadow: inset 0 0 0 0.12rem #c0c8d8; }
+.theme-swatch[data-theme='light'] { background: #e4dfd6; box-shadow: inset 0 0 0 0.12rem #2a241c; }
+.theme-swatch[data-theme='ocean'] { background: #0077be; }
+.theme-swatch[data-theme='ice'] { background: #a5f2f3; }
+.theme-swatch[data-theme='ember'] { background: #ff4500; }
+.theme-swatch[data-theme='forest'] { background: #228b22; }
+.theme-swatch[data-theme='slate'] { background: #708090; }
+.theme-swatch[data-theme='contrast'] { background: #000; box-shadow: inset 0 0 0 0.12rem #ffe14a; }
+.theme-swatch[data-theme='rose'] { background: #c43b6e; }
+.theme-swatch[data-theme='violet'] { background: #7f00ff; }
+.theme-swatch[data-theme='sand'] { background: #c2b280; }
+.theme-swatch[data-theme='copper'] { background: #b87333; }
+.theme-swatch[data-theme='gold'] { background: #ffd700; }
+.theme-swatch[data-theme='aurora'] { background: #00ffc8; }
+.theme-swatch[data-theme='eagles'] { background: #98ff98; box-shadow: inset 0 0 0 0.28rem #001f5b; }
+.theme-swatch[data-theme='crimson'] { background: #dc143c; }
+.theme-swatch[data-theme='royal'] { background: #002366; }
+.theme-swatch[data-theme='sunset'] { background: #ff5e3a; }
+.theme-swatch[data-theme='neon'] { background: #39ff14; }
+.theme-swatch[data-theme='graphite'] { background: #4b5563; }
+
+.theme-row .tvm-button__label {
+  gap: 0.85rem;
+}
+
+html[data-style='light'] .tvm-button--primary {
+  background: #2a241c;
+  color: #f3eee6;
+}
+
+html[data-style='light'] .dock,
+html[data-style='light'] .ribbon {
+  background: color-mix(in srgb, var(--tvm-bg) 88%, transparent);
+}
+
+html[data-style='light'] .token-field__input {
+  background: var(--tvm-surface);
+  color: var(--tvm-text);
+}
+
+html[data-style='light'] .panel-scrim {
+  background: rgba(42, 36, 28, 0.45);
+}
+
+html[data-style='light'] .home,
+html[data-style='light'] .details,
+html[data-style='light'] .player,
+html[data-style='light'] .stream-page {
+  color: #f5f5f5;
+}
+
 

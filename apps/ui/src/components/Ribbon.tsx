@@ -4,6 +4,7 @@ import { applyPlanClass, fetchPlan, mockAppLocked } from '../data/plan';
 import { TVM_STREAM, type AppTile } from '../data/catalog';
 import { enterTvmStream } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
+import { LoopingRow } from './LoopingRow';
 import { AppCard } from './AppCard';
 import { FocusButton } from './FocusButton';
 import {
@@ -42,7 +43,7 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
   const visible = apps;
 
   return (
-    <nav className="ribbon" aria-label="TVM">
+    <LoopingRow className="ribbon" label="TVM">
       <FocusButton
         id="profile"
         className={`ribbon__icon${active === 'profile' ? ' ribbon__icon--on' : ''}`}
@@ -140,6 +141,6 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
         </span>
         <span className="ribbon__label">Settings</span>
       </FocusButton>
-    </nav>
+    </LoopingRow>
   );
 }

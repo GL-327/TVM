@@ -362,7 +362,7 @@ test('a modal traps focus and Back closes the modal', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="search"]')).toBeVisible();
   await waitForFocus(page);
-  expect(await focusedId(page)).toBe('close');
+  expect(await focusedId(page)).toBe('query');
 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowDown');
@@ -546,6 +546,10 @@ test('Settings opens Plans', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
   await waitForFocus(page);
+  expect(await focusedId(page)).toBe('cat-appearance');
+  await pressUntil(page, 'cat-account');
+  await page.keyboard.press('Enter');
+  await waitForFocus(page);
   expect(await focusedId(page)).toBe('plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
@@ -557,6 +561,8 @@ test('Free plan confirms without a card', async ({ page }) => {
   await pressUntil(page, 'settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await pressUntil(page, 'cat-account');
+  await page.keyboard.press('Enter');
   await waitForFocus(page);
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
@@ -575,6 +581,8 @@ test('Developer rejects a wrong password', async ({ page }) => {
   await pressUntil(page, 'settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await pressUntil(page, 'cat-account');
+  await page.keyboard.press('Enter');
   await pressUntil(page, 'developer');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="developer-unlock"]')).toBeVisible();

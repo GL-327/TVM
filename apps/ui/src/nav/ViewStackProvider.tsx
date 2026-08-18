@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import {
   activeEntry,
@@ -88,6 +88,12 @@ export function ViewStackProvider(): React.JSX.Element {
 
 function ViewStack({ root }: { root: string }): React.JSX.Element {
   const [state, dispatch] = useReducer(viewStackReducer, root, createViewStack);
+  const screenDepth = state.entries.reduce((count, entry) => count + (entry.kind === 'screen' ? 1 : 0), 0);
+  const prevDepth = useRef(0);
+  const navDirection = screenDepth < prevDepth.current ? 'pop' : 'push';
+  useLayoutEffect(() => {
+    prevDepth.current = screenDepth;
+  }, [screenDepth]);
 
   // Leaving a screen records where focus was, so returning restores it. Doing
   // this inside navigate means no screen has to remember to do it.
@@ -267,7 +273,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
             the tab order and assistive technology; isFocusBoundary on the
             modal keeps the D-pad out. */}
         <div className="app__screen" inert={modalOpen}>
-          <EntryHost key={screen.key} entry={screen} isModal={false} />
+          <EntryHost key={screen.key} entry={screen} isModal={false} nav={navDirection} />
         </div>
 
         {modals.map((modal) => (
@@ -281,9 +287,10 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
 interface EntryHostProps {
   entry: ViewEntry;
   isModal: boolean;
+  nav?: 'push' | 'pop';
 }
 
-function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
+function EntryHost({ entry, isModal, nav = 'push' }: EntryHostProps): React.JSX.Element {
   const definition = screenDefinition(entry.name);
   const focusId =
     typeof definition.defaultFocus === 'function' ? definition.defaultFocus(entry.params) : definition.defaultFocus;
@@ -308,6 +315,7 @@ function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
           ref={ref}
           className={isModal ? 'modal-layer' : 'screen-layer'}
           data-screen={entry.name}
+          data-nav={isModal ? 'push' : nav}
           data-focus-scope={entry.key}
         >
           <Screen params={entry.params} />

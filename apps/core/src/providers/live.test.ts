@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createLiveService, parseM3u } from './live.ts';
+import { createLiveService, liveGroups, parseM3u } from './live.ts';
 
 describe('parseM3u', () => {
   it('reads names, groups and http(s) URLs', () => {
@@ -20,8 +20,44 @@ javascript:alert(1)
     ]);
   });
 
-  it('ignores comments and empty lines', () => {
-    expect(parseM3u('#EXTM3U\n\n# comment\n')).toEqual([]);
+  it('reads unquoted attributes, EXTGRP, relative URLs and VLC headers', () => {
+    const channels = parseM3u(
+      `#EXTM3U
+#EXTINF:-1 tvg-name=CNN group-title=News tvg-logo=https://example.com/cnn.png,CNN HD
+https://cdn.example.com/cnn.m3u8
+#EXTGRP:Sports
+#EXTVLCOPT:http-user-agent=VLC/3.0
+#EXTINF:-1,Local Match
+/live/match.ts
+#EXTINF:-1 group-title="UK",BBC
+https://example.com/bbc.ts|User-Agent=TVM&Referer=https://example.com/
+`,
+      'https://provider.example/playlist.m3u',
+    );
+    expect(channels).toEqual([
+      {
+        id: 'live:0',
+        name: 'CNN',
+        url: 'https://cdn.example.com/cnn.m3u8',
+        group: 'News',
+        logo: 'https://example.com/cnn.png',
+      },
+      {
+        id: 'live:1',
+        name: 'Local Match',
+        url: 'https://provider.example/live/match.ts',
+        group: 'Sports',
+        headers: { 'User-Agent': 'VLC/3.0' },
+      },
+      {
+        id: 'live:2',
+        name: 'BBC',
+        url: 'https://example.com/bbc.ts',
+        group: 'UK',
+        headers: { 'User-Agent': 'TVM', Referer: 'https://example.com/' },
+      },
+    ]);
+    expect(liveGroups(channels)).toEqual(['All', 'News', 'Sports', 'UK']);
   });
 });
 
@@ -71,7 +107,7 @@ describe('live service', () => {
       title: 'BBC One',
       filename: 'BBC One',
       mimeType: 'application/vnd.apple.mpegurl',
-      engine: 'native',
+      engine: 'html5',
     });
   });
 });

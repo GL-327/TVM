@@ -47,7 +47,7 @@ sub onStatus()
   channels = aaArray(status, "channels")
   cols = 4
   i = 0
-  while i < channels.Count() and i < 24
+  while i < channels.Count() and i < 80
     ch = channels[i]
     m.channels.Push(ch)
     btn = CreateObject("roSGNode", "FocusButton")
