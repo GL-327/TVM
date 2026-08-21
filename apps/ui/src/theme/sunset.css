@@ -1,0 +1,78 @@
+/*
+ * Sunset — peach sky over a warm harbour.
+ */
+
+[data-theme='sunset'] {
+  color-scheme: dark;
+
+  --tvm-bg: #4a2030;
+  --tvm-bg-deep: #1c0c14;
+  --tvm-bg-elevated: #623040;
+  --tvm-surface: #7a3848;
+  --tvm-surface-hover: #8e4454;
+  --tvm-surface-glass: rgba(74, 32, 48, 0.8);
+  --tvm-border: #ffb070;
+  --tvm-border-soft: rgba(255, 214, 170, 0.3);
+
+  --tvm-text: #fff6ee;
+  --tvm-text-muted: #ffd7b0;
+  --tvm-text-faint: #e0b090;
+
+  --tvm-accent: #ffb070;
+  --tvm-accent-strong: #ffe0b0;
+  --tvm-accent-blue: #ff8a6a;
+  --tvm-accent-ink: #1c0c14;
+  --tvm-mark: #ff8a6a;
+  --tvm-mark-glow: rgba(255, 138, 106, 0.5);
+
+  --tvm-danger: #ff7b8c;
+  --tvm-success: #7dffb0;
+  --tvm-warning: #ffd45c;
+  --tvm-info: #ffb070;
+
+  --tvm-focus-ring-color: #ffe0b0;
+  --tvm-shadow-card: 0 0.8rem 2rem rgba(28, 12, 20, 0.46);
+  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(255, 138, 106, 0.28);
+
+  --tvm-scene-sky: #ff8a5c;
+  --tvm-scene-sky-mid: #ffb070;
+  --tvm-scene-horizon: #ffe3b8;
+  --tvm-scene-sea: #4a2848;
+  --tvm-scene-sea-deep: #1c0c14;
+  --tvm-scene-land: #8a4050;
+  --tvm-scene-land-far: #623040;
+  --tvm-scene-foam: #fff0dc;
+  --tvm-scene-sun: #ffe9a0;
+  --tvm-scene-opacity: 0.48;
+  --tvm-scene-grain: 0.04;
+}
+
+[data-theme='sunset'] .app {
+  background: var(--tvm-bg);
+}
+
+[data-theme='sunset'] .home,
+[data-theme='sunset'] .page,
+[data-theme='sunset'] .stream-page {
+  background: var(--tvm-bg);
+}
+
+[data-theme='sunset'] .ribbon,
+[data-theme='sunset'] .search-pill__panel {
+  background: color-mix(in srgb, var(--tvm-surface) 78%, transparent);
+}
+
+[data-theme='sunset'] .ribbon__icon[data-focused='true'],
+[data-theme='sunset'] .stream-chrome .tvm-button[data-focused='true'] {
+  background: color-mix(in srgb, var(--tvm-accent) 26%, transparent);
+}
+
+[data-theme='sunset'] .loading-state--plate {
+  background:
+    radial-gradient(48% 42% at 50% 46%, rgba(255, 176, 112, 0.32), transparent 62%),
+    var(--tvm-bg-deep);
+}
+
+[data-theme='sunset'] .player {
+  background: #000;
+}

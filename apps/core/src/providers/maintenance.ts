@@ -6,10 +6,13 @@ import {
   billingPath,
   usagePath,
   livePlaylistPath,
+  livePicksPath,
   planPath,
+  devUnlockFlagPath,
   profilesPath,
   progressPath,
   rdTokenPath,
+  xtreamPath,
   watchlistPath,
   poolRdPath,
   devUnlockPath,
@@ -38,11 +41,14 @@ export function clearCacheDir(dataDir: string): void {
 export function factoryResetDir(dataDir: string): void {
   clearCacheDir(dataDir);
   remove(rdTokenPath(dataDir));
+  remove(xtreamPath(dataDir));
   remove(profilesPath(dataDir));
   remove(progressPath(dataDir));
   remove(watchlistPath(dataDir));
   remove(livePlaylistPath(dataDir));
+  remove(livePicksPath(dataDir));
   remove(planPath(dataDir));
+  remove(devUnlockFlagPath(dataDir));
   remove(entitlementPath(dataDir));
   remove(billingPath(dataDir));
   remove(usagePath(dataDir));

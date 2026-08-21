@@ -34,6 +34,9 @@ export interface PlanDefinition {
   name: string;
   price: string;
   pricePence: number;
+  basePrice?: string;
+  basePricePence?: number;
+  liveTvAddonPence?: number;
   mocks: boolean;
   liveTv: boolean;
   extras: string[];
@@ -44,6 +47,12 @@ export interface PlanStatus {
   name: string;
   price: string;
   pricePence: number;
+  basePrice: string;
+  basePricePence: number;
+  liveTvAddonPence: number;
+  liveTvOptional: boolean;
+  synthwave: boolean;
+  synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
   ads: boolean;
@@ -71,6 +80,12 @@ export const FALLBACK_PLAN: PlanStatus = {
   name: 'TVM Free',
   price: 'Free',
   pricePence: 0,
+  basePrice: 'Free',
+  basePricePence: 0,
+  liveTvAddonPence: 0,
+  liveTvOptional: false,
+  synthwave: false,
+  synthwaveAddonPence: 499,
   mocks: false,
   liveTv: false,
   ads: true,
@@ -122,6 +137,8 @@ export async function checkoutPlan(input: {
   number?: string;
   expiry?: string;
   cvc?: string;
+  liveTv?: boolean;
+  synthwave?: boolean;
 }): Promise<PlanStatus> {
   const response = await fetch('/api/billing/checkout', {
     method: 'POST',
@@ -141,6 +158,28 @@ export async function savePlan(id: PlanId): Promise<PlanStatus> {
   });
   const body = (await response.json()) as Partial<PlanStatus> & { error?: string };
   if (!response.ok) throw new Error(body.error ?? 'Plan was not saved.');
+  return asPlan(body);
+}
+
+export async function saveLiveTv(enabled: boolean): Promise<PlanStatus> {
+  const response = await fetch('/api/plan/live-tv', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  const body = (await response.json()) as Partial<PlanStatus> & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? 'Live TV was not updated.');
+  return asPlan(body);
+}
+
+export async function saveSynthwave(enabled: boolean): Promise<PlanStatus> {
+  const response = await fetch('/api/plan/synthwave', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  const body = (await response.json()) as Partial<PlanStatus> & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? 'Colourcast was not updated.');
   return asPlan(body);
 }
 
@@ -230,4 +269,15 @@ export function styleMinPlanLabel(minPlan: PlanId): string {
   if (minPlan === 'max') return 'TVM MAX';
   if (minPlan === 'ultra') return 'TVM Ultra';
   return 'TVM Premium';
+}
+
+export function themeUnlocked(plan: PlanStatus, themeId: string): boolean {
+  if (themeId !== 'synthwave') return true;
+  return plan.developer || plan.synthwave;
+}
+
+export function displayMaxLabel(maxHeight: 720 | 1080 | 2160): string {
+  if (maxHeight >= 2160) return '4K (2160p)';
+  if (maxHeight >= 1080) return 'Full HD (1080p)';
+  return 'HD (720p)';
 }

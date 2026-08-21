@@ -20,4 +20,16 @@ describe('asTitle', () => {
     expect(() => asTitle(item)).not.toThrow();
     expect(asTitle(item).title.length).toBeGreaterThan(0);
   });
+
+  it('keeps a series kind when the catalog also has a movie with a similar name', () => {
+    const show: MediaItem = {
+      ...item,
+      id: 'tt0944947',
+      title: 'Game of Thrones',
+      kind: 'series',
+      season: 1,
+      episode: 1,
+    };
+    expect(asTitle(show).kind).toBe('series');
+  });
 });

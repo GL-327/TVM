@@ -46,7 +46,18 @@ if (-not (Test-Http "http://127.0.0.1:5173/")) {
 
 $shellDir = Join-Path $repo "apps\shell"
 $mainJs = Join-Path $shellDir "dist\main.js"
-if (-not (Test-Path $mainJs)) {
+$shellSrc = Join-Path $shellDir "src"
+$needsShellBuild = -not (Test-Path $mainJs)
+if (-not $needsShellBuild) {
+    $distTime = (Get-Item $mainJs).LastWriteTime
+    $newestSrc = Get-ChildItem -Path $shellSrc -Recurse -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($null -ne $newestSrc -and $newestSrc.LastWriteTime -gt $distTime) {
+        $needsShellBuild = $true
+    }
+}
+if ($needsShellBuild) {
     Write-Host "Building TVM shell..."
     Push-Location $shellDir
     try {

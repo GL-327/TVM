@@ -57,7 +57,7 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
         Current plan {plan.name}. These switches override gating on this machine without a mock payment.
       </p>
       {message !== null && <p className="page__message">{message}</p>}
-      <div className="settings-list">
+      <div className="settings-list" data-wrap="y">
         {ORDER.map((id) => (
           <FocusButton
             key={id}

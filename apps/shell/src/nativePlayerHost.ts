@@ -1,9 +1,18 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createConnection, type Socket } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { BrowserWindow, WebContentsView } from 'electron';
-import { buildMpvArgs, resolveMpvExecutable } from './mpv';
+import { BaseWindow, BrowserWindow } from 'electron';
+import { buildMpvArgs } from './mpv';
+import { ensureMpvExecutable } from './mpvInstall';
+import {
+  applyMpvProperty,
+  initialMpvState,
+  mpvBuffering,
+  MPV_AUDIO_COMMANDS,
+  MPV_OBSERVED_PROPERTIES,
+  type MpvPlaybackState,
+} from './nativePlayerState';
 
 export interface NativePlaybackInput {
   url: string;
@@ -20,99 +29,7 @@ export type NativePlayerEvent =
   | { type: 'closed' }
   | { type: 'error'; message: string };
 
-interface OverlayState {
-  title: string;
-  paused: boolean;
-  buffering: boolean;
-  position: number;
-  duration: number;
-  error: string | null;
-  focus: number;
-}
-
-const OVERLAY_HTML = `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  :root { color-scheme: dark; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; }
-  * { box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; color: #fff; }
-  body { display: flex; flex-direction: column; justify-content: space-between;
-    padding: 1.4rem 2.5rem 1.5rem;
-    background: linear-gradient(180deg, rgba(0,0,0,.78), transparent 28%),
-      linear-gradient(0deg, rgba(0,0,0,.88), rgba(0,0,0,.5) 40%, transparent 64%); }
-  .top { display: flex; align-items: center; gap: .75rem; }
-  .back { width: 2.3rem; height: 2.3rem; display: flex; align-items: center; justify-content: center;
-    border: none; border-radius: .45rem; background: transparent; color: #fff; font-size: 1.6rem; }
-  h1 { margin: 0; max-width: 70vw; font-size: 1.15rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .buffer { display: none; position: absolute; left: 10%; right: 10%; top: 48%; text-align: center; color: rgba(255,255,255,.82); }
-  .buffer.on { display: block; }
-  .bar { height: .38rem; margin: .7rem auto 0; max-width: 80%; border-radius: 99rem; background: rgba(255,255,255,.18); overflow: hidden; }
-  .bar > span { display: block; height: 100%; width: 42%; background: #e50914; animation: load 1.1s linear infinite; }
-  @keyframes load { from { transform: translateX(-120%); } to { transform: translateX(280%); } }
-  .error { display: none; max-width: 44rem; padding: 1rem 1.25rem; border: 1px solid rgba(255,255,255,.14);
-    border-radius: 1rem; background: rgba(20,0,0,.9); color: #fff; font-size: 1.1rem; }
-  .error.on { display: block; }
-  .seek { position: relative; height: .28rem; border-radius: 99rem; background: rgba(255,255,255,.28); }
-  .seek > span { display: block; height: 100%; border-radius: inherit; background: #e50914; }
-  .thumb { position: absolute; top: 50%; width: .78rem; height: .78rem; border-radius: 50%; background: #e50914;
-    transform: translate(-50%,-50%); }
-  .times { display: flex; justify-content: space-between; margin: .45rem 0 .2rem; color: rgba(255,255,255,.82);
-    font-size: .8rem; font-variant-numeric: tabular-nums; }
-  .buttons { display: flex; justify-content: flex-end; gap: .4rem; }
-  button { width: 2.5rem; height: 2.5rem; padding: 0; border: none; border-radius: .45rem;
-    background: transparent; color: #fff; font: inherit; font-weight: 700; }
-  button.focused { outline: none; background: rgba(255,255,255,.14); box-shadow: 0 0 0 .14rem #fff; }
-</style>
-</head>
-<body>
-  <div class="top">
-    <div class="back" aria-hidden="true">‹</div>
-    <h1 id="title">Loading</h1>
-  </div>
-  <div id="buffer" class="buffer">Loading…<div class="bar"><span></span></div></div>
-  <div>
-    <p id="error" class="error"></p>
-    <div class="times"><span id="elapsed">0:00</span><span id="duration">0:00</span></div>
-    <div class="seek"><span id="progress"></span><i id="thumb" class="thumb"></i></div>
-    <div class="buttons">
-      <button id="pause">❚❚</button>
-      <button>−10</button>
-      <button>+10</button>
-      <button>Back</button>
-    </div>
-  </div>
-<script>
-  const buttons = [...document.querySelectorAll('button')];
-  const format = value => {
-    if (!Number.isFinite(value) || value < 0) return '0:00';
-    const seconds = Math.floor(value % 60).toString().padStart(2, '0');
-    const minutes = Math.floor(value / 60);
-    return Math.floor(minutes / 60) > 0
-      ? Math.floor(minutes / 60) + ':' + (minutes % 60).toString().padStart(2, '0') + ':' + seconds
-      : minutes + ':' + seconds;
-  };
-  window.__tvmSetState = state => {
-    document.getElementById('title').textContent = state.title;
-    document.getElementById('pause').textContent = state.paused ? '▶' : '❚❚';
-    document.getElementById('buffer').classList.toggle('on', state.buffering);
-    const error = document.getElementById('error');
-    error.textContent = state.error || '';
-    error.classList.toggle('on', Boolean(state.error));
-    document.getElementById('elapsed').textContent = format(state.position);
-    document.getElementById('duration').textContent = format(state.duration);
-    const ratio = state.duration > 0 ? Math.min(100, Math.max(0, state.position / state.duration * 100)) : 0;
-    document.getElementById('progress').style.width = ratio + '%';
-    document.getElementById('thumb').style.left = ratio + '%';
-    buttons.forEach((button, index) => button.classList.toggle('focused', index === state.focus));
-  };
-</script>
-</body>
-</html>`;
-
-function windowId(window: BrowserWindow): string {
+function nativeWindowId(window: BaseWindow): string {
   const handle = window.getNativeWindowHandle();
   if (process.platform === 'win32' && handle.byteLength >= 8) return handle.readBigUInt64LE(0).toString();
   return handle.readUInt32LE(0).toString();
@@ -123,30 +40,34 @@ function ipcPath(): string {
   return join(tmpdir(), `tvm-mpv-${process.pid}-${Date.now()}.sock`);
 }
 
+/**
+ * mpv paints into a Chromium-free BaseWindow. The TVM BrowserWindow sits on
+ * top as a transparent overlay so the React player chrome stays in-process.
+ */
 export class NativePlayerHost {
   private readonly window: BrowserWindow;
   private child: ChildProcess | null = null;
   private socket: Socket | null = null;
-  private overlay: WebContentsView | null = null;
-  private overlayReady = false;
+  private videoHost: BaseWindow | null = null;
   private connectAttempt = 0;
   private stopping = false;
   private lineBuffer = '';
   private lastStateSentAt = 0;
-  private state: OverlayState = {
-    title: 'Loading',
-    paused: false,
-    buffering: true,
-    position: 0,
-    duration: 0,
-    error: null,
-    focus: 0,
-  };
+  private mpv: MpvPlaybackState = initialMpvState();
 
   constructor(window: BrowserWindow) {
     this.window = window;
-    this.resizeOverlay = this.resizeOverlay.bind(this);
-    window.on('resize', this.resizeOverlay);
+    this.syncVideoHost = this.syncVideoHost.bind(this);
+    this.hideVideoHost = this.hideVideoHost.bind(this);
+    this.showVideoHost = this.showVideoHost.bind(this);
+    window.on('resize', this.syncVideoHost);
+    window.on('move', this.syncVideoHost);
+    window.on('maximize', this.syncVideoHost);
+    window.on('unmaximize', this.syncVideoHost);
+    window.on('enter-full-screen', this.syncVideoHost);
+    window.on('leave-full-screen', this.syncVideoHost);
+    window.on('minimize', this.hideVideoHost);
+    window.on('restore', this.showVideoHost);
     window.on('closed', () => this.dispose());
   }
 
@@ -156,37 +77,54 @@ export class NativePlayerHost {
 
     this.stop(false);
     this.stopping = false;
-    this.state = {
-      title: input.title,
-      paused: false,
-      buffering: true,
-      position: input.startAt ?? 0,
-      duration: 0,
-      error: null,
-      focus: 0,
-    };
-    this.createOverlay();
+    this.connectAttempt = 0;
+    this.mpv = initialMpvState(input.startAt);
 
     const pipe = ipcPath();
-    const executable = resolveMpvExecutable();
+    const executable = await ensureMpvExecutable();
+    if (this.stopping) return { ok: true };
+    if (executable === undefined) throw new Error('mpv missing');
+
+    const host = this.createVideoHost();
+    if (this.stopping) {
+      this.destroyVideoHost();
+      return { ok: true };
+    }
+
     const args = buildMpvArgs({
       url: input.url,
-      windowId: windowId(this.window),
+      windowId: nativeWindowId(host),
       ipcPath: pipe,
       startAt: input.startAt,
     });
 
     const child = spawn(executable, args, {
-      windowsHide: true,
+      windowsHide: false,
+      cwd: dirname(executable),
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     this.child = child;
     child.stderr?.resume();
-    child.once('spawn', () => {
-      this.send({ type: 'started', title: input.title });
-      this.connect(pipe);
-      this.bringOverlayFront();
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once('spawn', () => resolve());
+        child.once('error', () => reject(new Error('mpv missing')));
+      });
+    } catch {
+      if (this.child === child) this.child = null;
+      this.destroyVideoHost();
+      throw new Error('mpv missing');
+    }
+    if (this.stopping || this.child !== child) {
+      if (this.child === child) this.child = null;
+      if (child.exitCode === null) child.kill();
+      this.destroyVideoHost();
+      return { ok: true };
+    }
+
+    this.attachOverlay();
+    this.send({ type: 'started', title: input.title });
+    this.connect(pipe);
     child.once('error', () => {
       if (this.child !== child || this.stopping) return;
       this.child = null;
@@ -217,8 +155,13 @@ export class NativePlayerHost {
     if (command === 'seekForward') this.write(['seek', 10, 'relative']);
   }
 
+  seekTo(seconds: number): void {
+    if (this.socket === null) return;
+    this.write(['seek', Math.max(0, seconds), 'absolute']);
+  }
+
   stop(notify = true): void {
-    const hadSession = this.child !== null || this.overlay !== null;
+    const hadSession = this.child !== null || this.videoHost !== null;
     this.stopping = true;
     this.write(['quit']);
     const child = this.child;
@@ -230,98 +173,84 @@ export class NativePlayerHost {
     this.child = null;
     this.socket?.destroy();
     this.socket = null;
-    this.removeOverlay();
+    this.destroyVideoHost();
     if (hadSession && notify) this.send({ type: 'closed' });
   }
 
   dispose(): void {
     this.stop(false);
-    this.window.removeListener('resize', this.resizeOverlay);
+    this.window.removeListener('resize', this.syncVideoHost);
+    this.window.removeListener('move', this.syncVideoHost);
+    this.window.removeListener('maximize', this.syncVideoHost);
+    this.window.removeListener('unmaximize', this.syncVideoHost);
+    this.window.removeListener('enter-full-screen', this.syncVideoHost);
+    this.window.removeListener('leave-full-screen', this.syncVideoHost);
+    this.window.removeListener('minimize', this.hideVideoHost);
+    this.window.removeListener('restore', this.showVideoHost);
   }
 
-  private createOverlay(): void {
-    const overlay = new WebContentsView({
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
+  private createVideoHost(): BaseWindow {
+    this.destroyVideoHost();
+    const bounds = this.hostBounds();
+    const host = new BaseWindow({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      frame: false,
+      show: false,
+      skipTaskbar: true,
+      focusable: false,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      hasShadow: false,
+      backgroundColor: '#000000',
+      title: 'TVM Video',
     });
-    overlay.setBackgroundColor('#00000000');
-    this.overlay = overlay;
-    this.overlayReady = false;
-    this.window.contentView.addChildView(overlay);
-    this.resizeOverlay();
-    overlay.webContents.on('before-input-event', (event, input) => {
-      const key = input.key;
-      if (key === 'ArrowLeft' || key === 'ArrowUp') {
-        event.preventDefault();
-        this.state.focus = (this.state.focus + 3) % 4;
-        this.updateOverlay();
-        return;
-      }
-      if (key === 'ArrowRight' || key === 'ArrowDown') {
-        event.preventDefault();
-        this.state.focus = (this.state.focus + 1) % 4;
-        this.updateOverlay();
-        return;
-      }
-      if (key === 'Enter' || key === ' ' || key === 'NumpadEnter') {
-        event.preventDefault();
-        this.activateFocused();
-        return;
-      }
-      if (key === 'Escape' || key === 'Backspace' || key === 'BrowserBack') {
-        event.preventDefault();
-        this.stop(true);
-        return;
-      }
-      if (key === 'MediaPlayPause') this.command('togglePause');
-      if (key === 'MediaPlay') this.command('play');
-      if (key === 'MediaPause') this.command('pause');
-      if (key === 'MediaRewind') this.command('seekBack');
-      if (key === 'MediaFastForward') this.command('seekForward');
-      if (key === 'MediaStop') this.stop(true);
-    });
-    overlay.webContents.once('did-finish-load', () => {
-      this.overlayReady = true;
-      this.updateOverlay();
-      overlay.webContents.focus();
-    });
-    void overlay.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(OVERLAY_HTML)}`);
+    this.videoHost = host;
+    host.setBounds(bounds);
+    host.show();
+    return host;
   }
 
-  private removeOverlay(): void {
-    const overlay = this.overlay;
-    this.overlay = null;
-    this.overlayReady = false;
-    if (overlay === null) return;
-    this.window.contentView.removeChildView(overlay);
-    overlay.webContents.close();
-    if (!this.window.isDestroyed()) this.window.webContents.focus();
+  private attachOverlay(): void {
+    if (this.videoHost === null || this.window.isDestroyed()) return;
+    (this.window as BaseWindow).setParentWindow(this.videoHost);
+    this.window.moveTop();
+    if (!this.window.isFocused()) this.window.focus();
   }
 
-  private resizeOverlay(): void {
-    if (this.overlay === null || this.window.isDestroyed()) return;
-    const size = this.window.getContentSize();
-    const width = size[0] ?? 0;
-    const height = size[1] ?? 0;
-    this.overlay.setBounds({ x: 0, y: 0, width, height });
+  private destroyVideoHost(): void {
+    if (!this.window.isDestroyed()) (this.window as BaseWindow).setParentWindow(null);
+    const host = this.videoHost;
+    this.videoHost = null;
+    if (host === null || host.isDestroyed()) return;
+    host.destroy();
   }
 
-  private bringOverlayFront(): void {
-    const overlay = this.overlay;
-    if (overlay === null) return;
-    this.window.contentView.removeChildView(overlay);
-    this.window.contentView.addChildView(overlay);
-    this.resizeOverlay();
+  private hostBounds() {
+    return this.window.getBounds();
   }
 
-  private activateFocused(): void {
-    if (this.state.focus === 0) this.command('togglePause');
-    if (this.state.focus === 1) this.command('seekBack');
-    if (this.state.focus === 2) this.command('seekForward');
-    if (this.state.focus === 3) this.stop(true);
+  private syncVideoHost(): void {
+    if (this.videoHost === null || this.videoHost.isDestroyed() || this.window.isDestroyed()) return;
+    const next = this.hostBounds();
+    const cur = this.videoHost.getBounds();
+    if (cur.x === next.x && cur.y === next.y && cur.width === next.width && cur.height === next.height) return;
+    this.videoHost.setBounds(next);
+  }
+
+  private hideVideoHost(): void {
+    if (this.videoHost === null || this.videoHost.isDestroyed()) return;
+    this.videoHost.hide();
+  }
+
+  private showVideoHost(): void {
+    if (this.videoHost === null || this.videoHost.isDestroyed()) return;
+    this.syncVideoHost();
+    this.videoHost.show();
   }
 
   private connect(pipe: string): void {
@@ -349,10 +278,10 @@ export class NativePlayerHost {
       socket.on('error', () => {
         if (this.socket === socket) this.socket = null;
       });
-      for (const property of ['time-pos', 'duration', 'pause', 'cache-buffering-state', 'eof-reached']) {
+      for (const command of MPV_AUDIO_COMMANDS) this.write([...command]);
+      for (const property of MPV_OBSERVED_PROPERTIES) {
         this.write(['observe_property', 1, property]);
       }
-      this.bringOverlayFront();
     });
     socket.once('error', onConnectError);
   }
@@ -370,44 +299,29 @@ export class NativePlayerHost {
       if (line.trim() === '') continue;
       try {
         const message = JSON.parse(line) as { event?: string; name?: string; data?: unknown };
-        if (message.event !== 'property-change') continue;
-        if (message.name === 'time-pos' && typeof message.data === 'number') this.state.position = message.data;
-        if (message.name === 'duration' && typeof message.data === 'number') this.state.duration = message.data;
-        if (message.name === 'pause' && typeof message.data === 'boolean') this.state.paused = message.data;
-        if (message.name === 'cache-buffering-state') this.state.buffering = message.data === true;
-        if (message.name === 'eof-reached' && message.data === true) {
+        if (message.event !== 'property-change' || typeof message.name !== 'string') continue;
+        this.mpv = applyMpvProperty(this.mpv, message.name, message.data);
+        if (this.mpv.ended) {
           this.finish('ended');
           continue;
         }
-        this.updateOverlay();
         const now = Date.now();
-        if (now - this.lastStateSentAt >= 1_000) {
-          this.lastStateSentAt = now;
-          this.send({
-            type: 'state',
-            paused: this.state.paused,
-            buffering: this.state.buffering,
-            position: this.state.position,
-            duration: this.state.duration,
-          });
-        }
+        if (now - this.lastStateSentAt < 250 && !this.mpv.pausedForCache) continue;
+        this.lastStateSentAt = now;
+        this.send({
+          type: 'state',
+          paused: this.mpv.paused,
+          buffering: mpvBuffering(this.mpv),
+          position: this.mpv.position,
+          duration: this.mpv.duration,
+        });
       } catch {
         // Ignore a malformed mpv status line; the next property event repairs state.
       }
     }
   }
 
-  private updateOverlay(): void {
-    if (!this.overlayReady || this.overlay === null || this.overlay.webContents.isDestroyed()) return;
-    const state = JSON.stringify(this.state);
-    void this.overlay.webContents.executeJavaScript(`window.__tvmSetState(${state})`, true).catch(() => undefined);
-  }
-
   private showError(message: string): void {
-    this.state.error = message;
-    this.state.buffering = false;
-    this.state.focus = 3;
-    this.updateOverlay();
     this.send({ type: 'error', message });
   }
 
@@ -416,7 +330,7 @@ export class NativePlayerHost {
     this.child = null;
     this.socket?.destroy();
     this.socket = null;
-    this.removeOverlay();
+    this.destroyVideoHost();
     this.send({ type });
   }
 

@@ -1,0 +1,146 @@
+/*
+ * Bentomotion Liquid Glass Kit overlays. Large chrome uses 28px frost + the
+ * plate as a low-opacity ::before. Rows use 16px. No mix-blend, no list
+ * isolation, no frost on the transformed ribbon host.
+ */
+
+[data-theme='glass'] {
+  --tvm-glass-kit-plate: url('./kit/plate.svg');
+}
+
+[data-theme='glass'] .search-pill__panel,
+[data-theme='glass'] .loading-state:not(.loading-state--plate),
+[data-theme='glass'] .setup-card,
+[data-theme='glass'] .empty-state,
+[data-theme='glass'] .error-state,
+[data-theme='glass'] .panel,
+[data-theme='glass'] .settings-summary,
+[data-theme='glass'] .plan-current,
+[data-theme='glass'] .plan-card,
+[data-theme='glass'] .checkout-summary,
+[data-theme='glass'] .checkout-card,
+[data-theme='glass'] .home .stage__copy,
+[data-theme='glass'] .home .billboard__copy,
+[data-theme='glass'] .home .hero__copy {
+  position: relative;
+  isolation: auto;
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+}
+
+[data-theme='glass'] .search-pill__panel::before,
+[data-theme='glass'] .loading-state:not(.loading-state--plate)::before,
+[data-theme='glass'] .setup-card::before,
+[data-theme='glass'] .empty-state::before,
+[data-theme='glass'] .error-state::before,
+[data-theme='glass'] .panel::before,
+[data-theme='glass'] .settings-summary::before,
+[data-theme='glass'] .plan-current::before,
+[data-theme='glass'] .plan-card::before,
+[data-theme='glass'] .checkout-summary::before,
+[data-theme='glass'] .checkout-card::before,
+[data-theme='glass'] .home .stage__copy::before,
+[data-theme='glass'] .home .billboard__copy::before,
+[data-theme='glass'] .home .hero__copy::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: var(--tvm-glass-kit-plate);
+  background-size: 100% 100%;
+  opacity: 0.42;
+}
+
+[data-theme='glass'] .search-pill__panel > *,
+[data-theme='glass'] .loading-state > *,
+[data-theme='glass'] .setup-card > *,
+[data-theme='glass'] .empty-state > *,
+[data-theme='glass'] .error-state > *,
+[data-theme='glass'] .panel > *,
+[data-theme='glass'] .settings-summary > *,
+[data-theme='glass'] .plan-current > *,
+[data-theme='glass'] .plan-card > *,
+[data-theme='glass'] .checkout-summary > *,
+[data-theme='glass'] .checkout-card > *,
+[data-theme='glass'] .home .stage__copy > *,
+[data-theme='glass'] .home .billboard__copy > *,
+[data-theme='glass'] .home .hero__copy > * {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme='glass'] .skeleton {
+  border-color: var(--tvm-glass-hairline);
+  background-color: color-mix(in srgb, var(--tvm-glass-fill-text) 70%, #16324a);
+  background-image: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0.04) 28%,
+    rgba(255, 255, 255, 0.22) 46%,
+    rgba(126, 232, 255, 0.12) 52%,
+    rgba(255, 255, 255, 0.04) 68%
+  );
+  background-size: 250% 100%;
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .art--pending,
+[data-theme='glass'] .art--clone,
+[data-theme='glass'] .stage__art--pending,
+[data-theme='glass'] .poster__art.art--pending,
+[data-theme='glass'] .poster__art.art--clone,
+[data-theme='glass'] .channel-card__art.art--pending {
+  background-color: #16324a;
+  filter: none;
+}
+
+[data-theme='glass'] .loading-state__track {
+  background: color-mix(in srgb, var(--tvm-glass-text) 14%, transparent);
+  box-shadow: inset 0 1px 0 var(--tvm-glass-specular);
+}
+
+[data-theme='glass'] .loading-state__bar {
+  background: linear-gradient(90deg, var(--tvm-glass-accent) 0%, var(--tvm-glass-paper) 100%);
+}
+
+[data-theme='glass'] .player--busy .player__loader {
+  left: 50%;
+  right: auto;
+  width: min(28rem, 72vw);
+  padding: 1.1rem 1.25rem 1.2rem;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius-lg);
+  background-color: var(--tvm-glass-fill-video);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-deep);
+  transform: translate(-50%, -50%);
+}
+
+[data-theme='glass'] .player--busy .player__loader-label {
+  color: var(--tvm-glass-text);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-theme='glass'] .search-pill__panel::before,
+  [data-theme='glass'] .loading-state:not(.loading-state--plate)::before,
+  [data-theme='glass'] .setup-card::before,
+  [data-theme='glass'] .empty-state::before,
+  [data-theme='glass'] .error-state::before,
+  [data-theme='glass'] .home .stage__copy::before,
+  [data-theme='glass'] .home .billboard__copy::before,
+  [data-theme='glass'] .home .hero__copy::before,
+  [data-theme='glass'] .panel::before,
+  [data-theme='glass'] .settings-summary::before,
+  [data-theme='glass'] .plan-current::before,
+  [data-theme='glass'] .plan-card::before,
+  [data-theme='glass'] .checkout-summary::before,
+  [data-theme='glass'] .checkout-card::before,
+  [data-theme='glass'] .ribbon__frost::before {
+    content: none;
+  }
+}

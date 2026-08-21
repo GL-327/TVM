@@ -1,0 +1,103 @@
+/*
+ * Search pill, on-screen keyboard, and modal scrim under liquid glass.
+ * Layout and search-pill-in stay in app.css. Text sits on fill-text.
+ * Frost only on the pill panel — not the full-screen scrim or every OSK key.
+ */
+
+[data-theme='glass'] .panel-scrim {
+  background: var(--tvm-glass-scrim);
+}
+
+[data-theme='glass'] .search-pill {
+  background: color-mix(in srgb, var(--tvm-glass-scrim) 70%, transparent);
+}
+
+[data-theme='glass'] .search-pill__panel {
+  isolation: auto;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-deep);
+  color: var(--tvm-glass-text);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+}
+
+[data-theme='glass'] .search-pill__glyph {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-bright);
+  box-shadow: var(--tvm-glass-edge);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .search-pill__field .token-field__input {
+  border-color: var(--tvm-glass-hairline-cool);
+  background: var(--tvm-glass-fill-bright-text);
+  color: var(--tvm-glass-text);
+  box-shadow: inset 0 1px 0 var(--tvm-glass-refract);
+}
+
+[data-theme='glass'] .search-pill__field .token-field__input::placeholder {
+  color: var(--tvm-glass-text-faint);
+}
+
+[data-theme='glass'] .search-pill__field .token-field__input:focus,
+[data-theme='glass'] .search-pill__field .token-field__input[data-focused='true'] {
+  border-color: var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+}
+
+[data-theme='glass'] .search-pill__status {
+  color: var(--tvm-glass-text-muted);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .search-pill__bar .tvm-button {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+}
+
+[data-theme='glass'] .search-pill__bar .tvm-button:focus,
+[data-theme='glass'] .search-pill__bar .tvm-button[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .search-pill__bar .tvm-button--primary,
+[data-theme='glass'] .search-pill__bar .tvm-button--primary:focus,
+[data-theme='glass'] .search-pill__bar .tvm-button--primary[data-focused='true'] {
+  border-color: var(--tvm-glass-paper);
+  background: var(--tvm-glass-paper);
+  color: var(--tvm-glass-ink);
+  box-shadow: var(--tvm-glass-shadow);
+}
+
+[data-theme='glass'] .search-results {
+  border-top: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline-cool);
+}
+
+[data-theme='glass'] .osk__key {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline-cool);
+  background: var(--tvm-glass-fill);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .osk__key:focus,
+[data-theme='glass'] .osk__key[data-focused='true'] {
+  border-color: var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-bright);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .osk__key.tvm-button--primary,
+[data-theme='glass'] .osk__key.tvm-button--primary:focus,
+[data-theme='glass'] .osk__key.tvm-button--primary[data-focused='true'] {
+  border-color: var(--tvm-glass-paper);
+  background: var(--tvm-glass-paper);
+  color: var(--tvm-glass-ink);
+  box-shadow: var(--tvm-glass-shadow-focus);
+}

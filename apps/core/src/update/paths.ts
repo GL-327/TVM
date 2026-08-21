@@ -64,6 +64,10 @@ export function rdTokenPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'rd-token');
 }
 
+export function xtreamPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'xtream.json');
+}
+
 export function profilesPath(dataDir: string): string {
   return join(dataDir, 'profiles.json');
 }
@@ -82,6 +86,10 @@ export function watchlistPath(dataDir: string): string {
 
 export function livePlaylistPath(dataDir: string): string {
   return join(dataDir, 'live-playlist.json');
+}
+
+export function livePicksPath(dataDir: string): string {
+  return join(dataDir, 'live-picks.json');
 }
 
 export function tmdbKeyPath(dataDir: string): string {
@@ -114,6 +122,10 @@ export function poolRdPath(dataDir: string): string {
 
 export function devUnlockPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'dev-unlock.enc');
+}
+
+export function devUnlockFlagPath(dataDir: string): string {
+  return join(dataDir, 'dev-unlock.json');
 }
 
 export function cacheDir(dataDir: string): string {

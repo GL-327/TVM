@@ -3,8 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CORE_HOST, DEFAULT_CORE_PORT, resolveBindHost, resolvePort } from './config.ts';
-import { startCoreServer, type RunningCore } from './server.ts';
+import { startCoreServer, type RunningCore, mediaPublicOrigin, portOfHost } from './server.ts';
 import { resolveStaticPath } from './static.ts';
+
+describe('HTML5 hop origin', () => {
+  it('sends Vite Host hops to Core and keeps Roku/Core Hosts', () => {
+    expect(portOfHost('127.0.0.1:5173')).toBe(5173);
+    expect(mediaPublicOrigin('127.0.0.1:5173', 7345)).toBe('http://127.0.0.1:7345');
+    expect(mediaPublicOrigin('127.0.0.1:7345', 7345)).toBe('http://127.0.0.1:7345');
+    expect(mediaPublicOrigin('192.168.1.9:7345', 7345)).toBe('http://192.168.1.9:7345');
+    expect(mediaPublicOrigin('127.0.0.1:5173', 8000)).toBe('http://127.0.0.1:8000');
+    expect(mediaPublicOrigin(undefined, 7345)).toBe('http://127.0.0.1:7345');
+  });
+});
 
 describe('core API', () => {
   let core: RunningCore;
@@ -35,6 +46,13 @@ describe('core API', () => {
   it('404s unknown api routes', async () => {
     const response = await fetch(`${baseUrl}/api/does-not-exist`);
     expect(response.status).toBe(404);
+  });
+
+  it('refuses art hops off the allowlist', async () => {
+    const blocked = await fetch(`${baseUrl}/api/art?src=${encodeURIComponent('https://evil.example/secret.jpg')}`);
+    expect(blocked.status).toBe(400);
+    const missing = await fetch(`${baseUrl}/api/art`);
+    expect(missing.status).toBe(400);
   });
 
   it('returns an empty library when Real-Debrid is not configured', async () => {
@@ -89,7 +107,16 @@ describe('core API', () => {
   it('returns an empty live playlist and watchlist by default', async () => {
     const live = await fetch(`${baseUrl}/api/live`);
     expect(live.status).toBe(200);
-    expect(await live.json()).toEqual({ url: null, channels: [], error: null });
+    expect(await live.json()).toMatchObject({
+      url: null,
+      host: null,
+      username: null,
+      configured: false,
+      channels: [],
+      error: null,
+      picked: 0,
+      total: 0,
+    });
 
     const watchlist = await fetch(`${baseUrl}/api/watchlist`);
     expect(watchlist.status).toBe(200);
@@ -141,6 +168,61 @@ describe('core API', () => {
     const body = (await bad.json()) as { error: string };
     expect(body.error).toMatch(/card number/i);
     expect(JSON.stringify(body)).not.toContain('1111111111111111');
+  });
+
+  it('lets a paid plan drop Live TV and refuses it on Free', async () => {
+    const paid = await fetch(`${baseUrl}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        planId: 'basic',
+        name: 'Arthur Foxall',
+        number: '4242424242424242',
+        expiry: '12/99',
+        cvc: '123',
+        liveTv: false,
+      }),
+    });
+    expect(paid.status).toBe(200);
+    expect(await paid.json()).toMatchObject({ id: 'basic', liveTv: false, pricePence: 499 });
+
+    const added = await fetch(`${baseUrl}/api/plan/live-tv`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(added.status).toBe(200);
+    expect(await added.json()).toMatchObject({ id: 'basic', liveTv: true, pricePence: 799 });
+
+    await fetch(`${baseUrl}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planId: 'free' }),
+    });
+    const refused = await fetch(`${baseUrl}/api/plan/live-tv`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(refused.status).toBe(400);
+  });
+
+  it('sells the Synthwave pack on checkout', async () => {
+    const paid = await fetch(`${baseUrl}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        planId: 'basic',
+        name: 'Arthur Foxall',
+        number: '4242424242424242',
+        expiry: '12/99',
+        cvc: '123',
+        liveTv: false,
+        synthwave: true,
+      }),
+    });
+    expect(paid.status).toBe(200);
+    expect(await paid.json()).toMatchObject({ id: 'basic', synthwave: true, pricePence: 998 });
   });
 
   it('rejects a wrong developer code without a hint', async () => {

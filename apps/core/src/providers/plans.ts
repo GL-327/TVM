@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   billingPath,
   entitlementPath,
@@ -12,6 +12,19 @@ import { readSealed, writeSealed } from './vault.ts';
 
 export const PLAN_IDS = ['free', 'basic', 'premium', 'ultra', 'max'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
+
+/** Live TV pack on paid plans. Removing it restores the previous list price. */
+export const LIVE_TV_ADDON_PENCE = 300;
+export const LIVE_TV_EXTRA = 'Live TV pack and your own playlist';
+
+/** Colourcast — 1970s/80s broadcast ident pack. Sold on every plan, including Free. */
+export const SYNTHWAVE_ADDON_PENCE = 499;
+export const SYNTHWAVE_EXTRA = 'Colourcast — 1970s/80s broadcast ident';
+
+export function formatGbp(pence: number): string {
+  if (pence === 0) return 'Free';
+  return `£${(pence / 100).toFixed(2)}`;
+}
 
 export const STYLE_IDS = [
   'classic',
@@ -52,6 +65,9 @@ export interface PlanDefinition {
   name: string;
   price: string;
   pricePence: number;
+  basePrice: string;
+  basePricePence: number;
+  liveTvAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
   ads: boolean;
@@ -67,12 +83,24 @@ export interface PlanDefinition {
   badges: readonly string[];
 }
 
+function priced(
+  def: Omit<PlanDefinition, 'price' | 'pricePence' | 'basePrice'>,
+): PlanDefinition {
+  const pricePence = def.basePricePence + (def.liveTv ? def.liveTvAddonPence : 0);
+  return {
+    ...def,
+    basePrice: formatGbp(def.basePricePence),
+    pricePence,
+    price: formatGbp(pricePence),
+  };
+}
+
 export const PLAN_CATALOG: readonly PlanDefinition[] = [
-  {
+  priced({
     id: 'free',
     name: 'TVM Free',
-    price: 'Free',
-    pricePence: 0,
+    basePricePence: 0,
+    liveTvAddonPence: 0,
     mocks: false,
     liveTv: false,
     ads: true,
@@ -86,14 +114,14 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     skipRecap: false,
     extras: ['TVM Stream only', 'Shared Real-Debrid pool when you add it', 'Ads do not use watch hours'],
     badges: [],
-  },
-  {
+  }),
+  priced({
     id: 'basic',
     name: 'TVM Basic',
-    price: '£4.99',
-    pricePence: 499,
+    basePricePence: 499,
+    liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: false,
-    liveTv: false,
+    liveTv: true,
     ads: true,
     stream: 'basic',
     maxHeight: 1080,
@@ -103,16 +131,16 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     weeklySeconds: null,
     profilesMax: 2,
     skipRecap: false,
-    extras: ['Always skipped to the top of the queue', 'Two TVM Stream profiles'],
-    badges: [],
-  },
-  {
+    extras: [LIVE_TV_EXTRA, 'Always skipped to the top of the queue', 'Two TVM Stream profiles'],
+    badges: ['Live'],
+  }),
+  priced({
     id: 'premium',
     name: 'TVM Premium',
-    price: '£8.99',
-    pricePence: 899,
+    basePricePence: 899,
+    liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: false,
-    liveTv: false,
+    liveTv: true,
     ads: false,
     stream: 'premium',
     maxHeight: 1080,
@@ -122,16 +150,16 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     weeklySeconds: null,
     profilesMax: 4,
     skipRecap: false,
-    extras: ['No ads', 'No queue', 'Cinema, Midnight and Classic styles', 'Four profiles'],
-    badges: [],
-  },
-  {
+    extras: [LIVE_TV_EXTRA, 'No ads', 'No queue', 'Cinema, Midnight and Classic styles', 'Four profiles'],
+    badges: ['Live'],
+  }),
+  priced({
     id: 'ultra',
     name: 'TVM Ultra',
-    price: '£12.99',
-    pricePence: 1299,
+    basePricePence: 1299,
+    liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: true,
-    liveTv: false,
+    liveTv: true,
     ads: false,
     stream: 'premium',
     maxHeight: 2160,
@@ -142,6 +170,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     profilesMax: 6,
     skipRecap: true,
     extras: [
+      LIVE_TV_EXTRA,
       'Mock Netflix, Prime Video, Max, Apple TV, Disney+, Hulu and Peacock',
       '4K',
       'Skip recap',
@@ -149,13 +178,13 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
       'Almost every style',
       'Ultra picks on Home',
     ],
-    badges: ['4K', 'Dolby'],
-  },
-  {
+    badges: ['4K', 'Dolby', 'Live'],
+  }),
+  priced({
     id: 'max',
     name: 'TVM MAX',
-    price: '£15.99',
-    pricePence: 1599,
+    basePricePence: 1599,
+    liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: true,
     liveTv: true,
     ads: false,
@@ -168,8 +197,8 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     profilesMax: 10,
     skipRecap: true,
     extras: [
+      LIVE_TV_EXTRA,
       'Lightning-fast start',
-      'Live TV: Sky Sports, TNT Sports, beIN Sports, USA Network',
       'Every style, including MAX Gold and Aurora',
       'Mock streaming services',
       '10 profiles',
@@ -177,7 +206,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
       'HDR and Atmos presentation',
     ],
     badges: ['4K', 'HDR', 'Atmos', 'Live'],
-  },
+  }),
 ];
 
 export interface DevOverrides {
@@ -195,6 +224,10 @@ export interface Entitlement {
   styleId: StyleId;
   source: 'free' | 'checkout' | 'dev';
   overrides: DevOverrides;
+  /** When set, overrides the plan default for the Live TV add-on. */
+  liveTvAddon?: boolean;
+  /** Paid Colourcast aesthetic. Independent of the monthly plan. */
+  synthwaveAddon?: boolean;
 }
 
 export interface BillingReceipt {
@@ -214,6 +247,12 @@ export interface PlanStatus {
   name: string;
   price: string;
   pricePence: number;
+  basePrice: string;
+  basePricePence: number;
+  liveTvAddonPence: number;
+  liveTvOptional: boolean;
+  synthwave: boolean;
+  synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
   ads: boolean;
@@ -242,6 +281,8 @@ export interface CheckoutInput {
   number?: unknown;
   expiry?: unknown;
   cvc?: unknown;
+  liveTv?: unknown;
+  synthwave?: unknown;
 }
 
 function planRank(id: PlanId): number {
@@ -266,6 +307,39 @@ export function definition(id: PlanId): PlanDefinition {
   return PLAN_CATALOG.find((entry) => entry.id === id) ?? PLAN_CATALOG[0]!;
 }
 
+export function liveTvIncluded(plan: PlanDefinition, addon: boolean | undefined): boolean {
+  if (plan.liveTvAddonPence <= 0) return false;
+  if (addon === true) return true;
+  if (addon === false) return false;
+  return plan.liveTv;
+}
+
+export function priceFor(plan: PlanDefinition, liveTv: boolean, synthwave = false): { price: string; pricePence: number } {
+  const pricePence =
+    plan.basePricePence + (liveTv ? plan.liveTvAddonPence : 0) + (synthwave ? SYNTHWAVE_ADDON_PENCE : 0);
+  return { pricePence, price: formatGbp(pricePence) };
+}
+
+function extrasFor(plan: PlanDefinition, liveTv: boolean, synthwave: boolean): string[] {
+  const extras = plan.extras.filter((line) => line !== LIVE_TV_EXTRA && line !== SYNTHWAVE_EXTRA);
+  if (synthwave) extras.unshift(SYNTHWAVE_EXTRA);
+  if (liveTv) extras.unshift(LIVE_TV_EXTRA);
+  return extras;
+}
+
+function badgesFor(plan: PlanDefinition, liveTv: boolean): string[] {
+  const badges = plan.badges.filter((badge) => badge !== 'Live');
+  if (liveTv) badges.push('Live');
+  return badges;
+}
+
+function checkoutWantsLiveTv(plan: PlanDefinition, value: unknown): boolean {
+  if (plan.liveTvAddonPence <= 0) return false;
+  if (value === false) return false;
+  if (value === true) return true;
+  return plan.liveTv;
+}
+
 export function stylesFor(id: PlanId): StyleId[] {
   return STYLE_CATALOG.filter((style) => planRank(id) >= planRank(style.minPlan)).map((style) => style.id);
 }
@@ -279,6 +353,42 @@ function mondayUtc(now = new Date()): string {
 
 function defaultEntitlement(): Entitlement {
   return { id: 'free', styleId: 'classic', source: 'free', overrides: {} };
+}
+
+interface EntitlementSnapshot {
+  id?: unknown;
+  styleId?: unknown;
+  source?: unknown;
+  liveTvAddon?: unknown;
+  synthwaveAddon?: unknown;
+}
+
+function writeSnapshot(dataDir: string, entitlement: Entitlement): void {
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(
+    planPath(dataDir),
+    JSON.stringify({
+      id: entitlement.id,
+      styleId: entitlement.styleId,
+      source: entitlement.source,
+      liveTvAddon: entitlement.liveTvAddon ?? null,
+      synthwaveAddon: entitlement.synthwaveAddon ?? null,
+    }),
+  );
+}
+
+function snapshotToEntitlement(raw: EntitlementSnapshot): Entitlement | null {
+  const id = migratePlanId(raw.id);
+  if (id === null) return null;
+  const source = raw.source === 'checkout' || raw.source === 'dev' ? raw.source : id === 'free' ? 'free' : 'checkout';
+  return {
+    id,
+    styleId: clampStyle(id, isStyleId(raw.styleId) ? raw.styleId : 'classic'),
+    source,
+    overrides: {},
+    liveTvAddon: typeof raw.liveTvAddon === 'boolean' ? raw.liveTvAddon : undefined,
+    synthwaveAddon: raw.synthwaveAddon === true ? true : undefined,
+  };
 }
 
 function clampStyle(id: PlanId, styleId: StyleId): StyleId {
@@ -304,25 +414,30 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
   const readEntitlement = (): Entitlement => {
     const sealed = readSealed<Entitlement>(dataDir, entitlementPath(dataDir));
     if (sealed !== null && isPlanId(sealed.id)) {
-      return {
+      const next = {
         id: sealed.id,
         styleId: clampStyle(sealed.id, isStyleId(sealed.styleId) ? sealed.styleId : 'classic'),
         source: sealed.source === 'checkout' || sealed.source === 'dev' ? sealed.source : 'free',
         overrides: sealed.overrides ?? {},
-      };
+        liveTvAddon: typeof sealed.liveTvAddon === 'boolean' ? sealed.liveTvAddon : undefined,
+        synthwaveAddon: sealed.synthwaveAddon === true ? true : undefined,
+      } satisfies Entitlement;
+      if (!existsSync(planPath(dataDir))) writeSnapshot(dataDir, next);
+      return next;
     }
     if (existsSync(planPath(dataDir))) {
       try {
-        const raw = JSON.parse(readFileSync(planPath(dataDir), 'utf8')) as { id?: unknown };
-        const id = migratePlanId(raw.id) ?? 'free';
-        const next = { ...defaultEntitlement(), id, source: id === 'free' ? 'free' : 'checkout' } satisfies Entitlement;
-        writeSealed(dataDir, entitlementPath(dataDir), next);
-        try {
-          unlinkSync(planPath(dataDir));
-        } catch {
-          // Legacy file can stay if unlink fails on Windows.
+        const raw = JSON.parse(readFileSync(planPath(dataDir), 'utf8')) as EntitlementSnapshot;
+        const next = snapshotToEntitlement(raw);
+        if (next !== null) {
+          try {
+            writeSealed(dataDir, entitlementPath(dataDir), next);
+          } catch {
+            // Vault can stay unread; the snapshot is enough to keep the plan.
+          }
+          writeSnapshot(dataDir, next);
+          return next;
         }
-        return next;
       } catch {
         // Fall through to default.
       }
@@ -336,6 +451,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       styleId: clampStyle(next.id, next.styleId),
     };
     writeSealed(dataDir, entitlementPath(dataDir), stored);
+    writeSnapshot(dataDir, stored);
     return stored;
   };
 
@@ -345,7 +461,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     const over = developer ? entitlement.overrides : {};
     const ads = over.ads ?? base.ads;
     const mocks = over.mocks ?? base.mocks;
-    const liveTv = over.liveTv ?? base.liveTv;
+    const liveTv = over.liveTv ?? liveTvIncluded(base, entitlement.liveTvAddon);
+    const synthwaveOwned = entitlement.synthwaveAddon === true;
+    const synthwave = developer || synthwaveOwned;
+    const charged = priceFor(base, liveTv, synthwaveOwned);
     const maxHeight = over.maxHeight ?? base.maxHeight;
     const startDelayMs = over.startDelayMs ?? base.startDelayMs;
     const weeklySeconds = over.weeklySeconds === undefined ? base.weeklySeconds : over.weeklySeconds;
@@ -359,8 +478,14 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     return {
       id: entitlement.id,
       name: base.name,
-      price: base.price,
-      pricePence: base.pricePence,
+      price: charged.price,
+      pricePence: charged.pricePence,
+      basePrice: base.basePrice,
+      basePricePence: base.basePricePence,
+      liveTvAddonPence: base.liveTvAddonPence,
+      liveTvOptional: base.liveTvAddonPence > 0,
+      synthwave,
+      synthwaveAddonPence: SYNTHWAVE_ADDON_PENCE,
       mocks,
       liveTv,
       ads,
@@ -374,8 +499,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       weeklyRemainingSeconds: remaining,
       profilesMax: base.profilesMax,
       skipRecap: base.skipRecap || entitlement.id === 'ultra' || entitlement.id === 'max',
-      extras: [...base.extras],
-      badges: [...base.badges],
+      extras: extrasFor(base, liveTv, synthwaveOwned),
+      badges: badgesFor(base, liveTv),
       styleIds,
       styleId,
       developer,
@@ -398,7 +523,26 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         id,
         source,
         styleId: clampStyle(id, current.styleId),
+        liveTvAddon: undefined,
       });
+      return compose();
+    },
+    setLiveTv(enabled: boolean): PlanStatus {
+      const current = readEntitlement();
+      const plan = definition(current.id);
+      if (plan.liveTvAddonPence <= 0) {
+        throw new Error('Live TV is a paid add-on from Basic up.');
+      }
+      writeEntitlement({ ...current, liveTvAddon: enabled });
+      return compose();
+    },
+    setSynthwave(enabled: boolean): PlanStatus {
+      const current = readEntitlement();
+      const developer = options.developer?.() === true;
+      if (enabled && !developer && current.source !== 'checkout' && current.source !== 'dev') {
+        throw new Error('Colourcast is a paid pack. Open Plans to buy it, or unlock developer mode.');
+      }
+      writeEntitlement({ ...current, synthwaveAddon: enabled ? true : undefined });
       return compose();
     },
     setStyle(styleId: StyleId): PlanStatus {
@@ -423,12 +567,17 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     checkout(input: CheckoutInput): PlanStatus {
       if (!isPlanId(input.planId)) throw new Error('unknown_plan');
       const plan = definition(input.planId);
-      if (plan.pricePence === 0) {
+      const includeLive = checkoutWantsLiveTv(plan, input.liveTv);
+      const includeSynthwave = input.synthwave === true;
+      const current = readEntitlement();
+      if (plan.basePricePence === 0 && !includeSynthwave) {
         writeEntitlement({
-          ...readEntitlement(),
+          ...current,
           id: plan.id,
           source: 'free',
-          styleId: clampStyle(plan.id, readEntitlement().styleId),
+          styleId: clampStyle(plan.id, current.styleId),
+          liveTvAddon: false,
+          synthwaveAddon: undefined,
         });
         writeSealed(dataDir, billingPath(dataDir), {
           planId: plan.id,
@@ -448,10 +597,12 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       if (!cvcOk(cvc)) throw new Error('That security code is not valid.');
       const four = lastFour(number);
       writeEntitlement({
-        ...readEntitlement(),
+        ...current,
         id: plan.id,
         source: 'checkout',
-        styleId: clampStyle(plan.id, readEntitlement().styleId),
+        styleId: clampStyle(plan.id, current.styleId),
+        liveTvAddon: includeLive,
+        synthwaveAddon: includeSynthwave ? true : current.synthwaveAddon,
       });
       writeSealed(dataDir, billingPath(dataDir), {
         planId: plan.id,

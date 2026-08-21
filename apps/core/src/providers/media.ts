@@ -6,7 +6,8 @@ import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, ty
 import { clearCacheDir, factoryResetDir } from './maintenance.ts';
 import { createProfileService, MAX_PROFILES, type ProfileRegistry, type ProfileService } from './profiles.ts';
 import { pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
-import type { RdDownload, RdTorrent, RdUnrestrict, RealDebrid } from './realdebrid.ts';
+import type { RdDownload, RdTorrent, RealDebrid } from './realdebrid.ts';
+import type { StreamerService } from './streamer.ts';
 import { becauseYouWatched, interleaveUnused, pickYouMightLike, takeUnused } from './recommend.ts';
 import {
   episodeLabel,
@@ -68,57 +69,13 @@ export interface MediaService {
 export interface MediaServiceOptions {
   dataDir: string;
   rd: RealDebrid;
+  streamer?: StreamerService;
   fetch?: typeof fetch;
   plan?: () => { id: string; maxHeight: number; profilesMax: number };
   poolToken?: () => string | null;
 }
 
 const artCache = new Map<string, ArtworkUrls>();
-
-function playbackEngine(filename: string, mimeType: string | undefined): 'html5' | 'native' {
-  if (mimeType === 'video/mp4' || mimeType === 'video/webm' || mimeType === 'application/vnd.apple.mpegurl') {
-    return 'html5';
-  }
-  return /\.(mp4|m4v|webm|m3u8)$/i.test(filename) ? 'html5' : 'native';
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function preferHtml5(
-  rd: RealDebrid,
-  unrestricted: RdUnrestrict,
-): Promise<{ url: string; mimeType: string; engine: 'html5' | 'native'; fallbackUrl?: string }> {
-  const filename = unrestricted.filename;
-  const mimeType = unrestricted.mimeType ?? 'video/mp4';
-  const download = unrestricted.download;
-  const engine = playbackEngine(filename, mimeType);
-  const id = unrestricted.id;
-  const canTranscode = id !== undefined && id !== '';
-  const shouldTranscode = engine === 'native' || unrestricted.streamable === 1;
-  if (!canTranscode || !shouldTranscode) {
-    return { url: download, mimeType, engine };
-  }
-
-  let transcoded = await rd.transcode(id);
-  if (transcoded === null && unrestricted.streamable === 1) {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await delay(400);
-      transcoded = await rd.transcode(id);
-      if (transcoded !== null) break;
-    }
-  }
-  if (transcoded === null) return { url: download, mimeType, engine };
-  return {
-    url: transcoded.url,
-    mimeType: transcoded.mimeType,
-    engine: 'html5',
-    fallbackUrl: download,
-  };
-}
 
 function loadArtDisk(dataDir: string): void {
   if (artCache.size > 0) return;
@@ -441,52 +398,75 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     return matches.find((item) => item.playable)?.id ?? null;
   };
 
+  /**
+   * From a raw file URL to a guaranteed-playable stream. ffprobe decides
+   * direct / remux / transcode; nothing is guessed from filenames, and the
+   * player never sees an upstream URL (Range proxy or local HLS only).
+   */
+  const resolveFileStream = async (
+    downloadUrl: string,
+    filename: string,
+    title: string,
+    startAt: number | undefined,
+  ): Promise<PlaybackResolution> => {
+    const streamer = options.streamer;
+    if (streamer === undefined) {
+      const mime = /\.webm(\?|$)/i.test(filename) ? 'video/webm' : 'video/mp4';
+      return {
+        kind: 'stream', url: downloadUrl, title, filename, mimeType: mime, engine: 'html5', transport: 'file',
+        ...(startAt !== undefined ? { startAt } : {}),
+      };
+    }
+    const maxHeight = options.plan?.().maxHeight ?? 2160;
+    const resolved = await streamer.resolveFile(downloadUrl, { maxHeight, filename, ...(startAt !== undefined ? { startAt } : {}) });
+    if (resolved === null) return { kind: 'unavailable', reason: 'unsupported' };
+    console.log(`tvm-core: play transport=${resolved.transport} mime=${resolved.mimeType} file=${filename}`);
+    return {
+      kind: 'stream',
+      url: resolved.url,
+      title,
+      filename,
+      mimeType: resolved.mimeType,
+      engine: 'html5',
+      transport: resolved.transport,
+      ...(resolved.sessionId !== undefined ? { sessionId: resolved.sessionId } : {}),
+      ...(resolved.timeOffset !== undefined ? { timeOffset: resolved.timeOffset } : {}),
+      ...(resolved.durationSeconds !== undefined && resolved.durationSeconds > 0
+        ? { durationSeconds: resolved.durationSeconds }
+        : {}),
+      ...(startAt !== undefined ? { startAt } : {}),
+    };
+  };
+
   const playFromLink = async (link: string, mediaId?: string): Promise<PlaybackResolution> => {
     if (!isHttpUrl(link)) return { kind: 'unavailable', reason: 'unsupported' };
     try {
+      const startAt = mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]);
       if (!needsUnrestrict(link)) {
         const filename = link.split('/').pop()?.split('?')[0] ?? 'stream';
-        const mimeType = /\.m3u8(\?|$)/i.test(link)
-          ? 'application/vnd.apple.mpegurl'
-          : /\.webm(\?|$)/i.test(link)
-            ? 'video/webm'
-            : /\.mp4(\?|$)/i.test(link)
-              ? 'video/mp4'
-              : 'video/mp4';
-        const engine = playbackEngine(filename, mimeType);
-        const startAt = mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]);
-        return {
-          kind: 'stream',
-          url: link,
-          title: parseFilename(filename).title,
-          filename,
-          mimeType,
-          engine,
-          ...(startAt !== undefined ? { startAt } : {}),
-        };
+        if (/\.m3u8(\?|$)/i.test(link)) {
+          return {
+            kind: 'stream',
+            url: link,
+            title: parseFilename(filename).title,
+            filename,
+            mimeType: 'application/vnd.apple.mpegurl',
+            engine: 'html5',
+            transport: 'hls',
+            ...(startAt !== undefined ? { startAt } : {}),
+          };
+        }
+        return resolveFileStream(link, filename, parseFilename(filename).title, startAt);
       }
       const unrestricted = await rd.unrestrict(link);
       if (unrestricted.download === undefined || unrestricted.download === '') {
         return { kind: 'unavailable', reason: 'unsupported' };
       }
-      const stream = await preferHtml5(rd, unrestricted);
-      console.log(`tvm-core: play engine=${stream.engine} mime=${stream.mimeType} file=${unrestricted.filename}`);
       const parsed = parseFilename(unrestricted.filename);
       const episode = parseEpisode(unrestricted.filename);
-      const startAt = mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]);
-      return {
-        kind: 'stream',
-        url: stream.url,
-        title:
-          episode !== null ? `${parsed.title} · ${episodeLabel(episode.season, episode.episode)}` : parsed.title,
-        filename: unrestricted.filename,
-        mimeType: stream.mimeType,
-        engine: stream.engine,
-        ...(stream.fallbackUrl !== undefined
-          ? { fallbackUrl: stream.fallbackUrl, fallbackEngine: 'native' as const }
-          : {}),
-        ...(startAt !== undefined ? { startAt } : {}),
-      };
+      const title =
+        episode !== null ? `${parsed.title} · ${episodeLabel(episode.season, episode.episode)}` : parsed.title;
+      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt);
     } catch (error) {
       if (error instanceof Error && error.name === 'RdAuth') return { kind: 'unavailable', reason: 'needs-auth' };
       return { kind: 'unavailable', reason: 'unsupported' };

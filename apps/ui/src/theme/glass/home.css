@@ -1,0 +1,194 @@
+/* Home under liquid glass. Hero art is the scene; only the copy capsule frosts.
+ * One viewport-fixed scene (not a sticky percent-height world layer). */
+
+.home__scene {
+  display: none;
+}
+
+[data-theme='glass'] .home:not(.stream-page),
+[data-theme='glass'] .page--docked {
+  position: relative;
+  z-index: 0;
+  background: var(--tvm-bg);
+}
+
+[data-theme='glass'] .home__scene {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+[data-theme='glass'] .home__scene--mesh {
+  background:
+    radial-gradient(80% 50% at 72% 8%, color-mix(in srgb, var(--tvm-scene-foam) 16%, transparent), transparent 58%),
+    radial-gradient(70% 46% at 18% 86%, color-mix(in srgb, var(--tvm-scene-sky) 12%, transparent), transparent 55%);
+}
+
+[data-theme='glass'] .home__scene::after {
+  content: none;
+}
+
+[data-theme='glass'] .home .stage {
+  min-height: 62vh;
+}
+
+[data-theme='glass'] .home:not(.stream-page) .stage {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme='glass'] .home .stage::after {
+  content: none;
+}
+
+[data-theme='glass'] .home .stage__art--pending {
+  background: linear-gradient(160deg, #1a3a62 0%, #0a1424 78%);
+}
+
+[data-theme='glass'] .home .stage__art--fallback {
+  background:
+    radial-gradient(70% 80% at 70% 18%, hsl(var(--poster-hue, 210) 70% 58% / 0.85), transparent 64%),
+    linear-gradient(160deg, #6aa7e8 0%, #1a3a62 42%, #0a1424 78%);
+}
+
+[data-theme='glass'] .home .stage__pictures {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+[data-theme='glass'] .home .stage__vignette {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg) 46%, transparent) 0%, color-mix(in srgb, var(--tvm-bg) 10%, transparent) 36%, transparent 62%),
+    linear-gradient(180deg, transparent 36%, color-mix(in srgb, var(--tvm-bg) 42%, transparent) 68%, color-mix(in srgb, var(--tvm-bg) 82%, transparent) 88%, var(--tvm-bg) 100%);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+[data-theme='glass'] .home .stage__copy,
+[data-theme='glass'] .home .billboard__copy,
+[data-theme='glass'] .home .hero__copy {
+  max-width: 36rem;
+  padding: 1.2rem 1.4rem 1.3rem;
+  isolation: auto;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius-lg);
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  transform: translateZ(0);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+  animation: glass-pane-in 500ms var(--tvm-motion-ease) backwards;
+}
+
+@keyframes glass-pane-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+[data-theme='glass'] .home .stage__kicker,
+[data-theme='glass'] .home .hero__kicker {
+  color: var(--tvm-glass-paper);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .home .stage__title,
+[data-theme='glass'] .home .hero__title,
+[data-theme='glass'] .home .billboard__title {
+  color: var(--tvm-glass-text);
+  text-shadow:
+    0 0 0.55rem color-mix(in srgb, var(--tvm-glass-specular-hot) 40%, transparent),
+    var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .home .stage__title--ember {
+  color: var(--tvm-glass-accent-warm);
+  text-shadow:
+    0 0 0.4rem rgba(255, 176, 90, 0.95),
+    var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .home .stage__meta,
+[data-theme='glass'] .home .stage__synopsis,
+[data-theme='glass'] .home .hero__synopsis {
+  color: var(--tvm-glass-text);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .home .stage__watchline,
+[data-theme='glass'] .home .stage__watchnow {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .home .stage__watchnow:focus,
+[data-theme='glass'] .home .stage__watchnow[data-focused='true'] {
+  text-shadow: 0 0 0.95rem color-mix(in srgb, var(--tvm-glass-specular-hot) 88%, transparent);
+}
+
+[data-theme='glass'] .home .stage__watchline-rule {
+  opacity: 0.55;
+  color: color-mix(in srgb, var(--tvm-glass-text) 86%, transparent);
+}
+
+[data-theme='glass'] .home .stage__source {
+  color: var(--tvm-glass-accent);
+}
+
+[data-theme='glass'] .home .tvm-lockup__word {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .home .tvm-button--glass.stage__learn,
+[data-theme='glass'] .home .billboard .tvm-button--glass {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-bright);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+}
+
+[data-theme='glass'] .home .tvm-button--glass.stage__learn:focus,
+[data-theme='glass'] .home .tvm-button--glass.stage__learn[data-focused='true'],
+[data-theme='glass'] .home .billboard .tvm-button--glass:focus,
+[data-theme='glass'] .home .billboard .tvm-button--glass[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .home .stage__dots {
+  gap: 0.45rem;
+}
+
+[data-theme='glass'] .home .stage__dot {
+  background: color-mix(in srgb, var(--tvm-glass-text) 38%, transparent);
+}
+
+[data-theme='glass'] .home .stage__dot--on {
+  background: var(--tvm-glass-paper);
+}
+
+[data-theme='glass'] .home:not(.stream-page) .home__shelf {
+  position: relative;
+  z-index: 1;
+  background: var(--tvm-bg);
+}
+
+[data-theme='glass'] .page--docked > :not(.home__scene, .ribbon, .ribbon-zone) {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme='glass'] .home .chip {
+  border-color: var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-bright);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge);
+}

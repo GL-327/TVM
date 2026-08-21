@@ -3,7 +3,7 @@
   <interface>
     <field id="results" type="array" onChange="onResults" />
     <field id="message" type="string" onChange="onMessage" />
-    <field id="query" type="string" />
+    <field id="query" type="string" onChange="onExternalQuery" />
     <field id="action" type="assocarray" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
@@ -11,13 +11,22 @@
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="SearchPanel.brs" />
   <children>
-    <Rectangle width="3840" height="2160" color="0x000000E0" />
-    <Rectangle width="3360" height="1840" translation="[240, 160]" color="0x161616FF" cornerRadius="40" />
-    <Label id="heading" text="Search" translation="[360, 240]" color="0xF5F5F5FF" />
-    <Label id="lede" translation="[360, 340]" width="2800" color="0xC4C4C4FF" />
-    <Label id="queryLabel" translation="[360, 440]" width="2800" color="0xFFFFFFFF" />
-    <Group id="keys" translation="[360, 600]" />
-    <PosterRail id="rail" translation="[200, 1280]" />
-    <FocusButton id="close" translation="[2960, 240]" />
+    <Rectangle width="3840" height="2160" color="0x000000D6" />
+    <Label id="heading" text="Search" translation="[400, 88]" color="0xF5F5F5FF" />
+    <Rectangle id="pillRing" width="2512" height="208" translation="[384, 160]" color="0x00000000" cornerRadius="104" />
+    <Rectangle id="pill" width="2480" height="176" translation="[400, 176]" color="0x2B2B2BFF" cornerRadius="88" />
+    <Poster
+      id="pillIcon"
+      uri="pkg:/images/icons/search.png"
+      width="72"
+      height="72"
+      translation="[456, 228]"
+      loadDisplayMode="scaleToFit"
+    />
+    <Label id="queryLabel" translation="[560, 216]" width="2200" height="96" color="0xF5F5F5FF" />
+    <FocusButton id="close" translation="[2960, 184]" />
+    <Label id="lede" translation="[400, 400]" width="3040" color="0xC4C4C4FF" />
+    <Group id="keys" translation="[400, 500]" />
+    <PosterRail id="rail" translation="[0, 1320]" />
   </children>
 </component>

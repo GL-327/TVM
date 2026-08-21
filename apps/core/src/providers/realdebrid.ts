@@ -194,7 +194,7 @@ export function createRealDebrid(options: RealDebridOptions): RealDebrid {
     async transcode(id: string): Promise<RdTranscode | null> {
       try {
         const response = await request(`/streaming/transcode/${encodeURIComponent(id)}`);
-        return pickTranscode(await response.json());
+        return pickHtml5Transcode(await response.json());
       } catch {
         return null;
       }
@@ -202,12 +202,20 @@ export function createRealDebrid(options: RealDebridOptions): RealDebrid {
   };
 }
 
+/**
+ * HTML5 wants a playlist Chromium can demux. Real-Debrid's `liveMP4` is a live
+ * transcode (often MPEG-TS despite the name) — `video.src` on it play→buffer
+ * loops, then TVM hands the file to mpv. HLS first keeps the browser on a
+ * paced AAC ladder; liveMP4 remains the last resort.
+ */
+const HTML5_TRANSCODE_GROUPS = ['apple', 'h264WebM', 'liveMP4'] as const;
 const TRANSCODE_GROUPS = ['liveMP4', 'h264WebM', 'apple'] as const;
 const TRANSCODE_QUALITIES = ['1080', '1080p', '720', '720p', 'full', 'auto', '480', '360'];
 
 function mimeForGroup(group: string, url: string): string {
   if (group === 'apple' || /\.m3u8(\?|$)/i.test(url)) return 'application/vnd.apple.mpegurl';
   if (group === 'h264WebM') return 'video/webm';
+  if (group === 'liveMP4' && !/\.mp4(\?|$)/i.test(url)) return 'video/mp2t';
   return 'video/mp4';
 }
 
@@ -215,11 +223,14 @@ function httpUrl(value: unknown): string | null {
   return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : null;
 }
 
-export function pickTranscode(body: unknown): RdTranscode | null {
+function pickTranscodeFrom(
+  body: unknown,
+  groups: readonly string[],
+): RdTranscode | null {
   if (typeof body !== 'object' || body === null) return null;
   const record = body as Record<string, unknown>;
 
-  for (const group of TRANSCODE_GROUPS) {
+  for (const group of groups) {
     const bucket = record[group];
     if (typeof bucket !== 'object' || bucket === null) continue;
     const map = bucket as Record<string, unknown>;
@@ -233,4 +244,20 @@ export function pickTranscode(body: unknown): RdTranscode | null {
     }
   }
   return null;
+}
+
+export function pickTranscode(body: unknown): RdTranscode | null {
+  return pickTranscodeFrom(body, TRANSCODE_GROUPS);
+}
+
+/** HLS first so Chromium never plays Real-Debrid's live MP4/MPEG-TS as `video.src`. */
+export function pickHtml5Transcode(body: unknown): RdTranscode | null {
+  return pickTranscodeFrom(body, HTML5_TRANSCODE_GROUPS);
+}
+
+export function isBrowserStream(mimeType: string, url: string): boolean {
+  if (/mpegurl|x-mpegurl/i.test(mimeType) || mimeType === 'video/webm' || mimeType === 'video/mp4') {
+    return true;
+  }
+  return /\.(m3u8|mp4|m4v|webm)(\?|$)/i.test(url);
 }

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { TopBar } from '../components/TopBar';
+import { displayMaxLabel, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -15,6 +17,12 @@ export function SystemInfo({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const section = params['section'] === 'network' ? 'network' : 'display';
   const connection = (navigator as NavigatorWithConnection).connection;
+  const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
+
+  useEffect(() => {
+    void fetchPlan().then(setPlan);
+  }, []);
+
   const rows: Array<[string, string]> =
     section === 'network'
       ? [
@@ -24,6 +32,8 @@ export function SystemInfo({ params }: ScreenProps): React.JSX.Element {
           ['Estimated latency', connection?.rtt === undefined ? 'Unavailable' : `${connection.rtt} ms`],
         ]
       : [
+          ['Max stream', displayMaxLabel(plan.maxHeight)],
+          ['Plan', `${plan.name} · ${plan.maxHeight >= 2160 ? '4K is available on this plan' : `${plan.maxHeight}p on this plan`}`],
           ['Panel', `${window.screen.width} × ${window.screen.height}`],
           ['TVM viewport', `${window.innerWidth} × ${window.innerHeight}`],
           ['Pixel ratio', String(window.devicePixelRatio)],
@@ -39,7 +49,9 @@ export function SystemInfo({ params }: ScreenProps): React.JSX.Element {
       <p className="page__lede">
         {section === 'network'
           ? 'TVM reports the active connection. Wi-Fi selection is handled by the appliance setup layer, not a fake web control.'
-          : 'These are the values TVM is actually rendering. Overscan and HDMI mode are controlled by the appliance and television.'}
+          : plan.maxHeight >= 2160
+            ? 'This plan can stream up to 4K (2160p). The numbers below are the current window and panel, which can be 1080p while the stream itself is 4K.'
+            : 'These are the values TVM is actually rendering. Overscan and HDMI mode are controlled by the appliance and television.'}
       </p>
       <dl className="panel__rows settings-summary">
         {rows.map(([label, value]) => (

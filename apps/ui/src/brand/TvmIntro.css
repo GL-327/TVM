@@ -1,0 +1,463 @@
+/* Full-viewport sting. Cheap layers only — no spinning vmax discs, blur, or particle storms. */
+
+.tvm-intro,
+.app > .tvm-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  --intro-bg: var(--tvm-bg-deep, #071428);
+  --intro-ink: var(--tvm-text, #f4fffb);
+  --intro-accent: var(--tvm-accent, #7dffd4);
+  --intro-strong: var(--tvm-accent-strong, #b8ffe8);
+  --intro-cool: var(--tvm-accent-blue, #8ee8ff);
+  --intro-paper: color-mix(in srgb, var(--tvm-text, #fff) 88%, #fff);
+  background: var(--intro-bg);
+  color: var(--intro-ink);
+  cursor: none;
+  contain: layout paint;
+}
+
+.tvm-intro--stream {
+  --intro-accent: var(--tvm-accent-blue, #8ee8ff);
+  --intro-cool: var(--tvm-accent, #7dffd4);
+}
+
+.tvm-intro__wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 58% at 50% 50%, color-mix(in srgb, var(--intro-accent) 28%, transparent), transparent 64%),
+    radial-gradient(90% 70% at 50% 108%, color-mix(in srgb, var(--intro-cool) 22%, transparent), transparent 58%),
+    var(--intro-bg);
+}
+
+.tvm-intro__wash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  background: var(--tvm-scene-noise, none);
+  mix-blend-mode: overlay;
+}
+
+.tvm-intro--stream .tvm-intro__wash {
+  background:
+    radial-gradient(70% 58% at 50% 50%, color-mix(in srgb, var(--intro-cool) 26%, transparent), transparent 64%),
+    radial-gradient(90% 70% at 50% 108%, color-mix(in srgb, var(--intro-accent) 16%, transparent), transparent 58%),
+    var(--intro-bg);
+}
+
+.tvm-intro__field {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tvm-intro__bloom,
+.tvm-intro__ring,
+.tvm-intro__flare,
+.tvm-intro__mote {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+
+.tvm-intro__bloom {
+  width: min(42rem, 70vmin);
+  height: min(42rem, 70vmin);
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--intro-strong) 36%, transparent),
+    color-mix(in srgb, var(--intro-accent) 14%, transparent) 46%,
+    transparent 72%
+  );
+  transform: translate(-50%, -50%) scale(0.72);
+  opacity: 0;
+  animation: tvm-intro-bloom 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.08s backwards;
+}
+
+.tvm-intro--stream .tvm-intro__bloom {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--intro-cool) 34%, transparent),
+    color-mix(in srgb, var(--intro-cool) 12%, transparent) 46%,
+    transparent 72%
+  );
+}
+
+.tvm-intro__ring {
+  width: min(14rem, 28vmin);
+  height: min(14rem, 28vmin);
+  border: 2px solid color-mix(in srgb, var(--intro-strong) 55%, transparent);
+  border-radius: 999px;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.35);
+  animation: tvm-intro-ring 1.15s cubic-bezier(0.16, 1, 0.3, 1) 0.12s backwards;
+}
+
+.tvm-intro__ring--mid {
+  width: min(22rem, 44vmin);
+  height: min(22rem, 44vmin);
+  border-color: color-mix(in srgb, var(--intro-accent) 38%, transparent);
+  animation-delay: 0.28s;
+}
+
+.tvm-intro__flare {
+  width: min(46rem, 72vw);
+  height: 0.14rem;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--intro-paper) 32%,
+    var(--intro-strong) 50%,
+    var(--intro-accent) 68%,
+    transparent
+  );
+  opacity: 0;
+  transform: translate(-120%, -50%);
+  animation: tvm-intro-flare 0.9s cubic-bezier(0.22, 1, 0.36, 1) 1.05s backwards;
+}
+
+.tvm-intro--stream .tvm-intro__flare {
+  background: linear-gradient(90deg, transparent, #e8fbff 32%, var(--intro-cool) 50%, var(--intro-cool) 68%, transparent);
+}
+
+.tvm-intro__mote {
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: var(--intro-strong);
+  opacity: 0;
+  --mote-rot: 20deg;
+  animation: tvm-intro-mote 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.22s backwards;
+}
+
+.tvm-intro__mote--1 {
+  background: var(--intro-accent);
+  --mote-rot: 80deg;
+  animation-delay: 0.3s;
+}
+.tvm-intro__mote--2 {
+  background: var(--intro-cool);
+  --mote-rot: 140deg;
+  animation-delay: 0.38s;
+}
+.tvm-intro__mote--3 {
+  --mote-rot: 200deg;
+  animation-delay: 0.46s;
+}
+.tvm-intro__mote--4 {
+  background: var(--intro-accent);
+  --mote-rot: 260deg;
+  animation-delay: 0.54s;
+}
+.tvm-intro__mote--5 {
+  background: var(--intro-paper);
+  --mote-rot: 320deg;
+  animation-delay: 0.62s;
+}
+
+.tvm-intro__stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  animation: tvm-intro-stage 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.tvm-intro__mark {
+  position: relative;
+  animation: tvm-intro-mark 0.9s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.tvm-intro__ray {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  width: 0.14rem;
+  height: 2.4rem;
+  margin-left: -0.07rem;
+  pointer-events: none;
+  background: linear-gradient(var(--intro-paper), transparent);
+  transform-origin: 50% 100%;
+  opacity: 0;
+  --ray: -24deg;
+  animation: tvm-intro-ray 0.55s ease 0.45s backwards;
+}
+
+.tvm-intro__ray--1 {
+  --ray: 18deg;
+  animation-delay: 0.5s;
+}
+.tvm-intro__ray--2 {
+  --ray: -62deg;
+  animation-delay: 0.55s;
+}
+.tvm-intro__ray--3 {
+  --ray: 58deg;
+  animation-delay: 0.6s;
+}
+
+.tvm-intro__word {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  gap: 0.08em;
+  margin: 0;
+  font-family: 'Segoe UI Variable Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: clamp(3rem, 9vw, 6rem);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  line-height: 1;
+}
+
+.tvm-intro__sheen {
+  position: absolute;
+  inset: -8% -20%;
+  pointer-events: none;
+  font-style: normal;
+  background: linear-gradient(
+    105deg,
+    transparent 28%,
+    color-mix(in srgb, var(--intro-paper) 70%, transparent) 50%,
+    transparent 72%
+  );
+  transform: translateX(-130%);
+  animation: tvm-intro-sheen 0.7s ease 1.55s backwards;
+}
+
+.tvm-intro__word span {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.55em);
+  text-shadow: 0 0 1.2rem color-mix(in srgb, var(--intro-strong) 45%, transparent);
+  animation: tvm-intro-letter 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.tvm-intro__word span:nth-child(1) {
+  animation-delay: 0.85s;
+}
+.tvm-intro__word span:nth-child(2) {
+  animation-delay: 1s;
+}
+.tvm-intro__word span:nth-child(3) {
+  animation-delay: 1.15s;
+}
+
+.tvm-intro__tag {
+  margin: 0.15rem 0 0;
+  color: var(--intro-strong);
+  font-size: 0.86rem;
+  font-weight: 750;
+  letter-spacing: 0.52em;
+  opacity: 0;
+  transform: translateY(0.4rem);
+  animation: tvm-intro-tag 0.5s cubic-bezier(0.22, 1, 0.36, 1) 1.35s backwards;
+}
+
+.tvm-intro--stream .tvm-intro__tag {
+  color: var(--intro-cool);
+}
+
+.tvm-intro__skip {
+  position: absolute;
+  right: 1.4rem;
+  bottom: 1.2rem;
+  margin: 0;
+  color: color-mix(in srgb, var(--intro-ink) 55%, transparent);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  animation: tvm-intro-tag 0.4s ease 1.7s backwards;
+}
+
+.tvm-intro--out {
+  animation: tvm-intro-leave 0.42s ease both;
+}
+
+.tvm-intro--hold .tvm-intro__tag {
+  animation: tvm-intro-tag-idle 2.2s ease-in-out infinite;
+}
+
+.tvm-intro--hold .tvm-intro__bloom {
+  animation: tvm-intro-bloom-idle 3.2s ease-in-out infinite;
+}
+
+@keyframes tvm-intro-bloom {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+  100% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes tvm-intro-bloom-idle {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+@keyframes tvm-intro-ring {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.28);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.55);
+  }
+}
+
+@keyframes tvm-intro-flare {
+  0% {
+    opacity: 0;
+    transform: translate(-120%, -50%);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(28%, -50%);
+  }
+}
+
+@keyframes tvm-intro-mote {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--mote-rot, 0deg)) translateY(-6.5rem) scale(0.2);
+  }
+}
+
+@keyframes tvm-intro-ray {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--ray, 0deg)) scaleY(0.2);
+  }
+  40% {
+    opacity: 0.9;
+    transform: rotate(var(--ray, 0deg)) scaleY(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--ray, 0deg)) scaleY(0.4);
+  }
+}
+
+@keyframes tvm-intro-sheen {
+  to {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes tvm-intro-tag-idle {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes tvm-intro-stage {
+  from {
+    opacity: 0;
+    transform: translateY(0.7rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tvm-intro-mark {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tvm-intro-letter {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tvm-intro-tag {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tvm-intro-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tvm-intro__bloom,
+  .tvm-intro__ring,
+  .tvm-intro__flare,
+  .tvm-intro__mote,
+  .tvm-intro__ray,
+  .tvm-intro__sheen,
+  .tvm-intro__stage,
+  .tvm-intro__mark,
+  .tvm-intro__word span,
+  .tvm-intro__tag,
+  .tvm-intro__skip,
+  .tvm-intro--out {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .tvm-intro__bloom,
+  .tvm-intro__ring,
+  .tvm-intro__flare,
+  .tvm-intro__mote {
+    transform: translate(-50%, -50%);
+  }
+}

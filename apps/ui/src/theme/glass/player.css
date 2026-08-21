@@ -1,0 +1,231 @@
+/*
+ * Cheap playback chrome. Video pixels stay untouched: no filter, mix-blend,
+ * or backdrop-filter on the picture or on chips sitting over it.
+ * Glass is paint-only — fill-video, specular wash, hairline, edge, halo.
+ */
+
+html[data-theme='glass'] .player,
+html[data-theme='glass'] .player-root,
+html[data-theme='glass'] .chrome-frame,
+html[data-theme='glass'] .stream-page {
+  --player-chip-filter: none;
+}
+
+html[data-theme='glass'] :is(.player, .player-root, [data-player]) :is(video, .player__video) {
+  filter: none;
+  mix-blend-mode: normal;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Kill frost on every overlay that samples the frame behind it. */
+html[data-theme='glass'] :is(.player, .player-root, [data-player]) :is(
+  .player__title,
+  .player__icon,
+  .player__tools .tvm-button,
+  .player-transport .tvm-button.player-transport__btn,
+  .player-volume,
+  .player-skip-recap .tvm-button,
+  .player-audio__menu,
+  .player-cc__menu,
+  .player-quality__menu,
+  .player-trickplay__card,
+  .next-up,
+  .player-remote-hints__phrase,
+  .player-credits .tvm-button,
+  .player-credits-dock .tvm-button,
+  [data-focus-id='skip-recap']
+),
+html[data-theme='glass'] .player [data-focus-id='skip-recap'] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .player__chrome {
+  background:
+    linear-gradient(
+      180deg,
+      var(--tvm-glass-scrim) 0%,
+      color-mix(in srgb, var(--tvm-glass-scrim) 42%, transparent) 16%,
+      transparent 30%
+    ),
+    linear-gradient(
+      0deg,
+      var(--tvm-glass-fill-video) 0%,
+      color-mix(in srgb, var(--tvm-glass-fill-video) 48%, transparent) 26%,
+      transparent 50%
+    );
+}
+
+[data-theme='glass'] .player__top {
+  max-width: min(72vw, 56rem);
+}
+
+[data-theme='glass'] .player__title,
+[data-theme='glass'] .player__icon,
+[data-theme='glass'] .player__tools .tvm-button,
+[data-theme='glass'] .player [data-focus-id='skip-recap'],
+[data-theme='glass'] .player-skip-recap .tvm-button.player-skip-recap__btn,
+[data-theme='glass'] .player-volume,
+[data-theme='glass'] .player-audio__menu,
+[data-theme='glass'] .player-cc__menu,
+[data-theme='glass'] .player-quality__menu,
+[data-theme='glass'] .player-trickplay__card,
+[data-theme='glass'] .next-up,
+[data-theme='glass'] .player-remote-hints__phrase {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-video);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .player__title {
+  min-width: 0;
+  padding: 0.28rem 0.85rem 0.32rem;
+  border-radius: var(--tvm-radius-pill);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .player-title-overlay__title,
+[data-theme='glass'] .player__badges,
+[data-theme='glass'] .player__time,
+[data-theme='glass'] .player__engine,
+[data-theme='glass'] .player-title-overlay__meta {
+  color: var(--tvm-glass-text);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .player__badges,
+[data-theme='glass'] .player-title-overlay__meta,
+[data-theme='glass'] .player__engine {
+  color: var(--tvm-glass-text-muted);
+}
+
+[data-theme='glass'] .player__seek-row .player__icon {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .player__seek-row .player__icon[data-focused='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme='glass'] .player__seek {
+  height: 0.32rem;
+  background: color-mix(in srgb, var(--tvm-glass-ink) 62%, transparent);
+  box-shadow:
+    inset 0 0 0 var(--tvm-glass-hairline-width) var(--tvm-glass-hairline),
+    0 0.12rem 0.4rem rgba(2, 8, 16, 0.4);
+}
+
+[data-theme='glass'] .player__seek-row .player__icon[data-focused='true'] .player__seek {
+  height: 0.46rem;
+  box-shadow:
+    inset 0 0 0 var(--tvm-glass-hairline-width) var(--tvm-glass-hairline),
+    var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .player__seek-fill {
+  background: linear-gradient(90deg, var(--tvm-glass-accent) 0%, var(--tvm-glass-paper) 100%);
+}
+
+[data-theme='glass'] .player__seek-thumb {
+  width: 0.86rem;
+  height: 0.86rem;
+  background: var(--tvm-glass-paper);
+  box-shadow:
+    0 0 0 0.14rem color-mix(in srgb, var(--tvm-glass-ink) 70%, transparent),
+    0 0 0.55rem color-mix(in srgb, var(--tvm-glass-accent) 45%, transparent);
+}
+
+[data-theme='glass'] .player__vol-track {
+  background: color-mix(in srgb, var(--tvm-glass-ink) 62%, transparent);
+  box-shadow: inset 0 0 0 var(--tvm-glass-hairline-width) var(--tvm-glass-hairline-cool);
+}
+
+[data-theme='glass'] .player__vol-fill {
+  background: var(--tvm-glass-paper);
+}
+
+[data-theme='glass'] .player__icon {
+  border-radius: var(--tvm-glass-radius);
+}
+
+[data-theme='glass'] .player__icon--primary {
+  border-color: color-mix(in srgb, var(--tvm-glass-hairline) 70%, var(--tvm-glass-paper));
+}
+
+[data-theme='glass'] .player__icon[data-focused='true'],
+[data-theme='glass'] .player [data-focus-id='skip-recap'][data-focused='true'],
+[data-theme='glass'] .player [data-focus-id='skip-recap']:focus,
+[data-theme='glass'] .player__tools .tvm-button[data-focused='true'],
+[data-theme='glass'] .player__tools .tvm-button:focus,
+[data-theme='glass'] .player-skip-recap .tvm-button.player-skip-recap__btn[data-focused='true'],
+[data-theme='glass'] .player-transport .tvm-button.player-transport__btn[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .player [data-focus-id='skip-recap']:focus,
+[data-theme='glass'] .player__tools .tvm-button:focus {
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: var(--tvm-focus-ring-offset);
+}
+
+[data-theme='glass'] .player__tools .tvm-button,
+[data-theme='glass'] .player [data-focus-id='skip-recap'] {
+  text-shadow: var(--tvm-glass-halo);
+}
+
+html[data-theme='glass'] .player-root .player-transport .tvm-button.player-transport__btn,
+html[data-theme='glass'] .player .player-transport .tvm-button.player-transport__btn {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-video);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme='glass'] .player-root .player-transport .tvm-button.player-transport__btn--play,
+html[data-theme='glass'] .player .player-transport .tvm-button.player-transport__btn--play,
+[data-theme='glass'] .player-transport .tvm-button.player-transport__btn--play[data-focused='true'] {
+  border-color: color-mix(in srgb, #fff 55%, transparent);
+  background:
+    radial-gradient(circle at 32% 28%, color-mix(in srgb, #fff 70%, transparent), transparent 42%),
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--tvm-glass-accent-mint, var(--player-fill)) 88%, #fff) 0%,
+      var(--tvm-glass-accent-mint, var(--player-fill)) 58%,
+      color-mix(in srgb, var(--tvm-glass-accent-mint, var(--player-fill)) 55%, #111) 100%
+    );
+  color: #061018;
+  box-shadow:
+    0 0 0 0.28rem color-mix(in srgb, var(--tvm-glass-accent-mint, var(--player-fill)) 28%, transparent),
+    0 0 1.8rem var(--player-fill-glow),
+    0 0.55rem 1.4rem color-mix(in srgb, #000 45%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .player-transport .tvm-button.player-transport__btn--play[data-focused='true'] {
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+html[data-theme='glass'] .player-root .player-volume,
+html[data-theme='glass'] .player .player-volume {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .player-skip-recap .tvm-button.player-skip-recap__btn.tvm-button--primary {
+  border-color: color-mix(in srgb, var(--tvm-glass-hairline) 55%, var(--tvm-glass-paper));
+  background: var(--tvm-glass-paper);
+  color: var(--tvm-glass-ink);
+}

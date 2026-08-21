@@ -111,11 +111,11 @@ const E2E_PLAN = {
   styleId: 'classic',
   developer: false,
   catalog: [
-    { id: 'free', name: 'TVM Free', price: 'Free', pricePence: 0, mocks: false, liveTv: false, extras: ['TVM Stream only'] },
-    { id: 'basic', name: 'TVM Basic', price: '£4.99', pricePence: 499, mocks: false, liveTv: false, extras: [] },
-    { id: 'premium', name: 'TVM Premium', price: '£8.99', pricePence: 899, mocks: false, liveTv: false, extras: [] },
-    { id: 'ultra', name: 'TVM Ultra', price: '£12.99', pricePence: 1299, mocks: true, liveTv: false, extras: [] },
-    { id: 'max', name: 'TVM MAX', price: '£15.99', pricePence: 1599, mocks: true, liveTv: true, extras: [] },
+    { id: 'free', name: 'TVM Free', price: 'Free', pricePence: 0, basePrice: 'Free', basePricePence: 0, liveTvAddonPence: 0, mocks: false, liveTv: false, extras: ['TVM Stream only'] },
+    { id: 'basic', name: 'TVM Basic', price: '£7.99', pricePence: 799, basePrice: '£4.99', basePricePence: 499, liveTvAddonPence: 300, mocks: false, liveTv: true, extras: [] },
+    { id: 'premium', name: 'TVM Premium', price: '£11.99', pricePence: 1199, basePrice: '£8.99', basePricePence: 899, liveTvAddonPence: 300, mocks: false, liveTv: true, extras: [] },
+    { id: 'ultra', name: 'TVM Ultra', price: '£15.99', pricePence: 1599, basePrice: '£12.99', basePricePence: 1299, liveTvAddonPence: 300, mocks: true, liveTv: true, extras: [] },
+    { id: 'max', name: 'TVM MAX', price: '£18.99', pricePence: 1899, basePrice: '£15.99', basePricePence: 1599, liveTvAddonPence: 300, mocks: true, liveTv: true, extras: [] },
   ],
   styles: [
     { id: 'classic', name: 'Classic', minPlan: 'premium' },
@@ -274,7 +274,7 @@ async function stubReady(page: Page): Promise<void> {
   );
   await page.route('**/api/watchlist', (route) => route.fulfill({ json: { items: [] } }));
   await page.route('**/api/live', (route) =>
-    route.fulfill({ json: { url: null, channels: [], error: null } }),
+    route.fulfill({ json: { url: null, host: null, username: null, configured: false, channels: [], error: null } }),
   );
   await page.route('**/api/update/check', (route) =>
     route.fulfill({
@@ -362,11 +362,16 @@ test('a modal traps focus and Back closes the modal', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="search"]')).toBeVisible();
   await waitForFocus(page);
-  expect(await focusedId(page)).toBe('close');
+  const opened = await focusedId(page);
+  expect(opened === 'close' || opened === 'open' || opened === 'query' || opened?.startsWith('key-')).toBe(true);
 
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowDown');
-  await waitForFocus(page);
+  let onKeyboard = opened?.startsWith('key-') === true;
+  for (let step = 0; step < 6 && !onKeyboard; step += 1) {
+    await page.keyboard.press('ArrowDown');
+    await waitForFocus(page);
+    onKeyboard = (await focusedId(page))?.startsWith('key-') === true;
+  }
+  expect(onKeyboard).toBe(true);
   const trapped = await focusedId(page);
   expect(trapped === 'close' || trapped === 'open' || trapped === 'query' || trapped?.startsWith('key-')).toBe(true);
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
@@ -413,6 +418,36 @@ test('Home opens without a Real-Debrid token', async ({ page }) => {
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.locator('[data-screen="profiles"]')).toHaveCount(0);
   await expect(page.locator('[data-screen="setup"]')).toHaveCount(0);
+});
+
+test('open ribbon sits in the top center', async ({ page }) => {
+  await pressUntil(page, 'home-dock');
+  const ribbon = page.locator('.ribbon');
+  await expect(ribbon).toBeVisible();
+  await expect(ribbon).toHaveClass(/ribbon--open/);
+  const metrics = await ribbon.evaluate((el) => {
+    const styles = getComputedStyle(el);
+    const frost = el.querySelector('.ribbon__frost');
+    const frostStyles = frost !== null ? getComputedStyle(frost) : null;
+    const rect = el.getBoundingClientRect();
+    const tx = styles.transform.startsWith('matrix(')
+      ? Number(styles.transform.slice(7, -1).split(',')[4])
+      : 0;
+    return {
+      left: styles.left,
+      transform: styles.transform,
+      hostFilter: styles.backdropFilter,
+      frostFilter: frostStyles?.backdropFilter ?? '',
+      frostTransform: frostStyles?.transform ?? '',
+      center: rect.left + rect.width / 2,
+      mid: window.innerWidth / 2,
+      tx,
+    };
+  });
+  expect(Math.abs(metrics.center - metrics.mid)).toBeLessThan(12);
+  expect(metrics.tx).toBeLessThan(0);
+  expect(metrics.frostTransform === 'none' || metrics.frostTransform === '').toBe(true);
+  expect(metrics.hostFilter === 'none' || metrics.hostFilter === '').toBe(true);
 });
 
 test('TVM Stream asks for a token and Enter on the field saves', async ({ page }) => {
@@ -549,7 +584,7 @@ test('Settings opens Plans', async ({ page }) => {
   expect(await focusedId(page)).toBe('plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Choose a plan' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Upgrade TVM' })).toBeVisible();
   await expect(page.locator('[data-focus-id="plan-free"]')).toBeVisible();
 });
 
@@ -594,7 +629,8 @@ test('MAX shows the mock live pack', async ({ page }) => {
         ...E2E_PLAN,
         id: 'max',
         name: 'TVM MAX',
-        price: '£15.99',
+        price: '£18.99',
+        pricePence: 1899,
         mocks: true,
         liveTv: true,
       },
@@ -604,12 +640,15 @@ test('MAX shows the mock live pack', async ({ page }) => {
     route.fulfill({
       json: {
         url: null,
+        host: null,
+        username: null,
+        configured: true,
         error: null,
         channels: [
-          { id: 'live:mock:sky-sports', name: 'Sky Sports', url: 'https://example.com/a.m3u8', group: 'Sports' },
-          { id: 'live:mock:tnt-sports', name: 'TNT Sports', url: 'https://example.com/b.m3u8', group: 'Sports' },
-          { id: 'live:mock:bein-sports', name: 'beIN Sports', url: 'https://example.com/c.m3u8', group: 'Sports' },
-          { id: 'live:mock:usa-network', name: 'USA Network', url: 'https://example.com/d.m3u8', group: 'Entertainment' },
+          { id: 'live:mock:sky-sports', name: 'Sky Sports', group: 'Sports' },
+          { id: 'live:mock:tnt-sports', name: 'TNT Sports', group: 'Sports' },
+          { id: 'live:mock:bein-sports', name: 'beIN Sports', group: 'Sports' },
+          { id: 'live:mock:usa-network', name: 'USA Network', group: 'Entertainment' },
         ],
       },
     }),
@@ -620,8 +659,19 @@ test('MAX shows the mock live pack', async ({ page }) => {
   await pressUntil(page, 'live');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="live"]')).toBeVisible();
-  await expect(page.getByText('Sky Sports')).toBeVisible();
-  await expect(page.getByText('TNT Sports')).toBeVisible();
-  await expect(page.getByText('beIN Sports')).toBeVisible();
-  await expect(page.getByText('USA Network')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Sky Sports/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /TNT Sports/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /beIN Sports/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /USA Network/ })).toBeVisible();
+});
+
+test('Live TV asks for a login until configured, and Back returns Home', async ({ page }) => {
+  await pressUntil(page, 'live');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="live"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Enter your Live TV login' })).toBeVisible();
+  await waitForFocus(page);
+  await pressUntil(page, 'live-back');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
 });

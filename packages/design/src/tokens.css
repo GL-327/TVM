@@ -58,6 +58,7 @@
   /* Safe area: TVs overscan, so never paint content to the panel edge */
   --tvm-safe-x: 2.5rem;
   --tvm-safe-y: 1.5rem;
+  --tvm-dock-peek: 4.4rem;
 
   --tvm-radius-sm: 0.5rem;
   --tvm-radius-md: 0.875rem;

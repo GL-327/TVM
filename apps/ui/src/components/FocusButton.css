@@ -1,0 +1,80 @@
+/*
+ * FocusButton paint path: outline + compositor scale only.
+ * Blur drop-shadows on focus inflate the paint rect on every D-pad hop.
+ */
+
+.tvm-button {
+  contain: layout style;
+  backface-visibility: hidden;
+  transition: transform var(--tvm-motion-fast) var(--tvm-motion-ease);
+}
+
+.tvm-button:focus,
+.tvm-button[data-focused='true'],
+.tvm-button.tvm-button--focused {
+  z-index: 1;
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: var(--tvm-focus-ring-offset);
+  box-shadow: none;
+  transform: translateZ(0) scale(var(--tvm-focus-scale));
+  will-change: transform;
+}
+
+/* Surfaces that own a child ring, invert fill, or sit in the top pill. */
+.tvm-button.tvm-button--glass:focus,
+.tvm-button.tvm-button--glass[data-focused='true'],
+.tvm-button.tvm-button--glass.tvm-button--focused,
+.tvm-button.dock__item:focus,
+.tvm-button.dock__item[data-focused='true'],
+.tvm-button.dock__item.tvm-button--focused,
+.tvm-button.stage__watchnow:focus,
+.tvm-button.stage__watchnow[data-focused='true'],
+.tvm-button.stage__watchnow.tvm-button--focused,
+.tvm-button.ribbon__icon:focus,
+.tvm-button.ribbon__icon[data-focused='true'],
+.tvm-button.ribbon__icon.tvm-button--focused,
+.tvm-button.stream-chrome__avatar:focus,
+.tvm-button.stream-chrome__avatar[data-focused='true'],
+.tvm-button.stream-chrome__avatar.tvm-button--focused,
+.tvm-button.stream-chrome__link:focus,
+.tvm-button.stream-chrome__link[data-focused='true'],
+.tvm-button.stream-chrome__link.tvm-button--focused,
+.tvm-button.stream-chrome__mark-btn:focus,
+.tvm-button.stream-chrome__mark-btn[data-focused='true'],
+.tvm-button.stream-chrome__mark-btn.tvm-button--focused,
+.tvm-button.tvm-lockup-btn:focus,
+.tvm-button.tvm-lockup-btn[data-focused='true'],
+.tvm-button.tvm-lockup-btn.tvm-button--focused,
+.tvm-button.profile-tile__pick:focus,
+.tvm-button.profile-tile__pick[data-focused='true'],
+.tvm-button.profile-tile__pick.tvm-button--focused,
+.tvm-button.settings-row:focus,
+.tvm-button.settings-row[data-focused='true'],
+.tvm-button.settings-row.tvm-button--focused,
+.tvm-button.season-row-btn:focus,
+.tvm-button.season-row-btn[data-focused='true'],
+.tvm-button.season-row-btn.tvm-button--focused,
+.tvm-button.season-chip:focus,
+.tvm-button.season-chip[data-focused='true'],
+.tvm-button.season-chip.tvm-button--focused,
+.tvm-button.episode-item:focus,
+.tvm-button.episode-item[data-focused='true'],
+.tvm-button.episode-item.tvm-button--focused {
+  outline: none;
+  box-shadow: none;
+  transform: none;
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tvm-button {
+    transition: none;
+  }
+
+  .tvm-button:focus,
+  .tvm-button[data-focused='true'],
+  .tvm-button.tvm-button--focused {
+    transform: none;
+    will-change: auto;
+  }
+}

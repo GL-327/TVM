@@ -1,0 +1,62 @@
+.player-skip-recap {
+  position: absolute;
+  right: var(--tvm-safe-x, 2.5rem);
+  bottom: calc(var(--tvm-safe-y, 1.5rem) + 7.25rem);
+  z-index: 8;
+  pointer-events: auto;
+  animation: player-skip-recap-in var(--tvm-motion-slow, 260ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.player-skip-recap--slotted {
+  position: static;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+}
+
+.player-skip-recap .tvm-button.player-skip-recap__btn {
+  min-height: 3.4rem;
+  padding: 0.7rem 1.55rem;
+  border: 1px solid color-mix(in srgb, #fff 28%, transparent);
+  background: color-mix(in srgb, var(--tvm-surface, #1c1c1c) 72%, #000);
+  color: var(--tvm-text, #fff);
+  box-shadow: 0 0.45rem 1.4rem rgba(0, 0, 0, 0.42);
+  font-size: var(--tvm-font-size-body-lg, 1.15rem);
+  letter-spacing: 0.02em;
+  transition:
+    transform var(--tvm-motion-fast, 140ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    box-shadow var(--tvm-motion-fast, 140ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    background var(--tvm-motion-fast, 140ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.player-skip-recap .tvm-button.player-skip-recap__btn.tvm-button--primary {
+  background: #fff;
+  color: #111;
+}
+
+.player-skip-recap .tvm-button.player-skip-recap__btn[data-focused='true'] {
+  transform: scale(var(--tvm-focus-scale, 1.08));
+  box-shadow: var(--tvm-shadow-focus, 0 0.7rem 1.8rem rgba(0, 0, 0, 0.55));
+}
+
+@keyframes player-skip-recap-in {
+  from {
+    opacity: 0;
+    transform: translateX(0.7rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-skip-recap {
+    animation-duration: 1ms;
+  }
+
+  .player-skip-recap .tvm-button.player-skip-recap__btn {
+    transition: none;
+  }
+}

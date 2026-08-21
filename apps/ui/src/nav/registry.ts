@@ -9,8 +9,10 @@ import { DiagnosticsModal } from '../screens/DiagnosticsModal';
 import { Home } from '../screens/Home';
 import { Library } from '../screens/Library';
 import { Watchlist } from '../screens/Watchlist';
+import { LivePicks } from '../screens/LivePicks';
 import { LivePlaylist } from '../screens/LivePlaylist';
 import { LiveTV } from '../screens/LiveTV';
+import { LiveXtream } from '../screens/LiveXtream';
 import { NoticeModal } from '../screens/NoticeModal';
 import { Player } from '../screens/Player';
 import { Plans } from '../screens/Plans';
@@ -35,11 +37,13 @@ export interface ScreenDefinition {
 }
 
 const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
-  home: { component: Home, defaultFocus: 'home-dock' },
+  home: { component: Home, defaultFocus: 'hero-play' },
   library: { component: Library, defaultFocus: 'stream-search' },
-  watchlist: { component: Watchlist, defaultFocus: 'watchlist-home' },
-  live: { component: LiveTV, defaultFocus: 'live-settings' },
+  watchlist: { component: Watchlist, defaultFocus: 'watchlist' },
+  live: { component: LiveTV, defaultFocus: 'host' },
+  'live-xtream': { component: LiveXtream, defaultFocus: 'host' },
   'live-playlist': { component: LivePlaylist, defaultFocus: 'url' },
+  'live-picks': { component: LivePicks, defaultFocus: 'query' },
   apps: { component: Apps, defaultFocus: 'app-tvm-stream' },
   service: { component: Service, defaultFocus: 'service-back' },
   profile: { component: Profile, defaultFocus: 'realdebrid' },
@@ -61,7 +65,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   diagnostics: { component: DiagnosticsModal, defaultFocus: 'close' },
   confirm: { component: ConfirmModal, defaultFocus: 'confirm' },
   notice: { component: NoticeModal, defaultFocus: 'close' },
-  search: { component: SearchModal, defaultFocus: 'close' },
+  search: { component: SearchModal, defaultFocus: 'query' },
   player: { component: Player, defaultFocus: 'pause' },
 };
 

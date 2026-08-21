@@ -187,6 +187,99 @@ function streamFormatFor(url as String, mimeType as String) as String
   return "mp4"
 end function
 
+function playItemIsLive(item as Object) as Boolean
+  id = asText(aaGet(item, "id", ""))
+  return Left(id, 5) = "live:"
+end function
+
+function playItemIsSeries(item as Object) as Boolean
+  if item = invalid then return false
+  if playItemIsLive(item) then return false
+  kind = LCase(asText(aaGet(item, "kind", "")))
+  if kind = "series" then return true
+  if kind = "movie" then return false
+  if aaGet(item, "season", invalid) <> invalid then return true
+  if aaGet(item, "episode", invalid) <> invalid then return true
+  return false
+end function
+
+function asSeconds(value as Dynamic) as Float
+  if value = invalid then return 0
+  valueType = Type(value)
+  if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return value * 1.0
+  if valueType = "Float" or valueType = "roFloat" or valueType = "Double" or valueType = "roDouble"
+    if value > 0 then return value
+    return 0
+  end if
+  if valueType <> "roString" and valueType <> "String" then return 0
+  text = value.Trim()
+  if text = "" then return 0
+  if Instr(1, text, ":") > 0 then return parseClockSeconds(text)
+  n = Val(text)
+  if n > 0 then return n
+  return 0
+end function
+
+function parseClockSeconds(text as String) as Float
+  parts = text.Tokenize(":")
+  if parts.Count() = 2 then return Val(parts[0]) * 60 + Val(parts[1])
+  if parts.Count() = 3 then return Val(parts[0]) * 3600 + Val(parts[1]) * 60 + Val(parts[2])
+  n = Val(text)
+  if n > 0 then return n
+  return 0
+end function
+
+function firstPositiveSeconds(obj as Object, keys as Object) as Float
+  if obj = invalid then return 0
+  if GetInterface(obj, "ifAssociativeArray") = invalid then return 0
+  for each key in keys
+    if obj.DoesExist(key)
+      n = asSeconds(obj[key])
+      if n > 0 then return n
+    end if
+  end for
+  return 0
+end function
+
+function recapObjectEnd(obj as Object) as Float
+  if obj = invalid then return 0
+  if GetInterface(obj, "ifAssociativeArray") = invalid then return 0
+  n = firstPositiveSeconds(obj, ["end", "endTime", "end_time", "to"])
+  if n > 0 then return n
+  return 0
+end function
+
+function chapterEndSeconds(obj as Object, want as String) as Float
+  chapters = aaGet(obj, "chapters", invalid)
+  if chapters = invalid then return 0
+  if GetInterface(chapters, "ifArray") = invalid then return 0
+  for each ch in chapters
+    typ = LCase(asText(aaGet(ch, "type", "")))
+    if typ = "" then typ = LCase(asText(aaGet(ch, "kind", "")))
+    if typ = want
+      n = recapObjectEnd(ch)
+      if n > 0 then return n
+    end if
+  end for
+  return 0
+end function
+
+function recapEndSeconds(obj as Object) as Float
+  if obj = invalid then return 0
+  if GetInterface(obj, "ifAssociativeArray") = invalid then return 0
+  n = firstPositiveSeconds(obj, ["recapEnd", "recapEndTime", "recap_end", "skipRecapAt", "skipRecapEnd"])
+  if n > 0 then return n
+  n = recapObjectEnd(aaGet(obj, "recap", invalid))
+  if n > 0 then return n
+  n = chapterEndSeconds(obj, "recap")
+  if n > 0 then return n
+  n = firstPositiveSeconds(obj, ["introEnd", "intro_end"])
+  if n > 0 then return n
+  n = recapObjectEnd(aaGet(obj, "intro", invalid))
+  if n > 0 then return n
+  return chapterEndSeconds(obj, "intro")
+end function
+
 function itemsFromJson(json as Object) as Object
   return clipItems(aaArray(json, "items"), 24)
 end function
@@ -341,6 +434,22 @@ function tvmAppById(id as String) as Object
     if app.id = id then return app
   end for
   return invalid
+end function
+
+function tvmMockAppIds() as Object
+  return ["netflix", "prime", "max", "disney", "appletv", "hulu", "peacock"]
+end function
+
+function tvmIsMockApp(id as String) as Boolean
+  for each item in tvmMockAppIds()
+    if item = id then return true
+  end for
+  return false
+end function
+
+function tvmAppIsLocked(id as String, allowMocks as Boolean) as Boolean
+  if allowMocks = true then return false
+  return tvmIsMockApp(id)
 end function
 
 function seasonNumbers(items as Object) as Object
