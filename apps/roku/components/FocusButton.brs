@@ -97,6 +97,30 @@ sub layout()
     m.glyph.translation = [36, 36]
     m.text.visible = false
     m.sub.visible = false
+  else if variant = "transport"
+    setBox(176, 176, 160, 160)
+    m.bg.visible = true
+    m.bg.color = "0xFFFFFF18"
+    m.bg.cornerRadius = 80
+    m.ring.cornerRadius = 88
+    m.glyph.visible = true
+    m.glyph.width = 72
+    m.glyph.height = 72
+    m.glyph.translation = [52, 52]
+    m.text.visible = false
+    m.sub.visible = false
+  else if variant = "transportPlay"
+    setBox(208, 208, 192, 192)
+    m.bg.visible = true
+    m.bg.color = tvmEmber()
+    m.bg.cornerRadius = 96
+    m.ring.cornerRadius = 104
+    m.glyph.visible = true
+    m.glyph.width = 80
+    m.glyph.height = 80
+    m.glyph.translation = [64, 64]
+    m.text.visible = false
+    m.sub.visible = false
   else if variant = "ribbon"
     setBox(224, 240, 112, 112)
     m.bg.color = "0x2A2A2AFF"
@@ -155,7 +179,10 @@ sub onIcon()
   uri = m.top.iconUri
   if uri <> invalid and uri <> ""
     m.glyph.uri = uri
-    if m.top.variant = "ribbon" or m.top.variant = "icon" then m.glyph.visible = true
+    variant = m.top.variant
+    if variant = "ribbon" or variant = "icon" or variant = "transport" or variant = "transportPlay"
+      m.glyph.visible = true
+    end if
   end if
 end sub
 
@@ -233,6 +260,18 @@ sub onFocusStyle()
       m.bg.color = "0x3A3A3AFF"
     else
       m.bg.color = tvmSurfaceHover()
+    end if
+  else if variant = "transport"
+    if focused
+      m.bg.color = "0xFFFFFF36"
+    else
+      m.bg.color = "0xFFFFFF18"
+    end if
+  else if variant = "transportPlay"
+    if focused
+      m.bg.color = tvmEmber()
+    else
+      m.bg.color = "0xFF8A2BCC"
     end if
   end if
 end sub

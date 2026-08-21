@@ -18,26 +18,24 @@ import {
   requestFocus,
   startFocusEngine,
 } from './focusEngine';
-import { wrapLoopingTrack } from './loopingRail';
-import {
-  conveyorWrapNeeded,
-  focusKeyFor,
-  isVerticalNavContext,
-  neighborFocusTarget,
-  neighborInTrack,
-  neighborInTrackFocusTarget,
-} from './railNav';
+import { createAxisHopQueue } from './hopQueue';
+import { isWrappingTrack, settleWrappingTrack, wrapLoopingTrack } from './loopingRail';
+import { focusKeyFor, isVerticalNavContext, neighborFocusTarget, ribbonFocusTarget } from './railNav';
+import { conveyorHop, wrapHop } from './wrapFocus';
 import { FocusScopeProvider, ViewStackContextProvider } from './ViewStackContext';
 import type { Navigate } from './ViewStackContext';
 import { screenDefinition } from './registry';
 import { setActiveProfileId } from '../data/media';
+import { LoadingScreen } from '../components/LoadingScreen';
+import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
+import { installEasterEggs } from '../brand/easterEggs';
 
 startFocusEngine();
 
 async function resolveRoot(): Promise<string> {
   if (new URLSearchParams(window.location.search).get('recovery') === '1') return 'recovery';
   try {
-    const response = await fetch('/api/profiles');
+    const response = await fetch('/api/profiles', { signal: AbortSignal.timeout(2500) });
     if (response.ok) {
       const body = (await response.json()) as { activeId?: string };
       if (typeof body.activeId === 'string' && body.activeId !== '') setActiveProfileId(body.activeId);
@@ -52,6 +50,57 @@ function isEditable(target: EventTarget | null): target is HTMLInputElement | HT
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 }
 
+function runHorizontalHop(active: HTMLElement, intent: 'left' | 'right'): void {
+  const wrapping = active.closest<HTMLElement>('.rail__track');
+  if (wrapping !== null && isWrappingTrack(wrapping)) settleWrappingTrack(wrapping);
+
+  const conveyor = conveyorHop(active, intent);
+  if (conveyor !== null) {
+    const key = focusKeyFor(conveyor.next);
+    if (key !== null) {
+      wrapLoopingTrack(conveyor.track, intent, () => requestFocus(key));
+      return;
+    }
+  }
+  const hop = wrapHop(active, intent);
+  if (hop.next !== null) {
+    const key = focusKeyFor(hop.next);
+    if (key !== null) {
+      requestFocus(key);
+      return;
+    }
+  }
+  if (hop.consume) return;
+  moveFocus(intent);
+}
+
+function runVerticalHop(active: HTMLElement, intent: 'up' | 'down'): void {
+  const hop = wrapHop(active, intent);
+  if (hop.next !== null) {
+    const key = focusKeyFor(hop.next);
+    if (key !== null) {
+      requestFocus(key);
+      return;
+    }
+  }
+  if (hop.consume) return;
+
+  const next = neighborFocusTarget(active, intent);
+  if (next !== null) {
+    requestFocus(next);
+    return;
+  }
+  if (intent === 'up') {
+    const ribbon = ribbonFocusTarget(active);
+    if (ribbon !== null) {
+      requestFocus(ribbon);
+      return;
+    }
+  }
+  if (isVerticalNavContext(active)) return;
+  moveFocus(intent);
+}
+
 /**
  * Holds the view stack, turns remote intents into stack actions, and keeps
  * something focused at all times.
@@ -62,23 +111,41 @@ function isEditable(target: EventTarget | null): target is HTMLInputElement | HT
  */
 export function ViewStackProvider(): React.JSX.Element {
   const [root, setRoot] = useState<string | null>(null);
+  const [introDone, setIntroDone] = useState(() => shouldSkipIntro() || introPlayedThisSession());
 
   useEffect(() => {
     void resolveRoot().then(setRoot);
   }, []);
+
+  useEffect(() => installEasterEggs(), []);
 
   useEffect(() => {
     if (root === 'recovery') return;
     void fetch('/api/update/check', { method: 'POST' });
   }, [root]);
 
+  if (root === 'recovery') {
+    return <ViewStack root={root} />;
+  }
+
+  if (!introDone) {
+    return (
+      <div className="app" data-screen="boot">
+        <TvmIntro variant="tvm" pending={root === null} onDone={() => setIntroDone(true)} />
+      </div>
+    );
+  }
+
   if (root === null) {
     return (
       <div className="app" data-screen="boot">
-        <main className="page page--settings">
-          <h1 className="page__heading">TVM</h1>
-          <p className="page__lede">Starting…</p>
-        </main>
+        <LoadingScreen
+          variant="tvm"
+          holdIfRecent
+          eyebrow="TVM"
+          title="Starting…"
+          body="Loading your home screen. The remote is ready as soon as Home appears."
+        />
       </div>
     );
   }
@@ -115,7 +182,16 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   activeKeyRef.current = active.key;
 
   useEffect(() => {
-    return onIntent(
+    const dpad = createAxisHopQueue((direction) => {
+      const node = document.activeElement;
+      if (!(node instanceof HTMLElement)) {
+        moveFocus(direction);
+        return;
+      }
+      if (direction === 'left' || direction === 'right') runHorizontalHop(node, direction);
+      else runVerticalHop(node, direction);
+    });
+    const stop = onIntent(
       window,
       ({ intent, source }) => {
         window.dispatchEvent(new CustomEvent('tvm:user-activity'));
@@ -167,32 +243,8 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
         }
 
         source.preventDefault();
-        if (intent === 'up' || intent === 'down' || intent === 'left' || intent === 'right') {
-          const active = document.activeElement;
-          if (active instanceof HTMLElement) {
-            if ((intent === 'up' || intent === 'down') && isVerticalNavContext(active)) {
-              const next = neighborFocusTarget(active, intent);
-              if (next !== null) requestFocus(next);
-              return;
-            }
-            if (intent === 'left' || intent === 'right') {
-              if (conveyorWrapNeeded(active, intent)) {
-                const wrapped = neighborInTrack(active, intent);
-                const track = active.closest<HTMLElement>('.rail__track');
-                const key = wrapped === null ? null : focusKeyFor(wrapped);
-                if (track !== null && key !== null) {
-                  wrapLoopingTrack(track, intent, () => requestFocus(key));
-                  return;
-                }
-              }
-              const next = neighborInTrackFocusTarget(active, intent);
-              if (next !== null) {
-                requestFocus(next);
-                return;
-              }
-            }
-          }
-          moveFocus(intent);
+        if (intent === 'left' || intent === 'right' || intent === 'up' || intent === 'down') {
+          dpad.push(intent);
           return;
         }
         if (intent === 'select') {
@@ -204,6 +256,10 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       },
       { preventDefault: false },
     );
+    return () => {
+      dpad.reset();
+      stop();
+    };
   }, []);
 
   // Focus follows the top of the stack: the key remembered on the way out if
@@ -252,6 +308,22 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
 
     document.addEventListener('focusout', onFocusOut);
     return () => document.removeEventListener('focusout', onFocusOut);
+  }, []);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent): void => {
+      const node = event.target;
+      if (!(node instanceof Element)) return;
+      const host = node.closest<HTMLElement>('[data-focus-id]');
+      if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
+        document.documentElement.classList.add('desktop-shell');
+      }
+      if (host === null) return;
+      const key = focusKeyFor(host);
+      if (key !== null) requestFocus(key);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, []);
 
   const screen = visibleScreen(state);

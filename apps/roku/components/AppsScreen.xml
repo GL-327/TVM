@@ -2,6 +2,7 @@
 <component name="AppsScreen" extends="Group">
   <interface>
     <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="allowMocks" type="boolean" value="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
@@ -12,6 +13,11 @@
     <RibbonBar id="ribbon" translation="[0, 0]" />
     <Label id="kicker" translation="[160, 280]" color="0x8A8A8AFF" text="Your apps" />
     <Label id="heading" translation="[160, 352]" color="0xF5F5F5FF" text="Apps" />
-    <Group id="grid" translation="[160, 520]" />
+    <Group id="viewport" translation="[160, 520]" clippingRect="[0, 0, 3520, 1600]">
+      <Group id="grid" />
+    </Group>
+    <Animation id="gridAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="gridInterp" key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [0.0, 0.0]]" fieldToInterp="grid.translation" />
+    </Animation>
   </children>
 </component>

@@ -1,0 +1,28 @@
+/*
+ * Liquid-glass motion. Overlays only — never replaces view-enter, art-in,
+ * or skeleton-shimmer. No extra compositing layers on every button.
+ */
+
+[data-theme='glass'] {
+  --tvm-glass-sweep-ms: 520ms;
+}
+
+@keyframes glass-specular-sweep {
+  0% {
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 0.28;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='glass'] {
+    --tvm-glass-sweep-ms: 0ms;
+  }
+}

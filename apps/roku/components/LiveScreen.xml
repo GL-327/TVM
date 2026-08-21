@@ -13,11 +13,14 @@
   <children>
     <RibbonBar id="ribbon" />
     <Label id="kicker" translation="[160, 280]" color="0x8A8A8AFF" text="Live TV" />
-    <Label id="heading" translation="[160, 352]" color="0xF5F5F5FF" text="Channels" />
-    <Group id="grid" translation="[160, 520]" />
-    <EmptyState id="empty" translation="[0, 520]" />
-    <ErrorState id="error" translation="[0, 520]" />
+    <Label id="heading" translation="[160, 352]" color="0xF5F5F5FF" text="Your channels" />
+    <Label id="lede" translation="[160, 452]" width="3000" color="0xC4C4C4FF" text="" />
+    <Group id="grid" translation="[160, 540]" />
+    <EmptyState id="empty" translation="[0, 540]" />
+    <ErrorState id="error" translation="[0, 540]" />
     <Label id="loading" translation="[160, 560]" color="0xC4C4C4FF" text="Loading..." />
-    <FocusButton id="playlist" translation="[160, 1920]" />
+    <FocusButton id="choose" translation="[160, 1920]" />
+    <FocusButton id="playlist" translation="[700, 1920]" />
+    <FocusButton id="nextPage" translation="[1240, 1920]" />
   </children>
 </component>

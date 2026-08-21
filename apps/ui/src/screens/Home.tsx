@@ -1,31 +1,63 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
 import { mapRailPosters } from '../components/PosterCard';
 import { Rail } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
-import { Skeleton } from '../components/Skeleton';
-import {
-  HERO_SLIDE_IDS,
-  HOME_ROW_ONE_IDS,
-  HOME_ROW_TWO_IDS,
-  movies,
-  series,
-  titlesByIds,
-  type Title,
-} from '../data/catalog';
+import { RailSkeletons } from '../components/Skeleton';
 import { BrandLockup } from '../components/BrandLockup';
 import { HeroArt } from '../components/HeroArt';
+import { PageScene } from '../components/PageScene';
 import { preferBackdrop } from '../data/artwork';
 import { asTitle, fetchHome, peekHome, type CatalogRail } from '../data/media';
-import { openDetails } from '../data/openDetails';
-import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
-import { watchSource } from '../data/services';
+import { applyPlanClass, fetchPlan } from '../data/plan';
+import { enterTvmStream } from '../data/profiles';
+import { type Title } from '../data/catalog';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import { heroScrollFade } from './heroFade';
+
+const HomeShelves = memo(function HomeShelves({
+  watching,
+  watchlist,
+  catalogRails,
+  loading,
+  openStream,
+}: {
+  watching: Title[];
+  watchlist: Title[];
+  catalogRails: Array<{ id: string; title: string; titles: Title[] }>;
+  loading: boolean;
+  openStream: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="home__shelf">
+      {watching.length > 0 && (
+        <Rail title="Continue watching">{mapRailPosters(watching, 'continue', openStream)}</Rail>
+      )}
+
+      {watchlist.length > 0 && (
+        <Rail title="Watchlist">{mapRailPosters(watchlist, 'watchlist', openStream)}</Rail>
+      )}
+
+      {catalogRails.length > 0 ? (
+        catalogRails.map((rail) => (
+          <Rail key={rail.id} title={rail.title}>
+            {mapRailPosters(rail.titles, rail.id, openStream)}
+          </Rail>
+        ))
+      ) : loading ? (
+        <Rail bare id="for-you-1">
+          <RailSkeletons count={8} label="Loading TVM Stream" />
+        </Rail>
+      ) : null}
+    </div>
+  );
+});
 
 export function Home(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
+  const pageRef = useRef<HTMLElement>(null);
   const cached = peekHome();
   const [loading, setLoading] = useState(cached === null);
   const [failed, setFailed] = useState(false);
@@ -37,12 +69,10 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   );
   const [slide, setSlide] = useState(0);
   const [tick, setTick] = useState(0);
-  const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
 
   useEffect(() => {
     void fetchPlan().then((status) => {
       applyPlanClass(status);
-      setPlan(status);
     });
   }, []);
 
@@ -75,10 +105,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     };
   }, [navigate, tick]);
 
-  const catalogHeroes = titlesByIds(HERO_SLIDE_IDS);
   const heroes = useMemo(() => {
     const fromRails = rails.flatMap((rail) => rail.items.map(asTitle)).filter((title) => title.backdrop !== '');
-    const merged = [...(featured !== null ? [featured] : []), ...watching, ...fromRails, ...catalogHeroes];
+    const merged = [...(featured !== null ? [featured] : []), ...watching, ...fromRails];
     const seen = new Set<string>();
     return merged.filter((title) => {
       if (seen.has(title.id) || seen.has(title.title)) return false;
@@ -86,14 +115,13 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       seen.add(title.title);
       return true;
     }).slice(0, 4);
-  }, [catalogHeroes, featured, rails, watching]);
+  }, [featured, rails, watching]);
 
-  const displayHero = heroes[slide] ?? catalogHeroes[0];
-  const rowOne = titlesByIds(HOME_ROW_ONE_IDS);
-  const rowTwo = titlesByIds(HOME_ROW_TWO_IDS);
-  const catalogRails = rails.map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0);
-  const extraFilms = movies().slice(0, 16);
-  const extraShows = series().slice(0, 16);
+  const displayHero = heroes[slide];
+  const catalogRails = useMemo(
+    () => rails.map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0),
+    [rails],
+  );
 
   useEffect(() => {
     if (heroes.length < 2) return;
@@ -103,15 +131,38 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     return () => window.clearInterval(timer);
   }, [heroes.length]);
 
-  const openTitle = (title: Title): void => {
-    openDetails(navigate, title);
-  };
+  useEffect(() => {
+    const page = pageRef.current;
+    if (page === null) return;
+    const stage = page.querySelector<HTMLElement>('.stage');
+    if (stage === null) return;
+    let raf = 0;
+    const apply = (): void => {
+      raf = 0;
+      stage.style.setProperty('--hero-fade', String(heroScrollFade(page.scrollTop, stage.offsetHeight)));
+    };
+    const onScroll = (): void => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(apply);
+    };
+    apply();
+    page.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      page.removeEventListener('scroll', onScroll);
+      if (raf !== 0) cancelAnimationFrame(raf);
+    };
+  }, [loading, failed]);
 
-  if (failed && loading === false && displayHero === undefined) {
+  const openStream = useCallback((): void => {
+    void enterTvmStream(navigate);
+  }, [navigate]);
+
+  if (failed && loading === false && displayHero === undefined && catalogRails.length === 0) {
     return (
-      <main className="home">
-        <section className="stage" />
+      <main className="home" ref={pageRef}>
+        <PageScene />
         <Ribbon active="home" />
+        <section className="stage" />
         <div className="home__shelf">
           <ErrorState
             title="Home could not load"
@@ -128,84 +179,58 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   }
 
   const hero = displayHero;
-  const source = hero === undefined ? 'TVM' : watchSource(hero, []);
   const heroSrc = hero === undefined ? '' : preferBackdrop(hero.id, hero.backdrop, hero.poster);
-  const useLockup = source.toLowerCase() === 'tvm stream' || source === 'TVM';
 
   return (
-    <main className="home">
+    <main className="home" ref={pageRef}>
+      <PageScene />
+      <Ribbon active="home" />
       <section className="stage">
-        {hero !== undefined && <HeroArt src={heroSrc} hue={hero.hue} />}
-        <div className="stage__vignette" aria-hidden="true" />
-        {hero !== undefined && (
-          <div className="stage__copy">
-            <h1 className={`stage__title${hero.wordmark === 'ember' ? ' stage__title--ember' : ''}`}>{hero.title}</h1>
-            <p className="stage__watchline">
-              <FocusButton id="hero-play" className="stage__watchnow" onSelect={() => openTitle(hero)}>
-                WATCH NOW
-              </FocusButton>
-              <span className="stage__watchline-rule" aria-hidden="true">
-                |
-              </span>
-              {useLockup ? <BrandLockup /> : <span className="stage__source">{source}</span>}
-            </p>
-            <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={() => openTitle(hero)}>
-              Learn More
-            </FocusButton>
-            {heroes.length > 1 && (
-              <div className="stage__dots" aria-hidden="true">
-                {heroes.map((item, index) => (
-                  <span key={item.id} className={`stage__dot${index === slide ? ' stage__dot--on' : ''}`} />
-                ))}
-              </div>
-            )}
+        {hero !== undefined ? (
+          <HeroArt src={heroSrc} hue={hero.hue} />
+        ) : loading ? (
+          <div className="stage__pictures" aria-hidden="true">
+            <div className="stage__art stage__art--pending art--pending">
+              <span className="skeleton skeleton--art" />
+            </div>
           </div>
-        )}
+        ) : null}
+        <div className="stage__vignette" aria-hidden="true" />
+        <div className="stage__copy">
+          {hero !== undefined ? (
+            <h1 className={`stage__title${hero.wordmark === 'ember' ? ' stage__title--ember' : ''}`}>{hero.title}</h1>
+          ) : (
+            <h1 className="stage__title">TVM Stream</h1>
+          )}
+          <p className="stage__watchline">
+            <FocusButton id="hero-play" className="stage__watchnow" onSelect={openStream}>
+              TVM Stream
+            </FocusButton>
+            <span className="stage__watchline-rule" aria-hidden="true">
+              |
+            </span>
+            <BrandLockup focusId="hero-mark" />
+          </p>
+          <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={openStream}>
+            Browse
+          </FocusButton>
+          {heroes.length > 1 && (
+            <div className="stage__dots" aria-hidden="true">
+              {heroes.map((item, index) => (
+                <span key={item.id} className={`stage__dot${index === slide ? ' stage__dot--on' : ''}`} />
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
-      <Ribbon active="home" />
-
-      <div className="home__shelf">
-        {watching.length > 0 && (
-          <Rail title="Continue watching">{mapRailPosters(watching, 'continue', openTitle)}</Rail>
-        )}
-
-        {watchlist.length > 0 && (
-          <Rail title="Watchlist">{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
-        )}
-
-        {plan.id === 'max' && extraFilms.length > 0 && (
-          <Rail title="MAX Exclusive">{mapRailPosters(extraFilms, 'max-exclusive', openTitle)}</Rail>
-        )}
-        {plan.id === 'ultra' && extraShows.length > 0 && (
-          <Rail title="Ultra picks">{mapRailPosters(extraShows, 'ultra-picks', openTitle)}</Rail>
-        )}
-
-        {catalogRails.length > 0 ? (
-          catalogRails.map((rail) => (
-            <Rail key={rail.id} title={rail.title}>
-              {mapRailPosters(rail.titles, rail.id, openTitle)}
-            </Rail>
-          ))
-        ) : (
-          <>
-            <Rail bare id="for-you-1">
-              {loading && rowOne.length === 0 ? (
-                <>
-                  <Skeleton className="skeleton--poster" />
-                  <Skeleton className="skeleton--poster" />
-                  <Skeleton className="skeleton--poster" />
-                </>
-              ) : (
-                mapRailPosters(rowOne, 'home', openTitle)
-              )}
-            </Rail>
-            <Rail bare id="for-you-2">{mapRailPosters(rowTwo, 'home2', openTitle)}</Rail>
-            <Rail title="Popular films">{mapRailPosters(extraFilms, 'film', openTitle)}</Rail>
-            <Rail title="Popular series">{mapRailPosters(extraShows, 'show', openTitle)}</Rail>
-          </>
-        )}
-      </div>
+      <HomeShelves
+        watching={watching}
+        watchlist={watchlist}
+        catalogRails={catalogRails}
+        loading={loading}
+        openStream={openStream}
+      />
     </main>
   );
 }

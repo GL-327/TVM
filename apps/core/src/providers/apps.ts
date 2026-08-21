@@ -511,6 +511,16 @@ export function createAppsService(options: AppsServiceOptions = {}) {
       if (rails.length === 0 && seeded.length > 0) {
         rails.push({ id: `${id}-films`, title: 'Popular now', items: seeded.slice(0, 16) });
       }
+      if (pool.length > 4) {
+        rails.push({ id: `${id}-trending`, title: 'Trending Now', items: pool.slice(0, 16) });
+      }
+      if (licensedMovies.length > 2 && licensedSeries.length > 0) {
+        rails.push({
+          id: `${id}-because`,
+          title: 'Because you watched',
+          items: uniqueItems([...licensedSeries.slice(0, 8), ...licensedMovies.slice(0, 8)]).slice(0, 16),
+        });
+      }
 
       const hub: AppHub = {
         id: spec.id,

@@ -13,6 +13,8 @@ export interface Subtitle {
   label: string;
 }
 
+export type StreamTransport = 'direct' | 'hls-session' | 'hls' | 'ts-live' | 'file';
+
 export type PlaybackResolution =
   | {
       kind: 'stream';
@@ -22,6 +24,14 @@ export type PlaybackResolution =
       mimeType: string;
       engine: 'html5' | 'native';
       startAt?: number;
+      /** How core is delivering the bytes; the player picks its attach path from this. */
+      transport?: StreamTransport;
+      /** HLS session id when transport is `hls-session` (seek/stop endpoints). */
+      sessionId?: string;
+      /** Movie time of the session's first HLS second; player adds this to element time. */
+      timeOffset?: number;
+      /** Probed duration, since an in-flight HLS session cannot report one. */
+      durationSeconds?: number;
       /** Original hoster download, used when the HTML5 transcode stalls. */
       fallbackUrl?: string;
       fallbackEngine?: 'html5' | 'native';
@@ -84,12 +94,48 @@ export interface LiveChannel {
   name: string;
   url: string;
   group?: string;
+  logo?: string;
+}
+
+export interface LiveGroup {
+  name: string;
+  count: number;
+  picked: number;
+}
+
+export interface LiveChannelCard {
+  id: string;
+  name: string;
+  group?: string;
+  logo?: string;
+  picked: boolean;
 }
 
 export interface LiveStatus {
   url: string | null;
-  channels: LiveChannel[];
+  host: string | null;
+  username: string | null;
+  configured: boolean;
+  channels: LiveChannelCard[];
   error: string | null;
+  picked: number;
+  total: number;
+  groups: LiveGroup[];
+  needsPicks: boolean;
+  pickLimit: number;
+}
+
+export interface LiveCatalogPage {
+  items: LiveChannelCard[];
+  groups: LiveGroup[];
+  total: number;
+  matched: number;
+  offset: number;
+  limit: number;
+  picked: number;
+  pickLimit: number;
+  query: string;
+  group: string | null;
 }
 
 export interface Provider {

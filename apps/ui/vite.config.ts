@@ -11,6 +11,7 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __TVM_UI_VERSION__: JSON.stringify(pkg.version),
+    __TVM_CORE_ORIGIN__: JSON.stringify(`http://127.0.0.1:${CORE_PORT}`),
   },
   server: {
     host: '127.0.0.1',
@@ -20,6 +21,9 @@ export default defineConfig({
       '/api': {
         target: `http://127.0.0.1:${CORE_PORT}`,
         changeOrigin: false,
+        timeout: 0,
+        proxyTimeout: 0,
+        ws: true,
       },
     },
   },
@@ -27,6 +31,9 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: true,
+  },
+  optimizeDeps: {
+    include: ['mpegts.js', 'hls.js'],
   },
   base: './',
 });

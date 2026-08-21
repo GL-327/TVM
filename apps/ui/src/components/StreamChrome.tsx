@@ -15,7 +15,7 @@ export function StreamChrome({ profile, lane, onLane }: StreamChromeProps): Reac
   const navigate = useNavigate();
 
   return (
-    <nav className="stream-chrome" aria-label="TVM Stream">
+    <nav className="stream-chrome" aria-label="TVM Stream" data-wrap="row">
       <FocusButton
         id="stream-profile"
         className="stream-chrome__avatar"
@@ -44,7 +44,7 @@ export function StreamChrome({ profile, lane, onLane }: StreamChromeProps): Reac
       >
         Movies
       </FocusButton>
-      <BrandLockup kind="wordmark" />
+      <BrandLockup kind="wordmark" focusId="stream-mark" className="stream-chrome__mark-btn" />
     </nav>
   );
 }

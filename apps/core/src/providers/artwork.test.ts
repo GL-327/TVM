@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferBackdrop, upgradeImageUrl } from './artwork.ts';
+import { normalizeArtUrl, preferBackdrop, upgradeImageUrl } from './artwork.ts';
 
 describe('artwork urls', () => {
   it('promotes metahub and TMDB stills used on the hero', () => {
@@ -14,6 +14,15 @@ describe('artwork urls', () => {
   it('fills a missing backdrop from metahub instead of stretching a poster', () => {
     expect(preferBackdrop('tt0111161', '', 'https://example/p.jpg')).toBe(
       'https://images.metahub.space/background/large/tt0111161/img',
+    );
+  });
+
+  it('turns protocol-relative CDN urls into https srcs', () => {
+    expect(normalizeArtUrl('//images.metahub.space/poster/medium/tt0111161/img')).toBe(
+      'https://images.metahub.space/poster/medium/tt0111161/img',
+    );
+    expect(upgradeImageUrl('//images.metahub.space/poster/medium/tt0111161/img', 'poster')).toBe(
+      'https://images.metahub.space/poster/large/tt0111161/img',
     );
   });
 });

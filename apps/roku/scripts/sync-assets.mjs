@@ -314,30 +314,133 @@ function lockupMark() {
 
 save(lockupMark(), "chrome/lockup-mark.png");
 
+function fillVGradient(c, top, bot) {
+  for (let y = 0; y < c.height; y += 1) {
+    const t = y / Math.max(1, c.height - 1);
+    const r = Math.round(top[0] + (bot[0] - top[0]) * t);
+    const g = Math.round(top[1] + (bot[1] - top[1]) * t);
+    const b = Math.round(top[2] + (bot[2] - top[2]) * t);
+    for (let x = 0; x < c.width; x += 1) setPx(c, x, y, r, g, b, 255);
+  }
+}
+
+function sheen(c) {
+  for (let y = 0; y < c.height; y += 1) {
+    for (let x = 0; x < c.width; x += 1) {
+      const t = (x / c.width) * 0.32 + (1 - y / c.height) * 0.5;
+      const a = Math.max(0, t - 0.58) * 88;
+      if (a > 0) setPx(c, x, y, 255, 255, 255, Math.round(a));
+    }
+  }
+}
+
+function radial(c, cx, cy, radius, r, g, b, aMax) {
+  for (let y = 0; y < c.height; y += 1) {
+    for (let x = 0; x < c.width; x += 1) {
+      const d = Math.hypot(x - cx, y - cy) / radius;
+      const a = Math.max(0, 1 - d);
+      if (a > 0) setPx(c, x, y, r, g, b, Math.round(a * a * aMax));
+    }
+  }
+}
+
+function sparkle(c, cx, cy, size, r, g, b, a) {
+  drawLine(c, cx - size, cy, cx + size, cy, 1.3, r, g, b, a);
+  drawLine(c, cx, cy - size, cx, cy + size, 1.3, r, g, b, a);
+}
+
+function playTriangle(c, x, y0, y1, r, g, b, a) {
+  for (let y = y0; y <= y1; y += 1) {
+    const t = (y - y0) / Math.max(1, y1 - y0);
+    const span = (1 - Math.abs(t * 2 - 1)) * ((y1 - y0) * 0.72);
+    drawLine(c, x, y, x + span, y, 1.4, r, g, b, a);
+  }
+}
+
 const APPS = [
-  { id: "tvm-stream", color: [91, 61, 255] },
-  { id: "netflix", color: [229, 9, 20] },
-  { id: "prime", color: [15, 23, 30] },
-  { id: "freevee", color: [17, 17, 17] },
-  { id: "youtube", color: [255, 255, 255] },
-  { id: "disney", color: [17, 60, 140] },
-  { id: "hulu", color: [11, 11, 11] },
-  { id: "max", color: [5, 30, 90] },
-  { id: "iplayer", color: [255, 77, 36] },
-  { id: "appletv", color: [20, 20, 20] },
-  { id: "peacock", color: [0, 0, 0] },
-  { id: "paramount", color: [0, 98, 180] },
-  { id: "tubi", color: [250, 56, 47] },
-  { id: "pluto", color: [0, 0, 0] },
-  { id: "starz", color: [18, 18, 18] },
-  { id: "fox", color: [0, 0, 0] },
+  { id: "tvm-stream", top: [122, 92, 255], bot: [46, 24, 160] },
+  { id: "netflix", top: [244, 28, 36], bot: [139, 0, 10] },
+  { id: "prime", top: [24, 38, 50], bot: [15, 23, 30] },
+  { id: "max", top: [36, 16, 64], bot: [8, 4, 16] },
+  { id: "appletv", top: [32, 32, 32], bot: [12, 12, 12] },
+  { id: "disney", top: [28, 82, 196], bot: [8, 22, 78] },
+  { id: "hulu", top: [24, 24, 24], bot: [8, 8, 8] },
+  { id: "peacock", top: [22, 22, 22], bot: [0, 0, 0] },
+  { id: "youtube", top: [255, 255, 255], bot: [236, 236, 236] },
+  { id: "freevee", top: [28, 28, 28], bot: [12, 12, 12] },
+  { id: "iplayer", top: [255, 255, 255], bot: [244, 241, 236] },
+  { id: "paramount", top: [20, 130, 255], bot: [0, 70, 180] },
+  { id: "tubi", top: [255, 82, 64], bot: [180, 20, 24] },
+  { id: "pluto", top: [22, 22, 22], bot: [0, 0, 0] },
+  { id: "starz", top: [28, 28, 28], bot: [12, 12, 12] },
+  { id: "fox", top: [18, 18, 18], bot: [0, 0, 0] },
 ];
 
 for (const app of APPS) {
   const c = canvas(400, 240);
-  fillRect(c, 0, 0, 400, 240, app.color[0], app.color[1], app.color[2], 255);
+  fillVGradient(c, app.top, app.bot);
+  if (app.id === "max") radial(c, 200, 150, 180, 120, 48, 210, 160);
+  if (app.id === "disney") {
+    for (const [x, y, s] of [
+      [48, 36, 4],
+      [92, 78, 2.4],
+      [210, 28, 3],
+      [318, 54, 2],
+      [360, 118, 2.6],
+      [140, 22, 1.8],
+      [268, 140, 2.2],
+    ]) {
+      sparkle(c, x, y, s, 255, 255, 255, 200);
+    }
+  }
+  if (app.id === "tvm-stream") radial(c, 200, 80, 140, 180, 220, 255, 90);
+  sheen(c);
   save(c, `apps/${app.id}.png`);
 }
+
+function primeSmile() {
+  const c = canvas(200, 28);
+  for (let i = 0; i <= 110; i += 1) {
+    const t = i / 110;
+    const x = 12 + 176 * t;
+    const y = 6 + Math.sin(t * Math.PI) * 15;
+    fillCircle(c, x, y, 2.3, 0, 168, 225, 255);
+  }
+  return c;
+}
+
+function ytPlay() {
+  const c = canvas(64, 46);
+  roundRect(c, 2, 2, 60, 42, 10, 255, 0, 0, 255, true);
+  playTriangle(c, 24, 12, 34, 255, 255, 255, 255);
+  return c;
+}
+
+function paramountPeak() {
+  const c = canvas(48, 56);
+  for (let y = 10; y <= 42; y += 1) {
+    const t = (y - 10) / 32;
+    const half = t * 16;
+    drawLine(c, 24 - half, y, 24 + half, y, 1.2, 255, 255, 255, 255);
+  }
+  fillCircle(c, 24, 6, 2.2, 255, 255, 255, 255);
+  fillCircle(c, 14, 14, 1.5, 255, 220, 180, 220);
+  fillCircle(c, 34, 12, 1.3, 255, 255, 255, 200);
+  return c;
+}
+
+function tvmGem() {
+  const c = canvas(64, 64);
+  roundRect(c, 8, 8, 48, 48, 12, 91, 61, 255, 255, true);
+  radial(c, 28, 24, 22, 180, 220, 255, 90);
+  playTriangle(c, 26, 20, 44, 255, 255, 255, 255);
+  return c;
+}
+
+save(primeSmile(), "apps/marks/prime-smile.png");
+save(ytPlay(), "apps/marks/yt-play.png");
+save(paramountPeak(), "apps/marks/paramount-peak.png");
+save(tvmGem(), "apps/marks/tvm-gem.png");
 
 async function fetchFont(url, dest) {
   if (existsSync(dest)) return true;

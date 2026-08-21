@@ -1,0 +1,57 @@
+/* Shared hub chrome. Brand skins keep their own colors; this only cheapens hops. */
+
+.service-nav,
+.service-nav__tabs,
+.service-hero__actions {
+  contain: layout style;
+}
+
+.service-nav {
+  isolation: isolate;
+}
+
+.service-chrome-shell {
+  contain: layout;
+}
+
+.service-nav .tvm-button.service-nav__tab,
+.service-nav .tvm-button.service-nav__back,
+.service-hero__actions .tvm-button {
+  backface-visibility: hidden;
+  transition:
+    background-color var(--tvm-motion-fast) var(--tvm-motion-ease),
+    color var(--tvm-motion-fast) var(--tvm-motion-ease),
+    box-shadow var(--tvm-motion-fast) var(--tvm-motion-ease),
+    border-color var(--tvm-motion-fast) var(--tvm-motion-ease);
+}
+
+.service-nav .tvm-button.service-nav__tab:focus,
+.service-nav .tvm-button.service-nav__tab[data-focused='true'],
+.service-nav .tvm-button.service-nav__back:focus,
+.service-nav .tvm-button.service-nav__back[data-focused='true'],
+.service-hero__actions .tvm-button:focus,
+.service-hero__actions .tvm-button[data-focused='true'] {
+  transform: none;
+}
+
+.service-chrome .tvm-button.service-nav__tab,
+.service-chrome .tvm-button.service-nav__back {
+  transform: translateZ(0);
+}
+
+/*
+ * TVM owns the stack. Brand skins keep colors; Down from the billboard
+ * parks the next category just under chrome, so rows need air and a
+ * camera pad that does not depend on each skin.
+ */
+.service-rail,
+.service .rail,
+.prime-hub .rail {
+  scroll-margin-top: 4.8rem;
+}
+
+.service-rail + .service-rail,
+.service .rail + .rail,
+.prime-hub .rail + .rail {
+  margin-top: 2.4rem;
+}

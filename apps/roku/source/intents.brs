@@ -7,6 +7,7 @@ function intentFromKey(key as String) as String
   if key = "left" then return "left"
   if key = "right" then return "right"
   if key = "OK" then return "select"
+  if key = "select" then return "select"
   if key = "back" then return "back"
   if key = "play" then return "play"
   if key = "pause" then return "pause"
@@ -22,4 +23,19 @@ end function
 
 function isDirectional(intent as String) as Boolean
   return intent = "up" or intent = "down" or intent = "left" or intent = "right"
+end function
+
+function typedCharFromKey(key as String) as String
+  if key = invalid or key = "" then return ""
+  raw = key
+  lower = LCase(raw)
+  if lower = " " or lower = "space" then return " "
+  if Left(lower, 4) = "lit_" then raw = Mid(raw, 5)
+  if Len(raw) <> 1 then return ""
+  ch = LCase(raw)
+  code = Asc(ch)
+  if code >= 97 and code <= 122 then return ch
+  if code >= 48 and code <= 57 then return ch
+  if Instr(1, ".-_/:?&=%+#@", ch) > 0 then return ch
+  return ""
 end function

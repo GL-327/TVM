@@ -1,42 +1,91 @@
 import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
-import { TopBar } from '../components/TopBar';
+import { PageScene } from '../components/PageScene';
+import { Ribbon } from '../components/Ribbon';
 import { fetchLive, fetchSession } from '../data/media';
-import { applyPlanClass, FALLBACK_PLAN, fetchPlan, saveStyle, styleMinPlanLabel, styleUnlocked, type PlanStatus, type StyleId } from '../data/plan';
+import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, saveLiveTv, saveStyle, styleMinPlanLabel, styleUnlocked, themeUnlocked, type PlanStatus, type StyleId } from '../data/plan';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import { applyTheme, readStoredTheme } from '../theme/apply';
+import { THEMES, type ThemeId } from '../theme/registry';
 
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
-  const [liveDetail, setLiveDetail] = useState('M3U / M3U8');
-  const [desktopDetail, setDesktopDetail] = useState('TVM stick only');
+  const [liveDetail, setLiveDetail] = useState('Loading…');
+  const [desktopDetail, setDesktopDetail] = useState('Loading…');
   const [appliance, setAppliance] = useState(false);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
+  const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
 
   useEffect(() => {
-    void fetchLive().then((status) => {
-      if (status === null) return;
-      if (status.url === null) setLiveDetail('Not added');
-      else if (status.error !== null) setLiveDetail('Playlist error');
-      else setLiveDetail(`${status.channels.length} channels`);
-    });
-    void fetchSession().then((status) => {
-      setAppliance(status.appliance);
-      if (status.appliance) setDesktopDetail(status.mode === 'desktop' ? 'Open now' : 'Leave TVM');
-      else setDesktopDetail('TVM stick only');
-    });
+    void fetchLive()
+      .then((status) => {
+        if (status === null) {
+          setLiveDetail('Not added');
+          return;
+        }
+        if (status.configured === true && status.host) setLiveDetail(status.username ?? status.host);
+        else if (status.url === null) setLiveDetail('Not added');
+        else if (status.error !== null) setLiveDetail('Playlist error');
+        else if ((status.total ?? 0) > 0) setLiveDetail(`${status.picked ?? 0} of ${status.total} on Live TV`);
+        else setLiveDetail(`${status.channels.length} channels`);
+      })
+      .catch(() => setLiveDetail('Not added'));
+    void fetchSession()
+      .then((status) => {
+        setAppliance(status.appliance);
+        if (status.appliance) setDesktopDetail(status.mode === 'desktop' ? 'Open now' : 'Leave TVM');
+        else setDesktopDetail('TVM stick only');
+      })
+      .catch(() => setDesktopDetail('TVM stick only'));
     void fetchPlan().then((status) => {
       applyPlanClass(status);
       setPlan(status);
+      if (readStoredTheme() === 'synthwave' && !themeUnlocked(status, 'synthwave')) {
+        setTheme(applyTheme('default'));
+      }
     });
   }, []);
 
   return (
-    <main className="page page--settings">
-      <TopBar title="Settings" />
-      <p className="stage__kicker">Device and services</p>
-      <h1 className="page__heading">Settings</h1>
-      <div className="settings-list">
+    <main className="page page--settings page--docked">
+      <PageScene />
+      <Ribbon active="settings" />
+      <header className="page__toolbar">
+        <div>
+          <p className="stage__kicker">Device and services</p>
+          <h1 className="page__heading">Settings</h1>
+        </div>
+      </header>
+      <div className="settings-list" data-wrap="y">
+        {THEMES.map((spec) => {
+          const locked = spec.premium === true && !themeUnlocked(plan, spec.id);
+          return (
+            <FocusButton
+              key={spec.id}
+              id={`theme-${spec.id}`}
+              className="settings-row"
+              detail={
+                locked
+                  ? `£${(plan.synthwaveAddonPence / 100).toFixed(2)} · Unlock`
+                  : theme === spec.id
+                    ? 'On'
+                    : 'Apply'
+              }
+              onSelect={() => {
+                if (locked) {
+                  navigate.push('checkout', {
+                    params: { planId: plan.id, name: plan.name, pack: 'synthwave' },
+                  });
+                  return;
+                }
+                setTheme(applyTheme(spec.id));
+              }}
+            >
+              Theme · {spec.name}
+            </FocusButton>
+          );
+        })}
         <FocusButton
           id="plan"
           className="settings-row"
@@ -45,6 +94,30 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         >
           Plan
         </FocusButton>
+        {plan.liveTvOptional ? (
+          <FocusButton
+            id="live-tv-addon"
+            className="settings-row"
+            detail={plan.liveTv ? `On · ${plan.price}` : `Off · ${plan.basePrice}`}
+            onSelect={() => {
+              void saveLiveTv(!plan.liveTv)
+                .then((status) => {
+                  applyPlanClass(status);
+                  setPlan(status);
+                })
+                .catch((error: unknown) => {
+                  navigate.pushModal('notice', {
+                    params: {
+                      title: 'Live TV',
+                      body: error instanceof Error ? error.message : 'Live TV was not updated.',
+                    },
+                  });
+                });
+            }}
+          >
+            Live TV pack
+          </FocusButton>
+        ) : null}
         {(plan.styles.length > 0 ? plan.styles : FALLBACK_PLAN.styles).map((style) => {
           const unlocked = styleUnlocked(plan, style.id as StyleId);
           return (
@@ -104,7 +177,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton
           id="display"
           className="settings-row"
-          detail={`${window.innerWidth} × ${window.innerHeight}`}
+          detail={`${displayMaxLabel(plan.maxHeight)} · ${window.innerWidth} × ${window.innerHeight} view`}
           onSelect={() => navigate.push('system-info', { params: { section: 'display' } })}
         >
           Display
@@ -113,6 +186,14 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
           id="livetv"
           className="settings-row"
           detail={liveDetail}
+          onSelect={() => navigate.push('live-xtream')}
+        >
+          Live TV login
+        </FocusButton>
+        <FocusButton
+          id="live-playlist"
+          className="settings-row"
+          detail="M3U / M3U8"
           onSelect={() => navigate.push('live-playlist')}
         >
           Live TV playlist

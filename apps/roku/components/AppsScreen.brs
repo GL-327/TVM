@@ -4,69 +4,88 @@ sub init()
   m.kicker = m.top.findNode("kicker")
   m.heading = m.top.findNode("heading")
   m.grid = m.top.findNode("grid")
+  m.gridAnim = m.top.findNode("gridAnim")
+  m.gridInterp = m.top.findNode("gridInterp")
   m.kicker.font = tvmFontCaption()
   m.heading.font = tvmFontTitle()
   m.ribbon.activeId = "apps"
   m.ribbon.focusCol = 13
   m.ribbon.hasBarFocus = false
+  m.allowMocks = (m.top.allowMocks <> false)
   m.apps = tvmAppList()
   m.tiles = []
-  m.labels = []
-  m.rings = []
-  cols = 4
+  m.cols = 4
+  m.cellW = 880
+  m.cellH = 560
+  tileScale = 800 / 284
   i = 0
   while i < m.apps.Count()
-    col = i mod cols
-    row = Int(i / cols)
-    wrap = CreateObject("roSGNode", "Group")
-    wrap.translation = [col * 880, row * 560]
-    ring = CreateObject("roSGNode", "Rectangle")
-    ring.width = 832
-    ring.height = 512
-    ring.translation = [-16, -16]
-    ring.cornerRadius = 36
-    ring.color = "0x00000000"
-    art = CreateObject("roSGNode", "Poster")
-    art.width = 800
-    art.height = 480
-    art.uri = m.apps[i].tile
-    art.loadDisplayMode = "scaleToFill"
-    name = CreateObject("roSGNode", "Label")
-    name.text = m.apps[i].wordmark
-    name.color = tvmText()
-    name.width = 800
-    name.height = 480
-    name.horizAlign = "center"
-    name.vertAlign = "center"
-    name.font = tvmFontTitle()
-    wrap.appendChild(ring)
-    wrap.appendChild(art)
-    wrap.appendChild(name)
-    m.grid.appendChild(wrap)
-    m.tiles.Push(wrap)
-    m.rings.Push(ring)
+    spec = m.apps[i]
+    tile = CreateObject("roSGNode", "AppTile")
+    tile.appId = spec.id
+    tile.locked = tvmAppIsLocked(spec.id, m.allowMocks)
+    tile.focusable = true
+    tile.scaleRotateCenter = [0, 0]
+    tile.scale = [tileScale, tileScale]
+    tile.translation = [(i mod m.cols) * m.cellW, Int(i / m.cols) * m.cellH]
+    m.grid.appendChild(tile)
+    m.tiles.Push(tile)
     i = i + 1
   end while
   m.zone = "grid"
-  m.col = 1
+  m.col = 0
   m.seq = 0
   paintFocus()
+end sub
+
+sub slideGrid(y as Float)
+  if m.grid = invalid then return
+  current = m.grid.translation
+  startY = 0
+  if current <> invalid then startY = current[1]
+  if Abs(startY - y) < 2
+    m.grid.translation = [0, y]
+    return
+  end if
+  if m.gridAnim = invalid or m.gridInterp = invalid
+    m.grid.translation = [0, y]
+    return
+  end if
+  m.gridAnim.control = "stop"
+  m.gridInterp.keyValue = [[0, startY], [0, y]]
+  m.gridAnim.control = "start"
 end sub
 
 sub paintFocus()
   m.ribbon.hasBarFocus = (m.zone = "ribbon")
   i = 0
-  while i < m.rings.Count()
-    if m.zone = "grid" and i = m.col
-      m.rings[i].color = tvmFocus()
-      m.tiles[i].scale = [tvmFocusScale(), tvmFocusScale()]
-    else
-      m.rings[i].color = "0x00000000"
-      m.tiles[i].scale = [1.0, 1.0]
-    end if
+  while i < m.tiles.Count()
+    on = (m.zone = "grid" and i = m.col)
+    m.tiles[i].hasFocusStyle = on
+    m.tiles[i].focusable = true
     i = i + 1
   end while
+  row = 0
+  if m.zone = "grid" and m.col >= 0 and m.col < m.tiles.Count()
+    row = Int(m.col / m.cols)
+  end if
+  slideGrid(0 - (row * m.cellH))
+  if m.zone = "grid" and m.col >= 0 and m.col < m.tiles.Count()
+    m.tiles[m.col].setFocus(true)
+  else
+    m.top.setFocus(true)
+  end if
 end sub
+
+function focusedAppId() as String
+  if m.col < 0 or m.col >= m.tiles.Count() then return ""
+  tile = m.tiles[m.col]
+  if tile = invalid then return ""
+  appId = asText(tile.appId)
+  if appId <> "" then return appId
+  if m.col < m.apps.Count() then return asText(m.apps[m.col].id)
+  return ""
+end function
 
 sub emit(kind as String, extra as Object)
   m.seq = m.seq + 1
@@ -79,32 +98,46 @@ sub emit(kind as String, extra as Object)
   m.top.action = action
 end sub
 
+sub emitOpenApp()
+  appId = focusedAppId()
+  if appId = "" then return
+  spec = tvmAppById(appId)
+  name = appId
+  if spec <> invalid then name = spec.name
+  emit("openApp", { id: appId, appId: appId, name: name })
+end sub
+
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
   if intent = "" then return false
   if intent = "back" then return false
+  if intent = "home"
+    emit("home", invalid)
+    return true
+  end if
   if m.zone = "ribbon"
     if intent = "left" and m.ribbon.focusCol > 0 then m.ribbon.focusCol = m.ribbon.focusCol - 1
     if intent = "right" and m.ribbon.focusCol < tvmRibbonLast() then m.ribbon.focusCol = m.ribbon.focusCol + 1
     if intent = "down" then m.zone = "grid"
     if intent = "select" then emit(tvmRibbonSpec()[m.ribbon.focusCol].action, invalid)
-    if intent = "home" then emit("home", invalid)
     paintFocus()
     return true
   end if
-  cols = 4
-  count = m.apps.Count()
+  cols = m.cols
+  count = m.tiles.Count()
+  if count = 0
+    if intent = "up" then m.zone = "ribbon"
+    paintFocus()
+    return true
+  end if
+  if m.col < 0 then m.col = 0
+  if m.col >= count then m.col = count - 1
   row = Int(m.col / cols)
   col = m.col mod cols
   maxRow = Int((count - 1) / cols)
-  if intent = "left"
-    if col > 0 then m.col = m.col - 1 else m.col = row * cols + ((count - 1) mod cols)
-    if m.col >= count then m.col = count - 1
-  end if
-  if intent = "right"
-    if m.col < count - 1 then m.col = m.col + 1 else m.col = row * cols
-  end if
+  if intent = "left" and col > 0 then m.col = m.col - 1
+  if intent = "right" and m.col < count - 1 then m.col = m.col + 1
   if intent = "up"
     if row > 0
       m.col = m.col - cols
@@ -116,11 +149,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     nextCol = m.col + cols
     if nextCol < count then m.col = nextCol
   end if
-  if intent = "select"
-    spec = m.apps[m.col]
-    emit("openApp", { id: spec.id, name: spec.name })
-  end if
-  if intent = "home" then emit("home", invalid)
+  if intent = "select" then emitOpenApp()
   paintFocus()
   return true
 end function

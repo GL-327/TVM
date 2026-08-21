@@ -34,10 +34,13 @@ const requiredFiles = [
   "source/api.brs",
   "source/media.brs",
   "source/tokens.brs",
+  "source/theme.brs",
+  "source/themeGlass.brs",
   "source/fonts.brs",
   "source/layout.brs",
   "components/TVMScene.xml",
   "components/TVMScene.brs",
+  "components/GlassOverlay.xml",
   "components/ApiTask.xml",
   "components/ApiTask.brs",
   "components/HomeScreen.xml",
@@ -46,6 +49,10 @@ const requiredFiles = [
   "components/CatalogScreen.brs",
   "components/LiveScreen.xml",
   "components/LiveScreen.brs",
+  "components/LivePicksScreen.xml",
+  "components/LivePicksScreen.brs",
+  "components/ChannelTile.xml",
+  "components/ChannelTile.brs",
   "components/PlayerScreen.xml",
   "components/PlayerScreen.brs",
   "components/ProfilesScreen.xml",
@@ -140,6 +147,14 @@ for (const image of [
   "images/chrome/lockup-mark.png",
   "images/chrome/poster-mask.png",
   "images/chrome/app-tile-mask.png",
+  "images/apps/netflix.png",
+  "images/apps/prime.png",
+  "images/apps/max.png",
+  "images/apps/disney.png",
+  "images/apps/marks/prime-smile.png",
+  "images/apps/marks/yt-play.png",
+  "images/apps/marks/paramount-peak.png",
+  "images/apps/marks/tvm-gem.png",
 ]) {
   const path = join(rokuRoot, image);
   if (!existsSync(path)) {
@@ -193,6 +208,43 @@ if (components.get("ApiTask")?.extends !== "Task") fail("ApiTask must extend Tas
 const main = existsSync(join(rokuRoot, "source/main.brs")) ? read(join(rokuRoot, "source/main.brs")) : "";
 if (!/^\s*sub Main\(/m.test(main)) fail("source/main.brs must define sub Main()");
 if (!main.includes('CreateScene("TVMScene")')) fail("Main() must create TVMScene");
+
+const playerXml = existsSync(join(rokuRoot, "components/PlayerScreen.xml"))
+  ? read(join(rokuRoot, "components/PlayerScreen.xml"))
+  : "";
+const playerBrs = existsSync(join(rokuRoot, "components/PlayerScreen.brs"))
+  ? read(join(rokuRoot, "components/PlayerScreen.brs"))
+  : "";
+if (!/id="skipRecap"/.test(playerXml)) fail("PlayerScreen.xml must declare Skip Recap");
+if (!/id="overlayFocus"/.test(playerXml)) fail("PlayerScreen.xml must expose overlay focus");
+if (!/id="chrome"[\s\S]*<\/Group>[\s\S]*id="skipRecap"/.test(playerXml)) {
+  fail("Skip Recap must sit on the overlay so it stays selectable when chrome hides");
+}
+if (!/player-skip-recap/.test(playerBrs)) fail("PlayerScreen must tag Skip Recap for selection");
+if (!/sub doSkipRecap\(/.test(playerBrs)) fail("PlayerScreen must OK-activate Skip Recap");
+if (!/function skipRecapFocused\(/.test(playerBrs)) fail("PlayerScreen must keep Skip Recap focusable");
+if (!/intent = "select" and skipRecapFocused\(/.test(playerBrs)) {
+  fail("PlayerScreen must select Skip Recap with OK");
+}
+if (!/sub seekBy\(/.test(playerBrs) || !/function seekKeysActive\(/.test(playerBrs)) {
+  fail("PlayerScreen must keep Left/Right seek on the overlay");
+}
+if (!/intent = "left" and seekKeysActive\(/.test(playerBrs) || !/seekBy\(-10\)/.test(playerBrs)) {
+  fail("PlayerScreen must Left-seek while overlay focus is held");
+}
+if (!/intent = "right" and seekKeysActive\(/.test(playerBrs) || !/seekBy\(10\)/.test(playerBrs)) {
+  fail("PlayerScreen must Right-seek while overlay focus is held");
+}
+if (!/sub claimOverlayFocus\(/.test(playerBrs)) fail("PlayerScreen must reclaim overlay focus");
+if (!/enableUI = false/.test(playerBrs)) fail("PlayerScreen must disable Video UI so overlay keeps keys");
+if (!/m\.video\.focusable = false/.test(playerBrs)) fail("PlayerScreen Video must not take SceneGraph focus");
+if (/^\s*[^'\n].*video\.setFocus\(\s*true\s*\)/m.test(playerBrs)) {
+  fail("PlayerScreen must not give Video SceneGraph focus");
+}
+if (!/overlayFocus/.test(playerBrs)) fail("PlayerScreen must publish overlay focus");
+if (!/recapEndSeconds\(/.test(existsSync(join(rokuRoot, "source/media.brs")) ? read(join(rokuRoot, "source/media.brs")) : "")) {
+  fail("media.brs must read recap end metadata");
+}
 
 const builtin = new Set([
   "Animation",

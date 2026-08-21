@@ -276,6 +276,9 @@ contradicts them. Two notes worth carrying forward:
   `/user`, `/downloads`, `/torrents`, `/torrents/info/{id}` and
   `/unrestrict/link`. Listing the user's own finished torrents is in scope.
   `/torrents/addMagnet` is not.
+- **Android is a later waiter, not an APK in this tree.** Same `apps/ui` in a
+  WebView/Capacitor shell, Core on the LAN (`TVM_CORE_BIND=0.0.0.0`), like
+  Roku. Widevine L1 / Android TV is out of scope (implementation plan section H).
 
 ---
 

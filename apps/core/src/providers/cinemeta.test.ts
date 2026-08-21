@@ -88,6 +88,26 @@ describe('cinemeta mapping', () => {
     expect(picked?.children).toHaveLength(1);
   });
 
+  it('keeps a series when episode videos have not arrived yet', () => {
+    const series = mapCinemetaMeta({ id: 'tt0944947', name: 'Game of Thrones', year: '2011' }, 'series');
+    const movie = mapCinemetaMeta({ id: 'tt0944947', name: 'Game of Thrones', year: '2011' }, 'movie');
+    const picked = chooseCinemetaMeta(
+      movie !== null ? { item: movie, children: [] } : null,
+      series !== null ? { item: series, children: [] } : null,
+    );
+    expect(picked?.item.kind).toBe('series');
+  });
+
+  it('reads seasonNumber aliases from Cinemeta videos', () => {
+    const show = mapCinemetaMeta({ id: 'tt0944947', name: 'Game of Thrones', year: '2011' }, 'series');
+    const kids = mapCinemetaVideos(show!, [
+      { id: 'tt0944947:2:3', title: 'What Is Dead', seasonNumber: 2, episodeNumber: 3 },
+    ]);
+    expect(kids).toHaveLength(1);
+    expect(kids[0]?.season).toBe(2);
+    expect(kids[0]?.episode).toBe(3);
+  });
+
   it('loads series meta even when Cinemeta movie for the same tt is a different film', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-meta-'));
     try {

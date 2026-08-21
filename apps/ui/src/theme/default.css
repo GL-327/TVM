@@ -1,0 +1,237 @@
+/*
+ * Default — mint green and navy blue, Scottish-isle seaside.
+ * Boot look. Fun and jolly, still a dark TV stage (not light mode).
+ */
+
+:root,
+html:not([data-theme]),
+[data-theme='default'] {
+  color-scheme: dark;
+
+  --tvm-bg: #123056;
+  --tvm-bg-deep: #071428;
+  --tvm-bg-elevated: #1a3f6c;
+  --tvm-surface: #21507e;
+  --tvm-surface-hover: #2a628f;
+  --tvm-surface-glass: rgba(18, 48, 86, 0.78);
+  --tvm-border: #7dffd4;
+  --tvm-border-soft: rgba(184, 255, 232, 0.32);
+
+  --tvm-text: #f4fffb;
+  --tvm-text-muted: #c5f8e8;
+  --tvm-text-faint: #9ad4c8;
+
+  --tvm-accent: #7dffd4;
+  --tvm-accent-strong: #b8ffe8;
+  --tvm-accent-blue: #8ee8ff;
+  --tvm-accent-ink: #062018;
+  --tvm-mark: #7dffd4;
+  --tvm-mark-glow: rgba(125, 255, 212, 0.5);
+
+  --tvm-danger: #ff8aa0;
+  --tvm-success: #7dffd4;
+  --tvm-warning: #ffe08a;
+  --tvm-info: #8ee8ff;
+
+  --tvm-focus-ring-color: #b8ffe8;
+  --tvm-shadow-card: 0 0.8rem 2rem rgba(4, 16, 32, 0.42);
+  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(125, 255, 212, 0.28);
+
+  --tvm-scene-sky: #86d2f0;
+  --tvm-scene-sky-mid: #8ee8d8;
+  --tvm-scene-horizon: #d4fff6;
+  --tvm-scene-sea: #165a88;
+  --tvm-scene-sea-deep: #071e3a;
+  --tvm-scene-land: #3d8a68;
+  --tvm-scene-land-far: #2a6a78;
+  --tvm-scene-foam: #f2fffb;
+  --tvm-scene-sun: #fff4c4;
+  --tvm-scene-opacity: 0.46;
+  --tvm-scene-grain: 0.048;
+}
+
+html:not([data-theme]) .app,
+[data-theme='default'] .app {
+  background: var(--tvm-bg);
+}
+
+html:not([data-theme]) .home,
+html:not([data-theme]) .home__shelf,
+html:not([data-theme]) .stream-page,
+html:not([data-theme]) .page,
+[data-theme='default'] .home,
+[data-theme='default'] .home__shelf,
+[data-theme='default'] .stream-page,
+[data-theme='default'] .page {
+  background: var(--tvm-bg);
+}
+
+html:not([data-theme]) .page--setup,
+html:not([data-theme]) .page--profiles,
+[data-theme='default'] .page--setup,
+[data-theme='default'] .page--profiles {
+  background: var(--tvm-bg);
+}
+
+html:not([data-theme]) .dock,
+[data-theme='default'] .dock {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tvm-bg) 42%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-bg-deep) 88%, transparent) 100%
+  );
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html:not([data-theme]) .stage__art--fallback,
+[data-theme='default'] .stage__art--fallback {
+  background:
+    radial-gradient(70% 80% at 70% 20%, hsl(var(--poster-hue, 168) 62% 48%), transparent 62%),
+    linear-gradient(160deg, #1a5a8a, #071428 70%);
+}
+
+html:not([data-theme]) .stage__vignette,
+[data-theme='default'] .stage__vignette {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg) 86%, transparent) 0%, color-mix(in srgb, var(--tvm-bg) 28%, transparent) 32%, transparent 58%),
+    linear-gradient(180deg, rgba(125, 255, 212, 0.08) 0%, transparent 32%, color-mix(in srgb, var(--tvm-bg) 42%, transparent) 68%, var(--tvm-bg) 92%, var(--tvm-bg) 100%);
+}
+
+html:not([data-theme]) .stage__synopsis,
+[data-theme='default'] .stage__synopsis {
+  color: var(--tvm-text-muted);
+}
+
+html:not([data-theme]) .stage__source,
+[data-theme='default'] .stage__source {
+  color: var(--tvm-accent);
+}
+
+html:not([data-theme]) .poster__art,
+html:not([data-theme]) .poster[data-focused='true'] .poster__art,
+[data-theme='default'] .poster__art,
+[data-theme='default'] .poster[data-focused='true'] .poster__art {
+  filter: none;
+}
+
+html:not([data-theme]) .channel-card,
+[data-theme='default'] .channel-card {
+  background: color-mix(in srgb, var(--tvm-surface) 88%, transparent);
+}
+
+html:not([data-theme]) .app-tile,
+[data-theme='default'] .app-tile {
+  background: linear-gradient(145deg, var(--tvm-bg-elevated), var(--tvm-surface));
+}
+
+html:not([data-theme]) .ribbon,
+[data-theme='default'] .ribbon {
+  background: color-mix(in srgb, var(--tvm-surface) 72%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html:not([data-theme]) .ribbon__glyph,
+html:not([data-theme]) .ribbon__avatar-svg,
+[data-theme='default'] .ribbon__glyph,
+[data-theme='default'] .ribbon__avatar-svg {
+  background: color-mix(in srgb, var(--tvm-accent) 28%, #0b1f3a);
+  color: var(--tvm-text);
+}
+
+html:not([data-theme]) .ribbon__icon[data-focused='true'] .ribbon__glyph,
+html:not([data-theme]) .ribbon__icon--on .ribbon__glyph,
+html:not([data-theme]) .ribbon__icon[data-focused='true'] .ribbon__avatar-svg,
+html:not([data-theme]) .ribbon__icon--on .ribbon__avatar-svg,
+[data-theme='default'] .ribbon__icon[data-focused='true'] .ribbon__glyph,
+[data-theme='default'] .ribbon__icon--on .ribbon__glyph,
+[data-theme='default'] .ribbon__icon[data-focused='true'] .ribbon__avatar-svg,
+[data-theme='default'] .ribbon__icon--on .ribbon__avatar-svg {
+  background: transparent;
+}
+
+html:not([data-theme]) .ribbon__icon:focus,
+html:not([data-theme]) .ribbon__icon[data-focused='true'],
+[data-theme='default'] .ribbon__icon:focus,
+[data-theme='default'] .ribbon__icon[data-focused='true'] {
+  background: color-mix(in srgb, var(--tvm-accent) 26%, transparent);
+}
+
+html:not([data-theme]) .stream-chrome .tvm-button.stream-chrome__avatar[data-focused='true'],
+html:not([data-theme]) .stream-chrome .tvm-button.stream-chrome__link[data-focused='true'],
+html:not([data-theme]) .stream-chrome .tvm-button.stream-chrome__mark-btn[data-focused='true'],
+html:not([data-theme]) .profile-tile__pick[data-focused='true'],
+[data-theme='default'] .stream-chrome .tvm-button.stream-chrome__avatar[data-focused='true'],
+[data-theme='default'] .stream-chrome .tvm-button.stream-chrome__link[data-focused='true'],
+[data-theme='default'] .stream-chrome .tvm-button.stream-chrome__mark-btn[data-focused='true'],
+[data-theme='default'] .profile-tile__pick[data-focused='true'] {
+  background: color-mix(in srgb, var(--tvm-accent) 24%, transparent);
+  box-shadow: none;
+}
+
+html:not([data-theme]) .search-pill,
+[data-theme='default'] .search-pill {
+  background: color-mix(in srgb, var(--tvm-bg-deep) 48%, transparent);
+}
+
+html:not([data-theme]) .search-pill__panel,
+[data-theme='default'] .search-pill__panel {
+  background: color-mix(in srgb, var(--tvm-surface) 86%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html:not([data-theme]) .setup-card,
+html:not([data-theme]) .loading-state:not(.loading-state--plate),
+[data-theme='default'] .setup-card,
+[data-theme='default'] .loading-state:not(.loading-state--plate) {
+  background: color-mix(in srgb, var(--tvm-bg-elevated) 82%, transparent);
+}
+
+html:not([data-theme]) .panel-scrim,
+[data-theme='default'] .panel-scrim {
+  background: color-mix(in srgb, var(--tvm-bg-deep) 64%, transparent);
+}
+
+html:not([data-theme]) .stream-chrome,
+[data-theme='default'] .stream-chrome {
+  background: linear-gradient(color-mix(in srgb, var(--tvm-bg) 82%, transparent) 72%, transparent);
+}
+
+html:not([data-theme]) .details__vignette,
+[data-theme='default'] .details__vignette {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--tvm-bg) 86%, transparent) 0%,
+      color-mix(in srgb, var(--tvm-bg) 28%, transparent) 34%,
+      transparent 68%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent 38%,
+      color-mix(in srgb, var(--tvm-bg) 48%, transparent) 66%,
+      var(--tvm-bg) 92%,
+      var(--tvm-bg) 100%
+    );
+}
+
+html:not([data-theme]) .episode-picker,
+[data-theme='default'] .episode-picker {
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--tvm-bg-deep) 78%, transparent) 1.4rem);
+}
+
+html:not([data-theme]) .loading-state--plate,
+[data-theme='default'] .loading-state--plate {
+  background:
+    radial-gradient(48% 42% at 50% 46%, rgba(125, 255, 212, 0.32), transparent 62%),
+    radial-gradient(36% 30% at 64% 36%, rgba(142, 232, 255, 0.24), transparent 58%),
+    var(--tvm-bg-deep);
+}
+
+html:not([data-theme]) .player,
+[data-theme='default'] .player {
+  background: #000;
+}

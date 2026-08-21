@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { catalogCachePath } from '../update/paths.ts';
-import { preferBackdrop, preferPoster } from './artwork.ts';
+import { preferBackdrop, preferPoster, upgradeImageUrl } from './artwork.ts';
 import { hueFor } from './title.ts';
 import type { MediaItem } from './types.ts';
 
@@ -45,9 +45,8 @@ export interface TitleMeta {
 
 /** Cinemeta reuses some IMDb ids: /meta/movie/tt1196946 is Le Mans, /meta/series is The Mentalist. */
 export function chooseCinemetaMeta(movie: TitleMeta | null, series: TitleMeta | null): TitleMeta | null {
-  if (series !== null && series.children.length > 0) return series;
-  if (series !== null && movie !== null && series.item.title !== movie.item.title) return series;
-  return movie ?? series;
+  if (series !== null) return series;
+  return movie;
 }
 
 export function parseYear(value: unknown): number | null {
@@ -116,12 +115,17 @@ export function mapCinemetaVideos(show: MediaItem, videos: unknown): MediaItem[]
   for (const raw of videos) {
     if (typeof raw !== 'object' || raw === null) continue;
     const video = raw as Record<string, unknown>;
-    const season = video.season !== undefined ? Number(video.season) : NaN;
-    const episode =
-      video.episode !== undefined ? Number(video.episode) : video.number !== undefined ? Number(video.number) : NaN;
+    const fromId = String(video.id ?? '').match(/:(\d+):(\d+)$/);
+    const season = Number(video.season ?? video.seasonNumber ?? video.season_number ?? fromId?.[1]);
+    const episode = Number(
+      video.episode ?? video.number ?? video.episodeNumber ?? video.episode_number ?? fromId?.[2],
+    );
     if (!Number.isFinite(season) || !Number.isFinite(episode) || season < 1 || episode < 1) continue;
     const name = String(video.title || video.name || `Episode ${episode}`);
-    const thumbnail = typeof video.thumbnail === 'string' ? video.thumbnail : show.poster;
+    const thumbnail =
+      typeof video.thumbnail === 'string' && video.thumbnail !== ''
+        ? upgradeImageUrl(video.thumbnail, 'poster')
+        : show.poster;
     const aired = parseAired(video.released) ?? parseAired(video.firstAired);
     items.push({
       id: `${show.id}:${season}:${episode}`,

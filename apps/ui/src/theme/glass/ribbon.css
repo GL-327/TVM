@@ -1,0 +1,148 @@
+/*
+ * Glass ribbon / dock. Outer host keeps left: 50% + translateX(-50%) so the
+ * capsule stays top-center. Frost lives on the untransformed inner.
+ */
+
+[data-theme='glass'] .ribbon {
+  left: 50%;
+  top: 0.55rem;
+  padding: 0;
+  overflow: visible;
+  transform: translate(-50%, calc(-100% - 1.35rem));
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .ribbon--open,
+[data-theme='glass'] .ribbon:focus-within,
+[data-theme='glass'] .ribbon:has([data-focused='true']) {
+  transform: translate(-50%, 0);
+}
+
+[data-theme='glass'] .ribbon__frost {
+  display: flex;
+  width: max-content;
+  max-width: inherit;
+  padding: 0.28rem 0.4rem;
+  overflow: visible;
+  transform: none;
+  contain: none;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: 999px;
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+}
+
+[data-theme='glass'] .ribbon__frost::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: var(--tvm-glass-kit-plate);
+  background-size: 100% 100%;
+  opacity: 0.42;
+}
+
+[data-theme='glass'] .ribbon__frost,
+[data-theme='glass'] .ribbon__list {
+  position: relative;
+}
+
+[data-theme='glass'] .ribbon__list {
+  z-index: 1;
+}
+
+[data-theme='glass'] .ribbon__icon {
+  color: var(--tvm-glass-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme='glass'] .ribbon__avatar,
+[data-theme='glass'] .ribbon__glyph,
+[data-theme='glass'] .ribbon__avatar-svg {
+  color: var(--tvm-glass-text);
+  background: var(--tvm-glass-fill-bright);
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .ribbon__glyph svg {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .ribbon__glyph--tvm {
+  color: var(--tvm-glass-paper);
+  font-weight: 800;
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .ribbon__label {
+  color: var(--tvm-glass-text);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .ribbon__icon:hover .ribbon__label,
+[data-theme='glass'] .ribbon__icon:focus .ribbon__label,
+[data-theme='glass'] .ribbon__icon[data-focused='true'] .ribbon__label {
+  opacity: 1;
+}
+
+[data-theme='glass'] .ribbon__icon--on .ribbon__glyph,
+[data-theme='glass'] .ribbon__icon--on .ribbon__avatar-svg {
+  background: color-mix(in srgb, var(--tvm-glass-fill-bright) 72%, var(--tvm-glass-accent) 28%);
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .ribbon__icon:focus,
+[data-theme='glass'] .ribbon__icon[data-focused='true'] {
+  outline: none;
+  transform: none;
+  background: color-mix(in srgb, var(--tvm-glass-fill-bright) 80%, var(--tvm-glass-specular) 20%);
+  box-shadow: inset 0 1px 0 var(--tvm-glass-specular);
+  border-radius: 999px;
+}
+
+[data-theme='glass'] .ribbon__icon--on .ribbon__glyph,
+[data-theme='glass'] .ribbon__icon[data-focused='true'] .ribbon__glyph,
+[data-theme='glass'] .ribbon__icon--on .ribbon__avatar-svg,
+[data-theme='glass'] .ribbon__icon[data-focused='true'] .ribbon__avatar-svg,
+[data-theme='glass'] .ribbon-search[data-focused='true'] .ribbon__glyph {
+  box-shadow: inset 0 1px 0 var(--tvm-glass-specular-hot);
+}
+
+[data-theme='glass'] .dock {
+  background: var(--tvm-glass-fill-text);
+  border-bottom: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .dock__item {
+  color: var(--tvm-glass-text-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme='glass'] .dock__item--on {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .dock__item--on .tvm-button__label {
+  box-shadow: inset 0 -0.18rem 0 var(--tvm-glass-accent-warm);
+}
+
+[data-theme='glass'] .dock__item:focus,
+[data-theme='glass'] .dock__item[data-focused='true'] {
+  color: var(--tvm-glass-text);
+  background: color-mix(in srgb, var(--tvm-glass-fill-bright) 80%, var(--tvm-glass-specular) 20%);
+  box-shadow: var(--tvm-glass-shadow-focus);
+}

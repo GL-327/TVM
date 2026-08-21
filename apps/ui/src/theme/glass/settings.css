@@ -1,0 +1,307 @@
+/*
+ * Settings under liquid glass: panels, lists, pills.
+ * Theme picker stays visible — never display:none / opacity:0 / clip.
+ * Text-bearing surfaces use --tvm-glass-fill-text (see tokens.css).
+ * Frost 16px on Settings rows. Plan/summary panels use the kit 28px recipe.
+ * Pills and chips stay fill + rim. No mix-blend, no list isolation.
+ */
+
+[data-theme='glass'] .page--settings {
+  background:
+    radial-gradient(90% 55% at 8% 0%, color-mix(in srgb, var(--tvm-glass-accent-warm) 18%, transparent), transparent 52%),
+    radial-gradient(70% 45% at 96% 4%, color-mix(in srgb, var(--tvm-glass-accent) 16%, transparent), transparent 48%),
+    var(--tvm-bg);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .page--settings.page--docked {
+  background: var(--tvm-bg);
+}
+
+[data-theme='glass'] .page--settings .page__heading,
+[data-theme='glass'] .page--settings .panel__title {
+  color: var(--tvm-glass-text);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .page--settings .stage__kicker,
+[data-theme='glass'] .page--settings .plan-current__kicker {
+  color: var(--tvm-glass-accent-warm);
+}
+
+[data-theme='glass'] .page--settings .page__lede,
+[data-theme='glass'] .page--settings .tvm-button__detail,
+[data-theme='glass'] .settings-row .tvm-button__detail {
+  color: var(--tvm-glass-text-muted);
+}
+
+[data-theme='glass'] .page--settings .page__message {
+  color: var(--tvm-glass-accent-warm);
+}
+
+/* Top bar + quiet nav pills ------------------------------------------------ */
+
+[data-theme='glass'] .page--settings .topbar {
+  border-bottom-color: var(--tvm-glass-hairline-cool);
+}
+
+[data-theme='glass'] .page--settings .topbar__nav .tvm-button,
+[data-theme='glass'] .page--settings .topbar .tvm-button,
+[data-theme='glass'] .page--settings .status {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-radius-pill);
+  background: var(--tvm-glass-fill);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .page--settings .topbar__nav .tvm-button:focus,
+[data-theme='glass'] .page--settings .topbar__nav .tvm-button[data-focused='true'],
+[data-theme='glass'] .page--settings .topbar .tvm-button:focus,
+[data-theme='glass'] .page--settings .topbar .tvm-button[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+/* Lists — stacked glass pills --------------------------------------------- */
+
+[data-theme='glass'] .settings-list {
+  gap: 0.7rem;
+  isolation: auto;
+}
+
+[data-theme='glass'] .settings-row,
+[data-theme='glass'] .page--settings .tvm-button--glass,
+[data-theme='glass'] .page--settings .hero__actions .tvm-button:not(.tvm-button--primary) {
+  isolation: auto;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-radius-pill);
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  color: var(--tvm-glass-text);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .settings-row[data-focused='true'],
+[data-theme='glass'] .page--settings .tvm-button--glass[data-focused='true'] {
+  -webkit-backdrop-filter: var(--tvm-glass-filter-soft);
+  backdrop-filter: var(--tvm-glass-filter-soft);
+}
+
+[data-theme='glass'] .settings-row:focus,
+[data-theme='glass'] .settings-row[data-focused='true'],
+[data-theme='glass'] .page--settings .tvm-button--glass:focus,
+[data-theme='glass'] .page--settings .tvm-button--glass[data-focused='true'],
+[data-theme='glass'] .page--settings .hero__actions .tvm-button:not(.tvm-button--primary):focus,
+[data-theme='glass'] .page--settings .hero__actions .tvm-button:not(.tvm-button--primary)[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+/* Theme picker — must remain visible -------------------------------------- */
+
+[data-theme='glass'] .theme-picker,
+[data-theme='glass'] .theme-pills,
+[data-theme='glass'] .settings-theme,
+[data-theme='glass'] .settings-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  clip: auto;
+  clip-path: none;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+[data-theme='glass'] .theme-pill,
+[data-theme='glass'] .settings-pill,
+[data-theme='glass'] .theme-picker .tvm-button,
+[data-theme='glass'] .theme-pills .tvm-button,
+[data-theme='glass'] .settings-theme .tvm-button,
+[data-theme='glass'] .settings-pills .tvm-button,
+[data-theme='glass'] [data-focus-id^='theme-'],
+[data-theme='glass'] [data-focus-id^='style-'] {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  clip: auto;
+  clip-path: none;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-radius-pill);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .theme-pill:focus,
+[data-theme='glass'] .theme-pill[data-focused='true'],
+[data-theme='glass'] .settings-pill:focus,
+[data-theme='glass'] .settings-pill[data-focused='true'],
+[data-theme='glass'] .theme-picker .tvm-button:focus,
+[data-theme='glass'] .theme-picker .tvm-button[data-focused='true'],
+[data-theme='glass'] .theme-pills .tvm-button:focus,
+[data-theme='glass'] .theme-pills .tvm-button[data-focused='true'],
+[data-theme='glass'] .settings-theme .tvm-button:focus,
+[data-theme='glass'] .settings-theme .tvm-button[data-focused='true'],
+[data-theme='glass'] .settings-pills .tvm-button:focus,
+[data-theme='glass'] .settings-pills .tvm-button[data-focused='true'],
+[data-theme='glass'] [data-focus-id^='theme-']:focus,
+[data-theme='glass'] [data-focus-id^='theme-'][data-focused='true'],
+[data-theme='glass'] [data-focus-id^='style-']:focus,
+[data-theme='glass'] [data-focus-id^='style-'][data-focused='true'] {
+  visibility: visible;
+  opacity: 1;
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .theme-pill--on,
+[data-theme='glass'] .settings-pill--on,
+[data-theme='glass'] .theme-picker .tvm-button--on,
+[data-theme='glass'] .settings-theme .tvm-button--on {
+  box-shadow:
+    var(--tvm-glass-edge),
+    0 0 0 0.14rem var(--tvm-glass-paper),
+    var(--tvm-glass-shadow);
+}
+
+/* Channel / group pills on settings pages and Live TV -------------------- */
+
+[data-theme='glass'] .page--settings .channel-chips,
+[data-theme='glass'] .page--live .channel-chips {
+  visibility: visible;
+  opacity: 1;
+}
+
+[data-theme='glass'] .page--settings .channel-chip,
+[data-theme='glass'] .page--live .channel-chip {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline-cool);
+  border-radius: var(--tvm-radius-pill);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .page--settings .channel-chip:focus,
+[data-theme='glass'] .page--settings .channel-chip[data-focused='true'],
+[data-theme='glass'] .page--live .channel-chip:focus,
+[data-theme='glass'] .page--live .channel-chip[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .page--settings .channel-chip--on,
+[data-theme='glass'] .page--live .channel-chip--on {
+  box-shadow:
+    var(--tvm-glass-edge),
+    0 0 0 0.12rem var(--tvm-glass-paper),
+    var(--tvm-glass-shadow);
+}
+
+[data-theme='glass'] .page--settings .channel-chip__count,
+[data-theme='glass'] .page--live .channel-chip__count {
+  color: var(--tvm-glass-text-muted);
+}
+
+/* Panels — summary cards, plans, checkout, dialogs ------------------------ */
+
+[data-theme='glass'] .settings-summary,
+[data-theme='glass'] .plan-current,
+[data-theme='glass'] .checkout-summary,
+[data-theme='glass'] .checkout-card,
+[data-theme='glass'] .panel,
+[data-theme='glass'] .plan-card {
+  isolation: auto;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius-lg);
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-deep);
+  color: var(--tvm-glass-text);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+}
+
+[data-theme='glass'] .panel__row {
+  border-bottom-color: var(--tvm-glass-hairline-cool);
+}
+
+[data-theme='glass'] .panel__row dt,
+[data-theme='glass'] .plan-card__note,
+[data-theme='glass'] .plan-card__list,
+[data-theme='glass'] .checkout-summary__list {
+  color: var(--tvm-glass-text-muted);
+}
+
+[data-theme='glass'] .panel__row dd,
+[data-theme='glass'] .plan-card__name,
+[data-theme='glass'] .plan-current__name,
+[data-theme='glass'] .checkout-summary__price {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .plan-card__price,
+[data-theme='glass'] .plan-current__price {
+  color: var(--tvm-glass-accent);
+}
+
+[data-theme='glass'] .plan-card--on {
+  box-shadow:
+    var(--tvm-glass-edge),
+    0 0 0 0.16rem var(--tvm-glass-paper),
+    var(--tvm-glass-shadow-deep);
+}
+
+[data-theme='glass'] .plan-card[data-focused='true'] {
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+/* Fields on settings pages ------------------------------------------------ */
+
+[data-theme='glass'] .page--settings .token-field__input {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .page--settings .token-field__input:focus,
+[data-theme='glass'] .page--settings .token-field__input[data-focused='true'] {
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .page--settings .tvm-button--primary {
+  background: var(--tvm-glass-paper);
+  color: var(--tvm-glass-ink);
+  border-color: var(--tvm-glass-paper);
+  box-shadow: var(--tvm-glass-shadow);
+}
+
+[data-theme='glass'] .setup-card,
+[data-theme='glass'] .loading-state:not(.loading-state--plate),
+[data-theme='glass'] .empty-state,
+[data-theme='glass'] .error-state {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius-lg);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-deep);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .loading-state__bar {
+  background: var(--tvm-glass-paper);
+}

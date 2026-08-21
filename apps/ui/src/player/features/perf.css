@@ -1,0 +1,59 @@
+/*
+ * Stream chrome paint opts. Never contain or filter the video element —
+ * Chromium/Electron will otherwise composite a black frame.
+ */
+
+.player-root {
+  pointer-events: none;
+}
+
+:is([data-player], .player-root) :is(
+  .player__chrome,
+  .player-chrome,
+  [data-player-chrome],
+  [data-player-overlay],
+  [data-player-menu],
+  [data-player-transport],
+  .player-title-overlay,
+  .player-transport,
+  .player-dock,
+  .tvm-progress,
+  .tvm-buffering
+) {
+  contain: layout style;
+}
+
+:is([data-player], .player-root)[data-controls='visible'] :is(
+  .player-chrome,
+  .player-title-overlay,
+  .player-transport,
+  .player-dock
+),
+:is([data-player], .player-root) .player-chrome:not(.player-chrome--hidden):not([data-chrome='hidden']) {
+  will-change: opacity;
+}
+
+:is([data-player], .player-root)[data-controls='hidden'] :is(
+  .player-chrome,
+  .player-title-overlay,
+  .player-transport,
+  .player-dock,
+  .tvm-progress
+),
+:is([data-player], .player-root) :is(
+  .player-chrome--hidden,
+  [data-chrome='hidden'],
+  .player-title-overlay--hidden,
+  .player-transport[data-visible='false']
+) {
+  will-change: auto;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is([data-player], .player-root) :is(.player-chrome, .player-dock, .player-transport, .tvm-progress) {
+    will-change: auto;
+  }
+}

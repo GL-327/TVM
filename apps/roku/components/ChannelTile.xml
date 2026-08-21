@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ChannelTile" extends="Group">
+  <interface>
+    <field id="item" type="assocarray" onChange="onItem" />
+    <field id="picking" type="boolean" value="false" onChange="onItem" />
+    <field id="hasFocusStyle" type="boolean" onChange="onFocusStyle" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="ChannelTile.brs" />
+  <children>
+    <Group id="body">
+      <Rectangle id="ring" color="0x00000000" cornerRadius="28" />
+      <Rectangle id="fill" color="0x161616FF" cornerRadius="22" />
+      <Rectangle id="art" color="0x1D1D1DFF" cornerRadius="18" />
+      <Poster id="logo" loadDisplayMode="scaleToFit" />
+      <Label id="initial" color="0xF5F5F5FF" horizAlign="center" />
+      <Label id="nameLabel" color="0xF5F5F5FF" maxLines="1" />
+      <Label id="groupLabel" color="0x8A8A8AFF" maxLines="1" />
+      <Rectangle id="badge" color="0x00000099" cornerRadius="18" />
+      <Label id="badgeLabel" color="0xC4C4C4FF" horizAlign="center" />
+    </Group>
+  </children>
+</component>

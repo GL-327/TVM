@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="GlassOverlay" extends="Group">
+  <interface>
+    <field id="variant" type="string" value="panel" onChange="paintGlassOverlayNode" />
+    <field id="panelWidth" type="float" value="960" onChange="paintGlassOverlayNode" />
+    <field id="panelHeight" type="float" value="540" onChange="paintGlassOverlayNode" />
+    <field id="radius" type="float" value="36" onChange="paintGlassOverlayNode" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/themeGlass.brs" />
+  <script type="text/brightscript">
+    <![CDATA[
+      sub init()
+        m.top.focusable = false
+        paintGlassOverlayNode()
+      end sub
+    ]]>
+  </script>
+  <children>
+    <Rectangle id="shadow" color="0x02080FB3" cornerRadius="36" />
+    <Rectangle id="rim" color="0xFFFFFF2E" cornerRadius="36" />
+    <Rectangle id="fill" color="0x12202CC7" cornerRadius="34" />
+    <Rectangle id="shade" color="0x08101866" cornerRadius="34" />
+    <Rectangle id="highlight" color="0xFFFFFF5C" cornerRadius="4" />
+    <Rectangle id="edgeLeft" color="0x9FE7FF40" />
+    <Rectangle id="edgeRight" color="0x9FE7FF40" />
+    <Rectangle id="edgeBottom" color="0x9FE7FF28" />
+    <Rectangle id="sheen" color="0xFFFFFF30" cornerRadius="4" />
+    <Animation id="sheenAnim" duration="5.2" repeat="true" easeFunction="inOutQuad" optional="true">
+      <Vector2DFieldInterpolator
+        id="sheenInterp"
+        key="[0.0, 1.0]"
+        keyValue="[[24.0, 10.0], [720.0, 10.0]]"
+        fieldToInterp="sheen.translation"
+      />
+    </Animation>
+  </children>
+</component>

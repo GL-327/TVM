@@ -11,6 +11,7 @@ describe('season and episode lists', () => {
   it('lists seasons in order without inventing episodes', () => {
     expect(seasonNumbers(files)).toEqual([1, 2]);
     expect(seasonNumbers([])).toEqual([]);
+    expect(seasonNumbers([{ season: '3' }, { season: '1' }])).toEqual([1, 3]);
   });
 
   it('shows only the chosen season until a season is picked', () => {

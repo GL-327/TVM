@@ -1,0 +1,422 @@
+.prime-hub {
+  --prime-blue: #00a8e1;
+  --prime-ink: #0c1116;
+  --prime-muted: #8aa0ae;
+  --prime-soft: #d7e0e6;
+  --prime-edge: 2.8rem;
+  --prime-row: 2.65rem;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 100%;
+  padding-bottom: 3rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  background: #000;
+  color: #fff;
+  font-family: 'Segoe UI Variable Display', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  scroll-padding: 4.8rem var(--prime-edge) 2.4rem;
+}
+
+.service.service--prime.prime-hub,
+.service.service--prime:has(.prime-hub) {
+  display: block;
+  background: #000;
+}
+
+.service.service--prime.prime-hub > .service-nav,
+.service.service--prime:has(.prime-hub) > .service-nav {
+  display: none;
+}
+
+.prime-hub__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.prime-hub__nav {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 4.2rem;
+  padding: 0.2rem var(--prime-edge) 0.35rem;
+  background: linear-gradient(#000 0%, rgba(0, 0, 0, 0.55) 62%, transparent);
+}
+
+.prime-hub__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 7.6rem;
+  margin: 0 0.7rem 0 0.1rem;
+}
+
+.prime-hub__word {
+  color: #fff;
+  font-size: 1.28rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.prime-hub__smile {
+  width: 7.4rem;
+  height: 0.72rem;
+  margin-top: 0.06rem;
+}
+
+.prime-hub__tabs,
+.prime-hub__tools,
+.prime-hub__actions {
+  display: flex;
+  align-items: center;
+}
+
+.prime-hub__tabs {
+  flex: 1;
+  gap: 0.15rem;
+}
+
+.prime-hub__tools {
+  margin-left: auto;
+  gap: 0.25rem;
+}
+
+.prime-hub .tvm-button.prime-hub__back,
+.prime-hub .tvm-button.prime-hub__tab,
+.prime-hub .tvm-button.prime-hub__icon {
+  min-height: 2.35rem;
+  padding: 0.28rem 0.9rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--prime-muted);
+  font-size: 1.04rem;
+  font-weight: 500;
+  transform: none;
+}
+
+.prime-hub .tvm-button.prime-hub__tab--on,
+.prime-hub .tvm-button.prime-hub__tab[data-focused='true'] {
+  color: #fff;
+  font-weight: 650;
+  box-shadow: inset 0 -0.15rem 0 var(--prime-blue);
+}
+
+.prime-hub .tvm-button.prime-hub__back,
+.prime-hub .tvm-button.prime-hub__icon {
+  width: 2.4rem;
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.prime-hub .tvm-button.prime-hub__back[data-focused='true'],
+.prime-hub .tvm-button.prime-hub__icon[data-focused='true'] {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  outline: 0.14rem solid var(--prime-blue);
+  outline-offset: 0.08rem;
+}
+
+.prime-hub__chevron,
+.prime-hub__glyph {
+  width: 1.24rem;
+  height: 1.24rem;
+}
+
+.prime-hub__avatar {
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 999px;
+}
+
+.prime-hub__hero {
+  position: relative;
+  min-height: min(84vh, 44rem);
+  margin-top: -4.2rem;
+}
+
+.prime-hub__hero .stage__art,
+.prime-hub__veil {
+  position: absolute;
+  inset: 0;
+}
+
+.prime-hub__hero .stage__art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.prime-hub__veil {
+  background:
+    linear-gradient(90deg, #000 8%, rgba(0, 0, 0, 0.72) 32%, rgba(0, 0, 0, 0.12) 62%, transparent 82%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, transparent 22%, rgba(0, 0, 0, 0.2) 58%, #000 100%);
+}
+
+.prime-hub__copy {
+  position: relative;
+  z-index: 1;
+  max-width: 40rem;
+  padding: 9.2rem 0 8.8rem var(--prime-edge);
+}
+
+.prime-hub__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.prime-hub__kicker-smile {
+  width: 2.4rem;
+  height: 0.52rem;
+}
+
+.prime-hub__title {
+  margin: 0 0 0.55rem;
+  font-size: clamp(2.4rem, 5.4vw, 4.3rem);
+  font-weight: 700;
+  letter-spacing: -0.036em;
+  line-height: 0.94;
+}
+
+.prime-hub__meta,
+.prime-hub__syn {
+  margin: 0 0 0.7rem;
+  color: var(--prime-soft);
+}
+
+.prime-hub__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.38rem 0.7rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.prime-hub__cert,
+.prime-hub__q {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.18rem;
+  padding: 0 0.28rem;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 0.12rem;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.prime-hub__q {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--prime-soft);
+}
+
+.prime-hub__score {
+  color: #f5c518;
+  font-weight: 700;
+}
+
+.prime-hub__syn {
+  display: -webkit-box;
+  max-width: 34rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.prime-hub__actions {
+  gap: 0.7rem;
+}
+
+.prime-hub .tvm-button.prime-hub__play,
+.prime-hub .tvm-button.prime-hub__more {
+  min-height: 2.7rem;
+  padding: 0.4rem 1.15rem;
+  border-radius: 0.28rem;
+  transform: none;
+}
+
+.prime-hub .tvm-button.prime-hub__play {
+  min-width: 8.6rem;
+  background: #fff;
+  color: var(--prime-ink);
+  font-weight: 750;
+}
+
+.prime-hub .tvm-button.prime-hub__more {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 650;
+}
+
+.prime-hub .tvm-button.prime-hub__play[data-focused='true'],
+.prime-hub .tvm-button.prime-hub__more[data-focused='true'] {
+  outline: 0.16rem solid var(--prime-blue);
+  outline-offset: 0.18rem;
+}
+
+.prime-hub .tvm-button.prime-hub__more[data-focused='true'] {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.prime-hub__play-icon {
+  width: 0.92rem;
+  height: 0.92rem;
+}
+
+.prime-hub__rails {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--prime-row);
+  margin-top: -7.2rem;
+  padding: 0 0 1.2rem;
+}
+
+.prime-hub .rail {
+  padding-inline: 0;
+  gap: 0.28rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20rem;
+  overflow-anchor: none;
+}
+
+.prime-hub .rail:focus-within {
+  content-visibility: visible;
+}
+
+.prime-hub .rail__header {
+  padding-inline: var(--prime-edge);
+}
+
+.prime-hub .rail__title {
+  margin: 0;
+  padding: 0;
+  color: #fff;
+  font-size: 1.18rem;
+  font-weight: 700;
+}
+
+.prime-hub .rail__track {
+  gap: 0.7rem;
+  padding: 0.7rem var(--prime-edge) 0.35rem;
+  overflow-anchor: none;
+}
+
+.prime-hub .poster--landscape,
+.prime-hub .prime-card {
+  --poster-w: 17.8rem;
+}
+
+.prime-hub .prime-card[data-loop-clone='true'] {
+  pointer-events: none;
+}
+
+.prime-hub .prime-card__frame {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.prime-hub .poster__art,
+.prime-hub .prime-card__art {
+  border: 0;
+  border-radius: 0.36rem;
+  box-shadow: none;
+  filter: none;
+}
+
+.prime-hub .prime-card[data-focused='true'] {
+  z-index: 3;
+}
+
+.prime-hub .prime-card[data-focused='true'] .prime-card__art {
+  outline: 0.16rem solid var(--prime-blue);
+  outline-offset: 0.12rem;
+  transform: scale(1.045);
+}
+
+.prime-hub .poster__network {
+  display: none;
+}
+
+.prime-hub .prime-card__mark {
+  position: absolute;
+  z-index: 3;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 2.1rem;
+  height: 0.46rem;
+}
+
+.prime-hub .prime-card__mark-smile {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.prime-hub .poster__episode {
+  top: 0.36rem;
+  left: 0.36rem;
+  border-radius: 0.14rem;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 0.62rem;
+}
+
+.prime-hub .poster--landscape .poster__progress {
+  left: 0.4rem;
+  right: 0.4rem;
+  bottom: 0.32rem;
+  height: 0.18rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.prime-hub .poster__progress-bar {
+  background: var(--prime-blue);
+}
+
+.prime-hub .poster--landscape .poster__meta,
+.prime-hub .prime-card__meta {
+  padding: 0.55rem 0.15rem 0;
+}
+
+.prime-hub__empty,
+.prime-hub__note {
+  margin: 0.6rem var(--prime-edge) 0;
+  color: var(--prime-muted);
+}
+
+.prime-hub__note {
+  font-size: 0.76rem;
+}
+
+.prime-hub__skeleton {
+  min-height: 78vh;
+  background: #0a1016;
+}

@@ -1,0 +1,78 @@
+/*
+ * Heather — thistle purple and moss, a moor above the sea.
+ */
+
+[data-theme='heather'] {
+  color-scheme: dark;
+
+  --tvm-bg: #2c1840;
+  --tvm-bg-deep: #140c22;
+  --tvm-bg-elevated: #3c2458;
+  --tvm-surface: #4a2e68;
+  --tvm-surface-hover: #5a3a7a;
+  --tvm-surface-glass: rgba(44, 24, 64, 0.82);
+  --tvm-border: #c89ae0;
+  --tvm-border-soft: rgba(200, 154, 224, 0.28);
+
+  --tvm-text: #f6eefc;
+  --tvm-text-muted: #dcc8f0;
+  --tvm-text-faint: #b09ac8;
+
+  --tvm-accent: #b8f0c8;
+  --tvm-accent-strong: #dcffe8;
+  --tvm-accent-blue: #c89ae0;
+  --tvm-accent-ink: #140c22;
+  --tvm-mark: #c89ae0;
+  --tvm-mark-glow: rgba(200, 154, 224, 0.5);
+
+  --tvm-danger: #ff8aa0;
+  --tvm-success: #b8f0c8;
+  --tvm-warning: #ffe08a;
+  --tvm-info: #c89ae0;
+
+  --tvm-focus-ring-color: #dcffe8;
+  --tvm-shadow-card: 0 0.8rem 2rem rgba(20, 12, 34, 0.46);
+  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(184, 240, 200, 0.24);
+
+  --tvm-scene-sky: #5a3878;
+  --tvm-scene-sky-mid: #3c2458;
+  --tvm-scene-horizon: #c4f4d4;
+  --tvm-scene-sea: #241848;
+  --tvm-scene-sea-deep: #140c22;
+  --tvm-scene-land: #3d6a58;
+  --tvm-scene-land-far: #4a3a68;
+  --tvm-scene-foam: #e8fff0;
+  --tvm-scene-sun: #f0d8ff;
+  --tvm-scene-opacity: 0.44;
+  --tvm-scene-grain: 0.046;
+}
+
+[data-theme='heather'] .app {
+  background: var(--tvm-bg);
+}
+
+[data-theme='heather'] .home,
+[data-theme='heather'] .page,
+[data-theme='heather'] .stream-page {
+  background: var(--tvm-bg);
+}
+
+[data-theme='heather'] .ribbon,
+[data-theme='heather'] .search-pill__panel {
+  background: color-mix(in srgb, var(--tvm-surface) 78%, transparent);
+}
+
+[data-theme='heather'] .ribbon__icon[data-focused='true'],
+[data-theme='heather'] .stream-chrome .tvm-button[data-focused='true'] {
+  background: color-mix(in srgb, var(--tvm-accent) 24%, transparent);
+}
+
+[data-theme='heather'] .loading-state--plate {
+  background:
+    radial-gradient(48% 42% at 50% 46%, rgba(200, 154, 224, 0.3), transparent 62%),
+    var(--tvm-bg-deep);
+}
+
+[data-theme='heather'] .player {
+  background: #000;
+}

@@ -1,5 +1,6 @@
 sub init()
   applyCanvasScale()
+  applyCurrentTheme()
   m.screenHost = m.top.findNode("screenHost")
   m.overlayHost = m.top.findNode("overlayHost")
   m.bootLabel = m.top.findNode("bootLabel")
@@ -15,6 +16,7 @@ sub init()
   m.catalogTask = invalid
   m.playTask = invalid
   m.liveTask = invalid
+  m.livePicksTask = invalid
   m.profilesTask = invalid
   m.mutateTask = invalid
   m.childrenTask = invalid
@@ -30,6 +32,7 @@ sub init()
   m.setupNode = invalid
   m.catalogNode = invalid
   m.liveNode = invalid
+  m.livePicksNode = invalid
   m.profilesNode = invalid
   m.profileNode = invalid
   m.appsNode = invalid
@@ -43,8 +46,12 @@ sub init()
   m.detailsSaved = false
   m.profilesNext = ""
   m.pendingPlayItem = invalid
+  m.nextPlayItem = invalid
   m.homeSilent = false
   m.searchTimer = invalid
+  m.livePicksQuery = ""
+  m.livePicksGroup = ""
+  m.livePicksOffset = 0
   m.top.setFocus(true)
 
   timer = CreateObject("roSGNode", "Timer")
@@ -60,6 +67,25 @@ sub init()
   poll.observeField("fire", "onHomePoll")
   m.homePoll = poll
   poll.control = "start"
+end sub
+
+sub applyCurrentTheme()
+  key = currentThemeId()
+  applyThemeColorsToScene(m.top, key)
+  raw = ReadAsciiFile("pkg:/source/themeGlass.brs")
+  if raw = invalid or raw = "" then return
+  if tvmIsGlassTheme(key)
+    applyGlassTheme(m.top)
+  else
+    clearGlassTheme(m.top)
+  end if
+end sub
+
+sub applyAndSaveTheme(id as Dynamic)
+  key = normalizeThemeId(id)
+  saveThemeId(key)
+  applyCurrentTheme()
+  if m.settingsNode <> invalid then m.settingsNode.themeId = key
 end sub
 
 sub applyCanvasScale()
@@ -123,6 +149,12 @@ sub navigate(kind as String, name as String, params as Object)
     if name = "catalog" then loadCatalog(params)
     if name = "library" then loadLibrary()
     if name = "live" then loadLive()
+    if name = "live-picks"
+      m.livePicksQuery = ""
+      m.livePicksGroup = ""
+      m.livePicksOffset = 0
+      loadLivePicks()
+    end if
     if name = "profiles" then
       m.profilesNext = aaGet(params, "next", "")
       loadProfiles(true)
@@ -154,6 +186,7 @@ sub renderStack()
     m.settingsNode.visible = true
     m.settingsNode.coreUrl = m.coreUrl
     m.settingsNode.health = m.health
+    m.settingsNode.themeId = currentThemeId()
     if top.kind <> "modal" then m.settingsNode.setFocus(true)
   else if screen.name = "setup"
     ensureSetup()
@@ -168,6 +201,10 @@ sub renderStack()
     ensureLive()
     m.liveNode.visible = true
     if top.kind <> "modal" then m.liveNode.setFocus(true)
+  else if screen.name = "live-picks"
+    ensureLivePicks()
+    m.livePicksNode.visible = true
+    if top.kind <> "modal" then m.livePicksNode.setFocus(true)
   else if screen.name = "profiles"
     ensureProfiles()
     m.profilesNode.visible = true
@@ -223,6 +260,7 @@ sub hideScreens()
   if m.setupNode <> invalid then m.setupNode.visible = false
   if m.catalogNode <> invalid then m.catalogNode.visible = false
   if m.liveNode <> invalid then m.liveNode.visible = false
+  if m.livePicksNode <> invalid then m.livePicksNode.visible = false
   if m.profilesNode <> invalid then m.profilesNode.visible = false
   if m.profileNode <> invalid then m.profileNode.visible = false
   if m.appsNode <> invalid then m.appsNode.visible = false
@@ -251,6 +289,7 @@ sub ensureSettings()
   if m.settingsNode <> invalid then return
   node = CreateObject("roSGNode", "SettingsScreen")
   node.observeField("action", "onSettingsAction")
+  node.themeId = currentThemeId()
   m.screenHost.appendChild(node)
   m.settingsNode = node
 end sub
@@ -277,6 +316,14 @@ sub ensureLive()
   node.observeField("action", "onLiveAction")
   m.screenHost.appendChild(node)
   m.liveNode = node
+end sub
+
+sub ensureLivePicks()
+  if m.livePicksNode <> invalid then return
+  node = CreateObject("roSGNode", "LivePicksScreen")
+  node.observeField("action", "onLivePicksAction")
+  m.screenHost.appendChild(node)
+  m.livePicksNode = node
 end sub
 
 sub ensureProfiles()
@@ -389,8 +436,16 @@ sub showPlayer(params as Object)
   panel.streamTitle = aaGet(params, "title", "")
   panel.streamFormat = aaGet(params, "format", "mp4")
   panel.mediaId = aaGet(params, "mediaId", "")
+  panel.mediaKind = aaGet(params, "mediaKind", "")
+  recapEnd = aaGet(params, "recapEnd", 0)
+  if recapEnd <> invalid then panel.recapEnd = recapEnd
   startAt = aaGet(params, "startAt", 0)
   if startAt <> invalid then panel.startAt = startAt
+  if params <> invalid
+    if params.DoesExist("showNext") then panel.showNext = params.showNext
+    if params.DoesExist("nextTitle") then panel.nextTitle = params.nextTitle
+    if params.DoesExist("nextMediaId") then panel.nextMediaId = params.nextMediaId
+  end if
   panel.message = "Starting..."
   panel.streamUrl = aaGet(params, "url", "")
   panel.setFocus(true)
@@ -476,6 +531,13 @@ sub onSettingsAction()
   if action = invalid then return
   kind = aaGet(action, "type", "")
   if kind = "home" then navigate("home", "home", {})
+  if kind = "cycleTheme"
+    delta = aaGet(action, "delta", 1)
+    kindType = Type(delta)
+    if kindType <> "Integer" and kindType <> "roInt" and kindType <> "roInteger" then delta = 1
+    applyAndSaveTheme(nextThemeId(currentThemeId(), delta))
+  end if
+  if kind = "setTheme" then applyAndSaveTheme(aaGet(action, "themeId", tvmThemeDefault()))
   if kind = "editUrl" then showUrlKeyboard()
   if kind = "realdebrid" then navigate("push", "realdebrid", {})
   if kind = "livePlaylist" then showLiveKeyboard()
@@ -536,6 +598,7 @@ sub onLiveAction()
   if kind = "home" then navigate("home", "home", {})
   if kind = "retry" then loadLive()
   if kind = "playlist" then showLiveKeyboard()
+  if kind = "picks" then navigate("push", "live-picks", {})
   if kind = "play" then startPlayback(aaGet(action, "item", {}))
 end sub
 
@@ -571,7 +634,12 @@ sub onAppsAction()
   kind = aaGet(action, "type", "")
   if handleRibbonKind(action) then return
   if kind = "home" then navigate("home", "home", {})
-  if kind = "openApp" then openServiceHub(aaGet(action, "id", ""), aaGet(action, "name", "App"))
+  if kind = "openApp"
+    appId = asText(aaGet(action, "id", ""))
+    if appId = "" then appId = asText(aaGet(action, "appId", ""))
+    name = asText(aaGet(action, "name", "App"))
+    openServiceHub(appId, name)
+  end if
 end sub
 
 sub onInfoAction()
@@ -612,7 +680,19 @@ sub onPlayerAction()
     postProgress(action)
     return
   end if
+  if kind = "skipRecap" then return
+  if kind = "next"
+    playNextFromPlayer()
+    return
+  end if
   navigate("pop", "", {})
+end sub
+
+sub playNextFromPlayer()
+  item = m.nextPlayItem
+  if not isMediaItem(item) then return
+  navigate("pop", "", {})
+  startPlayback(item)
 end sub
 
 sub onConfirmAction()
@@ -677,7 +757,11 @@ sub onKeyboardButton()
   mode = m.keyboardMode
   m.top.dialog = invalid
   if index <> 0
-    restoreScreenFocus()
+    if mode = "search" and searchPanelOpen()
+      focusSearchPanel()
+    else
+      restoreScreenFocus()
+    end if
     return
   end if
 
@@ -686,17 +770,7 @@ sub onKeyboardButton()
     return
   end if
   if mode = "search"
-    query = text.Trim()
-    if query = ""
-      restoreScreenFocus()
-      navigate("modal", "notice", { title: "Type a search", body: "Enter a title, then press Search." })
-      return
-    end if
-    if isHttpUrl(query)
-      postPlayback({ title: "Link", link: query })
-      return
-    end if
-    navigate("push", "catalog", { kind: "search", query: query })
+    applySearchDialogText(text)
     return
   end if
   if mode = "rdToken"
@@ -705,6 +779,12 @@ sub onKeyboardButton()
   end if
   if mode = "liveUrl"
     saveLiveUrl(text.Trim())
+    return
+  end if
+  if mode = "liveSearch"
+    m.livePicksQuery = text.Trim()
+    m.livePicksOffset = 0
+    loadLivePicks()
     return
   end if
   if mode = "profileName"
@@ -741,6 +821,7 @@ sub restoreScreenFocus()
   if screen.name = "setup" and m.setupNode <> invalid then m.setupNode.setFocus(true)
   if screen.name = "catalog" and m.catalogNode <> invalid then m.catalogNode.setFocus(true)
   if screen.name = "live" and m.liveNode <> invalid then m.liveNode.setFocus(true)
+  if screen.name = "live-picks" and m.livePicksNode <> invalid then m.livePicksNode.setFocus(true)
   if screen.name = "profiles" and m.profilesNode <> invalid then m.profilesNode.setFocus(true)
   if screen.name = "profile" and m.profileNode <> invalid then m.profileNode.setFocus(true)
   if screen.name = "apps" and m.appsNode <> invalid then m.appsNode.setFocus(true)
@@ -903,6 +984,91 @@ sub onLiveDone()
   m.liveNode.status = task.json
   m.liveNode.mode = "ready"
   restoreScreenFocus()
+end sub
+
+sub loadLivePicks()
+  ensureLivePicks()
+  m.livePicksNode.mode = "loading"
+  url = joinCorePath(m.coreUrl, "/api/live/catalog") + "?limit=8"
+  if m.livePicksQuery <> "" then url = url + "&q=" + encodeQuery(m.livePicksQuery)
+  if m.livePicksGroup <> "" then url = url + "&group=" + encodeQuery(m.livePicksGroup)
+  if m.livePicksOffset > 0 then url = url + "&offset=" + StrI(m.livePicksOffset).Trim()
+  m.livePicksTask = startApiGet(url, "onLivePicksDone")
+end sub
+
+sub onLivePicksDone()
+  task = m.livePicksTask
+  if task = invalid then return
+  if not task.ok
+    m.livePicksNode.mode = "ready"
+    restoreScreenFocus()
+    navigate("modal", "notice", { title: "Channels unavailable", body: "Core did not return the playlist. Check the connection, then retry." })
+    return
+  end if
+  m.livePicksNode.page = task.json
+  m.livePicksNode.mode = "ready"
+  restoreScreenFocus()
+end sub
+
+sub onLivePicksAction()
+  action = m.livePicksNode.action
+  if action = invalid then return
+  kind = aaGet(action, "type", "")
+  if kind = "home" then navigate("home", "home", {})
+  if kind = "done"
+    navigate("pop", "", {})
+    loadLive()
+  end if
+  if kind = "search" then showKeyboard("liveSearch", "Search channels", m.livePicksQuery, "Search")
+  if kind = "group"
+    m.livePicksGroup = aaGet(action, "group", "")
+    m.livePicksOffset = 0
+    loadLivePicks()
+  end if
+  if kind = "toggle" then saveLivePick(aaGet(action, "id", ""), aaGet(action, "picked", false))
+  if kind = "addGroup"
+    group = aaGet(action, "group", "")
+    if group = ""
+      navigate("modal", "notice", { title: "Pick a group", body: "Highlight a group such as Sports, then add it." })
+    else
+      saveLiveGroup(group, true)
+    end if
+  end if
+  if kind = "page"
+    delta = aaGet(action, "delta", 0)
+    step = 8
+    if Type(delta) <> "Integer" and Type(delta) <> "roInt" and Type(delta) <> "roInteger" then delta = 0
+    nextOffset = m.livePicksOffset + (delta * step)
+    if nextOffset < 0 then nextOffset = 0
+    m.livePicksOffset = nextOffset
+    loadLivePicks()
+  end if
+end sub
+
+sub saveLivePick(id as String, picked as Dynamic)
+  if id = "" then return
+  body = {}
+  body.id = id
+  body.picked = (picked = true)
+  m.mutateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/live/picks"), "POST", FormatJson(body), "onLivePickSaveDone")
+end sub
+
+sub saveLiveGroup(group as String, picked as Boolean)
+  body = {}
+  body.group = group
+  body.picked = picked
+  m.mutateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/live/picks/group"), "POST", FormatJson(body), "onLivePickSaveDone")
+end sub
+
+sub onLivePickSaveDone()
+  task = m.mutateTask
+  if task = invalid then return
+  if not task.ok
+    restoreScreenFocus()
+    navigate("modal", "notice", { title: "Could not update", body: "Live TV holds 48 channels. Remove one to add another." })
+    return
+  end if
+  loadLivePicks()
 end sub
 
 sub loadProfiles(show as Boolean)
@@ -1145,11 +1311,18 @@ sub showDiagnostics()
 end sub
 
 sub openServiceHub(id as String, name as String)
-  if id = "tvm-stream"
+  appId = asText(id)
+  if appId = "" then return
+  if appId = "tvm-stream"
     navigate("push", "profiles", { next: "library" })
     return
   end if
-  navigate("push", "service", { id: id, name: name })
+  label = asText(name)
+  app = tvmAppById(appId)
+  if label = "" or label = "App"
+    if app <> invalid then label = app.name
+  end if
+  navigate("push", "service", { id: appId, name: label })
 end sub
 
 sub onCacheDone()
@@ -1244,12 +1417,37 @@ sub onPlayDone()
     mimeType = asText(aaGet(json, "mimeType", ""))
     startAt = aaGet(json, "startAt", 0)
     mediaId = asText(aaGet(m.playItem, "id", ""))
+    mediaKind = asText(aaGet(m.playItem, "kind", ""))
+    if playItemIsLive(m.playItem)
+      mediaKind = "live"
+    else if playItemIsSeries(m.playItem)
+      mediaKind = "series"
+    end if
+    recapEnd = recapEndSeconds(json)
+    if recapEnd <= 0 then recapEnd = recapEndSeconds(m.playItem)
+    nextItem = aaGet(json, "next", invalid)
+    if not isMediaItem(nextItem) then nextItem = aaGet(m.playItem, "next", invalid)
+    if not isMediaItem(nextItem) then nextItem = aaGet(m.playItem, "nextEpisode", invalid)
+    m.nextPlayItem = nextItem
+    nextTitle = ""
+    nextMediaId = ""
+    showNext = false
+    if isMediaItem(nextItem)
+      showNext = true
+      nextTitle = asText(aaGet(nextItem, "title", ""))
+      nextMediaId = asText(aaGet(nextItem, "id", ""))
+    end if
     navigate("modal", "player", {
       url: url
       title: title
       format: streamFormatFor(url, mimeType)
       mediaId: mediaId
+      mediaKind: mediaKind
+      recapEnd: recapEnd
       startAt: startAt
+      showNext: showNext
+      nextTitle: nextTitle
+      nextMediaId: nextMediaId
     })
     return
   end if
@@ -1259,6 +1457,7 @@ end sub
 
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
+  if playerOverlayOpen() then focusPlayerOverlay()
   intent = intentFromKey(key)
   if intent = "back"
     if canGoBack(m.stack)
@@ -1270,15 +1469,89 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   return false
 end function
 
+function overlayIs(name as String) as Boolean
+  if m.overlayHost = invalid then return false
+  if m.overlayHost.getChildCount() = 0 then return false
+  node = m.overlayHost.getChild(0)
+  if node = invalid then return false
+  return node.subtype() = name
+end function
+
+function playerOverlayOpen() as Boolean
+  return overlayIs("PlayerScreen")
+end function
+
+sub focusPlayerOverlay()
+  if not playerOverlayOpen() then return
+  m.overlayHost.getChild(0).setFocus(true)
+end sub
+
+function searchPanelOpen() as Boolean
+  return overlayIs("SearchPanel")
+end function
+
+sub focusSearchPanel()
+  if not searchPanelOpen() then return
+  m.overlayHost.getChild(0).setFocus(true)
+end sub
+
+sub applySearchDialogText(text as String)
+  query = text.Trim()
+  if searchPanelOpen()
+    panel = m.overlayHost.getChild(0)
+    panel.query = query
+    if query = ""
+      focusSearchPanel()
+      return
+    end if
+    if isHttpUrl(query)
+      navigate("pop", "", {})
+      postPlayback({ title: "Link", link: query })
+      return
+    end if
+    runSearch(query)
+    focusSearchPanel()
+    return
+  end if
+  if query = ""
+    restoreScreenFocus()
+    navigate("modal", "notice", { title: "Type a search", body: "Enter a title, then press Search." })
+    return
+  end if
+  if isHttpUrl(query)
+    postPlayback({ title: "Link", link: query })
+    return
+  end if
+  navigate("push", "catalog", { kind: "search", query: query })
+end sub
+
 sub showSearch()
   panel = CreateObject("roSGNode", "SearchPanel")
   panel.observeField("action", "onSearchAction")
   m.overlayHost.appendChild(panel)
   panel.setFocus(true)
+  if m.searchKbTimer <> invalid
+    m.searchKbTimer.control = "stop"
+    parent = m.searchKbTimer.getParent()
+    if parent <> invalid then parent.removeChild(m.searchKbTimer)
+  end if
+  timer = CreateObject("roSGNode", "Timer")
+  timer.duration = 0.08
+  timer.repeat = false
+  timer.observeField("fire", "onSearchKeyboardOpen")
+  m.searchKbTimer = timer
+  m.top.appendChild(timer)
+  timer.control = "start"
+end sub
+
+sub onSearchKeyboardOpen()
+  if not searchPanelOpen() then return
+  query = asText(m.overlayHost.getChild(0).query)
+  showKeyboard("search", "Search", query, "Search")
 end sub
 
 sub onSearchAction()
-  if m.overlayHost.getChildCount() = 0 then return
+  if not searchPanelOpen() then return
   panel = m.overlayHost.getChild(0)
   action = panel.action
   if action = invalid then return
@@ -1286,6 +1559,10 @@ sub onSearchAction()
   query = asText(aaGet(action, "query", ""))
   if kind = "close"
     navigate("pop", "", {})
+    return
+  end if
+  if kind = "keyboard"
+    showKeyboard("search", "Search", query, "Search")
     return
   end if
   if kind = "details"
@@ -1304,12 +1581,17 @@ sub onSearchAction()
     return
   end if
   if kind = "query"
+    if isHttpUrl(query) then return
     scheduleSearch(query)
   end if
 end sub
 
 sub scheduleSearch(query as String)
-  if m.searchTimer <> invalid then m.searchTimer.control = "stop"
+  if m.searchTimer <> invalid
+    m.searchTimer.control = "stop"
+    parent = m.searchTimer.getParent()
+    if parent <> invalid then parent.removeChild(m.searchTimer)
+  end if
   if query = "" or Len(query) < 2 then return
   timer = CreateObject("roSGNode", "Timer")
   timer.duration = 0.35
@@ -1317,6 +1599,7 @@ sub scheduleSearch(query as String)
   timer.observeField("fire", "onSearchDebounce")
   m.pendingSearch = query
   m.searchTimer = timer
+  m.top.appendChild(timer)
   timer.control = "start"
 end sub
 
@@ -1331,13 +1614,21 @@ end sub
 
 sub onSearchDone()
   task = m.searchTask
-  if task = invalid or m.overlayHost.getChildCount() = 0 then return
+  if task = invalid or not searchPanelOpen() then return
   panel = m.overlayHost.getChild(0)
   if not task.ok
     panel.message = "Search failed. Check Core, then retry."
+    focusSearchPanel()
     return
   end if
-  panel.results = itemsFromJson(task.json)
+  items = itemsFromJson(task.json)
+  panel.results = items
+  if items.Count() = 0
+    panel.message = "Nothing matched that search."
+  else
+    panel.message = StrI(items.Count()).Trim() + " titles"
+  end if
+  focusSearchPanel()
 end sub
 
 sub onLibraryAction()
@@ -1358,6 +1649,7 @@ sub onServiceAction()
   if kind = "home" then navigate("home", "home", {})
   if kind = "back" then navigate("pop", "", {})
   if kind = "details" then navigate("push", "details", { item: aaGet(action, "item", {}) })
+  if kind = "play" then startPlayback(aaGet(action, "item", {}))
 end sub
 
 sub onRdScreenAction()
@@ -1396,7 +1688,9 @@ sub onServiceDone()
   end if
   m.serviceNode.payload = task.json
   rails = aaArray(task.json, "rails")
-  if rails.Count() = 0
+  watching = aaArray(task.json, "continueWatching")
+  hero = aaGet(task.json, "hero", invalid)
+  if rails.Count() = 0 and watching.Count() = 0 and not isMediaItem(hero)
     m.serviceNode.mode = "empty"
   else
     m.serviceNode.mode = "ready"

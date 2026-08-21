@@ -11,8 +11,10 @@ function loadOrCreateKey(dataDir: string): Buffer {
   const path = masterKeyPath(dataDir);
   if (existsSync(path)) {
     const raw = readFileSync(path);
-    const decoded = Buffer.from(raw.toString('utf8').trim(), 'base64');
+    const decoded = Buffer.from(raw.toString('utf8').replace(/^\uFEFF/, '').trim(), 'base64');
     if (decoded.length === KEY_BYTES) return decoded;
+    // Never rotate a damaged key — sealed entitlements would silently reset to Free.
+    throw new Error('master key is unreadable');
   }
   const key = randomBytes(KEY_BYTES);
   writeSecret(path, key.toString('base64'));

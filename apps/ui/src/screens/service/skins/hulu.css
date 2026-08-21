@@ -1,0 +1,374 @@
+.hulu-hub {
+  --hulu-bg: #0b0c0f;
+  --hulu-green: #1ce783;
+  --hulu-ink: #04140c;
+  --hulu-muted: rgba(255, 255, 255, 0.52);
+  --hulu-rail: 11.2rem;
+  --hulu-edge: 2.35rem;
+  --hulu-move: 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  min-height: 100%;
+  padding-bottom: 3.6rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  background: var(--hulu-bg);
+  color: #fff;
+  font-family: 'Graphik', 'Avenir Next', 'Segoe UI Variable Display', 'Helvetica Neue', Arial, sans-serif;
+  contain: layout style;
+  scroll-padding: 1.2rem 0 3.4rem;
+}
+
+.service.service--hulu:has(.hulu-hub),
+.service.service--hulu.hulu-hub {
+  background: var(--hulu-bg);
+}
+
+.service.service--hulu:has(.hulu-hub) > .service-nav:not(.hulu-hub__nav) {
+  display: none;
+}
+
+.hulu-hub__nav {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  flex: 0 0 var(--hulu-rail);
+  flex-direction: column;
+  align-items: stretch;
+  align-self: flex-start;
+  gap: 0.28rem;
+  width: var(--hulu-rail);
+  min-height: 100vh;
+  padding: 1.2rem 0.62rem 1.15rem;
+  background: #0b0c0f;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
+  contain: layout style;
+}
+
+.hulu-hub__brand {
+  display: flex;
+  align-items: center;
+  min-height: 2.15rem;
+  margin: 0 0.42rem 0.7rem;
+  color: var(--hulu-green);
+}
+
+.hulu-hub__mark {
+  width: 4.35rem;
+  height: 1.28rem;
+}
+
+.hulu-hub__tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+
+.hulu-hub .tvm-button.hulu-hub__back,
+.hulu-hub .tvm-button.hulu-hub__tab,
+.hulu-hub .tvm-button.hulu-hub__search {
+  justify-content: flex-start;
+  min-height: 2.6rem;
+  padding: 0.32rem 0.72rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: none;
+  color: var(--hulu-muted);
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transform: none;
+}
+
+.hulu-hub .tvm-button.hulu-hub__tab .tvm-button__label,
+.hulu-hub .tvm-button.hulu-hub__search .tvm-button__label {
+  gap: 0.58rem;
+}
+
+.hulu-hub .tvm-button.hulu-hub__tab--on {
+  background: transparent;
+  color: #fff;
+}
+
+.hulu-hub .tvm-button.hulu-hub__back[data-focused='true'],
+.hulu-hub .tvm-button.hulu-hub__tab[data-focused='true'],
+.hulu-hub .tvm-button.hulu-hub__search[data-focused='true'] {
+  background: var(--hulu-green);
+  color: var(--hulu-ink);
+  outline: none;
+  box-shadow: none;
+  transform: none;
+}
+
+.hulu-hub .tvm-button.hulu-hub__search {
+  margin-top: auto;
+  font-size: 0.9rem;
+}
+
+.hulu-hub__tab-icon,
+.hulu-hub__glyph,
+.hulu-hub__play-icon {
+  width: 1.18rem;
+  height: 1.18rem;
+  flex: 0 0 auto;
+}
+
+.hulu-hub__stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  isolation: isolate;
+}
+
+.hulu-hub__hero {
+  position: relative;
+  min-height: min(44rem, 84vh);
+  contain: layout style;
+}
+
+.hulu-hub__hero .stage__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 68% 22%;
+}
+
+.hulu-hub__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(11, 12, 15, 0.96) 6%, rgba(11, 12, 15, 0.42) 48%, transparent 76%),
+    linear-gradient(180deg, rgba(11, 12, 15, 0.22) 0%, transparent 28%, #0b0c0f 100%);
+}
+
+.hulu-hub__copy {
+  position: relative;
+  z-index: 1;
+  max-width: 40rem;
+  padding: 7.8rem 0 6.4rem var(--hulu-edge);
+}
+
+.hulu-hub__kicker {
+  margin: 0 0 0.48rem;
+  color: var(--hulu-green);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hulu-hub__title,
+.hulu-hub__list-title {
+  margin: 0 0 0.58rem;
+  font-size: clamp(2.5rem, 5.4vw, 4.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+}
+
+.hulu-hub__list-head {
+  padding: 2.4rem var(--hulu-edge) 0.4rem;
+}
+
+.hulu-hub__list-lede {
+  margin: 0;
+  color: var(--hulu-muted);
+  font-size: 0.98rem;
+}
+
+.hulu-hub__meta,
+.hulu-hub__syn {
+  margin: 0 0 0.78rem;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.hulu-hub__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+  font-size: 0.94rem;
+  font-weight: 650;
+}
+
+.hulu-hub__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.22rem;
+  padding: 0 0.36rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0.14rem;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.hulu-hub__syn {
+  display: -webkit-box;
+  max-width: 34rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 1.04rem;
+  line-height: 1.44;
+}
+
+.hulu-hub__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+}
+
+.hulu-hub .tvm-button.hulu-hub__play,
+.hulu-hub .tvm-button.hulu-hub__more {
+  min-height: 2.8rem;
+  padding: 0.46rem 1.25rem;
+  border-radius: 0.28rem;
+  justify-content: center;
+  transform: scale(1);
+  transition: transform var(--hulu-move);
+}
+
+.hulu-hub .tvm-button.hulu-hub__play .tvm-button__label,
+.hulu-hub .tvm-button.hulu-hub__more .tvm-button__label {
+  gap: 0.48rem;
+}
+
+.hulu-hub .tvm-button.hulu-hub__play {
+  min-width: 12.6rem;
+  background: var(--hulu-green);
+  color: var(--hulu-ink);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.hulu-hub .tvm-button.hulu-hub__more {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-weight: 750;
+}
+
+.hulu-hub .tvm-button.hulu-hub__play[data-focused='true'],
+.hulu-hub .tvm-button.hulu-hub__more[data-focused='true'] {
+  outline: 0.15rem solid var(--hulu-green);
+  outline-offset: 0.2rem;
+  box-shadow: none;
+  transform: scale(1.04);
+  will-change: transform;
+}
+
+.hulu-hub__rails {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.85rem;
+  margin-top: -4.2rem;
+  padding: 0 0 1.4rem;
+}
+
+.hulu-hub--list .hulu-hub__rails {
+  margin-top: 0.4rem;
+  gap: 2.05rem;
+}
+
+.hulu-hub .rail {
+  padding-inline: 0;
+  gap: 0.28rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 18.6rem;
+  contain: layout style;
+  overflow-anchor: none;
+}
+
+.hulu-hub .rail:focus-within {
+  content-visibility: visible;
+}
+
+.hulu-hub .rail__header {
+  padding: 0 var(--hulu-edge);
+}
+
+.hulu-hub .rail__title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.18rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.hulu-hub .rail__track {
+  gap: 0.7rem;
+  padding: 0.95rem var(--hulu-edge) 2.55rem;
+  overflow-anchor: none;
+}
+
+.hulu-hub .poster--landscape,
+.hulu-hub .hulu-card {
+  --poster-w: 16.8rem;
+  contain: layout style;
+}
+
+.hulu-card[data-loop-clone='true'] {
+  pointer-events: none;
+}
+
+.hulu-card__frame {
+  position: relative;
+  display: block;
+  overflow: visible;
+  transform: translateZ(0);
+}
+
+.hulu-hub .poster__art,
+.hulu-hub .hulu-card__art {
+  border: none;
+  border-radius: 0.28rem;
+  filter: none;
+  transform: translateZ(0) scale(1);
+  transform-origin: center center;
+  transition: transform var(--hulu-move);
+}
+
+.hulu-hub .poster[data-focused='true'],
+.hulu-hub .hulu-card[data-focused='true'] {
+  z-index: 3;
+}
+
+.hulu-hub .poster[data-focused='true'] .poster__art,
+.hulu-hub .hulu-card[data-focused='true'] .hulu-card__art {
+  outline: 0.16rem solid var(--hulu-green);
+  outline-offset: 0.18rem;
+  filter: none;
+  transform: translateZ(0) scale(1.05);
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.42);
+  will-change: transform;
+}
+
+.hulu-hub .poster__progress-bar {
+  background: var(--hulu-green);
+}
+
+.hulu-hub__empty,
+.hulu-hub__note {
+  margin: 0.8rem var(--hulu-edge) 0;
+  color: var(--hulu-muted);
+}
+
+.hulu-hub__note {
+  font-size: 0.76rem;
+  padding-bottom: 1.4rem;
+}
+
+.hulu-hub__skeleton {
+  min-height: 70vh;
+}

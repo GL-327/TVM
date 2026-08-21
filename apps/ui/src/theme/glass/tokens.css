@@ -1,0 +1,187 @@
+/*
+ * Liquid-glass theme tokens.
+ *
+ * Material is sampled from Bentomotion's free Liquid Glass Kit (Motion Bro
+ * .mbr / After Effects): thick frost, white top-left specular, aqua
+ * refraction, large liquid radii. TVM layout, branding, and the system UI
+ * stack stay. No SF fonts, no Apple assets, no AE comps.
+ *
+ * A pane must frost whatever is actually behind it (hero art, mesh). Do not
+ * paint an opaque gradient in place of that texture. Thickness is fill-alpha
+ * + backdrop-filter + inset rim.
+ *
+ * Apply by setting data-theme="glass" on a root (html).
+ */
+
+[data-theme='glass'] {
+  color-scheme: dark;
+
+  --tvm-glass-blur: 28px;
+  --tvm-glass-blur-soft: 16px;
+  --tvm-glass-blur-heavy: 28px;
+  --tvm-glass-saturate: 1.5;
+  --tvm-glass-filter: blur(var(--tvm-glass-blur)) saturate(var(--tvm-glass-saturate));
+  --tvm-glass-filter-soft: blur(var(--tvm-glass-blur-soft)) saturate(var(--tvm-glass-saturate));
+  --tvm-glass-filter-heavy: blur(var(--tvm-glass-blur-heavy)) saturate(var(--tvm-glass-saturate));
+
+  --tvm-glass-specular: rgba(255, 255, 255, 0.78);
+  --tvm-glass-specular-hot: rgba(255, 255, 255, 0.96);
+  --tvm-glass-specular-beam: linear-gradient(
+    118deg,
+    transparent 28%,
+    rgba(255, 255, 255, 0.18) 40%,
+    var(--tvm-glass-specular-hot) 50%,
+    rgba(110, 228, 255, 0.34) 58%,
+    transparent 72%
+  );
+
+  --tvm-glass-refract: rgba(126, 232, 255, 0.42);
+  --tvm-glass-refract-deep: rgba(56, 132, 196, 0.28);
+  --tvm-glass-refract-beam: linear-gradient(
+    198deg,
+    transparent 40%,
+    var(--tvm-glass-refract) 78%,
+    var(--tvm-glass-refract-deep) 100%
+  );
+
+  /* Keep these thin so backdrop-filter can read the scene. */
+  --tvm-glass-fill: rgba(255, 255, 255, 0.1);
+  --tvm-glass-fill-text: rgba(255, 255, 255, 0.14);
+  --tvm-glass-fill-bright: rgba(255, 255, 255, 0.16);
+  --tvm-glass-fill-bright-text: rgba(255, 255, 255, 0.22);
+  --tvm-glass-fill-video: rgba(6, 12, 20, 0.55);
+  --tvm-glass-fill-solid: #101c2c;
+  --tvm-glass-scrim: rgba(6, 12, 20, 0.28);
+
+  --tvm-glass-hairline-width: 1px;
+  --tvm-glass-hairline: rgba(255, 255, 255, 0.52);
+  --tvm-glass-hairline-cool: rgba(186, 236, 255, 0.4);
+  --tvm-glass-edge:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 1px 0 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(8, 24, 40, 0.16),
+    inset 0 14px 32px rgba(255, 255, 255, 0.14);
+
+  --tvm-glass-shadow: 0 0.55rem 1.6rem rgba(4, 16, 32, 0.16);
+  --tvm-glass-shadow-deep: 0 0.75rem 2rem rgba(4, 16, 32, 0.2);
+  --tvm-glass-shadow-focus:
+    0 0 0 0.16rem #fffef6,
+    0 0 1.1rem rgba(126, 232, 255, 0.32),
+    0 0.45rem 1.2rem rgba(4, 16, 32, 0.16);
+
+  --tvm-glass-radius: 1.35rem;
+  --tvm-glass-radius-lg: 1.85rem;
+
+  --tvm-glass-text: #f4faff;
+  --tvm-glass-text-muted: #d5e0ec;
+  --tvm-glass-text-faint: #aebccd;
+  --tvm-glass-ink: #0a1624;
+  --tvm-glass-paper: #fff6e4;
+  --tvm-glass-accent: #6ee4ff;
+  --tvm-glass-accent-warm: #ffd08a;
+  --tvm-glass-accent-mint: #7ee8c4;
+  --tvm-glass-halo: 0 0.06rem 0.28rem rgba(8, 18, 32, 0.22);
+
+  --tvm-bg: #071018;
+  --tvm-bg-deep: #04080e;
+  --tvm-bg-elevated: var(--tvm-glass-fill-text);
+  --tvm-surface: var(--tvm-glass-fill-text);
+  --tvm-surface-hover: var(--tvm-glass-fill-bright-text);
+  --tvm-surface-glass: var(--tvm-glass-fill);
+  --tvm-border: var(--tvm-glass-hairline);
+  --tvm-border-soft: var(--tvm-glass-hairline-cool);
+
+  --tvm-text: var(--tvm-glass-text);
+  --tvm-text-muted: var(--tvm-glass-text-muted);
+  --tvm-text-faint: var(--tvm-glass-text-faint);
+
+  --tvm-accent: var(--tvm-glass-paper);
+  --tvm-accent-strong: var(--tvm-glass-accent-warm);
+  --tvm-accent-blue: var(--tvm-glass-accent);
+  --tvm-accent-ink: var(--tvm-glass-ink);
+  --tvm-mark: var(--tvm-glass-accent-mint);
+  --tvm-mark-glow: rgba(126, 232, 196, 0.48);
+
+  --tvm-danger: #ff7b8a;
+  --tvm-success: #5ee9a8;
+  --tvm-warning: #ffc56e;
+  --tvm-info: #7ad4ff;
+
+  --tvm-font-family: 'Segoe UI Variable Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --tvm-font-size-caption: 0.9375rem;
+  --tvm-font-size-body: 1.1875rem;
+  --tvm-font-size-body-lg: 1.375rem;
+  --tvm-font-size-title: 2rem;
+  --tvm-font-size-display: 3.25rem;
+  --tvm-line-height-tight: 1.14;
+  --tvm-line-height-body: 1.42;
+  --tvm-letter-spacing-display: -0.015em;
+
+  --tvm-radius-sm: 0.65rem;
+  --tvm-radius-md: var(--tvm-glass-radius);
+  --tvm-radius-lg: var(--tvm-glass-radius-lg);
+
+  --tvm-focus-ring-width: 0.2rem;
+  --tvm-focus-ring-color: #fffef6;
+  --tvm-focus-ring-offset: 0.16rem;
+
+  --tvm-shadow-card: var(--tvm-glass-shadow-deep);
+  --tvm-shadow-focus: var(--tvm-glass-shadow-focus);
+
+  --tvm-scene-sky: #6ec8e8;
+  --tvm-scene-sky-mid: #8ad4e0;
+  --tvm-scene-horizon: #d4f8ff;
+  --tvm-scene-sea: #123a62;
+  --tvm-scene-sea-deep: #071018;
+  --tvm-scene-land: #2a6a78;
+  --tvm-scene-land-far: #1a4a68;
+  --tvm-scene-foam: #e8fbff;
+  --tvm-scene-sun: #fff6e4;
+  --tvm-scene-opacity: 0.38;
+  --tvm-scene-grain: 0.038;
+}
+
+/* Shared pane recipe without extra compositing layers. */
+[data-theme='glass'] .glass-pane {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  -webkit-backdrop-filter: var(--tvm-glass-filter);
+  backdrop-filter: var(--tvm-glass-filter);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-theme='glass'] {
+    --tvm-glass-blur: 0px;
+    --tvm-glass-blur-soft: 0px;
+    --tvm-glass-blur-heavy: 0px;
+    --tvm-glass-saturate: 1;
+    --tvm-glass-filter: none;
+    --tvm-glass-filter-soft: none;
+    --tvm-glass-filter-heavy: none;
+    --tvm-glass-fill: #142436;
+    --tvm-glass-fill-text: #101c2c;
+    --tvm-glass-fill-bright: #1a2c40;
+    --tvm-glass-fill-bright-text: #101c2c;
+    --tvm-glass-fill-video: #0a121c;
+    --tvm-glass-scrim: #030810;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-theme='glass'] {
+    --tvm-glass-blur: 0px;
+    --tvm-glass-blur-soft: 0px;
+    --tvm-glass-blur-heavy: 0px;
+    --tvm-glass-saturate: 1;
+    --tvm-glass-filter: none;
+    --tvm-glass-filter-soft: none;
+    --tvm-glass-filter-heavy: none;
+    --tvm-glass-fill: var(--tvm-glass-fill-solid);
+    --tvm-glass-fill-text: #0e1a28;
+    --tvm-glass-fill-bright: #1a2c40;
+    --tvm-glass-fill-bright-text: #0e1a28;
+    --tvm-glass-fill-video: #0a121c;
+    --tvm-glass-scrim: #030810;
+  }
+}

@@ -12,6 +12,7 @@ import {
   type Profile,
   type ProfileRegistry,
 } from '../data/profiles';
+import { profileEaster } from '../brand/easterEggs';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -47,6 +48,8 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
   };
 
   const open = async (profile: Profile): Promise<void> => {
+    const egg = profileEaster(profile.name);
+    if (egg !== null) setMessage(egg);
     await switchProfile(profile.id);
     finish();
   };
@@ -54,9 +57,11 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
   const add = async (raw?: string): Promise<void> => {
     try {
       const created = await createProfile(raw ?? name);
+      const egg = profileEaster(created.profiles[created.profiles.length - 1]?.name ?? raw ?? name);
       setRegistry(created);
       setCreating(false);
       setName('');
+      if (egg !== null) setMessage(egg);
       finish();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The profile was not created.');

@@ -1,0 +1,313 @@
+/*
+ * Scene tokens and unused CSS layers. The WebGL/CSS stage is not mounted:
+ * a fullscreen canvas covered Home. Screens paint opaque theme backgrounds.
+ */
+
+:root {
+  --tvm-scene-grain: 0.045;
+  --tvm-scene-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.app::before,
+.app::after {
+  content: none;
+  display: none;
+}
+
+.app__screen {
+  position: relative;
+  z-index: 1;
+}
+
+.app[data-screen='boot']::before,
+.app[data-screen='boot']::after {
+  display: none;
+}
+
+.player {
+  background: #000;
+}
+
+/* player-root is a full-bleed overlay above <video>. A fill here hides the picture. */
+.player-root,
+[data-player-root] {
+  background: transparent;
+}
+
+.tvm-scene {
+  display: none;
+}
+
+.tvm-scene[data-engine='webgl'] {
+  display: none;
+}
+
+.tvm-scene[data-run='off'] {
+  opacity: 0;
+}
+
+.tvm-scene__gpu {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.tvm-scene[data-engine='webgl'] .tvm-scene__gpu {
+  display: none;
+}
+
+.tvm-scene[data-engine='webgl'] .tvm-scene__css,
+.tvm-scene[data-engine='webgl'] .tvm-scene__grain {
+  display: none;
+}
+
+.tvm-scene__css,
+.tvm-scene__layer,
+.tvm-scene__grain {
+  position: absolute;
+  pointer-events: none;
+}
+
+.tvm-scene__css {
+  inset: -12%;
+}
+
+.tvm-scene__layer {
+  inset: 0;
+}
+
+.tvm-scene__sky {
+  background: radial-gradient(
+    120% 80% at 48% -8%,
+    color-mix(in srgb, var(--tvm-scene-sky, #7ec8e8) 70%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-scene-sky-mid, #9ee0d4) 28%, transparent) 42%,
+    transparent 70%
+  );
+  animation: tvm-scene-drift-a 53s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+.tvm-scene__veil {
+  background: radial-gradient(
+    90% 42% at 50% 42%,
+    color-mix(in srgb, var(--tvm-scene-horizon, #c8fff0) 38%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-scene-foam, #e8fff8) 12%, transparent) 36%,
+    transparent 68%
+  );
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  animation: tvm-scene-drift-b 67s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+.tvm-scene__caustic {
+  background: radial-gradient(
+    70% 55% at 18% 88%,
+    color-mix(in srgb, var(--tvm-scene-foam, #e8fff8) 32%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-scene-sea, #1a5a8a) 22%, transparent) 34%,
+    transparent 62%
+  );
+  mix-blend-mode: soft-light;
+  opacity: 0.7;
+  animation: tvm-scene-drift-c 41s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+.tvm-scene__caustic--2 {
+  background: radial-gradient(
+    62% 50% at 86% 78%,
+    color-mix(in srgb, var(--tvm-scene-sun, #fff6c8) 26%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-scene-sea, #1a5a8a) 18%, transparent) 40%,
+    transparent 64%
+  );
+  animation-duration: 79s;
+  animation-delay: -22s;
+}
+
+.tvm-scene__sun {
+  width: 46%;
+  height: 46%;
+  left: 54%;
+  top: -6%;
+  right: auto;
+  bottom: auto;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--tvm-scene-sun, #fff6c8) 70%, #fff) 0%,
+    color-mix(in srgb, var(--tvm-scene-sun, #fff6c8) 28%, transparent) 32%,
+    transparent 68%
+  );
+  opacity: 0.42;
+  animation: tvm-scene-breathe 97s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+.tvm-scene__spec {
+  width: 28%;
+  height: 9%;
+  left: 18%;
+  top: 28%;
+  right: auto;
+  bottom: auto;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    color-mix(in srgb, var(--tvm-scene-foam, #e8fff8) 55%, transparent) 0%,
+    transparent 70%
+  );
+  opacity: 0.28;
+  animation: tvm-scene-spec 29s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+.tvm-scene__grain {
+  inset: 0;
+  opacity: 0.046;
+  background: var(--tvm-scene-noise) center / 8rem 8rem;
+  mix-blend-mode: overlay;
+}
+
+.app:has([data-screen='player']) .tvm-scene,
+html[data-theme='synthwave'] .tvm-scene {
+  visibility: hidden;
+  opacity: 0;
+}
+
+[data-theme='light'] .tvm-scene__veil,
+[data-theme='light'] .tvm-scene__caustic {
+  mix-blend-mode: multiply;
+  opacity: 0.28;
+}
+
+[data-theme='light'] .tvm-scene__sun {
+  opacity: 0.5;
+  width: 52%;
+  height: 52%;
+}
+
+[data-theme='dark'] .tvm-scene__sun {
+  width: 28%;
+  height: 28%;
+  opacity: 0.22;
+  left: 62%;
+}
+
+[data-theme='dark'] .tvm-scene__veil {
+  opacity: 0.32;
+}
+
+[data-theme='dark'] .tvm-scene__grain {
+  opacity: 0.06;
+}
+
+[data-theme='happy'] .tvm-scene__sun {
+  left: 8%;
+  top: 4%;
+  opacity: 0.5;
+}
+
+[data-theme='happy'] .tvm-scene__veil {
+  background: radial-gradient(
+    90% 42% at 48% 40%,
+    color-mix(in srgb, var(--tvm-scene-horizon) 46%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-scene-sun) 16%, transparent) 40%,
+    transparent 68%
+  );
+}
+
+[data-theme='sunset'] .tvm-scene__sun {
+  width: 58%;
+  height: 58%;
+  left: 44%;
+  top: -10%;
+  opacity: 0.62;
+}
+
+[data-theme='sunset'] .tvm-scene__veil {
+  top: auto;
+  height: 50%;
+  bottom: 28%;
+}
+
+[data-theme='heather'] .tvm-scene__veil {
+  background: radial-gradient(
+    90% 44% at 50% 46%,
+    color-mix(in srgb, var(--tvm-scene-horizon) 34%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-scene-sky) 18%, transparent) 42%,
+    transparent 70%
+  );
+}
+
+[data-theme='glass'] .tvm-scene__caustic,
+[data-theme='glass'] .tvm-scene__spec {
+  opacity: 0.85;
+}
+
+[data-theme='glass'] .tvm-scene__sun {
+  opacity: 0.34;
+}
+
+@keyframes tvm-scene-drift-a {
+  from {
+    transform: translate3d(-2.4%, 1.2%, 0) scale(1.04);
+  }
+  to {
+    transform: translate3d(2.8%, -1.6%, 0) scale(1.1);
+  }
+}
+
+@keyframes tvm-scene-drift-b {
+  from {
+    transform: translate3d(2.2%, -1.8%, 0) scale(1.06);
+  }
+  to {
+    transform: translate3d(-3.1%, 2.4%, 0) scale(1.12);
+  }
+}
+
+@keyframes tvm-scene-drift-c {
+  from {
+    transform: translate3d(-3.4%, 1.4%, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(2.6%, -2.8%, 0) scale(1.14);
+  }
+}
+
+@keyframes tvm-scene-breathe {
+  from {
+    transform: translate3d(0, 0, 0) scale(0.96);
+    opacity: 0.32;
+  }
+  to {
+    transform: translate3d(-4%, 3%, 0) scale(1.08);
+    opacity: 0.5;
+  }
+}
+
+@keyframes tvm-scene-spec {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.16;
+  }
+  to {
+    transform: translate3d(38%, 12%, 0) scale(1.18);
+    opacity: 0.34;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tvm-scene__layer {
+    animation: none !important;
+    transform: none;
+    opacity: 0.7;
+  }
+
+  .tvm-scene__sun,
+  .tvm-scene__spec {
+    opacity: 0.36;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tvm-scene {
+    display: none;
+  }
+}

@@ -134,6 +134,14 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
+/** Playlist logos are often protocol-relative (`//cdn/...`). */
+export function httpAssetUrl(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (trimmed === '') return undefined;
+  const next = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed;
+  return isHttpUrl(next) ? next : undefined;
+}
+
 export function normalizeTitle(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }

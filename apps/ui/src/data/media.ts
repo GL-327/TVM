@@ -2,6 +2,7 @@ import { TITLES, type Title } from './catalog';
 import { preferBackdrop, preferPoster } from './artwork';
 import { imdbScore } from './playId';
 import { normalizeTitle, titlesMatch } from './matchTitle';
+import { asSeason } from './seasons';
 
 export { normalizeTitle };
 
@@ -54,15 +55,46 @@ export interface HomePayload {
 export interface LiveChannel {
   id: string;
   name: string;
-  url: string;
+  url?: string;
   group?: string;
+  logo?: string;
+  picked?: boolean;
+}
+
+export interface LiveGroup {
+  name: string;
+  count: number;
+  picked: number;
 }
 
 export interface LiveStatus {
   url: string | null;
+  host?: string | null;
+  username?: string | null;
+  configured?: boolean;
   channels: LiveChannel[];
   error: string | null;
+  picked?: number;
+  total?: number;
+  groups?: LiveGroup[];
+  needsPicks?: boolean;
+  pickLimit?: number;
 }
+
+export interface LiveCatalogPage {
+  items: LiveChannel[];
+  groups: LiveGroup[];
+  total: number;
+  matched: number;
+  offset: number;
+  limit: number;
+  picked: number;
+  pickLimit: number;
+  query: string;
+  group: string | null;
+}
+
+export type StreamTransport = 'direct' | 'hls-session' | 'hls' | 'ts-live' | 'file';
 
 export type PlaybackResult =
   | {
@@ -73,6 +105,14 @@ export type PlaybackResult =
       mimeType: string;
       engine: 'html5' | 'native';
       startAt?: number;
+      /** How core delivers the bytes; decides the engine attach path. */
+      transport?: StreamTransport;
+      /** Present when transport is `hls-session`; drives seek/stop endpoints. */
+      sessionId?: string;
+      /** Movie time of the session's first second; engine adds it to element time. */
+      timeOffset?: number;
+      /** Probed duration for in-flight HLS sessions. */
+      durationSeconds?: number;
       fallbackUrl?: string;
       fallbackEngine?: 'html5' | 'native';
     }
@@ -102,7 +142,7 @@ export function asTitle(item: MediaItem): Title {
     id: item.id,
     title: item.showTitle ?? item.title,
     year: item.year ?? 0,
-    kind: item.kind === 'series' || episodeLabel !== undefined ? 'series' : 'movie',
+    kind: item.kind === 'series' || episodeLabel !== undefined || item.season !== undefined ? 'series' : 'movie',
     synopsis: item.synopsis !== '' ? item.synopsis : item.playable ? 'Ready to play.' : '',
     poster: preferPoster(item.id, item.poster, item.backdrop),
     backdrop: preferBackdrop(item.id, item.backdrop, item.poster),
@@ -128,7 +168,7 @@ export function asTitle(item: MediaItem): Title {
   if (/^tt\d+/i.test(item.id)) {
     return {
       ...base,
-      kind: base.kind === 'series' ? 'series' : match.kind,
+      kind: base.kind === 'series' || match.kind === 'series' ? 'series' : match.kind,
       poster: base.poster !== '' ? base.poster : match.poster,
       backdrop: base.backdrop !== '' ? base.backdrop : match.backdrop,
     };
@@ -331,7 +371,15 @@ export async function fetchChildren(id: string): Promise<MediaItem[]> {
     const response = await apiFetch(`/api/media/children?id=${encodeURIComponent(id)}`);
     if (!response.ok) return [];
     const body = (await response.json()) as { items?: MediaItem[] };
-    return body.items ?? [];
+    return (body.items ?? []).map((item) => {
+      const season = asSeason(item.season);
+      const episode = asSeason(item.episode);
+      return {
+        ...item,
+        ...(season !== undefined ? { season } : {}),
+        ...(episode !== undefined ? { episode } : {}),
+      };
+    });
   } catch {
     return [];
   }
@@ -378,11 +426,64 @@ export async function fetchLive(): Promise<LiveStatus | null> {
   }
 }
 
-export async function saveLivePlaylist(url: string): Promise<LiveStatus> {
+export async function saveLivePlaylist(input: string | { url?: string; text?: string }): Promise<LiveStatus> {
+  const body = typeof input === 'string' ? { url: input } : input;
   const response = await apiFetch('/api/live', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify(body),
+  });
+  return (await response.json()) as LiveStatus;
+}
+
+export async function saveXtream(input: { host: string; username: string; password: string }): Promise<LiveStatus> {
+  const response = await apiFetch('/api/live/xtream', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = (await response.json()) as LiveStatus & { error?: string };
+  if (!response.ok) {
+    throw new Error(typeof body.error === 'string' ? body.error : 'The login was not stored.');
+  }
+  return body;
+}
+
+export async function clearXtream(): Promise<LiveStatus> {
+  const response = await apiFetch('/api/live/xtream', { method: 'DELETE' });
+  return (await response.json()) as LiveStatus;
+}
+
+export async function fetchLiveCatalog(query: {
+  q?: string;
+  group?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<LiveCatalogPage> {
+  const params = new URLSearchParams();
+  if (query.q !== undefined && query.q !== '') params.set('q', query.q);
+  if (query.group !== undefined && query.group !== '') params.set('group', query.group);
+  if (query.offset !== undefined) params.set('offset', String(query.offset));
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const suffix = params.size > 0 ? `?${params.toString()}` : '';
+  const response = await apiFetch(`/api/live/catalog${suffix}`);
+  return (await response.json()) as LiveCatalogPage;
+}
+
+export async function toggleLivePick(id: string, picked: boolean): Promise<LiveStatus> {
+  const response = await apiFetch('/api/live/picks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, picked }),
+  });
+  return (await response.json()) as LiveStatus;
+}
+
+export async function setLiveGroupPicks(group: string, picked: boolean): Promise<LiveStatus> {
+  const response = await apiFetch('/api/live/picks/group', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ group, picked }),
   });
   return (await response.json()) as LiveStatus;
 }

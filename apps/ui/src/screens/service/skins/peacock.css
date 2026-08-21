@@ -1,0 +1,380 @@
+.peacock-hub {
+  --peacock-bg: #000;
+  --peacock-gold: #ffc72c;
+  --peacock-ink: #16120a;
+  --peacock-pink: #ff5c8a;
+  --peacock-blue: #4aa3ff;
+  --peacock-muted: rgba(255, 255, 255, 0.56);
+  --peacock-rail: 12.4rem;
+  --peacock-edge: 2.2rem;
+  --peacock-move: 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  min-height: 100%;
+  padding-bottom: 2.4rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  background: var(--peacock-bg);
+  color: #fff;
+  font-family: 'Avenir Next', 'Segoe UI Variable Display', 'Helvetica Neue', Arial, sans-serif;
+  contain: layout style;
+  scroll-padding: 5rem var(--peacock-edge) 3.2rem;
+}
+
+.service.service--peacock:has(.peacock-hub),
+.service.service--peacock.peacock-hub {
+  background: #000;
+}
+
+.service.service--peacock:has(.peacock-hub) > .service-nav {
+  display: none;
+}
+
+.peacock-hub__nav {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  overflow: hidden;
+  display: flex;
+  flex: 0 0 var(--peacock-rail);
+  flex-direction: column;
+  align-items: stretch;
+  align-self: flex-start;
+  gap: 0.28rem;
+  width: var(--peacock-rail);
+  min-height: 100vh;
+  padding: 1.1rem 0.7rem 1.15rem 0.92rem;
+  background: #000;
+  contain: layout paint;
+}
+
+.peacock-hub__stripe {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0.26rem;
+  background: linear-gradient(180deg, #f7c51c, #f47b20, #e31c3d, #6b4ce0, #1a9de0, #12a85b);
+}
+
+.peacock-hub__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.15rem;
+  margin: 0 0.18rem 0.5rem;
+}
+
+.peacock-hub__fan {
+  width: 1.92rem;
+  height: 1.34rem;
+}
+
+.peacock-hub__word {
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.034em;
+}
+
+.peacock-hub__lanes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.14rem;
+  min-height: 0;
+}
+
+.peacock-hub .tvm-button.peacock-hub__back,
+.peacock-hub .tvm-button.peacock-hub__tab,
+.peacock-hub .tvm-button.peacock-hub__search {
+  justify-content: flex-start;
+  min-height: 2.48rem;
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: none;
+  color: var(--peacock-muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+  transform: translateX(0);
+  transition: transform var(--peacock-move), background-color 120ms ease, color 120ms ease;
+}
+
+.peacock-hub .tvm-button.peacock-hub__tab .tvm-button__label,
+.peacock-hub .tvm-button.peacock-hub__search .tvm-button__label {
+  gap: 0.48rem;
+}
+
+.peacock-hub .tvm-button.peacock-hub__tab--on {
+  background: rgba(255, 199, 44, 0.1);
+  color: #fff;
+  box-shadow: inset 0.16rem 0 0 var(--peacock-gold);
+}
+
+.peacock-hub .tvm-button.peacock-hub__back[data-focused='true'],
+.peacock-hub .tvm-button.peacock-hub__tab[data-focused='true'],
+.peacock-hub .tvm-button.peacock-hub__search[data-focused='true'] {
+  background: rgba(255, 199, 44, 0.16);
+  color: #fff;
+  outline: none;
+  box-shadow: inset 0.16rem 0 0 var(--peacock-gold);
+  transform: translateX(0.12rem);
+}
+
+.peacock-hub .tvm-button.peacock-hub__search {
+  margin-top: auto;
+  font-size: 0.9rem;
+}
+
+.peacock-hub__tab-icon,
+.peacock-hub__glyph,
+.peacock-hub__play-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+}
+
+.peacock-hub__stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  isolation: isolate;
+  contain: layout;
+}
+
+.peacock-hub__hero {
+  position: relative;
+  min-height: min(38rem, 74vh);
+  contain: paint;
+}
+
+.peacock-hub__hero .stage__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 16%;
+  transform: translateZ(0);
+}
+
+.peacock-hub__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.94) 6%, rgba(0, 0, 0, 0.38) 46%, transparent 74%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, transparent 24%, #000 100%);
+}
+
+.peacock-hub__copy {
+  position: relative;
+  z-index: 1;
+  max-width: 40rem;
+  padding: 6.4rem 0 7.2rem 2.3rem;
+}
+
+.peacock-hub__kicker {
+  margin: 0 0 0.48rem;
+  color: var(--peacock-gold);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.peacock-hub__title,
+.peacock-hub__list-title {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2.3rem, 5vw, 4.1rem);
+  font-weight: 800;
+  letter-spacing: -0.036em;
+  line-height: 0.94;
+}
+
+.peacock-hub__list-head {
+  padding: 2.2rem 2.3rem 0.8rem;
+}
+
+.peacock-hub__list-lede {
+  margin: 0;
+  color: var(--peacock-muted);
+  font-size: 0.98rem;
+}
+
+.peacock-hub__meta,
+.peacock-hub__syn {
+  margin: 0 0 0.7rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.peacock-hub__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.62rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.peacock-hub__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.18rem;
+  padding: 0 0.32rem;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 0.14rem;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.peacock-hub__syn {
+  display: -webkit-box;
+  max-width: 34rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.peacock-hub__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.68rem;
+}
+
+.peacock-hub .tvm-button.peacock-hub__play,
+.peacock-hub .tvm-button.peacock-hub__more {
+  min-height: 2.7rem;
+  padding: 0.42rem 1.18rem;
+  border-radius: 0.38rem;
+  justify-content: center;
+  transform: scale(1);
+  transition: transform var(--peacock-move), box-shadow 120ms ease;
+}
+
+.peacock-hub .tvm-button.peacock-hub__play .tvm-button__label,
+.peacock-hub .tvm-button.peacock-hub__more .tvm-button__label {
+  gap: 0.42rem;
+}
+
+.peacock-hub .tvm-button.peacock-hub__play {
+  min-width: 10.1rem;
+  background: var(--peacock-gold);
+  color: var(--peacock-ink);
+  font-weight: 800;
+}
+
+.peacock-hub .tvm-button.peacock-hub__more {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 750;
+}
+
+.peacock-hub .tvm-button.peacock-hub__play[data-focused='true'],
+.peacock-hub .tvm-button.peacock-hub__more[data-focused='true'] {
+  outline: 0.15rem solid var(--peacock-gold);
+  outline-offset: 0.16rem;
+  box-shadow: 0 0 0 1px var(--peacock-gold);
+  transform: scale(1.04);
+}
+
+.peacock-hub__rails {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.55rem;
+  margin-top: -4.2rem;
+  padding: 0 0 2.6rem;
+}
+
+.peacock-hub--list .peacock-hub__rails {
+  margin-top: 0;
+}
+
+.peacock-hub .rail {
+  gap: 0.42rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 18.4rem;
+  contain: layout paint style;
+  overflow-anchor: none;
+}
+
+.peacock-hub .rail:focus-within {
+  content-visibility: visible;
+}
+
+.peacock-hub .rail__header {
+  padding: 0 var(--peacock-edge);
+}
+
+.peacock-hub .rail__title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.14rem;
+  font-weight: 800;
+  letter-spacing: -0.012em;
+}
+
+.peacock-hub .rail__track {
+  gap: 0.62rem;
+  padding: 0.85rem var(--peacock-edge) 2.45rem;
+  overflow-anchor: none;
+}
+
+.peacock-hub .rail__track:focus-within .poster:not(:focus) .poster__art,
+.peacock-hub .rail__track:focus-within .peacock-card:not(:focus) .peacock-card__art {
+  opacity: 0.72;
+}
+
+.peacock-hub .poster,
+.peacock-hub .peacock-card {
+  contain: layout paint;
+}
+
+.peacock-hub .poster--landscape,
+.peacock-hub .peacock-card {
+  --poster-w: 17.2rem;
+}
+
+.peacock-hub .poster__art,
+.peacock-hub .peacock-card__art {
+  border: none;
+  border-radius: 0.5rem;
+  backface-visibility: hidden;
+  transform: translateZ(0) scale(1);
+  transition: transform var(--peacock-move), opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.peacock-hub .poster[data-focused='true'] .poster__art,
+.peacock-hub .peacock-card[data-focused='true'] .peacock-card__art {
+  outline: 0.15rem solid var(--peacock-gold);
+  outline-offset: 0.16rem;
+  box-shadow: 0 0 0 1px var(--peacock-pink), 0 0.65rem 1.3rem rgba(0, 0, 0, 0.42);
+  transform: translateZ(0) scale(1.05);
+}
+
+.peacock-hub .poster__progress-bar {
+  background: linear-gradient(90deg, var(--peacock-pink), var(--peacock-gold), var(--peacock-blue));
+}
+
+.peacock-hub__empty,
+.peacock-hub__note {
+  margin: 0.8rem var(--peacock-edge) 0;
+  color: var(--peacock-muted);
+}
+
+.peacock-hub__note {
+  font-size: 0.76rem;
+  padding-bottom: 1.4rem;
+}
+
+.peacock-hub__skeleton {
+  min-height: 70vh;
+}
