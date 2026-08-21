@@ -3,16 +3,57 @@
   <interface>
     <field id="appId" type="string" onChange="onAppId" />
     <field id="hasFocusStyle" type="boolean" onChange="onFocusStyle" />
+    <field id="locked" type="boolean" onChange="onLocked" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="AppTile.brs" />
   <children>
     <Group id="body">
       <Rectangle id="ring" color="0x00000000" cornerRadius="28" />
       <MaskGroup id="mask" maskUri="pkg:/images/chrome/app-tile-mask.png">
-        <Poster id="art" width="284" height="155" loadDisplayMode="scaleToFill" />
+        <Rectangle id="plate" width="284" height="155" color="0x1D1D1DFF" />
+        <Rectangle id="glow" visible="false" />
+        <Rectangle id="sheen" visible="false" />
+        <Rectangle id="bar0" visible="false" />
+        <Rectangle id="bar1" visible="false" />
+        <Rectangle id="bar2" visible="false" />
+        <Rectangle id="bar3" visible="false" />
+        <Rectangle id="bar4" visible="false" />
+        <Rectangle id="playBg" visible="false" />
+        <Rectangle id="bit0" visible="false" />
+        <Rectangle id="bit1" visible="false" />
+        <Rectangle id="bit2" visible="false" />
+        <Rectangle id="bit3" visible="false" />
+        <Rectangle id="bit4" visible="false" />
+        <Rectangle id="bit5" visible="false" />
+        <Rectangle id="bit6" visible="false" />
+        <Rectangle id="bit7" visible="false" />
+        <Rectangle id="bit8" visible="false" />
+        <Rectangle id="bit9" visible="false" />
+        <Rectangle id="bit10" visible="false" />
+        <Rectangle id="bit11" visible="false" />
+        <Rectangle id="bit12" visible="false" />
+        <Rectangle id="bit13" visible="false" />
+        <Rectangle id="bit14" visible="false" />
+        <Rectangle id="bit15" visible="false" />
+        <Rectangle id="cut0" visible="false" />
+        <Rectangle id="cut1" visible="false" />
+        <Rectangle id="cut2" visible="false" />
+        <Poster id="art" width="284" height="155" loadDisplayMode="scaleToFill" visible="false" />
+        <Poster id="mark" width="168" height="22" loadDisplayMode="scaleToFit" visible="false" />
+        <Rectangle id="chip0" visible="false" />
+        <Rectangle id="chip1" visible="false" />
+        <Rectangle id="chip2" visible="false" />
+        <Rectangle id="chip3" visible="false" />
       </MaskGroup>
+      <Label id="chipL0" visible="false" horizAlign="center" vertAlign="center" color="0xFFFFFFFF" />
+      <Label id="chipL1" visible="false" horizAlign="center" vertAlign="center" color="0xFFFFFFFF" />
+      <Label id="chipL2" visible="false" horizAlign="center" vertAlign="center" color="0xFFFFFFFF" />
+      <Label id="word" width="284" height="72" horizAlign="center" vertAlign="center" color="0xF5F5F5FF" />
+      <Rectangle id="lockBg" color="0x000000B3" cornerRadius="14" visible="false" />
+      <Label id="lockLabel" text="Locked" color="0xF5F5F5FF" horizAlign="center" vertAlign="center" visible="false" />
     </Group>
     <Animation id="focusAnim" duration="0.2" easeFunction="outCubic" optional="true">
       <Vector2DFieldInterpolator id="scaleInterp" key="[0.0, 1.0]" keyValue="[[1.0, 1.0], [1.1, 1.1]]" fieldToInterp="body.scale" />

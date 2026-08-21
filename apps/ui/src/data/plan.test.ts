@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyPlanClass,
+  displayMaxLabel,
   FALLBACK_PLAN,
   mockAppLocked,
   STYLE_CATALOG,
   styleMinPlanLabel,
   styleUnlocked,
+  themeUnlocked,
   visibleMockApps,
   type PlanStatus,
 } from './plan';
@@ -31,6 +33,19 @@ describe('plan helpers', () => {
     expect(styleUnlocked(FALLBACK_PLAN, 'cinema')).toBe(false);
     expect(styleUnlocked({ ...FALLBACK_PLAN, styleIds: ['cinema'] }, 'cinema')).toBe(true);
     expect(styleUnlocked({ ...FALLBACK_PLAN, developer: true }, 'gold')).toBe(true);
+  });
+
+  it('locks Synthwave until it is bought or developer mode is on', () => {
+    expect(themeUnlocked(FALLBACK_PLAN, 'default')).toBe(true);
+    expect(themeUnlocked(FALLBACK_PLAN, 'synthwave')).toBe(false);
+    expect(themeUnlocked({ ...FALLBACK_PLAN, synthwave: true }, 'synthwave')).toBe(true);
+    expect(themeUnlocked({ ...FALLBACK_PLAN, developer: true }, 'synthwave')).toBe(true);
+  });
+
+  it('reports 4K when the plan allows 2160', () => {
+    expect(displayMaxLabel(2160)).toBe('4K (2160p)');
+    expect(displayMaxLabel(1080)).toBe('Full HD (1080p)');
+    expect(displayMaxLabel(720)).toBe('HD (720p)');
   });
 
   it('applies plan and style to the document', () => {

@@ -1,0 +1,203 @@
+.tvm-mark {
+  display: block;
+  overflow: visible;
+  flex-shrink: 0;
+  transform-box: fill-box;
+}
+
+.tvm-mark--sm {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.tvm-mark--md {
+  width: 5rem;
+  height: 5rem;
+}
+
+.tvm-mark--lg {
+  width: min(13.5rem, 46vw);
+  height: min(13.5rem, 46vw);
+}
+
+.tvm-mark__bloom,
+.tvm-mark__bezel,
+.tvm-mark__glass,
+.tvm-mark__play,
+.tvm-mark__play-edge,
+.tvm-mark__scan {
+  transform-box: fill-box;
+  transform-origin: 40px 38px;
+}
+
+.tvm-mark__bloom {
+  opacity: 0.72;
+}
+
+.tvm-mark--animated .tvm-mark__bloom {
+  animation: tvm-mark-bloom 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.tvm-mark--animated .tvm-mark__bezel {
+  stroke-dasharray: 220;
+  stroke-dashoffset: 220;
+  animation: tvm-mark-draw 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+.tvm-mark--animated .tvm-mark__glass {
+  opacity: 0;
+  animation: tvm-mark-fade 0.7s ease 0.42s both;
+}
+
+.tvm-mark--animated .tvm-mark__play,
+.tvm-mark--animated .tvm-mark__play-edge {
+  transform: scale(0.12) rotate(-28deg);
+  opacity: 0;
+  animation: tvm-mark-play 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.68s both;
+}
+
+.tvm-mark--animated .tvm-mark__scan {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: tvm-mark-scan 1.2s cubic-bezier(0.22, 1, 0.36, 1) 1.05s both;
+}
+
+.tvm-mark--loop .tvm-mark__bloom {
+  animation: tvm-mark-idle-bloom 2.6s ease-in-out infinite;
+}
+
+.tvm-mark--loop .tvm-mark__scan {
+  stroke-dasharray: 40;
+  animation: tvm-mark-idle-scan 1.7s linear infinite;
+}
+
+.tvm-mark--loop .tvm-mark__play,
+.tvm-mark--loop .tvm-mark__play-edge {
+  transform-origin: 40px 38px;
+  animation: tvm-mark-idle-play 2.2s ease-in-out infinite;
+}
+
+.tvm-mark--loop.tvm-mark--animated .tvm-mark__bloom {
+  animation:
+    tvm-mark-bloom 2.4s cubic-bezier(0.22, 1, 0.36, 1) both,
+    tvm-mark-idle-bloom 2.6s ease-in-out 2.4s infinite;
+}
+
+.tvm-mark--loop.tvm-mark--animated .tvm-mark__scan {
+  animation:
+    tvm-mark-scan 1.2s cubic-bezier(0.22, 1, 0.36, 1) 1.05s both,
+    tvm-mark-idle-scan 1.7s linear 2.2s infinite;
+}
+
+@keyframes tvm-mark-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+}
+
+@keyframes tvm-mark-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes tvm-mark-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tvm-mark-play {
+  0% {
+    opacity: 0;
+    transform: scale(0.12) rotate(-28deg);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.14) rotate(6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes tvm-mark-scan {
+  0% {
+    stroke-dashoffset: 40;
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -40;
+    opacity: 0.2;
+  }
+}
+
+@keyframes tvm-mark-idle-bloom {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes tvm-mark-idle-scan {
+  0% {
+    stroke-dashoffset: 40;
+    opacity: 0.15;
+  }
+  40% {
+    opacity: 0.95;
+  }
+  100% {
+    stroke-dashoffset: -40;
+    opacity: 0.15;
+  }
+}
+
+@keyframes tvm-mark-idle-play {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tvm-mark--animated .tvm-mark__bloom,
+  .tvm-mark--animated .tvm-mark__bezel,
+  .tvm-mark--animated .tvm-mark__glass,
+  .tvm-mark--animated .tvm-mark__play,
+  .tvm-mark--animated .tvm-mark__play-edge,
+  .tvm-mark--animated .tvm-mark__scan,
+  .tvm-mark--loop .tvm-mark__bloom,
+  .tvm-mark--loop .tvm-mark__scan,
+  .tvm-mark--loop .tvm-mark__play,
+  .tvm-mark--loop .tvm-mark__play-edge {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    stroke-dashoffset: 0;
+  }
+}

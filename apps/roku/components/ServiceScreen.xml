@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="ServiceScreen" extends="Group">
   <interface>
-    <field id="appId" type="string" />
+    <field id="appId" type="string" onChange="onAppId" />
     <field id="payload" type="assocarray" onChange="onPayload" />
     <field id="mode" type="string" value="loading" onChange="onMode" />
     <field id="action" type="assocarray" alwaysNotify="true" />
@@ -12,15 +12,37 @@
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="ServiceScreen.brs" />
   <children>
-    <Rectangle id="bg" width="3840" height="2160" color="0x0B0B0BFF" />
-    <Poster id="heroArt" width="3840" height="1120" loadDisplayMode="scaleToZoom" />
-    <Poster width="3840" height="640" translation="[0, 480]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
-    <Label id="kicker" translation="[160, 144]" color="0xC4C4C4FF" />
-    <Label id="heading" translation="[160, 220]" width="2800" color="0xF5F5F5FF" />
-    <Label id="disclaimer" translation="[160, 340]" width="2800" color="0x8A8A8AFF" />
-    <FocusButton id="back" translation="[160, 460]" />
-    <Group id="rails" translation="[0, 1120]" />
-    <EmptyState id="empty" translation="[0, 1120]" />
+    <Rectangle id="bg" width="3840" height="2160" color="0x000000FF" />
+    <Poster id="heroArt" width="3840" height="1320" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
+    <Poster id="heroArtB" width="3840" height="1320" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" opacity="0" />
+    <Rectangle id="heroFallback" width="3840" height="1320" color="0x141414FF" visible="false" />
+    <Poster id="heroVignetteLeft" width="1960" height="1320" uri="pkg:/images/chrome/hero-vignette-left.png" />
+    <Poster id="heroVignetteBottom" width="3840" height="640" translation="[0, 680]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
+    <Rectangle id="navScrim" width="3840" height="220" color="0x000000B8" />
+    <Group id="chrome" translation="[160, 48]">
+      <FocusButton id="back" />
+      <Label id="brand" translation="[300, 8]" width="760" color="0xF5F5F5FF" />
+      <Group id="tabs" translation="[1080, 0]" />
+    </Group>
+    <Group id="heroCopy" translation="[160, 360]">
+      <Label id="kicker" width="2200" color="0xC4C4C4FF" />
+      <Label id="heroTitle" translation="[0, 56]" width="2200" height="240" wrap="true" maxLines="2" color="0xF5F5F5FF" />
+      <Label id="heroMeta" translation="[0, 312]" width="2200" color="0xC4C4C4FF" />
+      <Label id="disclaimer" translation="[0, 372]" width="2200" color="0x8A8A8AFF" />
+      <Group id="heroActions" translation="[0, 460]">
+        <FocusButton id="playBtn" />
+        <FocusButton id="infoBtn" translation="[520, 0]" />
+      </Group>
+    </Group>
+    <Group id="rails" translation="[0, 1320]" />
+    <EmptyState id="empty" translation="[0, 1320]" />
     <Label id="loading" translation="[160, 640]" color="0xC4C4C4FF" text="Loading originals..." />
+    <Animation id="heroFade" duration="0.55" easeFunction="inOutQuad" optional="true">
+      <FloatFieldInterpolator id="heroFadeA" key="[0.0, 1.0]" keyValue="[1.0, 0.0]" fieldToInterp="heroArt.opacity" />
+      <FloatFieldInterpolator id="heroFadeB" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroArtB.opacity" />
+    </Animation>
+    <Animation id="railsAnim" duration="0.24" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="railsInterp" key="[0.0, 1.0]" keyValue="[[0.0, 1320.0], [0.0, 1320.0]]" fieldToInterp="rails.translation" />
+    </Animation>
   </children>
 </component>

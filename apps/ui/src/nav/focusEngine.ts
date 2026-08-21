@@ -36,6 +36,11 @@ export function startFocusEngine(): void {
     layoutAdapter: GetBoundingClientRectAdapter,
     debug: false,
     visualDebug: false,
+    throttle: 0,
+    throttleKeypresses: false,
+    // Corners compares every corner of every focusable. Center is enough for
+    // the fallback hop after wrap/row logic has already handled rails.
+    distanceCalculationMethod: 'center',
   });
 
   // setKeyMap merges, so an empty list per direction is how the library's own

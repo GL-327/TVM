@@ -1,0 +1,113 @@
+/*
+ * Channel tiles: transform-only focus, no filters/blur.
+ * Live TV uses Home rails so Down can camera the next row.
+ */
+
+.channel-card {
+  --channel-hue: 210;
+  contain: layout style;
+  transition: transform 120ms linear;
+  box-shadow: none;
+}
+
+.channel-card__art {
+  contain: layout paint;
+  background: linear-gradient(
+    145deg,
+    hsl(var(--channel-hue) 28% 22%),
+    hsl(var(--channel-hue) 18% 10%)
+  );
+}
+
+.channel-card__art.art--pending,
+.channel-card__art.art--clone {
+  background: color-mix(in srgb, var(--tvm-surface) 78%, #121826);
+}
+
+.channel-card__art.art--pending .channel-card__logo,
+.channel-card__art.art--ready .channel-card__logo {
+  z-index: 2;
+  opacity: 1;
+}
+
+.channel-card__art.art--ready > .skeleton {
+  display: none;
+}
+
+.channel-card__logo {
+  position: relative;
+  z-index: 1;
+  filter: none;
+  opacity: 1;
+}
+
+.channel-card.tvm-button:focus,
+.channel-card.tvm-button[data-focused='true'] {
+  z-index: 2;
+  overflow: visible;
+  box-shadow: none;
+  outline: 0.14rem solid #fff;
+  outline-offset: 0.12rem;
+  transform: scale(1.045);
+  will-change: transform;
+}
+
+.channel-card--on {
+  box-shadow: none;
+  outline: 0.14rem solid #fff;
+  outline-offset: 0.1rem;
+}
+
+.channel-grid {
+  row-gap: 1.75rem;
+  column-gap: 1rem;
+}
+
+.rail__track > .channel-card,
+.rail__track > .channel-card.tvm-button {
+  flex: 0 0 16.5rem;
+  width: 16.5rem;
+  min-width: 16.5rem;
+  max-width: 16.5rem;
+}
+
+.page--live.home {
+  scroll-padding-top: 0.75rem;
+}
+
+[data-theme='glass'] .page--live {
+  background:
+    radial-gradient(120% 70% at 72% 0%, color-mix(in srgb, var(--tvm-glass-accent) 22%, transparent), transparent 58%),
+    radial-gradient(80% 50% at 8% 100%, color-mix(in srgb, var(--tvm-glass-accent-warm) 14%, transparent), transparent 52%),
+    transparent;
+}
+
+.page--live .live-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 2.75rem;
+  padding: 0.35rem 0 3.5rem;
+}
+
+.page--live .rail {
+  padding-inline: 0;
+  gap: 0.5rem;
+}
+
+.page--live .rail__track {
+  gap: 0.9rem;
+  padding: 0.9rem 0.3rem 1.2rem;
+}
+
+.page--live .channel-chips {
+  padding-bottom: 0.55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .channel-card,
+  .channel-card.tvm-button[data-focused='true'] {
+    transition: none;
+    transform: none;
+    will-change: auto;
+  }
+}

@@ -3,6 +3,8 @@ import { BrandLockup } from '../components/BrandLockup';
 import { FocusButton } from '../components/FocusButton';
 import { HeroArt } from '../components/HeroArt';
 import { fieldValue, FocusField } from '../components/FocusField';
+import { LoadingScreen } from '../components/LoadingScreen';
+import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { mapRailPosters } from '../components/PosterCard';
 import { Rail } from '../components/Rail';
 import { StreamChrome } from '../components/StreamChrome';
@@ -48,45 +50,48 @@ export function Library(_props: ScreenProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
-  const [slow, setSlow] = useState(false);
+  const [loading, setLoading] = useState(cached === null);
+  const [introDone, setIntroDone] = useState(() => shouldSkipIntro() || introPlayedThisSession());
 
   const reload = useCallback(async (): Promise<void> => {
-    const [home, profiles] = await Promise.all([fetchHome(), fetchProfiles()]);
-    if (home !== null) {
-      setRd(home.rd);
-      setWatching(home.continueWatching.map(asTitle));
-      setWatchlist((home.watchlist ?? []).map(asTitle));
-      setRails(home.rails ?? []);
-      setFeatured(home.featured !== null && home.featured !== undefined ? asTitle(home.featured) : null);
+    try {
+      const [home, profiles] = await Promise.all([fetchHome(), fetchProfiles()]);
+      if (home !== null) {
+        setRd(home.rd);
+        setWatching(home.continueWatching.map(asTitle));
+        setWatchlist((home.watchlist ?? []).map(asTitle));
+        setRails(home.rails ?? []);
+        setFeatured(home.featured !== null && home.featured !== undefined ? asTitle(home.featured) : null);
+      }
+      const active = profiles.profiles.find((entry) => entry.id === profiles.activeId);
+      setProfile(active ?? profiles.profiles[0] ?? null);
+    } finally {
+      setLoading(false);
     }
-    const active = profiles.profiles.find((entry) => entry.id === profiles.activeId);
-    setProfile(active ?? profiles.profiles[0] ?? null);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchPlan().then(async (next) => {
-      if (cancelled) return;
-      applyPlanClass(next);
-      setPlan(next);
-      if (next.stream === 'basic') {
-        setSlow(true);
-        await new Promise((resolve) => window.setTimeout(resolve, 2400));
-      }
-      if (cancelled) return;
-      setSlow(false);
-      await reload();
-    });
+    void fetchPlan()
+      .then(async (next) => {
+        if (cancelled) return;
+        applyPlanClass(next);
+        setPlan(next);
+        await reload();
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [reload]);
 
   useEffect(() => {
-    if (rd.configured) return;
+    if (loading || rd.configured) return;
     const timer = window.setTimeout(() => requestFocus(`${scope}/token`), 0);
     return () => window.clearTimeout(timer);
-  }, [rd.configured, scope]);
+  }, [loading, rd.configured, scope]);
 
   const connect = async (raw?: string): Promise<void> => {
     const trimmed = (raw ?? token).trim();
@@ -134,9 +139,18 @@ export function Library(_props: ScreenProps): React.JSX.Element {
 
   return (
     <main className={`home stream-page stream-page--${plan.stream}`}>
+      {!introDone && <TvmIntro variant="stream" pending={loading} onDone={() => setIntroDone(true)} />}
       <StreamChrome profile={profile} lane={lane} onLane={setLane} />
 
-      {!rd.configured && (
+      {loading && introDone ? (
+        <LoadingScreen
+          variant="stream"
+          holdIfRecent
+          eyebrow="TVM Stream"
+          title="Loading library…"
+          body="Reading your catalog and Real-Debrid status on this machine."
+        />
+      ) : loading ? null : !rd.configured ? (
         <section className="stream-connect" aria-labelledby="stream-connect-title">
           <p className="stage__kicker">TVM Stream</p>
           <h1 id="stream-connect-title" className="page__heading">
@@ -168,17 +182,9 @@ export function Library(_props: ScreenProps): React.JSX.Element {
             </FocusButton>
           </div>
         </section>
-      )}
+      ) : null}
 
-      {slow && (
-        <section className="stream-connect">
-          <p className="stage__kicker">Basic plan</p>
-          <h1 className="page__heading">Loading TVM Stream…</h1>
-          <p className="page__lede">Your plan uses a slower catalog on purpose.</p>
-        </section>
-      )}
-
-      {rd.configured && !slow && plan.stream !== 'basic' && billboard !== undefined && (
+      {rd.configured && !loading && plan.stream !== 'basic' && billboard !== undefined && (
         <section className="stage">
           <HeroArt src={heroSrc} hue={billboard.hue} />
           <div className="stage__vignette" aria-hidden="true" />
@@ -191,7 +197,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
               <span className="stage__watchline-rule" aria-hidden="true">
                 |
               </span>
-              <BrandLockup />
+              <BrandLockup focusId="stream-hero-mark" />
             </p>
             <FocusButton id="stream-hero-info" className="tvm-button--glass stage__learn" onSelect={() => openTitle(billboard)}>
               Learn More
@@ -200,13 +206,13 @@ export function Library(_props: ScreenProps): React.JSX.Element {
         </section>
       )}
 
-      {rd.configured && !slow && watchingLane.length > 0 && (
+      {rd.configured && !loading && watchingLane.length > 0 && (
         <Rail title="Continue Watching">
           {mapRailPosters(watchingLane, 'continue', openTitle, { layout: 'landscape' })}
         </Rail>
       )}
 
-      {rd.configured && !slow && watchlist.length > 0 && (
+      {rd.configured && !loading && watchlist.length > 0 && (
         <Rail title="My List">
           {mapRailPosters(
             watchlist.filter((title) => inLane(title, lane)),
@@ -217,7 +223,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
       )}
 
       {rd.configured &&
-        !slow &&
+        !loading &&
         visibleRails.slice(0, plan.stream === 'basic' ? 2 : visibleRails.length).map((rail) => (
           <Rail key={rail.id} title={rail.title}>
             {mapRailPosters(rail.titles, rail.id, openTitle)}

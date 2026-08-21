@@ -10,6 +10,7 @@ import {
 import { ServiceHost, type ServiceStartInput } from './serviceHost';
 import { createCrashWatch, urlForLoad } from './watchdog';
 import { isWindowedShell, uiLoadUrl, windowedBounds } from './windowedBounds';
+import { ensureMpvExecutable } from './mpvInstall';
 
 const windowed = isWindowedShell();
 const ORIGIN = uiOrigin();
@@ -73,8 +74,11 @@ function createWindow(): BrowserWindow {
     minHeight: 360,
     fullscreen: !windowed,
     kiosk: !windowed,
+    frame: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0a0d12',
+    transparent: true,
+    backgroundColor: '#00000000',
+    ...(process.platform === 'win32' ? { backgroundMaterial: 'none' as const } : {}),
     ...(windowed ? { center: true, resizable: true } : {}),
     ...(windowed && process.platform === 'win32'
       ? {
@@ -150,6 +154,13 @@ ipcMain.handle('tvm:native-player:command', (event, command: unknown) => {
   playerFor(event).command(command as NativePlayerCommand);
 });
 
+ipcMain.handle('tvm:native-player:seek-to', (event, seconds: unknown) => {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+    throw new Error('Invalid native player seek.');
+  }
+  playerFor(event).seekTo(seconds);
+});
+
 ipcMain.handle('tvm:native-player:stop', (event) => {
   playerFor(event).stop(false);
 });
@@ -180,6 +191,7 @@ ipcMain.handle('tvm:service:stop', (event) => {
 });
 
 void app.whenReady().then(async () => {
+  void ensureMpvExecutable();
   const window = createWindow();
   await loadWithRetry(window);
 

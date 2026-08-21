@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="TVMScene" extends="Scene">
+  <interface>
+    <field id="themeId" type="string" value="happy" />
+  </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="pkg:/source/viewStack.brs" />
   <script type="text/brightscript" uri="pkg:/source/config.brs" />
@@ -7,12 +10,33 @@
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="pkg:/source/layout.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/theme.brs" />
+  <script type="text/brightscript" uri="pkg:/source/themeGlass.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="TVMScene.brs" />
   <children>
     <Rectangle id="letterbox" width="1920" height="1080" color="0x000000FF" />
     <Group id="uiRoot">
       <Rectangle id="bg" width="3840" height="2160" color="0x0B0B0BFF" />
+      <Group id="sceneWash">
+        <Rectangle id="sceneFar" width="3840" height="2160" color="0x6A203866" />
+        <Rectangle id="sceneMid" width="4300" height="2400" color="0xFF9A6C44" translation="-180,-140" />
+        <Rectangle id="sceneNear" width="3840" height="1500" color="0x5A204055" translation="0,720" />
+        <Rectangle id="sceneSun" width="1280" height="980" color="0xFFE5663D" translation="2480,-120" />
+        <Animation id="sceneFarAnim" duration="29" repeat="true" easeFunction="inOutQuad" optional="true">
+          <FloatFieldInterpolator id="sceneFarOp" key="[0.0, 0.5, 1.0]" keyValue="[0.2, 0.34, 0.2]" fieldToInterp="sceneFar.opacity" />
+        </Animation>
+        <Animation id="sceneMidAnim" duration="41" repeat="true" easeFunction="inOutQuad" optional="true">
+          <FloatFieldInterpolator id="sceneMidOp" key="[0.0, 0.5, 1.0]" keyValue="[0.14, 0.28, 0.14]" fieldToInterp="sceneMid.opacity" />
+          <Vector2DFieldInterpolator id="sceneMidMove" key="[0.0, 1.0]" keyValue="[[-180.0, -140.0], [-40.0, 70.0]]" fieldToInterp="sceneMid.translation" />
+        </Animation>
+        <Animation id="sceneNearAnim" duration="53" repeat="true" easeFunction="inOutQuad" optional="true">
+          <FloatFieldInterpolator id="sceneNearOp" key="[0.0, 0.5, 1.0]" keyValue="[0.18, 0.32, 0.18]" fieldToInterp="sceneNear.opacity" />
+        </Animation>
+        <Animation id="sceneSunAnim" duration="67" repeat="true" easeFunction="inOutQuad" optional="true">
+          <FloatFieldInterpolator id="sceneSunOp" key="[0.0, 0.5, 1.0]" keyValue="[0.16, 0.3, 0.16]" fieldToInterp="sceneSun.opacity" />
+        </Animation>
+      </Group>
       <Group id="screenHost" />
       <Group id="overlayHost" />
       <Label

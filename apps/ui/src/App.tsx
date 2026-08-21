@@ -1,5 +1,11 @@
+import { SynthwaveCrt } from './theme/SynthwaveCrt';
 import { ViewStackProvider } from './nav/ViewStackProvider';
 
 export function App(): React.JSX.Element {
-  return <ViewStackProvider />;
+  return (
+    <>
+      <SynthwaveCrt />
+      <ViewStackProvider />
+    </>
+  );
 }

@@ -2,6 +2,7 @@ import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import type { ReactNode } from 'react';
 import { revealFocused } from '../nav/revealFocused';
 import { useScopedFocusKey } from '../nav/ViewStackContext';
+import './FocusButton.css';
 
 export type ButtonVariant = 'primary' | 'standard' | 'quiet';
 
@@ -16,6 +17,7 @@ interface FocusButtonProps {
   detail?: string;
   disabled?: boolean;
   onArrowPress?: (direction: string) => boolean;
+  dataLoopCopy?: number;
 }
 
 /**
@@ -34,6 +36,7 @@ export function FocusButton({
   detail,
   disabled = false,
   onArrowPress,
+  dataLoopCopy,
 }: FocusButtonProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
   const { ref, focused } = useFocusable<object, HTMLButtonElement>({
@@ -42,11 +45,13 @@ export function FocusButton({
     onArrowPress,
     onFocus: () => {
       const node = ref.current;
-      if (node !== null) requestAnimationFrame(() => revealFocused(node));
+      if (node !== null) revealFocused(node);
     },
   });
 
-  const classes = ['tvm-button', `tvm-button--${variant}`, className].filter(Boolean).join(' ');
+  const classes = ['tvm-button', `tvm-button--${variant}`, focused ? 'tvm-button--focused' : '', className]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <button
@@ -58,6 +63,7 @@ export function FocusButton({
       tabIndex={-1}
       data-focus-id={id}
       data-focused={focused ? 'true' : undefined}
+      data-loop-copy={dataLoopCopy !== undefined ? String(dataLoopCopy) : undefined}
       disabled={disabled}
       onClick={onSelect}
     >

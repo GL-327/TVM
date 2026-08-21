@@ -23,7 +23,7 @@ export function OnScreenKeyboard({
   return (
     <section className="osk" aria-label="On-screen keyboard">
       {ROWS.map((row, rowIndex) => (
-        <div className="osk__row" key={`row-${rowIndex}`}>
+        <div className="osk__row" data-wrap="row" key={`row-${rowIndex}`}>
           {row.map((key) => (
             <FocusButton
               key={key}
@@ -36,7 +36,7 @@ export function OnScreenKeyboard({
           ))}
         </div>
       ))}
-      <div className="osk__row osk__row--actions">
+      <div className="osk__row osk__row--actions" data-wrap="row">
         <FocusButton id={`${idPrefix}-space`} className="osk__key osk__key--wide" onSelect={() => onChange(`${value} `)}>
           Space
         </FocusButton>

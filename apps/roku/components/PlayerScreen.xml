@@ -5,11 +5,18 @@
     <field id="streamTitle" type="string" />
     <field id="streamFormat" type="string" />
     <field id="mediaId" type="string" />
+    <field id="mediaKind" type="string" />
+    <field id="recapEnd" type="float" value="0" />
+    <field id="showNext" type="boolean" value="false" onChange="onOverlayFlags" />
+    <field id="nextTitle" type="string" onChange="onOverlayFlags" />
+    <field id="nextMediaId" type="string" onChange="onOverlayFlags" />
+    <field id="overlayFocus" type="string" />
     <field id="startAt" type="float" value="0" />
     <field id="message" type="string" onChange="onMessage" />
     <field id="action" type="assocarray" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="PlayerScreen.brs" />
@@ -17,17 +24,33 @@
     <Rectangle width="3840" height="2160" color="0x000000FF" />
     <Video id="video" width="3840" height="2160" />
     <Group id="chrome">
-      <Rectangle width="3840" height="440" color="0x000000CC" />
-      <FocusButton id="back" translation="[80, 80]" />
-      <Label id="heading" translation="[280, 104]" width="3200" color="0xF5F5F5FF" />
-      <Rectangle id="barTrack" width="3200" height="16" translation="[320, 1720]" color="0xFFFFFF33" cornerRadius="8" />
-      <Rectangle id="barFill" width="8" height="16" translation="[320, 1720]" color="0xE50914FF" cornerRadius="8" />
-      <Label id="time" translation="[320, 1760]" width="800" color="0xC4C4C4FF" />
-      <FocusButton id="rewind" translation="[1400, 1880]" />
-      <FocusButton id="pause" translation="[1600, 1880]" />
-      <FocusButton id="forward" translation="[1800, 1880]" />
-      <Rectangle id="buffer" width="3840" height="8" translation="[0, 0]" color="0xE50914FF" />
+      <Rectangle width="3840" height="320" color="0x1A0C08D6" />
+      <Rectangle width="3840" height="200" translation="[0, 280]" color="0x1A0C0888" />
+      <Rectangle width="3840" height="160" translation="[0, 440]" color="0x1A0C0844" />
+      <FocusButton id="back" translation="[160, 72]" />
+      <Label id="kicker" text="NOW PLAYING" translation="[352, 80]" width="2400" color="0xFF8A2BFF" />
+      <Label id="heading" translation="[352, 128]" width="2800" color="0xF5F5F5FF" />
+      <Rectangle id="titleRule" width="160" height="6" translation="[352, 216]" color="0xFF8A2BFF" cornerRadius="3" />
+      <BrandLockup id="lockup" translation="[3360, 96]" />
+      <Poster width="3840" height="840" translation="[0, 1320]" uri="pkg:/images/chrome/details-vignette-bottom.png" />
+      <Rectangle width="3840" height="360" translation="[0, 1800]" color="0x120806AA" />
+      <Rectangle id="transportShelf" width="3520" height="400" translation="[160, 1680]" color="0x1C1410A6" cornerRadius="40" />
+      <Rectangle id="barRing" width="3232" height="48" translation="[304, 1704]" color="0x00000000" cornerRadius="20" />
+      <Rectangle id="barTrack" width="3200" height="16" translation="[320, 1720]" color="0xFFFFFF3D" cornerRadius="8" />
+      <Rectangle id="barGlow" width="8" height="28" translation="[320, 1714]" color="0xFF8A2B66" cornerRadius="14" />
+      <Rectangle id="barFill" width="8" height="16" translation="[320, 1720]" color="0xFF8A2BFF" cornerRadius="8" />
+      <Rectangle id="barThumb" width="32" height="32" translation="[304, 1712]" color="0xFFFFFFFF" cornerRadius="16" />
+      <Label id="time" translation="[320, 1752]" width="1200" color="0xF5F5F5FF" />
+      <FocusButton id="rewind" translation="[1592, 1848]" />
+      <FocusButton id="pause" translation="[1816, 1832]" />
+      <FocusButton id="forward" translation="[2072, 1848]" />
+      <FocusButton id="nextUp" translation="[2840, 1864]" visible="false" />
+      <Rectangle id="buffer" width="3840" height="8" translation="[0, 0]" color="0xFF8A2BFF" />
     </Group>
-    <Label id="status" translation="[160, 1920]" width="3520" color="0xF5F5F5FF" />
+    <Label id="status" translation="[160, 1520]" width="3520" color="0xF5F5F5FF" />
+    <FocusButton id="skipRecap" translation="[2320, 1864]" visible="false" />
+    <Animation id="chromeFade" duration="0.22" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator id="chromeFadeInterp" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="chrome.opacity" />
+    </Animation>
   </children>
 </component>

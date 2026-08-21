@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Artwork } from '../components/Artwork';
 import { Chip } from '../components/Chip';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
 import { Skeleton } from '../components/Skeleton';
-import { formatMeta, titleById, type Title } from '../data/catalog';
+import { titleById, type Title } from '../data/catalog';
 import { episodeHeading } from '../data/episodes';
 import {
   addWatchlist,
@@ -20,22 +20,40 @@ import {
 } from '../data/media';
 import { titleFromDetailsParams } from '../data/openDetails';
 import { playbackErrorMessage } from '../data/playbackErrors';
-import {
-  certificateLabel,
-  formatAired,
-  imdbScore,
-  imdbTitleUrl,
-  playIdFor,
-  seriesGraphUrl,
-} from '../data/playId';
-import { episodesForSeason, seasonNumbers } from '../data/seasons';
+import { certificateLabel, formatAired, imdbIdFrom, imdbScore, imdbTitleUrl, playIdFor, seriesGraphUrl } from '../data/playId';
+import { asSeason, episodesForSeason, seasonNumbers } from '../data/seasons';
 import { requestFocus } from '../nav/focusEngine';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import './details.css';
 
 function sameWork(current: Title, incoming: Title): boolean {
   if (current.id !== '' && incoming.id !== '' && current.id === incoming.id) return true;
   return current.title.toLowerCase() === incoming.title.toLowerCase();
+}
+
+function episodeCountLabel(count: number): string {
+  return `${count} ${count === 1 ? 'episode' : 'episodes'}`;
+}
+
+function DetailsShell({
+  series,
+  title,
+  children,
+}: {
+  series: boolean;
+  title?: Title;
+  children: ReactNode;
+}): React.JSX.Element {
+  return (
+    <main className={`details${series ? ' details--series' : ''}`}>
+      <div className="details__stage" aria-hidden="true">
+        {title !== undefined && <Artwork title={title} kind="backdrop" className="details__backdrop" eager />}
+        <div className="details__vignette" />
+      </div>
+      <div className="details__body">{children}</div>
+    </main>
+  );
 }
 
 export function Details({ params }: ScreenProps): React.JSX.Element {
@@ -87,27 +105,48 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const current = title;
-    if (current === undefined) return;
-    const series = current.kind === 'series';
-    if (!series) {
-      setFiles([]);
+    if (current === undefined) return undefined;
+    const queryId = imdbIdFrom(current.id) ?? current.id;
+    if (queryId === '') {
       setLoadingEpisodes(false);
-      return;
+      return undefined;
     }
     setLoadingEpisodes(true);
-    void fetchChildren(current.id).then((items) => {
-      if (cancelled) return;
-      setFiles(items);
-      setLoadingEpisodes(false);
-    });
+    void fetchChildren(queryId)
+      .then((items) => {
+        if (cancelled) return;
+        setFiles(items);
+        const hasEpisodes = items.some(
+          (item) => asSeason(item.season) !== undefined || asSeason(item.episode) !== undefined,
+        );
+        if (hasEpisodes) {
+          setTitle((prev) => (prev === undefined || prev.kind === 'series' ? prev : { ...prev, kind: 'series' }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEpisodes(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [title?.id, title?.kind]);
+  }, [title?.id]);
 
-  const seriesLike = title !== undefined && (title.kind === 'series' || files.some((file) => file.season !== undefined));
+  const seriesLike = title !== undefined && (title.kind === 'series' || files.some((file) => asSeason(file.season) !== undefined));
 
   const seasons = useMemo(() => seasonNumbers(files), [files]);
+
+  const episodeCountBySeason = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const file of files) {
+      const season = asSeason(file.season);
+      if (season === undefined) continue;
+      counts.set(season, (counts.get(season) ?? 0) + 1);
+    }
+    return counts;
+  }, [files]);
 
   const visibleFiles = useMemo(() => episodesForSeason(files, season), [files, season]);
 
@@ -129,20 +168,21 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   if (title === undefined) {
     if (id !== '') {
       return (
-        <main className="details">
-          <div className="details__vignette" aria-hidden="true" />
+        <DetailsShell series={false}>
           <div className="details__hero">
-            <Skeleton className="details__poster" label="Loading artwork" />
+            <div className="details__poster-stage">
+              <Skeleton className="details__poster" label="Loading artwork" />
+            </div>
             <div className="details__copy">
               <Skeleton className="skeleton--hero" label="Loading title" />
-              <div className="hero__actions">
+              <div className="hero__actions details__actions">
                 <FocusButton id="back" onSelect={() => navigate.pop()}>
                   Back
                 </FocusButton>
               </div>
             </div>
           </div>
-        </main>
+        </DetailsShell>
       );
     }
     return (
@@ -213,20 +253,27 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   };
 
   return (
-    <main className={`details${seriesLike ? ' details--series' : ''}`}>
-      <Artwork title={title} kind="backdrop" className="details__backdrop" />
-      <div className="details__vignette" aria-hidden="true" />
+    <DetailsShell series={seriesLike} title={title}>
       <div className="details__hero">
-        <Artwork title={title} kind="poster" className="details__poster" />
+        <div className="details__poster-stage">
+          <Artwork title={title} kind="poster" className="details__poster" eager />
+        </div>
         <div className="details__copy">
           <p className="stage__kicker">{seriesLike ? 'Series' : 'Film'}</p>
           <h1 className="stage__title">{title.title}</h1>
           <p className="stage__meta">
             {score !== null && <span className="details__imdb">IMDb {score}</span>}
             {certificate !== null && <Chip>{certificate}</Chip>}
-            <span>{formatMeta(title)}</span>
+            {title.year > 0 && <span>{title.year}</span>}
+            {title.runtime !== undefined && title.runtime !== '' && <span>{title.runtime}</span>}
+            {seriesLike && title.seasons !== undefined && title.seasons > 0 && (
+              <span>{title.seasons === 1 ? '1 season' : `${title.seasons} seasons`}</span>
+            )}
+            {title.genres.slice(0, 3).map((genre) => (
+              <Chip key={genre}>{genre}</Chip>
+            ))}
           </p>
-          <div className="hero__actions">
+          <div className="hero__actions details__actions">
             {!seriesLike && (
               <FocusButton id="play" variant="primary" onSelect={playFilm}>
                 {title.progress !== undefined ? 'Resume' : 'Play'}
@@ -257,7 +304,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
         </div>
       </div>
       {seriesLike && (
-        <section className="episode-picker" aria-label="Seasons and episodes">
+        <section className="episode-picker details__shelf" aria-label="Seasons and episodes">
           {season === null && (
             <div className="season-list" aria-label="Seasons">
               <h2 className="rail__title">Seasons</h2>
@@ -277,7 +324,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                   className="season-row-btn"
                   onSelect={() => setSeason(value)}
                 >
-                  Season {value}
+                  <span className="season-row-btn__name">Season {value}</span>
+                  <span className="season-row-btn__count">{episodeCountLabel(episodeCountBySeason.get(value) ?? 0)}</span>
                 </FocusButton>
               ))}
             </div>
@@ -314,7 +362,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                     className="episode-item"
                     onSelect={() => playItem(file)}
                   >
-                    {file.poster !== '' && <img className="episode-item__still" src={file.poster} alt="" />}
+                    <span className="episode-item__still" aria-hidden="true">
+                      {file.poster !== '' && (
+                        <img src={file.poster} alt="" loading="lazy" decoding="async" />
+                      )}
+                    </span>
                     <span className="episode-item__num">{label}</span>
                     <span className="episode-item__copy">
                       <span className="episode-item__name">{episodeHeading(file)}</span>
@@ -333,6 +385,6 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
           )}
         </section>
       )}
-    </main>
+    </DetailsShell>
   );
 }

@@ -1,0 +1,582 @@
+.dplus-hub {
+  --dplus-void: #040714;
+  --dplus-blue: #0063e5;
+  --dplus-ink: #07122b;
+  --dplus-motion: 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  --dplus-nav-h: 6.35rem;
+  --dplus-row-gap: 2.85rem;
+  box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding-bottom: 4.2rem;
+  color: #f5f8ff;
+  background: var(--dplus-void);
+  font-family: 'Avenir Next', Avenir, 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+  scroll-padding: var(--dplus-nav-h) 1.2rem 3.6rem;
+}
+
+.dplus-hub::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  contain: strict;
+  transform: translateZ(0);
+  background:
+    radial-gradient(70% 48% at 50% -10%, rgba(28, 74, 176, 0.55), transparent 62%),
+    radial-gradient(1.15px 1.15px at 8% 16%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 22% 38%, rgba(255, 255, 255, 0.38), transparent),
+    radial-gradient(1.3px 1.3px at 41% 12%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 63% 22%, rgba(255, 255, 255, 0.42), transparent),
+    radial-gradient(1.2px 1.2px at 78% 10%, rgba(255, 255, 255, 0.48), transparent),
+    radial-gradient(1px 1px at 91% 34%, rgba(255, 255, 255, 0.32), transparent),
+    radial-gradient(1.15px 1.15px at 14% 68%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(1px 1px at 34% 80%, rgba(255, 255, 255, 0.26), transparent),
+    radial-gradient(1.25px 1.25px at 72% 74%, rgba(255, 255, 255, 0.28), transparent),
+    radial-gradient(1px 1px at 86% 62%, rgba(255, 255, 255, 0.34), transparent),
+    var(--dplus-void);
+}
+
+.service.service--disney:has(.dplus-hub) {
+  background: var(--dplus-void);
+}
+
+.service.service--disney:has(.dplus-hub) > .service-nav:not(.dplus-nav) {
+  display: none;
+}
+
+.dplus-hub .tvm-button.dplus-back,
+.dplus-hub .tvm-button.dplus-tab,
+.dplus-hub .tvm-button.dplus-more,
+.dplus-hub .tvm-button.dplus-card,
+.dplus-hub .tvm-button.dplus-brand {
+  background: transparent;
+  box-shadow: none;
+}
+
+.dplus-nav {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  contain: layout style;
+  min-height: var(--dplus-nav-h);
+  padding: 0.7rem 1.4rem 0.35rem;
+  background: linear-gradient(180deg, rgba(4, 7, 20, 0.94) 0%, rgba(4, 7, 20, 0.22) 78%, transparent);
+}
+
+.dplus-nav__brand {
+  position: absolute;
+  left: 5.8rem;
+  display: flex;
+  color: #fff;
+}
+
+.dplus-mark {
+  width: 8.8rem;
+  height: 1.8rem;
+}
+
+.dplus-nav__tabs {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.82rem;
+}
+
+.dplus-hub .tvm-button.dplus-back {
+  position: absolute;
+  left: 1.15rem;
+  min-height: 2.15rem;
+  padding: 0.28rem 0.85rem;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.86rem;
+}
+
+.dplus-hub .tvm-button.dplus-tab {
+  flex-direction: column;
+  width: 4.9rem;
+  min-height: 5.15rem;
+  padding: 0.08rem 0.1rem 0.12rem;
+  border: none;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.62rem;
+  font-weight: 720;
+  letter-spacing: 0.03em;
+  transform: none;
+}
+
+.dplus-hub .tvm-button.dplus-tab .tvm-button__label {
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.dplus-tab__orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.55rem;
+  height: 3.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0.08rem 0 rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transform: translateZ(0);
+  transition:
+    transform var(--dplus-motion),
+    background-color var(--dplus-motion),
+    box-shadow var(--dplus-motion),
+    color var(--dplus-motion);
+}
+
+.dplus-tab__glyph {
+  width: 1.32rem;
+  height: 1.32rem;
+}
+
+.dplus-tab__name {
+  line-height: 1;
+  opacity: 0.72;
+}
+
+.dplus-hub .tvm-button.dplus-tab--on .dplus-tab__orb,
+.dplus-hub .tvm-button.dplus-tab--on:focus .dplus-tab__orb,
+.dplus-hub .tvm-button.dplus-tab--on[data-focused='true'] .dplus-tab__orb {
+  background: #fff;
+  color: var(--dplus-ink);
+  box-shadow: none;
+}
+
+.dplus-hub .tvm-button.dplus-tab--on,
+.dplus-hub .tvm-button.dplus-tab--on:focus,
+.dplus-hub .tvm-button.dplus-tab--on[data-focused='true'] {
+  background: transparent;
+  color: #fff;
+}
+
+.dplus-hub .tvm-button.dplus-tab--on .dplus-tab__name,
+.dplus-hub .tvm-button.dplus-tab:focus .dplus-tab__name,
+.dplus-hub .tvm-button.dplus-tab[data-focused='true'] .dplus-tab__name {
+  opacity: 1;
+  color: #fff;
+}
+
+.dplus-hub .tvm-button.dplus-back {
+  transition:
+    transform var(--dplus-motion),
+    background-color var(--dplus-motion),
+    color var(--dplus-motion),
+    box-shadow var(--dplus-motion);
+}
+
+.dplus-hub .tvm-button.dplus-back:focus,
+.dplus-hub .tvm-button.dplus-back[data-focused='true'] {
+  background: #fff;
+  color: var(--dplus-ink);
+  outline: none;
+  transform: scale(1.05);
+  box-shadow: 0 0 0 0.16rem rgba(255, 255, 255, 0.28);
+}
+
+.dplus-hub .tvm-button.dplus-tab:focus,
+.dplus-hub .tvm-button.dplus-tab[data-focused='true'] {
+  background: transparent;
+  color: #fff;
+  outline: none;
+  transform: none;
+  box-shadow: none;
+}
+
+.dplus-hub .tvm-button.dplus-tab:focus .dplus-tab__orb,
+.dplus-hub .tvm-button.dplus-tab[data-focused='true'] .dplus-tab__orb {
+  background: #fff;
+  color: var(--dplus-ink);
+  transform: translateZ(0) scale(1.12);
+  box-shadow: 0 0 0 0.18rem rgba(255, 255, 255, 0.34);
+  will-change: transform;
+}
+
+.dplus-listhead {
+  padding: 1.4rem 3.2rem 0.2rem;
+}
+
+.dplus-listhead__kicker {
+  margin: 0 0 0.35rem;
+  color: #8eb6ff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dplus-listhead__title {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 760;
+  letter-spacing: -0.03em;
+}
+
+.dplus-hero {
+  position: relative;
+  z-index: 1;
+  contain: layout style;
+  min-height: min(78vh, 40.5rem);
+  margin: calc(var(--dplus-nav-h) * -1) 0 -2.6rem;
+}
+
+.dplus-hero .stage__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 18%;
+}
+
+.dplus-hero__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(4, 7, 20, 0.92) 8%, rgba(4, 7, 20, 0.42) 46%, rgba(4, 7, 20, 0.06) 72%, transparent 88%),
+    linear-gradient(180deg, rgba(4, 7, 20, 0.35) 0%, transparent 24%, rgba(4, 7, 20, 0.42) 68%, var(--dplus-void) 100%);
+}
+
+.dplus-hero__copy {
+  position: relative;
+  z-index: 1;
+  max-width: 40rem;
+  padding: 8.6rem 0 8.2rem 3.2rem;
+}
+
+.dplus-hero__badge {
+  display: inline-block;
+  margin: 0 0 0.55rem;
+  color: #c9d8ff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dplus-hero__title {
+  margin: 0 0 0.55rem;
+  font-size: clamp(2.35rem, 5.1vw, 4.4rem);
+  font-weight: 780;
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+}
+
+.dplus-hero__meta,
+.dplus-hero__syn {
+  margin: 0 0 0.72rem;
+  max-width: 34rem;
+  color: rgba(245, 248, 255, 0.74);
+}
+
+.dplus-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.42rem 0.68rem;
+  font-size: 0.9rem;
+  font-weight: 620;
+}
+
+.dplus-hero__cert {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.22rem;
+  padding: 0 0.32rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0.12rem;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.05em;
+}
+
+.dplus-hero__syn {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  line-height: 1.45;
+}
+
+.dplus-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.dplus-hub .tvm-button.dplus-play {
+  min-height: 2.8rem;
+  padding: 0.46rem 1.35rem;
+  border: none;
+  border-radius: 0.42rem;
+  background: #fff;
+  color: var(--dplus-ink);
+  font-weight: 780;
+}
+
+.dplus-hub .tvm-button.dplus-play .tvm-button__label {
+  gap: 0.4rem;
+}
+
+.dplus-play__icon {
+  width: 1.08rem;
+  height: 1.08rem;
+}
+
+.dplus-hub .tvm-button.dplus-more {
+  min-height: 2.8rem;
+  padding: 0.46rem 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.42rem;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 720;
+}
+
+.dplus-hub .tvm-button.dplus-play,
+.dplus-hub .tvm-button.dplus-more {
+  transition:
+    transform var(--dplus-motion),
+    box-shadow var(--dplus-motion);
+}
+
+.dplus-hub .tvm-button.dplus-play:focus,
+.dplus-hub .tvm-button.dplus-play[data-focused='true'],
+.dplus-hub .tvm-button.dplus-more:focus,
+.dplus-hub .tvm-button.dplus-more[data-focused='true'] {
+  outline: 0.16rem solid #fff;
+  outline-offset: 0.2rem;
+  transform: scale(1.045);
+  box-shadow: 0 0.55rem 1.4rem rgba(0, 0, 0, 0.4);
+}
+
+.dplus-brands {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  contain: layout;
+  gap: 0.95rem;
+  padding: 0.35rem 3.2rem 1.55rem;
+  overflow-x: auto;
+  overflow-anchor: none;
+  scrollbar-width: none;
+  scroll-margin-top: var(--dplus-nav-h);
+  scroll-padding-inline: 3.2rem;
+}
+
+.dplus-brands::-webkit-scrollbar {
+  display: none;
+}
+
+.dplus-hub .tvm-button.dplus-brand {
+  position: relative;
+  flex: 0 0 13.6rem;
+  width: 13.6rem;
+  min-height: 7.55rem;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 0.42rem;
+  color: #fff;
+  transform: translateZ(0);
+  contain: layout;
+  transition:
+    transform var(--dplus-motion),
+    box-shadow var(--dplus-motion);
+}
+
+.dplus-hub .tvm-button.dplus-brand .tvm-button__label {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.dplus-brand__art {
+  display: block;
+  width: 100%;
+  height: 7.55rem;
+}
+
+.dplus-brand__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.dplus-hub .tvm-button.dplus-brand:focus,
+.dplus-hub .tvm-button.dplus-brand[data-focused='true'],
+.dplus-hub .tvm-button.dplus-brand--on {
+  outline: 0.17rem solid #fff;
+  outline-offset: 0.2rem;
+  transform: translateZ(0) scale(1.055);
+  box-shadow: 0 0.7rem 1.6rem rgba(0, 0, 0, 0.45);
+}
+
+.dplus-rails {
+  position: relative;
+  z-index: 2;
+  contain: layout;
+  padding: 0.35rem 0 1.6rem;
+}
+
+.dplus-rails--list {
+  padding-top: 0.7rem;
+}
+
+.dplus-hub .rail {
+  padding-inline: 0;
+  gap: 0.22rem;
+  margin: 0;
+  overflow-anchor: none;
+  scroll-margin-top: var(--dplus-nav-h);
+  scroll-margin-bottom: 3.2rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 18.6rem;
+}
+
+.dplus-hub .rail:focus-within {
+  content-visibility: visible;
+}
+
+.dplus-hub .rail__header {
+  padding-inline: 3.2rem;
+}
+
+.dplus-hub .rail__title {
+  padding-inline: 0;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 1.08rem;
+  font-weight: 720;
+}
+
+.dplus-hub .rail__track {
+  contain: layout;
+  gap: 0.72rem;
+  padding: 0.85rem 3.2rem var(--dplus-row-gap);
+  overflow-anchor: none;
+}
+
+.dplus-hub .tvm-button.dplus-card {
+  --poster-w: 9.05rem;
+  flex: 0 0 var(--poster-w);
+  width: var(--poster-w);
+  min-width: var(--poster-w);
+  min-height: 0;
+  padding: 0;
+  border: none;
+  color: inherit;
+  text-align: left;
+  transform: none;
+  contain: layout style;
+}
+
+.dplus-hub .tvm-button.dplus-card[data-loop-clone='true'] {
+  pointer-events: none;
+}
+
+.dplus-hub .tvm-button.dplus-card .tvm-button__label {
+  display: block;
+  width: 100%;
+}
+
+.dplus-card__frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 0.4rem;
+  transform: translateZ(0);
+  transition:
+    transform var(--dplus-motion),
+    box-shadow var(--dplus-motion);
+}
+
+.dplus-card__art {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(160deg, hsl(var(--poster-hue, 220) 48% 30%), #07122b);
+}
+
+.dplus-card__art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 14%;
+}
+
+.dplus-card__progress {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.4rem;
+  left: 0.4rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.dplus-card__bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7aa7ff;
+}
+
+.dplus-card__name {
+  display: block;
+  margin-top: 0.38rem;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dplus-hub .tvm-button.dplus-card:focus,
+.dplus-hub .tvm-button.dplus-card[data-focused='true'] {
+  background: transparent;
+  outline: none;
+  transform: none;
+  box-shadow: none;
+}
+
+.dplus-hub .tvm-button.dplus-card:focus .dplus-card__frame,
+.dplus-hub .tvm-button.dplus-card[data-focused='true'] .dplus-card__frame {
+  outline: 0.16rem solid #fff;
+  outline-offset: 0.2rem;
+  transform: translateZ(0) scale(1.07);
+  box-shadow:
+    0 0 0 0.28rem rgba(90, 140, 255, 0.28),
+    0 0.75rem 1.5rem rgba(0, 0, 0, 0.45);
+  will-change: transform;
+}
+
+.dplus-hub .tvm-button.dplus-card:focus .dplus-card__name,
+.dplus-hub .tvm-button.dplus-card[data-focused='true'] .dplus-card__name {
+  color: #fff;
+}
+
+.dplus-note {
+  margin: 0.2rem 3.2rem 0;
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 0.72rem;
+}

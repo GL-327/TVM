@@ -1,0 +1,374 @@
+.appletv-hub {
+  --appletv-bg: #000;
+  --appletv-muted: rgba(255, 255, 255, 0.55);
+  --appletv-glass: rgba(255, 255, 255, 0.16);
+  --appletv-motion: 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  --appletv-edge: 3.1rem;
+  --appletv-row-gap: 3.6rem;
+  box-sizing: border-box;
+  min-height: 100%;
+  padding-bottom: 3.2rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  background: var(--appletv-bg);
+  color: #fff;
+  font-family: -apple-system, 'Segoe UI Variable Display', 'Helvetica Neue', sans-serif;
+  scroll-padding: 3.6rem var(--appletv-edge) 2.4rem;
+}
+
+.service.service--appletv:has(.appletv-hub),
+.service.service--appletv.appletv-hub {
+  background: #000;
+}
+
+.service.service--appletv:has(.appletv-hub) > .service-nav:not(.appletv-hub__nav),
+.service.service--appletv.appletv-hub > .service-nav:not(.appletv-hub__nav) {
+  display: none;
+}
+
+.appletv-hub.service.service--appletv .appletv-hub__nav.service-nav {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 3.35rem;
+  padding: 0.28rem var(--appletv-edge) 0.12rem;
+  isolation: isolate;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.38) 68%, transparent);
+}
+
+.appletv-hub__brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.14rem;
+  min-width: 4.4rem;
+  color: #fff;
+}
+
+.appletv-hub__fruit {
+  width: 1.08rem;
+  height: 1.32rem;
+  align-self: center;
+}
+
+.appletv-hub__tv {
+  font-size: 1.48rem;
+  font-weight: 510;
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.appletv-hub__plus {
+  font-size: 1.08rem;
+  font-weight: 510;
+  letter-spacing: -0.08em;
+  line-height: 1;
+}
+
+.appletv-hub__tabs {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.08rem;
+}
+
+.appletv-hub .tvm-button.appletv-hub__back,
+.appletv-hub .tvm-button.appletv-hub__tab,
+.appletv-hub .tvm-button.appletv-hub__search {
+  min-height: 2.15rem;
+  padding: 0.18rem 0.78rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--appletv-muted);
+  font-size: 1.04rem;
+  font-weight: 520;
+  letter-spacing: -0.012em;
+  transform: none;
+}
+
+.appletv-hub .tvm-button.appletv-hub__tab--on {
+  color: #fff;
+}
+
+.appletv-hub .tvm-button.appletv-hub__back[data-focused='true'],
+.appletv-hub .tvm-button.appletv-hub__tab[data-focused='true'],
+.appletv-hub .tvm-button.appletv-hub__search[data-focused='true'] {
+  background: transparent;
+  color: #fff;
+  outline: none;
+  box-shadow: inset 0 -0.14rem 0 #fff;
+  transform: none;
+}
+
+.appletv-hub .tvm-button.appletv-hub__search {
+  margin-left: auto;
+  gap: 0.38rem;
+  font-size: 0.94rem;
+}
+
+.appletv-hub__glyph,
+.appletv-hub__play-icon,
+.appletv-hub__info-icon {
+  width: 1.08rem;
+  height: 1.08rem;
+}
+
+.appletv-hub__hero {
+  position: relative;
+  min-height: 100vh;
+  margin-top: -3.35rem;
+}
+
+.appletv-hub__hero .stage__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: translateZ(0);
+}
+
+.appletv-hub__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.78) 8%, rgba(0, 0, 0, 0.28) 42%, transparent 72%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.36) 0%, transparent 24%, rgba(0, 0, 0, 0.5) 68%, #000 100%);
+}
+
+.appletv-hub__copy {
+  position: relative;
+  z-index: 1;
+  max-width: 40rem;
+  padding: 12.2rem 0 16rem var(--appletv-edge);
+  animation: appletv-copy-in 240ms var(--appletv-motion) both;
+}
+
+@keyframes appletv-copy-in {
+  from {
+    opacity: 0.4;
+    transform: translate3d(0, 0.4rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.appletv-hub__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  margin: 0 0 0.62rem;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.78rem;
+  font-weight: 620;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.appletv-hub__kicker .appletv-hub__brand {
+  min-width: 0;
+  text-transform: none;
+}
+
+.appletv-hub__kicker .appletv-hub__fruit {
+  width: 0.76rem;
+  height: 0.92rem;
+}
+
+.appletv-hub__kicker .appletv-hub__tv {
+  font-size: 0.96rem;
+}
+
+.appletv-hub__kicker .appletv-hub__plus {
+  font-size: 0.76rem;
+}
+
+.appletv-hub__title {
+  margin: 0 0 0.72rem;
+  font-family: Palatino, 'Palatino Linotype', 'Iowan Old Style', Georgia, serif;
+  font-size: clamp(2.7rem, 6.2vw, 5rem);
+  font-weight: 600;
+  letter-spacing: -0.038em;
+  line-height: 0.94;
+}
+
+.appletv-hub__meta,
+.appletv-hub__syn {
+  margin: 0 0 0.78rem;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.appletv-hub__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.38rem 0.58rem;
+  font-size: 0.9rem;
+  font-weight: 520;
+}
+
+.appletv-hub__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.16rem;
+  padding: 0 0.34rem;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 0.22rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.appletv-hub__chip--wide {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.appletv-hub__syn {
+  display: -webkit-box;
+  max-width: 32rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 1.02rem;
+  line-height: 1.4;
+}
+
+.appletv-hub__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+}
+
+.appletv-hub .tvm-button.appletv-hub__play,
+.appletv-hub .tvm-button.appletv-hub__more {
+  min-height: 2.75rem;
+  padding: 0.4rem 1.28rem;
+  border-radius: 999px;
+  justify-content: center;
+  transform: none;
+  transition: transform var(--appletv-motion), box-shadow var(--appletv-motion);
+}
+
+.appletv-hub .tvm-button.appletv-hub__play .tvm-button__label,
+.appletv-hub .tvm-button.appletv-hub__more .tvm-button__label {
+  gap: 0.42rem;
+}
+
+.appletv-hub .tvm-button.appletv-hub__play {
+  min-width: 7.6rem;
+  background: #fff;
+  color: #111;
+  font-weight: 650;
+}
+
+.appletv-hub .tvm-button.appletv-hub__more {
+  background: var(--appletv-glass);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.appletv-hub .tvm-button.appletv-hub__play[data-focused='true'],
+.appletv-hub .tvm-button.appletv-hub__more[data-focused='true'] {
+  outline: 0.14rem solid #fff;
+  outline-offset: 0.22rem;
+  box-shadow: 0 0.65rem 1.5rem rgba(0, 0, 0, 0.4);
+  transform: scale(1.04);
+}
+
+.appletv-hub__rails {
+  position: relative;
+  z-index: 2;
+  margin-top: -8.6rem;
+  padding: 0 0 1.2rem;
+}
+
+.appletv-hub .rail {
+  margin: 0 0 0.35rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20.8rem;
+  overflow-anchor: none;
+}
+
+.appletv-hub .rail:focus-within {
+  content-visibility: visible;
+}
+
+.appletv-hub .rail__header {
+  padding: 0 var(--appletv-edge);
+}
+
+.appletv-hub .rail__title {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1.18rem;
+  font-weight: 620;
+  letter-spacing: -0.018em;
+}
+
+.appletv-hub .rail:focus-within .rail__title {
+  color: #fff;
+}
+
+.appletv-hub .rail__track {
+  gap: 0.92rem;
+  padding: 1rem var(--appletv-edge) var(--appletv-row-gap);
+  overflow-anchor: none;
+}
+
+.appletv-hub .rail:focus-within .poster:not([data-focused='true']) .poster__art,
+.appletv-hub .rail:focus-within .appletv-card:not([data-focused='true']) .appletv-card__art {
+  opacity: 0.78;
+}
+
+.appletv-hub .poster--landscape,
+.appletv-hub .appletv-card {
+  --poster-w: 18.8rem;
+}
+
+.appletv-hub .appletv-card[data-loop-clone='true'] {
+  pointer-events: none;
+}
+
+.appletv-hub .poster__art,
+.appletv-hub .appletv-card__art {
+  border: none;
+  border-radius: 0.92rem;
+  box-shadow: 0 0.55rem 1.3rem rgba(0, 0, 0, 0.34);
+  transform: translateZ(0) scale(1);
+  transition: transform var(--appletv-motion), opacity 140ms ease, box-shadow var(--appletv-motion);
+}
+
+.appletv-hub .poster[data-focused='true'] .poster__art,
+.appletv-hub .appletv-card[data-focused='true'] .appletv-card__art {
+  outline: 0.15rem solid #fff;
+  outline-offset: 0.3rem;
+  transform: translateZ(0) scale(1.07);
+  box-shadow: 0 1rem 1.8rem rgba(0, 0, 0, 0.46);
+}
+
+.appletv-hub .poster__progress-bar {
+  background: #fff;
+}
+
+.appletv-hub__empty,
+.appletv-hub__note {
+  margin: 0.8rem var(--appletv-edge) 0;
+  color: var(--appletv-muted);
+}
+
+.appletv-hub__note {
+  font-size: 0.76rem;
+}
+
+.appletv-hub__skeleton {
+  min-height: 70vh;
+}

@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 declare const __TVM_UI_VERSION__: string;
+declare const __TVM_CORE_ORIGIN__: string;
 
 type TvmNativePlayerCommand = 'togglePause' | 'pause' | 'play' | 'seekBack' | 'seekForward' | 'stop';
 
@@ -17,6 +18,7 @@ interface Window {
   tvmNativePlayer?: {
     start(input: { url: string; title: string; startAt?: number }): Promise<{ ok: true }>;
     command(command: TvmNativePlayerCommand): Promise<void>;
+    seekTo(seconds: number): Promise<void>;
     stop(): Promise<void>;
     onEvent(listener: (event: TvmNativePlayerEvent) => void): () => void;
   };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detailsParams, titleFromDetailsParams } from './openDetails';
+import { detailsParams, openPlayback, titleFromDetailsParams } from './openDetails';
 import type { Title } from './catalog';
 
 const mentalist: Title = {
@@ -22,5 +22,25 @@ describe('details params', () => {
     expect(title?.kind).toBe('series');
     expect(title?.title).toBe('The Mentalist');
     expect(title?.id).toBe('tt1196946');
+  });
+
+  it('sends films to the player and series to details', () => {
+    const pushed: Array<{ name: string; modal?: boolean; id?: string }> = [];
+    const navigate = {
+      push: (name: string, options?: { params?: Record<string, unknown> }) => {
+        pushed.push({ name, id: typeof options?.params?.['id'] === 'string' ? options.params['id'] : undefined });
+      },
+      pushModal: (name: string, options?: { params?: Record<string, unknown> }) => {
+        pushed.push({
+          name,
+          modal: true,
+          id: typeof options?.params?.['id'] === 'string' ? options.params['id'] : undefined,
+        });
+      },
+    };
+    openPlayback(navigate as never, mentalist);
+    expect(pushed).toEqual([{ name: 'details', id: 'tt1196946' }]);
+    openPlayback(navigate as never, { ...mentalist, id: 'tt0816692', title: 'Dune', kind: 'movie' });
+    expect(pushed[1]).toEqual({ name: 'player', modal: true, id: 'tt0816692' });
   });
 });

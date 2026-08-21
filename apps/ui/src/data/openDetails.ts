@@ -1,5 +1,6 @@
 import type { Title } from './catalog';
 import type { Navigate } from '../nav/ViewStackContext';
+import { playIdFor } from './playId';
 
 export function detailsParams(title: Title): Record<string, unknown> {
   return {
@@ -20,6 +21,19 @@ export function detailsParams(title: Title): Record<string, unknown> {
 
 export function openDetails(navigate: Navigate, title: Title): void {
   navigate.push('details', { params: detailsParams(title) });
+}
+
+export function openPlayback(navigate: Navigate, title: Title): void {
+  if (title.kind === 'series') {
+    openDetails(navigate, title);
+    return;
+  }
+  navigate.pushModal('player', {
+    params: {
+      id: playIdFor(title.id),
+      title: title.title,
+    },
+  });
 }
 
 export function titleFromDetailsParams(

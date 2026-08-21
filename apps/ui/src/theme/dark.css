@@ -1,0 +1,107 @@
+/*
+ * Dark — black and navy. Cinema night, not dingy gray.
+ */
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  --tvm-bg: #071018;
+  --tvm-bg-deep: #000000;
+  --tvm-bg-elevated: #0c1a2c;
+  --tvm-surface: #102238;
+  --tvm-surface-hover: #163048;
+  --tvm-surface-glass: rgba(8, 18, 32, 0.84);
+  --tvm-border: #2a5080;
+  --tvm-border-soft: rgba(140, 180, 220, 0.16);
+
+  --tvm-text: #e8f0f8;
+  --tvm-text-muted: #9bb0c8;
+  --tvm-text-faint: #6a8298;
+
+  --tvm-accent: #6ec8ff;
+  --tvm-accent-strong: #9edcff;
+  --tvm-accent-blue: #4aa0e0;
+  --tvm-accent-ink: #000000;
+  --tvm-mark: #4aa0e0;
+  --tvm-mark-glow: rgba(74, 160, 224, 0.45);
+
+  --tvm-danger: #ff6b7d;
+  --tvm-success: #59d69a;
+  --tvm-warning: #ffbf69;
+  --tvm-info: #6ec8ff;
+
+  --tvm-focus-ring-color: #9edcff;
+  --tvm-shadow-card: 0 0.8rem 2rem rgba(0, 0, 0, 0.62);
+  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(74, 160, 224, 0.28);
+
+  --tvm-scene-sky: #14284c;
+  --tvm-scene-sky-mid: #0c1c38;
+  --tvm-scene-horizon: #1a4a72;
+  --tvm-scene-sea: #07101c;
+  --tvm-scene-sea-deep: #000000;
+  --tvm-scene-land: #0e2848;
+  --tvm-scene-land-far: #0a2038;
+  --tvm-scene-foam: #a8d4f0;
+  --tvm-scene-sun: #d8eefe;
+  --tvm-scene-opacity: 0.52;
+  --tvm-scene-grain: 0.055;
+}
+
+[data-theme='dark'] body,
+[data-theme='dark'] .app {
+  background: var(--tvm-bg-deep);
+  color: var(--tvm-text);
+}
+
+[data-theme='dark'] .page,
+[data-theme='dark'] .home,
+[data-theme='dark'] .home__shelf,
+[data-theme='dark'] .stream-page {
+  background: var(--tvm-bg);
+}
+
+[data-theme='dark'] .stage__art--fallback {
+  background:
+    radial-gradient(70% 80% at 70% 20%, hsl(210 55% 38% / 0.55), transparent 62%),
+    linear-gradient(160deg, #102238, #000 70%);
+}
+
+[data-theme='dark'] .stage__vignette {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg) 88%, transparent) 0%, color-mix(in srgb, var(--tvm-bg) 28%, transparent) 32%, transparent 58%),
+    linear-gradient(180deg, rgba(74, 160, 224, 0.08) 0%, transparent 32%, color-mix(in srgb, var(--tvm-bg) 48%, transparent) 68%, var(--tvm-bg) 92%, var(--tvm-bg) 100%);
+}
+
+[data-theme='dark'] .ribbon,
+[data-theme='dark'] .search-pill__panel {
+  background: color-mix(in srgb, #102238 78%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='dark'] .ribbon__glyph,
+[data-theme='dark'] .ribbon__avatar-svg {
+  background: #102238;
+  color: #e8f0f8;
+}
+
+[data-theme='dark'] .details__vignette {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg) 86%, transparent) 0%, color-mix(in srgb, var(--tvm-bg) 28%, transparent) 34%, transparent 68%),
+    linear-gradient(180deg, transparent 0%, transparent 38%, color-mix(in srgb, var(--tvm-bg) 52%, transparent) 68%, var(--tvm-bg) 94%, var(--tvm-bg) 100%);
+}
+
+[data-theme='dark'] .player {
+  background: #000;
+}
+
+[data-theme='dark'] .loading-state--plate {
+  background:
+    radial-gradient(48% 42% at 50% 46%, rgba(74, 160, 224, 0.22), transparent 62%),
+    #000;
+}
+
+[data-theme='dark'] .poster__art,
+[data-theme='dark'] .poster[data-focused='true'] .poster__art {
+  filter: none;
+}

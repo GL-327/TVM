@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="LivePicksScreen" extends="Group">
+  <interface>
+    <field id="page" type="assocarray" onChange="onPage" />
+    <field id="mode" type="string" value="loading" onChange="onMode" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="LivePicksScreen.brs" />
+  <children>
+    <Label id="kicker" translation="[160, 120]" color="0x8A8A8AFF" text="Live TV lineup" />
+    <Label id="heading" translation="[160, 192]" color="0xF5F5F5FF" text="Choose channels" />
+    <Label id="lede" translation="[160, 292]" width="3200" color="0xC4C4C4FF" text="" />
+    <Group id="chips" translation="[160, 400]" />
+    <Group id="list" translation="[160, 560]" />
+    <Label id="loading" translation="[160, 560]" color="0xC4C4C4FF" text="Loading..." />
+    <FocusButton id="search" translation="[160, 1920]" />
+    <FocusButton id="addGroup" translation="[700, 1920]" />
+    <FocusButton id="done" translation="[1240, 1920]" />
+    <FocusButton id="prevPage" translation="[1780, 1920]" />
+    <FocusButton id="nextPage" translation="[2320, 1920]" />
+  </children>
+</component>

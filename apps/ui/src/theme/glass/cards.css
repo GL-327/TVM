@@ -1,0 +1,263 @@
+/*
+ * Glass theme — posters, rails, tiles, focus rings.
+ * Artwork stays sharp. Frost stays on chrome, not on tiles. Focus keeps
+ * scale(1.04) and the shell motion tokens.
+ */
+
+[data-theme='glass'] .rail__title,
+[data-theme='glass'] .poster__title,
+[data-theme='glass'] .art__title,
+[data-theme='glass'] .app-tile strong,
+[data-theme='glass'] .channel-card__name,
+[data-theme='glass'] .profile-tile__name {
+  color: var(--tvm-glass-text);
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  text-shadow: var(--tvm-glass-halo);
+}
+
+/* Rails ------------------------------------------------------------------- */
+
+[data-theme='glass'] .rail__title {
+  font-size: var(--tvm-font-size-body-lg);
+  line-height: var(--tvm-line-height-tight);
+}
+
+[data-theme='glass'] .rail:not(.rail--bare) {
+  margin-block-end: 0.85rem;
+}
+
+[data-theme='glass'] .rail__track {
+  scroll-padding-inline: 0.9rem;
+}
+
+/* Posters -----------------------------------------------------------------
+ * Live blur on every tile re-snapshots the 100vh scene on scroll. Frames stay
+ * paint-only. No frost on meta. Clones never blur. Bitmaps stay unfiltered.
+ */
+
+[data-theme='glass'] .poster,
+[data-theme='glass'] .channel-card {
+  isolation: auto;
+  background-color: transparent;
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .poster:not([data-loop-clone]) .poster__meta,
+[data-theme='glass'] .channel-card:not([data-loop-clone]) .channel-card__name {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: 0.65rem;
+  padding: 0.22rem 0.45rem 0.28rem;
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .poster:not([data-loop-clone])[data-focused='true'] .poster__meta,
+[data-theme='glass'] .channel-card:not([data-loop-clone])[data-focused='true'] .channel-card__name {
+  background-color: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .poster[data-loop-clone] .poster__meta,
+[data-theme='glass'] .channel-card[data-loop-clone] .channel-card__name {
+  background-color: var(--tvm-glass-fill);
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .poster__art {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  box-shadow: none;
+  filter: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .poster__art.art--pending,
+[data-theme='glass'] .poster__art.art--clone {
+  filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+[data-theme='glass'] .art__kicker {
+  color: var(--tvm-glass-accent-warm);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .art__title {
+  font-size: var(--tvm-font-size-body);
+  line-height: 1.18;
+}
+
+[data-theme='glass'] .poster__title {
+  font-size: var(--tvm-font-size-body);
+  line-height: 1.2;
+}
+
+[data-theme='glass'] .poster__year {
+  color: var(--tvm-glass-text-muted);
+  font-size: var(--tvm-font-size-caption);
+  font-weight: 600;
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .poster--landscape .poster__meta {
+  background-color: var(--tvm-glass-fill-text);
+  background-image: none;
+}
+
+[data-theme='glass'] .poster--landscape[data-focused='true'] .poster__meta {
+  opacity: 1;
+}
+
+[data-theme='glass'] .poster--landscape .poster__title {
+  font-size: var(--tvm-font-size-body);
+}
+
+[data-theme='glass'] .poster__network,
+[data-theme='glass'] .poster__episode {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+  color: var(--tvm-glass-text);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .poster__progress {
+  background: color-mix(in srgb, var(--tvm-glass-paper) 28%, transparent);
+}
+
+[data-theme='glass'] .details__poster {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-deep);
+}
+
+/* Tiles ------------------------------------------------------------------- */
+
+[data-theme='glass'] .app-tile {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  color: var(--tvm-glass-text);
+  transition:
+    transform var(--tvm-motion-fast) var(--tvm-motion-ease),
+    box-shadow var(--tvm-motion-fast) var(--tvm-motion-ease),
+    background var(--tvm-motion-fast) var(--tvm-motion-ease);
+}
+
+[data-theme='glass'] .channel-card {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tvm-glass-text);
+  transition:
+    transform var(--tvm-motion-fast) var(--tvm-motion-ease),
+    box-shadow var(--tvm-motion-fast) var(--tvm-motion-ease);
+}
+
+[data-theme='glass'] .app-tile strong {
+  font-size: var(--tvm-font-size-body);
+}
+
+[data-theme='glass'] .app-tile span:last-of-type:not(.app-tile__mark) {
+  color: var(--tvm-glass-text-muted);
+}
+
+[data-theme='glass'] .channel-card__name {
+  font-size: var(--tvm-font-size-body);
+}
+
+[data-theme='glass'] .channel-card__group {
+  color: var(--tvm-glass-text-muted);
+}
+
+[data-theme='glass'] .channel-card__art {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  box-shadow: none;
+  filter: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='glass'] .channel-card__mark {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .profile-tile__name {
+  font-size: var(--tvm-font-size-body);
+  color: var(--tvm-glass-text-muted);
+}
+
+/* Focus rings — keep poster/tile scale + motion --------------------------- */
+
+[data-theme='glass'] .poster:focus {
+  outline: none;
+}
+
+[data-theme='glass'] .poster[data-focused='true'] {
+  z-index: 2;
+}
+
+[data-theme='glass'] .poster[data-focused='true'] .poster__art {
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: var(--tvm-focus-ring-offset);
+  transform: scale(1.04);
+  filter: none;
+  box-shadow: var(--tvm-glass-shadow-focus);
+  transition:
+    transform var(--tvm-motion-fast) var(--tvm-motion-ease),
+    box-shadow var(--tvm-motion-fast) var(--tvm-motion-ease);
+}
+
+[data-theme='glass'] .app-tile:focus,
+[data-theme='glass'] .app-tile[data-focused='true'] {
+  z-index: 2;
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: var(--tvm-focus-ring-offset);
+  background: var(--tvm-glass-fill-bright-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+  transform: scale(1.04);
+}
+
+[data-theme='glass'] .channel-card:focus,
+[data-theme='glass'] .channel-card[data-focused='true'] {
+  z-index: 2;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+[data-theme='glass'] .channel-card[data-focused='true'] .channel-card__art {
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: var(--tvm-focus-ring-offset);
+  box-shadow: var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .channel-card[data-focused='true'] {
+  overflow: visible;
+}
+
+[data-theme='glass'] .profile-tile__pick:focus,
+[data-theme='glass'] .profile-tile__pick[data-focused='true'] {
+  outline: none;
+  transform: none;
+  box-shadow: none;
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--tvm-glass-fill-bright) 70%, transparent);
+}
+
+[data-theme='glass'] .profile-tile__pick[data-focused='true'] .profile-orb {
+  box-shadow: none;
+}
+
+[data-theme='glass'] .profile-tile__pick[data-focused='true'] .profile-tile__name {
+  color: var(--tvm-glass-paper);
+}

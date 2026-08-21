@@ -15,6 +15,7 @@
     "@tvm/design": "workspace:*",
     "@tvm/nav": "workspace:*",
     "hls.js": "^1.7.0",
+    "mpegts.js": "^1.8.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

@@ -1,0 +1,144 @@
+/*
+ * Apps grid + app cards under liquid glass.
+ * Brand fills, marks, and icons stay true — chrome is rim / lift only.
+ * No per-tile backdrop-filter, color-mix, or always-on sheen layers.
+ */
+
+[data-theme='glass'] [data-screen='apps'] .page {
+  background: var(--tvm-bg);
+}
+
+[data-theme='glass'] [data-screen='apps'] .page__toolbar,
+[data-theme='glass'] .page--docked .page__toolbar {
+  align-items: flex-end;
+}
+
+[data-theme='glass'] [data-screen='apps'] .stage__kicker,
+[data-theme='glass'] .page--docked .stage__kicker {
+  color: var(--tvm-glass-accent-warm);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] [data-screen='apps'] .page__heading,
+[data-theme='glass'] .page--docked .page__heading {
+  color: var(--tvm-glass-text);
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] [data-screen='apps'] .page__lede,
+[data-theme='glass'] .page--docked .page__lede {
+  color: var(--tvm-glass-text-muted);
+}
+
+[data-theme='glass'] .app-grid {
+  gap: 1.05rem;
+}
+
+[data-theme='glass'] .app-grid.hero__actions {
+  display: grid;
+}
+
+[data-theme='glass'] .app-grid .app-card,
+[data-theme='glass'] .app-grid .app-card__art {
+  width: 100%;
+  max-width: 100%;
+}
+
+[data-theme='glass'] .app-card {
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme='glass'] .app-card__art {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+  transition: transform var(--tvm-motion-base) var(--tvm-motion-ease);
+}
+
+[data-theme='glass'] .app-card--grid .app-card__art {
+  border-radius: var(--tvm-glass-radius);
+}
+
+[data-theme='glass'] .app-card__icon,
+[data-theme='glass'] .app-card .brand-mark,
+[data-theme='glass'] .app-card .brand-mark svg,
+[data-theme='glass'] .app-card__wordmark {
+  position: relative;
+  z-index: 1;
+  filter: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+[data-theme='glass'] .app-card__wordmark {
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .app-card__name {
+  position: relative;
+  z-index: 3;
+  padding: 0.1rem 0.48rem;
+  border-radius: 999px;
+  background: var(--tvm-glass-fill-text);
+  color: var(--tvm-glass-text);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 1;
+  text-shadow: var(--tvm-glass-halo);
+}
+
+[data-theme='glass'] .app-card__lock {
+  z-index: 4;
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+  color: var(--tvm-glass-paper);
+}
+
+[data-theme='glass'] .app-card--locked .app-card__art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  background: var(--tvm-glass-scrim);
+  opacity: 0.38;
+}
+
+[data-theme='glass'] .app-grid .app-card:focus,
+[data-theme='glass'] .app-grid .app-card[data-focused='true'] {
+  z-index: 2;
+  transform: none;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+[data-theme='glass'] .app-card:focus .app-card__art,
+[data-theme='glass'] .app-card[data-focused='true'] .app-card__art {
+  transform: scale(var(--tvm-focus-scale, 1.1));
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow-focus);
+}
+
+[data-theme='glass'] .app-grid .app-tile {
+  border: var(--tvm-glass-hairline-width) solid var(--tvm-glass-hairline);
+  border-radius: var(--tvm-glass-radius);
+  background: var(--tvm-glass-fill-text);
+  color: var(--tvm-glass-text);
+  box-shadow: var(--tvm-glass-edge), var(--tvm-glass-shadow);
+}
+
+[data-theme='glass'] .app-grid .app-tile__logo {
+  filter: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+[data-theme='glass'] .app-tile--unavailable {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .app-tile--unavailable span:last-child {
+  color: var(--tvm-glass-text-muted);
+}

@@ -62,6 +62,10 @@ Useful environment variables:
 
 On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the **desktop interface** in a 1920×1080 TV frame at `http://127.0.0.1:5173/?tv=1`. That is the same React app as `TVM.cmd`, not a separate channel mock. A Roku cannot run that UI; sideload `apps/roku/tvm-roku.zip` only to exercise SceneGraph on hardware.
 
+## Android (later)
+
+There is no Android tree in this repository. A later pass can wrap the same waiter (`apps/ui`) in a WebView or Capacitor shell that talks to Core on the LAN, the same way the Roku client does: set `TVM_CORE_BIND=0.0.0.0` on a trusted network (Core has no API auth). Widevine L1 / Android TV certification is out of scope for that follow-up.
+
 ## Laptop / Desktop copies
 
 The living-room launcher (`TVM.cmd`) is a fullscreen kiosk. For a laptop, use the windowed copies:

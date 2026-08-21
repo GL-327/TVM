@@ -3,9 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMediaService } from './media.ts';
-import { createRealDebrid } from './realdebrid.ts';
-import { pickTranscode } from './realdebrid.ts';
-import { episodeLabel, hueFor, isDisplayTitle, isHttpUrl, isVideoFile, looksLikePack, parseEpisode, parseEpisodeTitle, parseFilename, parseSeason } from './title.ts';
+import { createRealDebrid, pickHtml5Transcode, pickTranscode } from './realdebrid.ts';
+import { episodeLabel, httpAssetUrl, hueFor, isDisplayTitle, isHttpUrl, isVideoFile, looksLikePack, parseEpisode, parseEpisodeTitle, parseFilename, parseSeason } from './title.ts';
 import { artworkQueries } from './artwork.ts';
 
 describe('filename parsing', () => {
@@ -30,6 +29,9 @@ describe('filename parsing', () => {
     expect(isHttpUrl('https://example.com/a.mp4')).toBe(true);
     expect(isHttpUrl('javascript:alert(1)')).toBe(false);
     expect(isHttpUrl('file:///etc/passwd')).toBe(false);
+    expect(httpAssetUrl('//cdn.example/logo.png')).toBe('https://cdn.example/logo.png');
+    expect(httpAssetUrl('https://cdn.example/logo.png')).toBe('https://cdn.example/logo.png');
+    expect(httpAssetUrl('javascript:alert(1)')).toBeUndefined();
   });
 
   it('hashes a stable hue', () => {
@@ -76,13 +78,41 @@ describe('filename parsing', () => {
 });
 
 describe('transcode picker', () => {
-  it('prefers a live MP4 over HLS', () => {
+  it('prefers progressive MP4 so Chromium owns the buffering', () => {
     expect(
       pickTranscode({
         apple: { full: 'https://cdn.example/a.m3u8' },
         liveMP4: { '1080': 'https://cdn.example/a.mp4' },
       }),
     ).toEqual({ url: 'https://cdn.example/a.mp4', mimeType: 'video/mp4' });
+  });
+
+  it('falls back to the apple playlist only when no progressive stream exists', () => {
+    expect(pickTranscode({ apple: { full: 'https://cdn.example/a.m3u8' } })).toEqual({
+      url: 'https://cdn.example/a.m3u8',
+      mimeType: 'application/vnd.apple.mpegurl',
+    });
+    expect(pickTranscode({ liveMP4: { '720': 'https://cdn.example/a.mp4' } })).toEqual({
+      url: 'https://cdn.example/a.mp4',
+      mimeType: 'video/mp4',
+    });
+  });
+
+  it('prefers HLS for the browser so Chromium is not handed a live MP4 transcode', () => {
+    expect(
+      pickHtml5Transcode({
+        apple: { full: 'https://cdn.example/a.m3u8' },
+        liveMP4: { '1080': 'https://cdn.example/a.mp4' },
+      }),
+    ).toEqual({ url: 'https://cdn.example/a.m3u8', mimeType: 'application/vnd.apple.mpegurl' });
+    expect(pickHtml5Transcode({ liveMP4: { '720': 'https://cdn.example/a.mp4' } })).toEqual({
+      url: 'https://cdn.example/a.mp4',
+      mimeType: 'video/mp4',
+    });
+    expect(pickHtml5Transcode({ liveMP4: { '1080': 'https://cdn.example/l/abc' } })).toEqual({
+      url: 'https://cdn.example/l/abc',
+      mimeType: 'video/mp2t',
+    });
   });
 });
 
@@ -193,6 +223,7 @@ describe('media service', () => {
       filename: 'Dune.Part.Two.2024.mp4',
       mimeType: 'video/mp4',
       engine: 'html5',
+      transport: 'file',
     });
   });
 
@@ -857,45 +888,108 @@ describe('media service', () => {
     expect(media.removeFromWatchlist('dune-part-two')).toEqual([]);
   });
 
-  it('plays an MKV through a Real-Debrid HTML5 transcode', async () => {
+  const rdWithFile = (dir: string, filename: string, download: string) =>
+    createRealDebrid({
+      dataDir: dir,
+      env: { TVM_RD_TOKEN: 'secret-token' },
+      fetch: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith('/unrestrict/link') && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({ id: 'u1', filename, mimeType: 'video/mp4', download, streamable: 1 }),
+            { status: 200 },
+          );
+        }
+        return new Response('no', { status: 404 });
+      },
+    });
+
+  const stubStreamer = (resolved: Parameters<typeof Object.assign>[0]) => {
+    const calls: Array<{ url: string; maxHeight: number; startAt?: number }> = [];
+    const streamer = {
+      ready: () => true,
+      resolveFile: async (url: string, opts: { maxHeight: number; startAt?: number }) => {
+        calls.push({ url, maxHeight: opts.maxHeight, ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}) });
+        return resolved as never;
+      },
+      sessions: {} as never,
+      direct: {} as never,
+    };
+    return { streamer, calls };
+  };
+
+  it('resolves an MKV to a local HLS session, never the raw hoster URL', async () => {
     const dir = await dataDir();
+    const { streamer, calls } = stubStreamer({
+      url: '/api/stream/hls/abc123/index.m3u8',
+      mimeType: 'application/vnd.apple.mpegurl',
+      transport: 'hls-session',
+      sessionId: 'abc123',
+      timeOffset: 0,
+      durationSeconds: 5400,
+    });
     const media = createMediaService({
       dataDir: dir,
-      rd: createRealDebrid({
-        dataDir: dir,
-        env: { TVM_RD_TOKEN: 'secret-token' },
-        fetch: async (input, init) => {
-          const url = String(input);
-          if (url.endsWith('/unrestrict/link') && init?.method === 'POST') {
-            return new Response(
-              JSON.stringify({
-                id: 'u2',
-                filename: 'The.Boys.S01E01.mkv',
-                mimeType: 'video/x-matroska',
-                download: 'https://cdn.example/raw.mkv',
-                streamable: 1,
-              }),
-              { status: 200 },
-            );
-          }
-          if (url.includes('/streaming/transcode/u2')) {
-            return new Response(JSON.stringify({ liveMP4: { '720': 'https://cdn.example/boys.mp4' } }), { status: 200 });
-          }
-          return new Response('no', { status: 404 });
-        },
-      }),
+      rd: rdWithFile(dir, 'The.Boys.S01E01.mkv', 'https://cdn.example/raw.mkv'),
+      streamer: streamer as never,
+      plan: () => ({ id: 'premium', maxHeight: 1080, profilesMax: 4 }),
     });
 
     const result = await media.play({ link: 'https://real-debrid.com/d/BOYS' });
+    expect(calls).toEqual([{ url: 'https://cdn.example/raw.mkv', maxHeight: 1080 }]);
     expect(result).toEqual({
       kind: 'stream',
-      url: 'https://cdn.example/boys.mp4',
+      url: '/api/stream/hls/abc123/index.m3u8',
       title: 'The Boys · S1 E1',
       filename: 'The.Boys.S01E01.mkv',
-      mimeType: 'video/mp4',
+      mimeType: 'application/vnd.apple.mpegurl',
       engine: 'html5',
-      fallbackUrl: 'https://cdn.example/raw.mkv',
-      fallbackEngine: 'native',
+      transport: 'hls-session',
+      sessionId: 'abc123',
+      timeOffset: 0,
+      durationSeconds: 5400,
     });
+  });
+
+  it('resolves a browser-safe MP4 to the same-origin direct proxy', async () => {
+    const dir = await dataDir();
+    const { streamer } = stubStreamer({
+      url: '/api/stream/direct/tok9',
+      mimeType: 'video/mp4',
+      transport: 'direct',
+      durationSeconds: 6100,
+    });
+    const media = createMediaService({
+      dataDir: dir,
+      rd: rdWithFile(dir, 'Dune.Part.Two.2024.mp4', 'https://cdn.example/dune.mp4'),
+      streamer: streamer as never,
+    });
+
+    const result = await media.play({ link: 'https://real-debrid.com/d/DUNE' });
+    expect(result.kind).toBe('stream');
+    if (result.kind === 'stream') {
+      expect(result.url).toBe('/api/stream/direct/tok9');
+      expect(result.transport).toBe('direct');
+      expect(result.url).not.toContain('/api/live/hop/');
+      expect(result.engine).toBe('html5');
+    }
+  });
+
+  it('reports unsupported when the streamer cannot handle the file', async () => {
+    const dir = await dataDir();
+    const streamer = {
+      ready: () => false,
+      resolveFile: async () => null,
+      sessions: {} as never,
+      direct: {} as never,
+    };
+    const media = createMediaService({
+      dataDir: dir,
+      rd: rdWithFile(dir, 'Weird.Codec.wtv', 'https://cdn.example/raw.wtv'),
+      streamer: streamer as never,
+    });
+
+    const result = await media.play({ link: 'https://real-debrid.com/d/WTV' });
+    expect(result).toEqual({ kind: 'unavailable', reason: 'unsupported' });
   });
 });
