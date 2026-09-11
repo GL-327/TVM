@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   armBitmap,
   bitmapOverscanX,
@@ -26,6 +26,59 @@ function mockImg(left: number, right: number, extra?: Record<string, unknown>) {
 }
 
 describe('railBitmaps', () => {
+  it('measures the camera once for a whole conveyor pass', () => {
+    const measure = vi.fn(() => ({ left: 0, right: 800 }));
+    const images = Array.from({ length: 60 }, (_, index) => mockImg(index * 150, index * 150 + 140));
+    wakeBitmaps({
+      querySelector: () => ({ clientWidth: 800, getBoundingClientRect: measure }),
+      querySelectorAll: () => images,
+    } as unknown as HTMLElement);
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(images[0]?.dataset.bitmapWoke).toBe('true');
+    expect(images[59]?.dataset.bitmapWoke).toBeUndefined();
+  });
+
+  it('reobserves after effect cleanup and releases removed images', () => {
+    const observers: Array<{ observe: ReturnType<typeof vi.fn>; unobserve: ReturnType<typeof vi.fn> }> = [];
+    let mutate = (): void => undefined;
+    class Observer {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+      constructor() { observers.push(this); }
+    }
+    vi.stubGlobal('IntersectionObserver', Observer);
+    vi.stubGlobal('MutationObserver', class {
+      constructor(callback: () => void) { mutate = callback; }
+      observe() {}
+      disconnect() {}
+    });
+    try {
+      const img = mockImg(0, 140);
+      let images = [img];
+      const root = {
+        querySelector: () => ({ clientWidth: 800, addEventListener() {}, removeEventListener() {} }),
+        querySelectorAll: () => images,
+        contains: (item: unknown) => images.includes(item as typeof img),
+        getBoundingClientRect: () => ({ top: 5000, bottom: 5200 }),
+        closest: () => ({ getBoundingClientRect: () => ({ top: 0, bottom: 720 }) }),
+        addEventListener() {},
+        removeEventListener() {},
+      } as unknown as HTMLElement;
+      const stop = watchRailBitmaps(root);
+      expect(observers[0]?.observe).toHaveBeenCalledWith(img);
+      stop();
+      const stopAgain = watchRailBitmaps(root);
+      expect(observers[2]?.observe).toHaveBeenCalledWith(img);
+      images = [];
+      mutate();
+      expect(observers[2]?.unobserve).toHaveBeenCalledWith(img);
+      stopAgain();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('wakes lazy images once without restarting a finished bitmap', () => {
     const img = {
       loading: 'lazy',

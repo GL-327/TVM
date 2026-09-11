@@ -1,6 +1,7 @@
-import '../screens/mpegtsSelf';
-import Hls, { type HlsConfig } from 'hls.js';
+import type Hls from 'hls.js';
+import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
+import { publishHls } from './hlsBridge';
 
 /**
  * The one in-app playback engine.
@@ -56,7 +57,7 @@ export function attachKindFor(stream: Pick<EngineStream, 'mimeType' | 'url' | 't
 
 /** Position shown to the user for an element playing a session that began at `offset`. */
 export function absolutePosition(elementTime: number, offset: number): number {
-  return Math.max(0, elementTime + offset);
+  return Math.max(0, (Number.isFinite(elementTime) ? elementTime : 0) + offset);
 }
 
 /** Seconds of the session window that are seekable without a server restart. */
@@ -66,7 +67,7 @@ export function withinSessionWindow(target: number, offset: number, seekableEnd:
 }
 
 export function displayDuration(streamDuration: number | undefined, elementDuration: number, offset: number): number {
-  if (streamDuration !== undefined && streamDuration > 0) return streamDuration;
+  if (streamDuration !== undefined && Number.isFinite(streamDuration) && streamDuration > 0) return streamDuration;
   if (Number.isFinite(elementDuration) && elementDuration > 0) return elementDuration + offset;
   return 0;
 }
@@ -123,10 +124,16 @@ export function createPlayerEngine(
   let hls: Hls | null = null;
   let ts: TsPlayer | null = null;
   let destroyed = false;
+  let attached = false;
+  let wantsPlayback = true;
+  let hlsGeneration = 0;
   let sawFrame = false;
   let recoveredMedia = false;
   let restartedNetwork = false;
   let seekRestartPending = false;
+  let pendingSeek: number | null = null;
+  let requestedSeek: number | null = null;
+  const requests = new AbortController();
   let keepAlive: ReturnType<typeof setInterval> | null = null;
   const listeners: Array<[keyof HTMLVideoElementEventMap, EventListener]> = [];
 
@@ -146,10 +153,10 @@ export function createPlayerEngine(
   };
 
   const tryPlay = (): void => {
-    if (destroyed || !video.paused) return;
+    if (destroyed || !wantsPlayback || !video.paused) return;
     void video.play().catch((reason: unknown) => {
       const name = reason !== null && typeof reason === 'object' && 'name' in reason ? String(reason.name) : '';
-      if (name === 'AbortError' || destroyed) return;
+      if (name === 'AbortError' || destroyed || !wantsPlayback) return;
       if (name === 'NotAllowedError' && !video.muted) {
         video.muted = true;
         void video.play().catch(() => undefined);
@@ -165,49 +172,67 @@ export function createPlayerEngine(
   };
 
   const destroyHls = (): void => {
+    if (hls !== null) publishHls(video, null);
     hls?.destroy();
     hls = null;
   };
 
   const attachHls = (startPosition: number): void => {
     destroyHls();
-    if (!Hls.isSupported()) {
-      // Safari and some TV browsers speak HLS natively.
-      video.src = stream.url;
-      video.load();
-      tryPlay();
-      return;
-    }
-    const instance = new Hls(hlsConfig(live, isSession ? 0 : startPosition));
-    hls = instance;
-    instance.on(Hls.Events.MANIFEST_PARSED, () => {
-      if (destroyed || hls !== instance) return;
-      tryPlay();
-    });
-    instance.on(Hls.Events.ERROR, (_event, data) => {
-      if (destroyed || hls !== instance || data.fatal !== true) return;
-      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recoveredMedia) {
-        recoveredMedia = true;
-        instance.recoverMediaError();
+    const generation = ++hlsGeneration;
+    recoveredMedia = false;
+    restartedNetwork = false;
+    void import('hls.js').then(({ default: Hls }) => {
+      if (destroyed || generation !== hlsGeneration) return;
+      if (!Hls.isSupported()) {
+        // Safari and some TV browsers speak HLS natively.
+        video.src = sessionUrl();
+        video.load();
+        tryPlay();
         return;
       }
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !restartedNetwork) {
-        restartedNetwork = true;
-        instance.startLoad();
-        return;
-      }
-      fail(GENERIC_START_ERROR);
+      const instance = new Hls(hlsConfig(live, isSession ? 0 : startPosition));
+      hls = instance;
+      instance.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (destroyed || hls !== instance) return;
+        const maxHeight = options.maxHeight;
+        if (maxHeight !== undefined) {
+          const allowed = instance.levels.map((level, index) => ({ level, index }))
+            .filter(({ level }) => level.height <= maxHeight);
+          instance.autoLevelCapping = allowed.at(-1)?.index ?? 0;
+        }
+        tryPlay();
+      });
+      instance.on(Hls.Events.ERROR, (_event, data) => {
+        if (destroyed || hls !== instance || data.fatal !== true) return;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recoveredMedia) {
+          recoveredMedia = true;
+          instance.recoverMediaError();
+          return;
+        }
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !restartedNetwork) {
+          restartedNetwork = true;
+          instance.startLoad();
+          return;
+        }
+        fail(GENERIC_START_ERROR);
+      });
+      instance.loadSource(sessionUrl());
+      instance.attachMedia(video);
+      publishHls(video, instance);
+    }).catch(() => {
+      if (generation === hlsGeneration) fail(GENERIC_START_ERROR);
     });
-    const bust = isSession ? `${stream.url}${stream.url.includes('?') ? '&' : '?'}g=${Date.now()}` : stream.url;
-    instance.loadSource(bust);
-    instance.attachMedia(video);
   };
 
+  const sessionUrl = (): string => isSession
+    ? `${stream.url}${stream.url.includes('?') ? '&' : '?'}g=${Date.now()}` : stream.url;
+
   const attachTs = (): void => {
-    void import('mpegts.js').then((mod) => {
+    void import('../screens/mpegtsSelf').then(() => import('mpegts.js')).then((mod) => {
       if (destroyed) return;
       const api = resolveMpegts(mod) ?? resolveMpegts((globalThis as { mpegts?: unknown }).mpegts);
-      if (api === null) {
+      if (api === null || api.isSupported?.() === false) {
         fail(GENERIC_START_ERROR);
         return;
       }
@@ -231,8 +256,9 @@ export function createPlayerEngine(
       });
       player.attachMediaElement(video);
       player.load();
-      video.addEventListener('canplay', tryPlay, { once: true });
-    });
+      on('canplay', tryPlay);
+      tryPlay();
+    }).catch(() => fail(GENERIC_START_ERROR));
   };
 
   const attachFile = (): void => {
@@ -245,14 +271,18 @@ export function createPlayerEngine(
         if (Number.isFinite(video.duration) && startAt < video.duration - 2) video.currentTime = startAt;
         tryPlay();
       };
-      video.addEventListener('loadedmetadata', seekOnce);
+      on('loadedmetadata', seekOnce);
       return;
     }
     tryPlay();
   };
 
   const sessionSeek = async (target: number): Promise<void> => {
-    if (seekRestartPending || stream.sessionId === undefined) return;
+    if (stream.sessionId === undefined || destroyed) return;
+    if (seekRestartPending) {
+      pendingSeek = target;
+      return;
+    }
     seekRestartPending = true;
     events.onBuffering(true);
     try {
@@ -260,11 +290,13 @@ export function createPlayerEngine(
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ at: Math.max(0, Math.floor(target)) }),
+        signal: requests.signal,
       });
       const body = (await response.json()) as { ok?: boolean; offset?: number };
       if (destroyed) return;
-      if (response.ok && body.ok === true && typeof body.offset === 'number') {
+      if (response.ok && body.ok === true && typeof body.offset === 'number' && Number.isFinite(body.offset)) {
         offset = body.offset;
+        if (pendingSeek !== null) return;
         sawFrame = false;
         events.onTime(offset, displayDuration(stream.durationSeconds, video.duration, offset));
         attachHls(0);
@@ -275,32 +307,43 @@ export function createPlayerEngine(
       if (!destroyed) events.onBuffering(false);
     } finally {
       seekRestartPending = false;
+      const next = pendingSeek;
+      pendingSeek = null;
+      if (next !== null && !destroyed) void sessionSeek(next);
+      else requestedSeek = null;
     }
   };
 
   const seekTo = (seconds: number): void => {
-    if (live || destroyed) return;
+    if (live || destroyed || !Number.isFinite(seconds)) return;
     const total = displayDuration(stream.durationSeconds, video.duration, offset);
     const target = Math.max(0, total > 0 ? Math.min(seconds, total - 1) : seconds);
+    requestedSeek = target;
     if (isSession) {
       const seekable = video.seekable;
-      const end = seekable.length > 0 ? seekable.end(seekable.length - 1) : 0;
-      if (withinSessionWindow(target, offset, end)) {
+      let inWindow = false;
+      for (let i = 0; i < seekable.length; i += 1) {
+        if (target - offset >= seekable.start(i) && withinSessionWindow(target, offset, seekable.end(i))) inWindow = true;
+      }
+      if (!seekRestartPending && inWindow) {
         video.currentTime = target - offset;
-        tryPlay();
+        requestedSeek = null;
       } else {
         void sessionSeek(target);
       }
       return;
     }
     video.currentTime = target;
-    tryPlay();
+    requestedSeek = null;
   };
 
   return {
     attach() {
+      if (destroyed || attached) return;
+      attached = true;
       events.onBuffering(true);
       on('timeupdate', () => {
+        if (seekRestartPending) return;
         markFrame();
         events.onTime(
           absolutePosition(video.currentTime, offset),
@@ -308,10 +351,15 @@ export function createPlayerEngine(
         );
       });
       on('durationchange', () => {
+        if (seekRestartPending) return;
         events.onTime(
           absolutePosition(video.currentTime, offset),
           displayDuration(stream.durationSeconds, video.duration, offset),
         );
+      });
+      on('seeked', () => {
+        if (seekRestartPending) return;
+        events.onTime(absolutePosition(video.currentTime, offset), displayDuration(stream.durationSeconds, video.duration, offset));
       });
       on('play', () => events.onPlayState(false));
       on('playing', () => {
@@ -343,13 +391,15 @@ export function createPlayerEngine(
       if (isSession && stream.sessionId !== undefined) {
         const url = `/api/stream/hls/${stream.sessionId}/ping`;
         keepAlive = setInterval(() => {
-          void fetchImpl(url, { method: 'POST' }).catch(() => undefined);
+          void fetchImpl(url, { method: 'POST', signal: requests.signal }).catch(() => undefined);
         }, 20_000);
       }
     },
 
     destroy() {
+      if (destroyed) return;
       destroyed = true;
+      requests.abort();
       if (keepAlive !== null) {
         clearInterval(keepAlive);
         keepAlive = null;
@@ -375,20 +425,24 @@ export function createPlayerEngine(
     },
 
     play: () => {
+      wantsPlayback = true;
       tryPlay();
     },
     pause: () => {
+      wantsPlayback = false;
       video.pause();
     },
     toggle() {
-      if (video.paused) tryPlay();
+      wantsPlayback = video.paused;
+      if (wantsPlayback) tryPlay();
       else video.pause();
     },
     seekBy(delta) {
-      seekTo(absolutePosition(video.currentTime, offset) + delta);
+      seekTo((requestedSeek ?? absolutePosition(video.currentTime, offset)) + delta);
     },
     seekTo,
     setVolume(value) {
+      if (!Number.isFinite(value)) return;
       video.volume = Math.max(0, Math.min(1, value));
     },
     setMuted(muted) {

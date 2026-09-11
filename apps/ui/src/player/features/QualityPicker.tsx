@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Hls from 'hls.js';
+import type Hls from 'hls.js';
+import { attachedHls, HLS_INSTANCE_CHANGE } from '../hlsBridge';
 import { FocusButton } from '../../components/FocusButton';
 import { FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../../data/plan';
 import { requestFocus } from '../../nav/focusEngine';
@@ -31,39 +32,10 @@ export interface QualityPickerProps {
   className?: string;
 }
 
-const mediaToHls = new WeakMap<HTMLMediaElement, Hls>();
-let hooked = false;
-
-function bindHls(hls: Hls, media?: HTMLMediaElement | null): void {
-  const el = media ?? hls.media;
-  if (el === null) return;
-  mediaToHls.set(el, hls);
-  (el as HTMLMediaElement & { hls?: Hls }).hls = hls;
-}
-
-/** Remember the player's hls.js instance without editing Player.tsx. */
-function hookHlsDiscovery(): void {
-  if (hooked) return;
-  hooked = true;
-  const attach = Hls.prototype.attachMedia;
-  Hls.prototype.attachMedia = function (this: Hls, media: HTMLMediaElement) {
-    bindHls(this, media);
-    return attach.call(this, media);
-  };
-}
-
 function resolveVideo(props: QualityPickerProps): HTMLVideoElement | null {
   if (props.video instanceof HTMLVideoElement) return props.video;
   if (props.videoRef?.current instanceof HTMLVideoElement) return props.videoRef.current;
   return document.querySelector('.player video.player__video, .player__video, .player video');
-}
-
-function taggedHls(video: HTMLVideoElement | null): Hls | null {
-  if (video === null) return null;
-  const mapped = mediaToHls.get(video);
-  if (mapped !== undefined) return mapped;
-  const tagged = (video as HTMLVideoElement & { hls?: Hls }).hls;
-  return tagged instanceof Hls ? tagged : null;
 }
 
 export function resolutionLabel(height: number): string | null {
@@ -175,17 +147,13 @@ export function QualityPicker(props: QualityPickerProps): React.JSX.Element | nu
 
   const maxHeight = props.maxHeight ?? plan.maxHeight;
   const video = resolveVideo(props);
-  const hls = props.hls ?? taggedHls(video);
+  const hls = props.hls ?? attachedHls(video);
   const snapshot = useMemo(() => readSnapshot(hls, maxHeight), [hls, maxHeight, tick]);
   const chromeVisible = props.controlsVisible ?? true;
   const blocked = props.overlay === 'queue' || props.overlay === 'ad';
 
   const refresh = useCallback((): void => {
     setTick((value) => value + 1);
-  }, []);
-
-  useEffect(() => {
-    hookHlsDiscovery();
   }, []);
 
   useEffect(() => {
@@ -199,14 +167,13 @@ export function QualityPicker(props: QualityPickerProps): React.JSX.Element | nu
   }, []);
 
   useEffect(() => {
-    hookHlsDiscovery();
-    const pulse = window.setInterval(refresh, 700);
-    return () => window.clearInterval(pulse);
+    document.addEventListener(HLS_INSTANCE_CHANGE, refresh);
+    return () => document.removeEventListener(HLS_INSTANCE_CHANGE, refresh);
   }, [refresh]);
 
   useEffect(() => {
     if (hls === null) return;
-    const events = [Hls.Events.MANIFEST_PARSED, Hls.Events.LEVELS_UPDATED, Hls.Events.LEVEL_SWITCHED] as const;
+    const events = ['hlsManifestParsed', 'hlsLevelsUpdated', 'hlsLevelSwitched'] as ReadonlyArray<Parameters<Hls['on']>[0]>;
     for (const event of events) hls.on(event, refresh);
     return () => {
       for (const event of events) hls.off(event, refresh);

@@ -9,7 +9,8 @@ import { RailSkeletons } from '../components/Skeleton';
 import { appTileOpen, fallbackApps, fetchApps, prefetchAppHub, searchApps } from '../data/apps';
 import type { AppTile } from '../data/catalog';
 import { isHttpUrl } from '../data/links';
-import { asTitle, searchLibrary, type MediaItem } from '../data/media';
+import { asTitle, currentProfileId, searchLibrary, type MediaItem } from '../data/media';
+import { clearRecentSearches, readRecentSearches, saveRecentSearch } from '../data/searchHistory';
 import { openDetails } from '../data/openDetails';
 import { enterTvmStream } from '../data/profiles';
 import { searchEaster } from '../brand/easterEggs';
@@ -21,14 +22,35 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const scope = useFocusScope();
   const fromHome = params['from'] === 'home';
-  const [query, setQuery] = useState('');
+  const [query, updateQuery] = useState('');
   const [results, setResults] = useState<MediaItem[]>([]);
+  const [resultQuery, setResultQuery] = useState('');
+  const [recent, setRecent] = useState(() => readRecentSearches(currentProfileId()));
+  const [opening, setOpening] = useState(false);
+  const submission = useRef<AbortController | null>(null);
+  const revision = useRef(0);
   const [apps, setApps] = useState<AppTile[]>(() => (fromHome ? fallbackApps().grid : []));
   const [searching, setSearching] = useState(false);
   const [message, setMessage] = useState(
     fromHome ? 'Search films, series, and apps, or paste a hoster link.' : 'Search films and series, or paste a hoster link.',
   );
   const armed = useRef(false);
+  const hint = fromHome ? 'Search films, series, and apps, or paste a hoster link.' : 'Search films and series, or paste a hoster link.';
+  const setQuery = useCallback((value: string): void => {
+    revision.current += 1;
+    submission.current?.abort();
+    setOpening(false);
+    updateQuery(value);
+  }, []);
+  const remember = useCallback((term: string): void => {
+    setRecent(saveRecentSearch(currentProfileId(), term));
+  }, []);
+  const visibleResults = resultQuery === query.trim() ? results : [];
+
+  useEffect(() => () => {
+    revision.current += 1;
+    submission.current?.abort();
+  }, []);
 
   const close = useCallback((): void => {
     navigate.pop();
@@ -79,28 +101,36 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
     if (trimmed.length < 2 || isHttpUrl(trimmed)) {
       setResults([]);
       setSearching(false);
+      setMessage(isHttpUrl(trimmed) ? 'Press Open to play this link.' : hint);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setSearching(true);
     const timer = window.setTimeout(() => {
-      void searchLibrary(trimmed)
+      void searchLibrary(trimmed, controller.signal)
         .then((items) => {
-          if (cancelled) return;
+          if (controller.signal.aborted) return;
           setResults(items);
+          setResultQuery(trimmed);
           const appsMatched = fromHome ? searchApps(trimmed, { ribbon: apps, grid: apps }).length : 0;
           if (items.length === 0 && appsMatched === 0) setMessage('Nothing matched that search.');
           else setMessage(`${items.length + appsMatched} matches`);
         })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setResults([]);
+            setMessage('Search is unavailable. Check your connection and try again.');
+          }
+        })
         .finally(() => {
-          if (!cancelled) setSearching(false);
+          if (!controller.signal.aborted) setSearching(false);
         });
     }, 180);
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
-  }, [apps, fromHome, query]);
+  }, [apps, fromHome, hint, query]);
 
   const openApp = useCallback(
     (app: AppTile): void => {
@@ -131,18 +161,33 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
     }
     const matchedApps = fromHome ? searchApps(trimmed, { ribbon: apps, grid: apps }) : [];
     if (matchedApps[0] !== undefined) {
+      remember(trimmed);
       openApp(matchedApps[0]);
       return;
     }
-    const items = results.length > 0 ? results : await searchLibrary(trimmed);
-    setResults(items);
-    if (items[0] === undefined) {
-      setMessage('Nothing matched that search.');
-      return;
+    submission.current?.abort();
+    const controller = new AbortController();
+    submission.current = controller;
+    const started = revision.current;
+    setOpening(true);
+    try {
+      const items = resultQuery === trimmed ? results : await searchLibrary(trimmed, controller.signal);
+      if (controller.signal.aborted || started !== revision.current) return;
+      setResults(items);
+      setResultQuery(trimmed);
+      if (items[0] === undefined) {
+        setMessage('Nothing matched that search.');
+        return;
+      }
+      remember(trimmed);
+      navigate.pop();
+      openDetails(navigate, asTitle(items[0]));
+    } catch {
+      if (!controller.signal.aborted) setMessage('Search is unavailable. Check your connection and try again.');
+    } finally {
+      if (!controller.signal.aborted) setOpening(false);
     }
-    navigate.pop();
-    openDetails(navigate, asTitle(items[0]));
-  }, [apps, fromHome, navigate, openApp, query, results]);
+  }, [apps, fromHome, navigate, openApp, query, remember, resultQuery, results]);
 
   return (
     <div
@@ -168,16 +213,34 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
               placeholder={fromHome ? 'Title, app, or https://…' : 'Title or https://…'}
             />
           </label>
-          <FocusButton id="open" variant="primary" onSelect={() => void open(fieldValue('query'))}>
-            Open
+          <FocusButton id="open" variant="primary" disabled={opening} onSelect={() => void open(fieldValue('query'))}>
+            {opening ? 'Opening…' : 'Open'}
           </FocusButton>
           <FocusButton id="close" onSelect={close}>
             Close
           </FocusButton>
         </div>
-        <p className="search-pill__status">{searching ? 'Searching…' : message}</p>
+        <p className="search-pill__status" role="status" aria-live="polite">{searching ? 'Searching…' : message}</p>
+        {query.trim() === '' && recent.length > 0 && (
+          <section className="search-recent" aria-label="Recent searches">
+            <span className="search-recent__label">Recent searches</span>
+            <div className="search-recent__items" data-wrap="row">
+              {recent.map((term, index) => (
+                <FocusButton key={term} id={`recent-${index}`} onSelect={() => {
+                  setQuery(term);
+                  requestFocus(`${scope}/query`);
+                }}>{term}</FocusButton>
+              ))}
+              <FocusButton id="recent-clear" variant="quiet" onSelect={() => {
+                clearRecentSearches(currentProfileId());
+                setRecent([]);
+                requestFocus(`${scope}/query`);
+              }}>Clear recent</FocusButton>
+            </div>
+          </section>
+        )}
         <OnScreenKeyboard value={query} onChange={setQuery} onSubmit={() => void open()} />
-        {searching && results.length === 0 && appHits.length === 0 && (
+        {searching && visibleResults.length === 0 && appHits.length === 0 && (
           <div className="search-results" aria-busy="true" aria-label="Search results loading">
             <RailSkeletons count={6} label="Searching" />
           </div>
@@ -185,19 +248,20 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
         {appHits.length > 0 && (
           <div className="search-results search-results--apps" aria-label="App results">
             {appHits.slice(0, 8).map((app) => (
-              <AppCard key={app.id} app={app} id={`search-app-${app.id}`} size="ribbon" onSelect={() => openApp(app)} />
+              <AppCard key={app.id} app={app} id={`search-app-${app.id}`} size="ribbon" onSelect={() => { remember(query); openApp(app); }} />
             ))}
           </div>
         )}
-        {results.length > 0 && (
+        {visibleResults.length > 0 && (
           <div className="search-results" aria-label="Search results">
-            {results.slice(0, 24).map((item, index) => (
+            {visibleResults.slice(0, 24).map((item, index) => (
               <PosterCard
                 key={`${item.id}-${index}`}
                 title={asTitle(item)}
                 prefix="result"
                 index={index}
                 onSelect={() => {
+                  remember(query);
                   navigate.pop();
                   openDetails(navigate, asTitle(item));
                 }}

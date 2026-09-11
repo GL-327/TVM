@@ -247,8 +247,10 @@ export function SkipRecap(props: SkipRecapProps = {}): React.JSX.Element | null 
   const skipKey = useScopedFocusKey(SKIP_RECAP_FOCUS_ID);
   const playKey = useScopedFocusKey('player-play');
   const [clock, setClock] = useState({ position: merged.position ?? 0, duration: merged.duration ?? 0 });
+  const hasSessionClock = merged.position !== undefined && merged.duration !== undefined;
 
   useEffect(() => {
+    if (hasSessionClock) return;
     const tick = (): void => {
       const node = findPlayerVideo(merged.videoRef);
       setClock({
@@ -261,20 +263,15 @@ export function SkipRecap(props: SkipRecapProps = {}): React.JSX.Element | null 
     video?.addEventListener('timeupdate', tick);
     video?.addEventListener('seeked', tick);
     video?.addEventListener('loadedmetadata', tick);
-    const poll = window.setInterval(tick, 400);
     return () => {
       video?.removeEventListener('timeupdate', tick);
       video?.removeEventListener('seeked', tick);
       video?.removeEventListener('loadedmetadata', tick);
-      window.clearInterval(poll);
     };
-  }, [merged.videoRef]);
+  }, [hasSessionClock, merged.videoRef]);
 
-  const videoNode = findPlayerVideo(merged.videoRef);
-  const useVideoClock = videoNode !== null && Number.isFinite(videoNode.duration) && videoNode.duration > 1;
-  const position = useVideoClock ? clock.position : (merged.position ?? clock.position);
-  const duration =
-    useVideoClock && clock.duration > 0 ? clock.duration : (merged.duration ?? clock.duration);
+  const position = merged.position ?? clock.position;
+  const duration = merged.duration ?? clock.duration;
   const recap = useMemo(
     () => resolveRecapMetadata(merged, findPlayerVideo(merged.videoRef)),
     [merged, clock.duration],

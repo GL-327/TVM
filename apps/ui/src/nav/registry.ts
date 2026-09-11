@@ -1,31 +1,33 @@
-import type { ComponentType } from 'react';
-import { Apps } from '../screens/Apps';
-import { Checkout } from '../screens/Checkout';
+import { lazy, type ComponentType } from 'react';
 import { ConfirmModal } from '../screens/ConfirmModal';
-import { Details } from '../screens/Details';
-import { Developer } from '../screens/Developer';
-import { DeveloperUnlock } from '../screens/DeveloperUnlock';
-import { DiagnosticsModal } from '../screens/DiagnosticsModal';
 import { Home } from '../screens/Home';
-import { Library } from '../screens/Library';
-import { Watchlist } from '../screens/Watchlist';
-import { LivePicks } from '../screens/LivePicks';
-import { LivePlaylist } from '../screens/LivePlaylist';
-import { LiveTV } from '../screens/LiveTV';
-import { LiveXtream } from '../screens/LiveXtream';
 import { NoticeModal } from '../screens/NoticeModal';
-import { Player } from '../screens/Player';
-import { Plans } from '../screens/Plans';
-import { Profile } from '../screens/Profile';
-import { Profiles } from '../screens/Profiles';
-import { RealDebrid } from '../screens/RealDebrid';
-import { Recovery } from '../screens/Recovery';
-import { SearchModal } from '../screens/SearchModal';
-import { Service } from '../screens/Service';
-import { Settings } from '../screens/Settings';
-import { Setup } from '../screens/Setup';
-import { SystemInfo } from '../screens/SystemInfo';
-import { Updates } from '../screens/Updates';
+
+// Keep Home and lightweight notices ready; fetch secondary screens on demand.
+const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
+const Checkout = lazy(() => import('../screens/Checkout').then((m) => ({ default: m.Checkout })));
+const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
+const Developer = lazy(() => import('../screens/Developer').then((m) => ({ default: m.Developer })));
+const DeveloperUnlock = lazy(() => import('../screens/DeveloperUnlock').then((m) => ({ default: m.DeveloperUnlock })));
+const DiagnosticsModal = lazy(() => import('../screens/DiagnosticsModal').then((m) => ({ default: m.DiagnosticsModal })));
+const Library = lazy(() => import('../screens/Library').then((m) => ({ default: m.Library })));
+const Watchlist = lazy(() => import('../screens/Watchlist').then((m) => ({ default: m.Watchlist })));
+const LivePicks = lazy(() => import('../screens/LivePicks').then((m) => ({ default: m.LivePicks })));
+const LivePlaylist = lazy(() => import('../screens/LivePlaylist').then((m) => ({ default: m.LivePlaylist })));
+const LiveTV = lazy(() => import('../screens/LiveTV').then((m) => ({ default: m.LiveTV })));
+const LiveXtream = lazy(() => import('../screens/LiveXtream').then((m) => ({ default: m.LiveXtream })));
+const Player = lazy(() => import('../screens/Player').then((m) => ({ default: m.Player })));
+const Plans = lazy(() => import('../screens/Plans').then((m) => ({ default: m.Plans })));
+const Profile = lazy(() => import('../screens/Profile').then((m) => ({ default: m.Profile })));
+const Profiles = lazy(() => import('../screens/Profiles').then((m) => ({ default: m.Profiles })));
+const RealDebrid = lazy(() => import('../screens/RealDebrid').then((m) => ({ default: m.RealDebrid })));
+const Recovery = lazy(() => import('../screens/Recovery').then((m) => ({ default: m.Recovery })));
+const SearchModal = lazy(() => import('../screens/SearchModal').then((m) => ({ default: m.SearchModal })));
+const Service = lazy(() => import('../screens/Service').then((m) => ({ default: m.Service })));
+const Settings = lazy(() => import('../screens/Settings').then((m) => ({ default: m.Settings })));
+const Setup = lazy(() => import('../screens/Setup').then((m) => ({ default: m.Setup })));
+const SystemInfo = lazy(() => import('../screens/SystemInfo').then((m) => ({ default: m.SystemInfo })));
+const Updates = lazy(() => import('../screens/Updates').then((m) => ({ default: m.Updates })));
 
 export interface ScreenProps {
   params: Readonly<Record<string, unknown>>;

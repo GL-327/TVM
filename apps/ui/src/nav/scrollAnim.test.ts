@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { animate, cancelScrollAnim, isScrollAnimating, jumpAxis } from './scrollAnim';
+import { animate, cancelScrollAnim, isScrollAnimating, jumpAxis, scrollEase } from './scrollAnim';
 
 function fakeEl(scrollLeft = 0, opts?: { scrollWidth?: number; clientWidth?: number; freeze?: boolean }) {
   let left = scrollLeft;
@@ -23,6 +23,39 @@ describe('scroll camera tween', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('covers the same distance at 30, 60 and 120 Hz for the same elapsed time', () => {
+    const response30 = scrollEase(1000 / 30);
+    const response60 = 1 - (1 - scrollEase(1000 / 60)) ** 2;
+    const response120 = 1 - (1 - scrollEase(1000 / 120)) ** 4;
+    expect(response30).toBeCloseTo(response60, 10);
+    expect(response30).toBeCloseTo(response120, 10);
+  });
+
+  it('settles synchronously without a frame when reduced motion is requested', () => {
+    vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) });
+    const raf = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', raf);
+    const settle = vi.fn();
+    const el = fakeEl();
+    animate(el, 'x', 400, settle);
+    expect(el.scrollLeft).toBe(400);
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(raf).not.toHaveBeenCalled();
+    expect(isScrollAnimating(el)).toBe(false);
+  });
+
+  it('releases a removed element without firing its wrap completion', () => {
+    let frame: FrameRequestCallback | undefined;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { frame = cb; return 1; });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const el = Object.assign(fakeEl(), { isConnected: false });
+    const settle = vi.fn();
+    animate(el, 'x', 400, settle);
+    frame?.(16);
+    expect(isScrollAnimating(el)).toBe(false);
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it('does not run onSettle when the lerp is cancelled', () => {

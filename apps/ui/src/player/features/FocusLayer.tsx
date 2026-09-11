@@ -36,6 +36,7 @@ export const PLAYER_FOCUS_GRAPH = {
     'player-cc',
     'player-audio',
     'player-quality',
+    'player-speed',
     'player-watchlist',
     'retry',
     'player-retry',

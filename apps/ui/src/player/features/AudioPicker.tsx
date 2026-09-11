@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Hls from 'hls.js';
+import { attachedHls, HLS_INSTANCE_CHANGE } from '../hlsBridge';
 import { FocusButton } from '../../components/FocusButton';
 import { requestFocus } from '../../nav/focusEngine';
 import { useScopedFocusKey } from '../../nav/ViewStackContext';
@@ -50,7 +50,6 @@ export interface ListedAudio {
 }
 
 const HLS_TRACK_EVENTS = ['hlsAudioTracksUpdated', 'hlsAudioTrackSwitched'] as const;
-const hlsByMedia = new WeakMap<HTMLMediaElement, HlsAudioApi>();
 
 interface HtmlAudioTrack {
   id: string;
@@ -73,41 +72,13 @@ function isHlsAudioApi(value: unknown): value is HlsAudioApi {
   return Array.isArray(host.audioTracks) && typeof host.audioTrack === 'number';
 }
 
-function tagHls(hls: HlsAudioApi, media: HTMLMediaElement): void {
-  hlsByMedia.set(media, hls);
-  (media as TaggedMedia).hls = hls;
-}
-
-function installHlsBridge(): void {
-  const proto = Hls.prototype as typeof Hls.prototype & { __tvmAudioPicker?: boolean };
-  if (proto.__tvmAudioPicker === true) return;
-  proto.__tvmAudioPicker = true;
-  const attach = proto.attachMedia;
-  proto.attachMedia = function (this: Hls, media: HTMLMediaElement) {
-    tagHls(this as unknown as HlsAudioApi, media);
-    return attach.call(this, media);
-  };
-  const detach = proto.detachMedia;
-  proto.detachMedia = function (this: Hls) {
-    const media = this.media;
-    if (media !== null) {
-      const tagged = media as TaggedMedia;
-      if (tagged.hls === (this as unknown as HlsAudioApi)) delete tagged.hls;
-      hlsByMedia.delete(media);
-    }
-    return detach.call(this);
-  };
-}
-
-installHlsBridge();
-
 export function resolveHls(video: HTMLVideoElement | null, explicit?: HlsAudioApi | null): HlsAudioApi | null {
   if (explicit !== undefined && explicit !== null) return explicit;
   if (video === null) return null;
   const tagged = video as TaggedMedia;
   if (isHlsAudioApi(tagged.hls)) return tagged.hls;
   if (isHlsAudioApi(tagged._hls)) return tagged._hls;
-  return hlsByMedia.get(video) ?? null;
+  return attachedHls(video) as unknown as HlsAudioApi | null;
 }
 
 function resolveVideo(props: AudioPickerProps): HTMLVideoElement | null {
@@ -261,8 +232,8 @@ export function AudioPicker(props: AudioPickerProps): React.JSX.Element | null {
       setHls((current) => (current === nextHls ? current : nextHls));
     };
     sync();
-    const timer = window.setInterval(sync, 750);
-    return () => window.clearInterval(timer);
+    document.addEventListener(HLS_INSTANCE_CHANGE, sync);
+    return () => document.removeEventListener(HLS_INSTANCE_CHANGE, sync);
   }, [props.hls, props.video, videoRef]);
 
   useEffect(() => {
