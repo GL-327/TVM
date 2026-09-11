@@ -8,6 +8,7 @@ import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { applyTheme, readStoredTheme } from '../theme/apply';
 import { THEMES, type ThemeId } from '../theme/registry';
+import { applyMotionPreference, readMotionPreference } from '../theme/motion';
 
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [appliance, setAppliance] = useState(false);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
+  const [motion, setMotion] = useState(readMotionPreference);
 
   useEffect(() => {
     void fetchLive()
@@ -58,6 +60,11 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </div>
       </header>
       <div className="settings-list" data-wrap="y">
+        <FocusButton id="motion" className="settings-row" detail={motion === 'reduced' ? 'Reduced · calmer transitions' : 'Automatic · follows device setting'} onSelect={() => {
+          const next = motion === 'reduced' ? 'auto' : 'reduced';
+          applyMotionPreference(next);
+          setMotion(next);
+        }}>Motion</FocusButton>
         {THEMES.map((spec) => {
           const locked = spec.premium === true && !themeUnlocked(plan, spec.id);
           return (

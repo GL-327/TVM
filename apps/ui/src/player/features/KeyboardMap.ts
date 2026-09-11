@@ -192,6 +192,9 @@ export function isVolumeSafe(context: PlayerKeyboardContext): boolean {
  * True when the remote / norigin must keep the key (D-pad, OK/Space-as-select).
  */
 export function shouldYieldToRemote(binding: PlayerKeyBinding, context: PlayerKeyboardContext): boolean {
+  // The open picker owns Back. Its capture listener must get the chance to
+  // close the menu before the player's global handler exits playback.
+  if (binding === 'back' && context.menuOpen === true) return true;
   if (binding === 'playPause') {
     return context.chromeVisible !== false && Boolean(context.focusedFocusId);
   }

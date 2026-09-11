@@ -26,6 +26,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const lastSaved = useRef(0);
   const lastTick = useRef(0);
   const billableRef = useRef(false);
+  const audioRef = useRef({ volume: 1, muted: false });
 
   const [title, setTitle] = useState('Loading');
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +43,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [queuePos, setQueuePos] = useState(12);
   const [skipRecap, setSkipRecap] = useState(false);
   const [badges, setBadges] = useState<string[]>([]);
+  audioRef.current = { volume, muted };
 
   const id = typeof params['id'] === 'string' ? params['id'] : '';
   const live = isLivePlayback(id);
@@ -86,9 +88,20 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     setOverlay('queue');
     setPosition(0);
     setDuration(0);
+    positionRef.current = 0;
+    durationRef.current = 0;
+    lastSaved.current = Date.now();
     let playReady = false;
+    let startFrame: number | null = null;
+    const queueTimers = new Map<number, () => void>();
 
-    const wait = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
+    const wait = (ms: number): Promise<void> => new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        queueTimers.delete(timer);
+        resolve();
+      }, ms);
+      queueTimers.set(timer, resolve);
+    });
 
     const runQueue = async (plan: PlanStatus, allowQueue: boolean): Promise<void> => {
       if (!allowQueue || plan.queueMs <= 0 || playReady) {
@@ -99,7 +112,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       if (plan.queueSkipToTop) {
         setQueuePos(12);
         await wait(400);
-        if (cancelled || playReady) {
+        if (cancelled) return;
+        if (playReady) {
           setOverlay(null);
           return;
         }
@@ -112,6 +126,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       const step = Math.max(400, Math.floor(plan.queueMs / 11));
       while (pos > 1 && !cancelled && !playReady) {
         await wait(step);
+        if (cancelled || playReady) return;
         pos -= 1;
         setQueuePos(pos);
       }
@@ -126,9 +141,10 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     });
 
     const start = (stream: EngineStream): void => {
+      if (cancelled) return;
       const video = videoRef.current;
-      if (video === null || cancelled) {
-        window.requestAnimationFrame(() => start(stream));
+      if (video === null) {
+        startFrame = window.requestAnimationFrame(() => start(stream));
         return;
       }
       engineRef.current?.destroy();
@@ -136,17 +152,19 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       setTitle(stream.title);
       setLoading(false);
       setError(null);
-      video.volume = volume;
-      video.muted = muted;
+      video.volume = audioRef.current.volume;
+      video.muted = audioRef.current.muted;
       const engine = createPlayerEngine(
         video,
         stream,
-        { live, startAt: stream.startAt ?? 0 },
+        { live, startAt: stream.startAt ?? 0, maxHeight: planRef.current.maxHeight },
         {
           onTime: (nextPosition, nextDuration) => {
             positionRef.current = nextPosition;
             if (nextDuration > 0) durationRef.current = nextDuration;
-            setPosition(nextPosition);
+            // The chrome clock displays whole seconds. Keep exact progress in
+            // refs and let the progress control animate its own media events.
+            setPosition(Math.floor(nextPosition));
             if (nextDuration > 0) setDuration(nextDuration);
             const now = Date.now();
             if (now - lastSaved.current >= 10_000) {
@@ -156,10 +174,14 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             tick();
           },
           onPlayState: (isPaused) => {
+            lastTick.current = Date.now();
             setPaused(isPaused);
             if (isPaused) persist();
           },
-          onBuffering: setBuffering,
+          onBuffering: (waiting) => {
+            lastTick.current = Date.now();
+            setBuffering(waiting);
+          },
           onFirstFrame: () => setHasFrame(true),
           onEnded: () => {
             persist(durationRef.current, durationRef.current);
@@ -226,12 +248,41 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
 
     return () => {
       cancelled = true;
+      billableRef.current = false;
+      persist();
+      if (startFrame !== null) window.cancelAnimationFrame(startFrame);
+      for (const [timer, resolve] of queueTimers) {
+        window.clearTimeout(timer);
+        resolve();
+      }
+      queueTimers.clear();
       engineRef.current?.destroy();
       engineRef.current = null;
     };
     // volume/muted are applied imperatively; restarting playback on those would be wrong.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt, id, link, live, navigate, persist, playbackEpisode, playbackSeason, playbackTitle, tick]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video === null) return;
+    const syncAudio = (): void => {
+      setVolume(video.volume);
+      setMuted(video.muted);
+    };
+    const saveWhenHidden = (): void => {
+      if (document.visibilityState === 'hidden') persist();
+    };
+    const saveOnExit = (): void => persist();
+    video.addEventListener('volumechange', syncAudio);
+    document.addEventListener('visibilitychange', saveWhenHidden);
+    window.addEventListener('pagehide', saveOnExit);
+    return () => {
+      video.removeEventListener('volumechange', syncAudio);
+      document.removeEventListener('visibilitychange', saveWhenHidden);
+      window.removeEventListener('pagehide', saveOnExit);
+    };
+  }, [persist]);
 
   // A transcode that cannot produce its first segment must surface, not spin forever.
   useEffect(() => {
@@ -269,11 +320,14 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const seekTo = useCallback(
     (seconds: number): void => {
       showControls();
+      if (live || !Number.isFinite(seconds)) return;
       engineRef.current?.seekTo(seconds);
-      positionRef.current = seconds;
-      setPosition(seconds);
+      const total = durationRef.current;
+      const target = Math.max(0, total > 0 ? Math.min(seconds, total - 1) : seconds);
+      positionRef.current = target;
+      setPosition(target);
     },
-    [showControls],
+    [live, showControls],
   );
 
   const adjustVolume = useCallback(
@@ -411,7 +465,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       aria-label={title}
       onMouseMove={showControls}
     >
-      <video ref={videoRef} className="player__video" data-player-video="" autoPlay playsInline preload="auto" />
+      <video ref={videoRef} className="player__video" data-player-video="" playsInline preload="auto" />
       <PlayerRoot session={session} />
       {overlay === 'queue' && (
         <div className="player__queue" aria-live="polite">

@@ -107,16 +107,22 @@ async function fromItunes(
     media,
     limit: '1',
   }).toString()}`;
-  const response = await fetchImpl(url, { headers: { 'user-agent': UA } });
-  if (!response.ok) return null;
+  const response = await fetchImpl(url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) {
+    await response.body?.cancel();
+    return null;
+  }
   const body = (await response.json()) as { results?: Array<{ artworkUrl100?: string }> };
   return itunesArt(body.results?.[0]?.artworkUrl100);
 }
 
 async function fromTvmaze(term: string, fetchImpl: typeof fetch): Promise<ArtworkUrls | null> {
   const url = `https://api.tvmaze.com/singlesearch/shows?${new URLSearchParams({ q: term }).toString()}`;
-  const response = await fetchImpl(url, { headers: { 'user-agent': UA } });
-  if (!response.ok) return null;
+  const response = await fetchImpl(url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) {
+    await response.body?.cancel();
+    return null;
+  }
   const body = (await response.json()) as {
     image?: { medium?: string; original?: string } | null;
   };
@@ -132,14 +138,14 @@ export async function artworkFor(
 ): Promise<ArtworkUrls | null> {
   for (const query of artworkQueries(title)) {
     try {
-      const [movie, show, tv] = await Promise.all([
+      const results = await Promise.allSettled([
         fromItunes(query, 'movie', fetchImpl),
         fromItunes(query, 'tvShow', fetchImpl),
         fromTvmaze(query, fetchImpl),
       ]);
-      if (movie !== null) return movie;
-      if (show !== null) return show;
-      if (tv !== null) return tv;
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value !== null) return result.value;
+      }
     } catch {
       // Try the next, shorter query.
     }

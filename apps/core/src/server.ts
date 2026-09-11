@@ -5,7 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { CORE_HOST, CORE_VERSION, resolveBindHost, resolvePort } from './config.ts';
 import { readJson, sendJson } from './http.ts';
 import { fetchVastPreroll } from './providers/ads.ts';
-import { isAllowedArtUrl, sendArtProxy } from './providers/artProxy.ts';
+import { createArtProxyService, isAllowedArtUrl, type ArtProxyService } from './providers/artProxy.ts';
 import { createAppsService, type AppsService } from './providers/apps.ts';
 import { createDevUnlockService, type DevUnlockService } from './providers/devUnlock.ts';
 import { createLiveService, type LiveProxyResult, type LiveService } from './providers/live.ts';
@@ -405,6 +405,7 @@ async function handleApi(
   plans: PlanService,
   developer: DevUnlockService,
   listenPort: number,
+  artwork: ArtProxyService,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -722,14 +723,14 @@ async function handleApi(
     return true;
   }
 
-  if (path === '/api/art' && request.method === 'GET') {
+  if (path === '/api/art' && (request.method === 'GET' || request.method === 'HEAD')) {
     const src = new URL(request.url ?? '/', `http://${CORE_HOST}`).searchParams.get('src') ?? '';
     const target = isAllowedArtUrl(src);
     if (target === null) {
       sendJson(response, 400, { error: 'art host not allowed' });
       return true;
     }
-    await sendArtProxy(response, target);
+    await artwork.send(response, target, request);
     return true;
   }
 
@@ -783,12 +784,14 @@ async function handleApi(
 
   if (path === '/api/maintenance/clear-cache' && request.method === 'POST') {
     media.clearCache();
+    artwork.clear();
     sendJson(response, 200, { ok: true });
     return true;
   }
 
   if (path === '/api/maintenance/factory-reset' && request.method === 'POST') {
     media.factoryReset();
+    artwork.clear();
     sendJson(response, 200, { ok: true });
     return true;
   }
@@ -940,6 +943,7 @@ async function handleApi(
 }
 
 export function createCoreServer(options: CoreOptions = {}): Server {
+  const artwork = createArtProxyService();
   const env = options.env ?? process.env;
   const dataDir = options.dataDir ?? resolveDataDir(env);
   const update = options.update ?? createUpdateService({ dataDir, env });
@@ -972,7 +976,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const listenPort = addr !== null && typeof addr === 'object' ? addr.port : resolvePort(env);
 
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });
@@ -1005,7 +1009,10 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       sendJson(response, 500, { error: 'internal_error' });
     });
   });
-  server.on('close', () => streamer.sessions.stopAll());
+  server.on('close', () => {
+    streamer.sessions.stopAll();
+    artwork.clear();
+  });
   return server;
 }
 

@@ -6,10 +6,12 @@ import { App } from './App';
 import { startDesktopShell, startTvStage } from './tvStage';
 import { applyPlanClass, fetchPlan, themeUnlocked } from './data/plan';
 import { applyStoredTheme, applyTheme, readStoredTheme } from './theme/apply';
+import { applyStoredMotionPreference } from './theme/motion';
 
 startTvStage();
 startDesktopShell();
 applyStoredTheme();
+applyStoredMotionPreference();
 void fetchPlan().then((plan) => {
   applyPlanClass(plan);
   if (readStoredTheme() === 'synthwave' && !themeUnlocked(plan, 'synthwave')) applyTheme('default');

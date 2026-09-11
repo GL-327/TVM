@@ -72,6 +72,30 @@
 }
 
 /* Chrome overlay is z-index 4 over the video. Opaque paint here is a black screen. */
+.player-speed { position: relative; pointer-events: auto; }
+.player-speed__toggle { min-width: 3.2rem; min-height: 2.7rem; padding: 0.3rem 0.6rem; font-variant-numeric: tabular-nums; }
+.player-speed__menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.6rem);
+  min-width: 14rem;
+  max-height: min(26rem, 60vh);
+  overflow-y: auto;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border: 1px solid var(--player-chip-border);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--tvm-bg-elevated, #151515) 96%, transparent);
+  box-shadow: 0 1rem 3rem #0008;
+  transform-origin: bottom right;
+  animation: player-menu-enter 180ms var(--player-ease) both;
+}
+.player-speed__heading { margin: 0.2rem 0.4rem 0.5rem; color: var(--player-ink-muted); font-size: 0.85rem; }
+.player-speed__option { width: 100%; min-height: 2.5rem; justify-content: space-between; }
+@keyframes player-menu-enter { from { opacity: 0; transform: translateY(0.6rem) scale(0.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .player-speed__menu { animation: none; } }
+
 .player-root,
 [data-player-root] {
   background: transparent;

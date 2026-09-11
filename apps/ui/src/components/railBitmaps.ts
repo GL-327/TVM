@@ -85,54 +85,42 @@ function armAllBitmaps(root: HTMLElement): void {
   }
 }
 
-export function wakeBitmaps(root: HTMLElement): void {
+export function wakeBitmaps(root: HTMLElement, candidates?: Iterable<HTMLImageElement>): void {
   const camera = cameraOf(root);
   const canMeasure = typeof camera.getBoundingClientRect === 'function';
+  // Read the viewport once, before writes. The old path measured it for every
+  // image in all three conveyor copies on every scroll frame.
+  const view = canMeasure ? camera.getBoundingClientRect() : null;
   const overscan = bitmapOverscanX(typeof camera.clientWidth === 'number' ? camera.clientWidth : 0);
   const focusedRow = railHasFocus(root);
 
-  for (const img of root.querySelectorAll<HTMLImageElement>('img')) {
+  const ready: HTMLImageElement[] = [];
+  for (const img of candidates ?? root.querySelectorAll<HTMLImageElement>('img')) {
     if (img.dataset.bitmapWoke === 'true') continue;
     const clone = isLoopCloneImg(img);
     if (canMeasure) {
       const card = cardOf(img);
-      const inCamera =
-        typeof card.getBoundingClientRect === 'function' && cardInCamera(card, camera, overscan);
+      const box = typeof card.getBoundingClientRect === 'function' ? card.getBoundingClientRect() : null;
+      const inCamera = box !== null && view !== null && box.right > view.left - overscan && box.left < view.right + overscan;
       if (!shouldArmBitmap({ inCamera, clone, focusedRow })) continue;
     }
-    armBitmap(img);
+    ready.push(img);
   }
+  for (const img of ready) armBitmap(img);
 }
 
 export function watchRailBitmaps(root: HTMLElement): () => void {
   const track = cameraOf(root);
   let railNear = typeof root.getBoundingClientRect === 'function' ? nearScroller(root) : true;
-  const waiting = new Set<HTMLImageElement>();
+  // Watcher-local ownership survives React's setup → cleanup → setup cycle.
+  // Persistent bitmapObserved DOM flags used to strand images after cleanup.
+  const pending = new Set<HTMLImageElement>();
   let scrollRaf = 0;
-
-  const flush = (img: HTMLImageElement): void => {
-    if (!railNear) {
-      waiting.add(img);
-      return;
-    }
-    waiting.delete(img);
-    armBitmap(img);
-  };
-
-  const flushWaiting = (): void => {
-    if (!railNear) return;
-    for (const img of [...waiting]) {
-      if (!img.isConnected) {
-        waiting.delete(img);
-        continue;
-      }
-      armBitmap(img);
-    }
-  };
+  let wake = (): void => wakeBitmaps(root);
 
   const wakeIfNear = (): void => {
     railNear = typeof root.getBoundingClientRect === 'function' ? nearScroller(root) : true;
-    if (railNear || railHasFocus(root)) wakeBitmaps(root);
+    if (railNear || railHasFocus(root)) wake();
   };
 
   if (typeof IntersectionObserver === 'undefined') {
@@ -152,7 +140,7 @@ export function watchRailBitmaps(root: HTMLElement): () => void {
       scroller?.removeEventListener('scroll', onScroll);
       root.removeEventListener('focusin', wakeIfNear);
       if (scrollRaf !== 0) cancelAnimationFrame(scrollRaf);
-      waiting.clear();
+      pending.clear();
     };
   }
 
@@ -161,18 +149,37 @@ export function watchRailBitmaps(root: HTMLElement): () => void {
     (entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
-        if (entry.target instanceof HTMLImageElement) flush(entry.target);
+        if (!railNear || !(entry.target instanceof HTMLImageElement)) continue;
+        const img = entry.target;
+        if (!pending.has(img)) continue;
+        armBitmap(img);
+        cardIO.unobserve(img);
+        pending.delete(img);
       }
     },
     { root: track, rootMargin: `80px ${overscan}px`, threshold: 0 },
   );
 
+  const prune = (): void => {
+    for (const img of pending) {
+      if (!root.contains(img) || img.dataset.bitmapWoke === 'true') {
+        cardIO.unobserve(img);
+        pending.delete(img);
+      }
+    }
+  };
+  wake = (): void => {
+    if (pending.size === 0) return;
+    prune();
+    wakeBitmaps(root, pending);
+    prune();
+  };
+
   const pageIO = new IntersectionObserver(
     (entries) => {
       railNear = entries.some((entry) => entry.isIntersecting);
       if (railNear) {
-        flushWaiting();
-        wakeBitmaps(root);
+        wake();
       }
     },
     {
@@ -184,14 +191,15 @@ export function watchRailBitmaps(root: HTMLElement): () => void {
   pageIO.observe(root);
 
   const observeImgs = (): void => {
+    prune();
     for (const img of root.querySelectorAll<HTMLImageElement>('img')) {
-      if (img.dataset.bitmapObserved === 'true') continue;
-      img.dataset.bitmapObserved = 'true';
+      if (pending.has(img) || img.dataset.bitmapWoke === 'true') continue;
+      pending.add(img);
       cardIO.observe(img);
     }
+    if (railNear) wake();
   };
   observeImgs();
-  if (railNear) wakeBitmaps(root);
 
   const mo = new MutationObserver(observeImgs);
   mo.observe(root, { childList: true, subtree: true });
@@ -201,7 +209,7 @@ export function watchRailBitmaps(root: HTMLElement): () => void {
     if (scrollRaf !== 0) return;
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = 0;
-      wakeBitmaps(root);
+      wake();
     });
   };
   track.addEventListener('scroll', onTrackScroll, { passive: true });
@@ -214,6 +222,6 @@ export function watchRailBitmaps(root: HTMLElement): () => void {
     track.removeEventListener('scroll', onTrackScroll);
     root.removeEventListener('focusin', wakeIfNear);
     if (scrollRaf !== 0) cancelAnimationFrame(scrollRaf);
-    waiting.clear();
+    pending.clear();
   };
 }

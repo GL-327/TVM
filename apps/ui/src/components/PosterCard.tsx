@@ -23,7 +23,7 @@ function posterFocusId(prefix: string, titleId: string, index: number, loopCopy:
   return loopCopy !== 1 ? `${base}--${loopCopy}` : base;
 }
 
-function PosterFace({
+const PosterFace = memo(function PosterFace({
   title,
   layout,
   decorative,
@@ -56,7 +56,7 @@ function PosterFace({
       </span>
     </>
   );
-}
+}, (prev, next) => prev.layout === next.layout && prev.decorative === next.decorative && sameTitleFace(prev.title, next.title));
 
 /** Conveyor copies stay out of the focus engine so D-pad hops do not scan 3× tiles. */
 function PosterClone({
@@ -115,6 +115,7 @@ const PosterFocusable = memo(function PosterFocusable({
     <button
       ref={ref}
       type="button"
+      aria-label={title.title}
       className={`poster poster--${layout}`}
       tabIndex={-1}
       data-focus-id={id}
@@ -125,7 +126,7 @@ const PosterFocusable = memo(function PosterFocusable({
       <PosterFace title={title} layout={layout} decorative={false} />
     </button>
   );
-}, (prev, next) => prev.onSelect === next.onSelect && prev.prefix === next.prefix && prev.layout === next.layout && prev.index === next.index && sameTitleFace(prev.title, next.title));
+}, (prev, next) => prev.onSelect === next.onSelect && prev.prefix === next.prefix && prev.layout === next.layout && prev.index === next.index && prev.title === next.title);
 
 export const PosterCard = memo(function PosterCard(props: PosterCardProps): ReactElement {
   if ((props.loopCopy ?? 1) !== 1) return <PosterClone {...props} />;
@@ -136,7 +137,7 @@ export const PosterCard = memo(function PosterCard(props: PosterCardProps): Reac
   prev.layout === next.layout &&
   prev.index === next.index &&
   prev.loopCopy === next.loopCopy &&
-  sameTitleFace(prev.title, next.title),
+  prev.title === next.title,
 );
 
 export function railPosterIds(prefix: string, titles: readonly Title[]): { firstId: string; lastId: string } | null {

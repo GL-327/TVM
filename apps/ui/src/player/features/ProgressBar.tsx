@@ -139,9 +139,14 @@ const CSS = `
   inset: 0 auto 0 0;
   display: block;
   height: 100%;
+  width: 100%;
   border-radius: inherit;
   pointer-events: none;
+  transform-origin: left center;
+  transition: transform 400ms linear;
 }
+
+.tvm-progress__control[data-scrubbing='true'] .tvm-progress__played { transition: none; }
 
 .tvm-progress__buffered {
   background: color-mix(in srgb, #fff 34%, transparent);
@@ -218,6 +223,8 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .tvm-progress__track,
+  .tvm-progress__buffered,
+  .tvm-progress__played,
   .tvm-progress__knob {
     transition: none;
   }
@@ -383,6 +390,7 @@ export function ProgressBar({
   const dragging = useRef(false);
   const pending = useRef<number | null>(null);
   const commitTimer = useRef<number | null>(null);
+  const resetTimer = useRef<number | null>(null);
   const [clock, setClock] = useState<Clock>({ time: 0, duration: 0, buffered: 0 });
   const [scrub, setScrub] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -406,11 +414,11 @@ export function ProgressBar({
         for (const event of events) node?.addEventListener(event, syncFromVideo);
       }
       if (node === null) return;
-      setClock(readVideoClock(node));
+      const next = readVideoClock(node);
+      setClock((current) => current.time === next.time && current.duration === next.duration && current.buffered === next.buffered ? current : next);
     };
 
     syncFromVideo();
-    const poll = window.setInterval(syncFromVideo, 400);
     const nativeOff = window.tvmNativePlayer?.onEvent((event) => {
       if (event.type !== 'state') return;
       setClock((prev) => ({
@@ -422,7 +430,6 @@ export function ProgressBar({
 
     return () => {
       for (const event of events) node?.removeEventListener(event, syncFromVideo);
-      window.clearInterval(poll);
       nativeOff?.();
     };
   }, [video, videoRef]);
@@ -430,7 +437,7 @@ export function ProgressBar({
   const time = currentTime ?? position ?? clock.time;
   const length = duration ?? clock.duration;
   const bufferEnd =
-    buffered !== undefined ? bufferedEndSeconds(buffered, time, length) : clock.buffered;
+    buffered !== undefined ? bufferedEndSeconds(buffered, time, length) : clock.buffered + Math.max(0, time - clock.time);
   const display = scrub ?? time;
   const seekable = !disabled && !resolvedLive && isSeekableDuration(length);
   const playedRatio = seekable ? Math.min(1, Math.max(0, display / length)) : 0;
@@ -469,7 +476,11 @@ export function ProgressBar({
       if (target === null || !isSeekableDuration(length)) return;
       pending.current = null;
       seekAbsolute(target);
-      window.setTimeout(() => setScrub(null), 180);
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+      resetTimer.current = window.setTimeout(() => {
+        resetTimer.current = null;
+        setScrub(null);
+      }, 180);
     },
     [length, seekAbsolute],
   );
@@ -478,6 +489,7 @@ export function ProgressBar({
     (seconds: number, commitMs: number | null): void => {
       if (!isSeekableDuration(length)) return;
       const next = clampTime(seconds, length);
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
       pending.current = next;
       setScrub(next);
       setHover(next);
@@ -490,7 +502,10 @@ export function ProgressBar({
   );
 
   useEffect(() => {
-    return () => clearCommitTimer();
+    return () => {
+      clearCommitTimer();
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+    };
   }, []);
 
   const pointToTime = useCallback(
@@ -598,8 +613,8 @@ export function ProgressBar({
         }}
       >
         <span className="tvm-progress__track" ref={trackRef}>
-          <span className="tvm-progress__buffered" style={{ width: `${bufferedRatio * 100}%` }} />
-          <span className="tvm-progress__played" style={{ width: `${playedRatio * 100}%` }} />
+          <span className="tvm-progress__buffered" style={{ transform: `scaleX(${bufferedRatio})` }} />
+          <span className="tvm-progress__played" style={{ transform: `scaleX(${playedRatio})` }} />
           <span className="tvm-progress__knob" style={{ left: `${playedRatio * 100}%` }} />
           {showBubble && seekable && (
             <span className="tvm-progress__bubble" style={{ left: bubbleLeft }}>

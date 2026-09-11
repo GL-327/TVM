@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { preferBackdrop, preferPoster } from '../data/artwork';
 import type { Title } from '../data/catalog';
@@ -38,8 +38,9 @@ export const Artwork = memo(function Artwork({
   eager = false,
 }: ArtworkProps): React.JSX.Element {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const host = useRef<HTMLSpanElement>(null);
   const original = kind === 'backdrop' ? preferBackdrop(title.id, title.backdrop, title.poster) : preferPoster(title.id, title.poster, title.backdrop);
-  const { src, waiting } = usePhosphorSrc(original, kind);
+  const { src, waiting } = usePhosphorSrc(original, kind, eager ? undefined : host);
   const failed = original === '' || failedSrc === original;
   const style = { ['--poster-hue' as string]: String(title.hue) } as CSSProperties;
 
@@ -55,7 +56,7 @@ export const Artwork = memo(function Artwork({
   }
 
   return (
-    <span className={artClassName('pending', className)} style={style} aria-hidden="true">
+    <span key={waiting ? `pending:${original}` : src} ref={host} className={artClassName('pending', className)} style={style} aria-hidden="true">
       {decorative ? null : <span className="skeleton skeleton--art" />}
       {waiting ? null : (
         <img
@@ -63,7 +64,7 @@ export const Artwork = memo(function Artwork({
           src={src}
           alt=""
           loading={eager ? 'eager' : 'lazy'}
-          fetchPriority={decorative ? 'low' : 'high'}
+          fetchPriority={decorative ? 'low' : eager ? 'high' : 'auto'}
           decoding="async"
           referrerPolicy={ART_REFERRER}
           draggable={false}

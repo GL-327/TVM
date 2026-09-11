@@ -255,8 +255,7 @@ export function VolumeControl({
       setFound((current) => (current === next ? current : next));
     };
     scan();
-    const pulse = window.setInterval(scan, 400);
-    return () => window.clearInterval(pulse);
+    // The session owns a stable video ref; no DOM scan timer is needed.
   }, [video, videoRef]);
 
   useEffect(() => {

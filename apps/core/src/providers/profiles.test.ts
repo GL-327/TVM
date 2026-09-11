@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -35,11 +35,23 @@ describe('profiles', () => {
       profiles.create(`Kid ${index + 1}`);
     }
     expect(profiles.list().profiles).toHaveLength(MAX_PROFILES);
+    expect(new Set(profiles.list().profiles.map((profile) => profile.id)).size).toBe(MAX_PROFILES);
     expect(() => profiles.create('Extra')).toThrow(/10 profiles/);
   });
 
   it('will not delete the last profile', async () => {
     const profiles = createProfileService(await dataDir());
     expect(() => profiles.remove(profiles.activeId())).toThrow(/at least one/);
+  });
+
+  it('does not rewrite the registry for the active profile on every API request', async () => {
+    const dir = await dataDir();
+    const profiles = createProfileService(dir);
+    const path = join(dir, 'profiles.json');
+    const timestamp = new Date('2020-01-01T00:00:00Z');
+    await utimes(path, timestamp, timestamp);
+    const before = (await stat(path)).mtimeMs;
+    profiles.switchTo(profiles.activeId());
+    expect((await stat(path)).mtimeMs).toBe(before);
   });
 });

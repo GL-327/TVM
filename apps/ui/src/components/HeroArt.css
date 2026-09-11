@@ -1,0 +1,33 @@
+/* Keep a decoded backing frame while the next picture dissolves over it. */
+.stage__pictures.stage__pictures--crossfade {
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.stage__pictures.stage__pictures--crossfade > .stage__art {
+  animation: none;
+}
+
+.stage__pictures.stage__pictures--crossfade > img.stage__art.art--pending {
+  opacity: 0;
+}
+
+.stage__pictures.stage__pictures--crossfade > img.stage__art.art--ready {
+  z-index: 1;
+  opacity: 1;
+}
+
+.stage__pictures.stage__pictures--crossfade > img.stage__art[data-hero-transition='true'] {
+  animation: hero-art-dissolve 480ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+
+@keyframes hero-art-dissolve {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage__pictures.stage__pictures--crossfade > img.stage__art[data-hero-transition='true'] {
+    animation: none;
+  }
+}

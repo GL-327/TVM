@@ -16,6 +16,7 @@ import { type Title } from '../data/catalog';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { heroScrollFade } from './heroFade';
+import { prefersReducedMotion } from '../theme/motion';
 
 const HomeShelves = memo(function HomeShelves({
   watching,
@@ -117,7 +118,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     }).slice(0, 4);
   }, [featured, rails, watching]);
 
-  const displayHero = heroes[slide];
+  const displayHero = heroes[slide % Math.max(heroes.length, 1)];
   const catalogRails = useMemo(
     () => rails.map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0),
     [rails],
@@ -126,6 +127,11 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   useEffect(() => {
     if (heroes.length < 2) return;
     const timer = window.setInterval(() => {
+      if (document.hidden || prefersReducedMotion()) return;
+      const page = pageRef.current;
+      if (page === null || page.scrollTop > page.clientHeight * 0.35) return;
+      const activeScreen = document.activeElement?.closest('[data-screen]');
+      if (activeScreen !== null && activeScreen !== undefined && activeScreen.getAttribute('data-screen') !== 'home') return;
       setSlide((value) => (value + 1) % heroes.length);
     }, 8_000);
     return () => window.clearInterval(timer);

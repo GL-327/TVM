@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Component, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import {
   activeEntry,
@@ -22,11 +22,12 @@ import { createAxisHopQueue } from './hopQueue';
 import { isWrappingTrack, settleWrappingTrack, wrapLoopingTrack } from './loopingRail';
 import { focusKeyFor, isVerticalNavContext, neighborFocusTarget, ribbonFocusTarget } from './railNav';
 import { conveyorHop, wrapHop } from './wrapFocus';
-import { FocusScopeProvider, ViewStackContextProvider } from './ViewStackContext';
+import { FocusScopeProvider, ViewStackContextProvider, useNavigate as useScreenNavigate } from './ViewStackContext';
 import type { Navigate } from './ViewStackContext';
 import { screenDefinition } from './registry';
 import { setActiveProfileId } from '../data/media';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { FocusButton } from '../components/FocusButton';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { installEasterEggs } from '../brand/easterEggs';
 
@@ -114,14 +115,16 @@ export function ViewStackProvider(): React.JSX.Element {
   const [introDone, setIntroDone] = useState(() => shouldSkipIntro() || introPlayedThisSession());
 
   useEffect(() => {
-    void resolveRoot().then(setRoot);
+    let active = true;
+    void resolveRoot().then((name) => { if (active) setRoot(name); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => installEasterEggs(), []);
 
   useEffect(() => {
-    if (root === 'recovery') return;
-    void fetch('/api/update/check', { method: 'POST' });
+    if (root === null || root === 'recovery') return;
+    void fetch('/api/update/check', { method: 'POST' }).catch(() => undefined);
   }, [root]);
 
   if (root === 'recovery') {
@@ -382,9 +385,55 @@ function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
           data-screen={entry.name}
           data-focus-scope={entry.key}
         >
-          <Screen params={entry.params} />
+          <ScreenGuard>
+            <Suspense fallback={<ScreenLoading />}>
+              <ScreenReady entry={entry}>
+                <Screen params={entry.params} />
+              </ScreenReady>
+            </Suspense>
+          </ScreenGuard>
         </div>
       </FocusScopeProvider>
     </FocusContext.Provider>
   );
+}
+
+function ScreenLoading(): React.JSX.Element {
+  return <LoadingScreen title="Opening…" body="Getting your screen ready." actions={<ScreenBack />} />;
+}
+
+function ScreenBack(): React.JSX.Element {
+  const navigate = useScreenNavigate();
+  return <FocusButton id="screen-back" onSelect={() => navigate.pop()}>Back</FocusButton>;
+}
+
+// A suspended screen registers its controls later than its focus scope.
+function ScreenReady({ entry, children }: { entry: ViewEntry; children: ReactNode }): React.JSX.Element {
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const current = document.activeElement;
+      if (current instanceof HTMLElement && current.closest('[data-focus-scope]')?.getAttribute('data-focus-scope') === entry.key && current.dataset.focusId !== 'screen-back') return;
+      requestFocus(entry.focusKey !== null && focusExists(entry.focusKey) ? entry.focusKey : entry.key);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [entry.key, entry.focusKey]);
+  return <div className="screen-content">{children}</div>;
+}
+
+class ScreenGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
+  override render(): ReactNode {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <section className="empty-state" role="alert">
+        <h2 className="empty-state__title">This screen could not open</h2>
+        <p className="page__lede">Go back, or reload TVM to try again.</p>
+        <div className="hero__actions">
+          <ScreenBack />
+          <FocusButton id="screen-reload" onSelect={() => window.location.reload()}>Reload TVM</FocusButton>
+        </div>
+      </section>
+    );
+  }
 }
