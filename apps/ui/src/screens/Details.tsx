@@ -65,6 +65,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const [title, setTitle] = useState<Title | undefined>(snapshot);
   const [files, setFiles] = useState<MediaItem[]>([]);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loadingEpisodes, setLoadingEpisodes] = useState(
     snapshot?.kind === 'series' || catalog?.kind === 'series',
   );
@@ -245,11 +246,14 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   };
 
   const toggleWatchlist = (): void => {
-    if (saved) {
-      void removeWatchlist(title.id).then((items) => setSaved(items.some((item) => item.id === title.id)));
-      return;
-    }
-    void addWatchlist(toMediaItem(title)).then((items) => setSaved(items.some((item) => item.id === title.id)));
+    if (saving) return;
+    setSaving(true);
+    void (saved ? removeWatchlist(title.id) : addWatchlist(toMediaItem(title)))
+      .then((items) => setSaved(items.some((item) => item.id === title.id)))
+      .catch((error: unknown) => navigate.pushModal('notice', { params: {
+        title: 'Watchlist', body: error instanceof Error ? error.message : 'Your watchlist could not be updated.',
+      } }))
+      .finally(() => setSaving(false));
   };
 
   return (

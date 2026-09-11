@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeArtUrl, preferBackdrop, upgradeImageUrl } from './artwork.ts';
+import { artworkFor, normalizeArtUrl, preferBackdrop, upgradeImageUrl } from './artwork.ts';
 
 describe('artwork urls', () => {
   it('promotes metahub and TMDB stills used on the hero', () => {
@@ -24,5 +24,16 @@ describe('artwork urls', () => {
     expect(upgradeImageUrl('//images.metahub.space/poster/medium/tt0111161/img', 'poster')).toBe(
       'https://images.metahub.space/poster/large/tt0111161/img',
     );
+  });
+});
+
+describe('artwork lookup resilience', () => {
+  it('keeps a healthy provider result when another provider rejects', async () => {
+    const artwork = await artworkFor('Arrival', async (input, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      if (String(input).includes('tvmaze')) throw new Error('offline');
+      return new Response(JSON.stringify({ results: [{ artworkUrl100: 'https://is1.mzstatic.com/100x100bb.jpg' }] }));
+    });
+    expect(artwork?.poster).toBe('https://is1.mzstatic.com/2000x2000bb.jpg');
   });
 });

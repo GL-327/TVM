@@ -1,8 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { artworkCachePath } from '../update/paths.ts';
-import { artworkFor, type ArtworkUrls } from './artwork.ts';
 import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, type CatalogService } from './cinemeta.ts';
+import { createLibraryArtwork } from './libraryArtwork.ts';
 import { clearCacheDir, factoryResetDir } from './maintenance.ts';
 import { createProfileService, MAX_PROFILES, type ProfileRegistry, type ProfileService } from './profiles.ts';
 import { pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
@@ -73,40 +70,6 @@ export interface MediaServiceOptions {
   fetch?: typeof fetch;
   plan?: () => { id: string; maxHeight: number; profilesMax: number };
   poolToken?: () => string | null;
-}
-
-const artCache = new Map<string, ArtworkUrls>();
-
-function loadArtDisk(dataDir: string): void {
-  if (artCache.size > 0) return;
-  try {
-    const raw = JSON.parse(readFileSync(artworkCachePath(dataDir), 'utf8')) as Record<string, ArtworkUrls>;
-    for (const [title, art] of Object.entries(raw)) {
-      if (art.poster !== '' || art.backdrop !== '') artCache.set(title, art);
-    }
-  } catch {
-    // First run, or a corrupt cache — look artwork up again.
-  }
-}
-
-function saveArtDisk(dataDir: string): void {
-  try {
-    const path = artworkCachePath(dataDir);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(Object.fromEntries(artCache)), 'utf8');
-  } catch {
-    // Artwork is optional; a failed write must not break Home.
-  }
-}
-
-async function decorate(item: MediaItem, fetchImpl: typeof fetch, dataDir: string): Promise<MediaItem> {
-  const cached = artCache.get(item.title);
-  if (cached !== undefined) return { ...item, ...cached };
-  const art = await artworkFor(item.title, fetchImpl);
-  if (art === null) return item;
-  artCache.set(item.title, art);
-  saveArtDisk(dataDir);
-  return { ...item, ...art };
 }
 
 async function mapPool<T, R>(items: readonly T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -217,17 +180,22 @@ function fileNameFromPath(path: string): string {
 const LIBRARY_TTL_MS = 45_000;
 const STATUS_TTL_MS = 20_000;
 
-function applyProgress(items: readonly MediaItem[], progress: ReturnType<typeof readProgress>): MediaItem[] {
-  return items.map((item) => {
-    const direct = ratio(progress[item.id]);
-    if (direct !== undefined) return { ...item, progress: direct };
-    let best: number | undefined;
-    for (const [key, entry] of Object.entries(progress)) {
-      if (key !== item.id && !key.startsWith(`${item.id}:`)) continue;
-      const value = ratio(entry);
-      if (value !== undefined && (best === undefined || value > best)) best = value;
+export function applyProgress(items: readonly MediaItem[], progress: ReturnType<typeof readProgress>): MediaItem[] {
+  // Index ancestor IDs once. Previously every card scanned the entire watch history.
+  const descendants = new Map<string, number>();
+  for (const [id, entry] of Object.entries(progress)) {
+    const value = ratio(entry);
+    if (value === undefined) continue;
+    let separator = id.lastIndexOf(':');
+    while (separator > 0) {
+      const parent = id.slice(0, separator);
+      if (value > (descendants.get(parent) ?? -1)) descendants.set(parent, value);
+      separator = id.lastIndexOf(':', separator - 1);
     }
-    return best !== undefined ? { ...item, progress: best } : item;
+  }
+  return items.map((item) => {
+    const value = ratio(progress[item.id]) ?? descendants.get(item.id);
+    return item.progress === value ? item : { ...item, progress: value };
   });
 }
 
@@ -243,51 +211,74 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   const { dataDir, rd } = options;
   let profiles: ProfileService = createProfileService(dataDir);
   const catalog: CatalogService = createCatalogService({ dataDir, fetch: fetchImpl });
+  const artwork = createLibraryArtwork(dataDir, fetchImpl);
   const scope = (): string => profiles.scope();
   let libraryCache: { at: number; torrents: RdTorrent[]; downloads: RdDownload[]; items: MediaItem[] } | null = null;
   let statusCache: { at: number; value: RdStatus } | null = null;
+  let libraryPending: Promise<MediaItem[]> | null = null;
+  let statusPending: Promise<RdStatus> | null = null;
+  let generation = 0;
 
-  const loadLibrary = async (force = false): Promise<MediaItem[]> => {
-    if (!rd.configured()) return [];
-    if (!force && libraryCache !== null && Date.now() - libraryCache.at < LIBRARY_TTL_MS) {
-      return libraryCache.items;
-    }
-    const progress = readProgress(scope());
+  const refreshLibrary = async (version: number): Promise<MediaItem[]> => {
+    const previous = libraryCache;
     const [downloadResult, torrentResult] = await Promise.allSettled([rd.downloads(), rd.torrents()]);
-    const downloads = downloadResult.status === 'fulfilled' ? downloadResult.value : [];
-    const torrents = torrentResult.status === 'fulfilled' ? torrentResult.value : [];
+    if (version !== generation) return [];
+    const downloads = downloadResult.status === 'fulfilled' ? downloadResult.value : previous?.downloads ?? [];
+    const torrents = torrentResult.status === 'fulfilled' ? torrentResult.value : previous?.torrents ?? [];
     if (downloadResult.status === 'rejected' && torrentResult.status === 'rejected') {
-      if (libraryCache !== null) return libraryCache.items;
+      if (previous !== null) return previous.items;
       throw downloadResult.reason;
     }
     const fromDownloads = downloads
-      .map((download) => fromDownload(download, progress))
+      .map((download) => fromDownload(download, {}))
       .filter((item): item is MediaItem => item !== null);
     const fromTorrents = torrents
-      .map((torrent) => fromTorrent(torrent, progress))
+      .map((torrent) => fromTorrent(torrent, {}))
       .filter((item): item is MediaItem => item !== null);
     const items = [...fromTorrents, ...fromDownloads];
     console.log(`tvm-core: rd library torrents=${torrents.length} downloads=${downloads.length} playable=${items.length}`);
-    loadArtDisk(dataDir);
     const eager = items.slice(0, 24);
     const rest = items.slice(24);
-    const decoratedEager = await mapPool(eager, 6, (item) => decorate(item, fetchImpl, dataDir));
+    const decoratedEager = await mapPool(eager, 6, async (item) => version === generation ? artwork.decorate(item) : item);
     const next = [...decoratedEager, ...rest];
-    libraryCache = { at: Date.now(), torrents, downloads, items: next };
+    if (version !== generation) return next;
+    artwork.flush();
+    const snapshot = { at: Date.now(), torrents, downloads, items: next };
+    libraryCache = snapshot;
     if (rest.length > 0) {
-      void mapPool(rest, 4, (item) => decorate(item, fetchImpl, dataDir)).then((decoratedRest) => {
-        if (libraryCache === null) return;
-        libraryCache.items = [...decoratedEager, ...decoratedRest];
-      });
+      void mapPool(rest, 4, async (item) => version === generation ? artwork.decorate(item) : item)
+        .then((decoratedRest) => {
+          if (libraryCache !== snapshot || version !== generation) return;
+          snapshot.items = [...decoratedEager, ...decoratedRest];
+          artwork.flush();
+        }).catch(() => undefined);
     }
     return next;
   };
 
+  const loadLibrary = async (): Promise<MediaItem[]> => {
+    if (!rd.configured()) return [];
+    if (libraryCache !== null && Date.now() - libraryCache.at < LIBRARY_TTL_MS) return libraryCache.items;
+    if (libraryPending !== null) return libraryPending;
+    const promise = refreshLibrary(generation).finally(() => {
+      if (libraryPending === promise) libraryPending = null;
+    });
+    libraryPending = promise;
+    return promise;
+  };
+
   const cachedStatus = async (): Promise<RdStatus> => {
     if (statusCache !== null && Date.now() - statusCache.at < STATUS_TTL_MS) return statusCache.value;
-    const value = await rd.status();
-    statusCache = { at: Date.now(), value };
-    return value;
+    if (statusPending !== null) return statusPending;
+    const version = generation;
+    const promise = rd.status().then((value) => {
+      if (version === generation) statusCache = { at: Date.now(), value };
+      return value;
+    }).finally(() => {
+      if (statusPending === promise) statusPending = null;
+    });
+    statusPending = promise;
+    return promise;
   };
 
   const probePlaybackAuth = async (): Promise<PlaybackResolution | null> => {
@@ -301,11 +292,13 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   };
 
     const loadChildren = async (id: string): Promise<MediaItem[]> => {
+      const version = generation;
       const torrentId = torrentIdFrom(id);
       if (torrentId === null || !rd.configured()) return [];
       const progress = readProgress(scope());
       try {
         const info = await rd.torrentInfo(torrentId);
+        if (version !== generation) return [];
         const selected = info.files.filter((file) => file.selected === 1);
         const fromFiles = selected
           .map((file, index) => {
@@ -324,8 +317,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             : (info.links ?? [])
                 .map((_, index) => itemFromName(`rd:t:${torrentId}:${index}`, `${info.filename} · ${index + 1}`, progress))
                 .filter((item): item is MediaItem => item !== null);
-        loadArtDisk(dataDir);
-        return mapPool(listed, 4, (item) => decorate(item, fetchImpl, dataDir));
+        const decorated = await mapPool(listed, 4, async (item) => version === generation ? artwork.decorate(item) : item);
+        if (version === generation) artwork.flush();
+        return decorated;
       } catch {
         return [];
       }
@@ -568,12 +562,16 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     configured: () => rd.configured(),
     status: () => cachedStatus(),
     async setToken(token) {
+      generation += 1;
+      libraryPending = null;
+      statusPending = null;
       libraryCache = null;
       statusCache = null;
       return rd.setToken(token);
     },
 
     async home(): Promise<HomePayload> {
+      const profileScope = scope();
       const status = await cachedStatus();
       let library: MediaItem[] = [];
       let error = status.error;
@@ -583,7 +581,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         error = caught instanceof Error && caught.name === 'RdAuth' ? 'needs-auth' : 'unreachable';
         library = libraryCache?.items ?? [];
       }
-      const progress = readProgress(scope());
+      const progress = readProgress(profileScope);
+      library = applyProgress(library, progress);
       let catalogItems: MediaItem[] = [];
       try {
         catalogItems = applyProgress((await catalog.bundle()).catalog, progress);
@@ -591,10 +590,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         catalogItems = [];
       }
       const continueWatching = pickContinueWatching(
-        [...catalogItems, ...applyProgress(library, progress)],
+        [...catalogItems, ...library],
         progress,
       );
-      const watchlist = readWatchlist(scope());
+      const watchlist = readWatchlist(profileScope);
       const rails = await buildRails(continueWatching, watchlist);
       const featured =
         continueWatching[0] ??
@@ -615,9 +614,13 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       };
     },
 
-    library: () => loadLibrary(),
+    async library() {
+      const profileScope = scope();
+      return applyProgress(await loadLibrary(), readProgress(profileScope));
+    },
 
     async item(id: string): Promise<MediaItem | null> {
+      const profileScope = scope();
       const parsed = parsePlayId(id);
       if (parsed !== null) {
         const meta = await catalog.meta(parsed.imdb);
@@ -631,7 +634,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
           return meta.item;
         }
       }
-      const library = await loadLibrary();
+      const library = applyProgress(await loadLibrary(), readProgress(profileScope));
       const found = library.find((entry) => entry.id === id);
       if (found !== undefined) return found;
       const children = await loadChildren(id);
@@ -738,9 +741,12 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     },
 
     clearCache() {
+      generation += 1;
+      libraryPending = null;
+      statusPending = null;
       libraryCache = null;
       statusCache = null;
-      artCache.clear();
+      artwork.clear();
       catalog.clear();
       clearCacheDir(dataDir);
     },

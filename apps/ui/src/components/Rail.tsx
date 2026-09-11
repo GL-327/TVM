@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef } from 'react';
 import {
+  cancelLoopingTrack,
   isLoopSeamJump,
   measureLoopSetWidth,
   normalizeLoopScroll,
@@ -137,6 +138,7 @@ function LoopingTrack({ children }: { children: ReactNode }): React.JSX.Element 
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
+      cancelLoopingTrack(el);
       resize.disconnect();
       el.removeEventListener('scroll', onScroll);
       if (resizeRaf !== 0) cancelAnimationFrame(resizeRaf);

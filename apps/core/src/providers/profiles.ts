@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { profileDir, profilesPath, progressPath, watchlistPath } from '../update/paths.ts';
 
 export const MAX_PROFILES = 10;
@@ -89,7 +90,7 @@ export function createProfileService(dataDir: string) {
       }
       const trimmed = name.trim() === '' ? `Profile ${registry.profiles.length + 1}` : name.trim();
       const index = registry.profiles.length;
-      const profile = { ...defaultProfile(index), name: trimmed, id: `profile-${Date.now()}` };
+      const profile = { ...defaultProfile(index), name: trimmed, id: `profile-${randomUUID()}` };
       mkdirSync(profileDir(dataDir, profile.id), { recursive: true });
       return save({ activeId: profile.id, profiles: [...registry.profiles, profile] });
     },
@@ -108,6 +109,7 @@ export function createProfileService(dataDir: string) {
       return save({ activeId, profiles });
     },
     switchTo(id: string): ProfileRegistry {
+      if (registry.activeId === id) return registry;
       if (!registry.profiles.some((profile) => profile.id === id)) throw new Error('Unknown profile.');
       mkdirSync(profileDir(dataDir, id), { recursive: true });
       return save({ ...registry, activeId: id });

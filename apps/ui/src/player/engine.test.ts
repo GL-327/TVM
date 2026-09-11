@@ -1,5 +1,59 @@
-import { describe, expect, it } from 'vitest';
-import { absolutePosition, attachKindFor, displayDuration, withinSessionWindow } from './engine';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { absolutePosition, attachKindFor, createPlayerEngine, displayDuration, withinSessionWindow, type EngineStream } from './engine';
+import { attachedHls } from './hlsBridge';
+
+const fakeHls = vi.hoisted(() => {
+  class FakeHls {
+    static Events = { MANIFEST_PARSED: 'manifest', ERROR: 'error' };
+    static ErrorTypes = { MEDIA_ERROR: 'media', NETWORK_ERROR: 'network' };
+    static isSupported = (): boolean => true;
+    static instances: FakeHls[] = [];
+    listeners = new Map<string, (...args: unknown[]) => void>();
+    levels = [{ height: 480 }, { height: 720 }, { height: 1080 }];
+    autoLevelCapping = -1;
+    destroy = vi.fn();
+    loadSource = vi.fn();
+    attachMedia = vi.fn();
+    recoverMediaError = vi.fn();
+    startLoad = vi.fn();
+    constructor() { FakeHls.instances.push(this); }
+    on(event: string, handler: (...args: unknown[]) => void): void { this.listeners.set(event, handler); }
+  }
+  return FakeHls;
+});
+
+vi.mock('hls.js', () => ({ default: fakeHls }));
+
+class FakeVideo extends EventTarget {
+  currentTime = 10;
+  duration = 1800;
+  paused = true;
+  volume = 1;
+  muted = false;
+  videoWidth = 1920;
+  src = '';
+  error = null;
+  seekable = { length: 1, start: () => 0, end: () => 100 };
+  load = vi.fn();
+  removeAttribute = vi.fn();
+  play = vi.fn(async () => { this.paused = false; });
+  pause = vi.fn(() => { this.paused = true; });
+}
+
+const stream: EngineStream = {
+  kind: 'stream', url: '/movie.mp4', title: 'Movie', filename: 'movie.mp4', mimeType: 'video/mp4', engine: 'html5', transport: 'file',
+};
+const sessionStream: EngineStream = { ...stream, transport: 'hls-session', sessionId: 'session', timeOffset: 600, durationSeconds: 1800 };
+
+function setup(source = stream, options = {}) {
+  const video = new FakeVideo();
+  const events = { onTime: vi.fn(), onPlayState: vi.fn(), onBuffering: vi.fn(), onFirstFrame: vi.fn(), onEnded: vi.fn(), onError: vi.fn() };
+  const engine = createPlayerEngine(video as unknown as HTMLVideoElement, source, { live: false, ...options }, events);
+  return { video, events, engine };
+}
+
+beforeEach(() => { fakeHls.instances = []; });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('attach kind', () => {
   it('routes by explicit transport first', () => {
@@ -14,6 +68,98 @@ describe('attach kind', () => {
     expect(attachKindFor({ mimeType: 'video/mp2t', url: 'https://x/y' }, true)).toBe('ts-live');
     expect(attachKindFor({ mimeType: 'video/mp2t', url: 'https://x/y' }, false)).toBe('file');
     expect(attachKindFor({ mimeType: 'video/mp4', url: 'https://x/y.mp4' }, false)).toBe('file');
+  });
+});
+
+describe('playback lifecycle', () => {
+  it('attaches once and detaches metadata resume listeners before a remount', () => {
+    const { video, events, engine } = setup(stream, { startAt: 300 });
+    engine.attach();
+    engine.attach();
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(events.onTime).toHaveBeenCalledTimes(1);
+    engine.destroy();
+    engine.destroy();
+    video.dispatchEvent(new Event('loadedmetadata'));
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(video.currentTime).toBe(10);
+    expect(video.play).not.toHaveBeenCalled();
+    expect(video.pause).toHaveBeenCalledTimes(1);
+    expect(events.onTime).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps paused files paused when seeking and ignores invalid positions', () => {
+    const { video, engine } = setup();
+    engine.attach();
+    engine.pause();
+    video.play.mockClear();
+    engine.seekTo(200);
+    expect(video.currentTime).toBe(200);
+    expect(video.paused).toBe(true);
+    expect(video.play).not.toHaveBeenCalled();
+    engine.seekTo(Number.NaN);
+    engine.seekTo(Number.POSITIVE_INFINITY);
+    expect(video.currentTime).toBe(200);
+    engine.destroy();
+  });
+
+  it('does not create an HLS instance after unmounting during its lazy import', async () => {
+    const { engine } = setup(sessionStream);
+    engine.attach();
+    engine.destroy();
+    await vi.dynamicImportSettled();
+    expect(fakeHls.instances).toHaveLength(0);
+  });
+
+  it('publishes and clears the actual HLS instance and enforces the quality cap', async () => {
+    const { video, engine } = setup(sessionStream, { maxHeight: 720 });
+    engine.attach();
+    await vi.dynamicImportSettled();
+    const instance = fakeHls.instances[0]!;
+    expect(attachedHls(video as unknown as HTMLVideoElement)).toBe(instance);
+    instance.listeners.get('manifest')?.();
+    expect(instance.autoLevelCapping).toBe(1);
+    engine.destroy();
+    expect(attachedHls(video as unknown as HTMLVideoElement)).toBeNull();
+    expect(instance.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('coalesces repeated remote seeks to the latest requested position and preserves pause', async () => {
+    let finishFirst!: (response: Response) => void;
+    const fetchImpl = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, offset: 930 })));
+    const { video, events, engine } = setup(sessionStream, { fetchImpl });
+    engine.attach();
+    await vi.dynamicImportSettled();
+    engine.pause();
+    engine.seekTo(900);
+    engine.seekBy(10);
+    engine.seekBy(20);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    finishFirst(new Response(JSON.stringify({ ok: true, offset: 900 })));
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchImpl.mock.calls[1]![1].body)).toEqual({ at: 930 });
+    await vi.waitFor(() => expect(events.onTime).toHaveBeenCalledWith(930, 1800));
+    await vi.dynamicImportSettled();
+    fakeHls.instances.at(-1)!.listeners.get('manifest')?.();
+    expect(video.paused).toBe(true);
+    expect(video.play).not.toHaveBeenCalled();
+    expect(fakeHls.instances).toHaveLength(2);
+    engine.destroy();
+  });
+
+  it('restarts for a gap in a session seekable window and aborts its request on exit', async () => {
+    const fetchImpl = vi.fn(() => new Promise<Response>(() => undefined));
+    const { video, engine } = setup(sessionStream, { fetchImpl });
+    video.seekable = { length: 1, start: () => 30, end: () => 100 };
+    engine.attach();
+    await vi.dynamicImportSettled();
+    engine.seekTo(615);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    const signal = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].signal!;
+    engine.destroy();
+    expect(signal.aborted).toBe(true);
   });
 });
 

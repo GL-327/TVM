@@ -5,6 +5,7 @@ import {
   Suspense,
   useContext,
   useEffect,
+  useMemo,
   type ComponentType,
   type CSSProperties,
   type LazyExoticComponent,
@@ -80,6 +81,7 @@ export const FEATURE_NAMES = [
   'SubtitlePicker',
   'AudioPicker',
   'QualityPicker',
+  'PlaybackSpeed',
   'Buffering',
   'PlaybackError',
   'VolumeControl',
@@ -98,7 +100,31 @@ function Empty(): null {
   return null;
 }
 
-const featureModules = import.meta.glob('./features/*.{ts,tsx}');
+// Explicit production entrypoints keep tests and helper modules out of Vite's
+// dependency graph (the former glob accidentally bundled the test runner).
+const featureModules: Record<FeatureName, () => Promise<unknown>> = {
+  SkipRecap: () => import('./features/SkipRecap'),
+  SeekSkip: () => import('./features/SeekSkip'),
+  TransportBar: () => import('./features/TransportBar'),
+  ProgressBar: () => import('./features/ProgressBar'),
+  TitleOverlay: () => import('./features/TitleOverlay'),
+  LiveOverlay: () => import('./features/LiveOverlay'),
+  NextUp: () => import('./features/NextUp'),
+  SubtitlePicker: () => import('./features/SubtitlePicker'),
+  AudioPicker: () => import('./features/AudioPicker'),
+  QualityPicker: () => import('./features/QualityPicker'),
+  PlaybackSpeed: () => import('./features/PlaybackSpeed'),
+  Buffering: () => import('./features/Buffering'),
+  PlaybackError: () => import('./features/PlaybackError'),
+  VolumeControl: () => import('./features/VolumeControl'),
+  FocusLayer: () => import('./features/FocusLayer'),
+  IdleChrome: () => import('./features/IdleChrome'),
+  Trickplay: () => import('./features/Trickplay'),
+  AmbientBackdrop: () => import('./features/AmbientBackdrop'),
+  WatchlistAction: () => import('./features/WatchlistAction'),
+  RemoteHints: () => import('./features/RemoteHints'),
+  MouseLayer: () => import('./features/MouseLayer'),
+};
 
 function bindExport(
   name: FeatureName,
@@ -110,13 +136,8 @@ function bindExport(
 }
 
 function lazyFeature(name: FeatureName): LazyExoticComponent<ComponentType<PlayerSession>> {
-  const path = `./features/${name}`;
   return lazy(() => {
-    const loader = featureModules[`${path}.tsx`] ?? featureModules[`${path}.ts`];
-    const load =
-      loader ??
-      ((): Promise<Record<string, unknown>> => Promise.reject(new Error(`missing ${path}`)));
-    return load()
+    return featureModules[name]()
       .then((mod) => bindExport(name, mod as Record<string, unknown>))
       .catch(() => ({ default: Empty }));
   });
@@ -132,6 +153,7 @@ const NextUp = lazyFeature('NextUp');
 const SubtitlePicker = lazyFeature('SubtitlePicker');
 const AudioPicker = lazyFeature('AudioPicker');
 const QualityPicker = lazyFeature('QualityPicker');
+const PlaybackSpeed = lazyFeature('PlaybackSpeed');
 const Buffering = lazyFeature('Buffering');
 const PlaybackError = lazyFeature('PlaybackError');
 const VolumeControl = lazyFeature('VolumeControl');
@@ -176,7 +198,8 @@ const rootStyle: CSSProperties = {
  * at `./features/<Name>`. Title and transport live in ChromeFrame; overlays
  * stay siblings so a missing module cannot swallow the rest of the controls.
  */
-export function PlayerRoot({ session, children }: PlayerRootProps): React.JSX.Element {
+export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps): React.JSX.Element {
+  const session = sourceSession;
   const idle = useIdleChrome({
     paused: session.paused,
     buffering: session.buffering,
@@ -192,6 +215,7 @@ export function PlayerRoot({ session, children }: PlayerRootProps): React.JSX.El
       mediaId: session.mediaId,
     }),
   });
+  const visibleSession = useMemo(() => ({ ...sourceSession, controlsVisible: idle.chromeVisible }), [sourceSession, idle.chromeVisible]);
 
   useEffect(() => {
     mountIdleChromeStyles();
@@ -202,7 +226,7 @@ export function PlayerRoot({ session, children }: PlayerRootProps): React.JSX.El
   }, [idle.chromeVisible, idle.recapVisible]);
 
   return (
-    <PlayerSessionContext.Provider value={session}>
+    <PlayerSessionContext.Provider value={visibleSession}>
       <div
         className="player-root"
         data-player-root="true"
@@ -232,10 +256,10 @@ export function PlayerRoot({ session, children }: PlayerRootProps): React.JSX.El
           top={
             <div className="player-chrome-head">
               <Slot>
-                <TitleOverlay {...session} />
+                <TitleOverlay {...visibleSession} />
               </Slot>
               <Slot>
-                <WatchlistAction {...session} />
+                <WatchlistAction {...visibleSession} />
               </Slot>
             </div>
           }
@@ -243,23 +267,26 @@ export function PlayerRoot({ session, children }: PlayerRootProps): React.JSX.El
             <div className="player-dock" data-player-dock="">
               <div className="player-dock__tools">
                 <Slot>
-                  <VolumeControl {...session} />
+                  <VolumeControl {...visibleSession} />
                 </Slot>
                 <Slot>
                   <SubtitlePicker {...session} />
                 </Slot>
                 <Slot>
-                  <AudioPicker {...session} />
+                  <AudioPicker {...visibleSession} />
                 </Slot>
                 <Slot>
-                  <QualityPicker {...session} />
+                  <QualityPicker {...visibleSession} />
+                </Slot>
+                <Slot>
+                  <PlaybackSpeed {...visibleSession} />
                 </Slot>
               </div>
               <Slot>
                 <ProgressBar {...session} />
               </Slot>
               <Slot>
-                <TransportBar {...session} />
+                <TransportBar {...visibleSession} />
               </Slot>
             </div>
           }

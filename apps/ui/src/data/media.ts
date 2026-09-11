@@ -3,6 +3,7 @@ import { preferBackdrop, preferPoster } from './artwork';
 import { imdbScore } from './playId';
 import { normalizeTitle, titlesMatch } from './matchTitle';
 import { asSeason } from './seasons';
+import { createRequestCache } from './requestCache';
 
 export { normalizeTitle };
 
@@ -191,6 +192,10 @@ export function asTitle(item: MediaItem): Title {
 
 let lastHome: HomePayload | null = null;
 let activeProfileId = '';
+let homeGeneration = 0;
+const homeRequests = createRequestCache(1);
+
+export function currentProfileId(): string { return activeProfileId; }
 
 export function peekHome(): HomePayload | null {
   return lastHome;
@@ -198,12 +203,14 @@ export function peekHome(): HomePayload | null {
 
 export function invalidateHome(): void {
   lastHome = null;
+  homeGeneration += 1;
+  homeRequests.clear();
 }
 
 export function setActiveProfileId(id: string): void {
   if (activeProfileId === id) return;
   activeProfileId = id;
-  lastHome = null;
+  invalidateHome();
 }
 
 export function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
@@ -279,7 +286,7 @@ export async function saveRdToken(token: string): Promise<RdStatus> {
   if (!response.ok) {
     throw new Error(body.error ?? 'The token was not stored.');
   }
-  lastHome = null;
+  invalidateHome();
   return body;
 }
 
@@ -288,14 +295,19 @@ export async function clearRdToken(): Promise<RdStatus> {
 }
 
 export async function fetchHome(): Promise<HomePayload | null> {
+  const generation = homeGeneration;
+  const profile = activeProfileId;
   try {
-    const response = await apiFetch('/api/home');
-    if (!response.ok) return lastHome;
-    const payload = (await response.json()) as HomePayload;
+    const payload = await homeRequests.load(profile, async () => {
+      const response = await apiFetch('/api/home', { signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) throw new Error('Home could not be loaded');
+      return await response.json() as HomePayload;
+    });
+    if (profile !== activeProfileId || generation !== homeGeneration) return null;
     lastHome = payload;
     return payload;
   } catch {
-    return lastHome;
+    return profile === activeProfileId && generation === homeGeneration ? lastHome : null;
   }
 }
 
@@ -320,9 +332,12 @@ export async function fetchMedia(id: string): Promise<MediaItem | null> {
   }
 }
 
-export async function searchLibrary(query: string): Promise<MediaItem[]> {
-  const response = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
-  if (!response.ok) return [];
+export async function searchLibrary(query: string, signal?: AbortSignal): Promise<MediaItem[]> {
+  const timeout = AbortSignal.timeout(15_000);
+  const response = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`, {
+    signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
+  });
+  if (!response.ok) throw new Error('Search is unavailable. Please try again.');
   const body = (await response.json()) as { items?: MediaItem[] };
   return body.items ?? [];
 }
@@ -359,11 +374,12 @@ export async function requestPlayback(input: {
 }
 
 export async function saveProgress(id: string, position: number, duration: number): Promise<void> {
-  await apiFetch('/api/progress', {
+  const response = await apiFetch('/api/progress', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id, position, duration }),
   });
+  if (response.ok) invalidateHome();
 }
 
 export async function fetchChildren(id: string): Promise<MediaItem[]> {
@@ -403,6 +419,8 @@ export async function addWatchlist(item: MediaItem): Promise<MediaItem[]> {
     body: JSON.stringify({ item }),
   });
   const body = (await response.json()) as { items?: MediaItem[] };
+  if (!response.ok) throw new Error('The title could not be saved. Please try again.');
+  invalidateHome();
   return body.items ?? [];
 }
 
@@ -413,6 +431,8 @@ export async function removeWatchlist(id: string): Promise<MediaItem[]> {
     body: JSON.stringify({ id }),
   });
   const body = (await response.json()) as { items?: MediaItem[] };
+  if (!response.ok) throw new Error('The title could not be removed. Please try again.');
+  invalidateHome();
   return body.items ?? [];
 }
 

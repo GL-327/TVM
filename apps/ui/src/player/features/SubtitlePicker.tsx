@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FocusButton } from '../../components/FocusButton';
 import { requestFocus } from '../../nav/focusEngine';
 import { useFocusScope, useScopedFocusKey } from '../../nav/ViewStackContext';
+import { attachedHls, HLS_INSTANCE_CHANGE } from '../hlsBridge';
 
 /** Same shape as core `PlaybackResolution.subtitles` — never scraped or invented. */
 export interface AppSubtitle {
@@ -229,6 +230,7 @@ function CcGlyph(): React.JSX.Element {
  */
 export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | null {
   const [video, setVideo] = useState<HTMLVideoElement | null>(() => resolveVideo(props));
+  const [hls, setHls] = useState<HlsSubtitleApi | null>(() => props.hls ?? attachedHls(resolveVideo(props)) as unknown as HlsSubtitleApi | null);
   const [generation, setGeneration] = useState(0);
   const [open, setOpen] = useState(false);
   const scope = useFocusScope();
@@ -236,8 +238,8 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
 
   const appSubs = useMemo(() => readAppSubtitles(props), [props.stream, props.subtitles]);
   const listed = useMemo(
-    () => listSubtitleTracks(video, props.hls),
-    [generation, props.hls, video],
+    () => listSubtitleTracks(video, hls),
+    [generation, hls, video],
   );
   const active = listed.find((row) => row.selected) ?? null;
 
@@ -249,11 +251,12 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
     const sync = (): void => {
       const next = resolveVideo(props);
       setVideo((current) => (current === next ? current : next));
+      setHls(props.hls ?? attachedHls(next) as unknown as HlsSubtitleApi | null);
     };
     sync();
-    const timer = window.setInterval(sync, 750);
-    return () => window.clearInterval(timer);
-  }, [props.video, props.videoRef]);
+    document.addEventListener(HLS_INSTANCE_CHANGE, sync);
+    return () => document.removeEventListener(HLS_INSTANCE_CHANGE, sync);
+  }, [props.hls, props.video, props.videoRef]);
 
   useEffect(() => {
     if (video === null) return;
@@ -277,14 +280,13 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
   }, [refresh, video]);
 
   useEffect(() => {
-    const hls = props.hls;
     if (hls === null || hls === undefined || typeof hls.on !== 'function') return;
     for (const event of HLS_TRACK_EVENTS) hls.on(event, refresh);
     return () => {
       if (typeof hls.off !== 'function') return;
       for (const event of HLS_TRACK_EVENTS) hls.off(event, refresh);
     };
-  }, [props.hls, refresh]);
+  }, [hls, refresh]);
 
   const closeMenu = useCallback((): void => {
     setOpen(false);
@@ -298,10 +300,10 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
 
   useEffect(() => {
     if (!open) return;
-    const selected = listSubtitleTracks(video, props.hls).find((row) => row.selected);
+    const selected = listSubtitleTracks(video, hls).find((row) => row.selected);
     const id = selected === undefined ? 'player-cc-off' : `player-cc-${selected.id.replace(':', '-')}`;
     window.requestAnimationFrame(() => requestFocus(`${scope}/${id}`));
-  }, [open, props.hls, scope, video]);
+  }, [open, hls, scope, video]);
 
   useEffect(() => {
     if (!open) return;
@@ -333,11 +335,11 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
 
   const pick = useCallback(
     (id: string | null): void => {
-      applySelection(video, props.hls, id);
+      applySelection(video, hls, id);
       refresh();
       closeMenu();
     },
-    [closeMenu, props.hls, refresh, video],
+    [closeMenu, hls, refresh, video],
   );
 
   const onMenuArrow = useCallback(

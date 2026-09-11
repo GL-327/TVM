@@ -1,4 +1,5 @@
 import { cancelScrollAnim, jumpAxis, scrollAxis } from './scrollAnim';
+import { prefersReducedMotion } from '../theme/motion';
 
 /** Horizontal rails are a conveyor: three copies, always ride the middle set. */
 
@@ -166,6 +167,12 @@ export function settleWrappingTrack(track: HTMLElement): void {
   }
 }
 
+/** Release timers and frames when a rail leaves the view stack. */
+export function cancelLoopingTrack(track: HTMLElement): void {
+  cancelScrollAnim(track);
+  unlockTrack(track);
+}
+
 export function wrapLoopingTrack(
   track: HTMLElement,
   direction: 'left' | 'right',
@@ -177,6 +184,12 @@ export function wrapLoopingTrack(
   }
   if (wrapping.has(track) || track.dataset.wrapping === 'true') {
     settleWrappingTrack(track);
+  }
+  if (prefersReducedMotion()) {
+    // Instant camera completion must see the new focus, not the old end tile.
+    thenFocus();
+    jumpToFocusedCard(track);
+    return;
   }
   const setWidth = measureLoopSetWidth(track);
   const pitch = measureLoopPitch(track);

@@ -208,11 +208,8 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
     };
   }, [episode, mediaId, paramEpisode, paramId, paramSeason, paramTitle, season, title]);
 
-  const clock =
-    native ??
-    (fallbackClock.duration > 0 || fallbackClock.position > 0
-      ? fallbackClock
-      : { position: position ?? 0, duration: duration ?? 0 });
+  const hasSessionClock = position !== undefined && duration !== undefined;
+  const clock = hasSessionClock ? { position, duration } : native ?? fallbackClock;
   const blocked = sessionBlocksNextUp({ hidden: props.hidden, overlay, busy, error }) || domBlocked;
 
   useEffect(() => {
@@ -233,6 +230,7 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
 
   useEffect(() => {
     const sessionHasBlockers = overlay !== undefined || busy !== undefined || error !== null;
+    if (hasSessionClock && sessionHasBlockers) return;
 
     let cancelled = false;
     const tick = (): void => {
@@ -245,14 +243,12 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
     const video = findPlayerVideo(explicitVideo);
     video?.addEventListener('timeupdate', tick);
     video?.addEventListener('durationchange', tick);
-    const timer = window.setInterval(tick, 400);
     return () => {
       cancelled = true;
       video?.removeEventListener('timeupdate', tick);
       video?.removeEventListener('durationchange', tick);
-      window.clearInterval(timer);
     };
-  }, [busy, duration, error, explicitVideo, native, overlay, position]);
+  }, [busy, duration, error, explicitVideo, hasSessionClock, native, overlay, position]);
 
   useEffect(() => {
     if (identity.live || identity.playId === '') {
