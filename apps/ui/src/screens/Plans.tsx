@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BillingSummary } from './BillingSummary';
 import { FocusButton } from '../components/FocusButton';
 import { TopBar } from '../components/TopBar';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanDefinition, type PlanStatus } from '../data/plan';
@@ -38,7 +39,7 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
   return (
     <main className="page page--settings page--plans">
       <TopBar title="Plans" />
-      <p className="stage__kicker">Per month · mock payment</p>
+      <p className="stage__kicker">Test plans · no real payment</p>
       <h1 className="page__heading">Upgrade TVM</h1>
       <section className="plan-current">
         <p className="plan-current__kicker">Current plan</p>
@@ -48,8 +49,8 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
           {plan.liveTvOptional ? (plan.liveTv ? ' with Live TV' : ' without Live TV') : ''}
         </p>
         <p className="page__lede">
-          Card details are checked on this machine and never stored. Live TV is a £3.00 add-on on paid plans — include
-          it at checkout or turn it off later in Settings.
+          No card details are collected and no money is charged. Prices are for testing the plan flow.
+          The optional Live TV feature connects your own authorised provider; it does not include a content subscription.
         </p>
       </section>
       <div className="plan-grid" data-wrap="grid">
@@ -89,6 +90,7 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
           );
         })}
       </div>
+      <BillingSummary onChange={() => { void fetchPlan().then(setPlan); }} />
     </main>
   );
 }

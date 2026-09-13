@@ -16,6 +16,9 @@ import {
   watchlistPath,
   poolRdPath,
   devUnlockPath,
+  tokenPath,
+  tmdbKeyPath,
+  masterKeyPath,
 } from '../update/paths.ts';
 import { join } from 'node:path';
 
@@ -54,5 +57,8 @@ export function factoryResetDir(dataDir: string): void {
   remove(usagePath(dataDir));
   remove(poolRdPath(dataDir));
   remove(devUnlockPath(dataDir));
+  remove(tokenPath(dataDir));
+  remove(tmdbKeyPath(dataDir));
+  remove(masterKeyPath(dataDir));
   removeTree(join(dataDir, 'profiles'));
 }

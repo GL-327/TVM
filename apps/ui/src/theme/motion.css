@@ -1,3 +1,10 @@
+/* Freeze decorative loops without resetting their phase when the app is hidden. */
+:root[data-visibility='hidden'] *,
+:root[data-visibility='hidden'] *::before,
+:root[data-visibility='hidden'] *::after {
+  animation-play-state: paused !important;
+}
+
 /* One effective preference also covers service skins and future components. */
 :root[data-motion='reduced'] *,
 :root[data-motion='reduced'] *::before,

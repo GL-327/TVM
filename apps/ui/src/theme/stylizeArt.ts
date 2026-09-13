@@ -1,5 +1,6 @@
-import { posterSize, stylizePixels } from './phosphor';
+import { posterSize } from './phosphor';
 import { ArtCache } from './artCache';
+import { paintPixels } from './paintPixels';
 
 const cache = new ArtCache();
 const failed = new Map<string, number>();
@@ -107,7 +108,8 @@ async function run(src: string, kind: ArtKind, signal: AbortSignal): Promise<str
   const pixels = await pixelsFrom(src, width, height, signal);
   if (pixels === null) return null;
   signal.throwIfAborted();
-  const out = stylizePixels(pixels, width, height);
+  const out = await paintPixels(pixels, width, height, signal);
+  signal.throwIfAborted();
   return toPng(out, width, height);
 }
 

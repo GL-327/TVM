@@ -23,7 +23,12 @@ export function NoticeModal({ params }: ScreenProps): React.JSX.Element {
       <section className="panel">
         <h2 className="panel__title">{title}</h2>
         <p className="page__lede">{body}</p>
-        {action === 'tvm-stream' ? (
+        {action === 'realdebrid' ? (
+          <div className="hero__actions">
+            <FocusButton id="close" variant="primary" onSelect={() => { navigate.pop(); navigate.push('realdebrid'); }}>Reconnect Real-Debrid</FocusButton>
+            <FocusButton id="dismiss" onSelect={close}>Close</FocusButton>
+          </div>
+        ) : action === 'tvm-stream' ? (
           <div className="hero__actions">
             <FocusButton id="close" variant="primary" onSelect={openTvmStream}>
               Open TVM Stream

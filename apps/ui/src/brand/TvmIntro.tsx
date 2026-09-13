@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TvmMark } from './TvmMark';
+import { prefersReducedMotion as reducedMotion, subscribeMotionPreference } from '../theme/motion';
 import './TvmIntro.css';
 
 export type TvmIntroVariant = 'tvm' | 'stream';
@@ -25,10 +26,6 @@ const INTRO_STREAM = 'tvm.intro.stream';
 let introPlayedMem = false;
 const MOTES = [0, 1, 2, 3, 4, 5] as const;
 const RAYS = [0, 1, 2, 3] as const;
-
-function reducedMotion(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
 
 export function markIntroPlayed(kind: TvmIntroVariant = 'tvm'): void {
   introPlayedMem = true;
@@ -99,12 +96,21 @@ export function TvmIntro({
   doneRef.current = onDone;
   const stream = variant === 'stream';
 
-  const close = (): void => {
+  const close = useCallback((): void => {
     if (skipped.current) return;
     skipped.current = true;
     setLeaving(true);
-    window.setTimeout(() => doneRef.current(), reducedMotion() ? 160 : FADE_MS);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(() => doneRef.current(), reducedMotion() ? 160 : FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
+
+  useEffect(() => subscribeMotionPreference(() => {
+    if (reducedMotion()) setAnimDone(true);
+  }), []);
 
   useEffect(() => {
     if (alreadyPlayed && !pending) {
@@ -128,19 +134,19 @@ export function TvmIntro({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [skippable]);
+  }, [close, skippable]);
 
   useEffect(() => {
     if (skipped.current || !animDone || pending) return undefined;
     close();
     return undefined;
-  }, [animDone, pending]);
+  }, [animDone, close, pending]);
 
   useEffect(() => {
     if (!animDone || !pending) return undefined;
     const timer = window.setTimeout(() => close(), HOLD_MAX_MS);
     return () => window.clearTimeout(timer);
-  }, [animDone, pending]);
+  }, [animDone, close, pending]);
 
   const holding = pending && animDone && !leaving;
 

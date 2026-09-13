@@ -125,8 +125,9 @@ describe('Home hero fade', () => {
     expect(css).toContain('@keyframes art-out');
     expect(css).toContain('--hero-fade');
     expect(home).toContain('heroScrollFade');
-    expect(hero).toContain('stage__art--out');
-    expect(hero).toContain("outgoing === ''");
+    expect(hero).toContain('stage__art--back');
+    expect(hero).toContain('readyHeroArt');
+    expect(hero).toContain('settleHeroArt');
   });
 });
 

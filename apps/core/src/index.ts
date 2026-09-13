@@ -37,7 +37,7 @@ const stopPolling = startUpdatePolling(update, CHECK_INTERVAL_MS);
 
 console.log(`tvm-core listening on http://${bindHost}:${core.port}`);
 if (bindHost !== CORE_HOST) {
-  console.log('tvm-core: LAN bind is on; Core has no API auth. Use only while developing a Roku client.');
+  console.log('tvm-core: LAN requests require TVM_LAN_TOKEN (at least 32 characters). Admin, billing and privacy controls remain local.');
 }
 console.log(uiDist === undefined ? 'tvm-core: API only (UI served by dev server)' : `tvm-core: serving UI from ${uiDist}`);
 if (process.env['TVM_ENV'] === 'development' && rokuPreview !== undefined) {

@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { progressPath } from '../update/paths.ts';
+import { readPrivateJson } from './privateJson.ts';
+import { writeSealed } from './vault.ts';
 
 export interface ProgressEntry {
   position: number;
@@ -12,7 +12,7 @@ export type ProgressMap = Record<string, ProgressEntry>;
 
 export function readProgress(dataDir: string): ProgressMap {
   try {
-    return JSON.parse(readFileSync(progressPath(dataDir), 'utf8')) as ProgressMap;
+    return readPrivateJson<ProgressMap>(dataDir, progressPath(dataDir)) ?? {};
   } catch {
     return {};
   }
@@ -21,8 +21,7 @@ export function readProgress(dataDir: string): ProgressMap {
 export function writeProgress(dataDir: string, id: string, position: number, duration: number): ProgressMap {
   const all = readProgress(dataDir);
   all[id] = { position, duration, updated: new Date().toISOString() };
-  mkdirSync(dirname(progressPath(dataDir)), { recursive: true });
-  writeFileSync(progressPath(dataDir), JSON.stringify(all));
+  writeSealed(dataDir, progressPath(dataDir), all);
   return all;
 }
 

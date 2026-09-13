@@ -5,7 +5,9 @@ outputs HDMI to a television, and is driven entirely with a D-pad remote: your
 own media, licensed sources you already pay for, and the streaming services you
 already subscribe to, behind one home screen.
 
-**Status: Phase 1** — repository skeleton and a bootable splash. The
+**Status: private initial testing build.** Read [the testing guide](docs/INITIAL_TESTING.md) for playback,
+Colourcast, sandbox checkout, security changes and the remaining public-launch requirements. No real payments are enabled.
+The
 architecture is fixed in
 [docs/TVM_IMPLEMENTATION_PLAN.md](docs/TVM_IMPLEMENTATION_PLAN.md); read it
 before changing anything structural.
@@ -54,7 +56,8 @@ Useful environment variables:
 | Variable | Effect |
 | --- | --- |
 | `TVM_CORE_PORT` | Core's port. Default 7345 |
-| `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1` so TVM opens with no Wi-Fi. Set `0.0.0.0` only when a Roku on the LAN must reach Core. Core has no API auth |
+| `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. LAN clients require bearer authentication; see the testing guide |
+| `TVM_LAN_TOKEN` | At least 32 characters for authenticated LAN clients; never place it in the UI bundle. Admin, billing and privacy routes stay local |
 | `TVM_UI_URL` | Origin the shell loads |
 | `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd`, `Desktop/TVM.cmd`, and the Desktop copies set this; `TVM.cmd` does not |
 | `TVM_ENV=production` | Shell loads the interface from core |
@@ -64,7 +67,7 @@ On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the 
 
 ## Android (later)
 
-There is no Android tree in this repository. A later pass can wrap the same waiter (`apps/ui`) in a WebView or Capacitor shell that talks to Core on the LAN, the same way the Roku client does: set `TVM_CORE_BIND=0.0.0.0` on a trusted network (Core has no API auth). Widevine L1 / Android TV certification is out of scope for that follow-up.
+There is no Android tree in this repository. A later pass can wrap the same waiter (`apps/ui`) in a WebView or Capacitor shell that talks to Core on the LAN, the same way the Roku client does: set `TVM_CORE_BIND=0.0.0.0` on a trusted network (LAN clients must implement the bearer authentication described in the testing guide). Widevine L1 / Android TV certification is out of scope for that follow-up.
 
 ## Laptop / Desktop copies
 

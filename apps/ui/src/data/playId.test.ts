@@ -9,6 +9,12 @@ describe('play ids and scores', () => {
     expect(imdbIdFrom('tt0111161:1:2')).toBe('tt0111161');
   });
 
+  it('preserves exact owned file ids so an episode does not resolve back to its pack', () => {
+    expect(playIdFor('rd:t:pack123:42', 1, 2)).toBe('rd:t:pack123:42');
+    expect(playIdFor('rd:d:tt0111161', 1, 2)).toBe('rd:d:tt0111161');
+    expect(playIdFor('live:channel123')).toBe('live:channel123');
+  });
+
   it('treats 8.4 as an IMDb score and 15 as a certificate', () => {
     expect(imdbScore('8.4')).toBe('8.4');
     expect(imdbScore('15')).toBeNull();

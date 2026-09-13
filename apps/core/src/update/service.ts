@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readSecret, writeSecret } from '../providers/secrets.ts';
 import { CORE_VERSION } from '../config.ts';
 import { isNewer } from './semver.ts';
 import {
@@ -83,16 +84,11 @@ function writeCache(dataDir: string, cache: CachedStatus): void {
 }
 
 function storedToken(dataDir: string): string | null {
-  try {
-    const value = readFileSync(tokenPath(dataDir), 'utf8').trim();
-    return value === '' ? null : value;
-  } catch {
-    return null;
-  }
+  return readSecret(tokenPath(dataDir));
 }
 
 function resolveToken(dataDir: string, env: NodeJS.ProcessEnv): string | null {
-  return storedToken(dataDir) ?? (env['TVM_GITHUB_TOKEN']?.trim() || null);
+  return existsSync(tokenPath(dataDir)) ? storedToken(dataDir) : (env['TVM_GITHUB_TOKEN']?.trim() || null);
 }
 
 function assetName(version: string, ext: 'tar.gz' | 'sha256'): string {
@@ -201,12 +197,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     setToken(token: string): { configured: boolean } {
       mkdirSync(secretsDir(dataDir), { recursive: true });
       const trimmed = token.trim();
-      writeFileSync(tokenPath(dataDir), trimmed, { encoding: 'utf8' });
-      try {
-        chmodSync(tokenPath(dataDir), 0o600);
-      } catch {
-        // Windows cannot honour 0600; the file still lives outside the repo.
-      }
+      writeSecret(tokenPath(dataDir), trimmed);
       return { configured: trimmed !== '' || env['TVM_GITHUB_TOKEN'] !== undefined };
     },
   };
