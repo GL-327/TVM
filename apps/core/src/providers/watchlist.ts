@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { watchlistPath } from '../update/paths.ts';
+import { readPrivateJson } from './privateJson.ts';
+import { writeSealed } from './vault.ts';
 import type { MediaItem } from './types.ts';
 
 const MAX_ITEMS = 200;
@@ -30,7 +30,7 @@ function asItem(value: unknown): WatchlistItem | null {
 
 export function readWatchlist(dataDir: string): WatchlistItem[] {
   try {
-    const parsed = JSON.parse(readFileSync(watchlistPath(dataDir), 'utf8')) as unknown;
+    const parsed = readPrivateJson<unknown>(dataDir, watchlistPath(dataDir));
     if (!Array.isArray(parsed)) return [];
     return parsed.map(asItem).filter((item): item is WatchlistItem => item !== null);
   } catch {
@@ -39,8 +39,7 @@ export function readWatchlist(dataDir: string): WatchlistItem[] {
 }
 
 function persist(dataDir: string, items: WatchlistItem[]): WatchlistItem[] {
-  mkdirSync(dirname(watchlistPath(dataDir)), { recursive: true });
-  writeFileSync(watchlistPath(dataDir), JSON.stringify(items.slice(0, MAX_ITEMS)));
+  writeSealed(dataDir, watchlistPath(dataDir), items.slice(0, MAX_ITEMS));
   return items;
 }
 

@@ -77,10 +77,7 @@ describe('plans', () => {
     const first = createPlanService({ dataDir: dir });
     const status = first.checkout({
       planId: 'ultra',
-      name: 'Arthur Foxall',
-      number: '4242424242424242',
-      expiry: '12/99',
-      cvc: '123',
+      consent: true, requestId: crypto.randomUUID(),
       liveTv: true,
     });
     expect(status.id).toBe('ultra');
@@ -99,10 +96,7 @@ describe('plans', () => {
     const first = createPlanService({ dataDir: dir });
     first.checkout({
       planId: 'premium',
-      name: 'Arthur Foxall',
-      number: '4242424242424242',
-      expiry: '12/99',
-      cvc: '123',
+      consent: true, requestId: crypto.randomUUID(),
       liveTv: false,
     });
     const { unlinkSync } = await import('node:fs');
@@ -122,10 +116,7 @@ describe('plans', () => {
     const plans = createPlanService({ dataDir: dir });
     const status = plans.checkout({
       planId: 'basic',
-      name: 'Arthur Foxall',
-      number: '4242424242424242',
-      expiry: '12/99',
-      cvc: '123',
+      consent: true, requestId: crypto.randomUUID(),
     });
     expect(status.id).toBe('basic');
     expect(status.queueSkipToTop).toBe(true);
@@ -135,7 +126,7 @@ describe('plans', () => {
     const blob = readFileSync(billingPath(dir), 'utf8');
     expect(blob).not.toContain('4242424242424242');
     expect(JSON.stringify(plans.receipt())).not.toContain('4242424242424242');
-    expect(plans.receipt()?.last4).toBe('4242');
+    expect(plans.receipt()?.chargedPence).toBe(0);
     expect(plans.receipt()?.mock).toBe(true);
   });
 
@@ -145,7 +136,7 @@ describe('plans', () => {
     const plans = createPlanService({ dataDir: dir });
     expect(() =>
       plans.checkout({ planId: 'premium', name: 'A', number: '1111', expiry: '12/99', cvc: '123' }),
-    ).toThrow(/name on the card/);
+    ).toThrow(/card_data_not_supported/);
     expect(() =>
       plans.checkout({
         planId: 'premium',
@@ -154,7 +145,7 @@ describe('plans', () => {
         expiry: '12/99',
         cvc: '123',
       }),
-    ).toThrow(/card number/);
+    ).toThrow(/card_data_not_supported/);
     expect(plans.status().id).toBe('free');
   });
 
@@ -180,10 +171,7 @@ describe('plans', () => {
 
     const withLive = plans.checkout({
       planId: 'premium',
-      name: 'Arthur Foxall',
-      number: '4242424242424242',
-      expiry: '12/99',
-      cvc: '123',
+      consent: true, requestId: crypto.randomUUID(),
     });
     expect(withLive.liveTv).toBe(true);
     expect(withLive.pricePence).toBe(1199);
@@ -193,10 +181,7 @@ describe('plans', () => {
 
     const without = plans.checkout({
       planId: 'premium',
-      name: 'Arthur Foxall',
-      number: '4242424242424242',
-      expiry: '12/99',
-      cvc: '123',
+      consent: true, requestId: crypto.randomUUID(),
       liveTv: false,
     });
     expect(without.liveTv).toBe(false);
@@ -248,15 +233,12 @@ describe('plans', () => {
 
     const paid = plans.checkout({
       planId: 'basic',
-      name: 'Arthur Foxall',
-      number: '4242424242424242',
-      expiry: '12/99',
-      cvc: '123',
+      consent: true, requestId: crypto.randomUUID(),
       liveTv: false,
       synthwave: true,
     });
     expect(paid.synthwave).toBe(true);
-    expect(paid.pricePence).toBe(998);
+    expect(paid.pricePence).toBe(499);
     expect(paid.extras.some((line) => line.includes('Colourcast'))).toBe(true);
 
     const off = plans.setSynthwave(false);
@@ -269,6 +251,6 @@ describe('plans', () => {
     expect(unlocked.status().synthwave).toBe(true);
     expect(unlocked.status().pricePence).toBe(0);
     unlocked.setSynthwave(true);
-    expect(unlocked.status().pricePence).toBe(499);
+    expect(unlocked.status().pricePence).toBe(0);
   });
 });

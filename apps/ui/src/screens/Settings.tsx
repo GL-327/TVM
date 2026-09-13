@@ -60,6 +60,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </div>
       </header>
       <div className="settings-list" data-wrap="y">
+        <FocusButton id="privacy" className="settings-row" detail="Terms, data export and deletion" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
         <FocusButton id="motion" className="settings-row" detail={motion === 'reduced' ? 'Reduced · calmer transitions' : 'Automatic · follows device setting'} onSelect={() => {
           const next = motion === 'reduced' ? 'auto' : 'reduced';
           applyMotionPreference(next);

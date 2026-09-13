@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 async function waitForFocus(page: Page): Promise<void> {
+  await expect(page.locator('[data-focus-id="screen-back"]')).toHaveCount(0, { timeout: 10_000 });
   await expect(page.locator('[data-focused="true"]')).toHaveCount(1, { timeout: 10_000 });
 }
 
@@ -162,7 +163,18 @@ async function tap(page: Page, key: string): Promise<void> {
 }
 
 async function pressUntil(page: Page, id: string): Promise<void> {
+  await waitForFocus(page);
   if ((await focusedId(page)) === id) return;
+
+  // Long settings menus are sequential lists. Walk them with the remote instead
+  // of repeatedly exploring sideways exits into the ribbon.
+  if (await page.locator(`.settings-list [data-focus-id="${id}"]`).count()) {
+    const rows = await page.locator('.settings-list [data-focus-id]').count();
+    for (let step = 0; step < rows + 3; step++) {
+      if ((await focusedId(page)) === id) return;
+      await tap(page, 'ArrowDown');
+    }
+  }
 
   // Dock controls sit above a long catalog. A blind walk falls into the
   // posters and never comes back, so rise to the chrome first, then sweep.
@@ -343,7 +355,7 @@ test('Back at the root does not blank the screen', async ({ page }) => {
 test('Back from a depth of three returns Home one step at a time', async ({ page }) => {
   await enterTvmStream(page);
 
-  await pressUntil(page, 'films-tt0816692');
+  await pressUntil(page, 'films-tt0816692-0');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
   await waitForFocus(page);
@@ -385,12 +397,13 @@ test('a modal traps focus and Back closes the modal', async ({ page }) => {
 test('focus is restored to the same element after returning', async ({ page }) => {
   await enterTvmStream(page);
 
-  await pressUntil(page, 'films-tt0816692');
+  await pressUntil(page, 'films-tt0816692-0');
   await page.keyboard.press('ArrowRight');
+  await expect.poll(() => focusedId(page)).not.toBe('films-tt0816692-0');
   await waitForFocus(page);
   const remembered = await focusedId(page);
   expect(remembered).not.toBeNull();
-  expect(remembered).not.toBe('films-tt0816692');
+  expect(remembered).not.toBe('films-tt0816692-0');
 
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
@@ -510,7 +523,7 @@ test('Back leaves TVM Stream without a token and returns Home', async ({ page })
 
 test('a film poster opens the title page with an IMDb score before Play', async ({ page }) => {
   await enterTvmStream(page);
-  await pressUntil(page, 'films-tt0816692');
+  await pressUntil(page, 'films-tt0816692-0');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
   await expect(page.locator('[data-screen="player"]')).toHaveCount(0);
@@ -529,15 +542,18 @@ test('Play with a rejected token opens the Real-Debrid notice', async ({ page })
   });
 
   await enterTvmStream(page);
-  await pressUntil(page, 'films-tt0816692');
+  await pressUntil(page, 'films-tt0816692-0');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
   await expect.poll(async () => focusedId(page)).toBe('play');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: 'Real-Debrid' })).toBeVisible();
   await expect(page.getByText(/rejected the saved token/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open TVM Stream' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reconnect Real-Debrid' })).toBeVisible();
   await expect(page.locator('[data-screen="player"]')).toHaveCount(0);
+  await pressUntil(page, 'close'); await page.keyboard.press('Enter'); await waitForFocus(page);
+  await expect(page.locator('[data-screen="realdebrid"]')).toBeVisible();
+  await expect(page.locator('[data-focus-id="token"]')).toBeVisible();
 });
 
 test('a series poster opens seasons, then an episode plays with tt:s:e', async ({ page }) => {
@@ -552,7 +568,7 @@ test('a series poster opens seasons, then an episode plays with tt:s:e', async (
   });
 
   await enterTvmStream(page);
-  await pressUntil(page, 'shows-tt1230051');
+  await pressUntil(page, 'shows-tt1230051-0');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
   await expect(page.locator('[data-screen="player"]')).toHaveCount(0);
@@ -598,12 +614,33 @@ test('Free plan confirms without a card', async ({ page }) => {
   await pressUntil(page, 'plan-free');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="checkout"]')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'TVM Free' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review TVM Free' })).toBeVisible();
+  await page.screenshot({ path: '../../cache/checkout-preview.png', animations: 'disabled' });
   await expect(page.locator('[data-focus-id="card-name"]')).toHaveCount(0);
+  await pressUntil(page, 'checkout-consent');
+  await page.keyboard.press('Enter');
   await pressUntil(page, 'pay');
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-screen="checkout"]')).toHaveCount(0);
-  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your test plan is ready' })).toBeVisible();
+});
+
+test('Privacy controls and Colourcast reduced motion are reachable', async ({ page }) => {
+  await page.route('**/api/plan', (route) => route.fulfill({ json: { ...E2E_PLAN, synthwave: true, synthwaveOwned: true } }));
+  await page.evaluate(() => { localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.theme.isle-boot', '1'); });
+  await page.reload();
+  await waitForFocus(page);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'synthwave');
+  await page.screenshot({ path: '../../cache/colourcast-preview.png', animations: 'disabled' });
+  await pressUntil(page, 'settings'); await page.keyboard.press('Enter'); await waitForFocus(page);
+  await pressUntil(page, 'motion'); await page.keyboard.press('Enter');
+  await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
+  await pressUntil(page, 'privacy'); await page.keyboard.press('Enter'); await waitForFocus(page);
+  await expect(page.getByRole('heading', { name: 'Your data. Your sources.' })).toBeVisible();
+  await expect(page.locator('[data-focus-id="privacy-export"]')).toBeVisible();
+  await pressUntil(page, 'privacy-erase'); await page.keyboard.press('Enter');
+  await expect(page.getByText(/This removes all TVM profiles/)).toBeVisible();
+  await pressUntil(page, 'privacy-keep'); await page.keyboard.press('Enter');
+  await expect(page.getByText(/This removes all TVM profiles/)).toHaveCount(0);
 });
 
 test('Developer rejects a wrong password', async ({ page }) => {

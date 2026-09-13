@@ -49,7 +49,8 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
       <h1 className="page__heading">Real-Debrid</h1>
       <p className="page__lede">
         Paste an API token from real-debrid.com/apitoken. TVM stores it on this machine until you replace it here
-        or fully reset the app.
+        or fully reset the app. It is encrypted on disk and sent to Real-Debrid and the Torrentio resolver when
+        you request catalogue playback. Review those services’ terms and use only content you are authorised to watch.
       </p>
       <dl className="panel__rows settings-summary">
         <div className="panel__row">
@@ -79,6 +80,7 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
         />
       </label>
       <div className="hero__actions">
+        <FocusButton id="rd-terms" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
         <FocusButton id="save" variant="primary" disabled={busy} onSelect={() => void save(fieldValue('token'))}>
           {busy ? 'Saving…' : 'Save token'}
         </FocusButton>

@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { livePicksPath, livePlaylistPath, xtreamPath } from '../update/paths.ts';
+import { readPrivateJson } from './privateJson.ts';
 import { deleteSecret } from './secrets.ts';
 import {
   browserMediaType,
@@ -118,7 +119,8 @@ export function looksLikePlaylistText(value: string): boolean {
 
 function readStored(dataDir: string): StoredPlaylist {
   try {
-    const parsed = JSON.parse(readFileSync(livePlaylistPath(dataDir), 'utf8')) as { url?: unknown; text?: unknown };
+    const parsed = readPrivateJson<{ url?: unknown; text?: unknown }>(dataDir, livePlaylistPath(dataDir));
+    if (parsed === null) return { url: null, text: null };
     const url = typeof parsed.url === 'string' && isHttpUrl(parsed.url) ? parsed.url : null;
     const text = typeof parsed.text === 'string' && parsed.text.trim() !== '' ? parsed.text : null;
     return { url, text };
@@ -128,8 +130,7 @@ function readStored(dataDir: string): StoredPlaylist {
 }
 
 function writeStored(dataDir: string, stored: StoredPlaylist): void {
-  mkdirSync(dirname(livePlaylistPath(dataDir)), { recursive: true });
-  writeFileSync(livePlaylistPath(dataDir), JSON.stringify(stored));
+  writeSealed(dataDir, livePlaylistPath(dataDir), stored);
 }
 
 function readXtream(dataDir: string): XtreamAccount | null {

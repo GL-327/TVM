@@ -4,6 +4,9 @@ export function imdbIdFrom(id: string): string | null {
 }
 
 export function playIdFor(showId: string, season?: number, episode?: number): string {
+  // An owned provider file already identifies the exact episode. Appending a
+  // season or extracting an IMDb substring loses that file's identity.
+  if (showId.startsWith('rd:') || showId.startsWith('live:')) return showId;
   const imdb = imdbIdFrom(showId);
   const base = imdb ?? showId;
   if (season !== undefined && episode !== undefined) return `${base}:${season}:${episode}`;

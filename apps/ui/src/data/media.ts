@@ -216,7 +216,7 @@ export function setActiveProfileId(id: string): void {
 export function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (activeProfileId !== '') headers.set('X-TVM-Profile', activeProfileId);
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(20_000) });
 }
 
 export function looksLikePack(title: string, filename = ''): boolean {
@@ -268,7 +268,7 @@ export function sortEpisodes(items: readonly MediaItem[]): MediaItem[] {
 
 export async function fetchRdStatus(): Promise<RdStatus | null> {
   try {
-    const response = await apiFetch('/api/rd/status');
+    const response = await apiFetch('/api/rd/status', { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return null;
     return (await response.json()) as RdStatus;
   } catch {
@@ -324,7 +324,7 @@ export async function fetchLibrary(): Promise<MediaItem[]> {
 
 export async function fetchMedia(id: string): Promise<MediaItem | null> {
   try {
-    const response = await apiFetch(`/api/media?id=${encodeURIComponent(id)}`);
+    const response = await apiFetch(`/api/media?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) return null;
     return (await response.json()) as MediaItem;
   } catch {
@@ -342,25 +342,32 @@ export async function searchLibrary(query: string, signal?: AbortSignal): Promis
   return body.items ?? [];
 }
 
+export const PLAYBACK_RESOLVE_TIMEOUT_MS = 60_000;
+
 export async function requestPlayback(input: {
   id?: string;
   link?: string;
   title?: string;
   season?: number;
   episode?: number;
-}): Promise<PlaybackResult> {
+}, signal?: AbortSignal): Promise<PlaybackResult> {
+  const timeout = AbortSignal.timeout(PLAYBACK_RESOLVE_TIMEOUT_MS);
   try {
     const response = await apiFetch('/api/playback', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
+      signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
     });
     const body = (await response.json()) as {
       kind?: string;
       error?: string;
       reason?: string;
-    } & Partial<Extract<PlaybackResult, { kind: 'stream' }>>;
-    if (body.kind === 'stream') return body as Extract<PlaybackResult, { kind: 'stream' }>;
+    } & Partial<Omit<Extract<PlaybackResult, { kind: 'stream' }>, 'kind'>>;
+    if (response.ok && body.kind === 'stream' && typeof body.url === 'string' && body.url !== '' &&
+      typeof body.mimeType === 'string' && typeof body.title === 'string') {
+      return body as Extract<PlaybackResult, { kind: 'stream' }>;
+    }
     if (body.kind === 'unavailable') {
       return { kind: 'unavailable', reason: typeof body.reason === 'string' && body.reason !== '' ? body.reason : 'internal' };
     }
@@ -369,7 +376,7 @@ export async function requestPlayback(input: {
       reason: typeof body.error === 'string' && body.error !== '' ? body.error : 'internal',
     };
   } catch {
-    return { kind: 'unavailable', reason: 'network' };
+    return { kind: 'unavailable', reason: timeout.aborted ? 'timeout' : 'network' };
   }
 }
 
@@ -384,7 +391,7 @@ export async function saveProgress(id: string, position: number, duration: numbe
 
 export async function fetchChildren(id: string): Promise<MediaItem[]> {
   try {
-    const response = await apiFetch(`/api/media/children?id=${encodeURIComponent(id)}`);
+    const response = await apiFetch(`/api/media/children?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) return [];
     const body = (await response.json()) as { items?: MediaItem[] };
     return (body.items ?? []).map((item) => {

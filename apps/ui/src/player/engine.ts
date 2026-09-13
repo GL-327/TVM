@@ -73,10 +73,15 @@ export function displayDuration(streamDuration: number | undefined, elementDurat
 }
 
 export const GENERIC_START_ERROR = 'This stream could not start. Press Retry, or Back to pick another file.';
+export const STARTUP_TIMEOUT_MS = 45_000;
+export const STALL_TIMEOUT_MS = 30_000;
+export const STALLED_ERROR = 'Playback stalled. The source stopped sending playable video. Press Retry, or Back to choose another title.';
 
 function hlsConfig(live: boolean, startAt: number): Partial<HlsConfig> {
   const config: Partial<HlsConfig> = { enableWorker: true, maxBufferLength: 30, backBufferLength: 60 };
-  if (!live && startAt > 0) config.startPosition = startAt;
+  // A growing server conversion looks live to HLS. Always start VOD at its
+  // requested position, including zero, instead of chasing the produced edge.
+  if (!live) config.startPosition = Math.max(0, startAt);
   return config;
 }
 
@@ -124,6 +129,7 @@ export function createPlayerEngine(
   let hls: Hls | null = null;
   let ts: TsPlayer | null = null;
   let destroyed = false;
+  let failed = false;
   let attached = false;
   let wantsPlayback = true;
   let hlsGeneration = 0;
@@ -135,16 +141,28 @@ export function createPlayerEngine(
   let requestedSeek: number | null = null;
   const requests = new AbortController();
   let keepAlive: ReturnType<typeof setInterval> | null = null;
+  let watchdog: ReturnType<typeof setInterval> | null = null;
+  let lastProgressAt = Date.now();
+  let lastMediaTime = video.currentTime;
   const listeners: Array<[keyof HTMLVideoElementEventMap, EventListener]> = [];
 
   const fail = (message: string): void => {
-    if (destroyed) return;
+    if (destroyed || failed) return;
+    failed = true;
+    wantsPlayback = false;
+    if (watchdog !== null) clearInterval(watchdog);
+    if (keepAlive !== null) clearInterval(keepAlive);
+    requests.abort();
+    hls?.stopLoad();
+    ts?.pause();
+    video.pause();
+    events.onPlayState(true);
     events.onBuffering(false);
     events.onError(message);
   };
 
   const markFrame = (): void => {
-    if (destroyed || sawFrame) return;
+    if (destroyed || failed || sawFrame) return;
     if (video.videoWidth > 1 || video.currentTime > 0.2) {
       sawFrame = true;
       events.onBuffering(false);
@@ -153,20 +171,23 @@ export function createPlayerEngine(
   };
 
   const tryPlay = (): void => {
-    if (destroyed || !wantsPlayback || !video.paused) return;
+    if (destroyed || failed || !wantsPlayback || !video.paused) return;
     void video.play().catch((reason: unknown) => {
       const name = reason !== null && typeof reason === 'object' && 'name' in reason ? String(reason.name) : '';
-      if (name === 'AbortError' || destroyed || !wantsPlayback) return;
+      if (name === 'AbortError' || destroyed || failed || !wantsPlayback) return;
       if (name === 'NotAllowedError' && !video.muted) {
         video.muted = true;
-        void video.play().catch(() => undefined);
+        void video.play().catch(() => fail('The browser blocked playback. Press Retry to start, or Back to leave.'));
         return;
       }
+      fail(name === 'NotAllowedError' ? 'The browser blocked playback. Press Retry to start, or Back to leave.' : GENERIC_START_ERROR);
     });
   };
 
   const on = <K extends keyof HTMLVideoElementEventMap>(name: K, handler: (event: HTMLVideoElementEventMap[K]) => void): void => {
-    const listener = handler as EventListener;
+    const listener: EventListener = (event) => {
+      if (!destroyed && !failed) handler(event as HTMLVideoElementEventMap[K]);
+    };
     video.addEventListener(name, listener);
     listeners.push([name, listener]);
   };
@@ -183,7 +204,7 @@ export function createPlayerEngine(
     recoveredMedia = false;
     restartedNetwork = false;
     void import('hls.js').then(({ default: Hls }) => {
-      if (destroyed || generation !== hlsGeneration) return;
+      if (destroyed || failed || generation !== hlsGeneration) return;
       if (!Hls.isSupported()) {
         // Safari and some TV browsers speak HLS natively.
         video.src = sessionUrl();
@@ -194,7 +215,7 @@ export function createPlayerEngine(
       const instance = new Hls(hlsConfig(live, isSession ? 0 : startPosition));
       hls = instance;
       instance.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (destroyed || hls !== instance) return;
+        if (destroyed || failed || hls !== instance) return;
         const maxHeight = options.maxHeight;
         if (maxHeight !== undefined) {
           const allowed = instance.levels.map((level, index) => ({ level, index }))
@@ -204,7 +225,7 @@ export function createPlayerEngine(
         tryPlay();
       });
       instance.on(Hls.Events.ERROR, (_event, data) => {
-        if (destroyed || hls !== instance || data.fatal !== true) return;
+        if (destroyed || failed || hls !== instance || data.fatal !== true) return;
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recoveredMedia) {
           recoveredMedia = true;
           instance.recoverMediaError();
@@ -230,7 +251,7 @@ export function createPlayerEngine(
 
   const attachTs = (): void => {
     void import('../screens/mpegtsSelf').then(() => import('mpegts.js')).then((mod) => {
-      if (destroyed) return;
+      if (destroyed || failed) return;
       const api = resolveMpegts(mod) ?? resolveMpegts((globalThis as { mpegts?: unknown }).mpegts);
       if (api === null || api.isSupported?.() === false) {
         fail(GENERIC_START_ERROR);
@@ -266,8 +287,10 @@ export function createPlayerEngine(
     video.load();
     const startAt = options.startAt ?? 0;
     if (!live && startAt > 0) {
+      let resumed = false;
       const seekOnce = (): void => {
-        video.removeEventListener('loadedmetadata', seekOnce);
+        if (resumed) return;
+        resumed = true;
         if (Number.isFinite(video.duration) && startAt < video.duration - 2) video.currentTime = startAt;
         tryPlay();
       };
@@ -278,22 +301,23 @@ export function createPlayerEngine(
   };
 
   const sessionSeek = async (target: number): Promise<void> => {
-    if (stream.sessionId === undefined || destroyed) return;
+    if (stream.sessionId === undefined || destroyed || failed) return;
     if (seekRestartPending) {
       pendingSeek = target;
       return;
     }
     seekRestartPending = true;
+    lastProgressAt = Date.now();
     events.onBuffering(true);
     try {
       const response = await fetchImpl(`/api/stream/hls/${stream.sessionId}/seek`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ at: Math.max(0, Math.floor(target)) }),
-        signal: requests.signal,
+        signal: AbortSignal.any([requests.signal, AbortSignal.timeout(25_000)]),
       });
       const body = (await response.json()) as { ok?: boolean; offset?: number };
-      if (destroyed) return;
+      if (destroyed || failed) return;
       if (response.ok && body.ok === true && typeof body.offset === 'number' && Number.isFinite(body.offset)) {
         offset = body.offset;
         if (pendingSeek !== null) return;
@@ -301,21 +325,22 @@ export function createPlayerEngine(
         events.onTime(offset, displayDuration(stream.durationSeconds, video.duration, offset));
         attachHls(0);
       } else {
-        events.onBuffering(false);
+        fail('This playback session could not seek. Press Retry to reconnect, or Back to leave.');
       }
     } catch {
-      if (!destroyed) events.onBuffering(false);
+      if (!destroyed) fail('Seeking took too long or the session disconnected. Press Retry to reconnect.');
     } finally {
       seekRestartPending = false;
       const next = pendingSeek;
       pendingSeek = null;
-      if (next !== null && !destroyed) void sessionSeek(next);
+      if (next !== null && !destroyed && !failed) void sessionSeek(next);
       else requestedSeek = null;
     }
   };
 
   const seekTo = (seconds: number): void => {
-    if (live || destroyed || !Number.isFinite(seconds)) return;
+    if (live || destroyed || failed || !Number.isFinite(seconds)) return;
+    lastProgressAt = Date.now();
     const total = displayDuration(stream.durationSeconds, video.duration, offset);
     const target = Math.max(0, total > 0 ? Math.min(seconds, total - 1) : seconds);
     requestedSeek = target;
@@ -341,6 +366,18 @@ export function createPlayerEngine(
     attach() {
       if (destroyed || attached) return;
       attached = true;
+      lastProgressAt = Date.now();
+      lastMediaTime = video.currentTime;
+      watchdog = setInterval(() => {
+        if (destroyed || failed) return;
+        const now = Date.now();
+        if (!wantsPlayback || video.currentTime !== lastMediaTime) {
+          lastProgressAt = now;
+          lastMediaTime = video.currentTime;
+          return;
+        }
+        if (now - lastProgressAt >= (sawFrame ? STALL_TIMEOUT_MS : STARTUP_TIMEOUT_MS)) fail(STALLED_ERROR);
+      }, 1_000);
       events.onBuffering(true);
       on('timeupdate', () => {
         if (seekRestartPending) return;
@@ -369,6 +406,7 @@ export function createPlayerEngine(
       });
       on('pause', () => events.onPlayState(true));
       on('waiting', () => events.onBuffering(true));
+      on('stalled', () => events.onBuffering(true));
       on('canplay', () => {
         markFrame();
         if (sawFrame) events.onBuffering(false);
@@ -391,7 +429,9 @@ export function createPlayerEngine(
       if (isSession && stream.sessionId !== undefined) {
         const url = `/api/stream/hls/${stream.sessionId}/ping`;
         keepAlive = setInterval(() => {
-          void fetchImpl(url, { method: 'POST', signal: requests.signal }).catch(() => undefined);
+          void fetchImpl(url, { method: 'POST', signal: AbortSignal.any([requests.signal, AbortSignal.timeout(10_000)]) })
+            .then((response) => { if (response.status === 404) fail('The playback session expired. Press Retry to reconnect.'); })
+            .catch(() => undefined);
         }, 20_000);
       }
     },
@@ -400,6 +440,10 @@ export function createPlayerEngine(
       if (destroyed) return;
       destroyed = true;
       requests.abort();
+      if (watchdog !== null) {
+        clearInterval(watchdog);
+        watchdog = null;
+      }
       if (keepAlive !== null) {
         clearInterval(keepAlive);
         keepAlive = null;
@@ -425,6 +469,7 @@ export function createPlayerEngine(
     },
 
     play: () => {
+      if (!wantsPlayback) lastProgressAt = Date.now();
       wantsPlayback = true;
       tryPlay();
     },
@@ -434,6 +479,7 @@ export function createPlayerEngine(
     },
     toggle() {
       wantsPlayback = video.paused;
+      if (wantsPlayback) lastProgressAt = Date.now();
       if (wantsPlayback) tryPlay();
       else video.pause();
     },

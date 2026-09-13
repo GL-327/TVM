@@ -5,6 +5,11 @@ const QUERY = '(prefers-reduced-motion: reduce)';
 const listeners = new Set<() => void>();
 let preference: MotionPreference | undefined;
 let media: MediaQueryList | undefined;
+let observingVisibility = false;
+
+function syncVisibility(): void {
+  document.documentElement.dataset.visibility = document.visibilityState === 'hidden' ? 'hidden' : 'visible';
+}
 
 function resolvePreference(value: string | null | undefined): MotionPreference {
   return value === 'full' || value === 'reduced' ? value : 'auto';
@@ -42,6 +47,11 @@ export function subscribeMotionPreference(listener: () => void): () => void {
 
 export function applyMotionPreference(value: MotionPreference): MotionPreference {
   preference = resolvePreference(value);
+  if (!observingVisibility && typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    observingVisibility = true;
+    document.addEventListener('visibilitychange', syncVisibility);
+    syncVisibility();
+  }
   if (media === undefined && typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     media = window.matchMedia(QUERY);
     media.addEventListener('change', syncMotion);

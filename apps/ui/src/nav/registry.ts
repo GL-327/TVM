@@ -18,6 +18,7 @@ const LiveTV = lazy(() => import('../screens/LiveTV').then((m) => ({ default: m.
 const LiveXtream = lazy(() => import('../screens/LiveXtream').then((m) => ({ default: m.LiveXtream })));
 const Player = lazy(() => import('../screens/Player').then((m) => ({ default: m.Player })));
 const Plans = lazy(() => import('../screens/Plans').then((m) => ({ default: m.Plans })));
+const Legal = lazy(() => import('../screens/Legal').then((m) => ({ default: m.Legal })));
 const Profile = lazy(() => import('../screens/Profile').then((m) => ({ default: m.Profile })));
 const Profiles = lazy(() => import('../screens/Profiles').then((m) => ({ default: m.Profiles })));
 const RealDebrid = lazy(() => import('../screens/RealDebrid').then((m) => ({ default: m.RealDebrid })));
@@ -53,9 +54,10 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   details: { component: Details, defaultFocus: 'back' },
   settings: { component: Settings, defaultFocus: 'plan' },
   plans: { component: Plans, defaultFocus: 'plan-free' },
+  legal: { component: Legal, defaultFocus: 'legal-back' },
   checkout: {
     component: Checkout,
-    defaultFocus: (params) => (params['planId'] === 'free' ? 'pay' : 'card-name'),
+    defaultFocus: 'checkout-consent',
   },
   developer: { component: Developer, defaultFocus: 'dev-free' },
   'developer-unlock': { component: DeveloperUnlock, defaultFocus: 'dev-password' },

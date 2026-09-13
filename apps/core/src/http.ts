@@ -24,5 +24,7 @@ export async function readJson(request: IncomingMessage, limit = 65536): Promise
     chunks.push(buffer);
   }
   if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new SyntaxError('JSON object required');
+  return value;
 }

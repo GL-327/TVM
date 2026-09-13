@@ -148,7 +148,7 @@ describe('core API', () => {
     const free = await fetch(`${baseUrl}/api/billing/checkout`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ planId: 'free' }),
+      body: JSON.stringify({ planId: 'free', consent: true, requestId: crypto.randomUUID() }),
     });
     expect(free.status).toBe(200);
     expect(await free.json()).toMatchObject({ id: 'free', mocks: false });
@@ -166,7 +166,7 @@ describe('core API', () => {
     });
     expect(bad.status).toBe(400);
     const body = (await bad.json()) as { error: string };
-    expect(body.error).toMatch(/card number/i);
+    expect(body.error).toMatch(/card_data_not_supported/i);
     expect(JSON.stringify(body)).not.toContain('1111111111111111');
   });
 
@@ -176,10 +176,7 @@ describe('core API', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         planId: 'basic',
-        name: 'Arthur Foxall',
-        number: '4242424242424242',
-        expiry: '12/99',
-        cvc: '123',
+        consent: true, requestId: crypto.randomUUID(),
         liveTv: false,
       }),
     });
@@ -197,7 +194,7 @@ describe('core API', () => {
     await fetch(`${baseUrl}/api/billing/checkout`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ planId: 'free' }),
+      body: JSON.stringify({ planId: 'free', consent: true, requestId: crypto.randomUUID() }),
     });
     const refused = await fetch(`${baseUrl}/api/plan/live-tv`, {
       method: 'POST',
@@ -213,16 +210,13 @@ describe('core API', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         planId: 'basic',
-        name: 'Arthur Foxall',
-        number: '4242424242424242',
-        expiry: '12/99',
-        cvc: '123',
+        consent: true, requestId: crypto.randomUUID(),
         liveTv: false,
         synthwave: true,
       }),
     });
     expect(paid.status).toBe(200);
-    expect(await paid.json()).toMatchObject({ id: 'basic', synthwave: true, pricePence: 998 });
+    expect(await paid.json()).toMatchObject({ id: 'basic', synthwave: true, pricePence: 499 });
   });
 
   it('rejects a wrong developer code without a hint', async () => {

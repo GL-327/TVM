@@ -6,7 +6,7 @@ import {
   poolRdPath,
   usagePath,
 } from '../update/paths.ts';
-import { cvcOk, expiryOk, lastFour, luhnOk } from './card.ts';
+import { randomUUID } from 'node:crypto';
 import { deleteSecret } from './secrets.ts';
 import { readSealed, writeSealed } from './vault.ts';
 
@@ -231,11 +231,40 @@ export interface Entitlement {
 }
 
 export interface BillingReceipt {
+  id: string;
+  requestId: string;
+  fingerprint: string;
   planId: PlanId;
   mock: true;
-  last4: string | null;
+  mode: 'sandbox';
+  event: 'checkout' | 'cancellation';
+  currency: 'GBP';
+  monthlyPence: number;
+  oneTimePence: number;
+  chargedPence: 0;
+  liveTv: boolean;
+  synthwavePurchased: boolean;
+  consentVersion: string;
   at: string;
 }
+
+export interface BillingStatus {
+  mode: 'sandbox';
+  livePaymentsEnabled: false;
+  currency: 'GBP';
+  subscription: 'free' | 'test-active';
+  monthlyPence: number;
+  nextChargeAt: null;
+  synthwaveOwned: boolean;
+  receipts: BillingReceipt[];
+}
+
+interface BillingLedger {
+  version: 2;
+  receipts: BillingReceipt[];
+}
+
+export const BILLING_CONSENT_VERSION = '2026-09-12-testing';
 
 export interface UsageRecord {
   weekStart: string;
@@ -252,6 +281,7 @@ export interface PlanStatus {
   liveTvAddonPence: number;
   liveTvOptional: boolean;
   synthwave: boolean;
+  synthwaveOwned: boolean;
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
@@ -283,6 +313,12 @@ export interface CheckoutInput {
   cvc?: unknown;
   liveTv?: unknown;
   synthwave?: unknown;
+  consent?: unknown;
+  requestId?: unknown;
+  simulate?: unknown;
+  packOnly?: unknown;
+  quotedMonthlyPence?: unknown;
+  quotedOneTimePence?: unknown;
 }
 
 function planRank(id: PlanId): number {
@@ -314,9 +350,8 @@ export function liveTvIncluded(plan: PlanDefinition, addon: boolean | undefined)
   return plan.liveTv;
 }
 
-export function priceFor(plan: PlanDefinition, liveTv: boolean, synthwave = false): { price: string; pricePence: number } {
-  const pricePence =
-    plan.basePricePence + (liveTv ? plan.liveTvAddonPence : 0) + (synthwave ? SYNTHWAVE_ADDON_PENCE : 0);
+export function priceFor(plan: PlanDefinition, liveTv: boolean): { price: string; pricePence: number } {
+  const pricePence = plan.basePricePence + (liveTv ? plan.liveTvAddonPence : 0);
   return { pricePence, price: formatGbp(pricePence) };
 }
 
@@ -397,8 +432,37 @@ function clampStyle(id: PlanId, styleId: StyleId): StyleId {
   return allowed[0] ?? 'classic';
 }
 
-export function createPlanService(options: { dataDir: string; developer?: () => boolean }) {
+export function createPlanService(options: { dataDir: string; developer?: () => boolean; env?: NodeJS.ProcessEnv }) {
   const dataDir = options.dataDir;
+
+  const readReceipts = (): BillingReceipt[] => {
+    const stored = readSealed<BillingLedger>(dataDir, billingPath(dataDir));
+    // Legacy card-check receipts are deliberately not carried into the sandbox ledger.
+    return stored?.version === 2 && Array.isArray(stored.receipts) ? stored.receipts : [];
+  };
+
+  const saveReceipt = (receipt: BillingReceipt): void => {
+    writeSealed(dataDir, billingPath(dataDir), {
+      version: 2,
+      receipts: [receipt, ...readReceipts()].slice(0, 100),
+    } satisfies BillingLedger);
+  };
+
+  const requestKey = (input: { consent?: unknown; requestId?: unknown }): string => {
+    if (options.env?.['TVM_ENV'] === 'production') throw new Error('Live billing is not configured. Use a private development build for test checkout.');
+    if (input.consent !== true) throw new Error('Confirm that this is a test transaction with no real charge.');
+    if (typeof input.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestId)) {
+      throw new Error('A valid checkout request ID is required. Please reopen checkout.');
+    }
+    return input.requestId;
+  };
+
+  const alreadyProcessed = (requestId: string, fingerprint: string): boolean => {
+    const previous = readReceipts().find((receipt) => receipt.requestId === requestId);
+    if (previous === undefined) return false;
+    if (previous.fingerprint !== fingerprint) throw new Error('This request ID was used for a different transaction.');
+    return true;
+  };
 
   const readUsage = (): UsageRecord => {
     const weekStart = mondayUtc();
@@ -425,6 +489,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       if (!existsSync(planPath(dataDir))) writeSnapshot(dataDir, next);
       return next;
     }
+    if (existsSync(entitlementPath(dataDir))) return defaultEntitlement();
     if (existsSync(planPath(dataDir))) {
       try {
         const raw = JSON.parse(readFileSync(planPath(dataDir), 'utf8')) as EntitlementSnapshot;
@@ -464,7 +529,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     const liveTv = over.liveTv ?? liveTvIncluded(base, entitlement.liveTvAddon);
     const synthwaveOwned = entitlement.synthwaveAddon === true;
     const synthwave = developer || synthwaveOwned;
-    const charged = priceFor(base, liveTv, synthwaveOwned);
+    const charged = priceFor(base, liveTv);
     const maxHeight = over.maxHeight ?? base.maxHeight;
     const startDelayMs = over.startDelayMs ?? base.startDelayMs;
     const weeklySeconds = over.weeklySeconds === undefined ? base.weeklySeconds : over.weeklySeconds;
@@ -485,6 +550,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       liveTvAddonPence: base.liveTvAddonPence,
       liveTvOptional: base.liveTvAddonPence > 0,
       synthwave,
+      synthwaveOwned,
       synthwaveAddonPence: SYNTHWAVE_ADDON_PENCE,
       mocks,
       liveTv,
@@ -565,55 +631,89 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       return compose();
     },
     checkout(input: CheckoutInput): PlanStatus {
-      if (!isPlanId(input.planId)) throw new Error('unknown_plan');
-      const plan = definition(input.planId);
-      const includeLive = checkoutWantsLiveTv(plan, input.liveTv);
-      const includeSynthwave = input.synthwave === true;
-      const current = readEntitlement();
-      if (plan.basePricePence === 0 && !includeSynthwave) {
-        writeEntitlement({
-          ...current,
-          id: plan.id,
-          source: 'free',
-          styleId: clampStyle(plan.id, current.styleId),
-          liveTvAddon: false,
-          synthwaveAddon: undefined,
-        });
-        writeSealed(dataDir, billingPath(dataDir), {
-          planId: plan.id,
-          mock: true,
-          last4: null,
-          at: new Date().toISOString(),
-        } satisfies BillingReceipt);
-        return compose();
+      if (input.number !== undefined || input.cvc !== undefined || input.expiry !== undefined || input.name !== undefined) {
+        throw new Error('card_data_not_supported: Do not send card or payment details to test checkout.');
       }
-      const name = typeof input.name === 'string' ? input.name.trim() : '';
-      const number = typeof input.number === 'string' ? input.number : '';
-      const expiry = typeof input.expiry === 'string' ? input.expiry : '';
-      const cvc = typeof input.cvc === 'string' ? input.cvc : '';
-      if (name.length < 2) throw new Error('Enter the name on the card.');
-      if (!luhnOk(number)) throw new Error('That card number is not valid.');
-      if (!expiryOk(expiry)) throw new Error('That expiry date is not valid.');
-      if (!cvcOk(cvc)) throw new Error('That security code is not valid.');
-      const four = lastFour(number);
+      const requestId = requestKey(input);
+      if (!isPlanId(input.planId)) throw new Error('unknown_plan');
+      for (const value of [input.liveTv, input.synthwave, input.packOnly]) {
+        if (value !== undefined && typeof value !== 'boolean') throw new Error('Invalid checkout option.');
+      }
+      if (input.simulate !== undefined && !['success', 'decline', 'cancel'].includes(String(input.simulate))) {
+        throw new Error('Invalid test outcome.');
+      }
+      const current = readEntitlement();
+      const plan = definition(input.packOnly === true ? current.id : input.planId);
+      const includeLive = input.packOnly === true
+        ? liveTvIncluded(plan, current.liveTvAddon)
+        : checkoutWantsLiveTv(plan, input.liveTv);
+      const includeSynthwave = input.synthwave === true;
+      const fingerprint = JSON.stringify({
+        event: 'checkout', planId: input.planId, liveTv: input.liveTv ?? null,
+        synthwave: includeSynthwave, packOnly: input.packOnly === true,
+        quotedMonthlyPence: input.quotedMonthlyPence ?? null,
+        quotedOneTimePence: input.quotedOneTimePence ?? null,
+      });
+      if (alreadyProcessed(requestId, fingerprint)) return compose();
+      const monthlyPence = priceFor(plan, includeLive).pricePence;
+      const oneTimePence = includeSynthwave && current.synthwaveAddon !== true ? SYNTHWAVE_ADDON_PENCE : 0;
+      if ((input.quotedMonthlyPence !== undefined && input.quotedMonthlyPence !== monthlyPence)
+        || (input.quotedOneTimePence !== undefined && input.quotedOneTimePence !== oneTimePence)) {
+        throw new Error('The order has changed. Reopen checkout to review the current total.');
+      }
+      if (input.simulate === 'decline') throw new Error('Test payment declined. Your plan has not changed. Choose Success to try again.');
+      if (input.simulate === 'cancel') throw new Error('Test checkout cancelled. Your plan has not changed.');
       writeEntitlement({
         ...current,
         id: plan.id,
-        source: 'checkout',
+        source: plan.id === 'free' && !includeSynthwave ? 'free' : 'checkout',
         styleId: clampStyle(plan.id, current.styleId),
         liveTvAddon: includeLive,
         synthwaveAddon: includeSynthwave ? true : current.synthwaveAddon,
       });
-      writeSealed(dataDir, billingPath(dataDir), {
+      saveReceipt({
+        id: `TEST-${randomUUID()}`,
+        requestId,
+        fingerprint,
         planId: plan.id,
         mock: true,
-        last4: four,
+        mode: 'sandbox',
+        event: 'checkout',
+        currency: 'GBP',
+        monthlyPence,
+        oneTimePence,
+        chargedPence: 0,
+        liveTv: includeLive,
+        synthwavePurchased: oneTimePence > 0,
+        consentVersion: BILLING_CONSENT_VERSION,
         at: new Date().toISOString(),
-      } satisfies BillingReceipt);
+      });
       return compose();
     },
+    cancel(input: { consent?: unknown; requestId?: unknown }): PlanStatus {
+      const requestId = requestKey(input);
+      const fingerprint = JSON.stringify({ event: 'cancellation' });
+      if (alreadyProcessed(requestId, fingerprint)) return compose();
+      const current = readEntitlement();
+      writeEntitlement({ ...current, id: 'free', source: 'free', styleId: 'classic', liveTvAddon: false });
+      saveReceipt({
+        id: `TEST-${randomUUID()}`, requestId, fingerprint, planId: 'free', mock: true,
+        mode: 'sandbox', event: 'cancellation', currency: 'GBP', monthlyPence: 0,
+        oneTimePence: 0, chargedPence: 0, liveTv: false, synthwavePurchased: false,
+        consentVersion: BILLING_CONSENT_VERSION, at: new Date().toISOString(),
+      });
+      return compose();
+    },
+    billing(): BillingStatus {
+      const status = compose();
+      return {
+        mode: 'sandbox', livePaymentsEnabled: false, currency: 'GBP',
+        subscription: status.id === 'free' ? 'free' : 'test-active', monthlyPence: status.pricePence,
+        nextChargeAt: null, synthwaveOwned: status.synthwaveOwned, receipts: readReceipts(),
+      };
+    },
     receipt(): BillingReceipt | null {
-      return readSealed<BillingReceipt>(dataDir, billingPath(dataDir));
+      return readReceipts()[0] ?? null;
     },
     tickUsage(seconds: number, billable: boolean): PlanStatus {
       if (!billable || !Number.isFinite(seconds) || seconds <= 0) return compose();
