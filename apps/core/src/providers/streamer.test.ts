@@ -109,6 +109,8 @@ describe('hls session arguments', () => {
     expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'));
     expect(args[args.indexOf('-ss') + 1]).toBe('640');
     expect(args[args.indexOf('-hls_segment_type') + 1]).toBe('fmp4');
+    expect(args[args.indexOf('-hls_playlist_type') + 1]).toBe('event');
+    expect(args[args.indexOf('-rw_timeout') + 1]).toBe('20000000');
     expect(args[args.indexOf('-hls_fmp4_init_filename') + 1]).toBe('init.mp4');
     expect(args[args.indexOf('-hls_segment_filename') + 1]).toBe('seg%05d.m4s');
     expect(args.at(-1)).toBe('index.m3u8');
@@ -151,7 +153,7 @@ describe('session reuse', () => {
   const sessions = createStreamSessions({ cacheDir: dir, ffmpegPath: () => process.execPath });
   afterAll(() => {
     sessions.stopAll();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('adopts the live session for a source instead of racing a second ffmpeg at it', () => {

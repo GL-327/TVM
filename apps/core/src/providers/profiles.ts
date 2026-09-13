@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { profileDir, profilesPath, progressPath, watchlistPath } from '../update/paths.ts';
+import { readPrivateJson } from './privateJson.ts';
+import { writeSealed } from './vault.ts';
 
 export const MAX_PROFILES = 10;
 
@@ -29,7 +31,7 @@ function defaultProfile(index = 0): Profile {
 
 function persist(dataDir: string, registry: ProfileRegistry): ProfileRegistry {
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(profilesPath(dataDir), JSON.stringify(registry));
+  writeSealed(dataDir, profilesPath(dataDir), registry);
   mkdirSync(profileDir(dataDir, registry.activeId), { recursive: true });
   return registry;
 }
@@ -47,7 +49,8 @@ function migrateLegacy(dataDir: string, profileId: string): void {
 
 export function loadProfiles(dataDir: string): ProfileRegistry {
   try {
-    const parsed = JSON.parse(readFileSync(profilesPath(dataDir), 'utf8')) as ProfileRegistry;
+    const parsed = readPrivateJson<ProfileRegistry>(dataDir, profilesPath(dataDir));
+    if (parsed === null) throw new Error('profiles missing');
     if (Array.isArray(parsed.profiles) && parsed.profiles.length > 0) {
       const active = parsed.profiles.some((profile) => profile.id === parsed.activeId)
         ? parsed.activeId

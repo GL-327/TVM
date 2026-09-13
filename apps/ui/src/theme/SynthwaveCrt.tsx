@@ -1,4 +1,5 @@
 import { useId, type CSSProperties } from 'react';
+import { useThemeId } from './useThemeId';
 
 /** Berlin-style radio rings: warm phosphor bands, all curves. */
 const RINGS = [
@@ -88,6 +89,12 @@ function Tag(): React.JSX.Element {
 
 /** One analog 1970s/80s station ident: rings, rainbow, oscilloscope, morphing landmark. */
 export function SynthwaveCrt(): React.JSX.Element {
+  const theme = useThemeId();
+  return <>{theme === 'synthwave' ? <ColourcastIdent /> : null}</>;
+}
+
+/** Mount the animated layers only while their theme is actually selected. */
+function ColourcastIdent(): React.JSX.Element {
   const raw = useId().replace(/:/g, '');
   const phos = `sw-phos-${raw}`;
   const bloom = `sw-bloom-${raw}`;
@@ -133,7 +140,7 @@ export function SynthwaveCrt(): React.JSX.Element {
             </filter>
           </defs>
           <g className="sw-ident__field">
-            {RINGS.map((ring) => (
+            {RINGS.map((ring, index) => (
               <circle
                 key={ring.color}
                 className="sw-ident__ring sw-phos-stroke"
@@ -142,7 +149,7 @@ export function SynthwaveCrt(): React.JSX.Element {
                 r={ring.r}
                 fill="none"
                 stroke={ring.color}
-                style={{ '--ink': ring.color, '--ring-s': String(ring.r / 18) } as CSSProperties}
+                style={{ '--ink': ring.color, animationDelay: `${index * -0.2}s` } as CSSProperties}
               />
             ))}
             {PULSES.map((pulse) => (

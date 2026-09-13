@@ -11,15 +11,12 @@ import {
   asTitle,
   fetchChildren,
   fetchMedia,
-  fetchRdStatus,
   fetchWatchlist,
   removeWatchlist,
   toMediaItem,
   type MediaItem,
-  type RdStatus,
 } from '../data/media';
 import { titleFromDetailsParams } from '../data/openDetails';
-import { playbackErrorMessage } from '../data/playbackErrors';
 import { certificateLabel, formatAired, imdbIdFrom, imdbScore, imdbTitleUrl, playIdFor, seriesGraphUrl } from '../data/playId';
 import { asSeason, episodesForSeason, seasonNumbers } from '../data/seasons';
 import { requestFocus } from '../nav/focusEngine';
@@ -70,19 +67,18 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     snapshot?.kind === 'series' || catalog?.kind === 'series',
   );
   const [season, setSeason] = useState<number | null>(null);
-  const [rd, setRd] = useState<RdStatus | null>(null);
+  const [loadingTitle, setLoadingTitle] = useState(snapshot === undefined && id !== '');
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchRdStatus().then((status) => {
-      if (!cancelled) setRd(status);
-    });
     void fetchWatchlist().then((items) => {
       if (!cancelled) setSaved(items.some((item) => item.id === id || item.id.startsWith(`${id}:`)));
     });
     if (id === '') return () => {
       cancelled = true;
     };
+    setLoadingTitle(true);
     void fetchMedia(id).then((item) => {
       if (cancelled || item === null) return;
       const incoming = asTitle(item);
@@ -97,11 +93,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
           backdrop: current.backdrop !== '' ? current.backdrop : incoming.backdrop,
         };
       });
-    });
+    }).finally(() => { if (!cancelled) setLoadingTitle(false); });
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [attempt, id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,7 +129,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [title?.id]);
+  }, [attempt, title?.id]);
 
   const seriesLike = title !== undefined && (title.kind === 'series' || files.some((file) => asSeason(file.season) !== undefined));
 
@@ -167,7 +163,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   }, [files, scope, season]);
 
   if (title === undefined) {
-    if (id !== '') {
+    if (loadingTitle) {
       return (
         <DetailsShell series={false}>
           <div className="details__hero">
@@ -190,7 +186,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
       <main className="page page--details">
         <ErrorState
           title="Missing title"
-          body="That title is not in the catalog."
+          body="This title could not be loaded. Check the connection, or choose another title."
+          onRetry={() => setAttempt((value) => value + 1)}
           onBack={() => navigate.pop()}
         />
       </main>
@@ -200,28 +197,13 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const score = imdbScore(title.rating);
   const certificate = certificateLabel(title.rating);
   const imdbUrl = imdbTitleUrl(title.id);
-  const needsToken = rd !== null && (!rd.configured || rd.error !== null);
 
   const openWeb = (url: string, name: string): void => {
     navigate.push('service', { params: { id: name.toLowerCase(), url, title: name } });
   };
 
-  const askForToken = (): void => {
-    navigate.pushModal('notice', {
-      params: {
-        title: 'Real-Debrid',
-        body: playbackErrorMessage(!rd?.configured ? 'not-configured' : 'needs-auth'),
-        action: 'tvm-stream',
-      },
-    });
-  };
-
   const playItem = (item: MediaItem): void => {
-    if (needsToken) {
-      askForToken();
-      return;
-    }
-    const playId = playIdFor(item.id.startsWith('tt') ? item.id : title.id, item.season, item.episode);
+    const playId = playIdFor(item.id || title.id, item.season, item.episode);
     navigate.pushModal('player', {
       params: {
         id: playId,
@@ -233,10 +215,6 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   };
 
   const playFilm = (): void => {
-    if (needsToken) {
-      askForToken();
-      return;
-    }
     navigate.pushModal('player', {
       params: {
         id: playIdFor(title.id),
@@ -319,7 +297,10 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                 </>
               )}
               {!loadingEpisodes && seasons.length === 0 && (
-                <p className="page__lede">Episodes have not loaded for this series yet.</p>
+                <div>
+                  <p className="page__lede">No episodes are available yet. Try loading them again.</p>
+                  <FocusButton id="episodes-retry" onSelect={() => setAttempt((value) => value + 1)}>Retry episodes</FocusButton>
+                </div>
               )}
               {seasons.map((value) => (
                 <FocusButton

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { absolutePosition, attachKindFor, createPlayerEngine, displayDuration, withinSessionWindow, type EngineStream } from './engine';
+import { absolutePosition, attachKindFor, createPlayerEngine, displayDuration, withinSessionWindow, STARTUP_TIMEOUT_MS, STALL_TIMEOUT_MS, STALLED_ERROR, type EngineStream } from './engine';
 import { attachedHls } from './hlsBridge';
 
 const fakeHls = vi.hoisted(() => {
@@ -16,7 +16,8 @@ const fakeHls = vi.hoisted(() => {
     attachMedia = vi.fn();
     recoverMediaError = vi.fn();
     startLoad = vi.fn();
-    constructor() { FakeHls.instances.push(this); }
+    stopLoad = vi.fn();
+    constructor(public config: Record<string, unknown>) { FakeHls.instances.push(this); }
     on(event: string, handler: (...args: unknown[]) => void): void { this.listeners.set(event, handler); }
   }
   return FakeHls;
@@ -116,6 +117,7 @@ describe('playback lifecycle', () => {
     engine.attach();
     await vi.dynamicImportSettled();
     const instance = fakeHls.instances[0]!;
+    expect(instance.config.startPosition).toBe(0);
     expect(attachedHls(video as unknown as HTMLVideoElement)).toBe(instance);
     instance.listeners.get('manifest')?.();
     expect(instance.autoLevelCapping).toBe(1);
@@ -160,6 +162,80 @@ describe('playback lifecycle', () => {
     const signal = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].signal!;
     engine.destroy();
     expect(signal.aborted).toBe(true);
+  });
+
+  it('surfaces a startup deadline even when canplay and waiting keep alternating', async () => {
+    vi.useFakeTimers();
+    const { video, events, engine } = setup();
+    video.videoWidth = 0;
+    video.currentTime = 0;
+    engine.attach();
+    for (let elapsed = 0; elapsed < STARTUP_TIMEOUT_MS; elapsed += 1000) {
+      video.dispatchEvent(new Event('waiting'));
+      video.dispatchEvent(new Event('canplay'));
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(events.onError).toHaveBeenCalledExactlyOnceWith(STALLED_ERROR);
+    expect(video.paused).toBe(true);
+    video.dispatchEvent(new Event('playing'));
+    await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
+    expect(events.onError).toHaveBeenCalledOnce();
+    engine.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stops an established stream that stops advancing and does not time out a user pause', async () => {
+    vi.useFakeTimers();
+    const { video, events, engine } = setup();
+    engine.attach();
+    video.dispatchEvent(new Event('playing'));
+    engine.pause();
+    await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS * 2);
+    expect(events.onError).not.toHaveBeenCalled();
+    engine.play();
+    for (let i = 0; i < 40; i += 1) {
+      video.currentTime += 1;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(events.onError).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(STALL_TIMEOUT_MS);
+    expect(events.onError).toHaveBeenCalledExactlyOnceWith(STALLED_ERROR);
+    engine.destroy();
+  });
+
+  it('surfaces a rejected browser play promise instead of leaving loading active', async () => {
+    const { video, events, engine } = setup();
+    video.play.mockRejectedValue(new DOMException('Unsupported source', 'NotSupportedError'));
+    engine.attach();
+    await vi.waitFor(() => expect(events.onError).toHaveBeenCalledOnce());
+    expect(events.onBuffering).toHaveBeenLastCalledWith(false);
+    engine.destroy();
+  });
+
+  it('bounds HLS network recovery to one retry and stops loading on fatal failure', async () => {
+    const { events, engine } = setup(sessionStream);
+    engine.attach();
+    await vi.dynamicImportSettled();
+    const instance = fakeHls.instances[0]!;
+    const error = instance.listeners.get('error')!;
+    error('error', { fatal: true, type: 'network' });
+    error('error', { fatal: true, type: 'network' });
+    error('error', { fatal: true, type: 'network' });
+    expect(instance.startLoad).toHaveBeenCalledOnce();
+    expect(instance.stopLoad).toHaveBeenCalledOnce();
+    expect(events.onError).toHaveBeenCalledOnce();
+    engine.destroy();
+  });
+
+  it('reports an expired seek session rather than silently getting stuck', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 404 }));
+    const { events, engine } = setup(sessionStream, { fetchImpl });
+    engine.attach();
+    await vi.dynamicImportSettled();
+    engine.seekTo(1000);
+    await vi.waitFor(() => expect(events.onError).toHaveBeenCalledOnce());
+    expect(events.onBuffering).toHaveBeenLastCalledWith(false);
+    engine.destroy();
   });
 });
 

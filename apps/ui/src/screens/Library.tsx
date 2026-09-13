@@ -44,6 +44,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
     cached?.featured !== null && cached?.featured !== undefined ? asTitle(cached.featured) : null,
   );
   const [rd, setRd] = useState<RdStatus>(cached?.rd ?? RD_EMPTY);
+  const rdReady = rd.configured && rd.error !== 'needs-auth';
   const [profile, setProfile] = useState<Profile | null>(null);
   const [lane, setLane] = useState<'all' | 'shows' | 'movies'>('all');
   const [token, setToken] = useState('');
@@ -88,10 +89,10 @@ export function Library(_props: ScreenProps): React.JSX.Element {
   }, [reload]);
 
   useEffect(() => {
-    if (loading || rd.configured) return;
+    if (loading || rdReady) return;
     const timer = window.setTimeout(() => requestFocus(`${scope}/token`), 0);
     return () => window.clearTimeout(timer);
-  }, [loading, rd.configured, scope]);
+  }, [loading, rdReady, scope]);
 
   const connect = async (raw?: string): Promise<void> => {
     const trimmed = (raw ?? token).trim();
@@ -150,7 +151,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
           title="Loading library…"
           body="Reading your catalog and Real-Debrid status on this machine."
         />
-      ) : loading ? null : !rd.configured ? (
+      ) : loading ? null : !rdReady ? (
         <section className="stream-connect" aria-labelledby="stream-connect-title">
           <p className="stage__kicker">TVM Stream</p>
           <h1 id="stream-connect-title" className="page__heading">
@@ -158,7 +159,8 @@ export function Library(_props: ScreenProps): React.JSX.Element {
           </h1>
           <p className="page__lede">
             Home and the other apps stay open without this. Paste the API token from real-debrid.com/apitoken, then
-            press OK. TVM keeps it on this machine until you change it in Settings or fully reset.
+            press OK. TVM encrypts it on this machine and sends it to Real-Debrid and the Torrentio resolver for
+            catalogue playback. Connect only sources you are authorised to use. Review Privacy & terms in Settings.
           </p>
           {message !== null && <p className="page__message">{message}</p>}
           <label className="token-field">
@@ -184,7 +186,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
         </section>
       ) : null}
 
-      {rd.configured && !loading && plan.stream !== 'basic' && billboard !== undefined && (
+      {rdReady && !loading && plan.stream !== 'basic' && billboard !== undefined && (
         <section className="stage">
           <HeroArt src={heroSrc} hue={billboard.hue} />
           <div className="stage__vignette" aria-hidden="true" />
@@ -206,13 +208,13 @@ export function Library(_props: ScreenProps): React.JSX.Element {
         </section>
       )}
 
-      {rd.configured && !loading && watchingLane.length > 0 && (
+      {rdReady && !loading && watchingLane.length > 0 && (
         <Rail title="Continue Watching">
           {mapRailPosters(watchingLane, 'continue', openTitle, { layout: 'landscape' })}
         </Rail>
       )}
 
-      {rd.configured && !loading && watchlist.length > 0 && (
+      {rdReady && !loading && watchlist.length > 0 && (
         <Rail title="My List">
           {mapRailPosters(
             watchlist.filter((title) => inLane(title, lane)),
@@ -222,7 +224,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
         </Rail>
       )}
 
-      {rd.configured &&
+      {rdReady &&
         !loading &&
         visibleRails.slice(0, plan.stream === 'basic' ? 2 : visibleRails.length).map((rail) => (
           <Rail key={rail.id} title={rail.title}>

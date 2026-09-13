@@ -50,7 +50,8 @@ export function Setup(_props: ScreenProps): React.JSX.Element {
         </h1>
         <p className="page__lede">
           Paste the API token from real-debrid.com/apitoken, then press OK. This unlocks TVM Stream only. Home and the
-          other apps stay available. It stays on this machine only.
+          other apps stay available. The token is encrypted on this machine and sent to Real-Debrid and the
+          Torrentio resolver when you request catalogue playback. Only connect sources you are authorised to use.
         </p>
         {message !== null && <p className="page__message">{message}</p>}
         <label className="token-field">
@@ -66,6 +67,8 @@ export function Setup(_props: ScreenProps): React.JSX.Element {
           />
         </label>
         <div className="hero__actions">
+          <FocusButton id="setup-terms" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
+          <FocusButton id="setup-later" onSelect={() => navigate.home()}>Set up later</FocusButton>
           <FocusButton id="save" variant="primary" disabled={busy} onSelect={() => void save(fieldValue('token'))}>
             {busy ? 'Connecting…' : 'Continue'}
           </FocusButton>

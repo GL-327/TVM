@@ -4,7 +4,10 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { CORE_HOST, CORE_VERSION, resolveBindHost, resolvePort } from './config.ts';
 import { readJson, sendJson } from './http.ts';
-import { fetchVastPreroll } from './providers/ads.ts';
+import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
+import { exportPersonalData } from './privacy.ts';
+import { writeSecret } from './providers/secrets.ts';
+import { rdTokenPath, tokenPath } from './update/paths.ts';
 import { createArtProxyService, isAllowedArtUrl, type ArtProxyService } from './providers/artProxy.ts';
 import { createAppsService, type AppsService } from './providers/apps.ts';
 import { createDevUnlockService, type DevUnlockService } from './providers/devUnlock.ts';
@@ -406,6 +409,8 @@ async function handleApi(
   developer: DevUnlockService,
   listenPort: number,
   artwork: ArtProxyService,
+  dataDir: string,
+  streamer: StreamerService,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -789,8 +794,28 @@ async function handleApi(
     return true;
   }
 
-  if (path === '/api/maintenance/factory-reset' && request.method === 'POST') {
+  if (path === '/api/privacy/export' && request.method === 'GET') {
+    response.setHeader('content-disposition', 'attachment; filename="tvm-personal-data.json"');
+    sendJson(response, 200, exportPersonalData(dataDir, media, plans));
+    return true;
+  }
+
+  if ((path === '/api/maintenance/factory-reset' || path === '/api/privacy/erase') && request.method === 'POST') {
+    if (path === '/api/privacy/erase') {
+      const body = await readJson(request) as { confirmation?: unknown };
+      if (body.confirmation !== 'ERASE_LOCAL_DATA') {
+        sendJson(response, 400, { error: 'confirmation_required' });
+        return true;
+      }
+    }
+    streamer.sessions.stopAll();
+    developer.lock();
     media.factoryReset();
+    // Empty encrypted markers prevent environment credentials from reconnecting after erasure.
+    writeSecret(rdTokenPath(dataDir), '');
+    writeSecret(tokenPath(dataDir), '');
+    await live.setPlaylist('');
+    await live.clearXtream();
     artwork.clear();
     sendJson(response, 200, { ok: true });
     return true;
@@ -857,6 +882,20 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/billing' && request.method === 'GET') {
+    sendJson(response, 200, plans.billing());
+    return true;
+  }
+
+  if (path === '/api/billing/cancel' && request.method === 'POST') {
+    try {
+      sendJson(response, 200, plans.cancel(await readJson(request) as { consent?: unknown; requestId?: unknown }));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'cancellation_failed' });
+    }
+    return true;
+  }
+
   if (path === '/api/billing/checkout' && request.method === 'POST') {
     try {
       const body = (await readJson(request)) as {
@@ -867,6 +906,10 @@ async function handleApi(
         cvc?: unknown;
         liveTv?: unknown;
         synthwave?: unknown;
+        consent?: unknown;
+        requestId?: unknown;
+        packOnly?: unknown;
+        simulate?: unknown;
       };
       sendJson(response, 200, plans.checkout(body));
     } catch (error) {
@@ -893,7 +936,7 @@ async function handleApi(
   }
 
   if (path === '/api/ads/preroll' && request.method === 'GET') {
-    sendJson(response, 200, await fetchVastPreroll());
+    sendJson(response, 200, { skipped: true, reason: 'advertising_disabled_during_private_testing' });
     return true;
   }
 
@@ -948,7 +991,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   const dataDir = options.dataDir ?? resolveDataDir(env);
   const update = options.update ?? createUpdateService({ dataDir, env });
   const developer = options.developer ?? createDevUnlockService({ dataDir });
-  const plans = options.plans ?? createPlanService({ dataDir, developer: () => developer.unlocked() });
+  const plans = options.plans ?? createPlanService({ dataDir, developer: () => developer.unlocked(), env });
   const live = options.live ?? createLiveService({ dataDir, includeMock: () => plans.status().liveTv });
   const session = options.session ?? createSessionService({ dataDir });
   const streamer = options.streamer ?? createStreamer({ dataDir, env });
@@ -969,14 +1012,27 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       continueWatching: async () => (await media.home()).continueWatching,
     });
 
+  const allowUnlock = createUnlockLimiter();
+
   const server: Server = createServer((request, response) => {
     void (async () => {
       const path = new URL(request.url ?? '/', `http://${CORE_HOST}`).pathname;
+      setSecurityHeaders(response);
+      const denied = accessError(request, path, env);
+      if (denied !== null) {
+        sendJson(response, 403, { error: denied });
+        return;
+      }
+      if (path === '/api/dev/unlock' && request.method === 'POST' && !allowUnlock()) {
+        response.setHeader('retry-after', '60');
+        sendJson(response, 429, { error: 'Too many unlock attempts. Try again in one minute.' });
+        return;
+      }
       const addr = server.address();
       const listenPort = addr !== null && typeof addr === 'object' ? addr.port : resolvePort(env);
 
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });
@@ -1002,6 +1058,10 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const served = await serveStatic(uiDist, path, response);
       if (!served) sendJson(response, 404, { error: 'not_found', path });
     })().catch((error: unknown) => {
+      if (error instanceof SyntaxError) {
+        sendJson(response, 400, { error: 'invalid_json' });
+        return;
+      }
       if (error instanceof Error && error.message === 'request body too large') {
         sendJson(response, 413, { error: 'request body too large' });
         return;
@@ -1009,6 +1069,8 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       sendJson(response, 500, { error: 'internal_error' });
     });
   });
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 15_000;
   server.on('close', () => {
     streamer.sessions.stopAll();
     artwork.clear();

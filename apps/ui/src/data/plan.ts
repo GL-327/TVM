@@ -52,6 +52,7 @@ export interface PlanStatus {
   liveTvAddonPence: number;
   liveTvOptional: boolean;
   synthwave: boolean;
+  synthwaveOwned: boolean;
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
@@ -85,6 +86,7 @@ export const FALLBACK_PLAN: PlanStatus = {
   liveTvAddonPence: 0,
   liveTvOptional: false,
   synthwave: false,
+  synthwaveOwned: false,
   synthwaveAddonPence: 499,
   mocks: false,
   liveTv: false,
@@ -121,33 +123,120 @@ function asPlan(body: Partial<PlanStatus>): PlanStatus {
   return { ...FALLBACK_PLAN, ...body, id: body.id };
 }
 
-export async function fetchPlan(): Promise<PlanStatus> {
+async function requestJson<T>(url: string, init: RequestInit = {}, timeoutMs = 10_000, signal?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  const abort = (): void => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timeout = setTimeout(abort, timeoutMs);
   try {
-    const response = await fetch('/api/plan');
-    if (!response.ok) return FALLBACK_PLAN;
-    return asPlan((await response.json()) as Partial<PlanStatus>);
-  } catch {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const body = (await response.json()) as T & { error?: string };
+    if (!response.ok) throw new Error(body.error ?? 'The request could not be completed. Please try again.');
+    return body;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('The service took too long to respond. Please try again.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
+export async function fetchPlan(signal?: AbortSignal, strict = false): Promise<PlanStatus> {
+  try {
+    const body = await requestJson<Partial<PlanStatus>>('/api/plan', {}, 5_000, signal);
+    if (strict && (!body.id || !Array.isArray(body.catalog) || body.catalog.length === 0)) {
+      throw new Error('Plan information is unavailable. Please try again.');
+    }
+    return asPlan(body);
+  } catch (error) {
+    if (strict) throw error;
     return FALLBACK_PLAN;
   }
 }
 
-export async function checkoutPlan(input: {
+export interface BillingReceipt {
+  id: string;
   planId: PlanId;
-  name?: string;
-  number?: string;
-  expiry?: string;
-  cvc?: string;
+  mode: 'sandbox';
+  event: 'checkout' | 'cancellation';
+  currency: 'GBP';
+  monthlyPence: number;
+  oneTimePence: number;
+  chargedPence: 0;
+  liveTv: boolean;
+  synthwavePurchased: boolean;
+  at: string;
+}
+
+export interface BillingStatus {
+  mode: 'sandbox';
+  livePaymentsEnabled: false;
+  currency: 'GBP';
+  subscription: 'free' | 'test-active';
+  monthlyPence: number;
+  nextChargeAt: null;
+  synthwaveOwned: boolean;
+  receipts: BillingReceipt[];
+}
+
+export interface CheckoutRequest {
+  planId: PlanId;
+  consent: boolean;
+  requestId: string;
   liveTv?: boolean;
   synthwave?: boolean;
-}): Promise<PlanStatus> {
-  const response = await fetch('/api/billing/checkout', {
+  simulate?: 'success' | 'decline' | 'cancel';
+  packOnly?: boolean;
+  quotedMonthlyPence?: number;
+  quotedOneTimePence?: number;
+}
+
+export function formatBillingMoney(pence: number): string {
+  return `£${(pence / 100).toFixed(2)}`;
+}
+
+export function checkoutQuote(plan: PlanStatus, selectedId: PlanId, liveTv: boolean, synthwave: boolean, packOnly = false): {
+  monthlyPence: number; oneTimePence: number; referenceTotalPence: number;
+} {
+  const entry = plan.catalog.find((item) => item.id === (packOnly ? plan.id : selectedId));
+  if (entry === undefined || entry.basePricePence === undefined) throw new Error('Plan information is unavailable.');
+  const includeLive = packOnly ? plan.liveTv : liveTv;
+  const monthlyPence = entry.basePricePence + (includeLive ? entry.liveTvAddonPence ?? 0 : 0);
+  const oneTimePence = synthwave && !plan.synthwaveOwned ? plan.synthwaveAddonPence : 0;
+  return { monthlyPence, oneTimePence, referenceTotalPence: (packOnly ? 0 : monthlyPence) + oneTimePence };
+}
+
+function checkedPlan(body: Partial<PlanStatus>): PlanStatus {
+  if (!body.id || !['free', 'basic', 'premium', 'ultra', 'max'].includes(body.id)) {
+    throw new Error('The service returned an invalid plan. Reload before trying again.');
+  }
+  return asPlan(body);
+}
+
+export async function checkoutPlan(input: CheckoutRequest): Promise<PlanStatus> {
+  const body = await requestJson<Partial<PlanStatus>>('/api/billing/checkout', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const body = (await response.json()) as Partial<PlanStatus> & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? 'Checkout failed.');
-  return asPlan(body);
+  return checkedPlan(body);
+}
+
+export async function fetchBilling(signal?: AbortSignal): Promise<BillingStatus> {
+  const body = await requestJson<BillingStatus>('/api/billing', {}, 5_000, signal);
+  if (body.mode !== 'sandbox' || body.livePaymentsEnabled !== false || !Array.isArray(body.receipts)) {
+    throw new Error('Billing information is unavailable. Please try again.');
+  }
+  return body;
+}
+
+export async function cancelPlan(requestId: string): Promise<PlanStatus> {
+  return checkedPlan(await requestJson<Partial<PlanStatus>>('/api/billing/cancel', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ consent: true, requestId }),
+  }));
 }
 
 export async function savePlan(id: PlanId): Promise<PlanStatus> {

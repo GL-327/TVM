@@ -74,6 +74,7 @@ export function hlsArgs(input: OpenSessionInput, _outDir: string, encoder: H264E
       '-reconnect', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '15',
+      '-rw_timeout', '20000000',
     );
   }
   // GPU-assisted decode only alongside a GPU encode attempt, so the libx264
@@ -108,6 +109,7 @@ export function hlsArgs(input: OpenSessionInput, _outDir: string, encoder: H264E
     '-f', 'hls',
     '-hls_time', String(HLS_SEGMENT_SECONDS),
     '-hls_list_size', '0',
+    '-hls_playlist_type', 'event',
     '-hls_segment_type', 'fmp4',
     // Relative names: ffmpeg is spawned with cwd = outDir, otherwise
     // init.mp4 lands in the core process cwd and hls.js 404s the MAP.

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Colourcast — 1970s/80s broadcast ident, not outrun neon.
  *
  * Black tube. Phosphor scanlines are the paint. One analog ident:
@@ -7,13 +7,13 @@
  * light cream edge — no tape spine. Playing video stays unfiltered.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Righteous&family=Oswald:wght@500;600;700&display=swap');
+/* Local faces keep first paint stable and the appliance fully offline. */
 
 [data-theme='synthwave'] {
   color-scheme: dark;
 
-  --tvm-font: 'Oswald', 'Segoe UI', sans-serif;
-  --tvm-font-display: 'Righteous', 'Oswald', 'Segoe UI', sans-serif;
+  --tvm-font: 'Oswald', 'Bahnschrift SemiCondensed', 'Arial Narrow', 'Segoe UI', sans-serif;
+  --tvm-font-display: 'Righteous', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif;
 
   --tvm-sw-void: #080204;
   --tvm-sw-navy: #12060c;
@@ -104,8 +104,8 @@ html[data-theme='synthwave'] .sw-crt {
   overflow: hidden;
   pointer-events: none;
   isolation: isolate;
-  contain: layout style;
-  transform: translateZ(0);
+  contain: layout style paint;
+  container-type: size;
   background: #000;
   --sw-d: 48s;
 }
@@ -123,24 +123,6 @@ html[data-theme='synthwave'] .app {
 
 html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
   display: none;
-}
-
-@property --ink {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #fff3c4;
-}
-
-@property --i {
-  syntax: '<number>';
-  inherits: true;
-  initial-value: 0;
-}
-
-@property --ring-s {
-  syntax: '<number>';
-  inherits: false;
-  initial-value: 1;
 }
 
 .sw-crt__haze {
@@ -235,7 +217,7 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
   position: absolute;
   left: 10%;
   right: 10%;
-  top: 88%;
+  top: 0;
   z-index: 5;
   height: 2px;
   background: #fffce8;
@@ -279,6 +261,7 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
   height: 96vmin;
   margin: -48vmin 0 0 -48vmin;
   overflow: visible;
+  contain: layout style;
 }
 
 .sw-ident * {
@@ -465,7 +448,7 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
   z-index: 6;
   contain: strict;
   width: 100%;
-  height: 100%;
+  height: calc(100% + 6px);
   background: repeating-linear-gradient(
     to bottom,
     rgba(0, 0, 0, 0.3) 0px,
@@ -498,7 +481,8 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
   height: 100%;
   background: rgba(255, 243, 196, 0.03);
   opacity: 0;
-  animation: tvm-sw-hold-flicker 7s ease-in-out 1.2s infinite;
+  /* The phosphor breathes slowly; rapid tube flicker distracts from browsing. */
+  animation: tvm-sw-hold-flicker 12s ease-in-out infinite;
 }
 
 [data-theme='synthwave'] .app,
@@ -1210,15 +1194,15 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
 }
 
 @keyframes tvm-sw-beam {
-  0%, 14%, 36%, 58%, 80%, 100% { top: -2%; opacity: 0; }
-  16%, 38%, 60%, 82% { top: 0%; opacity: 0.85; }
-  20%, 42%, 64%, 86% { top: 100%; opacity: 0; }
+  0%, 14%, 36%, 58%, 80%, 100% { transform: translate3d(0, -2cqh, 0); opacity: 0; }
+  16%, 38%, 60%, 82% { transform: translate3d(0, 0, 0); opacity: 0.42; }
+  20%, 42%, 64%, 86% { transform: translate3d(0, 100cqh, 0); opacity: 0; }
 }
 
 @keyframes tvm-sw-flyback {
-  0%, 15%, 37%, 59%, 81%, 100% { top: 90%; opacity: 0; }
-  16.5%, 38.5%, 60.5%, 82.5% { top: 12%; opacity: 0.5; }
-  17.5%, 39.5%, 61.5%, 83.5% { top: 10%; opacity: 0; }
+  0%, 15%, 37%, 59%, 81%, 100% { transform: translate3d(0, 90cqh, 0); opacity: 0; }
+  16.5%, 38.5%, 60.5%, 82.5% { transform: translate3d(0, 12cqh, 0); opacity: 0.28; }
+  17.5%, 39.5%, 61.5%, 83.5% { transform: translate3d(0, 10cqh, 0); opacity: 0; }
 }
 
 @keyframes tvm-sw-lock {
@@ -1383,19 +1367,17 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
 }
 
 @keyframes tvm-sw-name {
-  0%, 22% { top: 38%; }
-  32%, 44% { top: 34%; }
-  52%, 64% { top: 30%; }
-  74%, 86% { top: 40%; }
-  100% { top: 38%; }
+  0%, 22%, 100% { transform: translate3d(-50%, -50%, 0); }
+  32%, 44% { transform: translate3d(-50%, calc(-50% - 4cqh), 0); }
+  52%, 64% { transform: translate3d(-50%, calc(-50% - 8cqh), 0); }
+  74%, 86% { transform: translate3d(-50%, calc(-50% + 2cqh), 0); }
 }
 
 @keyframes tvm-sw-tag {
-  0%, 20% { top: 58%; opacity: 1; }
-  30%, 44% { top: 62%; opacity: 0.85; }
-  52%, 64% { top: 68%; opacity: 1; }
-  74%, 88% { top: 72%; opacity: 0.9; }
-  100% { top: 58%; opacity: 1; }
+  0%, 20%, 100% { transform: translate3d(-50%, 0, 0); opacity: 1; }
+  30%, 44% { transform: translate3d(-50%, 4cqh, 0); opacity: 0.85; }
+  52%, 64% { transform: translate3d(-50%, 10cqh, 0); opacity: 1; }
+  74%, 88% { transform: translate3d(-50%, 14cqh, 0); opacity: 0.9; }
 }
 
 @keyframes tvm-sw-hand-h {
@@ -1418,7 +1400,7 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
 
 @keyframes tvm-sw-raster {
   from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(0, 108vh, 0); }
+  to { transform: translate3d(0, 108cqh, 0); }
 }
 
 @keyframes tvm-sw-hold-glow {
@@ -1427,14 +1409,13 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
 }
 
 @keyframes tvm-sw-hold-flicker {
-  0%, 47%, 58%, 100% { opacity: 0; }
-  50% { opacity: 0.8; }
-  53% { opacity: 0.12; }
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.24; }
 }
 
 @keyframes tvm-sw-scan-drift {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(0, 4px, 0); }
+  from { transform: translate3d(0, -6px, 0); }
+  to { transform: translate3d(0, 0, 0); }
 }
 
 @keyframes tvm-sw-ring {
@@ -1454,93 +1435,92 @@ html[data-theme='synthwave']:has([data-screen='player']) .sw-crt {
   70% { opacity: 0.4; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html[data-theme='synthwave'] .sw-crt__stage,
-  html[data-theme='synthwave'] .sw-crt__stage::before,
-  html[data-theme='synthwave'] .sw-crt__burst,
-  html[data-theme='synthwave'] .sw-crt__mote,
-  html[data-theme='synthwave'] .sw-crt__rainbow--foot,
-  html[data-theme='synthwave'] .sw-id__beam,
-  html[data-theme='synthwave'] .sw-id__lock,
-  html[data-theme='synthwave'] .sw-ident__field,
-  html[data-theme='synthwave'] .sw-ident__ring,
-  html[data-theme='synthwave'] .sw-ident__pulse,
-  html[data-theme='synthwave'] .sw-ident__bow,
-  html[data-theme='synthwave'] .sw-ident__mark,
-  html[data-theme='synthwave'] .sw-ident__orb,
-  html[data-theme='synthwave'] .sw-morph__core,
-  html[data-theme='synthwave'] .sw-ident__mast,
-  html[data-theme='synthwave'] .sw-id__shaft,
-  html[data-theme='synthwave'] .sw-ident__spire,
-  html[data-theme='synthwave'] .sw-id__peak,
-  html[data-theme='synthwave'] .sw-id__hand,
-  html[data-theme='synthwave'] .sw-ident__sine,
-  html[data-theme='synthwave'] .sw-id__wave,
-  html[data-theme='synthwave'] .sw-id__name,
-  html[data-theme='synthwave'] .sw-id__name::before,
-  html[data-theme='synthwave'] .sw-id__name::after,
-  html[data-theme='synthwave'] .sw-id__name span,
-  html[data-theme='synthwave'] .sw-id__tag,
-  html[data-theme='synthwave'] .sw-id__tag span,
-  html[data-theme='synthwave'] .sw-crt__scan,
-  html[data-theme='synthwave'] .sw-crt__raster,
-  html[data-theme='synthwave'] .sw-crt__flicker,
-  html[data-theme='synthwave'] .sw-crt__haze,
-  [data-theme='synthwave'] .tvm-intro__wash,
-  [data-theme='synthwave'] .tvm-intro__ring,
-  [data-theme='synthwave'] .loading-state--plate .tvm-mark,
-  [data-theme='synthwave'] .loading-state--plate .stage__kicker,
-  [data-theme='synthwave'] .loading-state--plate .empty-state__title,
-  [data-theme='synthwave'] .loading-state--plate .page__lede,
-  [data-theme='synthwave'] .loading-state__bar {
-    animation: none;
-  }
+/* The effective preference includes both Settings and the operating system. */
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__stage,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__stage::before,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__burst,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__mote,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__rainbow--foot,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__beam,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__lock,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__field,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__ring,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__pulse,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__bow,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__mark,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__orb,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-morph__core,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__mast,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__shaft,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__spire,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__peak,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__hand,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__sine,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__wave,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name::before,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name::after,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name span,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__tag,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__tag span,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__scan,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__raster,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__flicker,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__haze,
+html[data-theme='synthwave'][data-motion='reduced'] .tvm-intro__wash,
+html[data-theme='synthwave'][data-motion='reduced'] .tvm-intro__ring,
+html[data-theme='synthwave'][data-motion='reduced'] .loading-state--plate .tvm-mark,
+html[data-theme='synthwave'][data-motion='reduced'] .loading-state--plate .stage__kicker,
+html[data-theme='synthwave'][data-motion='reduced'] .loading-state--plate .empty-state__title,
+html[data-theme='synthwave'][data-motion='reduced'] .loading-state--plate .page__lede,
+html[data-theme='synthwave'][data-motion='reduced'] .loading-state__bar {
+  animation: none;
+}
 
-  html[data-theme='synthwave'] .sw-ident__field {
-    will-change: auto;
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__field {
+  will-change: auto;
+}
 
-  html[data-theme='synthwave'] .sw-ident__ring,
-  html[data-theme='synthwave'] .sw-ident__orb,
-  html[data-theme='synthwave'] .sw-ident__mast,
-  html[data-theme='synthwave'] .sw-ident__spire,
-  html[data-theme='synthwave'] .sw-id__name,
-  html[data-theme='synthwave'] .sw-id__name span,
-  html[data-theme='synthwave'] .sw-id__tag span {
-    opacity: 1;
-    transform: none;
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__ring,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__orb,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__mast,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__spire,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name span,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__tag span {
+  opacity: 1;
+  transform: none;
+}
 
-  html[data-theme='synthwave'] .sw-ident__pulse,
-  html[data-theme='synthwave'] .sw-ident__bow,
-  html[data-theme='synthwave'] .sw-id__hand,
-  html[data-theme='synthwave'] .sw-crt__burst {
-    opacity: 0;
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__pulse,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__bow,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__hand,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__burst {
+  opacity: 0;
+}
 
-  html[data-theme='synthwave'] .sw-ident__sine {
-    opacity: 0.35;
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-ident__sine {
+  opacity: 0.35;
+}
 
-  html[data-theme='synthwave'] .sw-id__name {
-    top: 38%;
-    transform: translate(-50%, -50%);
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__name {
+  top: 38%;
+  transform: translate(-50%, -50%);
+}
 
-  html[data-theme='synthwave'] .sw-id__tag {
-    top: 58%;
-    transform: translateX(-50%);
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__tag {
+  top: 58%;
+  transform: translateX(-50%);
+}
 
-  html[data-theme='synthwave'] .sw-id__beam,
-  html[data-theme='synthwave'] .sw-id__lock,
-  html[data-theme='synthwave'] .sw-crt__raster {
-    opacity: 0;
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__beam,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-id__lock,
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__raster {
+  opacity: 0;
+}
 
-  html[data-theme='synthwave'] .sw-crt__haze {
-    opacity: 0.9;
-  }
+html[data-theme='synthwave'][data-motion='reduced'] .sw-crt__haze {
+  opacity: 0.9;
 }
 
 /*

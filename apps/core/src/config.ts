@@ -6,8 +6,8 @@
  * it stays on 127.0.0.1 unless a developer opts in.
  *
  * TVM_CORE_BIND=0.0.0.0 (or a specific IPv4 address) is opt-in for a Roku on
- * the same LAN. It has no API authentication and makes Windows ask to allow
- * Node on Wi-Fi / public networks. Laptop and desktop launchers stay on
+ * the same LAN. Non-local clients require a TVM_LAN_TOKEN bearer header and
+ * sensitive administration remains local. Laptop and desktop launchers stay on
  * loopback so TVM opens with no network adapter at all.
  */
 export const CORE_HOST = '127.0.0.1' as const;

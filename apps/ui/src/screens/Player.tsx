@@ -10,16 +10,13 @@ import { PlayerRoot, type PlayerSession } from '../player';
 import type { ScreenProps } from '../nav/registry';
 
 /**
- * Playback screen. Core resolves every title to a stream the browser is
- * guaranteed to play (probed, remuxed or transcoded server-side), so this
- * screen is only glue: resolve → attach engine → feed PlayerSession to the
- * chrome. No fallback cascades, no codec guessing, no external player.
+ * Playback screen. Core resolves and prepares the stream; the engine owns
+ * bounded startup/recovery and the screen keeps Retry and Back reachable.
  */
 export function Player({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const engineRef = useRef<PlayerEngine | null>(null);
-  const streamRef = useRef<EngineStream | null>(null);
   const planRef = useRef<PlanStatus>(FALLBACK_PLAN);
   const positionRef = useRef(0);
   const durationRef = useRef(0);
@@ -40,7 +37,6 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [muted, setMuted] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [overlay, setOverlay] = useState<'queue' | 'ad' | null>('queue');
-  const [queuePos, setQueuePos] = useState(12);
   const [skipRecap, setSkipRecap] = useState(false);
   const [badges, setBadges] = useState<string[]>([]);
   audioRef.current = { volume, muted };
@@ -59,7 +55,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const persist = useCallback(
     (nextPosition = positionRef.current, nextDuration = durationRef.current): void => {
       if (id === '' || live || !Number.isFinite(nextDuration) || nextDuration <= 0) return;
-      void saveProgress(id, nextPosition, nextDuration);
+      void saveProgress(id, nextPosition, nextDuration).catch(() => undefined);
     },
     [id, live],
   );
@@ -75,11 +71,12 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         engineRef.current?.pause();
         setError(playbackErrorMessage('hours-cap'));
       }
-    });
+    }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const request = new AbortController();
     billableRef.current = false;
     setLoading(true);
     setBuffering(true);
@@ -91,46 +88,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     positionRef.current = 0;
     durationRef.current = 0;
     lastSaved.current = Date.now();
-    let playReady = false;
     let startFrame: number | null = null;
-    const queueTimers = new Map<number, () => void>();
-
-    const wait = (ms: number): Promise<void> => new Promise((resolve) => {
-      const timer = window.setTimeout(() => {
-        queueTimers.delete(timer);
-        resolve();
-      }, ms);
-      queueTimers.set(timer, resolve);
-    });
-
-    const runQueue = async (plan: PlanStatus, allowQueue: boolean): Promise<void> => {
-      if (!allowQueue || plan.queueMs <= 0 || playReady) {
-        setOverlay(null);
-        return;
-      }
-      setOverlay('queue');
-      if (plan.queueSkipToTop) {
-        setQueuePos(12);
-        await wait(400);
-        if (cancelled) return;
-        if (playReady) {
-          setOverlay(null);
-          return;
-        }
-        setQueuePos(1);
-        await wait(plan.queueMs);
-        return;
-      }
-      let pos = 12;
-      setQueuePos(pos);
-      const step = Math.max(400, Math.floor(plan.queueMs / 11));
-      while (pos > 1 && !cancelled && !playReady) {
-        await wait(step);
-        if (cancelled || playReady) return;
-        pos -= 1;
-        setQueuePos(pos);
-      }
-    };
 
     const playbackTask = requestPlayback({
       id: id === '' ? undefined : id,
@@ -138,7 +96,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       title: playbackTitle === '' ? undefined : playbackTitle,
       season: playbackSeason,
       episode: playbackEpisode,
-    });
+    }, request.signal);
 
     const start = (stream: EngineStream): void => {
       if (cancelled) return;
@@ -148,7 +106,6 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         return;
       }
       engineRef.current?.destroy();
-      streamRef.current = stream;
       setTitle(stream.title);
       setLoading(false);
       setError(null);
@@ -174,6 +131,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             tick();
           },
           onPlayState: (isPaused) => {
+            billableRef.current = !live && !isPaused;
             lastTick.current = Date.now();
             setPaused(isPaused);
             if (isPaused) persist();
@@ -188,6 +146,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             navigate.pop();
           },
           onError: (message) => {
+            billableRef.current = false;
             setBuffering(false);
             setError(message);
           },
@@ -205,7 +164,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       setSkipRecap(policy.skipRecap);
       setBadges(plan.badges);
       setTitle(playbackTitle !== '' ? playbackTitle : 'Loading');
-      const queueTask = runQueue(plan, policy.queue);
+      if (!policy.queue) setOverlay(null);
       let result: PlaybackResult;
       try {
         result = await playbackTask;
@@ -229,7 +188,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             params: {
               title: 'Real-Debrid',
               body: playbackErrorMessage(result.reason),
-              action: 'tvm-stream',
+                action: 'realdebrid',
             },
           });
           return;
@@ -237,25 +196,17 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         setError(playbackErrorMessage(result.reason));
         return;
       }
-      billableRef.current = true;
       lastTick.current = Date.now();
-      playReady = true;
       start(result);
       setOverlay(null);
-      await queueTask;
-      if (!cancelled) setOverlay(null);
     })();
 
     return () => {
       cancelled = true;
+      request.abort();
       billableRef.current = false;
       persist();
       if (startFrame !== null) window.cancelAnimationFrame(startFrame);
-      for (const [timer, resolve] of queueTimers) {
-        window.clearTimeout(timer);
-        resolve();
-      }
-      queueTimers.clear();
       engineRef.current?.destroy();
       engineRef.current = null;
     };
@@ -283,16 +234,6 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       window.removeEventListener('pagehide', saveOnExit);
     };
   }, [persist]);
-
-  // A transcode that cannot produce its first segment must surface, not spin forever.
-  useEffect(() => {
-    if (!buffering || hasFrame || error !== null || loading) return;
-    const timer = window.setTimeout(() => {
-      setBuffering(false);
-      setError('Playback stalled. The stream did not start. Press Retry, or Back to pick another file.');
-    }, 45_000);
-    return () => window.clearTimeout(timer);
-  }, [buffering, error, hasFrame, loading]);
 
   const togglePlayback = useCallback((): void => {
     showControls();
@@ -472,11 +413,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           <TvmMark size="lg" animated loop className="player__queue-mark" />
           <p className="player__queue-kicker">TVM Cinema</p>
           <h2>Getting your stream ready</h2>
-          <p>
-            {planRef.current.queueSkipToTop
-              ? 'Jumping you to the front of the line'
-              : `You’re number ${queuePos}`}
-          </p>
+          <p>Checking the source and preparing playback. Press Back to cancel.</p>
         </div>
       )}
       {overlay === 'ad' && (

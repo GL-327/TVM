@@ -48,6 +48,8 @@ export function shouldNudgePageY(current: number, target: number, slop = PAGE_Y_
 const chromeByScroller = new WeakMap<HTMLElement, HTMLElement | null>();
 let revealRaf = 0;
 let revealTarget: HTMLElement | null = null;
+let suppressUntil = 0;
+export function suppressNextReveal(): void { suppressUntil = performance.now() + 80; }
 let lockedHomeRail: HTMLElement | null = null;
 
 const SCROLLER_SELECTOR = [
@@ -146,6 +148,7 @@ function revealNow(element: HTMLElement): void {
 
 /** Coalesce stacked onFocus rAFs so a held D-pad only cameras the latest tile. */
 export function revealFocused(element: HTMLElement): void {
+  if (performance.now() < suppressUntil) { suppressUntil = 0; return; }
   revealTarget = element;
   if (revealRaf !== 0) return;
   revealRaf = requestAnimationFrame(() => {
