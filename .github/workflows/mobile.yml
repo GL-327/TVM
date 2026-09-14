@@ -136,15 +136,18 @@ jobs:
         run: |
           # Ad-hoc identity "-" produces a real iphoneos TVM.app. It is not
           # installable until re-signed. CODE_SIGNING_ALLOWED=NO is omitted so
-          # the ad-hoc signer can stamp the binary.
+          # the ad-hoc signer can stamp the binary. package-unsigned-ipa.sh then
+          # thins fat frameworks (MobileVLCKit) to arm64 and ad-hoc signs them
+          # so Sideloadly does not fail with "Invalid file".
           xcodebuild -workspace TVM.xcworkspace -scheme TVM \
             -configuration Release \
-            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            EXCLUDED_ARCHS="i386 x86_64" \
             build
           chmod +x package-unsigned-ipa.sh
           ./package-unsigned-ipa.sh
