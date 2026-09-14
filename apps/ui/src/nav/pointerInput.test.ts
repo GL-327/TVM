@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canScrollAxis, wheelPixels, wheelTarget, wheelWantsRail } from './pointerInput';
+import { canScrollAxis, tapShouldActivate, wheelPixels, wheelTarget, wheelWantsRail } from './pointerInput';
 
 function box(partial: Partial<Parameters<typeof canScrollAxis>[0]>) {
   return { scrollWidth: 0, clientWidth: 0, scrollHeight: 0, clientHeight: 0, ...partial };
@@ -49,5 +49,13 @@ describe('wheel camera input', () => {
     expect(wheelTarget(100, 300, 120)).toBe(420);
     expect(wheelTarget(100, 300, -30)).toBe(70);
     expect(wheelTarget(100, 40, 30)).toBe(130);
+  });
+});
+
+describe('coarse tap activation', () => {
+  it('activates a tap that stayed inside the slop', () => {
+    expect(tapShouldActivate(false, 2)).toBe(true);
+    expect(tapShouldActivate(true, 2)).toBe(false);
+    expect(tapShouldActivate(false, 40)).toBe(false);
   });
 });

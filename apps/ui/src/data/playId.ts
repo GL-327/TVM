@@ -1,13 +1,24 @@
+import fallbackImdb from './fallback-imdb.json';
+
+const FALLBACK_IMDB = fallbackImdb as Readonly<Record<string, string>>;
+
 export function imdbIdFrom(id: string): string | null {
   const match = id.trim().match(/tt\d+/i);
   return match === null ? null : match[0].toLowerCase();
+}
+
+export function catalogImdb(id: string): string | null {
+  const fromId = imdbIdFrom(id);
+  if (fromId !== null) return fromId;
+  const slug = id.trim().split(':')[0]?.toLowerCase() ?? '';
+  return FALLBACK_IMDB[slug] ?? null;
 }
 
 export function playIdFor(showId: string, season?: number, episode?: number): string {
   // An owned provider file already identifies the exact episode. Appending a
   // season or extracting an IMDb substring loses that file's identity.
   if (showId.startsWith('rd:') || showId.startsWith('live:')) return showId;
-  const imdb = imdbIdFrom(showId);
+  const imdb = catalogImdb(showId);
   const base = imdb ?? showId;
   if (season !== undefined && episode !== undefined) return `${base}:${season}:${episode}`;
   return base;

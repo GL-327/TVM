@@ -28,12 +28,20 @@ private enum PhoneViewportScript {
         if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && el.tagName !== 'SELECT')) return;
         try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
       }
+      function orient() {
+        var portrait = window.innerHeight >= window.innerWidth;
+        var root = document.documentElement;
+        root.dataset.orientation = portrait ? 'portrait' : 'landscape';
+        root.classList.toggle('tvm-portrait', portrait);
+        root.classList.toggle('tvm-landscape', !portrait);
+      }
       function apply(inset) {
         var root = document.documentElement;
         var value = typeof inset === 'number' ? inset : occlusion();
         root.style.setProperty('--tvm-keyboard-inset', value + 'px');
         root.classList.add('phone-shell');
         root.classList.toggle('keyboard-open', value >= 80);
+        orient();
         if (value >= 80) lift();
       }
       window.__tvmKeyboardInset = apply;
@@ -44,6 +52,8 @@ private enum PhoneViewportScript {
           window.visualViewport.addEventListener('resize', function () { apply(); });
           window.visualViewport.addEventListener('scroll', function () { apply(); });
         }
+        window.addEventListener('orientationchange', function () { apply(); });
+        window.addEventListener('resize', function () { apply(); });
         document.addEventListener('focusin', function (event) {
           var t = event.target;
           if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
@@ -90,6 +100,7 @@ struct TVMWebView: UIViewRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.keyboardDismissMode = .interactive
         webView.scrollView.alwaysBounceHorizontal = false
+        webView.scrollView.bounces = false
         webView.scrollView.contentInset = .zero
         webView.scrollView.scrollIndicatorInsets = .zero
         context.coordinator.attach(webView)

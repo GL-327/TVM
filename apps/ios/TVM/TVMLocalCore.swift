@@ -15,14 +15,18 @@ final class TVMLocalCore {
     private var liveChannels: [[String: Any]] = []
     private var livePicks = Set<String>()
 
-    init() {
+    init(session: URLSession? = nil) {
         store = TVMStore()
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 14
-        configuration.httpShouldSetCookies = false
-        session = URLSession(configuration: configuration)
-        catalog = TVMCatalog(store: store, session: session)
-        rd = TVMRealDebrid(session: session)
+        if let session {
+            self.session = session
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 20
+            configuration.httpShouldSetCookies = false
+            self.session = URLSession(configuration: configuration)
+        }
+        catalog = TVMCatalog(store: store, session: self.session)
+        rd = TVMRealDebrid(session: self.session)
         plans = TVMPlans(store: store)
         media = TVMMedia(store: store, catalog: catalog, rd: rd, plans: plans)
         if let saved = store.readJSON("live.json") as? [String: Any] {
@@ -119,11 +123,11 @@ final class TVMLocalCore {
         }
         if path == "/api/playback" && method == "POST" {
             let result = await media.play(
-                id: json["id"] as? String,
-                link: json["link"] as? String,
-                title: json["title"] as? String,
-                season: json["season"] as? Int,
-                episode: json["episode"] as? Int
+                id: JSONValue.string(json["id"]),
+                link: JSONValue.string(json["link"]),
+                title: JSONValue.string(json["title"]),
+                season: JSONValue.int(json["season"]),
+                episode: JSONValue.int(json["episode"])
             )
             return .json(result.0, result.1)
         }

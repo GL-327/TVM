@@ -203,10 +203,12 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
   const inRecapRef = useRef(inRecapWindow);
   const hideMsRef = useRef(hideMs);
   const recapHideMsRef = useRef(recapHideMs);
+  const chromeVisibleRef = useRef(chromeVisible);
   pinnedRef.current = pinned;
   inRecapRef.current = inRecapWindow;
   hideMsRef.current = hideMs;
   recapHideMsRef.current = recapHideMs;
+  chromeVisibleRef.current = chromeVisible;
 
   const clearTimers = useCallback((): void => {
     if (chromeTimer.current !== null) {
@@ -241,6 +243,22 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
     scheduleHide();
   }, [scheduleHide]);
 
+  const hide = useCallback((): void => {
+    if (pinnedRef.current) return;
+    clearTimers();
+    setChromeVisible(false);
+    setRecapVisible(false);
+  }, [clearTimers]);
+
+  const toggle = useCallback((): void => {
+    if (pinnedRef.current) {
+      show();
+      return;
+    }
+    if (chromeVisibleRef.current) hide();
+    else show();
+  }, [hide, show]);
+
   useEffect(() => {
     if (pinned) {
       clearTimers();
@@ -259,28 +277,34 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
 
   useEffect(() => {
     const onShow = (): void => show();
+    const onHide = (): void => hide();
+    const onToggle = (): void => toggle();
     const onKey = (event: KeyboardEvent): void => {
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (isRevealKey(event.key)) show();
     };
     const onPointer = (event: PointerEvent): void => {
-      if (event.type === 'pointermove' && event.pointerType === 'touch') return;
+      if (event.pointerType === 'touch') return;
       show();
     };
 
     window.addEventListener('tvm:user-activity', onShow);
     window.addEventListener('tvm:media-intent', onShow);
+    window.addEventListener('tvm:hide-chrome', onHide);
+    window.addEventListener('tvm:toggle-chrome', onToggle);
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointermove', onPointer);
     window.addEventListener('pointerdown', onPointer);
     return () => {
       window.removeEventListener('tvm:user-activity', onShow);
       window.removeEventListener('tvm:media-intent', onShow);
+      window.removeEventListener('tvm:hide-chrome', onHide);
+      window.removeEventListener('tvm:toggle-chrome', onToggle);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('pointermove', onPointer);
       window.removeEventListener('pointerdown', onPointer);
     };
-  }, [show]);
+  }, [hide, show, toggle]);
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 

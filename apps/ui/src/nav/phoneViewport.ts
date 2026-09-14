@@ -87,6 +87,10 @@ export function startPhoneViewport(): () => void {
 
   const syncShell = (): void => {
     root.classList.toggle(PHONE_SHELL_CLASS, isPhoneViewport(narrow.matches, coarse.matches, tablet.matches));
+    const portrait = window.innerHeight >= window.innerWidth;
+    root.dataset.orientation = portrait ? 'portrait' : 'landscape';
+    root.classList.toggle('tvm-portrait', portrait);
+    root.classList.toggle('tvm-landscape', !portrait);
   };
 
   const syncKeyboard = (): void => {
@@ -111,6 +115,8 @@ export function startPhoneViewport(): () => void {
   narrow.addEventListener('change', syncShell);
   tablet.addEventListener('change', syncShell);
   coarse.addEventListener('change', syncShell);
+  window.addEventListener('resize', syncShell);
+  window.addEventListener('orientationchange', syncShell);
   window.addEventListener('resize', syncKeyboard);
   window.visualViewport?.addEventListener('resize', syncKeyboard);
   window.visualViewport?.addEventListener('scroll', syncKeyboard);
@@ -120,6 +126,8 @@ export function startPhoneViewport(): () => void {
     narrow.removeEventListener('change', syncShell);
     tablet.removeEventListener('change', syncShell);
     coarse.removeEventListener('change', syncShell);
+    window.removeEventListener('resize', syncShell);
+    window.removeEventListener('orientationchange', syncShell);
     window.removeEventListener('resize', syncKeyboard);
     window.visualViewport?.removeEventListener('resize', syncKeyboard);
     window.visualViewport?.removeEventListener('scroll', syncKeyboard);

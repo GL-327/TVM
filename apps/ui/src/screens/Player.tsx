@@ -7,6 +7,7 @@ import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverla
 import { TvmMark } from '../brand/TvmMark';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
 import { PlayerRoot, type PlayerSession } from '../player';
+import { playerShellClass, readPlayerLayout } from '../player/playerLayout';
 import type { ScreenProps } from '../nav/registry';
 
 /**
@@ -39,6 +40,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [overlay, setOverlay] = useState<'queue' | 'ad' | null>('queue');
   const [skipRecap, setSkipRecap] = useState(false);
   const [badges, setBadges] = useState<string[]>([]);
+  const [shell, setShell] = useState(() => playerShellClass(false, 'landscape'));
   audioRef.current = { volume, muted };
 
   const id = typeof params['id'] === 'string' ? params['id'] : '';
@@ -47,6 +49,22 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const playbackTitle = typeof params['title'] === 'string' ? params['title'] : '';
   const playbackSeason = typeof params['season'] === 'number' ? params['season'] : undefined;
   const playbackEpisode = typeof params['episode'] === 'number' ? params['episode'] : undefined;
+
+  useEffect(() => {
+    const sync = (): void => {
+      const layout = readPlayerLayout();
+      setShell(playerShellClass(layout.mobile, layout.orientation));
+    };
+    sync();
+    window.addEventListener('resize', sync);
+    window.addEventListener('orientationchange', sync);
+    window.visualViewport?.addEventListener('resize', sync);
+    return () => {
+      window.removeEventListener('resize', sync);
+      window.removeEventListener('orientationchange', sync);
+      window.visualViewport?.removeEventListener('resize', sync);
+    };
+  }, []);
 
   const showControls = useCallback((): void => {
     window.dispatchEvent(new CustomEvent('tvm:user-activity'));
@@ -396,7 +414,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
 
   return (
     <div
-      className={`player player--html5${busy ? ' player--busy' : ''}${live ? ' player--live' : ''}`}
+      className={`player player--html5 ${shell}${busy ? ' player--busy' : ''}${live ? ' player--live' : ''}`}
       data-player=""
       data-player-shell=""
       data-engine={loading ? 'loading' : 'html5'}
@@ -406,7 +424,9 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       aria-label={title}
       onMouseMove={showControls}
     >
-      <video ref={videoRef} className="player__video" data-player-video="" playsInline preload="auto" />
+      <div className="player__stage" data-player-stage="">
+        <video ref={videoRef} className="player__video" data-player-video="" playsInline preload="auto" />
+      </div>
       <PlayerRoot session={session} />
       {overlay === 'queue' && (
         <div className="player__queue" aria-live="polite">
