@@ -77,3 +77,6 @@ export function applyStoredTheme(): ThemeId {
   }
   return applyTheme(readStoredTheme());
 }
+
+import './anime/anime.css';
+import './signatures.css';

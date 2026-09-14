@@ -6,6 +6,10 @@ export interface ProgressEntry {
   position: number;
   duration: number;
   updated: string;
+  completedAt?: string;
+  completions?: number;
+  completedTitle?: string;
+  completedYear?: number | null;
 }
 
 export type ProgressMap = Record<string, ProgressEntry>;
@@ -20,9 +24,20 @@ export function readProgress(dataDir: string): ProgressMap {
 
 export function writeProgress(dataDir: string, id: string, position: number, duration: number): ProgressMap {
   const all = readProgress(dataDir);
-  all[id] = { position, duration, updated: new Date().toISOString() };
+  const previous = all[id];
+  const updated = new Date().toISOString();
+  const finished = isFinished({ position, duration });
+  const firstCrossing = finished && !isFinished(previous);
+  all[id] = { ...previous, position, duration, updated,
+    ...(finished ? { completedAt: firstCrossing ? updated : previous?.completedAt ?? updated } : {}),
+    completions: (previous?.completions ?? (previous?.completedAt || isFinished(previous) ? 1 : 0)) + (firstCrossing ? 1 : 0),
+  };
   writeSealed(dataDir, progressPath(dataDir), all);
   return all;
+}
+
+export function isFinished(entry: { position: number; duration: number } | undefined): boolean {
+  return !!entry && Number.isFinite(entry.position) && Number.isFinite(entry.duration) && entry.duration > 0 && entry.position / entry.duration > 0.96;
 }
 
 export function ratio(entry: ProgressEntry | undefined): number | undefined {
@@ -55,4 +70,26 @@ export function pickContinueWatching<T extends { id: string; title: string; show
     if (out.length >= 16) break;
   }
   return out;
+}
+
+/** Preserve names after catalog rotation; only confirmed completed entries can be archived. */
+export function finishedTitles(dataDir: string, items: readonly { id: string; title: string; year: number | null }[], progress: ProgressMap): Array<{ id: string; title: string; year: number | null }> {
+  let changed = false;
+  const byId = new Map(items.map(item => [item.id, item]));
+  for (const [id, entry] of Object.entries(progress)) {
+    if ((!isFinished(entry) && !entry.completedAt) || entry.completedTitle) continue;
+    let key = id;
+    while (!byId.has(key) && key.includes(':')) key = key.slice(0, key.lastIndexOf(':'));
+    const item = byId.get(key);
+    if (!item) continue;
+    const episode = id.slice(key.length).replace(/^:/, '');
+    entry.completedTitle = episode ? `${item.title} · episode ${episode}` : item.title;
+    entry.completedYear = item.year;
+    entry.completedAt ??= entry.updated;
+    changed = true;
+  }
+  if (changed) writeSealed(dataDir, progressPath(dataDir), progress);
+  return Object.entries(progress).filter(([,entry]) => !!entry.completedTitle && (isFinished(entry) || !!entry.completedAt))
+    .sort(([,a],[,b]) => (b.completedAt ?? b.updated).localeCompare(a.completedAt ?? a.updated))
+    .map(([id,entry]) => ({ id, title: entry.completedTitle!, year: entry.completedYear ?? null }));
 }

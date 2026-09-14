@@ -1,3 +1,4 @@
+import { THEMES } from '../theme/registry';
 import { MOBILE_PLAN_EVENT } from './mobileAccess';
 
 export type PlanId = 'free' | 'basic' | 'premium' | 'ultra' | 'max';
@@ -55,6 +56,12 @@ export interface PlanStatus {
   liveTvOptional: boolean;
   synthwave: boolean;
   synthwaveOwned: boolean;
+  anime: boolean;
+  animeOwned: boolean;
+  bundle: boolean;
+  bundleOwned: boolean;
+  animeAddonPence: number;
+  themeBundlePence: number;
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
@@ -89,6 +96,7 @@ export const FALLBACK_PLAN: PlanStatus = {
   liveTvOptional: false,
   synthwave: false,
   synthwaveOwned: false,
+  anime: false, animeOwned: false, bundle: false, bundleOwned: false, animeAddonPence: 499, themeBundlePence: 999,
   synthwaveAddonPence: 499,
   mocks: false,
   liveTv: false,
@@ -168,6 +176,8 @@ export interface BillingReceipt {
   oneTimePence: number;
   chargedPence: 0;
   liveTv: boolean;
+  animePurchased?: boolean;
+  bundlePurchased?: boolean;
   synthwavePurchased: boolean;
   at: string;
   tokenId?: string;
@@ -192,6 +202,12 @@ export interface BillingStatus {
   monthlyPence: number;
   nextChargeAt: null;
   synthwaveOwned: boolean;
+  anime?: boolean;
+  bundle?: boolean;
+  animeAddonPence?: number;
+  themeBundlePence?: number;
+  animeOwned?: boolean;
+  bundleOwned?: boolean;
   receipts: BillingReceipt[];
   processor?: { linked: false; reason: 'no_processor' };
   paymentMethod?: PublicCardToken | null;
@@ -202,6 +218,7 @@ export interface CheckoutRequest {
   consent: boolean;
   requestId: string;
   liveTv?: boolean;
+  pack?: 'synthwave' | 'anime' | 'theme-bundle';
   synthwave?: boolean;
   simulate?: 'success' | 'decline' | 'cancel';
   packOnly?: boolean;
@@ -284,14 +301,14 @@ export function cardholderLooksValid(value: string): boolean {
   return name.length >= 2 && name.length <= 80 && /[A-Za-z]/.test(name);
 }
 
-export function checkoutQuote(plan: PlanStatus, selectedId: PlanId, liveTv: boolean, synthwave: boolean, packOnly = false): {
+export function checkoutQuote(plan: PlanStatus, selectedId: PlanId, liveTv: boolean, synthwave: boolean, packOnly = false, pack?: ThemePack): {
   monthlyPence: number; oneTimePence: number; referenceTotalPence: number;
 } {
   const entry = plan.catalog.find((item) => item.id === (packOnly ? plan.id : selectedId));
   if (entry === undefined || entry.basePricePence === undefined) throw new Error('Plan information is unavailable.');
   const includeLive = packOnly ? plan.liveTv : liveTv;
   const monthlyPence = entry.basePricePence + (includeLive ? entry.liveTvAddonPence ?? 0 : 0);
-  const oneTimePence = synthwave && !plan.synthwaveOwned ? plan.synthwaveAddonPence : 0;
+  const oneTimePence = pack === 'theme-bundle' ? (plan.bundleOwned ? 0 : plan.themeBundlePence) : pack === 'anime' ? (plan.animeOwned || plan.bundleOwned ? 0 : plan.animeAddonPence) : synthwave && !plan.synthwaveOwned && !plan.bundleOwned ? plan.synthwaveAddonPence : 0;
   return { monthlyPence, oneTimePence, referenceTotalPence: (packOnly ? 0 : monthlyPence) + oneTimePence };
 }
 
@@ -457,8 +474,10 @@ export function styleMinPlanLabel(minPlan: PlanId): string {
 }
 
 export function themeUnlocked(plan: PlanStatus, themeId: string): boolean {
-  if (themeId !== 'synthwave') return true;
-  return plan.developer || plan.synthwave;
+  const theme = THEMES.find((item) => item.id === themeId);
+  if (!theme) return false;
+  if (!theme.premium) return true;
+  return plan.developer || plan.bundle || (plan as unknown as Record<string, unknown>)[themeId] === true;
 }
 
 export function displayMaxLabel(maxHeight: 720 | 1080 | 2160): string {
@@ -466,3 +485,9 @@ export function displayMaxLabel(maxHeight: 720 | 1080 | 2160): string {
   if (maxHeight >= 1080) return 'Full HD (1080p)';
   return 'HD (720p)';
 }
+
+export type ThemePack = 'synthwave' | 'anime' | 'theme-bundle';
+export function checkoutPack(value: unknown): ThemePack | undefined {
+  return value === 'synthwave' || value === 'anime' || value === 'theme-bundle' ? value : undefined;
+}
+export function packName(pack: ThemePack): string { return pack === 'theme-bundle' ? 'All paid themes' : pack === 'anime' ? 'Anime' : 'Retro'; }

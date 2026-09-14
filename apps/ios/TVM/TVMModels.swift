@@ -132,6 +132,9 @@ struct ProgressEntry {
     var position: Double
     var duration: Double
     var updated: String
+    var completedAt: String? = nil
+    var completions: Int = 0
+    var isFinished: Bool { position.isFinite && duration.isFinite && duration > 0 && position / duration > 0.96 }
 }
 
 enum TVMPlayback {

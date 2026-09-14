@@ -35,6 +35,8 @@ export const LIVE_TV_EXTRA = 'Live TV pack and your own playlist';
 
 /** Retro — 1970s/80s television-set pack. Sold on every plan, including Free. */
 export const SYNTHWAVE_ADDON_PENCE = 499;
+export const ANIME_ADDON_PENCE = 499;
+export const THEME_BUNDLE_PENCE = 999;
 export const SYNTHWAVE_EXTRA = 'Retro — 1970s/80s television-set look';
 
 export function formatGbp(pence: number): string {
@@ -243,6 +245,8 @@ export interface Entitlement {
   /** When set, overrides the plan default for the Live TV add-on. */
   liveTvAddon?: boolean;
   /** Paid Retro aesthetic. Independent of the monthly plan. */
+  animeAddon?: boolean;
+  themeBundle?: boolean;
   synthwaveAddon?: boolean;
 }
 
@@ -259,6 +263,8 @@ export interface BillingReceipt {
   oneTimePence: number;
   chargedPence: 0;
   liveTv: boolean;
+  animePurchased?: boolean;
+  bundlePurchased?: boolean;
   synthwavePurchased: boolean;
   consentVersion: string;
   at: string;
@@ -274,6 +280,12 @@ export interface BillingStatus {
   monthlyPence: number;
   nextChargeAt: null;
   synthwaveOwned: boolean;
+  anime?: boolean;
+  bundle?: boolean;
+  animeAddonPence?: number;
+  themeBundlePence?: number;
+  animeOwned?: boolean;
+  bundleOwned?: boolean;
   receipts: BillingReceipt[];
   processor: { linked: false; reason: 'no_processor' };
   paymentMethod: PublicCardToken | null;
@@ -303,6 +315,12 @@ export interface PlanStatus {
   liveTvOptional: boolean;
   synthwave: boolean;
   synthwaveOwned: boolean;
+  anime: boolean;
+  animeOwned: boolean;
+  bundle: boolean;
+  bundleOwned: boolean;
+  animeAddonPence: number;
+  themeBundlePence: number;
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
@@ -333,6 +351,7 @@ export interface CheckoutInput {
   expiry?: unknown;
   cvc?: unknown;
   liveTv?: unknown;
+  pack?: unknown;
   synthwave?: unknown;
   consent?: unknown;
   requestId?: unknown;
@@ -417,6 +436,8 @@ interface EntitlementSnapshot {
   styleId?: unknown;
   source?: unknown;
   liveTvAddon?: unknown;
+  animeAddon?: unknown;
+  themeBundle?: unknown;
   synthwaveAddon?: unknown;
 }
 
@@ -429,6 +450,7 @@ function writeSnapshot(dataDir: string, entitlement: Entitlement): void {
       styleId: entitlement.styleId,
       source: entitlement.source,
       liveTvAddon: entitlement.liveTvAddon ?? null,
+      animeAddon: entitlement.animeAddon ?? null, themeBundle: entitlement.themeBundle ?? null,
       synthwaveAddon: entitlement.synthwaveAddon ?? null,
     }),
   );
@@ -444,6 +466,7 @@ function snapshotToEntitlement(raw: EntitlementSnapshot): Entitlement | null {
     source,
     overrides: {},
     liveTvAddon: typeof raw.liveTvAddon === 'boolean' ? raw.liveTvAddon : undefined,
+    animeAddon: raw.animeAddon === true ? true : undefined, themeBundle: raw.themeBundle === true ? true : undefined,
     synthwaveAddon: raw.synthwaveAddon === true ? true : undefined,
   };
 }
@@ -468,6 +491,7 @@ function publicReceipt(receipt: BillingReceipt): BillingReceipt {
     oneTimePence: receipt.oneTimePence,
     chargedPence: 0,
     liveTv: receipt.liveTv,
+    animePurchased: receipt.animePurchased, bundlePurchased: receipt.bundlePurchased,
     synthwavePurchased: receipt.synthwavePurchased,
     consentVersion: receipt.consentVersion,
     at: receipt.at,
@@ -540,7 +564,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         source: sealed.source === 'checkout' || sealed.source === 'dev' ? sealed.source : 'free',
         overrides: sealed.overrides ?? {},
         liveTvAddon: typeof sealed.liveTvAddon === 'boolean' ? sealed.liveTvAddon : undefined,
-        synthwaveAddon: sealed.synthwaveAddon === true ? true : undefined,
+        animeAddon: sealed.animeAddon === true ? true : undefined, themeBundle: sealed.themeBundle === true ? true : undefined,
+    synthwaveAddon: sealed.synthwaveAddon === true ? true : undefined,
       } satisfies Entitlement;
       if (!existsSync(planPath(dataDir))) writeSnapshot(dataDir, next);
       return next;
@@ -583,7 +608,9 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     const ads = over.ads ?? base.ads;
     const mocks = over.mocks ?? base.mocks;
     const liveTv = over.liveTv ?? liveTvIncluded(base, entitlement.liveTvAddon);
-    const synthwaveOwned = entitlement.synthwaveAddon === true;
+    const bundleOwned = entitlement.themeBundle === true;
+    const animeOwned = bundleOwned || entitlement.animeAddon === true;
+    const synthwaveOwned = bundleOwned || entitlement.synthwaveAddon === true;
     const synthwave = developer || synthwaveOwned;
     const charged = priceFor(base, liveTv);
     const maxHeight = over.maxHeight ?? base.maxHeight;
@@ -607,6 +634,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       liveTvOptional: base.liveTvAddonPence > 0,
       synthwave,
       synthwaveOwned,
+      anime: developer || animeOwned, animeOwned, bundle: developer || bundleOwned, bundleOwned, animeAddonPence: ANIME_ADDON_PENCE, themeBundlePence: THEME_BUNDLE_PENCE,
       synthwaveAddonPence: SYNTHWAVE_ADDON_PENCE,
       mocks,
       liveTv,
@@ -708,9 +736,12 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       const includeLive = input.packOnly === true
         ? liveTvIncluded(plan, current.liveTvAddon)
         : checkoutWantsLiveTv(plan, input.liveTv);
-      const includeSynthwave = input.synthwave === true;
+      if (input.pack !== undefined && (typeof input.pack !== 'string' || !['anime', 'synthwave', 'theme-bundle'].includes(input.pack))) throw new Error('Unknown theme pack.');
+      const includeBundle = input.pack === 'theme-bundle';
+      const includeAnime = includeBundle || input.pack === 'anime';
+      const includeSynthwave = includeBundle || input.pack === 'synthwave' || input.synthwave === true;
       const fingerprint = JSON.stringify({
-        event: 'checkout', planId: input.planId, liveTv: input.liveTv ?? null,
+        event: 'checkout', pack: input.pack ?? null, planId: input.planId, liveTv: input.liveTv ?? null,
         synthwave: includeSynthwave, packOnly: input.packOnly === true,
         quotedMonthlyPence: input.quotedMonthlyPence ?? null,
         quotedOneTimePence: input.quotedOneTimePence ?? null,
@@ -718,7 +749,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       });
       if (alreadyProcessed(requestId, fingerprint)) return compose();
       const monthlyPence = priceFor(plan, includeLive).pricePence;
-      const oneTimePence = includeSynthwave && current.synthwaveAddon !== true ? SYNTHWAVE_ADDON_PENCE : 0;
+      const oneTimePence = current.themeBundle ? 0 : includeBundle ? THEME_BUNDLE_PENCE : (includeAnime && !current.animeAddon ? ANIME_ADDON_PENCE : 0) + (includeSynthwave && !current.synthwaveAddon ? SYNTHWAVE_ADDON_PENCE : 0);
       if ((input.quotedMonthlyPence !== undefined && input.quotedMonthlyPence !== monthlyPence)
         || (input.quotedOneTimePence !== undefined && input.quotedOneTimePence !== oneTimePence)) {
         throw new Error('The order has changed. Reopen checkout to review the current total.');
@@ -738,9 +769,11 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       writeEntitlement({
         ...current,
         id: plan.id,
-        source: plan.id === 'free' && !includeSynthwave ? 'free' : 'checkout',
+        source: plan.id === 'free' && !includeSynthwave && !includeAnime ? 'free' : 'checkout',
         styleId: clampStyle(plan.id, current.styleId),
         liveTvAddon: includeLive,
+        animeAddon: includeAnime ? true : current.animeAddon,
+        themeBundle: includeBundle ? true : current.themeBundle,
         synthwaveAddon: includeSynthwave ? true : current.synthwaveAddon,
       });
       saveReceipt({
@@ -756,7 +789,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         oneTimePence,
         chargedPence: 0,
         liveTv: includeLive,
-        synthwavePurchased: oneTimePence > 0,
+        animePurchased: includeAnime, bundlePurchased: includeBundle,
+        synthwavePurchased: includeSynthwave,
         consentVersion: BILLING_CONSENT_VERSION,
         at: new Date().toISOString(),
         ...(tokenId !== undefined ? { tokenId, last4 } : {}),
@@ -783,7 +817,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       return {
         mode: 'sandbox', livePaymentsEnabled: false, currency: 'GBP',
         subscription: status.id === 'free' ? 'free' : 'test-active', monthlyPence: status.pricePence,
-        nextChargeAt: null, synthwaveOwned: status.synthwaveOwned, receipts: ledger.receipts.map(publicReceipt),
+        nextChargeAt: null, anime: status.anime, bundle: status.bundle, animeAddonPence: ANIME_ADDON_PENCE, themeBundlePence: THEME_BUNDLE_PENCE, animeOwned: status.animeOwned, bundleOwned: status.bundleOwned, synthwaveOwned: status.synthwaveOwned, receipts: ledger.receipts.map(publicReceipt),
         processor: { linked: false, reason: 'no_processor' },
         paymentMethod: publicPaymentMethod(ledger.cards ?? emptyCardVault()),
       };

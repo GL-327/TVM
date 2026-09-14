@@ -1,3 +1,4 @@
+import { ANIME_SCENES, setAnimeScene, useAnimeScene } from '../theme/anime/catalog';
 import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
@@ -13,6 +14,7 @@ import { applyMotionPreference, applyPerformanceMode, readMotionPreference, read
 
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
+  const animeScene = useAnimeScene();
   const [liveDetail, setLiveDetail] = useState('Loading…');
   const [desktopDetail, setDesktopDetail] = useState('Loading…');
   const [appliance, setAppliance] = useState(false);
@@ -48,7 +50,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
     void fetchPlan().then((status) => {
       applyPlanClass(status);
       setPlan(status);
-      if (readStoredTheme() === 'synthwave' && !themeUnlocked(status, 'synthwave')) {
+      if (!themeUnlocked(status, readStoredTheme())) {
         setTheme(applyTheme('default'));
       }
     });
@@ -87,6 +89,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </section>
         <section className="settings-group">
           <h2 className="settings-group__title">Look</h2>
+        <FocusButton id="theme-bundle" className="settings-row" detail={plan.bundle ? 'Owned · includes future paid packs' : '£9.99 · all paid themes, including future packs'} onSelect={() => navigate.push('checkout', { params: { pack: 'theme-bundle' } })}>All paid themes bundle</FocusButton>
         {THEMES.map((spec) => {
           const locked = spec.premium === true && !themeUnlocked(plan, spec.id);
           return (
@@ -96,7 +99,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
               className="settings-row"
               detail={
                 locked
-                  ? `£${(plan.synthwaveAddonPence / 100).toFixed(2)} · Unlock`
+                  ? `£${((spec.id === 'anime' ? plan.animeAddonPence : plan.synthwaveAddonPence) / 100).toFixed(2)} · Unlock`
                   : theme === spec.id
                     ? 'On'
                     : 'Apply'
@@ -104,7 +107,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
               onSelect={() => {
                 if (locked) {
                   navigate.push('checkout', {
-                    params: { planId: plan.id, name: plan.name, pack: 'synthwave' },
+                    params: { planId: plan.id, name: plan.name, pack: spec.id },
                   });
                   return;
                 }
@@ -115,6 +118,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
             </FocusButton>
           );
         })}
+        {theme === 'anime' && <section className="anime-scene-picker" aria-label="Anime scenes">{ANIME_SCENES.map(scene => <FocusButton key={scene.id} id={`anime-scene-${scene.id}`} className="settings-row" detail={scene.id === animeScene.id ? 'On · ' + scene.hook : scene.summary} onSelect={() => setAnimeScene(scene.id)}>{scene.title}</FocusButton>)}</section>}
         {(plan.styles.length > 0 ? plan.styles : FALLBACK_PLAN.styles).map((style) => {
           const unlocked = styleUnlocked(plan, style.id as StyleId);
           return (
