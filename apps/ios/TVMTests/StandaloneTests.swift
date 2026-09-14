@@ -44,6 +44,28 @@ final class StandaloneTests: XCTestCase {
         controller.shutdown()
     }
 
+    @MainActor func testNativePlayerTapsPassThroughVLCAndEmptyChrome() {
+        let controller = TVMPlayerController(id: "tap", url: URL(string: "https://cdn.example/movie.mkv")!, title: "Tap film", startAt: 0, live: false)
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: CGSize(width: 390, height: 844))
+        controller.view.layoutIfNeeded()
+        XCTAssertFalse(controller.view.subviews[0].isUserInteractionEnabled)
+        func all(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap { all($0) } }
+        let taps = all(controller.view).flatMap { $0.gestureRecognizers ?? [] }.compactMap { $0 as? UITapGestureRecognizer }
+        XCTAssertTrue(taps.contains { $0.numberOfTapsRequired == 1 })
+        XCTAssertTrue(taps.contains { $0.numberOfTapsRequired == 2 })
+        let empty = controller.view.hitTest(CGPoint(x: 24, y: 420), with: nil)
+        XCTAssertNotNil(empty)
+        XCTAssertEqual(empty?.accessibilityLabel, "Show or hide playback controls")
+        XCTAssertFalse(empty is UIControl)
+        let chrome = TVMChromeView()
+        chrome.frame = CGRect(origin: .zero, size: CGSize(width: 200, height: 200))
+        let stack = UIStackView(frame: chrome.bounds)
+        chrome.addSubview(stack)
+        XCTAssertNil(chrome.hitTest(CGPoint(x: 100, y: 100), with: nil))
+        controller.shutdown()
+    }
+
     @MainActor func testNativeDecoderPlaysMP4MatroskaWebMAndTransportStream() throws {
         _ = Bundle(for: StandaloneTests.self).url(forResource: "sample", withExtension: "mp4", subdirectory: "PlaybackFixtures")
         throw XCTSkip("VLCKit decode is a device check; simulator playback deadlocks XCTest and blocks the IPA")

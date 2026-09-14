@@ -2,6 +2,20 @@ import UIKit
 import AVFoundation
 import MobileVLCKit
 
+/// Full-screen overlay that only keeps hits on real controls. Empty gradient,
+/// labels and stack-view gutters pass through so a tap can show/hide chrome.
+final class TVMChromeView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let hit = super.hitTest(point, with: event) else { return nil }
+        var node: UIView? = hit
+        while let current = node, current !== self {
+            if current is UIControl { return current }
+            node = current.superview
+        }
+        return nil
+    }
+}
+
 /// Full-screen native decoder. Auto Layout fills either orientation; VLC fits
 /// the original picture inside the drawable without stretching or cropping.
 final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
@@ -13,7 +27,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private var resumeAt: Double
     private let player = VLCMediaPlayer()
     private let picture = UIView()
-    private let chrome = UIView()
+    private let tapShield = UIView()
+    private let chrome = TVMChromeView()
     private let gradient = CAGradientLayer()
     private let playButton = UIButton(type: .system)
     private let slider = UISlider()
@@ -53,7 +68,11 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         view.backgroundColor = .black
         picture.backgroundColor = .black
         picture.clipsToBounds = true
-        for child in [picture, chrome] {
+        picture.isUserInteractionEnabled = false
+        tapShield.backgroundColor = .clear
+        tapShield.accessibilityLabel = "Show or hide playback controls"
+        tapShield.accessibilityTraits = .button
+        for child in [picture, tapShield, chrome] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
             NSLayoutConstraint.activate([
@@ -150,10 +169,11 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
         doubleTap.numberOfTapsRequired = 2
         doubleTap.delegate = self
-        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped)); tap.delegate = self
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+        tap.delegate = self
         tap.require(toFail: doubleTap)
-        view.addGestureRecognizer(doubleTap)
-        view.addGestureRecognizer(tap)
+        tapShield.addGestureRecognizer(doubleTap)
+        tapShield.addGestureRecognizer(tap)
         let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swiped(_:))); edge.edges = .left
         view.addGestureRecognizer(edge)
         NotificationCenter.default.addObserver(self, selector: #selector(backgrounded), name: UIApplication.willResignActiveNotification, object: nil)
@@ -173,6 +193,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         gradient.frame = chrome.bounds
+        muteVideoHits()
         centerPicture()
     }
     override func viewDidDisappear(_ animated: Bool) {
@@ -297,6 +318,9 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         while let current = node { if current is UIControl { return false }; node = current.superview }
         return true
     }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
+    }
     private func reveal() {
         setControls(true); hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -310,7 +334,12 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         UIView.animate(withDuration: 0.2) { self.chrome.alpha = visible ? 1 : 0 }
         setNeedsUpdateOfHomeIndicatorAutoHidden()
     }
+    private func muteVideoHits() {
+        picture.isUserInteractionEnabled = false
+        for sub in picture.subviews { sub.isUserInteractionEnabled = false }
+    }
     private func centerPicture() {
+        muteVideoHits()
         let mid = CGPoint(x: picture.bounds.midX, y: picture.bounds.midY)
         for sub in picture.subviews {
             if sub.bounds.isEmpty { continue }
