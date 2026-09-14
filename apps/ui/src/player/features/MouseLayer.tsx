@@ -296,9 +296,17 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   };
 
   const onPointerUp = (event: PointerEvent): void => {
-    if (canvasDrag === null || event.pointerId !== canvasDrag.pointerId) return;
-    if (canvasDrag.seeking) suppressClick = true;
-    canvasDrag = null;
+    const drag = canvasDrag !== null && event.pointerId === canvasDrag.pointerId ? canvasDrag : null;
+    if (drag !== null) {
+      if (drag.seeking) suppressClick = true;
+      canvasDrag = null;
+    }
+    if (drag?.seeking) return;
+    if (!host.contains(event.target as Node)) return;
+    const touch = event.pointerType === 'touch' || lastPointerType === 'touch';
+    if (!touch || !isVideoToggleTarget(event.target)) return;
+    suppressClick = true;
+    window.dispatchEvent(new CustomEvent('tvm:toggle-chrome'));
   };
 
   const onClick = (event: MouseEvent): void => {

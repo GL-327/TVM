@@ -507,6 +507,9 @@ check('native VLC playback is wired for iPhone',
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('bouncesZoom') &&
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('user-scalable=no') &&
   (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('VLCMediaPlayer') &&
+  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('TVMChromeView') &&
+  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('tapShield') &&
+  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('muteVideoHits') &&
   (read(join(REPO, 'apps', 'ui', 'src', 'player', 'engine.ts')) ?? '').includes('iosPlaybackBridge()') &&
   (read(join(REPO, 'apps', 'ui', 'index.html')) ?? '').includes('user-scalable=no'),
   'iPhone must decode in VLC, lock pinch-zoom, and never fall HTML5 MKV into <video>');

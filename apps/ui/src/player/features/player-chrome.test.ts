@@ -106,6 +106,9 @@ describe('player watching chrome', () => {
     expect(chrome).toContain('min-height: 44px');
     expect(chrome).toContain('--player-hit: 44px');
     expect(chrome).toContain('.player-chrome-back');
+    expect(chrome).toContain('.chrome-frame--hidden .chrome-frame__top');
+    expect(chrome).toContain('.chrome-frame--hidden .chrome-frame__bottom');
+    expect(chrome).toMatch(/\.chrome-frame--hidden \.chrome-frame__top,\s*\n\.chrome-frame--hidden \.chrome-frame__bottom \{\s*\n\s*pointer-events:\s*none;/);
     expect(chrome).toContain('pointer-events: none');
     expect(chrome).not.toMatch(/\.player--mobile[^{]*\{[^}]*background:\s*#000\s*;/);
     expect(chrome).not.toMatch(/@media\s*\([^)]*orientation:\s*landscape/);
