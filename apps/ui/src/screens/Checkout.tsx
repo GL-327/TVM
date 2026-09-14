@@ -21,6 +21,7 @@ import {
 } from '../data/plan';
 import { applyTheme } from '../theme/apply';
 import { SYNTHWAVE_THEME_NAME } from '../theme/registry';
+import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import './billing.css';
@@ -66,6 +67,9 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
   const [attempt, setAttempt] = useState(0);
   const request = useRef<{ key: string; id: string } | null>(null);
   const inFlight = useRef(false);
+  const pageRef = useRef<HTMLElement>(null);
+
+  useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -122,7 +126,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
   };
 
   if (success) return (
-    <main className="page page--settings page--checkout billing-page">
+    <main ref={pageRef} className="page page--settings page--checkout billing-page" data-keyboard-fields="">
       <TopBar title="Test complete" />
       <p className="billing-badge">Sandbox · no money charged</p>
       <h1 className="page__heading">Your test plan is ready</h1>
@@ -148,7 +152,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
   );
 
   return (
-    <main className="page page--settings page--checkout billing-page">
+    <main ref={pageRef} className="page page--settings page--checkout billing-page" data-keyboard-fields="">
       <TopBar title="Checkout" />
       <p className="billing-badge">Sandbox checkout · initial testing</p>
       <h1 className="page__heading">{packOnly ? `Unlock ${SYNTHWAVE_THEME_NAME}` : `Review ${entry?.name ?? 'your plan'}`}</h1>

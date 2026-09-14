@@ -3791,3 +3791,10 @@ html.desktop-shell .token-field__input {
 .poster[data-focused='true'] .poster__art,
 .home .poster__art,
 .home .poster[data-focused='true'] .poster__art { transition: transform var(--tvm-motion-base) var(--tvm-motion-ease); }
+
+/* Phone document frame. Desktop Home launcher is not restyled. */
+html.phone-shell,
+html.phone-shell body {
+  height: 100dvh;
+  min-height: 100dvh;
+}

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { fieldValue, FocusField } from '../components/FocusField';
 import { TopBar } from '../components/TopBar';
 import { clearRdToken, fetchRdStatus, saveRdToken, type RdStatus } from '../data/media';
+import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -14,6 +15,7 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const pageRef = useRef<HTMLElement>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     const next = await fetchRdStatus();
@@ -23,6 +25,8 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
   useEffect(() => {
     void refresh().catch(() => setMessage('Core did not answer.'));
   }, [refresh]);
+
+  useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   const save = async (raw?: string): Promise<void> => {
     const next = (raw ?? token).trim();
@@ -43,7 +47,7 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
   };
 
   return (
-    <main className="page page--settings">
+    <main ref={pageRef} className="page page--settings" data-keyboard-fields="">
       <TopBar title="Real-Debrid" />
       <p className="stage__kicker">Account and cloud</p>
       <h1 className="page__heading">Real-Debrid</h1>

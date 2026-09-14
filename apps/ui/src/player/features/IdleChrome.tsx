@@ -209,4 +209,15 @@ const IDLE_CHROME_CSS = `
   opacity: 1;
 }
 
+:root[data-motion='reduced'] .player-idle-chrome,
+:root[data-motion='reduced'] .player-chrome,
+:root[data-motion='reduced'] [data-player-chrome],
+:root[data-motion='reduced'] [data-idle-fade],
+:root[data-perf='on'] .player-idle-chrome,
+:root[data-perf='on'] .player-chrome,
+:root[data-perf='on'] [data-player-chrome],
+:root[data-perf='on'] [data-idle-fade] {
+  transition: none;
+}
+
 `;

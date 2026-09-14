@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { canScrollAxis, tapShouldActivate, wheelPixels, wheelTarget, wheelWantsRail } from './pointerInput';
+import {
+  canScrollAxis,
+  fieldScrollDelta,
+  isPhoneNavShell,
+  navShouldIgnoreKey,
+  tapShouldActivate,
+  wheelPixels,
+  wheelTarget,
+  wheelWantsRail,
+} from './pointerInput';
 
 function box(partial: Partial<Parameters<typeof canScrollAxis>[0]>) {
   return { scrollWidth: 0, clientWidth: 0, scrollHeight: 0, clientHeight: 0, ...partial };
@@ -57,5 +66,37 @@ describe('coarse tap activation', () => {
     expect(tapShouldActivate(false, 2)).toBe(true);
     expect(tapShouldActivate(true, 2)).toBe(false);
     expect(tapShouldActivate(false, 40)).toBe(false);
+  });
+});
+
+describe('keyboard field geometry', () => {
+  it('lifts a field that sits under the keyboard', () => {
+    expect(fieldScrollDelta(700, 780, 0, 520, 20)).toBe(280);
+  });
+
+  it('leaves a field that is already in the visual viewport', () => {
+    expect(fieldScrollDelta(80, 120, 0, 520, 20)).toBe(0);
+  });
+
+  it('pulls a field back when the visual viewport has panned it off the top', () => {
+    expect(fieldScrollDelta(-40, 8, 0, 520, 20)).toBe(-60);
+  });
+
+  it('ignores non-finite measurements', () => {
+    expect(fieldScrollDelta(Number.NaN, 100, 0, 500, 20)).toBe(0);
+  });
+});
+
+describe('phone nav shell', () => {
+  it('treats phone-shell and keyboard-open as a phone nav shell', () => {
+    expect(isPhoneNavShell({ classList: { contains: (name) => name === 'phone-shell' } })).toBe(true);
+    expect(isPhoneNavShell({ classList: { contains: (name) => name === 'keyboard-open' } })).toBe(true);
+    expect(isPhoneNavShell({ classList: { contains: () => false } })).toBe(false);
+  });
+
+  it('does not claim keys without a real text field target', () => {
+    expect(navShouldIgnoreKey({ key: 'a', target: null }, true)).toBe(false);
+    expect(navShouldIgnoreKey({ key: 'Escape', target: null }, true)).toBe(false);
+    expect(navShouldIgnoreKey({ key: 'Backspace', target: null }, false)).toBe(false);
   });
 });

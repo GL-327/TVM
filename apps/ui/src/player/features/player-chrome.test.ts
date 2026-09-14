@@ -100,9 +100,23 @@ describe('player watching chrome', () => {
     expect(chrome).toContain('.player--cinema');
     expect(chrome).toContain('.player--mobile');
     expect(chrome).toContain('.player--mobile.player--portrait .player__stage');
+    expect(chrome).toContain('.player--mobile.player--landscape .player__stage');
     expect(chrome).toContain('aspect-ratio: 16 / 9');
+    expect(chrome).toContain('object-fit: contain');
+    expect(chrome).toContain('min-height: 44px');
+    expect(chrome).toContain('--player-hit: 44px');
     expect(chrome).toContain('.player-chrome-back');
     expect(chrome).toContain('pointer-events: none');
     expect(chrome).not.toMatch(/\.player--mobile[^{]*\{[^}]*background:\s*#000\s*;/);
+    expect(chrome).not.toMatch(/@media\s*\([^)]*orientation:\s*landscape/);
+  });
+
+  it('never stretches the picture and keeps portrait video on top', () => {
+    expect(chrome).toContain('object-position: center');
+    expect(chrome).toContain('bottom: auto');
+    expect(chrome).toContain('html.tvm-portrait .player.player--mobile .player__stage');
+    expect(chrome).toContain('html.tvm-landscape .player.player--mobile .player__video');
+    expect(chrome).not.toMatch(/\.player--mobile\.player--landscape \.player__video[\s\S]{0,220}object-fit:\s*(cover|fill)/);
+    expect(chrome).not.toMatch(/\.player--mobile\.player--portrait \.player__video[\s\S]{0,220}object-fit:\s*(cover|fill)/);
   });
 });

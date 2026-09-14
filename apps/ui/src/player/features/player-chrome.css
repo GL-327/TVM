@@ -1252,6 +1252,15 @@ html:not([data-theme]) .stream-page,
   transform: none;
 }
 
+:root[data-motion='reduced'] .player--mobile .chrome-frame,
+:root[data-motion='reduced'] .player--mobile .player-dock,
+:root[data-motion='reduced'] .player--mobile [data-idle-fade],
+:root[data-perf='on'] .player--mobile .chrome-frame,
+:root[data-perf='on'] .player--mobile .player-dock,
+:root[data-perf='on'] .player--mobile [data-idle-fade] {
+  transition: none;
+}
+
 :root[data-perf='on'] .player-dock {
   background: color-mix(in srgb, var(--player-chip) 92%, #111);
 }
@@ -1294,7 +1303,11 @@ html:not([data-theme]) .stream-page,
   justify-content: flex-end;
 }
 
-/* --- Mobile watching shell ----------------------------------------------- */
+/* --- Mobile watching shell -----------------------------------------------
+ * Orientation is class-based (.player--portrait / .player--landscape and
+ * html.tvm-portrait / html.tvm-landscape). Do not gate these rules on a
+ * landscape-only media query — portrait phones must keep a 16:9 stage.
+ */
 
 .player--mobile {
   --player-safe-x: max(0.75rem, env(safe-area-inset-left), env(safe-area-inset-right));
@@ -1302,6 +1315,9 @@ html:not([data-theme]) .stream-page,
   --player-safe-bottom: max(0.7rem, env(safe-area-inset-bottom));
   --player-bar-width: calc(100vw - 0.5rem);
   --player-dock-radius: 1.2rem;
+  --player-hit: 44px;
+  --player-aspect: 16 / 9;
+  --player-stage-h: min(calc(100dvw * 9 / 16), calc(100dvh - 8.5rem));
 }
 
 .player--mobile .player-dock {
@@ -1316,6 +1332,16 @@ html:not([data-theme]) .stream-page,
 .player--mobile .player-root .player-title-overlay__title {
   font-size: clamp(1.15rem, 5vw, 1.55rem);
   white-space: normal;
+}
+
+.player--mobile .player-chrome-back,
+.player--mobile .player-watchlist .player-watchlist__btn,
+.player--mobile .player-dock__tools .tvm-button,
+.player--mobile .tvm-progress__control,
+.player--mobile .player-transport .tvm-button.player-transport__btn,
+.player--mobile .player-root .player-transport .tvm-button.player-transport__btn {
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .player--mobile .player-transport .tvm-button.player-transport__btn,
@@ -1357,32 +1383,89 @@ html:not([data-theme]) .stream-page,
   display: none;
 }
 
-/* Portrait: 16:9 stage on top, thumb chrome in the remaining band. */
-.player--mobile.player--portrait .player__stage {
+.player--mobile .player__stage,
+.player--mobile .player__video {
+  touch-action: none;
+}
+
+/*
+ * Portrait phone: 16:9 stage on TOP, object-fit contain (letterbox), chrome
+ * in the remaining band / overlay. Extra class weight beats later sheets.
+ */
+html.tvm-portrait .player.player--mobile .player__stage,
+.player.player--mobile.player--portrait .player__stage {
+  position: absolute;
   top: env(safe-area-inset-top, 0px);
+  right: 0;
   bottom: auto;
+  left: 0;
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 9;
-  max-height: min(56vh, calc(100dvw * 9 / 16));
+  max-height: var(--player-stage-h);
 }
 
-.player--mobile.player--portrait .player__video {
+html.tvm-portrait .player.player--mobile .player__video,
+.player.player--mobile.player--portrait .player__video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
+  object-position: center;
 }
 
-.player--mobile.player--landscape .player__stage {
+html.tvm-portrait .player.player--mobile .chrome-frame__safe,
+.player.player--mobile.player--portrait .chrome-frame__safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+html.tvm-portrait .player.player--mobile .chrome-frame__bottom,
+.player.player--mobile.player--portrait .chrome-frame__bottom {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px) - (100dvw * 9 / 16));
+}
+
+html.tvm-portrait .player.player--mobile .chrome-frame__veil--vignette,
+.player.player--mobile.player--portrait .chrome-frame__veil--vignette {
+  bottom: auto;
+  height: var(--player-stage-h);
+}
+
+/* Landscape: full-bleed cinema, 16:9 contain, no stretch. */
+html.tvm-landscape .player.player--mobile .player__stage,
+.player.player--mobile.player--landscape .player__stage {
+  position: absolute;
   inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  aspect-ratio: auto;
+  max-height: none;
 }
 
-.player--mobile.player--landscape .player__video {
-  width: auto;
+html.tvm-landscape .player.player--mobile .player__video,
+.player.player--mobile.player--landscape .player__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
   max-width: 100%;
-  aspect-ratio: 16 / 9;
+  max-height: 100%;
+  aspect-ratio: auto;
   object-fit: contain;
+  object-position: center;
+}
+
+html.tvm-landscape .player.player--mobile .chrome-frame__veil--vignette,
+.player.player--mobile.player--landscape .chrome-frame__veil--vignette {
+  inset: 0;
+  height: auto;
 }

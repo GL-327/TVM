@@ -15,6 +15,7 @@ import { nearestScrollable } from './pointerInput';
 export const KEYBOARD_INSET_VAR = '--tvm-keyboard-inset';
 export const KEYBOARD_OPEN_CLASS = 'keyboard-open';
 export const PHONE_SHELL_CLASS = 'phone-shell';
+export type PhoneOrientation = 'portrait' | 'landscape';
 /** Below this, treat the keyboard as closed (visualViewport jitter). */
 export const KEYBOARD_OPEN_PX = 80;
 export const FIELD_SCROLL_GAP = 20;
@@ -22,6 +23,12 @@ export const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"]
 
 export function isPhoneViewport(narrow: boolean, coarse: boolean, tablet: boolean): boolean {
   return narrow || (coarse && tablet);
+}
+
+/** Portrait when the window is at least as tall as it is wide. Both are allowed. */
+export function phoneOrientation(width: number, height: number): PhoneOrientation {
+  if (![width, height].every(Number.isFinite)) return 'portrait';
+  return height >= width ? 'portrait' : 'landscape';
 }
 
 /**
@@ -87,10 +94,10 @@ export function startPhoneViewport(): () => void {
 
   const syncShell = (): void => {
     root.classList.toggle(PHONE_SHELL_CLASS, isPhoneViewport(narrow.matches, coarse.matches, tablet.matches));
-    const portrait = window.innerHeight >= window.innerWidth;
-    root.dataset.orientation = portrait ? 'portrait' : 'landscape';
-    root.classList.toggle('tvm-portrait', portrait);
-    root.classList.toggle('tvm-landscape', !portrait);
+    const orientation = phoneOrientation(window.innerWidth, window.innerHeight);
+    root.dataset.orientation = orientation;
+    root.classList.toggle('tvm-portrait', orientation === 'portrait');
+    root.classList.toggle('tvm-landscape', orientation === 'landscape');
   };
 
   const syncKeyboard = (): void => {

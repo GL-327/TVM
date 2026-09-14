@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChannelCard } from '../components/ChannelCard';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
@@ -11,6 +11,7 @@ import { Ribbon } from '../components/Ribbon';
 import { fetchLive, saveXtream, type LiveChannel, type LiveStatus } from '../data/media';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { requestFocus } from '../nav/focusEngine';
+import { bindKeyboardFields } from '../nav/pointerInput';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import { livePlayerParams } from '../player/features/LiveOverlay';
 import type { ScreenProps } from '../nav/registry';
@@ -52,6 +53,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const pageRef = useRef<HTMLElement>(null);
 
   const load = (): void => {
     setLoading(true);
@@ -67,6 +69,8 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   useEffect(() => {
     if (loading || busy) {
@@ -117,7 +121,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const pickLimit = status.pickLimit ?? 48;
 
   return (
-    <main className={`page page--library page--docked page--live home${gated ? ' page--setup' : ''}`}>
+    <main ref={pageRef} className={`page page--library page--docked page--live home${gated ? ' page--setup' : ''}`} data-keyboard-fields="">
       <PageScene />
       <Ribbon active="live" />
       {!gated && !loading && !busy && (

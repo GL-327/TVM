@@ -15,6 +15,7 @@ import { launchTitle } from '../data/launchTitle';
 import { enterTvmStream } from '../data/profiles';
 import { searchEaster } from '../brand/easterEggs';
 import { requestFocus } from '../nav/focusEngine';
+import { bindKeyboardFields } from '../nav/pointerInput';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -35,6 +36,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
     fromHome ? 'Search films, series, and apps, or paste a hoster link.' : 'Search films and series, or paste a hoster link.',
   );
   const armed = useRef(false);
+  const panelRef = useRef<HTMLElement>(null);
   const hint = fromHome ? 'Search films, series, and apps, or paste a hoster link.' : 'Search films and series, or paste a hoster link.';
   const setQuery = useCallback((value: string): void => {
     revision.current += 1;
@@ -72,6 +74,8 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => bindKeyboardFields(panelRef.current), []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => requestFocus(`${scope}/query`), 16);
@@ -196,7 +200,12 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
       aria-label="Search"
       onClick={dismissScrim}
     >
-      <section className="search-pill__panel" onClick={(event) => event.stopPropagation()}>
+      <section
+        ref={panelRef}
+        className="search-pill__panel"
+        data-keyboard-fields=""
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="search-pill__bar" data-wrap="row">
           <span className="search-pill__glyph" aria-hidden="true">
             <IconSearch />

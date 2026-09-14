@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
 import { fetchLive, fetchSession } from '../data/media';
 import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, saveLiveTv, saveStyle, styleMinPlanLabel, styleUnlocked, themeUnlocked, type PlanStatus, type StyleId } from '../data/plan';
+import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { applyTheme, readStoredTheme } from '../theme/apply';
@@ -19,6 +20,9 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
   const [motion, setMotion] = useState(readMotionPreference);
   const [performance, setPerformance] = useState(readPerformanceMode);
+  const pageRef = useRef<HTMLElement>(null);
+
+  useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   useEffect(() => {
     void fetchLive()
@@ -51,7 +55,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   }, []);
 
   return (
-    <main className="page page--settings page--docked">
+    <main ref={pageRef} className="page page--settings page--docked" data-keyboard-fields="">
       <PageScene />
       <Ribbon active="settings" />
       <header className="page__toolbar">

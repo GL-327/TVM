@@ -11,9 +11,11 @@
  * so this sheet is what makes those clients a phone app rather than a scaled
  * television. Do not look for a separate mobile bundle.
  *
- * Rules here are keyed on viewport width, not on pointer type: a narrow desktop
- * window gets the same treatment, and a tablet in portrait lands in the middle
- * band. Touch-specific behaviour is in the `(pointer: coarse)` block.
+ * Rules here are keyed on viewport width and `html.phone-shell` (set by
+ * nav/phoneViewport.ts), not on a CSS orientation lock. Portrait and landscape
+ * are both first-class: `data-orientation` / `.tvm-portrait` / `.tvm-landscape`
+ * choose density. A narrow desktop window gets the same treatment. Touch
+ * behaviour is in the `(pointer: coarse)` block. 16:9 art uses contain.
  *
  * Keyboard occlusion is `--tvm-keyboard-inset` (see nav/phoneViewport.ts and
  * the WKWebView visualViewport script). `html.keyboard-open` hides the tab bar
@@ -80,7 +82,7 @@
 
 /* Phone -------------------------------------------------------------------- */
 
-@media (max-width: 47.99rem), (pointer: coarse) and (max-height: 30rem) and (orientation: landscape) {
+@media (max-width: 47.99rem), (pointer: coarse) and (max-height: 30rem) {
   /*
    * Overscan does not exist on a phone, but the notch and the home indicator
    * do. Trade the TV margin for the real inset, with a small floor so content
@@ -784,6 +786,10 @@
 /* Landscape phone ----------------------------------------------------------
  * Height, not width, is the scarce axis here: a full-height hero leaves no
  * room for the first rail, so the screen reads as a single static image.
+ *
+ * This is a density tweak, not an orientation lock. Portrait keeps the phone
+ * layer above. `html.phone-shell[data-orientation='landscape']` restates the
+ * same rules so WKWebView does not have to wait on CSS `orientation:`.
  */
 
 @media (max-height: 30rem) and (orientation: landscape) {
@@ -955,7 +961,11 @@
   }
 }
 
-/* Phone-shell class (set by phoneViewport / the iOS WKUserScript) --------- */
+/* Phone-shell class (set by phoneViewport / the iOS WKUserScript) ---------
+ * Media queries can lag WKWebView rotation and miss a tablet in portrait
+ * (phone-shell is on, max-width: 47.99rem is not). Layout therefore follows
+ * the class + `data-orientation` so portrait is not a clipped 10-foot stage.
+ */
 
 html.phone-shell,
 html.phone-shell body {
@@ -974,3 +984,387 @@ html.phone-shell input,
 html.phone-shell textarea {
   cursor: text;
 }
+
+html.phone-shell {
+  --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  --tvm-safe-y: max(0.75rem, env(safe-area-inset-top));
+  --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  --tvm-tabbar: calc(6.55rem + env(safe-area-inset-bottom));
+}
+
+html.phone-shell,
+html.phone-shell body,
+html.phone-shell #root,
+html.phone-shell .app,
+html.phone-shell .app__screen,
+html.phone-shell .screen-layer {
+  width: 100%;
+  max-width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+}
+
+html.phone-shell .page,
+html.phone-shell .home,
+html.phone-shell .details {
+  width: 100%;
+  max-width: 100%;
+}
+
+html.phone-shell .page,
+html.phone-shell .page--library,
+html.phone-shell .page--settings,
+html.phone-shell .page--recovery {
+  padding-left: max(var(--tvm-safe-x), env(safe-area-inset-left));
+  padding-right: max(var(--tvm-safe-x), env(safe-area-inset-right));
+  padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 0.85rem);
+}
+
+html.phone-shell .details {
+  padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 1.1rem);
+  scroll-padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 1.1rem);
+}
+
+html.phone-shell .home {
+  scroll-padding: var(--tvm-safe-y) 0.8rem calc(var(--tvm-tabbar) + 1.2rem) 0.8rem;
+}
+
+html.phone-shell .page__toolbar,
+html.phone-shell .masthead,
+html.phone-shell .stage__watchline,
+html.phone-shell .details .hero__actions,
+html.phone-shell .details__actions,
+html.phone-shell .collection-controls,
+html.phone-shell .settings-list,
+html.phone-shell .settings-row,
+html.phone-shell .settings-row .tvm-button__label {
+  flex-wrap: wrap;
+}
+
+html.phone-shell .tvm-button,
+html.phone-shell .ribbon__icon,
+html.phone-shell .tvm-button.ribbon__icon,
+html.phone-shell .settings-row,
+html.phone-shell .tvm-button.settings-row,
+html.phone-shell .search-pill__bar .tvm-button,
+html.phone-shell .tvm-button.launch-tile {
+  min-height: 2.75rem;
+}
+
+html.phone-shell .poster {
+  min-height: 0;
+}
+
+html.phone-shell .stage,
+html.phone-shell .home--launcher .stage--home,
+html.phone-shell[data-theme='glass'] .home .stage,
+html.phone-shell[data-theme='glass'] .home:not(.stream-page) .stage {
+  min-height: 28vh;
+  padding: calc(var(--tvm-safe-y) + 0.35rem) var(--tvm-safe-x) 0.7rem;
+}
+
+html.phone-shell .stage__watchline-rule,
+html.phone-shell .stage__learn,
+html.phone-shell .home__clock {
+  display: none;
+}
+
+html.phone-shell .home__launcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  min-height: 0;
+  padding: 0.15rem var(--tvm-safe-x) 0.85rem;
+  overflow-x: visible;
+}
+
+html.phone-shell .home__shelf {
+  padding: 0.15rem 0 calc(var(--tvm-tabbar) + 1.4rem);
+}
+
+html.phone-shell .tvm-button.launch-tile {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  padding: 0.7rem 0.75rem;
+}
+
+html.phone-shell .rail__header {
+  flex-wrap: wrap;
+  padding-inline: var(--tvm-safe-x);
+}
+
+html.phone-shell .poster--landscape .poster__art {
+  aspect-ratio: 16 / 9;
+}
+
+html.phone-shell .poster--landscape .poster__art img,
+html.phone-shell .player__video,
+html.phone-shell .player--mobile .player__video,
+html.phone-shell video {
+  object-fit: contain;
+}
+
+html.phone-shell .details__hero,
+html.phone-shell .details--series .details__hero {
+  flex-direction: column;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+html.phone-shell .details__stage {
+  height: 38vh;
+  min-height: 12.5rem;
+}
+
+html.phone-shell .details__body {
+  margin-top: -38vh;
+}
+
+html.phone-shell .ribbon-zone {
+  display: none;
+}
+
+html.phone-shell .ribbon,
+html.phone-shell .ribbon--open,
+html.phone-shell .ribbon:focus-within,
+html.phone-shell .ribbon:has([data-focused='true']),
+html.phone-shell[data-theme='glass'] .ribbon,
+html.phone-shell[data-theme='glass'] .ribbon--open,
+html.phone-shell[data-theme='glass'] .ribbon:focus-within,
+html.phone-shell[data-theme='glass'] .ribbon:has([data-focused='true']),
+html.phone-shell[data-theme='synthwave'] .ribbon,
+html.phone-shell[data-theme='synthwave'] .ribbon--open {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.28rem 0.2rem calc(0.28rem + env(safe-area-inset-bottom));
+  overflow: visible;
+  pointer-events: auto;
+  opacity: 1;
+  transform: none;
+  border-radius: 0;
+}
+
+html.phone-shell .ribbon__frost,
+html.phone-shell[data-theme='glass'] .ribbon__frost {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  overflow: visible;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html.phone-shell .ribbon__list,
+html.phone-shell[data-theme='glass'] .ribbon__list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0.1rem;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+}
+
+html.phone-shell .ribbon__label,
+html.phone-shell[data-theme='glass'] .ribbon__label {
+  max-width: none;
+  overflow: visible;
+  opacity: 1;
+  white-space: nowrap;
+}
+
+html.phone-shell .ribbon .tvm-button.ribbon__icon[data-focus-id='inputs'],
+html.phone-shell .ribbon [data-focus-id='inputs'] {
+  display: none;
+}
+
+/* Portrait: readable column. Landscape: use width; 16:9 art still contains. */
+
+html.phone-shell[data-orientation='portrait'] {
+  --tvm-tabbar: calc(6.55rem + env(safe-area-inset-bottom));
+}
+
+html.phone-shell[data-orientation='portrait'] .home__launcher {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+html.phone-shell[data-orientation='portrait'] .ribbon__list,
+html.phone-shell[data-orientation='portrait'][data-theme='glass'] .ribbon__list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html.phone-shell[data-orientation='portrait'] .ribbon__label {
+  display: block;
+}
+
+html.phone-shell[data-orientation='portrait'] .player--mobile.player--portrait .player__stage,
+html.phone-shell[data-orientation='portrait'] .player.player--portrait .player__stage {
+  top: env(safe-area-inset-top, 0px);
+  bottom: auto;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  max-height: min(56vh, calc(100vw * 9 / 16));
+}
+
+html.phone-shell[data-orientation='landscape'] {
+  --tvm-tabbar: calc(4.35rem + env(safe-area-inset-bottom));
+}
+
+html.phone-shell[data-orientation='landscape'] .home__launcher {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html.phone-shell[data-orientation='landscape'] .tvm-button.launch-tile {
+  min-height: 3rem;
+  padding: 0.6rem;
+}
+
+html.phone-shell[data-orientation='landscape'] .ribbon,
+html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon {
+  padding-block: 0.12rem calc(0.12rem + env(safe-area-inset-bottom));
+}
+
+html.phone-shell[data-orientation='landscape'] .ribbon__list,
+html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon__list {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+html.phone-shell[data-orientation='landscape'] .ribbon__label {
+  display: none;
+}
+
+html.phone-shell[data-orientation='landscape'] .stage,
+html.phone-shell[data-orientation='landscape'] .home--launcher .stage--home {
+  min-height: 52vh;
+  padding-top: 1.4rem;
+}
+
+html.phone-shell[data-orientation='landscape'] .details__hero,
+html.phone-shell[data-orientation='landscape'] .details--series .details__hero {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+html.phone-shell[data-orientation='landscape'] .details__stage {
+  height: 100%;
+  min-height: 100%;
+}
+
+html.phone-shell[data-orientation='landscape'] .details__body {
+  margin-top: 0;
+}
+
+html.phone-shell[data-orientation='landscape'] .player__stage,
+html.phone-shell[data-orientation='landscape'] .player--mobile.player--landscape .player__stage {
+  inset: 0;
+  aspect-ratio: auto;
+  max-height: none;
+}
+
+html.phone-shell[data-orientation='landscape'] .player--mobile.player--landscape .player__video,
+html.phone-shell[data-orientation='landscape'] .player.player--landscape .player__video {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+}
+
+/* keyboard fields
+ * Focused inputs stay in the visual viewport above the software keyboard.
+ * 16px prevents iOS focus-zoom. No transforms — those send the page off-screen.
+ */
+html.phone-shell {
+  --tvm-visual-height: 100dvh;
+  --tvm-visual-top: 0px;
+}
+
+html.phone-shell input,
+html.phone-shell textarea,
+html.phone-shell select,
+html.phone-shell .token-field__input,
+html.phone-shell .search-pill__field .token-field__input {
+  font-size: 16px;
+  line-height: 1.25;
+  transform: none;
+}
+
+html.keyboard-open,
+html.keyboard-open body,
+html.keyboard-open #root,
+html.keyboard-open .app,
+html.keyboard-open .app__screen,
+html.keyboard-open .modal-layer,
+html.keyboard-open .search-pill,
+html.keyboard-open .search-pill__panel,
+html.keyboard-open .page,
+html.keyboard-open .setup-card {
+  transform: none;
+}
+
+html.keyboard-open,
+html.keyboard-open body,
+html.keyboard-open #root,
+html.keyboard-open .app {
+  height: var(--tvm-visual-height, 100dvh);
+  max-height: var(--tvm-visual-height, 100dvh);
+}
+
+html.keyboard-open .search-pill {
+  align-items: stretch;
+  justify-items: stretch;
+  top: var(--tvm-visual-top, 0px);
+  left: 0;
+  right: 0;
+  bottom: auto;
+  width: 100%;
+  height: var(--tvm-visual-height, 100dvh);
+  max-height: var(--tvm-visual-height, 100dvh);
+  padding: env(safe-area-inset-top, 0px) 0 0;
+  overflow: hidden;
+  animation: none;
+}
+
+html.keyboard-open .search-pill__panel {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: calc(var(--tvm-keyboard-inset, 0px) + 1rem);
+  animation: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.phone-shell [data-keyboard-fields] {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.keyboard-open [data-keyboard-fields],
+html.keyboard-open .page--profiles,
+html.keyboard-open .setup-card {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: calc(var(--tvm-keyboard-inset, 0px) + 1.25rem);
+  padding-bottom: calc(var(--tvm-keyboard-inset, 0px) + 1.25rem);
+}
+
+html.keyboard-open .search-results {
+  padding-bottom: 0.35rem;
+}
+

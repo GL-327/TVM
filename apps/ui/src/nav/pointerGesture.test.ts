@@ -25,7 +25,7 @@ function setup() {
   const host = new Surface();
   Object.assign(doc, { documentElement: new Surface(), body: new Surface(), activeElement: null });
   vi.stubGlobal('document', doc);
-  vi.stubGlobal('window', new Surface());
+  vi.stubGlobal('window', Object.assign(new Surface(), { setTimeout: vi.fn(), clearTimeout: vi.fn() }));
   vi.stubGlobal('Element', Surface);
   vi.stubGlobal('HTMLElement', Surface);
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
@@ -76,6 +76,24 @@ describe('native touch navigation', () => {
     pointer('pointerup');
     expect(requestFocus).not.toHaveBeenCalled();
     expect(host.click).not.toHaveBeenCalled();
+  });
+
+  it('does not leak phone field keys to window spatial-nav listeners', () => {
+    const { host } = setup();
+    document.documentElement.classList.contains = (name: string) => name === 'phone-shell';
+    host.closest = (selector: string) => selector.includes('input') || selector === '[data-focus-id]' ? host : null;
+    const type = (key: string) => {
+      const event = new Event('keydown', { bubbles: true, cancelable: true });
+      Object.assign(event, { key });
+      Object.defineProperty(event, 'target', { get: () => host });
+      const stop = vi.spyOn(event, 'stopPropagation');
+      document.dispatchEvent(event);
+      return stop;
+    };
+    expect(type('Backspace')).toHaveBeenCalledOnce();
+    expect(type(' ')).toHaveBeenCalledOnce();
+    expect(type('ArrowDown')).toHaveBeenCalledOnce();
+    expect(type('Escape')).not.toHaveBeenCalled();
   });
 
   it('does not focus after the browser claims a pan or after a second touch begins', () => {
