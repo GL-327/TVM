@@ -20,7 +20,7 @@ before changing anything structural.
 | `apps/core` | Local service on `127.0.0.1` by default. Owns all business logic, and serves the interface in production |
 | `apps/shell` | Electron kiosk window for the Windows SKU |
 | `apps/roku` | Roku SceneGraph source. Talks to Core over HTTP on the LAN with a bearer token. No physical Roku has been accepted; see [apps/roku/README.md](apps/roku/README.md) |
-| `apps/ios` | iOS 16+ WKWebView client source. Not compiled, signed or device-tested here; no IPA in this tree. Needs a Mac and `xcodebuild`. See [apps/ios/README.md](apps/ios/README.md) |
+| `apps/ios` | Standalone iPhone app: bundled `apps/ui` + on-device Core. No PC or LAN token required. IPA is CI/Mac only and is not App Store signed. See [apps/ios/README.md](apps/ios/README.md) |
 | `apps/android` | Kotlin WebView client source. Same LAN Bearer + `tvm_lan_session` contract as iOS. Debug APK is local/CI only (gitignored); not Play. See [apps/android/README.md](apps/android/README.md) |
 | `packages/design` | Design tokens: colour, type scale, spacing, motion, focus |
 | `packages/nav` | Remote input normalised into intents |
@@ -72,7 +72,7 @@ On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the 
 
 The Roku product for this version is the sideloaded `apps/roku/tvm-roku.zip` (not a Channel Store or HTTPS build). For a box on the LAN: set `TVM_CORE_BIND=0.0.0.0` and a random `TVM_LAN_TOKEN` of at least 32 characters; allow Core on the Windows private network; enter `http://<this-pc-lan-ip>:7345` and the same token on the Roku setup screen. The channel sends `Authorization: Bearer <token>` on Core API calls and Core-hosted streams. Loopback clients do not need a token. Admin, billing and privacy routes stay local. Never put the token in `config.json` or the zip. Details: [apps/roku/README.md](apps/roku/README.md).
 
-iOS and Android use that same bind and token, then exchange the bearer for an HttpOnly `tvm_lan_session` cookie (`POST /api/lan/session`). See [apps/ios/README.md](apps/ios/README.md) and [apps/android/README.md](apps/android/README.md).
+The iPhone app is standalone and does not need this bind or token. Android (and optional iOS “home Core”) still exchange a bearer for an HttpOnly `tvm_lan_session` cookie (`POST /api/lan/session`). See [apps/ios/README.md](apps/ios/README.md) and [apps/android/README.md](apps/android/README.md).
 
 ## Android
 
