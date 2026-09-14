@@ -91,10 +91,14 @@ jobs:
           node apps/ios/export-fallback-catalog.mjs
           node apps/ios/generate-app-icon.mjs
           node apps/ios/bundle-ui.mjs
+          node -e 'require("fs").writeFileSync("apps/ios/TVM/BundledUI/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,player:"MobileVLCKit-3.6.0"}))'
           test -f apps/ios/TVM/BundledUI/index.html
           test -d apps/ios/TVM/BundledUI/assets
       - name: Validate Xcode project (standalone app + bundled UI)
         run: node apps/ios/check-project.mjs
+      - name: Install native playback framework
+        working-directory: apps/ios
+        run: pod install --repo-update
       - name: Compile and test on iOS Simulator
         working-directory: apps/ios
         run: |
@@ -122,7 +126,7 @@ jobs:
             exit 1
           fi
           echo "Testing on $DESTINATION"
-          xcodebuild -project TVM.xcodeproj -scheme TVM \
+          xcodebuild -workspace TVM.xcworkspace -scheme TVM \
             -destination "platform=iOS Simulator,name=$DESTINATION" \
             -derivedDataPath build/sim \
             COMPILER_INDEX_STORE_ENABLE=NO \
@@ -133,7 +137,7 @@ jobs:
           # Ad-hoc identity "-" produces a real iphoneos TVM.app. It is not
           # installable until re-signed. CODE_SIGNING_ALLOWED=NO is omitted so
           # the ad-hoc signer can stamp the binary.
-          xcodebuild -project TVM.xcodeproj -scheme TVM \
+          xcodebuild -workspace TVM.xcworkspace -scheme TVM \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \

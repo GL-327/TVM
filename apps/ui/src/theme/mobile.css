@@ -1010,6 +1010,9 @@ html.phone-shell .home,
 html.phone-shell .details {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 html.phone-shell .page,
@@ -1368,3 +1371,22 @@ html.keyboard-open .search-results {
   padding-bottom: 0.35rem;
 }
 
+/* Keep the document fixed; only page and rail scroll containers move. */
+html.phone-shell,
+html.phone-shell body,
+html.phone-shell #root {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.phone-shell body { position: fixed; inset: 0; margin: 0; }
+html.phone-shell .app,
+html.phone-shell .app__screen,
+html.phone-shell .screen-layer,
+html.phone-shell .screen-content { min-width: 0; max-width: 100%; overflow: hidden; }
+html.phone-shell .page__toolbar > *,
+html.phone-shell .settings-row > *,
+html.phone-shell .details__body > * { min-width: 0; }
+html.phone-shell .page__lede,
+html.phone-shell .settings-row,
+html.phone-shell .page__message { overflow-wrap: anywhere; }
+html.phone-shell .rail__track { overscroll-behavior-x: contain; }

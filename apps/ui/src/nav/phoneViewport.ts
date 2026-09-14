@@ -79,6 +79,10 @@ function ensureViewportFit(): void {
     meta.setAttribute('name', 'viewport');
     head.appendChild(meta);
   }
+  if (/TVM-iOS/.test(navigator.userAgent)) {
+    meta.setAttribute('content', 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+    return;
+  }
   const content = meta.getAttribute('content') ?? 'width=device-width, initial-scale=1';
   if (!content.includes('viewport-fit')) {
     meta.setAttribute('content', `${content}, viewport-fit=cover`);
@@ -93,7 +97,8 @@ export function startPhoneViewport(): () => void {
   const coarse = window.matchMedia('(pointer: coarse)');
 
   const syncShell = (): void => {
-    root.classList.toggle(PHONE_SHELL_CLASS, isPhoneViewport(narrow.matches, coarse.matches, tablet.matches));
+    const ios = /TVM-iOS/.test(navigator.userAgent);
+    root.classList.toggle(PHONE_SHELL_CLASS, ios || isPhoneViewport(narrow.matches, coarse.matches, tablet.matches));
     const orientation = phoneOrientation(window.innerWidth, window.innerHeight);
     root.dataset.orientation = orientation;
     root.classList.toggle('tvm-portrait', orientation === 'portrait');

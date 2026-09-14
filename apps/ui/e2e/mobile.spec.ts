@@ -68,5 +68,28 @@ test.describe('iPhone WebKit', () => {
     await page.getByRole('button', { name: 'Test film' }).tap();
     await expect(page.locator('[data-screen="details"]')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Test film' })).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event('tvm:navigate-back')));
+    await expect(page.locator('.home__shelf')).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event('tvm:navigate-back')));
+    await expect(page.locator('.home__shelf')).toBeVisible();
   });
+
+  for (const size of [{ width: 375, height: 667 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
+    test(`fits the full iOS viewport without sideways document scrolling at ${size.width}`, async ({ page }) => {
+      await page.setViewportSize(size);
+      await ready(page, true);
+      await expect(page.locator('.home__shelf')).toBeVisible();
+      const bounds = await page.locator('.app').boundingBox();
+      expect(bounds!.width).toBe(size.width);
+      expect(bounds!.height).toBeCloseTo(size.height, 0);
+      const overflow = await page.evaluate(() => {
+        document.documentElement.scrollLeft = 100;
+        document.body.scrollLeft = 100;
+        return { width: document.documentElement.scrollWidth, left: window.scrollX };
+      });
+      expect(overflow.width).toBeLessThanOrEqual(size.width);
+      expect(overflow.left).toBe(0);
+      await page.screenshot({ path: `../../cache/ios-fit-${size.width}.png` });
+    });
+  }
 });

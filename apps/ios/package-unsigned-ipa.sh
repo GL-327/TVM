@@ -5,7 +5,7 @@
 # (Sideloadly, AltStore, or Xcode on a Mac).
 #
 # Expected layout after:
-#   xcodebuild -project TVM.xcodeproj -scheme TVM -configuration Release \
+#   xcodebuild -workspace TVM.xcworkspace -scheme TVM -configuration Release \
 #     -sdk iphoneos -derivedDataPath build \
 #     CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO \
 #     AD_HOC_CODE_SIGNING_ALLOWED=YES build
@@ -20,24 +20,19 @@ if [ "$(uname -s)" != "Darwin" ]; then
 fi
 
 APP=$(find "$ROOT/build" -name 'TVM.app' -path '*Release-iphoneos*' | head -n 1)
-if [ -z "$APP" ]; then
-  APP=$(find "$ROOT/build" -name 'TVM.app' | head -n 1)
-fi
 if [ -z "$APP" ] || [ ! -d "$APP" ]; then
   echo "TVM.app not found under apps/ios/build. Run xcodebuild first." >&2
   exit 1
 fi
-if [ ! -f "$APP/TVM" ] && [ ! -f "$APP/TVM.app/TVM" ]; then
-  # A bare folder named TVM.app is not a compiled bundle.
-  if [ ! -f "$APP/Info.plist" ]; then
-    echo "Found $APP but it is not a compiled TVM.app bundle." >&2
-    exit 1
-  fi
+if [ ! -f "$APP/TVM" ] || [ "$(/usr/libexec/PlistBuddy -c 'Print :DTPlatformName' "$APP/Info.plist")" != "iphoneos" ]; then
+  echo "Found $APP but it is not a compiled iPhone device bundle." >&2
+  exit 1
 fi
 STAGE="$ROOT/build/ipa-unsigned"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/Payload"
 cp -R "$APP" "$STAGE/Payload/TVM.app"
+rm -f "$ROOT/build/TVM-unsigned.ipa"
 (cd "$STAGE" && zip -qry "$ROOT/build/TVM-unsigned.ipa" Payload)
 echo "unsigned IPA: $ROOT/build/TVM-unsigned.ipa"
 echo "This file cannot be installed on an iPhone until it is re-signed on a Mac or with Sideloadly / AltStore."
