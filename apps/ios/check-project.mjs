@@ -1,0 +1,560 @@
+#!/usr/bin/env node
+/*
+ * Windows-side validation for apps/ios.
+ *
+ * This is a PACKAGING check, not an iOS build. It cannot compile Swift, link
+ * against the iOS SDK, sign, or prove anything about behaviour on a phone. What
+ * it does do is catch the class of mistake that makes Xcode refuse to open the
+ * project, or that only shows up after a long transfer to a Mac: a dangling
+ * pbxproj UUID, a file reference with nothing behind it, a source file missing
+ * from the build phase, malformed plist XML, or an Info.plist that has lost the
+ * keys local-network access depends on.
+ *
+ * Run: node apps/ios/check-project.mjs
+ * Exit code 0 = every check passed. 1 = at least one failure.
+ */
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const REPO = join(ROOT, '..', '..');
+const PROJECT = join(ROOT, 'TVM.xcodeproj', 'project.pbxproj');
+const SCHEME = join(ROOT, 'TVM.xcodeproj', 'xcshareddata', 'xcschemes', 'TVM.xcscheme');
+const STRUCT_ONLY = process.env.TVM_IOS_STRUCT_ONLY === '1';
+
+const failures = [];
+const warnings = [];
+const passes = [];
+
+function fail(message) { failures.push(message); }
+function warn(message) { warnings.push(message); }
+function pass(message) { passes.push(message); }
+
+function check(label, condition, detail) {
+  if (condition) pass(label);
+  else fail(detail === undefined ? label : `${label} — ${detail}`);
+}
+
+function read(path) {
+  try { return readFileSync(path, 'utf8'); } catch { return null; }
+}
+
+/** Prose about an API is not a use of it, so drop comments before grepping for one. */
+function stripSwiftComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+}
+
+/* -- pbxproj --------------------------------------------------------------
+ * The project file is the OpenStep plist Xcode writes. Rather than implement
+ * that grammar, pull out the object table by id and work on the raw bodies:
+ * every check below is about references between ids, which are unambiguous.
+ */
+
+function parseObjects(source) {
+  // Each top-level entry is `<24-hex-ish id> = { ... };` inside `objects = { }`.
+  const objects = new Map();
+  const start = source.indexOf('objects = {');
+  if (start < 0) return objects;
+  let i = start + 'objects = {'.length;
+  while (i < source.length) {
+    const idMatch = /([A-Za-z0-9_]{8,})\s*=\s*\{/.exec(source.slice(i));
+    if (idMatch === null) break;
+    const id = idMatch[1];
+    let depth = 0;
+    let j = i + idMatch.index + idMatch[0].length - 1; // at the '{'
+    const bodyStart = j + 1;
+    for (; j < source.length; j += 1) {
+      const ch = source[j];
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) break;
+    objects.set(id, source.slice(bodyStart, j));
+    i = j + 1;
+  }
+  return objects;
+}
+
+function isaOf(body) {
+  const match = /\bisa\s*=\s*([A-Za-z]+)/.exec(body);
+  return match === null ? null : match[1];
+}
+
+function fieldOf(body, key) {
+  const match = new RegExp(`\\b${key}\\s*=\\s*([^;]+);`).exec(body);
+  return match === null ? null : match[1].trim().replace(/^"|"$/g, '');
+}
+
+function listOf(body, key) {
+  const match = new RegExp(`\\b${key}\\s*=\\s*\\(([^)]*)\\)`).exec(body);
+  if (match === null) return [];
+  return match[1].split(',').map((part) => part.trim().replace(/^"|"$/g, '')).filter((part) => part !== '');
+}
+
+const pbx = read(PROJECT);
+check('project.pbxproj exists', pbx !== null, `missing ${relative(REPO, PROJECT)}`);
+
+let objects = new Map();
+let appTargetId = null;
+let testTargetId = null;
+
+if (pbx !== null) {
+  check('project.pbxproj starts with the UTF8 marker Xcode writes', pbx.startsWith('// !$*UTF8*$!'));
+  check('project.pbxproj has balanced braces',
+    (pbx.match(/\{/g) ?? []).length === (pbx.match(/\}/g) ?? []).length,
+    'unbalanced { } — Xcode will refuse to open the project');
+
+  objects = parseObjects(pbx);
+  check('project.pbxproj object table parses', objects.size > 0);
+
+  const rootObject = fieldOf(pbx.slice(pbx.lastIndexOf('rootObject')), 'rootObject');
+  check('rootObject resolves to a PBXProject',
+    rootObject !== null && objects.has(rootObject) && isaOf(objects.get(rootObject)) === 'PBXProject',
+    `rootObject ${String(rootObject)} is not a defined PBXProject`);
+
+  // Every id mentioned inside any object body must itself be defined. A single
+  // dangling reference is what turns into "The project cannot be opened".
+  const defined = new Set(objects.keys());
+  const dangling = new Set();
+  for (const [id, body] of objects) {
+    for (const token of body.match(/\b[A-F0-9]{24}\b/gi) ?? []) {
+      if (!defined.has(token)) dangling.add(`${token} (referenced by ${id})`);
+    }
+  }
+  check('every pbxproj id reference resolves', dangling.size === 0,
+    `dangling ids: ${[...dangling].join(', ')}`);
+
+  // File references must point at files that actually exist on disk.
+  const groupPath = new Map(); // group id -> path segment
+  for (const [id, body] of objects) {
+    if (isaOf(body) !== 'PBXGroup') continue;
+    const path = fieldOf(body, 'path');
+    for (const child of listOf(body, 'children')) groupPath.set(child, path ?? '');
+  }
+
+  const missingFiles = [];
+  const sourceFileIds = new Set();
+  for (const [id, body] of objects) {
+    if (isaOf(body) !== 'PBXFileReference') continue;
+    const sourceTree = fieldOf(body, 'sourceTree');
+    if (sourceTree === 'BUILT_PRODUCTS_DIR') continue; // produced by the build
+    const path = fieldOf(body, 'path');
+    if (path === null) continue;
+    const parent = groupPath.get(id) ?? '';
+    const onDisk = join(ROOT, parent, path);
+    if (!existsSync(onDisk)) missingFiles.push(`${parent}/${path}`);
+    if (fieldOf(body, 'lastKnownFileType') === 'sourcecode.swift') sourceFileIds.add(id);
+  }
+  check('every pbxproj file reference exists on disk', missingFiles.length === 0,
+    `missing: ${missingFiles.join(', ')}`);
+
+  // Targets.
+  for (const [id, body] of objects) {
+    if (isaOf(body) !== 'PBXNativeTarget') continue;
+    const type = fieldOf(body, 'productType');
+    if (type === 'com.apple.product-type.application') appTargetId = id;
+    if (type === 'com.apple.product-type.bundle.unit-test') testTargetId = id;
+  }
+  check('an application target is defined', appTargetId !== null);
+  check('a unit-test target is defined', testTargetId !== null);
+
+  // Every .swift file on disk must be compiled by exactly one target, or it
+  // silently does not ship and the failure only appears at runtime.
+  const buildFileRef = new Map();
+  for (const [id, body] of objects) {
+    if (isaOf(body) !== 'PBXBuildFile') continue;
+    buildFileRef.set(id, fieldOf(body, 'fileRef'));
+  }
+  const compiled = new Set();
+  for (const [, body] of objects) {
+    if (isaOf(body) !== 'PBXSourcesBuildPhase') continue;
+    for (const buildFile of listOf(body, 'files')) {
+      const ref = buildFileRef.get(buildFile);
+      if (ref !== undefined && ref !== null) compiled.add(ref);
+    }
+  }
+  const uncompiled = [...sourceFileIds].filter((id) => !compiled.has(id));
+  check('every Swift file reference is in a Sources build phase', uncompiled.length === 0,
+    `not compiled: ${uncompiled.map((id) => fieldOf(objects.get(id), 'path')).join(', ')}`);
+
+  const swiftOnDisk = [];
+  for (const dir of ['TVM', 'TVMTests']) {
+    const full = join(ROOT, dir);
+    if (!existsSync(full)) continue;
+    for (const name of readdirSync(full)) {
+      if (name.endsWith('.swift')) swiftOnDisk.push(`${dir}/${name}`);
+    }
+  }
+  const referenced = new Set();
+  for (const id of sourceFileIds) {
+    referenced.add(`${groupPath.get(id) ?? ''}/${fieldOf(objects.get(id), 'path')}`);
+  }
+  const orphans = swiftOnDisk.filter((path) => !referenced.has(path));
+  check('every Swift file on disk is referenced by the project', orphans.length === 0,
+    `orphaned (will not compile): ${orphans.join(', ')}`);
+
+  // Info.plist must be wired through INFOPLIST_FILE, and must NOT also be
+  // copied as a resource — that produces a duplicate-output build error.
+  const infoPlistSettings = [];
+  for (const [, body] of objects) {
+    if (isaOf(body) !== 'XCBuildConfiguration') continue;
+    const file = fieldOf(body, 'INFOPLIST_FILE');
+    if (file !== null) infoPlistSettings.push(file);
+  }
+  check('INFOPLIST_FILE is set for the app target', infoPlistSettings.length > 0);
+  check('INFOPLIST_FILE points at a file that exists',
+    infoPlistSettings.every((file) => existsSync(join(ROOT, file))),
+    `not found: ${infoPlistSettings.filter((file) => !existsSync(join(ROOT, file))).join(', ')}`);
+
+  const resourceRefs = new Set();
+  for (const [, body] of objects) {
+    if (isaOf(body) !== 'PBXResourcesBuildPhase') continue;
+    for (const buildFile of listOf(body, 'files')) {
+      const ref = buildFileRef.get(buildFile);
+      if (ref !== undefined && ref !== null) resourceRefs.add(fieldOf(objects.get(ref) ?? '', 'path'));
+    }
+  }
+  check('Info.plist is not also copied as a resource', !resourceRefs.has('Info.plist'),
+    'Info.plist in a Resources phase collides with INFOPLIST_FILE');
+  check('PrivacyInfo.xcprivacy is copied as a resource', resourceRefs.has('PrivacyInfo.xcprivacy'),
+    'the privacy manifest must ship inside the bundle');
+
+  // Deployment target and Swift version must be stated, or Xcode picks its own.
+  const deploymentTargets = [];
+  const swiftVersions = [];
+  for (const [, body] of objects) {
+    if (isaOf(body) !== 'XCBuildConfiguration') continue;
+    const target = fieldOf(body, 'IPHONEOS_DEPLOYMENT_TARGET');
+    if (target !== null) deploymentTargets.push(target);
+    const swift = fieldOf(body, 'SWIFT_VERSION');
+    if (swift !== null) swiftVersions.push(swift);
+  }
+  check('IPHONEOS_DEPLOYMENT_TARGET is declared', deploymentTargets.length > 0);
+  check('SWIFT_VERSION is declared', swiftVersions.length > 0);
+  if (deploymentTargets.length > 0) {
+    const lowest = Math.min(...deploymentTargets.map((value) => Number.parseFloat(value)));
+    check('deployment target is iOS 16 or newer', lowest >= 16, `found iOS ${lowest}`);
+  }
+
+  // @testable import requires testability in the configuration the tests build.
+  const testability = [...objects.values()].some(
+    (body) => isaOf(body) === 'XCBuildConfiguration' && fieldOf(body, 'ENABLE_TESTABILITY') === 'YES',
+  );
+  const usesTestable = (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('@testable');
+  check('ENABLE_TESTABILITY = YES is set where @testable is used', !usesTestable || testability,
+    'the test target uses @testable import but no configuration enables testability');
+
+  // No signing identity, team or provisioning profile may be committed.
+  for (const key of ['DEVELOPMENT_TEAM', 'PROVISIONING_PROFILE', 'PROVISIONING_PROFILE_SPECIFIER', 'CODE_SIGN_IDENTITY']) {
+    check(`no ${key} is committed`, !new RegExp(`\\b${key}\\s*=`).test(pbx),
+      `${key} is set in project.pbxproj — signing settings belong to the person building, not to source control`);
+  }
+  check('CODE_SIGN_STYLE is Automatic', /CODE_SIGN_STYLE\s*=\s*Automatic/.test(pbx),
+    'manual signing will not work from a fresh clone');
+}
+
+/* -- scheme ---------------------------------------------------------------- */
+
+const scheme = read(SCHEME);
+check('shared TVM.xcscheme exists', scheme !== null,
+  'without a shared scheme, `xcodebuild -scheme TVM` fails and Xcode shows no run target');
+
+if (scheme !== null && appTargetId !== null) {
+  check('scheme references the application target',
+    scheme.includes(`BlueprintIdentifier="${appTargetId}"`),
+    'the scheme points at a target id that is not the app');
+  check('scheme has a TestAction', scheme.includes('<TestAction'));
+  check('scheme has a LaunchAction', scheme.includes('<LaunchAction'));
+  check('scheme has an ArchiveAction for Release',
+    /<ArchiveAction[^>]*buildConfiguration="Release"/.test(scheme),
+    'Product > Archive is how an installable build is produced');
+  if (testTargetId !== null) {
+    check('scheme test action references the test target',
+      scheme.includes(`BlueprintIdentifier="${testTargetId}"`));
+  }
+}
+
+/* -- plists ---------------------------------------------------------------- */
+
+/** Minimal well-formedness: balanced tags and a single root <dict>. */
+function plistLooksValid(text) {
+  if (!text.includes('<!DOCTYPE plist')) return false;
+  if (!/<plist\s+version="1\.0">/.test(text)) return false;
+  const opens = (text.match(/<dict>/g) ?? []).length + (text.match(/<dict\/>/g) ?? []).length;
+  const closes = (text.match(/<\/dict>/g) ?? []).length + (text.match(/<dict\/>/g) ?? []).length;
+  const arrayOpens = (text.match(/<array>/g) ?? []).length + (text.match(/<array\/>/g) ?? []).length;
+  const arrayCloses = (text.match(/<\/array>/g) ?? []).length + (text.match(/<array\/>/g) ?? []).length;
+  return opens === closes && arrayOpens === arrayCloses && text.trimEnd().endsWith('</plist>');
+}
+
+const info = read(join(ROOT, 'TVM', 'Info.plist'));
+check('Info.plist exists', info !== null);
+if (info !== null) {
+  check('Info.plist is well-formed plist XML', plistLooksValid(info));
+
+  const required = [
+    ['CFBundleIdentifier', 'the bundle id Xcode substitutes at build time'],
+    ['CFBundleExecutable', 'without it the app will not launch'],
+    ['CFBundleShortVersionString', 'the user-visible version'],
+    ['CFBundleVersion', 'the build number'],
+    ['LSRequiresIPhoneOS', 'marks this as an iOS app'],
+    ['UILaunchScreen', 'a missing launch screen letterboxes the app on modern iPhones'],
+    ['UISupportedInterfaceOrientations', 'orientation support'],
+  ];
+  for (const [key, why] of required) {
+    check(`Info.plist declares ${key}`, info.includes(`<key>${key}</key>`), why);
+  }
+
+  // Local-network access. Both halves are required: iOS 14+ refuses LAN traffic
+  // without the usage description, and plain-HTTP LAN needs the ATS exception.
+  check('Info.plist declares NSLocalNetworkUsageDescription',
+    info.includes('<key>NSLocalNetworkUsageDescription</key>'),
+    'iOS 14+ blocks local-network access without it, so the app can never reach Core');
+  check('NSLocalNetworkUsageDescription has non-empty text',
+    /<key>NSLocalNetworkUsageDescription<\/key>\s*<string>[^<]{10,}<\/string>/.test(info),
+    'App Review and the system prompt both need a real sentence here');
+  check('Info.plist allows local networking over ATS',
+    info.includes('<key>NSAllowsLocalNetworking</key>'),
+    'without it, http:// to a LAN address is blocked by App Transport Security');
+
+  // The dangerous ATS escape hatches must not be present.
+  for (const key of ['NSAllowsArbitraryLoads', 'NSAllowsArbitraryLoadsInWebContent', 'NSExceptionAllowsInsecureHTTPLoads']) {
+    check(`Info.plist does not set ${key}`, !info.includes(`<key>${key}</key>`),
+      `${key} disables transport security far beyond the private LAN this app needs`);
+  }
+
+  check('Info.plist supports portrait and landscape',
+    info.includes('UIInterfaceOrientationPortrait') && info.includes('UIInterfaceOrientationLandscapeLeft'),
+    'the phone client is used both ways');
+}
+
+const privacy = read(join(ROOT, 'TVM', 'PrivacyInfo.xcprivacy'));
+check('PrivacyInfo.xcprivacy exists', privacy !== null);
+if (privacy !== null) {
+  check('PrivacyInfo.xcprivacy is well-formed plist XML', plistLooksValid(privacy));
+  for (const key of ['NSPrivacyTracking', 'NSPrivacyCollectedDataTypes', 'NSPrivacyAccessedAPITypes']) {
+    check(`privacy manifest declares ${key}`, privacy.includes(`<key>${key}</key>`));
+  }
+  check('privacy manifest declares no tracking',
+    /<key>NSPrivacyTracking<\/key>\s*<false\/>/.test(privacy));
+}
+
+/* -- Swift sources: cheap, high-signal checks only -------------------------
+ * This cannot type-check. It looks for the specific mistakes that are easy to
+ * make here and expensive to discover on a Mac.
+ */
+
+const swiftFiles = [];
+for (const dir of ['TVM', 'TVMTests']) {
+  const full = join(ROOT, dir);
+  if (!existsSync(full) || !statSync(full).isDirectory()) continue;
+  for (const name of readdirSync(full)) {
+    if (name.endsWith('.swift')) swiftFiles.push(join(full, name));
+  }
+}
+check('Swift sources are present', swiftFiles.length > 0);
+
+for (const file of swiftFiles) {
+  const text = read(file) ?? '';
+  const name = relative(ROOT, file).replace(/\\/g, '/');
+  const braces = (text.match(/\{/g) ?? []).length - (text.match(/\}/g) ?? []).length;
+  check(`${name} has balanced braces`, braces === 0, `off by ${braces}`);
+  if (/\bWKWebView\b|\bWKNavigation/.test(text)) {
+    check(`${name} imports WebKit`, text.includes('import WebKit'));
+  }
+  if (/\bSecItem(Copy|Add|Update|Delete)/.test(text)) {
+    check(`${name} imports Security`, text.includes('import Security') || text.includes('import Foundation'));
+  }
+  if (/\bView\b|@State|@Published|some View/.test(text) && !name.startsWith('TVMTests')) {
+    check(`${name} imports SwiftUI`, text.includes('import SwiftUI') || text.includes('import Foundation'));
+  }
+}
+
+// Exactly one @main entry point, or the app will not link.
+const mainCount = swiftFiles.filter((file) => /^\s*@main\b/m.test(read(file) ?? '')).length;
+check('exactly one @main entry point', mainCount === 1, `found ${mainCount}`);
+
+// The secrets that must never be committed.
+for (const file of swiftFiles) {
+  const text = read(file) ?? '';
+  const name = relative(ROOT, file).replace(/\\/g, '/');
+  check(`${name} contains no hardcoded bearer token`,
+    !/Bearer\s+[A-Za-z0-9_\-]{16,}/.test(text),
+    'a literal token in source would ship the credential with the app');
+  check(`${name} does not disable TLS validation`,
+    !/NSURLAuthenticationMethodServerTrust[\s\S]{0,200}\.useCredential/.test(text) &&
+    !text.includes('allowsAnyHTTPSCertificate'),
+    'certificate validation must stay on');
+}
+
+/* -- cross-checks against Core --------------------------------------------
+ * The client is useless if it calls an endpoint Core does not serve.
+ * TVM_IOS_STRUCT_ONLY=1 skips repo files that may be absent on an IPA-only CI branch.
+ */
+
+const connection = read(join(ROOT, 'TVM', 'Connection.swift')) ?? '';
+const sessionClient = read(join(ROOT, 'TVM', 'SessionClient.swift')) ?? '';
+const server = read(join(REPO, 'apps', 'core', 'src', 'server.ts')) ?? '';
+const lanSessions = read(join(REPO, 'apps', 'core', 'src', 'lanSessions.ts')) ?? '';
+
+const pathMatch = /appendingPathComponent\("([^"]+)"\)/.exec(connection);
+const clientPath = pathMatch === null ? null : `/${pathMatch[1]}`;
+check('the client builds a LAN session URL', clientPath !== null);
+if (!STRUCT_ONLY && clientPath !== null) {
+  check(`Core serves ${clientPath}`, server.includes(`'${clientPath}'`),
+    `apps/core/src/server.ts has no route for ${clientPath}; the app could never connect`);
+  check(`Core accepts POST on ${clientPath}`,
+    new RegExp(`'${clientPath}'[^\\n]*request\\.method === 'POST'`).test(server));
+  check(`Core accepts DELETE on ${clientPath} so Disconnect revokes server-side`,
+    new RegExp(`'${clientPath}'[^\\n]*request\\.method === 'DELETE'`).test(server));
+}
+
+const cookieMatch = /cookieName\s*=\s*"([^"]+)"/.exec(sessionClient);
+const clientCookie = cookieMatch === null ? null : cookieMatch[1];
+check('the client names the session cookie', clientCookie !== null);
+if (!STRUCT_ONLY && clientCookie !== null) {
+  check('the cookie name matches Core',
+    lanSessions.includes(`'${clientCookie}'`) || lanSessions.includes(`"${clientCookie}"`),
+    `client expects "${clientCookie}" but apps/core/src/lanSessions.ts issues a different name`);
+}
+
+check('the client requires an HttpOnly session cookie', sessionClient.includes('isHTTPOnly'));
+if (!STRUCT_ONLY) {
+  check('Core marks the session cookie HttpOnly', lanSessions.includes('HttpOnly'));
+}
+check('the client refuses redirects while holding the bearer',
+  sessionClient.includes('willPerformHTTPRedirection') && /completionHandler\(nil\)/.test(sessionClient),
+  'following a redirect could leak the LAN token to another host');
+check('the client stores credentials in the Keychain, not UserDefaults',
+  connection.includes('kSecClassGenericPassword') && !/\bUserDefaults\s*\./.test(stripSwiftComments(connection)),
+  'the LAN token must live in the Keychain only');
+check('Keychain items are device-only and require unlock',
+  connection.includes('kSecAttrAccessibleWhenUnlockedThisDeviceOnly'),
+  'a weaker accessibility class would sync the LAN token off the device');
+
+const webView = read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '';
+check('the webview uses a non-persistent data store',
+  webView.includes('.nonPersistent()'),
+  'a persistent store would leave the session cookie on disk');
+check('the webview refuses cross-origin navigation',
+  webView.includes('isSameOrigin'),
+  'a third-party page must never load inside the session-bearing webview');
+check('the webview allows inline media playback',
+  webView.includes('allowsInlineMediaPlayback'),
+  'without it iPhone forces every video fullscreen');
+check('the webview requests viewport-fit=cover for safe-area CSS',
+  webView.includes('viewport-fit=cover') && webView.includes('WKUserScript'),
+  'without it env(safe-area-inset-*) stays 0 under the notch');
+
+check('the client sends Authorization: Bearer from the supplied token',
+  sessionClient.includes('Bearer \\(connection.token)'),
+  'the POST must use the user-supplied LAN token');
+check('the client POSTs an empty JSON object',
+  sessionClient.includes('Data("{}".utf8)'),
+  'Core requires application/json');
+
+if (!STRUCT_ONLY) {
+  const applyTheme = read(join(REPO, 'apps', 'ui', 'src', 'theme', 'apply.ts')) ?? '';
+  const motionAt = applyTheme.lastIndexOf("import './motion.css'");
+  const mobileAt = applyTheme.lastIndexOf("import './mobile.css'");
+  check('the shared UI imports mobile.css after motion.css',
+    motionAt >= 0 && mobileAt > motionAt,
+    'phone WebView would keep the 10-foot layout');
+}
+
+/* -- export / archive ------------------------------------------------------ */
+
+for (const name of ['ExportOptions-adhoc.plist', 'ExportOptions-development.plist']) {
+  const text = read(join(ROOT, name));
+  check(`${name} exists`, text !== null);
+  if (text !== null) {
+    check(`${name} is well-formed plist XML`, plistLooksValid(text));
+    check(`${name} does not embed a team id or certificate`,
+      !text.includes('<key>teamID</key>') && !text.includes('DEVELOPMENT_TEAM') &&
+      !text.includes('.cer') && !text.includes('PROVISIONING'),
+      'signing identities belong to the person building, not the repo');
+  }
+}
+
+const exportScript = read(join(ROOT, 'export-ipa.sh')) ?? '';
+check('export-ipa.sh archives with xcodebuild',
+  exportScript.includes('xcodebuild') && exportScript.includes('archive') &&
+  exportScript.includes('-destination \'generic/platform=iOS\''));
+check('export-ipa.sh exports with -exportArchive and an ExportOptions plist',
+  exportScript.includes('-exportArchive') && exportScript.includes('ExportOptions-'));
+check('export-ipa.sh refuses to run off macOS',
+  exportScript.includes('uname') && exportScript.includes('Darwin'),
+  'a Mac-only gate keeps the script from pretending to work on Windows');
+const unsignedScript = read(join(ROOT, 'package-unsigned-ipa.sh')) ?? '';
+check('package-unsigned-ipa.sh zips Payload/TVM.app',
+  unsignedScript.includes('Payload') && unsignedScript.includes('TVM.app') &&
+  unsignedScript.includes('.ipa'));
+const winExport = read(join(ROOT, 'export-ipa.ps1')) ?? '';
+check('export-ipa.ps1 exists and refuses Windows xcodebuild',
+  winExport.includes('xcodebuild does not run on Windows') && /exit\s+1/.test(winExport));
+check('export-ipa.cmd launches export-ipa.ps1',
+  (read(join(ROOT, 'export-ipa.cmd')) ?? '').includes('export-ipa.ps1'));
+const requestIpa = read(join(ROOT, 'request-ipa.ps1')) ?? '';
+check('request-ipa.ps1 downloads the CI artifact without inventing an IPA',
+  requestIpa.includes('tvm-ios-unsigned-ipa') && requestIpa.includes('gh run download') &&
+  requestIpa.includes('Sideloadly'));
+
+/* -- docs ------------------------------------------------------------------ */
+
+const readme = read(join(ROOT, 'README.md')) ?? '';
+for (const match of readme.matchAll(/`node ([^`]+\.mjs)`/g)) {
+  const script = match[1].trim().replace(/^apps\/ios\//, '');
+  const candidate = existsSync(join(REPO, match[1].trim())) || existsSync(join(ROOT, script));
+  check(`README command \`node ${match[1].trim()}\` refers to a real script`, candidate);
+}
+check('README documents xcodebuild archive + exportArchive',
+  readme.includes('xcodebuild') && readme.includes('archive') && readme.includes('-exportArchive'),
+  'Mac IPA steps must be copy-pasteable');
+check('README states that this Windows tree does not contain an IPA',
+  /not produced|cannot compile|cannot run `xcodebuild`|Windows cannot/i.test(readme));
+check('README documents Sideloadly or AltStore re-signing',
+  /Sideloadly/i.test(readme) && /AltStore/i.test(readme),
+  'Windows users need a real re-signer, not a renamed zip');
+check('README documents request-ipa.ps1',
+  readme.includes('request-ipa.ps1'));
+
+if (!STRUCT_ONLY) {
+  const testing = read(join(REPO, 'docs', 'IOS_TESTING.md')) ?? '';
+  check('docs/IOS_TESTING.md exists', testing !== null);
+  if (testing !== null) {
+    check('IOS_TESTING.md documents export-ipa.sh', testing.includes('export-ipa.sh'));
+    check('IOS_TESTING.md documents Sideloadly or AltStore',
+      /Sideloadly/i.test(testing) && /AltStore/i.test(testing));
+  }
+}
+
+/* -- report ---------------------------------------------------------------- */
+
+for (const message of passes) console.log(`  ok    ${message}`);
+for (const message of warnings) console.log(`  warn  ${message}`);
+for (const message of failures) console.error(`  FAIL  ${message}`);
+
+console.log('');
+console.log(`${passes.length} passed, ${warnings.length} warnings, ${failures.length} failed`);
+
+if (failures.length > 0) {
+  console.error('');
+  console.error('iOS project validation FAILED.');
+  process.exit(1);
+}
+
+console.log('');
+console.log(STRUCT_ONLY
+  ? 'iOS project structure and plists look consistent (TVM_IOS_STRUCT_ONLY=1; Core/UI contract not checked).'
+  : 'iOS project structure, plists and Core contract look consistent.');
+console.log('');
+console.log('This is NOT a build, a signature, or a device test. Still required on a Mac:');
+console.log('  1. xcodebuild -project TVM.xcodeproj -scheme TVM \\');
+console.log('       -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO build');
+console.log('  2. ./export-ipa.sh development   # or Product > Archive, then sign with your team');
+console.log('  3. Work through docs/IOS_TESTING.md on the actual device.');
+console.log('  An unsigned CI zip (package-unsigned-ipa.sh) will not install until it is re-signed.');
