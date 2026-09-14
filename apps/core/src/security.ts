@@ -5,14 +5,14 @@ export function isLoopback(address: string | undefined): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-function tokenMatches(header: string | undefined, expected: string | undefined): boolean {
+export function tokenMatches(header: string | undefined, expected: string | undefined): boolean {
   if (!expected || expected.length < 32 || !header?.startsWith('Bearer ')) return false;
   const supplied = Buffer.from(header.slice(7));
   const wanted = Buffer.from(expected);
   return supplied.length === wanted.length && timingSafeEqual(supplied, wanted);
 }
 
-export function accessError(request: IncomingMessage, path: string, env: NodeJS.ProcessEnv): string | null {
+export function accessError(request: IncomingMessage, path: string, env: NodeJS.ProcessEnv, sessionAuthenticated = false): string | null {
   const local = isLoopback(request.socket.remoteAddress);
   let host: URL;
   try {
@@ -33,7 +33,7 @@ export function accessError(request: IncomingMessage, path: string, env: NodeJS.
   }
   if (request.headers['sec-fetch-site'] === 'cross-site') return 'cross_site_request';
   if (!local && path !== '/api/health') {
-    if (!tokenMatches(request.headers.authorization, env['TVM_LAN_TOKEN'])) return 'lan_authentication_required';
+    if (!sessionAuthenticated && !tokenMatches(request.headers.authorization, env['TVM_LAN_TOKEN'])) return 'lan_authentication_required';
     if (/^\/api\/(dev|billing|maintenance|update|system|privacy)(\/|$)/.test(path) ||
         /^\/api\/plan/.test(path) && request.method !== 'GET') return 'local_access_required';
   }

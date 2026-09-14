@@ -151,9 +151,16 @@ describe('session reuse', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tvm-sessions-'));
   // node with ffmpeg args exits immediately; these tests only exercise bookkeeping.
   const sessions = createStreamSessions({ cacheDir: dir, ffmpegPath: () => process.execPath });
-  afterAll(() => {
+  afterAll(async () => {
     sessions.stopAll();
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    // Windows releases a killed child's working directory a beat after kill();
+    // a lingering temp folder must not fail tests that only exercise bookkeeping.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    } catch {
+      // Left for the OS temp cleaner.
+    }
   });
 
   it('adopts the live session for a source instead of racing a second ffmpeg at it', () => {

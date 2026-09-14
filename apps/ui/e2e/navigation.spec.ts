@@ -18,6 +18,10 @@ const CHROME = new Set([
   'profile',
   'hero-play',
   'hero-info',
+  'launch-stream',
+  'launch-live',
+  'launch-watchlist',
+  'launch-apps',
   'inputs',
   'live',
   'watchlist',
@@ -298,6 +302,8 @@ async function stubReady(page: Page): Promise<void> {
         configured: false,
         applyAllowed: false,
         applyReason: null,
+        kind: 'idle',
+        notice: null,
       },
     }),
   );
@@ -624,13 +630,13 @@ test('Free plan confirms without a card', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Your test plan is ready' })).toBeVisible();
 });
 
-test('Privacy controls and Colourcast reduced motion are reachable', async ({ page }) => {
+test('Privacy controls and Retro reduced motion are reachable', async ({ page }) => {
   await page.route('**/api/plan', (route) => route.fulfill({ json: { ...E2E_PLAN, synthwave: true, synthwaveOwned: true } }));
   await page.evaluate(() => { localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.theme.isle-boot', '1'); });
   await page.reload();
   await waitForFocus(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'synthwave');
-  await page.screenshot({ path: '../../cache/colourcast-preview.png', animations: 'disabled' });
+  await page.screenshot({ path: '../../cache/retro-preview.png', animations: 'disabled' });
   await pressUntil(page, 'settings'); await page.keyboard.press('Enter'); await waitForFocus(page);
   await pressUntil(page, 'motion'); await page.keyboard.press('Enter');
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');

@@ -4,6 +4,7 @@
     <field id="streamUrl" type="string" />
     <field id="streamTitle" type="string" />
     <field id="streamFormat" type="string" />
+    <field id="streamHeaders" type="assocarray" />
     <field id="mediaId" type="string" />
     <field id="mediaKind" type="string" />
     <field id="recapEnd" type="float" value="0" />

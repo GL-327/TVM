@@ -52,6 +52,7 @@ describe('Settings list movement', () => {
   it('moves Settings rows as a column without trapping the D-pad', () => {
     expect(read('Settings.tsx')).toContain('data-wrap="y"');
     expect(read('Settings.tsx')).toContain('settings-list');
+    expect(read('Settings.tsx')).toContain('settings-group');
     const wrap = read('../nav/wrapFocus.ts');
     expect(wrap).toContain("token === 'settings-list'");
     expect(wrap).toContain('if (index === 0) return null;');

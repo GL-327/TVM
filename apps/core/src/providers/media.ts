@@ -413,7 +413,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     }
     const maxHeight = options.plan?.().maxHeight ?? 2160;
     const resolved = await streamer.resolveFile(downloadUrl, { maxHeight, filename, ...(startAt !== undefined ? { startAt } : {}) });
-    if (resolved === null) return { kind: 'unavailable', reason: 'unsupported' };
+    if (resolved === null) return { kind: 'unavailable', reason: streamer.ready() ? 'unsupported' : 'needs-converter' };
     console.log(`tvm-core: play transport=${resolved.transport} mime=${resolved.mimeType} file=${filename}`);
     return {
       kind: 'stream',

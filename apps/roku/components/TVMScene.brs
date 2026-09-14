@@ -6,6 +6,7 @@ sub init()
   m.bootLabel = m.top.findNode("bootLabel")
   if m.bootLabel <> invalid then m.bootLabel.font = tvmFontHero()
   m.coreUrl = loadCoreBaseUrl()
+  m.coreToken = loadCoreToken()
   m.requestSeq = 0
   m.profileId = ""
   m.keyboardMode = "coreUrl"
@@ -104,10 +105,10 @@ sub applyCanvasScale()
 end sub
 
 sub onBoot()
-  if isPlaceholderUrl(m.coreUrl) then m.coreUrl = ""
-  if m.coreUrl = "" or not isValidCoreUrl(m.coreUrl)
+  if not isValidCoreUrl(m.coreUrl) or not isCoreToken(m.coreToken)
     m.stack = createViewStack("setup")
     renderStack()
+    if isValidCoreUrl(m.coreUrl) and not isCoreToken(m.coreToken) then showTokenKeyboard()
     return
   end if
   m.stack = createViewStack("home")
@@ -116,11 +117,6 @@ sub onBoot()
   loadHome()
   loadProfiles(false)
 end sub
-
-function isPlaceholderUrl(url as String) as Boolean
-  if url = invalid or url = "" then return true
-  return LCase(url).Instr("your-pc-lan-ip") > 0
-end function
 
 sub rememberActiveFocus()
   screen = visibleScreen(m.stack)
@@ -190,6 +186,7 @@ sub renderStack()
     if top.kind <> "modal" then m.settingsNode.setFocus(true)
   else if screen.name = "setup"
     ensureSetup()
+    m.setupNode.coreUrl = m.coreUrl
     m.setupNode.visible = true
     if top.kind <> "modal" then m.setupNode.setFocus(true)
   else if screen.name = "catalog"
@@ -447,6 +444,7 @@ sub showPlayer(params as Object)
     if params.DoesExist("nextMediaId") then panel.nextMediaId = params.nextMediaId
   end if
   panel.message = "Starting..."
+  panel.streamHeaders = aaGet(params, "headers", {})
   panel.streamUrl = aaGet(params, "url", "")
   panel.setFocus(true)
 end sub
@@ -539,6 +537,10 @@ sub onSettingsAction()
   end if
   if kind = "setTheme" then applyAndSaveTheme(aaGet(action, "themeId", tvmThemeDefault()))
   if kind = "editUrl" then showUrlKeyboard()
+  if kind = "editToken" then showTokenKeyboard()
+  if kind = "computerSettings"
+    navigate("modal", "notice", { title: "Manage on your computer", body: "Open TVM on the computer for billing, updates, diagnostics, clearing caches and deleting data. These controls are restricted to that computer." })
+  end if
   if kind = "realdebrid" then navigate("push", "realdebrid", {})
   if kind = "livePlaylist" then showLiveKeyboard()
   if kind = "profiles" then navigate("push", "profiles", {})
@@ -577,7 +579,9 @@ end sub
 sub onSetupAction()
   action = m.setupNode.action
   if action = invalid then return
-  if aaGet(action, "type", "") = "editUrl" then showUrlKeyboard()
+  kind = aaGet(action, "type", "")
+  if kind = "editUrl" then showUrlKeyboard()
+  if kind = "editToken" then showTokenKeyboard()
 end sub
 
 sub onCatalogAction()
@@ -723,6 +727,10 @@ sub showUrlKeyboard()
   showKeyboard("coreUrl", "Core API URL", text, "Connect")
 end sub
 
+sub showTokenKeyboard()
+  showKeyboard("coreToken", "TVM device access token", "", "Connect")
+end sub
+
 sub showSearchKeyboard()
   navigate("modal", "search", {})
 end sub
@@ -741,10 +749,14 @@ end sub
 
 sub showKeyboard(mode as String, title as String, text as String, confirmLabel as String)
   m.keyboardMode = mode
-  dialog = CreateObject("roSGNode", "KeyboardDialog")
+  dialog = CreateObject("roSGNode", "StandardKeyboardDialog")
   dialog.title = title
   dialog.text = text
   dialog.buttons = [confirmLabel, "Cancel"]
+  if mode = "coreToken" or mode = "rdToken"
+    dialog.keyboardDomain = "password"
+    dialog.textEditBox.secureMode = true
+  end if
   dialog.observeField("buttonSelected", "onKeyboardButton")
   m.top.dialog = dialog
 end sub
@@ -767,6 +779,21 @@ sub onKeyboardButton()
 
   if mode = "coreUrl"
     applyCoreUrl(text)
+    return
+  end if
+  if mode = "coreToken"
+    token = text.Trim()
+    if not isCoreToken(token)
+      restoreScreenFocus()
+      navigate("modal", "notice", { title: "Check the access token", body: "Use the full TVM_LAN_TOKEN created on your computer (32 to 512 characters). Settings lets you try again." })
+      return
+    end if
+    if not saveCoreToken(token)
+      navigate("modal", "notice", { title: "Could not save token", body: "The Roku could not save its settings. Restart the channel and try again." })
+      return
+    end if
+    m.coreToken = token
+    loadHealth(true)
     return
   end if
   if mode = "search"
@@ -796,7 +823,7 @@ end sub
 
 sub applyCoreUrl(text as String)
   url = normalizeCoreUrl(text)
-  if isPlaceholderUrl(url) or not isValidCoreUrl(url)
+  if not isValidCoreUrl(url)
     restoreScreenFocus()
     navigate("modal", "notice", {
       title: "That URL will not work"
@@ -805,11 +832,25 @@ sub applyCoreUrl(text as String)
     return
   end if
 
-  saveCoreBaseUrl(url)
+  if not saveCoreBaseUrl(url)
+    navigate("modal", "notice", { title: "Could not save address", body: "Restart the channel and try again." })
+    return
+  end if
+  if LCase(url) <> LCase(m.coreUrl)
+    m.coreToken = ""
+    saveCoreToken("")
+  end if
   m.coreUrl = url
-  if m.setupNode <> invalid then m.setupNode.message = "Connecting..."
+  if m.setupNode <> invalid
+    m.setupNode.coreUrl = url
+    m.setupNode.message = "Connecting..."
+  end if
   if m.settingsNode <> invalid then m.settingsNode.coreUrl = url
-  loadHealth(true)
+  if not isCoreToken(m.coreToken)
+    showTokenKeyboard()
+  else
+    loadHealth(true)
+  end if
 end sub
 
 sub restoreScreenFocus()
@@ -835,7 +876,8 @@ end sub
 sub loadHealth(thenHome as Boolean)
   if m.coreUrl = "" then return
   m.healthWaitHome = thenHome
-  m.healthTask = startApiGet(joinCorePath(m.coreUrl, "/api/health"), "onHealthDone")
+  ' Health is public; profiles verifies both connectivity AND authentication.
+  m.healthTask = startApiGet(joinCorePath(m.coreUrl, "/api/profiles"), "onHealthDone")
 end sub
 
 sub onHealthDone()
@@ -865,8 +907,12 @@ sub onHealthDone()
       loadHome()
       loadProfiles(false)
     else
+      if task.error = "lan_authentication_required"
+        m.coreToken = ""
+        saveCoreToken("")
+      end if
       if m.setupNode <> invalid
-        m.setupNode.message = "Could not reach Core. Check TVM_CORE_BIND, the Windows firewall, and that this Roku is on the same network."
+        m.setupNode.message = "Could not connect. Check the LAN address, access token, Windows firewall and that Core is running with LAN access enabled."
       end if
       restoreScreenFocus()
       if visibleScreen(m.stack).name = "home" then showHomeError()
@@ -903,6 +949,13 @@ sub onHomeDone()
     silent = m.homeSilent
     m.homeSilent = false
     if silent = true then return
+    if task.error = "lan_authentication_required"
+      m.coreToken = ""
+      saveCoreToken("")
+      navigate("reset", "setup", {})
+      if m.setupNode <> invalid then m.setupNode.message = "Access token was rejected. Enter the Core address, then update the token to match your computer."
+      return
+    end if
     showHomeError()
     return
   end if
@@ -1036,9 +1089,9 @@ sub onLivePicksAction()
   end if
   if kind = "page"
     delta = aaGet(action, "delta", 0)
-    step = 8
+    pageSize = 8
     if Type(delta) <> "Integer" and Type(delta) <> "roInt" and Type(delta) <> "roInteger" then delta = 0
-    nextOffset = m.livePicksOffset + (delta * step)
+    nextOffset = m.livePicksOffset + (delta * pageSize)
     if nextOffset < 0 then nextOffset = 0
     m.livePicksOffset = nextOffset
     loadLivePicks()
@@ -1396,6 +1449,9 @@ sub onChildrenForPlay()
 end sub
 
 sub postPlayback(item as Object)
+  if m.playTask <> invalid
+    if not m.playTask.done then return
+  end if
   m.playItem = item
   m.playTask = startApiRequest(joinCorePath(m.coreUrl, "/api/playback"), "POST", playbackBody(item), "onPlayDone")
 end sub
@@ -1406,7 +1462,7 @@ sub onPlayDone()
   if task <> invalid then json = task.json
   kind = asText(aaGet(json, "kind", ""))
   if kind = "stream"
-    url = asText(aaGet(json, "url", ""))
+    url = absoluteCoreUrl(m.coreUrl, asText(aaGet(json, "url", "")))
     if url = ""
       navigate("modal", "notice", { title: "No stream URL", body: "Core returned a stream with no address." })
       return
@@ -1415,6 +1471,14 @@ sub onPlayDone()
     if title = "" then title = asText(aaGet(m.playItem, "title", ""))
     if title = "" then title = asText(aaGet(m.playItem, "name", ""))
     mimeType = asText(aaGet(json, "mimeType", ""))
+    if not isHttpUrl(url)
+      navigate("modal", "notice", { title: "Unsupported stream address", body: "Core must return an HTTP or HTTPS stream for this Roku." })
+      return
+    end if
+    headers = aaGet(json, "headers", {})
+    if coreOwnsUrl(m.coreUrl, url) and isCoreToken(m.coreToken)
+      headers["Authorization"] = "Bearer " + m.coreToken
+    end if
     startAt = aaGet(json, "startAt", 0)
     mediaId = asText(aaGet(m.playItem, "id", ""))
     mediaKind = asText(aaGet(m.playItem, "kind", ""))
@@ -1441,6 +1505,7 @@ sub onPlayDone()
       url: url
       title: title
       format: streamFormatFor(url, mimeType)
+      headers: headers
       mediaId: mediaId
       mediaKind: mediaKind
       recapEnd: recapEnd
@@ -1452,6 +1517,10 @@ sub onPlayDone()
     return
   end if
   reason = asText(aaGet(json, "reason", ""))
+  if task <> invalid and not task.ok and reason = ""
+    navigate("modal", "notice", { title: "Could not start playback", body: "Check the Core connection and access token, then try again. If the stream is unavailable, choose another title." })
+    return
+  end if
   navigate("modal", "notice", { title: "Can't play yet", body: playbackNotice(reason) })
 end sub
 

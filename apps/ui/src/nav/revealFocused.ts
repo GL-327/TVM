@@ -49,7 +49,19 @@ const chromeByScroller = new WeakMap<HTMLElement, HTMLElement | null>();
 let revealRaf = 0;
 let revealTarget: HTMLElement | null = null;
 let suppressUntil = 0;
-export function suppressNextReveal(): void { suppressUntil = performance.now() + 80; }
+let suppressedTarget: HTMLElement | null = null;
+/** Pointer gestures own the camera immediately, including work queued last frame. */
+export function cancelPendingReveal(): void {
+  if (revealRaf !== 0) cancelAnimationFrame(revealRaf);
+  revealRaf = 0;
+  revealTarget = null;
+}
+
+export function suppressNextReveal(element?: HTMLElement): void {
+  cancelPendingReveal();
+  suppressUntil = performance.now() + 80;
+  suppressedTarget = element ?? null;
+}
 let lockedHomeRail: HTMLElement | null = null;
 
 const SCROLLER_SELECTOR = [
@@ -148,7 +160,11 @@ function revealNow(element: HTMLElement): void {
 
 /** Coalesce stacked onFocus rAFs so a held D-pad only cameras the latest tile. */
 export function revealFocused(element: HTMLElement): void {
-  if (performance.now() < suppressUntil) { suppressUntil = 0; return; }
+  if (performance.now() < suppressUntil && (suppressedTarget === null || suppressedTarget === element)) {
+    suppressUntil = 0;
+    suppressedTarget = null;
+    return;
+  }
   revealTarget = element;
   if (revealRaf !== 0) return;
   revealRaf = requestAnimationFrame(() => {

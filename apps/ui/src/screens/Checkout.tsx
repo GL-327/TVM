@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
+import { FocusField } from '../components/FocusField';
 import { TopBar } from '../components/TopBar';
-import { applyPlanClass, checkoutPlan, checkoutQuote, fetchPlan, formatBillingMoney, type PlanId, type PlanStatus } from '../data/plan';
+import {
+  applyPlanClass,
+  cardholderLooksValid,
+  checkoutPlan,
+  checkoutQuote,
+  cvcLooksValid,
+  digitsOnly,
+  expiryLooksValid,
+  fetchPlan,
+  formatBillingMoney,
+  formatCvcInput,
+  formatExpiryInput,
+  formatPanInput,
+  panLooksValid,
+  type PlanId,
+  type PlanStatus,
+} from '../data/plan';
 import { applyTheme } from '../theme/apply';
 import { SYNTHWAVE_THEME_NAME } from '../theme/registry';
 import { useNavigate } from '../nav/ViewStackContext';
@@ -10,6 +27,23 @@ import './billing.css';
 
 const PLAN_IDS: PlanId[] = ['free', 'basic', 'premium', 'ultra', 'max'];
 const OUTCOMES = ['success', 'decline', 'cancel'] as const;
+
+function cardPayload(name: string, number: string, expiry: string, cvc: string, zip: string): {
+  name: string; number: string; expiry: string; cvc: string; zip?: string;
+} | { error: string } | null {
+  const filled = name.trim() !== '' || digitsOnly(number) !== '' || expiry.trim() !== '' || cvc.trim() !== '' || zip.trim() !== '';
+  if (!filled) return null;
+  if (!cardholderLooksValid(name) || !panLooksValid(number) || !expiryLooksValid(expiry) || !cvcLooksValid(cvc)) {
+    return { error: 'Check the cardholder name, number, expiry and security code.' };
+  }
+  return {
+    name: name.trim(),
+    number: digitsOnly(number),
+    expiry: expiry.trim(),
+    cvc: cvc.trim(),
+    ...(zip.trim() !== '' ? { zip: zip.trim() } : {}),
+  };
+}
 
 export function Checkout({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
@@ -20,9 +54,15 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
   const [synthwave, setSynthwave] = useState(packOnly);
   const [consent, setConsent] = useState(false);
   const [outcome, setOutcome] = useState<(typeof OUTCOMES)[number]>('success');
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardZip, setCardZip] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<PlanStatus | null>(null);
+  const [storedLast4, setStoredLast4] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const request = useRef<{ key: string; id: string } | null>(null);
   const inFlight = useRef(false);
@@ -47,6 +87,11 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
 
   const pay = async (): Promise<void> => {
     if (!catalog || !quote || !consent || inFlight.current) return;
+    const card = cardPayload(cardName, cardNumber, cardExpiry, cardCvc, cardZip);
+    if (card !== null && 'error' in card) {
+      setMessage(card.error);
+      return;
+    }
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
@@ -57,9 +102,16 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
     const key = JSON.stringify(order);
     if (request.current?.key !== key) request.current = { key, id: crypto.randomUUID() };
     try {
-      const status = await checkoutPlan({ ...order, requestId: request.current.id });
+      const status = await checkoutPlan({
+        ...order,
+        requestId: request.current.id,
+        ...(card ?? {}),
+      });
       applyPlanClass(status);
       if (synthwave && status.synthwave) applyTheme('synthwave');
+      setStoredLast4(card ? card.number.slice(-4) : null);
+      setCardNumber('');
+      setCardCvc('');
       setSuccess(status);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Test checkout failed. Please try again.');
@@ -76,11 +128,15 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
       <h1 className="page__heading">Your test plan is ready</h1>
       <section className="billing-panel" role="status">
         <h2>{success.name}</h2>
-        <p>Active on this device immediately. No card was requested, no payment was taken, and nothing will renew or charge automatically.</p>
+        {storedLast4 ? (
+          <p>Card ending {storedLast4} was tokenized and stored encrypted on this device. No payment processor is linked, so nothing was charged and nothing will renew automatically.</p>
+        ) : (
+          <p>Active on this device immediately. No card was stored, no payment was taken, and nothing will renew or charge automatically.</p>
+        )}
         <dl className="billing-totals">
           <div><dt>Actually charged</dt><dd>£0.00</dd></div>
           <div><dt>Monthly reference price</dt><dd>{formatBillingMoney(success.pricePence)}</dd></div>
-          {quote && quote.oneTimePence > 0 ? <div><dt>Colourcast one-time reference price</dt><dd>{formatBillingMoney(quote.oneTimePence)}</dd></div> : null}
+          {quote && quote.oneTimePence > 0 ? <div><dt>Retro one-time reference price</dt><dd>{formatBillingMoney(quote.oneTimePence)}</dd></div> : null}
         </dl>
         <p>Playback uses your connected sources. TVM plans do not include subscriptions to streaming services or rights to their programmes.</p>
       </section>
@@ -96,7 +152,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
       <TopBar title="Checkout" />
       <p className="billing-badge">Sandbox checkout · initial testing</p>
       <h1 className="page__heading">{packOnly ? `Unlock ${SYNTHWAVE_THEME_NAME}` : `Review ${entry?.name ?? 'your plan'}`}</h1>
-      <p className="page__lede">Test every step without a payment card. Reference prices are in GBP; the amount charged is always £0.00.</p>
+      <p className="page__lede">Reference prices are in GBP. The amount charged is always £0.00 — no processor is linked. You can confirm without a card, or add one to store an encrypted token on this device.</p>
       {message && <p className="billing-message billing-message--error" role="alert">{message}</p>}
       {!catalog || !entry || !quote ? (
         <section className="billing-panel">
@@ -131,9 +187,34 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
                 <div><dt>One-time visual pack</dt><dd>{formatBillingMoney(quote.oneTimePence)}</dd></div>
                 <div className="billing-totals__grand"><dt>Actually charged today</dt><dd>£0.00</dd></div>
               </dl>
-              <p className="billing-fineprint">No real purchase or tax invoice is created. No renewal date. Live prices, taxes and consumer terms must be confirmed before a real payment service launches.</p>
+              <p className="billing-fineprint">No real purchase or tax invoice is created. No renewal date. A saved card is tokenized and encrypted on this device only.</p>
             </section>
           </div>
+          <section className="billing-panel">
+            <p className="plan-current__kicker">Payment card</p>
+            <h2>Store an encrypted token</h2>
+            <p>Optional. The number and security code are never written in plaintext. Because no processor is linked, a later charge attempt always declines.</p>
+            <label className="token-field">
+              <span>Cardholder name</span>
+              <FocusField id="billing-name" value={cardName} onChange={setCardName} onConfirm={setCardName} afterPasteFocusId="billing-number" placeholder="Name on card" />
+            </label>
+            <label className="token-field">
+              <span>Card number</span>
+              <FocusField id="billing-number" value={cardNumber} onChange={(value) => setCardNumber(formatPanInput(value))} onConfirm={(value) => setCardNumber(formatPanInput(value))} afterPasteFocusId="billing-expiry" placeholder="Number" />
+            </label>
+            <label className="token-field">
+              <span>Expiry</span>
+              <FocusField id="billing-expiry" value={cardExpiry} onChange={(value) => setCardExpiry(formatExpiryInput(value))} onConfirm={(value) => setCardExpiry(formatExpiryInput(value))} afterPasteFocusId="billing-cvc" placeholder="MM/YY" />
+            </label>
+            <label className="token-field">
+              <span>Security code</span>
+              <FocusField id="billing-cvc" type="password" value={cardCvc} onChange={(value) => setCardCvc(formatCvcInput(value))} onConfirm={(value) => setCardCvc(formatCvcInput(value))} afterPasteFocusId="billing-zip" placeholder="CVC" />
+            </label>
+            <label className="token-field">
+              <span>Billing ZIP or postcode (optional)</span>
+              <FocusField id="billing-zip" value={cardZip} onChange={setCardZip} onConfirm={setCardZip} afterPasteFocusId="checkout-consent" placeholder="Optional" />
+            </label>
+          </section>
           <section className="billing-panel">
             <FocusButton id="checkout-outcome" className="billing-option" disabled={busy} detail={`Current outcome: ${outcome}`} onSelect={() => { setOutcome(OUTCOMES[(OUTCOMES.indexOf(outcome) + 1) % OUTCOMES.length]!); setConsent(false); }}>Test outcome · change</FocusButton>
             <FocusButton id="checkout-consent" className={`billing-option${consent ? ' billing-option--selected' : ''}`} disabled={busy} detail={consent ? 'Confirmed' : 'Select to confirm'} onSelect={() => setConsent((on) => !on)}>

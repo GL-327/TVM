@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CORE_HOST } from '../config.ts';
 import { startCoreServer, type RunningCore } from '../server.ts';
-import { applyPolicy, resolveDataDir } from './paths.ts';
+import { applyPolicy, resolveAppliedApp, resolveDataDir, resolveUpdateRepo } from './paths.ts';
+import { appliedLaunch } from './launch.ts';
 import { isNewer, parseSemver } from './semver.ts';
 import { createUpdateService } from './service.ts';
 import { extractTarGz, isSafeTarName, packTarGz, parseSha256File } from './tar.ts';
@@ -63,6 +65,15 @@ describe('apply policy', () => {
 
   it('allows production', () => {
     expect(applyPolicy({ TVM_ENV: 'production' }).allowed).toBe(true);
+    expect(applyPolicy({ TVM_ALLOW_APPLY: '1' }).allowed).toBe(true);
+  });
+});
+
+describe('update channel', () => {
+  it('defaults to GL-327/TVM and accepts a legal override', () => {
+    expect(resolveUpdateRepo({})).toBe('GL-327/TVM');
+    expect(resolveUpdateRepo({ TVM_UPDATE_REPO: 'acme/tv-box' })).toBe('acme/tv-box');
+    expect(resolveUpdateRepo({ TVM_UPDATE_REPO: '../evil' })).toBe('GL-327/TVM');
   });
 });
 
@@ -104,8 +115,47 @@ describe('update service', () => {
     });
     const status = await service.check();
     expect(authorized).toBe(false);
+    expect(status.kind).toBe('up_to_date');
     expect(status.available).toBeNull();
     expect(status.lastCheck).not.toBeNull();
+  });
+
+  it('ignores a leftover GitHub token when the public feed answers', async () => {
+    const authorized: string[] = [];
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development', TVM_GITHUB_TOKEN: 'leftover-expired' },
+      currentVersion: '0.1.0',
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        if (headers.has('Authorization')) authorized.push(String(input));
+        return new Response(JSON.stringify({ tag_name: 'v0.1.0', body: '', assets: [] }), { status: 200 });
+      },
+    });
+    const status = await service.check();
+    expect(authorized).toEqual([]);
+    expect(status.kind).toBe('up_to_date');
+    expect(status.available).toBeNull();
+  });
+
+  it('falls back to the public feed when a leftover token is rejected', async () => {
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development', TVM_GITHUB_TOKEN: 'expired' },
+      currentVersion: '0.1.0',
+      fetch: async (input, init) => {
+        const url = String(input);
+        const headers = new Headers(init?.headers);
+        if (headers.has('Authorization')) return new Response('{"message":"Bad credentials"}', { status: 401 });
+        if (url.includes('/releases/latest')) return new Response('{"message":"Not Found"}', { status: 404 });
+        if (url.includes('/releases')) return new Response('[]', { status: 200 });
+        return new Response('no', { status: 404 });
+      },
+    });
+    const status = await service.check();
+    expect(status.kind).toBe('no_release');
+    expect(status.available).toBeNull();
+    expect(status.notice).toMatch(/No GitHub Release/);
   });
 
   it('refuses apply in development before touching the network', async () => {
@@ -188,6 +238,187 @@ describe('update service', () => {
     expect(await readFile(join(dir, 'app', 'current'), 'utf8')).toContain('0.2.0');
     expect(await readFile(join(dir, 'app', '0.2.0', 'core', 'index.js'), 'utf8')).toBe('ok');
   });
+
+  it('treats a missing latest release as a successful empty check', async () => {
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development' },
+      currentVersion: '0.1.0',
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes('/releases/latest')) return new Response('{"message":"Not Found"}', { status: 404 });
+        if (url.includes('/releases')) return new Response('[]', { status: 200 });
+        return new Response('no', { status: 404 });
+      },
+    });
+    const status = await service.check();
+    expect(status.kind).toBe('no_release');
+    expect(status.available).toBeNull();
+    expect(status.lastCheck).not.toBeNull();
+    expect(status.notice).toMatch(/No GitHub Release/);
+    expect(status.applyAllowed).toBe(false);
+  });
+
+  it('uses a published prerelease when /releases/latest is empty', async () => {
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development' },
+      currentVersion: '0.1.0',
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes('/releases/latest')) return new Response('{"message":"Not Found"}', { status: 404 });
+        if (url.includes('/releases')) {
+          return new Response(JSON.stringify([{ tag_name: 'v0.3.0-rc.1', prerelease: true, body: 'rc', draft: false }]), {
+            status: 200,
+          });
+        }
+        return new Response('no', { status: 404 });
+      },
+    });
+    const status = await service.check();
+    expect(status.kind).toBe('available');
+    expect(status.available?.version).toBe('0.3.0-rc.1');
+  });
+
+  it('asks for a token when GitHub hides the repo', async () => {
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development' },
+      currentVersion: '0.1.0',
+      fetch: async () => new Response('{"message":"Not Found"}', { status: 404 }),
+    });
+    await expect(service.check()).resolves.toMatchObject({ kind: 'auth_required', available: null });
+  });
+
+  it('reports auth and rate-limit without throwing', async () => {
+    const auth = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development', TVM_GITHUB_TOKEN: 'bad' },
+      currentVersion: '0.1.0',
+      fetch: async () => new Response('no', { status: 401 }),
+    });
+    await expect(auth.check()).resolves.toMatchObject({ kind: 'auth_required', available: null });
+
+    const limited = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development' },
+      currentVersion: '0.1.0',
+      fetch: async () => new Response('no', { status: 429 }),
+    });
+    await expect(limited.check()).resolves.toMatchObject({ kind: 'rate_limited', available: null });
+  });
+
+  it('follows a GitHub asset redirect without forwarding the token', async () => {
+    const archive = packTarGz([{ name: 'core/index.js', data: Buffer.from('ok') }]);
+    const digest = createHash('sha256').update(archive).digest('hex');
+    const authorized = new Set<string>();
+    const fetchMock: typeof fetch = async (input, init) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      if (headers.has('Authorization')) authorized.add(url);
+      if (url.endsWith('/releases/latest')) {
+        return new Response(
+          JSON.stringify({
+            tag_name: 'v0.2.0',
+            body: 'newer',
+            assets: [
+              { name: 'tvm-app-0.2.0.tar.gz', url: 'https://api.github.com/assets/1' },
+              { name: 'tvm-app-0.2.0.sha256', url: 'https://api.github.com/assets/2' },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/assets/2') || url.endsWith('/assets/1')) {
+        return new Response(null, { status: 302, headers: { location: `https://objects.example/${url.slice(-1)}` } });
+      }
+      if (url === 'https://objects.example/2') return new Response(`${digest}  tvm-app-0.2.0.tar.gz\n`, { status: 200 });
+      if (url === 'https://objects.example/1') return new Response(archive, { status: 200 });
+      return new Response('no', { status: 404 });
+    };
+
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'production', TVM_GITHUB_TOKEN: 'test-token' },
+      currentVersion: '0.1.0',
+      fetch: fetchMock,
+    });
+
+    await expect(service.apply()).resolves.toEqual({ version: '0.2.0' });
+    expect([...authorized].some((url) => url.startsWith('https://objects.example/'))).toBe(false);
+  });
+
+  it('applies a public tarball without a GitHub token', async () => {
+    const archive = packTarGz([{ name: 'core/index.js', data: Buffer.from('ok') }]);
+    const digest = createHash('sha256').update(archive).digest('hex');
+    let authorized = false;
+    const fetchMock: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (new Headers(init?.headers).has('Authorization')) authorized = true;
+      if (url.endsWith('/releases/latest')) {
+        return new Response(
+          JSON.stringify({
+            tag_name: 'v0.2.0',
+            body: 'newer',
+            assets: [
+              { name: 'tvm-app-0.2.0.tar.gz', url: 'https://api.github.com/assets/1' },
+              { name: 'tvm-app-0.2.0.sha256', url: 'https://api.github.com/assets/2' },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/assets/2')) return new Response(`${digest}  tvm-app-0.2.0.tar.gz\n`, { status: 200 });
+      if (url.endsWith('/assets/1')) return new Response(archive, { status: 200 });
+      return new Response('no', { status: 404 });
+    };
+
+    const dir = await dataDir();
+    const service = createUpdateService({
+      dataDir: dir,
+      env: { TVM_ENV: 'production' },
+      currentVersion: '0.1.0',
+      fetch: fetchMock,
+    });
+
+    await expect(service.apply()).resolves.toEqual({ version: '0.2.0' });
+    expect(authorized).toBe(false);
+    expect(await readFile(join(dir, 'app', 'current'), 'utf8')).toContain('0.2.0');
+  });
+
+  it('clears a stored token so TVM_GITHUB_TOKEN can be used', async () => {
+    const dir = await dataDir();
+    const env: NodeJS.ProcessEnv = { TVM_ENV: 'development', TVM_GITHUB_TOKEN: 'from-env' };
+    const service = createUpdateService({ dataDir: dir, env, currentVersion: '0.1.0' });
+    expect(service.setToken('stored').configured).toBe(true);
+    expect(service.setToken('').configured).toBe(true);
+    expect(service.status().configured).toBe(true);
+  });
+});
+
+describe('applied launch', () => {
+  const dirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  it('reads a valid current pointer and refuses a hop in development', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-applied-'));
+    dirs.push(dir);
+    const coreEntry = join(dir, 'app', '0.2.0', 'core', 'index.js');
+    await mkdir(join(dir, 'app', '0.2.0', 'core'), { recursive: true });
+    await writeFile(coreEntry, 'export {}\n');
+    await mkdir(join(dir, 'app'), { recursive: true });
+    await writeFile(join(dir, 'app', 'current'), '0.2.0\n');
+
+    const currentUrl = pathToFileURL(coreEntry).href;
+    const imageUrl = pathToFileURL(join(dir, 'image', 'core', 'index.js')).href;
+    expect(resolveAppliedApp(dir)).toMatchObject({ version: '0.2.0', coreEntry });
+    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'development' })).toBeNull();
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'production' })?.coreEntry).toBe(coreEntry);
+    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'production' })).toBeNull();
+  });
 });
 
 describe('update HTTP', () => {
@@ -220,5 +451,29 @@ describe('update HTTP', () => {
     expect(apply.status).toBe(403);
     const refused = (await apply.json()) as { reason: string };
     expect(refused.reason).toMatch(/disabled/);
+  });
+
+  it('returns 200 when GitHub has no latest release', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'tvm-http-'));
+    const update = createUpdateService({
+      dataDir: dir,
+      env: { TVM_ENV: 'development' },
+      currentVersion: '0.1.0',
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes('/releases/latest')) return new Response('{"message":"Not Found"}', { status: 404 });
+        if (url.includes('/releases')) return new Response('[]', { status: 200 });
+        return new Response('no', { status: 404 });
+      },
+    });
+    core = await startCoreServer(0, { update, dataDir: dir, env: { TVM_ENV: 'development' } });
+    baseUrl = `http://${CORE_HOST}:${core.port}`;
+
+    const response = await fetch(`${baseUrl}/api/update/check`, { method: 'POST' });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { kind: string; available: unknown; notice: string };
+    expect(body.kind).toBe('no_release');
+    expect(body.available).toBeNull();
+    expect(body.notice).toMatch(/No GitHub Release/);
   });
 });

@@ -9,9 +9,10 @@ export interface ThemeSpec {
 
 export const DEFAULT_THEME: ThemeId = 'default';
 
-export const SYNTHWAVE_THEME_NAME = 'Colourcast';
+/** Theme id stays `synthwave` for stored preferences and entitlements; the pack is sold as Retro. */
+export const SYNTHWAVE_THEME_NAME = 'Retro';
 
-/** Default is mint-and-navy. Colourcast is a paid 1970s/80s broadcast pack. */
+/** Default is mint-and-navy. Retro is a paid 1970s/80s television-set pack. */
 export const THEMES: readonly ThemeSpec[] = [
   { id: 'default', name: 'Default' },
   { id: 'light', name: 'Light' },

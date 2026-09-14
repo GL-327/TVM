@@ -40,6 +40,11 @@ const requiredFiles = [
   "source/layout.brs",
   "components/TVMScene.xml",
   "components/TVMScene.brs",
+  "components/SetupScreen.xml",
+  "components/SetupScreen.brs",
+  "components/SettingsScreen.xml",
+  "components/SettingsScreen.brs",
+  "DEVICE_TESTING.md",
   "components/GlassOverlay.xml",
   "components/ApiTask.xml",
   "components/ApiTask.brs",
@@ -180,6 +185,9 @@ const example = existsSync(join(rokuRoot, "config.example.json"))
 if (typeof example.coreBaseUrl !== "string" || !example.coreBaseUrl.includes("YOUR-PC-LAN-IP")) {
   fail("config.example.json must use YOUR-PC-LAN-IP, not a real address");
 }
+if (Object.keys(example).some((key) => key !== "coreBaseUrl")) {
+  fail("config.example.json may contain only coreBaseUrl; never package TVM_LAN_TOKEN");
+}
 
 const xmlFiles = walk(join(rokuRoot, "components")).filter((file) => file.endsWith(".xml"));
 const components = new Map();
@@ -204,6 +212,45 @@ for (const file of xmlFiles) {
 if (!components.has("TVMScene")) fail("TVMScene component is missing");
 if (components.get("TVMScene")?.extends !== "Scene") fail("TVMScene must extend Scene");
 if (components.get("ApiTask")?.extends !== "Task") fail("ApiTask must extend Task");
+if (!components.get("ApiTask")?.source.includes('id="authToken"')) {
+  fail("ApiTask must expose authToken so LAN requests can send a bearer");
+}
+
+const apiTaskBrs = existsSync(join(rokuRoot, "components/ApiTask.brs"))
+  ? read(join(rokuRoot, "components/ApiTask.brs"))
+  : "";
+if (!/AddHeader\(\s*"Authorization"\s*,\s*"Bearer "\s*\+/.test(apiTaskBrs)) {
+  fail("ApiTask.brs must send Authorization: Bearer for LAN Core");
+}
+
+const apiBrs = existsSync(join(rokuRoot, "source/api.brs")) ? read(join(rokuRoot, "source/api.brs")) : "";
+if (!/task\.authToken/.test(apiBrs) || !/isCoreToken\(/.test(apiBrs)) {
+  fail("api.brs must attach the stored Core token to ApiTask");
+}
+
+const configBrs = existsSync(join(rokuRoot, "source/config.brs")) ? read(join(rokuRoot, "source/config.brs")) : "";
+if (!/function loadCoreToken\(/.test(configBrs) || !/function saveCoreToken\(/.test(configBrs)) {
+  fail("config.brs must store the LAN token in the device registry, not config.json");
+}
+if (!/function isCoreToken\(/.test(configBrs)) fail("config.brs must validate TVM_LAN_TOKEN length");
+
+const sceneBrs = existsSync(join(rokuRoot, "components/TVMScene.brs"))
+  ? read(join(rokuRoot, "components/TVMScene.brs"))
+  : "";
+if (!/loadCoreToken\(/.test(sceneBrs) || !/showTokenKeyboard\(/.test(sceneBrs)) {
+  fail("TVMScene must collect and persist the LAN access token");
+}
+if (!/headers\["Authorization"\] = "Bearer " \+ m\.coreToken/.test(sceneBrs)) {
+  fail("TVMScene must send the LAN bearer on Core-hosted streams");
+}
+
+const rokuReadme = existsSync(join(rokuRoot, "README.md")) ? read(join(rokuRoot, "README.md")) : "";
+if (/no API authentication/i.test(rokuReadme)) {
+  fail("apps/roku/README.md must not claim Core has no API authentication");
+}
+if (/pairing token is not implemented/i.test(rokuReadme)) {
+  fail("apps/roku/README.md must describe the TVM_LAN_TOKEN bearer contract");
+}
 
 const main = existsSync(join(rokuRoot, "source/main.brs")) ? read(join(rokuRoot, "source/main.brs")) : "";
 if (!/^\s*sub Main\(/m.test(main)) fail("source/main.brs must define sub Main()");
@@ -253,6 +300,7 @@ const builtin = new Set([
   "MaskGroup",
   "Timer",
   "KeyboardDialog",
+  "StandardKeyboardDialog",
   "Font",
   "Poster",
   "Rectangle",
@@ -327,6 +375,7 @@ if (!existsSync(zipPath)) {
     fail(`tvm-roku.zip could not be read (${error instanceof Error ? error.message : "unknown error"})`);
   }
 
+  if (listing.length === 0) fail("zip is empty or has no valid central directory");
   if (listing.length > 0) {
     if (!listing.includes("manifest")) fail("zip must contain manifest at the archive root");
     if (!listing.includes("source/main.brs") && !listing.includes("source\\main.brs")) {
@@ -350,6 +399,6 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log("Roku app looks sideloadable.");
+console.log("Roku static/package checks passed. Hardware installation and playback are still required.");
 console.log(`Components: ${[...components.keys()].sort().join(", ")}`);
 for (const note of notes) console.log(note);

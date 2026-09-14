@@ -49,8 +49,8 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
           {plan.liveTvOptional ? (plan.liveTv ? ' with Live TV' : ' without Live TV') : ''}
         </p>
         <p className="page__lede">
-          No card details are collected and no money is charged. Prices are for testing the plan flow.
-          The optional Live TV feature connects your own authorised provider; it does not include a content subscription.
+          Checkout can store a card as an encrypted token on this device. No payment processor is linked, so nothing is charged.
+          Prices are for testing the plan flow. The optional Live TV feature connects your own authorised provider; it does not include a content subscription.
         </p>
       </section>
       <div className="plan-grid" data-wrap="grid">

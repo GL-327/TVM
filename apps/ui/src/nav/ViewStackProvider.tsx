@@ -18,7 +18,7 @@ import {
   requestFocus,
   startFocusEngine,
 } from './focusEngine';
-import { createAxisHopQueue } from './hopQueue';
+import { acceptHeldHop, createAxisHopQueue } from './hopQueue';
 import { isWrappingTrack, settleWrappingTrack, wrapLoopingTrack } from './loopingRail';
 import { focusKeyFor, isVerticalNavContext, neighborFocusTarget, ribbonFocusTarget } from './railNav';
 import { conveyorHop, wrapHop } from './wrapFocus';
@@ -185,7 +185,11 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   activeKeyRef.current = active.key;
 
   useEffect(() => {
+    let lastHopAt = Number.NEGATIVE_INFINITY;
+    let queuedScope = activeKeyRef.current;
     const dpad = createAxisHopQueue((direction) => {
+      if (queuedScope !== activeKeyRef.current) return;
+      lastHopAt = performance.now();
       const node = document.activeElement;
       if (!(node instanceof HTMLElement)) {
         moveFocus(direction);
@@ -198,6 +202,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       window,
       ({ intent, source }) => {
         window.dispatchEvent(new CustomEvent('tvm:user-activity'));
+        if (intent !== 'left' && intent !== 'right' && intent !== 'up' && intent !== 'down') dpad.reset();
         if (
           intent === 'playPause' ||
           intent === 'play' ||
@@ -247,6 +252,9 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
 
         source.preventDefault();
         if (intent === 'left' || intent === 'right' || intent === 'up' || intent === 'down') {
+          const now = performance.now();
+          if (!acceptHeldHop(source.repeat, now, lastHopAt)) return;
+          queuedScope = activeKeyRef.current;
           dpad.push(intent);
           return;
         }
@@ -259,7 +267,12 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       },
       { preventDefault: false },
     );
+    const cancelHops = (): void => dpad.reset();
+    window.addEventListener('blur', cancelHops);
+    document.addEventListener('pointerdown', cancelHops, true);
     return () => {
+      window.removeEventListener('blur', cancelHops);
+      document.removeEventListener('pointerdown', cancelHops, true);
       dpad.reset();
       stop();
     };

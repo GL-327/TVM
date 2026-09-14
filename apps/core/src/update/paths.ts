@@ -1,7 +1,17 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 
 export const UPDATE_REPO = 'GL-327/TVM';
 export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const APPLIED_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** Override with TVM_UPDATE_REPO=owner/name. Default is the public TVM channel. */
+export function resolveUpdateRepo(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env['TVM_UPDATE_REPO']?.trim();
+  if (raw !== undefined && raw !== '' && !raw.includes('..') && REPO_NAME.test(raw)) return raw;
+  return UPDATE_REPO;
+}
 
 function pathFor(platform: NodeJS.Platform) {
   return platform === 'win32' ? win32 : posix;
@@ -50,6 +60,32 @@ export function appDir(dataDir: string, version: string): string {
 
 export function currentPointer(dataDir: string): string {
   return join(dataDir, 'app', 'current');
+}
+
+export interface AppliedApp {
+  version: string;
+  root: string;
+  coreEntry: string;
+  uiDist: string;
+}
+
+/**
+ * Reads the version pointer written by a successful apply. The appliance
+ * launcher and production core hop here so an update does not overwrite the
+ * image copy.
+ */
+export function resolveAppliedApp(dataDir: string): AppliedApp | null {
+  try {
+    const version = readFileSync(currentPointer(dataDir), 'utf8').replace(/^\uFEFF/, '').trim();
+    if (!APPLIED_VERSION.test(version)) return null;
+    const root = appDir(dataDir, version);
+    const coreEntry = join(root, 'core', 'index.js');
+    const uiDist = join(root, 'ui');
+    if (!existsSync(coreEntry)) return null;
+    return { version, root, coreEntry, uiDist };
+  } catch {
+    return null;
+  }
 }
 
 export function secretsDir(dataDir: string): string {

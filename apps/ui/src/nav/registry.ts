@@ -52,7 +52,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   profile: { component: Profile, defaultFocus: 'realdebrid' },
   profiles: { component: Profiles, defaultFocus: 'profile-pick' },
   details: { component: Details, defaultFocus: 'back' },
-  settings: { component: Settings, defaultFocus: 'plan' },
+  settings: { component: Settings, defaultFocus: 'performance' },
   plans: { component: Plans, defaultFocus: 'plan-free' },
   legal: { component: Legal, defaultFocus: 'legal-back' },
   checkout: {

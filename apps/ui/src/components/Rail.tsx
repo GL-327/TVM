@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef } from 'react';
+import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import {
   cancelLoopingTrack,
   isLoopSeamJump,
@@ -30,6 +30,17 @@ function showLoopClones(track: HTMLElement, show: boolean): void {
 function cameraBusy(track: HTMLElement): boolean {
   return track.dataset.wrapping === 'true' || isScrollAnimating(track);
 }
+
+const TOUCH_INPUT_QUERY = '(any-pointer: coarse)';
+function nativeTouchInput(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia(TOUCH_INPUT_QUERY).matches;
+}
+function watchTouchInput(change: () => void): () => void {
+  const query = window.matchMedia(TOUCH_INPUT_QUERY);
+  query.addEventListener('change', change);
+  return () => query.removeEventListener('change', change);
+}
+const serverTouchInput = (): boolean => false;
 
 function trackHasFocus(track: HTMLElement): boolean {
   const active = document.activeElement;
@@ -85,8 +96,10 @@ function syncConveyor(track: HTMLElement): void {
 
 function LoopingTrack({ children }: { children: ReactNode }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
+  const nativeTouch = useSyncExternalStore(watchTouchInput, nativeTouchInput, serverTouchInput);
   const items = Children.toArray(children).filter(isValidElement);
-  const looping = shouldLoopRail(items.length);
+  // Native momentum must not race conveyor parking writes during a swipe.
+  const looping = shouldLoopRail(items.length, nativeTouch);
   const stamp = items.map((child, index) => String(child.key ?? index)).join('|');
 
   const painted = looping

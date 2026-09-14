@@ -122,7 +122,7 @@ flowchart TB
 - **Networking:** undici/fetch in core, TLS verification on, never `NODE_TLS_REJECT_UNAUTHORIZED`.
 - **Storage:** SQLite plus filesystem cache directories. Use electron-store only as a thin settings file if needed; prefer one SQLite database in the user-data partition.
 - **Auth:** per provider. Jellyfin and Plex use official login. A Real-Debrid bearer token is entered in the wizard and stored in the OS credential store (DPAPI on Windows, libsecret or a 0600 file on Linux), never in the renderer.
-- **Updates:** Windows uses electron-updater against GitHub Releases of the private repo (or a later update endpoint). Linux uses systemd-sysupdate signed images. App updates must not wipe `/var/lib/tvm`.
+- **Updates:** App updates are not electron-updater. Core checks the public GitHub Releases feed on `GL-327/TVM` (`tvm-app-<version>.tar.gz` + `.sha256`) with no `GH_TOKEN` and no GitHub login on TVs or phones. A missing latest release is an empty check, not a failure. Apply is refused unless `TVM_ENV=production` (or `TVM_ALLOW_APPLY=1`); the appliance `start-core.sh` and production core hop to the applied bundle under the data dir. Linux OS images stay on systemd-sysupdate. App updates must not wipe `/var/lib/tvm`. Private forks may set `TVM_GITHUB_TOKEN`.
 - **Testing:** Vitest for core, Playwright for keyboard-only spatial navigation, mpv IPC contract tests, and a QEMU boot smoke test for the USB image.
 - **Package manager:** pnpm workspaces.
 - **Not chosen:** Flutter (weaker DRM and service embedding on Linux), Lightning.js (TV-native but slower to build here), forking stremio-core (GPL), and Kodi/LibreELEC as the product (useful prior art, wrong branding).

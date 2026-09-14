@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canScrollAxis, wheelWantsRail } from './pointerInput';
+import { canScrollAxis, wheelPixels, wheelTarget, wheelWantsRail } from './pointerInput';
 
 function box(partial: Partial<Parameters<typeof canScrollAxis>[0]>) {
   return { scrollWidth: 0, clientWidth: 0, scrollHeight: 0, clientHeight: 0, ...partial };
@@ -34,5 +34,20 @@ describe('wheelWantsRail', () => {
     // A mouse wheel never reports deltaX, so Shift is the only way to say
     // "sideways" without a trackpad.
     expect(wheelWantsRail(0, 120, true)).toBe(true);
+  });
+});
+
+describe('wheel camera input', () => {
+  it('normalizes line, page and pixel devices on either axis', () => {
+    expect(wheelPixels(2, 1, 800)).toBe(32);
+    expect(wheelPixels(-1, 2, 800)).toBe(-800);
+    expect(wheelPixels(2.5, 0, 800)).toBe(2.5);
+    expect(wheelPixels(Number.NaN, 0, 800)).toBe(0);
+  });
+
+  it('accumulates notches but reverses without waiting for stale momentum', () => {
+    expect(wheelTarget(100, 300, 120)).toBe(420);
+    expect(wheelTarget(100, 300, -30)).toBe(70);
+    expect(wheelTarget(100, 40, 30)).toBe(130);
   });
 });

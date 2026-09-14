@@ -5,7 +5,41 @@
   animation-play-state: paused !important;
 }
 
-/* One effective preference also covers service skins and future components. */
+/* Tokens snap with the attribute so poster scale and CSS tweens freeze in the
+   same frame as Settings toggles Performance mode (or Reduced motion). */
+:root[data-motion='reduced'],
+:root[data-perf='on'] {
+  --tvm-focus-scale: 1;
+  --tvm-motion-fast: 1ms;
+  --tvm-motion-base: 1ms;
+  --tvm-motion-slow: 1ms;
+}
+
+/* Performance mode: no decorative layers, blur, shadows or glows. Sync also
+   sets `data-motion='reduced'` while it is on, so transitions and the scroll
+   tween snap. Auto/full never set that attribute from the OS reduce flag. */
+:root[data-perf='on'] .rt-set,
+:root[data-perf='on'] .home__scene,
+:root[data-perf='on'] .stage__vignette,
+:root[data-perf='on'] .glass-scene,
+:root[data-perf='on'] .skeleton {
+  display: none !important;
+}
+
+:root[data-perf='on'] *,
+:root[data-perf='on'] *::before,
+:root[data-perf='on'] *::after {
+  animation-play-state: paused !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}
+
+/* Opt-in only: Settings → Motion = Reduced, or Performance mode (which sets
+   data-motion='reduced'). Auto/full must not match this selector. */
 :root[data-motion='reduced'] *,
 :root[data-motion='reduced'] *::before,
 :root[data-motion='reduced'] *::after {

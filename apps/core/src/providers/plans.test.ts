@@ -149,6 +149,40 @@ describe('plans', () => {
     expect(plans.status().id).toBe('free');
   });
 
+  it('tokenizes a valid card, unlocks the plan, and never leaks PAN on GET', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-bill-card-'));
+    dirs.push(dir);
+    const plans = createPlanService({ dataDir: dir });
+    const pan = '4242424242424242';
+    const status = plans.checkout({
+      planId: 'premium',
+      consent: true,
+      requestId: crypto.randomUUID(),
+      liveTv: false,
+      name: 'Ada Lovelace',
+      number: pan,
+      expiry: '12/99',
+      cvc: '123',
+      zip: 'SW1A 1AA',
+    });
+    expect(status.id).toBe('premium');
+    const billing = plans.billing();
+    expect(billing.livePaymentsEnabled).toBe(false);
+    expect(billing.processor).toEqual({ linked: false, reason: 'no_processor' });
+    expect(billing.paymentMethod).toMatchObject({ last4: '4242', brand: 'visa', expiry: '12/99', zip: 'SW1A 1AA' });
+    const leaked = JSON.stringify(billing);
+    expect(leaked).not.toContain(pan);
+    expect(leaked).not.toContain('"cvc"');
+    expect(leaked).not.toMatch(/"number":/);
+    expect(readFileSync(billingPath(dir), 'utf8')).not.toContain(pan);
+    expect(JSON.stringify(plans.receipt())).not.toContain(pan);
+    expect(plans.receipt()?.last4).toBe('4242');
+    expect(plans.receipt()?.chargedPence).toBe(0);
+    const charged = plans.charge({});
+    expect(charged).toMatchObject({ status: 'declined', reason: 'no_processor', code: 'not_configured', chargedPence: 0, last4: '4242' });
+    expect(JSON.stringify(charged)).not.toContain(pan);
+  });
+
   it('counts billable watch time and ignores ads', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-hours-'));
     dirs.push(dir);
@@ -239,7 +273,7 @@ describe('plans', () => {
     });
     expect(paid.synthwave).toBe(true);
     expect(paid.pricePence).toBe(499);
-    expect(paid.extras.some((line) => line.includes('Colourcast'))).toBe(true);
+    expect(paid.extras.some((line) => line.includes('Retro'))).toBe(true);
 
     const off = plans.setSynthwave(false);
     expect(off.synthwave).toBe(false);

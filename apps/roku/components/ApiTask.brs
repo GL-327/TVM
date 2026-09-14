@@ -28,6 +28,10 @@ sub exec()
   transfer.EnableEncodings(true)
   transfer.RetainBodyOnError(true)
   transfer.AddHeader("Accept", "application/json")
+  token = m.top.authToken
+  if token <> invalid and Len(token.Trim()) >= 32
+    transfer.AddHeader("Authorization", "Bearer " + token.Trim())
+  end if
   if m.top.profileId <> invalid and m.top.profileId <> ""
     transfer.AddHeader("X-TVM-Profile", m.top.profileId)
   end if
@@ -54,7 +58,7 @@ sub exec()
     return
   end if
 
-  msg = wait(20000, port)
+  msg = wait(m.top.timeoutMs, port)
   if msg = invalid
     transfer.AsyncCancel()
     result.error = "timeout"
@@ -76,6 +80,11 @@ sub exec()
 
   if code < 200 or code >= 300
     result.error = "http_" + StrI(code).Trim()
+    if parsed <> invalid
+      if GetInterface(parsed, "ifAssociativeArray") <> invalid
+        if parsed.DoesExist("error") then result.error = parsed.error
+      end if
+    end if
     applyResult(result)
     return
   end if

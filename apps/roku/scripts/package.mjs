@@ -50,8 +50,21 @@ function channelFiles() {
     if (existsSync(dir)) walk(dir, files);
   }
   const config = join(rokuRoot, "config.json");
-  if (existsSync(config)) files.push(config);
+  if (existsSync(config)) {
+    validatePkgConfig(JSON.parse(readFileSync(config, "utf8")));
+    files.push(config);
+  }
   return files;
+}
+
+export function validatePkgConfig(value) {
+  if (!value || typeof value !== 'object' || Object.keys(value).some((key) => key !== 'coreBaseUrl')) {
+    throw new Error('config.json may contain only coreBaseUrl. Never package access tokens or provider credentials.');
+  }
+  const url = new URL(value.coreBaseUrl);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
+    throw new Error('config.json coreBaseUrl must be an HTTP(S) origin without credentials, path or query.');
+  }
 }
 
 function dosDateTime(date = new Date()) {

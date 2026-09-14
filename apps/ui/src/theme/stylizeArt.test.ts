@@ -58,4 +58,23 @@ describe('phosphor artwork scheduling', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(stylizeFailed('/c.jpg', 'poster')).toBe(false);
   });
+
+  it('never fetches or occupies a decode slot for a backdrop', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const { stylizeArt, DECODE_SLOTS } = await import('./stylizeArt');
+    expect(DECODE_SLOTS).toBe(2);
+    await expect(stylizeArt('/hero.jpg', 'backdrop', undefined, 'mosaic')).resolves.toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('asks the CDN for a tile-sized still instead of decoding a hero or 342 poster', async () => {
+    const { cheapArtUrl } = await import('./stylizeArt');
+    expect(cheapArtUrl('https://image.tmdb.org/t/p/w342/abc.jpg')).toBe('https://image.tmdb.org/t/p/w185/abc.jpg');
+    expect(cheapArtUrl('https://image.tmdb.org/t/p/original/wide.jpg')).toBe('https://image.tmdb.org/t/p/w185/wide.jpg');
+    expect(cheapArtUrl('https://images.metahub.space/poster/large/tt1/img')).toBe(
+      'https://images.metahub.space/poster/medium/tt1/img',
+    );
+    expect(cheapArtUrl('https://cdn.example/art.jpg')).toBe('https://cdn.example/art.jpg');
+  });
 });

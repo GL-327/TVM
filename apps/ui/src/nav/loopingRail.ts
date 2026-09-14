@@ -7,8 +7,8 @@ export const LOOP_COPIES = 3;
 /** If wrap settle never fires, release the conveyor so D-pad is not frozen. */
 export const WRAP_UNLOCK_MS = 560;
 
-export function shouldLoopRail(count: number): boolean {
-  return count >= 2;
+export function shouldLoopRail(count: number, nativeTouch = false): boolean {
+  return count >= 2 && !nativeTouch;
 }
 
 export function loopSetWidth(scrollWidth: number, copies = LOOP_COPIES): number {
