@@ -76,6 +76,7 @@ struct TVMWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.applicationNameForUserAgent = "TVM-iOS"
         configuration.websiteDataStore = session.isStandalone ? .default() : .nonPersistent()
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsAirPlayForMediaPlayback = true

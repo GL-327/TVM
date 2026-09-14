@@ -65,7 +65,9 @@ describe('Home search', () => {
     expect(ribbon).toContain("from: 'home'");
     expect(src).toContain("params['from'] === 'home'");
     expect(src).toContain('searchApps');
-    expect(src).toContain('openDetails');
+    expect(src).toContain('launchTitle');
+    expect(src).not.toContain('openDetails');
+    expect(src).toContain('inputMode="search"');
     expect(src).toContain("push('service'");
     expect(src).toContain('dismissScrim');
     expect(registry).toContain("search: { component: SearchModal, defaultFocus: 'query' }");

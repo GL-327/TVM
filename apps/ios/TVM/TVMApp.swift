@@ -125,6 +125,13 @@ struct StandaloneRoot: View {
     }
 }
 
+enum TVMViewport {
+    static func fittedSize(in available: CGSize) -> CGSize {
+        let width = max(0, min(available.width, available.height * 16 / 9))
+        return CGSize(width: width, height: width * 9 / 16)
+    }
+}
+
 struct PlayerShell: View {
     let session: BrowseSession
     var onUseLocal: () -> Void
@@ -145,9 +152,13 @@ struct PlayerShell: View {
                 }
                 .padding(28)
             } else {
-                TVMWebView(session: currentSession, loading: $loading, error: $error)
-                    .id(reload)
-                    .ignoresSafeArea()
+                GeometryReader { geometry in
+                    let size = TVMViewport.fittedSize(in: geometry.size)
+                    TVMWebView(session: currentSession, loading: $loading, error: $error)
+                        .id(reload)
+                        .frame(width: size.width, height: size.height)
+                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                }
             }
         }
         .overlay(alignment: .topTrailing) {

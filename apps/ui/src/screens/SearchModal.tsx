@@ -11,7 +11,7 @@ import type { AppTile } from '../data/catalog';
 import { isHttpUrl } from '../data/links';
 import { asTitle, currentProfileId, searchLibrary, type MediaItem } from '../data/media';
 import { clearRecentSearches, readRecentSearches, saveRecentSearch } from '../data/searchHistory';
-import { openDetails } from '../data/openDetails';
+import { launchTitle } from '../data/launchTitle';
 import { enterTvmStream } from '../data/profiles';
 import { searchEaster } from '../brand/easterEggs';
 import { requestFocus } from '../nav/focusEngine';
@@ -180,8 +180,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
         return;
       }
       remember(trimmed);
-      navigate.pop();
-      openDetails(navigate, asTitle(items[0]));
+      void launchTitle(navigate, asTitle(items[0]));
     } catch {
       if (!controller.signal.aborted) setMessage('Search is unavailable. Check your connection and try again.');
     } finally {
@@ -206,6 +205,9 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
             <span className="search-pill__sr">Link, title, or app</span>
             <FocusField
               id="query"
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
               value={query}
               onChange={setQuery}
               onConfirm={(value) => void open(value)}
@@ -262,8 +264,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
                 index={index}
                 onSelect={() => {
                   remember(query);
-                  navigate.pop();
-                  openDetails(navigate, asTitle(item));
+                  void launchTitle(navigate, asTitle(item));
                 }}
               />
             ))}

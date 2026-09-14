@@ -96,7 +96,8 @@ final class TVMCatalog {
     func search(_ query: String) async -> [MediaItem] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.count < 2 { return [] }
-        let encoded = needle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? needle
+        let pathValue = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        let encoded = needle.addingPercentEncoding(withAllowedCharacters: pathValue) ?? needle
         async let moviesTask = fetchCatalog("/catalog/movie/top/search=\(encoded).json", kind: "movie")
         async let seriesTask = fetchCatalog("/catalog/series/top/search=\(encoded).json", kind: "series")
         let live = dedupe((await moviesTask) + (await seriesTask))

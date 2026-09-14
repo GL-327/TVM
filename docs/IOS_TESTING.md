@@ -1,5 +1,7 @@
 # iOS testing and sideloading
 
+**14 September update:** See [MOBILE_READINESS.md](MOBILE_READINESS.md) for the current change list and verification gates. iPhone is now landscape with a fitted 16:9 web-app frame; mobile viewing requires Basic or higher (at least 1080p). HLS Live TV and provider-generated HLS playlists are supported; raw MPEG-TS and unsupported containers still need provider conversion or the optional home Core. Earlier portrait instructions below apply to iPad/browser regression checks, not iPhone orientation support.
+
 ## Current status
 
 `apps/ios/TVM.xcodeproj` is an iOS 16+ standalone SwiftUI app: it bundles `apps/ui`, serves it from a loopback HTTP server, and implements the Core API on the phone. It does not require a PC, host address, or `TVM_LAN_TOKEN`. Optional “Use a home Core” pairing still exists for a computer on the same Wi-Fi.

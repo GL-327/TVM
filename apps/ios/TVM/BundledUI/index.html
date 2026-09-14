@@ -1,19 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="default">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TVM</title>
+    <!-- Painted before the bundle parses, so the TV never flashes white on boot. -->
     <style>
-      html, body { margin: 0; min-height: 100%; background: #1e100a; color: #f3e6c8; font-family: system-ui, sans-serif; }
-      main { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; }
-      p { max-width: 28rem; line-height: 1.45; color: #c9b58a; }
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        background: #071428;
+      }
     </style>
+    <script type="module" crossorigin src="./assets/index-DD6_Rnf2.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-hePW80VL.js">
+    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-DE3RlOCf.js">
+    <link rel="modulepreload" crossorigin href="./assets/apply-CoBEeWhV.js">
+    <link rel="modulepreload" crossorigin href="./assets/revealFocused-BDw0JS4Z.js">
+    <link rel="modulepreload" crossorigin href="./assets/artFace-Dzg492im.js">
+    <link rel="modulepreload" crossorigin href="./assets/ViewStackContext-B3WwXVTU.js">
+    <link rel="modulepreload" crossorigin href="./assets/media-BIkIJUp7.js">
+    <link rel="stylesheet" crossorigin href="./assets/apply-DBkbjhuO.css">
+    <link rel="stylesheet" crossorigin href="./assets/index-C11IFKBN.css">
   </head>
   <body>
-    <main>
-      <h1>TVM</h1>
-      <p>The production UI was not bundled into this build. On a Mac or in GitHub Actions run <code>node apps/ios/bundle-ui.mjs</code> before xcodebuild.</p>
-    </main>
+    <div id="root"></div>
   </body>
 </html>

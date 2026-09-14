@@ -56,6 +56,8 @@ describe('phone layer', () => {
     expect(pointer).toContain('stopImmediatePropagation()');
     expect(pointer).toContain("event.pointerType === 'touch'");
     expect(pointer).toContain('host.click()');
+    expect(pointer).toContain('isTextEntryTarget');
+    expect(css).toContain('repeat(auto-fill, minmax(6.5rem, 1fr))');
     expect(viewport).toContain('visualViewport');
     expect(viewport).toContain('--tvm-keyboard-inset');
     expect(viewport).toContain('scrollIntoView');

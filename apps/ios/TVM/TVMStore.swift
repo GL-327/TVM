@@ -6,10 +6,10 @@ final class TVMStore {
     private let fileManager = FileManager.default
     private let hues = [350, 220, 140, 32, 280]
 
-    init() {
+    init(root testRoot: URL? = nil) {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        root = base.appendingPathComponent("TVM", isDirectory: true)
+        root = testRoot ?? base.appendingPathComponent("TVM", isDirectory: true)
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
@@ -98,11 +98,25 @@ final class TVMStore {
     }
 
     func writeProgress(profileId: String, id: String, position: Double, duration: Double) {
+        guard !id.isEmpty, position.isFinite, duration.isFinite, position >= 0, duration > 0 else { return }
         var all = progress(for: profileId)
         all[id] = ProgressEntry(position: position, duration: duration, updated: ISO8601DateFormatter().string(from: Date()))
         let body = all.mapValues { ["position": $0.position, "duration": $0.duration, "updated": $0.updated] }
         try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
         try? JSONValue.data(body).write(to: profileDir(profileId).appendingPathComponent("progress.json"), options: .atomic)
+    }
+
+    func recentMedia(for profileId: String) -> [MediaItem] {
+        guard let data = try? Data(contentsOf: profileDir(profileId).appendingPathComponent("recent-media.json")),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
+        return raw.compactMap(MediaItem.parse)
+    }
+
+    func rememberMedia(_ items: [MediaItem], profileId: String) {
+        let ids = Set(items.map(\.id))
+        let saved = Array((items + recentMedia(for: profileId).filter { !ids.contains($0.id) }).prefix(300))
+        try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
+        try? JSONValue.data(saved.map { $0.json() }).write(to: profileDir(profileId).appendingPathComponent("recent-media.json"), options: .atomic)
     }
 
     func watchlist(for profileId: String) -> [MediaItem] {

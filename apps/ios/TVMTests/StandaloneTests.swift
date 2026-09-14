@@ -2,6 +2,92 @@ import XCTest
 @testable import TVM
 
 final class StandaloneTests: XCTestCase {
+    private var testFolders: [URL] = []
+    private func testCore(session: URLSession? = nil) -> TVMLocalCore {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-test-\(UUID().uuidString)")
+        testFolders.append(root)
+        return TVMLocalCore(session: session, store: TVMStore(root: root))
+    }
+    override func tearDown() {
+        for root in testFolders { try? FileManager.default.removeItem(at: root) }
+        testFolders.removeAll()
+        super.tearDown()
+    }
+    func testSixteenNineFrameFitsWithoutCropping() {
+        for available in [CGSize(width: 844, height: 390), CGSize(width: 568, height: 320), CGSize(width: 390, height: 844), CGSize(width: 1024, height: 768)] {
+            let size = TVMViewport.fittedSize(in: available)
+            XCTAssertEqual(size.width / size.height, 16.0 / 9.0, accuracy: 0.001)
+            XCTAssertLessThanOrEqual(size.width, available.width)
+            XCTAssertLessThanOrEqual(size.height, available.height)
+        }
+    }
+
+    func testTranscodePrefersCompatibleHLSWithinPlanCap() {
+        let choices: [String: Any] = ["apple": ["2160": "https://cdn.example/4k.m3u8", "1080p": "https://cdn.example/hd.m3u8", "720": "https://cdn.example/low.m3u8"], "h264WebM": ["1080": "https://cdn.example/file.webm"]]
+        XCTAssertEqual(TVMPlayback.appleTranscode(choices, maxHeight: 1080)?.url, "https://cdn.example/hd.m3u8")
+        XCTAssertEqual(TVMPlayback.appleTranscode(choices, maxHeight: 2160)?.url, "https://cdn.example/4k.m3u8")
+        XCTAssertNil(TVMPlayback.appleTranscode(["h264WebM": ["1080": "https://cdn.example/file.webm"]], maxHeight: 1080))
+        XCTAssertFalse(TVMPlayback.phoneCanPlay(filename: "wrong.mkv", mimeType: "video/mp4", url: "https://cdn.example/wrong.mkv"))
+    }
+
+    func testMobilePlanAndLiveHLSWithoutDebrid() async throws {
+        let core = testCore()
+        _ = core.plans.cancel()
+        defer { _ = core.plans.cancel() }
+        core.rd.ignoreKeychain = true
+        let play = JSONValue.data(["id": "live:1"])
+        let blocked = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: play)
+        XCTAssertEqual(blocked.status, 403)
+        for id in ["basic", "premium", "ultra", "max"] {
+            _ = try core.plans.setPlan(id)
+            XCTAssertTrue(core.plans.mobileAllowed())
+        }
+        _ = try core.plans.setPlan("basic")
+        _ = try core.plans.setLiveTv(true)
+        let playlist = "#EXTM3U\n#EXTINF:-1,Test HLS\nhttps://cdn.example/live.m3u8\n#EXTINF:-1,Raw TS\nhttps://cdn.example/live.ts\n"
+        _ = await core.handle(method: "PUT", path: "/api/live", query: [:], headers: [:], body: JSONValue.data(["text": playlist]))
+        let hls = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: play)
+        XCTAssertEqual(hls.status, 200)
+        XCTAssertEqual(JSONValue.object(hls.body)["transport"] as? String, "hls")
+        let ts = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: JSONValue.data(["id": "live:2"]))
+        XCTAssertEqual(JSONValue.object(ts.body)["reason"] as? String, "live-hls-required")
+    }
+
+    func testProgressAppearsAfterThirtySecondsNotFourPercent() {
+        XCTAssertNil(TVMTitle.progressRatio(ProgressEntry(position: 10, duration: 7200, updated: "2026-01-01")))
+        XCTAssertNotNil(TVMTitle.progressRatio(ProgressEntry(position: 30, duration: 7200, updated: "2026-01-01")))
+        XCTAssertEqual(TVMTitle.progressRatio(ProgressEntry(position: 30, duration: 7200, updated: "2026-01-01"))!, 30.0 / 7200.0, accuracy: 0.0001)
+        XCTAssertNil(TVMTitle.progressRatio(ProgressEntry(position: 7000, duration: 7200, updated: "2026-01-01")))
+    }
+
+    func testContinueWatchingPersistsSavedTitleAfterThirtySeconds() {
+        let core = testCore()
+        let profile = core.media.activeProfile()
+        let parsed = MediaItem.parse([
+            "id": "fight-club",
+            "title": "Fight Club",
+            "kind": "movie",
+            "synopsis": "",
+            "poster": "https://example.com/fight.jpg",
+            "backdrop": "",
+            "genres": ["Drama"],
+            "rating": "8.8",
+            "playable": true,
+            "hue": 32,
+        ] as [String: Any])
+        XCTAssertNotNil(parsed)
+        core.store.rememberMedia([parsed!], profileId: profile)
+
+        core.media.saveProgress(id: "fight-club", position: 10, duration: 7200)
+        XCTAssertTrue(core.media.continueWatching().isEmpty)
+
+        core.media.saveProgress(id: "tt0137523", position: 30, duration: 7200)
+        let watching = core.media.continueWatching()
+        XCTAssertEqual(watching.first?.id, "tt0137523")
+        XCTAssertEqual(watching.first?.title, "Fight Club")
+        XCTAssertEqual(watching.first?.poster, "https://example.com/fight.jpg")
+    }
+
     func testStandaloneDoesNotRequireLANToken() {
         XCTAssertFalse(StandalonePolicy.requiresLANToken)
         XCTAssertNil(StandalonePolicy.bundledLANToken)
@@ -37,7 +123,9 @@ final class StandaloneTests: XCTestCase {
         configuration.protocolClasses = [MockPlaybackProtocol.self]
         configuration.timeoutIntervalForRequest = 4
         let session = URLSession(configuration: configuration)
-        let core = TVMLocalCore(session: session)
+        let core = testCore(session: session)
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
         MockPlaybackProtocol.reset()
@@ -62,6 +150,7 @@ final class StandaloneTests: XCTestCase {
     }
 
     func testCatalogSlugMapsToImdb() {
+        XCTAssertEqual(TVMTitle.catalogImdb("ten-truths-about-love"), "tt15483404")
         XCTAssertEqual(TVMTitle.catalogImdb("fight-club"), "tt0137523")
         XCTAssertEqual(TVMTitle.catalogImdb("the-last-of-us:1:1"), "tt3581920")
         XCTAssertEqual(TVMTitle.seasonEpisode(from: "the-last-of-us:1:1")?.season, 1)
@@ -74,7 +163,9 @@ final class StandaloneTests: XCTestCase {
         configuration.protocolClasses = [MockPlaybackProtocol.self]
         configuration.timeoutIntervalForRequest = 4
         let session = URLSession(configuration: configuration)
-        let core = TVMLocalCore(session: session)
+        let core = testCore(session: session)
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
         MockPlaybackProtocol.reset()
@@ -95,7 +186,9 @@ final class StandaloneTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockPlaybackProtocol.self]
         let session = URLSession(configuration: configuration)
-        let core = TVMLocalCore(session: session)
+        let core = testCore(session: session)
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = nil
         let reply = await core.handle(

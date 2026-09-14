@@ -50,11 +50,19 @@ describe('scene field', () => {
     const host = readFileSync(join(dir, 'SceneField.tsx'), 'utf8');
     const css = readFileSync(join(dir, 'scene.css'), 'utf8');
     const stack = readFileSync(join(dir, '../nav/ViewStackProvider.tsx'), 'utf8');
+    const app = readFileSync(join(dir, '../App.tsx'), 'utf8');
     expect(existsSync(join(dir, 'SceneField.ts'))).toBe(false);
+    // The stage belongs to the app shell, not to a screen: mounting it inside
+    // the view stack would put it in a screen's stacking context and remount it
+    // on every navigation.
     expect(stack).not.toContain("from '../theme/SceneField'");
     expect(stack).not.toContain('<SceneField');
-    expect(host).toContain('export function SceneField(): null');
+    expect(app).toContain('<SceneField />');
+    expect(host).toContain('className="tvm-scene"');
+    // CSS layers, not the WebGL field: a fullscreen shader repainting every
+    // frame is the wrong cost for a background on a phone.
     expect(host).not.toContain('attachSceneGpu');
+    expect(host).not.toContain('<canvas');
     expect(css).toContain('.tvm-scene');
     expect(css).toContain('display: none');
     expect(css).not.toContain('z-index: -1');
@@ -69,5 +77,60 @@ describe('scene field', () => {
     expect(css).toContain('--tvm-scene-noise');
     expect(css).not.toContain('tvm-isle-drift');
     expect(css).not.toContain('tvm-isle-tide');
+  });
+
+  /*
+   * This background has been shipped inert twice: once as `display: none`, and
+   * once with 41-97s periods that are technically animation and visually a
+   * still image. Both read to the viewer as "the background is not animated".
+   */
+  it('actually animates, visibly and on the compositor', () => {
+    const css = readFileSync(join(dir, 'scene.css'), 'utf8');
+
+    // The layer is live at rest. Only the player, Retro and the explicit
+    // reduced-transparency/performance opt-outs may switch it off.
+    const base = css.slice(css.indexOf('.tvm-scene {'), css.indexOf('}', css.indexOf('.tvm-scene {')));
+    expect(base).not.toContain('display: none');
+    expect(base).toContain('position: fixed');
+
+    // Behind the chrome, never over it. `.app__screen` is z-index 1.
+    expect(base).toContain('z-index: 0');
+    expect(css).not.toContain('z-index: -1');
+
+    // Size containment on a fixed inset:0 box collapses it and every child.
+    expect(base).not.toMatch(/contain:[^;]*\b(strict|size)\b/);
+
+    const periods = [...css.matchAll(/animation(?:-duration)?:[^;]*?(\d+(?:\.\d+)?)s/g)]
+      .map((match) => Number(match[1]));
+    expect(periods.length).toBeGreaterThanOrEqual(6);
+    // A minute-long drift is indistinguishable from a static gradient.
+    expect(Math.max(...periods)).toBeLessThanOrEqual(40);
+    // And a background that hurries is a distraction behind a film.
+    expect(Math.min(...periods)).toBeGreaterThanOrEqual(12);
+
+    // Compositor-only: animating anything else repaints the full viewport every
+    // frame, which is exactly the jank this stage must not introduce.
+    const keyframes = [...css.matchAll(/@keyframes tvm-scene-[\w-]+\s*\{([\s\S]*?)\n\}/g)]
+      .map((match) => match[1])
+      .filter((frames): frames is string => Boolean(frames));
+    expect(keyframes.length).toBeGreaterThanOrEqual(5);
+    for (const frames of keyframes) {
+      for (const [, property] of frames.matchAll(/^\s{4}([a-z-]+):/gm)) {
+        expect(['transform', 'opacity']).toContain(property);
+      }
+    }
+
+    // Travel has to be large enough to see over the period.
+    const shifts = [...css.matchAll(/translate3d\(\s*(-?\d+(?:\.\d+)?)%/g)].map((m) => Number(m[1]));
+    expect(Math.max(...shifts) - Math.min(...shifts)).toBeGreaterThanOrEqual(10);
+  });
+
+  it('lets the stage show through the full-bleed screens that would cover it', () => {
+    const css = readFileSync(join(dir, 'scene.css'), 'utf8');
+    const transparent = css.slice(css.indexOf('.home,'), css.indexOf('.tvm-scene__gpu'));
+    for (const selector of ['.home', '.home__shelf', '.page', '.stream-page']) {
+      expect(transparent).toContain(selector);
+    }
+    expect(transparent).toContain('background: transparent');
   });
 });
