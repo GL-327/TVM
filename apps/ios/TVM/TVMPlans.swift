@@ -96,7 +96,7 @@ final class TVMPlans {
         let entitlement = readEntitlement()
         let plan = definition(entitlement.id)
         let liveTv = liveIncluded(plan, entitlement.liveTvAddon)
-        let synthwaveOwned = entitlement.synthwaveAddon
+        let synthwaveOwned = entitlement.synthwaveAddon || entitlement.themeBundle
         let charged = plan.basePricePence + (liveTv ? plan.liveTvAddonPence : 0)
         let used = readUsage()
         let remaining = plan.weeklySeconds.map { max(0, $0 - used) }
@@ -119,6 +119,11 @@ final class TVMPlans {
             "synthwave": developerUnlocked || synthwaveOwned,
             "synthwaveOwned": synthwaveOwned,
             "synthwaveAddonPence": 499,
+            "anime": developerUnlocked || entitlement.animeAddon || entitlement.themeBundle,
+            "animeOwned": entitlement.animeAddon || entitlement.themeBundle,
+            "bundle": developerUnlocked || entitlement.themeBundle,
+            "bundleOwned": entitlement.themeBundle,
+            "animeAddonPence": 499, "themeBundlePence": 999,
             "mocks": plan.mocks,
             "liveTv": liveTv,
             "ads": plan.ads,
@@ -202,9 +207,17 @@ final class TVMPlans {
         } else {
             includeLive = plan.liveTv
         }
-        let includeSynthwave = body["synthwave"] as? Bool == true
+        let pack = body["pack"] as? String
+        if let pack, !["synthwave", "anime", "theme-bundle"].contains(pack) { throw ClientError.message("Unknown theme pack.") }
+        let includeBundle = pack == "theme-bundle"
+        let includeAnime = includeBundle || pack == "anime"
+        let includeSynthwave = includeBundle || pack == "synthwave" || body["synthwave"] as? Bool == true
+        let oneTime = entitlement.themeBundle ? 0 : includeBundle ? 999 : (includeAnime && !entitlement.animeAddon ? 499 : 0) + (includeSynthwave && !entitlement.synthwaveAddon ? 499 : 0)
+        if let quoted = body["quotedOneTimePence"] as? Int, quoted != oneTime { throw ClientError.message("The order has changed. Reopen checkout.") }
+        if includeBundle { entitlement.themeBundle = true }
+        if includeAnime { entitlement.animeAddon = true }
         entitlement.id = plan.id
-        entitlement.source = plan.id == "free" && !includeSynthwave ? "free" : "checkout"
+        entitlement.source = plan.id == "free" && !includeSynthwave && !includeAnime ? "free" : "checkout"
         entitlement.styleId = clampStyle(plan.id, entitlement.styleId)
         entitlement.liveTvAddon = includeLive
         if includeSynthwave { entitlement.synthwaveAddon = true }
@@ -222,9 +235,10 @@ final class TVMPlans {
             "event": "checkout",
             "currency": "GBP",
             "monthlyPence": plan.basePricePence + (includeLive ? plan.liveTvAddonPence : 0),
-            "oneTimePence": includeSynthwave && !readEntitlement().synthwaveAddon ? 0 : 0,
+            "oneTimePence": oneTime,
             "chargedPence": 0,
             "liveTv": includeLive,
+            "animePurchased": includeAnime, "bundlePurchased": includeBundle,
             "synthwavePurchased": includeSynthwave,
             "at": ISO8601DateFormatter().string(from: Date()),
             "last4": JSONValue.orNull(last4),
@@ -267,6 +281,9 @@ final class TVMPlans {
             "subscription": (current["id"] as? String) == "free" ? "free" : "test-active",
             "monthlyPence": current["pricePence"] ?? 0,
             "nextChargeAt": NSNull(),
+            "anime": current["anime"] ?? false, "bundle": current["bundle"] ?? false,
+            "animeAddonPence": 499, "themeBundlePence": 999,
+            "animeOwned": current["animeOwned"] ?? false, "bundleOwned": current["bundleOwned"] ?? false,
             "synthwaveOwned": current["synthwaveOwned"] ?? false,
             "receipts": receipts,
             "processor": ["linked": false, "reason": "no_processor"],
@@ -319,6 +336,8 @@ final class TVMPlans {
         var styleId: String
         var source: String
         var liveTvAddon: Bool?
+        var animeAddon: Bool = false
+        var themeBundle: Bool = false
         var synthwaveAddon: Bool
     }
 
@@ -330,6 +349,8 @@ final class TVMPlans {
                 styleId: object["styleId"] as? String ?? "classic",
                 source: object["source"] as? String ?? "free",
                 liveTvAddon: object["liveTvAddon"] as? Bool,
+                animeAddon: object["animeAddon"] as? Bool ?? false,
+                themeBundle: object["themeBundle"] as? Bool ?? false,
                 synthwaveAddon: object["synthwaveAddon"] as? Bool ?? false
             )
         }
@@ -341,6 +362,7 @@ final class TVMPlans {
             "id": value.id,
             "styleId": value.styleId,
             "source": value.source,
+            "animeAddon": value.animeAddon, "themeBundle": value.themeBundle,
             "synthwaveAddon": value.synthwaveAddon,
         ]
         if let live = value.liveTvAddon { body["liveTvAddon"] = live }

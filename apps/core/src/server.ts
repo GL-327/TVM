@@ -910,6 +910,7 @@ async function handleApi(
         zip?: unknown;
         liveTv?: unknown;
         synthwave?: unknown;
+        pack?: unknown;
         consent?: unknown;
         requestId?: unknown;
         packOnly?: unknown;

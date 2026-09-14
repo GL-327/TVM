@@ -44,6 +44,8 @@ export interface CatalogRail {
 }
 
 export interface HomePayload {
+  finished?: Array<{ id: string; title: string; year: number | null }>;
+  adaptationGeneration?: number;
   rd: RdStatus;
   featured: MediaItem | null;
   library: MediaItem[];
@@ -211,6 +213,7 @@ export function setActiveProfileId(id: string): void {
   if (activeProfileId === id) return;
   activeProfileId = id;
   invalidateHome();
+  window.dispatchEvent(new CustomEvent('tvm:home', { detail: null }));
 }
 
 export function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
@@ -305,6 +308,7 @@ export async function fetchHome(): Promise<HomePayload | null> {
     });
     if (profile !== activeProfileId || generation !== homeGeneration) return null;
     lastHome = payload;
+    window.dispatchEvent(new CustomEvent('tvm:home', { detail: payload }));
     return payload;
   } catch {
     return profile === activeProfileId && generation === homeGeneration ? lastHome : null;
@@ -386,7 +390,7 @@ export async function saveProgress(id: string, position: number, duration: numbe
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id, position, duration }),
   });
-  if (response.ok) invalidateHome();
+  if (response.ok) { invalidateHome(); window.dispatchEvent(new Event('tvm:progress')); }
 }
 
 export async function fetchChildren(id: string): Promise<MediaItem[]> {

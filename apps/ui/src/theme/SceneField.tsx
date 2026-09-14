@@ -1,3 +1,4 @@
+import { useThemeId } from './useThemeId';
 /**
  * The animated stage behind every screen.
  *
@@ -15,7 +16,9 @@
  * Motion is switched off by `data-motion='reduced'` and the whole layer by
  * `data-perf='on'`; see scene.css and motion.css.
  */
-export function SceneField(): React.JSX.Element {
+export function SceneField(): React.JSX.Element | null {
+  const theme = useThemeId();
+  if (theme === 'anime' || theme === 'synthwave') return null;
   return (
     <div className="tvm-scene" data-engine="css" aria-hidden="true">
       <div className="tvm-scene__css">

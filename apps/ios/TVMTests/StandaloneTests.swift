@@ -3,6 +3,37 @@ import UIKit
 @testable import TVM
 
 final class StandaloneTests: XCTestCase {
+    func testAnimeAndBundleCheckoutJSONPersistsAcrossPlanChanges() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-anime-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = TVMStore(root: root)
+        let plans = TVMPlans(store: store)
+        let anime = try plans.checkout(["planId": "free", "pack": "anime", "packOnly": true, "consent": true, "quotedOneTimePence": 499])
+        XCTAssertEqual(anime["animeOwned"] as? Bool, true)
+        XCTAssertEqual(anime["synthwaveOwned"] as? Bool, false)
+        XCTAssertEqual(anime["animeAddonPence"] as? Int, 499)
+        let bundle = try plans.checkout(["planId": "free", "pack": "theme-bundle", "packOnly": true, "consent": true, "quotedOneTimePence": 999])
+        XCTAssertEqual(bundle["bundleOwned"] as? Bool, true)
+        XCTAssertEqual(bundle["synthwaveOwned"] as? Bool, true)
+        _ = plans.cancel()
+        let restored = TVMPlans(store: store).status()
+        XCTAssertEqual(restored["anime"] as? Bool, true)
+        XCTAssertEqual(restored["bundle"] as? Bool, true)
+        XCTAssertEqual(restored["themeBundlePence"] as? Int, 999)
+    }
+    func testCompletionKeepsNotebookAcrossRewatch() {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-finish-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = TVMStore(root: root)
+        store.writeProgress(profileId: "p", id: "film", position: 96, duration: 100)
+        XCTAssertFalse(store.progress(for: "p")["film"]!.isFinished)
+        store.writeProgress(profileId: "p", id: "film", position: 97, duration: 100)
+        store.writeProgress(profileId: "p", id: "film", position: 99, duration: 100)
+        XCTAssertEqual(store.progress(for: "p")["film"]?.completions, 1)
+        store.writeProgress(profileId: "p", id: "film", position: 1, duration: 100)
+        XCTAssertNotNil(store.progress(for: "p")["film"]?.completedAt)
+    }
+
     private var testFolders: [URL] = []
     private func testCore(session: URLSession? = nil) -> TVMLocalCore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-test-\(UUID().uuidString)")

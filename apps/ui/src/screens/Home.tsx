@@ -1,3 +1,6 @@
+import { AnimeControls } from '../theme/anime/AnimeControls';
+import { useAnimeScene } from '../theme/anime/catalog';
+import { useThemeId } from '../theme/useThemeId';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
@@ -56,14 +59,30 @@ const HomeShelves = memo(function HomeShelves({
   loading: boolean;
   openTitle: (title: Title) => void;
 }): React.JSX.Element {
+  const theme = useThemeId();
+  const scene = useAnimeScene();
+  const [swapped, setSwapped] = useState(false);
+  useEffect(() => {
+    if (theme !== 'anime' || scene.id !== 'todo-yuji') return;
+    const timer = setInterval(() => {
+      if (document.hidden || prefersReducedMotion() || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const shelf = document.querySelector('[data-anime-brothers]');
+      if (!shelf || shelf.querySelector('[data-focused="true"], :focus') || document.querySelector('[data-screen="player"]')) return;
+      setSwapped(value => !value);
+    }, 12000);
+    return () => clearInterval(timer);
+  }, [theme, scene.id]);
+  const brothers = catalogRails.filter(rail => rail.id !== 'anime-adapted').flatMap(rail => rail.titles).slice(0, 2);
+  const watchingLabel = theme === 'anime' && scene.id === 'night-train' ? 'Next station · continue watching' : theme === 'anime' && scene.id === 'straw-hat-map' ? 'Your next voyage' : 'Continue watching';
   return (
     <div className="home__shelf">
+      {theme === 'anime' && scene.id === 'todo-yuji' && brothers.length === 2 && <div data-anime-brothers=""><Rail title="Brothers in arms · two stories, one evening">{mapRailPosters(swapped ? [...brothers].reverse() : brothers, 'anime-brothers', openTitle)}</Rail></div>}
       {watching.length > 0 && (
-        <Rail title={shelfTitle('Continue watching')}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
+        <Rail title={shelfTitle(watchingLabel)}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
       )}
 
       {watchlist.length > 0 && (
-        <Rail title={shelfTitle('Watchlist')}>{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
+        <Rail title={shelfTitle(theme === 'anime' && scene.id === 'wanted-posters' ? 'Bounties · your saved stories' : 'Watchlist')}>{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
       )}
 
       {catalogRails.length > 0 ? (
@@ -83,6 +102,8 @@ const HomeShelves = memo(function HomeShelves({
 
 export function Home(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
+  const theme = useThemeId();
+  const animeScene = useAnimeScene();
   const pageRef = useRef<HTMLElement>(null);
   const cached = peekHome();
   const [loading, setLoading] = useState(cached === null);
@@ -132,7 +153,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   }, [navigate, tick]);
 
   const heroes = useMemo(() => {
-    const fromRails = rails.flatMap((rail) => rail.items.map(asTitle)).filter((title) => title.backdrop !== '');
+    const fromRails = rails.filter(rail => rail.id !== 'anime-adapted').flatMap((rail) => rail.items.map(asTitle)).filter((title) => title.backdrop !== '');
     const merged = [...(featured !== null ? [featured] : []), ...watching, ...fromRails];
     const seen = new Set<string>();
     return merged.filter((title) => {
@@ -145,8 +166,8 @@ export function Home(_props: ScreenProps): React.JSX.Element {
 
   const displayHero = heroes[slide % Math.max(heroes.length, 1)];
   const catalogRails = useMemo(
-    () => rails.map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0),
-    [rails],
+    () => rails.filter(rail => rail.id !== 'anime-adapted' || (theme === 'anime' && animeScene.id === 'mahoraga')).map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0),
+    [rails, theme, animeScene.id],
   );
 
   useEffect(() => {
@@ -237,6 +258,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
             <h1 className="stage__title">Welcome</h1>
           </div>
         </section>
+        <AnimeControls />
         {launcher}
         <div className="home__shelf">
           <ErrorState
@@ -308,6 +330,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
         </div>
       </section>
 
+      <AnimeControls />
       {launcher}
 
       <HomeShelves
