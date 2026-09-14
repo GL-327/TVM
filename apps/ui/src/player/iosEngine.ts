@@ -33,7 +33,9 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
       const nextBuffering = data['buffering'] === true;
       if (paused !== nextPaused) { paused = nextPaused; events.onPlayState(paused); }
       if (buffering !== nextBuffering) { buffering = nextBuffering; events.onBuffering(buffering); }
-      if (!firstFrame && data['hasFrame'] === true) { firstFrame = true; events.onFirstFrame(); }
+      if (!firstFrame && (data['hasFrame'] === true || (typeof data['position'] === 'number' && data['position'] > 0.2))) {
+        firstFrame = true; events.onFirstFrame();
+      }
     } else if (data.command === 'closed') events.onClosed?.();
     else if (data.command === 'ended') events.onEnded();
     else if (data.command === 'error') events.onError(String(data['message'] ?? 'This source could not be played. Try another source.'));
