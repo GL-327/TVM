@@ -106,9 +106,10 @@ xcodebuild -exportArchive \
 ### Unsigned / ad-hoc CI zip
 
 GitHub Actions `mobile.yml` (macos runner) builds `apps/ui`, copies it into the
-Xcode project, compiles for `iphoneos` with ad-hoc identity `-`, and zips
-`TVM-unsigned.ipa`. That artifact **will not install** until you re-sign it
-(Sideloadly / AltStore / Xcode). `package-unsigned-ipa.sh` is that zip step.
+Xcode project, compiles for `iphoneos` with ad-hoc identity `-`, thins nested
+frameworks to arm64, ad-hoc signs them, and zips `TVM-unsigned.ipa`. That
+artifact **will not install** until you re-sign it (Sideloadly / AltStore /
+Xcode). `package-unsigned-ipa.sh` is that zip step.
 
 On Windows, after Actions has a successful `ios-ipa` run:
 
