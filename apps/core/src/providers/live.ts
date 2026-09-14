@@ -53,6 +53,22 @@ export interface LiveProxyResult {
   acceptRanges?: string | null;
 }
 
+/** Step-by-step result of opening one channel. Never contains the stream URL. */
+export interface LiveDiagnosis {
+  ok: boolean;
+  step: 'resolve' | 'fetch' | 'read' | 'sniff' | 'ok';
+  detail?: string;
+  status?: number;
+  contentType?: string;
+  bytes?: number;
+  looksLikeHls?: boolean;
+  looksLikeMpegTs?: boolean;
+  transport?: string;
+  urlHasExtension?: boolean;
+  typeFromUrl?: string | null;
+  userAgent?: string;
+}
+
 export interface LiveService {
   status(): Promise<LiveStatus>;
   catalog(query: LiveCatalogQuery): Promise<LiveCatalogPage>;
@@ -64,6 +80,7 @@ export interface LiveService {
   setGroupPicks(group: string, picked: boolean): Promise<LiveStatus>;
   play(id: string): Promise<PlaybackResolution>;
   upstreamUrl(id: string): Promise<string | null>;
+  diagnose(id: string): Promise<LiveDiagnosis>;
   proxyChannel(id: string, headers?: Record<string, string>, method?: string): Promise<LiveProxyResult>;
   proxyHop(token: string, headers?: Record<string, string>, method?: string): Promise<LiveProxyResult>;
 }
@@ -624,6 +641,91 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       return resolveUpstream(id);
     },
 
+    /**
+     * What actually happens when this channel is opened.
+     *
+     * "Playback failed" is the same message whether the provider rejected the
+     * subscription, sent HTML instead of video, answered with a codec the
+     * device cannot decode, or was simply unreachable. This runs the real
+     * resolution and one bounded upstream read, then reports each step so the
+     * failure can be named instead of guessed at.
+     *
+     * The URL is never returned: it embeds the subscription credentials.
+     */
+    async diagnose(id: string): Promise<LiveDiagnosis> {
+      const upstream = await resolveUpstream(id);
+      if (upstream === null) return { ok: false, step: 'resolve', detail: 'This channel is not in the current playlist.' };
+
+      const fromUrl = mediaTypeFromUrl(upstream);
+      const report: LiveDiagnosis = {
+        ok: false,
+        step: 'fetch',
+        urlHasExtension: fromUrl !== null,
+        typeFromUrl: fromUrl,
+        userAgent: liveUserAgent(),
+      };
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS * 2);
+      try {
+        const response = await fetchImpl(upstream, {
+          method: 'GET',
+          redirect: 'follow',
+          headers: upstreamHeaders(upstream, undefined, false),
+          signal: controller.signal,
+        });
+        report.status = response.status;
+        report.contentType = response.headers.get('content-type') ?? '';
+        if (!response.ok && response.status !== 206) {
+          report.detail = `The provider answered ${response.status}. A 401 or 403 usually means the subscription, username or password was rejected; a 404 means this channel path is gone.`;
+          return report;
+        }
+        if (response.body === null) {
+          report.step = 'read';
+          report.detail = 'The provider accepted the request but sent no data.';
+          return report;
+        }
+        const reader = response.body.getReader();
+        let head: Uint8Array;
+        try {
+          head = await peekForSniff(reader);
+        } finally {
+          // A live channel never ends. Release the connection rather than read on.
+          controller.abort();
+          try { reader.releaseLock(); } catch { /* already released */ }
+        }
+        report.step = 'sniff';
+        report.bytes = head.byteLength;
+        if (head.byteLength === 0) {
+          report.detail = 'The provider opened the stream but sent no bytes. Some subscriptions allow only one device at a time.';
+          return report;
+        }
+        report.looksLikeHls = looksLikeHlsBytes(head);
+        report.looksLikeMpegTs = looksLikeMpegTs(head);
+        report.transport = report.looksLikeHls ? 'hls' : report.looksLikeMpegTs ? 'ts-live' : 'file';
+        if (!report.looksLikeHls && !report.looksLikeMpegTs) {
+          const text = new TextDecoder('utf-8').decode(head.slice(0, 64)).replace(/[^\x20-\x7e]/g, '.');
+          report.detail = `The first bytes are neither an HLS playlist nor MPEG-TS. The provider may have sent an error page instead of video. First bytes: ${text}`;
+          return report;
+        }
+        report.ok = true;
+        report.step = 'ok';
+        report.detail = report.looksLikeHls
+          ? 'The provider is sending an HLS playlist. This channel should play.'
+          : 'The provider is sending MPEG-TS. This channel should play through the MPEG-TS reader.';
+        return report;
+      } catch (error) {
+        const name = error instanceof Error ? error.name : '';
+        report.step = 'fetch';
+        report.detail = name === 'TimeoutError' || name === 'AbortError'
+          ? 'The provider did not respond in time.'
+          : 'The provider could not be reached at all. Check the host, and that this network is not blocking it.';
+        return report;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+
     async proxyChannel(id: string, headers?: Record<string, string>, method = 'GET'): Promise<LiveProxyResult> {
       const upstream = await resolveUpstream(id);
       if (upstream === null) return { kind: 'error', status: 404, reason: 'not-found' };
@@ -646,6 +748,27 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
+/*
+ * IPTV panels are not websites. A large share of them serve stream endpoints
+ * only to player-shaped clients and answer a browser User-Agent with 403, an
+ * HTML error page, or a silent empty body — which is indistinguishable from a
+ * dead channel once it reaches the player. VLC is what these providers are
+ * built and tested against, so it is the default for live upstreams.
+ *
+ * TVM_LIVE_USER_AGENT overrides it for a provider that wants something else.
+ * Real-Debrid is a normal HTTP host and keeps the browser identity below.
+ */
+const LIVE_UA = 'VLC/3.0.20 LibVLC/3.0.20';
+
+function liveUserAgent(): string {
+  const configured = process.env['TVM_LIVE_USER_AGENT'];
+  return configured !== undefined && configured.trim() !== '' ? configured.trim() : LIVE_UA;
+}
+
+function isRealDebrid(url: string): boolean {
+  return /real-debrid\.com|rdbx\.to|download\d*\.real-debrid/i.test(url);
+}
+
 function upstreamHeaders(
   url: string,
   incoming?: Record<string, string>,
@@ -657,10 +780,13 @@ function upstreamHeaders(
   if (!playlist && range !== null && range !== '') headers.set('Range', range);
   const accept = from.get('accept');
   headers.set('Accept', accept !== null && accept !== '' ? accept : '*/*');
-  const ua = from.get('user-agent');
-  headers.set('User-Agent', ua !== null && ua !== '' ? ua : BROWSER_UA);
-  if (/real-debrid\.com|rdbx\.to|download\d*\.real-debrid/i.test(url)) {
+  if (isRealDebrid(url)) {
+    const ua = from.get('user-agent');
+    headers.set('User-Agent', ua !== null && ua !== '' ? ua : BROWSER_UA);
     headers.set('Referer', 'https://real-debrid.com/');
+  } else {
+    // Deliberately not the viewer's browser UA: see LIVE_UA.
+    headers.set('User-Agent', liveUserAgent());
   }
   return headers;
 }
@@ -833,16 +959,19 @@ async function loadMedia(
       headers,
     });
     if (!response.ok && response.status !== 206) {
-      return { kind: 'error', status: 502, reason: 'unreachable' };
+      // Carry the provider's own status. Collapsing 401/403/404 into one
+      // "unreachable" made a rejected subscription, a wrong path and a dead
+      // host indistinguishable from each other in the player.
+      return { kind: 'error', status: 502, reason: `upstream-${response.status}` };
     }
     const type = response.headers.get('content-type') ?? '';
-    if (response.body === null) return { kind: 'error', status: 502, reason: 'unreachable' };
+    if (response.body === null) return { kind: 'error', status: 502, reason: 'upstream-empty' };
     if (!hintedPlaylist && skipMediaSniff(hintType, headers.has('Range'))) {
       return mediaResult(response, response.body, resolveMediaType(upstream, type, hintType));
     }
     const reader = response.body.getReader();
     const head = await peekForSniff(reader);
-    if (head.byteLength === 0) return { kind: 'error', status: 502, reason: 'unreachable' };
+    if (head.byteLength === 0) return { kind: 'error', status: 502, reason: 'upstream-empty' };
     if (looksLikeHlsBytes(head)) {
       const bytes = await readAllBytes(head, reader);
       const text = new TextDecoder('utf-8').decode(bytes);
@@ -855,7 +984,8 @@ async function loadMedia(
       }
     }
     return mediaResult(response, restreamBytes(head, reader), sniffMediaType(head, type, hintType));
-  } catch {
-    return { kind: 'error', status: 502, reason: 'unreachable' };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : '';
+    return { kind: 'error', status: 502, reason: name === 'TimeoutError' || name === 'AbortError' ? 'upstream-timeout' : 'unreachable' };
   }
 }

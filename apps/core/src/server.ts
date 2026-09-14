@@ -699,6 +699,14 @@ async function handleApi(
     return true;
   }
 
+  // Why a channel will not play, in the provider's own words. Host-only, like
+  // the rest of the live administration routes.
+  if (path.startsWith('/api/live/diagnose/') && request.method === 'GET') {
+    const id = decodeURIComponent(path.slice('/api/live/diagnose/'.length));
+    sendJson(response, 200, await live.diagnose(id));
+    return true;
+  }
+
   if (path.startsWith('/api/live/stream/') && request.method === 'OPTIONS') {
     response.writeHead(204, PROXY_CORS);
     response.end();
