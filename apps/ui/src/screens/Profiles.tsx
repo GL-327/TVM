@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
 import { fieldValue } from '../components/FocusField';
@@ -13,6 +13,7 @@ import {
   type ProfileRegistry,
 } from '../data/profiles';
 import { profileEaster } from '../brand/easterEggs';
+import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -26,6 +27,9 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
   const [name, setName] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [profilesMax, setProfilesMax] = useState(1);
+  const pageRef = useRef<HTMLElement>(null);
+
+  useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   useEffect(() => {
     void Promise.all([fetchProfiles(), fetchPlan()]).then(([next, plan]) => {
@@ -83,7 +87,7 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
   };
 
   return (
-    <main className="page page--profiles">
+    <main ref={pageRef} className="page page--profiles" data-keyboard-fields="">
       <p className="stage__kicker">TVM Stream</p>
       <h1 className="page__heading">Who's watching?</h1>
       <p className="page__lede">Profiles are only for TVM Stream. Continue watching stays on the person you pick.</p>

@@ -27,6 +27,11 @@ const MOVE_EPSILON = 2;
 /** A rail is a horizontal camera; a plain wheel over one should still scroll it. */
 const RAIL_SELECTOR = '.rail__track, [data-wrap="row"]';
 const TOUCH_TAP_SLOP = 8;
+const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
+/** Gap between a focused field and the visual-viewport edge (keyboard). */
+export const FIELD_GAP = 20;
+export const VISUAL_HEIGHT_VAR = '--tvm-visual-height';
+export const VISUAL_TOP_VAR = '--tvm-visual-top';
 
 export function tapShouldActivate(moved: boolean, distance: number, slop = TOUCH_TAP_SLOP): boolean {
   return !moved && Number.isFinite(distance) && distance <= slop;
@@ -34,12 +39,121 @@ export function tapShouldActivate(moved: boolean, distance: number, slop = TOUCH
 
 /** Inputs must receive the real tap so iOS/Android can open the system keyboard. */
 export function isTextEntryTarget(node: EventTarget | null): boolean {
+  if (node == null || typeof Element === 'undefined') return false;
   if (!(node instanceof Element) || typeof node.closest !== 'function') return false;
   try {
-    return node.closest('input, textarea, select, [contenteditable="true"]') !== null;
+    return node.closest(FIELD_SELECTOR) !== null;
   } catch {
     return false;
   }
+}
+
+export function isPhoneNavShell(root: { classList: { contains(name: string): boolean } } = document.documentElement): boolean {
+  if (root.classList.contains('phone-shell') || root.classList.contains('keyboard-open')) return true;
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 47.99rem)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * While a system keyboard is up, D-pad / spatial-nav must not claim the event.
+ * Escape still bubbles so Search and sheets can close. Television remotes keep
+ * arrow-hop out of the field because phone-shell is off.
+ */
+export function navShouldIgnoreKey(event: { key: string; target: EventTarget | null }, phoneShell: boolean): boolean {
+  if (!phoneShell) return false;
+  if (event.key === 'Escape') return false;
+  return isTextEntryTarget(event.target);
+}
+
+/** Extra scrollTop so the field sits inside the visual viewport above the keyboard. */
+export function fieldScrollDelta(
+  fieldTop: number,
+  fieldBottom: number,
+  visibleTop: number,
+  visibleBottom: number,
+  gap = FIELD_GAP,
+): number {
+  if (![fieldTop, fieldBottom, visibleTop, visibleBottom, gap].every(Number.isFinite)) return 0;
+  let delta = 0;
+  if (fieldBottom > visibleBottom - gap) delta += fieldBottom - (visibleBottom - gap);
+  const nextTop = fieldTop - delta;
+  if (nextTop < visibleTop + gap) delta -= visibleTop + gap - nextTop;
+  return delta;
+}
+
+/** Undo iOS layout-viewport pan so the page is not translated off-screen. */
+export function pinLayoutViewport(): void {
+  try {
+    if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
+  } catch {
+    // test stubs
+  }
+}
+
+export function publishVisualViewport(root: HTMLElement = document.documentElement): void {
+  try {
+    const vv = window.visualViewport;
+    const height = vv?.height ?? window.innerHeight;
+    const top = vv?.offsetTop ?? 0;
+    if (!Number.isFinite(height) || !Number.isFinite(top)) return;
+    root.style?.setProperty?.(VISUAL_HEIGHT_VAR, `${Math.max(0, Math.round(height))}px`);
+    root.style?.setProperty?.(VISUAL_TOP_VAR, `${Math.max(0, Math.round(top))}px`);
+  } catch {
+    // test stubs
+  }
+}
+
+/** Scroll a focused field into the visual viewport above the software keyboard. */
+export function revealFieldAboveKeyboard(field: HTMLElement): void {
+  pinLayoutViewport();
+  publishVisualViewport();
+  const vv = window.visualViewport;
+  const visibleTop = vv?.offsetTop ?? 0;
+  const visibleBottom = vv != null ? vv.offsetTop + vv.height : window.innerHeight;
+  const box = field.getBoundingClientRect();
+  const extra = fieldScrollDelta(box.top, box.bottom, visibleTop, visibleBottom);
+  if (extra === 0) return;
+  const scroller = nearestScrollable(field, 'y');
+  if (scroller !== null) {
+    scroller.scrollTop += extra;
+    return;
+  }
+  try {
+    field.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  } catch {
+    // ignore
+  }
+}
+
+/** Keep every text field on `host` visible while the software keyboard is open. */
+export function bindKeyboardFields(host: ParentNode | null | undefined): () => void {
+  if (host == null) return () => undefined;
+  const sync = (): void => {
+    publishVisualViewport();
+    pinLayoutViewport();
+    const active = document.activeElement;
+    if (typeof HTMLElement === 'undefined' || !(active instanceof HTMLElement) || !isTextEntryTarget(active)) return;
+    if (typeof host.contains === 'function' && !host.contains(active)) return;
+    revealFieldAboveKeyboard(active);
+  };
+  const onFocusIn = (event: Event): void => {
+    if (!isTextEntryTarget(event.target)) return;
+    window.setTimeout(sync, 50);
+  };
+  host.addEventListener('focusin', onFocusIn);
+  window.addEventListener('resize', sync);
+  window.visualViewport?.addEventListener('resize', sync);
+  window.visualViewport?.addEventListener('scroll', sync);
+  sync();
+  return () => {
+    host.removeEventListener('focusin', onFocusIn);
+    window.removeEventListener('resize', sync);
+    window.visualViewport?.removeEventListener('resize', sync);
+    window.visualViewport?.removeEventListener('scroll', sync);
+  };
 }
 
 function isMouse(event: PointerEvent): boolean {
@@ -277,8 +391,18 @@ export function startPointerInput(): () => void {
     animate(page, 'y', wheelTarget(page.scrollTop, scrollTarget(page, 'y'), step));
   };
 
-  // Any remote/keyboard press means the viewer is back on the couch.
-  const onKeyDown = (): void => hideCursor();
+  // Any remote/keyboard press means the viewer is back on the couch —
+  // except typing in a field, which must keep its keys and the caret.
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (navShouldIgnoreKey(event, isPhoneNavShell())) {
+      event.stopPropagation();
+      return;
+    }
+    if (isTextEntryTarget(event.target)) return;
+    hideCursor();
+  };
+
+  const stopFields = bindKeyboardFields(document);
 
   document.addEventListener('pointermove', onPointerMove, { passive: true });
   document.addEventListener('pointerdown', onPointerDown, true);
@@ -286,16 +410,17 @@ export function startPointerInput(): () => void {
   document.addEventListener('pointercancel', onPointerCancel, true);
   document.addEventListener('click', onClick, true);
   document.addEventListener('wheel', onWheel, { passive: false });
-  window.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keydown', onKeyDown);
 
   return () => {
     clearHover();
+    stopFields();
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('pointercancel', onPointerCancel, true);
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('wheel', onWheel);
-    window.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keydown', onKeyDown);
   };
 }

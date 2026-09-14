@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import TVM
 
@@ -35,5 +36,46 @@ final class ConnectionTests: XCTestCase {
         XCTAssertFalse(connection.isSameOrigin(URL(string: "https://tvm.example.evil.example/")!))
         XCTAssertFalse(connection.isSameOrigin(URL(string: "https://user@tvm.example/")!))
         XCTAssertEqual(connection.sessionURL.absoluteString, "https://tvm.example/api/lan/session")
+    }
+
+    func testIPhoneOrientationsIncludePortraitAndLandscape() {
+        let orientations = Bundle(for: TVMLocalCore.self)
+            .object(forInfoDictionaryKey: "UISupportedInterfaceOrientations") as? [String] ?? []
+        XCTAssertTrue(orientations.contains("UIInterfaceOrientationPortrait"), "got \(orientations)")
+        XCTAssertTrue(orientations.contains("UIInterfaceOrientationLandscapeLeft"), "got \(orientations)")
+        XCTAssertTrue(orientations.contains("UIInterfaceOrientationLandscapeRight"), "got \(orientations)")
+        XCTAssertFalse(orientations.isEmpty)
+    }
+
+    func testIPadOrientationsIncludeAllFour() {
+        let orientations = Bundle(for: TVMLocalCore.self)
+            .object(forInfoDictionaryKey: "UISupportedInterfaceOrientations~ipad") as? [String]
+            ?? Bundle(for: TVMLocalCore.self)
+            .object(forInfoDictionaryKey: "UISupportedInterfaceOrientations") as? [String]
+            ?? []
+        for name in [
+            "UIInterfaceOrientationPortrait",
+            "UIInterfaceOrientationPortraitUpsideDown",
+            "UIInterfaceOrientationLandscapeLeft",
+            "UIInterfaceOrientationLandscapeRight",
+        ] {
+            XCTAssertTrue(orientations.contains(name), "iPad missing \(name) in \(orientations)")
+        }
+    }
+
+    func testKeyboardInsetResetsWhenHiddenAndDoesNotShrinkTheChrome() {
+        let window = CGSize(width: 390, height: 844)
+        XCTAssertEqual(TVMViewport.webViewSize(in: window), window)
+        let leftover = TVMViewport.fittedSize(in: CGSize(width: 390, height: 20))
+        XCTAssertLessThan(leftover.height, 30, "16:9-fitting a keyboard leftover is the 20px-strip bug")
+        XCTAssertGreaterThan(TVMViewport.webViewSize(in: window).height, leftover.height)
+
+        let view = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let keyboard = CGRect(x: 0, y: 508, width: 390, height: 336)
+        XCTAssertEqual(TVMKeyboardLayout.overlapHeight(keyboardFrame: keyboard, viewBounds: view), 336)
+        XCTAssertEqual(TVMKeyboardLayout.cssInset(overlap: 336, keyboardVisible: true), 336)
+        XCTAssertEqual(TVMKeyboardLayout.cssInset(overlap: 336, keyboardVisible: false), 0)
+        XCTAssertEqual(TVMKeyboardLayout.cssInset(overlap: 0, keyboardVisible: true), 0)
+        XCTAssertEqual(TVMKeyboardLayout.webViewContentInset, .zero)
     }
 }

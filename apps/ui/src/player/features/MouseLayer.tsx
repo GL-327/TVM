@@ -120,6 +120,25 @@ export function isVideoToggleTarget(target: EventTarget | null): boolean {
   return !isInteractiveChrome(target);
 }
 
+const STAGE_SEL = ['.player__stage', '.player__video', '[data-player-stage]', '[data-player-video]', 'video'].join(',');
+
+/** Horizontal drag on the picture, not chrome, starts a canvas seek. */
+export const CANVAS_DRAG_SEEK_PX = 16;
+
+export function isStageTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(STAGE_SEL) !== null;
+}
+
+export function isCanvasDrag(dx: number, dy: number, threshold = CANVAS_DRAG_SEEK_PX): boolean {
+  if (![dx, dy, threshold].every(Number.isFinite)) return false;
+  return Math.abs(dx) >= threshold && Math.abs(dx) >= Math.abs(dy);
+}
+
+export function canvasSeekRect(host: HTMLElement): Pick<DOMRect, 'left' | 'width'> {
+  const stage = host.querySelector<HTMLElement>(STAGE_SEL);
+  return (stage ?? host).getBoundingClientRect();
+}
+
 export function revealPlayerChrome(): void {
   window.dispatchEvent(new CustomEvent('tvm:user-activity'));
 }
@@ -204,6 +223,8 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   let idleTimer: number | null = null;
   let priorFocus: HTMLElement | null = null;
   let lastPointerType = 'mouse';
+  let canvasDrag: { pointerId: number; startX: number; startY: number; seeking: boolean } | null = null;
+  let suppressClick = false;
 
   const hideCursor = (): void => {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -237,6 +258,15 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   };
 
   const onPointerMove = (event: PointerEvent): void => {
+    if (canvasDrag !== null && event.pointerId === canvasDrag.pointerId) {
+      const dx = event.clientX - canvasDrag.startX;
+      const dy = event.clientY - canvasDrag.startY;
+      if (!canvasDrag.seeking && isCanvasDrag(dx, dy)) canvasDrag.seeking = true;
+      if (canvasDrag.seeking) {
+        seekPlayerToRatio(host, progressRatio(event.clientX, canvasSeekRect(host)), bindings);
+        return;
+      }
+    }
     if (event.pointerType === 'touch') return;
     pokeCursor();
     reveal();
@@ -258,11 +288,28 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
       return;
     }
 
+    if (isStageTarget(event.target)) {
+      canvasDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, seeking: false };
+    }
+
     retainRemoteFocus();
+  };
+
+  const onPointerUp = (event: PointerEvent): void => {
+    if (canvasDrag === null || event.pointerId !== canvasDrag.pointerId) return;
+    if (canvasDrag.seeking) suppressClick = true;
+    canvasDrag = null;
   };
 
   const onClick = (event: MouseEvent): void => {
     if (event.button !== 0 || !host.contains(event.target as Node)) return;
+
+    if (suppressClick) {
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
 
     if (isSkipRecapTarget(event.target)) {
       // FocusButton already wires onClick → skip. Do not stopPropagation or the
@@ -298,6 +345,8 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   host.addEventListener('pointermove', onPointerMove);
   host.addEventListener('pointerenter', onPointerMove);
   host.addEventListener('pointerdown', onPointerDown, true);
+  host.addEventListener('pointerup', onPointerUp, true);
+  host.addEventListener('pointercancel', onPointerUp, true);
   host.addEventListener('click', onClick, true);
   window.addEventListener('keydown', hideCursor);
 
@@ -306,6 +355,8 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
     host.removeEventListener('pointermove', onPointerMove);
     host.removeEventListener('pointerenter', onPointerMove);
     host.removeEventListener('pointerdown', onPointerDown, true);
+    host.removeEventListener('pointerup', onPointerUp, true);
+    host.removeEventListener('pointercancel', onPointerUp, true);
     host.removeEventListener('click', onClick, true);
     window.removeEventListener('keydown', hideCursor);
     host.classList.remove('player--mouse-idle', 'player--mouse-active');

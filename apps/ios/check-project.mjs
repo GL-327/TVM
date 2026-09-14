@@ -344,9 +344,35 @@ if (info !== null) {
       `${key} disables transport security far beyond the private LAN this app needs`);
   }
 
-  check('Info.plist supports portrait and landscape',
-    info.includes('UIInterfaceOrientationPortrait') && info.includes('UIInterfaceOrientationLandscapeLeft'),
-    'the phone client is used both ways');
+  function plistStringArray(text, key) {
+    const match = new RegExp(`<key>${key}</key>\\s*<array>([\\s\\S]*?)</array>`).exec(text);
+    if (match === null) return [];
+    return [...match[1].matchAll(/<string>([^<]+)<\/string>/g)].map((item) => item[1]);
+  }
+  const iphoneOrientations = plistStringArray(info, 'UISupportedInterfaceOrientations');
+  const ipadOrientations = plistStringArray(info, 'UISupportedInterfaceOrientations~ipad');
+  check('iPhone orientations include portrait and landscape',
+    iphoneOrientations.includes('UIInterfaceOrientationPortrait') &&
+    iphoneOrientations.includes('UIInterfaceOrientationLandscapeLeft') &&
+    iphoneOrientations.includes('UIInterfaceOrientationLandscapeRight'),
+    `iPhone must not be landscape-only; got ${iphoneOrientations.join(', ') || 'none'}`);
+  check('iPhone is not locked to landscape',
+    iphoneOrientations.includes('UIInterfaceOrientationPortrait'),
+    'vertical rotation requires UIInterfaceOrientationPortrait on iPhone');
+  check('iPad orientations include portrait, upside-down and landscape',
+    ipadOrientations.includes('UIInterfaceOrientationPortrait') &&
+    ipadOrientations.includes('UIInterfaceOrientationPortraitUpsideDown') &&
+    ipadOrientations.includes('UIInterfaceOrientationLandscapeLeft') &&
+    ipadOrientations.includes('UIInterfaceOrientationLandscapeRight'),
+    `iPad must keep all four; got ${ipadOrientations.join(', ') || 'none'}`);
+}
+
+if (pbx !== null) {
+  check('project.pbxproj iPhone orientations include Portrait and landscape',
+    /INFOPLIST_KEY_UISupportedInterfaceOrientations\s*=\s*"[^"]*UIInterfaceOrientationPortrait/.test(pbx) &&
+    /INFOPLIST_KEY_UISupportedInterfaceOrientations\s*=\s*"[^"]*UIInterfaceOrientationLandscapeLeft/.test(pbx) &&
+    /INFOPLIST_KEY_UISupportedInterfaceOrientations\s*=\s*"[^"]*UIInterfaceOrientationLandscapeRight/.test(pbx),
+    'project build settings must not lock the phone to landscape');
 }
 
 const privacy = read(join(ROOT, 'TVM', 'PrivacyInfo.xcprivacy'));
@@ -554,12 +580,30 @@ check('the webview never auto-insets its own scroll view',
   'UIKit insetting fights the inner page cameras and breaks 100vw');
 check('the webview dismisses the keyboard interactively',
   webView.includes('keyboardDismissMode = .interactive'));
-check('the webview publishes keyboard occlusion to --tvm-keyboard-inset',
-  webView.includes('--tvm-keyboard-inset') && webView.includes('visualViewport') &&
+check('the webview publishes keyboard occlusion to --tvm-keyboard and --tvm-keyboard-inset',
+  webView.includes('--tvm-keyboard') && webView.includes('--tvm-keyboard-inset') &&
+  webView.includes('visualViewport') &&
   webView.includes('keyboardWillChangeFrameNotification'),
   'Search, tokens and checkout fields must scroll above the iOS keyboard');
+check('the webview resets the keyboard inset when the keyboard hides',
+  webView.includes('keyboardWillHideNotification') &&
+  webView.includes('__tvmKeyboardInset'),
+  'hiding the keyboard must clear --tvm-keyboard so the page is not left inset');
 check('the webview lifts a focused field with scrollIntoView',
   webView.includes('scrollIntoView'));
+check('the webview host pins to the window, not the keyboard layout guide',
+  webView.includes('additionalSafeAreaInsets') &&
+  webView.includes('keyboardLayoutGuide') &&
+  webView.includes('bottomAnchor.constraint(equalTo: view.bottomAnchor)'),
+  'pinning to keyboardLayoutGuide or extra safe-area insets shrinks the UI into a strip');
+check('the player shell ignores keyboard safe-area compression',
+  appSource.includes('ignoresSafeArea(.keyboard)') &&
+  !/fittedSize\(in:\s*geometry\.size\)/.test(appSource),
+  'a 16:9 fit of the leftover height above the keyboard is the 20px-strip bug');
+check('ConnectionTests assert portrait+landscape and visualViewport/keyboard handling',
+  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('testIPhoneOrientationsIncludePortraitAndLandscape') &&
+  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('testKeyboardInsetResetsWhenHiddenAndDoesNotShrinkTheChrome'),
+  'XCTest must lock the orientation list and the keyboard inset reset');
 
 const mainUi = read(join(REPO, 'apps', 'ui', 'src', 'main.tsx')) ?? '';
 check('the shared UI starts pointer input for tap-to-select',

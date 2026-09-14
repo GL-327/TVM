@@ -4,6 +4,7 @@ import {
   isPhoneViewport,
   keyboardOcclusionPx,
   KEYBOARD_OPEN_PX,
+  phoneOrientation,
 } from './phoneViewport';
 
 describe('phone viewport keyboard math', () => {
@@ -47,5 +48,13 @@ describe('phone viewport shell', () => {
     expect(isPhoneViewport(false, true, true)).toBe(true);
     expect(isPhoneViewport(false, false, false)).toBe(false);
     expect(isPhoneViewport(false, true, false)).toBe(false);
+  });
+
+  it('allows portrait and landscape from the window size', () => {
+    expect(phoneOrientation(390, 844)).toBe('portrait');
+    expect(phoneOrientation(430, 932)).toBe('portrait');
+    expect(phoneOrientation(844, 390)).toBe('landscape');
+    expect(phoneOrientation(932, 430)).toBe('landscape');
+    expect(phoneOrientation(Number.NaN, 800)).toBe('portrait');
   });
 });
