@@ -67,13 +67,13 @@ const CSS = `
 
 .tvm-progress__time {
   min-width: 4.5rem;
-  color: var(--tvm-text);
+  color: var(--player-ink, var(--tvm-text));
   font-size: var(--tvm-font-size-body-lg);
-  font-weight: 680;
+  font-weight: 720;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   line-height: var(--tvm-line-height-tight);
-  text-shadow: 0 0.12rem 0.55rem rgba(0, 0, 0, 0.65);
+  text-shadow: var(--player-shadow, 0 0.12rem 0.55rem rgba(0, 0, 0, 0.65));
   white-space: nowrap;
 }
 
@@ -84,7 +84,7 @@ const CSS = `
 .tvm-progress__remain {
   display: block;
   margin-top: 0.2rem;
-  color: var(--tvm-text-muted);
+  color: var(--player-ink-muted, var(--tvm-text-muted));
   font-size: var(--tvm-font-size-caption);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -118,19 +118,10 @@ const CSS = `
 .tvm-progress__track {
   position: relative;
   display: block;
-  height: 0.55rem;
+  height: 0.52rem;
   border-radius: var(--tvm-radius-pill);
-  background: color-mix(in srgb, #fff 18%, transparent);
-  box-shadow: inset 0 0 0 0.06rem rgba(255, 255, 255, 0.08);
-  transition:
-    height var(--tvm-motion-fast) var(--tvm-motion-ease),
-    background var(--tvm-motion-fast) var(--tvm-motion-ease);
-}
-
-.tvm-progress__control[data-focused='true'] .tvm-progress__track,
-.tvm-progress__control[data-scrubbing='true'] .tvm-progress__track {
-  height: 0.82rem;
-  background: color-mix(in srgb, #fff 26%, transparent);
+  background: var(--player-track, color-mix(in srgb, #fff 22%, transparent));
+  box-shadow: inset 0 0 0 0.06rem rgba(255, 255, 255, 0.1);
 }
 
 .tvm-progress__buffered,
@@ -155,39 +146,35 @@ const CSS = `
 .tvm-progress__played {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--tvm-mark) 82%, #fff) 0%,
-    var(--tvm-mark) 100%
+    color-mix(in srgb, var(--player-fill, var(--tvm-mark)) 82%, #fff) 0%,
+    var(--player-fill, var(--tvm-mark)) 100%
   );
-  box-shadow: 0 0 0.85rem var(--tvm-mark-glow);
+  box-shadow: 0 0 0.9rem var(--player-fill-glow, var(--tvm-mark-glow));
 }
 
 .tvm-progress__knob {
   position: absolute;
   top: 50%;
   z-index: 1;
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
   border-radius: 50%;
   background: #fff;
   box-shadow:
-    0 0 0 0.16rem color-mix(in srgb, var(--tvm-mark) 70%, transparent),
-    0 0.25rem 0.7rem rgba(0, 0, 0, 0.45);
+    0 0 0 0.18rem color-mix(in srgb, var(--player-fill, var(--tvm-mark)) 72%, transparent),
+    0 0.28rem 0.8rem rgba(0, 0, 0, 0.48);
   transform: translate(-50%, -50%);
   pointer-events: none;
-  transition:
-    width var(--tvm-motion-fast) var(--tvm-motion-ease),
-    height var(--tvm-motion-fast) var(--tvm-motion-ease),
-    box-shadow var(--tvm-motion-fast) var(--tvm-motion-ease);
+  transition: transform var(--tvm-motion-fast) var(--tvm-motion-ease);
 }
 
 .tvm-progress__control[data-focused='true'] .tvm-progress__knob,
 .tvm-progress__control[data-scrubbing='true'] .tvm-progress__knob {
-  width: 1.7rem;
-  height: 1.7rem;
+  transform: translate(-50%, -50%) scale(1.22);
   box-shadow:
-    0 0 0 var(--tvm-focus-ring-width) var(--tvm-focus-ring-color),
+    0 0 0 var(--tvm-focus-ring-width) var(--player-focus, var(--tvm-focus-ring-color)),
     0 0 0 calc(var(--tvm-focus-ring-width) + var(--tvm-focus-ring-offset))
-      color-mix(in srgb, var(--tvm-mark) 55%, transparent),
+      color-mix(in srgb, var(--player-fill, var(--tvm-mark)) 55%, transparent),
     0 0.35rem 1rem rgba(0, 0, 0, 0.5);
 }
 
@@ -221,13 +208,13 @@ const CSS = `
   letter-spacing: 0.12em;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tvm-progress__track,
-  .tvm-progress__buffered,
-  .tvm-progress__played,
-  .tvm-progress__knob {
-    transition: none;
-  }
+:root[data-motion='reduced'] .tvm-progress__track,
+:root[data-motion='reduced'] .tvm-progress__buffered,
+:root[data-motion='reduced'] .tvm-progress__played,
+:root[data-motion='reduced'] .tvm-progress__knob,
+:root[data-perf='on'] .tvm-progress__track,
+:root[data-perf='on'] .tvm-progress__knob {
+  transition: none;
 }
 `;
 

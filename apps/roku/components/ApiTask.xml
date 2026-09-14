@@ -6,6 +6,8 @@
     <field id="requestMethod" type="string" value="GET" />
     <field id="requestBody" type="string" />
     <field id="profileId" type="string" />
+    <field id="authToken" type="string" />
+    <field id="timeoutMs" type="integer" value="20000" />
     <field id="ok" type="boolean" />
     <field id="statusCode" type="integer" />
     <field id="json" type="assocarray" />

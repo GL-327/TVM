@@ -399,15 +399,14 @@ const NEXT_UP_STYLES = `
   display: flex;
   width: min(34rem, 46vw);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--tvm-text, #fff) 16%, transparent);
+  border: 1px solid var(--player-chip-border, color-mix(in srgb, var(--tvm-text, #fff) 16%, transparent));
   border-radius: 1rem;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--tvm-bg, #101018) 72%, transparent), color-mix(in srgb, #050508 88%, transparent));
+    linear-gradient(180deg, color-mix(in srgb, var(--player-chip, var(--tvm-bg, #101018)) 82%, transparent), color-mix(in srgb, #050508 88%, transparent));
   box-shadow:
     0 1.2rem 2.8rem rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-  backdrop-filter: blur(18px);
-  color: var(--tvm-text, #fff);
+  color: var(--player-ink, var(--tvm-text, #fff));
   animation: next-up-in 420ms var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 .next-up__drain {
@@ -416,8 +415,8 @@ const NEXT_UP_STYLES = `
   width: 100%;
   height: 0.16rem;
   transform-origin: left center;
-  background: var(--tvm-accent-strong, #e50914);
-  box-shadow: 0 0 0.7rem color-mix(in srgb, var(--tvm-accent-strong, #e50914) 70%, transparent);
+  background: var(--player-fill, var(--tvm-accent-strong, var(--tvm-mark)));
+  box-shadow: 0 0 0.7rem var(--player-fill-glow, color-mix(in srgb, var(--tvm-accent-strong, var(--tvm-mark)) 70%, transparent));
 }
 .next-up__still {
   display: block;
@@ -447,10 +446,10 @@ const NEXT_UP_STYLES = `
   align-items: baseline;
   justify-content: space-between;
   margin: 0;
-  color: var(--tvm-accent-strong, #e50914);
-  font-size: 0.72rem;
-  font-weight: 750;
-  letter-spacing: 0.14em;
+  color: var(--player-fill, var(--tvm-accent-strong, var(--tvm-mark)));
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 .next-up__remain {
@@ -516,8 +515,9 @@ const NEXT_UP_STYLES = `
     transform: translate3d(0, 0, 0);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .next-up { animation: none; }
+:root[data-motion='reduced'] .next-up,
+:root[data-perf='on'] .next-up {
+  animation: none;
 }
 `;
 

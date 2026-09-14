@@ -41,7 +41,13 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
       return;
     }
     if (next !== '') {
-      navigate.replace(next);
+      const nextParams = params['nextParams'];
+      navigate.replace(
+        next,
+        typeof nextParams === 'object' && nextParams !== null
+          ? { params: nextParams as Record<string, unknown> }
+          : undefined,
+      );
       return;
     }
     navigate.pop();

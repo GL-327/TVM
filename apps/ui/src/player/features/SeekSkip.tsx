@@ -94,9 +94,6 @@ const CSS = `
   35% { opacity: 1; transform: translateY(-50%) scale(1.04); }
   to { opacity: 1; transform: translateY(-50%) scale(1); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .player-seek-skip__burst { animation: none; opacity: 1; transform: translateY(-50%); }
-}
 `;
 
 export interface SeekSkipProps {

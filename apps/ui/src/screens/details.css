@@ -398,13 +398,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .details__backdrop img,
-  .details__poster-stage,
-  .details__shelf {
-    transform: none;
-  }
-}
 
 [data-theme='glass'] .details .tvm-button,
 [data-theme='glass'] .details .tvm-button--glass {

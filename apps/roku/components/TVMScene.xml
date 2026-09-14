@@ -28,7 +28,7 @@
         </Animation>
         <Animation id="sceneMidAnim" duration="41" repeat="true" easeFunction="inOutQuad" optional="true">
           <FloatFieldInterpolator id="sceneMidOp" key="[0.0, 0.5, 1.0]" keyValue="[0.14, 0.28, 0.14]" fieldToInterp="sceneMid.opacity" />
-          <Vector2DFieldInterpolator id="sceneMidMove" key="[0.0, 1.0]" keyValue="[[-180.0, -140.0], [-40.0, 70.0]]" fieldToInterp="sceneMid.translation" />
+          <Vector2DFieldInterpolator id="sceneMidMove" key="[0.0, 0.5, 1.0]" keyValue="[[-180.0, -140.0], [-40.0, 70.0], [-180.0, -140.0]]" fieldToInterp="sceneMid.translation" />
         </Animation>
         <Animation id="sceneNearAnim" duration="53" repeat="true" easeFunction="inOutQuad" optional="true">
           <FloatFieldInterpolator id="sceneNearOp" key="[0.0, 0.5, 1.0]" keyValue="[0.18, 0.32, 0.18]" fieldToInterp="sceneNear.opacity" />

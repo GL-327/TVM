@@ -1,0 +1,117 @@
+name: Mobile packages
+
+# Debug APK (Linux + Android SDK) and an unsigned/ad-hoc IPA zip (macOS +
+# Xcode). Neither artifact is a store release. The IPA will not install on a
+# phone until it is re-signed with an Apple team (Sideloadly, AltStore, or Xcode).
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to build
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+        default: all
+  push:
+    paths:
+      - "apps/android/**"
+      - "apps/ios/**"
+      - "apps/core/src/lanSessions.ts"
+      - "apps/core/src/server.ts"
+      - "apps/ui/src/theme/mobile.css"
+      - "apps/ui/src/theme/apply.ts"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "apps/android/**"
+      - "apps/ios/**"
+      - "apps/core/src/lanSessions.ts"
+      - "apps/core/src/server.ts"
+      - "apps/ui/src/theme/mobile.css"
+      - "apps/ui/src/theme/apply.ts"
+      - ".github/workflows/mobile.yml"
+
+jobs:
+  android-apk:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'ios'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip when the Android tree is not in this commit
+        id: android
+        run: |
+          if [ -f apps/android/settings.gradle.kts ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "apps/android is not in this tree; skipping APK."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.android.outputs.present == 'true'
+        with:
+          node-version: 22
+      - run: node apps/android/check-project.mjs
+        if: steps.android.outputs.present == 'true'
+      - uses: actions/setup-java@v4
+        if: steps.android.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        if: steps.android.outputs.present == 'true'
+      - name: Assemble debug APK
+        if: steps.android.outputs.present == 'true'
+        working-directory: apps/android
+        run: chmod +x gradlew && ./gradlew assembleDebug testDebugUnitTest --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: steps.android.outputs.present == 'true'
+        with:
+          name: tvm-android-debug
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  ios-ipa:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'android'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Xcode project (structure only — this commit may not include Core/UI)
+        run: node apps/ios/check-project.mjs
+        env:
+          TVM_IOS_STRUCT_ONLY: "1"
+      - name: Compile for iOS Simulator
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project TVM.xcodeproj -scheme TVM \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/sim \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Compile ad-hoc device app and zip IPA
+        working-directory: apps/ios
+        run: |
+          # Ad-hoc identity "-" produces a real iphoneos TVM.app. It is not
+          # installable until re-signed. CODE_SIGNING_ALLOWED=NO is omitted so
+          # the ad-hoc signer can stamp the binary.
+          xcodebuild -project TVM.xcodeproj -scheme TVM \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            build
+          chmod +x package-unsigned-ipa.sh
+          ./package-unsigned-ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvm-ios-unsigned-ipa
+          path: apps/ios/build/TVM-unsigned.ipa
+          if-no-files-found: error

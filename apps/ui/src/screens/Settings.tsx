@@ -8,7 +8,7 @@ import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { applyTheme, readStoredTheme } from '../theme/apply';
 import { THEMES, type ThemeId } from '../theme/registry';
-import { applyMotionPreference, readMotionPreference } from '../theme/motion';
+import { applyMotionPreference, applyPerformanceMode, readMotionPreference, readPerformanceMode } from '../theme/motion';
 
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
   const [motion, setMotion] = useState(readMotionPreference);
+  const [performance, setPerformance] = useState(readPerformanceMode);
 
   useEffect(() => {
     void fetchLive()
@@ -60,12 +61,28 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </div>
       </header>
       <div className="settings-list" data-wrap="y">
-        <FocusButton id="privacy" className="settings-row" detail="Terms, data export and deletion" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
-        <FocusButton id="motion" className="settings-row" detail={motion === 'reduced' ? 'Reduced · calmer transitions' : 'Automatic · follows device setting'} onSelect={() => {
-          const next = motion === 'reduced' ? 'auto' : 'reduced';
-          applyMotionPreference(next);
-          setMotion(next);
-        }}>Motion</FocusButton>
+        <section className="settings-group">
+          <h2 className="settings-group__title">Picture</h2>
+          <FocusButton id="motion" className="settings-row" detail={motion === 'reduced' ? 'Reduced · freeze decorative loops' : 'Auto · Retro and UI animate'} onSelect={() => {
+            const next = motion === 'reduced' ? 'auto' : 'reduced';
+            applyMotionPreference(next);
+            setMotion(next);
+          }}>Motion</FocusButton>
+          <FocusButton
+            id="performance"
+            className="settings-row"
+            detail={performance ? 'On · hide Retro loops, snap motion' : 'Off · Retro and UI keep animating'}
+            onSelect={() => {
+              const next = !performance;
+              applyPerformanceMode(next);
+              setPerformance(next);
+            }}
+          >
+            Performance mode
+          </FocusButton>
+        </section>
+        <section className="settings-group">
+          <h2 className="settings-group__title">Look</h2>
         {THEMES.map((spec) => {
           const locked = spec.premium === true && !themeUnlocked(plan, spec.id);
           return (
@@ -94,38 +111,6 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
             </FocusButton>
           );
         })}
-        <FocusButton
-          id="plan"
-          className="settings-row"
-          detail={`${plan.name} · ${plan.price}`}
-          onSelect={() => navigate.push('plans')}
-        >
-          Plan
-        </FocusButton>
-        {plan.liveTvOptional ? (
-          <FocusButton
-            id="live-tv-addon"
-            className="settings-row"
-            detail={plan.liveTv ? `On · ${plan.price}` : `Off · ${plan.basePrice}`}
-            onSelect={() => {
-              void saveLiveTv(!plan.liveTv)
-                .then((status) => {
-                  applyPlanClass(status);
-                  setPlan(status);
-                })
-                .catch((error: unknown) => {
-                  navigate.pushModal('notice', {
-                    params: {
-                      title: 'Live TV',
-                      body: error instanceof Error ? error.message : 'Live TV was not updated.',
-                    },
-                  });
-                });
-            }}
-          >
-            Live TV pack
-          </FocusButton>
-        ) : null}
         {(plan.styles.length > 0 ? plan.styles : FALLBACK_PLAN.styles).map((style) => {
           const unlocked = styleUnlocked(plan, style.id as StyleId);
           return (
@@ -160,6 +145,42 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
             </FocusButton>
           );
         })}
+        </section>
+        <section className="settings-group">
+          <h2 className="settings-group__title">Account</h2>
+        <FocusButton id="privacy" className="settings-row" detail="Terms, data export and deletion" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
+        <FocusButton
+          id="plan"
+          className="settings-row"
+          detail={`${plan.name} · ${plan.price}`}
+          onSelect={() => navigate.push('plans')}
+        >
+          Plan
+        </FocusButton>
+        {plan.liveTvOptional ? (
+          <FocusButton
+            id="live-tv-addon"
+            className="settings-row"
+            detail={plan.liveTv ? `On · ${plan.price}` : `Off · ${plan.basePrice}`}
+            onSelect={() => {
+              void saveLiveTv(!plan.liveTv)
+                .then((status) => {
+                  applyPlanClass(status);
+                  setPlan(status);
+                })
+                .catch((error: unknown) => {
+                  navigate.pushModal('notice', {
+                    params: {
+                      title: 'Live TV',
+                      body: error instanceof Error ? error.message : 'Live TV was not updated.',
+                    },
+                  });
+                });
+            }}
+          >
+            Live TV pack
+          </FocusButton>
+        ) : null}
         <FocusButton
           id="developer"
           className="settings-row"
@@ -174,6 +195,9 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton id="realdebrid" className="settings-row" detail="Saved on this machine" onSelect={() => navigate.push('realdebrid')}>
           Real-Debrid
         </FocusButton>
+        </section>
+        <section className="settings-group">
+          <h2 className="settings-group__title">Device</h2>
         <FocusButton
           id="network"
           className="settings-row"
@@ -238,6 +262,9 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton id="diagnostics" className="settings-row" onSelect={() => navigate.pushModal('diagnostics')}>
           Diagnostics
         </FocusButton>
+        </section>
+        <section className="settings-group">
+          <h2 className="settings-group__title">Maintenance</h2>
         <FocusButton
           id="clear-cache"
           className="settings-row"
@@ -288,6 +315,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         >
           Restart
         </FocusButton>
+        </section>
       </div>
     </main>
   );

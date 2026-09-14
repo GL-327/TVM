@@ -2,9 +2,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAxisHopQueue, AXIS_HOP_MAX_PENDING } from './hopQueue';
+import { acceptHeldHop, createAxisHopQueue, AXIS_HOP_MAX_PENDING, HELD_HOP_INTERVAL_MS } from './hopQueue';
 
 const dir = dirname(fileURLToPath(import.meta.url));
+
+describe('held-key pacing', () => {
+  it('never delays a discrete press', () => {
+    expect(acceptHeldHop(false, 10, 5)).toBe(true);
+    expect(acceptHeldHop(false, 0, 0)).toBe(true);
+  });
+
+  it('spaces auto-repeat hops to the camera settle time', () => {
+    expect(acceptHeldHop(true, 1000, 1000 - HELD_HOP_INTERVAL_MS + 1)).toBe(false);
+    expect(acceptHeldHop(true, 1000, 1000 - HELD_HOP_INTERVAL_MS)).toBe(true);
+    expect(HELD_HOP_INTERVAL_MS).toBeGreaterThanOrEqual(80);
+    expect(HELD_HOP_INTERVAL_MS).toBeLessThanOrEqual(160);
+  });
+});
 
 describe('axis hop queue', () => {
   afterEach(() => {

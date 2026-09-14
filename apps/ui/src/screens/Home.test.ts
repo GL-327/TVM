@@ -5,16 +5,55 @@ import { describe, expect, it } from 'vitest';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
-describe('Home as TVM Stream showcase', () => {
-  it('opens TVM Stream from the hero and posters instead of playing on Home', () => {
+describe('Home as the launcher in front of TVM Stream', () => {
+  it('lands on the chosen title after the front-door checks, and browses TVM Stream from the hero', () => {
     const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
     expect(src).toContain('enterTvmStream');
+    expect(src).toContain('launchTitle(navigate, title)');
+    expect(src).toContain('mapRailPosters(rail.titles, rail.id, openTitle)');
     expect(src).toContain('TVM Stream');
     expect(src).toContain('id="hero-play"');
     expect(src).not.toContain('WATCH NOW');
     expect(src).not.toContain('openDetails');
     expect(src).not.toContain('HOME_ROW_ONE_IDS');
     expect(src).not.toContain('HERO_SLIDE_IDS');
+  });
+
+  it('looks like a launcher, not a second TVM Stream page', () => {
+    const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
+    const css = readFileSync(join(dir, '../app.css'), 'utf8');
+    expect(src).toContain('home--launcher');
+    expect(src).toContain('<HomeClock />');
+    expect(src).toContain('id="launch-stream"');
+    expect(src).toContain('home__destinations');
+    expect(src).toContain('Where to');
+    expect(src).toContain("shelfTitle('Continue watching')");
+    expect(src).toContain('TVM Stream · ');
+    expect(css).toContain('.home--launcher');
+    expect(css).toContain('.home__launcher {');
+    expect(css).toContain('flex: 0 0 auto');
+    expect(css).toContain('.launch-tile--stream');
+    expect(css).toContain('top: var(--tvm-safe-y)');
+    expect(css).toContain('.tvm-button.launch-tile');
+    expect(css).toMatch(/\.tvm-button\.launch-tile \{[\s\S]*color:\s*var\(--tvm-text\)/);
+    const library = readFileSync(join(dir, 'Library.tsx'), 'utf8');
+    expect(library).not.toContain('HomeClock');
+    expect(library).not.toContain('home__launcher');
+    expect(library).not.toContain('launch-tile');
+    expect(library).not.toContain('home--launcher');
+  });
+
+  it('runs profile, plan and Real-Debrid checks before opening a title', () => {
+    const src = readFileSync(join(dir, '../data/launchTitle.ts'), 'utf8');
+    const profiles = readFileSync(join(dir, 'Profiles.tsx'), 'utf8');
+    expect(src).toContain('fetchProfiles()');
+    expect(src).toContain('fetchPlan()');
+    expect(src).toContain('fetchRdStatus()');
+    expect(src).toContain('applyPlanClass(plan)');
+    expect(src).toContain("navigate.push('details', { params })");
+    expect(src).toContain("next: 'details', nextParams: params");
+    expect(src).toContain("action: 'realdebrid'");
+    expect(profiles).toContain("params['nextParams']");
   });
 });
 
@@ -139,7 +178,7 @@ describe('Home category rails do not skip titles', () => {
     const poster = readFileSync(join(dir, '../components/PosterCard.tsx'), 'utf8');
     const hop = readFileSync(join(dir, '../nav/hopQueue.ts'), 'utf8');
     const css = readFileSync(join(dir, '../app.css'), 'utf8');
-    expect(home).toContain('<Rail key={rail.id} title={rail.title}>');
+    expect(home).toContain('<Rail key={rail.id} title={shelfTitle(rail.title)}>');
     expect(home).toContain('mapRailPosters(rail.titles');
     expect(rail).toContain('shouldLoopRail');
     expect(rail).toContain('className="rail__title"');

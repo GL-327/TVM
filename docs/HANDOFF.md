@@ -15,7 +15,11 @@ If you are picking this up cold, in this order:
 2. **Section 5, the provider contract**, before touching anything to do with
    media. Getting this shape wrong is expensive to undo later.
 3. Phase 2 is done: the view stack is wired, Home/Library/Settings exist with
-   dummy data, and app updates check GitHub Releases.
+   dummy data, and app updates check GitHub Releases. There is no electron-updater
+   in the shell. The public GL-327/TVM feed is unauthenticated — no GH_TOKEN and
+   no GitHub login on any device. A leftover token must not 401 the public check.
+   A repo with no published release must report that honestly, not fail the check
+   with HTTP 404.
 
 Do not start with the operating system image. It builds and boots, and the only
 thing left there needs physical hardware.
@@ -276,9 +280,22 @@ contradicts them. Two notes worth carrying forward:
   `/user`, `/downloads`, `/torrents`, `/torrents/info/{id}` and
   `/unrestrict/link`. Listing the user's own finished torrents is in scope.
   `/torrents/addMagnet` is not.
-- **Android is a later waiter, not an APK in this tree.** Same `apps/ui` in a
-  WebView/Capacitor shell, Core on the LAN (`TVM_CORE_BIND=0.0.0.0`), like
-  Roku. Widevine L1 / Android TV is out of scope (implementation plan section H).
+- **Android is a Kotlin WebView client in `apps/android`.** Same LAN session
+  contract as iOS: `TVM_CORE_BIND=0.0.0.0` plus `TVM_LAN_TOKEN`, then
+  `POST /api/lan/session` for the HttpOnly `tvm_lan_session` cookie. No APK
+  is committed (`app/build/` and `*.apk` are gitignored). Windows can run
+  `gradlew.bat assembleDebug` when JDK 17/21 and the Android SDK are
+  installed. Not a Play Store release. Widevine L1 / Android TV remains out
+  of scope (implementation plan section H).
+- **iOS is source only.** `apps/ios` is an Xcode project. No IPA is in the
+  tree; this Windows workspace has not compiled, signed or device-tested it.
+  A Mac and `xcodebuild` are required.
+- **Roku is a sideload zip, not Channel Store.** The SceneGraph client sends
+  `Authorization: Bearer <TVM_LAN_TOKEN>`. A physical Roku has not been
+  accepted.
+- **Billing is sandbox only.** Checkout rejects card fields, records
+  `chargedPence: 0`, and refuses orders when `TVM_ENV=production`. No payment
+  processor is configured. Admin/billing routes stay local.
 
 ---
 
@@ -315,7 +332,9 @@ Repeating these because they are the ones a hurried session gets wrong.
 
 - No secrets in the repository, in any form, ever
 - No Torrentio, torrent search, magnet handling or index scraping
-- Core binds `127.0.0.1`, never `0.0.0.0`
+- Core binds `127.0.0.1` by default. `TVM_CORE_BIND=0.0.0.0` is opt-in for a
+  trusted LAN and still requires `TVM_LAN_TOKEN`; admin/billing stay local. Do
+  not expose Core to the internet
 - No code copied from stremio-web, stremio-core, or the Dodgy Fire Stick
   prototype
 - No control that needs a mouse

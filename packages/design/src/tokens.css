@@ -90,76 +90,81 @@ html {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --tvm-motion-fast: 1ms;
-    --tvm-motion-base: 1ms;
-    --tvm-motion-slow: 1ms;
-    --tvm-focus-scale: 1;
-  }
-}
+/* Motion tokens snap only from Settings → Reduced or Performance
+   (`:root[data-motion='reduced']` in apps/ui/src/theme/motion.css).
+   The OS `prefers-reduced-motion` flag must not freeze the UI. */
 
-html[data-style='cinema'] {
-  --tvm-bg: #140e0a;
-  --tvm-bg-deep: #080604;
+/*
+ * Plan styles (Cinema, Midnight, …) are an accent tint layered on top of the
+ * chosen theme. They colour marks, kickers and glows on the dark themes only (Light keeps its own ink so tinted labels stay legible on ivory). They never touch
+ * `--tvm-bg` or `--tvm-text`: doing so painted Light's navy type on a black
+ * stage and flattened every theme to the same near-black.
+ */
+
+html[data-style='cinema']:not([data-theme='light']) {
   --tvm-accent-blue: #e8a05a;
   --tvm-mark: #e8a05a;
   --tvm-mark-glow: rgba(232, 160, 90, 0.45);
 }
 
-html[data-style='midnight'] {
-  --tvm-bg: #070b16;
-  --tvm-bg-deep: #02040a;
+html[data-style='midnight']:not([data-theme='light']) {
   --tvm-accent-blue: #6fa8ff;
   --tvm-mark: #6fa8ff;
   --tvm-mark-glow: rgba(111, 168, 255, 0.45);
 }
 
-html[data-style='ember'] {
-  --tvm-bg: #160808;
-  --tvm-bg-deep: #090303;
+html[data-style='ember']:not([data-theme='light']) {
   --tvm-accent-blue: #ff6b4a;
   --tvm-mark: #ff6b4a;
   --tvm-mark-glow: rgba(255, 107, 74, 0.45);
 }
 
-html[data-style='forest'] {
-  --tvm-bg: #08140e;
-  --tvm-bg-deep: #030805;
+html[data-style='forest']:not([data-theme='light']) {
   --tvm-accent-blue: #59d69a;
   --tvm-mark: #59d69a;
   --tvm-mark-glow: rgba(89, 214, 154, 0.45);
 }
 
-html[data-style='slate'] {
-  --tvm-bg: #121418;
-  --tvm-bg-deep: #07080a;
+html[data-style='slate']:not([data-theme='light']) {
   --tvm-accent-blue: #c4c4c4;
   --tvm-mark: #c4c4c4;
   --tvm-mark-glow: rgba(196, 196, 196, 0.3);
 }
 
-html[data-style='contrast'] {
-  --tvm-bg: #000;
-  --tvm-bg-deep: #000;
-  --tvm-text: #fff;
-  --tvm-accent-blue: #fff;
-  --tvm-mark: #fff;
-  --tvm-focus-ring-color: #ffe14a;
-}
-
-html[data-style='gold'] {
-  --tvm-bg: #120f08;
-  --tvm-bg-deep: #070501;
+html[data-style='gold']:not([data-theme='light']) {
   --tvm-accent-blue: #f0c35a;
   --tvm-mark: #f0c35a;
   --tvm-mark-glow: rgba(240, 195, 90, 0.5);
 }
 
-html[data-style='aurora'] {
-  --tvm-bg: #071018;
-  --tvm-bg-deep: #02060c;
+html[data-style='aurora']:not([data-theme='light']) {
   --tvm-accent-blue: #5eead4;
   --tvm-mark: #7ad7ff;
   --tvm-mark-glow: rgba(94, 234, 212, 0.45);
 }
+
+/* High contrast is the one style that may push the stage, and it follows the theme's polarity. */
+html[data-style='contrast'] {
+  --tvm-focus-ring-color: #ffe14a;
+  --tvm-accent-blue: var(--tvm-text);
+  --tvm-mark: var(--tvm-text);
+}
+
+html[data-style='contrast']:not([data-theme='light']) {
+  --tvm-bg: #000;
+  --tvm-bg-deep: #000;
+  --tvm-text: #fff;
+  --tvm-text-muted: #e6e6e6;
+  --tvm-text-faint: #bdbdbd;
+  --tvm-border-soft: rgba(255, 255, 255, 0.3);
+}
+
+html[data-style='contrast'][data-theme='light'] {
+  --tvm-bg: #fffdf6;
+  --tvm-bg-deep: #fffdf6;
+  --tvm-text: #000;
+  --tvm-text-muted: #1a1a1a;
+  --tvm-text-faint: #333;
+  --tvm-border-soft: rgba(0, 0, 0, 0.3);
+}
+

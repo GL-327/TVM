@@ -63,11 +63,14 @@ Roku cannot use `http://127.0.0.1:7345`. That address is the Roku itself.
 }
 ```
 
-`config.json` is gitignored. Do not commit a machine-specific address.
+`config.json` is gitignored. Do not commit a machine-specific address. Never put
+`TVM_LAN_TOKEN` in `config.json` or in the sideload zip.
 
 You can also enter the URL on the device: the first launch opens a setup screen
-if no URL is stored. Settings → Core API URL edits it later. The on-device value
-is stored in the Roku registry and overrides `config.json`.
+if no URL is stored. After the URL, enter the same `TVM_LAN_TOKEN` used to start
+Core (32 to 512 characters). Settings can edit the URL and the token later. Both
+values live in the Roku registry and override `config.json`. The registry is not
+an encrypted vault.
 
 ## Test on this PC (no Roku required)
 
@@ -92,52 +95,60 @@ scrollbars. It is not a second visual language.
 UI. Bookmark the Vite URL.
 
 If the UI 404s, Vite is not running. Run `TVM-roku.cmd` again (it starts it).
-If a Roku cannot reach Core, Core is already running without
-`TVM_ENV=development`. Close that Core/TVM window and run `TVM-roku.cmd` again.
+If a Roku cannot reach Core, a desktop launcher probably started Core on
+loopback. Close that Core/TVM window and start again with LAN bind and
+`TVM_LAN_TOKEN`.
 
-To sideload onto a TV in developer mode:
+To start Core on the LAN and sideload onto a TV in developer mode:
 
 ```powershell
-$env:TVM_ROKU_HOST = "192.168.x.x"      # the Roku, not this PC
+$env:TVM_LAN_TOKEN = "<random 32+ characters>"   # type this on the Roku
+$env:TVM_ROKU_HOST = "192.168.x.x"              # the Roku, not this PC
 $env:TVM_ROKU_PASSWORD = "your-rokudev-password"
-.\TVM-roku.cmd -Sideload
+.\TVM-roku.cmd -Sideload -Lan -CoreAddress 192.168.x.x   # this PC's LAN IPv4
 ```
 
 Do not commit those values. Sideload is opt-in (`-Sideload`); the helper does
-not probe Wi-Fi adapters just to open the PC preview.
+not probe Wi-Fi adapters just to open the PC preview. `-Lan` binds Core to
+`0.0.0.0` and checks the bearer against this PC's LAN IP.
 
 ## Run Core so the Roku can reach it
 
-Core binds `127.0.0.1` so TVM opens on a laptop with no Wi-Fi and Windows does
-not ask to allow Node on public networks. A Roku cannot use `127.0.0.1` (that
-is the Roku itself), so only when you are sideloading set:
+Core binds `127.0.0.1` by default so TVM opens on a laptop with no Wi-Fi and
+Windows does not ask to allow Node on public networks. A Roku cannot use
+`127.0.0.1` (that is the Roku itself). For a box on the same private LAN:
 
 ```powershell
 $env:TVM_CORE_BIND = "0.0.0.0"
+$env:TVM_LAN_TOKEN = "<random 32+ characters>"
 $env:TVM_ENV = "development"
-```
-
-Core has **no API authentication**; use that only on a trusted network.
-
-If you already have windowed TVM running, leave it running. After a Core
-restart on loopback you should see:
-
-```
-tvm-core listening on http://127.0.0.1:7345
-```
-
-To start Core alone:
-
-```powershell
-$env:TVM_ENV = "development"
-$env:TVM_CORE_BIND = "127.0.0.1"
 corepack pnpm --filter @tvm/core dev
 ```
 
-Leave `pnpm dev` (Electron) as it is for the existing UI. You can run Core with
-`TVM_CORE_BIND` in one terminal and the rest of TVM as usual in another.
+LAN clients must send `Authorization: Bearer <TVM_LAN_TOKEN>`. The channel
+stores that token in the Roku registry and adds the header on every Core API
+call and on Core-hosted streams. Phone/browser pairing uses
+`POST /api/lan/session` to mint an HttpOnly `tvm_lan_session` cookie from the
+same bearer; the Roku does not use that cookie path. Admin, billing, privacy,
+update and maintenance routes stay loopback-only. `/api/health` is the only
+unauthenticated LAN GET.
 
-Sideloaded channels may use HTTP. A Roku Channel Store build would need HTTPS.
+Use this PC's IPv4 address as the Core URL (`http://192.168.1.20:7345`), not a
+DNS name and not `0.0.0.0`. The Host header must match Core's listen interface.
+Allow the Node process on the Windows **private** network. Do not forward port
+7345 on the router.
+
+A Core that prints `listening on http://127.0.0.1:7345` is unreachable from
+the Roku even with the correct token. Close that process and start with
+`TVM_CORE_BIND=0.0.0.0`. After a LAN bind you should see `0.0.0.0` (or the NIC
+address) and the `TVM_LAN_TOKEN` reminder.
+
+Leave `pnpm dev` (Electron) as it is for the existing UI. You can run Core with
+`TVM_CORE_BIND` and `TVM_LAN_TOKEN` in one terminal and the rest of TVM as usual
+in another.
+
+The product for this version is the sideloaded `tvm-roku.zip` over private-LAN
+HTTP. This is not a Channel Store or HTTPS release.
 
 ## Enable Roku developer mode
 
@@ -176,7 +187,9 @@ node apps/roku/scripts/check.mjs
 
 After sideload:
 
-1. The splash and then either Setup or Home should appear.
+1. The splash and then either Setup or Home should appear. Setup asks for the
+   Core LAN URL, then the same `TVM_LAN_TOKEN` running on the PC. A wrong token
+   is rejected; a matching token loads Home and is remembered across restarts.
 2. Move between ribbon items with Left / Right. The focused item has a white
    ring and a visible label. The ribbon matches the desktop: Profile, Inputs,
    Search, Home, Live TV, Watchlist, TVM, Apps, Settings.
@@ -188,17 +201,24 @@ After sideload:
 5. Ribbon Search opens an on-screen keyboard. Live TV / Watchlist / Profile /
    Settings / Apps open those screens. Apps tiles open TVM originals hubs.
 6. Back closes overlays. Back on Home stays on Home.
-7. Settings can edit the Core URL, open the Real-Debrid screen, set a live
-   playlist, open Profiles, and show update status. Display reports the 4K
-   canvas scale.
+7. Settings can edit the Core URL and device access token, open the Real-Debrid
+   screen, set a live playlist, open Profiles, and show network status. Display
+   reports the 4K canvas scale. Billing, updates, cache wipe and factory reset
+   stay on the computer.
 
 ## Limitations
 
 - The PC TV preview is `apps/ui`. A Roku cannot load that stack. Hardware remains
   a separate SceneGraph client and will drift visually from desktop.
-- Putting Core on the LAN exposes token-write and factory-reset endpoints to
-  anything that can reach that port. A pairing token is not implemented.
+- A physical Roku has not been accepted. Building `tvm-roku.zip` is not device
+  verification. There is no Channel Store package.
+- LAN clients without a valid bearer are rejected (except `/api/health`).
+  Admin, billing and privacy routes stay on the computer. HTTP on the LAN is
+  not encrypted. Do not expose Core to the internet.
+- The token is stored in the Roku channel registry. Do not embed it in
+  `config.json` or the zip.
 - `packages/nav` is TypeScript. This channel reimplements the same intent and
   view-stack rules in BrightScript; it does not import that package.
-- Some hoster files need mpv on the computer. Roku plays HLS / DASH / MP4 when
-  Core returns a direct URL.
+- Roku plays HLS / DASH / MP4 when Core returns a direct URL. Many other
+  containers need ffmpeg on the Core host; without it, Core only serves
+  MP4/WebM and some H.264 MKV. mpv is the desktop player, not the Roku path.

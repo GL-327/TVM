@@ -2,6 +2,9 @@
 const callbacks = new Map<Element, () => void>();
 let observer: IntersectionObserver | undefined;
 
+/** Next rail + about one poster ahead. A full-viewport overscan converted the catalog. */
+export const ART_NEAR_MARGIN = '25% 120px';
+
 export function whenArtNear(element: Element, ready: () => void): () => void {
   if (typeof IntersectionObserver === 'undefined') {
     ready();
@@ -20,10 +23,10 @@ export function whenArtNear(element: Element, ready: () => void): () => void {
       observer = undefined;
     }
   }, {
-    rootMargin: '100% 640px',
+    rootMargin: ART_NEAR_MARGIN,
     // Chromium supports overscan through nested page + rail clipping. Older
     // browsers ignore this addition and still load at viewport intersection.
-    scrollMargin: '100% 640px',
+    scrollMargin: ART_NEAR_MARGIN,
   } as IntersectionObserverInit);
   callbacks.set(element, ready);
   observer.observe(element);

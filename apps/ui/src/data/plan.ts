@@ -168,6 +168,18 @@ export interface BillingReceipt {
   liveTv: boolean;
   synthwavePurchased: boolean;
   at: string;
+  tokenId?: string;
+  last4?: string;
+}
+
+export interface PublicCardToken {
+  tokenId: string;
+  last4: string;
+  brand: string;
+  expiry: string;
+  name: string;
+  zip: string | null;
+  createdAt: string;
 }
 
 export interface BillingStatus {
@@ -179,6 +191,8 @@ export interface BillingStatus {
   nextChargeAt: null;
   synthwaveOwned: boolean;
   receipts: BillingReceipt[];
+  processor?: { linked: false; reason: 'no_processor' };
+  paymentMethod?: PublicCardToken | null;
 }
 
 export interface CheckoutRequest {
@@ -191,10 +205,81 @@ export interface CheckoutRequest {
   packOnly?: boolean;
   quotedMonthlyPence?: number;
   quotedOneTimePence?: number;
+  name?: string;
+  number?: string;
+  expiry?: string;
+  cvc?: string;
+  zip?: string;
+}
+
+export interface ChargeResult {
+  status: 'declined';
+  reason: 'no_processor' | 'missing_token';
+  code: 'not_configured' | 'missing_token';
+  chargedPence: 0;
+  tokenId: string | null;
+  last4: string | null;
+  message: string;
 }
 
 export function formatBillingMoney(pence: number): string {
   return `£${(pence / 100).toFixed(2)}`;
+}
+
+export function digitsOnly(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+export function formatPanInput(value: string): string {
+  return digitsOnly(value).slice(0, 19).replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+}
+
+export function formatExpiryInput(value: string): string {
+  const digits = digitsOnly(value).slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+export function formatCvcInput(value: string): string {
+  return digitsOnly(value).slice(0, 4);
+}
+
+export function panLooksValid(value: string): boolean {
+  const digits = digitsOnly(value);
+  if (digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  let alt = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let n = Number(digits[i]);
+    if (alt) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    alt = !alt;
+  }
+  return sum % 10 === 0;
+}
+
+export function expiryLooksValid(value: string, now = new Date()): boolean {
+  const match = value.trim().match(/^(\d{1,2})\s*[/-]\s*(\d{2}|\d{4})$/);
+  if (match === null || match[1] === undefined || match[2] === undefined) return false;
+  const month = Number(match[1]);
+  if (!Number.isInteger(month) || month < 1 || month > 12) return false;
+  let year = Number(match[2]);
+  if (year < 100) year += 2000;
+  if (year < now.getFullYear()) return false;
+  if (year === now.getFullYear() && month < now.getMonth() + 1) return false;
+  return true;
+}
+
+export function cvcLooksValid(value: string): boolean {
+  return /^\d{3,4}$/.test(value.trim());
+}
+
+export function cardholderLooksValid(value: string): boolean {
+  const name = value.trim();
+  return name.length >= 2 && name.length <= 80 && /[A-Za-z]/.test(name);
 }
 
 export function checkoutQuote(plan: PlanStatus, selectedId: PlanId, liveTv: boolean, synthwave: boolean, packOnly = false): {
@@ -239,6 +324,14 @@ export async function cancelPlan(requestId: string): Promise<PlanStatus> {
   }));
 }
 
+export async function chargeSavedCard(tokenId?: string): Promise<ChargeResult> {
+  return requestJson<ChargeResult>('/api/billing/charge', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(tokenId === undefined ? {} : { tokenId }),
+  });
+}
+
 export async function savePlan(id: PlanId): Promise<PlanStatus> {
   const response = await fetch('/api/plan', {
     method: 'PUT',
@@ -268,7 +361,7 @@ export async function saveSynthwave(enabled: boolean): Promise<PlanStatus> {
     body: JSON.stringify({ enabled }),
   });
   const body = (await response.json()) as Partial<PlanStatus> & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? 'Colourcast was not updated.');
+  if (!response.ok) throw new Error(body.error ?? 'Retro was not updated.');
   return asPlan(body);
 }
 

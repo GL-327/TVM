@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,19 +6,35 @@ import { CORE_HOST, resolveBindHost, resolvePort } from './config.ts';
 import { startCoreServer } from './server.ts';
 import { notifySystemdReady } from './notify.ts';
 import { CHECK_INTERVAL_MS, resolveDataDir } from './update/paths.ts';
+import { appliedLaunch } from './update/launch.ts';
 import { createUpdateService, startUpdatePolling } from './update/service.ts';
 
+const dataDir = resolveDataDir();
+const hop = appliedLaunch(dataDir, import.meta.url, process.env);
+if (hop !== null) {
+  const hopped = spawnSync(process.execPath, [hop.coreEntry], {
+    stdio: 'inherit',
+    env: hop.env,
+    windowsHide: true,
+  });
+  process.exit(hopped.status ?? 1);
+}
+
 /**
- * In a packaged appliance the UI bundle sits next to core. During development
- * the Vite server owns the UI, so finding nothing here is expected.
+ * In a packaged appliance the UI bundle sits next to core. An applied GitHub
+ * release uses `../ui`. During development the Vite server owns the UI, so
+ * finding nothing here is expected.
  */
 function findUiDist(): string | undefined {
   const fromEnv = process.env['TVM_UI_DIST'];
   if (fromEnv !== undefined && fromEnv.trim() !== '') return resolve(fromEnv);
 
   const here = dirname(fileURLToPath(import.meta.url));
-  const candidate = resolve(here, '../../ui/dist');
-  return existsSync(candidate) ? candidate : undefined;
+  const monorepo = resolve(here, '../../ui/dist');
+  if (existsSync(monorepo)) return monorepo;
+  const applied = resolve(here, '../ui');
+  if (existsSync(join(applied, 'index.html'))) return applied;
+  return undefined;
 }
 
 function findRokuPreview(): string | undefined {
@@ -28,7 +45,6 @@ function findRokuPreview(): string | undefined {
 
 const uiDist = findUiDist();
 const rokuPreview = findRokuPreview();
-const dataDir = resolveDataDir();
 const update = createUpdateService({ dataDir });
 const bindHost = resolveBindHost();
 const core = await startCoreServer(resolvePort(), { uiDist, rokuPreview, update, dataDir });
@@ -37,7 +53,11 @@ const stopPolling = startUpdatePolling(update, CHECK_INTERVAL_MS);
 
 console.log(`tvm-core listening on http://${bindHost}:${core.port}`);
 if (bindHost !== CORE_HOST) {
-  console.log('tvm-core: LAN requests require TVM_LAN_TOKEN (at least 32 characters). Admin, billing and privacy controls remain local.');
+  const token = process.env['TVM_LAN_TOKEN'] ?? '';
+  if (token.length < 32) {
+    console.log('tvm-core: TVM_LAN_TOKEN is missing or shorter than 32 characters. LAN clients will receive lan_authentication_required.');
+  }
+  console.log('tvm-core: LAN requests require Authorization: Bearer <TVM_LAN_TOKEN>, or a tvm_lan_session cookie from POST /api/lan/session. Admin, billing and privacy controls remain local.');
 }
 console.log(uiDist === undefined ? 'tvm-core: API only (UI served by dev server)' : `tvm-core: serving UI from ${uiDist}`);
 if (process.env['TVM_ENV'] === 'development' && rokuPreview !== undefined) {

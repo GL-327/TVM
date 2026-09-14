@@ -990,6 +990,24 @@ describe('media service', () => {
     });
 
     const result = await media.play({ link: 'https://real-debrid.com/d/WTV' });
+    expect(result).toEqual({ kind: 'unavailable', reason: 'needs-converter' });
+  });
+
+  it('reports unsupported when ffmpeg is present but the file still cannot be served', async () => {
+    const dir = await dataDir();
+    const streamer = {
+      ready: () => true,
+      resolveFile: async () => null,
+      sessions: {} as never,
+      direct: {} as never,
+    };
+    const media = createMediaService({
+      dataDir: dir,
+      rd: rdWithFile(dir, 'Weird.Codec.wtv', 'https://cdn.example/raw.wtv'),
+      streamer: streamer as never,
+    });
+
+    const result = await media.play({ link: 'https://real-debrid.com/d/WTV' });
     expect(result).toEqual({ kind: 'unavailable', reason: 'unsupported' });
   });
 });

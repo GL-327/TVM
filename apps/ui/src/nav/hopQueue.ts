@@ -6,6 +6,20 @@ export type AxisHop = 'left' | 'right' | 'up' | 'down';
 
 export const AXIS_HOP_MAX_PENDING = 1;
 
+/**
+ * Minimum spacing between hops from a *held* key. OS auto-repeat fires every
+ * ~30 ms, far faster than the camera can settle (≈8 frames), so an unpaced
+ * hold skipped the focus ring across titles while the rail was still sliding.
+ * Discrete presses are never paced.
+ */
+export const HELD_HOP_INTERVAL_MS = 105;
+
+/** True when a repeat hop may run now given when the previous hop ran. */
+export function acceptHeldHop(repeat: boolean, now: number, lastHopAt: number, interval = HELD_HOP_INTERVAL_MS): boolean {
+  if (!repeat) return true;
+  return now - lastHopAt >= interval;
+}
+
 export function createAxisHopQueue(
   hop: (direction: AxisHop) => void,
   maxPending = AXIS_HOP_MAX_PENDING,

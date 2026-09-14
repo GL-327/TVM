@@ -1,9 +1,10 @@
-# Starts Core on loopback, the Vite UI, and a 1920x1080 TV frame of the desktop
-# app. Does not probe Wi-Fi / LAN adapters. Pass -Sideload to push onto a TV.
+# Starts the local TV preview. -Lan or -Sideload enables authenticated LAN testing.
 param(
     [string]$RokuHost = $env:TVM_ROKU_HOST,
     [string]$RokuPassword = $env:TVM_ROKU_PASSWORD,
     [switch]$Sideload,
+    [switch]$Lan,
+    [string]$CoreAddress = $env:TVM_CORE_ADDRESS,
     [switch]$NoBrowser,
     [switch]$NoPackage
 )
@@ -62,15 +63,34 @@ Write-Host ""
 
 $env:TVM_ENV = "development"
 $env:TVM_CORE_BIND = "127.0.0.1"
+$useLan = $Lan -or $Sideload
+if ($useLan) {
+    if ($env:TVM_LAN_TOKEN.Length -lt 32) { throw "Set TVM_LAN_TOKEN to a random value of at least 32 characters first. See apps/roku/README.md." }
+    $coreIp = $null
+    if (-not [System.Net.IPAddress]::TryParse($CoreAddress, [ref]$coreIp) -or $coreIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or [System.Net.IPAddress]::IsLoopback($coreIp) -or $CoreAddress -eq '0.0.0.0') {
+        throw "Pass -CoreAddress with this computer's LAN IPv4 address (or set TVM_CORE_ADDRESS)."
+    }
+    $env:TVM_CORE_BIND = "0.0.0.0"
+}
 
 if (-not (Test-Http $healthUrl)) {
-    Write-Host "Starting TVM core on loopback (no Wi-Fi required)..."
-    Start-Process -FilePath "node" -ArgumentList "--watch", "src/index.ts" -WorkingDirectory $coreDir
+    Write-Host "Starting TVM Core on $($env:TVM_CORE_BIND)..."
+    Start-Process -FilePath "node" -ArgumentList "--watch", "src/index.ts" -WorkingDirectory $coreDir -WindowStyle Hidden
     if (-not (Wait-Http $healthUrl 40)) {
         throw "TVM core did not start on http://127.0.0.1:7345"
     }
 } else {
     Write-Host "Core is already running on http://127.0.0.1:7345"
+}
+
+if ($useLan) {
+    try {
+        Invoke-WebRequest -Uri "http://${CoreAddress}:7345/api/profiles" -Headers @{ Authorization = "Bearer $($env:TVM_LAN_TOKEN)" } -UseBasicParsing -TimeoutSec 5 | Out-Null
+    } catch {
+        throw "Core is not reachable with this LAN token. If desktop TVM started Core on loopback, close that Core process and rerun. Check the IP and private-network firewall rule."
+    }
+    Write-Host "Roku Core URL: http://${CoreAddress}:7345"
+    Write-Host "Enter the same TVM_LAN_TOKEN in the Roku setup screen."
 }
 
 if (-not (Test-Http $uiUrl)) {
@@ -100,8 +120,12 @@ if (-not $NoPackage) {
     try {
         Write-Host "Packaging the sideload zip..."
         & node (Join-Path $repo "apps\roku\scripts\package.mjs")
+        if ($LASTEXITCODE -ne 0) { throw "Package creation failed" }
+        & node (Join-Path $repo "apps\roku\scripts\check.mjs")
+        if ($LASTEXITCODE -ne 0) { throw "Package validation failed" }
         Write-Host "Sideload zip: $(Join-Path $repo 'apps\roku\tvm-roku.zip')"
     } catch {
+        if ($Sideload) { throw }
         Write-Host "Sideload zip skipped ($($_.Exception.Message)). TVM is still open."
     }
 }
@@ -114,7 +138,9 @@ if ($RokuPassword -eq '') { throw "Set TVM_ROKU_PASSWORD or pass -RokuPassword t
 $zip = Join-Path $repo "apps\roku\tvm-roku.zip"
 if (-not (Test-Path $zip)) { throw "Missing $zip. Re-run without -NoPackage." }
 Write-Host "Sideloading onto $resolvedHost ..."
-& curl.exe -sS --digest -u "rokudev:$RokuPassword" -F "mysubmit=Install" -F "archive=@$zip" "http://$resolvedHost/plugin_install" | Out-Null
+$installOutput = & curl.exe -fsS --connect-timeout 5 --max-time 60 --digest -u "rokudev:$RokuPassword" -F "mysubmit=Install" -F "archive=@$zip" "http://$resolvedHost/plugin_install"
+if ($LASTEXITCODE -ne 0) { throw "Roku installation request failed. Enable developer mode and check the Roku IP/password." }
+if (($installOutput -join " ") -match '(?i)install failure|compilation failed|invalid package') { throw "Roku rejected the package. Open the Roku developer page for its compiler output." }
 Start-Sleep -Seconds 2
 try {
     Invoke-WebRequest -Uri "http://${resolvedHost}:8060/launch/dev" -Method POST -UseBasicParsing -TimeoutSec 5 | Out-Null

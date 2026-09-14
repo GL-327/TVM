@@ -184,20 +184,3 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tvm-mark--animated .tvm-mark__bloom,
-  .tvm-mark--animated .tvm-mark__bezel,
-  .tvm-mark--animated .tvm-mark__glass,
-  .tvm-mark--animated .tvm-mark__play,
-  .tvm-mark--animated .tvm-mark__play-edge,
-  .tvm-mark--animated .tvm-mark__scan,
-  .tvm-mark--loop .tvm-mark__bloom,
-  .tvm-mark--loop .tvm-mark__scan,
-  .tvm-mark--loop .tvm-mark__play,
-  .tvm-mark--loop .tvm-mark__play-edge {
-    animation: none;
-    opacity: 1;
-    transform: none;
-    stroke-dashoffset: 0;
-  }
-}

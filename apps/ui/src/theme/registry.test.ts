@@ -17,7 +17,7 @@ describe('theme registry', () => {
     expect(themeName('default')).toBe('Default');
     expect(themeName('happy')).toBe('Happy');
     expect(themeName('glass')).toBe('Liquid Glass');
-    expect(themeName('synthwave')).toBe('Colourcast');
+    expect(themeName('synthwave')).toBe('Retro');
   });
 
   it('resolves unknown values to default', () => {

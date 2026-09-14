@@ -1,3 +1,5 @@
+import { prefersReducedMotion } from './motion';
+
 /** Shared cinematic stage: WebGL field + helpers. CSS in scene.css is the fallback. */
 
 export type SceneRunMode = 'off' | 'still' | 'live';
@@ -276,7 +278,7 @@ function currentMode(): SceneRunMode {
   const theme = document.documentElement.dataset.theme ?? 'default';
   return sceneShouldRun({
     hidden: document.visibilityState === 'hidden',
-    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reducedMotion: prefersReducedMotion(),
     player: document.querySelector('[data-screen="player"]') !== null,
     synthwave: theme === 'synthwave',
   });
@@ -444,9 +446,11 @@ function startSceneGpu(canvas: HTMLCanvasElement): SceneGpu | null {
     sync();
   };
 
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   const observer = new MutationObserver(sync);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'data-motion', 'data-perf'],
+  });
   const screenHost = document.querySelector('.app__screen');
   if (screenHost !== null) {
     observer.observe(screenHost, { childList: true });
@@ -457,7 +461,6 @@ function startSceneGpu(canvas: HTMLCanvasElement): SceneGpu | null {
   canvas.addEventListener('webglcontextrestored', onRestored);
   document.addEventListener('visibilitychange', sync);
   window.addEventListener('resize', sync);
-  reduce.addEventListener('change', sync);
 
   sync();
 
@@ -472,7 +475,6 @@ function startSceneGpu(canvas: HTMLCanvasElement): SceneGpu | null {
       canvas.removeEventListener('webglcontextrestored', onRestored);
       document.removeEventListener('visibilitychange', sync);
       window.removeEventListener('resize', sync);
-      reduce.removeEventListener('change', sync);
       gl.deleteProgram(program);
       gl.deleteShader(vs);
       gl.deleteShader(fs);

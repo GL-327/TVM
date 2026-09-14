@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyPlanClass,
+  cardholderLooksValid,
+  cvcLooksValid,
   displayMaxLabel,
+  expiryLooksValid,
   FALLBACK_PLAN,
+  formatExpiryInput,
+  formatPanInput,
   mockAppLocked,
+  panLooksValid,
   STYLE_CATALOG,
   styleMinPlanLabel,
   styleUnlocked,
@@ -46,6 +52,17 @@ describe('plan helpers', () => {
     expect(displayMaxLabel(2160)).toBe('4K (2160p)');
     expect(displayMaxLabel(1080)).toBe('Full HD (1080p)');
     expect(displayMaxLabel(720)).toBe('HD (720p)');
+  });
+
+  it('formats and validates card fields without keeping a raw PAN helper log', () => {
+    expect(formatPanInput('4242424242424242')).toBe('4242 4242 4242 4242');
+    expect(formatExpiryInput('1299')).toBe('12/99');
+    expect(panLooksValid('4242424242424242')).toBe(true);
+    expect(panLooksValid('1234567890123456')).toBe(false);
+    expect(expiryLooksValid('12/99', new Date('2026-09-13'))).toBe(true);
+    expect(cvcLooksValid('123')).toBe(true);
+    expect(cardholderLooksValid('Ada Lovelace')).toBe(true);
+    expect(cardholderLooksValid('A')).toBe(false);
   });
 
   it('applies plan and style to the document', () => {

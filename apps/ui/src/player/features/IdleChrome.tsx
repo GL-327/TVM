@@ -209,12 +209,4 @@ const IDLE_CHROME_CSS = `
   opacity: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .player-idle-chrome,
-  .player-chrome,
-  [data-player-chrome],
-  [data-idle-fade] {
-    transition: opacity 1ms linear;
-  }
-}
 `;

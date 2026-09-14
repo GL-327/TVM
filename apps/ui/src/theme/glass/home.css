@@ -181,6 +181,30 @@
   background: var(--tvm-bg);
 }
 
+[data-theme='glass'] .home--launcher .home__destinations {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--tvm-bg) 48%, transparent) 24%,
+    var(--tvm-bg) 78%
+  );
+}
+
+[data-theme='glass'] .home .home__clock,
+[data-theme='glass'] .home .tvm-button.launch-tile {
+  color: var(--tvm-glass-text);
+}
+
+[data-theme='glass'] .home .tvm-button.launch-tile {
+  border-color: var(--tvm-glass-hairline);
+  background: var(--tvm-glass-fill-text);
+  box-shadow: var(--tvm-glass-edge);
+}
+
+[data-theme='glass'] .home .launch-tile span:last-child:not(.launch-tile__mark) {
+  color: var(--tvm-glass-text-muted);
+}
+
 [data-theme='glass'] .page--docked > :not(.home__scene, .ribbon, .ribbon-zone) {
   position: relative;
   z-index: 1;

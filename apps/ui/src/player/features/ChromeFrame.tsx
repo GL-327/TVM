@@ -46,6 +46,7 @@ export function ChromeFrame({
       data-chrome-visible={shown ? 'true' : 'false'}
       aria-hidden={shown ? undefined : true}
     >
+      <div className="chrome-frame__veil chrome-frame__veil--vignette" aria-hidden="true" />
       <div className="chrome-frame__veil chrome-frame__veil--top" aria-hidden="true" />
       <div className="chrome-frame__veil chrome-frame__veil--bottom" aria-hidden="true" />
       {hasSlots ? (

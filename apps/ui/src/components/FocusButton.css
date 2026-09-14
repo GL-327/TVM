@@ -66,15 +66,3 @@
   will-change: auto;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tvm-button {
-    transition: none;
-  }
-
-  .tvm-button:focus,
-  .tvm-button[data-focused='true'],
-  .tvm-button.tvm-button--focused {
-    transform: none;
-    will-change: auto;
-  }
-}

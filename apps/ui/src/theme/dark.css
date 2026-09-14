@@ -72,6 +72,17 @@ html[data-theme='dark'] {
     linear-gradient(180deg, rgba(74, 160, 224, 0.08) 0%, transparent 32%, color-mix(in srgb, var(--tvm-bg) 48%, transparent) 68%, var(--tvm-bg) 92%, var(--tvm-bg) 100%);
 }
 
+[data-theme='dark'] .home__clock,
+[data-theme='dark'] .tvm-button.launch-tile,
+[data-theme='dark'] .settings-row,
+[data-theme='dark'] .page__heading {
+  color: var(--tvm-text);
+}
+
+[data-theme='dark'] .settings-row {
+  background: color-mix(in srgb, var(--tvm-surface) 90%, #000);
+}
+
 [data-theme='dark'] .ribbon,
 [data-theme='dark'] .search-pill__panel {
   background: color-mix(in srgb, #102238 78%, transparent);

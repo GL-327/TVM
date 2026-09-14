@@ -6,9 +6,9 @@ sub init()
   m.rows = []
   m.col = 0
   m.seq = 0
-  m.ids = ["theme", "url", "profiles", "realdebrid", "network", "display", "livetv", "updates", "linux", "diagnostics", "cache", "reset", "restart"]
-  m.kinds = ["cycleTheme", "editUrl", "profiles", "realdebrid", "network", "display", "livePlaylist", "updates", "linux", "diagnostics", "cache", "reset", "restart"]
-  labels = ["Theme", "Core API URL", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Updates", "Linux desktop", "Diagnostics", "Clear cache", "Fully reset", "Restart"]
+  m.ids = ["theme", "url", "token", "profiles", "realdebrid", "network", "display", "livetv", "computer", "restart"]
+  m.kinds = ["cycleTheme", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "livePlaylist", "computerSettings", "restart"]
+  labels = ["Theme", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Manage on computer", "Reload Home"]
   i = 0
   while i < labels.Count()
     btn = CreateObject("roSGNode", "FocusButton")
@@ -54,7 +54,9 @@ sub onHealth()
     setRowDetail("network", "Offline")
   end if
   setRowDetail("profiles", "TVM Stream only")
-  setRowDetail("realdebrid", "Saved on this machine")
+  setRowDetail("realdebrid", "Saved securely by Core on your computer")
+  setRowDetail("token", "Replace the saved device credential")
+  setRowDetail("computer", "Billing, updates and data controls")
   setRowDetail("display", "4K canvas, scaled to this panel")
   setRowDetail("livetv", "M3U / M3U8")
   setRowDetail("updates", "GitHub Releases")

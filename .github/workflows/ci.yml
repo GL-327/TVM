@@ -23,3 +23,5 @@ jobs:
       - run: pnpm --filter @tvm/core test
       - run: pnpm --filter @tvm/ui exec vitest run
       - run: pnpm --filter @tvm/shell test
+      - run: node apps/ios/check-project.mjs
+      - run: node apps/android/check-project.mjs

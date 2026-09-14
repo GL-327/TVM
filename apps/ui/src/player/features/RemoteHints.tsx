@@ -333,18 +333,6 @@ const REMOTE_HINTS_CSS = `
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .player-remote-hints,
-  .player-remote-hints[data-state='in'],
-  .player-remote-hints[data-state='out'] {
-    transform: translateX(-50%);
-    transition: opacity 1ms linear;
-  }
-
-  .player-remote-hints[data-state='in'] .player-remote-hints__key {
-    animation: none;
-  }
-}
 `;
 
 export default RemoteHints;
