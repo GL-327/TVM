@@ -363,26 +363,19 @@ final class TVMMedia {
             var playURL = link
             var filename = URL(string: link)?.lastPathComponent ?? "stream"
             var mime = "application/octet-stream"
-            var rdId: String? = mediaId?.hasPrefix("rd:d:") == true ? String(mediaId!.dropFirst(5)) : nil
             if rd.needsUnrestrict(link) {
                 let unrestricted = try await rd.unrestrict(link: link)
                 playURL = unrestricted.download
                 filename = unrestricted.filename
                 mime = unrestricted.mimeType ?? mime
-                rdId = unrestricted.id
             }
             if playURL.range(of: #"\.m3u8(\?|$)"#, options: .regularExpression) != nil {
                 return streamReply(url: playURL, title: TVMTitle.parseFilename(filename).title, filename: filename, mime: "application/vnd.apple.mpegurl", transport: "hls", startAt: startAt)
             }
-            if TVMPlayback.phoneCanPlay(filename: filename, mimeType: mime, url: playURL) {
+            if TVMPlayback.nativeCanOpen(playURL) {
                 return streamReply(url: playURL, title: TVMTitle.parseFilename(filename).title, filename: filename, mime: mime, transport: "file", startAt: startAt)
             }
-            if let rdId, !rdId.isEmpty, let transcode = await rd.appleTranscode(id: rdId, maxHeight: plans.maxHeight()),
-               TVMPlayback.phoneCanPlay(filename: transcode.url, mimeType: transcode.mime, url: transcode.url) {
-                let transport = transcode.mime.contains("mpegurl") ? "hls" : "file"
-                return streamReply(url: transcode.url, title: TVMTitle.parseFilename(filename).title, filename: filename, mime: transcode.mime, transport: transport, startAt: startAt)
-            }
-            return (409, ["kind": "unavailable", "reason": "needs-converter"])
+            return (409, ["kind": "unavailable", "reason": "unsupported"])
         } catch let error as RdClientError where error == .needsAuth || error == .notConfigured {
             return (409, ["kind": "unavailable", "reason": "needs-auth"])
         } catch {
@@ -494,7 +487,7 @@ final class TVMMedia {
             "title": title,
             "filename": filename,
             "mimeType": mime,
-            "engine": "html5",
+            "engine": "native",
             "transport": transport,
         ]
         if let startAt { body["startAt"] = startAt }

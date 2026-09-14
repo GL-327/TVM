@@ -54,3 +54,7 @@ Desktop/*.zip
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated CocoaPods workspace
+apps/ios/Pods/
+apps/ios/TVM.xcworkspace/

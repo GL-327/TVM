@@ -328,8 +328,7 @@ final class TVMLocalCore {
         return nil
     }
 
-    // DEVICE TEST REQUIRED: raw MPEG-TS needs a provider HLS feed or home Core FFmpeg.
-    // No on-device converter is bundled; do not claim unsupported containers can play.
+    // Native VLC handles HLS, raw MPEG-TS and extensionless provider streams.
     private func playLive(_ id: String) async -> HTTPReply {
         guard plans.status()["liveTv"] as? Bool == true else { return .json(409, ["kind": "unavailable", "reason": "Live TV requires the Live TV add-on."]) }
         guard let channel = liveChannels.first(where: { $0["id"] as? String == id }),
@@ -337,14 +336,8 @@ final class TVMLocalCore {
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
             return .json(409, ["kind": "unavailable", "reason": "not-in-library"])
         }
-        var mime = url.pathExtension.lowercased() == "m3u8" ? "application/vnd.apple.mpegurl" : ""
-        if mime.isEmpty && !["ts", "m2ts"].contains(url.pathExtension.lowercased()) {
-            var request = URLRequest(url: url); request.httpMethod = "HEAD"; request.timeoutInterval = 8
-            if let (_, response) = try? await session.data(for: request),
-               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) { mime = http.mimeType ?? "" }
-        }
-        guard mime.lowercased().contains("mpegurl") else { return .json(409, ["kind": "unavailable", "reason": "live-hls-required"]) }
-        return .json(200, ["kind": "stream", "url": raw, "title": channel["name"] as? String ?? "Live TV", "filename": "live.m3u8", "mimeType": mime, "engine": "html5", "transport": "hls", "isLive": true])
+        let hls = url.pathExtension.lowercased() == "m3u8"
+        return .json(200, ["kind": "stream", "url": raw, "title": channel["name"] as? String ?? "Live TV", "filename": url.lastPathComponent, "mimeType": hls ? "application/vnd.apple.mpegurl" : "video/mp2t", "engine": "native", "transport": hls ? "hls" : "ts-live", "isLive": true])
     }
 
     private func liveStatus() -> [String: Any] {

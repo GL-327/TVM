@@ -135,6 +135,13 @@ struct ProgressEntry {
 }
 
 enum TVMPlayback {
+    /// Container and codec support is probed by libVLC, not inferred from a
+    /// provider's often incorrect filename or Content-Type header.
+    static func nativeCanOpen(_ raw: String) -> Bool {
+        guard let url = URL(string: raw), let host = url.host, !host.isEmpty else { return false }
+        return ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+    }
+
     static func phoneCanPlay(filename: String, mimeType: String?, url: String) -> Bool {
         let mime = mimeType?.lowercased() ?? ""
         if mime.contains("mpegurl") || mime.contains("x-mpegurl") { return true }

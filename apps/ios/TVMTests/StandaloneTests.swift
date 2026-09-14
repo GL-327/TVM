@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import TVM
 
 final class StandaloneTests: XCTestCase {
@@ -20,6 +21,27 @@ final class StandaloneTests: XCTestCase {
             XCTAssertLessThanOrEqual(size.width, available.width)
             XCTAssertLessThanOrEqual(size.height, available.height)
         }
+    }
+
+    @MainActor func testNativePlayerCentersControlsInBothOrientations() {
+        let controller = TVMPlayerController(id: "test", url: URL(string: "https://cdn.example/movie.mkv")!, title: "Test film", startAt: 0, live: false)
+        controller.loadViewIfNeeded()
+        func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+        for size in [CGSize(width: 375, height: 667), CGSize(width: 844, height: 390), CGSize(width: 1024, height: 768)] {
+            controller.view.frame = CGRect(origin: .zero, size: size)
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            let controls = descendants(controller.view).compactMap { $0 as? UIButton }
+            guard let play = controls.first(where: { $0.accessibilityLabel == "Pause" }) else { return XCTFail("Play control missing") }
+            let frame = play.convert(play.bounds, to: controller.view)
+            XCTAssertEqual(frame.midX, size.width / 2, accuracy: 1)
+            XCTAssertEqual(frame.midY, size.height / 2, accuracy: 1)
+            for button in controls {
+                XCTAssertGreaterThanOrEqual(button.bounds.height, 44)
+                XCTAssertGreaterThanOrEqual(button.bounds.width, 44)
+            }
+        }
+        controller.shutdown()
     }
 
     func testTranscodePrefersCompatibleHLSWithinPlanCap() {
@@ -50,7 +72,9 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(hls.status, 200)
         XCTAssertEqual(JSONValue.object(hls.body)["transport"] as? String, "hls")
         let ts = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: JSONValue.data(["id": "live:2"]))
-        XCTAssertEqual(JSONValue.object(ts.body)["reason"] as? String, "live-hls-required")
+        XCTAssertEqual(ts.status, 200)
+        XCTAssertEqual(JSONValue.object(ts.body)["transport"] as? String, "ts-live")
+        XCTAssertEqual(JSONValue.object(ts.body)["engine"] as? String, "native")
     }
 
     func testProgressAppearsAfterThirtySecondsNotFourPercent() {
@@ -109,6 +133,30 @@ final class StandaloneTests: XCTestCase {
         XCTAssertTrue(TVMPlayback.needsConverter(filename: "film.mkv", mimeType: "video/x-matroska", url: "https://cdn.example/film.mkv"))
     }
 
+    func testNativePlaybackAcceptsNetworkContainersAndRejectsLocalSchemes() {
+        for file in ["film.mkv", "film.webm", "film.avi", "film.mp4", "channel.ts", "channel.m3u8", "opaque-id"] {
+            XCTAssertTrue(TVMPlayback.nativeCanOpen("https://cdn.example/\(file)"))
+        }
+        for url in ["file:///etc/passwd", "javascript:alert(1)", "data:video/mp4,test", "/relative", "https://"] {
+            XCTAssertFalse(TVMPlayback.nativeCanOpen(url))
+        }
+    }
+
+    func testNativePlaybackReturnsRawMKVWithoutAConverter() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockPlaybackProtocol.self]
+        let core = testCore(session: URLSession(configuration: configuration))
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
+        core.rd.ignoreKeychain = true
+        core.rd.testToken = "fixture-token"
+        let reply = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:],
+                                      body: JSONValue.data(["link": "https://cdn.example/movie.mkv", "title": "Movie"]))
+        XCTAssertEqual(reply.status, 200)
+        XCTAssertEqual(JSONValue.object(reply.body)["url"] as? String, "https://cdn.example/movie.mkv")
+        XCTAssertEqual(JSONValue.object(reply.body)["engine"] as? String, "native")
+    }
+
     func testPhonePlaybackAcceptsM4vMovAndAppleHls() {
         XCTAssertTrue(TVMPlayback.phoneCanPlay(filename: "clip.m4v", mimeType: "video/x-m4v", url: "https://cdn.example/id"))
         XCTAssertTrue(TVMPlayback.phoneCanPlay(filename: "clip.mov", mimeType: "video/quicktime", url: "https://cdn.example/id"))
@@ -149,7 +197,7 @@ final class StandaloneTests: XCTestCase {
         let payload = JSONValue.object(reply.body)
         XCTAssertEqual(payload["kind"] as? String, "stream")
         XCTAssertEqual(payload["url"] as? String, "https://cdn.example/fight-club.mp4")
-        XCTAssertEqual(payload["engine"] as? String, "html5")
+        XCTAssertEqual(payload["engine"] as? String, "native")
         XCTAssertTrue(TVMPlayback.phoneCanPlay(
             filename: payload["filename"] as? String ?? "",
             mimeType: payload["mimeType"] as? String,

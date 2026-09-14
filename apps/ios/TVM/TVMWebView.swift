@@ -31,10 +31,7 @@ private enum PhoneViewportScript {
           meta.setAttribute('name', 'viewport');
           (document.head || document.documentElement).appendChild(meta);
         }
-        var content = meta.getAttribute('content') || 'width=device-width, initial-scale=1';
-        if (content.indexOf('viewport-fit') === -1) {
-          meta.setAttribute('content', content + ', viewport-fit=cover');
-        }
+        meta.setAttribute('content', 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
       }
       function occlusion() {
         var vv = window.visualViewport;
@@ -178,13 +175,16 @@ struct TVMWebView: UIViewControllerRepresentable {
             forMainFrameOnly: true
         )
         configuration.userContentController.addUserScript(viewport)
+        configuration.userContentController.add(context.coordinator, name: "tvmPlayer")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.isOpaque = false
         webView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
-        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsBackForwardNavigationGestures = false
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        webView.scrollView.isDirectionalLockEnabled = true
         webView.customUserAgent = nil
         // CSS owns safe-area and keyboard insets. Auto-insetting the WK
         // scroll view fights the inner .page / .home overflow cameras and
@@ -222,15 +222,20 @@ struct TVMWebView: UIViewControllerRepresentable {
         controller.webView.uiDelegate = nil
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var parent: TVMWebView
         private var keyboardObservers: [NSObjectProtocol] = []
         weak var webView: WKWebView?
+        private var playerController: TVMPlayerController?
 
         init(parent: TVMWebView) { self.parent = parent }
 
         func attach(_ webView: WKWebView) {
             self.webView = webView
+            let back = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swipeBack(_:)))
+            back.edges = .left
+            webView.addGestureRecognizer(back)
+            webView.scrollView.panGestureRecognizer.require(toFail: back)
             let names: [Notification.Name] = [
                 UIResponder.keyboardWillChangeFrameNotification,
                 UIResponder.keyboardWillHideNotification,
@@ -249,11 +254,50 @@ struct TVMWebView: UIViewControllerRepresentable {
         }
 
         func teardown() {
+            playerController?.shutdown()
+            playerController?.dismiss(animated: false)
+            playerController = nil
+            webView?.configuration.userContentController.removeScriptMessageHandler(forName: "tvmPlayer")
             for observer in keyboardObservers {
                 NotificationCenter.default.removeObserver(observer)
             }
             keyboardObservers = []
             webView = nil
+        }
+
+        @objc private func swipeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended,
+                  gesture.translation(in: webView).x > 70 || gesture.velocity(in: webView).x > 650 else { return }
+            webView?.evaluateJavaScript("window.dispatchEvent(new Event('tvm:navigate-back'));")
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "tvmPlayer", message.frameInfo.isMainFrame,
+                  let origin = message.frameInfo.request.url, parent.session.isSameOrigin(origin),
+                  let data = message.body as? [String: Any], let id = data["id"] as? String,
+                  let command = data["command"] as? String else { return }
+            if command == "open" {
+                guard let raw = data["url"] as? String, let url = URL(string: raw),
+                      ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
+                      let host = webView?.parentViewController, host.presentedViewController == nil else {
+                    publishPlayer(["id": id, "command": "error", "message": "Could not open the player. Go back and try again."])
+                    return
+                }
+                let start = data["startAt"] as? Double ?? 0
+                let controller = TVMPlayerController(id: id, url: url, title: data["title"] as? String ?? "TVM",
+                                                     startAt: start.isFinite ? max(0, start) : 0, live: data["live"] as? Bool ?? false)
+                controller.onEvent = { [weak self] in self?.publishPlayer($0) }
+                playerController = controller
+                host.present(controller, animated: true)
+            } else if playerController?.sessionID == id {
+                playerController?.command(command, data: data)
+                if command == "stop" { playerController = nil }
+            }
+        }
+
+        private func publishPlayer(_ data: [String: Any]) {
+            guard let json = try? JSONSerialization.data(withJSONObject: data), let string = String(data: json, encoding: .utf8) else { return }
+            webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('tvm:native-player', {detail: \(string)}));")
         }
 
         private func keepFullSize(_ webView: WKWebView) {

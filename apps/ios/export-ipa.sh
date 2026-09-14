@@ -28,6 +28,9 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
   exit 1
 fi
 
+pod install
+node bundle-ui.mjs
+
 METHOD=${1:-ad-hoc}
 case "$METHOD" in
   ad-hoc) PLIST="$ROOT/ExportOptions-adhoc.plist" ;;
@@ -47,7 +50,7 @@ fi
 # -allowProvisioningUpdates lets automatic signing create/refresh the profile
 # for the team selected in Xcode or passed as DEVELOPMENT_TEAM.
 # shellcheck disable=SC2086
-xcodebuild -project TVM.xcodeproj -scheme TVM \
+xcodebuild -workspace TVM.xcworkspace -scheme TVM \
   -configuration Release \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \

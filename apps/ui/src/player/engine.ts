@@ -2,6 +2,7 @@ import type Hls from 'hls.js';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
 import { publishHls } from './hlsBridge';
+import { createIOSPlayerEngine, iosPlaybackBridge } from './iosEngine';
 
 /**
  * The one in-app playback engine.
@@ -22,6 +23,7 @@ import { publishHls } from './hlsBridge';
 export type EngineStream = Extract<PlaybackResult, { kind: 'stream' }>;
 
 export interface EngineEvents {
+  onClosed?(): void;
   onTime(position: number, duration: number): void;
   onPlayState(paused: boolean): void;
   onBuffering(buffering: boolean): void;
@@ -121,6 +123,7 @@ export function createPlayerEngine(
   options: EngineOptions,
   events: EngineEvents,
 ): PlayerEngine {
+  if (stream.engine === 'native' && iosPlaybackBridge()) return createIOSPlayerEngine(stream, options, events);
   const fetchImpl = options.fetchImpl ?? fetch;
   const live = options.live;
   const kind = attachKindFor(stream, live);
