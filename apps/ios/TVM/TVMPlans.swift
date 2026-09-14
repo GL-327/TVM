@@ -78,6 +78,11 @@ final class TVMPlans {
     }
 
     func developer() -> Bool { developerUnlocked }
+    func mobileAllowed() -> Bool {
+        let current = status()
+        return ["basic", "premium", "ultra", "max"].contains(current["id"] as? String ?? "") &&
+            (JSONValue.int(current["maxHeight"]) ?? 0) >= 1080
+    }
     func setDeveloper(_ value: Bool) { developerUnlocked = value }
 
     func maxHeight() -> Int { JSONValue.int(status()["maxHeight"]) ?? 720 }

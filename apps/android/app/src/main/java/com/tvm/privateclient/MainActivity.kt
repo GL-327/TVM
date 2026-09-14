@@ -239,6 +239,7 @@ class MainActivity : AppCompatActivity() {
         webView.isClickable = true
         // Do not set OnTouchListener: that would swallow DOM click and overlay taps.
         webView.settings.javaScriptEnabled = true
+        webView.settings.userAgentString = webView.settings.userAgentString + " TVM-Android"
         webView.settings.domStorageEnabled = true
         webView.settings.mediaPlaybackRequiresUserGesture = false
         webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW

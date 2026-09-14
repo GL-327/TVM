@@ -127,6 +127,7 @@ enum TVMTitle {
     }
 
     private static let catalogImdbMap: [String: String] = [
+        "ten-truths-about-love": "tt15483404",
         "dune-part-two": "tt15239678",
         "the-last-of-us": "tt3581920",
         "oppenheimer": "tt15398776",
@@ -210,7 +211,7 @@ enum TVMTitle {
     static func progressRatio(_ entry: ProgressEntry?) -> Double? {
         guard let entry, entry.duration >= 60, entry.position >= 30 else { return nil }
         let value = entry.position / entry.duration
-        if value < 0.04 || value > 0.96 { return nil }
+        if value >= 0.96 { return nil }
         return min(1, max(0, value))
     }
 }

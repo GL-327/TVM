@@ -205,6 +205,11 @@ for (const file of walk(join(ROOT, 'app', 'src'))) {
   }
 }
 
+const gradlew = read(join(ROOT, 'gradlew')) ?? '';
+check('gradlew JVM options are unquoted tokens',
+  /^DEFAULT_JVM_OPTS='-Xmx\d+m -Xms\d+m'$/m.test(gradlew),
+  'quoted -Xmx64m is parsed as a Java class name on Linux CI');
+
 const jar = join(ROOT, 'gradle', 'wrapper', 'gradle-wrapper.jar');
 if (existsSync(jar)) {
   const size = statSync(jar).size;

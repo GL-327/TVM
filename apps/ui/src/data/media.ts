@@ -148,7 +148,7 @@ export function asTitle(item: MediaItem): Title {
     poster: preferPoster(item.id, item.poster, item.backdrop),
     backdrop: preferBackdrop(item.id, item.backdrop, item.poster),
     genres: item.genres,
-    rating: item.rating,
+    rating: item.rating ?? '',
     runtime: episodeLabel ?? item.runtime,
     hue: item.hue,
     progress: item.progress,

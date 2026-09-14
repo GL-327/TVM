@@ -57,6 +57,17 @@ Live TV MPEG-TS hops are not remuxed on the phone.
 No GitHub login and no in-app update apply — install a new IPA.
 Not App Store signed.
 
+After you install this build
+----------------------------
+1. Re-sign with Sideloadly or AltStore, then trust the cert on the phone.
+2. Open Settings → DEV and pick Basic or higher (mobile viewing is not Free).
+3. Connect Real-Debrid under Profile. Playback uses Torrentio → unrestrict →
+   MP4 or Apple HLS. Missing RD shows a connect sheet, not an empty list.
+4. Search: tap the field; the system keyboard should open. Results open the
+   same details/play path as Home posters.
+5. Continue Watching: play about 30 seconds, leave, return to Home. The title
+   should stay on the rail even if it is not in today's catalogue row.
+
 Android / Roku
 --------------
 The Android APK in this folder may still be the older LAN-client until that

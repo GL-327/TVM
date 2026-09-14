@@ -1,3 +1,5 @@
+import { MOBILE_PLAN_EVENT } from './mobileAccess';
+
 export type PlanId = 'free' | 'basic' | 'premium' | 'ultra' | 'max';
 export type StyleId =
   | 'classic'
@@ -432,6 +434,7 @@ export function applyPlanClass(plan: PlanStatus): void {
   document.documentElement.dataset.plan = plan.id;
   const allowed = plan.developer || plan.styleIds.includes(plan.styleId);
   document.documentElement.dataset.style = allowed ? plan.styleId : 'classic';
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(MOBILE_PLAN_EVENT, { detail: plan }));
 }
 
 export function visibleMockApps(allowMocks: boolean, _id: string, isMock: boolean): boolean {

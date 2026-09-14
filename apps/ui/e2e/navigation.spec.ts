@@ -603,7 +603,7 @@ test('Settings opens Plans', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
   await waitForFocus(page);
-  expect(await focusedId(page)).toBe('plan');
+  await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Upgrade TVM' })).toBeVisible();
@@ -615,6 +615,7 @@ test('Free plan confirms without a card', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
   await waitForFocus(page);
+  await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
   await pressUntil(page, 'plan-free');

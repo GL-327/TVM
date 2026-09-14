@@ -431,6 +431,15 @@ check('JSON number helper exists so season/premium survive NSNumber boxing',
 check('catalog slugs map to IMDb so fallback posters can play',
   (read(join(ROOT, 'TVM', 'TVMTitle.swift')) ?? '').includes('catalogImdb') &&
   (read(join(ROOT, 'TVM', 'TVMTitle.swift')) ?? '').includes('"fight-club": "tt0137523"'));
+check('Continue Watching persists titles and shows after 30 seconds, not 4%',
+  (read(join(ROOT, 'TVM', 'TVMStore.swift')) ?? '').includes('recent-media.json') &&
+  (read(join(ROOT, 'TVM', 'TVMTitle.swift')) ?? '').includes('entry.position >= 30') &&
+  !(read(join(ROOT, 'TVM', 'TVMTitle.swift')) ?? '').includes('value < 0.04') &&
+  standaloneTests.includes('testContinueWatchingPersistsSavedTitleAfterThirtySeconds') &&
+  standaloneTests.includes('testProgressAppearsAfterThirtySecondsNotFourPercent'));
+check('Playback tests select a paid mobile plan before Torrentio',
+  standaloneTests.includes('testPlaybackReturnsStreamURLForCatalogSlug') &&
+  standaloneTests.includes('setPlan("basic")'));
 check('Swift tests mock Torrentio and assert a stream URL',
   standaloneTests.includes('testPlaybackReturnsStreamURLForMockedTorrentioHit') &&
   standaloneTests.includes('testPlaybackReturnsStreamURLForCatalogSlug') &&

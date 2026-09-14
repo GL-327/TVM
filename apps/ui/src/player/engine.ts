@@ -203,13 +203,22 @@ export function createPlayerEngine(
     const generation = ++hlsGeneration;
     recoveredMedia = false;
     restartedNetwork = false;
+    // WKWebView's native HLS handles cookies, AirPlay and hardware decoding.
+    // A recent iPhone may also expose MSE; prefer native support explicitly.
+    if (video.canPlayType?.('application/vnd.apple.mpegurl')) {
+      video.src = sessionUrl();
+      on('loadedmetadata', () => {
+        if (!live) video.currentTime = isSession ? 0 : startPosition;
+        tryPlay();
+      });
+      video.load();
+      tryPlay();
+      return;
+    }
     void import('hls.js').then(({ default: Hls }) => {
       if (destroyed || failed || generation !== hlsGeneration) return;
       if (!Hls.isSupported()) {
-        // Safari and some TV browsers speak HLS natively.
-        video.src = sessionUrl();
-        video.load();
-        tryPlay();
+        fail(GENERIC_START_ERROR);
         return;
       }
       const instance = new Hls(hlsConfig(live, isSession ? 0 : startPosition));

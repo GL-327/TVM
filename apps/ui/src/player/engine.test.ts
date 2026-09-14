@@ -26,6 +26,7 @@ const fakeHls = vi.hoisted(() => {
 vi.mock('hls.js', () => ({ default: fakeHls }));
 
 class FakeVideo extends EventTarget {
+  canPlayType = vi.fn(() => '');
   currentTime = 10;
   duration = 1800;
   paused = true;
@@ -110,6 +111,18 @@ describe('playback lifecycle', () => {
     engine.destroy();
     await vi.dynamicImportSettled();
     expect(fakeHls.instances).toHaveLength(0);
+  });
+
+  it('prefers native HLS on iPhone and restores the requested position', async () => {
+    const { video, engine } = setup({ ...stream, transport: 'hls', mimeType: 'application/vnd.apple.mpegurl', url: '/film.m3u8' }, { startAt: 180 });
+    video.canPlayType.mockReturnValue('probably');
+    engine.attach();
+    await vi.dynamicImportSettled();
+    expect(fakeHls.instances).toHaveLength(0);
+    expect(video.src).toBe('/film.m3u8');
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(180);
+    engine.destroy();
   });
 
   it('publishes and clears the actual HLS instance and enforces the quality cap', async () => {

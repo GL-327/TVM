@@ -24,16 +24,16 @@ export function playIdFor(showId: string, season?: number, episode?: number): st
   return base;
 }
 
-export function imdbScore(rating: string): string | null {
-  const trimmed = rating.trim();
+export function imdbScore(rating: string | undefined | null): string | null {
+  const trimmed = (rating ?? '').trim();
   if (!/^\d(?:\.\d{1,2})?$/.test(trimmed)) return null;
   const value = Number(trimmed);
   if (!Number.isFinite(value) || value > 10) return null;
   return trimmed;
 }
 
-export function certificateLabel(rating: string): string | null {
-  const trimmed = rating.trim();
+export function certificateLabel(rating: string | undefined | null): string | null {
+  const trimmed = (rating ?? '').trim();
   if (trimmed === '' || imdbScore(trimmed) !== null) return null;
   return trimmed;
 }

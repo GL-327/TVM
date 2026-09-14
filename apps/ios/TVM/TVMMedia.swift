@@ -90,7 +90,17 @@ final class TVMMedia {
     }
 
     func saveProgress(id: String, position: Double, duration: Double) {
-        store.writeProgress(profileId: activeProfile(), id: id, position: position, duration: duration)
+        let profile = activeProfile()
+        store.writeProgress(profileId: profile, id: id, position: position, duration: duration)
+        let saved = store.recentMedia(for: profile)
+        if saved.contains(where: { $0.id == id }) { return }
+        let imdb = TVMTitle.catalogImdb(id)
+        guard let cousin = saved.first(where: {
+            $0.id == imdb || TVMTitle.catalogImdb($0.id) == id || (imdb != nil && TVMTitle.catalogImdb($0.id) == imdb)
+        }) else { return }
+        var copy = cousin
+        copy.id = id
+        store.rememberMedia([copy], profileId: profile)
     }
 
     func status() async -> RdStatus { await rd.status() }
@@ -116,7 +126,7 @@ final class TVMMedia {
         library = applyProgress(library, progress)
         let bundle = await catalog.bundle()
         let catalogItems = applyProgress(bundle.catalog, progress)
-        let continueWatching = pickContinue(catalogItems + library, progress)
+        let continueWatching = self.continueWatching(catalogItems + library)
         let watchlist = self.watchlist()
         let rails = await buildRails(bundle: bundle, watching: continueWatching, watchlist: watchlist)
         let featured = continueWatching.first
@@ -143,34 +153,98 @@ final class TVMMedia {
     func item(_ id: String) async -> MediaItem? {
         if let parsed = TVMTitle.parsePlayId(id), let meta = await catalog.meta(parsed.imdb) {
             if let season = parsed.season, let episode = parsed.episode {
-                return meta.children.first { $0.season == season && $0.episode == episode } ?? meta.item
+                guard let episodeItem = meta.children.first(where: { $0.season == season && $0.episode == episode }) else { return nil }
+                return remember(episodeItem)
             }
-            return meta.item
+            return remember(meta.item)
         }
         let library = await self.library()
-        if let found = library.first(where: { $0.id == id }) { return found }
-        if let child = (try? await loadChildren(id))?.first(where: { $0.id == id }) { return child }
-        return catalog.fallbackItems().first { $0.id == id }
+        if let found = library.first(where: { $0.id == id }) { return remember(found) }
+        if let child = (try? await loadChildren(id))?.first(where: { $0.id == id }) { return remember(child) }
+        if let cached = store.recentMedia(for: activeProfile()).first(where: { $0.id == id }) { return cached }
+        if let fallback = catalog.fallbackItems().first(where: { $0.id == id }) { return remember(fallback) }
+        return nil
     }
 
     func children(_ id: String) async -> [MediaItem] {
         if let parsed = TVMTitle.parsePlayId(id), let meta = await catalog.meta(parsed.imdb) {
+            store.rememberMedia(meta.children, profileId: activeProfile())
             return meta.children
         }
-        return (try? await loadChildren(id)) ?? []
+        let items = (try? await loadChildren(id)) ?? []
+        store.rememberMedia(items, profileId: activeProfile())
+        return items
     }
 
     func search(_ query: String) async -> [MediaItem] {
-        await catalog.search(query)
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard needle.count >= 2 else { return [] }
+        async let remote = catalog.search(needle)
+        let local = ((try? await loadLibrary()) ?? []) + store.recentMedia(for: activeProfile())
+        let localHits = local.filter {
+            $0.title.localizedCaseInsensitiveContains(needle) || ($0.showTitle ?? "").localizedCaseInsensitiveContains(needle)
+        }
+        var seen = Set<String>()
+        // Cinemeta already ranked the remote hits; do not drop aliases like "lotr".
+        return (localHits + (await remote)).filter { seen.insert($0.id).inserted }
+    }
+
+    private func remember(_ item: MediaItem) -> MediaItem {
+        var batch = [item]
+        if let imdb = TVMTitle.catalogImdb(item.id), imdb != item.id {
+            var aliased = item
+            aliased.id = imdb
+            batch.append(aliased)
+        }
+        store.rememberMedia(batch, profileId: activeProfile())
+        return item
+    }
+
+    private func rememberPlayback(id: String?, title: String?, season: Int?, episode: Int?) {
+        guard let id, !id.isEmpty else { return }
+        let profile = activeProfile()
+        if store.recentMedia(for: profile).contains(where: { $0.id == id }) { return }
+        let name = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { return }
+        _ = remember(MediaItem(
+            id: id,
+            title: name,
+            year: nil,
+            kind: season != nil || episode != nil ? "series" : "movie",
+            synopsis: "",
+            poster: "",
+            backdrop: "",
+            genres: [],
+            rating: "",
+            runtime: nil,
+            playable: true,
+            progress: nil,
+            filename: nil,
+            hue: TVMTitle.hue(for: name),
+            mimeType: nil,
+            season: season,
+            episode: episode,
+            episodeName: nil,
+            showTitle: season != nil ? name : nil,
+            aired: nil,
+            added: nil
+        ))
+    }
+
+    func continueWatching(_ items: [MediaItem] = []) -> [MediaItem] {
+        let progress = store.progress(for: activeProfile())
+        return pickContinue(applyProgress(store.recentMedia(for: activeProfile()) + items, progress), progress)
     }
 
     func play(id: String?, link: String?, title: String?, season: Int?, episode: Int?) async -> (Int, [String: Any]) {
+        guard plans.mobileAllowed() else { return (403, ["kind": "unavailable", "reason": "mobile-plan-required"]) }
         if plans.hoursBlocked(), let id, !id.hasPrefix("live:") {
             return (409, ["kind": "unavailable", "reason": "hours-cap"])
         }
         if let id, id.hasPrefix("live:") {
             return (409, ["kind": "unavailable", "reason": "unsupported"])
         }
+        rememberPlayback(id: id, title: title, season: season, episode: episode)
         if let blocked = await probeAuth() { return (409, blocked) }
         if let link, !link.trimmingCharacters(in: .whitespaces).isEmpty {
             return await playFromLink(link, mediaId: id)
@@ -183,7 +257,7 @@ final class TVMMedia {
         if !wanted.isEmpty,
            let matched = await findLibraryPlayback(wanted, season: season, episode: episode),
            let owned = await resolveOwnedLink(matched) {
-            return await playFromLink(owned, mediaId: matched)
+            return await playFromLink(owned, mediaId: id ?? matched)
         }
         if let imdb = await resolveImdb(id: id, title: title) {
             let parsed = id.flatMap { TVMTitle.parsePlayId($0) }
@@ -288,8 +362,8 @@ final class TVMMedia {
             let startAt = TVMTitle.progressRatio(progress).flatMap { _ in progress?.position }
             var playURL = link
             var filename = URL(string: link)?.lastPathComponent ?? "stream"
-            var mime = "video/mp4"
-            var rdId: String?
+            var mime = "application/octet-stream"
+            var rdId: String? = mediaId?.hasPrefix("rd:d:") == true ? String(mediaId!.dropFirst(5)) : nil
             if rd.needsUnrestrict(link) {
                 let unrestricted = try await rd.unrestrict(link: link)
                 playURL = unrestricted.download
@@ -303,7 +377,7 @@ final class TVMMedia {
             if TVMPlayback.phoneCanPlay(filename: filename, mimeType: mime, url: playURL) {
                 return streamReply(url: playURL, title: TVMTitle.parseFilename(filename).title, filename: filename, mime: mime, transport: "file", startAt: startAt)
             }
-            if let rdId, let transcode = await rd.appleTranscode(id: rdId),
+            if let rdId, !rdId.isEmpty, let transcode = await rd.appleTranscode(id: rdId, maxHeight: plans.maxHeight()),
                TVMPlayback.phoneCanPlay(filename: transcode.url, mimeType: transcode.mime, url: transcode.url) {
                 let transport = transcode.mime.contains("mpegurl") ? "hls" : "file"
                 return streamReply(url: transcode.url, title: TVMTitle.parseFilename(filename).title, filename: filename, mime: transcode.mime, transport: transport, startAt: startAt)
