@@ -416,15 +416,20 @@ final class TVMMedia {
         let info = try await rd.torrentInfo(torrentId)
         let selected = info.files.filter { $0.selected == 1 }
         let progress = store.progress(for: activeProfile())
-        return selected.enumerated().compactMap { index, file in
+        return selected.enumerated().compactMap { index, file -> MediaItem? in
             let name = TVMTitle.fileName(from: file.path)
-            var item = TVMTitle.itemFromName(id: "rd:t:\(torrentId):\(index)", filename: name, progress: TVMTitle.progressRatio(progress["rd:t:\(torrentId):\(index)"]))
-            if item?.season == nil {
+            guard var item = TVMTitle.itemFromName(
+                id: "rd:t:\(torrentId):\(index)",
+                filename: name,
+                progress: TVMTitle.progressRatio(progress["rd:t:\(torrentId):\(index)"])
+            ) else { return nil }
+            if item.season == nil {
                 let season = TVMTitle.parseSeason(name) ?? TVMTitle.parseSeason(info.filename)
                 if season != nil || selected.count >= 2 {
-                    item?.kind = "series"
-                    item?.season = season ?? 1
-                    item?.episode = item?.episode ?? index + 1
+                    let episode = item.episode ?? index + 1
+                    item.kind = "series"
+                    item.season = season ?? 1
+                    item.episode = episode
                 }
             }
             return item
