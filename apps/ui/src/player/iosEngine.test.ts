@@ -54,4 +54,21 @@ describe('iOS native playback', () => {
     expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'play' }));
     engine.destroy();
   });
+
+  it('treats a moving clock as the first frame even when VLC omits hasFrame', () => {
+    const postMessage = vi.fn();
+    const win = Object.assign(new EventTarget(), {
+      location: { href: 'http://127.0.0.1:7345/' },
+      webkit: { messageHandlers: { tvmPlayer: { postMessage } } },
+    });
+    vi.stubGlobal('window', win);
+    const events = { onTime: vi.fn(), onPlayState: vi.fn(), onBuffering: vi.fn(), onFirstFrame: vi.fn(), onEnded: vi.fn(), onClosed: vi.fn(), onError: vi.fn() };
+    const stream: EngineStream = { kind: 'stream', url: 'https://cdn.example/film.mkv', title: 'Film', filename: 'film.mkv', mimeType: 'video/x-matroska', engine: 'native' };
+    const engine = createPlayerEngine({} as HTMLVideoElement, stream, { live: false }, events);
+    engine.attach();
+    const id = (postMessage.mock.calls[0]![0] as Record<string, unknown>)['id'];
+    win.dispatchEvent(new CustomEvent('tvm:native-player', { detail: { id, command: 'state', position: 1.2, duration: 100, paused: false, buffering: false, hasFrame: false } }));
+    expect(events.onFirstFrame).toHaveBeenCalledTimes(1);
+    engine.destroy();
+  });
 });

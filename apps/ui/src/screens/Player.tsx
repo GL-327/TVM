@@ -148,6 +148,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             // refs and let the progress control animate its own media events.
             setPosition(Math.floor(nextPosition));
             if (nextDuration > 0) setDuration(nextDuration);
+            if (native && nextPosition > 0.4) setError(null);
             const now = Date.now();
             if (now - lastSaved.current >= 10_000) {
               lastSaved.current = now;

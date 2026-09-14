@@ -66,6 +66,24 @@ final class StandaloneTests: XCTestCase {
         controller.shutdown()
     }
 
+    func testNativePlayerIgnoresVLCBufferingFlickerAndTransientErrors() {
+        let playing = TVMNativePulse(phase: .buffering, isPlaying: true, hasOutput: true, position: 12, duration: 100, sawPlayback: true, elapsed: 20, sinceProgress: 0.2, sinceError: 0)
+        XCTAssertTrue(tvmNativeMarkPlayback(playing))
+        XCTAssertFalse(tvmNativeBlockingLoad(playing))
+        XCTAssertFalse(tvmNativeRebuffering(playing))
+        XCTAssertFalse(tvmNativeShouldFail(playing))
+        let blip = TVMNativePulse(phase: .error, isPlaying: false, hasOutput: true, position: 12, duration: 100, sawPlayback: true, elapsed: 20, sinceProgress: 0.4, sinceError: 1)
+        XCTAssertFalse(tvmNativeShouldFail(blip))
+        let opening = TVMNativePulse(phase: .buffering, isPlaying: false, hasOutput: false, position: 0, duration: 0, sawPlayback: false, elapsed: 2, sinceProgress: 2, sinceError: 0)
+        XCTAssertTrue(tvmNativeBlockingLoad(opening))
+        XCTAssertFalse(tvmNativeShouldFail(opening))
+        let dead = TVMNativePulse(phase: .buffering, isPlaying: false, hasOutput: false, position: 0, duration: 0, sawPlayback: false, elapsed: 46, sinceProgress: 46, sinceError: 0)
+        XCTAssertTrue(tvmNativeShouldFail(dead))
+        let paused = TVMNativePulse(phase: .paused, isPlaying: false, hasOutput: true, position: 40, duration: 100, sawPlayback: true, elapsed: 90, sinceProgress: 50, sinceError: 0)
+        XCTAssertFalse(tvmNativeShouldFail(paused))
+        XCTAssertFalse(tvmNativeBlockingLoad(paused))
+    }
+
     @MainActor func testNativeDecoderPlaysMP4MatroskaWebMAndTransportStream() throws {
         _ = Bundle(for: StandaloneTests.self).url(forResource: "sample", withExtension: "mp4", subdirectory: "PlaybackFixtures")
         throw XCTSkip("VLCKit decode is a device check; simulator playback deadlocks XCTest and blocks the IPA")
