@@ -19,7 +19,10 @@ done
 APP_HOME=$(cd -P "${APP_HOME:-./}" > /dev/null && pwd -P) || exit
 APP_NAME="Gradle"
 APP_BASE_NAME=${0##*/}
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+# Unquoted tokens: this script execs $DEFAULT_JVM_OPTS directly. A value like
+# '"-Xmx64m"' is passed to java as a class name:
+# Could not find or load main class "-Xmx64m"
+DEFAULT_JVM_OPTS='-Xmx64m -Xms64m'
 
 if [ -n "$JAVA_HOME" ]; then
     JAVACMD=$JAVA_HOME/bin/java

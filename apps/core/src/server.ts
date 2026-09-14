@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { CORE_HOST, CORE_VERSION, resolveBindHost, resolvePort } from './config.ts';
 import { readJson, sendJson } from './http.ts';
 import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
+import { mobilePlaybackBlocked } from './mobileAccess.ts';
 import { createLanSessions, serveLanPairing } from './lanSessions.ts';
 import { exportPersonalData } from './privacy.ts';
 import { writeSecret } from './providers/secrets.ts';
@@ -1065,6 +1066,10 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const addr = server.address();
       const listenPort = addr !== null && typeof addr === 'object' ? addr.port : resolvePort(env);
 
+      if ((path === '/api/playback' || path.startsWith('/api/stream/')) && mobilePlaybackBlocked(request, path, plans.status())) {
+        sendJson(response, 403, { kind: 'unavailable', reason: 'mobile-plan-required', error: 'Mobile viewing requires Basic or higher with at least 1080p.' });
+        return;
+      }
       if (await handleStreamApi(path, request, response, streamer)) return;
       if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env)) return;
 

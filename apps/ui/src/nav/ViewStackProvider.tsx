@@ -20,6 +20,7 @@ import {
 } from './focusEngine';
 import { acceptHeldHop, createAxisHopQueue } from './hopQueue';
 import { isWrappingTrack, settleWrappingTrack, wrapLoopingTrack } from './loopingRail';
+import { isTextEntryTarget } from './pointerInput';
 import { focusKeyFor, isVerticalNavContext, neighborFocusTarget, ribbonFocusTarget } from './railNav';
 import { conveyorHop, wrapHop } from './wrapFocus';
 import { FocusScopeProvider, ViewStackContextProvider, useNavigate as useScreenNavigate } from './ViewStackContext';
@@ -28,6 +29,7 @@ import { screenDefinition } from './registry';
 import { setActiveProfileId } from '../data/media';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { FocusButton } from '../components/FocusButton';
+import { MobilePlanGate } from '../components/MobilePlanGate';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { installEasterEggs } from '../brand/easterEggs';
 
@@ -329,7 +331,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
       const node = event.target;
-      if (!(node instanceof Element)) return;
+      if (!(node instanceof Element) || isTextEntryTarget(node)) return;
       const host = node.closest<HTMLElement>('[data-focus-id]');
       if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
         document.documentElement.classList.add('desktop-shell');
@@ -401,7 +403,7 @@ function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
           <ScreenGuard>
             <Suspense fallback={<ScreenLoading />}>
               <ScreenReady entry={entry}>
-                <Screen params={entry.params} />
+                <MobilePlanGate screen={entry.name}><Screen params={entry.params} /></MobilePlanGate>
               </ScreenReady>
             </Suspense>
           </ScreenGuard>

@@ -12,9 +12,11 @@ interface FocusFieldProps {
   value: string;
   onChange: (value: string) => void;
   onConfirm: (value: string) => void;
-  type?: 'text' | 'password' | 'url';
+  type?: 'text' | 'password' | 'url' | 'search';
   placeholder?: string;
   multiline?: boolean;
+  inputMode?: 'text' | 'search' | 'url' | 'email' | 'numeric' | 'tel' | 'decimal' | 'none';
+  enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
   /** After a paste, move the highlight to this in-screen control (usually Save). */
   afterPasteFocusId?: string;
 }
@@ -31,6 +33,8 @@ export function FocusField({
   type = 'text',
   placeholder,
   multiline = false,
+  inputMode,
+  enterKeyHint,
   afterPasteFocusId,
 }: FocusFieldProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
@@ -77,6 +81,8 @@ export function FocusField({
         data-focused={focused ? 'true' : undefined}
         value={value}
         placeholder={placeholder}
+        inputMode={inputMode}
+        enterKeyHint={enterKeyHint}
         onChange={(event) => onChange(event.currentTarget.value)}
         onPaste={afterPaste}
       />
@@ -95,6 +101,10 @@ export function FocusField({
       data-focused={focused ? 'true' : undefined}
       value={value}
       placeholder={placeholder}
+      inputMode={inputMode}
+      enterKeyHint={enterKeyHint}
+      autoCapitalize="off"
+      autoCorrect="off"
       onChange={(event) => onChange(event.currentTarget.value)}
       onPaste={afterPaste}
     />

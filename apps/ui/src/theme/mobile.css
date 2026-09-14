@@ -80,7 +80,7 @@
 
 /* Phone -------------------------------------------------------------------- */
 
-@media (max-width: 47.99rem) {
+@media (max-width: 47.99rem), (pointer: coarse) and (max-height: 30rem) and (orientation: landscape) {
   /*
    * Overscan does not exist on a phone, but the notch and the home indicator
    * do. Trade the TV margin for the real inset, with a small floor so content
@@ -232,7 +232,7 @@
     font-size: 0.9rem;
   }
 
-  .launch-tile span:last-child:not(.launch-tile__mark) {
+  .launch-tile .tvm-button__label > span:last-child:not(.launch-tile__mark) {
     display: none;
   }
 
@@ -323,6 +323,24 @@
     background: color-mix(in srgb, var(--tvm-bg, #071428) 92%, #000);
     box-shadow: 0 -0.4rem 1.4rem rgba(0, 0, 0, 0.35);
     border-top: 1px solid color-mix(in srgb, #fff 10%, transparent);
+  }
+
+  /*
+   * The per-theme sheets set `[data-theme='x'] .ribbon` with a translucent fill
+   * — correct for a ribbon that peeks over a TV stage, wrong for a bottom tab
+   * bar that a rail scrolls underneath. At (0,1,0) the rule above loses to them
+   * on specificity no matter how late it loads, and the tab labels ended up
+   * sitting on top of poster art.
+   *
+   * These two selectors tie or beat (0,2,0) and win on source order instead.
+   * A blur is layered on where it is available, but the fill alone is already
+   * opaque enough: performance mode strips every backdrop-filter.
+   */
+  html:not([data-theme]) .ribbon,
+  [data-theme] .ribbon {
+    background: color-mix(in srgb, var(--tvm-bg, #071428) 94%, #000);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
   }
 
   [data-theme='glass'] .ribbon {
@@ -495,6 +513,10 @@
     min-height: 2.75rem;
     font-size: 16px;
     cursor: text;
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   .search-pill__bar .tvm-button {
@@ -507,8 +529,17 @@
   }
 
   .search-results {
-    flex-wrap: wrap;
-    overflow-x: visible;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+    gap: 0.75rem;
+    overflow: visible;
+  }
+
+  .search-results .poster,
+  .search-results .app-card {
+    width: 100%;
+    min-height: 2.75rem;
+    pointer-events: auto;
   }
 
   .search-recent__items .tvm-button,
@@ -756,6 +787,22 @@
  */
 
 @media (max-height: 30rem) and (orientation: landscape) {
+  .home__launcher {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .tvm-button.launch-tile {
+    min-height: 3rem;
+    padding: 0.6rem;
+  }
+
+  .tvm-button.launch-tile .tvm-button__label {
+    grid-template-columns: 1fr;
+  }
+
+  .launch-tile__mark {
+    display: none;
+  }
   :root {
     --tvm-tabbar: calc(4.35rem + env(safe-area-inset-bottom));
   }

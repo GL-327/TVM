@@ -19,6 +19,7 @@
    sets `data-motion='reduced'` while it is on, so transitions and the scroll
    tween snap. Auto/full never set that attribute from the OS reduce flag. */
 :root[data-perf='on'] .rt-set,
+:root[data-perf='on'] .tvm-scene,
 :root[data-perf='on'] .home__scene,
 :root[data-perf='on'] .stage__vignette,
 :root[data-perf='on'] .glass-scene,

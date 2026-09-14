@@ -139,6 +139,9 @@ enum TVMPlayback {
         let mime = mimeType?.lowercased() ?? ""
         if mime.contains("mpegurl") || mime.contains("x-mpegurl") { return true }
         if url.range(of: #"\.m3u8(\?|$)"#, options: .regularExpression) != nil { return true }
+        // Some providers label every download video/mp4, including Matroska.
+        if filename.range(of: #"\.(mkv|webm|avi|ts|m2ts)$"#, options: [.regularExpression, .caseInsensitive]) != nil ||
+            url.range(of: #"\.(mkv|webm|avi|ts|m2ts)(\?|$)"#, options: [.regularExpression, .caseInsensitive]) != nil { return false }
         if mime == "video/mp4" || mime == "video/quicktime" { return true }
         if url.range(of: #"\.(mp4|m4v|mov)(\?|$)"#, options: .regularExpression) != nil { return true }
         if filename.range(of: #"\.(mp4|m4v|mov|m3u8)$"#, options: [.regularExpression, .caseInsensitive]) != nil {
@@ -149,6 +152,23 @@ enum TVMPlayback {
 
     static func needsConverter(filename: String, mimeType: String?, url: String) -> Bool {
         !phoneCanPlay(filename: filename, mimeType: mimeType, url: url)
+    }
+
+    static func appleTranscode(_ object: [String: Any], maxHeight: Int) -> (url: String, mime: String)? {
+        // WebM is a separate RD format, never mislabel it MP4. Prefer native HLS.
+        for group in ["apple", "liveMP4"] {
+            guard let bucket = object[group] as? [String: Any] else { continue }
+            let qualities = bucket.keys.compactMap { key -> (String, Int)? in
+                guard let height = Int(key.replacingOccurrences(of: "p", with: "")), height > 0, height <= maxHeight else { return nil }
+                return (key, height)
+            }.sorted { $0.1 > $1.1 }
+            for (key, _) in qualities {
+                guard let value = bucket[key] as? String, let url = URL(string: value),
+                      ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { continue }
+                return (value, group == "apple" ? "application/vnd.apple.mpegurl" : "video/mp4")
+            }
+        }
+        return nil
     }
 }
 

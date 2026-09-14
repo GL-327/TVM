@@ -32,6 +32,16 @@ export function tapShouldActivate(moved: boolean, distance: number, slop = TOUCH
   return !moved && Number.isFinite(distance) && distance <= slop;
 }
 
+/** Inputs must receive the real tap so iOS/Android can open the system keyboard. */
+export function isTextEntryTarget(node: EventTarget | null): boolean {
+  if (!(node instanceof Element) || typeof node.closest !== 'function') return false;
+  try {
+    return node.closest('input, textarea, select, [contenteditable="true"]') !== null;
+  } catch {
+    return false;
+  }
+}
+
 function isMouse(event: PointerEvent): boolean {
   return event.pointerType === 'mouse' || event.pointerType === 'pen';
 }
@@ -188,6 +198,7 @@ export function startPointerInput(): () => void {
   const onPointerDown = (event: PointerEvent): void => {
     const node = event.target;
     if (!(node instanceof Element)) return;
+    if (isTextEntryTarget(node)) return;
     if (isTapPointer(event)) {
       // Native scrolling/pinch takes precedence. Focus only a completed tap;
       // selecting on touch-down pans the card away from the finger mid-swipe.

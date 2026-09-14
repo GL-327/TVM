@@ -10,6 +10,7 @@ vi.mock('./revealFocused', () => ({ cancelPendingReveal: vi.fn(), suppressNextRe
 vi.mock('./scrollAnim', () => ({ cancelScrollAnim: vi.fn(), animate: vi.fn(), scrollTarget: vi.fn() }));
 
 class Surface extends EventTarget {
+  click = vi.fn();
   parentElement: Surface | null = null;
   isConnected = true;
   classList = { contains: () => false, add: vi.fn(), remove: vi.fn() };
@@ -60,11 +61,21 @@ describe('native touch navigation', () => {
     expect(requestFocus).not.toHaveBeenCalled();
   });
 
-  it('focuses a completed tap once without suppressing its native click', () => {
-    const { pointer } = setup();
+  it('focuses and activates a completed tap once', () => {
+    const { host, pointer } = setup();
     pointer('pointerdown');
     expect(pointer('pointerup', 23).defaultPrevented).toBe(false);
     expect(requestFocus).toHaveBeenCalledExactlyOnceWith('rail/card');
+    expect(host.click).toHaveBeenCalledOnce();
+  });
+
+  it('leaves native text fields to the system keyboard', () => {
+    const { host, pointer } = setup();
+    host.closest = (selector: string) => selector.includes('input') || selector === '[data-focus-id]' ? host : null;
+    pointer('pointerdown');
+    pointer('pointerup');
+    expect(requestFocus).not.toHaveBeenCalled();
+    expect(host.click).not.toHaveBeenCalled();
   });
 
   it('does not focus after the browser claims a pan or after a second touch begins', () => {

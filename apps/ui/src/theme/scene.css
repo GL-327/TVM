@@ -1,6 +1,18 @@
 /*
- * Scene tokens and unused CSS layers. The WebGL/CSS stage is not mounted:
- * a fullscreen canvas covered Home. Screens paint opaque theme backgrounds.
+ * The animated stage behind every screen, and its palette tokens.
+ *
+ * Each theme supplies the --tvm-scene-* colours (see default.css and friends);
+ * this sheet only moves them. Every animated property is `transform` or
+ * `opacity` so the layers stay on the compositor — no layout, no repaint, and
+ * no measurable cost on a phone.
+ *
+ * Periods are 18-34s. The earlier pass used 41-97s, which is about two degrees
+ * of travel a second: technically animated, visually a still image. These are
+ * slow enough to stay out of the way and fast enough to read as alive.
+ *
+ * Stacking: `.tvm-scene` is z-index 0 inside `.app`, `.app__screen` is z-index 1.
+ * That ordering is the whole reason the canvas that used to cover Home cannot.
+ * Screens below opt out of their opaque fill so the stage shows through.
  */
 
 :root {
@@ -35,15 +47,39 @@
 }
 
 .tvm-scene {
-  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Layout and paint only. `size` containment would collapse a fixed inset:0
+     box and take every child with it. */
+  contain: layout paint;
+  opacity: var(--tvm-scene-opacity, 0.46);
 }
 
+/* The GPU path is not mounted; SceneField renders the CSS layers. */
 .tvm-scene[data-engine='webgl'] {
   display: none;
 }
 
 .tvm-scene[data-run='off'] {
   opacity: 0;
+}
+
+/*
+ * Screens paint an opaque theme fill by default, which would hide the stage.
+ * Only the full-bleed page containers opt out — panels, modals and cards keep
+ * their fill so text never sits directly on a moving gradient.
+ *
+ * `.app` deliberately keeps the theme colour: it is the ground the scene
+ * composites onto, rather than the browser canvas.
+ */
+.home,
+.home__shelf,
+.page,
+.stream-page {
+  background: transparent;
 }
 
 .tvm-scene__gpu {
@@ -86,7 +122,7 @@
     color-mix(in srgb, var(--tvm-scene-sky-mid, #9ee0d4) 28%, transparent) 42%,
     transparent 70%
   );
-  animation: tvm-scene-drift-a 53s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+  animation: tvm-scene-drift-a 24s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
 }
 
 .tvm-scene__veil {
@@ -98,7 +134,7 @@
   );
   mix-blend-mode: screen;
   opacity: 0.55;
-  animation: tvm-scene-drift-b 67s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+  animation: tvm-scene-drift-b 31s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
 }
 
 .tvm-scene__caustic {
@@ -110,7 +146,7 @@
   );
   mix-blend-mode: soft-light;
   opacity: 0.7;
-  animation: tvm-scene-drift-c 41s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+  animation: tvm-scene-drift-c 19s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
 }
 
 .tvm-scene__caustic--2 {
@@ -120,8 +156,8 @@
     color-mix(in srgb, var(--tvm-scene-sea, #1a5a8a) 18%, transparent) 40%,
     transparent 64%
   );
-  animation-duration: 79s;
-  animation-delay: -22s;
+  animation-duration: 27s;
+  animation-delay: -9s;
 }
 
 .tvm-scene__sun {
@@ -138,7 +174,7 @@
     transparent 68%
   );
   opacity: 0.42;
-  animation: tvm-scene-breathe 97s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+  animation: tvm-scene-breathe 21s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
 }
 
 .tvm-scene__spec {
@@ -154,7 +190,7 @@
     transparent 70%
   );
   opacity: 0.28;
-  animation: tvm-scene-spec 29s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+  animation: tvm-scene-spec 34s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
 }
 
 .tvm-scene__grain {
@@ -164,10 +200,14 @@
   mix-blend-mode: overlay;
 }
 
+/*
+ * The player owns the whole screen, and Retro paints its own television set.
+ * `display: none` rather than a transparent layer: a hidden-but-present layer
+ * still composites every frame.
+ */
 .app:has([data-screen='player']) .tvm-scene,
 html[data-theme='synthwave'] .tvm-scene {
-  visibility: hidden;
-  opacity: 0;
+  display: none;
 }
 
 [data-theme='light'] .tvm-scene__veil,
@@ -246,50 +286,50 @@ html[data-theme='synthwave'] .tvm-scene {
 
 @keyframes tvm-scene-drift-a {
   from {
-    transform: translate3d(-2.4%, 1.2%, 0) scale(1.04);
+    transform: translate3d(-7%, 3.5%, 0) scale(1.06);
   }
   to {
-    transform: translate3d(2.8%, -1.6%, 0) scale(1.1);
+    transform: translate3d(7.5%, -4.5%, 0) scale(1.16);
   }
 }
 
 @keyframes tvm-scene-drift-b {
   from {
-    transform: translate3d(2.2%, -1.8%, 0) scale(1.06);
+    transform: translate3d(6.5%, -5%, 0) scale(1.08);
   }
   to {
-    transform: translate3d(-3.1%, 2.4%, 0) scale(1.12);
+    transform: translate3d(-8.5%, 6.5%, 0) scale(1.2);
   }
 }
 
 @keyframes tvm-scene-drift-c {
   from {
-    transform: translate3d(-3.4%, 1.4%, 0) scale(1.05);
+    transform: translate3d(-9%, 4%, 0) scale(1.06);
   }
   to {
-    transform: translate3d(2.6%, -2.8%, 0) scale(1.14);
+    transform: translate3d(7.5%, -7.5%, 0) scale(1.22);
   }
 }
 
 @keyframes tvm-scene-breathe {
   from {
-    transform: translate3d(0, 0, 0) scale(0.96);
-    opacity: 0.32;
+    transform: translate3d(0, 0, 0) scale(0.9);
+    opacity: 0.26;
   }
   to {
-    transform: translate3d(-4%, 3%, 0) scale(1.08);
-    opacity: 0.5;
+    transform: translate3d(-11%, 8%, 0) scale(1.18);
+    opacity: 0.56;
   }
 }
 
 @keyframes tvm-scene-spec {
   from {
-    transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.16;
+    transform: translate3d(-6%, -4%, 0) scale(0.92);
+    opacity: 0.1;
   }
   to {
-    transform: translate3d(38%, 12%, 0) scale(1.18);
-    opacity: 0.34;
+    transform: translate3d(74%, 20%, 0) scale(1.3);
+    opacity: 0.4;
   }
 }
 

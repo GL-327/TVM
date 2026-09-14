@@ -55,7 +55,7 @@ describe('laptop desktop copies', () => {
     const roku = readFileSync(join(repo, 'scripts/roku-dev.ps1'), 'utf8');
     const launch = readFileSync(join(repo, 'scripts/launch-tvm.ps1'), 'utf8');
     expect(roku).toContain('TVM_CORE_BIND = "127.0.0.1"');
-    expect(roku).toContain('no Wi-Fi required');
+    expect(roku).toContain('A Wi-Fi adapter is not required.');
     expect(roku).not.toContain('Get-NetIPAddress');
     expect(roku).toMatch(/if \(-not \$Sideload\) \{ return \}/);
     expect(launch).toContain('TVM_CORE_BIND = "127.0.0.1"');

@@ -230,27 +230,14 @@ final class TVMRealDebrid {
         )
     }
 
-    func appleTranscode(id: String) async -> (url: String, mime: String)? {
+    func appleTranscode(id: String, maxHeight: Int) async -> (url: String, mime: String)? {
         do {
             let raw = try await requestJSON("/streaming/transcode/\(id)")
             guard let object = raw as? [String: Any] else { return nil }
-            for group in ["apple", "h264WebM", "liveMP4"] {
-                guard let bucket = object[group] as? [String: Any] else { continue }
-                for quality in ["1080", "1080p", "720", "720p", "full", "auto", "480"] {
-                    if let url = bucket[quality] as? String, url.hasPrefix("http") {
-                        let mime = group == "apple" || url.contains(".m3u8")
-                            ? "application/vnd.apple.mpegurl"
-                            : "video/mp4"
-                        if group == "apple" || TVMPlayback.phoneCanPlay(filename: url, mimeType: mime, url: url) {
-                            return (url, mime)
-                        }
-                    }
-                }
-            }
+            return TVMPlayback.appleTranscode(object, maxHeight: maxHeight)
         } catch {
             return nil
         }
-        return nil
     }
 
     func resolveRedirect(_ url: String) async -> String? {

@@ -28,7 +28,7 @@ export function writeProgress(dataDir: string, id: string, position: number, dur
 export function ratio(entry: ProgressEntry | undefined): number | undefined {
   if (entry === undefined || entry.duration < 60 || entry.position < 30) return undefined;
   const value = entry.position / entry.duration;
-  if (value < 0.04 || value > 0.96) return undefined;
+  if (value > 0.96) return undefined;
   return Math.min(1, Math.max(0, value));
 }
 

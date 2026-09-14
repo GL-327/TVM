@@ -9,6 +9,10 @@ describe('progress', () => {
     expect(ratio({ position: 900, duration: 3600, updated: '2026-01-01' })).toBe(0.25);
   });
 
+  it('keeps a film after thirty seconds even when that is under 4%', () => {
+    expect(ratio({ position: 30, duration: 7200, updated: '2026-01-01' })).toBeCloseTo(30 / 7200);
+  });
+
   it('keeps one continue-watching card per show, newest first', () => {
     const progress: ProgressMap = {
       'rd:a': { position: 900, duration: 3600, updated: '2026-01-02T00:00:00.000Z' },

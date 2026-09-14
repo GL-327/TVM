@@ -15,8 +15,8 @@ final class TVMLocalCore {
     private var liveChannels: [[String: Any]] = []
     private var livePicks = Set<String>()
 
-    init(session: URLSession? = nil) {
-        store = TVMStore()
+    init(session: URLSession? = nil, store: TVMStore = TVMStore()) {
+        self.store = store
         if let session {
             self.session = session
         } else {
@@ -122,6 +122,8 @@ final class TVMLocalCore {
             return .json(200, ["items": (await media.search(query["q"] ?? "")).map { $0.json() }])
         }
         if path == "/api/playback" && method == "POST" {
+            guard plans.mobileAllowed() else { return .json(403, ["kind": "unavailable", "reason": "mobile-plan-required"]) }
+            if let id = json["id"] as? String, id.hasPrefix("live:") { return await playLive(id) }
             let result = await media.play(
                 id: JSONValue.string(json["id"]),
                 link: JSONValue.string(json["link"]),
@@ -231,6 +233,25 @@ final class TVMLocalCore {
                   let password = json["password"] as? String else {
                 return .json(400, ["error": "host, username and password are required"])
             }
+            guard var playlist = URLComponents(string: host),
+                  ["http", "https"].contains(playlist.scheme?.lowercased() ?? ""), playlist.host != nil,
+                  playlist.user == nil, playlist.password == nil else {
+                return .json(400, ["error": "Enter a valid HTTP or HTTPS provider address."])
+            }
+            playlist.path = playlist.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty ? "/get.php" : playlist.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/get.php"
+            if !playlist.path.hasPrefix("/") { playlist.path = "/" + playlist.path }
+            playlist.queryItems = [URLQueryItem(name: "username", value: username), URLQueryItem(name: "password", value: password), URLQueryItem(name: "type", value: "m3u_plus"), URLQueryItem(name: "output", value: "m3u8")]
+            guard let url = playlist.url else { return .json(400, ["error": "Invalid provider address."]) }
+            var request = URLRequest(url: url); request.timeoutInterval = 15
+            guard let (data, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let text = String(data: data, encoding: .utf8), text.contains("#EXTM3U") else {
+                return .json(400, ["error": "The provider did not return an HLS playlist. Check your login and provider HLS support."])
+            }
+            let channels = parseM3U(text)
+            guard !channels.isEmpty else { return .json(400, ["error": "The provider playlist contains no channels."]) }
+            liveChannels = channels
+            liveURL = "xtream"
             liveHost = host
             liveUser = username
             XtreamKeychain.save(password)
@@ -305,6 +326,25 @@ final class TVMLocalCore {
         let allowed = ["image.tmdb.org", "images.metahub.space", "live.metahub.space", "mzstatic.com", "tvmaze.com", "kitsu.io", "fanart.tv"]
         if allowed.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) { return url }
         return nil
+    }
+
+    // DEVICE TEST REQUIRED: raw MPEG-TS needs a provider HLS feed or home Core FFmpeg.
+    // No on-device converter is bundled; do not claim unsupported containers can play.
+    private func playLive(_ id: String) async -> HTTPReply {
+        guard plans.status()["liveTv"] as? Bool == true else { return .json(409, ["kind": "unavailable", "reason": "Live TV requires the Live TV add-on."]) }
+        guard let channel = liveChannels.first(where: { $0["id"] as? String == id }),
+              let raw = channel["url"] as? String, let url = URL(string: raw),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
+            return .json(409, ["kind": "unavailable", "reason": "not-in-library"])
+        }
+        var mime = url.pathExtension.lowercased() == "m3u8" ? "application/vnd.apple.mpegurl" : ""
+        if mime.isEmpty && !["ts", "m2ts"].contains(url.pathExtension.lowercased()) {
+            var request = URLRequest(url: url); request.httpMethod = "HEAD"; request.timeoutInterval = 8
+            if let (_, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) { mime = http.mimeType ?? "" }
+        }
+        guard mime.lowercased().contains("mpegurl") else { return .json(409, ["kind": "unavailable", "reason": "live-hls-required"]) }
+        return .json(200, ["kind": "stream", "url": raw, "title": channel["name"] as? String ?? "Live TV", "filename": "live.m3u8", "mimeType": mime, "engine": "html5", "transport": "hls", "isLive": true])
     }
 
     private func liveStatus() -> [String: Any] {

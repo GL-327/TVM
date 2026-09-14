@@ -41,6 +41,7 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
       <TopBar title="Plans" />
       <p className="stage__kicker">Test plans · no real payment</p>
       <h1 className="page__heading">Upgrade TVM</h1>
+      <p className="page__lede">iOS and Android viewing is included with Basic, Premium, Ultra and MAX. Free is for television and desktop. Video keeps its original proportions inside a 16:9 player.</p>
       <section className="plan-current">
         <p className="plan-current__kicker">Current plan</p>
         <h2 className="plan-current__name">{plan.name}</h2>

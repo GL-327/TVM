@@ -9,6 +9,7 @@
 *.conf        text eol=lf
 mkosi.postinst text eol=lf
 mkosi.prepare  text eol=lf
+gradlew        text eol=lf
 
 *.png binary
 *.jpg binary
