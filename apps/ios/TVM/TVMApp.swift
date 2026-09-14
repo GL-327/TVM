@@ -126,9 +126,16 @@ struct StandaloneRoot: View {
 }
 
 enum TVMViewport {
+    /// 16:9 letterbox for video. Never use this for the live browser chrome —
+    /// a keyboard-shrunk `available` height collapses the whole app into a strip.
     static func fittedSize(in available: CGSize) -> CGSize {
         let width = max(0, min(available.width, available.height * 16 / 9))
         return CGSize(width: width, height: width * 9 / 16)
+    }
+
+    /// The in-app browser fills the window. Keyboard occlusion is a CSS inset, not a frame change.
+    static func webViewSize(in window: CGSize) -> CGSize {
+        CGSize(width: max(0, window.width), height: max(0, window.height))
     }
 }
 
@@ -152,15 +159,14 @@ struct PlayerShell: View {
                 }
                 .padding(28)
             } else {
-                GeometryReader { geometry in
-                    let size = TVMViewport.fittedSize(in: geometry.size)
-                    TVMWebView(session: currentSession, loading: $loading, error: $error)
-                        .id(reload)
-                        .frame(width: size.width, height: size.height)
-                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                }
+                TVMWebView(session: currentSession, loading: $loading, error: $error)
+                    .id(reload)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(.container)
+                    .ignoresSafeArea(.keyboard)
             }
         }
+        .ignoresSafeArea(.keyboard)
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 10) {
                 if loading { ProgressView().controlSize(.small).tint(.white) }
