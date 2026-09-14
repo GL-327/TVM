@@ -127,7 +127,7 @@ final class TVMMedia {
             ?? library.first
         return [
             "rd": status.json(),
-            "featured": featured?.json() ?? NSNull(),
+            "featured": JSONValue.orNull(featured?.json()),
             "library": library.prefix(400).map { $0.json() },
             "continueWatching": continueWatching.map { $0.json() },
             "watchlist": watchlist.map { $0.json() },
@@ -248,7 +248,7 @@ final class TVMMedia {
             "wordmark": spec["wordmark"] ?? spec["name"] ?? id,
             "logo": spec["icon"] ?? "",
             "disclaimer": "Not the licensed \(spec["name"] ?? id) app. Playback uses TVM Stream / Real-Debrid.",
-            "hero": hero?.json() ?? NSNull(),
+            "hero": JSONValue.orNull(hero?.json()),
             "continueWatching": [],
             "rails": [
                 CatalogRail(id: "\(id)-films", title: "Popular films", items: movies).json(),
@@ -373,10 +373,10 @@ final class TVMMedia {
         let downloads: [RdDownload]
         let torrents: [RdTorrent]
         do {
-            async let d = rd.downloads()
-            async let t = rd.torrents()
-            downloads = try await d
-            torrents = try await t
+            async let downloadTask = rd.downloads()
+            async let torrentTask = rd.torrents()
+            downloads = try await downloadTask
+            torrents = try await torrentTask
         } catch {
             lock.lock()
             if let libraryCache {
