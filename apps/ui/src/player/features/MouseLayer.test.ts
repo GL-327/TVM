@@ -28,6 +28,14 @@ describe('player mouse layer', () => {
     expect(handler).toContain('tvm:toggle-chrome');
   });
 
+  it('toggles chrome on a coarse video tap even when iOS never fires click', () => {
+    const start = src.indexOf('const onPointerUp');
+    const handler = src.slice(start, src.indexOf('const onClick'));
+    expect(handler).toContain("event.pointerType === 'touch'");
+    expect(handler).toContain('isVideoToggleTarget');
+    expect(handler).toContain('tvm:toggle-chrome');
+  });
+
   it('drags on the canvas to seek and taps to toggle chrome', () => {
     expect(src).toContain('isCanvasDrag');
     expect(src).toContain('isStageTarget');
