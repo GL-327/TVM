@@ -129,18 +129,54 @@ final class TVMMedia {
         let continueWatching = self.continueWatching(catalogItems + library)
         let watchlist = self.watchlist()
         var rails = await buildRails(bundle: bundle, watching: continueWatching, watchlist: watchlist)
+        /*
+         * Split deliberately, with explicit types at each step. As one chained
+         * expression — four arrays concatenated, then filtered, then sorted by
+         * a comparator full of optional chaining and `??` — this exceeded the
+         * Swift type checker's budget and failed the build outright with
+         * "unable to type-check this expression in reasonable time", which then
+         * cascaded into key-path inference errors wherever `finished` was used.
+         */
         var seenFinished = Set<String>()
-        let finished = (catalogItems + library + watchlist + store.recentMedia(for: activeProfile())).filter { item in
+        var finishedPool: [MediaItem] = catalogItems
+        finishedPool += library
+        finishedPool += watchlist
+        finishedPool += store.recentMedia(for: activeProfile())
+
+        let finishedUnsorted: [MediaItem] = finishedPool.filter { (item: MediaItem) -> Bool in
             guard let entry = progress[item.id], entry.isFinished || entry.completedAt != nil else { return false }
             return seenFinished.insert(item.id).inserted
-        }.sorted { (progress[$0.id]?.completedAt ?? progress[$0.id]?.updated ?? "") > (progress[$1.id]?.completedAt ?? progress[$1.id]?.updated ?? "") }
+        }
+
+        // `updated` is non-optional on ProgressEntry; only a missing entry is "".
+        func finishedStamp(_ item: MediaItem) -> String {
+            guard let entry = progress[item.id] else { return "" }
+            return entry.completedAt ?? entry.updated
+        }
+
+        let finished: [MediaItem] = finishedUnsorted.sorted { (left: MediaItem, right: MediaItem) -> Bool in
+            finishedStamp(left) > finishedStamp(right)
+        }
         let notebook = store.finishedNotebook(profileId: activeProfile(), items: finished)
         let adaptationGeneration = progress.values.reduce(0) { $0 + max($1.completions, $1.isFinished ? 1 : 0) }
         if adaptationGeneration > 0 {
-            let watchedIds = Set(finished.map(\.id))
-            let genres = finished.flatMap(\.genres)
-            let candidates = bundle.catalog.filter { !watchedIds.contains($0.id) }.sorted { left, right in
-                genres.filter { left.genres.contains($0) }.count > genres.filter { right.genres.contains($0) }.count
+            let watchedIds: Set<String> = Set(finished.map { (item: MediaItem) -> String in item.id })
+            let genres: [String] = finished.flatMap { (item: MediaItem) -> [String] in item.genres }
+            // Score once per item rather than re-filtering `genres` inside the
+            // comparator: same ordering, but O(n log n) comparisons instead of
+            // O(n log n × |genres|), and a far smaller job for the type checker.
+            var affinity: [String: Int] = [:]
+            for item in bundle.catalog where !watchedIds.contains(item.id) {
+                let itemGenres = Set(item.genres)
+                affinity[item.id] = genres.reduce(into: 0) { total, genre in
+                    if itemGenres.contains(genre) { total += 1 }
+                }
+            }
+            let unwatched: [MediaItem] = bundle.catalog.filter { (item: MediaItem) -> Bool in
+                !watchedIds.contains(item.id)
+            }
+            let candidates: [MediaItem] = unwatched.sorted { (left: MediaItem, right: MediaItem) -> Bool in
+                (affinity[left.id] ?? 0) > (affinity[right.id] ?? 0)
             }
             if !candidates.isEmpty {
                 let offset = adaptationGeneration % candidates.count
