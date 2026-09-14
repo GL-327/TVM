@@ -44,9 +44,9 @@ final class AppModel: ObservableObject {
                 throw error
             }
             active = ActiveConnection(connection: connection, cookie: cookie)
-        } catch let problem as ClientError { error = problem.localizedDescription }
+        } catch let problem as ClientError { self.error = problem.localizedDescription }
         catch {
-            error = "Could not reach TVM. Check that Core is running, both devices share Wi-Fi, and Local Network access is allowed in iOS Settings."
+            self.error = "Could not reach TVM. Check that Core is running, both devices share Wi-Fi, and Local Network access is allowed in iOS Settings."
         }
     }
 
