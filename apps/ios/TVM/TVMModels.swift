@@ -40,7 +40,7 @@ struct MediaItem: Equatable {
         var body: [String: Any] = [
             "id": id,
             "title": title,
-            "year": year ?? NSNull(),
+            "year": JSONValue.orNull(year),
             "kind": kind,
             "synopsis": synopsis,
             "poster": poster,
@@ -115,9 +115,9 @@ struct RdStatus {
     func json() -> [String: Any] {
         [
             "configured": configured,
-            "username": username ?? NSNull(),
+            "username": JSONValue.orNull(username),
             "premium": premium,
-            "error": error ?? NSNull(),
+            "error": JSONValue.orNull(error),
         ]
     }
 }
@@ -157,6 +157,8 @@ enum TVMPlayback {
 }
 
 enum JSONValue {
+    static func orNull(_ value: Any?) -> Any { value ?? NSNull() }
+
     static func data(_ value: Any) -> Data {
         (try? JSONSerialization.data(withJSONObject: value, options: [])) ?? Data("{}".utf8)
     }
