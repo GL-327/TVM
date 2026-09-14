@@ -498,8 +498,18 @@ check('WKWebView covers the viewport and reports portrait vs landscape',
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('dataset.orientation'));
 check('AppIcon 1024 exists',
   existsSync(join(ROOT, 'TVM', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon.png')));
-check('generate-app-icon.mjs writes the TVM T mark',
+check('generate-app-icon.mjs writes AppIcon.png',
   (read(join(ROOT, 'generate-app-icon.mjs')) ?? '').includes('AppIcon.png'));
+check('native VLC playback is wired for iPhone',
+  (read(join(ROOT, 'Podfile')) ?? '').includes('MobileVLCKit') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('tvmPlayer') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('minimumZoomScale') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('bouncesZoom') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('user-scalable=no') &&
+  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('VLCMediaPlayer') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'player', 'engine.ts')) ?? '').includes('iosPlaybackBridge()') &&
+  (read(join(REPO, 'apps', 'ui', 'index.html')) ?? '').includes('user-scalable=no'),
+  'iPhone must decode in VLC, lock pinch-zoom, and never fall HTML5 MKV into <video>');
 
 // The secrets that must never be committed.
 for (const file of swiftFiles) {

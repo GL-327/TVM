@@ -38,4 +38,20 @@ describe('iOS native playback', () => {
     emit(state);
     expect(events.onTime).toHaveBeenCalledTimes(2);
   });
+
+  it('plays on the first toggle because paused starts true', () => {
+    const postMessage = vi.fn();
+    const win = Object.assign(new EventTarget(), {
+      location: { href: 'http://127.0.0.1:7345/' },
+      webkit: { messageHandlers: { tvmPlayer: { postMessage } } },
+    });
+    vi.stubGlobal('window', win);
+    const events = { onTime: vi.fn(), onPlayState: vi.fn(), onBuffering: vi.fn(), onFirstFrame: vi.fn(), onEnded: vi.fn(), onClosed: vi.fn(), onError: vi.fn() };
+    const stream: EngineStream = { kind: 'stream', url: 'https://cdn.example/film.mkv', title: 'Film', filename: 'film.mkv', mimeType: 'video/x-matroska', engine: 'native' };
+    const engine = createPlayerEngine({} as HTMLVideoElement, stream, { live: false }, events);
+    engine.attach();
+    engine.toggle();
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'play' }));
+    engine.destroy();
+  });
 });

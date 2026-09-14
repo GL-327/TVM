@@ -950,16 +950,10 @@ html:not([data-theme]) .stream-page,
   min-height: 4.85rem;
   padding: 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 32% 28%, color-mix(in srgb, #fff 70%, transparent), transparent 42%),
-    linear-gradient(160deg, color-mix(in srgb, var(--player-fill) 88%, #fff) 0%, var(--player-fill) 58%, color-mix(in srgb, var(--player-fill) 55%, #111) 100%);
-  color: var(--tvm-accent-ink, #061018);
-  border-color: color-mix(in srgb, #fff 55%, transparent);
-  box-shadow:
-    0 0 0 0.3rem color-mix(in srgb, var(--player-fill) 30%, transparent),
-    0 0 1.9rem var(--player-fill-glow),
-    0 0.55rem 1.4rem color-mix(in srgb, #000 45%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: none;
 }
 
 .player-root .player-transport .tvm-button.player-transport__btn--play .player-transport__glyph,
@@ -1313,7 +1307,7 @@ html:not([data-theme]) .stream-page,
   --player-safe-x: max(0.75rem, env(safe-area-inset-left), env(safe-area-inset-right));
   --player-safe-y: max(0.5rem, env(safe-area-inset-top));
   --player-safe-bottom: max(0.7rem, env(safe-area-inset-bottom));
-  --player-bar-width: calc(100vw - 0.5rem);
+  --player-bar-width: calc(100% - 0.5rem);
   --player-dock-radius: 1.2rem;
   --player-hit: 44px;
   --player-aspect: 16 / 9;
@@ -1321,17 +1315,31 @@ html:not([data-theme]) .stream-page,
 }
 
 .player--mobile .player-dock {
-  gap: 0.7rem;
-  padding: 0.65rem 0.8rem calc(0.75rem + env(safe-area-inset-bottom));
-  background:
-    linear-gradient(180deg, color-mix(in srgb, #fff 8%, transparent), transparent 40%),
-    color-mix(in srgb, #07080c 72%, transparent);
+  gap: 0.55rem;
+  padding: 0 0.8rem calc(0.55rem + env(safe-area-inset-bottom));
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.player--mobile .player-root .player-title-overlay__kicker,
+.player--mobile .player-title-overlay__kicker {
+  display: none;
 }
 
 .player--mobile .player-title-overlay__title,
 .player--mobile .player-root .player-title-overlay__title {
-  font-size: clamp(1.15rem, 5vw, 1.55rem);
+  font-size: 1.05rem;
   white-space: normal;
+}
+
+.player--mobile .player-watchlist,
+.player--mobile .player-volume,
+.player--mobile .player-audio__word,
+.player--mobile .player-cc__word,
+.player--mobile .player-quality__word {
+  display: none;
 }
 
 .player--mobile .player-chrome-back,
@@ -1354,10 +1362,14 @@ html:not([data-theme]) .stream-page,
 
 .player--mobile .player-transport .tvm-button.player-transport__btn--play,
 .player--mobile .player-root .player-transport .tvm-button.player-transport__btn--play {
-  width: 4.85rem;
-  height: 4.85rem;
-  min-width: 4.85rem;
-  min-height: 4.85rem;
+  width: 5.5rem;
+  height: 5.5rem;
+  min-width: 5.5rem;
+  min-height: 5.5rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #fff;
+  box-shadow: none;
 }
 
 .player--mobile .player-transport__btn--back {
@@ -1370,13 +1382,23 @@ html:not([data-theme]) .stream-page,
 
 .player--mobile .tvm-progress__track,
 .player--mobile .player-root .tvm-progress__track {
-  height: 0.95rem;
+  height: 4px;
+}
+
+.player--mobile .tvm-progress__played,
+.player--mobile .player-root .tvm-progress__played {
+  background: #e50914;
+  box-shadow: none;
 }
 
 .player--mobile .tvm-progress__knob,
 .player--mobile .player-root .tvm-progress__knob {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 14px;
+  height: 14px;
+}
+
+.player--mobile .tvm-progress__remain {
+  display: none;
 }
 
 .player--mobile .player-remote-hints {
@@ -1389,20 +1411,21 @@ html:not([data-theme]) .stream-page,
 }
 
 /*
- * Portrait phone: 16:9 stage on TOP, object-fit contain (letterbox), chrome
- * in the remaining band / overlay. Extra class weight beats later sheets.
+ * Portrait phone: full-screen stage, 16:9 contain letterbox centered,
+ * chrome overlaid on the picture (Netflix), never a leftover band.
  */
 html.tvm-portrait .player.player--mobile .player__stage,
 .player.player--mobile.player--portrait .player__stage {
   position: absolute;
-  top: env(safe-area-inset-top, 0px);
+  inset: 0;
+  top: 0;
   right: 0;
-  bottom: auto;
+  bottom: 0;
   left: 0;
-  width: 100%;
+  width: auto;
   height: auto;
-  aspect-ratio: 16 / 9;
-  max-height: var(--player-stage-h);
+  aspect-ratio: auto;
+  max-height: none;
 }
 
 html.tvm-portrait .player.player--mobile .player__video,
@@ -1425,15 +1448,24 @@ html.tvm-portrait .player.player--mobile .chrome-frame__safe,
 html.tvm-portrait .player.player--mobile .chrome-frame__bottom,
 .player.player--mobile.player--portrait .chrome-frame__bottom {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   align-items: flex-end;
-  min-height: calc(100dvh - env(safe-area-inset-top, 0px) - (100dvw * 9 / 16));
+  min-height: 0;
 }
 
 html.tvm-portrait .player.player--mobile .chrome-frame__veil--vignette,
 .player.player--mobile.player--portrait .chrome-frame__veil--vignette {
-  bottom: auto;
-  height: var(--player-stage-h);
+  inset: 0;
+  height: auto;
+}
+
+.player.player--mobile .player-dock .player-transport {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  width: auto;
+  z-index: 4;
 }
 
 /* Landscape: full-bleed cinema, 16:9 contain, no stretch. */

@@ -131,18 +131,20 @@ export function IconVolumeMute({ className }: IconProps): React.JSX.Element {
 
 export function IconRewind({ className }: IconProps): React.JSX.Element {
   return (
-    <svg className={className} viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
-      <path d="M15 8v16L4 16z" />
-      <path d="M28 8v16L17 16z" />
+    <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M20.2 8.4a9.2 9.2 0 1 0 7 8.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M19.2 8.2h4.6V4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <text x="16" y="21.2" textAnchor="middle" fill="currentColor" fontSize="9.5" fontWeight="700">10</text>
     </svg>
   );
 }
 
 export function IconForward({ className }: IconProps): React.JSX.Element {
   return (
-    <svg className={className} viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
-      <path d="M4 8v16l11-8z" />
-      <path d="M17 8v16l11-8z" />
+    <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M11.8 8.4a9.2 9.2 0 1 1 -7 8.4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M12.8 8.2H8.2V4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <text x="16" y="21.2" textAnchor="middle" fill="currentColor" fontSize="9.5" fontWeight="700">10</text>
     </svg>
   );
 }
