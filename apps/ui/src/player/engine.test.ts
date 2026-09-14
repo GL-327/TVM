@@ -240,6 +240,34 @@ describe('playback lifecycle', () => {
     engine.destroy();
   });
 
+  /*
+   * An IPTV channel core labelled HLS that is really raw MPEG-TS. Before this,
+   * hls.js finding no manifest ended the attempt with "This stream could not
+   * start" even though the provider was fine.
+   */
+  it('retries a live channel as MPEG-TS when the playlist turns out not to be one', async () => {
+    const liveHls: EngineStream = { ...stream, url: '/api/live/stream/ch', mimeType: 'application/vnd.apple.mpegurl', transport: 'hls' };
+    const { events, engine } = setup(liveHls, { live: true });
+    engine.attach();
+    await vi.dynamicImportSettled();
+    const instance = fakeHls.instances[0]!;
+    instance.listeners.get('error')!('error', { fatal: true, type: 'other', details: 'manifestParsingError' });
+    expect(instance.destroy).toHaveBeenCalled();
+    // The failure is not surfaced: the TS reader gets its turn first.
+    expect(events.onError).not.toHaveBeenCalled();
+    engine.destroy();
+  });
+
+  it('does not retry a VOD stream as MPEG-TS', async () => {
+    const vodHls: EngineStream = { ...stream, url: '/movie.m3u8', mimeType: 'application/vnd.apple.mpegurl', transport: 'hls' };
+    const { events, engine } = setup(vodHls, { live: false });
+    engine.attach();
+    await vi.dynamicImportSettled();
+    fakeHls.instances[0]!.listeners.get('error')!('error', { fatal: true, type: 'other', details: 'manifestParsingError' });
+    expect(events.onError).toHaveBeenCalledOnce();
+    engine.destroy();
+  });
+
   it('reports an expired seek session rather than silently getting stuck', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 404 }));
     const { events, engine } = setup(sessionStream, { fetchImpl });

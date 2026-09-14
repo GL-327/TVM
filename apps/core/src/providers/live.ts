@@ -223,20 +223,76 @@ export function parseM3u(text: string): LiveChannel[] {
   return channels;
 }
 
-function playbackFor(channel: LiveChannel, engine: 'html5' | 'native' = 'html5', proxied = true): PlaybackResolution {
+/**
+ * What the URL alone can tell us. Xtream live endpoints are routinely
+ * extensionless (`/live/user/pass/12345`), so this returns null far more often
+ * than it looks — see probeLiveType.
+ */
+/** A channel that will not answer HEAD promptly is not worth stalling Play for. */
+const PROBE_TIMEOUT_MS = 4000;
+
+function mediaTypeFromUrl(url: string): string | null {
+  if (isHlsPlaylist(url, '')) return 'application/vnd.apple.mpegurl';
+  if (/\.ts(\?|$)/i.test(url)) return 'video/mp2t';
+  if (/\.(mp4|m4v|webm)(\?|$)/i.test(url)) return 'video/mp4';
+  return null;
+}
+
+/**
+ * Ask the channel what it actually is.
+ *
+ * The extension guess used to fall back to "assume HLS" for anything
+ * unrecognised, which is wrong for the most common IPTV shape there is: an
+ * extensionless Xtream URL serving raw MPEG-TS. The client was told `hls`,
+ * handed the stream to hls.js, and hls.js failed to find a manifest — which
+ * surfaced as the generic "This stream could not start".
+ *
+ * HEAD only, deliberately. A GET is not safe here: a live channel that ignores
+ * `Range` answers with an endless body, so reading it to completion never
+ * returns, and cancelling it instead both poisons keep-alive for the player's
+ * real request (see probeMediaHead) and can burn the single concurrent
+ * connection most IPTV subscriptions allow. A HEAD opens no stream.
+ *
+ * When HEAD says nothing useful — plenty of providers answer 405, or
+ * `application/octet-stream` — this returns null rather than guessing, and the
+ * player's own manifest-error fallback sorts it out from the bytes it is
+ * already receiving. See MANIFEST_ERRORS in apps/ui/src/player/engine.ts.
+ */
+async function probeLiveType(upstream: string, fetchImpl: typeof fetch): Promise<string | null> {
+  try {
+    const head = await fetchImpl(upstream, {
+      method: 'HEAD',
+      redirect: 'follow',
+      headers: upstreamHeaders(upstream, undefined, false),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    if (head.ok || head.status === 206) {
+      const declared = head.headers.get('content-type') ?? '';
+      if (isHlsPlaylist(upstream, declared)) return 'application/vnd.apple.mpegurl';
+      if (/mp2t|mpegts/i.test(declared)) return 'video/mp2t';
+      if (/^video\/(mp4|webm)/i.test(declared)) return browserMediaType(declared, false);
+    }
+  } catch {
+    // A provider that refuses HEAD tells us nothing; opening the channel will.
+  }
+  return null;
+}
+
+function playbackFor(
+  channel: LiveChannel,
+  engine: 'html5' | 'native' = 'html5',
+  proxied = true,
+  probed: string | null = null,
+): PlaybackResolution {
   const source = proxied ? liveStreamPath(channel.id) : channel.url;
-  const hls = isHlsPlaylist(channel.url, '');
-  const ts = /\.ts(\?|$)/i.test(channel.url);
-  const file = /\.(mp4|m4v|webm)(\?|$)/i.test(channel.url);
-  const mimeType = hls
-    ? 'application/vnd.apple.mpegurl'
-    : ts
-      ? 'video/mp2t'
-      : file
-        ? 'video/mp4'
-        : proxied
-          ? 'application/vnd.apple.mpegurl'
-          : 'video/mp4';
+  /*
+   * Order matters: an explicit extension is a stronger signal than a probe
+   * (a `.m3u8` whose first bytes are a redirect page is still a playlist), but
+   * a probe beats the old blind "assume HLS" default.
+   */
+  const mimeType = mediaTypeFromUrl(channel.url)
+    ?? probed
+    ?? (proxied ? 'application/vnd.apple.mpegurl' : 'video/mp4');
   return {
     kind: 'stream',
     url: source,
@@ -557,7 +613,11 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       }
       const channel = await findChannel(id);
       if (channel === undefined) return { kind: 'unavailable', reason: 'not-in-library' };
-      return playbackFor(channel, 'html5', true);
+      // Only probe when the URL is silent; an extension answers for free.
+      const probed = mediaTypeFromUrl(channel.url) === null
+        ? await probeLiveType(channel.url, fetchImpl)
+        : null;
+      return playbackFor(channel, 'html5', true, probed);
     },
 
     async upstreamUrl(id: string): Promise<string | null> {

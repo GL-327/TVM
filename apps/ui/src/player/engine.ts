@@ -75,6 +75,17 @@ export function displayDuration(streamDuration: number | undefined, elementDurat
 }
 
 export const GENERIC_START_ERROR = 'This stream could not start. Press Retry, or Back to pick another file.';
+
+/**
+ * hls.js details that mean "this was never a playlist", as opposed to a
+ * playlist that failed to load. Only these justify retrying a live channel as
+ * raw MPEG-TS.
+ */
+export const MANIFEST_ERRORS: ReadonlySet<string> = new Set([
+  'manifestParsingError',
+  'manifestIncompatibleCodecsError',
+  'manifestLoadError',
+]);
 export const STARTUP_TIMEOUT_MS = 45_000;
 export const STALL_TIMEOUT_MS = 30_000;
 export const STALLED_ERROR = 'Playback stalled. The source stopped sending playable video. Press Retry, or Back to choose another title.';
@@ -166,6 +177,7 @@ export function createPlayerEngine(
   let sawFrame = false;
   let recoveredMedia = false;
   let restartedNetwork = false;
+  let triedTsFallback = false;
   let seekRestartPending = false;
   let pendingSeek: number | null = null;
   let requestedSeek: number | null = null;
@@ -273,6 +285,21 @@ export function createPlayerEngine(
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !restartedNetwork) {
           restartedNetwork = true;
           instance.startLoad();
+          return;
+        }
+        /*
+         * A live channel that is not really a playlist. IPTV providers hand out
+         * extensionless URLs that serve raw MPEG-TS, and any hop in the chain
+         * can mislabel one, so core's probe is a good guess rather than a
+         * guarantee. hls.js finding no manifest is the signal to try the TS
+         * reader instead of dead-ending on "this stream could not start".
+         *
+         * MSE only — mpegts.js cannot help where hls.js was the native path.
+         */
+        if (live && !triedTsFallback && MANIFEST_ERRORS.has(String(data.details))) {
+          triedTsFallback = true;
+          destroyHls();
+          attachTs();
           return;
         }
         fail(GENERIC_START_ERROR);
