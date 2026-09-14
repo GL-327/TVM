@@ -6,11 +6,11 @@ This build is for private, local desktop testing. It is not approved for a publi
 
 Close TVM and reopen `TVM-windowed.cmd` from the project directory. The launcher starts the local service, interface and desktop shell. If an older service is already running without watch mode, restart that service first. For a clean test profile, set `TVM_DATA_DIR` to a new absolute directory before starting; do not delete your existing data just to test.
 
-1. In Settings, enable Colourcast using the existing Developer unlock, or choose its clearly labelled sandbox checkout. The existing developer code is unchanged.
+1. In Settings, enable Retro using the existing Developer unlock, or choose its clearly labelled sandbox checkout. The existing developer code is unchanged.
 2. Browse with arrows, OK and Back; test the mouse too. Change Motion to Reduced and check the calmer result. Minimise and restore the app; effects should resume without an animation jump or runaway loop.
 3. Connect your own authorised IPTV or Real-Debrid account. Open a film and a concrete cloud episode, seek, pause, resume, retry a failed source and press Back while loading. A provider subscription or a working source is still required. Catalogue availability is not proof that a title can be played.
 4. Open Plans. Complete a test transaction after selecting the acknowledgement. Try Success, Decline and Cancel outcomes. No card details are accepted or charged. The API rejects card payloads.
-5. Check the plan, receipt and cancellation controls. Colourcast is a one-time £4.99 reference purchase and stays owned when changing/cancelling a test plan; it is excluded from the monthly price. Repeat a request with the same request ID to verify only one receipt is created.
+5. Check the plan, receipt and cancellation controls. Retro is a one-time £4.99 reference purchase and stays owned when changing/cancelling a test plan; it is excluded from the monthly price. Repeat a request with the same request ID to verify only one receipt is created.
 6. Open Settings → Privacy & terms. Export data and inspect the downloaded JSON. Use deletion only on disposable test data: it wipes all profiles, viewing history, lists, credentials and test receipts and locks DEV mode. Other services’ accounts/cookies are separate.
 
 ## What changed
@@ -28,7 +28,9 @@ There is no payment processor account or business identity configured in this re
 
 ## Security and integration limits
 
-Core still binds to `127.0.0.1` by default. LAN requests now need `Authorization: Bearer <TVM_LAN_TOKEN>` with at least 32 characters; admin/billing/privacy routes are local-only. Existing Roku clients need authentication integration before LAN testing. This work does not deploy HTTPS or provide remote multi-user authentication. Do not expose Core directly to the internet.
+Core still binds to `127.0.0.1` by default. Non-loopback requests need `Authorization: Bearer <TVM_LAN_TOKEN>` (at least 32 characters) or an HttpOnly LAN session cookie from `POST /api/lan/session`. Admin, billing and privacy routes stay local-only. The sideloaded Roku channel stores the token on the device and sends the bearer on Core API and Core-hosted stream requests; a physical Roku still has to be accepted on hardware ([apps/roku/README.md](../apps/roku/README.md)). The iOS project is source only (no IPA in this tree; compile and sign on a Mac with Xcode). The Android client is in `apps/android` (Kotlin WebView, same Bearer + `tvm_lan_session` contract); a debug APK is not committed and is not a Play release ([apps/android/README.md](../apps/android/README.md)). This work does not deploy HTTPS or provide remote multi-user authentication. Do not expose Core directly to the internet.
+
+Without host ffmpeg/ffprobe, Core can serve MP4/WebM and some H.264 MKV only. Other containers need ffmpeg installed on the computer that runs Core, then a TVM restart.
 
 IPTV, debrid links and the existing resolver remain integrated. The current Torrentio resolver sends a Real-Debrid token in its request URL. This is disclosed in setup and privacy information; local encryption does not protect credentials from the remote resolver. Use a revocable test credential and confirm the providers permit the intended use. HTTP-only IPTV sources are not encrypted in transit. The preserved DEV code and locally controlled entitlements mean this remains a trusted-device test build, not a secure multi-tenant service.
 
@@ -42,6 +44,6 @@ The UK private-test baseline was informed by [ICO privacy information guidance](
 
 ## Validation
 
-Verified on 13 September 2026: compiler checks and production build pass; 596 unit/API tests pass. All 20 browser scenarios pass, with the focus-restoration case rerun successfully after correcting its asynchronous assertion. The production dependency audit reported zero known advisories. Checkout and Colourcast screenshots were inspected. Logs and previews are in the ignored `cache` directory.
+Verified on 13 September 2026: compiler checks and production build pass; 596 unit/API tests pass. All 20 browser scenarios pass, with the focus-restoration case rerun successfully after correcting its asynchronous assertion. The production dependency audit reported zero known advisories. Checkout and Retro screenshots were inspected. Logs and previews are in the ignored `cache` directory.
 
 The repository commands are `pnpm typecheck`, `pnpm build` and `pnpm test`. Tests use isolated temporary data and browser fixtures. Automated provider fixtures do not replace live testing on the intended television, remote, IPTV server, debrid account or native mpv setup. Build output retains the existing large lazy-loaded HLS chunk warning.

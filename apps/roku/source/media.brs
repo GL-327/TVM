@@ -183,7 +183,8 @@ function streamFormatFor(url as String, mimeType as String) as String
   combined = LCase(url + " " + mimeType)
   if combined.Instr("m3u8") > 0 or combined.Instr("mpegurl") > 0 then return "hls"
   if combined.Instr("mpd") > 0 or combined.Instr("dash") > 0 then return "dash"
-  if combined.Instr("mkv") > 0 then return "mkv"
+  if combined.Instr("mkv") > 0 or combined.Instr("matroska") > 0 then return "mkv"
+  if combined.Instr("mp2t") > 0 then return "ts"
   return "mp4"
 end function
 
@@ -338,19 +339,18 @@ function upgradeArtUrl(url as String, kind as String) as String
   nextUrl = nextUrl.Replace("/background/small/", "/background/large/")
   nextUrl = nextUrl.Replace("/background/medium/", "/background/large/")
   if kind = "backdrop"
-    nextUrl = nextUrl.Replace("/t/p/w300/", "/t/p/original/")
-    nextUrl = nextUrl.Replace("/t/p/w500/", "/t/p/original/")
-    nextUrl = nextUrl.Replace("/t/p/w780/", "/t/p/original/")
-    nextUrl = nextUrl.Replace("/t/p/w1280/", "/t/p/original/")
+    nextUrl = nextUrl.Replace("/t/p/w300/", "/t/p/w1280/")
+    nextUrl = nextUrl.Replace("/t/p/w500/", "/t/p/w1280/")
+    nextUrl = nextUrl.Replace("/t/p/w780/", "/t/p/w1280/")
+    nextUrl = nextUrl.Replace("/t/p/original/", "/t/p/w1280/")
   else
-    nextUrl = nextUrl.Replace("/t/p/w154/", "/t/p/w780/")
-    nextUrl = nextUrl.Replace("/t/p/w185/", "/t/p/w780/")
-    nextUrl = nextUrl.Replace("/t/p/w342/", "/t/p/w780/")
-    nextUrl = nextUrl.Replace("/t/p/w500/", "/t/p/w780/")
+    nextUrl = nextUrl.Replace("/t/p/w154/", "/t/p/w500/")
+    nextUrl = nextUrl.Replace("/t/p/w185/", "/t/p/w500/")
+    nextUrl = nextUrl.Replace("/t/p/w342/", "/t/p/w500/")
+    nextUrl = nextUrl.Replace("/t/p/original/", "/t/p/w500/")
   end if
-  nextUrl = nextUrl.Replace("100x100bb", "2000x2000bb")
-  nextUrl = nextUrl.Replace("200x200bb", "2000x2000bb")
-  nextUrl = nextUrl.Replace("600x600bb", "2000x2000bb")
+  nextUrl = nextUrl.Replace("100x100bb", "600x600bb")
+  nextUrl = nextUrl.Replace("200x200bb", "600x600bb")
   return nextUrl
 end function
 

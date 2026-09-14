@@ -7,6 +7,22 @@ import {
   usagePath,
 } from '../update/paths.ts';
 import { randomUUID } from 'node:crypto';
+import {
+  CARD_DATA_NOT_SUPPORTED,
+  cardFieldsPresent,
+  emptyCardVault,
+  findToken,
+  hydrateCardVault,
+  parseCardIntake,
+  publicPaymentMethod,
+  readSealedPan,
+  rememberToken,
+  tokenizeCard,
+  type CardIntake,
+  type CardVaultState,
+  type PublicCardToken,
+} from './cardVault.ts';
+import { declineCharge, type ChargeResult } from './charges.ts';
 import { deleteSecret } from './secrets.ts';
 import { readSealed, writeSealed } from './vault.ts';
 
@@ -17,9 +33,9 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const LIVE_TV_ADDON_PENCE = 300;
 export const LIVE_TV_EXTRA = 'Live TV pack and your own playlist';
 
-/** Colourcast — 1970s/80s broadcast ident pack. Sold on every plan, including Free. */
+/** Retro — 1970s/80s television-set pack. Sold on every plan, including Free. */
 export const SYNTHWAVE_ADDON_PENCE = 499;
-export const SYNTHWAVE_EXTRA = 'Colourcast — 1970s/80s broadcast ident';
+export const SYNTHWAVE_EXTRA = 'Retro — 1970s/80s television-set look';
 
 export function formatGbp(pence: number): string {
   if (pence === 0) return 'Free';
@@ -226,7 +242,7 @@ export interface Entitlement {
   overrides: DevOverrides;
   /** When set, overrides the plan default for the Live TV add-on. */
   liveTvAddon?: boolean;
-  /** Paid Colourcast aesthetic. Independent of the monthly plan. */
+  /** Paid Retro aesthetic. Independent of the monthly plan. */
   synthwaveAddon?: boolean;
 }
 
@@ -246,6 +262,8 @@ export interface BillingReceipt {
   synthwavePurchased: boolean;
   consentVersion: string;
   at: string;
+  tokenId?: string;
+  last4?: string;
 }
 
 export interface BillingStatus {
@@ -257,11 +275,14 @@ export interface BillingStatus {
   nextChargeAt: null;
   synthwaveOwned: boolean;
   receipts: BillingReceipt[];
+  processor: { linked: false; reason: 'no_processor' };
+  paymentMethod: PublicCardToken | null;
 }
 
 interface BillingLedger {
-  version: 2;
+  version: 2 | 3;
   receipts: BillingReceipt[];
+  cards?: CardVaultState;
 }
 
 export const BILLING_CONSENT_VERSION = '2026-09-12-testing';
@@ -319,6 +340,7 @@ export interface CheckoutInput {
   packOnly?: unknown;
   quotedMonthlyPence?: unknown;
   quotedOneTimePence?: unknown;
+  zip?: unknown;
 }
 
 function planRank(id: PlanId): number {
@@ -432,20 +454,54 @@ function clampStyle(id: PlanId, styleId: StyleId): StyleId {
   return allowed[0] ?? 'classic';
 }
 
+function publicReceipt(receipt: BillingReceipt): BillingReceipt {
+  return {
+    id: receipt.id,
+    requestId: receipt.requestId,
+    fingerprint: receipt.fingerprint,
+    planId: receipt.planId,
+    mock: true,
+    mode: 'sandbox',
+    event: receipt.event,
+    currency: 'GBP',
+    monthlyPence: receipt.monthlyPence,
+    oneTimePence: receipt.oneTimePence,
+    chargedPence: 0,
+    liveTv: receipt.liveTv,
+    synthwavePurchased: receipt.synthwavePurchased,
+    consentVersion: receipt.consentVersion,
+    at: receipt.at,
+    ...(typeof receipt.tokenId === 'string' && typeof receipt.last4 === 'string'
+      ? { tokenId: receipt.tokenId, last4: receipt.last4 }
+      : {}),
+  };
+}
+
 export function createPlanService(options: { dataDir: string; developer?: () => boolean; env?: NodeJS.ProcessEnv }) {
   const dataDir = options.dataDir;
 
-  const readReceipts = (): BillingReceipt[] => {
+  const readLedger = (): BillingLedger => {
     const stored = readSealed<BillingLedger>(dataDir, billingPath(dataDir));
     // Legacy card-check receipts are deliberately not carried into the sandbox ledger.
-    return stored?.version === 2 && Array.isArray(stored.receipts) ? stored.receipts : [];
+    if ((stored?.version === 2 || stored?.version === 3) && Array.isArray(stored.receipts)) {
+      return { version: 3, receipts: stored.receipts, cards: hydrateCardVault(stored.cards) };
+    }
+    return { version: 3, receipts: [], cards: emptyCardVault() };
   };
 
-  const saveReceipt = (receipt: BillingReceipt): void => {
+  const readReceipts = (): BillingReceipt[] => readLedger().receipts;
+
+  const writeLedger = (receipts: BillingReceipt[], cards: CardVaultState): void => {
     writeSealed(dataDir, billingPath(dataDir), {
-      version: 2,
-      receipts: [receipt, ...readReceipts()].slice(0, 100),
+      version: 3,
+      receipts,
+      cards,
     } satisfies BillingLedger);
+  };
+
+  const saveReceipt = (receipt: BillingReceipt, cards?: CardVaultState): void => {
+    const current = readLedger();
+    writeLedger([receipt, ...current.receipts].slice(0, 100), cards ?? current.cards ?? emptyCardVault());
   };
 
   const requestKey = (input: { consent?: unknown; requestId?: unknown }): string => {
@@ -606,7 +662,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       const current = readEntitlement();
       const developer = options.developer?.() === true;
       if (enabled && !developer && current.source !== 'checkout' && current.source !== 'dev') {
-        throw new Error('Colourcast is a paid pack. Open Plans to buy it, or unlock developer mode.');
+        throw new Error('Retro is a paid pack. Open Plans to buy it, or unlock developer mode.');
       }
       writeEntitlement({ ...current, synthwaveAddon: enabled ? true : undefined });
       return compose();
@@ -631,8 +687,13 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       return compose();
     },
     checkout(input: CheckoutInput): PlanStatus {
-      if (input.number !== undefined || input.cvc !== undefined || input.expiry !== undefined || input.name !== undefined) {
-        throw new Error('card_data_not_supported: Do not send card or payment details to test checkout.');
+      let intake: CardIntake | null = null;
+      if (cardFieldsPresent(input)) {
+        const parsed = parseCardIntake(input);
+        if (!parsed.ok) {
+          throw new Error(`${CARD_DATA_NOT_SUPPORTED}: Card details are invalid or incomplete.`);
+        }
+        intake = parsed.intake;
       }
       const requestId = requestKey(input);
       if (!isPlanId(input.planId)) throw new Error('unknown_plan');
@@ -653,6 +714,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         synthwave: includeSynthwave, packOnly: input.packOnly === true,
         quotedMonthlyPence: input.quotedMonthlyPence ?? null,
         quotedOneTimePence: input.quotedOneTimePence ?? null,
+        card: intake !== null,
       });
       if (alreadyProcessed(requestId, fingerprint)) return compose();
       const monthlyPence = priceFor(plan, includeLive).pricePence;
@@ -663,6 +725,16 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       }
       if (input.simulate === 'decline') throw new Error('Test payment declined. Your plan has not changed. Choose Success to try again.');
       if (input.simulate === 'cancel') throw new Error('Test checkout cancelled. Your plan has not changed.');
+      const ledger = readLedger();
+      let cards = ledger.cards ?? emptyCardVault();
+      let tokenId: string | undefined;
+      let last4: string | undefined;
+      if (intake !== null) {
+        const minted = tokenizeCard(dataDir, intake);
+        cards = rememberToken(cards, minted.token, minted.sealedPan);
+        tokenId = minted.token.tokenId;
+        last4 = minted.token.last4;
+      }
       writeEntitlement({
         ...current,
         id: plan.id,
@@ -687,7 +759,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         synthwavePurchased: oneTimePence > 0,
         consentVersion: BILLING_CONSENT_VERSION,
         at: new Date().toISOString(),
-      });
+        ...(tokenId !== undefined ? { tokenId, last4 } : {}),
+      }, cards);
       return compose();
     },
     cancel(input: { consent?: unknown; requestId?: unknown }): PlanStatus {
@@ -706,11 +779,23 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     },
     billing(): BillingStatus {
       const status = compose();
+      const ledger = readLedger();
       return {
         mode: 'sandbox', livePaymentsEnabled: false, currency: 'GBP',
         subscription: status.id === 'free' ? 'free' : 'test-active', monthlyPence: status.pricePence,
-        nextChargeAt: null, synthwaveOwned: status.synthwaveOwned, receipts: readReceipts(),
+        nextChargeAt: null, synthwaveOwned: status.synthwaveOwned, receipts: ledger.receipts.map(publicReceipt),
+        processor: { linked: false, reason: 'no_processor' },
+        paymentMethod: publicPaymentMethod(ledger.cards ?? emptyCardVault()),
       };
+    },
+    charge(input: { tokenId?: unknown } = {}): ChargeResult {
+      const ledger = readLedger();
+      const cards = ledger.cards ?? emptyCardVault();
+      const token = findToken(cards, typeof input.tokenId === 'string' ? input.tokenId : undefined);
+      if (token !== null) {
+        readSealedPan(dataDir, cards.instruments[token.tokenId]);
+      }
+      return declineCharge(token);
     },
     receipt(): BillingReceipt | null {
       return readReceipts()[0] ?? null;

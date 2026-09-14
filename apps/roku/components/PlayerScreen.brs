@@ -88,6 +88,11 @@ sub init()
   m.skipOffered = false
   m.nextOffered = false
   m.lastSaved = 0
+  m.resumeApplied = false
+  m.bufferTimer = CreateObject("roSGNode", "Timer")
+  m.bufferTimer.duration = 45
+  m.bufferTimer.repeat = false
+  m.bufferTimer.observeField("fire", "onBufferTimeout")
   m.duration = 0
   m.position = 0
   m.hideTimer = CreateObject("roSGNode", "Timer")
@@ -128,6 +133,20 @@ sub onStream()
   fmt = m.top.streamFormat
   if fmt = invalid or fmt = "" then fmt = "mp4"
   content.streamformat = fmt
+  agent = CreateObject("roHttpAgent")
+  agent.SetCertificatesFile("common:/certs/ca-bundle.crt")
+  agent.InitClientCertificates()
+  headers = m.top.streamHeaders
+  httpHeaders = []
+  if headers <> invalid
+    for each name in headers
+      value = asText(headers[name])
+      agent.AddHeader(name, value)
+      httpHeaders.Push(name + ": " + value)
+    end for
+  end if
+  if httpHeaders.Count() > 0 then content.HttpHeaders = httpHeaders
+  m.video.setHttpAgent(agent)
   startAt = m.top.startAt
   if startAt <> invalid and startAt > 0 then content.playStart = startAt
   m.heading.text = m.top.streamTitle
@@ -136,6 +155,8 @@ sub onStream()
   m.skipOffered = false
   m.nextOffered = false
   m.col = 2
+  m.resumeApplied = false
+  m.bufferTimer.control = "start"
   m.video.content = content
   m.video.control = "play"
   m.top.message = m.top.streamTitle
@@ -150,26 +171,40 @@ end sub
 sub onState()
   state = m.video.state
   if state = "error"
-    m.top.message = "Playback failed on this Roku."
+    m.bufferTimer.control = "stop"
+    m.top.message = "This stream could not play on this Roku. Press Back to choose another title."
     m.buffer.visible = false
+    showChrome()
   else if state = "finished"
-    saveProgress(true)
-    emit("close", invalid)
+    closePlayer()
   else if state = "playing"
+    m.bufferTimer.control = "stop"
     m.top.message = ""
     m.buffer.visible = false
     m.pause.iconUri = "pkg:/images/icons/pause.png"
     startAt = m.top.startAt
-    if startAt <> invalid and startAt > 1 and m.position < 1
+    if not m.resumeApplied and startAt <> invalid and startAt > 1 and m.position < 1
+      m.resumeApplied = true
       m.video.seek = startAt
     end if
     claimOverlayFocus()
   else if state = "paused"
+    m.bufferTimer.control = "stop"
     m.pause.iconUri = "pkg:/images/icons/play.png"
     saveProgress(false)
   else if state = "buffering"
     m.buffer.visible = true
+    if m.bufferTimer.control <> "start" then m.bufferTimer.control = "start"
   end if
+end sub
+
+sub onBufferTimeout()
+  if m.closing then return
+  saveProgress(true)
+  m.video.control = "stop"
+  m.buffer.visible = false
+  m.top.message = "The stream stopped responding. Press Back and try again, or choose another title."
+  showChrome()
 end sub
 
 sub onDuration()
@@ -182,7 +217,7 @@ sub onPosition()
   m.position = m.video.position
   paintBar()
   updateSkipRecap()
-  if m.position - m.lastSaved >= 10 then saveProgress(false)
+  if Abs(m.position - m.lastSaved) >= 10 then saveProgress(false)
 end sub
 
 function recapEndKnown() as Boolean
@@ -561,13 +596,21 @@ end sub
 
 sub closePlayer()
   m.closing = true
+  m.bufferTimer.control = "stop"
+  m.hideTimer.control = "stop"
   stopFocusWatch()
-  if m.video <> invalid then m.video.control = "stop"
   saveProgress(true)
+  if m.video <> invalid then m.video.control = "stop"
   emit("close", invalid)
 end sub
 
 sub doNext()
+  m.closing = true
+  m.bufferTimer.control = "stop"
+  m.hideTimer.control = "stop"
+  stopFocusWatch()
+  saveProgress(true)
+  m.video.control = "stop"
   emit("next", { id: asText(m.top.nextMediaId), title: asText(m.top.nextTitle) })
 end sub
 

@@ -44,11 +44,6 @@ const STYLES = `
   border: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tvm-buffering {
-    transition-duration: 1ms;
-  }
-}
 `;
 
 export interface BufferingProps {

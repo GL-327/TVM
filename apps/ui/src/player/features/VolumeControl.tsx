@@ -36,15 +36,15 @@ const CSS = `
   gap: 0.7rem;
   min-width: 12.5rem;
   max-width: min(22rem, 42vw);
-  padding: 0.35rem 0.55rem 0.35rem 0.3rem;
+  padding: 0.2rem 0.35rem 0.2rem 0.1rem;
   border-radius: var(--tvm-radius-pill, 999rem);
-  background: color-mix(in srgb, var(--tvm-bg-deep, #000) 38%, transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  color: var(--tvm-text, #f5f5f5);
+  background: transparent;
+  box-shadow: none;
+  color: var(--player-ink, var(--tvm-text, #f5f5f5));
   pointer-events: auto;
   user-select: none;
   opacity: 1;
-  transition: opacity var(--tvm-motion-base, 200ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  transition: opacity var(--player-motion, var(--tvm-motion-base, 200ms)) var(--player-ease, var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)));
 }
 
 .player-volume[data-hidden='true'] {
@@ -64,8 +64,8 @@ const CSS = `
   min-height: 3.1rem;
   padding: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: color-mix(in srgb, var(--player-chip, rgba(255, 255, 255, 0.08)) 55%, transparent);
+  color: var(--player-ink, #fff);
   box-shadow: none;
 }
 
@@ -95,23 +95,26 @@ const CSS = `
 .player-volume__track {
   display: block;
   width: 7.6rem;
-  height: 0.38rem;
+  height: 0.42rem;
   overflow: hidden;
   border-radius: var(--tvm-radius-pill, 999rem);
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--player-track, rgba(255, 255, 255, 0.22));
 }
 
 .player-volume__fill {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
-  background: #fff;
-  transition: width var(--tvm-motion-fast, 140ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  background: var(--player-fill, #fff);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--tvm-motion-fast, 140ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .player-volume__pct {
   min-width: 2.4rem;
-  color: var(--tvm-text, #f5f5f5);
+  color: var(--player-ink, var(--tvm-text, #f5f5f5));
   font-size: var(--tvm-font-size-caption, 0.8125rem);
   font-weight: 750;
   font-variant-numeric: tabular-nums;
@@ -135,11 +138,11 @@ const CSS = `
   white-space: nowrap;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .player-volume,
-  .player-volume__fill {
-    transition: none;
-  }
+:root[data-motion='reduced'] .player-volume,
+:root[data-motion='reduced'] .player-volume__fill,
+:root[data-perf='on'] .player-volume,
+:root[data-perf='on'] .player-volume__fill {
+  transition: none;
 }
 `;
 
@@ -376,7 +379,10 @@ export function VolumeControl({
       </FocusButton>
       <div className="player-volume__meter" aria-hidden="true">
         <span className="player-volume__track player__vol-track">
-          <span className="player-volume__fill player__vol-fill" style={{ width: `${shown}%` }} />
+          <span
+            className="player-volume__fill player__vol-fill"
+            style={{ transform: `scaleX(${shown / 100})` }}
+          />
         </span>
         <span className="player-volume__pct">{shown}</span>
       </div>

@@ -1,7 +1,9 @@
 const MESSAGES: Readonly<Record<string, string>> = {
   'not-in-library': 'No playable stream was found. It may not be cached on Real-Debrid yet.',
   empty: 'Torrentio returned no streams for this title. Try another episode, or retry later.',
-  unsupported: 'This link could not be opened by Real-Debrid.',
+  unsupported: 'This file could not be opened. Real-Debrid may have returned a broken link, or the format is not playable.',
+  'needs-converter':
+    'TVM’s video converter (ffmpeg) is not installed, so this file cannot be prepared. Install ffmpeg and restart TVM, or pick an MP4.',
   'needs-auth': 'Real-Debrid rejected the saved token. Reconnect Real-Debrid and paste a new one.',
   'not-configured': 'Real-Debrid is not connected. Open the connection settings and paste a token.',
   'hours-cap': 'This week’s Free watch hours are used. Ads do not count. Upgrade in Settings, or wait for Monday.',

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is required for the same private-LAN HTTP path iOS allows with
+  NSAllowsLocalNetworking. The app still rejects public HTTP addresses and
+  never disables TLS certificate validation.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

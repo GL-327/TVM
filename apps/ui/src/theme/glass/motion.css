@@ -21,8 +21,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  [data-theme='glass'] {
-    --tvm-glass-sweep-ms: 0ms;
-  }
+:root[data-motion='reduced'] [data-theme='glass'],
+:root[data-perf='on'] [data-theme='glass'] {
+  --tvm-glass-sweep-ms: 0ms;
 }

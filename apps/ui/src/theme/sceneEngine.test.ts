@@ -61,7 +61,10 @@ describe('scene field', () => {
     expect(css).toContain('pointer-events: none');
     expect(css).toContain('.app__screen');
     expect(css).not.toMatch(/data-engine='webgl'\)::before[\s\S]{0,80}visibility:\s*hidden/);
-    expect(css).toContain('prefers-reduced-motion');
+    expect(css).toContain(":root[data-motion='reduced']");
+    expect(css).not.toContain('@media (prefers-reduced-motion');
+    expect(readFileSync(join(dir, 'sceneEngine.ts'), 'utf8')).toContain('prefersReducedMotion()');
+    expect(readFileSync(join(dir, 'sceneEngine.ts'), 'utf8')).not.toContain('prefers-reduced-motion');
     expect(css).toContain('tvm-scene-drift-a');
     expect(css).toContain('--tvm-scene-noise');
     expect(css).not.toContain('tvm-isle-drift');

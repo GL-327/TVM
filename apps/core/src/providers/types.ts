@@ -40,7 +40,16 @@ export type PlaybackResolution =
     }
   | {
       kind: 'unavailable';
-      reason: 'not-in-library' | 'not-configured' | 'needs-auth' | 'region-blocked' | 'unsupported' | 'empty' | 'hours-cap';
+      reason:
+        | 'not-in-library'
+        | 'not-configured'
+        | 'needs-auth'
+        | 'region-blocked'
+        | 'unsupported'
+        /** ffmpeg/ffprobe are missing, so a non-MP4 file cannot be probed or converted. */
+        | 'needs-converter'
+        | 'empty'
+        | 'hours-cap';
     };
 
 export interface MediaItem {

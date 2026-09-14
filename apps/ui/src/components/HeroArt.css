@@ -26,8 +26,3 @@
   to { opacity: 1; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stage__pictures.stage__pictures--crossfade > img.stage__art[data-hero-transition='true'] {
-    animation: none;
-  }
-}

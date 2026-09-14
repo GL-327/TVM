@@ -20,6 +20,12 @@ function startApiRequest(url as String, method as String, body as String, callba
   task.requestId = id
   task.requestMethod = method
   task.requestBody = body
+  if m.coreUrl <> invalid and coreOwnsUrl(m.coreUrl, url)
+    token = m.coreToken
+    if isCoreToken(token) then task.authToken = token.Trim()
+  end if
+  ' Hoster resolution can take longer than an ordinary catalog request.
+  if Right(url, 13) = "/api/playback" then task.timeoutMs = 65000
   if m.profileId <> invalid then task.profileId = m.profileId
   task.observeField("done", callback)
   task.control = "RUN"

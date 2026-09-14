@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   chromeReserve,
   HOME_ROW_CAMERA_PAD,
   pagePanTarget,
   rowCameraTop,
   shouldNudgePageY,
+  cancelPendingReveal,
+  revealFocused,
+  suppressNextReveal,
 } from './revealFocused';
 
 describe('home camera', () => {
@@ -31,5 +34,28 @@ describe('home camera', () => {
     expect(pagePanTarget(200, 400, 0, 72)).toBe(528);
     expect(pagePanTarget(80, 40, 0, 72)).toBe(48);
     expect(pagePanTarget(0, 40, 0, 72)).toBe(0);
+  });
+});
+
+describe('camera ownership', () => {
+  afterEach(() => { cancelPendingReveal(); vi.unstubAllGlobals(); });
+
+  it('cancels queued keyboard camera work when a pointer takes over', () => {
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 7));
+    const cancel = vi.fn();
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    const card = {} as HTMLElement;
+    revealFocused(card);
+    suppressNextReveal(card);
+    expect(cancel).toHaveBeenCalledWith(7);
+  });
+
+  it('does not swallow an unrelated keyboard focus after a pointer event', () => {
+    const request = vi.fn(() => 7);
+    vi.stubGlobal('requestAnimationFrame', request);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    suppressNextReveal({} as HTMLElement);
+    revealFocused({} as HTMLElement);
+    expect(request).toHaveBeenCalledOnce();
   });
 });

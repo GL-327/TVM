@@ -276,13 +276,13 @@ const OVERLAY_CSS = `
 .player-title-overlay {
   position: relative;
   z-index: 2;
-  max-width: min(72vw, 52rem);
+  max-width: min(76vw, 56rem);
   margin: 0;
   padding: 0;
   overflow: visible;
   pointer-events: none;
   opacity: 1;
-  transition: opacity var(--tvm-motion-base, 200ms) var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  transition: opacity var(--player-motion, var(--tvm-motion-base, 200ms)) var(--player-ease, var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)));
 }
 .player-title-overlay--hidden {
   opacity: 0;
@@ -291,30 +291,30 @@ const OVERLAY_CSS = `
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.42rem;
   color: var(--player-fill, var(--tvm-mark, #7ad7ff));
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 800;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
-  text-shadow: 0 0 0.8rem var(--player-fill-glow, rgba(122, 215, 255, 0.45));
+  text-shadow: 0 0 0.85rem var(--player-fill-glow, rgba(122, 215, 255, 0.45));
 }
 .player-title-overlay__live {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.18rem 0.55rem 0.18rem 0.42rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.45rem;
   border-radius: 999px;
   background: color-mix(in srgb, #ff4d4d 82%, #fff);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   letter-spacing: 0.16em;
   box-shadow: 0 0 0.85rem rgba(255, 70, 70, 0.45);
 }
 .player-title-overlay__live::before {
   content: '';
-  width: 0.42rem;
-  height: 0.42rem;
+  width: 0.44rem;
+  height: 0.44rem;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 0 0.45rem #fff;
@@ -324,25 +324,35 @@ const OVERLAY_CSS = `
 .player-title-overlay__meta {
   margin: 0;
   pointer-events: none;
-  color: var(--tvm-text, #f5f5f5);
-  text-shadow: 0 0.12rem 1.1rem rgba(0, 0, 0, 0.78), 0 1px 0 rgba(0, 0, 0, 0.45);
+  color: var(--player-ink, var(--tvm-text, #f5f5f5));
+  text-shadow: var(--player-shadow, 0 0.16rem 1.25rem rgba(0, 0, 0, 0.82), 0 1px 0 rgba(0, 0, 0, 0.5));
 }
 .player-title-overlay__title {
   overflow: hidden;
-  font-size: clamp(2rem, 4.6vw, 3.35rem);
-  font-weight: 750;
-  line-height: 1.02;
-  letter-spacing: -0.045em;
+  font-size: clamp(2.25rem, 5.2vw, 3.85rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.048em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.player-title-overlay__title::after {
+  content: '';
+  display: block;
+  width: 3.4rem;
+  height: 0.18rem;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  background: var(--player-fill, var(--tvm-mark, #7ad7ff));
+  box-shadow: 0 0 0.75rem var(--player-fill-glow, rgba(122, 215, 255, 0.45));
 }
 .player-title-overlay__meta {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  margin-top: 0.55rem;
-  color: var(--tvm-text-muted, #c4c4c4);
-  font-size: var(--tvm-font-size-body, 1.0625rem);
+  gap: 0.6rem;
+  margin-top: 0.62rem;
+  color: var(--player-ink-muted, var(--tvm-text-muted, #c4c4c4));
+  font-size: var(--tvm-font-size-body-lg, 1.25rem);
   font-weight: 600;
 }
 .player-title-overlay__episode,
@@ -350,20 +360,21 @@ const OVERLAY_CSS = `
   font-variant-numeric: tabular-nums;
 }
 .player-title-overlay__dot {
-  width: 0.28rem;
-  height: 0.28rem;
+  width: 0.3rem;
+  height: 0.3rem;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--tvm-text-muted, #c4c4c4) 70%, transparent);
+  background: color-mix(in srgb, var(--player-fill, var(--tvm-mark, #7ad7ff)) 70%, transparent);
 }
 @keyframes player-live-pulse {
   50% { opacity: 0.35; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .player-title-overlay__live::before { animation: none; }
+:root[data-motion='reduced'] .player-title-overlay__live::before,
+:root[data-perf='on'] .player-title-overlay__live::before {
+  animation: none;
 }
 [data-theme="glass"] .player-title-overlay__title,
 [data-theme="glass"] .player-title-overlay__meta {
-  text-shadow: 0 0.14rem 1.2rem rgba(0, 0, 0, 0.9), 0 1px 0 rgba(0, 0, 0, 0.55);
+  text-shadow: 0 0.16rem 1.35rem rgba(0, 0, 0, 0.92), 0 1px 0 rgba(0, 0, 0, 0.55);
 }
 `;
 

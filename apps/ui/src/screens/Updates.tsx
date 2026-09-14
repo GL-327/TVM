@@ -13,6 +13,8 @@ interface UpdateStatus {
   configured: boolean;
   applyAllowed: boolean;
   applyReason: string | null;
+  kind?: 'idle' | 'no_release' | 'up_to_date' | 'available' | 'auth_required' | 'rate_limited';
+  notice?: string | null;
 }
 
 const EMPTY: UpdateStatus = {
@@ -23,6 +25,8 @@ const EMPTY: UpdateStatus = {
   configured: false,
   applyAllowed: false,
   applyReason: null,
+  kind: 'idle',
+  notice: null,
 };
 
 export function Updates(_props: ScreenProps): React.JSX.Element {
@@ -55,7 +59,10 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
         return;
       }
       setStatus(body);
-      setMessage(body.available === null ? 'You are on the latest published app build.' : `Version ${body.available.version} is available.`);
+      setMessage(
+        body.notice ??
+          (body.available === null ? 'You are on the latest published app build.' : `Version ${body.available.version} is available.`),
+      );
     } catch {
       setMessage('Check failed. Confirm this PC can reach GitHub.');
     } finally {
@@ -111,8 +118,9 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       <p className="stage__kicker">GLogic Studios</p>
       <h1 className="page__heading">Updates</h1>
       <p className="page__lede">
-        GLogic Studios publishes app builds on public GitHub Releases ({status.channel}). A token is only needed if that
-        repo is private. The operating system image is a separate, rarer update.
+        App builds come from the public GitHub Releases feed ({status.channel}). This device does not need a GitHub
+        login. Check works here; Apply is for a production appliance, not this development checkout. A token is only
+        for a private fork. The operating system image is a separate update.
       </p>
 
       <dl className="panel__rows settings-summary">
@@ -129,8 +137,8 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
           <dd>{status.available === null ? 'None' : `v${status.available.version}`}</dd>
         </div>
         <div className="panel__row">
-          <dt>GitHub token</dt>
-          <dd>{status.configured ? 'Configured' : 'Missing'}</dd>
+          <dt>GitHub login</dt>
+          <dd>{status.configured ? 'Private-fork token stored' : 'Not required'}</dd>
         </div>
       </dl>
 
@@ -158,7 +166,7 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       {!status.applyAllowed && status.applyReason !== null && <p className="page__lede">{status.applyReason}</p>}
 
       <label className="token-field">
-        <span>Read-only GitHub token</span>
+        <span>Private-fork token (optional)</span>
         <FocusField
           id="token"
           type="password"

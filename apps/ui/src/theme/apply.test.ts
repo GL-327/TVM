@@ -40,7 +40,8 @@ describe('theme apply imports', () => {
     expect(scene).toContain('display: none');
     expect(scene).not.toContain('z-index: -1');
     expect(scene).toContain('--tvm-scene-noise');
-    expect(scene).toContain('prefers-reduced-motion');
+    expect(scene).toContain(":root[data-motion='reduced']");
+    expect(scene).not.toContain('@media (prefers-reduced-motion');
   });
 
   it('does not paint an opaque fill on .player-root (that layer sits on top of <video>)', () => {

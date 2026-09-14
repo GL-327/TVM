@@ -18,6 +18,7 @@ export const PLAYBACK_ERROR_CASES = [
   'network',
   'decode',
   'unsupported',
+  'needs-converter',
   'not-in-library',
   'empty',
   'needs-auth',
@@ -74,8 +75,14 @@ const COPY: Record<Exclude<PlaybackErrorKind, 'message'>, PlaybackErrorCopy> = {
   },
   unsupported: {
     kind: 'unsupported',
-    title: 'Format not supported',
-    body: 'This link could not be opened. Press Retry for a converted stream, or Back to pick another title.',
+    title: 'Can’t open this file',
+    body: 'TVM could not open this file. The link may be broken or the format unplayable. Press Retry, or Back to pick another title.',
+    showPlans: false,
+  },
+  'needs-converter': {
+    kind: 'needs-converter',
+    title: 'Converter not installed',
+    body: playbackErrorMessage('needs-converter'),
     showPlans: false,
   },
   'not-in-library': {
@@ -171,6 +178,9 @@ export function describePlaybackError(
   }
   if (text.includes('not connected') || text.includes('not-configured') || text.includes('paste a token')) {
     return COPY['not-configured'];
+  }
+  if (text.includes('needs-converter') || text.includes('ffmpeg')) {
+    return COPY['needs-converter'];
   }
   if (text.includes('torrentio returned no streams') || text.includes('no streams for this title') || text === 'empty') {
     return COPY.empty;
@@ -300,8 +310,8 @@ const CSS = `
   justify-content: center;
   padding: calc(var(--tvm-safe-y, 2.4rem) + env(titlebar-area-height, 0px)) var(--tvm-safe-x, 2.5rem);
   background:
-    radial-gradient(80% 70% at 50% 40%, rgba(28, 12, 16, 0.35), transparent 62%),
-    rgba(4, 4, 8, 0.92);
+    radial-gradient(80% 70% at 50% 40%, color-mix(in srgb, var(--player-veil-ink, #0c0c10) 35%, transparent), transparent 62%),
+    color-mix(in srgb, var(--player-veil-ink, #040408) 92%, transparent);
   pointer-events: auto;
 }
 

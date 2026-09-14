@@ -1,0 +1,891 @@
+/*
+ * Phone and small-window layer.
+ *
+ * The rest of the interface is a ten-foot TV layout: large type, generous
+ * overscan margins, a fixed centre ribbon, and a hero that owns most of the
+ * screen. All of that is correct on a television and wrong on a 390px phone,
+ * where the same rules leave about a fifth of the width to safe-area padding
+ * alone and stack a 2.2rem clock on top of the ribbon.
+ *
+ * The iOS client (apps/ios) and the Android WebView load this same interface,
+ * so this sheet is what makes those clients a phone app rather than a scaled
+ * television. Do not look for a separate mobile bundle.
+ *
+ * Rules here are keyed on viewport width, not on pointer type: a narrow desktop
+ * window gets the same treatment, and a tablet in portrait lands in the middle
+ * band. Touch-specific behaviour is in the `(pointer: coarse)` block.
+ *
+ * Keyboard occlusion is `--tvm-keyboard-inset` (see nav/phoneViewport.ts and
+ * the WKWebView visualViewport script). `html.keyboard-open` hides the tab bar
+ * so Search, Real-Debrid, checkout, Live TV login and Core URL fields sit
+ * above the iOS keyboard.
+ *
+ * Imported last (see apply.ts) so equal-specificity selectors win on source
+ * order. Where app.css uses a compound selector such as `.tvm-button.launch-tile`,
+ * the override here repeats it rather than relying on !important. Theme files
+ * (glass, Retro) are more specific on the ribbon — those properties are
+ * restated here with matching hosts.
+ */
+
+:root {
+  --tvm-keyboard-inset: 0px;
+  --tvm-tabbar: 0px;
+}
+
+/* Tablet and narrow desktop ------------------------------------------------ */
+
+@media (max-width: 63.99rem) {
+  :root {
+    --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+    --tvm-safe-y: max(0.75rem, env(safe-area-inset-top));
+    --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    --tvm-font-size-display: 2.25rem;
+    --tvm-font-size-title: 1.5rem;
+  }
+
+  .stage {
+    min-height: 46vh;
+  }
+
+  /*
+   * Always-visible chrome. The television ribbon is a hover/focus peek at the
+   * top of a 1920px stage; on a tablet that rule leaves Home with no navigation.
+   */
+  .ribbon-zone {
+    pointer-events: none;
+    height: 0;
+  }
+
+  .ribbon,
+  .ribbon--open,
+  .ribbon:focus-within,
+  .ribbon:has([data-focused='true']) {
+    pointer-events: auto;
+    opacity: 1;
+    transform: translate(-50%, 0);
+    top: max(0.35rem, env(safe-area-inset-top));
+  }
+
+  .tvm-button.ribbon__icon,
+  .ribbon__icon {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .settings-row,
+  .tvm-button.settings-row {
+    min-height: 2.75rem;
+  }
+}
+
+/* Phone -------------------------------------------------------------------- */
+
+@media (max-width: 47.99rem) {
+  /*
+   * Overscan does not exist on a phone, but the notch and the home indicator
+   * do. Trade the TV margin for the real inset, with a small floor so content
+   * never touches the glass. env() resolves to 0 unless the document carries
+   * viewport-fit=cover (index.html and the iOS WKUserScript).
+   *
+   * Two-row tab bar: HDMI Inputs is hidden, eight destinations remain.
+   */
+  :root {
+    --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+    --tvm-safe-y: max(0.75rem, env(safe-area-inset-top));
+    --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    --tvm-tabbar: calc(6.55rem + env(safe-area-inset-bottom));
+
+    --tvm-font-size-caption: 0.75rem;
+    --tvm-font-size-body: 0.9375rem;
+    --tvm-font-size-body-lg: 1.0625rem;
+    --tvm-font-size-title: 1.25rem;
+    --tvm-font-size-display: 1.7rem;
+
+    --tvm-space-4: 1.25rem;
+    --tvm-space-5: 1.75rem;
+    --tvm-space-6: 2.25rem;
+    --tvm-space-7: 3rem;
+
+    --tvm-focus-scale: 1.02;
+    --tvm-shadow-card: 0 0.4rem 1rem rgba(0, 0, 0, 0.45);
+  }
+
+  html,
+  body,
+  #root,
+  .app,
+  .app__screen,
+  .screen-layer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  body {
+    cursor: auto;
+    font-size: var(--tvm-font-size-body);
+  }
+
+  /* Page frame ------------------------------------------------------------ */
+
+  .page {
+    width: 100vw;
+    max-width: 100vw;
+    gap: var(--tvm-space-3);
+    padding:
+      var(--tvm-safe-y)
+      var(--tvm-safe-x)
+      calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 0.85rem);
+  }
+
+  .page--docked {
+    padding-top: var(--tvm-safe-y);
+    padding-left: var(--tvm-safe-x);
+  }
+
+  .page--library,
+  .page--settings,
+  .page--recovery,
+  .details {
+    padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 1.1rem);
+    scroll-padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 1.1rem);
+  }
+
+  .home {
+    width: 100vw;
+    max-width: 100vw;
+    scroll-padding: var(--tvm-safe-y) 0.8rem calc(var(--tvm-tabbar) + 1.2rem) 0.8rem;
+  }
+
+  .page__lede,
+  .page__message {
+    max-width: none;
+  }
+
+  .page__toolbar,
+  .masthead {
+    flex-wrap: wrap;
+    gap: var(--tvm-space-2);
+  }
+
+  .topbar {
+    min-height: 2.75rem;
+    padding-top: 0.15rem;
+  }
+
+  /* Hero / Home -----------------------------------------------------------
+   * A phone featured card, not a 58vh living-room billboard. The TV clock
+   * and "learn the remote" line are ten-foot chrome.
+   */
+
+  .stage,
+  .home--launcher .stage--home {
+    min-height: 28vh;
+    padding: calc(var(--tvm-safe-y) + 0.35rem) var(--tvm-safe-x) 0.7rem;
+  }
+
+  .stage__title {
+    font-size: var(--tvm-font-size-display);
+    line-height: 1.08;
+  }
+
+  .stage__copy {
+    gap: 0.45rem;
+  }
+
+  .stage__watchline {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .stage__watchline-rule,
+  .stage__learn,
+  .home__clock {
+    display: none;
+  }
+
+  .home--launcher .home__destinations {
+    min-height: 0;
+    padding-top: 0.35rem;
+  }
+
+  .home__launcher-kicker {
+    letter-spacing: 0.12em;
+  }
+
+  .home__launcher {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    min-height: 0;
+    padding: 0.15rem var(--tvm-safe-x) 0.85rem;
+    overflow-x: visible;
+  }
+
+  .tvm-button.launch-tile {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 4.25rem;
+    padding: 0.7rem 0.75rem;
+  }
+
+  .launch-tile strong {
+    font-size: 0.9rem;
+  }
+
+  .launch-tile span:last-child:not(.launch-tile__mark) {
+    display: none;
+  }
+
+  .home__shelf {
+    gap: 1.35rem;
+    padding: 0.15rem 0 calc(var(--tvm-tabbar) + 1.4rem);
+  }
+
+  /* Rails ----------------------------------------------------------------- */
+
+  .rail__header {
+    padding-inline: var(--tvm-safe-x);
+  }
+
+  .rail__title {
+    font-size: 0.9375rem;
+  }
+
+  .rail__track {
+    gap: 0.5rem;
+    padding: 0.7rem 0.4rem 0.95rem;
+  }
+
+  .poster {
+    --poster-w: 6.5rem;
+  }
+
+  .poster--landscape {
+    --poster-w: 10.2rem;
+  }
+
+  .poster--landscape .poster__meta,
+  .poster--landscape[data-focused='true'] .poster__meta {
+    opacity: 1;
+  }
+
+  .poster-grid {
+    grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr));
+    gap: 0.85rem 0.55rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .channel-grid {
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.65rem;
+  }
+
+  .plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Bottom tab bar --------------------------------------------------------
+   * Replaces the hover-peek ribbon. Labels stay visible. HDMI Inputs is a
+   * television affordance and is removed so the eight remaining destinations
+   * land on a 4×2 grid: Home, Search, Live, Watchlist / Library, Apps,
+   * Settings, Profile.
+   */
+
+  .ribbon-zone {
+    display: none;
+  }
+
+  .ribbon,
+  .ribbon--open,
+  .ribbon:focus-within,
+  .ribbon:has([data-focused='true']),
+  [data-theme='glass'] .ribbon,
+  [data-theme='glass'] .ribbon--open,
+  [data-theme='glass'] .ribbon:focus-within,
+  [data-theme='glass'] .ribbon:has([data-focused='true']),
+  html[data-theme='synthwave'] .ribbon,
+  html[data-theme='synthwave'] .ribbon--open {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: block;
+    width: 100vw;
+    max-width: 100vw;
+    margin: 0;
+    padding: 0.28rem 0.2rem calc(0.28rem + env(safe-area-inset-bottom));
+    overflow: visible;
+    pointer-events: auto;
+    opacity: 1;
+    transform: none;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--tvm-bg, #071428) 92%, #000);
+    box-shadow: 0 -0.4rem 1.4rem rgba(0, 0, 0, 0.35);
+    border-top: 1px solid color-mix(in srgb, #fff 10%, transparent);
+  }
+
+  [data-theme='glass'] .ribbon {
+    background: color-mix(in srgb, var(--tvm-glass-fill-text, #12141c) 94%, #000);
+    border: none;
+    border-top: var(--tvm-glass-hairline-width, 1px) solid var(--tvm-glass-hairline, rgba(255, 255, 255, 0.14));
+    box-shadow: 0 -0.35rem 1.2rem rgba(0, 0, 0, 0.28);
+    -webkit-backdrop-filter: var(--tvm-glass-filter, blur(18px));
+    backdrop-filter: var(--tvm-glass-filter, blur(18px));
+  }
+
+  .ribbon__frost,
+  [data-theme='glass'] .ribbon__frost {
+    display: block;
+    width: 100%;
+    max-width: 100vw;
+    padding: 0;
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  [data-theme='glass'] .ribbon__frost::before {
+    content: none;
+  }
+
+  .ribbon__list,
+  [data-theme='glass'] .ribbon__list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 0.1rem;
+    width: 100%;
+    max-width: 100vw;
+    overflow: visible;
+  }
+
+  .ribbon__spacer {
+    display: none;
+  }
+
+  .tvm-button.ribbon__icon,
+  .ribbon__icon,
+  [data-theme='glass'] .ribbon__icon {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 2.85rem;
+    padding: 0.22rem 0.08rem;
+    border-radius: 0.7rem;
+    background: transparent;
+  }
+
+  .ribbon__icon .tvm-button__label {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.14rem;
+    width: 100%;
+  }
+
+  .ribbon__avatar,
+  .ribbon__glyph,
+  .ribbon__avatar-svg {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .ribbon__label,
+  .ribbon__icon:hover .ribbon__label,
+  .ribbon__icon:focus .ribbon__label,
+  .ribbon__icon[data-focused='true'] .ribbon__label,
+  [data-theme='glass'] .ribbon__label,
+  [data-theme='glass'] .ribbon__icon:hover .ribbon__label,
+  [data-theme='glass'] .ribbon__icon:focus .ribbon__label,
+  [data-theme='glass'] .ribbon__icon[data-focused='true'] .ribbon__label {
+    max-width: none;
+    overflow: visible;
+    font-size: 0.58rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    line-height: 1.1;
+    opacity: 1;
+    white-space: nowrap;
+  }
+
+  .ribbon .tvm-button.ribbon__icon[data-focus-id='inputs'],
+  .ribbon [data-focus-id='inputs'] {
+    display: none;
+  }
+
+  .ribbon__icon:hover,
+  .ribbon__icon:focus,
+  .ribbon__icon[data-focused='true'],
+  .tvm-button.ribbon__icon:focus,
+  .tvm-button.ribbon__icon[data-focused='true'],
+  .tvm-button.ribbon__icon.tvm-button--focused,
+  [data-theme='glass'] .ribbon__icon:focus,
+  [data-theme='glass'] .ribbon__icon[data-focused='true'] {
+    padding: 0.22rem 0.08rem;
+    transform: none;
+    background: color-mix(in srgb, #fff 12%, transparent);
+  }
+
+  html.keyboard-open .ribbon,
+  html.keyboard-open .ribbon--open,
+  html.keyboard-open [data-theme='glass'] .ribbon {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(110%);
+  }
+
+  html.keyboard-open .page,
+  html.keyboard-open .page--library,
+  html.keyboard-open .page--settings,
+  html.keyboard-open .page--recovery,
+  html.keyboard-open .details,
+  html.keyboard-open .home {
+    padding-bottom: calc(var(--tvm-keyboard-inset) + 1.25rem);
+    scroll-padding-bottom: calc(var(--tvm-keyboard-inset) + 1.25rem);
+  }
+
+  /* Search ----------------------------------------------------------------
+   * Full-width sheet. The on-screen D-pad keyboard is replaced by the
+   * system keyboard; fields stay 16px so iOS does not pinch-zoom.
+   */
+
+  .search-pill {
+    align-items: stretch;
+    justify-items: stretch;
+    padding: env(safe-area-inset-top) 0 0;
+    background: color-mix(in srgb, var(--tvm-bg-deep, #050810) 72%, transparent);
+  }
+
+  .search-pill__panel {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100%;
+    max-height: none;
+    padding: 0.65rem var(--tvm-safe-x) calc(var(--tvm-keyboard-inset) + 1rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: none;
+    border-radius: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .search-pill__bar {
+    flex-wrap: wrap;
+    min-height: 2.75rem;
+  }
+
+  .search-pill__field {
+    flex: 1 1 12rem;
+  }
+
+  .search-pill__field .token-field__input,
+  .token-field__input,
+  input,
+  textarea,
+  select {
+    width: 100%;
+    min-height: 2.75rem;
+    font-size: 16px;
+    cursor: text;
+  }
+
+  .search-pill__bar .tvm-button {
+    min-height: 2.75rem;
+  }
+
+  .search-pill .osk,
+  .osk {
+    display: none;
+  }
+
+  .search-results {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .search-recent__items .tvm-button,
+  .collection-controls .tvm-button,
+  .page__toolbar .tvm-button,
+  .masthead .tvm-button {
+    min-height: 2.75rem;
+  }
+
+  .token-field {
+    max-width: none;
+  }
+
+  /* Details --------------------------------------------------------------- */
+
+  .details {
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  .details__stage {
+    height: 38vh;
+    min-height: 12.5rem;
+  }
+
+  .details__body {
+    margin-top: -38vh;
+  }
+
+  .details__hero,
+  .details--series .details__hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+    padding: calc(var(--tvm-safe-y) + 2.4rem) var(--tvm-safe-x) 1rem;
+  }
+
+  .details__poster,
+  .details--series .details__poster,
+  [data-theme='glass'] .details__poster {
+    flex-basis: 7.4rem;
+    width: 7.4rem;
+    height: 11.1rem;
+  }
+
+  .details__poster-stage {
+    transform: none;
+  }
+
+  .details .stage__title,
+  .details--series .stage__title {
+    font-size: 1.55rem;
+  }
+
+  .details .hero__actions,
+  .details__actions {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .details .hero__actions .tvm-button,
+  .details__actions .tvm-button {
+    min-height: 2.75rem;
+    flex: 1 1 8rem;
+  }
+
+  /* Settings / Profile / Checkout / Live --------------------------------- */
+
+  .settings-list {
+    max-width: none;
+  }
+
+  .settings-row,
+  .tvm-button.settings-row {
+    min-height: 2.85rem;
+    padding-block: 0.65rem;
+  }
+
+  .billing-layout {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+
+  .billing-panel {
+    padding: 1rem;
+    margin: 0.75rem 0;
+  }
+
+  .billing-page {
+    padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 1.5rem);
+  }
+
+  .profile-orb--lg {
+    width: 5.5rem;
+    height: 5.5rem;
+  }
+
+  .setup-card {
+    width: calc(100vw - 1.6rem);
+    max-width: none;
+    margin-inline: auto;
+  }
+
+  /* Player ----------------------------------------------------------------
+   * Native-feeling transport: a large play control and a fat seek track.
+   * Ten-foot title clamp and D-pad lesson do not belong on a phone.
+   */
+
+  .player,
+  .player-root,
+  [data-player],
+  [data-player-root],
+  .chrome-frame,
+  .stream-page {
+    --player-safe-x: max(0.85rem, env(safe-area-inset-left), env(safe-area-inset-right));
+    --player-safe-y: max(0.55rem, env(safe-area-inset-top));
+    --player-safe-top: calc(var(--player-safe-y) + env(titlebar-area-height, 0px));
+    --player-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    --player-dock: 4.4rem;
+    --player-tools-lift: calc(var(--player-safe-bottom) + 9.2rem);
+    --player-bar-width: calc(100vw - 0.7rem);
+    --player-dock-radius: 1.15rem;
+  }
+
+  .player-dock {
+    gap: 0.55rem;
+    padding: 0.55rem 0.7rem 0.7rem;
+  }
+
+  .player-root .player-title-overlay__title,
+  .player .player-title-overlay__title {
+    font-size: 1.2rem;
+    letter-spacing: -0.03em;
+  }
+
+  .player-root .player-title-overlay__meta,
+  .player .player-title-overlay__meta {
+    font-size: 0.8rem;
+  }
+
+  .player-root .player-transport,
+  .player .player-transport,
+  .player-dock .player-transport {
+    align-items: center;
+  }
+
+  .player-root .player-transport .tvm-button.player-transport__btn,
+  .player .player-transport .tvm-button.player-transport__btn {
+    width: 3.15rem;
+    height: 3.15rem;
+    min-width: 3.15rem;
+    min-height: 3.15rem;
+  }
+
+  .player-root .player-transport .tvm-button.player-transport__btn--play,
+  .player .player-transport .tvm-button.player-transport__btn--play {
+    width: 4.35rem;
+    height: 4.35rem;
+    min-width: 4.35rem;
+    min-height: 4.35rem;
+  }
+
+  .player-root .player-transport .tvm-button.player-transport__btn--back,
+  .player .player-transport .tvm-button.player-transport__btn--back {
+    min-width: 4.6rem;
+    height: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+  }
+
+  .player-root .tvm-progress,
+  .player .tvm-progress,
+  .player-dock .tvm-progress {
+    min-height: 2.75rem;
+    gap: 0.45rem 0.55rem;
+    grid-template-columns: minmax(2.6rem, auto) minmax(0, 1fr) minmax(2.6rem, auto);
+  }
+
+  .player-root .tvm-progress__track,
+  .player .tvm-progress__track,
+  .player-dock .tvm-progress__track {
+    height: 0.9rem;
+  }
+
+  .player-root .tvm-progress__knob,
+  .player .tvm-progress__knob,
+  .player-dock .tvm-progress__knob {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .tvm-progress__control {
+    min-height: 2.75rem;
+    padding: 1.15rem 0.2rem;
+  }
+
+  .player-root .tvm-progress__time,
+  .player .tvm-progress__time {
+    min-width: 2.6rem;
+    font-size: 0.78rem;
+  }
+
+  .player-dock__tools {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 0.4rem;
+  }
+
+  .player-speed__toggle,
+  .player-skip-recap .tvm-button.player-skip-recap__btn,
+  .player__icon,
+  .player-watchlist .player-watchlist__btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
+/* Landscape phone ----------------------------------------------------------
+ * Height, not width, is the scarce axis here: a full-height hero leaves no
+ * room for the first rail, so the screen reads as a single static image.
+ */
+
+@media (max-height: 30rem) and (orientation: landscape) {
+  :root {
+    --tvm-tabbar: calc(4.35rem + env(safe-area-inset-bottom));
+  }
+
+  .stage,
+  .home--launcher .stage--home {
+    min-height: 52vh;
+    padding-top: 1.4rem;
+  }
+
+  .home__clock,
+  .stage__learn {
+    display: none;
+  }
+
+  .ribbon,
+  .ribbon--open,
+  [data-theme='glass'] .ribbon {
+    padding-block: 0.12rem calc(0.12rem + env(safe-area-inset-bottom));
+  }
+
+  .ribbon__list,
+  [data-theme='glass'] .ribbon__list {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+
+  .ribbon__label {
+    display: none;
+  }
+
+  .details__stage {
+    height: 100%;
+    min-height: 100%;
+  }
+
+  .details__body {
+    margin-top: 0;
+    background: color-mix(in srgb, var(--tvm-bg) 88%, transparent);
+  }
+
+  .player-root .player-transport .tvm-button.player-transport__btn--play,
+  .player .player-transport .tvm-button.player-transport__btn--play {
+    width: 3.6rem;
+    height: 3.6rem;
+    min-width: 3.6rem;
+    min-height: 3.6rem;
+  }
+}
+
+/* Touch --------------------------------------------------------------------
+ * Keyed on the input, not the screen: a touch laptop gets these too.
+ */
+
+@media (pointer: coarse) {
+  /*
+   * Every scroller in this interface is also driven programmatically by the
+   * D-pad camera. On touch the finger must win, and it must keep iOS momentum,
+   * so the scrollers opt out of scroll chaining rather than out of scrolling.
+   */
+  .rail__track,
+  .page--library,
+  .page--settings,
+  .page--recovery,
+  .home,
+  .details,
+  .search-pill__panel,
+  .billing-page {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rail__track {
+    touch-action: pan-x;
+  }
+
+  .home,
+  .page--library,
+  .page--settings,
+  .page--recovery,
+  .details,
+  .search-pill__panel {
+    touch-action: pan-y;
+  }
+
+  .tvm-button,
+  .ribbon__item,
+  .settings-row,
+  .tvm-button.settings-row,
+  .search-recent__items .tvm-button {
+    min-height: 2.75rem;
+  }
+
+  .poster {
+    min-height: 0;
+  }
+
+  /*
+   * Hover-to-focus is a mouse affordance. On touch the same rule fires from
+   * the synthetic hover a tap emits, which moved focus to whatever the finger
+   * brushed while scrolling.
+   */
+  .poster:hover .poster__art,
+  .tvm-button:hover {
+    transform: none;
+  }
+
+  .poster--landscape:hover .poster__meta {
+    opacity: 1;
+  }
+
+  .osk {
+    display: none;
+  }
+
+  /*
+   * Runtime-injected player styles can outrank the bundle. Hide the D-pad
+   * lesson; a finger does not need Left / OK / Back.
+   */
+  .player-remote-hints,
+  .player-root .player-remote-hints,
+  .player .player-remote-hints {
+    display: none !important;
+  }
+
+  .player__icon,
+  .player-speed__toggle,
+  .player-skip-recap .tvm-button.player-skip-recap__btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .tvm-progress__control {
+    touch-action: none;
+  }
+}
+
+/* Phone-shell class (set by phoneViewport / the iOS WKUserScript) --------- */
+
+html.phone-shell,
+html.phone-shell body {
+  cursor: auto;
+}
+
+html.phone-shell button,
+html.phone-shell .poster,
+html.phone-shell .tvm-button,
+html.phone-shell .app-card {
+  cursor: pointer;
+}
+
+html.phone-shell .token-field__input,
+html.phone-shell input,
+html.phone-shell textarea {
+  cursor: text;
+}

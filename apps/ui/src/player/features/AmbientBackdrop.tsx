@@ -108,11 +108,6 @@ const STYLES = `
 @media (prefers-reduced-transparency: reduce) {
   .player-ambient { display: none; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .player-ambient__layer { transition: none; }
-  .player-ambient__glow,
-  .player-ambient__veil { animation: none; }
-}
 `;
 
 export function softenArtUrl(url: string): string {

@@ -115,6 +115,22 @@ html:not([data-theme]) .poster[data-focused='true'] .poster__art,
   filter: none;
 }
 
+html:not([data-theme]) .home__clock,
+html:not([data-theme]) .tvm-button.launch-tile,
+html:not([data-theme]) .settings-row,
+html:not([data-theme]) .page__heading,
+[data-theme='default'] .home__clock,
+[data-theme='default'] .tvm-button.launch-tile,
+[data-theme='default'] .settings-row,
+[data-theme='default'] .page__heading {
+  color: var(--tvm-text);
+}
+
+html:not([data-theme]) .settings-row,
+[data-theme='default'] .settings-row {
+  background: color-mix(in srgb, var(--tvm-surface) 86%, #0b1f3a);
+}
+
 html:not([data-theme]) .channel-card,
 [data-theme='default'] .channel-card {
   background: color-mix(in srgb, var(--tvm-surface) 88%, transparent);

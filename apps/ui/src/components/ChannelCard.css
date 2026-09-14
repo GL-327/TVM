@@ -103,11 +103,3 @@
   padding-bottom: 0.55rem;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .channel-card,
-  .channel-card.tvm-button[data-focused='true'] {
-    transition: none;
-    transform: none;
-    will-change: auto;
-  }
-}

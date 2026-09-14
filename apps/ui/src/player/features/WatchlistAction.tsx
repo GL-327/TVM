@@ -67,11 +67,11 @@ const CSS = `
 }
 .player-watchlist__btn {
   pointer-events: auto;
-  min-height: 2.5rem;
-  padding: 0.35rem 0.9rem;
-  border: 1px solid color-mix(in srgb, var(--tvm-text, #fff) 18%, transparent);
-  background: color-mix(in srgb, var(--tvm-surface-glass, rgba(28, 28, 28, 0.78)) 82%, transparent);
-  color: var(--tvm-text, #f5f5f5);
+  min-height: 2.75rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--player-chip-border, color-mix(in srgb, var(--tvm-text, #fff) 18%, transparent));
+  background: color-mix(in srgb, var(--player-chip, var(--tvm-surface-glass, rgba(28, 28, 28, 0.78))) 78%, transparent);
+  color: var(--player-ink, var(--tvm-text, #f5f5f5));
   box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.35);
 }
 .player-watchlist__btn .tvm-button__label {

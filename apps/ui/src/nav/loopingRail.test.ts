@@ -26,6 +26,7 @@ describe('looping rail', () => {
     expect(shouldLoopRail(0)).toBe(false);
     expect(shouldLoopRail(1)).toBe(false);
     expect(shouldLoopRail(2)).toBe(true);
+    expect(shouldLoopRail(20, true)).toBe(false);
   });
 
   it('treats the track as three equal copies', () => {

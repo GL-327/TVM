@@ -37,6 +37,16 @@ export function extensionDirectMime(nameOrUrl: string): string | null {
   return null;
 }
 
+/**
+ * Last resort without ffprobe. Chromium demuxes Matroska natively, so an
+ * H.264/AAC MKV (the Real-Debrid majority) plays through the Range proxy;
+ * anything HEVC or 10-bit fails in the player with an honest decode error
+ * instead of being refused here as "unsupported" before it is even tried.
+ */
+export function extensionLooseMime(nameOrUrl: string): string | null {
+  return /\.mkv(\?|$)/i.test(nameOrUrl) ? 'video/x-matroska' : null;
+}
+
 export function createStreamer(options: StreamerOptions): StreamerService {
   const env = options.env ?? process.env;
   const toolkit = options.toolkit ?? createFfmpegToolkit(env);
@@ -50,6 +60,7 @@ export function createStreamer(options: StreamerOptions): StreamerService {
       idleMs: 60_000,
     });
   const direct = createDirectRegistry();
+  let warnedMissing = false;
 
   return {
     ready: () => toolkit.available(),
@@ -57,9 +68,19 @@ export function createStreamer(options: StreamerOptions): StreamerService {
     direct,
 
     async resolveFile(url, opts) {
-      const probe = toolkit.available() ? await toolkit.probe(url) : null;
+      const available = toolkit.available();
+      if (!available && !warnedMissing) {
+        warnedMissing = true;
+        console.warn(
+          'tvm-core: ffmpeg/ffprobe not found. Only MP4/WebM (and H.264 MKV) can play until it is installed ' +
+            '(Windows: winget install Gyan.FFmpeg, then restart TVM).',
+        );
+      }
+      const probe = available ? await toolkit.probe(url) : null;
       if (probe === null) {
-        const mime = extensionDirectMime(opts.filename ?? url) ?? extensionDirectMime(url);
+        const name = opts.filename ?? url;
+        const mime =
+          extensionDirectMime(name) ?? extensionDirectMime(url) ?? extensionLooseMime(name) ?? extensionLooseMime(url);
         if (mime === null) return null;
         const token = direct.mint(url, mime);
         return { url: `/api/stream/direct/${token}`, mimeType: mime, transport: 'direct' };

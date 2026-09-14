@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tvm_bg">#FF100B08</color>
+    <color name="tvm_surface">#FF20150E</color>
+    <color name="tvm_text">#FFF3E6C8</color>
+    <color name="tvm_muted">#FFCDB48C</color>
+    <color name="tvm_accent">#FFE0A526</color>
+    <color name="tvm_ink">#FF1E100A</color>
+    <color name="tvm_field">#FF100B08</color>
+    <color name="tvm_border">#FF8D724F</color>
+    <color name="tvm_icon_bg">#FF1E100A</color>
+</resources>

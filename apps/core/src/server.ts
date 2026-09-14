@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { CORE_HOST, CORE_VERSION, resolveBindHost, resolvePort } from './config.ts';
 import { readJson, sendJson } from './http.ts';
 import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
+import { createLanSessions, serveLanPairing } from './lanSessions.ts';
 import { exportPersonalData } from './privacy.ts';
 import { writeSecret } from './providers/secrets.ts';
 import { rdTokenPath, tokenPath } from './update/paths.ts';
@@ -25,7 +26,7 @@ import { createRealDebrid } from './providers/realdebrid.ts';
 import { createSessionService, type SessionService } from './providers/session.ts';
 import { createStreamer, type StreamerService } from './providers/streamer.ts';
 import { serveExactStatic, serveStatic } from './static.ts';
-import { resolveDataDir } from './update/paths.ts';
+import { applyPolicy, resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
 
 export { CORE_VERSION };
@@ -411,6 +412,7 @@ async function handleApi(
   artwork: ArtProxyService,
   dataDir: string,
   streamer: StreamerService,
+  env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -449,7 +451,7 @@ async function handleApi(
     try {
       const result = await update.apply();
       sendJson(response, 200, result);
-      if (process.env['TVM_ENV'] === 'production') restartAfterApply();
+      if (applyPolicy(env).allowed) restartAfterApply();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'apply failed';
       const status = error instanceof Error && error.name === 'ApplyRefused' ? 403 : 400;
@@ -904,6 +906,7 @@ async function handleApi(
         number?: unknown;
         expiry?: unknown;
         cvc?: unknown;
+        zip?: unknown;
         liveTv?: unknown;
         synthwave?: unknown;
         consent?: unknown;
@@ -914,6 +917,16 @@ async function handleApi(
       sendJson(response, 200, plans.checkout(body));
     } catch (error) {
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'checkout failed' });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/charge' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as { tokenId?: unknown };
+      sendJson(response, 200, plans.charge(body));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'charge failed' });
     }
     return true;
   }
@@ -1013,14 +1026,35 @@ export function createCoreServer(options: CoreOptions = {}): Server {
     });
 
   const allowUnlock = createUnlockLimiter();
+  const lanSessions = createLanSessions(env);
+  const allowPairing = createUnlockLimiter();
 
   const server: Server = createServer((request, response) => {
     void (async () => {
       const path = new URL(request.url ?? '/', `http://${CORE_HOST}`).pathname;
       setSecurityHeaders(response);
-      const denied = accessError(request, path, env);
-      if (denied !== null) {
+      const denied = accessError(request, path, env, lanSessions.authenticated(request));
+      if (denied !== null && !(denied === 'lan_authentication_required' && path === '/api/lan/session' && request.method === 'POST')) {
+        if (denied === 'lan_authentication_required' && serveLanPairing(path, request, response)) return;
         sendJson(response, 403, { error: denied });
+        return;
+      }
+      if (path === '/connect' || path === '/connect.js') {
+        if (serveLanPairing(path, request, response)) return;
+      }
+      if (path === '/api/lan/session' && request.method === 'POST') {
+        if (!allowPairing()) {
+          response.setHeader('retry-after', '60');
+          sendJson(response, 429, { error: 'Too many connection attempts. Try again in one minute.' });
+          return;
+        }
+        const expiresAt = lanSessions.create(request, response);
+        sendJson(response, expiresAt === null ? 403 : 200, expiresAt === null ? { error: 'lan_authentication_required' } : { ok: true, expiresAt });
+        return;
+      }
+      if (path === '/api/lan/session' && request.method === 'DELETE') {
+        lanSessions.revoke(request, response);
+        sendJson(response, 200, { ok: true });
         return;
       }
       if (path === '/api/dev/unlock' && request.method === 'POST' && !allowUnlock()) {
@@ -1032,7 +1066,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const listenPort = addr !== null && typeof addr === 'object' ? addr.port : resolvePort(env);
 
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });

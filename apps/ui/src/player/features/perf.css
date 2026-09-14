@@ -52,8 +52,3 @@
   -webkit-backdrop-filter: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :is([data-player], .player-root) :is(.player-chrome, .player-dock, .player-transport, .tvm-progress) {
-    will-change: auto;
-  }
-}

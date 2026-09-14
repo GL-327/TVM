@@ -20,6 +20,7 @@ import './glass/kit.css';
 import.meta.glob('./glass/*.css', { eager: true });
 import './synthwave.css';
 import './motion.css';
+import './mobile.css';
 
 export const THEME_STORAGE_KEY = 'tvm.theme';
 const THEME_DEFAULT_BOOT = 'tvm.theme.isle-boot';
