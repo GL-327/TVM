@@ -1,0 +1,106 @@
+[data-theme='anime'] {
+  color-scheme: dark; --anime-glow:#63bfff; --tvm-bg:#101025; --tvm-bg-deep:#080a19; --tvm-bg-elevated:#20233d; --tvm-surface:#252944; --tvm-surface-hover:#38496b; --tvm-surface-glass:#12172be6;
+  --tvm-text:#f4f3ff; --tvm-text-muted:#c9d2ec; --tvm-text-faint:#a0b1d4; --tvm-accent:#a7e8ff; --tvm-accent-strong:#d7f7ff; --tvm-accent-ink:#0a1829; --tvm-border:#a7dfff; --tvm-border-soft:#a7dfff40; --tvm-focus-ring-color:#d7f7ff;
+  --tvm-shadow-card:6px 8px 0 #02061070; --tvm-shadow-focus:0 0 0 3px #cff5ff,0 0 28px #57baff60;
+  font-family:'Trebuchet MS',Arial,sans-serif; background:#101025;
+}
+.anime-stage {position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;background:linear-gradient(115deg,#080b1c 5%,#14162c 65%,#24223a);color:#7d9bd6;isolation:isolate}
+.anime-tableau {width:100%;height:100%;position:absolute;inset:0;opacity:.88}
+.anime-stage:after {content:'';position:absolute;inset:0;background:linear-gradient(90deg,#080b1ce6 2%,#080b1c99 36%,transparent 72%),linear-gradient(0deg,#080b1c 2%,transparent 65%)}
+.anime-stage__caption {position:absolute;right:5%;top:9%;width:35%;display:grid;gap:.5rem;text-align:right;z-index:1;text-shadow:0 2px 10px #000}
+.anime-stage__caption span {font:600 .7rem monospace;letter-spacing:.4em;color:var(--anime-glow)}
+.anime-stage__caption strong {font-size:clamp(1.2rem,3vw,3rem);font-style:italic;letter-spacing:-.04em}
+.anime-stage__caption small {font-size:clamp(.75rem,1vw,1rem);color:#d6e3f6}
+[data-theme='anime'] .page,[data-theme='anime'] .home,[data-theme='anime'] .stage {background:transparent}
+[data-theme='anime'] .page-scene {opacity:.1}
+[data-theme='anime'] .hero-art {opacity:.18;mix-blend-mode:luminosity}
+[data-theme='anime'] .stage__title,[data-theme='anime'] .page__heading {font-style:italic;letter-spacing:-.045em;text-transform:uppercase;text-shadow:3px 3px 0 #384a7b}
+[data-theme='anime'] .stage__copy {max-width:56%}
+[data-theme='anime'] .ribbon {border:1px solid #a7dfff55;border-left:5px solid var(--anime-glow);background:#0d1325e8;border-radius:5px 18px 18px 5px}
+[data-theme='anime'] .poster {border-radius:3px 15px 3px 3px;border:2px solid #c5e5ff80;box-shadow:5px 6px 0 #060815}
+[data-theme='anime'] .poster__art {filter:contrast(1.07) saturate(.86)}
+[data-theme='anime'] .poster__meta {border-top:2px solid var(--anime-glow);background:#11182fe8}
+[data-theme='anime'] .poster[data-focused='true'] {border-color:#fff;box-shadow:0 0 0 3px var(--anime-glow),9px 10px 0 #050914;transform:translateY(-6px)}
+[data-theme='anime'] .settings-group {border-left:3px solid var(--anime-glow);padding:1rem 1.25rem;background:#11162bdf}
+[data-theme='anime'] .settings-row {border-radius:3px;background:#1e2841c9;border-bottom:1px solid #bad9ff33}
+[data-theme='anime'] .rail__title {font-family:monospace;text-transform:uppercase;letter-spacing:.08em;border-left:5px solid var(--anime-glow);padding-left:.65rem}
+[data-theme='anime'] .launch-tile {border-radius:4px 24px 4px 4px;border:1px solid #b4dcff88;background:linear-gradient(135deg,#1e304bed,#13182ced)}
+.anime-controls {position:relative;z-index:1;margin:1rem var(--page-pad,3rem);max-width:52rem;background:#10182beb;border:1px solid #b7deff55;border-left:4px solid var(--anime-glow);padding:.6rem 1rem;border-radius:4px}
+.anime-controls .tvm-button {width:100%}
+.anime-scene-picker {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,23rem),1fr));gap:.5rem;margin-block:1rem}
+.anime-notebook {color:#302922;background:repeating-linear-gradient(#e0d4b8 0 2rem,#b8ab90 2rem 2.06rem);padding:1.5rem;font-family:Georgia,serif;line-height:2.06rem;border-left:8px double #5f5343}
+.anime-notebook ol {columns:2;column-gap:3rem}
+.anime-notebook li {break-inside:avoid}
+.anime-notebook .tvm-button {color:#fff;background:#382f29}
+.anime-fighter {color:#293555;filter:drop-shadow(0 0 10px #91c7ff30)}
+.anime-fighter--goku {color:#dc8547}.anime-fighter--thragg {color:#b5b4bd}.anime-fighter--yuji{color:#943b60}.anime-fighter--mahoraga{color:#c8c6b4}.anime-fighter--okkotsu{color:#ded9cc}.anime-fighter--ryu{color:#6d4678}
+.anime-combat {animation:anime-push 13s ease-in-out infinite alternate;transform-origin:72% 40%}
+.anime-barrier {animation:anime-barrier 9s ease-in-out infinite alternate;transform-origin:1030px 310px}
+.anime-firework {animation:anime-bloom 12s ease-out infinite;animation-delay:calc(var(--i) * -1.9s)}
+.anime-rain {animation:anime-rain 9s linear infinite}
+.anime-radar {transform-origin:0 0;animation:anime-radar 25s linear infinite}
+.anime-stage[data-burst='true'] .anime-tableau {animation:anime-domain 1.5s ease-out}
+[data-anime-scene='mahoraga']{--anime-glow:#e7cf8a}
+[data-anime-scene='mahoraga'] .poster__meta {border-top-style:double;border-top-width:5px}
+[data-anime-scene='invincible-thragg-gojo'] .stage__title {text-shadow:4px 2px 0 #81495f,-2px -1px 0 #529baa}
+[data-anime-scene='dress-up-fireworks']{--anime-glow:#ffbcac;font-family:Georgia,serif}
+[data-anime-scene='dress-up-fireworks'] .poster {border-radius:24px 24px 4px 4px;border-color:#efb5af}
+[data-anime-scene='dress-up-fireworks'] .stage__title{text-transform:none;font-family:Georgia,serif}
+[data-anime-scene='mega-fight'] .poster:nth-child(3n+1){border-top:6px solid #fbc86e}
+[data-anime-scene='mega-fight'] .poster:nth-child(3n+2){border-top:6px solid #c5baff}
+[data-anime-scene='mega-fight'] .poster:nth-child(3n){border-top:6px solid #ff9fbe}
+[data-anime-scene='just-this-once'] .stage__title{font-family:Georgia,serif;border-bottom:4px double #ced8f7;padding-bottom:.5rem}
+[data-anime-scene='demon-slayer']{--anime-glow:#c1a0f1}
+[data-anime-scene='demon-slayer'] .poster[data-focused='true']:nth-child(3n+1){border-color:#75d9ff;box-shadow:0 8px 0 #218fb8}
+[data-anime-scene='demon-slayer'] .poster[data-focused='true']:nth-child(3n+2){border-color:#ffc978;box-shadow:0 8px 0 #dc6729}
+[data-anime-scene='demon-slayer'] .poster[data-focused='true']:nth-child(3n){border-color:#dda8ff;box-shadow:0 8px 0 #9757c6}
+[data-anime-scene='todo-yuji'] .poster:nth-child(odd){border-right:6px solid #ed9db9}
+[data-anime-scene='todo-yuji'] .poster:nth-child(even){border-left:6px solid #ed9db9}
+[data-anime-scene='death-note']{--anime-glow:#d8c6a5;font-family:Georgia,serif}
+[data-anime-scene='death-note'] .poster {filter:sepia(.25);border:5px solid #c5b798;border-bottom-width:18px}
+[data-anime-scene='domain-city'] .launch-tile {border:1px dashed #bdc9ff;border-radius:0;box-shadow:inset 0 0 0 5px #101729}
+[data-anime-scene='wanted-posters']{--anime-glow:#dec391}
+[data-anime-scene='wanted-posters'] .poster {border:8px solid #ceb680;border-bottom-width:24px;border-radius:0}
+[data-anime-scene='wanted-posters'] .poster__meta {font-family:Georgia,serif;background:#cab389;color:#302a22}
+[data-anime-scene='wall-district'] .ribbon,[data-anime-scene='wall-district'] .settings-group {border:5px double #a5a8a3;border-radius:0}
+[data-anime-scene='night-train'] .poster {border:6px solid #b39b8c;border-radius:70px 70px 12px 12px}
+[data-anime-scene='witch-atelier']{--anime-glow:#e8d49f;font-family:Georgia,serif}
+[data-anime-scene='witch-atelier'] .poster {border:5px double #e8d49f;border-radius:50% 50% 3px 3px}
+[data-anime-scene='nerv-grid']{--anime-glow:#ffc565;font-family:monospace}
+[data-anime-scene='nerv-grid'] .poster,[data-anime-scene='nerv-grid'] .launch-tile {border-radius:0;border:1px solid #e4ab55;box-shadow:inset 0 0 0 4px #302819}
+[data-anime-scene='straw-hat-map'] .poster {border:5px dashed #d4bd88;border-radius:8px}
+[data-anime-scene='hashira-forms'] .poster {border-radius:50px 4px 50px 4px}
+/* Decoration cannot intersect playback. The existing native/HTML player owns its full surface. */
+html[data-theme='anime']:has([data-screen='player']) .anime-stage {visibility:hidden}
+html[data-theme='anime'] .player-chrome {border-top:2px solid var(--anime-glow)}
+.anime-stage[data-platform='mobile'] .anime-firework:nth-of-type(n+4){display:none}
+.anime-stage[data-platform='roku'] .anime-firework {animation-duration:24s}
+.anime-stage[data-platform='mobile'] .anime-stage__caption {top:16%;right:6%;width:65%}
+.anime-stage[data-platform='mobile'] .anime-stage__caption small {display:none}
+.anime-stage[data-quiet='true'] *,[data-perf='on'] .anime-stage * {animation:none!important;filter:none!important}
+@media(prefers-reduced-motion:reduce){.anime-stage *{animation:none!important}}
+@media(max-width:767px){[data-theme='anime'] .stage__copy{max-width:100%}.anime-stage__caption{opacity:.55}.anime-controls{margin:1rem}.anime-notebook ol{columns:1}}
+@keyframes anime-push{0%,30%{translate:0 0;scale:1}100%{translate:-12px 5px;scale:1.025}}
+@keyframes anime-barrier{0%,30%{opacity:.4}100%{opacity:1;scale:1.08 1}}
+@keyframes anime-bloom{0%,12%{opacity:.12}20%,35%{opacity:.9}65%,100%{opacity:.1}}
+@keyframes anime-rain{from{translate:0 -15px}to{translate:-8px 15px}}
+@keyframes anime-radar{to{rotate:360deg}}
+@keyframes anime-domain{0%{filter:brightness(1)}35%{filter:brightness(1.6)}100%{filter:brightness(1)}}
+[data-theme='anime'] .app {background:transparent}
+[data-theme='anime'] .stage__pictures {opacity:.12}
+[data-theme='anime'] {--tvm-font-family:'Trebuchet MS',Arial,sans-serif}
+[data-anime-scene='dress-up-fireworks'],[data-anime-scene='death-note'],[data-anime-scene='witch-atelier']{--tvm-font-family:Georgia,serif}
+[data-anime-scene='nerv-grid']{--tvm-font-family:monospace}
+[data-perf='on'][data-theme='anime'] .poster__art{filter:none}
+[data-anime-scene='mega-fight'] .anime-fighter {animation:anime-charge 11s ease-in-out infinite alternate}
+[data-anime-scene='mega-fight'] .anime-fighter:nth-of-type(2n) {animation-delay:-4s;animation-duration:15s}
+[data-anime-scene='mega-fight'] .anime-fighter:nth-of-type(3n) {animation-delay:-7s;animation-duration:18s}
+[data-theme='anime'] .details {background:linear-gradient(90deg,#0a1026ee,#0a1026cc)}
+@keyframes anime-charge {0%,45%{translate:0 0}100%{translate:8px -6px}}
+.anime-stage__caption {top:31%}
+.anime-stage[data-platform='mobile'] .anime-stage__caption {top:30%}
+html[data-theme='anime']:has([data-screen='player']) .anime-stage *,html[data-visibility='hidden'] .anime-stage * {animation-play-state:paused!important}
+.anime-stage__caption {color:#f5f3ff}
+/* A portrait screen frames the complete pair/tableau rather than cropping one eye. */
+.anime-stage[data-platform='mobile'] .anime-tableau {width:180%;height:auto;aspect-ratio:1440 / 900;left:-70%;right:auto;top:5rem;bottom:auto}
+.anime-stage[data-platform='mobile'] .anime-stage__caption {display:none}

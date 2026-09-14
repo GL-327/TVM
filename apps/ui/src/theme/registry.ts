@@ -1,4 +1,4 @@
-export type ThemeId = 'default' | 'light' | 'dark' | 'happy' | 'sunset' | 'heather' | 'glass' | 'synthwave';
+export type ThemeId = 'default' | 'light' | 'dark' | 'happy' | 'sunset' | 'heather' | 'glass' | 'synthwave' | 'anime';
 
 export interface ThemeSpec {
   id: ThemeId;
@@ -21,6 +21,7 @@ export const THEMES: readonly ThemeSpec[] = [
   { id: 'sunset', name: 'Sunset' },
   { id: 'heather', name: 'Heather' },
   { id: 'glass', name: 'Liquid Glass' },
+  { id: 'anime', name: 'Anime', premium: true },
   { id: 'synthwave', name: SYNTHWAVE_THEME_NAME, premium: true },
 ];
 

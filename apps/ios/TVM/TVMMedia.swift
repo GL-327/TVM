@@ -128,7 +128,26 @@ final class TVMMedia {
         let catalogItems = applyProgress(bundle.catalog, progress)
         let continueWatching = self.continueWatching(catalogItems + library)
         let watchlist = self.watchlist()
-        let rails = await buildRails(bundle: bundle, watching: continueWatching, watchlist: watchlist)
+        var rails = await buildRails(bundle: bundle, watching: continueWatching, watchlist: watchlist)
+        var seenFinished = Set<String>()
+        let finished = (catalogItems + library + watchlist + store.recentMedia(for: activeProfile())).filter { item in
+            guard let entry = progress[item.id], entry.isFinished || entry.completedAt != nil else { return false }
+            return seenFinished.insert(item.id).inserted
+        }.sorted { (progress[$0.id]?.completedAt ?? progress[$0.id]?.updated ?? "") > (progress[$1.id]?.completedAt ?? progress[$1.id]?.updated ?? "") }
+        let notebook = store.finishedNotebook(profileId: activeProfile(), items: finished)
+        let adaptationGeneration = progress.values.reduce(0) { $0 + max($1.completions, $1.isFinished ? 1 : 0) }
+        if adaptationGeneration > 0 {
+            let watchedIds = Set(finished.map(\.id))
+            let genres = finished.flatMap(\.genres)
+            let candidates = bundle.catalog.filter { !watchedIds.contains($0.id) }.sorted { left, right in
+                genres.filter { left.genres.contains($0) }.count > genres.filter { right.genres.contains($0) }.count
+            }
+            if !candidates.isEmpty {
+                let offset = adaptationGeneration % candidates.count
+                let adapted = Array((Array(candidates.dropFirst(offset)) + Array(candidates.prefix(offset))).prefix(16))
+                rails.insert(CatalogRail(id: "anime-adapted", title: "Adapted for you", items: adapted), at: 0)
+            }
+        }
         let featured = continueWatching.first
             ?? rails.first { $0.id == "new-films" }?.items.first
             ?? rails.first { $0.id == "films" }?.items.first
@@ -141,6 +160,8 @@ final class TVMMedia {
             "library": library.prefix(400).map { $0.json() },
             "continueWatching": continueWatching.map { $0.json() },
             "watchlist": watchlist.map { $0.json() },
+            "finished": notebook,
+            "adaptationGeneration": adaptationGeneration,
             "fileCount": library.count,
             "rails": rails.map { $0.json() },
         ]

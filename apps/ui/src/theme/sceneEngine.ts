@@ -280,7 +280,7 @@ function currentMode(): SceneRunMode {
     hidden: document.visibilityState === 'hidden',
     reducedMotion: prefersReducedMotion(),
     player: document.querySelector('[data-screen="player"]') !== null,
-    synthwave: theme === 'synthwave',
+    synthwave: theme === 'synthwave' || theme === 'anime',
   });
 }
 

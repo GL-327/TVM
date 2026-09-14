@@ -89,6 +89,8 @@ export interface CatalogRail {
 }
 
 export interface HomePayload {
+  finished?: Array<{ id: string; title: string; year: number | null }>;
+  adaptationGeneration?: number;
   rd: RdStatus;
   featured: MediaItem | null;
   library: MediaItem[];

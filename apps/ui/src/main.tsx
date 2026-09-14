@@ -20,7 +20,7 @@ applyStoredMotionPreference();
 applyStoredPerformanceMode();
 void fetchPlan().then((plan) => {
   applyPlanClass(plan);
-  if (readStoredTheme() === 'synthwave' && !themeUnlocked(plan, 'synthwave')) applyTheme('default');
+  if (!themeUnlocked(plan, readStoredTheme())) applyTheme('default');
 });
 
 const container = document.getElementById('root');

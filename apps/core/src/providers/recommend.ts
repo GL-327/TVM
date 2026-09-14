@@ -97,3 +97,12 @@ export function interleaveUnused(
   }
   return out;
 }
+
+/** Rotate a genre-ranked candidate window on each confirmed completion. */
+export function adaptedForYou(pool: readonly MediaItem[], history: readonly MediaItem[], generation: number): MediaItem[] {
+  const exclude = new Set(history.map(item => item.id));
+  const candidates = pickYouMightLike(pool, history, exclude, 48);
+  if (!candidates.length) return [];
+  const offset = generation % candidates.length;
+  return [...candidates.slice(offset), ...candidates.slice(0, offset)].slice(0, 16);
+}

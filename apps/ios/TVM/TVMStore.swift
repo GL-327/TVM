@@ -91,7 +91,9 @@ final class TVMStore {
             out[id] = ProgressEntry(
                 position: position,
                 duration: duration,
-                updated: entry["updated"] as? String ?? ""
+                updated: entry["updated"] as? String ?? "",
+                completedAt: entry["completedAt"] as? String,
+                completions: entry["completions"] as? Int ?? 0
             )
         }
         return out
@@ -100,10 +102,32 @@ final class TVMStore {
     func writeProgress(profileId: String, id: String, position: Double, duration: Double) {
         guard !id.isEmpty, position.isFinite, duration.isFinite, position >= 0, duration > 0 else { return }
         var all = progress(for: profileId)
-        all[id] = ProgressEntry(position: position, duration: duration, updated: ISO8601DateFormatter().string(from: Date()))
-        let body = all.mapValues { ["position": $0.position, "duration": $0.duration, "updated": $0.updated] }
+        let previous = all[id]
+        let now = ISO8601DateFormatter().string(from: Date())
+        let finished = position / duration > 0.96
+        all[id] = ProgressEntry(position: position, duration: duration, updated: now,
+            completedAt: finished && previous?.isFinished != true ? now : previous?.completedAt ?? (finished ? now : nil),
+            completions: max(previous?.completions ?? 0, previous?.isFinished == true ? 1 : 0) + (finished && previous?.isFinished != true ? 1 : 0))
+        let body = all.mapValues { entry -> [String: Any] in
+            var value: [String: Any] = ["position": entry.position, "duration": entry.duration, "updated": entry.updated, "completions": entry.completions]
+            if let completedAt = entry.completedAt { value["completedAt"] = completedAt }
+            return value
+        }
         try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
         try? JSONValue.data(body).write(to: profileDir(profileId).appendingPathComponent("progress.json"), options: .atomic)
+    }
+
+    // Only the caller's confirmed completed media enter this profile's notebook.
+    func finishedNotebook(profileId: String, items: [MediaItem]) -> [[String: Any]] {
+        let path = profileDir(profileId).appendingPathComponent("finished-notebook.json")
+        var saved: [[String: Any]] = []
+        if let data = try? Data(contentsOf: path), let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { saved = rows }
+        let progress = self.progress(for: profileId)
+        let completed = items.filter { progress[$0.id]?.isFinished == true || progress[$0.id]?.completedAt != nil }
+        let ids = Set(completed.map(\.id))
+        let rows: [[String: Any]] = completed.map { ["id": $0.id, "title": $0.title, "year": JSONValue.orNull($0.year)] } + saved.filter { !ids.contains($0["id"] as? String ?? "") }
+        if !completed.isEmpty { try? JSONValue.data(rows).write(to: path, options: .atomic) }
+        return rows
     }
 
     func recentMedia(for profileId: String) -> [MediaItem] {

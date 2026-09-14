@@ -12,6 +12,7 @@ describe('theme registry', () => {
       'sunset',
       'heather',
       'glass',
+      'anime',
       'synthwave',
     ]);
     expect(themeName('default')).toBe('Default');

@@ -1,3 +1,4 @@
+import { AnimeStage } from './theme/anime/AnimeStage';
 import { SceneField } from './theme/SceneField';
 import { SynthwaveCrt } from './theme/SynthwaveCrt';
 import { ViewStackProvider } from './nav/ViewStackProvider';
@@ -10,6 +11,7 @@ export function App(): React.JSX.Element {
           paints its own television set instead. */}
       <SceneField />
       <SynthwaveCrt />
+      <AnimeStage />
       <ViewStackProvider />
     </>
   );

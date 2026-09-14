@@ -27,7 +27,8 @@ describe('Home as the launcher in front of TVM Stream', () => {
     expect(src).toContain('id="launch-stream"');
     expect(src).toContain('home__destinations');
     expect(src).toContain('Where to');
-    expect(src).toContain("shelfTitle('Continue watching')");
+    expect(src).toContain('shelfTitle(watchingLabel)');
+    expect(src).toContain("'Continue watching'");
     expect(src).toContain('TVM Stream · ');
     expect(css).toContain('.home--launcher');
     expect(css).toContain('.home__launcher {');

@@ -5,7 +5,7 @@ import { TopBar } from '../components/TopBar';
 import {
   applyPlanClass,
   cardholderLooksValid,
-  checkoutPlan,
+  checkoutPlan, checkoutPack, packName,
   checkoutQuote,
   cvcLooksValid,
   digitsOnly,
@@ -49,10 +49,11 @@ function cardPayload(name: string, number: string, expiry: string, cvc: string, 
 export function Checkout({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const requestedId = PLAN_IDS.includes(params['planId'] as PlanId) ? params['planId'] as PlanId : 'free';
-  const packOnly = params['pack'] === 'synthwave';
+  const pack = checkoutPack(params['pack']);
+  const packOnly = pack !== undefined;
   const [catalog, setCatalog] = useState<PlanStatus | null>(null);
   const [liveTv, setLiveTv] = useState(false);
-  const [synthwave, setSynthwave] = useState(packOnly);
+  const [synthwave, setSynthwave] = useState(pack === 'synthwave');
   const [consent, setConsent] = useState(false);
   const [outcome, setOutcome] = useState<(typeof OUTCOMES)[number]>('success');
   const [cardName, setCardName] = useState('');
@@ -86,8 +87,8 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
 
   const planId = packOnly && catalog ? catalog.id : requestedId;
   const entry = catalog?.catalog.find((item) => item.id === planId);
-  const quote = catalog && entry ? checkoutQuote(catalog, planId, liveTv, synthwave, packOnly) : null;
-  const owned = catalog?.synthwaveOwned === true;
+  const quote = catalog && entry ? checkoutQuote(catalog, planId, liveTv, synthwave, packOnly, pack) : null;
+  const owned = pack === 'anime' ? catalog?.animeOwned === true : pack === 'theme-bundle' ? catalog?.bundleOwned === true : catalog?.synthwaveOwned === true;
 
   const pay = async (): Promise<void> => {
     if (!catalog || !quote || !consent || inFlight.current) return;
@@ -100,7 +101,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
     setBusy(true);
     setMessage(null);
     const order = {
-      planId, liveTv, synthwave, packOnly, consent: true, simulate: outcome,
+      planId, liveTv, synthwave, pack, packOnly, consent: true, simulate: outcome,
       quotedMonthlyPence: quote.monthlyPence, quotedOneTimePence: quote.oneTimePence,
     };
     const key = JSON.stringify(order);
@@ -112,7 +113,8 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
         ...(card ?? {}),
       });
       applyPlanClass(status);
-      if (synthwave && status.synthwave) applyTheme('synthwave');
+      if (pack === 'anime' && status.anime) applyTheme('anime');
+      else if (synthwave && status.synthwave) applyTheme('synthwave');
       setStoredLast4(card ? card.number.slice(-4) : null);
       setCardNumber('');
       setCardCvc('');
@@ -140,7 +142,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
         <dl className="billing-totals">
           <div><dt>Actually charged</dt><dd>£0.00</dd></div>
           <div><dt>Monthly reference price</dt><dd>{formatBillingMoney(success.pricePence)}</dd></div>
-          {quote && quote.oneTimePence > 0 ? <div><dt>Retro one-time reference price</dt><dd>{formatBillingMoney(quote.oneTimePence)}</dd></div> : null}
+          {quote && quote.oneTimePence > 0 ? <div><dt>Theme one-time reference price</dt><dd>{formatBillingMoney(quote.oneTimePence)}</dd></div> : null}
         </dl>
         <p>Playback uses your connected sources. TVM plans do not include subscriptions to streaming services or rights to their programmes.</p>
       </section>
@@ -155,7 +157,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
     <main ref={pageRef} className="page page--settings page--checkout billing-page" data-keyboard-fields="">
       <TopBar title="Checkout" />
       <p className="billing-badge">Sandbox checkout · initial testing</p>
-      <h1 className="page__heading">{packOnly ? `Unlock ${SYNTHWAVE_THEME_NAME}` : `Review ${entry?.name ?? 'your plan'}`}</h1>
+      <h1 className="page__heading">{packOnly ? `Unlock ${packName(pack!)}` : `Review ${entry?.name ?? 'your plan'}`}</h1>
       <p className="page__lede">Reference prices are in GBP. The amount charged is always £0.00 — no processor is linked. You can confirm without a card, or add one to store an encrypted token on this device.</p>
       {message && <p className="billing-message billing-message--error" role="alert">{message}</p>}
       {!catalog || !entry || !quote ? (
@@ -177,8 +179,8 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
                 </FocusButton>
               )}
               <p className="billing-fineprint">Live TV connects your own authorised IPTV playlist or provider. No channels or provider subscription are supplied.</p>
-              <FocusButton id="synthwave-addon" className="billing-option" disabled={busy || owned || packOnly} detail={owned ? 'Already unlocked · no additional charge' : `One-time ${formatBillingMoney(catalog.synthwaveAddonPence)} reference price`} onSelect={() => { setSynthwave((on) => !on); setConsent(false); }}>
-                {owned || synthwave ? '✓ ' : '+ '}{SYNTHWAVE_THEME_NAME} visual pack
+              <FocusButton id="synthwave-addon" className="billing-option" disabled={busy || owned || packOnly} detail={owned ? 'Already unlocked · no additional charge' : `One-time ${formatBillingMoney(pack === 'anime' ? catalog.animeAddonPence : pack === 'theme-bundle' ? catalog.themeBundlePence : catalog.synthwaveAddonPence)} reference price`} onSelect={() => { setSynthwave((on) => !on); setConsent(false); }}>
+                {owned || synthwave || packOnly ? '✓ ' : '+ '}{pack ? packName(pack) : SYNTHWAVE_THEME_NAME} visual pack
               </FocusButton>
               <p className="billing-fineprint">The visual pack stays unlocked when you change or cancel your test plan. It is separate from the monthly price.</p>
             </section>

@@ -2,10 +2,10 @@ import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, ty
 import { createLibraryArtwork } from './libraryArtwork.ts';
 import { clearCacheDir, factoryResetDir } from './maintenance.ts';
 import { createProfileService, MAX_PROFILES, type ProfileRegistry, type ProfileService } from './profiles.ts';
-import { pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
+import { finishedTitles, isFinished, pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
 import type { RdDownload, RdTorrent, RealDebrid } from './realdebrid.ts';
 import type { StreamerService } from './streamer.ts';
-import { becauseYouWatched, interleaveUnused, pickYouMightLike, takeUnused } from './recommend.ts';
+import { adaptedForYou, becauseYouWatched, interleaveUnused, pickYouMightLike, takeUnused } from './recommend.ts';
 import {
   episodeLabel,
   hueFor,
@@ -595,6 +595,12 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       );
       const watchlist = readWatchlist(profileScope);
       const rails = await buildRails(continueWatching, watchlist);
+      const finished = [...catalogItems, ...library, ...watchlist].filter((item, index, all) =>
+        all.findIndex(other => other.id === item.id) === index && (isFinished(progress[item.id]) || !!progress[item.id]?.completedAt));
+      finished.sort((a, b) => (progress[b.id]?.completedAt ?? progress[b.id]?.updated ?? '').localeCompare(progress[a.id]?.completedAt ?? progress[a.id]?.updated ?? ''));
+      const completedTitles = finishedTitles(profileScope, [...catalogItems, ...library, ...watchlist], progress);
+      const adaptationGeneration = Object.values(progress).reduce((sum, entry) => sum + (entry.completions ?? (isFinished(entry) ? 1 : 0)), 0);
+      if (adaptationGeneration > 0) rails.unshift({ id: 'anime-adapted', title: 'Adapted for you', items: adaptedForYou(catalogItems, finished, adaptationGeneration) });
       const featured =
         continueWatching[0] ??
         rails.find((rail) => rail.id === 'new-films')?.items[0] ??
@@ -609,6 +615,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         library: library.slice(0, 400),
         continueWatching,
         watchlist,
+        finished: completedTitles,
+        adaptationGeneration,
         fileCount: library.length,
         rails,
       };
