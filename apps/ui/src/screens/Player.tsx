@@ -163,6 +163,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             persist(durationRef.current, durationRef.current);
             navigate.pop();
           },
+          onClosed: () => { persist(); navigate.pop(); },
           onError: (message) => {
             billableRef.current = false;
             setBuffering(false);

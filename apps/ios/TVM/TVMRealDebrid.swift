@@ -353,7 +353,7 @@ final class TVMRealDebrid {
     func needsUnrestrict(_ url: String) -> Bool {
         if url.range(of: "download.real-debrid.com", options: .caseInsensitive) != nil { return false }
         if url.range(of: "real-debrid.com/d/", options: .caseInsensitive) != nil { return true }
-        return url.range(of: #"\.(m3u8|mp4|m4v|mkv|webm|mov)(\?|$)"#, options: .regularExpression) == nil
+        return url.range(of: #"\.(m3u8|mp4|m4v|mkv|webm|mov|avi|ts|m2ts|mpg|mpeg|wmv|mp3|m4a|aac|flac|ogg|wav)(\?|$)"#, options: [.regularExpression, .caseInsensitive]) == nil
     }
 
     func isTorrentioHost(_ url: String) -> Bool {

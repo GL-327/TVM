@@ -46,35 +46,40 @@ function encodePng(width, height, rgba) {
 
 const size = 1024;
 const pixels = Buffer.alloc(size * size * 4);
-for (let i = 0; i < size * size; i += 1) {
-  pixels[i * 4] = 0x1e;
-  pixels[i * 4 + 1] = 0x10;
-  pixels[i * 4 + 2] = 0x0a;
-  pixels[i * 4 + 3] = 255;
+// A cinematic screen and luminous play aperture. Opaque, full-bleed artwork;
+// iOS supplies the launcher corner mask. Render at 2x coverage for crisp edges.
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+function roundBox(x, y, w, h, r) {
+  const dx = Math.abs(x) - w / 2 + r;
+  const dy = Math.abs(y) - h / 2 + r;
+  return Math.hypot(Math.max(0, dx), Math.max(0, dy)) + Math.min(Math.max(dx, dy), 0) - r;
 }
-
-const inset = Math.round(size * 0.18);
-const scale = (size - inset * 2) / 108;
-function fillRect(x, y, width, height) {
-  const x0 = Math.round(inset + x * scale);
-  const y0 = Math.round(inset + y * scale);
-  const x1 = Math.round(inset + (x + width) * scale);
-  const y1 = Math.round(inset + (y + height) * scale);
-  for (let yy = y0; yy < y1; yy += 1) {
-    for (let xx = x0; xx < x1; xx += 1) {
-      if (xx < 0 || yy < 0 || xx >= size || yy >= size) continue;
-      const index = (yy * size + xx) * 4;
-      pixels[index] = 0xe0;
-      pixels[index + 1] = 0xa5;
-      pixels[index + 2] = 0x26;
-      pixels[index + 3] = 255;
-    }
+function color(x, y) {
+  const halo = Math.exp(-((x - 520) ** 2 + (y - 480) ** 2) / 230000);
+  let c = mix([7, 10, 18], [48, 32, 28], halo * 0.75);
+  const edge = roundBox(x - 512, y - 490, 720, 548, 150);
+  const glow = Math.exp(-Math.abs(edge) / 24) * 0.3;
+  c = mix(c, [230, 92, 39], glow);
+  if (edge < 0) c = mix([17, 19, 29], [35, 29, 29], clamp(1 - y / 1024));
+  if (edge < 0 && edge > -20) c = mix([255, 205, 110], [243, 82, 55], clamp((x + y - 350) / 1300));
+  // Forward aperture, inset well clear of the iOS corner mask.
+  const triangle = x >= 405 && x <= 706 && Math.abs(y - 490) <= (706 - x) * 0.61;
+  if (triangle) c = mix([255, 237, 184], [255, 130, 63], clamp((x + y - 680) / 610));
+  // Three illuminated ticks echo a film-strip without small launcher text.
+  for (let i = 0; i < 3; i++) {
+    if (roundBox(x - (462 + i * 50), y - 820, 28, 10, 5) < 0) c = mix([251, 175, 91], [246, 94, 53], i / 2);
+  }
+  return c;
+}
+for (let y = 0; y < size; y++) {
+  for (let x = 0; x < size; x++) {
+    const samples = [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].map(([dx, dy]) => color(x + dx, y + dy));
+    const offset = (y * size + x) * 4;
+    for (let ch = 0; ch < 3; ch++) pixels[offset + ch] = Math.round(samples.reduce((sum, c) => sum + c[ch], 0) / 4);
+    pixels[offset + 3] = 255;
   }
 }
-
-// Same T mark as the Android launcher (apps/android ic_launcher_foreground).
-fillRect(34, 40, 40, 8);
-fillRect(50, 48, 8, 28);
 
 mkdirSync(DEST_DIR, { recursive: true });
 writeFileSync(join(DEST_DIR, 'AppIcon.png'), encodePng(size, size, pixels));

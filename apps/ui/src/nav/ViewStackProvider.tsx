@@ -183,6 +183,11 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   );
 
   const active = activeEntry(state);
+  useEffect(() => {
+    const back = (): void => navigate.pop();
+    window.addEventListener('tvm:navigate-back', back);
+    return () => window.removeEventListener('tvm:navigate-back', back);
+  }, [navigate]);
   const activeKeyRef = useRef(active.key);
   activeKeyRef.current = active.key;
 

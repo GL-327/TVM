@@ -66,10 +66,10 @@ function playFromTorrentio({ token, imdb, streams, unrestricted }) {
   const url = unrestricted?.download ?? '';
   const filename = unrestricted?.filename ?? 'stream';
   const mime = unrestricted?.mimeType ?? 'application/octet-stream';
-  if (url.startsWith('https://') && phoneCanPlay(filename, mime, url)) {
-    return { status: 200, kind: 'stream', url, mimeType: mime, engine: 'html5' };
+  if (/^https?:\/\//.test(url)) {
+    return { status: 200, kind: 'stream', url, mimeType: mime, engine: 'native' };
   }
-  return { status: 409, reason: 'needs-converter' };
+  return { status: 409, reason: 'unsupported' };
 }
 
 function resolvePlay({ token, id, title, link }) {

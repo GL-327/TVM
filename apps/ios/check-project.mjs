@@ -734,7 +734,7 @@ console.log(STRUCT_ONLY
   : 'iOS project structure, plists, standalone core and optional LAN contract look consistent.');
 console.log('');
 console.log('This is NOT a build, a signature, or a device test. Still required on a Mac:');
-console.log('  1. xcodebuild -project TVM.xcodeproj -scheme TVM \\');
+console.log('  1. xcodebuild -workspace TVM.xcworkspace -scheme TVM \\');
 console.log('       -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO build');
 console.log('  2. ./export-ipa.sh development   # or Product > Archive, then sign with your team');
 console.log('  3. Work through docs/IOS_TESTING.md on the actual device.');
