@@ -34,4 +34,39 @@ describe('playback resolution', () => {
     await expect(requestPlayback({ id: 'tt123' })).resolves.toEqual({ kind: 'unavailable', reason: 'internal' });
     await expect(requestPlayback({ id: 'tt123' })).resolves.toEqual({ kind: 'unavailable', reason: 'needs-auth' });
   });
+
+  it('keeps not-configured distinct from empty Torrentio results', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('{"kind":"unavailable","reason":"not-configured"}', { status: 409 }))
+      .mockResolvedValueOnce(new Response('{"kind":"unavailable","reason":"empty"}', { status: 409 })));
+    await expect(requestPlayback({ id: 'fight-club', title: 'Fight Club' })).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-configured',
+    });
+    await expect(requestPlayback({ id: 'tt0137523' })).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'empty',
+    });
+  });
+
+  it('returns a playable HTTPS stream when core resolves Torrentio', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      kind: 'stream',
+      url: 'https://cdn.example/fight-club.mp4',
+      title: 'Fight Club',
+      filename: 'Fight.Club.1999.720p.mp4',
+      mimeType: 'video/mp4',
+      engine: 'html5',
+      transport: 'file',
+    }))));
+    await expect(requestPlayback({ id: 'tt0137523', title: 'Fight Club' })).resolves.toEqual({
+      kind: 'stream',
+      url: 'https://cdn.example/fight-club.mp4',
+      title: 'Fight Club',
+      filename: 'Fight.Club.1999.720p.mp4',
+      mimeType: 'video/mp4',
+      engine: 'html5',
+      transport: 'file',
+    });
+  });
 });

@@ -13,6 +13,14 @@ describe('playback errors', () => {
     expect(playbackErrorMessage('needs-converter')).not.toMatch(/Install ffmpeg/);
   });
 
+  it('tells the viewer to connect Real-Debrid instead of showing empty streams', () => {
+    expect(playbackErrorMessage('not-configured')).toMatch(/not connected/i);
+    expect(playbackErrorMessage('not-configured')).toMatch(/paste a token/i);
+    expect(playbackErrorMessage('not-configured')).not.toMatch(/no streams/i);
+    expect(playbackErrorMessage('empty')).toMatch(/no streams/i);
+    expect(playbackErrorMessage('empty')).not.toMatch(/not connected/i);
+  });
+
   it('shows core error text instead of a generic unavailable line', () => {
     expect(playbackErrorMessage('Torrentio timed out')).toBe('Torrentio timed out');
     expect(playbackErrorMessage('')).not.toMatch(/unavailable/i);
