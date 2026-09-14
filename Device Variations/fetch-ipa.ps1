@@ -48,7 +48,7 @@ if (-not $RunId) {
     $runs = $runsJson | ConvertFrom-Json
     $active = $runs | Where-Object { $_.status -ne "completed" } | Select-Object -First 1
     if ($Watch -and $active) {
-        Write-Host "Watching run $($active.databaseId) — $($active.url)"
+        Write-Host "Watching run $($active.databaseId) - $($active.url)"
         gh run watch $active.databaseId --exit-status
         $RunId = [string]$active.databaseId
     } else {
