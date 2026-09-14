@@ -138,12 +138,13 @@ enum TVMPlayback {
     static func phoneCanPlay(filename: String, mimeType: String?, url: String) -> Bool {
         let mime = mimeType?.lowercased() ?? ""
         if mime.contains("mpegurl") || mime.contains("x-mpegurl") { return true }
-        if url.range(of: #"\.m3u8(\?|$)"#, options: .regularExpression) != nil { return true }
+        if url.range(of: #"\.m3u8(\?|$)"#, options: [.regularExpression, .caseInsensitive]) != nil { return true }
         // Some providers label every download video/mp4, including Matroska.
         if filename.range(of: #"\.(mkv|webm|avi|ts|m2ts)$"#, options: [.regularExpression, .caseInsensitive]) != nil ||
             url.range(of: #"\.(mkv|webm|avi|ts|m2ts)(\?|$)"#, options: [.regularExpression, .caseInsensitive]) != nil { return false }
-        if mime == "video/mp4" || mime == "video/quicktime" { return true }
-        if url.range(of: #"\.(mp4|m4v|mov)(\?|$)"#, options: .regularExpression) != nil { return true }
+        // MP4 / M4V / MOV, including codec parameters and video/x-m4v.
+        if mime.hasPrefix("video/mp4") || mime == "video/x-m4v" || mime.hasPrefix("video/quicktime") { return true }
+        if url.range(of: #"\.(mp4|m4v|mov)(\?|$)"#, options: [.regularExpression, .caseInsensitive]) != nil { return true }
         if filename.range(of: #"\.(mp4|m4v|mov|m3u8)$"#, options: [.regularExpression, .caseInsensitive]) != nil {
             return true
         }

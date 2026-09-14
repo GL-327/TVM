@@ -18,6 +18,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO = join(ROOT, '..', '..');
@@ -443,8 +444,17 @@ check('Playback tests select a paid mobile plan before Torrentio',
 check('Swift tests mock Torrentio and assert a stream URL',
   standaloneTests.includes('testPlaybackReturnsStreamURLForMockedTorrentioHit') &&
   standaloneTests.includes('testPlaybackReturnsStreamURLForCatalogSlug') &&
+  standaloneTests.includes('testPlaybackReturnsStreamURLForSearchTitle') &&
+  standaloneTests.includes('testPlaybackReturnsStreamURLForContinueWatchingId') &&
+  standaloneTests.includes('testCatalogSlugAsksForRealDebridWhenNoToken') &&
   standaloneTests.includes('MockPlaybackProtocol') &&
   standaloneTests.includes('https://cdn.example/fight-club.mp4'));
+check('phoneCanPlay accepts M4V, MOV and Apple HLS MIME',
+  modelsSwift.includes('video/x-m4v') && modelsSwift.includes('video/quicktime') &&
+  modelsSwift.includes('mpegurl') && standaloneTests.includes('testPhonePlaybackAcceptsM4vMovAndAppleHls'));
+check('Windows XCTest-equivalent playback script exists',
+  existsSync(join(ROOT, 'standalone-playback.test.mjs')) &&
+  (read(join(ROOT, 'standalone-playback.test.mjs')) ?? '').includes('playFromTorrentio'));
 check('Info.plist allows media loads and Torrentio TLS',
   (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes('NSAllowsArbitraryLoadsForMedia') &&
   (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes('torrentio.strem.fun'));
@@ -642,6 +652,18 @@ if (!STRUCT_ONLY) {
     check('IOS_TESTING.md documents Sideloadly or AltStore',
       /Sideloadly/i.test(testing) && /AltStore/i.test(testing));
   }
+}
+
+/* -- Windows XCTest-equivalent playback contract --------------------------- */
+
+const playbackScript = join(ROOT, 'standalone-playback.test.mjs');
+if (existsSync(playbackScript)) {
+  const result = spawnSync(process.execPath, [playbackScript], { encoding: 'utf8' });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const failedLines = output.split(/\r?\n/).filter((line) => line.includes('FAIL'));
+  check('standalone-playback.test.mjs (XCTest-equivalent) exits 0',
+    result.status === 0,
+    failedLines.join(' | ') || `exit ${result.status ?? 'null'}`);
 }
 
 /* -- report ---------------------------------------------------------------- */

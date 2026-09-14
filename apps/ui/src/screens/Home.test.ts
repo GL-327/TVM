@@ -58,6 +58,20 @@ describe('Home as the launcher in front of TVM Stream', () => {
 });
 
 describe('Home search', () => {
+  it('plays search hits and Continue Watching through the same Player POST', () => {
+    const player = readFileSync(join(dir, 'Player.tsx'), 'utf8');
+    const details = readFileSync(join(dir, 'Details.tsx'), 'utf8');
+    const media = readFileSync(join(dir, '../data/media.ts'), 'utf8');
+    const playId = readFileSync(join(dir, '../data/playId.ts'), 'utf8');
+    expect(media).toContain("apiFetch('/api/playback'");
+    expect(player).toContain('requestPlayback({');
+    expect(player).toContain("result.reason === 'not-configured'");
+    expect(player).toContain("action: 'realdebrid'");
+    expect(details).toContain('playIdFor');
+    expect(playId).toContain('export function playIdFor');
+    expect(playId).toContain('catalogImdb');
+  });
+
   it('searches apps only when opened from Home', () => {
     const src = readFileSync(join(dir, 'SearchModal.tsx'), 'utf8');
     const ribbon = readFileSync(join(dir, '../components/Ribbon.tsx'), 'utf8');
