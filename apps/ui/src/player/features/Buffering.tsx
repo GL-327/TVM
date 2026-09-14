@@ -225,7 +225,7 @@ export function Buffering({
 
   const blocked = overlay === 'queue' || overlay === 'ad' || error != null;
   const fromSession =
-    active === true || busy === true || engine === 'loading' || (engine === 'native' && buffering === true);
+    active === true || busy === true || engine === 'loading' || (engine === 'native' && buffering === true && busy === true);
   const shown = !blocked && (fromSession || latched || waiting);
 
   return (

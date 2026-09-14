@@ -50,7 +50,9 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private var lastTracks = ""
     private var lastPosition: Double = 0
     private var lastDuration: Double = 0
-    private var stallSince: Date?
+    private var lastGoodPosition: Double = 0
+    private var lastProgressAt = Date()
+    private var errorSince: Date?
 
     init(id: String, url: URL, title: String, startAt: Double, live: Bool) {
         sessionID = id; source = url; mediaTitle = title; resumeAt = startAt; self.live = live
@@ -205,11 +207,14 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private func startPlayback() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        failed = false; sawPlayback = false; startedAt = Date(); stallSince = nil
+        failed = false; sawPlayback = false; startedAt = Date()
+        errorSince = nil; lastProgressAt = Date(); lastGoodPosition = 0
         player.drawable = picture
         let media = VLCMedia(url: source)
         media.addOptions([
-            "network-caching": 1500,
+            "network-caching": 8000,
+            "file-caching": 3000,
+            "live-caching": 3000,
             "http-user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 TVM-iOS",
         ])
         player.media = media
@@ -233,53 +238,93 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         let position = max(0, Double(player.time.intValue) / 1000)
         let duration = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
         if duration > 0 { lastDuration = duration }
-        // VLC can reset its clock at EOF; retain the final known position.
-        if player.state != .ended { lastPosition = position }
+        let phase = tvmNativePhase(player.state)
+        if phase != .ended {
+            if position + 0.75 < lastGoodPosition {
+                // VLC often rewinds its clock during a buffer; keep the last good time.
+            } else {
+                lastPosition = max(lastPosition, position)
+                if position >= lastGoodPosition + 0.2 {
+                    lastGoodPosition = position
+                    lastProgressAt = Date()
+                }
+            }
+        }
         if player.isPlaying {
-            sawPlayback = true
             if resumeAt > 0, player.isSeekable { seek(resumeAt); resumeAt = 0 }
         }
-        let waiting = player.state == .opening || player.state == .buffering
-        if waiting { if stallSince == nil { stallSince = Date() } } else { stallSince = nil }
-        if player.state == .error || (!sawPlayback && Date().timeIntervalSince(startedAt) > 45)
-            || (sawPlayback && stallSince.map({ Date().timeIntervalSince($0) > 30 }) == true) {
-            fail(); return
+        if phase == .error {
+            if errorSince == nil { errorSince = Date() }
+        } else {
+            errorSince = nil
         }
-        if sawPlayback && player.state == .ended { emitState(buffering: false); emit("ended"); shutdown(); dismiss(animated: true); return }
-        if !scrubbing { slider.maximumValue = Float(max(1, duration)); slider.value = Float(position) }
-        slider.isEnabled = !live && player.isSeekable && duration > 0
+        let pulse = TVMNativePulse(
+            phase: phase,
+            isPlaying: player.isPlaying,
+            hasOutput: player.hasVideoOut || lastGoodPosition > 0.25,
+            position: lastGoodPosition,
+            duration: lastDuration,
+            sawPlayback: sawPlayback,
+            elapsed: Date().timeIntervalSince(startedAt),
+            sinceProgress: Date().timeIntervalSince(lastProgressAt),
+            sinceError: errorSince.map { Date().timeIntervalSince($0) } ?? 0
+        )
+        if tvmNativeMarkPlayback(pulse) { sawPlayback = true }
+        let livePulse = TVMNativePulse(
+            phase: pulse.phase, isPlaying: pulse.isPlaying, hasOutput: pulse.hasOutput,
+            position: pulse.position, duration: pulse.duration, sawPlayback: sawPlayback,
+            elapsed: pulse.elapsed, sinceProgress: pulse.sinceProgress, sinceError: pulse.sinceError
+        )
+        if tvmNativeShouldFail(livePulse) { fail(); return }
+        if tvmNativeDidEnd(livePulse) { emitState(buffering: false); emit("ended"); shutdown(); dismiss(animated: true); return }
+        if !scrubbing { slider.maximumValue = Float(max(1, lastDuration)); slider.value = Float(lastPosition) }
+        slider.isEnabled = !live && player.isSeekable && lastDuration > 0
         if live {
             elapsed.text = "LIVE"
             clock.text = ""
         } else {
-            elapsed.text = format(position)
-            clock.text = duration > 0 ? format(max(0, duration - position)) : format(duration)
+            elapsed.text = format(lastPosition)
+            clock.text = lastDuration > 0 ? format(max(0, lastDuration - lastPosition)) : format(lastDuration)
         }
-        status.text = waiting ? "Buffering…" : nil
-        waiting ? spinner.startAnimating() : spinner.stopAnimating()
-        playButton.alpha = waiting ? 0 : 1
-        playButton.isEnabled = !waiting
+        let blocking = tvmNativeBlockingLoad(livePulse)
+        let rebuffering = tvmNativeRebuffering(livePulse)
+        status.text = blocking ? "Opening stream…" : (rebuffering ? "Buffering…" : nil)
+        if blocking { spinner.startAnimating() } else { spinner.stopAnimating() }
+        playButton.alpha = blocking ? 0 : 1
+        playButton.isEnabled = !blocking
         configure(playButton, symbol: player.isPlaying ? "pause.fill" : "play.fill", label: player.isPlaying ? "Pause" : "Play", size: 44)
         updateTracks()
-        emitState(buffering: waiting)
+        emitState(buffering: blocking || rebuffering, hasFrame: sawPlayback || pulse.hasOutput)
     }
-    private func emitState(buffering: Bool) {
+    private func emitState(buffering: Bool, hasFrame: Bool? = nil) {
         emit("state", ["position": lastPosition, "duration": lastDuration, "paused": !player.isPlaying,
-                       "buffering": buffering, "hasFrame": player.hasVideoOut])
+                       "buffering": buffering, "hasFrame": hasFrame ?? (sawPlayback || player.hasVideoOut)])
     }
     private func emit(_ command: String, _ fields: [String: Any] = [:]) {
         var data = fields; data["id"] = sessionID; data["command"] = command; onEvent?(data)
     }
     private func fail() {
-        failed = true; player.pause(); spinner.stopAnimating()
+        guard !failed, !finished, !player.isPlaying else { return }
+        failed = true
+        spinner.stopAnimating()
         playButton.alpha = 1; playButton.isEnabled = true
         status.text = "This source could not be played. Tap Retry, or go back to choose another source."
         configure(playButton, symbol: "arrow.clockwise", label: "Retry", size: 40)
-        emitState(buffering: false); emit("error", ["message": status.text!]); reveal()
+        emitState(buffering: false, hasFrame: sawPlayback); emit("error", ["message": status.text!]); reveal()
     }
     private func toggle() {
-        if failed { resumeAt = lastPosition; player.stop(); startPlayback() }
-        else if player.isPlaying { player.pause() } else { player.play() }
+        if failed {
+            failed = false
+            startedAt = Date()
+            errorSince = nil
+            lastProgressAt = Date()
+            resumeAt = max(lastGoodPosition, lastPosition)
+            if player.media != nil {
+                player.play()
+            } else {
+                startPlayback()
+            }
+        } else if player.isPlaying { player.pause() } else { player.play() }
         reveal()
     }
     private func skip(_ seconds: Double) {
@@ -391,4 +436,71 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
             UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
         }
     }
+}
+
+enum TVMNativePhase: Equatable {
+    case opening, buffering, playing, paused, stopped, ended, error, other
+}
+
+struct TVMNativePulse: Equatable {
+    var phase: TVMNativePhase
+    var isPlaying: Bool
+    var hasOutput: Bool
+    var position: Double
+    var duration: Double
+    var sawPlayback: Bool
+    var elapsed: Double
+    var sinceProgress: Double
+    var sinceError: Double
+}
+
+func tvmNativePhase(_ state: VLCMediaPlayerState) -> TVMNativePhase {
+    switch state {
+    case .opening: return .opening
+    case .buffering: return .buffering
+    case .playing: return .playing
+    case .paused: return .paused
+    case .stopped: return .stopped
+    case .ended: return .ended
+    case .error: return .error
+    @unknown default: return .other
+    }
+}
+
+func tvmNativeMarkPlayback(_ pulse: TVMNativePulse) -> Bool {
+    if pulse.sawPlayback { return true }
+    if pulse.isPlaying || pulse.hasOutput { return true }
+    if pulse.position >= 0.3 { return true }
+    return pulse.phase == .playing || pulse.phase == .paused
+}
+
+func tvmNativeBlockingLoad(_ pulse: TVMNativePulse) -> Bool {
+    if pulse.sawPlayback { return false }
+    if pulse.phase == .paused { return false }
+    return pulse.phase == .opening || pulse.phase == .buffering
+}
+
+func tvmNativeRebuffering(_ pulse: TVMNativePulse) -> Bool {
+    if !pulse.sawPlayback { return false }
+    if pulse.phase == .paused || pulse.isPlaying { return false }
+    if pulse.phase != .buffering && pulse.phase != .opening { return false }
+    return pulse.sinceProgress > 1.5
+}
+
+func tvmNativeShouldFail(_ pulse: TVMNativePulse) -> Bool {
+    if pulse.isPlaying { return false }
+    if pulse.phase == .paused { return false }
+    if pulse.hasOutput && pulse.sinceProgress < 8 { return false }
+    if !pulse.sawPlayback {
+        return pulse.elapsed > 45 && pulse.sinceProgress >= 45
+    }
+    if pulse.phase == .error { return pulse.sinceError >= 12 && pulse.sinceProgress >= 8 }
+    return pulse.sinceProgress >= 45 && (pulse.phase == .buffering || pulse.phase == .opening || pulse.phase == .stopped)
+}
+
+func tvmNativeDidEnd(_ pulse: TVMNativePulse) -> Bool {
+    if !pulse.sawPlayback { return false }
+    if pulse.phase == .ended { return true }
+    if pulse.duration > 1, pulse.position >= pulse.duration - 1.25, pulse.phase == .stopped { return true }
+    return false
 }
