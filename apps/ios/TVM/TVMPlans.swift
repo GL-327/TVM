@@ -80,10 +80,10 @@ final class TVMPlans {
     func developer() -> Bool { developerUnlocked }
     func setDeveloper(_ value: Bool) { developerUnlocked = value }
 
-    func maxHeight() -> Int { (status()["maxHeight"] as? Int) ?? 720 }
-    func profilesMax() -> Int { (status()["profilesMax"] as? Int) ?? 1 }
+    func maxHeight() -> Int { JSONValue.int(status()["maxHeight"]) ?? 720 }
+    func profilesMax() -> Int { JSONValue.int(status()["profilesMax"]) ?? 1 }
     func hoursBlocked() -> Bool {
-        if let remaining = status()["weeklyRemainingSeconds"] as? Int { return remaining <= 0 }
+        if let remaining = JSONValue.int(status()["weeklyRemainingSeconds"]) { return remaining <= 0 }
         return false
     }
 

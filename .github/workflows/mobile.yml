@@ -95,14 +95,38 @@ jobs:
           test -d apps/ios/TVM/BundledUI/assets
       - name: Validate Xcode project (standalone app + bundled UI)
         run: node apps/ios/check-project.mjs
-      - name: Compile for iOS Simulator
+      - name: Compile and test on iOS Simulator
         working-directory: apps/ios
         run: |
+          DESTINATION=$(python3 - <<'PY'
+          import json, subprocess
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          names = []
+          for runtime, devices in data.get("devices", {}).items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and "iPhone" in device.get("name", ""):
+                      names.append(device["name"])
+          for preferred in ("iPhone 16", "iPhone 15", "iPhone 14"):
+              for name in names:
+                  if preferred in name:
+                      print(name)
+                      raise SystemExit
+          if names:
+              print(names[0])
+          PY
+          )
+          if [ -z "$DESTINATION" ]; then
+            echo "No iPhone simulator available"
+            exit 1
+          fi
+          echo "Testing on $DESTINATION"
           xcodebuild -project TVM.xcodeproj -scheme TVM \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "platform=iOS Simulator,name=$DESTINATION" \
             -derivedDataPath build/sim \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            CODE_SIGNING_ALLOWED=NO build
+            CODE_SIGNING_ALLOWED=NO test
       - name: Compile ad-hoc device app and zip IPA
         working-directory: apps/ios
         run: |

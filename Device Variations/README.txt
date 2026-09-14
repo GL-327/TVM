@@ -49,7 +49,10 @@ To fetch a newer CI IPA later (does not invent a file if Actions has none):
 
 What this IPA cannot do
 -----------------------
-No ffmpeg on iOS: files that are not HTTPS MP4/HLS come back as needs-converter.
+No ffmpeg on iOS: if Real-Debrid cannot offer MP4/M4V/MOV or an HLS `apple`
+ladder, TVM says the format is not playable here — it does not pretend there
+are "no streams". Connect Real-Debrid in the app (Profile) if the phone has
+no token yet. Re-sign every new IPA (Sideloadly/AltStore).
 Live TV MPEG-TS hops are not remuxed on the phone.
 No GitHub login and no in-app update apply — install a new IPA.
 Not App Store signed.

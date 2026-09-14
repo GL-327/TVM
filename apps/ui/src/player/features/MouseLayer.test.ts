@@ -23,5 +23,6 @@ describe('player mouse layer', () => {
     expect(handler).toContain('isVideoToggleTarget');
     expect(handler).toContain('togglePlayback');
     expect(handler).toContain('isInteractiveChrome');
+    expect(handler).toContain('tvm:toggle-chrome');
   });
 });

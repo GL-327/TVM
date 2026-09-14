@@ -9,6 +9,8 @@ describe('playback errors', () => {
     expect(playbackErrorMessage('network')).toMatch(/core/);
     expect(playbackErrorMessage('unsupported')).toMatch(/Real-Debrid/);
     expect(playbackErrorMessage('hours-cap')).toMatch(/watch hours/);
+    expect(playbackErrorMessage('needs-converter')).toMatch(/MP4/);
+    expect(playbackErrorMessage('needs-converter')).not.toMatch(/Install ffmpeg/);
   });
 
   it('shows core error text instead of a generic unavailable line', () => {

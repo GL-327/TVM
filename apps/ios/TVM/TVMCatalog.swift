@@ -254,7 +254,7 @@ final class TVMCatalog {
     }
 
     private func parseYear(_ value: Any?) -> Int? {
-        if let number = value as? Int, number > 1800 { return number }
+        if let number = JSONValue.int(value), number > 1800 { return number }
         if let text = value as? String, let match = text.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression) {
             return Int(text[match])
         }
@@ -262,10 +262,7 @@ final class TVMCatalog {
     }
 
     private func intValue(_ value: Any?) -> Int? {
-        if let number = value as? Int { return number }
-        if let number = value as? Double { return Int(number) }
-        if let text = value as? String { return Int(text) }
-        return nil
+        JSONValue.int(value)
     }
 
     private func dedupe(_ items: [MediaItem]) -> [MediaItem] {

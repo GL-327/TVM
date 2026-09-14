@@ -713,6 +713,28 @@
     font-size: 0.78rem;
   }
 
+  .player__stage {
+    position: absolute;
+    inset: 0;
+  }
+
+  .player--mobile.player--portrait .player__stage,
+  .player.player--portrait .player__stage {
+    top: env(safe-area-inset-top, 0px);
+    bottom: auto;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    max-height: min(56vh, calc(100vw * 9 / 16));
+  }
+
+  .player--mobile.player--portrait .player__video,
+  .player.player--portrait .player__video {
+    position: absolute;
+    inset: 0;
+    object-fit: contain;
+  }
+
   .player-dock__tools {
     flex-wrap: wrap;
     justify-content: flex-start;
@@ -780,6 +802,22 @@
     height: 3.6rem;
     min-width: 3.6rem;
     min-height: 3.6rem;
+  }
+
+  .player__stage,
+  .player--mobile.player--landscape .player__stage {
+    inset: 0;
+    aspect-ratio: auto;
+    max-height: none;
+  }
+
+  .player--mobile.player--landscape .player__video,
+  .player.player--landscape .player__video {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: contain;
   }
 }
 

@@ -15,9 +15,9 @@ import { usePlayerSession, type PlayerSession } from '../PlayerRoot';
 
 export const PLAYER_FOCUS_GRAPH = {
   default: ['player-play', 'pause'] as const,
-  back: ['player-back', 'close', 'player-error-back'] as const,
+  back: ['player-back', 'player-exit', 'close', 'player-error-back'] as const,
   recap: ['player-skip-recap', 'skip-recap'] as const,
-  top: ['player-back', 'close', 'player-watchlist'] as const,
+  top: ['player-exit', 'player-back', 'close', 'player-watchlist'] as const,
   progress: ['player-progress', 'seek'] as const,
   volume: ['player-mute', 'mute', 'player-volume', 'volume'] as const,
   transport: [

@@ -179,25 +179,21 @@ final class TVMMedia {
             if let owned = await resolveOwnedLink(id) { return await playFromLink(owned, mediaId: id) }
             return (409, ["kind": "unavailable", "reason": "not-in-library"])
         }
-        if let id, let parsed = TVMTitle.parsePlayId(id) {
-            return await playFromTorrentio(parsed.imdb, season: season ?? parsed.season, episode: episode ?? parsed.episode, mediaId: id)
-        }
-        if let id, let imdb = TVMTitle.extractImdb(id) {
-            return await playFromTorrentio(imdb, season: season, episode: episode, mediaId: id)
-        }
         let wanted = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if wanted.isEmpty, let id, let found = await item(id) {
-            return await play(id: nil, link: nil, title: found.title, season: season ?? found.season, episode: episode ?? found.episode)
+        if !wanted.isEmpty,
+           let matched = await findLibraryPlayback(wanted, season: season, episode: episode),
+           let owned = await resolveOwnedLink(matched) {
+            return await playFromLink(owned, mediaId: matched)
         }
-        if !wanted.isEmpty {
-            if let matched = await findLibraryPlayback(wanted, season: season, episode: episode),
-               let owned = await resolveOwnedLink(matched) {
-                return await playFromLink(owned, mediaId: matched)
-            }
-            let hits = await catalog.search(wanted)
-            if let hit = hits.first {
-                return await playFromTorrentio(hit.id, season: season, episode: episode, mediaId: hit.id)
-            }
+        if let imdb = await resolveImdb(id: id, title: title) {
+            let parsed = id.flatMap { TVMTitle.parsePlayId($0) }
+            let extra = id.flatMap { TVMTitle.seasonEpisode(from: $0) }
+            return await playFromTorrentio(
+                imdb,
+                season: season ?? parsed?.season ?? extra?.season,
+                episode: episode ?? parsed?.episode ?? extra?.episode,
+                mediaId: id ?? imdb
+            )
         }
         return (409, ["kind": "unavailable", "reason": "not-in-library"])
     }
@@ -279,7 +275,8 @@ final class TVMMedia {
     private func probeAuth() async -> [String: Any]? {
         if !rd.configured() { return ["kind": "unavailable", "reason": "not-configured"] }
         let status = await rd.status()
-        if status.error == "needs-auth" || (status.error == nil && !status.premium) {
+        if status.error == "needs-auth" { return ["kind": "unavailable", "reason": "needs-auth"] }
+        if status.error == nil && !status.premium {
             return ["kind": "unavailable", "reason": "needs-auth"]
         }
         return nil
@@ -319,32 +316,101 @@ final class TVMMedia {
         }
     }
 
+    private func resolveImdb(id: String?, title: String?) async -> String? {
+        if let id, let mapped = TVMTitle.catalogImdb(id) { return mapped }
+        var queries: [String] = []
+        if let title {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.count >= 2 { queries.append(trimmed) }
+        }
+        if let id {
+            let slug = id.split(separator: ":").first.map(String.init) ?? id
+            if let found = await item(slug) { queries.append(found.title) }
+        }
+        var seen = Set<String>()
+        for query in queries where seen.insert(query.lowercased()).inserted {
+            let hits = await catalog.search(query)
+            if let imdb = hits.compactMap({ TVMTitle.extractImdb($0.id) }).first {
+                return imdb
+            }
+        }
+        return nil
+    }
+
     private func playFromTorrentio(_ imdb: String, season: Int?, episode: Int?, mediaId: String?) async -> (Int, [String: Any]) {
         guard let token = rd.tokenValue() else {
             return (409, ["kind": "unavailable", "reason": "not-configured"])
         }
+        guard TVMTitle.extractImdb(imdb) != nil else {
+            return (409, ["kind": "unavailable", "reason": "empty"])
+        }
         var seasonNo = season
         var episodeNo = episode
-        if seasonNo == nil || episodeNo == nil, let meta = await catalog.meta(imdb), meta.item.kind == "series" {
-            seasonNo = seasonNo ?? meta.children.first?.season
-            episodeNo = episodeNo ?? meta.children.first?.episode
+        var catalogTitle: String?
+        if seasonNo == nil || episodeNo == nil, let meta = await catalog.meta(imdb) {
+            catalogTitle = meta.item.title
+            if meta.item.kind == "series" {
+                seasonNo = seasonNo ?? meta.children.first?.season
+                episodeNo = episodeNo ?? meta.children.first?.episode
+            }
         }
         let streams = await rd.torrentioStreams(token: token, imdb: imdb, season: seasonNo, episode: episodeNo)
-        if streams.isEmpty { return (409, ["kind": "unavailable", "reason": "empty"]) }
+        if streams.isEmpty {
+            if let catalogTitle,
+               let matched = await findLibraryPlayback(catalogTitle, season: seasonNo, episode: episodeNo),
+               let owned = await resolveOwnedLink(matched) {
+                return await playFromLink(owned, mediaId: matched)
+            }
+            return (409, ["kind": "unavailable", "reason": "empty"])
+        }
         let height = plans.maxHeight()
-        let capped = streams.filter { rd.streamHeight(String(describing: $0["title"] ?? "")) <= height }
-        let ranked = (capped.isEmpty ? streams : capped).prefix(5)
+        let capped = streams.filter { rd.streamHeight("\($0.name) \($0.title)") <= height }
+        let ranked = Array((capped.isEmpty ? streams : capped).prefix(8))
         var last = ["kind": "unavailable", "reason": "empty"] as [String: Any]
         for stream in ranked {
-            guard let url = stream["url"] as? String,
-                  let resolved = await rd.resolveRedirect(url),
-                  !rd.isTorrentioHost(resolved) else { continue }
-            let result = await playFromLink(resolved, mediaId: mediaId ?? imdb)
-            if result.0 == 200 { return result }
-            last = result.1
-            if last["reason"] as? String == "needs-auth" { return result }
+            if !stream.url.isEmpty {
+                let resolved = await rd.resolveRedirect(stream.url)
+                if let resolved, !rd.isTorrentioHost(resolved) {
+                    let result = await playFromLink(resolved, mediaId: mediaId ?? imdb)
+                    if result.0 == 200 { return result }
+                    last = result.1
+                    if last["reason"] as? String == "needs-auth" { return result }
+                }
+            }
+            if let hash = stream.infoHash, !hash.isEmpty {
+                let magnet = await playFromMagnet(hash, mediaId: mediaId ?? imdb)
+                if magnet.0 == 200 { return magnet }
+                last = magnet.1
+                if last["reason"] as? String == "needs-auth" { return magnet }
+            }
+        }
+        if last["reason"] as? String == "empty",
+           let catalogTitle,
+           let matched = await findLibraryPlayback(catalogTitle, season: seasonNo, episode: episodeNo),
+           let owned = await resolveOwnedLink(matched) {
+            return await playFromLink(owned, mediaId: matched)
         }
         return (409, last)
+    }
+
+    private func playFromMagnet(_ hash: String, mediaId: String?) async -> (Int, [String: Any]) {
+        do {
+            let torrentId = try await rd.addMagnet(hash)
+            try? await rd.selectTorrentFiles(torrentId)
+            let links = try await rd.waitForTorrentLinks(torrentId)
+            var last = ["kind": "unavailable", "reason": "empty"] as [String: Any]
+            for link in links.prefix(6) {
+                let result = await playFromLink(link, mediaId: mediaId)
+                if result.0 == 200 { return result }
+                last = result.1
+                if last["reason"] as? String == "needs-auth" { return result }
+            }
+            return (409, last)
+        } catch let error as RdClientError where error == .needsAuth || error == .notConfigured {
+            return (409, ["kind": "unavailable", "reason": "needs-auth"])
+        } catch {
+            return (409, ["kind": "unavailable", "reason": "empty"])
+        }
     }
 
     private func streamReply(url: String, title: String, filename: String, mime: String, transport: String, startAt: Double?) -> (Int, [String: Any]) {

@@ -55,8 +55,17 @@ describe('phone layer', () => {
     expect(main).toContain('startPhoneViewport()');
     expect(pointer).toContain('stopImmediatePropagation()');
     expect(pointer).toContain("event.pointerType === 'touch'");
+    expect(pointer).toContain('host.click()');
     expect(viewport).toContain('visualViewport');
     expect(viewport).toContain('--tvm-keyboard-inset');
     expect(viewport).toContain('scrollIntoView');
+    expect(viewport).toContain('dataset.orientation');
+  });
+
+  it('keeps a 16:9 video stage in portrait and landscape', () => {
+    expect(css).toContain('aspect-ratio: 16 / 9');
+    expect(css).toContain('object-fit: contain');
+    expect(css).toContain('.player--mobile.player--portrait .player__stage');
+    expect(css).toContain('.player--mobile.player--landscape .player__video');
   });
 });

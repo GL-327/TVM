@@ -110,6 +110,70 @@ enum TVMTitle {
         return String(id[match]).lowercased()
     }
 
+    /// Fallback browse cards used to be slugs (`fight-club`). Torrentio needs IMDb.
+    static func catalogImdb(_ id: String) -> String? {
+        if let imdb = extractImdb(id) { return imdb }
+        let slug = id.split(separator: ":").first.map { String($0).lowercased() } ?? id.lowercased()
+        return catalogImdbMap[slug]
+    }
+
+    static func seasonEpisode(from id: String) -> (season: Int, episode: Int)? {
+        let parts = id.split(separator: ":")
+        guard parts.count >= 3,
+              let season = Int(parts[parts.count - 2]),
+              let episode = Int(parts[parts.count - 1]),
+              season > 0, episode > 0 else { return nil }
+        return (season, episode)
+    }
+
+    private static let catalogImdbMap: [String: String] = [
+        "dune-part-two": "tt15239678",
+        "the-last-of-us": "tt3581920",
+        "oppenheimer": "tt15398776",
+        "the-batman": "tt1877830",
+        "stranger-things": "tt4574334",
+        "the-boys": "tt1190634",
+        "spider-verse": "tt9362722",
+        "interstellar": "tt0816692",
+        "the-dark-knight": "tt0468569",
+        "inception": "tt1375666",
+        "no-way-home": "tt10872600",
+        "infinity-war": "tt4154756",
+        "endgame": "tt4154796",
+        "john-wick-4": "tt10366206",
+        "star-wars": "tt0076759",
+        "the-godfather": "tt0068646",
+        "shawshank": "tt0111161",
+        "pulp-fiction": "tt0110912",
+        "fight-club": "tt0137523",
+        "titanic": "tt0120338",
+        "game-of-thrones": "tt0944947",
+        "breaking-bad": "tt0903747",
+        "wednesday": "tt13443470",
+        "house-of-the-dragon": "tt11198330",
+        "severance": "tt11280740",
+        "silo": "tt14688458",
+        "the-bear": "tt14452776",
+        "squid-game": "tt10919420",
+        "the-mandalorian": "tt8111088",
+        "the-witcher": "tt5180504",
+        "the-devil-wears-prada": "tt0458352",
+        "invincible": "tt6741278",
+        "avatar": "tt0499549",
+        "dexter": "tt0773262",
+        "supernatural": "tt0460681",
+        "outer-range": "tt9051676",
+        "the-wilds": "tt10671440",
+        "outlander": "tt3006802",
+        "yellowjackets": "tt11041332",
+        "baywatch": "tt1467386",
+        "reacher": "tt9288030",
+        "bel-air": "tt13652442",
+        "smackdown": "tt0227972",
+        "girls5eva": "tt11761214",
+        "star-trek-discovery": "tt5171438",
+    ]
+
     static func fileName(from path: String) -> String {
         path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
     }

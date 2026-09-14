@@ -14,6 +14,19 @@
     <key>NSLocalNetworkUsageDescription</key><string>Optional: TVM can connect to a home Core on your Wi-Fi. The app already runs on this iPhone without a computer.</string>
     <key>NSAppTransportSecurity</key><dict>
         <key>NSAllowsLocalNetworking</key><true/>
+        <key>NSAllowsArbitraryLoadsForMedia</key><true/>
+        <key>NSExceptionDomains</key><dict>
+            <key>torrentio.strem.fun</key><dict>
+                <key>NSIncludesSubdomains</key><true/>
+                <key>NSExceptionRequiresForwardSecrecy</key><false/>
+                <key>NSExceptionMinimumTLSVersion</key><string>TLSv1.2</string>
+            </dict>
+            <key>torrentio.elfhosted.com</key><dict>
+                <key>NSIncludesSubdomains</key><true/>
+                <key>NSExceptionRequiresForwardSecrecy</key><false/>
+                <key>NSExceptionMinimumTLSVersion</key><string>TLSv1.2</string>
+            </dict>
+        </dict>
     </dict>
     <key>UIApplicationSceneManifest</key><dict>
         <key>UIApplicationSupportsMultipleScenes</key><false/>

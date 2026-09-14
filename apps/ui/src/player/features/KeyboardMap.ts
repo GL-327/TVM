@@ -48,7 +48,7 @@ export const PLAYER_KEY_MAP: Readonly<Record<string, PlayerKeyBinding>> = {
 
 export const PLAYER_KEYBOARD_FOCUS_IDS = {
   skipRecap: ['player-skip-recap', 'skip-recap'],
-  back: ['player-back', 'close'],
+  back: ['player-back', 'player-exit', 'close'],
   volume: ['player-mute', 'mute', 'player-volume', 'volume'],
 } as const;
 

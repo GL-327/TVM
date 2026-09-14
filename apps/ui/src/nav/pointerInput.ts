@@ -28,8 +28,27 @@ const MOVE_EPSILON = 2;
 const RAIL_SELECTOR = '.rail__track, [data-wrap="row"]';
 const TOUCH_TAP_SLOP = 8;
 
+export function tapShouldActivate(moved: boolean, distance: number, slop = TOUCH_TAP_SLOP): boolean {
+  return !moved && Number.isFinite(distance) && distance <= slop;
+}
+
 function isMouse(event: PointerEvent): boolean {
   return event.pointerType === 'mouse' || event.pointerType === 'pen';
+}
+
+function isCoarsePointerEnv(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** Finger, or a coarse pointer that iOS sometimes labels as mouse. */
+function isTapPointer(event: PointerEvent): boolean {
+  if (event.pointerType === 'touch') return true;
+  if (event.pointerType === 'pen') return false;
+  return isCoarsePointerEnv();
 }
 
 export interface ScrollBox {
@@ -95,6 +114,7 @@ export function startPointerInput(): () => void {
   let hoverRaf = 0;
   let hoverTarget: HTMLElement | null = null;
   let touch: { id: number; x: number; y: number; host: HTMLElement | null; moved: boolean } | null = null;
+  let suppressTrustedClickUntil = 0;
 
   const clearHover = (): void => {
     if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
@@ -168,7 +188,7 @@ export function startPointerInput(): () => void {
   const onPointerDown = (event: PointerEvent): void => {
     const node = event.target;
     if (!(node instanceof Element)) return;
-    if (event.pointerType === 'touch') {
+    if (isTapPointer(event)) {
       // Native scrolling/pinch takes precedence. Focus only a completed tap;
       // selecting on touch-down pans the card away from the finger mid-swipe.
       // Capture-phase stop keeps ViewStackProvider from focusing on finger-down
@@ -201,9 +221,19 @@ export function startPointerInput(): () => void {
     if (host === null || !host.isConnected || host.closest('[inert]') !== null) return;
     const key = focusKeyFor(host);
     if (key !== null) { suppressNextReveal(host); requestFocus(key); }
+    // Activate in this turn. Waiting for the compatibility click loses the tap
+    // after requestFocus re-renders the card.
+    suppressTrustedClickUntil = performance.now() + 80;
+    host.click();
   };
 
   const onPointerCancel = (): void => { touch = null; };
+
+  const onClick = (event: MouseEvent): void => {
+    if (!event.isTrusted || performance.now() >= suppressTrustedClickUntil) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
 
   const onWheel = (event: WheelEvent): void => {
     if (event.ctrlKey || event.defaultPrevented) return; // preserve pinch-zoom and owned controls
@@ -243,6 +273,7 @@ export function startPointerInput(): () => void {
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('pointerup', onPointerUp, true);
   document.addEventListener('pointercancel', onPointerCancel, true);
+  document.addEventListener('click', onClick, true);
   document.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('keydown', onKeyDown);
 
@@ -252,6 +283,7 @@ export function startPointerInput(): () => void {
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('pointercancel', onPointerCancel, true);
+    document.removeEventListener('click', onClick, true);
     document.removeEventListener('wheel', onWheel);
     window.removeEventListener('keydown', onKeyDown);
   };

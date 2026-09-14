@@ -81,7 +81,7 @@ const COPY: Record<Exclude<PlaybackErrorKind, 'message'>, PlaybackErrorCopy> = {
   },
   'needs-converter': {
     kind: 'needs-converter',
-    title: 'Converter not installed',
+    title: 'Format not playable here',
     body: playbackErrorMessage('needs-converter'),
     showPlans: false,
   },
