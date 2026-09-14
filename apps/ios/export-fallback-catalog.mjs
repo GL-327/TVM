@@ -36,8 +36,9 @@ const titles = Function(
   'art',
   `"use strict"; return (${text.slice(bracket, end)});`,
 )((size, path) => `https://image.tmdb.org/t/p/${size}${path}`);
+const imdbMap = JSON.parse(readFileSync(join(ROOT, '..', 'ui', 'src', 'data', 'fallback-imdb.json'), 'utf8'));
 const items = titles.map((title) => ({
-  id: title.id,
+  id: imdbMap[title.id] ?? title.id,
   title: title.title,
   year: title.year > 0 ? title.year : null,
   kind: title.kind,

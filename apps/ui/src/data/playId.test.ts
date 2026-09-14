@@ -5,7 +5,8 @@ describe('play ids and scores', () => {
   it('builds an episode play id from an IMDb title', () => {
     expect(playIdFor('tt0944947', 1, 2)).toBe('tt0944947:1:2');
     expect(playIdFor('tt0111161:1:2', 1, 2)).toBe('tt0111161:1:2');
-    expect(playIdFor('the-last-of-us', 1, 1)).toBe('the-last-of-us:1:1');
+    expect(playIdFor('the-last-of-us', 1, 1)).toBe('tt3581920:1:1');
+    expect(playIdFor('fight-club')).toBe('tt0137523');
     expect(imdbIdFrom('tt0111161:1:2')).toBe('tt0111161');
   });
 

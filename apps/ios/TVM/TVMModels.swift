@@ -67,11 +67,7 @@ struct MediaItem: Equatable {
         guard let object = raw as? [String: Any],
               let id = object["id"] as? String, !id.isEmpty,
               let title = object["title"] as? String, !title.isEmpty else { return nil }
-        let yearValue = object["year"]
-        let year: Int?
-        if let number = yearValue as? Int { year = number }
-        else if let number = yearValue as? Double { year = Int(number) }
-        else { year = nil }
+        let year = JSONValue.int(object["year"])
         return MediaItem(
             id: id,
             title: title,
@@ -86,10 +82,10 @@ struct MediaItem: Equatable {
             playable: object["playable"] as? Bool ?? true,
             progress: object["progress"] as? Double,
             filename: object["filename"] as? String,
-            hue: object["hue"] as? Int ?? TVMTitle.hue(for: title),
+            hue: JSONValue.int(object["hue"]) ?? TVMTitle.hue(for: title),
             mimeType: object["mimeType"] as? String,
-            season: object["season"] as? Int,
-            episode: object["episode"] as? Int,
+            season: JSONValue.int(object["season"]),
+            episode: JSONValue.int(object["episode"]),
             episodeName: object["episodeName"] as? String,
             showTitle: object["showTitle"] as? String,
             aired: object["aired"] as? String,
@@ -167,6 +163,32 @@ enum JSONValue {
         guard let data, !data.isEmpty,
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return parsed
+    }
+
+    /// JSONSerialization boxes numbers as NSNumber. `as? Int` on `[String: Any]` is often nil.
+    static func int(_ value: Any?) -> Int? {
+        if value is NSNull { return nil }
+        if let number = value as? Int { return number }
+        if let number = value as? Int64 { return Int(number) }
+        if let number = value as? Double { return Int(number) }
+        if let number = value as? Float { return Int(number) }
+        if let number = value as? NSNumber { return number.intValue }
+        if let text = value as? String { return Int(text.trimmingCharacters(in: .whitespaces)) }
+        return nil
+    }
+
+    static func string(_ value: Any?) -> String? {
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return nil
+    }
+
+    static func formEncode(_ value: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }
 

@@ -95,4 +95,14 @@ describe('player watching chrome', () => {
     expect(retro).toContain('var(--tvm-rt-gold)');
     expect(retro).not.toMatch(/\.player-root[^{]*\{[^}]*background:\s*(#000|#000000|black)\b/i);
   });
+
+  it('ships a cinema shell and a dedicated mobile 16:9 shell', () => {
+    expect(chrome).toContain('.player--cinema');
+    expect(chrome).toContain('.player--mobile');
+    expect(chrome).toContain('.player--mobile.player--portrait .player__stage');
+    expect(chrome).toContain('aspect-ratio: 16 / 9');
+    expect(chrome).toContain('.player-chrome-back');
+    expect(chrome).toContain('pointer-events: none');
+    expect(chrome).not.toMatch(/\.player--mobile[^{]*\{[^}]*background:\s*#000\s*;/);
+  });
 });

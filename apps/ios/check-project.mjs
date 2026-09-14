@@ -417,6 +417,28 @@ check('Real-Debrid tokens use the device Keychain',
 check('standalone tests assert no LAN token is required',
   standaloneTests.includes('testStandaloneDoesNotRequireLANToken') &&
   standaloneTests.includes('StandalonePolicy.requiresLANToken'));
+const mediaSwift = read(join(ROOT, 'TVM', 'TVMMedia.swift')) ?? '';
+const rdSwift = read(join(ROOT, 'TVM', 'TVMRealDebrid.swift')) ?? '';
+const modelsSwift = read(join(ROOT, 'TVM', 'TVMModels.swift')) ?? '';
+check('on-device playback searches Torrentio then unrestricts Real-Debrid',
+  mediaSwift.includes('playFromTorrentio') && mediaSwift.includes('playFromMagnet') &&
+  mediaSwift.includes('resolveImdb') &&
+  rdSwift.includes('torrentioStreams') && rdSwift.includes('addMagnet') &&
+  rdSwift.includes('unrestrict') && rdSwift.includes('appleTranscode') &&
+  rdSwift.includes('var status: String') && rdSwift.includes('var progress: Double'));
+check('JSON number helper exists so season/premium survive NSNumber boxing',
+  modelsSwift.includes('static func int(') && localCore.includes('JSONValue.int(json["season"])'));
+check('catalog slugs map to IMDb so fallback posters can play',
+  (read(join(ROOT, 'TVM', 'TVMTitle.swift')) ?? '').includes('catalogImdb') &&
+  (read(join(ROOT, 'TVM', 'TVMTitle.swift')) ?? '').includes('"fight-club": "tt0137523"'));
+check('Swift tests mock Torrentio and assert a stream URL',
+  standaloneTests.includes('testPlaybackReturnsStreamURLForMockedTorrentioHit') &&
+  standaloneTests.includes('testPlaybackReturnsStreamURLForCatalogSlug') &&
+  standaloneTests.includes('MockPlaybackProtocol') &&
+  standaloneTests.includes('https://cdn.example/fight-club.mp4'));
+check('Info.plist allows media loads and Torrentio TLS',
+  (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes('NSAllowsArbitraryLoadsForMedia') &&
+  (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes('torrentio.strem.fun'));
 check('bundle-ui.mjs copies the production UI into BundledUI',
   (read(join(ROOT, 'bundle-ui.mjs')) ?? '').includes('@tvm/ui') &&
   (read(join(ROOT, 'bundle-ui.mjs')) ?? '').includes('BundledUI'));
@@ -424,6 +446,11 @@ check('BundledUI folder exists', existsSync(join(ROOT, 'TVM', 'BundledUI', 'inde
   'CI/Mac run node apps/ios/bundle-ui.mjs before xcodebuild');
 check('FallbackCatalog.json exists so Home can render offline',
   existsSync(join(ROOT, 'TVM', 'FallbackCatalog.json')));
+check('FallbackCatalog posters use IMDb ids Torrentio can search',
+  (read(join(ROOT, 'TVM', 'FallbackCatalog.json')) ?? '').includes('tt0137523'));
+check('WKWebView covers the viewport and reports portrait vs landscape',
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('viewport-fit=cover') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('dataset.orientation'));
 check('AppIcon 1024 exists',
   existsSync(join(ROOT, 'TVM', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon.png')));
 check('generate-app-icon.mjs writes the TVM T mark',

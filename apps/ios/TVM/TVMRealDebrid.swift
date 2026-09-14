@@ -24,6 +24,8 @@ struct RdTorrentFile {
 struct RdTorrentInfo {
     var id: String
     var filename: String
+    var status: String
+    var progress: Double
     var links: [String]
     var files: [RdTorrentFile]
 }
@@ -33,6 +35,17 @@ struct RdUnrestrict {
     var filename: String
     var mimeType: String?
     var download: String
+}
+
+struct RdStream {
+    var url: String
+    var title: String
+    var name: String
+    var infoHash: String?
+    var fileIdx: Int?
+    var quality: Int
+    var cached: Bool
+    var phoneHint: Bool
 }
 
 final class NoFollowRedirects: NSObject, URLSessionTaskDelegate {
@@ -56,16 +69,32 @@ enum RdClientError: Error, Equatable {
 final class TVMRealDebrid {
     private let session: URLSession
     private let redirectSession: URLSession
+    /// Tests inject a token so XCTest does not have to write the device Keychain.
+    var testToken: String?
+    var ignoreKeychain = false
 
-    init(session: URLSession) {
+    private static let torrentioHosts = [
+        "https://torrentio.strem.fun",
+        "https://torrentio.elfhosted.com",
+    ]
+
+    init(session: URLSession, redirectSession: URLSession? = nil) {
         self.session = session
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 14
-        redirectSession = URLSession(configuration: configuration, delegate: NoFollowRedirects(), delegateQueue: nil)
+        if let redirectSession {
+            self.redirectSession = redirectSession
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 20
+            self.redirectSession = URLSession(configuration: configuration, delegate: NoFollowRedirects(), delegateQueue: nil)
+        }
     }
 
-    func configured() -> Bool { RdKeychain.read() != nil }
-    func tokenValue() -> String? { RdKeychain.read() }
+    func configured() -> Bool { tokenValue() != nil }
+    func tokenValue() -> String? {
+        if ignoreKeychain { return testToken }
+        if let testToken, !testToken.isEmpty { return testToken }
+        return RdKeychain.read()
+    }
 
     func setToken(_ token: String) async throws -> RdStatus {
         try RdKeychain.save(token)
@@ -83,8 +112,8 @@ final class TVMRealDebrid {
             let user = try await requestJSON("/user") as? [String: Any]
             return RdStatus(
                 configured: true,
-                username: user?["username"] as? String,
-                premium: ((user?["premium"] as? Int) ?? 0) > 0,
+                username: JSONValue.string(user?["username"]),
+                premium: (JSONValue.int(user?["premium"]) ?? 0) > 0,
                 error: nil
             )
         } catch RdClientError.needsAuth {
@@ -134,19 +163,61 @@ final class TVMRealDebrid {
             throw RdClientError.failed("torrent info")
         }
         let files = (raw["files"] as? [[String: Any]] ?? []).compactMap { file -> RdTorrentFile? in
-            guard let fileId = file["id"] as? Int, let path = file["path"] as? String else { return nil }
-            return RdTorrentFile(id: fileId, path: path, selected: file["selected"] as? Int ?? 0)
+            guard let fileId = JSONValue.int(file["id"]), let path = file["path"] as? String else { return nil }
+            return RdTorrentFile(id: fileId, path: path, selected: JSONValue.int(file["selected"]) ?? 0)
         }
+        let progress = (raw["progress"] as? Double)
+            ?? (raw["progress"] as? NSNumber)?.doubleValue
+            ?? Double(JSONValue.int(raw["progress"]) ?? 0)
         return RdTorrentInfo(
-            id: raw["id"] as? String ?? id,
-            filename: raw["filename"] as? String ?? "",
+            id: JSONValue.string(raw["id"]) ?? id,
+            filename: JSONValue.string(raw["filename"]) ?? "",
+            status: JSONValue.string(raw["status"]) ?? "",
+            progress: progress,
             links: raw["links"] as? [String] ?? [],
             files: files
         )
     }
 
+    func addMagnet(_ hashOrMagnet: String) async throws -> String {
+        let magnet = hashOrMagnet.lowercased().hasPrefix("magnet:")
+            ? hashOrMagnet
+            : "magnet:?xt=urn:btih:\(hashOrMagnet)"
+        let body = "magnet=\(JSONValue.formEncode(magnet))"
+        guard let raw = try await requestJSON("/torrents/addMagnet", method: "POST", form: body) as? [String: Any],
+              let id = JSONValue.string(raw["id"]) else {
+            throw RdClientError.failed("add magnet")
+        }
+        return id
+    }
+
+    func selectTorrentFiles(_ id: String, files: String = "all") async throws {
+        _ = try await requestJSON("/torrents/selectFiles/\(id)", method: "POST", form: "files=\(JSONValue.formEncode(files))")
+    }
+
+    func waitForTorrentLinks(_ id: String, attempts: Int = 10) async throws -> [String] {
+        for step in 0..<attempts {
+            let info = try await torrentInfo(id)
+            if info.status == "waiting_files_selection" || (info.links.isEmpty && info.status == "downloaded") {
+                try? await selectTorrentFiles(id)
+            }
+            if !info.links.isEmpty, info.status == "downloaded" || info.progress >= 99 {
+                return info.links.filter { !$0.isEmpty }
+            }
+            if info.status == "error" || info.status == "virus" || info.status == "dead" {
+                throw RdClientError.failed("torrent \(info.status)")
+            }
+            if step + 1 < attempts {
+                try await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        let last = try await torrentInfo(id)
+        if !last.links.isEmpty { return last.links.filter { !$0.isEmpty } }
+        throw RdClientError.failed("torrent not ready")
+    }
+
     func unrestrict(link: String) async throws -> RdUnrestrict {
-        let body = "link=\(link.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? link)"
+        let body = "link=\(JSONValue.formEncode(link))"
         guard let raw = try await requestJSON("/unrestrict/link", method: "POST", form: body) as? [String: Any],
               let download = raw["download"] as? String, !download.isEmpty else {
             throw RdClientError.failed("unrestrict")
@@ -200,7 +271,7 @@ final class TVMRealDebrid {
                     }
                     return next.absoluteURL.absoluteString
                 }
-                if let type = http.value(forHTTPHeaderField: "Content-Type"), type.contains("json"),
+                if let type = http.value(forHTTPHeaderField: "Content-Type"), type.lowercased().contains("json"),
                    let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let next = body["url"] as? String, next.hasPrefix("http") {
                     if isTorrentioHost(next) {
@@ -208,6 +279,9 @@ final class TVMRealDebrid {
                         continue
                     }
                     return next
+                }
+                if let final = http.url, !isTorrentioHost(final.absoluteString) {
+                    return final.absoluteString
                 }
                 return nil
             } catch {
@@ -217,47 +291,76 @@ final class TVMRealDebrid {
         return nil
     }
 
-    func torrentioStreams(token: String, imdb: String, season: Int?, episode: Int?) async -> [[String: Any]] {
-        let base = "https://torrentio.strem.fun/realdebrid=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token)"
+    func torrentioStreams(token: String, imdb: String, season: Int?, episode: Int?) async -> [RdStream] {
+        let encoded = JSONValue.formEncode(token)
         var paths: [String] = []
+        guard let id = TVMTitle.extractImdb(imdb) else { return [] }
         if let season, let episode {
             paths = [
-                "stream/series/\(imdb):\(season):\(episode).json",
-                "stream/series/\(imdb):\(season):\(String(format: "%02d", episode)).json",
+                "stream/series/\(id):\(season):\(episode).json",
+                "stream/series/\(id):\(season):\(String(format: "%02d", episode)).json",
             ]
         } else {
-            paths = ["stream/movie/\(imdb).json", "stream/series/\(imdb).json"]
+            paths = ["stream/movie/\(id).json", "stream/series/\(id).json"]
         }
-        var streams: [[String: Any]] = []
+        var streams: [RdStream] = []
         var seen = Set<String>()
-        for path in paths {
-            guard let url = URL(string: "\(base)/\(path)") else { continue }
-            var request = URLRequest(url: url)
-            request.setValue("tvm-core", forHTTPHeaderField: "User-Agent")
-            request.timeoutInterval = 14
-            guard let (data, response) = try? await session.data(for: request),
-                  let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let list = body["streams"] as? [[String: Any]] else { continue }
-            for stream in list {
-                guard let streamURL = stream["url"] as? String, streamURL.hasPrefix("http"),
-                      seen.insert(streamURL).inserted else { continue }
-                let title = String(describing: stream["title"] ?? stream["name"] ?? "Stream")
-                if title.range(of: #"\b(cam|camrip|telesync|hdcam)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
-                    continue
+        for host in Self.torrentioHosts {
+            for path in paths {
+                guard let url = URL(string: "\(host)/realdebrid=\(encoded)/\(path)") else { continue }
+                var request = URLRequest(url: url)
+                request.setValue("tvm-core", forHTTPHeaderField: "User-Agent")
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.timeoutInterval = 20
+                guard let (data, response) = try? await session.data(for: request),
+                      let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                      let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let list = body["streams"] as? [[String: Any]] else { continue }
+                for raw in list {
+                    guard let stream = parseDebridStream(raw) else { continue }
+                    let key = stream.url.isEmpty ? (stream.infoHash ?? "") : stream.url
+                    guard !key.isEmpty, seen.insert(key).inserted else { continue }
+                    streams.append(stream)
                 }
-                streams.append(stream)
+                if !streams.isEmpty { break }
             }
             if !streams.isEmpty { break }
         }
         return streams.sorted { left, right in
-            let leftTitle = String(describing: left["title"] ?? "")
-            let rightTitle = String(describing: right["title"] ?? "")
-            let leftCached = leftTitle.localizedCaseInsensitiveContains("cached") || leftTitle.contains("⚡")
-            let rightCached = rightTitle.localizedCaseInsensitiveContains("cached") || rightTitle.contains("⚡")
-            if leftCached != rightCached { return leftCached && !rightCached }
-            return qualityScore(leftTitle) > qualityScore(rightTitle)
+            if left.cached != right.cached { return left.cached && !right.cached }
+            if left.phoneHint != right.phoneHint { return left.phoneHint && !right.phoneHint }
+            return left.quality > right.quality
         }
+    }
+
+    func parseDebridStream(_ raw: [String: Any]) -> RdStream? {
+        let url = JSONValue.string(raw["url"]) ?? ""
+        let infoHash = JSONValue.string(raw["infoHash"]) ?? JSONValue.string(raw["info_hash"])
+        if url.isEmpty && (infoHash == nil || infoHash?.isEmpty == true) { return nil }
+        if url.range(of: #"failed_access|videos/failed|copyright|infringement"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            return nil
+        }
+        let name = JSONValue.string(raw["name"]) ?? ""
+        let title = (JSONValue.string(raw["title"]) ?? name).split(separator: "\n").first.map(String.init) ?? "Stream"
+        let label = "\(name) \(title)"
+        if label.range(of: #"\b(cam|camrip|telesync|tsrip|hdcam|hdts)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            return nil
+        }
+        let phoneHint = label.range(
+            of: #"\b(mp4|m4v|mov|h264|x264|avc|aac|hls|m3u8)\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        let cached = label.range(of: #"⚡|\bcached\b|\brd\+|\bdownloaded\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        return RdStream(
+            url: url,
+            title: title,
+            name: name,
+            infoHash: infoHash,
+            fileIdx: JSONValue.int(raw["fileIdx"]) ?? JSONValue.int(raw["fileidx"]),
+            quality: qualityScore(label),
+            cached: cached,
+            phoneHint: phoneHint
+        )
     }
 
     func needsUnrestrict(_ url: String) -> Bool {
@@ -267,7 +370,8 @@ final class TVMRealDebrid {
     }
 
     func isTorrentioHost(_ url: String) -> Bool {
-        (URL(string: url)?.host ?? "").lowercased() == "torrentio.strem.fun"
+        let host = (URL(string: url)?.host ?? "").lowercased()
+        return host == "torrentio.strem.fun" || host.hasSuffix(".strem.fun") || host.contains("torrentio")
     }
 
     private func qualityScore(_ label: String) -> Int {

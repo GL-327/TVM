@@ -17,6 +17,8 @@ import { ChromeFrame } from './features/ChromeFrame';
 import { KeyboardLayer } from './features/KeyboardLayer';
 import { mountIdleChromeStyles, syncIdleChromeHosts } from './features/IdleChrome';
 import { isInRecapWindow, useIdleChrome } from './features/useIdleChrome';
+import { FocusButton } from '../components/FocusButton';
+import { IconChevronLeft } from '../components/Icons';
 import './features/player-chrome.css';
 import './features/perf.css';
 
@@ -255,9 +257,21 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
           visible={idle.chromeVisible}
           top={
             <div className="player-chrome-head">
-              <Slot>
-                <TitleOverlay {...visibleSession} />
-              </Slot>
+              <div className="player-chrome-head__lead">
+                <Slot>
+                  <FocusButton
+                    id="player-exit"
+                    className="player-chrome-back"
+                    onSelect={session.close}
+                  >
+                    <IconChevronLeft className="player-chrome-back__glyph" />
+                    Back
+                  </FocusButton>
+                </Slot>
+                <Slot>
+                  <TitleOverlay {...visibleSession} />
+                </Slot>
+              </div>
               <Slot>
                 <WatchlistAction {...visibleSession} />
               </Slot>

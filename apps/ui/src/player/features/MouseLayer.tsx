@@ -63,6 +63,7 @@ const CURSOR_CSS = `
   [data-player-root] .chrome-frame__top,
   [data-player-root] .chrome-frame__bottom,
   [data-player-root] .player-dock,
+  [data-player-root] .player-chrome-back,
   [data-player-root] .player-transport,
   [data-player-root] .player-volume,
   [data-player-root] .tvm-progress,
@@ -202,6 +203,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   const idleMs = bindings.idleMs ?? MOUSE_IDLE_MS;
   let idleTimer: number | null = null;
   let priorFocus: HTMLElement | null = null;
+  let lastPointerType = 'mouse';
 
   const hideCursor = (): void => {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -241,6 +243,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   };
 
   const onPointerDown = (event: PointerEvent): void => {
+    lastPointerType = event.pointerType || 'mouse';
     if (event.button !== 0 || !host.contains(event.target as Node)) return;
     const active = document.activeElement;
     priorFocus = active instanceof HTMLElement ? active : null;
@@ -282,6 +285,11 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
     if (isVideoToggleTarget(event.target)) {
       event.preventDefault();
       reveal();
+      const coarse = lastPointerType === 'touch' || window.matchMedia('(pointer: coarse)').matches;
+      if (coarse) {
+        window.dispatchEvent(new CustomEvent('tvm:toggle-chrome'));
+        return;
+      }
       if (bindings.togglePlayback !== undefined) bindings.togglePlayback();
       else togglePlayerPlayback();
     }
