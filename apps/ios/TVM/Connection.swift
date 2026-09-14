@@ -1,6 +1,7 @@
 import Foundation
 import Security
 
+/// Optional home-Core pairing. Standalone mode does not use this.
 struct Connection: Codable, Equatable {
     let origin: URL
     let token: String

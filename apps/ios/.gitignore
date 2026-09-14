@@ -4,3 +4,8 @@ build/
 xcuserdata/
 *.xcuserstate
 DerivedData/
+TVM/BundledUI/**
+!TVM/BundledUI/.gitkeep
+!TVM/BundledUI/index.html
+!TVM/BundledUI/README.txt
+
