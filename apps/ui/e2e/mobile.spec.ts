@@ -89,6 +89,17 @@ test.describe('iPhone WebKit', () => {
       });
       expect(overflow.width).toBeLessThanOrEqual(size.width);
       expect(overflow.left).toBe(0);
+      const tabs = await page.locator('.ribbon button:visible').all();
+      expect(tabs).toHaveLength(8);
+      for (const tab of tabs) {
+        const box = await tab.boundingBox();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(size.height + 1);
+      }
+      if (size.width > size.height) {
+        const top = (await tabs[0]!.boundingBox())!.y;
+        for (const tab of tabs) expect((await tab.boundingBox())!.y).toBeCloseTo(top, 0);
+      }
       await page.screenshot({ path: `../../cache/ios-fit-${size.width}.png` });
     });
   }
