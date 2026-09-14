@@ -38,21 +38,25 @@ final class ConnectionTests: XCTestCase {
         XCTAssertEqual(connection.sessionURL.absoluteString, "https://tvm.example/api/lan/session")
     }
 
-    func testIPhoneOrientationsIncludePortraitAndLandscape() {
-        let orientations = Bundle(for: TVMLocalCore.self)
-            .object(forInfoDictionaryKey: "UISupportedInterfaceOrientations") as? [String] ?? []
+    /// Device-idiom keys (`~ipad`) are stripped by `object(forInfoDictionaryKey:)`.
+    /// Read the shipped plist so iPhone XCTest still sees the iPad array.
+    private func bundledInfoPlist() throws -> [String: Any] {
+        let url = Bundle(for: TVMLocalCore.self).bundleURL.appendingPathComponent("Info.plist")
+        let data = try Data(contentsOf: url)
+        let object = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return try XCTUnwrap(object as? [String: Any], "Info.plist did not deserialize as a dictionary")
+    }
+
+    func testIPhoneOrientationsIncludePortraitAndLandscape() throws {
+        let orientations = try bundledInfoPlist()["UISupportedInterfaceOrientations"] as? [String] ?? []
         XCTAssertTrue(orientations.contains("UIInterfaceOrientationPortrait"), "got \(orientations)")
         XCTAssertTrue(orientations.contains("UIInterfaceOrientationLandscapeLeft"), "got \(orientations)")
         XCTAssertTrue(orientations.contains("UIInterfaceOrientationLandscapeRight"), "got \(orientations)")
         XCTAssertFalse(orientations.isEmpty)
     }
 
-    func testIPadOrientationsIncludeAllFour() {
-        let orientations = Bundle(for: TVMLocalCore.self)
-            .object(forInfoDictionaryKey: "UISupportedInterfaceOrientations~ipad") as? [String]
-            ?? Bundle(for: TVMLocalCore.self)
-            .object(forInfoDictionaryKey: "UISupportedInterfaceOrientations") as? [String]
-            ?? []
+    func testIPadOrientationsIncludeAllFour() throws {
+        let orientations = try bundledInfoPlist()["UISupportedInterfaceOrientations~ipad"] as? [String] ?? []
         for name in [
             "UIInterfaceOrientationPortrait",
             "UIInterfaceOrientationPortraitUpsideDown",
