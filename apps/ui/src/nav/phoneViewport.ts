@@ -53,6 +53,12 @@ export function isEditableField(node: EventTarget | null): node is HTMLElement {
   return node instanceof HTMLElement && node.matches(FIELD_SELECTOR);
 }
 
+/** Left-edge swipe that should pop TVM's view stack (not WK history). */
+export function edgeSwipeGoesBack(startX: number, dx: number, dy: number, edgePx = 28, minDx = 60): boolean {
+  if (![startX, dx, dy, edgePx, minDx].every(Number.isFinite)) return false;
+  return startX <= edgePx && dx >= minDx && Math.abs(dy) <= dx * 0.65;
+}
+
 function applyInset(root: HTMLElement, inset: number): void {
   root.style.setProperty(KEYBOARD_INSET_VAR, `${inset}px`);
   root.classList.toggle(KEYBOARD_OPEN_CLASS, inset >= KEYBOARD_OPEN_PX);
@@ -115,6 +121,11 @@ export function startPhoneViewport(): () => void {
     liftField(document.activeElement, visibleBottom);
   };
 
+  const pinScale = (): void => {
+    window.scrollTo(0, 0);
+    if (window.visualViewport && window.visualViewport.scale !== 1) ensureViewportFit();
+  };
+
   const onFocusIn = (event: FocusEvent): void => {
     if (!isEditableField(event.target)) return;
     window.setTimeout(syncKeyboard, 50);
@@ -123,6 +134,7 @@ export function startPhoneViewport(): () => void {
   ensureViewportFit();
   syncShell();
   syncKeyboard();
+  pinScale();
 
   narrow.addEventListener('change', syncShell);
   tablet.addEventListener('change', syncShell);
@@ -130,8 +142,11 @@ export function startPhoneViewport(): () => void {
   window.addEventListener('resize', syncShell);
   window.addEventListener('orientationchange', syncShell);
   window.addEventListener('resize', syncKeyboard);
+  window.addEventListener('resize', pinScale);
   window.visualViewport?.addEventListener('resize', syncKeyboard);
   window.visualViewport?.addEventListener('scroll', syncKeyboard);
+  window.visualViewport?.addEventListener('resize', pinScale);
+  window.visualViewport?.addEventListener('scroll', pinScale);
   document.addEventListener('focusin', onFocusIn);
 
   return () => {
@@ -141,8 +156,11 @@ export function startPhoneViewport(): () => void {
     window.removeEventListener('resize', syncShell);
     window.removeEventListener('orientationchange', syncShell);
     window.removeEventListener('resize', syncKeyboard);
+    window.removeEventListener('resize', pinScale);
     window.visualViewport?.removeEventListener('resize', syncKeyboard);
     window.visualViewport?.removeEventListener('scroll', syncKeyboard);
+    window.visualViewport?.removeEventListener('resize', pinScale);
+    window.visualViewport?.removeEventListener('scroll', pinScale);
     document.removeEventListener('focusin', onFocusIn);
   };
 }

@@ -18,8 +18,10 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private let playButton = UIButton(type: .system)
     private let slider = UISlider()
     private let clock = UILabel()
+    private let elapsed = UILabel()
     private let status = UILabel()
     private let spinner = UIActivityIndicatorView(style: .large)
+    private let skipFlash = UILabel()
     private let audioButton = UIButton(type: .system)
     private let subtitleButton = UIButton(type: .system)
     private var timer: Timer?
@@ -50,6 +52,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         super.viewDidLoad()
         view.backgroundColor = .black
         picture.backgroundColor = .black
+        picture.clipsToBounds = true
         for child in [picture, chrome] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
@@ -58,22 +61,30 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
                 child.leadingAnchor.constraint(equalTo: view.leadingAnchor), child.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             ])
         }
-        gradient.colors = [UIColor.black.withAlphaComponent(0.8).cgColor, UIColor.clear.cgColor, UIColor.black.withAlphaComponent(0.85).cgColor]
-        gradient.locations = [0, 0.48, 1]
+        gradient.colors = [UIColor.black.withAlphaComponent(0.72).cgColor, UIColor.clear.cgColor, UIColor.black.withAlphaComponent(0.82).cgColor]
+        gradient.locations = [0, 0.42, 1]
         chrome.layer.insertSublayer(gradient, at: 0)
-        let back = button("arrow.left", "Back") { [weak self] in self?.close() }
-        let rotate = button("arrow.up.left.and.arrow.down.right", "Rotate player") { [weak self] in self?.rotate() }
+        let back = button("chevron.left", "Back") { [weak self] in self?.close() }
         let heading = UILabel()
         heading.text = mediaTitle; heading.textColor = .white
-        heading.font = .systemFont(ofSize: 17, weight: .semibold)
+        heading.font = .systemFont(ofSize: 18, weight: .semibold)
         heading.textAlignment = .center; heading.numberOfLines = 2
         heading.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let header = UIStackView(arrangedSubviews: [back, heading, rotate])
+        let spacer = UIView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        spacer.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        let header = UIStackView(arrangedSubviews: [back, heading, spacer])
         header.spacing = 12; header.alignment = .center
 
-        let rewind = button("gobackward.10", "Back 10 seconds", size: 32) { [weak self] in self?.skip(-10) }
-        let forward = button("goforward.10", "Forward 10 seconds", size: 32) { [weak self] in self?.skip(10) }
-        configure(playButton, symbol: "pause.fill", label: "Pause", size: 48)
+        let rewind = button("gobackward.10", "Back 10 seconds", size: 36) { [weak self] in self?.skip(-10) }
+        let forward = button("goforward.10", "Forward 10 seconds", size: 36) { [weak self] in self?.skip(10) }
+        configure(playButton, symbol: "pause.fill", label: "Pause", size: 44)
+        playButton.backgroundColor = UIColor.white.withAlphaComponent(0.14)
+        playButton.layer.cornerRadius = 44
+        playButton.layer.borderWidth = 1
+        playButton.layer.borderColor = UIColor.white.withAlphaComponent(0.28).cgColor
+        playButton.clipsToBounds = true
         playButton.addAction(UIAction { [weak self] _ in self?.toggle() }, for: .touchUpInside)
         playButton.widthAnchor.constraint(equalToConstant: 88).isActive = true
         playButton.heightAnchor.constraint(equalToConstant: 88).isActive = true
@@ -81,24 +92,27 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         transport.spacing = 38; transport.alignment = .center
         rewind.isEnabled = !live; forward.isEnabled = !live
 
-        slider.minimumTrackTintColor = UIColor(red: 0.98, green: 0.32, blue: 0.25, alpha: 1)
-        slider.maximumTrackTintColor = .white.withAlphaComponent(0.3)
+        slider.minimumTrackTintColor = UIColor(red: 0.898, green: 0.035, blue: 0.078, alpha: 1)
+        slider.maximumTrackTintColor = .white.withAlphaComponent(0.28)
+        slider.setThumbImage(Self.thumbImage(), for: .normal)
+        slider.setThumbImage(Self.thumbImage(scale: 1.25), for: .highlighted)
         slider.accessibilityLabel = "Playback position"
         slider.addAction(UIAction { [weak self] _ in self?.scrubbing = true; self?.hideWork?.cancel() }, for: .touchDown)
         slider.addAction(UIAction { [weak self] _ in
             guard let self else { return }; self.seek(Double(self.slider.value)); self.scrubbing = false; self.reveal()
         }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        clock.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium); clock.textColor = .white
+        elapsed.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium); elapsed.textColor = .white
+        clock.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium); clock.textColor = UIColor.white.withAlphaComponent(0.78)
         clock.textAlignment = .right
-        let timeline = UIStackView(arrangedSubviews: [slider, clock]); timeline.spacing = 14
+        let timeline = UIStackView(arrangedSubviews: [elapsed, slider, clock]); timeline.spacing = 10
+        elapsed.setContentCompressionResistancePriority(.required, for: .horizontal)
         clock.setContentCompressionResistancePriority(.required, for: .horizontal)
         configure(audioButton, symbol: "waveform", label: "Audio")
         configure(subtitleButton, symbol: "captions.bubble", label: "Subtitles")
         let speed = button("speedometer", "Playback speed") { }
-        for (control, title) in [(audioButton, " Audio"), (subtitleButton, " Subtitles"), (speed, " Speed")] {
-            control.setTitle(title, for: .normal); control.setTitleColor(.white, for: .normal)
-            control.titleLabel?.font = .systemFont(ofSize: 12, weight: .medium)
+        for control in [audioButton, subtitleButton, speed] {
             control.heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
+            control.widthAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
         }
         speed.showsMenuAsPrimaryAction = true
         speed.menu = UIMenu(title: "Playback speed", children: [0.5, 0.75, 1, 1.25, 1.5, 2].map { rate in
@@ -107,11 +121,18 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         speed.isEnabled = !live
         let tools = UIStackView(arrangedSubviews: [audioButton, subtitleButton, speed])
         tools.distribution = .equalSpacing
-        let footer = UIStackView(arrangedSubviews: [timeline, tools]); footer.axis = .vertical; footer.spacing = 10
+        let footer = UIStackView(arrangedSubviews: [timeline, tools]); footer.axis = .vertical; footer.spacing = 8
         status.textColor = .white; status.font = .systemFont(ofSize: 14, weight: .medium)
         status.numberOfLines = 3; status.textAlignment = .center
         spinner.color = .white; spinner.hidesWhenStopped = true
-        for child in [header, transport, footer, status, spinner] {
+        skipFlash.textColor = .white
+        skipFlash.font = .systemFont(ofSize: 42, weight: .semibold)
+        skipFlash.textAlignment = .center
+        skipFlash.alpha = 0
+        skipFlash.layer.shadowColor = UIColor.black.cgColor
+        skipFlash.layer.shadowOpacity = 0.6
+        skipFlash.layer.shadowRadius = 8
+        for child in [header, transport, footer, status, spinner, skipFlash] {
             child.translatesAutoresizingMaskIntoConstraints = false; chrome.addSubview(child)
         }
         let safe = view.safeAreaLayoutGuide
@@ -119,13 +140,19 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
             header.topAnchor.constraint(equalTo: safe.topAnchor, constant: 8),
             header.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 16), header.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
             transport.centerXAnchor.constraint(equalTo: view.centerXAnchor), transport.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            footer.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24), footer.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
-            footer.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -12),
+            footer.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20), footer.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -20),
+            footer.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -10),
             status.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24), status.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
             status.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: transport.centerYAnchor),
+            skipFlash.centerXAnchor.constraint(equalTo: view.centerXAnchor), skipFlash.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -110),
         ])
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.delegate = self
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped)); tap.delegate = self
+        tap.require(toFail: doubleTap)
+        view.addGestureRecognizer(doubleTap)
         view.addGestureRecognizer(tap)
         let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swiped(_:))); edge.edges = .left
         view.addGestureRecognizer(edge)
@@ -143,7 +170,11 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         startPlayback()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.update() }
     }
-    override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); gradient.frame = chrome.bounds }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        gradient.frame = chrome.bounds
+        centerPicture()
+    }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if isBeingDismissed || presentingViewController == nil { shutdown() }
@@ -154,8 +185,12 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         failed = false; sawPlayback = false; startedAt = Date(); stallSince = nil
+        player.drawable = picture
         let media = VLCMedia(url: source)
-        media.addOptions(["network-caching": 1500])
+        media.addOptions([
+            "network-caching": 1500,
+            "http-user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 TVM-iOS",
+        ])
         player.media = media
         player.play()
         status.text = "Opening stream…"; spinner.startAnimating(); playButton.alpha = 0; playButton.isEnabled = false; reveal()
@@ -173,6 +208,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     }
     private func update() {
         guard !finished, !failed else { return }
+        centerPicture()
         let position = max(0, Double(player.time.intValue) / 1000)
         let duration = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
         if duration > 0 { lastDuration = duration }
@@ -191,12 +227,18 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         if sawPlayback && player.state == .ended { emitState(buffering: false); emit("ended"); shutdown(); dismiss(animated: true); return }
         if !scrubbing { slider.maximumValue = Float(max(1, duration)); slider.value = Float(position) }
         slider.isEnabled = !live && player.isSeekable && duration > 0
-        clock.text = live ? "LIVE" : "\(format(position))  /  \(format(duration))"
+        if live {
+            elapsed.text = "LIVE"
+            clock.text = ""
+        } else {
+            elapsed.text = format(position)
+            clock.text = duration > 0 ? format(max(0, duration - position)) : format(duration)
+        }
         status.text = waiting ? "Buffering…" : nil
         waiting ? spinner.startAnimating() : spinner.stopAnimating()
         playButton.alpha = waiting ? 0 : 1
         playButton.isEnabled = !waiting
-        configure(playButton, symbol: player.isPlaying ? "pause.fill" : "play.fill", label: player.isPlaying ? "Pause" : "Play", size: 48)
+        configure(playButton, symbol: player.isPlaying ? "pause.fill" : "play.fill", label: player.isPlaying ? "Pause" : "Play", size: 44)
         updateTracks()
         emitState(buffering: waiting)
     }
@@ -219,11 +261,16 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         else if player.isPlaying { player.pause() } else { player.play() }
         reveal()
     }
-    private func skip(_ seconds: Double) { seek(Double(player.time.intValue) / 1000 + seconds); reveal() }
+    private func skip(_ seconds: Double) {
+        seek(Double(player.time.intValue) / 1000 + seconds)
+        flash(seconds >= 0 ? "+10" : "−10")
+        reveal()
+    }
     private func seek(_ seconds: Double) {
         guard seconds.isFinite, player.isSeekable, !live else { return }
         let end = lastDuration > 0 ? lastDuration : Double(Int32.max) / 1000
-        player.time = VLCTime(int: Int32(min(Double(Int32.max), max(0, min(seconds, end)) * 1000)))
+        let clamped = min(Double(Int32.max), max(0, min(seconds, end)) * 1000)
+        player.time = VLCTime(int: Int32(clamped))
     }
     private func close() { emitState(buffering: false); emit("closed"); shutdown(); dismiss(animated: true) }
     func shutdown() {
@@ -235,6 +282,13 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     }
     @objc private func backgrounded() { player.pause(); emitState(buffering: false); reveal() }
     @objc private func tapped() { setControls(!controlsVisible); if controlsVisible { reveal() } }
+    @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
+        let x = gesture.location(in: view).x
+        if live { toggle(); return }
+        if x < view.bounds.width * 0.38 { skip(-10) }
+        else if x > view.bounds.width * 0.62 { skip(10) }
+        else { toggle() }
+    }
     @objc private func swiped(_ gesture: UIScreenEdgePanGestureRecognizer) {
         if gesture.state == .ended && (gesture.translation(in: view).x > 70 || gesture.velocity(in: view).x > 650) { close() }
     }
@@ -249,18 +303,24 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
             guard let self, self.player.isPlaying, !self.failed, !self.scrubbing else { return }
             self.setControls(false)
         }
-        hideWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
+        hideWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
     private func setControls(_ visible: Bool) {
         controlsVisible = visible; chrome.isUserInteractionEnabled = visible
         UIView.animate(withDuration: 0.2) { self.chrome.alpha = visible ? 1 : 0 }
         setNeedsUpdateOfHomeIndicatorAutoHidden()
     }
-    private func rotate() {
-        guard let scene = view.window?.windowScene else { return }
-        let orientation: UIInterfaceOrientationMask = scene.interfaceOrientation.isPortrait ? .landscapeRight : .portrait
-        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation))
-        reveal()
+    private func centerPicture() {
+        let mid = CGPoint(x: picture.bounds.midX, y: picture.bounds.midY)
+        for sub in picture.subviews {
+            if sub.bounds.isEmpty { continue }
+            sub.center = mid
+        }
+    }
+    private func flash(_ text: String) {
+        skipFlash.text = text
+        skipFlash.alpha = 1
+        UIView.animate(withDuration: 0.45, delay: 0.15, options: .curveEaseOut) { self.skipFlash.alpha = 0 }
     }
     private func updateTracks() {
         let names = (player.audioTrackNames as? [String] ?? []) + (player.videoSubTitlesNames as? [String] ?? [])
@@ -280,6 +340,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private func configure(_ button: UIButton, symbol: String, label: String, size: CGFloat = 22) {
         button.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: size, weight: .medium)), for: .normal)
         button.tintColor = .white; button.accessibilityLabel = label
+        button.setTitle(nil, for: .normal)
     }
     private func button(_ symbol: String, _ label: String, size: CGFloat = 22, action: @escaping () -> Void) -> UIButton {
         let control = UIButton(type: .system); configure(control, symbol: symbol, label: label, size: size)
@@ -291,5 +352,14 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private func format(_ seconds: Double) -> String {
         let value = Int(max(0, seconds))
         return value >= 3600 ? String(format: "%d:%02d:%02d", value / 3600, value / 60 % 60, value % 60) : String(format: "%d:%02d", value / 60, value % 60)
+    }
+    private static func thumbImage(scale: CGFloat = 1) -> UIImage {
+        let side = 14 * scale
+        let size = CGSize(width: side, height: side)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
+        }
     }
 }

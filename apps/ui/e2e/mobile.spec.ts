@@ -74,6 +74,17 @@ test.describe('iPhone WebKit', () => {
     await expect(page.locator('.home__shelf')).toBeVisible();
   });
 
+  test('a left-edge swipe leaves Settings without a Back button', async ({ page }) => {
+    await ready(page, true);
+    await page.locator('[data-focus-id="settings"]').tap();
+    await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+    await page.mouse.move(6, 240);
+    await page.mouse.down();
+    await page.mouse.move(110, 248);
+    await page.mouse.up();
+    await expect(page.locator('.home__shelf')).toBeVisible();
+  });
+
   for (const size of [{ width: 375, height: 667 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
     test(`fits the full iOS viewport without sideways document scrolling at ${size.width}`, async ({ page }) => {
       await page.setViewportSize(size);
@@ -85,10 +96,17 @@ test.describe('iPhone WebKit', () => {
       const overflow = await page.evaluate(() => {
         document.documentElement.scrollLeft = 100;
         document.body.scrollLeft = 100;
-        return { width: document.documentElement.scrollWidth, left: window.scrollX };
+        const home = document.querySelector('.home, .page');
+        return {
+          width: document.documentElement.scrollWidth,
+          left: window.scrollX,
+          homeWidth: home instanceof HTMLElement ? home.scrollWidth : 0,
+          homeClient: home instanceof HTMLElement ? home.clientWidth : 0,
+        };
       });
       expect(overflow.width).toBeLessThanOrEqual(size.width);
       expect(overflow.left).toBe(0);
+      expect(overflow.homeWidth).toBeLessThanOrEqual(overflow.homeClient + 1);
       const tabs = await page.locator('.ribbon button:visible').all();
       expect(tabs).toHaveLength(8);
       for (const tab of tabs) {

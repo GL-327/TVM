@@ -56,19 +56,19 @@ function roundBox(x, y, w, h, r) {
   return Math.hypot(Math.max(0, dx), Math.max(0, dy)) + Math.min(Math.max(dx, dy), 0) - r;
 }
 function color(x, y) {
-  const halo = Math.exp(-((x - 520) ** 2 + (y - 480) ** 2) / 230000);
-  let c = mix([7, 10, 18], [48, 32, 28], halo * 0.75);
-  const edge = roundBox(x - 512, y - 490, 720, 548, 150);
-  const glow = Math.exp(-Math.abs(edge) / 24) * 0.3;
-  c = mix(c, [230, 92, 39], glow);
-  if (edge < 0) c = mix([17, 19, 29], [35, 29, 29], clamp(1 - y / 1024));
-  if (edge < 0 && edge > -20) c = mix([255, 205, 110], [243, 82, 55], clamp((x + y - 350) / 1300));
+  const halo = Math.exp(-((x - 512) ** 2 + (y - 500) ** 2) / 280000);
+  let c = mix([7, 20, 40], [36, 24, 88], halo * 0.9);
+  const edge = roundBox(x - 512, y - 500, 700, 520, 140);
+  const glow = Math.exp(-Math.abs(edge) / 22) * 0.5;
+  c = mix(c, [124, 92, 255], glow);
+  if (edge < 0) c = mix([8, 16, 38], [24, 22, 70], clamp(1 - y / 1024));
+  if (edge < 0 && edge > -18) c = mix([168, 214, 255], [91, 61, 255], clamp((x + y - 350) / 1300));
   // Forward aperture, inset well clear of the iOS corner mask.
-  const triangle = x >= 405 && x <= 706 && Math.abs(y - 490) <= (706 - x) * 0.61;
-  if (triangle) c = mix([255, 237, 184], [255, 130, 63], clamp((x + y - 680) / 610));
+  const triangle = x >= 430 && x <= 700 && Math.abs(y - 500) <= (700 - x) * 0.58;
+  if (triangle) c = mix([255, 255, 255], [186, 204, 255], clamp((x + y - 680) / 610));
   // Three illuminated ticks echo a film-strip without small launcher text.
   for (let i = 0; i < 3; i++) {
-    if (roundBox(x - (462 + i * 50), y - 820, 28, 10, 5) < 0) c = mix([251, 175, 91], [246, 94, 53], i / 2);
+    if (roundBox(x - (462 + i * 50), y - 780, 28, 10, 5) < 0) c = mix([168, 150, 255], [91, 61, 255], i / 2);
   }
   return c;
 }

@@ -40,25 +40,18 @@ describe('player layout', () => {
     expect(PLAYER_LAYOUT_RULES.fit).toBe('contain');
     expect(PLAYER_LAYOUT_RULES.hitTargetPx).toBe(PLAYER_HIT_TARGET_PX);
     expect(PLAYER_LAYOUT_RULES.hitTargetPx).toBe(44);
-    expect(PLAYER_LAYOUT_RULES.portrait.videoAlign).toBe('top');
+    expect(PLAYER_LAYOUT_RULES.portrait.videoAlign).toBe('center');
     expect(PLAYER_LAYOUT_RULES.portrait.letterbox).toBe(true);
-    expect(PLAYER_LAYOUT_RULES.portrait.chrome).toBe('remaining-band-or-overlay');
+    expect(PLAYER_LAYOUT_RULES.portrait.chrome).toBe('overlay');
     expect(PLAYER_LAYOUT_RULES.landscape.stage).toBe('full-bleed');
     expect(PLAYER_LAYOUT_RULES.landscape.stretch).toBe(false);
   });
 
-  it('pins a 16:9 stage to the top on a portrait phone and leaves a chrome band', () => {
+  it('fills the viewport on a portrait phone so the picture is centered, not top-pinned', () => {
     const viewport = { width: 390, height: 844 };
     const stage = playerStageBox(viewport, 'mobile-portrait');
-    expect(stage.top).toBe(0);
-    expect(stage.left).toBe(0);
-    expect(stage.width).toBe(390);
-    expect(stage.height).toBeCloseTo(390 * 9 / 16, 5);
-    expect(stage.width / stage.height).toBeCloseTo(16 / 9, 5);
-    const band = playerChromeBand(viewport, 'mobile-portrait');
-    expect(band.top).toBeCloseTo(stage.height, 5);
-    expect(band.height).toBeCloseTo(844 - stage.height, 5);
-    expect(band.height).toBeGreaterThan(PLAYER_HIT_TARGET_PX);
+    expect(stage).toEqual({ top: 0, left: 0, width: 390, height: 844 });
+    expect(playerChromeBand(viewport, 'mobile-portrait')).toEqual(stage);
   });
 
   it('fills the viewport in landscape without stretching past contain', () => {

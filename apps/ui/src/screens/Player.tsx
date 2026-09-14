@@ -6,6 +6,7 @@ import { useNavigate } from '../nav/ViewStackContext';
 import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverlay';
 import { TvmMark } from '../brand/TvmMark';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
+import { iosPlaybackBridge } from '../player/iosEngine';
 import { PlayerRoot, type PlayerSession } from '../player';
 import { playerShellClass, readPlayerLayout } from '../player/playerLayout';
 import type { ScreenProps } from '../nav/registry';
@@ -37,6 +38,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [playbackEngine, setPlaybackEngine] = useState<PlayerSession['engine']>('loading');
   const [overlay, setOverlay] = useState<'queue' | 'ad' | null>('queue');
   const [skipRecap, setSkipRecap] = useState(false);
   const [badges, setBadges] = useState<string[]>([]);
@@ -97,6 +99,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     const request = new AbortController();
     billableRef.current = false;
     setLoading(true);
+    setPlaybackEngine('loading');
     setBuffering(true);
     setHasFrame(false);
     setError(null);
@@ -118,20 +121,24 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
 
     const start = (stream: EngineStream): void => {
       if (cancelled) return;
+      const native = Boolean(iosPlaybackBridge());
       const video = videoRef.current;
-      if (video === null) {
+      if (!native && video === null) {
         startFrame = window.requestAnimationFrame(() => start(stream));
         return;
       }
       engineRef.current?.destroy();
       setTitle(stream.title);
       setLoading(false);
+      setPlaybackEngine(native ? 'native' : 'html5');
       setError(null);
-      video.volume = audioRef.current.volume;
-      video.muted = audioRef.current.muted;
+      if (video !== null) {
+        video.volume = audioRef.current.volume;
+        video.muted = audioRef.current.muted;
+      }
       const engine = createPlayerEngine(
-        video,
-        stream,
+        video ?? document.createElement('video'),
+        native ? { ...stream, engine: 'native' } : stream,
         { live, startAt: stream.startAt ?? 0, maxHeight: planRef.current.maxHeight },
         {
           onTime: (nextPosition, nextDuration) => {
@@ -357,7 +364,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       title,
       season: playbackSeason,
       episode: playbackEpisode,
-      engine: loading ? 'loading' : 'html5',
+      engine: loading ? 'loading' : playbackEngine,
       paused,
       buffering,
       busy,
@@ -398,6 +405,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       overlay,
       pause,
       paused,
+      playbackEngine,
       play,
       playbackEpisode,
       playbackSeason,
@@ -415,10 +423,10 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
 
   return (
     <div
-      className={`player player--html5 ${shell}${busy ? ' player--busy' : ''}${live ? ' player--live' : ''}`}
+      className={`player player--${loading ? 'loading' : playbackEngine} ${shell}${busy ? ' player--busy' : ''}${live ? ' player--live' : ''}`}
       data-player=""
       data-player-shell=""
-      data-engine={loading ? 'loading' : 'html5'}
+      data-engine={loading ? 'loading' : playbackEngine}
       data-live-mode={live ? 'true' : undefined}
       role="dialog"
       aria-modal="true"

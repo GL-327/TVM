@@ -118,8 +118,9 @@
   .app,
   .app__screen,
   .screen-layer {
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   body {
@@ -130,8 +131,8 @@
   /* Page frame ------------------------------------------------------------ */
 
   .page {
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
     gap: var(--tvm-space-3);
     padding:
       var(--tvm-safe-y)
@@ -153,8 +154,8 @@
   }
 
   .home {
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
     scroll-padding: var(--tvm-safe-y) 0.8rem calc(var(--tvm-tabbar) + 1.2rem) 0.8rem;
   }
 
@@ -313,8 +314,8 @@
     bottom: 0;
     z-index: 30;
     display: block;
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
     margin: 0;
     padding: 0.28rem 0.2rem calc(0.28rem + env(safe-area-inset-bottom));
     overflow: visible;
@@ -358,7 +359,7 @@
   [data-theme='glass'] .ribbon__frost {
     display: block;
     width: 100%;
-    max-width: 100vw;
+    max-width: 100%;
     padding: 0;
     overflow: visible;
     border: none;
@@ -380,7 +381,7 @@
     align-items: stretch;
     gap: 0.1rem;
     width: 100%;
-    max-width: 100vw;
+    max-width: 100%;
     overflow: visible;
   }
 
@@ -485,8 +486,8 @@
   }
 
   .search-pill__panel {
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
     height: 100%;
     max-height: none;
     padding: 0.65rem var(--tvm-safe-x) calc(var(--tvm-keyboard-inset) + 1rem);
@@ -558,8 +559,8 @@
   /* Details --------------------------------------------------------------- */
 
   .details {
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
   }
 
   .details__stage {
@@ -642,7 +643,7 @@
   }
 
   .setup-card {
-    width: calc(100vw - 1.6rem);
+    width: calc(100% - 1.6rem);
     max-width: none;
     margin-inline: auto;
   }
@@ -664,7 +665,7 @@
     --player-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
     --player-dock: 4.4rem;
     --player-tools-lift: calc(var(--player-safe-bottom) + 9.2rem);
-    --player-bar-width: calc(100vw - 0.7rem);
+    --player-bar-width: calc(100% - 0.7rem);
     --player-dock-radius: 1.15rem;
   }
 
@@ -700,10 +701,10 @@
 
   .player-root .player-transport .tvm-button.player-transport__btn--play,
   .player .player-transport .tvm-button.player-transport__btn--play {
-    width: 4.35rem;
-    height: 4.35rem;
-    min-width: 4.35rem;
-    min-height: 4.35rem;
+    width: 5.5rem;
+    height: 5.5rem;
+    min-width: 5.5rem;
+    min-height: 5.5rem;
   }
 
   .player-root .player-transport .tvm-button.player-transport__btn--back,
@@ -725,14 +726,14 @@
   .player-root .tvm-progress__track,
   .player .tvm-progress__track,
   .player-dock .tvm-progress__track {
-    height: 0.9rem;
+    height: 4px;
   }
 
   .player-root .tvm-progress__knob,
   .player .tvm-progress__knob,
   .player-dock .tvm-progress__knob {
-    width: 1.7rem;
-    height: 1.7rem;
+    width: 14px;
+    height: 14px;
   }
 
   .tvm-progress__control {
@@ -753,12 +754,15 @@
 
   .player--mobile.player--portrait .player__stage,
   .player.player--portrait .player__stage {
-    top: env(safe-area-inset-top, 0px);
-    bottom: auto;
-    width: 100%;
+    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
     height: auto;
-    aspect-ratio: 16 / 9;
-    max-height: min(56vh, calc(100vw * 9 / 16));
+    aspect-ratio: auto;
+    max-height: none;
   }
 
   .player--mobile.player--portrait .player__video,
@@ -1214,12 +1218,15 @@ html.phone-shell[data-orientation='portrait'] .ribbon__label {
 
 html.phone-shell[data-orientation='portrait'] .player--mobile.player--portrait .player__stage,
 html.phone-shell[data-orientation='portrait'] .player.player--portrait .player__stage {
-  top: env(safe-area-inset-top, 0px);
-  bottom: auto;
-  width: 100%;
+  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
   height: auto;
-  aspect-ratio: 16 / 9;
-  max-height: min(56vh, calc(100vw * 9 / 16));
+  aspect-ratio: auto;
+  max-height: none;
 }
 
 html.phone-shell[data-orientation='landscape'] {
@@ -1377,6 +1384,14 @@ html.phone-shell body,
 html.phone-shell #root {
   overflow: hidden;
   overscroll-behavior: none;
+  touch-action: manipulation;
+}
+html.phone-shell .search-pill__panel,
+html.phone-shell .setup-card,
+html.phone-shell .ribbon {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 html.phone-shell body { position: fixed; inset: 0; margin: 0; }
 html.phone-shell .app,
