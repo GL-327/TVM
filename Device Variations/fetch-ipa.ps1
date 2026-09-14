@@ -79,4 +79,4 @@ Copy-Item -Force $found.FullName (Join-Path $here "TVM-unsigned.ipa")
 Copy-Item -Force $found.FullName (Join-Path $here "TVM.ipa")
 Remove-Item -Recurse -Force $stage
 Write-Host "Wrote $(Join-Path $here 'TVM.ipa')"
-Write-Host "This IPA is compiled on GitHub's macOS runner. Re-sign with Sideloadly, AltStore, or Xcode before it will launch."
+Write-Host "This IPA is compiled on a GitHub macOS runner. Re-sign with Sideloadly, AltStore, or Xcode before it will launch."
