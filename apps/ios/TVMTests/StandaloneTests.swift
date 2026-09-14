@@ -109,6 +109,14 @@ final class StandaloneTests: XCTestCase {
         XCTAssertTrue(TVMPlayback.needsConverter(filename: "film.mkv", mimeType: "video/x-matroska", url: "https://cdn.example/film.mkv"))
     }
 
+    func testPhonePlaybackAcceptsM4vMovAndAppleHls() {
+        XCTAssertTrue(TVMPlayback.phoneCanPlay(filename: "clip.m4v", mimeType: "video/x-m4v", url: "https://cdn.example/id"))
+        XCTAssertTrue(TVMPlayback.phoneCanPlay(filename: "clip.mov", mimeType: "video/quicktime", url: "https://cdn.example/id"))
+        XCTAssertTrue(TVMPlayback.phoneCanPlay(filename: "stream", mimeType: "video/mp4; codecs=avc1.640028", url: "https://cdn.example/id"))
+        XCTAssertTrue(TVMPlayback.phoneCanPlay(filename: "stream", mimeType: "application/vnd.apple.mpegurl", url: "https://cdn.example/master.M3U8"))
+        XCTAssertFalse(TVMPlayback.phoneCanPlay(filename: "wrong.mkv", mimeType: "video/x-m4v", url: "https://cdn.example/wrong.mkv"))
+    }
+
     func testJSONValueIntReadsSerializedNumbers() {
         let json = JSONValue.object(Data(#"{"season":1,"episode":2,"premium":86400,"id":"tt0137523"}"#.utf8))
         XCTAssertEqual(JSONValue.int(json["season"]), 1)
@@ -201,6 +209,97 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(reply.status, 409)
         let payload = JSONValue.object(reply.body)
         XCTAssertEqual(payload["reason"] as? String, "not-configured")
+        XCTAssertNotEqual(payload["reason"] as? String, "empty")
+    }
+
+    func testCatalogSlugAsksForRealDebridWhenNoToken() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockPlaybackProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let core = testCore(session: session)
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
+        core.rd.ignoreKeychain = true
+        core.rd.testToken = nil
+        let reply = await core.handle(
+            method: "POST",
+            path: "/api/playback",
+            query: [:],
+            headers: [:],
+            body: JSONValue.data(["id": "fight-club", "title": "Fight Club"])
+        )
+        XCTAssertEqual(reply.status, 409)
+        let payload = JSONValue.object(reply.body)
+        XCTAssertEqual(payload["reason"] as? String, "not-configured")
+        XCTAssertNotEqual(payload["reason"] as? String, "empty")
+    }
+
+    func testPlaybackReturnsStreamURLForSearchTitle() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockPlaybackProtocol.self]
+        configuration.timeoutIntervalForRequest = 4
+        let session = URLSession(configuration: configuration)
+        let core = testCore(session: session)
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
+        core.rd.ignoreKeychain = true
+        core.rd.testToken = "fixture-token"
+        MockPlaybackProtocol.reset()
+        let hits = await core.media.search("Fight Club")
+        XCTAssertEqual(hits.first?.id, "tt0137523")
+        let reply = await core.handle(
+            method: "POST",
+            path: "/api/playback",
+            query: [:],
+            headers: [:],
+            body: JSONValue.data(["id": hits.first?.id ?? "", "title": hits.first?.title ?? "Fight Club"])
+        )
+        XCTAssertEqual(reply.status, 200)
+        let payload = JSONValue.object(reply.body)
+        XCTAssertEqual(payload["kind"] as? String, "stream")
+        XCTAssertEqual(payload["url"] as? String, "https://cdn.example/fight-club.mp4")
+        XCTAssertTrue((payload["url"] as? String ?? "").hasPrefix("https://"))
+    }
+
+    func testPlaybackReturnsStreamURLForContinueWatchingId() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockPlaybackProtocol.self]
+        configuration.timeoutIntervalForRequest = 4
+        let session = URLSession(configuration: configuration)
+        let core = testCore(session: session)
+        _ = try? core.plans.setPlan("basic")
+        defer { _ = core.plans.cancel() }
+        core.rd.ignoreKeychain = true
+        core.rd.testToken = "fixture-token"
+        MockPlaybackProtocol.reset()
+        let parsed = MediaItem.parse([
+            "id": "fight-club",
+            "title": "Fight Club",
+            "kind": "movie",
+            "synopsis": "",
+            "poster": "https://example.com/fight.jpg",
+            "backdrop": "",
+            "genres": ["Drama"],
+            "rating": "8.8",
+            "playable": true,
+            "hue": 32,
+        ] as [String: Any])
+        XCTAssertNotNil(parsed)
+        core.store.rememberMedia([parsed!], profileId: core.media.activeProfile())
+        core.media.saveProgress(id: "tt0137523", position: 30, duration: 7200)
+        let watching = core.media.continueWatching()
+        XCTAssertEqual(watching.first?.id, "tt0137523")
+        let reply = await core.handle(
+            method: "POST",
+            path: "/api/playback",
+            query: [:],
+            headers: [:],
+            body: JSONValue.data(["id": watching.first?.id ?? "", "title": watching.first?.title ?? ""])
+        )
+        XCTAssertEqual(reply.status, 200)
+        let payload = JSONValue.object(reply.body)
+        XCTAssertEqual(payload["kind"] as? String, "stream")
+        XCTAssertEqual(payload["url"] as? String, "https://cdn.example/fight-club.mp4")
     }
 
     func testOptionalLANStillValidatesWhenUsed() {
