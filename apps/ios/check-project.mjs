@@ -602,8 +602,11 @@ check('the player shell ignores keyboard safe-area compression',
   'a 16:9 fit of the leftover height above the keyboard is the 20px-strip bug');
 check('ConnectionTests assert portrait+landscape and visualViewport/keyboard handling',
   (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('testIPhoneOrientationsIncludePortraitAndLandscape') &&
-  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('testKeyboardInsetResetsWhenHiddenAndDoesNotShrinkTheChrome'),
-  'XCTest must lock the orientation list and the keyboard inset reset');
+  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('testIPadOrientationsIncludeAllFour') &&
+  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('testKeyboardInsetResetsWhenHiddenAndDoesNotShrinkTheChrome') &&
+  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('PropertyListSerialization') &&
+  (read(join(ROOT, 'TVMTests', 'ConnectionTests.swift')) ?? '').includes('UISupportedInterfaceOrientations~ipad'),
+  'XCTest must lock orientations from the shipped plist (not idiom-resolved keys) and the keyboard inset reset');
 
 const mainUi = read(join(REPO, 'apps', 'ui', 'src', 'main.tsx')) ?? '';
 check('the shared UI starts pointer input for tap-to-select',
