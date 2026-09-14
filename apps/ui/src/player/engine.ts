@@ -188,6 +188,33 @@ export function createPlayerEngine(
   let lastMediaTime = video.currentTime;
   const listeners: Array<[keyof HTMLVideoElementEventMap, EventListener]> = [];
 
+  /**
+   * Turn a dead live channel into the provider's own words.
+   *
+   * When core cannot reach the upstream it answers the stream URL with a JSON
+   * body naming the reason (`upstream-403`, `upstream-empty`, …). hls.js only
+   * reports "a network error happened", so without this the viewer sees the
+   * same generic line whether their subscription expired, the channel moved,
+   * or the provider was down. Best effort: any failure here keeps the fallback.
+   */
+  const failWithUpstreamReason = (fallback: string): void => {
+    if (destroyed || failed) return;
+    void (async () => {
+      let message = fallback;
+      try {
+        const response = await fetchImpl(stream.url, { headers: { accept: 'application/json' } });
+        const body = (await response.json()) as { error?: unknown };
+        if (typeof body.error === 'string' && body.error !== '') {
+          const { playbackErrorMessage } = await import('../data/playbackErrors');
+          message = playbackErrorMessage(body.error);
+        }
+      } catch {
+        // Not JSON, or the request failed too. The generic line still applies.
+      }
+      fail(message);
+    })();
+  };
+
   const fail = (message: string): void => {
     if (destroyed || failed) return;
     failed = true;
@@ -302,6 +329,10 @@ export function createPlayerEngine(
           attachTs();
           return;
         }
+        if (live) {
+          failWithUpstreamReason(GENERIC_START_ERROR);
+          return;
+        }
         fail(GENERIC_START_ERROR);
       });
       instance.loadSource(sessionUrl());
@@ -339,7 +370,12 @@ export function createPlayerEngine(
       );
       ts = player;
       player.on(api.Events?.ERROR ?? 'error', () => {
-        if (ts === player) fail(GENERIC_START_ERROR);
+        if (ts !== player) return;
+        if (live) {
+          failWithUpstreamReason(GENERIC_START_ERROR);
+          return;
+        }
+        fail(GENERIC_START_ERROR);
       });
       player.attachMediaElement(video);
       player.load();
