@@ -250,6 +250,21 @@ describe('playback lifecycle', () => {
     expect(events.onBuffering).toHaveBeenLastCalledWith(false);
     engine.destroy();
   });
+
+  it('does not attach MKV to HTML5 when native is required but the iOS bridge is missing', () => {
+    const { video, events, engine } = setup({
+      ...stream,
+      url: '/film.mkv',
+      filename: 'film.mkv',
+      mimeType: 'video/x-matroska',
+      engine: 'native',
+    });
+    engine.attach();
+    expect(video.src).toBe('');
+    expect(video.load).not.toHaveBeenCalled();
+    expect(events.onError).toHaveBeenCalledOnce();
+    engine.destroy();
+  });
 });
 
 describe('session time mapping', () => {

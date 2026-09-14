@@ -21,9 +21,9 @@ export interface PlayerLayoutRules {
   fit: typeof PLAYER_OBJECT_FIT;
   hitTargetPx: typeof PLAYER_HIT_TARGET_PX;
   portrait: {
-    videoAlign: 'top';
+    videoAlign: 'center';
     letterbox: true;
-    chrome: 'remaining-band-or-overlay';
+    chrome: 'overlay';
   };
   landscape: {
     stage: 'full-bleed';
@@ -39,9 +39,9 @@ export const PLAYER_LAYOUT_RULES: PlayerLayoutRules = {
   fit: PLAYER_OBJECT_FIT,
   hitTargetPx: PLAYER_HIT_TARGET_PX,
   portrait: {
-    videoAlign: 'top',
+    videoAlign: 'center',
     letterbox: true,
-    chrome: 'remaining-band-or-overlay',
+    chrome: 'overlay',
   },
   landscape: {
     stage: 'full-bleed',
@@ -85,42 +85,24 @@ function finiteSize(value: number): number {
 }
 
 /**
- * 16:9 stage box. Portrait phones pin it to the top (letterbox inside).
- * Landscape mobile and cinema fill the viewport; the picture uses contain.
+ * Full-viewport stage. The picture is 16:9 contained and centered (letterbox).
+ * Chrome overlays the picture — it is never a leftover band under a top-pinned strip.
  */
 export function playerStageBox(
   viewport: { width: number; height: number },
-  mode: PlayerLayoutMode,
-  safeTop = 0,
+  _mode: PlayerLayoutMode,
+  _safeTop = 0,
 ): PlayerBox {
-  const width = finiteSize(viewport.width);
-  const height = finiteSize(viewport.height);
-  const insetTop = Number.isFinite(safeTop) && safeTop > 0 ? safeTop : 0;
-  if (mode === 'mobile-portrait') {
-    const available = Math.max(0, height - insetTop);
-    const stageHeight = Math.min(width / PLAYER_ASPECT_RATIO, available);
-    return { top: insetTop, left: 0, width, height: stageHeight };
-  }
-  return { top: 0, left: 0, width, height };
+  return { top: 0, left: 0, width: finiteSize(viewport.width), height: finiteSize(viewport.height) };
 }
 
-/** Remaining band under a portrait 16:9 stage; full overlay in landscape/cinema. */
+/** Overlay chrome covers the full viewport in every layout mode. */
 export function playerChromeBand(
   viewport: { width: number; height: number },
   mode: PlayerLayoutMode,
   safeTop = 0,
 ): PlayerBox {
-  if (mode !== 'mobile-portrait') {
-    return { top: 0, left: 0, width: finiteSize(viewport.width), height: finiteSize(viewport.height) };
-  }
-  const stage = playerStageBox(viewport, mode, safeTop);
-  const top = stage.top + stage.height;
-  return {
-    top,
-    left: 0,
-    width: finiteSize(viewport.width),
-    height: Math.max(0, finiteSize(viewport.height) - top),
-  };
+  return playerStageBox(viewport, mode, safeTop);
 }
 
 export function readPlayerViewportSize(win: Window & typeof globalThis = window): { width: number; height: number } {

@@ -426,7 +426,7 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
       if (ignored()) return;
       const now = live();
       if (now.overlay === 'queue' || now.overlay === 'ad') return;
-      if (now.engine === 'loading') return;
+      if (now.engine === 'loading' || now.engine === 'native') return;
       const media = el.error;
       if (media === null) return;
       if (media.code === 1 && (now.busy === true || now.engine === 'html5')) return;
@@ -436,7 +436,7 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
     const scheduleVideo = (el: HTMLVideoElement): void => {
       const now = live();
       if (now.overlay === 'queue' || now.overlay === 'ad') return;
-      if (now.engine === 'loading') return;
+      if (now.engine === 'loading' || now.engine === 'native') return;
       const waiting = now.engine === 'html5' || now.busy === true || now.buffering === true;
       if (!waiting) {
         commitVideo(el);

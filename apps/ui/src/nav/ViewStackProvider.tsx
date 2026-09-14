@@ -21,6 +21,7 @@ import {
 import { acceptHeldHop, createAxisHopQueue } from './hopQueue';
 import { isWrappingTrack, settleWrappingTrack, wrapLoopingTrack } from './loopingRail';
 import { isTextEntryTarget } from './pointerInput';
+import { edgeSwipeGoesBack } from './phoneViewport';
 import { focusKeyFor, isVerticalNavContext, neighborFocusTarget, ribbonFocusTarget } from './railNav';
 import { conveyorHop, wrapHop } from './wrapFocus';
 import { FocusScopeProvider, ViewStackContextProvider, useNavigate as useScreenNavigate } from './ViewStackContext';
@@ -188,6 +189,33 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
     window.addEventListener('tvm:navigate-back', back);
     return () => window.removeEventListener('tvm:navigate-back', back);
   }, [navigate]);
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    const down = (event: PointerEvent): void => {
+      if (isTextEntryTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest('.player, [data-player], .rail__track')) return;
+      tracking = event.clientX <= 28;
+      startX = event.clientX;
+      startY = event.clientY;
+    };
+    const up = (event: PointerEvent): void => {
+      if (!tracking) return;
+      tracking = false;
+      if (edgeSwipeGoesBack(startX, event.clientX - startX, event.clientY - startY)) {
+        window.dispatchEvent(new Event('tvm:navigate-back'));
+      }
+    };
+    window.addEventListener('pointerdown', down, { passive: true });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, []);
   const activeKeyRef = useRef(active.key);
   activeKeyRef.current = active.key;
 

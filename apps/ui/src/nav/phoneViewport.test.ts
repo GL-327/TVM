@@ -5,6 +5,7 @@ import {
   keyboardOcclusionPx,
   KEYBOARD_OPEN_PX,
   phoneOrientation,
+  edgeSwipeGoesBack,
 } from './phoneViewport';
 
 describe('phone viewport keyboard math', () => {
@@ -56,5 +57,12 @@ describe('phone viewport shell', () => {
     expect(phoneOrientation(844, 390)).toBe('landscape');
     expect(phoneOrientation(932, 430)).toBe('landscape');
     expect(phoneOrientation(Number.NaN, 800)).toBe('portrait');
+  });
+
+  it('treats a left-edge horizontal swipe as back', () => {
+    expect(edgeSwipeGoesBack(8, 80, 10)).toBe(true);
+    expect(edgeSwipeGoesBack(80, 80, 10)).toBe(false);
+    expect(edgeSwipeGoesBack(8, 80, 90)).toBe(false);
+    expect(edgeSwipeGoesBack(4, 40, 5)).toBe(false);
   });
 });

@@ -249,7 +249,6 @@ export function TransportBar({
           }}
         >
           <IconRewind className="player-transport__glyph" />
-          <span className="player-transport__caption">10</span>
         </FocusButton>
         <FocusButton
           id={TRANSPORT_FOCUS_IDS.play}
@@ -283,7 +282,6 @@ export function TransportBar({
           }}
         >
           <IconForward className="player-transport__glyph" />
-          <span className="player-transport__caption">10</span>
         </FocusButton>
       </div>
 

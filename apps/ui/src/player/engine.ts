@@ -117,13 +117,40 @@ export interface EngineOptions {
   fetchImpl?: typeof fetch;
 }
 
+function createMissingNativeEngine(events: EngineEvents): PlayerEngine {
+  let destroyed = false;
+  return {
+    attach() {
+      if (destroyed) return;
+      events.onError(
+        'TVM could not open this file. The link may be broken or the format unplayable. Press Retry, or Back to pick another title.',
+      );
+    },
+    destroy() {
+      destroyed = true;
+    },
+    play() {},
+    pause() {},
+    toggle() {},
+    seekBy() {},
+    seekTo() {},
+    setVolume() {},
+    setMuted() {},
+    position: () => 0,
+    duration: () => 0,
+  };
+}
+
 export function createPlayerEngine(
   video: HTMLVideoElement,
   stream: EngineStream,
   options: EngineOptions,
   events: EngineEvents,
 ): PlayerEngine {
-  if (stream.engine === 'native' && iosPlaybackBridge()) return createIOSPlayerEngine(stream, options, events);
+  // iPhone always decodes in VLC. HTML5 <video> cannot open MKV/WebM/TS and
+  // is what surfaces "Can't open this file" — never attach those URLs there.
+  if (iosPlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
+  if (stream.engine === 'native') return createMissingNativeEngine(events);
   const fetchImpl = options.fetchImpl ?? fetch;
   const live = options.live;
   const kind = attachKindFor(stream, live);

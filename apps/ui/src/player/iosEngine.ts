@@ -14,7 +14,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
   const id = crypto.randomUUID();
   let position = options.startAt ?? stream.startAt ?? 0;
   let duration = 0;
-  let paused: boolean | undefined;
+  let paused = true;
   let buffering: boolean | undefined;
   let destroyed = false;
   let attached = false;
@@ -47,7 +47,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
     },
     destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); },
     play: () => send('play'), pause: () => send('pause'),
-    toggle: () => send(paused ? 'play' : 'pause'),
+    toggle: () => send(paused ? 'play' : 'pause'), // paused starts true so the first toggle plays
     seekBy: (delta) => send('seek', { seconds: Math.max(0, position + delta) }),
     seekTo: (seconds) => send('seek', { seconds }),
     setVolume: (volume) => send('volume', { volume }),

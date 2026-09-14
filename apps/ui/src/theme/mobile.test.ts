@@ -19,9 +19,10 @@ describe('phone layer', () => {
     expect(mobileAt).toBeGreaterThan(motionAt);
   });
 
-  it('uses a 100vw phone frame and real safe-area insets', () => {
+  it('uses a 100% phone frame and real safe-area insets', () => {
     expect(css).toContain('@media (max-width: 47.99rem)');
-    expect(css).toContain('width: 100vw');
+    expect(css).toContain('width: 100%');
+    expect(css).toContain('overflow-x: hidden');
     expect(css).toContain('env(safe-area-inset-left)');
     expect(css).toContain('env(safe-area-inset-right)');
     expect(css).toContain('env(safe-area-inset-top)');
@@ -45,8 +46,8 @@ describe('phone layer', () => {
     expect(css).toContain('font-size: 16px');
     expect(css).toMatch(/\.osk \{\s*display: none;/);
     expect(css).toContain('player-transport__btn--play');
-    expect(css).toContain('min-width: 4.35rem');
-    expect(css).toContain('height: 0.9rem');
+    expect(css).toContain('min-width: 5.5rem');
+    expect(css).toContain('height: 4px');
     expect(css).toContain('.player-remote-hints');
     expect(css).toContain('display: none !important');
   });
@@ -65,8 +66,7 @@ describe('phone layer', () => {
     expect(viewport).toContain('dataset.orientation');
   });
 
-  it('keeps a 16:9 video stage in portrait and landscape', () => {
-    expect(css).toContain('aspect-ratio: 16 / 9');
+  it('keeps a 16:9 contained video picture in portrait and landscape', () => {
     expect(css).toContain('object-fit: contain');
     expect(css).toContain('.player--mobile.player--portrait .player__stage');
     expect(css).toContain('.player--mobile.player--landscape .player__video');

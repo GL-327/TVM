@@ -83,6 +83,8 @@ private enum PhoneViewportScript {
         if (value >= 80) lift();
       }
       window.__tvmKeyboardInset = apply;
+      ensureViewport();
+      document.documentElement.classList.add('phone-shell');
       function start() {
         ensureViewport();
         apply();
@@ -174,6 +176,7 @@ struct TVMWebView: UIViewControllerRepresentable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         )
+        configuration.ignoresViewportScaleLimits = false
         configuration.userContentController.addUserScript(viewport)
         configuration.userContentController.add(context.coordinator, name: "tvmPlayer")
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -184,6 +187,9 @@ struct TVMWebView: UIViewControllerRepresentable {
         webView.scrollView.backgroundColor = .black
         webView.allowsBackForwardNavigationGestures = false
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.bouncesZoom = false
         webView.scrollView.isDirectionalLockEnabled = true
         webView.customUserAgent = nil
         // CSS owns safe-area and keyboard insets. Auto-insetting the WK
@@ -212,6 +218,10 @@ struct TVMWebView: UIViewControllerRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.contentInset = TVMKeyboardLayout.webViewContentInset
         webView.scrollView.scrollIndicatorInsets = .zero
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.bouncesZoom = false
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         controller.additionalSafeAreaInsets = .zero
     }
 
@@ -222,20 +232,24 @@ struct TVMWebView: UIViewControllerRepresentable {
         controller.webView.uiDelegate = nil
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIGestureRecognizerDelegate {
         var parent: TVMWebView
         private var keyboardObservers: [NSObjectProtocol] = []
         weak var webView: WKWebView?
         private var playerController: TVMPlayerController?
+        private var backGesture: UIScreenEdgePanGestureRecognizer?
 
         init(parent: TVMWebView) { self.parent = parent }
 
         func attach(_ webView: WKWebView) {
             self.webView = webView
+            lockZoom(webView)
             let back = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swipeBack(_:)))
             back.edges = .left
+            back.delegate = self
             webView.addGestureRecognizer(back)
-            webView.scrollView.panGestureRecognizer.require(toFail: back)
+            backGesture = back
+            preferBackGesture(webView)
             let names: [Notification.Name] = [
                 UIResponder.keyboardWillChangeFrameNotification,
                 UIResponder.keyboardWillHideNotification,
@@ -279,7 +293,7 @@ struct TVMWebView: UIViewControllerRepresentable {
             if command == "open" {
                 guard let raw = data["url"] as? String, let url = URL(string: raw),
                       ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
-                      let host = webView?.parentViewController, host.presentedViewController == nil else {
+                      let host = webView?.parentViewController else {
                     publishPlayer(["id": id, "command": "error", "message": "Could not open the player. Go back and try again."])
                     return
                 }
@@ -287,8 +301,18 @@ struct TVMWebView: UIViewControllerRepresentable {
                 let controller = TVMPlayerController(id: id, url: url, title: data["title"] as? String ?? "TVM",
                                                      startAt: start.isFinite ? max(0, start) : 0, live: data["live"] as? Bool ?? false)
                 controller.onEvent = { [weak self] in self?.publishPlayer($0) }
-                playerController = controller
-                host.present(controller, animated: true)
+                let present = { [weak self] in
+                    self?.playerController = controller
+                    host.present(controller, animated: true)
+                }
+                if let existing = playerController ?? host.presentedViewController as? TVMPlayerController {
+                    existing.shutdown()
+                    existing.dismiss(animated: false, completion: present)
+                } else if host.presentedViewController == nil {
+                    present()
+                } else {
+                    publishPlayer(["id": id, "command": "error", "message": "Could not open the player. Go back and try again."])
+                }
             } else if playerController?.sessionID == id {
                 playerController?.command(command, data: data)
                 if command == "stop" { playerController = nil }
@@ -306,9 +330,31 @@ struct TVMWebView: UIViewControllerRepresentable {
             webView.scrollView.scrollIndicatorInsets = .zero
             webView.scrollView.verticalScrollIndicatorInsets = .zero
             webView.scrollView.horizontalScrollIndicatorInsets = .zero
+            lockZoom(webView)
             if let host = webView.parentViewController as? TVMWebHostController {
                 host.additionalSafeAreaInsets = .zero
             }
+        }
+
+        private func lockZoom(_ webView: WKWebView) {
+            webView.scrollView.minimumZoomScale = 1
+            webView.scrollView.maximumZoomScale = 1
+            webView.scrollView.bouncesZoom = false
+            webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        }
+
+        private func preferBackGesture(_ webView: WKWebView) {
+            guard let back = backGesture else { return }
+            webView.scrollView.panGestureRecognizer.require(toFail: back)
+            webView.scrollView.gestureRecognizers?.forEach { recognizer in
+                if recognizer !== back && recognizer is UIPanGestureRecognizer {
+                    recognizer.require(toFail: back)
+                }
+            }
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            gestureRecognizer === backGesture
         }
 
         private func publishKeyboard(_ notification: Notification) {
@@ -367,7 +413,11 @@ struct TVMWebView: UIViewControllerRepresentable {
             decisionHandler(.allow)
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.loading = false }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            parent.loading = false
+            lockZoom(webView)
+            preferBackGesture(webView)
+        }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
