@@ -668,6 +668,17 @@ const unsignedScript = read(join(ROOT, 'package-unsigned-ipa.sh')) ?? '';
 check('package-unsigned-ipa.sh zips Payload/TVM.app',
   unsignedScript.includes('Payload') && unsignedScript.includes('TVM.app') &&
   unsignedScript.includes('.ipa'));
+check('package-unsigned-ipa.sh thins Mach-O binaries to arm64',
+  unsignedScript.includes('lipo') && unsignedScript.includes('arm64') &&
+  unsignedScript.includes('Non-fat file'),
+  'Sideloadly rejects MobileVLCKit when it is left as a 1-arch fat/CAFEBABE file');
+check('package-unsigned-ipa.sh ad-hoc codesigns nested frameworks',
+  unsignedScript.includes('codesign') && unsignedScript.includes('--sign -') &&
+  unsignedScript.includes('MobileVLCKit'),
+  'an unsigned fat VLC dylib is the Sideloadly "Invalid file" failure');
+check('package-unsigned-ipa.sh writes the IPA with ditto, not zip -y',
+  unsignedScript.includes('ditto -c -k') && !unsignedScript.includes('zip -'),
+  'Info-ZIP -y stores symlinks that Windows Sideloadly cannot re-sign');
 const winExport = read(join(ROOT, 'export-ipa.ps1')) ?? '';
 check('export-ipa.ps1 exists and refuses Windows xcodebuild',
   winExport.includes('xcodebuild does not run on Windows') && /exit\s+1/.test(winExport));
