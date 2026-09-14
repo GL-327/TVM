@@ -131,7 +131,9 @@ final class TVMStore {
                     "progress": progress(for: profile.id).mapValues {
                         ["position": $0.position, "duration": $0.duration, "updated": $0.updated]
                     },
-                    "watchlist": watchlist(for: profile.id).map { ["id": $0.id, "title": $0.title, "year": $0.year ?? NSNull(), "added": $0.added ?? ""] },
+                    "watchlist": watchlist(for: profile.id).map { item -> [String: Any] in
+                        ["id": item.id, "title": item.title, "year": JSONValue.orNull(item.year), "added": item.added ?? ""]
+                    },
                 ]
             },
             "billing": billing,

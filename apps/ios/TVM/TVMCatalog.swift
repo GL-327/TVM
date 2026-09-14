@@ -97,9 +97,9 @@ final class TVMCatalog {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.count < 2 { return [] }
         let encoded = needle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? needle
-        async let movies = fetchCatalog("/catalog/movie/top/search=\(encoded).json", kind: "movie")
-        async let series = fetchCatalog("/catalog/series/top/search=\(encoded).json", kind: "series")
-        let live = dedupe(await movies + series)
+        async let moviesTask = fetchCatalog("/catalog/movie/top/search=\(encoded).json", kind: "movie")
+        async let seriesTask = fetchCatalog("/catalog/series/top/search=\(encoded).json", kind: "series")
+        let live = dedupe((await moviesTask) + (await seriesTask))
         if !live.isEmpty { return live }
         let lower = needle.lowercased()
         return fallback.filter {
@@ -135,9 +135,11 @@ final class TVMCatalog {
             return data
         }
         lock.unlock()
-        async let movie = readKind("movie", imdb: imdb)
-        async let series = readKind("series", imdb: imdb)
-        let picked = (await series) ?? (await movie)
+        async let movieTask = readKind("movie", imdb: imdb)
+        async let seriesTask = readKind("series", imdb: imdb)
+        let seriesMeta = await seriesTask
+        let movieMeta = await movieTask
+        let picked = seriesMeta ?? movieMeta
         if let picked {
             lock.lock()
             metaMem[imdb] = (Date(), picked)

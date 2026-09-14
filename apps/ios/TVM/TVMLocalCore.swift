@@ -307,9 +307,9 @@ final class TVMLocalCore {
         let groups = Dictionary(grouping: liveChannels) { ($0["group"] as? String) ?? "Other" }
             .map { ["name": $0.key, "count": $0.value.count, "picked": $0.value.filter { livePicks.contains($0["id"] as? String ?? "") }.count] }
         return [
-            "url": liveURL ?? NSNull(),
-            "host": liveHost ?? NSNull(),
-            "username": liveUser ?? NSNull(),
+            "url": JSONValue.orNull(liveURL),
+            "host": JSONValue.orNull(liveHost),
+            "username": JSONValue.orNull(liveUser),
             "configured": liveURL != nil || liveHost != nil,
             "channels": liveChannels.prefix(48).map { channel in
                 var card = channel
@@ -317,7 +317,7 @@ final class TVMLocalCore {
                 card.removeValue(forKey: "url")
                 return card
             },
-            "error": liveChannels.isEmpty && liveURL != nil ? "The playlist had no channels this phone can list." : NSNull(),
+            "error": JSONValue.orNull(liveChannels.isEmpty && liveURL != nil ? "The playlist had no channels this phone can list." : nil),
             "picked": livePicks.count,
             "total": liveChannels.count,
             "groups": groups,
@@ -350,7 +350,7 @@ final class TVMLocalCore {
             "picked": livePicks.count,
             "pickLimit": 48,
             "query": q,
-            "group": group.isEmpty ? NSNull() : group,
+            "group": JSONValue.orNull(group.isEmpty ? nil : group),
         ]
     }
 

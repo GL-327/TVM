@@ -122,9 +122,9 @@ final class TVMPlans {
             "queueMs": plan.queueMs,
             "queueSkipToTop": plan.queueSkipToTop,
             "startDelayMs": plan.startDelayMs,
-            "weeklySeconds": plan.weeklySeconds ?? NSNull(),
+            "weeklySeconds": JSONValue.orNull(plan.weeklySeconds),
             "weeklyUsedSeconds": used,
-            "weeklyRemainingSeconds": remaining ?? NSNull(),
+            "weeklyRemainingSeconds": JSONValue.orNull(remaining),
             "profilesMax": plan.profilesMax,
             "skipRecap": plan.skipRecap,
             "extras": extras,
@@ -222,7 +222,7 @@ final class TVMPlans {
             "liveTv": includeLive,
             "synthwavePurchased": includeSynthwave,
             "at": ISO8601DateFormatter().string(from: Date()),
-            "last4": last4 ?? NSNull(),
+            "last4": JSONValue.orNull(last4),
         ]
         receipts.insert(receipt, at: 0)
         store.writeJSON("billing.json", ["receipts": receipts, "last4": last4 ?? ""])
@@ -291,7 +291,7 @@ final class TVMPlans {
             "chargedPence": 0,
             "currency": "GBP",
             "tokenId": "sandbox",
-            "last4": last4 ?? NSNull(),
+            "last4": JSONValue.orNull(last4),
             "brand": "card",
             "message": "No card processor is linked. This is a sandbox charge and nothing was taken.",
         ]
