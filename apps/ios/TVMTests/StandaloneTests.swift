@@ -44,6 +44,30 @@ final class StandaloneTests: XCTestCase {
         controller.shutdown()
     }
 
+    @MainActor func testNativeDecoderPlaysMP4MatroskaWebMAndTransportStream() async throws {
+        for ext in ["mp4", "mkv", "webm", "ts"] {
+            let source = try XCTUnwrap(Bundle(for: StandaloneTests.self).url(forResource: "sample", withExtension: ext, subdirectory: "PlaybackFixtures"))
+            let playing = expectation(description: "Decoded moving video from \(ext)")
+            let controller = TVMPlayerController(id: "fixture-\(ext)", url: source, title: "Codec check", startAt: 0, live: false)
+            var decoded = false
+            controller.onEvent = { event in
+                if event["command"] as? String == "state", event["hasFrame"] as? Bool == true,
+                   (event["position"] as? Double ?? 0) > 0.3, !decoded {
+                    decoded = true
+                    playing.fulfill()
+                }
+            }
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 844, height: 390))
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            await fulfillment(of: [playing], timeout: 15)
+            controller.shutdown()
+            window.isHidden = true
+            window.rootViewController = nil
+            XCTAssertTrue(decoded, "The native decoder did not play \(ext)")
+        }
+    }
+
     func testTranscodePrefersCompatibleHLSWithinPlanCap() {
         let choices: [String: Any] = ["apple": ["2160": "https://cdn.example/4k.m3u8", "1080p": "https://cdn.example/hd.m3u8", "720": "https://cdn.example/low.m3u8"], "h264WebM": ["1080": "https://cdn.example/file.webm"]]
         XCTAssertEqual(TVMPlayback.appleTranscode(choices, maxHeight: 1080)?.url, "https://cdn.example/hd.m3u8")
