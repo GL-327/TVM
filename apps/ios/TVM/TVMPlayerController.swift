@@ -122,8 +122,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
             footer.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24), footer.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
             footer.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -12),
             status.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24), status.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
-            status.topAnchor.constraint(equalTo: transport.bottomAnchor, constant: 8),
-            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.bottomAnchor.constraint(equalTo: transport.topAnchor, constant: -12),
+            status.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
+            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: transport.centerYAnchor),
         ])
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped)); tap.delegate = self
         view.addGestureRecognizer(tap)
@@ -158,15 +158,15 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         media.addOptions(["network-caching": 1500])
         player.media = media
         player.play()
-        status.text = "Opening stream…"; spinner.startAnimating(); reveal()
+        status.text = "Opening stream…"; spinner.startAnimating(); playButton.alpha = 0; playButton.isEnabled = false; reveal()
     }
     func command(_ name: String, data: [String: Any]) {
         switch name {
         case "play": player.play(); reveal()
         case "pause": player.pause(); reveal()
         case "seek": if let seconds = data["seconds"] as? Double { seek(seconds) }
-        case "volume": if let volume = data["volume"] as? Double, volume.isFinite { player.audio.volume = Int32(max(0, min(100, volume * 100))) }
-        case "mute": player.audio.isMuted = data["muted"] as? Bool ?? false
+        case "volume": if let volume = data["volume"] as? Double, volume.isFinite { player.audio?.volume = Int32(max(0, min(100, volume * 100))) }
+        case "mute": player.audio?.isMuted = data["muted"] as? Bool ?? false
         case "stop": if !finished { shutdown(); dismiss(animated: false) }
         default: break
         }
@@ -194,6 +194,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         clock.text = live ? "LIVE" : "\(format(position))  /  \(format(duration))"
         status.text = waiting ? "Buffering…" : nil
         waiting ? spinner.startAnimating() : spinner.stopAnimating()
+        playButton.alpha = waiting ? 0 : 1
+        playButton.isEnabled = !waiting
         configure(playButton, symbol: player.isPlaying ? "pause.fill" : "play.fill", label: player.isPlaying ? "Pause" : "Play", size: 48)
         updateTracks()
         emitState(buffering: waiting)
@@ -207,6 +209,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     }
     private func fail() {
         failed = true; player.pause(); spinner.stopAnimating()
+        playButton.alpha = 1; playButton.isEnabled = true
         status.text = "This source could not be played. Tap Retry, or go back to choose another source."
         configure(playButton, symbol: "arrow.clockwise", label: "Retry", size: 40)
         emitState(buffering: false); emit("error", ["message": status.text!]); reveal()

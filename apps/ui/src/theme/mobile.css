@@ -1390,3 +1390,35 @@ html.phone-shell .page__lede,
 html.phone-shell .settings-row,
 html.phone-shell .page__message { overflow-wrap: anywhere; }
 html.phone-shell .rail__track { overscroll-behavior-x: contain; }
+html.phone-shell .ribbon__spacer { display: none; }
+html.phone-shell .ribbon .tvm-button.ribbon__icon {
+  min-width: 0;
+  min-height: 48px;
+  padding: 0.3rem;
+}
+html.phone-shell .ribbon__icon > .tvm-button__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 100%;
+}
+/* Icon-only landscape controls retain their accessible names. */
+html.phone-shell[data-orientation='landscape'] .ribbon__label {
+  display: block;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+@media (min-width: 900px) {
+  html.phone-shell[data-orientation='landscape'] .ribbon__label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    font-size: 10px;
+  }
+}
