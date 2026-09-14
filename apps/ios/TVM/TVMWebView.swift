@@ -58,7 +58,7 @@ private enum PhoneViewportScript {
 }
 
 struct TVMWebView: UIViewRepresentable {
-    let active: ActiveConnection
+    let session: BrowseSession
     @Binding var loading: Bool
     @Binding var error: String?
 
@@ -66,7 +66,7 @@ struct TVMWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = session.isStandalone ? .default() : .nonPersistent()
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsAirPlayForMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
@@ -93,8 +93,12 @@ struct TVMWebView: UIViewRepresentable {
         webView.scrollView.contentInset = .zero
         webView.scrollView.scrollIndicatorInsets = .zero
         context.coordinator.attach(webView)
-        configuration.websiteDataStore.httpCookieStore.setCookie(active.cookie) { [weak webView] in
-            webView?.load(URLRequest(url: active.connection.origin))
+        if let cookie = session.cookie {
+            configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { [weak webView] in
+                webView?.load(URLRequest(url: session.origin))
+            }
+        } else {
+            webView.load(URLRequest(url: session.origin))
         }
         return webView
     }
@@ -146,7 +150,7 @@ struct TVMWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
-            if parent.active.connection.isSameOrigin(url) || url.absoluteString == "about:blank" {
+            if parent.session.isSameOrigin(url) || url.absoluteString == "about:blank" {
                 decisionHandler(.allow)
             } else {
                 if navigationAction.navigationType == .linkActivated && url.scheme == "https" {
@@ -158,7 +162,7 @@ struct TVMWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                      for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if let url = navigationAction.request.url, parent.active.connection.isSameOrigin(url) {
+            if let url = navigationAction.request.url, parent.session.isSameOrigin(url) {
                 webView.load(navigationAction.request)
             } else if let url = navigationAction.request.url,
                       navigationAction.navigationType == .linkActivated && url.scheme == "https" {
@@ -171,7 +175,9 @@ struct TVMWebView: UIViewRepresentable {
                      decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
             if let response = navigationResponse.response as? HTTPURLResponse,
                response.statusCode == 401 || response.statusCode == 403 {
-                parent.error = "Your TVM session has expired or been rejected. Reconnect using the host LAN token."
+                parent.error = parent.session.isStandalone
+                    ? "TVM could not load a page from the on-device core."
+                    : "Your TVM session has expired or been rejected. Reconnect using the host LAN token."
                 parent.loading = false
                 decisionHandler(.cancel)
                 return
@@ -189,7 +195,9 @@ struct TVMWebView: UIViewRepresentable {
         private func failed(_ error: Error) {
             guard (error as NSError).code != NSURLErrorCancelled else { return }
             parent.loading = false
-            parent.error = "TVM could not load. Check your Wi-Fi and host, then use Reload or Reconnect."
+            parent.error = parent.session.isStandalone
+                ? "TVM could not load the bundled interface. Use Reload."
+                : "TVM could not load. Check your Wi-Fi and host, then use Reload or Reconnect."
         }
     }
 }

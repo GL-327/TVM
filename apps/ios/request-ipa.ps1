@@ -67,23 +67,18 @@ if (-not $runs -or $runs.Count -eq 0) {
 }
 
 $active = $runs | Where-Object { $_.status -ne "completed" } | Select-Object -First 1
+# ios-ipa can upload the IPA even when android-apk fails, so the run conclusion
+# may be "failure". Prefer a fully green run, then any completed run that has
+# artifact tvm-ios-unsigned-ipa.
 $success = $runs | Where-Object { $_.conclusion -eq "success" } | Select-Object -First 1
+$candidates = @($runs | Where-Object { $_.status -eq "completed" })
 
 if ($Watch -and $active) {
     Write-Host "Watching run $($active.databaseId) on $($active.headBranch) — $($active.url)"
     gh run watch $active.databaseId --exit-status
-    if ($LASTEXITCODE -ne 0) { Fail "Run $($active.databaseId) did not succeed. Open $($active.url)" }
-    $success = gh run view $active.databaseId --json databaseId,conclusion,url | ConvertFrom-Json
-    if ($success.conclusion -ne "success") { Fail "Run $($active.databaseId) conclusion=$($success.conclusion)" }
-}
-
-if (-not $success) {
-    if ($active) {
-        Write-Host "A run is still $($active.status): $($active.url)"
-        Write-Host "Re-run: .\request-ipa.ps1 -Watch"
-        exit 2
-    }
-    Fail "Latest Mobile packages runs did not succeed. Open the Actions tab and inspect the macos ios-ipa job."
+    $watched = gh run view $active.databaseId --json databaseId,conclusion,url,status | ConvertFrom-Json
+    $candidates = @($watched) + @($candidates)
+    if ($watched.conclusion -eq "success") { $success = $watched }
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -91,9 +86,29 @@ $stage = Join-Path $OutDir "gh-artifact"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-Write-Host "Downloading tvm-ios-unsigned-ipa from run $($success.databaseId)..."
-gh run download $success.databaseId --name tvm-ios-unsigned-ipa --dir $stage
-if ($LASTEXITCODE -ne 0) { Fail "Artifact tvm-ios-unsigned-ipa was not on run $($success.databaseId). The ios-ipa job may have failed." }
+$picked = $null
+$tryOrder = @()
+if ($success) { $tryOrder += $success }
+foreach ($run in $candidates) { $tryOrder += $run }
+$seen = @{}
+foreach ($run in $tryOrder) {
+    $id = [string]$run.databaseId
+    if (-not $id -or $seen.ContainsKey($id)) { continue }
+    $seen[$id] = $true
+    Write-Host "Trying tvm-ios-unsigned-ipa from run $id ($($run.conclusion))..."
+    gh run download $id --name tvm-ios-unsigned-ipa --dir $stage 2>$null
+    if ($LASTEXITCODE -eq 0) { $picked = $run; break }
+}
+
+if (-not $picked) {
+    Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+    if ($active) {
+        Write-Host "A run is still $($active.status): $($active.url)"
+        Write-Host "Re-run: .\request-ipa.ps1 -Watch"
+        exit 2
+    }
+    Fail "No Mobile packages run had artifact tvm-ios-unsigned-ipa. Open the Actions tab and inspect the macos ios-ipa job."
+}
 
 $found = Get-ChildItem -Path $stage -Recurse -File -Filter *.ipa | Select-Object -First 1
 if (-not $found) { Fail "Download finished but no .ipa was in the artifact." }

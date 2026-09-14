@@ -8,7 +8,9 @@
  * project, or that only shows up after a long transfer to a Mac: a dangling
  * pbxproj UUID, a file reference with nothing behind it, a source file missing
  * from the build phase, malformed plist XML, or an Info.plist that has lost the
- * keys local-network access depends on.
+ * keys local-network access depends on. It also checks that the default
+ * product is a standalone on-device app (bundled UI + local /api), not a
+ * first-run LAN Core client.
  *
  * Run: node apps/ios/check-project.mjs
  * Exit code 0 = every check passed. 1 = at least one failure.
@@ -222,6 +224,13 @@ if (pbx !== null) {
     'Info.plist in a Resources phase collides with INFOPLIST_FILE');
   check('PrivacyInfo.xcprivacy is copied as a resource', resourceRefs.has('PrivacyInfo.xcprivacy'),
     'the privacy manifest must ship inside the bundle');
+  check('BundledUI is copied as a resource', resourceRefs.has('BundledUI'),
+    'the production UI must ship inside the app bundle');
+  check('Assets.xcassets is copied as a resource', resourceRefs.has('Assets.xcassets'),
+    'the Home Screen AppIcon lives in the asset catalog');
+  check('ASSETCATALOG_COMPILER_APPICON_NAME is AppIcon',
+    /ASSETCATALOG_COMPILER_APPICON_NAME\s*=\s*AppIcon/.test(pbx),
+    'without it the installed IPA has a generic iOS icon');
 
   // Deployment target and Swift version must be stated, or Xcode picks its own.
   const deploymentTargets = [];
@@ -304,6 +313,7 @@ if (info !== null) {
     ['LSRequiresIPhoneOS', 'marks this as an iOS app'],
     ['UILaunchScreen', 'a missing launch screen letterboxes the app on modern iPhones'],
     ['UISupportedInterfaceOrientations', 'orientation support'],
+    ['CFBundleDisplayName', 'the Home Screen name under the icon'],
   ];
   for (const [key, why] of required) {
     check(`Info.plist declares ${key}`, info.includes(`<key>${key}</key>`), why);
@@ -311,12 +321,18 @@ if (info !== null) {
 
   // Local-network access. Both halves are required: iOS 14+ refuses LAN traffic
   // without the usage description, and plain-HTTP LAN needs the ATS exception.
+  check('Info.plist declares CFBundleDisplayName TVM',
+    /<key>CFBundleDisplayName<\/key>\s*<string>TVM<\/string>/.test(info),
+    'the Home Screen label must be TVM');
   check('Info.plist declares NSLocalNetworkUsageDescription',
     info.includes('<key>NSLocalNetworkUsageDescription</key>'),
-    'iOS 14+ blocks local-network access without it, so the app can never reach Core');
+    'optional home-Core mode still needs the local-network usage string');
   check('NSLocalNetworkUsageDescription has non-empty text',
     /<key>NSLocalNetworkUsageDescription<\/key>\s*<string>[^<]{10,}<\/string>/.test(info),
     'App Review and the system prompt both need a real sentence here');
+  check('Info.plist does not describe LAN Core as the only mode',
+    !/must connect to (your )?TVM computer|requires LAN Core/i.test(info),
+    'standalone is the default product');
   check('Info.plist allows local networking over ATS',
     info.includes('<key>NSAllowsLocalNetworking</key>'),
     'without it, http:// to a LAN address is blocked by App Transport Security');
@@ -378,6 +394,41 @@ for (const file of swiftFiles) {
 const mainCount = swiftFiles.filter((file) => /^\s*@main\b/m.test(read(file) ?? '')).length;
 check('exactly one @main entry point', mainCount === 1, `found ${mainCount}`);
 
+const appSource = read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '';
+const models = read(join(ROOT, 'TVM', 'TVMModels.swift')) ?? '';
+const localServer = read(join(ROOT, 'TVM', 'TVMLocalServer.swift')) ?? '';
+const localCore = read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '';
+const store = read(join(ROOT, 'TVM', 'TVMStore.swift')) ?? '';
+const standaloneTests = read(join(ROOT, 'TVMTests', 'StandaloneTests.swift')) ?? '';
+check('the first window is the standalone shell',
+  /WindowGroup\s*\{\s*StandaloneRoot/.test(appSource.replace(/\s+/g, ' ')),
+  'first-run must not be a connect-to-PC screen');
+check('standalone does not require a LAN token',
+  models.includes('requiresLANToken = false') && models.includes('bundledLANToken: String? = nil'),
+  'TVM_LAN_TOKEN must not be a first-run requirement');
+check('the app binds an on-device loopback server',
+  localServer.includes('requiredInterfaceType = .loopback') && localServer.includes('127.0.0.1'),
+  'the UI must load from the phone, not a PC');
+check('the on-device core implements /api/home and /api/playback',
+  localCore.includes('/api/home') && localCore.includes('/api/playback') && localCore.includes('/api/rd/token'),
+  'Home and Real-Debrid must not 500 on a phone with no PC');
+check('Real-Debrid tokens use the device Keychain',
+  store.includes('TVM.Standalone.RealDebrid') && store.includes('kSecAttrAccessibleWhenUnlockedThisDeviceOnly'));
+check('standalone tests assert no LAN token is required',
+  standaloneTests.includes('testStandaloneDoesNotRequireLANToken') &&
+  standaloneTests.includes('StandalonePolicy.requiresLANToken'));
+check('bundle-ui.mjs copies the production UI into BundledUI',
+  (read(join(ROOT, 'bundle-ui.mjs')) ?? '').includes('@tvm/ui') &&
+  (read(join(ROOT, 'bundle-ui.mjs')) ?? '').includes('BundledUI'));
+check('BundledUI folder exists', existsSync(join(ROOT, 'TVM', 'BundledUI', 'index.html')),
+  'CI/Mac run node apps/ios/bundle-ui.mjs before xcodebuild');
+check('FallbackCatalog.json exists so Home can render offline',
+  existsSync(join(ROOT, 'TVM', 'FallbackCatalog.json')));
+check('AppIcon 1024 exists',
+  existsSync(join(ROOT, 'TVM', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon.png')));
+check('generate-app-icon.mjs writes the TVM T mark',
+  (read(join(ROOT, 'generate-app-icon.mjs')) ?? '').includes('AppIcon.png'));
+
 // The secrets that must never be committed.
 for (const file of swiftFiles) {
   const text = read(file) ?? '';
@@ -403,7 +454,7 @@ const lanSessions = read(join(REPO, 'apps', 'core', 'src', 'lanSessions.ts')) ??
 
 const pathMatch = /appendingPathComponent\("([^"]+)"\)/.exec(connection);
 const clientPath = pathMatch === null ? null : `/${pathMatch[1]}`;
-check('the client builds a LAN session URL', clientPath !== null);
+check('optional home-Core client can still build a LAN session URL', clientPath !== null);
 if (!STRUCT_ONLY && clientPath !== null) {
   check(`Core serves ${clientPath}`, server.includes(`'${clientPath}'`),
     `apps/core/src/server.ts has no route for ${clientPath}; the app could never connect`);
@@ -437,12 +488,15 @@ check('Keychain items are device-only and require unlock',
   'a weaker accessibility class would sync the LAN token off the device');
 
 const webView = read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '';
-check('the webview uses a non-persistent data store',
+check('the webview keeps LAN cookies in a non-persistent store',
   webView.includes('.nonPersistent()'),
-  'a persistent store would leave the session cookie on disk');
+  'optional home-Core sessions must not leave the LAN cookie on disk');
 check('the webview refuses cross-origin navigation',
   webView.includes('isSameOrigin'),
   'a third-party page must never load inside the session-bearing webview');
+check('standalone loads the local origin without a LAN cookie',
+  webView.includes('session.origin') && webView.includes('session.cookie'),
+  'the bundled UI is served from the on-device core');
 check('the webview allows inline media playback',
   webView.includes('allowsInlineMediaPlayback'),
   'without it iPhone forces every video fullscreen');
@@ -537,6 +591,10 @@ check('README states that this Windows tree does not contain an IPA',
 check('README documents Sideloadly or AltStore re-signing',
   /Sideloadly/i.test(readme) && /AltStore/i.test(readme),
   'Windows users need a real re-signer, not a renamed zip');
+check('README states the iPhone app is standalone',
+  /do not need a PC|standalone/i.test(readme) && /LAN token/i.test(readme));
+check('README does not claim App Store signing',
+  /not.*App Store/i.test(readme));
 check('README documents request-ipa.ps1',
   readme.includes('request-ipa.ps1'));
 
@@ -568,7 +626,7 @@ if (failures.length > 0) {
 console.log('');
 console.log(STRUCT_ONLY
   ? 'iOS project structure and plists look consistent (TVM_IOS_STRUCT_ONLY=1; Core/UI contract not checked).'
-  : 'iOS project structure, plists and Core contract look consistent.');
+  : 'iOS project structure, plists, standalone core and optional LAN contract look consistent.');
 console.log('');
 console.log('This is NOT a build, a signature, or a device test. Still required on a Mac:');
 console.log('  1. xcodebuild -project TVM.xcodeproj -scheme TVM \\');

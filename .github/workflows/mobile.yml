@@ -19,19 +19,19 @@ on:
     paths:
       - "apps/android/**"
       - "apps/ios/**"
+      - "apps/ui/**"
       - "apps/core/src/lanSessions.ts"
       - "apps/core/src/server.ts"
-      - "apps/ui/src/theme/mobile.css"
-      - "apps/ui/src/theme/apply.ts"
+      - "packages/**"
       - ".github/workflows/mobile.yml"
   pull_request:
     paths:
       - "apps/android/**"
       - "apps/ios/**"
+      - "apps/ui/**"
       - "apps/core/src/lanSessions.ts"
       - "apps/core/src/server.ts"
-      - "apps/ui/src/theme/mobile.css"
-      - "apps/ui/src/theme/apply.ts"
+      - "packages/**"
       - ".github/workflows/mobile.yml"
 
 jobs:
@@ -78,13 +78,23 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate Xcode project (structure only — this commit may not include Core/UI)
+          cache: pnpm
+      - name: Install workspace and bundle the production UI into the iOS app
+        run: |
+          pnpm install --frozen-lockfile
+          node apps/ios/export-fallback-catalog.mjs
+          node apps/ios/generate-app-icon.mjs
+          node apps/ios/bundle-ui.mjs
+          test -f apps/ios/TVM/BundledUI/index.html
+          test -d apps/ios/TVM/BundledUI/assets
+      - name: Validate Xcode project (standalone app + bundled UI)
         run: node apps/ios/check-project.mjs
-        env:
-          TVM_IOS_STRUCT_ONLY: "1"
       - name: Compile for iOS Simulator
         working-directory: apps/ios
         run: |

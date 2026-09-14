@@ -44,6 +44,11 @@ apps/roku/config.json
 apps/roku/*.zip
 Desktop/*.zip
 
+# Local sideload binaries in Device Variations/ — keep the folder on disk, do not commit APK/IPA/zip
+/Device Variations/*.apk
+/Device Variations/*.ipa
+/Device Variations/*.zip
+
 # Editor and OS
 .DS_Store
 Thumbs.db
