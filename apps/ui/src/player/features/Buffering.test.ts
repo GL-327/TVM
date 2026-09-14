@@ -16,6 +16,6 @@ describe('player buffering indicator', () => {
     expect(buffering).not.toContain('tvm-buffering-spin');
     expect(player).not.toContain('player__loader');
     expect(player).not.toContain('BUFFER_STALLED_ERROR');
-    expect(buffering).toContain('engine === \'native\' && buffering === true && busy === true');
+    expect(buffering).not.toContain("engine === 'native' && buffering === true");
   });
 });
