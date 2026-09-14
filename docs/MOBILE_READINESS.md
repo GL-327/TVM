@@ -25,6 +25,31 @@ Open mobile Settings → DEV to select Basic or higher for testing, or use the e
 
 Windows verification completed: production build/type checking passed; 693 unit/API tests passed across the workspace run and the added HTTP-boundary test. All 24 browser cases passed across the main run and targeted reruns after correcting two outdated Settings-focus test assumptions. The final four WebKit cases also run with native `AbortSignal.any/timeout` removed to exercise iOS 16 compatibility. iOS package validation: 177 passed, no warnings/failures. Android structure validation: 88 passed, no warnings/failures. Final production UI was copied into `apps/ios/TVM/BundledUI`. These counts exclude XCTest, which requires Xcode.
 
+### Re-verified 14 September 2026, after the background and tab-bar pass
+
+The animated stage was still switched off for every theme except the paid Retro
+pack: `SceneField` returned `null` and `.tvm-scene` was `display: none`, so
+Default, Light, Dark, Happy, Sunset, Heather and Liquid Glass all painted a flat
+colour. It is now mounted in `App.tsx` as six CSS gradient layers behind the
+screen stack (`.tvm-scene` z-index 0, `.app__screen` z-index 1), animating
+`transform`/`opacity` only, on 19–34s periods rather than the previous 41–97s —
+which was motion slow enough to read as a still image. Confirmed running in a
+real browser: six layers, six running animations, all six transforms advancing
+over a 1.5s sample. Reduced Motion and Performance mode switch it off, the
+player and Retro hide it, and `sceneEngine.test.ts` now fails if it is disabled,
+slowed past 40s, or given a non-compositor property again.
+
+The mobile bottom tab bar was translucent over scrolling content: the per-theme
+`[data-theme='x'] .ribbon` rules outrank `.ribbon` in `mobile.css` on
+specificity, so rail titles and poster art showed through the tab labels. Fixed
+with matching-specificity selectors plus a backdrop blur.
+
+Counts after this pass: 697 unit tests (core 242, ui 396, shell 23, nav 36), all
+five workspace typechecks clean, production build clean, iOS package validation
+179 passed, Android 89 passed, Roku static checks passed. The rebuilt production
+UI was copied into `apps/ios/TVM/BundledUI`, so the iOS app ships these fixes —
+a CI IPA built from a commit that predates them will not contain them.
+
 1. **Xcode compilation/XCTest and physical iPhone acceptance remain required.** Windows cannot compile the Swift/iOS SDK project. The added Swift tests cover frame geometry, mobile plan access, HLS Live TV and compatible RD transcode selection; run them in the macOS workflow/Xcode.
 2. **Signing is required.** A freshly compiled unsigned IPA still needs the owner's Apple signature through their chosen signing workflow. No signing identity or provisioned iPhone is available in this workspace. Follow [IOS_TESTING.md](IOS_TESTING.md).
 3. **No on-device FFmpeg/remuxer is bundled.** If RD does not provide compatible HLS/MP4, standalone iOS cannot play an MKV/unsupported-codec source. Raw live MPEG-TS needs an HLS feed from the provider or the optional home Core with FFmpeg. Higher plans remove the Free tier restriction; they do not add codecs.
