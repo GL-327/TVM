@@ -74,7 +74,7 @@ $success = $runs | Where-Object { $_.conclusion -eq "success" } | Select-Object 
 $candidates = @($runs | Where-Object { $_.status -eq "completed" })
 
 if ($Watch -and $active) {
-    Write-Host "Watching run $($active.databaseId) on $($active.headBranch) — $($active.url)"
+    Write-Host "Watching run $($active.databaseId) on $($active.headBranch) - $($active.url)"
     gh run watch $active.databaseId --exit-status
     $watched = gh run view $active.databaseId --json databaseId,conclusion,url,status | ConvertFrom-Json
     $candidates = @($watched) + @($candidates)
