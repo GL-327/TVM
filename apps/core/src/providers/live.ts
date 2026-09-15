@@ -56,7 +56,7 @@ export interface LiveProxyResult {
 /** Step-by-step result of opening one channel. Never contains the stream URL. */
 export interface LiveDiagnosis {
   ok: boolean;
-  step: 'resolve' | 'fetch' | 'read' | 'sniff' | 'ok';
+  step: 'resolve' | 'fetch' | 'read' | 'sniff' | 'segment' | 'ok';
   detail?: string;
   status?: number;
   contentType?: string;
@@ -67,6 +67,18 @@ export interface LiveDiagnosis {
   urlHasExtension?: boolean;
   typeFromUrl?: string | null;
   userAgent?: string;
+  setCookie?: boolean;
+  segmentStatus?: number;
+  segmentContentType?: string;
+  segmentBytes?: number;
+  segmentSameHost?: boolean;
+  segmentBody?: string;
+  segmentRetries?: string;
+  segmentShape?: string;
+  playlistShape?: string;
+  segmentHeaders?: string;
+  segmentUrl?: string;
+  tsFallback?: string;
 }
 
 export interface LiveService {
@@ -275,6 +287,256 @@ function mediaTypeFromUrl(url: string): string | null {
  * player's own manifest-error fallback sorts it out from the bytes it is
  * already receiving. See MANIFEST_ERRORS in apps/ui/src/player/engine.ts.
  */
+/**
+ * Xtream panels expose the same channel twice: `/live/user/pass/ID.m3u8` and
+ * the raw MPEG-TS `/live/user/pass/ID.ts`. Plenty of panels answer the HLS
+ * manifest happily and then refuse every segment, because their HLS module is
+ * not actually licensed or enabled — the manifest is generated, the CDN in
+ * front of it rejects the token. The .ts endpoint is unaffected by that, so
+ * knowing whether it works turns a dead channel into a playable one.
+ */
+async function probeTsEndpoint(playlistUrl: string, fetchImpl: typeof fetch): Promise<string> {
+  const candidate = tsVariantOf(playlistUrl);
+  if (candidate === null) return 'not-applicable';
+  try {
+    const response = await fetchImpl(candidate, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: upstreamHeaders(candidate, undefined, false),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+    });
+    if (!response.ok && response.status !== 206) {
+      try { await response.body?.cancel(); } catch { /* nothing to drain */ }
+      return `status=${response.status}`;
+    }
+    const body = response.body;
+    if (body === null) return 'empty';
+    const reader = body.getReader();
+    let head: Uint8Array;
+    try {
+      head = await peekForSniff(reader);
+    } finally {
+      try { await reader.cancel(); } catch { /* already gone */ }
+    }
+    if (looksLikeMpegTs(head)) return 'ok-mpegts';
+    return head.byteLength > 0 ? 'ok-unknown-bytes' : 'empty';
+  } catch {
+    return 'error';
+  }
+}
+
+/** `/live/u/p/123.m3u8` -> `/live/u/p/123.ts`. Null when the URL is not that shape. */
+export function tsVariantOf(playlistUrl: string): string | null {
+  try {
+    const url = new URL(playlistUrl);
+    if (!/\.m3u8$/i.test(url.pathname)) return null;
+    url.pathname = url.pathname.replace(/\.m3u8$/i, '.ts');
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** A URL reduced to its path shape: segments kept, anything secret masked. */
+function shapeOf(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split('/').filter((part) => part !== '');
+    const masked = parts.map((part) => {
+      if (/^[0-9]+(\.[a-z0-9]+)?$/i.test(part)) return part;
+      if (/^[a-z]+$/i.test(part) && part.length <= 12) return part;
+      return `<${part.length}>`;
+    });
+    return `/${masked.join('/')}${url.search === '' ? '' : '?<query>'}`;
+  } catch {
+    return '<unparsable>';
+  }
+}
+
+/**
+ * Re-requests one refused segment with different headers and reports which
+ * combination the provider accepts. A single successful variant names the fix.
+ */
+async function retrySegmentVariants(
+  playlistUrl: string,
+  segment: string,
+  fetchImpl: typeof fetch,
+): Promise<string> {
+  const origin = (() => {
+    try { return new URL(playlistUrl).origin; } catch { return ''; }
+  })();
+  const variants: Array<[string, Record<string, string>]> = [
+    ['referer', { Referer: playlistUrl }],
+    ['referer-origin', { Referer: `${origin}/` }],
+    ['browser-ua', { 'User-Agent': BROWSER_UA }],
+    ['browser-ua+referer', { 'User-Agent': BROWSER_UA, Referer: playlistUrl }],
+    ['no-accept', {}],
+  ];
+  const results: string[] = [];
+  for (const [name, extra] of variants) {
+    try {
+      const headers = upstreamHeaders(segment, undefined, false);
+      for (const [key, value] of Object.entries(extra)) headers.set(key, value);
+      if (name === 'no-accept') headers.delete('Accept');
+      const response = await fetchImpl(segment, {
+        method: 'GET',
+        redirect: 'follow',
+        headers,
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      });
+      results.push(`${name}=${response.status}`);
+      try { await response.body?.cancel(); } catch { /* nothing to drain */ }
+      if (response.ok) break; // the first variant that works is the answer
+    } catch {
+      results.push(`${name}=error`);
+    }
+  }
+  return results.join(' ');
+}
+
+/** A short, credential-free excerpt of an upstream error page. */
+async function readErrorSnippet(response: Response): Promise<string> {
+  try {
+    const text = (await response.text()).slice(0, 4000);
+    const stripped = text
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/https?:\/\/\S+/g, '[url]')
+      .replace(/\/live\/[^\s"']+/gi, '[stream]')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return stripped.slice(0, 300);
+  } catch {
+    return '';
+  }
+}
+
+/** Reads the rest of a small playlist body after the sniff peek. */
+async function readPlaylistBody(
+  head: Uint8Array,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<Uint8Array> {
+  const parts: Uint8Array[] = [head];
+  let total = head.byteLength;
+  while (total < 256_000) {
+    const next = await reader.read();
+    if (next.done) break;
+    if (next.value !== undefined && next.value.byteLength > 0) {
+      parts.push(next.value);
+      total += next.value.byteLength;
+    }
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.byteLength;
+  }
+  return out;
+}
+
+/** First media URI in a playlist, resolved against it. Null for a master-only list. */
+function firstSegmentUrl(playlist: string, base: string): string | null {
+  for (const raw of playlist.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    try {
+      return new URL(line, base).href;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch one segment the way the player would. This is the step that actually
+ * fails for most "the playlist is fine but nothing plays" reports.
+ */
+async function diagnoseSegment(
+  playlistUrl: string,
+  segment: string,
+  report: LiveDiagnosis,
+  fetchImpl: typeof fetch,
+): Promise<LiveDiagnosis> {
+  report.step = 'segment';
+  try {
+    const headers = upstreamHeaders(segment, undefined, false);
+    const response = await fetchImpl(segment, {
+      method: 'GET',
+      redirect: 'follow',
+      headers,
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+    });
+    // Shape only, credentials removed: enough to see whether the URL we built
+    // is the URL the panel expects, without putting a subscription in a report.
+    report.segmentShape = shapeOf(segment);
+    // Local debugging only; gated so it never ships in a normal report.
+    if (process.env['TVM_LIVE_DEBUG'] === '1') report.segmentUrl = segment;
+    report.playlistShape = shapeOf(playlistUrl);
+    report.segmentStatus = response.status;
+    report.segmentContentType = response.headers.get('content-type') ?? '';
+    report.segmentSameHost = new URL(segment).host === new URL(playlistUrl).host;
+    if (!response.ok && response.status !== 206) {
+      /*
+       * Panels explain themselves in the body of the refusal — "connection
+       * limit reached", "subscription expired", "stream not found". That
+       * sentence is the whole answer, so surface it rather than guessing from
+       * the status code. Credentials appear in these pages, so strip anything
+       * that looks like the stream path before showing it.
+       */
+      report.segmentHeaders = [...response.headers.entries()]
+        .filter(([key]) => !/^set-cookie$/i.test(key))
+        .map(([key, value]) => `${key}=${value.slice(0, 80)}`)
+        .join(' | ');
+      report.segmentBody = await readErrorSnippet(response);
+      /*
+       * Work out WHICH header the panel is judging, rather than guessing.
+       * Referer and a browser identity are the two things these gateways
+       * commonly gate segments on, and knowing which one it wants is the
+       * difference between a fix and another round of speculation.
+       */
+      report.segmentRetries = await retrySegmentVariants(playlistUrl, segment, fetchImpl);
+      report.tsFallback = await probeTsEndpoint(playlistUrl, fetchImpl);
+      report.detail = report.setCookie === true
+        ? `The playlist loaded but the provider refused the first segment with ${response.status}. It set a cookie on the playlist, which suggests the segments are tied to that session.`
+        : `The playlist loaded but the provider refused the first segment with ${response.status}. ` +
+          (report.segmentSameHost === false
+            ? 'The segments come from a different host to the playlist, which often means they are tied to a Referer or a signed token.'
+            : 'A 403 here usually means the subscription is already streaming on another device, or this channel is not included in it.');
+      return report;
+    }
+    const body = response.body;
+    if (body === null) {
+      report.detail = 'The provider accepted the segment request but sent no data.';
+      return report;
+    }
+    const reader = body.getReader();
+    let head: Uint8Array;
+    try {
+      head = await peekForSniff(reader);
+    } finally {
+      try { await reader.cancel(); } catch { /* already gone */ }
+    }
+    report.segmentBytes = head.byteLength;
+    if (looksLikeMpegTs(head) || head.byteLength > 0) {
+      report.ok = true;
+      report.step = 'ok';
+      report.detail = 'The playlist and its first segment both loaded. This channel should play.';
+      return report;
+    }
+    report.detail = 'The provider returned an empty first segment.';
+    return report;
+  } catch (error) {
+    const name = error instanceof Error ? error.name : '';
+    report.detail = name === 'TimeoutError' || name === 'AbortError'
+      ? 'The playlist loaded but the first segment did not arrive in time.'
+      : 'The playlist loaded but the first segment could not be fetched at all.';
+    return report;
+  }
+}
+
 async function probeLiveType(upstream: string, fetchImpl: typeof fetch): Promise<string | null> {
   try {
     const head = await fetchImpl(upstream, {
@@ -630,11 +892,19 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       }
       const channel = await findChannel(id);
       if (channel === undefined) return { kind: 'unavailable', reason: 'not-in-library' };
+      /*
+       * Decide the transport from the URL Core will actually fetch, not from
+       * the channel row. An Xtream row carries no URL at all — the upstream is
+       * built from the account at request time — so reading channel.url told
+       * the player "HLS" while Core was fetching MPEG-TS, and hls.js was handed
+       * a transport stream.
+       */
+      const upstream = (await resolveUpstream(id)) ?? channel.url;
       // Only probe when the URL is silent; an extension answers for free.
-      const probed = mediaTypeFromUrl(channel.url) === null
-        ? await probeLiveType(channel.url, fetchImpl)
+      const probed = upstream !== '' && mediaTypeFromUrl(upstream) === null
+        ? await probeLiveType(upstream, fetchImpl)
         : null;
-      return playbackFor(channel, 'html5', true, probed);
+      return playbackFor({ ...channel, url: upstream }, 'html5', true, probed);
     },
 
     async upstreamUrl(id: string): Promise<string | null> {
@@ -687,8 +957,15 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         }
         const reader = response.body.getReader();
         let head: Uint8Array;
+        let manifestBody: Uint8Array | null = null;
         try {
           head = await peekForSniff(reader);
+          /*
+           * A playlist is small and finite, so read the rest of it now, while
+           * the reader is still live. A media stream is neither: for that the
+           * peek is all we take.
+           */
+          if (looksLikeHlsBytes(head)) manifestBody = await readPlaylistBody(head, reader);
         } finally {
           // A live channel never ends. Release the connection rather than read on.
           controller.abort();
@@ -708,12 +985,31 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
           report.detail = `The first bytes are neither an HLS playlist nor MPEG-TS. The provider may have sent an error page instead of video. First bytes: ${text}`;
           return report;
         }
-        report.ok = true;
-        report.step = 'ok';
-        report.detail = report.looksLikeHls
-          ? 'The provider is sending an HLS playlist. This channel should play.'
-          : 'The provider is sending MPEG-TS. This channel should play through the MPEG-TS reader.';
-        return report;
+        if (report.looksLikeMpegTs) {
+          report.ok = true;
+          report.step = 'ok';
+          report.detail = 'The provider is sending MPEG-TS. This channel should play through the MPEG-TS reader.';
+          return report;
+        }
+
+        /*
+         * A playlist that loads is not a channel that plays. Providers commonly
+         * serve the manifest to anyone and then refuse the segments — on a
+         * session cookie set by the manifest response, on a Referer, or because
+         * the subscription's one connection is already in use. That failure
+         * arrives as a dead player with a healthy-looking manifest, so follow
+         * one segment through before calling this channel good.
+         */
+        report.setCookie = response.headers.get('set-cookie') !== null;
+        const manifest = new TextDecoder('utf-8').decode(manifestBody ?? head);
+        const segment = firstSegmentUrl(manifest, upstream);
+        if (segment === null) {
+          report.ok = true;
+          report.step = 'ok';
+          report.detail = 'The provider is sending an HLS playlist, but it lists no segments yet.';
+          return report;
+        }
+        return await diagnoseSegment(upstream, segment, report, fetchImpl);
       } catch (error) {
         const name = error instanceof Error ? error.name : '';
         report.step = 'fetch';
