@@ -140,8 +140,22 @@ check('WebView requests viewport-fit=cover',
   web.includes('viewport-fit=cover'));
 check('WebView uses visualViewport so the IME does not hide inputs',
   web.includes('visualViewport') && web.includes('scrollIntoView'));
-check('WebView has no JavascriptInterface bridge',
-  !main.includes('addJavascriptInterface') && !web.includes('addJavascriptInterface'));
+/*
+ * The standalone app needs a native player bridge — a WebView's <video> cannot
+ * open Matroska, WebM or MPEG-TS, which is most of what a debrid link or IPTV
+ * channel is. That bridge is only safe because the page it talks to is served
+ * by this app's own loopback server. Attaching it while a remote origin is
+ * loaded would hand that origin a native surface, so the invariant is no longer
+ * "no bridge" but "bridge only in standalone mode".
+ */
+check('a JavascriptInterface is only attached in standalone (loopback) mode',
+  !main.includes('addJavascriptInterface') ||
+  /standalone|127\.0\.0\.1|loopback/i.test(
+    main.slice(Math.max(0, main.indexOf('addJavascriptInterface') - 600), main.indexOf('addJavascriptInterface') + 200),
+  ),
+  'addJavascriptInterface is called without a standalone/loopback guard nearby');
+check('the LAN WebView client installs no bridge of its own',
+  !web.includes('addJavascriptInterface'));
 check('WebView does not install a touch listener that can swallow DOM clicks',
   !main.includes('setOnTouchListener') && !web.includes('setOnTouchListener'));
 check('WebView disables pinch zoom',

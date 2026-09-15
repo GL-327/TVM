@@ -2,7 +2,7 @@ import type Hls from 'hls.js';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
 import { publishHls } from './hlsBridge';
-import { createIOSPlayerEngine, iosPlaybackBridge } from './iosEngine';
+import { createIOSPlayerEngine, nativePlaybackBridge } from './iosEngine';
 
 /**
  * The one in-app playback engine.
@@ -158,9 +158,10 @@ export function createPlayerEngine(
   options: EngineOptions,
   events: EngineEvents,
 ): PlayerEngine {
-  // iPhone always decodes in VLC. HTML5 <video> cannot open MKV/WebM/TS and
-  // is what surfaces "Can't open this file" — never attach those URLs there.
-  if (iosPlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
+  // A phone shell always decodes natively: VLC on iOS, Media3 on Android.
+  // HTML5 <video> cannot open MKV/WebM/TS and is what surfaces "Can't open
+  // this file" — never attach those URLs there.
+  if (nativePlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
   if (stream.engine === 'native') return createMissingNativeEngine(events);
   const fetchImpl = options.fetchImpl ?? fetch;
   const live = options.live;
