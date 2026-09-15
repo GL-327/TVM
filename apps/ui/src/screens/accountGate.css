@@ -3,17 +3,48 @@
  *
  * Deliberately plain: this is the first thing anyone sees and the last place
  * to be clever. The scene layers and rail machinery are not loaded here at
- * all, so the gate paints instantly even before the catalogue exists.
+ * all, so the gate paints instantly even before the catalogue exists — the one
+ * decoration is a static gradient, which costs a single paint.
  */
 
 .gate {
-  min-height: 100dvh;
+  /*
+   * The box is the window, and it does its own scrolling.
+   *
+   * min-height let the gate grow past the window instead, and its ancestors
+   * clip rather than scroll — so on a 900px-tall desktop window the panel was
+   * taller than the screen, the top of it (the TVM mark and the heading) was
+   * simply cut off, and there was no scrollbar anywhere to reach it.
+   *
+   * safe centring is the other half: plain centring keeps centring content
+   * that is taller than its box, which pushes the top above the scroll origin
+   * and makes it unreachable even once the box does scroll. The safe keyword
+   * falls back to start alignment exactly when that would happen.
+   */
+  height: 100dvh;
   display: grid;
-  place-items: center;
+  place-items: safe center;
   padding: clamp(1rem, 4vw, 3rem);
-  background: var(--tvm-bg-deep, #000);
   color: var(--tvm-text, #f5f5f7);
   overflow-y: auto;
+
+  /*
+   * One static wash of the signature colour behind the panel.
+   *
+   * On a phone the panel fills the screen and this is barely visible, which is
+   * why it went unnoticed; on a desktop monitor the card is a narrow column in
+   * the middle of a black field and the first screen of the app read as
+   * unfinished. This is a gradient, not a scene: no layers, no blur, no
+   * animation, one paint at load and nothing per frame — the rest of the file
+   * stays as plain as it claims to be.
+   */
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 22%, transparent),
+      transparent 60%
+    ),
+    var(--tvm-bg-deep, #000);
 }
 
 .gate__panel {
@@ -85,6 +116,17 @@
 .gate-price__name { font-weight: 600; }
 .gate-price__amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
 .gate-price__amount span { font-size: 0.78rem; font-weight: 400; color: var(--tvm-text-faint); }
+
+/* Its own line beneath the monthly figure, so the head stays a clean two-column
+   row. The parent sets nowrap to protect the price itself; this line is prose
+   and is allowed to wrap on a narrow phone. */
+.gate-price__plus {
+  display: block;
+  margin-top: 0.15rem;
+  text-align: right;
+  white-space: normal;
+  color: var(--tvm-text-muted);
+}
 .gate-price__summary { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--tvm-text-muted); }
 
 .gate-price__terms { list-style: none; margin: 0.5rem 0 0; padding: 0; font-size: 0.82rem; }

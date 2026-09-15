@@ -1,31 +1,155 @@
-.billing-page { padding-bottom: 120px; }
-.billing-badge { display: inline-block; border: 1px solid #6de4be88; color: #8df5d1; border-radius: 99px; padding: 8px 16px; font-size: 18px; letter-spacing: .06em; }
-.billing-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .85fr); gap: 24px; margin: 28px 0; }
-.billing-panel { padding: 28px; border: 1px solid #ffffff26; background: #111720dc; border-radius: 22px; margin: 24px 0; }
-.billing-layout .billing-panel { margin: 0; }
-.billing-panel h2 { margin: 0 0 18px; font-size: 30px; }
-.billing-panel p { line-height: 1.6; }
-.billing-option { width: 100%; margin: 12px 0; text-align: left; }
-.billing-totals { margin: 20px 0; }
-.billing-totals > div { display: flex; justify-content: space-between; gap: 20px; padding: 14px 0; border-bottom: 1px solid #ffffff24; }
-.billing-totals dd { margin: 0; text-align: right; }
-.billing-totals__due { font-size: 30px; color: #8df5d1; }
-.billing-fineprint { color: #b9c2d0; font-size: 18px; line-height: 1.6; }
-.billing-message { padding: 16px; border-radius: 10px; background: #293748; }
-.billing-message--error { color: #ffd5cd; background: #692b3240; }
-.billing-consent { width: 100%; text-align: left; margin: 20px 0; }
-.billing-receipts { list-style: none; margin: 0; padding: 0; }
-.billing-receipts li { padding: 18px 0; border-top: 1px solid #ffffff20; }
-.legal-copy { max-width: 1000px; line-height: 1.65; }
-.legal-copy h2 { margin-top: 32px; }
-@media (max-width: 900px) { .billing-layout { grid-template-columns: 1fr; } }
+/*
+ * Shared chrome for the money-adjacent screens: Donate, Accounts, Live check,
+ * the receipts summary and the legal page.
+ *
+ * Two things were wrong with this file.
+ *
+ * It was written for the old in-app checkout and never revisited, so every
+ * colour was a literal from before TVM had a palette — a mint-and-steel set
+ * that now sits directly beside violet buttons. Everything below is a theme
+ * token, so these screens follow whichever theme is on instead of insisting on
+ * one of their own.
+ *
+ * And it was imported by two screens while being used by five. Screens are
+ * lazy-loaded, and a lazy chunk carries its own CSS, so Donate, Accounts and
+ * Live check were rendering these classes with no rules at all — unless you
+ * happened to open Legal first, at which point they silently changed
+ * appearance. The screens that use these classes now import this file.
+ */
+
+.billing-page {
+  padding-bottom: var(--tvm-space-7);
+}
+
+.billing-badge {
+  display: inline-block;
+  padding: var(--tvm-space-1) var(--tvm-space-2);
+  border: 1px solid color-mix(in srgb, var(--tvm-success) 55%, transparent);
+  border-radius: var(--tvm-radius-pill);
+  color: var(--tvm-success);
+  font-size: var(--tvm-font-size-caption);
+  letter-spacing: 0.06em;
+}
+
+.billing-panel {
+  margin: var(--tvm-space-3) 0;
+  padding: var(--tvm-space-3);
+  border: 1px solid var(--tvm-border);
+  border-radius: var(--tvm-radius-lg);
+  background: var(--tvm-surface);
+}
+
+.billing-panel h2 {
+  margin: 0 0 var(--tvm-space-2);
+  font-size: var(--tvm-font-size-body-lg);
+}
+
+.billing-panel p {
+  line-height: var(--tvm-line-height-body);
+}
+
+/*
+ * A chip in a row, not a stacked list item. Every remaining caller — donate
+ * amounts, the account state filter, the two live-check toggles — puts several
+ * of these side by side; the old `width: 100%` was left over from a list of
+ * plans that no longer exists and would have stacked all four donate amounts
+ * down the page.
+ */
+.billing-option {
+  margin: 0;
+}
+
+/*
+ * Which one is chosen.
+ *
+ * There was no rule for this at all, so the selected donate amount and the
+ * selected account filter looked exactly like the others and the only way to
+ * tell was to read the button underneath.
+ *
+ * The selector is doubled on purpose. Themes style buttons through
+ * [data-theme=...] .tvm-button, which outweighs a single class, and this file
+ * arrives in a lazily-loaded chunk whose position in the cascade is decided by
+ * when the screen was opened. Three classes win outright and in every order,
+ * which is worth more here than a tidier selector that works by luck.
+ *
+ * Repeated for the focused state because .tvm-button:focus repaints the
+ * background, which would have erased the tint exactly while you were on it.
+ */
+.tvm-button.billing-option.billing-option--selected,
+.tvm-button.billing-option.billing-option--selected:focus,
+.tvm-button.billing-option.billing-option--selected[data-focused='true'] {
+  border-color: var(--tvm-accent);
+  background: color-mix(in srgb, var(--tvm-accent) 26%, var(--tvm-surface));
+  color: var(--tvm-text);
+  font-weight: 640;
+}
+
+.billing-totals {
+  margin: var(--tvm-space-2) 0;
+}
+
+.billing-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--tvm-space-2);
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--tvm-border-soft);
+}
+
+.billing-totals dd {
+  margin: 0;
+  text-align: right;
+}
+
+.billing-totals__due {
+  color: var(--tvm-accent);
+  font-size: var(--tvm-font-size-title);
+}
+
+.billing-fineprint {
+  color: var(--tvm-text-muted);
+  font-size: var(--tvm-font-size-caption);
+  line-height: var(--tvm-line-height-body);
+}
+
+.billing-message {
+  padding: var(--tvm-space-2);
+  border-radius: var(--tvm-radius-md);
+  background: var(--tvm-surface-hover);
+}
+
+.billing-message--error {
+  border: 1px solid color-mix(in srgb, var(--tvm-danger) 45%, transparent);
+  background: color-mix(in srgb, var(--tvm-danger) 16%, transparent);
+  color: var(--tvm-text);
+}
+
+.billing-receipts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.billing-receipts li {
+  padding: var(--tvm-space-2) 0;
+  border-top: 1px solid var(--tvm-border-soft);
+}
+
+.legal-copy {
+  max-width: 62rem;
+  line-height: 1.65;
+}
+
+.legal-copy h2 {
+  margin-top: var(--tvm-space-4);
+}
 
 /*
  * Stripe mounts its card iframe here. It sizes itself, so this only needs to
  * give it room and keep it inside the panel's rhythm.
  */
 .stripe-element {
-  margin: 1rem 0;
+  margin: var(--tvm-space-2) 0;
   min-height: 12rem;
 }
 

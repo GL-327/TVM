@@ -11,6 +11,7 @@ import { RailSkeletons } from '../components/Skeleton';
 import { BrandLockup } from '../components/BrandLockup';
 import { IconApps, IconLive, IconStream, IconWatchlist } from '../components/Icons';
 import { HeroArt } from '../components/HeroArt';
+import { ART_REFERRER } from '../components/artFace';
 import { PageScene } from '../components/PageScene';
 import { preferBackdrop } from '../data/artwork';
 import { asTitle, fetchHome, peekHome, type CatalogRail } from '../data/media';
@@ -171,6 +172,35 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     [rails, theme, animeScene.id],
   );
 
+  /*
+   * Warm the backdrops the rotation is going to ask for.
+   *
+   * The slide index drives the title and the picture together, but only the
+   * title is already in memory: the picture has to be fetched and decoded
+   * before it can start its dissolve. So the hero showed one film's name over
+   * another film's artwork for the better part of a second, every eight
+   * seconds — the single most visible thing on the first screen, and it looked
+   * like a bug because it is one.
+   *
+   * Fetching them after first paint costs nothing that was not going to be
+   * spent within the next half minute anyway, and it is deliberately late so
+   * it cannot compete with the picture actually on screen.
+   */
+  useEffect(() => {
+    if (heroes.length < 2) return;
+    const timer = window.setTimeout(() => {
+      for (const item of heroes) {
+        const src = preferBackdrop(item.id, item.backdrop, item.poster);
+        if (src === '') continue;
+        const warm = new Image();
+        warm.decoding = 'async';
+        warm.referrerPolicy = ART_REFERRER;
+        warm.src = src;
+      }
+    }, 1_200);
+    return () => window.clearTimeout(timer);
+  }, [heroes]);
+
   useEffect(() => {
     if (heroes.length < 2) return;
     const timer = window.setInterval(() => {
@@ -309,7 +339,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
             {hero !== undefined ? <span className="home__kicker-source">Featured on TVM Stream</span> : null}
           </p>
           {hero !== undefined ? (
-            <h1 className={`stage__title${hero.wordmark === 'ember' ? ' stage__title--ember' : ''}`}>{hero.title}</h1>
+            <h1 key={hero.id} className={`stage__title${hero.wordmark === 'ember' ? ' stage__title--ember' : ''}`}>{hero.title}</h1>
           ) : (
             <h1 className="stage__title">Welcome</h1>
           )}

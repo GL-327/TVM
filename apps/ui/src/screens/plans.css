@@ -46,6 +46,14 @@
 }
 .tier-card__price span { font-size: 0.78rem; font-weight: 400; color: var(--tvm-text-faint); }
 
+/* Its own line, under the monthly figure it qualifies, and never wrapped mid-price. */
+.tier-card__price-note {
+  display: block;
+  margin-top: 0.2rem;
+  text-align: right;
+  color: var(--tvm-text-muted);
+}
+
 .tier-card__mine {
   margin: 0.75rem 0 0;
   font-size: 0.82rem;

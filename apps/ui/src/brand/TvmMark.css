@@ -1,8 +1,82 @@
+/*
+ * The mark wears the theme signature rather than a colour of its own.
+ *
+ * Every stop used to be a literal: a cyan-to-orange wash that made sense when
+ * TVM had no colour, and stopped making sense the moment palette.css said TVM
+ * is violet. On the account gate the logo appeared three times in cyan and
+ * amber directly above a violet button, which reads less like a brand than
+ * like two of them.
+ *
+ * Every theme already names its signature in --tvm-mark, so the mark reads
+ * that and derives its highlight, shadow and glass from it. Violet is then
+ * simply what the default theme names, and the logo agrees with whichever
+ * theme it is sitting in instead of agreeing with one and clashing with the
+ * other eight.
+ */
 .tvm-mark {
+  --mark-core: var(--tvm-mark, var(--tvm-brand-violet));
+  --mark-light: color-mix(in srgb, var(--mark-core) 30%, #ffffff);
+  --mark-deep: color-mix(in srgb, var(--mark-core) 55%, #150a2e);
+  /*
+   * The glass stays near-black on every theme, light ones included, because it
+   * is standing in for a switched-off screen. It only takes a cast of the
+   * signature so it does not read as a hole punched in the mark.
+   */
+  --mark-glass: color-mix(in srgb, var(--mark-core) 18%, #0d0718);
+  --mark-glass-deep: color-mix(in srgb, var(--mark-core) 7%, #05030a);
+
   display: block;
   overflow: visible;
   flex-shrink: 0;
   transform-box: fill-box;
+}
+
+.tvm-mark__wash-a,
+.tvm-mark__gem-a {
+  stop-color: var(--mark-light);
+}
+
+.tvm-mark__wash-b,
+.tvm-mark__gem-b {
+  stop-color: var(--mark-core);
+}
+
+.tvm-mark__wash-c,
+.tvm-mark__gem-c {
+  stop-color: var(--mark-deep);
+}
+
+.tvm-mark__screen-a {
+  stop-color: var(--mark-glass);
+}
+
+.tvm-mark__screen-b {
+  stop-color: var(--mark-glass-deep);
+}
+
+.tvm-mark__glow-a {
+  stop-color: var(--mark-light);
+  stop-opacity: 0.9;
+}
+
+.tvm-mark__glow-b {
+  stop-color: var(--mark-core);
+  stop-opacity: 0.42;
+}
+
+/* Fades to the same hue rather than to grey, so the bloom has no muddy edge. */
+.tvm-mark__glow-c {
+  stop-color: var(--mark-core);
+  stop-opacity: 0;
+}
+
+.tvm-mark__play-edge {
+  stroke: var(--mark-light);
+  stroke-opacity: 0.5;
+}
+
+.tvm-mark__scan {
+  stroke: var(--mark-light);
 }
 
 .tvm-mark--sm {
