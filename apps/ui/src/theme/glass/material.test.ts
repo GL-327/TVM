@@ -82,13 +82,15 @@ describe('glass nav lag fixes stay in place', () => {
     expect(looping).toContain("from './scrollAnim'");
   });
 
-  it('keeps throttle 0, isle default, and clones out of norigin', () => {
+  it('keeps throttle 0, a named default, and clones out of norigin', () => {
     const engine = read(ui, 'nav/focusEngine.ts');
     const registry = read(ui, 'theme/registry.ts');
     const poster = read(ui, 'components/PosterCard.tsx');
     const clone = read(ui, 'components/LoopClone.tsx');
     expect(engine).toContain('throttle: 0');
-    expect(registry).toContain("export const DEFAULT_THEME: ThemeId = 'default'");
+    const declared = registry.match(/export const DEFAULT_THEME: ThemeId = '([a-z]+)'/);
+    expect(declared).not.toBeNull();
+    expect(registry).toContain(`{ id: '${declared![1]}'`);
     expect(clone).toContain('data-loop-clone="true"');
     expect(poster).toContain('function PosterClone');
     const cloneBlock = poster.slice(poster.indexOf('function PosterClone'), poster.indexOf('const PosterFocusable'));
