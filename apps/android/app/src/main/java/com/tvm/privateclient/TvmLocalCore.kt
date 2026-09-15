@@ -227,13 +227,17 @@ class TvmLocalCore(
             return HttpReply.json(200, Json.obj("unlocked" to plans.developer()))
         }
         if (path == "/api/dev/unlock" && method == "POST") {
-            return HttpReply.json(
-                403,
-                Json.obj(
-                    "unlocked" to false,
-                    "error" to "Developer unlock is available on the desktop Core, not on this phone app.",
-                ),
-            )
+            // Verified here rather than refused, so developer mode behaves the
+            // same on a phone as on the desktop Core.
+            val password = Json.string(json.opt("password")) ?: ""
+            if (!TvmDevUnlock.verify(password)) {
+                return HttpReply.json(
+                    403,
+                    Json.obj("unlocked" to false, "error" to "That developer code was not recognised."),
+                )
+            }
+            plans.setDeveloper(true)
+            return HttpReply.json(200, Json.obj("unlocked" to true))
         }
         if (path == "/api/dev/lock" && method == "POST") {
             plans.setDeveloper(false)
