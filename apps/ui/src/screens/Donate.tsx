@@ -5,6 +5,7 @@ import { formatBillingMoney } from '../data/plan';
 import { apiFetch } from '../data/media';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import './billing.css';
 import './plans.css';
 
 /**

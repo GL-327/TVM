@@ -50,7 +50,17 @@ function Prices({ tiers }: { tiers: TiersResponse }): React.JSX.Element {
           <div className="gate-price__head">
             <span className="gate-price__name">{tier.name}</span>
             {tier.monthlyPence !== null && (
-              <span className="gate-price__amount">{formatBillingMoney(tier.monthlyPence)}<span>/month</span></span>
+              <span className="gate-price__amount">
+                {formatBillingMoney(tier.monthlyPence)}<span>/month</span>
+                {/* Both tiers cost the same monthly figure, so without this the first
+                    screen anyone sees quoted one price for two different things. */}
+                {tier.liveTvTerms.length > 0 && (
+                  <span className="gate-price__plus">
+                    plus Live TV from{' '}
+                    {formatBillingMoney(Math.min(...tier.liveTvTerms.map((term) => term.amountPence)))}
+                  </span>
+                )}
+              </span>
             )}
           </div>
           <p className="gate-price__summary">{tier.summary}</p>

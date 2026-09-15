@@ -17,6 +17,7 @@ import {
 } from '../data/account';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
+import './billing.css';
 import './accounts.css';
 
 /**

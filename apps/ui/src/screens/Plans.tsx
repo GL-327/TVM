@@ -26,6 +26,20 @@ function tierCard(
   current: AccountState,
 ): React.JSX.Element {
   const mine = current.account?.tier === tier.id && current.account.activated;
+  /*
+   * The cheapest Live TV term, shown beside the monthly price.
+   *
+   * Both tiers cost the same 9.99 for the software, and the Live TV terms
+   * used to appear only in a list further down the card. Side by side, the
+   * two cards therefore showed the same headline price for plainly different
+   * things, which reads as a copy-and-paste mistake and understates what the
+   * larger tier costs. The list below still gives every term; this says, at
+   * the point where the eye compares them, that one of them costs more.
+   */
+  const fromTerm = tier.liveTvTerms.reduce<typeof tier.liveTvTerms[number] | null>(
+    (cheapest, term) => (cheapest === null || term.amountPence < cheapest.amountPence ? term : cheapest),
+    null,
+  );
   return (
     <section key={tier.id} className={`tier-card${mine ? ' tier-card--mine' : ''}`}>
       <header className="tier-card__head">
@@ -36,6 +50,11 @@ function tierCard(
         {tier.monthlyPence !== null && (
           <p className="tier-card__price">
             {formatBillingMoney(tier.monthlyPence)}<span>/month</span>
+            {fromTerm !== null && (
+              <span className="tier-card__price-note">
+                plus Live TV from {formatBillingMoney(fromTerm.amountPence)}
+              </span>
+            )}
           </p>
         )}
       </header>

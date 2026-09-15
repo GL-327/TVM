@@ -256,6 +256,26 @@ body,
   text-shadow: 0 0.35rem 1.25rem rgba(0, 0, 0, 0.55);
 }
 
+/*
+ * The title dissolves on the same curve and duration as the picture behind it
+ * (see HeroArt.css), so a rotation reads as one crossfade rather than as a
+ * caption that changed before its photograph did. The global switch in
+ * motion.css collapses this for Reduced motion and Performance mode; it must
+ * not carry a media query of its own.
+ */
+.stage--home .stage__title {
+  animation: hero-copy-in 480ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+
+@keyframes hero-copy-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .stage__title--ember {
   color: #ff8a2b;
   letter-spacing: 0.08em;
@@ -938,8 +958,40 @@ body,
 
 /* Posters ----------------------------------------------------------------- */
 
-.poster {
+/*
+ * Poster width lives at the root so a poster and the skeleton standing in for
+ * it cannot drift apart, and so the steps below have one place to change.
+ *
+ * The steps exist because 8.6rem was picked for a laptop and then used on
+ * every screen: a 1440 monitor showed ten posters to a row where a 1280
+ * laptop showed eight, so the artwork got relatively smaller as the screen
+ * got bigger. That is backwards, and it is why a wide window read as a dense
+ * catalogue rather than a storefront.
+ *
+ * Steps rather than vw, deliberately: the TV preview zooms a fixed 1920px
+ * stage, and a vw inside a zoomed box measures the window rather than the
+ * stage — the largest screen would have produced the smallest posters.
+ */
+:root {
   --poster-w: 8.6rem;
+  --poster-w-landscape: 12.4rem;
+}
+
+@media (min-width: 1360px) {
+  :root {
+    --poster-w: 10.4rem;
+    --poster-w-landscape: 14.8rem;
+  }
+}
+
+@media (min-width: 1760px) {
+  :root {
+    --poster-w: 11.8rem;
+    --poster-w-landscape: 16.8rem;
+  }
+}
+
+.poster {
   position: relative;
   box-sizing: border-box;
   flex: 0 0 var(--poster-w);
@@ -959,7 +1011,7 @@ body,
 }
 
 .poster--landscape {
-  --poster-w: 12.4rem;
+  --poster-w: var(--poster-w-landscape);
 }
 
 .poster__art {
@@ -1465,6 +1517,14 @@ img.stage__art.art--ready {
 }
 
 .token-field__input {
+  /*
+   * Fill the container rather than the browser default of about twenty
+   * characters. Inside .token-field the flex column already stretched it, so
+   * this changes nothing there — but every other layout got an input that
+   * stopped halfway across its own label and read as broken.
+   */
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--tvm-space-2) var(--tvm-space-3);
   border: 1px solid var(--tvm-border);
   border-radius: var(--tvm-radius-md);
@@ -1586,10 +1646,10 @@ img.stage__art.art--ready {
 }
 
 .skeleton--poster {
-  flex: 0 0 8.6rem;
-  width: 8.6rem;
-  min-width: 8.6rem;
-  max-width: 8.6rem;
+  flex: 0 0 var(--poster-w);
+  width: var(--poster-w);
+  min-width: var(--poster-w);
+  max-width: var(--poster-w);
   aspect-ratio: 2 / 3;
 }
 
@@ -1772,7 +1832,13 @@ html.tvm-egg--happy .app::after {
   width: 42%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #3ec8ff, #ffd27a 55%, #ff7a4a);
+  /* The theme signature, not the mark's retired cyan-to-orange wash. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 45%, #ffffff),
+    var(--tvm-mark, var(--tvm-brand-violet)) 55%,
+    color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 60%, #150a2e)
+  );
   transform: translateX(-120%);
   animation: tvm-loading-slide 1.15s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
@@ -3111,14 +3177,13 @@ html.tvm-native-plane .player-root {
     min-height: 52vh;
   }
 
-  .poster {
-    --poster-w: 9.4rem;
+  :root {
+    --poster-w: 13.4rem;
+    --poster-w-landscape: 19rem;
   }
 
-  .poster--landscape,
   .skeleton--landscape {
-    --poster-w: 15rem;
-    flex-basis: 15rem;
+    flex-basis: var(--poster-w-landscape);
   }
 }
 
