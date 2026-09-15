@@ -320,7 +320,7 @@ enum TVMArchive {
     static func extractTarGz(_ archive: Data, to dest: URL) throws {
         let tar = try gunzip(archive)
         let fm = FileManager.default
-        try fm.createDirectory(at: dest, withIntermediates: true)
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
         var offset = 0
         let block = 512
         while offset + block <= tar.count {
@@ -339,12 +339,12 @@ enum TVMArchive {
             if full.isEmpty || full.contains("..") || full.hasPrefix("/") { throw ClientError.message("refusing archive path: \(full)") }
             if full.hasPrefix("._") || full.contains("/._") || (full as NSString).lastPathComponent == ".DS_Store" { continue }
             if type == 53 || full.hasSuffix("/") {
-                try fm.createDirectory(at: dest.appendingPathComponent(full), withIntermediates: true)
+                try fm.createDirectory(at: dest.appendingPathComponent(full), withIntermediateDirectories: true)
                 continue
             }
             if type == 120 || type == 103 { continue }
             let file = dest.appendingPathComponent(full)
-            try fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediates: true)
+            try fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try payload.write(to: file, options: .atomic)
         }
     }
