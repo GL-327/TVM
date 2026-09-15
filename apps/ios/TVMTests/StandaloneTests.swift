@@ -229,7 +229,7 @@ final class StandaloneTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockPlaybackProtocol.self]
         let core = testCore(session: URLSession(configuration: configuration))
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
@@ -263,7 +263,7 @@ final class StandaloneTests: XCTestCase {
         configuration.timeoutIntervalForRequest = 4
         let session = URLSession(configuration: configuration)
         let core = testCore(session: session)
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
@@ -303,7 +303,7 @@ final class StandaloneTests: XCTestCase {
         configuration.timeoutIntervalForRequest = 4
         let session = URLSession(configuration: configuration)
         let core = testCore(session: session)
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
@@ -326,7 +326,7 @@ final class StandaloneTests: XCTestCase {
         configuration.protocolClasses = [MockPlaybackProtocol.self]
         let session = URLSession(configuration: configuration)
         let core = testCore(session: session)
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = nil
@@ -348,7 +348,7 @@ final class StandaloneTests: XCTestCase {
         configuration.protocolClasses = [MockPlaybackProtocol.self]
         let session = URLSession(configuration: configuration)
         let core = testCore(session: session)
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = nil
@@ -371,7 +371,7 @@ final class StandaloneTests: XCTestCase {
         configuration.timeoutIntervalForRequest = 4
         let session = URLSession(configuration: configuration)
         let core = testCore(session: session)
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
@@ -398,7 +398,7 @@ final class StandaloneTests: XCTestCase {
         configuration.timeoutIntervalForRequest = 4
         let session = URLSession(configuration: configuration)
         let core = testCore(session: session)
-        _ = try? core.plans.setPlan("basic")
+        _ = try? core.plans.setPlan("premium")
         defer { _ = core.plans.cancel() }
         core.rd.ignoreKeychain = true
         core.rd.testToken = "fixture-token"
