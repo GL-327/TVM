@@ -451,7 +451,7 @@ final class TVMMedia {
             }
             return (409, ["kind": "unavailable", "reason": "empty"])
         }
-        let height = plans.maxHeight()
+        let height = TVMDeviceChrome.playbackHeight(planMax: plans.maxHeight())
         let capped = streams.filter { rd.streamHeight("\($0.name) \($0.title)") <= height }
         let ranked = Array((capped.isEmpty ? streams : capped).prefix(8))
         var last = ["kind": "unavailable", "reason": "empty"] as [String: Any]

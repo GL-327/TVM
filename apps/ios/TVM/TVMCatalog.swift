@@ -152,7 +152,9 @@ final class TVMCatalog {
     private func readKind(_ kind: String, imdb: String) async -> TitleMeta? {
         guard let url = URL(string: "https://v3-cinemeta.strem.io/meta/\(kind)/\(imdb).json") else { return nil }
         do {
-            let (data, response) = try await session.data(from: url)
+            var request = URLRequest(url: url)
+            request.setValue(TVMPrefs.acceptLanguage(TVMPrefs.load(store).language), forHTTPHeaderField: "Accept-Language")
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                   let body = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let raw = body["meta"] as? [String: Any],
@@ -168,6 +170,7 @@ final class TVMCatalog {
         guard let url = URL(string: "https://v3-cinemeta.strem.io\(path)") else { return [] }
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
+        request.setValue(TVMPrefs.acceptLanguage(TVMPrefs.load(store).language), forHTTPHeaderField: "Accept-Language")
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),

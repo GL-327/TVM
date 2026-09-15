@@ -8,6 +8,7 @@ import { TvmMark } from '../brand/TvmMark';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
 import { iosPlaybackBridge } from '../player/iosEngine';
 import { PlayerRoot, type PlayerSession } from '../player';
+import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
 import { playerShellClass, readPlayerLayout } from '../player/playerLayout';
 import type { ScreenProps } from '../nav/registry';
 
@@ -139,7 +140,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       const engine = createPlayerEngine(
         video ?? document.createElement('video'),
         native ? { ...stream, engine: 'native' } : stream,
-        { live, startAt: stream.startAt ?? 0, maxHeight: planRef.current.maxHeight },
+        { live, startAt: stream.startAt ?? 0, maxHeight: playbackMaxHeight(planRef.current.maxHeight, readDeviceChrome().maxHeight) },
         {
           onTime: (nextPosition, nextDuration) => {
             positionRef.current = nextPosition;

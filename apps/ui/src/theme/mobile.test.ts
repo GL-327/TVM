@@ -29,6 +29,9 @@ describe('phone layer', () => {
     expect(css).toContain('env(safe-area-inset-bottom)');
     expect(css).toContain('--tvm-tabbar');
     expect(css).toContain('--tvm-keyboard-inset');
+    expect(css).toContain('--tvm-chrome-top');
+    expect(css).toContain("data-device-family='island'");
+    expect(css).toContain('--tvm-chrome-extra-top');
   });
 
   it('docks the ribbon as a labelled bottom tab bar instead of a hover peek', () => {
@@ -55,6 +58,8 @@ describe('phone layer', () => {
   it('starts shared touch and keyboard helpers from the UI entry', () => {
     expect(main).toContain('startPointerInput()');
     expect(main).toContain('startPhoneViewport()');
+    expect(main).toContain('startDeviceChrome()');
+    expect(main).toContain('applyStoredLanguage()');
     expect(pointer).toContain('stopImmediatePropagation()');
     expect(pointer).toContain("event.pointerType === 'touch'");
     expect(pointer).toContain('host.click()');

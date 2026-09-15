@@ -29,6 +29,7 @@ import { createStreamer, type StreamerService } from './providers/streamer.ts';
 import { serveExactStatic, serveStatic } from './static.ts';
 import { applyPolicy, resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
+import { readPrefs, writePrefs } from './prefs.ts';
 
 export { CORE_VERSION };
 
@@ -435,7 +436,7 @@ async function handleApi(
   }
 
   if (path === '/api/update/status' && request.method === 'GET') {
-    sendJson(response, 200, update.status());
+    sendJson(response, 200, { ...update.status(), autoUpdate: readPrefs(dataDir).autoUpdate });
     return true;
   }
 
@@ -461,6 +462,16 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/update/changelog' && request.method === 'GET') {
+    sendJson(response, 200, update.changelog() ?? { pending: false, version: '', from: null, to: null, appliedAt: '', entries: [] });
+    return true;
+  }
+
+  if (path === '/api/update/changelog/seen' && request.method === 'POST') {
+    sendJson(response, 200, update.markChangelogSeen() ?? { pending: false, version: '', from: null, to: null, appliedAt: '', entries: [] });
+    return true;
+  }
+
   if (path === '/api/update/token' && request.method === 'PUT') {
     try {
       const body = (await readJson(request)) as { token?: unknown };
@@ -471,6 +482,28 @@ async function handleApi(
       sendJson(response, 200, update.setToken(body.token));
     } catch (error) {
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'token rejected' });
+    }
+    return true;
+  }
+
+  if (path === '/api/prefs' && request.method === 'GET') {
+    sendJson(response, 200, readPrefs(dataDir));
+    return true;
+  }
+
+  if (path === '/api/prefs' && request.method === 'PUT') {
+    try {
+      const body = (await readJson(request)) as { language?: unknown; autoUpdate?: unknown };
+      sendJson(
+        response,
+        200,
+        writePrefs(dataDir, {
+          ...(typeof body.language === 'string' ? { language: body.language } : {}),
+          ...(typeof body.autoUpdate === 'boolean' ? { autoUpdate: body.autoUpdate } : {}),
+        }),
+      );
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'prefs rejected' });
     }
     return true;
   }

@@ -7,17 +7,23 @@ import { App } from './App';
 import { startDesktopShell, startTvStage } from './tvStage';
 import { startPointerInput } from './nav/pointerInput';
 import { startPhoneViewport } from './nav/phoneViewport';
+import { startDeviceChrome } from './nav/deviceChrome';
 import { applyPlanClass, fetchPlan, themeUnlocked } from './data/plan';
+import { hydratePrefs } from './data/prefs';
 import { applyStoredTheme, applyTheme, readStoredTheme } from './theme/apply';
 import { applyStoredMotionPreference, applyStoredPerformanceMode } from './theme/motion';
+import { applyStoredLanguage } from './i18n/locale';
 
 startTvStage();
 startDesktopShell();
 startPointerInput();
 startPhoneViewport();
+startDeviceChrome();
+applyStoredLanguage();
 applyStoredTheme();
 applyStoredMotionPreference();
 applyStoredPerformanceMode();
+void hydratePrefs();
 void fetchPlan().then((plan) => {
   applyPlanClass(plan);
   if (!themeUnlocked(plan, readStoredTheme())) applyTheme('default');
