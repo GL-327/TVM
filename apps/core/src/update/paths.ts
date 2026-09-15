@@ -187,3 +187,11 @@ export function changelogPath(dataDir: string): string {
 export function prefsPath(dataDir: string): string {
   return join(dataDir, 'prefs.json');
 }
+
+export function stripeKeysPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'stripe.enc');
+}
+
+export function paymentsLedgerPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'payments.enc');
+}

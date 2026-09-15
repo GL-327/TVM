@@ -53,7 +53,7 @@ describe('charges', () => {
       cvc: '123',
     });
     const billed = plans.billing();
-    expect(billed.processor).toEqual({ linked: false, reason: 'no_processor' });
+    expect(billed.processor).toMatchObject({ linked: false, mode: null, webhookConfigured: false });
     expect(billed.paymentMethod?.last4).toBe('4242');
     const charged = plans.charge({ tokenId: billed.paymentMethod?.tokenId });
     expect(charged.reason).toBe('no_processor');

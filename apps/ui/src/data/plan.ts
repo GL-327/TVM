@@ -169,12 +169,16 @@ export async function fetchPlan(signal?: AbortSignal, strict = false): Promise<P
 export interface BillingReceipt {
   id: string;
   planId: PlanId;
-  mode: 'sandbox';
-  event: 'checkout' | 'cancellation';
+  /** 'sandbox' takes no money; 'test' and 'live' are Stripe payments. */
+  mode: 'sandbox' | 'test' | 'live';
+  mock?: boolean;
+  event: 'checkout' | 'cancellation' | 'refund';
   currency: 'GBP';
   monthlyPence: number;
   oneTimePence: number;
-  chargedPence: 0;
+  chargedPence: number;
+  paymentIntentId?: string;
+  receiptUrl?: string | null;
   liveTv: boolean;
   animePurchased?: boolean;
   bundlePurchased?: boolean;
@@ -195,12 +199,12 @@ export interface PublicCardToken {
 }
 
 export interface BillingStatus {
-  mode: 'sandbox';
-  livePaymentsEnabled: false;
+  mode: 'sandbox' | 'test' | 'live';
+  livePaymentsEnabled: boolean;
   currency: 'GBP';
-  subscription: 'free' | 'test-active';
+  subscription: 'free' | 'test-active' | 'active';
   monthlyPence: number;
-  nextChargeAt: null;
+  nextChargeAt: string | null;
   synthwaveOwned: boolean;
   anime?: boolean;
   bundle?: boolean;
@@ -209,7 +213,7 @@ export interface BillingStatus {
   animeOwned?: boolean;
   bundleOwned?: boolean;
   receipts: BillingReceipt[];
-  processor?: { linked: false; reason: 'no_processor' };
+  processor?: { linked: boolean; reason: string; mode: 'test' | 'live' | null; webhookConfigured: boolean };
   paymentMethod?: PublicCardToken | null;
 }
 
@@ -229,6 +233,42 @@ export interface CheckoutRequest {
   expiry?: string;
   cvc?: string;
   zip?: string;
+}
+
+/** What /api/billing/stripe reports. The secret key is never part of it. */
+export interface StripeStatus {
+  configured: boolean;
+  mode: 'test' | 'live' | null;
+  publishableKey: string | null;
+  webhookConfigured: boolean;
+  reason: string | null;
+}
+
+export interface PaymentIntentStart {
+  paymentIntentId: string;
+  clientSecret: string;
+  publishableKey: string;
+  amountPence: number;
+  monthlyPence: number;
+  oneTimePence: number;
+  currency: 'GBP';
+  mode: 'test' | 'live';
+  description: string;
+}
+
+export interface PaymentOrderView {
+  paymentIntentId: string;
+  planId: string;
+  amountPence: number;
+  chargedPence: number;
+  refundedPence: number;
+  currency: 'GBP';
+  mode: 'test' | 'live';
+  status: 'pending' | 'paid' | 'failed' | 'canceled' | 'refunded';
+  createdAt: string;
+  settledAt: string | null;
+  receiptUrl: string | null;
+  failureMessage: string | null;
 }
 
 export interface ChargeResult {
@@ -330,7 +370,9 @@ export async function checkoutPlan(input: CheckoutRequest): Promise<PlanStatus> 
 
 export async function fetchBilling(signal?: AbortSignal): Promise<BillingStatus> {
   const body = await requestJson<BillingStatus>('/api/billing', {}, 5_000, signal);
-  if (body.mode !== 'sandbox' || body.livePaymentsEnabled !== false || !Array.isArray(body.receipts)) {
+  // This used to insist on mode === 'sandbox', which made the screen throw as
+  // soon as a real processor was configured. The shape is what matters.
+  if (!['sandbox', 'test', 'live'].includes(body.mode) || !Array.isArray(body.receipts)) {
     throw new Error('Billing information is unavailable. Please try again.');
   }
   return body;
@@ -491,3 +533,32 @@ export function checkoutPack(value: unknown): ThemePack | undefined {
   return value === 'synthwave' || value === 'anime' || value === 'theme-bundle' ? value : undefined;
 }
 export function packName(pack: ThemePack): string { return pack === 'theme-bundle' ? 'All paid themes' : pack === 'anime' ? 'Anime' : 'Retro'; }
+
+/** Whether a card can be taken, and the publishable key needed to take one. */
+export async function fetchStripeStatus(signal?: AbortSignal): Promise<StripeStatus> {
+  return requestJson<StripeStatus>('/api/billing/stripe', {}, 5_000, signal);
+}
+
+/**
+ * Opens a payment. The amount comes back from the server, priced from the
+ * catalogue — the browser cannot name its own total.
+ */
+export async function startPaymentIntent(input: CheckoutRequest): Promise<PaymentIntentStart> {
+  return requestJson<PaymentIntentStart>('/api/billing/intent', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  }, 20_000);
+}
+
+/**
+ * Asks the server to re-read the payment from Stripe and settle it. The
+ * browser's own word that the card went through is never enough.
+ */
+export async function confirmPaymentIntent(paymentIntentId: string): Promise<PaymentOrderView> {
+  return requestJson<PaymentOrderView>('/api/billing/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ paymentIntentId }),
+  }, 20_000);
+}
