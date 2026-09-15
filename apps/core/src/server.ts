@@ -12,6 +12,7 @@ import { createBillingProbe, type BillingProbe } from './providers/billingProbe.
 import { createAccountsService, isAccountTier, type AccountsService } from './providers/accounts.ts';
 import { entitlementForTier, ACCESS_TIERS, ACCESS_ROUTE, STREAM_MONTHLY_PENCE } from './providers/accessTiers.ts';
 import { TERMS, TERMS_SUMMARY, TERMS_VERSION } from './providers/terms.ts';
+import { createDonationService, DONATION_COPY, type DonationService } from './providers/donations.ts';
 import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
 import { mobilePlaybackBlocked } from './mobileAccess.ts';
 import { createLanSessions, serveLanPairing } from './lanSessions.ts';
@@ -402,6 +403,7 @@ export interface CoreOptions {
   session?: SessionService;
   plans?: PlanService;
   accounts?: AccountsService;
+  donations?: DonationService;
   payments?: PaymentService;
   subscriptions?: SubscriptionService;
   billingProbe?: BillingProbe;
@@ -431,6 +433,7 @@ async function handleApi(
   subscriptions: SubscriptionService,
   billingProbe: BillingProbe,
   accounts: AccountsService,
+  donations: DonationService,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -1064,6 +1067,21 @@ async function handleApi(
     return typeof agent === 'string' ? agent.slice(0, 200) : 'unknown';
   };
 
+  if (path === '/api/donate' && request.method === 'GET') {
+    sendJson(response, 200, { ...donations.presets(), copy: DONATION_COPY });
+    return true;
+  }
+
+  if (path === '/api/donate' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as { amountPence?: unknown };
+      sendJson(response, 200, await donations.begin(Number(body.amountPence)));
+    } catch (error) {
+      sendJson(response, error instanceof PaymentsNotConfigured ? 503 : 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
   if (path === '/api/terms' && request.method === 'GET') {
     sendJson(response, 200, { ...TERMS, summary: TERMS_SUMMARY });
     return true;
@@ -1119,7 +1137,7 @@ async function handleApi(
     const wanted = entitlementForTier(record.tier);
     const current = plans.status();
     if (current.id !== wanted.planId) plans.set(wanted.planId, 'checkout');
-    if (current.liveTv !== wanted.liveTv) plans.setLiveTv(wanted.liveTv);
+    if (current.liveTv !== wanted.liveTv) plans.grantLiveTv(wanted.liveTv);
   };
   /** Who am I, and may I use TVM? The interface asks this on every launch. */
   if (path === '/api/account' && request.method === 'GET') {
@@ -1487,6 +1505,19 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       return state.configured ? state.config.mode : null;
     },
   });
+  // Gifts to the operator. Deliberately holds no reference to plans or
+  // accounts: there is no wire along which a donation could grant anything.
+  const donations = options.donations ?? createDonationService({
+    client: () => {
+      const state = loadStripeConfig(dataDir, env);
+      if (!state.configured) throw new PaymentsNotConfigured(state.detail);
+      return createStripeClient({ config: state.config });
+    },
+    publishableKey: () => {
+      const state = loadStripeConfig(dataDir, env);
+      return state.configured ? state.config.publishableKey : null;
+    },
+  });
   const live = options.live ?? createLiveService({ dataDir, includeMock: () => plans.status().liveTv });
   const session = options.session ?? createSessionService({ dataDir });
   const streamer = options.streamer ?? createStreamer({ dataDir, env });
@@ -1552,7 +1583,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         return;
       }
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments, subscriptions, billingProbe, accounts)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments, subscriptions, billingProbe, accounts, donations)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });
