@@ -7,7 +7,8 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const applySrc = readFileSync(join(dir, 'apply.ts'), 'utf8');
 
 describe('theme apply imports', () => {
-  it('imports every theme sheet and boots the isle default once', () => {
+  it('imports every theme sheet and introduces a new default exactly once', () => {
+    expect(applySrc).toContain("import './cinematic.css'");
     expect(applySrc).toContain("import './default.css'");
     expect(applySrc).toContain("import './happy.css'");
     expect(applySrc).toContain("import './light.css'");
@@ -17,9 +18,14 @@ describe('theme apply imports', () => {
     expect(applySrc).toContain("import './scene.css'");
     expect(applySrc).toContain("import './synthwave.css'");
     expect(applySrc).toContain("import.meta.glob('./glass/*.css', { eager: true })");
-    expect(applySrc).toContain('tvm.theme.isle-boot');
+    // The boot key is bumped whenever the shipped default changes, so each
+    // new default is introduced once per device and a theme the viewer picks
+    // afterwards is never overwritten again.
+    expect(applySrc).toContain('tvm.theme.cinematic-boot');
+    expect(applySrc).not.toContain('tvm.theme.isle-boot');
     expect(applySrc).toContain('subscribeTheme');
-    expect(applySrc).toContain("applyTheme('default')");
+    // Applied by name, so changing DEFAULT_THEME cannot leave this behind.
+    expect(applySrc).toContain('applyTheme(DEFAULT_THEME)');
     expect(applySrc).not.toContain("applyTheme('glass')");
     expect(applySrc).not.toContain('tvm.theme.happy-boot');
 
@@ -54,6 +60,7 @@ describe('theme apply imports', () => {
       'heather.css',
       'happy.css',
       'synthwave.css',
+      'cinematic.css',
       join('glass', 'player.css'),
     ];
     const opaque = /\.player-root[^{]*\{[^}]*background:\s*(#000|#000000|black)\b/i;

@@ -1,4 +1,4 @@
-export type ThemeId = 'default' | 'light' | 'dark' | 'happy' | 'sunset' | 'heather' | 'glass' | 'synthwave' | 'anime';
+export type ThemeId = 'cinematic' | 'default' | 'light' | 'dark' | 'happy' | 'sunset' | 'heather' | 'glass' | 'synthwave' | 'anime';
 
 export interface ThemeSpec {
   id: ThemeId;
@@ -7,14 +7,20 @@ export interface ThemeSpec {
   premium?: boolean;
 }
 
-export const DEFAULT_THEME: ThemeId = 'default';
+/**
+ * Cinematic is the look TVM ships with on a computer. Every earlier theme is
+ * still here and still selectable — this changes which one you meet first,
+ * not which ones exist.
+ */
+export const DEFAULT_THEME: ThemeId = 'cinematic';
 
 /** Theme id stays `synthwave` for stored preferences and entitlements; the pack is sold as Retro. */
 export const SYNTHWAVE_THEME_NAME = 'Retro';
 
 /** Default is mint-and-navy. Retro is a paid 1970s/80s television-set pack. */
 export const THEMES: readonly ThemeSpec[] = [
-  { id: 'default', name: 'Default' },
+  { id: 'cinematic', name: 'Cinematic' },
+  { id: 'default', name: 'Original' },
   { id: 'light', name: 'Light' },
   { id: 'dark', name: 'Dark' },
   { id: 'happy', name: 'Happy' },
