@@ -4,6 +4,7 @@ import { Home } from '../screens/Home';
 import { NoticeModal } from '../screens/NoticeModal';
 
 // Keep Home and lightweight notices ready; fetch secondary screens on demand.
+const Accounts = lazy(() => import('../screens/Accounts').then((m) => ({ default: m.Accounts })));
 const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
 const Checkout = lazy(() => import('../screens/Checkout').then((m) => ({ default: m.Checkout })));
 const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
@@ -50,6 +51,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   'live-playlist': { component: LivePlaylist, defaultFocus: 'url' },
   'live-picks': { component: LivePicks, defaultFocus: 'query' },
   'live-check': { component: LiveCheck, defaultFocus: 'run-check' },
+  accounts: { component: Accounts, defaultFocus: 'accounts-search' },
   apps: { component: Apps, defaultFocus: 'app-tvm-stream' },
   service: { component: Service, defaultFocus: 'service-back' },
   profile: { component: Profile, defaultFocus: 'realdebrid' },
