@@ -82,10 +82,12 @@ jobs:
         run: |
           corepack pnpm install --frozen-lockfile
           node apps/android/bundle-ui.mjs
+          node scripts/export-access.mjs
           node apps/android/export-fallback-catalog.mjs
           node scripts/write-build-info.mjs android
           test -f apps/android/app/src/main/assets/ui/index.html
           test -f apps/android/app/src/main/assets/BuildInfo.json
+          test -f apps/android/app/src/main/assets/Access.json
       - name: Assemble debug APK
         if: steps.android.outputs.present == 'true'
         working-directory: apps/android
@@ -149,6 +151,7 @@ jobs:
       - name: Install workspace and bundle the production UI into the iOS app
         run: |
           pnpm install --frozen-lockfile
+          node scripts/export-access.mjs
           node apps/ios/export-fallback-catalog.mjs
           node apps/ios/generate-app-icon.mjs
           node apps/ios/bundle-ui.mjs
@@ -156,6 +159,7 @@ jobs:
           node -e 'require("fs").writeFileSync("apps/ios/TVM/BundledUI/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,player:"MobileVLCKit-3.6.0"}))'
           node scripts/write-build-info.mjs ios
           test -f apps/ios/TVM/BuildInfo.json
+          test -f apps/ios/TVM/Access.json
           test -f apps/ios/TVM/BundledUI/index.html
           test -f apps/ios/TVM/BundledUI/changelog.json
           test -d apps/ios/TVM/BundledUI/assets
@@ -191,11 +195,36 @@ jobs:
             exit 1
           fi
           echo "Testing on $DESTINATION"
-          xcodebuild -workspace TVM.xcworkspace -scheme TVM \
+
+          # Build and test are separated: xcodebuild reports both as exit 65,
+          # and "compile failed" and "a test failed" need different fixes.
+          run_xcode() {
+            local phase="$1"; shift
+            set -o pipefail
+            if xcodebuild "$@" 2>&1 | tee "/tmp/xcodebuild-$phase.log"; then
+              return 0
+            fi
+            echo "::group::$phase output"
+            # Surface the real error. The full log needs admin rights to
+            # download, so the useful lines are promoted to annotations.
+            grep -E "error:|error :|Testing failed|failed \\(|Undefined symbol|cannot find|XCTAssert" "/tmp/xcodebuild-$phase.log" \
+              | grep -v "0 failures" | sort -u | head -30 \
+              | while IFS= read -r line; do echo "::error::[$phase] $line"; done
+            echo "::endgroup::"
+            return 1
+          }
+
+          run_xcode build -workspace TVM.xcworkspace -scheme TVM \
             -destination "platform=iOS Simulator,name=$DESTINATION" \
             -derivedDataPath build/sim \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            CODE_SIGNING_ALLOWED=NO test
+            CODE_SIGNING_ALLOWED=NO build-for-testing
+
+          run_xcode test -workspace TVM.xcworkspace -scheme TVM \
+            -destination "platform=iOS Simulator,name=$DESTINATION" \
+            -derivedDataPath build/sim \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO test-without-building
       - name: Compile ad-hoc device app and zip IPA
         working-directory: apps/ios
         run: |

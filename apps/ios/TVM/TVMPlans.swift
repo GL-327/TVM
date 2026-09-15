@@ -172,6 +172,41 @@ final class TVMPlans {
         return status()
     }
 
+    /**
+     Applies what an activated account is entitled to.
+
+     setLiveTv() refuses to switch Live TV on because a buyer is meant to
+     pick a term at checkout, and there is no checkout. Both tiers map to
+     the fullest plan and differ only by Live TV, which is the only
+     difference anyone is choosing between. Recorded as lifetime with no
+     expiry because it lasts exactly as long as the account stays activated.
+     */
+    func grantTier(_ tier: String) {
+        var entitlement = readEntitlement()
+        entitlement.id = "max"
+        entitlement.source = "checkout"
+        entitlement.styleId = clampStyle("max", entitlement.styleId)
+        entitlement.liveTvAddon = tier == "stream-live"
+        entitlement.liveTvTerm = tier == "stream-live" ? "lifetime" : nil
+        entitlement.liveTvExpiresAt = nil
+        // Both tiers promise every visual style, and nothing is sold here.
+        entitlement.themeBundle = true
+        entitlement.animeAddon = true
+        entitlement.synthwaveAddon = true
+        writeEntitlement(entitlement)
+    }
+
+    /// No usable account means no access; free is what that looks like now.
+    func revokeTier() {
+        var entitlement = readEntitlement()
+        entitlement.id = "free"
+        entitlement.source = "free"
+        entitlement.liveTvAddon = false
+        entitlement.liveTvTerm = nil
+        entitlement.liveTvExpiresAt = nil
+        writeEntitlement(entitlement)
+    }
+
     func setLiveTv(_ enabled: Bool) throws -> [String: Any] {
         let plan = definition(readEntitlement().id)
         if plan.liveTvAddonPence <= 0 { throw ClientError.message("Live TV is a paid add-on from Basic up.") }
