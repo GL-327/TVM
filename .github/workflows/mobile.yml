@@ -38,6 +38,8 @@ jobs:
   android-apk:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'ios'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Skip when the Android tree is not in this commit
@@ -94,6 +96,39 @@ jobs:
           name: tvm-android-debug
           path: apps/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # One stable "android" release that always holds the newest APK, so the
+      # Releases page shows a single obvious Android download instead of an
+      # artifact buried in a run that expires after 90 days.
+      - name: Publish the Android release
+        if: steps.android.outputs.present == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp apps/android/app/build/outputs/apk/debug/*.apk release/TVM-android.apk
+          SHA="$(git rev-parse --short HEAD)"
+          cat > release/NOTES.md <<EOF
+          **Android phone, tablet and Android TV.**
+
+          | | |
+          |---|---|
+          | Download | \`TVM-android.apk\` |
+          | Build | \`$SHA\` |
+          | Minimum | Android 8.0 (API 26) |
+
+          ### Install
+          1. Download **TVM-android.apk** below.
+          2. Open it. Android will ask you to allow installs from this source — allow it.
+          3. Launch TVM.
+
+          This is a debug-signed build for private testing, not a Play Store release.
+          Android TV: sideload with \`adb install TVM-android.apk\`.
+          EOF
+          gh release create android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md
+          gh release upload android release/TVM-android.apk --clobber
 
   ios-ipa:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'android'
@@ -187,11 +222,59 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tar -czf tvm-ios-ui.tar.gz -C apps/ios/TVM/BundledUI .
-          gh release view ios-ui >/dev/null 2>&1 || gh release create ios-ui --title "iOS UI (rolling)" --notes-file apps/ios/TVM/BundledUI/CHANGELOG.md
-          gh release edit ios-ui --title "iOS UI (rolling)" --notes-file apps/ios/TVM/BundledUI/CHANGELOG.md
+          # Not a download for people: TVMUpdater fetches this tarball to refresh
+          # the bundled UI in an installed app. Marked pre-release so it sinks
+          # below the four platform releases on the Releases page.
+          {
+            echo "> **Not an app download.** Install the app from the **iOS — iPhone & iPad** release."
+            echo ">"
+            echo "> This holds the interface bundle that an already-installed iPhone app"
+            echo "> downloads to update itself in place."
+            echo
+            cat apps/ios/TVM/BundledUI/CHANGELOG.md
+          } > ios-ui-notes.md
+          gh release create ios-ui --prerelease --title "Component — iOS interface bundle (auto-update feed)" --notes-file ios-ui-notes.md 2>/dev/null \
+            || gh release edit ios-ui --prerelease --title "Component — iOS interface bundle (auto-update feed)" --notes-file ios-ui-notes.md
           gh release upload ios-ui tvm-ios-ui.tar.gz --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: tvm-ios-unsigned-ipa
           path: apps/ios/build/TVM-unsigned.ipa
           if-no-files-found: error
+
+      # One stable "ios" release that always holds the newest IPA.
+      - name: Publish the iOS release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp apps/ios/build/TVM-unsigned.ipa release/TVM-ios.ipa
+          SHA="$(git rev-parse --short HEAD)"
+          cat > release/NOTES.md <<EOF
+          **iPhone and iPad.**
+
+          | | |
+          |---|---|
+          | Download | \`TVM-ios.ipa\` |
+          | Build | \`$SHA\` |
+          | Minimum | iOS 15 |
+
+          ### Install
+          This IPA is **unsigned**, so it will not install as-is. Apple does not
+          allow an app outside the App Store to install itself. Re-sign it with
+          your own free Apple ID:
+
+          1. Download **TVM-ios.ipa** below.
+          2. Open [Sideloadly](https://sideloadly.io) (or AltStore).
+          3. Drag the IPA in, enter your Apple ID, and install.
+          4. On the iPhone: **Settings → General → VPN & Device Management** → trust your developer certificate.
+
+          A free Apple ID signature lasts 7 days; re-run Sideloadly to renew it.
+          Once installed, the app updates its own interface from GitHub — you only
+          need to re-sideload when this release's build number changes.
+          EOF
+          gh release create ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md
+          gh release upload ios release/TVM-ios.ipa --clobber
