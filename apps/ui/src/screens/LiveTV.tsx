@@ -225,7 +225,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           actions={
             <>
               {plan.liveTvOptional ? (
-                <FocusButton id="live-enable" variant="primary" onSelect={() => navigate.push('checkout', { params: { planId: plan.id } })}>
+                <FocusButton id="live-enable" variant="primary" onSelect={() => navigate.push('plans')}>
                   Choose Live TV
                 </FocusButton>
               ) : (

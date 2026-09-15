@@ -98,7 +98,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </section>
         <section className="settings-group">
           <h2 className="settings-group__title">Look</h2>
-        <FocusButton id="theme-bundle" className="settings-row" detail={plan.bundle ? 'Owned · includes future paid packs' : '£9.99 · all paid themes, including future packs'} onSelect={() => navigate.push('checkout', { params: { pack: 'theme-bundle' } })}>All paid themes bundle</FocusButton>
+        <FocusButton id="theme-bundle" disabled className="settings-row" detail={plan.bundle ? 'Included with your access' : 'Included once your account is switched on'} onSelect={() => undefined}>All paid themes bundle</FocusButton>
         {THEMES.map((spec) => {
           const locked = spec.premium === true && !themeUnlocked(plan, spec.id);
           return (
@@ -115,9 +115,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
               }
               onSelect={() => {
                 if (locked) {
-                  navigate.push('checkout', {
-                    params: { planId: plan.id, name: plan.name, pack: spec.id },
-                  });
+                  navigate.push('plans');
                   return;
                 }
                 setTheme(applyTheme(spec.id));
@@ -196,7 +194,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
             detail={plan.liveTv ? `On${plan.liveTvTerm ? ` · ${plan.liveTvTerm}` : ''}` : '3-month, 1-year or lifetime'}
             onSelect={() => {
               if (!plan.liveTv) {
-                navigate.push('checkout', { params: { planId: plan.id } });
+                navigate.push('plans');
                 return;
               }
               void saveLiveTv(false)

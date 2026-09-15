@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { TopBar } from '../components/TopBar';
+import { fetchTerms, type TermsDocument } from '../data/account';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import './billing.css';
@@ -10,6 +11,8 @@ export function Legal(_props: ScreenProps): React.JSX.Element {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmErase, setConfirmErase] = useState(false);
+  const [terms, setTerms] = useState<TermsDocument | null>(null);
+  useEffect(() => { let off = false; void fetchTerms().then((doc) => { if (!off) setTerms(doc); }); return () => { off = true; }; }, []);
   const exportData = async (): Promise<void> => {
     setBusy(true); setMessage('');
     try {
@@ -49,13 +52,25 @@ export function Legal(_props: ScreenProps): React.JSX.Element {
     <article className="legal-copy">
       <h2>Terms of use</h2>
       <p>TVM is a media interface for your own files and sources you are authorised to use. A TVM plan does not supply rights to films, channels or third-party services. Do not use it to infringe copyright, share provider credentials contrary to their terms, or bypass access restrictions. Availability and supported formats depend on your provider, connection and device. Service names identify independent providers; they do not imply endorsement or partnership.</p>
-      <p>Paid plans and Live TV are billed by card through Stripe. Live TV is a separate product with 3-month, 1-year and lifetime terms. Lifetime access lasts only while the Live TV service stays online. You can cancel future charges from Plans. Visual packs stay unlocked after cancellation. Card numbers are sent to Stripe and are never stored by TVM. Nothing in these terms excludes statutory rights.</p>
+      <p>Nothing is sold inside the app. Access is arranged directly with the app owner, who switches an account on; the prices shown are what access costs. Live TV is a separate product with 3-month, 1-year and lifetime terms, and lifetime access lasts only while the Live TV service stays online. The donate button is a gift to the app owner: it buys nothing, activates nothing and is not refundable, because nothing was sold. Where a card is used, the number is sent to Stripe and is never stored by TVM. Nothing in these terms excludes statutory rights.</p>
       <h2>What is stored and why</h2>
       <p>TVM stores profile names, watch progress, watchlists and preferences to provide personal playback and recommendations. Receipts record plan choices, amounts charged, consent version and time. Provider credentials are stored to connect the services you choose. Credentials, profiles, viewing history, playlists and billing records are encrypted on disk. On Windows, the encryption key is protected by your Windows account. Running software under that account can still access data.</p>
       <p>Data stays until you remove it or reset TVM; the billing history keeps the latest 100 events. Artwork and catalogue caches can be cleared in Settings. Theme, motion and search history are local browser preferences; search history is not encrypted. Use device encryption and a private account on shared machines. TVM does not run an analytics tracker in this build.</p>
       <h2>Connections to other services</h2>
       <p>Metadata and images are requested from catalogue and artwork services, including Cinemeta and configured TMDB services. They and media hosts receive network information such as your IP address. Real-Debrid receives your token and requested links. The existing Torrentio resolver also receives the Real-Debrid token in its request URL when resolving catalogue playback. Connect only if you accept those providers’ terms and credential handling. IPTV servers receive your provider login or playlist URL. HTTP-only sources are not encrypted in transit; use HTTPS where your provider supports it.</p>
       <p>Third-party websites use their own accounts, cookies, privacy policies and retention rules. Removing TVM data does not delete data held by those services. Disconnect or revoke tokens with the provider as needed. This build does not request advertising-network prerolls.</p>
+      {terms !== null && (
+        <>
+          <h2>Terms you agreed to</h2>
+          <p>Version {terms.version}, updated {terms.updated}. These are the terms recorded against your account.</p>
+          {terms.sections.map((section) => (
+            <section key={section.heading}>
+              <h3>{section.heading}</h3>
+              {section.body.map((line) => <p key={line}>{line}</p>)}
+            </section>
+          ))}
+        </>
+      )}
       <h2>Open-source playback</h2>
       <p>The iOS player includes MobileVLCKit 3.6.0 by VideoLAN and its contributors, licensed under LGPL 2.1 or later. The license is bundled at /licenses/MobileVLCKit.txt. <a href="https://github.com/videolan/vlckit/tree/3.6.0">Source code and build instructions</a>.</p>
       <h2>Your choices and contact</h2>
