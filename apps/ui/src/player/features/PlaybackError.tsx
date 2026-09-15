@@ -112,7 +112,7 @@ const COPY: Record<Exclude<PlaybackErrorKind, 'message'>, PlaybackErrorCopy> = {
   'hours-cap': {
     kind: 'hours-cap',
     title: 'Watch hours used',
-    body: 'This week’s Free watch hours are used. Ads do not count. Press Back, or view Plans.',
+    body: 'This account has reached its weekly watch limit. Press Back, or contact the app owner.',
     showPlans: true,
   },
   stalled: {

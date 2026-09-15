@@ -8,7 +8,8 @@ describe('playback errors', () => {
     expect(playbackErrorMessage('needs-auth')).toMatch(/token/);
     expect(playbackErrorMessage('network')).toMatch(/core/);
     expect(playbackErrorMessage('unsupported')).toMatch(/Real-Debrid/);
-    expect(playbackErrorMessage('hours-cap')).toMatch(/watch hours/);
+    expect(playbackErrorMessage('hours-cap')).toMatch(/weekly watch limit/);
+    expect(playbackErrorMessage('hours-cap')).toMatch(/app owner/);
     expect(playbackErrorMessage('needs-converter')).toMatch(/MP4/);
     expect(playbackErrorMessage('needs-converter')).not.toMatch(/Install ffmpeg/);
   });

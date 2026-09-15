@@ -1138,6 +1138,7 @@ async function handleApi(
     const current = plans.status();
     if (current.id !== wanted.planId) plans.set(wanted.planId, 'checkout');
     if (current.liveTv !== wanted.liveTv) plans.grantLiveTv(wanted.liveTv);
+    if (current.bundle !== true) plans.grantCosmetics(true);
   };
   /** Who am I, and may I use TVM? The interface asks this on every launch. */
   if (path === '/api/account' && request.method === 'GET') {

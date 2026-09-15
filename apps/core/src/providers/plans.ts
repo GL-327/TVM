@@ -795,6 +795,22 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
      * long as the account stays activated at a tier that includes it, and
      * revoking the tier is what takes it away.
      */
+    /**
+     * Hands over the cosmetic packs with the tier.
+     *
+     * Both tiers promise every visual style, and nothing is sold in the app
+     * any more, so there is no longer anything for a theme to be bought
+     * with. Granting them on activation is what makes that promise true
+     * rather than leaving buttons that lead to a checkout nobody can reach.
+     */
+    grantCosmetics(enabled: boolean): PlanStatus {
+      const current = readEntitlement();
+      writeEntitlement(enabled
+        ? { ...current, themeBundle: true, animeAddon: true, synthwaveAddon: true }
+        : { ...current, themeBundle: undefined, animeAddon: undefined, synthwaveAddon: undefined });
+      return compose();
+    },
+
     grantLiveTv(enabled: boolean): PlanStatus {
       const current = readEntitlement();
       writeEntitlement(enabled
