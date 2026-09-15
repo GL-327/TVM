@@ -39,6 +39,8 @@ class TvmNativePlayer(
     private var container: FrameLayout? = null
     private var sessionId: String? = null
     private var ticking = false
+    /** Media3 only reports a live offset for a stream it knows is live. */
+    private var isLive = false
 
     /** Exposed to the page as `window.tvmPlayer`. JS interfaces only take primitives. */
     inner class Bridge {
@@ -68,6 +70,14 @@ class TvmNativePlayer(
                 if (volume.isFinite()) player?.volume = volume.coerceIn(0.0, 1.0).toFloat()
             }
             "mute" -> player?.volume = if (message.optBoolean("muted", false)) 0f else 1f
+            // Media3 knows where the live edge is, so returning to it is a
+            // genuine seek rather than a reconnect: the buffer is kept.
+            "goLive" -> player?.let { exo ->
+                if (isLive) {
+                    exo.seekToDefaultPosition()
+                    exo.play()
+                }
+            }
             "stop" -> close(id, notify = false)
         }
     }
@@ -80,6 +90,7 @@ class TvmNativePlayer(
             return
         }
         val live = message.optBoolean("live", false)
+        isLive = live
         val startAt = message.optDouble("startAt", 0.0)
 
         // The stream comes from our own loopback core, which proxies the real
@@ -177,6 +188,12 @@ class TvmNativePlayer(
                 "paused" to !exo.isPlaying,
                 "buffering" to (exo.playbackState == Player.STATE_BUFFERING),
                 "hasFrame" to (exo.currentPosition > 200),
+                // C.TIME_UNSET until the manifest establishes a live window.
+                "liveDrift" to if (isLive && exo.currentLiveOffset != androidx.media3.common.C.TIME_UNSET) {
+                    (exo.currentLiveOffset / 1000.0).coerceAtLeast(0.0)
+                } else {
+                    0.0
+                },
             ),
         )
     }
