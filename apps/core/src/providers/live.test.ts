@@ -138,6 +138,260 @@ describe('live service', () => {
     });
   });
 
+  /*
+   * Xtream live endpoints carry no extension. Assuming HLS for these sent raw
+   * MPEG-TS to hls.js, which reported "This stream could not start" against a
+   * perfectly good provider.
+   */
+  it('sniffs an extensionless channel that actually serves MPEG-TS', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-sniff-ts-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/12345';
+    const methods: string[] = [];
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input, init) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U\n#EXTINF:-1,Sports\n${url}\n`, { status: 200 });
+        }
+        methods.push(init?.method ?? 'GET');
+        return new Response(null, { status: 200, headers: { 'content-type': 'video/mp2t' } });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const id = liveChannelId(url);
+    expect(await live.play(id)).toMatchObject({
+      kind: 'stream',
+      mimeType: 'video/mp2t',
+      transport: 'ts-live',
+    });
+    // HEAD only: a GET on a live channel never ends, and would spend the one
+    // concurrent connection most IPTV subscriptions allow.
+    expect(methods).toEqual(['HEAD']);
+  });
+
+  it('leaves an unhelpful HEAD to the player rather than opening a stream to guess', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-sniff-opaque-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/54321';
+    const methods: string[] = [];
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input, init) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U\n#EXTINF:-1,Opaque\n${url}\n`, { status: 200 });
+        }
+        methods.push(init?.method ?? 'GET');
+        return new Response(null, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const id = liveChannelId(url);
+    expect(await live.play(id)).toMatchObject({ kind: 'stream', transport: 'hls' });
+    expect(methods).toEqual(['HEAD']);
+  });
+
+  it('trusts a HEAD that names HLS on an extensionless channel', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-sniff-hls-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/999';
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input, init) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U\n#EXTINF:-1,News\n${url}\n`, { status: 200 });
+        }
+        if ((init?.method ?? 'GET') === 'HEAD') {
+          return new Response(null, { status: 200, headers: { 'content-type': 'application/vnd.apple.mpegurl' } });
+        }
+        return new Response('#EXTM3U\n', { status: 200 });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const id = liveChannelId(url);
+    expect(await live.play(id)).toMatchObject({
+      kind: 'stream',
+      mimeType: 'application/vnd.apple.mpegurl',
+      transport: 'hls',
+    });
+  });
+
+  it('still trusts an explicit .m3u8 extension over a probe', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-ext-wins-'));
+    dirs.push(dir);
+    const url = 'https://example.com/bbc2.m3u8';
+    let probes = 0;
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U\n#EXTINF:-1,BBC Two\n${url}\n`, { status: 200 });
+        }
+        probes += 1;
+        return new Response(null, { status: 200 });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const id = liveChannelId(url);
+    expect(await live.play(id)).toMatchObject({ mimeType: 'application/vnd.apple.mpegurl', transport: 'hls' });
+    // A known extension must not cost a network round trip.
+    expect(probes).toBe(0);
+  });
+
+  it('falls back to the old assumption when the channel cannot be probed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-sniff-dead-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/dead';
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U\n#EXTINF:-1,Dead\n${url}\n`, { status: 200 });
+        }
+        throw new Error('unreachable');
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const id = liveChannelId(url);
+    expect(await live.play(id)).toMatchObject({ kind: 'stream', transport: 'hls' });
+  });
+
+  /*
+   * The single most common reason an otherwise-working IPTV subscription fails
+   * inside an app: the panel serves stream endpoints only to player-shaped
+   * clients and answers a browser User-Agent with 403 or an HTML error page.
+   */
+  it('identifies as a player, not a browser, when fetching a live channel', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-ua-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/77.ts';
+    const seen: string[] = [];
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input, init) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U
+#EXTINF:-1,Sport
+${url}
+`, { status: 200 });
+        }
+        seen.push(new Headers(init?.headers).get('user-agent') ?? '');
+        return new Response(new Uint8Array([0x47, 0, 0, 0]), { status: 200, headers: { 'content-type': 'video/mp2t' } });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const id = liveChannelId(url);
+    await live.proxyChannel(id, { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/128.0.0.0' });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain('VLC');
+    expect(seen[0]).not.toContain('Chrome');
+  });
+
+  it('reports the provider status instead of collapsing every failure into one message', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-403-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/88.ts';
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U
+#EXTINF:-1,Blocked
+${url}
+`, { status: 200 });
+        }
+        return new Response('forbidden', { status: 403 });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const result = await live.proxyChannel(liveChannelId(url));
+    expect(result).toMatchObject({ kind: 'error', reason: 'upstream-403' });
+  });
+
+  it('diagnoses a rejected subscription without leaking the credentialled URL', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-diag-403-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/secretuser/secretpass/5';
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U
+#EXTINF:-1,Denied
+${url}
+`, { status: 200 });
+        }
+        return new Response('nope', { status: 403 });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const report = await live.diagnose(liveChannelId(url));
+    expect(report.ok).toBe(false);
+    expect(report.status).toBe(403);
+    expect(report.detail).toContain('403');
+    expect(JSON.stringify(report)).not.toContain('secretpass');
+  });
+
+  it('diagnoses an error page served in place of video', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-diag-html-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/6';
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U
+#EXTINF:-1,HtmlPage
+${url}
+`, { status: 200 });
+        }
+        return new Response('<html><body>Account expired</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const report = await live.diagnose(liveChannelId(url));
+    expect(report.ok).toBe(false);
+    expect(report.step).toBe('sniff');
+    expect(report.looksLikeHls).toBe(false);
+    expect(report.looksLikeMpegTs).toBe(false);
+    expect(report.detail).toContain('html');
+  });
+
+  it('diagnoses a healthy MPEG-TS channel as playable', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-diag-ok-'));
+    dirs.push(dir);
+    const url = 'https://example.com/live/user/pass/7';
+    const sync = new Uint8Array(32);
+    sync[0] = 0x47;
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async (input) => {
+        const target = String(input);
+        if (target.endsWith('/playlist.m3u')) {
+          return new Response(`#EXTM3U
+#EXTINF:-1,Good
+${url}
+`, { status: 200 });
+        }
+        return new Response(sync, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const report = await live.diagnose(liveChannelId(url));
+    expect(report.ok).toBe(true);
+    expect(report.transport).toBe('ts-live');
+    expect(report.looksLikeMpegTs).toBe(true);
+  });
+
   it('keeps a large playlist off Live TV until channels are picked', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-live-picks-'));
     dirs.push(dir);

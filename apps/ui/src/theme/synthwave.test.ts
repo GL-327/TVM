@@ -38,20 +38,26 @@ describe('Retro aesthetic pack', () => {
     expect(css).not.toContain('mix-blend-mode');
   });
 
-  it('is always in motion: sunburst, ident rings, rainbow arc, scope trace, colour bars, tracking, VCR display', () => {
+  /*
+   * Retro is a background, not a second thing to watch. It used to mount two
+   * counter-rotating sunbursts, a harvest sun, four ident rings, a six-band
+   * rainbow arc, a horizon, an oscilloscope and a flicker layer: about eighteen
+   * concurrent animations over two rotating conic gradients. This pins it to
+   * the handful of layers that read as a television.
+   */
+  it('keeps a television look without competing with the content', () => {
     expect(app).toContain('SynthwaveCrt');
-    for (const layer of ['rt-set__burst', 'rt-set__sun', 'rt-set__horizon', 'rt-set__rings', 'rt-set__arc', 'rt-set__wave', 'rt-set__bars', 'rt-set__track', 'rt-set__flicker', 'rt-set__osd', 'rt-set__scan']) {
+    for (const layer of ['rt-set__tube', 'rt-set__burst', 'rt-set__bars', 'rt-set__track', 'rt-set__scan', 'rt-set__osd']) {
       expect(crt).toContain(layer);
     }
-    for (const name of ['rt-power-on', 'rt-burst-spin', 'rt-sun-breathe', 'rt-horizon', 'rt-ring', 'rt-arc-sway', 'rt-wave', 'rt-bars-slide', 'rt-track', 'rt-flicker', 'rt-osd-cycle', 'rt-osd-blink']) {
+    for (const gone of ['rt-set__sun', 'rt-set__horizon', 'rt-set__rings', 'rt-set__arc', 'rt-set__wave', 'rt-set__flicker', 'burst--counter']) {
+      expect(crt, `${gone} should no longer be mounted`).not.toContain(gone);
+    }
+    for (const name of ['rt-power-on', 'rt-burst-spin', 'rt-bars-slide', 'rt-track']) {
       expect(css).toContain(`@keyframes ${name}`);
     }
-    expect(css).toMatch(/\.rt-set__arc \{[\s\S]*?opacity: 0\.88/);
-    expect(css).toMatch(/\.rt-set__wave \{[\s\S]*?opacity: 0\.86/);
-    expect(css).toMatch(/rt-burst-spin 24s/);
-    expect(css).toMatch(/rt-arc-sway 7\.5s/);
-    expect(css).toMatch(/rt-wave 5s/);
-    expect(css).toMatch(/rt-bars-slide 10s/);
+    // One rotating conic gradient at most: it is the most expensive layer here.
+    expect(crt.match(/rt-set__burst(?!-fade)/g)?.length ?? 0).toBeLessThanOrEqual(2);
     expect(RETRO_CHANNELS.length).toBeGreaterThanOrEqual(3);
     expect(crt).not.toContain('setInterval');
     expect(crt).not.toContain('requestAnimationFrame');

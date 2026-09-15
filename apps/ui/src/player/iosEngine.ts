@@ -2,15 +2,36 @@ import type { EngineEvents, EngineOptions, EngineStream, PlayerEngine } from './
 
 type NativeMessage = { id: string; command: string; [key: string]: unknown };
 type NativeBridge = { postMessage(message: NativeMessage): void };
+
+/** WKWebView message handler, installed by the iOS shell. */
 export function iosPlaybackBridge(): NativeBridge | undefined {
   if (typeof window === 'undefined') return undefined;
   return (window as Window & { webkit?: { messageHandlers?: { tvmPlayer?: NativeBridge } } })
     .webkit?.messageHandlers?.tvmPlayer;
 }
 
+/**
+ * Android's `@JavascriptInterface` equivalent.
+ *
+ * A JavascriptInterface can only take primitives, so the Android shell exposes
+ * a single `send(String)` taking JSON. Wrapping it here keeps the two shells
+ * behind one bridge shape, and keeps the engine free of platform branches.
+ */
+export function androidPlaybackBridge(): NativeBridge | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const host = (window as Window & { tvmPlayer?: { send?: (payload: string) => void } }).tvmPlayer;
+  if (host === undefined || typeof host.send !== 'function') return undefined;
+  return { postMessage: (message) => { host.send!(JSON.stringify(message)); } };
+}
+
+/** Whichever native player owns this shell, if any. */
+export function nativePlaybackBridge(): NativeBridge | undefined {
+  return iosPlaybackBridge() ?? androidPlaybackBridge();
+}
+
 /** Native owns the picture/controls; React keeps progress, billing and navigation. */
 export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptions, events: EngineEvents): PlayerEngine {
-  const bridge = iosPlaybackBridge()!;
+  const bridge = nativePlaybackBridge()!;
   const id = crypto.randomUUID();
   let position = options.startAt ?? stream.startAt ?? 0;
   let duration = 0;

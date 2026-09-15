@@ -9,6 +9,7 @@ import { Rail } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
 import { RailSkeletons } from '../components/Skeleton';
 import { BrandLockup } from '../components/BrandLockup';
+import { IconApps, IconLive, IconStream, IconWatchlist } from '../components/Icons';
 import { HeroArt } from '../components/HeroArt';
 import { PageScene } from '../components/PageScene';
 import { preferBackdrop } from '../data/artwork';
@@ -221,22 +222,30 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       <p className="home__launcher-kicker">Where to</p>
       <nav className="home__launcher" aria-label="Where to">
         <FocusButton id="launch-stream" className="launch-tile launch-tile--stream" onSelect={openStream}>
-          <span className="launch-tile__mark">TVM</span>
+          <span className="launch-tile__mark launch-tile__mark--stream">
+            <IconStream className="launch-tile__glyph" />
+          </span>
           <strong>TVM Stream</strong>
           <span>Films and series</span>
         </FocusButton>
         <FocusButton id="launch-live" className="launch-tile" onSelect={() => navigate.push('live')}>
-          <span className="launch-tile__mark launch-tile__mark--live" />
+          <span className="launch-tile__mark launch-tile__mark--live">
+            <IconLive className="launch-tile__glyph" />
+          </span>
           <strong>Live TV</strong>
           <span>Channels and guide</span>
         </FocusButton>
         <FocusButton id="launch-watchlist" className="launch-tile" onSelect={() => navigate.push('watchlist')}>
-          <span className="launch-tile__mark launch-tile__mark--list" />
+          <span className="launch-tile__mark launch-tile__mark--list">
+            <IconWatchlist className="launch-tile__glyph" />
+          </span>
           <strong>Watchlist</strong>
           <span>Saved for later</span>
         </FocusButton>
         <FocusButton id="launch-apps" className="launch-tile" onSelect={() => navigate.push('apps')}>
-          <span className="launch-tile__mark launch-tile__mark--apps" />
+          <span className="launch-tile__mark launch-tile__mark--apps">
+            <IconApps className="launch-tile__glyph" />
+          </span>
           <strong>Apps</strong>
           <span>Studios and services</span>
         </FocusButton>

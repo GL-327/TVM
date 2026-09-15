@@ -60,8 +60,30 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      # No setup-android action. It insists on installing the long-obsolete
+      # `tools` package, which is gone from the SDK repository, so sdkmanager
+      # exits 1 and takes the whole run red even when the iOS job produced its
+      # IPA. The ubuntu runner already ships a complete Android SDK with
+      # ANDROID_HOME set; all it needs is the licences accepted.
+      - name: Accept Android SDK licences
         if: steps.android.outputs.present == 'true'
+        run: |
+          test -d "$ANDROID_HOME" || { echo "No Android SDK on this runner"; exit 1; }
+          mkdir -p "$ANDROID_HOME/licenses"
+          # Published SDK licence hashes; accepting them is what the removed
+          # action did, without touching sdkmanager's package list.
+          printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf '84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Bundle the production UI into the Android app
+        if: steps.android.outputs.present == 'true'
+        run: |
+          corepack pnpm install --frozen-lockfile
+          node apps/android/bundle-ui.mjs
+          node apps/android/export-fallback-catalog.mjs
+          node scripts/write-build-info.mjs android
+          test -f apps/android/app/src/main/assets/ui/index.html
+          test -f apps/android/app/src/main/assets/BuildInfo.json
       - name: Assemble debug APK
         if: steps.android.outputs.present == 'true'
         working-directory: apps/android
@@ -97,6 +119,8 @@ jobs:
           node apps/ios/bundle-ui.mjs
           node apps/ios/write-changelog.mjs
           node -e 'require("fs").writeFileSync("apps/ios/TVM/BundledUI/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,player:"MobileVLCKit-3.6.0"}))'
+          node scripts/write-build-info.mjs ios
+          test -f apps/ios/TVM/BuildInfo.json
           test -f apps/ios/TVM/BundledUI/index.html
           test -f apps/ios/TVM/BundledUI/changelog.json
           test -d apps/ios/TVM/BundledUI/assets
