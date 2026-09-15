@@ -40,6 +40,9 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
   let destroyed = false;
   let attached = false;
   let firstFrame = false;
+  // Native owns the buffer, so it is the only side that can measure how far
+  // behind the broadcast we are; it reports this alongside position.
+  let drift = 0;
   const send = (command: string, payload: Record<string, unknown> = {}): void => {
     if (!destroyed) bridge.postMessage({ id, command, ...payload });
   };
@@ -49,6 +52,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
     if (data.command === 'state') {
       if (typeof data['position'] === 'number') position = data['position'];
       if (typeof data['duration'] === 'number') duration = data['duration'];
+      if (typeof data['liveDrift'] === 'number') drift = Math.max(0, data['liveDrift']);
       events.onTime(position, duration);
       const nextPaused = data['paused'] === true;
       const nextBuffering = data['buffering'] === true;
@@ -76,5 +80,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
     setVolume: (volume) => send('volume', { volume }),
     setMuted: (muted) => send('mute', { muted }),
     position: () => position, duration: () => duration,
+    liveDrift: () => (options.live === true ? drift : 0),
+    goLive: () => { if (options.live === true) send('goLive'); },
   };
 }

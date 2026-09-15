@@ -19,6 +19,15 @@ interface RailProps {
   action?: ReactNode;
   id?: string;
   bare?: boolean;
+  /**
+   * Repeat the row endlessly.
+   *
+   * Off by default, and deliberately so. A conveyor made "Continue watching"
+   * read as an endless wall rather than the short, finite list of things you
+   * actually have part-watched, and it cost three copies of every poster in
+   * the DOM — on Home that was 720 images where 240 were needed.
+   */
+  loop?: boolean;
 }
 
 function showLoopClones(track: HTMLElement, show: boolean): void {
@@ -94,12 +103,12 @@ function syncConveyor(track: HTMLElement): void {
   if (isLoopSeamJump(track.scrollLeft, next, setWidth)) jumpAxis(track, 'x', next);
 }
 
-function LoopingTrack({ children }: { children: ReactNode }): React.JSX.Element {
+function LoopingTrack({ children, loop }: { children: ReactNode; loop: boolean }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const nativeTouch = useSyncExternalStore(watchTouchInput, nativeTouchInput, serverTouchInput);
   const items = Children.toArray(children).filter(isValidElement);
   // Native momentum must not race conveyor parking writes during a swipe.
-  const looping = shouldLoopRail(items.length, nativeTouch);
+  const looping = loop && shouldLoopRail(items.length, nativeTouch);
   const stamp = items.map((child, index) => String(child.key ?? index)).join('|');
 
   const painted = looping
@@ -171,7 +180,7 @@ function LoopingTrack({ children }: { children: ReactNode }): React.JSX.Element 
   );
 }
 
-export function Rail({ title, children, action, id, bare = false }: RailProps): React.JSX.Element {
+export function Rail({ title, children, action, id, bare = false, loop = false }: RailProps): React.JSX.Element {
   const railRef = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
@@ -188,7 +197,7 @@ export function Rail({ title, children, action, id, bare = false }: RailProps): 
           {action}
         </header>
       )}
-      <LoopingTrack>{children}</LoopingTrack>
+      <LoopingTrack loop={loop}>{children}</LoopingTrack>
     </section>
   );
 }
