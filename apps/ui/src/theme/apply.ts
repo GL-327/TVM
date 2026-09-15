@@ -1,5 +1,6 @@
 import { DEFAULT_THEME, resolveTheme, type ThemeId } from './registry';
 
+import './palette.css';
 import './cinematic.css';
 import './default.css';
 import './happy.css';

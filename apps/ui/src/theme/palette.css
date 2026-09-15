@@ -1,0 +1,50 @@
+/*
+ * The TVM palette.
+ *
+ * A streaming service is recognised by one colour before it is recognised by
+ * its name — Netflix is red, Spotify green, Disney+ that particular navy. TVM
+ * had no such colour: the boot theme was mint-and-navy, the player chrome was
+ * neutral, and the first draft of Cinematic reached for a red that was really
+ * just Netflix's.
+ *
+ * TVM is violet. It is unclaimed by any of the services TVM sits alongside, it
+ * survives being shown on a television across a room, and it holds its
+ * identity at the small sizes an icon has to live at.
+ *
+ * These are brand constants, not theme tokens. A theme maps them onto its own
+ * --tvm-* variables; nothing should reference a raw hex value from here, so
+ * that the brand can be retuned in one file without hunting through themes.
+ */
+
+:root {
+  /* ---- Signature ------------------------------------------------------- */
+  /* The colour TVM is. Used for the mark, the primary action, and the live dot. */
+  --tvm-brand-violet: #7c4dff;
+  /* Pressed states and anything sitting on top of the signature. */
+  --tvm-brand-violet-deep: #4a21c7;
+  /* Hover, focus glow, and text that must stay legible on ink. */
+  --tvm-brand-violet-light: #b39bff;
+
+  /* ---- Ground ---------------------------------------------------------- */
+  /*
+   * Not pure black. A violet cast this slight is not consciously visible, but
+   * it stops the artwork looking as though it has been pasted onto a void, and
+   * it ties the neutral surfaces to the signature colour.
+   */
+  --tvm-brand-ink: #0e0a18;
+  --tvm-brand-ink-soft: #17122a;
+  --tvm-brand-ink-raised: #201936;
+
+  /* ---- Supporting ------------------------------------------------------ */
+  /* Second accent: badges, 4K/HDR marks, anything that must not read as the primary action. */
+  --tvm-brand-amber: #ffb01f;
+  /* Live, success, "this is playing". */
+  --tvm-brand-mint: #3ddc97;
+  /* Failure. Warm enough not to clash with the violet. */
+  --tvm-brand-coral: #ff5a6a;
+
+  /* ---- Paper ----------------------------------------------------------- */
+  --tvm-brand-paper: #f6f5fb;
+  --tvm-brand-paper-dim: #a9a3c4;
+  --tvm-brand-paper-faint: #6f6a87;
+}

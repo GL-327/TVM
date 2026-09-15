@@ -30,8 +30,25 @@ import type { OrderQuote, PaymentOrder, SettledPayment } from './payments.ts';
 export const PLAN_IDS = ['free', 'basic', 'premium', 'ultra', 'max'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
-/** Live TV pack on paid plans. Removing it restores the previous list price. */
-export const LIVE_TV_ADDON_PENCE = 300;
+/**
+ * Live TV pack on paid plans. Removing it restores the previous list price.
+ *
+ * Priced off what the upstream IPTV panel actually costs, because £3.00 did
+ * not cover it. The panel's rates are in dollars: $39.99 per 3 months, $89.99
+ * per year, $599 once. At roughly 0.79 GBP/USD the annual rate — the cheapest
+ * any sensible operator would buy — is £71.09 a year, or £5.92 a month. The
+ * old £3.00 therefore sold the pack at a little over half what it cost to
+ * supply, losing money on every subscriber who took it.
+ *
+ * £9.99 applies the same markup the pricing brief asked for (£70 becoming
+ * £99.99, about 1.43x) to that £5.92 floor and rounds up: £119.88 a year
+ * against £71.09 of cost, a 69% margin that survives the panel putting its
+ * prices up or the exchange rate moving.
+ *
+ * Every plan sold with Live TV reprices from this one number, since
+ * priceFor() is base + addon.
+ */
+export const LIVE_TV_ADDON_PENCE = 999;
 export const LIVE_TV_EXTRA = 'Live TV pack and your own playlist';
 
 /** Retro — 1970s/80s television-set pack. Sold on every plan, including Free. */

@@ -28,7 +28,7 @@ export function MobilePlanGate({ screen, children }: { screen: string; children:
   return <main className="page page--settings mobile-plan-gate">
     <p className="stage__kicker">TVM on iOS &amp; Android</p>
     <h1 className="page__heading">{error ? 'Could not check your plan' : plan ? 'Take TVM with you' : 'Checking your plan…'}</h1>
-    <p className="page__lede">{error ? 'Check your connection, then try again.' : 'Mobile viewing is included with Basic, Premium, Ultra and MAX, starting at Full HD (1080p). Free is available on your television and desktop.'}</p>
+    <p className="page__lede">{error ? 'Check your connection, then try again.' : 'Watching on a phone or tablet is included with Premium, Ultra and MAX, in Full HD (1080p) or better. Free and Basic play on your television and desktop.'}</p>
     <div className="hero__actions">
       {error && <FocusButton id="mobile-retry" onSelect={() => { setPlan(null); setAttempt((value) => value + 1); }}>Retry</FocusButton>}
       <FocusButton id="mobile-plans" variant="primary" onSelect={() => navigate.push('plans')}>View plans</FocusButton>
