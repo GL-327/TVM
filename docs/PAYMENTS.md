@@ -132,6 +132,65 @@ stored the keys. Without it, webhook delivery is rejected as unsigned, and
 settlement falls back to the `/api/billing/confirm` path, which works fine for
 a demo.
 
+## Monthly billing
+
+A PaymentIntent takes one payment and stops. The plan cards say "per month",
+so the monthly part of an order is a Stripe **Subscription**, which needs
+three things a one-off payment does not have: a Customer for Stripe to bill
+again, a recurring Price, and somewhere for next month's charge to land.
+
+```
+POST /api/billing/subscription          open one, returns a client secret
+POST /api/billing/subscription/confirm  re-read Stripe and grant if active
+GET  /api/billing/subscription          state, amount, next charge date
+DELETE /api/billing/subscription        stop future charges
+```
+
+The Price is built inline from the plan catalogue rather than referencing a
+dashboard Price, so there is no manual setup step to forget and no way for the
+catalogue and Stripe to hold different numbers.
+
+Subscriptions are created `payment_behavior=default_incomplete`: the
+subscription exists but grants nothing until the first payment actually
+succeeds, so a declined card leaves no plan behind.
+
+**Renewals arrive as webhooks and nothing else can see them.** Nobody is
+present for a charge made a month later, so `invoice.paid` is the only way
+the server learns it happened. A deployment without a reachable webhook
+endpoint will take the first payment and then silently stop extending the
+plan. That is the single most important line in this document.
+
+| Event | What happens |
+|---|---|
+| `invoice.paid` | Plan extended, receipt written, next charge date refreshed from Stripe |
+| `invoice.payment_failed` | Marked `past_due`, access **kept** while Stripe retries |
+| `customer.subscription.deleted` | Plan revoked |
+
+`past_due` deliberately still grants access. Stripe retries a failed renewal
+over several days, and cutting someone off the moment their bank declined a
+payment they will make on the retry is both hostile and worse for recovery.
+
+Cancelling ends the subscription at the period end by default — the month is
+paid for, so it is kept. Immediate cancellation exists for refunds.
+
+## Testing that renewals work, without waiting a month
+
+```bash
+curl -X POST http://localhost:8788/api/billing/probe -d '{"running":true}'
+```
+
+Developer mode only. Once a minute it charges the saved card **one penny**
+off-session — the same path a renewal takes, with nobody present — and refunds
+it immediately. It is the only thing in this system that refunds
+automatically; real payments never do.
+
+It stops itself after 60 cycles and on the first failure. Repeated small
+charges followed by refunds are exactly what Stripe's fraud checks read as
+card testing, so it is capped rather than left running.
+
+It needs a saved card, so subscribe once first. Without a customer it refuses
+to start rather than billing nothing.
+
 ## Going live
 
 These are the steps **only you can do**. They involve creating an account,

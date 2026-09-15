@@ -413,7 +413,20 @@ export function createPaymentService(options: PaymentServiceOptions) {
      * without that, this endpoint would let anyone on the internet grant
      * themselves a subscription.
      */
-    async webhook(rawBody: string, signatureHeader: string | undefined): Promise<{ ok: boolean; handled: string; reason?: string }> {
+    /**
+     * Stripe's callback.
+     *
+     * Subscription and invoice events are forwarded to `onSubscriptionEvent`
+     * rather than handled here: this module owns one-off payments, and
+     * renewals belong to the subscription ledger. The signature is verified
+     * once, before anything is read or forwarded, so the forwarded event is
+     * already known to have come from Stripe.
+     */
+    async webhook(
+      rawBody: string,
+      signatureHeader: string | undefined,
+      onSubscriptionEvent?: (type: string, object: Record<string, unknown>, eventId: string) => Promise<void>,
+    ): Promise<{ ok: boolean; handled: string; reason?: string }> {
       const state = configState();
       if (!state.configured) return { ok: false, handled: 'none', reason: 'stripe_not_configured' };
       if (state.config.webhookSecret === null) return { ok: false, handled: 'none', reason: 'webhook_secret_not_configured' };
@@ -440,6 +453,16 @@ export function createPaymentService(options: PaymentServiceOptions) {
         if (eventId === '' || current.processedEvents.includes(eventId)) return;
         write({ ...current, processedEvents: [eventId, ...current.processedEvents] });
       };
+
+      // Anything about an invoice or a subscription is a recurring-billing
+      // event, and none of them correspond to a one-off order here.
+      if (type.startsWith('invoice.') || type.startsWith('customer.subscription.')) {
+        if (onSubscriptionEvent !== undefined) {
+          await onSubscriptionEvent(type, dataObject ?? {}, eventId);
+        }
+        remember();
+        return { ok: true, handled: type };
+      }
 
       if (type === 'payment_intent.succeeded') {
         const order = findOrder(intentId);
