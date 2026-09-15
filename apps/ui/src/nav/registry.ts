@@ -7,6 +7,7 @@ import { NoticeModal } from '../screens/NoticeModal';
 const Accounts = lazy(() => import('../screens/Accounts').then((m) => ({ default: m.Accounts })));
 const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
 const Checkout = lazy(() => import('../screens/Checkout').then((m) => ({ default: m.Checkout })));
+const Donate = lazy(() => import('../screens/Donate').then((m) => ({ default: m.Donate })));
 const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
 const Developer = lazy(() => import('../screens/Developer').then((m) => ({ default: m.Developer })));
 const DeveloperUnlock = lazy(() => import('../screens/DeveloperUnlock').then((m) => ({ default: m.DeveloperUnlock })));
@@ -52,6 +53,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   'live-picks': { component: LivePicks, defaultFocus: 'query' },
   'live-check': { component: LiveCheck, defaultFocus: 'run-check' },
   accounts: { component: Accounts, defaultFocus: 'accounts-search' },
+  donate: { component: Donate, defaultFocus: 'donate-continue' },
   apps: { component: Apps, defaultFocus: 'app-tvm-stream' },
   service: { component: Service, defaultFocus: 'service-back' },
   profile: { component: Profile, defaultFocus: 'realdebrid' },
