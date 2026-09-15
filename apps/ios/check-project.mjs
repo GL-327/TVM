@@ -511,7 +511,13 @@ check('native VLC playback is wired for iPhone',
   (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('tapShield') &&
   (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('muteVideoHits') &&
   (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('tvmNativeShouldFail') &&
-  (read(join(REPO, 'apps', 'ui', 'src', 'player', 'engine.ts')) ?? '').includes('iosPlaybackBridge()') &&
+  // The engine routes through nativePlaybackBridge() now that Android has a
+  // native player too, so assert both halves: the engine defers to whichever
+  // shell is present, AND iosEngine still recognises the WKWebView handler.
+  // Checking only the engine would pass while iPhone detection was broken.
+  (read(join(REPO, 'apps', 'ui', 'src', 'player', 'engine.ts')) ?? '').includes('nativePlaybackBridge()') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'player', 'iosEngine.ts')) ?? '').includes('messageHandlers') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'player', 'iosEngine.ts')) ?? '').includes('iosPlaybackBridge') &&
   (read(join(REPO, 'apps', 'ui', 'index.html')) ?? '').includes('user-scalable=no'),
   'iPhone must decode in VLC, lock pinch-zoom, and never fall HTML5 MKV into <video>');
 

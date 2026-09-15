@@ -4,11 +4,9 @@ interface IconProps {
 
 export function IconProfile({ className }: IconProps): React.JSX.Element {
   return (
-    <svg className={className} viewBox="0 0 48 48" width="100%" height="100%" overflow="hidden" aria-hidden="true">
-      <circle cx="24" cy="24" r="21.5" fill="#9b5cff" />
-      <circle cx="17.5" cy="20" r="2.1" fill="#2a1248" />
-      <circle cx="30.5" cy="20" r="2.1" fill="#2a1248" />
-      <path d="M16.5 30c2.2 3.6 12.8 3.6 15 0" fill="none" stroke="#2a1248" strokeWidth="2.1" strokeLinecap="round" />
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <circle cx="16" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+      <path d="M6.5 26.5a9.5 9.5 0 0 1 19 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -68,6 +66,15 @@ export function IconApps({ className }: IconProps): React.JSX.Element {
       <rect x="18" y="6" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="2" />
       <rect x="6" y="18" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="2" />
       <rect x="18" y="18" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+export function IconStream({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <rect x="4.5" y="7.5" width="23" height="17" rx="2.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M13.5 13.2v5.6l5-2.8Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }
