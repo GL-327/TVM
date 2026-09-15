@@ -203,3 +203,7 @@ export function liveChecksPath(dataDir: string): string {
 export function subscriptionsPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'subscriptions.enc');
 }
+
+export function accountsPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'accounts.enc');
+}

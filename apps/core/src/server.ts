@@ -9,6 +9,9 @@ import { clearStripeConfig, loadStripeConfig, saveStripeConfig } from './provide
 import { createStripeClient } from './providers/stripeClient.ts';
 import { createSubscriptionService, type SubscriptionService } from './providers/subscriptions.ts';
 import { createBillingProbe, type BillingProbe } from './providers/billingProbe.ts';
+import { createAccountsService, isAccountTier, type AccountsService } from './providers/accounts.ts';
+import { entitlementForTier, ACCESS_TIERS, ACCESS_ROUTE, STREAM_MONTHLY_PENCE } from './providers/accessTiers.ts';
+import { TERMS, TERMS_SUMMARY, TERMS_VERSION } from './providers/terms.ts';
 import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
 import { mobilePlaybackBlocked } from './mobileAccess.ts';
 import { createLanSessions, serveLanPairing } from './lanSessions.ts';
@@ -398,6 +401,7 @@ export interface CoreOptions {
   apps?: AppsService;
   session?: SessionService;
   plans?: PlanService;
+  accounts?: AccountsService;
   payments?: PaymentService;
   subscriptions?: SubscriptionService;
   billingProbe?: BillingProbe;
@@ -426,6 +430,7 @@ async function handleApi(
   payments: PaymentService,
   subscriptions: SubscriptionService,
   billingProbe: BillingProbe,
+  accounts: AccountsService,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -1045,6 +1050,198 @@ async function handleApi(
     return true;
   }
 
+  // ---- Accounts ----------------------------------------------------------
+  //
+  // Access is not sold here. Somebody signs up, the owner switches them on,
+  // and the tier they were switched on at is what they get.
+
+  const bearer = (): string | undefined => {
+    const header = request.headers['authorization'];
+    return typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : undefined;
+  };
+  const clientLabel = (): string => {
+    const agent = request.headers['user-agent'];
+    return typeof agent === 'string' ? agent.slice(0, 200) : 'unknown';
+  };
+
+  if (path === '/api/terms' && request.method === 'GET') {
+    sendJson(response, 200, { ...TERMS, summary: TERMS_SUMMARY });
+    return true;
+  }
+
+  if (path === '/api/tiers' && request.method === 'GET') {
+    sendJson(response, 200, { tiers: ACCESS_TIERS, route: ACCESS_ROUTE, streamMonthlyPence: STREAM_MONTHLY_PENCE });
+    return true;
+  }
+
+  if (path === '/api/account/register' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as Record<string, unknown>;
+      sendJson(response, 200, accounts.register({ ...body, client: clientLabel() }));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be created.' });
+    }
+    return true;
+  }
+
+  if (path === '/api/account/signin' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as Record<string, unknown>;
+      sendJson(response, 200, accounts.signIn({ ...body, client: clientLabel() }));
+    } catch (error) {
+      sendJson(response, 401, { error: error instanceof Error ? error.message : 'Sign in failed.' });
+    }
+    return true;
+  }
+
+  if (path === '/api/account/signout' && request.method === 'POST') {
+    const token = bearer();
+    if (token !== undefined) accounts.signOut(token);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  /**
+   * Makes the plan engine agree with the account.
+   *
+   * Capabilities — picture quality, profile count, which styles unlock — still
+   * live in the plan engine, so activating somebody has to push their tier
+   * into it. An account that is not usable drops to the free entitlement,
+   * which is now what 'no access' means rather than a tier anyone is offered.
+   */
+  const syncEntitlement = (record: ReturnType<AccountsService['resolve']>): void => {
+    if (record === null) return;
+    const usable = accounts.usable(record);
+    if (!usable.ok || record.tier === null) {
+      if (plans.status().id !== 'free') plans.set('free', 'free');
+      return;
+    }
+    const wanted = entitlementForTier(record.tier);
+    const current = plans.status();
+    if (current.id !== wanted.planId) plans.set(wanted.planId, 'checkout');
+    if (current.liveTv !== wanted.liveTv) plans.setLiveTv(wanted.liveTv);
+  };
+  /** Who am I, and may I use TVM? The interface asks this on every launch. */
+  if (path === '/api/account' && request.method === 'GET') {
+    const record = accounts.resolve(bearer());
+    if (record === null) {
+      sendJson(response, 200, { signedIn: false, account: null, usable: { ok: false, reason: 'no_account' }, termsVersion: TERMS_VERSION });
+      return true;
+    }
+    syncEntitlement(record);
+    sendJson(response, 200, {
+      signedIn: true,
+      account: {
+        id: record.id, email: record.email, displayName: record.displayName,
+        activated: record.activated, tier: record.tier, suspended: record.suspended,
+        createdAt: record.createdAt, termsVersion: record.termsVersion, termsAcceptedAt: record.termsAcceptedAt,
+      },
+      usable: accounts.usable(record),
+      termsVersion: TERMS_VERSION,
+    });
+    return true;
+  }
+
+  if (path === '/api/account/terms' && request.method === 'POST') {
+    const record = accounts.resolve(bearer());
+    if (record === null) {
+      sendJson(response, 401, { error: 'Sign in first.' });
+      return true;
+    }
+    const accepted = accounts.acceptTerms(record.id);
+    syncEntitlement(accounts.resolve(bearer()));
+    sendJson(response, 200, accepted);
+    return true;
+  }
+
+  // ---- Owner's account admin --------------------------------------------
+  //
+  // Developer unlock only, checked on every call. No screen here can reveal a
+  // password, because nothing stored could produce one.
+
+  if (path === '/api/admin/accounts' && request.method === 'GET') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    sendJson(response, 200, {
+      accounts: accounts.list({
+        search: url.searchParams.get('search') ?? undefined,
+        state: (url.searchParams.get('state') as 'all' | 'waiting' | 'active' | 'suspended' | null) ?? undefined,
+      }),
+      summary: accounts.summary(),
+      tiers: ACCESS_TIERS.map((tier) => ({ id: tier.id, name: tier.name })),
+    });
+    return true;
+  }
+
+  if (path === '/api/admin/accounts/activate' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { id?: unknown; tier?: unknown; note?: unknown };
+      if (typeof body.id !== 'string' || !isAccountTier(body.tier)) throw new Error('Choose an account and a tier.');
+      sendJson(response, 200, accounts.activate({
+        id: body.id,
+        tier: body.tier,
+        note: typeof body.note === 'string' ? body.note : undefined,
+      }));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be activated.' });
+    }
+    return true;
+  }
+
+  if (path === '/api/admin/accounts/suspend' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { id?: unknown; suspended?: unknown };
+      if (typeof body.id !== 'string') throw new Error('Choose an account.');
+      sendJson(response, 200, accounts.setSuspended(body.id, body.suspended !== false));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be changed.' });
+    }
+    return true;
+  }
+
+  if (path === '/api/admin/accounts/note' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { id?: unknown; note?: unknown };
+      if (typeof body.id !== 'string') throw new Error('Choose an account.');
+      sendJson(response, 200, accounts.setNote(body.id, typeof body.note === 'string' ? body.note : null));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That note could not be saved.' });
+    }
+    return true;
+  }
+
+  /** Erasure, for a UK GDPR request. Irreversible by design. */
+  if (path === '/api/admin/accounts/erase' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { id?: unknown };
+      if (typeof body.id !== 'string') throw new Error('Choose an account.');
+      accounts.erase(body.id);
+      sendJson(response, 200, { ok: true, summary: accounts.summary() });
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be erased.' });
+    }
+    return true;
+  }
+
   if (path === '/api/billing/subscription' && request.method === 'GET') {
     sendJson(response, 200, subscriptions.current());
     return true;
@@ -1245,6 +1442,9 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   const update = options.update ?? createUpdateService({ dataDir, env });
   const developer = options.developer ?? createDevUnlockService({ dataDir });
   const plans = options.plans ?? createPlanService({ dataDir, developer: () => developer.unlocked(), env });
+  // Who may use this TVM at all. Nothing is self-serve: an account exists
+  // once somebody signs up, and works once the owner switches it on.
+  const accounts = options.accounts ?? createAccountsService({ dataDir, termsVersion: TERMS_VERSION });
   // Card payments. The plan service is the only thing that can grant an
   // entitlement, so payments reaches it through a three-function port rather
   // than writing entitlements itself.
@@ -1352,7 +1552,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         return;
       }
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments, subscriptions, billingProbe)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments, subscriptions, billingProbe, accounts)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });
