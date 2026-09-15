@@ -6,7 +6,6 @@ import { NoticeModal } from '../screens/NoticeModal';
 // Keep Home and lightweight notices ready; fetch secondary screens on demand.
 const Accounts = lazy(() => import('../screens/Accounts').then((m) => ({ default: m.Accounts })));
 const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
-const Checkout = lazy(() => import('../screens/Checkout').then((m) => ({ default: m.Checkout })));
 const Donate = lazy(() => import('../screens/Donate').then((m) => ({ default: m.Donate })));
 const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
 const Developer = lazy(() => import('../screens/Developer').then((m) => ({ default: m.Developer })));
@@ -62,10 +61,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   settings: { component: Settings, defaultFocus: 'performance' },
   plans: { component: Plans, defaultFocus: 'plan-free' },
   legal: { component: Legal, defaultFocus: 'legal-back' },
-  checkout: {
-    component: Checkout,
-    defaultFocus: 'checkout-consent',
-  },
+
   developer: { component: Developer, defaultFocus: 'dev-free' },
   'developer-unlock': { component: DeveloperUnlock, defaultFocus: 'dev-password' },
   'system-info': { component: SystemInfo, defaultFocus: 'back' },
