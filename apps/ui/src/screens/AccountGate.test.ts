@@ -38,6 +38,18 @@ describe('the door', () => {
     expect(src).toContain("activate('stream-live')");
   });
 
+  it('declares every panel that takes typing to the phone keyboard handling', () => {
+    const src = gate();
+    // mobile.css pads and scrolls [data-keyboard-fields] by the keyboard inset.
+    // The waiting panel had no text field until the owner unlock arrived, so it
+    // had no attribute either, and the code field would have opened the keyboard
+    // on top of itself.
+    const panels = src.match(/<main ref={pageRef} className="gate"/g) ?? [];
+    const declared = src.match(/<main ref={pageRef} className="gate" data-keyboard-fields=""/g) ?? [];
+    expect(panels.length).toBeGreaterThan(0);
+    expect(declared.length).toBe(panels.length);
+  });
+
   it('keeps the door itself free of anything that grants access on its own', () => {
     const src = gate();
     // The code is checked by the core and never compared here, so the gate

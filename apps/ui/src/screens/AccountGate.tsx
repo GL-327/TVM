@@ -303,7 +303,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   if (state.signedIn && (reason === 'awaiting_activation' || reason === 'suspended')) {
     const suspended = reason === 'suspended';
     return (
-      <main ref={pageRef} className="gate">
+      <main ref={pageRef} className="gate" data-keyboard-fields="">
         <div className="gate__panel">
           <TvmMark size="md" className="gate__mark" />
           <h1>{suspended ? 'This account is switched off' : 'Almost there'}</h1>
