@@ -11,7 +11,7 @@ import java.util.Locale
 import java.util.UUID
 
 /**
- * Plans, entitlements, sandbox billing and the developer unlock.
+ * Plans, entitlements, billing and the developer unlock.
  *
  * Direct port of apps/ios/TVM/TVMPlans.swift. Both clients answer the same
  * `apps/ui` interface, so every key, default and ordering here matches the
@@ -85,18 +85,16 @@ data class PlanDefinition(
     val badges: List<String>,
 ) {
     fun catalogJson(): JSONObject {
-        val liveOn = liveTvAddonPence > 0 && liveTv
-        val pricePence = basePricePence + (if (liveOn) liveTvAddonPence else 0)
         return Json.obj(
             "id" to id,
             "name" to name,
-            "price" to formatGbp(pricePence),
-            "pricePence" to pricePence,
+            "price" to formatGbp(basePricePence),
+            "pricePence" to basePricePence,
             "basePrice" to formatGbp(basePricePence),
             "basePricePence" to basePricePence,
             "liveTvAddonPence" to liveTvAddonPence,
             "mocks" to mocks,
-            "liveTv" to liveTv,
+            "liveTv" to false,
             "extras" to JSONArray(extras),
         )
     }
@@ -140,24 +138,24 @@ class TvmPlans(private val store: TvmPlansStore) {
             badges = emptyList(),
         ),
         PlanDefinition(
-            id = "basic", name = "TVM Basic", basePricePence = 499, liveTvAddonPence = 300,
-            mocks = false, liveTv = true, ads = true, stream = "basic", maxHeight = 1080,
+            id = "basic", name = "TVM Basic", basePricePence = 499, liveTvAddonPence = 3999,
+            mocks = false, liveTv = false, ads = true, stream = "basic", maxHeight = 1080,
             queueMs = 3500, queueSkipToTop = true, startDelayMs = 4000,
             weeklySeconds = null, profilesMax = 2, skipRecap = false,
             extras = listOf(
-                "Live TV pack and your own playlist",
+                "Live TV available separately",
                 "Always skipped to the top of the queue",
                 "Two TVM Stream profiles",
             ),
             badges = listOf("Live"),
         ),
         PlanDefinition(
-            id = "premium", name = "TVM Premium", basePricePence = 899, liveTvAddonPence = 300,
-            mocks = false, liveTv = true, ads = false, stream = "premium", maxHeight = 1080,
+            id = "premium", name = "TVM Premium", basePricePence = 899, liveTvAddonPence = 3999,
+            mocks = false, liveTv = false, ads = false, stream = "premium", maxHeight = 1080,
             queueMs = 0, queueSkipToTop = false, startDelayMs = 1200,
             weeklySeconds = null, profilesMax = 4, skipRecap = false,
             extras = listOf(
-                "Live TV pack and your own playlist",
+                "Live TV available separately",
                 "No ads",
                 "No queue",
                 "Cinema, Midnight and Classic styles",
@@ -166,12 +164,12 @@ class TvmPlans(private val store: TvmPlansStore) {
             badges = listOf("Live"),
         ),
         PlanDefinition(
-            id = "ultra", name = "TVM Ultra", basePricePence = 1299, liveTvAddonPence = 300,
-            mocks = true, liveTv = true, ads = false, stream = "premium", maxHeight = 2160,
+            id = "ultra", name = "TVM Ultra", basePricePence = 1299, liveTvAddonPence = 3999,
+            mocks = true, liveTv = false, ads = false, stream = "premium", maxHeight = 2160,
             queueMs = 0, queueSkipToTop = false, startDelayMs = 400,
             weeklySeconds = null, profilesMax = 6, skipRecap = true,
             extras = listOf(
-                "Live TV pack and your own playlist",
+                "Live TV available separately",
                 "Mock Netflix, Prime Video, Max, Apple TV, Disney+, Hulu and Peacock",
                 "4K",
                 "Skip recap",
@@ -180,12 +178,12 @@ class TvmPlans(private val store: TvmPlansStore) {
             badges = listOf("4K", "Dolby", "Live"),
         ),
         PlanDefinition(
-            id = "max", name = "TVM MAX", basePricePence = 1599, liveTvAddonPence = 300,
-            mocks = true, liveTv = true, ads = false, stream = "luxury", maxHeight = 2160,
+            id = "max", name = "TVM MAX", basePricePence = 1599, liveTvAddonPence = 3999,
+            mocks = true, liveTv = false, ads = false, stream = "luxury", maxHeight = 2160,
             queueMs = 0, queueSkipToTop = false, startDelayMs = 0,
             weeklySeconds = null, profilesMax = 10, skipRecap = true,
             extras = listOf(
-                "Live TV pack and your own playlist",
+                "Live TV available separately",
                 "Lightning-fast start",
                 "Every style, including MAX Gold and Aurora",
                 "Mock streaming services",
@@ -221,7 +219,7 @@ class TvmPlans(private val store: TvmPlansStore) {
         val plan = definition(entitlement.id)
         val liveTv = liveIncluded(plan, entitlement.liveTvAddon)
         val synthwaveOwned = entitlement.synthwaveAddon || entitlement.themeBundle
-        val charged = plan.basePricePence + (if (liveTv) plan.liveTvAddonPence else 0)
+        val charged = plan.basePricePence
         val used = readUsage()
         val remaining = plan.weeklySeconds?.let { maxOf(0, it - used) }
         val styleIds = stylesFor(entitlement.id)
@@ -230,7 +228,7 @@ class TvmPlans(private val store: TvmPlansStore) {
         } else {
             styleIds.firstOrNull() ?: "classic"
         }
-        val extras = plan.extras.filter { it != LIVE_EXTRA && it != RETRO_EXTRA }.toMutableList()
+        val extras = plan.extras.filter { it != LIVE_EXTRA && it != "Live TV available separately" && it != RETRO_EXTRA }.toMutableList()
         if (synthwaveOwned) extras.add(0, RETRO_EXTRA)
         if (liveTv) extras.add(0, LIVE_EXTRA)
         val badges = plan.badges.filter { it != "Live" }.toMutableList()
@@ -255,6 +253,15 @@ class TvmPlans(private val store: TvmPlansStore) {
             "themeBundlePence" to 999,
             "mocks" to plan.mocks,
             "liveTv" to liveTv,
+            "liveTvTerm" to entitlement.liveTvTerm,
+            "liveTvExpiresAt" to entitlement.liveTvExpiresAt,
+            "liveTvTerms" to Json.array(
+                listOf(
+                    Json.obj("id" to "quarter", "name" to "3-month", "usdCents" to 3999, "amountPence" to 3999, "interval" to "month", "intervalCount" to 3, "blurb" to "Billed every 3 months"),
+                    Json.obj("id" to "year", "name" to "1-year", "usdCents" to 8999, "amountPence" to 8999, "interval" to "year", "intervalCount" to 1, "blurb" to "Billed once per year"),
+                    Json.obj("id" to "lifetime", "name" to "Lifetime", "usdCents" to 59900, "amountPence" to 59900, "interval" to null, "intervalCount" to 0, "blurb" to "One payment; access lasts only while the service stays online"),
+                )
+            ),
             "ads" to plan.ads,
             "stream" to plan.stream,
             "maxHeight" to plan.maxHeight,
@@ -301,8 +308,9 @@ class TvmPlans(private val store: TvmPlansStore) {
     fun setLiveTv(enabled: Boolean): JSONObject {
         val plan = definition(readEntitlement().id)
         if (plan.liveTvAddonPence <= 0) throw ClientException("Live TV is a paid add-on from Basic up.")
+        if (enabled) throw ClientException("Choose a Live TV plan at checkout: 3-month, 1-year, or lifetime.")
         val entitlement = readEntitlement()
-        writeEntitlement(entitlement.copy(liveTvAddon = enabled))
+        writeEntitlement(entitlement.copy(liveTvAddon = false, liveTvTerm = null, liveTvExpiresAt = null))
         return status()
     }
 
@@ -318,10 +326,10 @@ class TvmPlans(private val store: TvmPlansStore) {
     fun checkout(body: JSONObject): JSONObject {
         val simulate = body.opt("simulate") as? String
         if (simulate == "decline") {
-            throw ClientException("Test payment declined. Your plan has not changed.")
+            throw ClientException("Payment declined. Your plan has not changed.")
         }
         if (simulate == "cancel") {
-            throw ClientException("Test checkout cancelled. Your plan has not changed.")
+            throw ClientException("Checkout cancelled. Your plan has not changed.")
         }
         val planId = body.opt("planId") as? String
         if (planId == null || !ranks.contains(planId)) throw ClientException("unknown_plan")
@@ -329,10 +337,22 @@ class TvmPlans(private val store: TvmPlansStore) {
         val packOnly = (body.opt("packOnly") as? Boolean) == true
         val plan = definition(if (packOnly) entitlement.id else planId)
         val explicitLive = body.opt("liveTv") as? Boolean
+        val liveTermRaw = body.opt("liveTvTerm") as? String
+        var liveTvTerm: String? = null
+        var liveAmount = 0
         val includeLive: Boolean = when {
-            packOnly -> liveIncluded(plan, entitlement.liveTvAddon)
-            explicitLive != null -> plan.liveTvAddonPence > 0 && explicitLive
-            else -> plan.liveTv
+            packOnly -> liveIncluded(plan, entitlement.liveTvAddon).also { if (it) liveTvTerm = entitlement.liveTvTerm }
+            liveTermRaw != null && liveTermRaw in listOf("quarter", "year", "lifetime") -> {
+                liveTvTerm = liveTermRaw
+                liveAmount = if (liveTermRaw == "quarter") 3999 else if (liveTermRaw == "year") 8999 else 59900
+                plan.liveTvAddonPence > 0
+            }
+            explicitLive == true -> {
+                liveTvTerm = "quarter"
+                liveAmount = 3999
+                plan.liveTvAddonPence > 0
+            }
+            else -> false
         }
         val pack = body.opt("pack") as? String
         if (pack != null && !PACKS.contains(pack)) throw ClientException("Unknown theme pack.")
@@ -341,21 +361,24 @@ class TvmPlans(private val store: TvmPlansStore) {
         val includeSynthwave = includeBundle || pack == "synthwave" ||
             (body.opt("synthwave") as? Boolean) == true
         // Priced against what is already owned, before this order is applied.
-        val oneTime: Int = when {
+        val packOneTime: Int = when {
             entitlement.themeBundle -> 0
             includeBundle -> 999
             else -> (if (includeAnime && !entitlement.animeAddon) 499 else 0) +
                 (if (includeSynthwave && !entitlement.synthwaveAddon) 499 else 0)
         }
+        val liveLifetime = if (!packOnly && includeLive && liveTvTerm == "lifetime") liveAmount else 0
+        val oneTime = packOneTime + liveLifetime
         val quoted = Json.int(body.opt("quotedOneTimePence"))
         if (quoted != null && quoted != oneTime) throw ClientException("The order has changed. Reopen checkout.")
         if (includeBundle) entitlement = entitlement.copy(themeBundle = true)
         if (includeAnime) entitlement = entitlement.copy(animeAddon = true)
         entitlement = entitlement.copy(
             id = plan.id,
-            source = if (plan.id == "free" && !includeSynthwave && !includeAnime) "free" else "checkout",
+            source = if (plan.id == "free" && !includeSynthwave && !includeAnime && !includeLive) "free" else "checkout",
             styleId = clampStyle(plan.id, entitlement.styleId),
             liveTvAddon = includeLive,
+            liveTvTerm = if (includeLive) liveTvTerm else null,
         )
         if (includeSynthwave) entitlement = entitlement.copy(synthwaveAddon = true)
         writeEntitlement(entitlement)
@@ -365,16 +388,19 @@ class TvmPlans(private val store: TvmPlansStore) {
             val digits = number.filter { it.isDigit() }
             if (digits.length >= 4) last4 = digits.substring(digits.length - 4)
         }
+        val monthly = if (packOnly) 0 else plan.basePricePence
+        val liveRecurring = if (!packOnly && includeLive && liveTvTerm != "lifetime") liveAmount else 0
         val receipt = Json.obj(
-            "id" to "TEST-" + UUID.randomUUID().toString().uppercase(Locale.US),
+            "id" to "PAY-" + UUID.randomUUID().toString().uppercase(Locale.US),
             "planId" to plan.id,
-            "mode" to "sandbox",
+            "mode" to "test",
             "event" to "checkout",
             "currency" to "GBP",
-            "monthlyPence" to plan.basePricePence + (if (includeLive) plan.liveTvAddonPence else 0),
+            "monthlyPence" to monthly,
             "oneTimePence" to oneTime,
-            "chargedPence" to 0,
+            "chargedPence" to monthly + liveRecurring + oneTime,
             "liveTv" to includeLive,
+            "liveTvTerm" to liveTvTerm,
             "animePurchased" to includeAnime,
             "bundlePurchased" to includeBundle,
             "synthwavePurchased" to includeSynthwave,
@@ -408,7 +434,7 @@ class TvmPlans(private val store: TvmPlansStore) {
         val last4 = (store.readJson("billing.json") as? JSONObject)?.opt("last4") as? String
         val payment: Any = if (last4 != null && last4.length == 4) {
             Json.obj(
-                "tokenId" to "sandbox",
+                "tokenId" to "card",
                 "last4" to last4,
                 "brand" to "card",
                 "expiry" to "",
@@ -418,10 +444,10 @@ class TvmPlans(private val store: TvmPlansStore) {
             JSONObject.NULL
         }
         return Json.obj(
-            "mode" to "sandbox",
+            "mode" to "test",
             "livePaymentsEnabled" to false,
             "currency" to "GBP",
-            "subscription" to if ((current.opt("id") as? String) == "free") "free" else "test-active",
+            "subscription" to if ((current.opt("id") as? String) == "free") "free" else "active",
             "monthlyPence" to (current.opt("pricePence") ?: 0),
             "nextChargeAt" to null,
             "anime" to (current.opt("anime") ?: false),
@@ -458,10 +484,10 @@ class TvmPlans(private val store: TvmPlansStore) {
             "code" to "not_configured",
             "chargedPence" to 0,
             "currency" to "GBP",
-            "tokenId" to "sandbox",
+            "tokenId" to "card",
             "last4" to last4,
             "brand" to "card",
-            "message" to "No card processor is linked. This is a sandbox charge and nothing was taken.",
+            "message" to "No card processor is linked on this device.",
         )
     }
 
@@ -482,6 +508,8 @@ class TvmPlans(private val store: TvmPlansStore) {
         val styleId: String,
         val source: String,
         val liveTvAddon: Boolean?,
+        val liveTvTerm: String? = null,
+        val liveTvExpiresAt: String? = null,
         val animeAddon: Boolean = false,
         val themeBundle: Boolean = false,
         val synthwaveAddon: Boolean,
@@ -496,6 +524,8 @@ class TvmPlans(private val store: TvmPlansStore) {
                 styleId = saved.opt("styleId") as? String ?: "classic",
                 source = saved.opt("source") as? String ?: "free",
                 liveTvAddon = saved.opt("liveTvAddon") as? Boolean,
+                liveTvTerm = saved.opt("liveTvTerm") as? String,
+                liveTvExpiresAt = saved.opt("liveTvExpiresAt") as? String,
                 animeAddon = saved.opt("animeAddon") as? Boolean ?: false,
                 themeBundle = saved.opt("themeBundle") as? Boolean ?: false,
                 synthwaveAddon = saved.opt("synthwaveAddon") as? Boolean ?: false,
@@ -521,6 +551,8 @@ class TvmPlans(private val store: TvmPlansStore) {
         )
         // Absent means "follow the plan default"; only an explicit choice is stored.
         value.liveTvAddon?.let { body.put("liveTvAddon", it) }
+        value.liveTvTerm?.let { body.put("liveTvTerm", it) }
+        value.liveTvExpiresAt?.let { body.put("liveTvExpiresAt", it) }
         store.writeJson("plan.json", body)
     }
 
@@ -529,8 +561,7 @@ class TvmPlans(private val store: TvmPlansStore) {
 
     private fun liveIncluded(plan: PlanDefinition, addon: Boolean?): Boolean {
         if (plan.liveTvAddonPence <= 0) return false
-        if (addon != null) return addon
-        return plan.liveTv
+        return addon == true
     }
 
     private fun stylesFor(id: String): List<String> {

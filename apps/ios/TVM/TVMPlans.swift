@@ -20,18 +20,16 @@ struct PlanDefinition {
     var badges: [String]
 
     func catalogJSON() -> [String: Any] {
-        let liveOn = liveTvAddonPence > 0 && liveTv
-        let pricePence = basePricePence + (liveOn ? liveTvAddonPence : 0)
         return [
             "id": id,
             "name": name,
-            "price": formatGbp(pricePence),
-            "pricePence": pricePence,
+            "price": formatGbp(basePricePence),
+            "pricePence": basePricePence,
             "basePrice": formatGbp(basePricePence),
             "basePricePence": basePricePence,
             "liveTvAddonPence": liveTvAddonPence,
             "mocks": mocks,
-            "liveTv": liveTv,
+            "liveTv": false,
             "extras": extras,
         ]
     }
@@ -70,10 +68,10 @@ final class TVMPlans {
         ]
         catalog = [
             PlanDefinition(id: "free", name: "TVM Free", basePricePence: 0, liveTvAddonPence: 0, mocks: false, liveTv: false, ads: true, stream: "basic", maxHeight: 720, queueMs: 28_000, queueSkipToTop: false, startDelayMs: 2500, weeklySeconds: 12 * 60 * 60, profilesMax: 1, skipRecap: false, extras: ["TVM Stream only", "Shared Real-Debrid pool when you add it", "Ads do not use watch hours"], badges: []),
-            PlanDefinition(id: "basic", name: "TVM Basic", basePricePence: 499, liveTvAddonPence: 300, mocks: false, liveTv: true, ads: true, stream: "basic", maxHeight: 1080, queueMs: 3500, queueSkipToTop: true, startDelayMs: 4000, weeklySeconds: nil, profilesMax: 2, skipRecap: false, extras: ["Live TV pack and your own playlist", "Always skipped to the top of the queue", "Two TVM Stream profiles"], badges: ["Live"]),
-            PlanDefinition(id: "premium", name: "TVM Premium", basePricePence: 899, liveTvAddonPence: 300, mocks: false, liveTv: true, ads: false, stream: "premium", maxHeight: 1080, queueMs: 0, queueSkipToTop: false, startDelayMs: 1200, weeklySeconds: nil, profilesMax: 4, skipRecap: false, extras: ["Live TV pack and your own playlist", "No ads", "No queue", "Cinema, Midnight and Classic styles", "Four profiles"], badges: ["Live"]),
-            PlanDefinition(id: "ultra", name: "TVM Ultra", basePricePence: 1299, liveTvAddonPence: 300, mocks: true, liveTv: true, ads: false, stream: "premium", maxHeight: 2160, queueMs: 0, queueSkipToTop: false, startDelayMs: 400, weeklySeconds: nil, profilesMax: 6, skipRecap: true, extras: ["Live TV pack and your own playlist", "Mock Netflix, Prime Video, Max, Apple TV, Disney+, Hulu and Peacock", "4K", "Skip recap", "Six profiles"], badges: ["4K", "Dolby", "Live"]),
-            PlanDefinition(id: "max", name: "TVM MAX", basePricePence: 1599, liveTvAddonPence: 300, mocks: true, liveTv: true, ads: false, stream: "luxury", maxHeight: 2160, queueMs: 0, queueSkipToTop: false, startDelayMs: 0, weeklySeconds: nil, profilesMax: 10, skipRecap: true, extras: ["Live TV pack and your own playlist", "Lightning-fast start", "Every style, including MAX Gold and Aurora", "Mock streaming services", "10 profiles"], badges: ["4K", "HDR", "Atmos", "Live"]),
+            PlanDefinition(id: "basic", name: "TVM Basic", basePricePence: 499, liveTvAddonPence: 3999, mocks: false, liveTv: false, ads: true, stream: "basic", maxHeight: 1080, queueMs: 3500, queueSkipToTop: true, startDelayMs: 4000, weeklySeconds: nil, profilesMax: 2, skipRecap: false, extras: ["Live TV available separately", "Always skipped to the top of the queue", "Two TVM Stream profiles"], badges: ["Live"]),
+            PlanDefinition(id: "premium", name: "TVM Premium", basePricePence: 899, liveTvAddonPence: 3999, mocks: false, liveTv: false, ads: false, stream: "premium", maxHeight: 1080, queueMs: 0, queueSkipToTop: false, startDelayMs: 1200, weeklySeconds: nil, profilesMax: 4, skipRecap: false, extras: ["Live TV available separately", "No ads", "No queue", "Cinema, Midnight and Classic styles", "Four profiles"], badges: ["Live"]),
+            PlanDefinition(id: "ultra", name: "TVM Ultra", basePricePence: 1299, liveTvAddonPence: 3999, mocks: true, liveTv: false, ads: false, stream: "premium", maxHeight: 2160, queueMs: 0, queueSkipToTop: false, startDelayMs: 400, weeklySeconds: nil, profilesMax: 6, skipRecap: true, extras: ["Live TV available separately", "Mock Netflix, Prime Video, Max, Apple TV, Disney+, Hulu and Peacock", "4K", "Skip recap", "Six profiles"], badges: ["4K", "Dolby", "Live"]),
+            PlanDefinition(id: "max", name: "TVM MAX", basePricePence: 1599, liveTvAddonPence: 3999, mocks: true, liveTv: false, ads: false, stream: "luxury", maxHeight: 2160, queueMs: 0, queueSkipToTop: false, startDelayMs: 0, weeklySeconds: nil, profilesMax: 10, skipRecap: true, extras: ["Live TV available separately", "Lightning-fast start", "Every style, including MAX Gold and Aurora", "Mock streaming services", "10 profiles"], badges: ["4K", "HDR", "Atmos", "Live"]),
         ]
     }
 
@@ -97,12 +95,12 @@ final class TVMPlans {
         let plan = definition(entitlement.id)
         let liveTv = liveIncluded(plan, entitlement.liveTvAddon)
         let synthwaveOwned = entitlement.synthwaveAddon || entitlement.themeBundle
-        let charged = plan.basePricePence + (liveTv ? plan.liveTvAddonPence : 0)
+        let charged = plan.basePricePence
         let used = readUsage()
         let remaining = plan.weeklySeconds.map { max(0, $0 - used) }
         let styleIds = stylesFor(entitlement.id)
         let styleId = styleIds.contains(entitlement.styleId) ? entitlement.styleId : (styleIds.first ?? "classic")
-        var extras = plan.extras.filter { $0 != "Live TV pack and your own playlist" && $0 != "Retro — 1970s/80s television-set look" }
+        var extras = plan.extras.filter { $0 != "Live TV pack and your own playlist" && $0 != "Live TV available separately" && $0 != "Retro — 1970s/80s television-set look" }
         if synthwaveOwned { extras.insert("Retro — 1970s/80s television-set look", at: 0) }
         if liveTv { extras.insert("Live TV pack and your own playlist", at: 0) }
         var badges = plan.badges.filter { $0 != "Live" }
@@ -126,6 +124,13 @@ final class TVMPlans {
             "animeAddonPence": 499, "themeBundlePence": 999,
             "mocks": plan.mocks,
             "liveTv": liveTv,
+            "liveTvTerm": JSONValue.orNull(entitlement.liveTvTerm),
+            "liveTvExpiresAt": JSONValue.orNull(entitlement.liveTvExpiresAt),
+            "liveTvTerms": [
+                ["id": "quarter", "name": "3-month", "usdCents": 3999, "amountPence": 3999, "interval": "month", "intervalCount": 3, "blurb": "Billed every 3 months"],
+                ["id": "year", "name": "1-year", "usdCents": 8999, "amountPence": 8999, "interval": "year", "intervalCount": 1, "blurb": "Billed once per year"],
+                ["id": "lifetime", "name": "Lifetime", "usdCents": 59900, "amountPence": 59900, "interval": NSNull(), "intervalCount": 0, "blurb": "One payment; access lasts only while the service stays online"],
+            ],
             "ads": plan.ads,
             "stream": plan.stream,
             "maxHeight": plan.maxHeight,
@@ -170,8 +175,11 @@ final class TVMPlans {
     func setLiveTv(_ enabled: Bool) throws -> [String: Any] {
         let plan = definition(readEntitlement().id)
         if plan.liveTvAddonPence <= 0 { throw ClientError.message("Live TV is a paid add-on from Basic up.") }
+        if enabled { throw ClientError.message("Choose a Live TV plan at checkout: 3-month, 1-year, or lifetime.") }
         var entitlement = readEntitlement()
-        entitlement.liveTvAddon = enabled
+        entitlement.liveTvAddon = false
+        entitlement.liveTvTerm = nil
+        entitlement.liveTvExpiresAt = nil
         writeEntitlement(entitlement)
         return status()
     }
@@ -188,10 +196,10 @@ final class TVMPlans {
 
     func checkout(_ body: [String: Any]) throws -> [String: Any] {
         if body["simulate"] as? String == "decline" {
-            throw ClientError.message("Test payment declined. Your plan has not changed.")
+            throw ClientError.message("Payment declined. Your plan has not changed.")
         }
         if body["simulate"] as? String == "cancel" {
-            throw ClientError.message("Test checkout cancelled. Your plan has not changed.")
+            throw ClientError.message("Checkout cancelled. Your plan has not changed.")
         }
         guard let planId = body["planId"] as? String, ranks.contains(planId) else {
             throw ClientError.message("unknown_plan")
@@ -200,26 +208,38 @@ final class TVMPlans {
         let packOnly = body["packOnly"] as? Bool == true
         let plan = definition(packOnly ? entitlement.id : planId)
         let includeLive: Bool
+        var liveTvTerm: String? = nil
+        var liveAmount = 0
         if packOnly {
             includeLive = liveIncluded(plan, entitlement.liveTvAddon)
-        } else if let explicit = body["liveTv"] as? Bool {
-            includeLive = plan.liveTvAddonPence > 0 && explicit
+            liveTvTerm = entitlement.liveTvTerm
+        } else if let term = body["liveTvTerm"] as? String, ["quarter", "year", "lifetime"].contains(term) {
+            includeLive = plan.liveTvAddonPence > 0
+            liveTvTerm = term
+            liveAmount = term == "quarter" ? 3999 : term == "year" ? 8999 : 59900
+        } else if body["liveTv"] as? Bool == true {
+            includeLive = plan.liveTvAddonPence > 0
+            liveTvTerm = "quarter"
+            liveAmount = 3999
         } else {
-            includeLive = plan.liveTv
+            includeLive = false
         }
         let pack = body["pack"] as? String
         if let pack, !["synthwave", "anime", "theme-bundle"].contains(pack) { throw ClientError.message("Unknown theme pack.") }
         let includeBundle = pack == "theme-bundle"
         let includeAnime = includeBundle || pack == "anime"
         let includeSynthwave = includeBundle || pack == "synthwave" || body["synthwave"] as? Bool == true
-        let oneTime = entitlement.themeBundle ? 0 : includeBundle ? 999 : (includeAnime && !entitlement.animeAddon ? 499 : 0) + (includeSynthwave && !entitlement.synthwaveAddon ? 499 : 0)
+        let packOneTime = entitlement.themeBundle ? 0 : includeBundle ? 999 : (includeAnime && !entitlement.animeAddon ? 499 : 0) + (includeSynthwave && !entitlement.synthwaveAddon ? 499 : 0)
+        let liveLifetime = (!packOnly && includeLive && liveTvTerm == "lifetime") ? liveAmount : 0
+        let oneTime = packOneTime + liveLifetime
         if let quoted = body["quotedOneTimePence"] as? Int, quoted != oneTime { throw ClientError.message("The order has changed. Reopen checkout.") }
         if includeBundle { entitlement.themeBundle = true }
         if includeAnime { entitlement.animeAddon = true }
         entitlement.id = plan.id
-        entitlement.source = plan.id == "free" && !includeSynthwave && !includeAnime ? "free" : "checkout"
+        entitlement.source = plan.id == "free" && !includeSynthwave && !includeAnime && !includeLive ? "free" : "checkout"
         entitlement.styleId = clampStyle(plan.id, entitlement.styleId)
         entitlement.liveTvAddon = includeLive
+        entitlement.liveTvTerm = includeLive ? liveTvTerm : nil
         if includeSynthwave { entitlement.synthwaveAddon = true }
         writeEntitlement(entitlement)
         var last4: String?
@@ -227,17 +247,20 @@ final class TVMPlans {
             let digits = number.filter(\.isNumber)
             if digits.count >= 4 { last4 = String(digits.suffix(4)) }
         }
+        let monthly = packOnly ? 0 : plan.basePricePence
+        let liveRecurring = (!packOnly && includeLive && liveTvTerm != "lifetime") ? liveAmount : 0
         var receipts = readReceipts()
         let receipt: [String: Any] = [
-            "id": "TEST-\(UUID().uuidString)",
+            "id": "PAY-\(UUID().uuidString)",
             "planId": plan.id,
-            "mode": "sandbox",
+            "mode": "test",
             "event": "checkout",
             "currency": "GBP",
-            "monthlyPence": plan.basePricePence + (includeLive ? plan.liveTvAddonPence : 0),
+            "monthlyPence": monthly,
             "oneTimePence": oneTime,
-            "chargedPence": 0,
+            "chargedPence": monthly + liveRecurring + oneTime,
             "liveTv": includeLive,
+            "liveTvTerm": JSONValue.orNull(liveTvTerm),
             "animePurchased": includeAnime, "bundlePurchased": includeBundle,
             "synthwavePurchased": includeSynthwave,
             "at": ISO8601DateFormatter().string(from: Date()),
@@ -265,7 +288,7 @@ final class TVMPlans {
         let payment: Any
         if let last4, last4.count == 4 {
             payment = [
-                "tokenId": "sandbox",
+                "tokenId": "card",
                 "last4": last4,
                 "brand": "card",
                 "expiry": "",
@@ -275,10 +298,10 @@ final class TVMPlans {
             payment = NSNull()
         }
         return [
-            "mode": "sandbox",
+            "mode": "test",
             "livePaymentsEnabled": false,
             "currency": "GBP",
-            "subscription": (current["id"] as? String) == "free" ? "free" : "test-active",
+            "subscription": (current["id"] as? String) == "free" ? "free" : "active",
             "monthlyPence": current["pricePence"] ?? 0,
             "nextChargeAt": NSNull(),
             "anime": current["anime"] ?? false, "bundle": current["bundle"] ?? false,
@@ -312,10 +335,10 @@ final class TVMPlans {
             "code": "not_configured",
             "chargedPence": 0,
             "currency": "GBP",
-            "tokenId": "sandbox",
+            "tokenId": "card",
             "last4": JSONValue.orNull(last4),
             "brand": "card",
-            "message": "No card processor is linked. This is a sandbox charge and nothing was taken.",
+            "message": "No card processor is linked on this device.",
         ]
     }
 
@@ -336,6 +359,8 @@ final class TVMPlans {
         var styleId: String
         var source: String
         var liveTvAddon: Bool?
+        var liveTvTerm: String?
+        var liveTvExpiresAt: String?
         var animeAddon: Bool = false
         var themeBundle: Bool = false
         var synthwaveAddon: Bool
@@ -349,6 +374,8 @@ final class TVMPlans {
                 styleId: object["styleId"] as? String ?? "classic",
                 source: object["source"] as? String ?? "free",
                 liveTvAddon: object["liveTvAddon"] as? Bool,
+                liveTvTerm: object["liveTvTerm"] as? String,
+                liveTvExpiresAt: object["liveTvExpiresAt"] as? String,
                 animeAddon: object["animeAddon"] as? Bool ?? false,
                 themeBundle: object["themeBundle"] as? Bool ?? false,
                 synthwaveAddon: object["synthwaveAddon"] as? Bool ?? false
@@ -366,6 +393,8 @@ final class TVMPlans {
             "synthwaveAddon": value.synthwaveAddon,
         ]
         if let live = value.liveTvAddon { body["liveTvAddon"] = live }
+        if let term = value.liveTvTerm { body["liveTvTerm"] = term }
+        if let expiry = value.liveTvExpiresAt { body["liveTvExpiresAt"] = expiry }
         store.writeJSON("plan.json", body)
     }
 
@@ -375,8 +404,7 @@ final class TVMPlans {
 
     private func liveIncluded(_ plan: PlanDefinition, _ addon: Bool?) -> Bool {
         if plan.liveTvAddonPence <= 0 { return false }
-        if let addon { return addon }
-        return plan.liveTv
+        return addon == true
     }
 
     private func stylesFor(_ id: String) -> [String] {

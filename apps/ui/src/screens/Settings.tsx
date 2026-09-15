@@ -193,9 +193,13 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
           <FocusButton
             id="live-tv-addon"
             className="settings-row"
-            detail={plan.liveTv ? `On · ${plan.price}` : `Off · ${plan.basePrice}`}
+            detail={plan.liveTv ? `On${plan.liveTvTerm ? ` · ${plan.liveTvTerm}` : ''}` : '3-month, 1-year or lifetime'}
             onSelect={() => {
-              void saveLiveTv(!plan.liveTv)
+              if (!plan.liveTv) {
+                navigate.push('checkout', { params: { planId: plan.id } });
+                return;
+              }
+              void saveLiveTv(false)
                 .then((status) => {
                   applyPlanClass(status);
                   setPlan(status);
@@ -210,7 +214,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
                 });
             }}
           >
-            Live TV pack
+            Live TV
           </FocusButton>
         ) : null}
         <FocusButton

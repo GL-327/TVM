@@ -50,10 +50,8 @@ describe('plans', () => {
   it('formats sterling list prices', () => {
     expect(formatGbp(0)).toBe('Free');
     expect(formatGbp(300)).toBe('£3.00');
-    // The Live TV pack must cover the upstream panel's annual rate (~£5.92 a
-    // month) with margin; £3.00 sold it at a loss.
-    expect(LIVE_TV_ADDON_PENCE).toBeGreaterThanOrEqual(999);
-    expect(formatGbp(LIVE_TV_ADDON_PENCE)).toBe('£9.99');
+    expect(LIVE_TV_ADDON_PENCE).toBe(3999);
+    expect(formatGbp(LIVE_TV_ADDON_PENCE)).toBe('£39.99');
     expect(formatGbp(799)).toBe('£7.99');
   });
 
@@ -70,8 +68,8 @@ describe('plans', () => {
     await writeFile(join(dir, 'plan.json'), '{"id":"tvm-max"}');
     const migrated = createPlanService({ dataDir: dir });
     expect(migrated.status().id).toBe('max');
-    expect(migrated.status().liveTv).toBe(true);
-    expect(migrated.status().pricePence).toBe(1599 + LIVE_TV_ADDON_PENCE);
+    expect(migrated.status().liveTv).toBe(false);
+    expect(migrated.status().pricePence).toBe(1599);
     expect(existsSync(join(dir, 'plan.json'))).toBe(true);
   });
 
@@ -90,8 +88,9 @@ describe('plans', () => {
     const second = createPlanService({ dataDir: dir });
     expect(second.status().id).toBe('ultra');
     expect(second.status().liveTv).toBe(true);
+    expect(second.status().liveTvTerm).toBe('quarter');
     expect(second.status().maxHeight).toBe(2160);
-    expect(second.status().pricePence).toBe(1299 + LIVE_TV_ADDON_PENCE);
+    expect(second.status().pricePence).toBe(1299);
   });
 
   it('restores the plan from the snapshot if the vault cannot be opened', async () => {
@@ -124,14 +123,14 @@ describe('plans', () => {
     });
     expect(status.id).toBe('basic');
     expect(status.queueSkipToTop).toBe(true);
-    expect(status.liveTv).toBe(true);
-    expect(status.pricePence).toBe(499 + LIVE_TV_ADDON_PENCE);
-    expect(status.price).toBe('£14.98');
+    expect(status.liveTv).toBe(false);
+    expect(status.pricePence).toBe(499);
+    expect(status.price).toBe('£4.99');
     const blob = readFileSync(billingPath(dir), 'utf8');
     expect(blob).not.toContain('4242424242424242');
     expect(JSON.stringify(plans.receipt())).not.toContain('4242424242424242');
-    expect(plans.receipt()?.chargedPence).toBe(0);
-    expect(plans.receipt()?.mock).toBe(true);
+    expect(plans.receipt()?.chargedPence).toBe(499);
+    expect(plans.receipt()?.mock).toBe(false);
   });
 
   it('rejects a bad card and does not change plan', async () => {
@@ -181,7 +180,7 @@ describe('plans', () => {
     expect(readFileSync(billingPath(dir), 'utf8')).not.toContain(pan);
     expect(JSON.stringify(plans.receipt())).not.toContain(pan);
     expect(plans.receipt()?.last4).toBe('4242');
-    expect(plans.receipt()?.chargedPence).toBe(0);
+    expect(plans.receipt()?.chargedPence).toBe(899);
     const charged = plans.charge({});
     expect(charged).toMatchObject({ status: 'declined', reason: 'no_processor', code: 'not_configured', chargedPence: 0, last4: '4242' });
     expect(JSON.stringify(charged)).not.toContain(pan);
@@ -200,22 +199,32 @@ describe('plans', () => {
     expect(plans.hoursBlocked()).toBe(true);
   });
 
-  it('includes Live TV on paid plans and drops the old price when it is removed', async () => {
+  it('bills Live TV on 3-month, yearly or lifetime terms', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-live-addon-'));
     dirs.push(dir);
     const plans = createPlanService({ dataDir: dir });
     expect(plans.status().liveTv).toBe(false);
     expect(plans.status().pricePence).toBe(0);
 
-    const withLive = plans.checkout({
+    const planOnly = plans.checkout({
       planId: 'premium',
       consent: true, requestId: crypto.randomUUID(),
     });
+    expect(planOnly.liveTv).toBe(false);
+    expect(planOnly.pricePence).toBe(899);
+    expect(planOnly.price).toBe('£8.99');
+    expect(planOnly.basePricePence).toBe(899);
+
+    const withLive = plans.checkout({
+      planId: 'premium',
+      consent: true, requestId: crypto.randomUUID(),
+      liveTvTerm: 'year',
+    });
     expect(withLive.liveTv).toBe(true);
-    expect(withLive.pricePence).toBe(899 + LIVE_TV_ADDON_PENCE);
-    expect(withLive.price).toBe('£18.98');
-    expect(withLive.basePricePence).toBe(899);
+    expect(withLive.liveTvTerm).toBe('year');
+    expect(withLive.pricePence).toBe(899);
     expect(withLive.extras[0]).toMatch(/Live TV/);
+    expect(plans.receipt()?.chargedPence).toBe(899 + 8999);
 
     const without = plans.checkout({
       planId: 'premium',
@@ -224,12 +233,11 @@ describe('plans', () => {
     });
     expect(without.liveTv).toBe(false);
     expect(without.pricePence).toBe(899);
-    expect(without.price).toBe('£8.99');
-    expect(without.extras.some((line) => line.startsWith('Live TV'))).toBe(false);
+    expect(without.extras.some((line) => line === 'Live TV pack and your own playlist')).toBe(false);
 
-    const restored = plans.setLiveTv(true);
-    expect(restored.liveTv).toBe(true);
-    expect(restored.pricePence).toBe(899 + LIVE_TV_ADDON_PENCE);
+    expect(() => plans.setLiveTv(true)).toThrow(/checkout/);
+    const cancelled = plans.setLiveTv(false);
+    expect(cancelled.liveTv).toBe(false);
 
     plans.set('free', 'free');
     expect(() => plans.setLiveTv(true)).toThrow(/paid add-on/);

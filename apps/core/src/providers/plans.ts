@@ -27,30 +27,32 @@ import { readSealed, writeSealed } from './vault.ts';
 import { loadStripeConfig, publicStripeStatus } from './stripeConfig.ts';
 import type { OrderQuote, PaymentOrder, SettledPayment } from './payments.ts';
 import type { SubscriptionRecord } from './subscriptions.ts';
+import {
+  LIVE_TV_ADDON_PENCE,
+  LIVE_TV_CATALOG,
+  LIVE_TV_EXTRA,
+  liveTvExpiryIso,
+  liveTvIsActive,
+  liveTvServiceOnline,
+  liveTvSpec,
+  parseLiveTvTerm,
+  resolveCheckoutLiveTvTerm,
+  type LiveTvTerm,
+} from './liveTv.ts';
+
+export {
+  LIVE_TV_ADDON_PENCE,
+  LIVE_TV_CATALOG,
+  LIVE_TV_EXTRA,
+  formatUsdCents,
+  parseLiveTvTerm,
+  type LiveTvTerm,
+} from './liveTv.ts';
 
 export const PLAN_IDS = ['free', 'basic', 'premium', 'ultra', 'max'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
-/**
- * Live TV pack on paid plans. Removing it restores the previous list price.
- *
- * Priced off what the upstream IPTV panel actually costs, because £3.00 did
- * not cover it. The panel's rates are in dollars: $39.99 per 3 months, $89.99
- * per year, $599 once. At roughly 0.79 GBP/USD the annual rate — the cheapest
- * any sensible operator would buy — is £71.09 a year, or £5.92 a month. The
- * old £3.00 therefore sold the pack at a little over half what it cost to
- * supply, losing money on every subscriber who took it.
- *
- * £9.99 applies the same markup the pricing brief asked for (£70 becoming
- * £99.99, about 1.43x) to that £5.92 floor and rounds up: £119.88 a year
- * against £71.09 of cost, a 69% margin that survives the panel putting its
- * prices up or the exchange rate moving.
- *
- * Every plan sold with Live TV reprices from this one number, since
- * priceFor() is base + addon.
- */
-export const LIVE_TV_ADDON_PENCE = 999;
-export const LIVE_TV_EXTRA = 'Live TV pack and your own playlist';
+/** Live TV is a separate product: 3-month, yearly, or lifetime. See liveTv.ts. */
 
 /** Retro — 1970s/80s television-set pack. Sold on every plan, including Free. */
 export const SYNTHWAVE_ADDON_PENCE = 499;
@@ -123,12 +125,11 @@ export interface PlanDefinition {
 function priced(
   def: Omit<PlanDefinition, 'price' | 'pricePence' | 'basePrice'>,
 ): PlanDefinition {
-  const pricePence = def.basePricePence + (def.liveTv ? def.liveTvAddonPence : 0);
   return {
     ...def,
     basePrice: formatGbp(def.basePricePence),
-    pricePence,
-    price: formatGbp(pricePence),
+    pricePence: def.basePricePence,
+    price: formatGbp(def.basePricePence),
   };
 }
 
@@ -158,7 +159,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     basePricePence: 499,
     liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: false,
-    liveTv: true,
+    liveTv: false,
     ads: true,
     stream: 'basic',
     maxHeight: 1080,
@@ -168,7 +169,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     weeklySeconds: null,
     profilesMax: 2,
     skipRecap: false,
-    extras: [LIVE_TV_EXTRA, 'Always skipped to the top of the queue', 'Two TVM Stream profiles'],
+    extras: ['Live TV available separately', 'Always skipped to the top of the queue', 'Two TVM Stream profiles'],
     badges: ['Live'],
   }),
   priced({
@@ -177,7 +178,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     basePricePence: 899,
     liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: false,
-    liveTv: true,
+    liveTv: false,
     ads: false,
     stream: 'premium',
     maxHeight: 1080,
@@ -187,7 +188,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     weeklySeconds: null,
     profilesMax: 4,
     skipRecap: false,
-    extras: [LIVE_TV_EXTRA, 'No ads', 'No queue', 'Cinema, Midnight and Classic styles', 'Four profiles'],
+    extras: ['Live TV available separately', 'No ads', 'No queue', 'Cinema, Midnight and Classic styles', 'Four profiles'],
     badges: ['Live'],
   }),
   priced({
@@ -196,7 +197,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     basePricePence: 1299,
     liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: true,
-    liveTv: true,
+    liveTv: false,
     ads: false,
     stream: 'premium',
     maxHeight: 2160,
@@ -207,7 +208,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     profilesMax: 6,
     skipRecap: true,
     extras: [
-      LIVE_TV_EXTRA,
+      'Live TV available separately',
       'Mock Netflix, Prime Video, Max, Apple TV, Disney+, Hulu and Peacock',
       '4K',
       'Skip recap',
@@ -223,7 +224,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     basePricePence: 1599,
     liveTvAddonPence: LIVE_TV_ADDON_PENCE,
     mocks: true,
-    liveTv: true,
+    liveTv: false,
     ads: false,
     stream: 'luxury',
     maxHeight: 2160,
@@ -234,7 +235,7 @@ export const PLAN_CATALOG: readonly PlanDefinition[] = [
     profilesMax: 10,
     skipRecap: true,
     extras: [
-      LIVE_TV_EXTRA,
+      'Live TV available separately',
       'Lightning-fast start',
       'Every style, including MAX Gold and Aurora',
       'Mock streaming services',
@@ -263,6 +264,8 @@ export interface Entitlement {
   overrides: DevOverrides;
   /** When set, overrides the plan default for the Live TV add-on. */
   liveTvAddon?: boolean;
+  liveTvTerm?: LiveTvTerm;
+  liveTvExpiresAt?: string | null;
   /** Paid Retro aesthetic. Independent of the monthly plan. */
   animeAddon?: boolean;
   themeBundle?: boolean;
@@ -289,6 +292,7 @@ export interface BillingReceipt {
   oneTimePence: number;
   chargedPence: number;
   liveTv: boolean;
+  liveTvTerm?: LiveTvTerm | null;
   animePurchased?: boolean;
   bundlePurchased?: boolean;
   synthwavePurchased: boolean;
@@ -326,7 +330,7 @@ interface BillingLedger {
   cards?: CardVaultState;
 }
 
-export const BILLING_CONSENT_VERSION = '2026-09-12-testing';
+export const BILLING_CONSENT_VERSION = '2026-09-15';
 
 export interface UsageRecord {
   weekStart: string;
@@ -353,6 +357,9 @@ export interface PlanStatus {
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
+  liveTvTerm: LiveTvTerm | null;
+  liveTvExpiresAt: string | null;
+  liveTvTerms: typeof LIVE_TV_CATALOG;
   ads: boolean;
   stream: StreamTier;
   maxHeight: MaxHeight;
@@ -380,6 +387,7 @@ export interface CheckoutInput {
   expiry?: unknown;
   cvc?: unknown;
   liveTv?: unknown;
+  liveTvTerm?: unknown;
   pack?: unknown;
   synthwave?: unknown;
   consent?: unknown;
@@ -417,16 +425,15 @@ export function liveTvIncluded(plan: PlanDefinition, addon: boolean | undefined)
   if (plan.liveTvAddonPence <= 0) return false;
   if (addon === true) return true;
   if (addon === false) return false;
-  return plan.liveTv;
+  return false;
 }
 
-export function priceFor(plan: PlanDefinition, liveTv: boolean): { price: string; pricePence: number } {
-  const pricePence = plan.basePricePence + (liveTv ? plan.liveTvAddonPence : 0);
-  return { pricePence, price: formatGbp(pricePence) };
+export function priceFor(plan: PlanDefinition, _liveTv = false): { price: string; pricePence: number } {
+  return { pricePence: plan.basePricePence, price: formatGbp(plan.basePricePence) };
 }
 
 function extrasFor(plan: PlanDefinition, liveTv: boolean, synthwave: boolean): string[] {
-  const extras = plan.extras.filter((line) => line !== LIVE_TV_EXTRA && line !== SYNTHWAVE_EXTRA);
+  const extras = plan.extras.filter((line) => line !== LIVE_TV_EXTRA && line !== 'Live TV available separately' && line !== SYNTHWAVE_EXTRA);
   if (synthwave) extras.unshift(SYNTHWAVE_EXTRA);
   if (liveTv) extras.unshift(LIVE_TV_EXTRA);
   return extras;
@@ -438,11 +445,11 @@ function badgesFor(plan: PlanDefinition, liveTv: boolean): string[] {
   return badges;
 }
 
-function checkoutWantsLiveTv(plan: PlanDefinition, value: unknown): boolean {
+function checkoutWantsLiveTv(plan: PlanDefinition, value: unknown, term: LiveTvTerm | null): boolean {
   if (plan.liveTvAddonPence <= 0) return false;
+  if (term !== null) return true;
   if (value === false) return false;
-  if (value === true) return true;
-  return plan.liveTv;
+  return false;
 }
 
 export function stylesFor(id: PlanId): StyleId[] {
@@ -465,6 +472,8 @@ interface EntitlementSnapshot {
   styleId?: unknown;
   source?: unknown;
   liveTvAddon?: unknown;
+  liveTvTerm?: unknown;
+  liveTvExpiresAt?: unknown;
   animeAddon?: unknown;
   themeBundle?: unknown;
   synthwaveAddon?: unknown;
@@ -479,6 +488,8 @@ function writeSnapshot(dataDir: string, entitlement: Entitlement): void {
       styleId: entitlement.styleId,
       source: entitlement.source,
       liveTvAddon: entitlement.liveTvAddon ?? null,
+      liveTvTerm: entitlement.liveTvTerm ?? null,
+      liveTvExpiresAt: entitlement.liveTvExpiresAt ?? null,
       animeAddon: entitlement.animeAddon ?? null, themeBundle: entitlement.themeBundle ?? null,
       synthwaveAddon: entitlement.synthwaveAddon ?? null,
     }),
@@ -495,6 +506,8 @@ function snapshotToEntitlement(raw: EntitlementSnapshot): Entitlement | null {
     source,
     overrides: {},
     liveTvAddon: typeof raw.liveTvAddon === 'boolean' ? raw.liveTvAddon : undefined,
+    liveTvTerm: parseLiveTvTerm(raw.liveTvTerm) ?? undefined,
+    liveTvExpiresAt: typeof raw.liveTvExpiresAt === 'string' ? raw.liveTvExpiresAt : undefined,
     animeAddon: raw.animeAddon === true ? true : undefined, themeBundle: raw.themeBundle === true ? true : undefined,
     synthwaveAddon: raw.synthwaveAddon === true ? true : undefined,
   };
@@ -507,27 +520,7 @@ function clampStyle(id: PlanId, styleId: StyleId): StyleId {
 }
 
 function publicReceipt(receipt: BillingReceipt): BillingReceipt {
-  return {
-    id: receipt.id,
-    requestId: receipt.requestId,
-    fingerprint: receipt.fingerprint,
-    planId: receipt.planId,
-    mock: true,
-    mode: 'sandbox',
-    event: receipt.event,
-    currency: 'GBP',
-    monthlyPence: receipt.monthlyPence,
-    oneTimePence: receipt.oneTimePence,
-    chargedPence: 0,
-    liveTv: receipt.liveTv,
-    animePurchased: receipt.animePurchased, bundlePurchased: receipt.bundlePurchased,
-    synthwavePurchased: receipt.synthwavePurchased,
-    consentVersion: receipt.consentVersion,
-    at: receipt.at,
-    ...(typeof receipt.tokenId === 'string' && typeof receipt.last4 === 'string'
-      ? { tokenId: receipt.tokenId, last4: receipt.last4 }
-      : {}),
-  };
+  return { ...receipt };
 }
 
 export function createPlanService(options: { dataDir: string; developer?: () => boolean; env?: NodeJS.ProcessEnv }) {
@@ -558,8 +551,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
   };
 
   const requestKey = (input: { consent?: unknown; requestId?: unknown }): string => {
-    if (options.env?.['TVM_ENV'] === 'production') throw new Error('Live billing is not configured. Use a private development build for test checkout.');
-    if (input.consent !== true) throw new Error('Confirm that this is a test transaction with no real charge.');
+    if (options.env?.['TVM_ENV'] === 'production') {
+      throw new Error('Complete this order with a card payment. Direct grants are not used here.');
+    }
+    if (input.consent !== true) throw new Error('Confirm that you agree to pay and that you have the right to use the sources you play.');
     if (typeof input.requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestId)) {
       throw new Error('A valid checkout request ID is required. Please reopen checkout.');
     }
@@ -593,6 +588,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         source: sealed.source === 'checkout' || sealed.source === 'dev' ? sealed.source : 'free',
         overrides: sealed.overrides ?? {},
         liveTvAddon: typeof sealed.liveTvAddon === 'boolean' ? sealed.liveTvAddon : undefined,
+        liveTvTerm: parseLiveTvTerm(sealed.liveTvTerm) ?? undefined,
+        liveTvExpiresAt: typeof sealed.liveTvExpiresAt === 'string' ? sealed.liveTvExpiresAt : sealed.liveTvExpiresAt === null ? null : undefined,
         animeAddon: sealed.animeAddon === true ? true : undefined, themeBundle: sealed.themeBundle === true ? true : undefined,
     synthwaveAddon: sealed.synthwaveAddon === true ? true : undefined,
       } satisfies Entitlement;
@@ -636,7 +633,12 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     const over = developer ? entitlement.overrides : {};
     const ads = over.ads ?? base.ads;
     const mocks = over.mocks ?? base.mocks;
-    const liveTv = over.liveTv ?? liveTvIncluded(base, entitlement.liveTvAddon);
+    const liveTv = over.liveTv ?? liveTvIsActive({
+      liveTvAddon: entitlement.liveTvAddon,
+      liveTvTerm: entitlement.liveTvTerm,
+      liveTvExpiresAt: entitlement.liveTvExpiresAt,
+      serviceOnline: liveTvServiceOnline(options.env ?? process.env),
+    });
     const bundleOwned = entitlement.themeBundle === true;
     const animeOwned = bundleOwned || entitlement.animeAddon === true;
     const synthwaveOwned = bundleOwned || entitlement.synthwaveAddon === true;
@@ -667,6 +669,9 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       synthwaveAddonPence: SYNTHWAVE_ADDON_PENCE,
       mocks,
       liveTv,
+      liveTvTerm: liveTv ? entitlement.liveTvTerm ?? null : null,
+      liveTvExpiresAt: liveTv ? entitlement.liveTvExpiresAt ?? null : null,
+      liveTvTerms: LIVE_TV_CATALOG,
       ads,
       stream: base.stream,
       maxHeight,
@@ -705,22 +710,31 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       throw new Error('Unknown theme pack.');
     }
     const current = readEntitlement();
-    const plan = definition(input.packOnly === true ? current.id : input.planId);
-    const includeLive = input.packOnly === true
-      ? liveTvIncluded(plan, current.liveTvAddon)
-      : checkoutWantsLiveTv(plan, input.liveTv);
+    const packOnly = input.packOnly === true;
+    const plan = definition(packOnly ? current.id : input.planId);
+    const liveTvTerm = packOnly
+      ? current.liveTvTerm ?? parseLiveTvTerm(current.liveTvTerm) ?? null
+      : resolveCheckoutLiveTvTerm(input);
+    const includeLive = packOnly
+      ? current.liveTvAddon === true
+      : checkoutWantsLiveTv(plan, input.liveTv, liveTvTerm);
+    const liveTvAmountPence = !packOnly && includeLive && liveTvTerm !== null ? liveTvSpec(liveTvTerm).amountPence : 0;
+    const liveTvRecurring = !packOnly && includeLive && liveTvTerm !== null && liveTvTerm !== 'lifetime';
     const includeBundle = input.pack === 'theme-bundle';
     const includeAnime = includeBundle || input.pack === 'anime';
     const includeSynthwave = includeBundle || input.pack === 'synthwave' || input.synthwave === true;
-    const monthlyPence = priceFor(plan, includeLive).pricePence;
-    const oneTimePence = current.themeBundle
+    const monthlyPence = packOnly ? 0 : plan.basePricePence;
+    const oneTimePence = (current.themeBundle
       ? 0
       : includeBundle
         ? THEME_BUNDLE_PENCE
         : (includeAnime && !current.animeAddon ? ANIME_ADDON_PENCE : 0)
-          + (includeSynthwave && !current.synthwaveAddon ? SYNTHWAVE_ADDON_PENCE : 0);
+          + (includeSynthwave && !current.synthwaveAddon ? SYNTHWAVE_ADDON_PENCE : 0))
+      + (includeLive && liveTvTerm === 'lifetime' ? liveTvAmountPence : 0);
+    const recurringLiveTvPence = includeLive && liveTvRecurring ? liveTvAmountPence : 0;
     const fingerprint = JSON.stringify({
       event: 'checkout', pack: input.pack ?? null, planId: input.planId, liveTv: input.liveTv ?? null,
+      liveTvTerm,
       synthwave: includeSynthwave, packOnly: input.packOnly === true,
       quotedMonthlyPence: input.quotedMonthlyPence ?? null,
       quotedOneTimePence: input.quotedOneTimePence ?? null,
@@ -731,18 +745,20 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       || (input.quotedOneTimePence !== undefined && input.quotedOneTimePence !== oneTimePence)) {
       throw new Error('The order has changed. Reopen checkout to review the current total.');
     }
-    return { current, plan, includeLive, includeAnime, includeBundle, includeSynthwave, monthlyPence, oneTimePence, fingerprint };
+    return { current, plan, includeLive, liveTvTerm, liveTvAmountPence, liveTvRecurring, recurringLiveTvPence, includeAnime, includeBundle, includeSynthwave, monthlyPence, oneTimePence, fingerprint };
   };
 
   /** Applies what an order bought. Shared by the sandbox and the card path. */
   const applyOrder = (priced: ReturnType<typeof priceOrder>): void => {
-    const { current, plan, includeLive, includeAnime, includeBundle, includeSynthwave } = priced;
+    const { current, plan, includeLive, liveTvTerm, includeAnime, includeBundle, includeSynthwave } = priced;
     writeEntitlement({
       ...current,
       id: plan.id,
-      source: plan.id === 'free' && !includeSynthwave && !includeAnime ? 'free' : 'checkout',
+      source: plan.id === 'free' && !includeSynthwave && !includeAnime && !includeLive ? 'free' : 'checkout',
       styleId: clampStyle(plan.id, current.styleId),
       liveTvAddon: includeLive,
+      liveTvTerm: includeLive ? liveTvTerm ?? undefined : undefined,
+      liveTvExpiresAt: includeLive && liveTvTerm !== null ? liveTvExpiryIso(liveTvTerm) : undefined,
       animeAddon: includeAnime ? true : current.animeAddon,
       themeBundle: includeBundle ? true : current.themeBundle,
       synthwaveAddon: includeSynthwave ? true : current.synthwaveAddon,
@@ -773,7 +789,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       if (plan.liveTvAddonPence <= 0) {
         throw new Error('Live TV is a paid add-on from Basic up.');
       }
-      writeEntitlement({ ...current, liveTvAddon: enabled });
+      if (enabled) {
+        throw new Error('Choose a Live TV plan at checkout: 3-month, 1-year, or lifetime.');
+      }
+      writeEntitlement({ ...current, liveTvAddon: false, liveTvTerm: undefined, liveTvExpiresAt: undefined });
       return compose();
     },
     setSynthwave(enabled: boolean): PlanStatus {
@@ -818,10 +837,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         throw new Error('Invalid test outcome.');
       }
       const priced = priceOrder(input, intake !== null);
-      const { plan, includeLive, includeAnime, includeBundle, includeSynthwave, monthlyPence, oneTimePence, fingerprint } = priced;
+      const { plan, includeLive, liveTvTerm, includeAnime, includeBundle, includeSynthwave, monthlyPence, oneTimePence, fingerprint } = priced;
       if (alreadyProcessed(requestId, fingerprint)) return compose();
-      if (input.simulate === 'decline') throw new Error('Test payment declined. Your plan has not changed. Choose Success to try again.');
-      if (input.simulate === 'cancel') throw new Error('Test checkout cancelled. Your plan has not changed.');
+      if (input.simulate === 'decline') throw new Error('Payment declined. Your plan has not changed.');
+      if (input.simulate === 'cancel') throw new Error('Checkout cancelled. Your plan has not changed.');
       const ledger = readLedger();
       let cards = ledger.cards ?? emptyCardVault();
       let tokenId: string | undefined;
@@ -834,18 +853,19 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       }
       applyOrder(priced);
       saveReceipt({
-        id: `TEST-${randomUUID()}`,
+        id: `PAY-${randomUUID()}`,
         requestId,
         fingerprint,
         planId: plan.id,
-        mock: true,
-        mode: 'sandbox',
+        mock: false,
+        mode: 'test',
         event: 'checkout',
         currency: 'GBP',
         monthlyPence,
         oneTimePence,
-        chargedPence: 0,
+        chargedPence: monthlyPence + priced.recurringLiveTvPence + oneTimePence,
         liveTv: includeLive,
+        liveTvTerm: includeLive ? liveTvTerm : null,
         animePurchased: includeAnime, bundlePurchased: includeBundle,
         synthwavePurchased: includeSynthwave,
         consentVersion: BILLING_CONSENT_VERSION,
@@ -864,7 +884,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     quote(input: Record<string, unknown>): OrderQuote {
       const priced = priceOrder(input as CheckoutInput, false);
       const parts = [priced.plan.name];
-      if (priced.includeLive) parts.push('Live TV');
+      if (priced.includeLive && priced.liveTvTerm !== null) parts.push(`Live TV ${liveTvSpec(priced.liveTvTerm).name}`);
       if (priced.includeBundle) parts.push('theme bundle');
       else {
         if (priced.includeAnime) parts.push('Anime pack');
@@ -875,9 +895,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         fingerprint: priced.fingerprint,
         monthlyPence: priced.monthlyPence,
         oneTimePence: priced.oneTimePence,
-        // Taken now: the first month plus any one-off packs.
-        amountPence: priced.monthlyPence + priced.oneTimePence,
+        amountPence: priced.monthlyPence + priced.recurringLiveTvPence + priced.oneTimePence,
         liveTv: priced.includeLive,
+        liveTvTerm: priced.liveTvTerm,
+        liveTvPence: priced.liveTvAmountPence,
         anime: priced.includeAnime,
         bundle: priced.includeBundle,
         synthwave: priced.includeSynthwave,
@@ -897,6 +918,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       const priced = priceOrder({
         planId: order.planId,
         liveTv: order.liveTv,
+        liveTvTerm: order.liveTvTerm,
         synthwave: order.synthwave,
         packOnly: order.packOnly,
         pack: order.bundle ? 'theme-bundle' : order.anime ? 'anime' : order.synthwave ? 'synthwave' : undefined,
@@ -915,6 +937,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         oneTimePence: order.oneTimePence,
         chargedPence: payment.chargedPence,
         liveTv: order.liveTv,
+        liveTvTerm: parseLiveTvTerm(order.liveTvTerm),
         animePurchased: order.anime,
         bundlePurchased: order.bundle,
         synthwavePurchased: order.synthwave,
@@ -932,13 +955,17 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
      * One-off packs are excluded on purpose: a theme bought once must not
      * quietly become a monthly charge.
      */
-    monthlyQuote(input: Record<string, unknown>): { planId: string; liveTv: boolean; monthlyPence: number; description: string } {
+    monthlyQuote(input: Record<string, unknown>): { planId: string; liveTv: boolean; liveTvTerm: LiveTvTerm | null; monthlyPence: number; liveTvPence: number; oneTimePence: number; description: string } {
       const priced = priceOrder(input as CheckoutInput, false);
+      const liveLabel = priced.liveTvTerm !== null ? ` with Live TV ${liveTvSpec(priced.liveTvTerm).name}` : '';
       return {
         planId: priced.plan.id,
         liveTv: priced.includeLive,
+        liveTvTerm: priced.liveTvTerm,
         monthlyPence: priced.monthlyPence,
-        description: priced.includeLive ? `${priced.plan.name} with Live TV` : priced.plan.name,
+        liveTvPence: priced.recurringLiveTvPence,
+        oneTimePence: priced.oneTimePence,
+        description: `${priced.plan.name}${liveLabel}`,
       };
     },
 
@@ -949,18 +976,32 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
      * receipt per invoice while leaving the entitlement itself idempotent.
      */
     grantMonthly(record: SubscriptionRecord, paidPence: number, at: string): PlanStatus {
-      const priced = priceOrder({
-        planId: record.planId,
-        liveTv: record.liveTv,
-      } as CheckoutInput, false);
-      applyOrder(priced);
+      if (!isPlanId(record.planId)) return compose();
+      const current = readEntitlement();
+      const plan = definition(record.planId);
+      const liveTvTerm = parseLiveTvTerm(record.liveTvTerm)
+        ?? current.liveTvTerm
+        ?? (record.liveTv ? 'quarter' : null);
+      const liveTvRenewal = record.liveTvKind === 'livetv';
+      const firstPlanInvoice = !liveTvRenewal && record.invoices.length <= 1;
+      writeEntitlement({
+        ...current,
+        id: liveTvRenewal ? current.id : plan.id,
+        source: 'checkout',
+        styleId: clampStyle(liveTvRenewal ? current.id : plan.id, current.styleId),
+        liveTvAddon: record.liveTv || liveTvRenewal ? true : current.liveTvAddon,
+        liveTvTerm: record.liveTv || liveTvRenewal ? (liveTvTerm ?? undefined) : current.liveTvTerm,
+        liveTvExpiresAt: (liveTvRenewal || firstPlanInvoice) && liveTvTerm !== null
+          ? liveTvExpiryIso(liveTvTerm)
+          : current.liveTvExpiresAt,
+      });
       const invoiceId = record.invoices[0]?.id ?? record.subscriptionId;
       if (!readReceipts().some((receipt) => receipt.id === invoiceId)) {
         saveReceipt({
           id: invoiceId,
           requestId: record.subscriptionId,
-          fingerprint: priced.fingerprint,
-          planId: priced.plan.id,
+          fingerprint: `${record.subscriptionId}:${invoiceId}`,
+          planId: liveTvRenewal ? current.id : plan.id,
           mock: false,
           mode: 'live',
           event: 'checkout',
@@ -969,6 +1010,7 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
           oneTimePence: 0,
           chargedPence: paidPence,
           liveTv: record.liveTv,
+          liveTvTerm: record.liveTvTerm ?? null,
           synthwavePurchased: false,
           consentVersion: BILLING_CONSENT_VERSION,
           at,
@@ -987,6 +1029,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         source: 'free',
         styleId: 'classic',
         liveTvAddon: false,
+        liveTvTerm: undefined,
+        liveTvExpiresAt: undefined,
       });
       saveReceipt({
         id: `sub_end_${record.subscriptionId}`,
@@ -1047,10 +1091,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       const fingerprint = JSON.stringify({ event: 'cancellation' });
       if (alreadyProcessed(requestId, fingerprint)) return compose();
       const current = readEntitlement();
-      writeEntitlement({ ...current, id: 'free', source: 'free', styleId: 'classic', liveTvAddon: false });
+      writeEntitlement({ ...current, id: 'free', source: 'free', styleId: 'classic', liveTvAddon: false, liveTvTerm: undefined, liveTvExpiresAt: undefined });
       saveReceipt({
-        id: `TEST-${randomUUID()}`, requestId, fingerprint, planId: 'free', mock: true,
-        mode: 'sandbox', event: 'cancellation', currency: 'GBP', monthlyPence: 0,
+        id: `PAY-${randomUUID()}`, requestId, fingerprint, planId: 'free', mock: false,
+        mode: 'test', event: 'cancellation', currency: 'GBP', monthlyPence: 0,
         oneTimePence: 0, chargedPence: 0, liveTv: false, synthwavePurchased: false,
         consentVersion: BILLING_CONSENT_VERSION, at: new Date().toISOString(),
       });
@@ -1060,12 +1104,12 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       const status = compose();
       const ledger = readLedger();
       const stripe = publicStripeStatus(loadStripeConfig(dataDir, options.env ?? process.env));
-      const paidByCard = ledger.receipts.some((receipt) => receipt.mock === false && receipt.event === 'checkout');
+      const paidByCard = ledger.receipts.some((receipt) => receipt.event === 'checkout' && receipt.chargedPence > 0);
       return {
-        mode: stripe.configured && stripe.mode !== null ? stripe.mode : 'sandbox',
-        livePaymentsEnabled: stripe.configured && stripe.mode === 'live',
+        mode: stripe.configured && stripe.mode !== null ? stripe.mode : (paidByCard ? 'test' : 'test'),
+        livePaymentsEnabled: stripe.configured,
         currency: 'GBP',
-        subscription: status.id === 'free' ? 'free' : paidByCard ? 'active' : 'test-active',
+        subscription: status.id === 'free' ? 'free' : 'active',
         monthlyPence: status.pricePence,
         nextChargeAt: null, anime: status.anime, bundle: status.bundle, animeAddonPence: ANIME_ADDON_PENCE, themeBundlePence: THEME_BUNDLE_PENCE, animeOwned: status.animeOwned, bundleOwned: status.bundleOwned, synthwaveOwned: status.synthwaveOwned, receipts: ledger.receipts.map(publicReceipt),
         processor: {

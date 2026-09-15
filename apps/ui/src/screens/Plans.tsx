@@ -8,10 +8,10 @@ import type { ScreenProps } from '../nav/registry';
 
 const FALLBACK_CATALOG: PlanDefinition[] = [
   { id: 'free', name: 'TVM Free', price: 'Free', pricePence: 0, basePrice: 'Free', basePricePence: 0, liveTvAddonPence: 0, mocks: false, liveTv: false, extras: [] },
-  { id: 'basic', name: 'TVM Basic', price: '£7.99', pricePence: 799, basePrice: '£4.99', basePricePence: 499, liveTvAddonPence: 300, mocks: false, liveTv: true, extras: [] },
-  { id: 'premium', name: 'TVM Premium', price: '£11.99', pricePence: 1199, basePrice: '£8.99', basePricePence: 899, liveTvAddonPence: 300, mocks: false, liveTv: true, extras: [] },
-  { id: 'ultra', name: 'TVM Ultra', price: '£15.99', pricePence: 1599, basePrice: '£12.99', basePricePence: 1299, liveTvAddonPence: 300, mocks: true, liveTv: true, extras: [] },
-  { id: 'max', name: 'TVM MAX', price: '£18.99', pricePence: 1899, basePrice: '£15.99', basePricePence: 1599, liveTvAddonPence: 300, mocks: true, liveTv: true, extras: [] },
+  { id: 'basic', name: 'TVM Basic', price: '£4.99', pricePence: 499, basePrice: '£4.99', basePricePence: 499, liveTvAddonPence: 3999, mocks: false, liveTv: false, extras: [] },
+  { id: 'premium', name: 'TVM Premium', price: '£8.99', pricePence: 899, basePrice: '£8.99', basePricePence: 899, liveTvAddonPence: 3999, mocks: false, liveTv: false, extras: [] },
+  { id: 'ultra', name: 'TVM Ultra', price: '£12.99', pricePence: 1299, basePrice: '£12.99', basePricePence: 1299, liveTvAddonPence: 3999, mocks: true, liveTv: false, extras: [] },
+  { id: 'max', name: 'TVM MAX', price: '£15.99', pricePence: 1599, basePrice: '£15.99', basePricePence: 1599, liveTvAddonPence: 3999, mocks: true, liveTv: false, extras: [] },
 ];
 
 function gainLine(entry: PlanDefinition, current: PlanStatus): string | null {
@@ -19,7 +19,7 @@ function gainLine(entry: PlanDefinition, current: PlanStatus): string | null {
   if (entry.mocks && !current.mocks) return 'Adds mock Netflix, Prime, Max and more';
   if (entry.id === 'ultra' || entry.id === 'max') return 'Adds 4K and mock streaming hubs';
   if (entry.id === 'premium' && current.id === 'basic') return 'Removes ads and the queue';
-  if (entry.id === 'basic' && current.id === 'free') return 'Adds Live TV and skips the queue';
+  if (entry.id === 'basic' && current.id === 'free') return 'Adds skip-the-queue and paid Live TV';
   return null;
 }
 
@@ -39,7 +39,7 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
   return (
     <main className="page page--settings page--plans">
       <TopBar title="Plans" />
-      <p className="stage__kicker">Test plans · no real payment</p>
+      <p className="stage__kicker">Plans & billing</p>
       <h1 className="page__heading">Upgrade TVM</h1>
       <p className="page__lede">iOS and Android viewing is included with Basic, Premium, Ultra and MAX. Free is for television and desktop. Video keeps its original proportions inside a 16:9 player.</p>
       <section className="plan-current">
@@ -47,11 +47,11 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
         <h2 className="plan-current__name">{plan.name}</h2>
         <p className="plan-current__price">
           {plan.price}
-          {plan.liveTvOptional ? (plan.liveTv ? ' with Live TV' : ' without Live TV') : ''}
+          {plan.liveTv ? ` with Live TV${plan.liveTvTerm ? ` · ${plan.liveTvTerm}` : ''}` : plan.liveTvOptional ? ' · Live TV billed separately' : ''}
         </p>
         <p className="page__lede">
-          Checkout accepts a card to show the flow, but keeps only the last four digits. No payment processor is linked, so nothing is charged.
-          Prices are for testing the plan flow. The optional Live TV feature connects your own authorised provider; it does not include a content subscription.
+          Pay by card at checkout. Live TV is a separate product: 3-month $39.99, 1-year $89.99, or lifetime $599.
+          It connects your own authorised provider and does not include a content subscription.
         </p>
       </section>
       <div className="plan-grid" data-wrap="grid">
@@ -77,7 +77,7 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
               {gain !== null && plan.id !== entry.id ? <span className="plan-card__gain">{gain}</span> : null}
               {addon > 0 ? (
                 <span className="plan-card__note">
-                  {withoutLive} without Live TV · {entry.price} with Live TV
+                  {withoutLive}/month · Live TV from $39.99 / 3 months
                 </span>
               ) : (
                 <span className="plan-card__note">TVM Stream only</span>

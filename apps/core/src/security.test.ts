@@ -93,7 +93,7 @@ describe('initial test security', () => {
     expect(plans.status().id).toBe('free');
     plans.checkout(order); plans.checkout(order);
     expect(plans.billing().receipts).toHaveLength(1);
-    expect(plans.receipt()).toMatchObject({ monthlyPence: 499, oneTimePence: 499, chargedPence: 0 });
+    expect(plans.receipt()).toMatchObject({ monthlyPence: 499, oneTimePence: 499, chargedPence: 998 });
     expect(() => plans.checkout({ ...order, liveTv: true })).toThrow(/different transaction/);
     plans.cancel({ consent: true, requestId: 'test-cancel-1' });
     expect(plans.status()).toMatchObject({ id: 'free', synthwave: true, pricePence: 0 });
@@ -105,6 +105,6 @@ describe('initial test security', () => {
     plans.checkout({ planId: 'premium', consent: true, requestId: 'test-corruption' });
     writeFileSync(entitlementPath(dir), 'broken'); expect(plans.status().id).toBe('free');
     const production = createPlanService({ dataDir: folder(), env: { TVM_ENV: 'production' } });
-    expect(() => production.checkout({ planId: 'basic', consent: true, requestId: 'production-test' })).toThrow(/Live billing/);
+    expect(() => production.checkout({ planId: 'basic', consent: true, requestId: 'production-test' })).toThrow(/card payment/);
   });
 });
