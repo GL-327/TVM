@@ -195,3 +195,7 @@ export function stripeKeysPath(dataDir: string): string {
 export function paymentsLedgerPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'payments.enc');
 }
+
+export function liveChecksPath(dataDir: string): string {
+  return join(dataDir, 'live-checks.json');
+}

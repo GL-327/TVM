@@ -557,3 +557,61 @@ export async function requestSession(mode: 'kiosk' | 'desktop'): Promise<{ ok: b
     return { ok: false, reason: 'unavailable' };
   }
 }
+
+/** One channel, opened for real to see whether it streams. */
+export interface ChannelCheck {
+  id: string;
+  name: string;
+  group: string;
+  verdict: 'working' | 'unauthorized' | 'missing' | 'offline' | 'silent' | 'empty' | 'unplayable' | 'unreachable';
+  ok: boolean;
+  status: number | null;
+  transport: 'hls' | 'mpegts' | null;
+  detail: string;
+  ms: number;
+}
+
+export interface LiveCheckSummary {
+  startedAt: string;
+  finishedAt: string;
+  total: number;
+  checked: number;
+  working: number;
+  /** The plain-language answer to "is Live TV working?" */
+  verdict: string;
+  counts: Record<string, number>;
+  results: ChannelCheck[];
+}
+
+/**
+ * Opens channels one by one and reports which actually stream.
+ *
+ * Slow on purpose — it fetches real video — so it runs only when asked, and
+ * the generous timeout reflects that a sweep of 25 channels against a slow
+ * provider can take a couple of minutes.
+ */
+export async function checkLiveChannels(input: { group?: string; ids?: string[]; limit?: number } = {}): Promise<LiveCheckSummary> {
+  const response = await apiFetch('/api/live/check', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+    // apiFetch otherwise imposes 20s, and a sweep of real channels takes
+    // minutes: each one is a live video fetch, not an API call.
+    signal: AbortSignal.timeout(300_000),
+  });
+  const body = (await response.json()) as LiveCheckSummary & { error?: string };
+  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : 'The channel check could not run.');
+  return body;
+}
+
+/** The last sweep, so the screen can show a result without re-running one. */
+export async function fetchLastLiveCheck(): Promise<LiveCheckSummary | null> {
+  try {
+    const response = await apiFetch('/api/live/check');
+    if (!response.ok) return null;
+    const body = (await response.json()) as LiveCheckSummary;
+    return Array.isArray(body.results) && body.results.length > 0 ? body : null;
+  } catch {
+    return null;
+  }
+}

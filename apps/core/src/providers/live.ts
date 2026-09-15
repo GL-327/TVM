@@ -1,6 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { livePicksPath, livePlaylistPath, xtreamPath } from '../update/paths.ts';
+import { liveChecksPath, livePicksPath, livePlaylistPath, xtreamPath } from '../update/paths.ts';
+import {
+  runChecks,
+  summarize,
+  verdictLine,
+  type CheckTarget,
+  type LiveCheckReport,
+  type ProbeOutcome,
+} from './liveCheck.ts';
 import { readPrivateJson } from './privateJson.ts';
 import { deleteSecret } from './secrets.ts';
 import {
@@ -81,6 +89,12 @@ export interface LiveDiagnosis {
   tsFallback?: string;
 }
 
+/** A completed sweep, plus the one-line answer to "is Live TV working?". */
+export interface LiveCheckSummary extends LiveCheckReport {
+  verdict: string;
+  counts: Record<string, number>;
+}
+
 export interface LiveService {
   status(): Promise<LiveStatus>;
   catalog(query: LiveCatalogQuery): Promise<LiveCatalogPage>;
@@ -93,6 +107,9 @@ export interface LiveService {
   play(id: string): Promise<PlaybackResolution>;
   upstreamUrl(id: string): Promise<string | null>;
   diagnose(id: string): Promise<LiveDiagnosis>;
+  /** Opens channels for real and reports which ones actually stream. */
+  checkChannels(input?: { ids?: string[]; limit?: number; group?: string; concurrency?: number }): Promise<LiveCheckSummary>;
+  lastCheck(): LiveCheckSummary | null;
   proxyChannel(id: string, headers?: Record<string, string>, method?: string): Promise<LiveProxyResult>;
   proxyHop(token: string, headers?: Record<string, string>, method?: string): Promise<LiveProxyResult>;
 }
@@ -745,6 +762,88 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
     };
   };
 
+  /**
+   * Opens one channel far enough to know whether it plays, and no further.
+   *
+   * MPEG-TS needs nothing beyond the first bytes — those bytes *are* the
+   * video. HLS needs the extra hop: a manifest can return 200 while every
+   * segment behind it is refused, which is exactly the case that makes a
+   * channel look fine in a listing and fail in the player.
+   *
+   * The connection is released the moment there is an answer. A live channel
+   * never ends, so reading on would hold a slot against the subscription's
+   * device limit for as long as the check ran.
+   */
+  const probeChannel = async (id: string): Promise<ProbeOutcome> => {
+    const upstream = await resolveUpstream(id);
+    if (upstream === null || upstream === '') {
+      return { status: null, networkError: 'this channel is not in the current playlist' };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS * 2);
+    try {
+      const response = await fetchImpl(upstream, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: upstreamHeaders(upstream, undefined, false),
+        signal: controller.signal,
+      });
+      const outcome: ProbeOutcome = {
+        status: response.status,
+        contentType: response.headers.get('content-type') ?? '',
+      };
+      if (!response.ok && response.status !== 206) {
+        await response.body?.cancel().catch(() => undefined);
+        return outcome;
+      }
+      if (response.body === null) return outcome;
+
+      const reader = response.body.getReader();
+      let head: Uint8Array;
+      let manifest: Uint8Array | null = null;
+      try {
+        head = await peekForSniff(reader);
+        if (looksLikeHlsBytes(head)) manifest = await readPlaylistBody(head, reader);
+      } finally {
+        await reader.cancel().catch(() => undefined);
+      }
+      outcome.head = head;
+
+      if (manifest === null) return outcome;
+
+      const segment = firstSegmentUrl(new TextDecoder().decode(manifest), upstream);
+      if (segment === null) return { ...outcome, manifestEmpty: true };
+
+      try {
+        const media = await fetchImpl(segment, {
+          method: 'GET',
+          redirect: 'follow',
+          headers: upstreamHeaders(segment, undefined, false),
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
+        });
+        outcome.segmentStatus = media.status;
+        if (media.ok || media.status === 206) {
+          const bytes = await peekForSniff(media.body!.getReader());
+          outcome.segmentBytes = bytes.length;
+          await media.body?.cancel().catch(() => undefined);
+        } else {
+          await media.body?.cancel().catch(() => undefined);
+        }
+      } catch {
+        outcome.segmentStatus = null;
+      }
+      return outcome;
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+        return { status: null, timedOut: true };
+      }
+      return { status: null, networkError: error instanceof Error ? error.message : 'request failed' };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const findChannel = async (id: string): Promise<LiveChannel | undefined> => {
     const mock = MOCK_LIVE_CHANNELS.find((entry) => entry.id === id);
     if (mock !== undefined) return mock;
@@ -922,6 +1021,70 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
      *
      * The URL is never returned: it embeds the subscription credentials.
      */
+    /**
+     * Opens each channel the way the player would and reports what came back.
+     *
+     * A panel listing twenty thousand channels says nothing about whether any
+     * of them play, so this is the only honest way to answer "is Live TV
+     * working": fetch real bytes and look at them.
+     */
+    async checkChannels(input: { ids?: string[]; limit?: number; group?: string; concurrency?: number } = {}): Promise<LiveCheckSummary> {
+      const loaded = await loadCatalog();
+      const mock = options.includeMock?.() === true ? [...MOCK_LIVE_CHANNELS] : [];
+      const everything: LiveChannel[] = [...mock, ...loaded.channels];
+
+      let pool = everything;
+      if (input.ids !== undefined && input.ids.length > 0) {
+        const wanted = new Set(input.ids);
+        pool = everything.filter((channel) => wanted.has(channel.id));
+      } else if (input.group !== undefined && input.group !== '') {
+        pool = everything.filter((channel) => channelGroup(channel) === input.group);
+      } else {
+        // Default to what the viewer actually watches. Sweeping all 19,000
+        // would take hours and trip the provider's connection limit.
+        const picks = new Set(storedPicks(loaded.channels));
+        const picked = everything.filter((channel) => picks.has(channel.id));
+        pool = picked.length > 0 ? [...mock, ...picked] : everything;
+      }
+
+      const limit = Math.max(1, Math.min(input.limit ?? 25, 200));
+      const targets: CheckTarget[] = pool.slice(0, limit).map((channel) => ({
+        id: channel.id,
+        name: channel.name,
+        group: channelGroup(channel),
+      }));
+
+      const startedAt = new Date().toISOString();
+      const results = await runChecks(targets, (target) => probeChannel(target.id), {
+        concurrency: input.concurrency ?? 4,
+      });
+      const report: LiveCheckReport = {
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        total: everything.length,
+        checked: results.length,
+        working: results.filter((entry) => entry.ok).length,
+        results,
+      };
+      const summary: LiveCheckSummary = { ...report, counts: summarize(results), verdict: verdictLine(report) };
+      try {
+        mkdirSync(dirname(liveChecksPath(dataDir)), { recursive: true });
+        writeFileSync(liveChecksPath(dataDir), JSON.stringify(summary), 'utf8');
+      } catch {
+        // A check that cannot be cached is still a check worth returning.
+      }
+      return summary;
+    },
+
+    lastCheck(): LiveCheckSummary | null {
+      try {
+        const raw = JSON.parse(readFileSync(liveChecksPath(dataDir), 'utf8')) as LiveCheckSummary;
+        return Array.isArray(raw.results) ? raw : null;
+      } catch {
+        return null;
+      }
+    },
+
     async diagnose(id: string): Promise<LiveDiagnosis> {
       const upstream = await resolveUpstream(id);
       if (upstream === null) return { ok: false, step: 'resolve', detail: 'This channel is not in the current playlist.' };

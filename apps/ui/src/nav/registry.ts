@@ -12,6 +12,7 @@ const DeveloperUnlock = lazy(() => import('../screens/DeveloperUnlock').then((m)
 const DiagnosticsModal = lazy(() => import('../screens/DiagnosticsModal').then((m) => ({ default: m.DiagnosticsModal })));
 const Library = lazy(() => import('../screens/Library').then((m) => ({ default: m.Library })));
 const Watchlist = lazy(() => import('../screens/Watchlist').then((m) => ({ default: m.Watchlist })));
+const LiveCheck = lazy(() => import('../screens/LiveCheck').then((m) => ({ default: m.LiveCheck })));
 const LivePicks = lazy(() => import('../screens/LivePicks').then((m) => ({ default: m.LivePicks })));
 const LivePlaylist = lazy(() => import('../screens/LivePlaylist').then((m) => ({ default: m.LivePlaylist })));
 const LiveTV = lazy(() => import('../screens/LiveTV').then((m) => ({ default: m.LiveTV })));
@@ -48,6 +49,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   'live-xtream': { component: LiveXtream, defaultFocus: 'host' },
   'live-playlist': { component: LivePlaylist, defaultFocus: 'url' },
   'live-picks': { component: LivePicks, defaultFocus: 'query' },
+  'live-check': { component: LiveCheck, defaultFocus: 'run-check' },
   apps: { component: Apps, defaultFocus: 'app-tvm-stream' },
   service: { component: Service, defaultFocus: 'service-back' },
   profile: { component: Profile, defaultFocus: 'realdebrid' },
