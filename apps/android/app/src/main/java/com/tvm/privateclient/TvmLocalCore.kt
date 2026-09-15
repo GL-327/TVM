@@ -453,9 +453,12 @@ class TvmLocalCore(
         val trimmed = base.path.orEmpty().trim('/')
         val path = if (trimmed.isEmpty()) "/get.php" else "/$trimmed/get.php"
         val port = if (base.port > 0) ":${base.port}" else ""
+        // output=ts, not m3u8: many panels generate an HLS manifest whose
+        // segments their CDN then refuses with 403. See xtreamStreamUrl in
+        // apps/core/src/providers/xtream.ts.
         val target = "$scheme://${base.host}$port$path" +
             "?username=${Json.formEncode(username)}&password=${Json.formEncode(password)}" +
-            "&type=m3u_plus&output=m3u8"
+            "&type=m3u_plus&output=ts"
 
         val text = fetchText(target, 15_000)
         if (text == null || !text.contains("#EXTM3U")) {

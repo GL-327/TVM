@@ -240,7 +240,10 @@ final class TVMLocalCore {
             }
             playlist.path = playlist.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty ? "/get.php" : playlist.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/get.php"
             if !playlist.path.hasPrefix("/") { playlist.path = "/" + playlist.path }
-            playlist.queryItems = [URLQueryItem(name: "username", value: username), URLQueryItem(name: "password", value: password), URLQueryItem(name: "type", value: "m3u_plus"), URLQueryItem(name: "output", value: "m3u8")]
+            // output=ts, not m3u8: many panels generate an HLS manifest whose segments
+            // their CDN then refuses with 403, which reaches the viewer as a dead
+            // stream. See xtreamStreamUrl in apps/core/src/providers/xtream.ts.
+            playlist.queryItems = [URLQueryItem(name: "username", value: username), URLQueryItem(name: "password", value: password), URLQueryItem(name: "type", value: "m3u_plus"), URLQueryItem(name: "output", value: "ts")]
             guard let url = playlist.url else { return .json(400, ["error": "Invalid provider address."]) }
             var request = URLRequest(url: url); request.timeoutInterval = 15
             guard let (data, response) = try? await session.data(for: request),
