@@ -1,0 +1,184 @@
+name: Desktop & Roku packages
+
+# The iOS and Android releases are published by mobile.yml, which already
+# builds those artifacts. This workflow owns the two platforms that had no
+# release path at all, so that the Releases page carries one obvious download
+# for every platform TVM supports.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to build
+        type: choice
+        options:
+          - all
+          - desktop
+          - roku
+        default: all
+  push:
+    branches: [main]
+    paths:
+      - "apps/core/**"
+      - "apps/ui/**"
+      - "apps/shell/**"
+      - "apps/roku/**"
+      - "scripts/**"
+      - ".github/workflows/release.yml"
+
+jobs:
+  desktop:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'roku'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # The Electron dependency is a castlabs fork carrying Widevine. Downloading
+      # it is a ~150MB no-op here: this package is the core + UI bundle that the
+      # launch scripts run, matching what scripts/publish-app.ps1 produces.
+      - name: Build core and UI
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @tvm/core run build
+          pnpm --filter @tvm/ui run build
+
+      - name: Stage the desktop package
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p stage/core stage/ui
+          cp -r apps/core/dist/. stage/core/
+          cp -r apps/ui/dist/. stage/ui/
+          cp scripts/launch-tvm.cmd scripts/launch-tvm.ps1 scripts/launch-tvm.sh stage/
+          cp package.json stage/
+          node -e 'require("fs").writeFileSync("stage/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,version:process.env.VERSION}))'
+          mkdir -p release
+          tar -czf "release/TVM-desktop-$VERSION.tar.gz" -C stage .
+          (cd release && sha256sum "TVM-desktop-$VERSION.tar.gz" > "TVM-desktop-$VERSION.sha256")
+
+      - name: Publish the Desktop release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse --short HEAD)"
+          cat > release/NOTES.md <<EOF
+          **Windows, macOS and Linux.**
+
+          | | |
+          |---|---|
+          | Download | \`TVM-desktop-$VERSION.tar.gz\` |
+          | Build | \`$SHA\` |
+          | Needs | [Node.js 22+](https://nodejs.org) |
+
+          ### Install
+          1. Download and extract **TVM-desktop-$VERSION.tar.gz**.
+          2. Run the launcher for your system:
+             - **Windows** — double-click \`launch-tvm.cmd\`
+             - **macOS / Linux** — \`./launch-tvm.sh\`
+          3. TVM opens in your browser at \`http://localhost:8788\`.
+
+          \`TVM-desktop-$VERSION.sha256\` is the checksum — verify with
+          \`sha256sum -c TVM-desktop-$VERSION.sha256\`.
+          EOF
+          gh release create desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md
+          # Clear stale assets so an old version's tarball cannot linger next to the new one.
+          for old in $(gh release view desktop --json assets --jq '.assets[].name' 2>/dev/null || true); do
+            case "$old" in
+              "TVM-desktop-$VERSION.tar.gz"|"TVM-desktop-$VERSION.sha256") ;;
+              *) gh release delete-asset desktop "$old" --yes || true ;;
+            esac
+          done
+          gh release upload desktop "release/TVM-desktop-$VERSION.tar.gz" "release/TVM-desktop-$VERSION.sha256" --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvm-desktop
+          path: release/TVM-desktop-*
+          if-no-files-found: error
+
+  roku:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'desktop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # A Roku sideload package is just a zip with the manifest at its root.
+      # No Roku SDK is involved, so this is a plain packaging + lint job.
+      - name: Check the channel layout
+        run: |
+          set -euo pipefail
+          test -f apps/roku/manifest || { echo "apps/roku/manifest is missing"; exit 1; }
+          test -d apps/roku/components || { echo "apps/roku/components is missing"; exit 1; }
+          test -d apps/roku/source || { echo "apps/roku/source is missing"; exit 1; }
+          # Every .xml component must name a script file that actually exists.
+          missing=0
+          while IFS= read -r ref; do
+            [ -f "apps/roku/$ref" ] || { echo "missing script referenced by a component: $ref"; missing=1; }
+          done < <(grep -rho 'uri="pkg:/[^"]*\.brs"' apps/roku/components | sed 's|uri="pkg:/||; s|"$||' | sort -u)
+          [ "$missing" -eq 0 ] || exit 1
+          echo "Channel layout OK."
+
+      - name: Package the channel
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^major_version=\(.*\)/\1/p' apps/roku/manifest).$(sed -n 's/^minor_version=\(.*\)/\1/p' apps/roku/manifest).$(sed -n 's/^build_version=\(.*\)/\1/p' apps/roku/manifest)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p release
+          (cd apps/roku && zip -q -r "$GITHUB_WORKSPACE/release/TVM-roku.zip" . -x 'bsconfig.json' '*.md')
+          unzip -l release/TVM-roku.zip | head -20
+
+      - name: Publish the Roku release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse --short HEAD)"
+          cat > release/NOTES.md <<EOF
+          **Roku streaming players and Roku TV.**
+
+          | | |
+          |---|---|
+          | Download | \`TVM-roku.zip\` |
+          | Channel version | \`$VERSION\` |
+          | Build | \`$SHA\` |
+
+          ### Install (sideload)
+          Roku calls this "developer mode". The channel is not in the Channel Store.
+
+          1. On the Roku remote press: **Home ×3, Up ×2, Right, Left, Right, Left, Right**.
+          2. Enable developer mode, set a password, and note the IP address shown.
+          3. In a browser on the same network go to \`http://<that-ip>\` and sign in
+             with username \`rokudev\` and the password you set.
+          4. Upload **TVM-roku.zip** and press **Install**.
+
+          A sideloaded channel stays until you re-image the device. TVM must be
+          running on the same network — point it at your desktop's address in
+          **Settings** on first launch.
+          EOF
+          gh release create roku --title "Roku — streaming players & Roku TV" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit roku --title "Roku — streaming players & Roku TV" --notes-file release/NOTES.md
+          gh release upload roku release/TVM-roku.zip --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvm-roku
+          path: release/TVM-roku.zip
+          if-no-files-found: error
