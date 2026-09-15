@@ -1,0 +1,110 @@
+/*
+ * The owner's account list. Dense on a desktop, stacked on a phone.
+ * Plain rows: this is a working screen, not a showpiece.
+ */
+
+.acct-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  margin: 0 0 1.25rem;
+}
+
+.acct-summary div { margin: 0; }
+.acct-summary dt { font-size: 0.78rem; opacity: 0.7; }
+.acct-summary dd { margin: 0; font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.acct-controls { display: grid; gap: 0.75rem; margin-bottom: 1.25rem; }
+.acct-search > span { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: var(--tvm-text-muted); }
+.acct-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.acct-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+
+.acct-row {
+  background: var(--tvm-surface);
+  border: 1px solid var(--tvm-border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.acct-row--open { border-color: color-mix(in srgb, var(--tvm-accent) 45%, transparent); }
+
+.acct-row__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.acct-row__head:hover,
+.acct-row__head:focus-visible,
+.acct-row__head[data-focused='true'] { background: var(--tvm-surface-hover); outline: none; }
+
+.acct-row__who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.acct-row__name { font-weight: 600; }
+.acct-row__email { font-size: 0.85rem; color: var(--tvm-text-muted); overflow-wrap: anywhere; }
+
+.acct-badge {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.acct-badge--on { background: color-mix(in srgb, var(--tvm-success) 20%, transparent); color: var(--tvm-success); }
+.acct-badge--wait { background: color-mix(in srgb, var(--tvm-warning) 20%, transparent); color: var(--tvm-warning); }
+.acct-badge--off { background: color-mix(in srgb, var(--tvm-danger) 18%, transparent); color: var(--tvm-danger); }
+
+.acct-detail { padding: 0 1rem 1rem; border-top: 1px solid var(--tvm-border-soft); }
+
+.acct-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.acct-facts div { margin: 0; min-width: 0; }
+.acct-facts dt { font-size: 0.75rem; opacity: 0.65; }
+.acct-facts dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.acct-facts__wide { grid-column: 1 / -1; }
+
+.acct-detail__privacy {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: var(--tvm-text-faint);
+  line-height: 1.45;
+}
+
+.acct-note { display: block; margin-bottom: 1rem; }
+.acct-note > span { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: var(--tvm-text-muted); }
+
+.acct-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.acct-actions--danger {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--tvm-border-soft);
+  align-items: center;
+}
+
+.acct-danger__ask { flex: 1 1 100%; font-size: 0.87rem; color: var(--tvm-danger); }
+
+.acct-hint { margin-top: 1rem; font-size: 0.87rem; color: var(--tvm-text-faint); }
+
+@media (max-width: 620px) {
+  .acct-summary { gap: 1.1rem; }
+  .acct-summary dd { font-size: 1.25rem; }
+  .acct-actions .tvm-button { flex: 1 1 100%; min-height: 44px; }
+}

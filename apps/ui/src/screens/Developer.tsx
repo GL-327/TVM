@@ -58,6 +58,14 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
       </p>
       {message !== null && <p className="page__message">{message}</p>}
       <div className="settings-list" data-wrap="y">
+        <FocusButton
+          id="dev-accounts"
+          className="settings-row"
+          detail="View, search and activate"
+          onSelect={() => navigate.push('accounts')}
+        >
+          Accounts
+        </FocusButton>
         {ORDER.map((id) => (
           <FocusButton
             key={id}
@@ -69,14 +77,6 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
             Force {id}
           </FocusButton>
         ))}
-        <FocusButton
-          id="dev-ads"
-          className="settings-row"
-          detail={plan.ads ? 'On' : 'Off'}
-          onSelect={() => void apply(() => saveOverrides({ ads: !plan.ads }))}
-        >
-          Ads
-        </FocusButton>
         <FocusButton
           id="dev-queue"
           className="settings-row"
