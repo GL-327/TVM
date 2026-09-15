@@ -43,6 +43,9 @@ class MainActivity : AppCompatActivity() {
     private var active: Pair<Connection, SessionCookie>? = null
     private var busy = false
     private var restored = false
+    private var localServer: TvmLocalServer? = null
+    private var nativePlayer: TvmNativePlayer? = null
+    private var standaloneOrigin: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,10 +73,76 @@ class MainActivity : AppCompatActivity() {
         token.addTextChangedListener(SimpleWatcher { forget.visibility = if (token.text.isNotEmpty()) View.VISIBLE else View.GONE })
         configureWindow()
         configureWebView()
-        restore()
+        if (StandalonePolicy.DEFAULT_MODE == StandalonePolicy.Mode.ON_DEVICE) startStandalone() else restore()
     }
 
+    /**
+     * On-device mode: the app is the core.
+     *
+     * A loopback HTTP server serves the bundled `apps/ui` build and answers its
+     * API, so the interface gets a real http:// origin — ES modules and
+     * same-origin fetches both fail from file://. Nothing on the Wi-Fi network
+     * can reach 127.0.0.1, which is why this needs no LAN token.
+     *
+     * The LAN client below is still here as the optional home-core path, the
+     * same arrangement as iOS.
+     */
+    private fun startStandalone() {
+        connectionPane.visibility = View.GONE
+        playerPane.visibility = View.VISIBLE
+        hidePlayerMessage()
+        playerLoading.visibility = View.VISIBLE
+        webView.visibility = View.VISIBLE
+        thread {
+            try {
+                val core = TvmLocalCore.create(filesDir) { readBundledCatalog() }
+                val server = TvmLocalServer(core) { path -> readUiAsset(path) }
+                server.start()
+                localServer = server
+                runOnUiThread { attachStandalone(server) }
+            } catch (problem: Exception) {
+                runOnUiThread {
+                    showPlayerMessage(
+                        "TVM could not start its on-device core: " +
+                            (problem.message ?: "unknown error") +
+                            ". Reopen the app, and reinstall it if this keeps happening.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun attachStandalone(server: TvmLocalServer) {
+        /*
+         * The native player bridge is attached ONLY here, where the WebView is
+         * about to load our own loopback origin. Attaching it on the LAN path
+         * would hand a remote core a native surface on this phone.
+         */
+        val player = TvmNativePlayer(this, webView)
+        nativePlayer = player
+        webView.addJavascriptInterface(player.bridge(), "tvmPlayer")
+        standaloneOrigin = server.origin
+        webView.webViewClient = StandaloneWebViewClient(
+            origin = server.origin,
+            onLoading = { loading -> playerLoading.visibility = if (loading) View.VISIBLE else View.GONE },
+            onError = { message -> showPlayerMessage(message) },
+        )
+        webView.loadUrl(server.origin)
+    }
+
+    private fun readUiAsset(path: String): ByteArray? = runCatching {
+        assets.open("ui/$path").use { it.readBytes() }
+    }.getOrNull()
+
+    private fun readBundledCatalog(): String? = runCatching {
+        assets.open("FallbackCatalog.json").use { it.readBytes().toString(Charsets.UTF_8) }
+    }.getOrNull()
+
     override fun onDestroy() {
+        nativePlayer?.release()
+        nativePlayer = null
+        localServer?.stop()
+        localServer = null
         webView.stopLoading()
         webView.webViewClient = android.webkit.WebViewClient()
         webView.destroy()
@@ -204,6 +273,16 @@ class MainActivity : AppCompatActivity() {
         playerMessage.visibility = View.GONE
         playerError.visibility = View.GONE
         reconnect.visibility = View.GONE
+    }
+
+    /** Standalone has nothing to reconnect to, so that button stays hidden. */
+    private fun showPlayerMessage(message: String) {
+        playerLoading.visibility = View.GONE
+        webView.visibility = View.GONE
+        playerError.text = message
+        playerError.visibility = View.VISIBLE
+        playerMessage.visibility = View.VISIBLE
+        reconnect.visibility = if (standaloneOrigin == null) View.VISIBLE else View.GONE
     }
 
     private fun load(connection: Connection, cookie: SessionCookie) {
