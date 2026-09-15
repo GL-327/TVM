@@ -783,6 +783,25 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       });
       return compose();
     },
+    /**
+     * Grants or removes Live TV because the operator said so.
+     *
+     * setLiveTv() deliberately refuses to switch Live TV on, because a buyer
+     * has to pick a term at checkout. There is no checkout any more: access
+     * is granted by activating an account, so activation needs a way in that
+     * does not pretend a purchase happened.
+     *
+     * Recorded as 'lifetime' with no expiry, which is accurate — it lasts as
+     * long as the account stays activated at a tier that includes it, and
+     * revoking the tier is what takes it away.
+     */
+    grantLiveTv(enabled: boolean): PlanStatus {
+      const current = readEntitlement();
+      writeEntitlement(enabled
+        ? { ...current, liveTvAddon: true, liveTvTerm: 'lifetime', liveTvExpiresAt: null }
+        : { ...current, liveTvAddon: false, liveTvTerm: undefined, liveTvExpiresAt: undefined });
+      return compose();
+    },
     setLiveTv(enabled: boolean): PlanStatus {
       const current = readEntitlement();
       const plan = definition(current.id);
