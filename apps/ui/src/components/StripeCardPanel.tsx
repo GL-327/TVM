@@ -10,6 +10,7 @@ import {
   type CheckoutRequest,
   type PaymentOrderView,
 } from '../data/plan';
+import '../screens/billing.css';
 
 /**
  * The card form.
