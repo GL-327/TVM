@@ -738,6 +738,28 @@ async function handleApi(
 
   // Why a channel will not play, in the provider's own words. Host-only, like
   // the rest of the live administration routes.
+  // Which channels actually stream. Slow by nature — it opens real channels —
+  // so it is a POST the viewer asks for, and the result is cached for GET.
+  if (path === '/api/live/check' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as { ids?: unknown; limit?: unknown; group?: unknown; concurrency?: unknown };
+      sendJson(response, 200, await live.checkChannels({
+        ids: Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string') : undefined,
+        limit: typeof body.limit === 'number' ? body.limit : undefined,
+        group: typeof body.group === 'string' ? body.group : undefined,
+        concurrency: typeof body.concurrency === 'number' ? body.concurrency : undefined,
+      }));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'channel check failed' });
+    }
+    return true;
+  }
+
+  if (path === '/api/live/check' && request.method === 'GET') {
+    sendJson(response, 200, live.lastCheck() ?? { checked: 0, working: 0, results: [], verdict: 'No channels have been checked yet.' });
+    return true;
+  }
+
   if (path.startsWith('/api/live/diagnose/') && request.method === 'GET') {
     const id = decodeURIComponent(path.slice('/api/live/diagnose/'.length));
     sendJson(response, 200, await live.diagnose(id));

@@ -1,0 +1,90 @@
+/*
+ * Channel check results. The list can run to fifty rows, so it stays a plain
+ * vertical list: the point is scanning names quickly, not decoration.
+ */
+
+.live-check__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.live-check__running {
+  margin: 1rem 0;
+  opacity: 0.85;
+}
+
+.live-check__verdict {
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 1.5rem;
+  border-left: 4px solid currentColor;
+  background: rgb(255 255 255 / 6%);
+}
+
+.live-check__verdict--ok { color: #57d9a3; }
+.live-check__verdict--bad { color: #ff8a8a; }
+
+.live-check__verdict-line {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+  color: var(--tvm-text, #f5f5f7);
+}
+
+.live-check__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  margin: 0;
+  color: var(--tvm-text, #f5f5f7);
+}
+
+.live-check__counts div { margin: 0; }
+.live-check__counts dt { font-size: 0.8rem; opacity: 0.7; }
+.live-check__counts dd { margin: 0; font-size: 1.4rem; font-weight: 600; }
+
+.live-check__group { margin-bottom: 1.75rem; }
+.live-check__group h2 { font-size: 1rem; opacity: 0.8; margin-bottom: 0.5rem; }
+
+.live-check__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.live-check__row {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.55rem 0.25rem;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.live-check__tick { opacity: 0.5; }
+.live-check__row--ok .live-check__tick { color: #57d9a3; opacity: 1; }
+
+.live-check__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.live-check__meta {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* The reason sits under the name rather than beside it, so a long explanation
+   cannot squeeze the channel name into a column one word wide. */
+.live-check__detail {
+  grid-column: 2 / -1;
+  font-size: 0.85rem;
+  opacity: 0.65;
+}
+
+@media (max-width: 700px) {
+  .live-check__row { grid-template-columns: 1.25rem minmax(0, 1fr); }
+  .live-check__meta { grid-column: 2; }
+}
