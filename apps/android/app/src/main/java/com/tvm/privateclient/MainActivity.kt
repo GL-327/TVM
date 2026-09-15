@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         webView.visibility = View.VISIBLE
         thread {
             try {
-                val core = TvmLocalCore.create(filesDir, { readBundledCatalog() }, { readBuildInfo() })
+                val core = TvmLocalCore.create(filesDir, { readBundledCatalog() }, { readBuildInfo() }, { readBundledAccess() })
                 val server = TvmLocalServer(core) { path -> readUiAsset(path) }
                 server.start()
                 localServer = server
@@ -152,6 +152,11 @@ class MainActivity : AppCompatActivity() {
         webView.destroy()
         super.onDestroy()
     }
+
+    /** Terms and tiers, generated from the core by scripts/export-access.mjs. */
+    private fun readBundledAccess(): String? = runCatching {
+        assets.open("Access.json").bufferedReader().use { it.readText() }
+    }.getOrNull()
 
     private fun configureWindow() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return

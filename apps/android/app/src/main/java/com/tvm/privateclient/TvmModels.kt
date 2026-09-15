@@ -18,7 +18,7 @@ import java.util.Locale
 object StandalonePolicy {
     const val REQUIRES_LAN_TOKEN = false
     val BUNDLED_LAN_TOKEN: String? = null
-    const val VERSION = "0.1.0"
+    const val VERSION = "1.0.0"
 
     enum class Mode { ON_DEVICE, OPTIONAL_HOME_CORE }
 

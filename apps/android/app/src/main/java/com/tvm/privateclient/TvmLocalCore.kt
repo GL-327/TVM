@@ -28,7 +28,22 @@ class TvmLocalCore(
     val plans: TvmPlans,
     val media: TvmMedia,
     private val buildInfo: () -> String? = { null },
+    private val bundledAccess: () -> String? = { null },
 ) {
+    private val accounts = TvmAccounts(store, bundledAccess)
+
+    private fun bearerToken(headers: Map<String, String>): String? {
+        val raw = headers["authorization"] ?: return null
+        return if (raw.startsWith("Bearer ")) raw.removePrefix("Bearer ") else null
+    }
+
+    /** Keeps the plan engine agreeing with the account on every read. */
+    private fun applyAccountTier(account: JSONObject) {
+        val usable = accounts.usable(account)
+        val tier = account.optString("tier")
+        if (usable.optBoolean("ok") && tier.isNotEmpty()) plans.grantTier(tier) else plans.revokeTier()
+    }
+
     private val startedAt = System.currentTimeMillis()
     private val lock = Any()
 
@@ -47,6 +62,7 @@ class TvmLocalCore(
             root: File,
             bundledCatalog: () -> String?,
             buildInfo: () -> String? = { null },
+            bundledAccess: () -> String? = { null },
         ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
@@ -55,7 +71,7 @@ class TvmLocalCore(
             val rd = TvmRealDebrid(RdKeychain)
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans)
-            return TvmLocalCore(store, catalog, rd, plans, media, buildInfo)
+            return TvmLocalCore(store, catalog, rd, plans, media, buildInfo, bundledAccess)
         }
     }
 
@@ -75,8 +91,14 @@ class TvmLocalCore(
         }
     }
 
-    fun handle(method: String, path: String, query: String, body: ByteArray): HttpReply = runBlocking {
-        route(method, path, parseQuery(query), Json.parseObject(body.toString(Charsets.UTF_8)))
+    fun handle(
+        method: String,
+        path: String,
+        query: String,
+        body: ByteArray,
+        headers: Map<String, String> = emptyMap(),
+    ): HttpReply = runBlocking {
+        route(method, path, parseQuery(query), Json.parseObject(body.toString(Charsets.UTF_8)), headers)
     }
 
     private suspend fun route(
@@ -84,6 +106,7 @@ class TvmLocalCore(
         path: String,
         query: Map<String, String>,
         json: JSONObject,
+        headers: Map<String, String> = emptyMap(),
     ): HttpReply {
         media.applyProfileHeader(null)
 
@@ -222,6 +245,111 @@ class TvmLocalCore(
         if (path == "/api/usage/tick" && method == "POST") return HttpReply.json(200, plans.status())
         if (path == "/api/usage/reset" && method == "POST") return HttpReply.json(200, plans.status())
         if (path == "/api/ads/preroll" && method == "GET") return HttpReply.json(200, Json.obj("ads" to JSONArray()))
+
+        // ---- Accounts ------------------------------------------------
+        //
+        // The phone runs this core, so the gate the interface puts in front
+        // of everything has to be answered here. Same rules as the desktop:
+        // an account starts inert and only activation opens it.
+
+        if (path == "/api/terms" && method == "GET") {
+            return HttpReply.json(200, accounts.access().optJSONObject("terms") ?: JSONObject())
+        }
+        if (path == "/api/tiers" && method == "GET") {
+            val access = accounts.access()
+            return HttpReply.json(200, JSONObject().apply {
+                put("tiers", access.optJSONArray("tiers") ?: JSONArray())
+                put("route", access.optJSONObject("route") ?: JSONObject())
+                put("streamMonthlyPence", access.optInt("streamMonthlyPence"))
+            })
+        }
+        if (path == "/api/account/register" && method == "POST") {
+            val result = accounts.register(
+                Json.string(json.opt("email")) ?: "",
+                Json.string(json.opt("password")) ?: "",
+                Json.string(json.opt("displayName")),
+                headers["user-agent"],
+            )
+            return result.fold(
+                { HttpReply.json(200, it) },
+                { HttpReply.json(400, Json.obj("error" to (it.message ?: "That account could not be created."))) },
+            )
+        }
+        if (path == "/api/account/signin" && method == "POST") {
+            val result = accounts.signIn(
+                Json.string(json.opt("email")) ?: "",
+                Json.string(json.opt("password")) ?: "",
+                headers["user-agent"],
+            )
+            return result.fold(
+                { HttpReply.json(200, it) },
+                { HttpReply.json(401, Json.obj("error" to (it.message ?: "Sign in failed."))) },
+            )
+        }
+        if (path == "/api/account/signout" && method == "POST") {
+            bearerToken(headers)?.let { accounts.signOut(it) }
+            return HttpReply.json(200, Json.obj("ok" to true))
+        }
+        if (path == "/api/account" && method == "GET") {
+            val version = accounts.termsVersion()
+            val account = accounts.resolve(bearerToken(headers))
+                ?: return HttpReply.json(200, JSONObject().apply {
+                    put("signedIn", false)
+                    put("account", JSONObject.NULL)
+                    put("usable", JSONObject().put("ok", false).put("reason", "no_account"))
+                    put("termsVersion", version)
+                })
+            applyAccountTier(account)
+            return HttpReply.json(200, JSONObject().apply {
+                put("signedIn", true)
+                put("account", accounts.publicOf(account))
+                put("usable", accounts.usable(account))
+                put("termsVersion", version)
+            })
+        }
+        if (path == "/api/account/terms" && method == "POST") {
+            val account = accounts.resolve(bearerToken(headers))
+                ?: return HttpReply.json(401, Json.obj("error" to "Sign in first."))
+            val body = accounts.acceptTerms(account.optString("id"))
+                ?: return HttpReply.json(401, Json.obj("error" to "Sign in first."))
+            accounts.resolve(bearerToken(headers))?.let { applyAccountTier(it) }
+            return HttpReply.json(200, body)
+        }
+
+        // Owner only, checked here rather than by hiding the route.
+        if (path == "/api/admin/accounts" && method == "GET") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            return HttpReply.json(200, accounts.list(query["search"], query["state"]))
+        }
+        if (path == "/api/admin/accounts/activate" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+            val tier = Json.string(json.opt("tier"))
+            val body = if (id != null && tier != null) accounts.activate(id, tier, Json.string(json.opt("note"))) else null
+            return body?.let { HttpReply.json(200, it) }
+                ?: HttpReply.json(400, Json.obj("error" to "Choose an account and a tier."))
+        }
+        if (path == "/api/admin/accounts/suspend" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+            val body = id?.let { accounts.setSuspended(it, json.optBoolean("suspended", true)) }
+            return body?.let { HttpReply.json(200, it) }
+                ?: HttpReply.json(400, Json.obj("error" to "Choose an account."))
+        }
+        if (path == "/api/admin/accounts/note" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+            val body = id?.let { accounts.setNote(it, Json.string(json.opt("note"))) }
+            return body?.let { HttpReply.json(200, it) }
+                ?: HttpReply.json(400, Json.obj("error" to "Choose an account."))
+        }
+        if (path == "/api/admin/accounts/erase" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+                ?: return HttpReply.json(400, Json.obj("error" to "Choose an account."))
+            accounts.erase(id)
+            return HttpReply.json(200, Json.obj("ok" to true))
+        }
 
         if (path == "/api/dev/status" && method == "GET") {
             return HttpReply.json(200, Json.obj("unlocked" to plans.developer()))

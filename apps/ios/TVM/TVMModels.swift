@@ -3,7 +3,7 @@ import Foundation
 enum StandalonePolicy {
     static let requiresLANToken = false
     static let bundledLANToken: String? = nil
-    static let version = "0.1.0"
+    static let version = "1.0.0"
 
     enum Mode: Equatable { case onDevice, optionalHomeCore }
     static let defaultMode = Mode.onDevice

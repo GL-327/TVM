@@ -111,6 +111,7 @@ class TvmLocalServer(
         val path: String,
         val query: String,
         val body: ByteArray,
+        val headers: Map<String, String>,
     )
 
     /**
@@ -138,12 +139,14 @@ class TvmLocalServer(
         val path = runCatching { URLDecoder.decode(rawPath, "UTF-8") }.getOrDefault(rawPath)
 
         var length = 0
+        val headers = mutableMapOf<String, String>()
         for (line in lines.drop(1)) {
             val colon = line.indexOf(':')
             if (colon <= 0) continue
-            if (line.substring(0, colon).trim().equals("content-length", ignoreCase = true)) {
-                length = line.substring(colon + 1).trim().toIntOrNull() ?: 0
-            }
+            val name = line.substring(0, colon).trim().lowercase(Locale.US)
+            val value = line.substring(colon + 1).trim()
+            headers[name] = value
+            if (name == "content-length") length = value.toIntOrNull() ?: 0
         }
         if (length > 2_000_000) return null
         val body = ByteArray(length)
@@ -153,12 +156,12 @@ class TvmLocalServer(
             if (n < 0) break
             read += n
         }
-        return Request(method, path, query, if (read == length) body else body.copyOf(read))
+        return Request(method, path, query, if (read == length) body else body.copyOf(read), headers)
     }
 
     private fun route(request: Request): HttpReply {
         if (request.path.startsWith("/api/")) {
-            return core.handle(request.method, request.path, request.query, request.body)
+            return core.handle(request.method, request.path, request.query, request.body, request.headers)
         }
         return serveAsset(request.path)
     }

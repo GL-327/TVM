@@ -6,6 +6,7 @@ final class TVMLocalCore {
     let rd: TVMRealDebrid
     let plans: TVMPlans
     let media: TVMMedia
+    let accounts: TVMAccounts
     private let startedAt = Date()
     private let session: URLSession
     private let lock = NSLock()
@@ -30,12 +31,28 @@ final class TVMLocalCore {
         rd = TVMRealDebrid(session: self.session)
         plans = TVMPlans(store: store)
         media = TVMMedia(store: store, catalog: catalog, rd: rd, plans: plans)
+        accounts = TVMAccounts(store: store)
         if let saved = store.readJSON("live.json") as? [String: Any] {
             liveURL = saved["url"] as? String
             liveHost = saved["host"] as? String
             liveUser = saved["username"] as? String
             livePicks = Set(saved["picks"] as? [String] ?? [])
             liveChannels = saved["channels"] as? [[String: Any]] ?? []
+        }
+    }
+
+    private func bearerToken(_ headers: [String: String]) -> String? {
+        guard let raw = headers["authorization"], raw.hasPrefix("Bearer ") else { return nil }
+        return String(raw.dropFirst(7))
+    }
+
+    /// Keeps the plan engine agreeing with the account on every read.
+    private func applyAccountTier(_ account: TVMAccount) {
+        let usable = TVMAccounts.usable(account, termsVersion: TVMAccounts.termsVersion())
+        if (usable["ok"] as? Bool) == true, let tier = account.tier {
+            plans.grantTier(tier)
+        } else {
+            plans.revokeTier()
         }
     }
 
@@ -205,6 +222,110 @@ final class TVMLocalCore {
         if path == "/api/ads/preroll" && method == "GET" {
             return .json(200, ["skipped": true, "reason": "advertising_disabled_during_private_testing"])
         }
+        // ---- Accounts ------------------------------------------------
+        //
+        // The phone runs this core, so the gate the interface puts in front
+        // of everything has to be answered here. Same rules as the desktop:
+        // an account starts inert and only activation opens it.
+
+        if path == "/api/terms" && method == "GET" {
+            return .json(200, (TVMAccounts.access()["terms"] as? [String: Any]) ?? [:])
+        }
+        if path == "/api/tiers" && method == "GET" {
+            let access = TVMAccounts.access()
+            return .json(200, [
+                "tiers": access["tiers"] ?? [],
+                "route": access["route"] ?? [:],
+                "streamMonthlyPence": access["streamMonthlyPence"] ?? 0,
+            ])
+        }
+        if path == "/api/account/register" && method == "POST" {
+            switch accounts.register(
+                email: json["email"] as? String ?? "",
+                password: json["password"] as? String ?? "",
+                displayName: json["displayName"] as? String,
+                client: headers["user-agent"]
+            ) {
+            case .success(let body): return .json(200, body)
+            case .failure(let error): return .json(400, ["error": error.message])
+            }
+        }
+        if path == "/api/account/signin" && method == "POST" {
+            switch accounts.signIn(
+                email: json["email"] as? String ?? "",
+                password: json["password"] as? String ?? "",
+                client: headers["user-agent"]
+            ) {
+            case .success(let body): return .json(200, body)
+            case .failure(let error): return .json(401, ["error": error.message])
+            }
+        }
+        if path == "/api/account/signout" && method == "POST" {
+            if let token = bearerToken(headers) { accounts.signOut(token: token) }
+            return .json(200, ["ok": true])
+        }
+        if path == "/api/account" && method == "GET" {
+            let version = TVMAccounts.termsVersion()
+            guard let account = accounts.resolve(token: bearerToken(headers)) else {
+                return .json(200, [
+                    "signedIn": false, "account": NSNull(),
+                    "usable": ["ok": false, "reason": "no_account"],
+                    "termsVersion": version,
+                ])
+            }
+            applyAccountTier(account)
+            return .json(200, [
+                "signedIn": true,
+                "account": account.publicJSON(),
+                "usable": TVMAccounts.usable(account, termsVersion: version),
+                "termsVersion": version,
+            ])
+        }
+        if path == "/api/account/terms" && method == "POST" {
+            guard let account = accounts.resolve(token: bearerToken(headers)),
+                  let body = accounts.acceptTerms(id: account.id) else {
+                return .json(401, ["error": "Sign in first."])
+            }
+            if let refreshed = accounts.resolve(token: bearerToken(headers)) { applyAccountTier(refreshed) }
+            return .json(200, body)
+        }
+
+        // Owner only, checked here rather than by hiding the route.
+        if path == "/api/admin/accounts" && method == "GET" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            return .json(200, accounts.list(search: query["search"], state: query["state"]))
+        }
+        if path == "/api/admin/accounts/activate" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String, let tier = json["tier"] as? String,
+                  let body = accounts.activate(id: id, tier: tier, note: json["note"] as? String) else {
+                return .json(400, ["error": "Choose an account and a tier."])
+            }
+            return .json(200, body)
+        }
+        if path == "/api/admin/accounts/suspend" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String,
+                  let body = accounts.setSuspended(id: id, suspended: (json["suspended"] as? Bool) ?? true) else {
+                return .json(400, ["error": "Choose an account."])
+            }
+            return .json(200, body)
+        }
+        if path == "/api/admin/accounts/note" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String,
+                  let body = accounts.setNote(id: id, note: json["note"] as? String) else {
+                return .json(400, ["error": "Choose an account."])
+            }
+            return .json(200, body)
+        }
+        if path == "/api/admin/accounts/erase" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String else { return .json(400, ["error": "Choose an account."]) }
+            accounts.erase(id: id)
+            return .json(200, ["ok": true])
+        }
+
         if path == "/api/dev/status" && method == "GET" { return .json(200, ["unlocked": plans.developer()]) }
         if path == "/api/dev/unlock" && method == "POST" {
             // The shared code is verified here rather than refused, so developer
