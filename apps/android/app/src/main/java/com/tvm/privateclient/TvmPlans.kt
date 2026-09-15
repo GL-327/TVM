@@ -646,7 +646,8 @@ class TvmPlans(private val store: TvmPlansStore) {
     private companion object {
         const val LIVE_EXTRA = "Live TV pack and your own playlist"
         const val RETRO_EXTRA = "Retro — 1970s/80s television-set look"
-        val MOBILE_PLANS: List<String> = listOf("basic", "premium", "ultra", "max")
+        /** Premium and above, matching apps/core/src/mobileAccess.ts. */
+        val MOBILE_PLANS: List<String> = listOf("premium", "ultra", "max")
         val PACKS: List<String> = listOf("synthwave", "anime", "theme-bundle")
     }
 }
