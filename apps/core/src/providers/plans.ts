@@ -26,6 +26,7 @@ import { deleteSecret } from './secrets.ts';
 import { readSealed, writeSealed } from './vault.ts';
 import { loadStripeConfig, publicStripeStatus } from './stripeConfig.ts';
 import type { OrderQuote, PaymentOrder, SettledPayment } from './payments.ts';
+import type { SubscriptionRecord } from './subscriptions.ts';
 
 export const PLAN_IDS = ['free', 'basic', 'premium', 'ultra', 'max'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
@@ -921,6 +922,88 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         at: payment.at,
         paymentIntentId: order.paymentIntentId,
         receiptUrl: payment.receiptUrl,
+      });
+      return compose();
+    },
+
+    /**
+     * Prices only the recurring part of an order.
+     *
+     * One-off packs are excluded on purpose: a theme bought once must not
+     * quietly become a monthly charge.
+     */
+    monthlyQuote(input: Record<string, unknown>): { planId: string; liveTv: boolean; monthlyPence: number; description: string } {
+      const priced = priceOrder(input as CheckoutInput, false);
+      return {
+        planId: priced.plan.id,
+        liveTv: priced.includeLive,
+        monthlyPence: priced.monthlyPence,
+        description: priced.includeLive ? `${priced.plan.name} with Live TV` : priced.plan.name,
+      };
+    },
+
+    /**
+     * Applies a month that has actually been paid for.
+     *
+     * Called on the first payment and again on every renewal, so it records a
+     * receipt per invoice while leaving the entitlement itself idempotent.
+     */
+    grantMonthly(record: SubscriptionRecord, paidPence: number, at: string): PlanStatus {
+      const priced = priceOrder({
+        planId: record.planId,
+        liveTv: record.liveTv,
+      } as CheckoutInput, false);
+      applyOrder(priced);
+      const invoiceId = record.invoices[0]?.id ?? record.subscriptionId;
+      if (!readReceipts().some((receipt) => receipt.id === invoiceId)) {
+        saveReceipt({
+          id: invoiceId,
+          requestId: record.subscriptionId,
+          fingerprint: priced.fingerprint,
+          planId: priced.plan.id,
+          mock: false,
+          mode: 'live',
+          event: 'checkout',
+          currency: 'GBP',
+          monthlyPence: record.amountPence,
+          oneTimePence: 0,
+          chargedPence: paidPence,
+          liveTv: record.liveTv,
+          synthwavePurchased: false,
+          consentVersion: BILLING_CONSENT_VERSION,
+          at,
+          paymentIntentId: record.subscriptionId,
+        });
+      }
+      return compose();
+    },
+
+    /** Ends the plan a subscription was paying for. */
+    revokeMonthly(record: SubscriptionRecord): PlanStatus {
+      const current = readEntitlement();
+      writeEntitlement({
+        ...current,
+        id: 'free',
+        source: 'free',
+        styleId: 'classic',
+        liveTvAddon: false,
+      });
+      saveReceipt({
+        id: `sub_end_${record.subscriptionId}`,
+        requestId: record.subscriptionId,
+        fingerprint: 'subscription-ended',
+        planId: 'free',
+        mock: false,
+        mode: 'live',
+        event: 'cancellation',
+        currency: 'GBP',
+        monthlyPence: 0,
+        oneTimePence: 0,
+        chargedPence: 0,
+        liveTv: false,
+        synthwavePurchased: false,
+        consentVersion: BILLING_CONSENT_VERSION,
+        at: new Date().toISOString(),
       });
       return compose();
     },

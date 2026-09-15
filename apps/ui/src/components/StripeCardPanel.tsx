@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from './FocusButton';
-import { confirmPaymentIntent, formatBillingMoney, startPaymentIntent, type CheckoutRequest, type PaymentOrderView } from '../data/plan';
+import {
+  confirmPaymentIntent,
+  confirmSubscription,
+  fetchStripeStatus,
+  formatBillingMoney,
+  startPaymentIntent,
+  startSubscription,
+  type CheckoutRequest,
+  type PaymentOrderView,
+} from '../data/plan';
 
 /**
  * The card form.
@@ -71,15 +80,24 @@ function loadStripeJs(): Promise<void> {
 }
 
 export interface StripeCardPanelProps {
-  /** The order, priced by the server when the intent is opened. */
+  /** The order, priced by the server when the payment is opened. */
   order: CheckoutRequest;
   /** Live keys move real money; the panel says so plainly. */
   mode: 'test' | 'live';
   disabled?: boolean;
-  onPaid: (order: PaymentOrderView) => void;
+  /**
+   * True when this order includes a monthly plan.
+   *
+   * A subscription and a one-off purchase need different Stripe objects: a
+   * PaymentIntent takes one payment and stops, which is not what a plan card
+   * promising "per month" means. The panel opens whichever the order actually
+   * is rather than assuming.
+   */
+  recurring?: boolean;
+  onPaid: (order: PaymentOrderView | null) => void;
 }
 
-export function StripeCardPanel({ order, mode, disabled = false, onPaid }: StripeCardPanelProps): React.JSX.Element {
+export function StripeCardPanel({ order, mode, disabled = false, recurring = false, onPaid }: StripeCardPanelProps): React.JSX.Element {
   const mountRef = useRef<HTMLDivElement>(null);
   const stripeRef = useRef<StripeInstance | null>(null);
   const elementsRef = useRef<StripeElements | null>(null);
@@ -91,7 +109,7 @@ export function StripeCardPanel({ order, mode, disabled = false, onPaid }: Strip
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
-  const orderKey = JSON.stringify(order);
+  const orderKey = JSON.stringify({ order, recurring });
 
   useEffect(() => {
     let cancelled = false;
@@ -100,15 +118,29 @@ export function StripeCardPanel({ order, mode, disabled = false, onPaid }: Strip
 
     void (async () => {
       try {
-        const started = await startPaymentIntent(order);
+        // A monthly plan opens a subscription; a one-off pack opens a payment.
+        const started = recurring
+          ? await startSubscription(order).then(async (sub) => ({
+              id: sub.subscriptionId,
+              clientSecret: sub.clientSecret,
+              amountPence: sub.amountPence,
+              publishableKey: (await fetchStripeStatus()).publishableKey ?? '',
+            }))
+          : await startPaymentIntent(order).then((intent) => ({
+              id: intent.paymentIntentId,
+              clientSecret: intent.clientSecret,
+              amountPence: intent.amountPence,
+              publishableKey: intent.publishableKey,
+            }));
         if (cancelled) return;
-        intentRef.current = { id: started.paymentIntentId, clientSecret: started.clientSecret };
+        intentRef.current = { id: started.id, clientSecret: started.clientSecret };
         setAmountPence(started.amountPence);
 
         await loadStripeJs();
         if (cancelled) return;
         const factory = window.Stripe;
         if (factory === undefined) throw new Error('Stripe did not load.');
+        if (started.publishableKey === '') throw new Error('Stripe is not configured on this device.');
 
         const stripe = factory(started.publishableKey);
         // Inherit the app's own colours so the iframe does not look pasted in.
@@ -174,6 +206,12 @@ export function StripeCardPanel({ order, mode, disabled = false, onPaid }: Strip
         return;
       }
       // Stripe says it worked; the server still re-reads it before granting.
+      if (recurring) {
+        const view = await confirmSubscription();
+        if (view.state === 'active' || view.state === 'past_due') onPaid(null);
+        else setError(view.lastError ?? 'The subscription has not started yet. Give it a moment and try again.');
+        return;
+      }
       const settled = await confirmPaymentIntent(intent.id);
       if (settled.status === 'paid') onPaid(settled);
       else setError(settled.failureMessage ?? 'The payment has not completed yet. Give it a moment and try again.');
@@ -190,7 +228,11 @@ export function StripeCardPanel({ order, mode, disabled = false, onPaid }: Strip
       <p className="plan-current__kicker">Payment card</p>
       <h2>{mode === 'live' ? 'Pay by card' : 'Pay by card · Stripe test mode'}</h2>
       {mode === 'live' ? (
-        <p>This is a real payment. Your card will be charged{amountPence === null ? '' : ` ${formatBillingMoney(amountPence)}`} and the money goes to TVM&rsquo;s Stripe account.</p>
+        <p>
+          This is a real payment. Your card will be charged
+          {amountPence === null ? '' : ` ${formatBillingMoney(amountPence)}`}
+          {recurring ? ' today and the same amount every month until you cancel.' : ' once.'}
+        </p>
       ) : (
         <p>Stripe is in test mode, so no real money moves. Use card <code>4242 4242 4242 4242</code>, any future expiry, any CVC and any postcode.</p>
       )}

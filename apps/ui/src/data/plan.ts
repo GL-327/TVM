@@ -562,3 +562,72 @@ export async function confirmPaymentIntent(paymentIntentId: string): Promise<Pay
     body: JSON.stringify({ paymentIntentId }),
   }, 20_000);
 }
+
+/** Where a monthly plan stands with the card behind it. */
+export interface SubscriptionView {
+  state: 'none' | 'incomplete' | 'active' | 'past_due' | 'canceled';
+  planId: string | null;
+  liveTv: boolean;
+  amountPence: number;
+  currency: 'GBP';
+  /** ISO date of the next charge, or null when nothing is due. */
+  nextChargeAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  renewals: number;
+  lastError: string | null;
+}
+
+export interface SubscriptionStart {
+  subscriptionId: string;
+  clientSecret: string;
+  amountPence: number;
+  planId: string;
+  liveTv: boolean;
+  description: string;
+}
+
+export async function fetchSubscription(signal?: AbortSignal): Promise<SubscriptionView | null> {
+  try {
+    return await requestJson<SubscriptionView>('/api/billing/subscription', {}, 8_000, signal);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Opens a monthly subscription. Grants nothing on its own: the plan starts
+ * when the first payment clears, not when this returns.
+ */
+export async function startSubscription(input: CheckoutRequest): Promise<SubscriptionStart> {
+  return requestJson<SubscriptionStart>('/api/billing/subscription', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  }, 20_000);
+}
+
+/** Asks the server to re-read Stripe and settle. The browser's word is not enough. */
+export async function confirmSubscription(): Promise<SubscriptionView> {
+  return requestJson<SubscriptionView>('/api/billing/subscription/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  }, 20_000);
+}
+
+/** Stops future charges. Keeps the month already paid for unless `immediately`. */
+export async function cancelSubscription(immediately = false): Promise<SubscriptionView> {
+  return requestJson<SubscriptionView>('/api/billing/subscription', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ immediately }),
+  }, 20_000);
+}
+
+/** "3 October" reads better on a payment screen than an ISO timestamp. */
+export function formatChargeDate(iso: string | null): string | null {
+  if (iso === null) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+}

@@ -917,17 +917,29 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .rail__track {
-    touch-action: pan-x;
-  }
-
+  /*
+   * Both axes, everywhere a finger can land.
+   *
+   * These used to read `pan-x` on a rail inside `pan-y` on the page, which
+   * looks reasonable and is not: touch-action intersects down the hit-test
+   * chain, so a touch that started on a poster — which is most of the screen —
+   * had horizontal allowed by one rule and vertical by the other, and ended up
+   * fighting itself. Swiping down over artwork did nothing, and swiping across
+   * only sometimes caught.
+   *
+   * Letting the browser decide from the gesture angle is what native carousels
+   * do. Direction is already constrained by the scroll containers themselves —
+   * a rail only scrolls in x, a page only in y — and overscroll-behavior below
+   * stops a rail handing its momentum to the page mid-swipe.
+   */
+  .rail__track,
   .home,
   .page--library,
   .page--settings,
   .page--recovery,
   .details,
   .search-pill__panel {
-    touch-action: pan-y;
+    touch-action: pan-x pan-y;
   }
 
   .tvm-button,
@@ -1459,7 +1471,7 @@ html.phone-shell .details__body > * { min-width: 0; }
 html.phone-shell .page__lede,
 html.phone-shell .settings-row,
 html.phone-shell .page__message { overflow-wrap: anywhere; }
-html.phone-shell .rail__track { overscroll-behavior-x: contain; }
+html.phone-shell .rail__track { overscroll-behavior-x: contain; overscroll-behavior-y: auto; }
 html.phone-shell .ribbon__spacer { display: none; }
 html.phone-shell .ribbon .tvm-button.ribbon__icon {
   min-width: 0;

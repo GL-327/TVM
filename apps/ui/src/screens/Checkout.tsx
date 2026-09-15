@@ -3,6 +3,7 @@ import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
 import { TopBar } from '../components/TopBar';
 import { StripeCardPanel } from '../components/StripeCardPanel';
+import { CheckoutExplainer, CheckoutTotals, CHECKOUT_CSS } from './checkoutExplainer';
 import {
   applyPlanClass,
   cardholderLooksValid,
@@ -13,13 +14,16 @@ import {
   expiryLooksValid,
   fetchPlan,
   fetchStripeStatus,
+  fetchSubscription,
   formatBillingMoney,
+  formatChargeDate,
   formatCvcInput,
   formatExpiryInput,
   formatPanInput,
   panLooksValid,
   type PaymentOrderView,
   type PlanId,
+  type SubscriptionView,
   type PlanStatus,
   type StripeStatus,
 } from '../data/plan';
@@ -70,6 +74,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
   const [success, setSuccess] = useState<PlanStatus | null>(null);
   const [storedLast4, setStoredLast4] = useState<string | null>(null);
   const [stripe, setStripe] = useState<StripeStatus | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionView | null>(null);
   const [paid, setPaid] = useState<PaymentOrderView | null>(null);
   const [attempt, setAttempt] = useState(0);
   const request = useRef<{ key: string; id: string } | null>(null);
@@ -88,6 +93,9 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : 'Unable to load checkout.');
     });
+    void fetchSubscription(controller.signal)
+      .then((view) => { if (!controller.signal.aborted) setSubscription(view); })
+      .catch(() => undefined);
     void fetchStripeStatus(controller.signal)
       .then((status) => { if (!controller.signal.aborted) setStripe(status); })
       // A processor that cannot be reached is not an error: checkout falls
@@ -115,7 +123,9 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
     request.current = { key: 'stripe', id: crypto.randomUUID().replace(/-/g, '') };
   }
 
-  const onPaid = (order: PaymentOrderView): void => {
+  // null when a subscription started: there is no single order to show, the
+  // plan simply begins and renews.
+  const onPaid = (order: PaymentOrderView | null): void => {
     setPaid(order);
     void fetchPlan(undefined, true).then((status) => {
       applyPlanClass(status);
@@ -178,7 +188,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
             {paid.receiptUrl === null ? '' : ' Stripe has emailed you a receipt.'}
           </p>
         ) : storedLast4 ? (
-          <p>Card ending {storedLast4} was tokenized and stored encrypted on this device. No payment processor is linked, so nothing was charged and nothing will renew automatically.</p>
+          <p>Card ending {storedLast4} was checked and discarded &mdash; only those four digits were kept, for the receipt. No payment processor is linked, so nothing was charged and nothing will renew.</p>
         ) : (
           <p>Active on this device immediately. No card was stored, no payment was taken, and nothing will renew or charge automatically.</p>
         )}
@@ -199,6 +209,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
 
   return (
     <main ref={pageRef} className="page page--settings page--checkout billing-page" data-keyboard-fields="">
+      <style>{CHECKOUT_CSS}</style>
       <TopBar title="Checkout" />
       <p className="billing-badge">{liveMoney ? 'Card payment · real money' : cardPayments ? 'Stripe test mode · no real money' : 'Sandbox checkout · initial testing'}</p>
       <h1 className="page__heading">{packOnly ? `Unlock ${packName(pack!)}` : `Review ${entry?.name ?? 'your plan'}`}</h1>
@@ -207,7 +218,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
           ? 'Prices are in GBP and include VAT where it applies. Your card is charged today for the first month plus any one-off packs. Card details are handled by Stripe and never reach TVM.'
           : cardPayments
             ? 'Stripe is in test mode. The full payment runs end to end with a test card, and no real money moves.'
-            : 'Reference prices are in GBP. The amount charged is always £0.00 — no processor is linked. You can confirm without a card, or add one to store a token on this device.'}
+            : 'Reference prices are in GBP. The amount charged is always £0.00 — no processor is linked. You can confirm without a card, or try the card form to see the flow.'}
       </p>
       {message && <p className="billing-message billing-message--error" role="alert">{message}</p>}
       {!catalog || !entry || !quote ? (
@@ -234,32 +245,33 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
               </FocusButton>
               <p className="billing-fineprint">The visual pack stays unlocked when you change or cancel your test plan. It is separate from the monthly price.</p>
             </section>
-            <section className="billing-panel billing-panel--summary">
-              <p className="plan-current__kicker">Order summary</p>
-              <dl className="billing-totals">
-                <div><dt>{entry.name}</dt><dd>{formatBillingMoney(entry.basePricePence ?? 0)}/month</dd></div>
-                {liveTv && (entry.liveTvAddonPence ?? 0) > 0 && <div><dt>Live TV connection pack</dt><dd>{formatBillingMoney(entry.liveTvAddonPence ?? 0)}/month</dd></div>}
-                <div><dt>Monthly reference total{packOnly ? ' (unchanged)' : ''}</dt><dd>{formatBillingMoney(quote.monthlyPence)}</dd></div>
-                <div><dt>One-time visual pack</dt><dd>{formatBillingMoney(quote.oneTimePence)}</dd></div>
-                <div className="billing-totals__grand">
-                  <dt>{cardPayments ? 'Charged today' : 'Actually charged today'}</dt>
-                  <dd>{cardPayments ? formatBillingMoney(quote.monthlyPence + quote.oneTimePence) : '£0.00'}</dd>
-                </div>
-              </dl>
-              <p className="billing-fineprint">
-                {liveMoney
-                  ? 'This is a one-off charge for the first month plus any packs. Nothing renews automatically; you will not be charged again unless you buy again.'
-                  : cardPayments
-                    ? 'Stripe test mode. The amounts and the flow are real; the money is not.'
-                    : 'No real purchase or tax invoice is created. No renewal date. A saved card is tokenized on this device only.'}
-              </p>
-            </section>
+            <div className="billing-panel--summary">
+              <CheckoutTotals
+                monthlyPence={quote.monthlyPence}
+                oneTimePence={quote.oneTimePence}
+                cardPayments={cardPayments}
+                liveMoney={liveMoney}
+                nextChargeAt={formatChargeDate(subscription?.nextChargeAt ?? null)}
+              />
+              <CheckoutExplainer
+                monthlyPence={quote.monthlyPence}
+                oneTimePence={quote.oneTimePence}
+                cardPayments={cardPayments}
+                liveMoney={liveMoney}
+                nextChargeAt={formatChargeDate(subscription?.nextChargeAt ?? null)}
+              />
+            </div>
           </div>
           {cardPayments ? null : (
             <section className="billing-panel">
               <p className="plan-current__kicker">Payment card</p>
-              <h2>Store an encrypted token</h2>
-              <p>Optional. The number and security code are never written in plaintext. Because no processor is linked, a later charge attempt always declines.</p>
+              <h2>Try the card form</h2>
+              <p>
+                Optional, and nothing is kept. The number is checked for shape and then
+                discarded &mdash; only the last four digits, the brand and the expiry are
+                recorded, which is all a receipt needs. No processor is linked, so
+                nothing is charged.
+              </p>
               <label className="token-field">
                 <span>Cardholder name</span>
                 <FocusField id="billing-name" value={cardName} onChange={setCardName} onConfirm={setCardName} afterPasteFocusId="billing-number" placeholder="Name on card" />
@@ -311,6 +323,7 @@ export function Checkout({ params }: ScreenProps): React.JSX.Element {
               order={{ ...stripeOrder, requestId: request.current?.id ?? '' }}
               mode={stripe?.mode ?? 'test'}
               disabled={busy}
+              recurring={quote.monthlyPence > 0}
               onPaid={onPaid}
             />
           ) : null}

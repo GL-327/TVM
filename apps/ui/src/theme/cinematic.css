@@ -156,9 +156,17 @@ html[data-theme='cinematic'] {
   box-shadow: var(--tvm-shadow-focus);
 }
 
-/* Lifting inside a clipped row would crop the card against its neighbours. */
+/*
+ * Room for the lift, made with padding rather than overflow.
+ *
+ * `overflow-y: visible` was the obvious fix and the wrong one: CSS cannot mix
+ * a visible axis with a scrolling one, so it silently computed to `auto` and
+ * turned every row into a vertical scroller that swallowed downward swipes on
+ * a phone. Padding gives the scaled card the same room and leaves the row
+ * scrolling in one axis only.
+ */
 [data-theme='cinematic'] .rail__track {
-  overflow-y: visible;
+  padding-block: 0.75rem;
 }
 
 /* The title under a card is reference, not decoration: quiet until wanted. */
