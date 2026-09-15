@@ -600,25 +600,22 @@ body,
   letter-spacing: 0.08em;
 }
 
-.launch-tile__mark--live { background: color-mix(in srgb, #e0554a 30%, var(--tvm-surface)); }
-.launch-tile__mark--list { background: color-mix(in srgb, #e0a526 30%, var(--tvm-surface)); }
-.launch-tile__mark--apps { background: color-mix(in srgb, #3557a8 38%, var(--tvm-surface)); }
-
-.launch-tile__mark--live::before,
-.launch-tile__mark--list::before,
-.launch-tile__mark--apps::before {
-  content: '';
-  width: 0.9rem;
-  height: 0.9rem;
-  border-radius: 50%;
-  background: currentColor;
+/*
+ * One tinted plate per destination, holding a real glyph from Icons.tsx. These
+ * were a bare circle, rounded square and rotated square drawn with ::before —
+ * three coloured shapes that carried no meaning and did not match the line
+ * icons used everywhere else in the app.
+ */
+.launch-tile__glyph {
+  width: 1.45rem;
+  height: 1.45rem;
+  stroke-width: 2;
 }
 
-.launch-tile__mark--live { color: #ff8a7f; }
-.launch-tile__mark--list { color: #ffd166; }
-.launch-tile__mark--apps { color: #8fb0ff; }
-.launch-tile__mark--list::before { border-radius: 0.2rem; }
-.launch-tile__mark--apps::before { border-radius: 0.2rem; transform: rotate(45deg); }
+.launch-tile__mark--stream { background: color-mix(in srgb, var(--tvm-accent-strong) 22%, var(--tvm-surface)); color: var(--tvm-accent-strong); }
+.launch-tile__mark--live { background: color-mix(in srgb, #e0554a 26%, var(--tvm-surface)); color: #ff9c92; }
+.launch-tile__mark--list { background: color-mix(in srgb, #e0a526 26%, var(--tvm-surface)); color: #ffd98a; }
+.launch-tile__mark--apps { background: color-mix(in srgb, #3557a8 32%, var(--tvm-surface)); color: #a8c2ff; }
 
 .launch-tile strong {
   color: var(--tvm-text);
@@ -1538,11 +1535,11 @@ img.stage__art.art--ready {
 
 @keyframes skeleton-shimmer {
   from {
-    background-position: 200% 0;
+    transform: translateX(-60%);
   }
 
   to {
-    background-position: -200% 0;
+    transform: translateX(160%);
   }
 }
 
@@ -1553,9 +1550,34 @@ img.stage__art.art--ready {
   flex-shrink: 0;
   border: 1px solid var(--tvm-border-soft);
   border-radius: var(--tvm-radius-md);
-  background: linear-gradient(105deg, var(--tvm-surface) 30%, var(--tvm-surface-hover) 46%, var(--tvm-surface) 62%);
-  background-size: 250% 100%;
-  animation: skeleton-shimmer 1.35s linear infinite;
+  position: relative;
+  background: var(--tvm-surface);
+}
+
+/*
+ * The sweep is a transform on an overlay, not an animated background-position.
+ * Home mounts a skeleton per poster per rail — north of two hundred of them —
+ * and background-position repaints every one of those every frame. A translated
+ * pseudo-element stays on the compositor instead.
+ */
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    color-mix(in srgb, var(--tvm-surface-hover) 90%, #fff) 46%,
+    transparent 62%
+  );
+  /*
+   * Finite, not infinite. Home mounts one of these behind every poster — over
+   * two hundred — and any whose artwork never arrives kept sweeping for the
+   * whole session. Six passes is long enough to read as "loading" and then the
+   * plate goes quiet, which is what a stalled image should look like anyway.
+   */
+  animation: skeleton-shimmer 1.35s linear 6 forwards;
+  will-change: transform;
 }
 
 .skeleton--hero {

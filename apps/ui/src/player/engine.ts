@@ -2,7 +2,7 @@ import type Hls from 'hls.js';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
 import { publishHls } from './hlsBridge';
-import { createIOSPlayerEngine, iosPlaybackBridge } from './iosEngine';
+import { createIOSPlayerEngine, nativePlaybackBridge } from './iosEngine';
 
 /**
  * The one in-app playback engine.
@@ -75,6 +75,17 @@ export function displayDuration(streamDuration: number | undefined, elementDurat
 }
 
 export const GENERIC_START_ERROR = 'This stream could not start. Press Retry, or Back to pick another file.';
+
+/**
+ * hls.js details that mean "this was never a playlist", as opposed to a
+ * playlist that failed to load. Only these justify retrying a live channel as
+ * raw MPEG-TS.
+ */
+export const MANIFEST_ERRORS: ReadonlySet<string> = new Set([
+  'manifestParsingError',
+  'manifestIncompatibleCodecsError',
+  'manifestLoadError',
+]);
 export const STARTUP_TIMEOUT_MS = 45_000;
 export const STALL_TIMEOUT_MS = 30_000;
 export const STALLED_ERROR = 'Playback stalled. The source stopped sending playable video. Press Retry, or Back to choose another title.';
@@ -147,9 +158,10 @@ export function createPlayerEngine(
   options: EngineOptions,
   events: EngineEvents,
 ): PlayerEngine {
-  // iPhone always decodes in VLC. HTML5 <video> cannot open MKV/WebM/TS and
-  // is what surfaces "Can't open this file" — never attach those URLs there.
-  if (iosPlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
+  // A phone shell always decodes natively: VLC on iOS, Media3 on Android.
+  // HTML5 <video> cannot open MKV/WebM/TS and is what surfaces "Can't open
+  // this file" — never attach those URLs there.
+  if (nativePlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
   if (stream.engine === 'native') return createMissingNativeEngine(events);
   const fetchImpl = options.fetchImpl ?? fetch;
   const live = options.live;
@@ -166,6 +178,7 @@ export function createPlayerEngine(
   let sawFrame = false;
   let recoveredMedia = false;
   let restartedNetwork = false;
+  let triedTsFallback = false;
   let seekRestartPending = false;
   let pendingSeek: number | null = null;
   let requestedSeek: number | null = null;
@@ -175,6 +188,33 @@ export function createPlayerEngine(
   let lastProgressAt = Date.now();
   let lastMediaTime = video.currentTime;
   const listeners: Array<[keyof HTMLVideoElementEventMap, EventListener]> = [];
+
+  /**
+   * Turn a dead live channel into the provider's own words.
+   *
+   * When core cannot reach the upstream it answers the stream URL with a JSON
+   * body naming the reason (`upstream-403`, `upstream-empty`, …). hls.js only
+   * reports "a network error happened", so without this the viewer sees the
+   * same generic line whether their subscription expired, the channel moved,
+   * or the provider was down. Best effort: any failure here keeps the fallback.
+   */
+  const failWithUpstreamReason = (fallback: string): void => {
+    if (destroyed || failed) return;
+    void (async () => {
+      let message = fallback;
+      try {
+        const response = await fetchImpl(stream.url, { headers: { accept: 'application/json' } });
+        const body = (await response.json()) as { error?: unknown };
+        if (typeof body.error === 'string' && body.error !== '') {
+          const { playbackErrorMessage } = await import('../data/playbackErrors');
+          message = playbackErrorMessage(body.error);
+        }
+      } catch {
+        // Not JSON, or the request failed too. The generic line still applies.
+      }
+      fail(message);
+    })();
+  };
 
   const fail = (message: string): void => {
     if (destroyed || failed) return;
@@ -275,6 +315,25 @@ export function createPlayerEngine(
           instance.startLoad();
           return;
         }
+        /*
+         * A live channel that is not really a playlist. IPTV providers hand out
+         * extensionless URLs that serve raw MPEG-TS, and any hop in the chain
+         * can mislabel one, so core's probe is a good guess rather than a
+         * guarantee. hls.js finding no manifest is the signal to try the TS
+         * reader instead of dead-ending on "this stream could not start".
+         *
+         * MSE only — mpegts.js cannot help where hls.js was the native path.
+         */
+        if (live && !triedTsFallback && MANIFEST_ERRORS.has(String(data.details))) {
+          triedTsFallback = true;
+          destroyHls();
+          attachTs();
+          return;
+        }
+        if (live) {
+          failWithUpstreamReason(GENERIC_START_ERROR);
+          return;
+        }
         fail(GENERIC_START_ERROR);
       });
       instance.loadSource(sessionUrl());
@@ -312,7 +371,12 @@ export function createPlayerEngine(
       );
       ts = player;
       player.on(api.Events?.ERROR ?? 'error', () => {
-        if (ts === player) fail(GENERIC_START_ERROR);
+        if (ts !== player) return;
+        if (live) {
+          failWithUpstreamReason(GENERIC_START_ERROR);
+          return;
+        }
+        fail(GENERIC_START_ERROR);
       });
       player.attachMediaElement(video);
       player.load();

@@ -115,8 +115,10 @@ describe('fetchXtreamLive', () => {
       },
     ]);
     expect(JSON.stringify(loaded.channels)).not.toContain('secret');
+    // .ts, not .m3u8: many panels serve an HLS manifest whose segments their
+    // CDN then refuses with 403. See xtreamStreamUrl.
     expect(xtreamStreamUrl({ host: 'http://panel.example', username: 'alice', password: 'secret' }, '42')).toContain(
-      '/live/alice/secret/42.m3u8',
+      '/live/alice/secret/42.ts',
     );
   });
 
