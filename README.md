@@ -5,12 +5,7 @@ outputs HDMI to a television, and is driven entirely with a D-pad remote: your
 own media, licensed sources you already pay for, and the streaming services you
 already subscribe to, behind one home screen.
 
-**Status: private initial testing build.** Read [the testing guide](docs/INITIAL_TESTING.md) for playback,
-Retro, sandbox checkout, security changes and the remaining public-launch requirements. No real payments are enabled.
-The
-architecture is fixed in
-[docs/TVM_IMPLEMENTATION_PLAN.md](docs/TVM_IMPLEMENTATION_PLAN.md); read it
-before changing anything structural.
+**Status.** Card payments go through Stripe. Live TV is billed separately as 3-month, 1-year or lifetime. Read [the testing guide](docs/INITIAL_TESTING.md) before changing anything structural.
 
 ## Layout
 

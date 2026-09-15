@@ -302,20 +302,35 @@ export function createStripeClient(options: StripeClientOptions) {
       productName: string;
       metadata: Record<string, string>;
       idempotencyKey: string;
+      interval?: 'month' | 'year';
+      intervalCount?: number;
+      invoiceItems?: Array<{ amountPence: number; description: string }>;
+      trialEnd?: number;
     }): Promise<StripeSubscription> {
       if (!Number.isInteger(input.amountPence) || input.amountPence < 30) {
-        throw new StripeError('A subscription must be at least £0.30 a month.', { type: 'invalid_request_error' });
+        throw new StripeError('A subscription must be at least £0.30 a period.', { type: 'invalid_request_error' });
       }
+      const interval = input.interval ?? 'month';
+      const intervalCount = input.intervalCount ?? 1;
+      const invoiceItems = (input.invoiceItems ?? []).filter((item) => Number.isInteger(item.amountPence) && item.amountPence > 0);
       const raw = await call('/subscriptions', 'POST', {
         customer: input.customerId,
         items: [{
           price_data: {
             currency: 'gbp',
             product_data: { name: input.productName },
-            recurring: { interval: 'month' },
+            recurring: { interval, interval_count: intervalCount },
             unit_amount: input.amountPence,
           },
         }],
+        add_invoice_items: invoiceItems.length === 0 ? undefined : invoiceItems.map((item) => ({
+          price_data: {
+            currency: 'gbp',
+            product_data: { name: item.description },
+            unit_amount: item.amountPence,
+          },
+        })),
+        trial_end: input.trialEnd,
         payment_behavior: 'default_incomplete',
         payment_settings: { save_default_payment_method: 'on_subscription' },
         metadata: input.metadata,

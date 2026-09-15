@@ -38,33 +38,33 @@ export function BillingSummary({ onChange }: { onChange: () => void }): React.JS
     finally { setBusy(false); }
   };
   return <section className="billing-panel">
-    <h2>Billing & test receipts</h2>
-    <p className="billing-badge">Sandbox · nothing charged · no automatic renewals</p>
+    <h2>Billing & receipts</h2>
+    <p className="billing-badge">{billing?.processor?.linked ? 'Card payments via Stripe' : 'Billing'}</p>
     {error && <p role="alert">{error}</p>}
     {!billing && <FocusButton id="billing-retry" onSelect={() => { setError(''); setAttempt((v) => v + 1); }}>Refresh billing</FocusButton>}
     {billing && <>
-      <p>Monthly reference price: {formatBillingMoney(billing.monthlyPence)}. Next charge: none.</p>
+      <p>Monthly plan: {formatBillingMoney(billing.monthlyPence)}. Next charge: {billing.nextChargeAt ? new Date(billing.nextChargeAt).toLocaleDateString() : 'when due'}.</p>
       {billing.paymentMethod ? (
         <p>Saved card: {billing.paymentMethod.brand} ending {billing.paymentMethod.last4}, expires {billing.paymentMethod.expiry}.</p>
       ) : (
         <p>No card token on this device.</p>
       )}
-      {billing.processor?.linked === false && <p className="billing-fineprint">Processor: not configured ({billing.processor.reason}).</p>}
-      <p className="billing-fineprint">TVM plans provide app features. Provider subscriptions and rights to watch content are separate. Retro is a one-time visual pack.</p>
+      {billing.processor?.linked === false && <p className="billing-fineprint">Card processor is not connected on this device ({billing.processor.reason}).</p>}
+      <p className="billing-fineprint">TVM plans provide app features. Provider subscriptions and rights to watch content are separate. Retro is a one-time visual pack. Live TV is billed on 3-month, 1-year or lifetime terms.</p>
       {billing.paymentMethod && <div className="hero__actions">
-        <FocusButton id="billing-charge" disabled={busy} onSelect={() => void charge()}>{busy ? 'Trying charge…' : 'Test charge · will not take money'}</FocusButton>
+        <FocusButton id="billing-charge" disabled={busy} onSelect={() => void charge()}>{busy ? 'Charging…' : 'Charge saved card'}</FocusButton>
       </div>}
       {chargeNote && <p role="status">{chargeNote}</p>}
-      {billing.subscription === 'test-active' && <div className="hero__actions">
-        <FocusButton id="billing-cancel" disabled={busy} onSelect={() => confirm ? void cancel() : setConfirm(true)}>{busy ? 'Cancelling…' : confirm ? 'Confirm cancellation — return to Free' : 'Cancel test plan'}</FocusButton>
+      {billing.subscription === 'active' && <div className="hero__actions">
+        <FocusButton id="billing-cancel" disabled={busy} onSelect={() => confirm ? void cancel() : setConfirm(true)}>{busy ? 'Cancelling…' : confirm ? 'Confirm cancellation — return to Free' : 'Cancel plan'}</FocusButton>
         {confirm && <FocusButton id="billing-keep" disabled={busy} onSelect={() => setConfirm(false)}>Keep plan</FocusButton>}
       </div>}
-      {confirm && <p>Cancellation takes effect now. Retro stays unlocked. No refund is due because no money was taken.</p>}
+      {confirm && <p>Cancellation takes effect for future charges. Visual packs stay unlocked.</p>}
       <ul className="billing-receipts">{billing.receipts.slice(0, 10).map((receipt) => <li key={receipt.id}>
-        <strong>{receipt.event === 'cancellation' ? 'Plan cancelled' : `Test order · ${receipt.planId}`}</strong>
-        <p className="billing-fineprint">{new Date(receipt.at).toLocaleString()} · Monthly {formatBillingMoney(receipt.monthlyPence)} · One-time {formatBillingMoney(receipt.oneTimePence)} · Charged £0.00<br />{receipt.id}</p>
+        <strong>{receipt.event === 'cancellation' ? 'Plan cancelled' : `Order · ${receipt.planId}`}</strong>
+        <p className="billing-fineprint">{new Date(receipt.at).toLocaleString()} · Monthly {formatBillingMoney(receipt.monthlyPence)} · One-time {formatBillingMoney(receipt.oneTimePence)} · Charged {formatBillingMoney(receipt.chargedPence)}<br />{receipt.id}</p>
       </li>)}</ul>
-      {billing.receipts.length === 0 && <p>No test transactions yet.</p>}
+      {billing.receipts.length === 0 && <p>No payments yet.</p>}
     </>}
     <FocusButton id="billing-terms" onSelect={() => navigate.push('legal')}>Privacy, terms & data export</FocusButton>
   </section>;

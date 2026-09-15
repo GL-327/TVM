@@ -1,6 +1,29 @@
 import { THEMES } from '../theme/registry';
 import { MOBILE_PLAN_EVENT } from './mobileAccess';
 
+export type LiveTvTerm = 'quarter' | 'year' | 'lifetime';
+
+export interface LiveTvTermSpec {
+  id: LiveTvTerm;
+  name: string;
+  usdCents: number;
+  amountPence: number;
+  interval: 'month' | 'year' | null;
+  intervalCount: number;
+  blurb: string;
+}
+
+export const LIVE_TV_TERMS: readonly LiveTvTermSpec[] = [
+  { id: 'quarter', name: '3-month', usdCents: 3999, amountPence: 3999, interval: 'month', intervalCount: 3, blurb: 'Billed every 3 months' },
+  { id: 'year', name: '1-year', usdCents: 8999, amountPence: 8999, interval: 'year', intervalCount: 1, blurb: 'Billed once per year' },
+  { id: 'lifetime', name: 'Lifetime', usdCents: 59900, amountPence: 59900, interval: null, intervalCount: 0, blurb: 'One payment; access lasts only while the service stays online' },
+];
+
+export function formatUsdCents(cents: number): string {
+  const dollars = cents / 100;
+  return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
 export type PlanId = 'free' | 'basic' | 'premium' | 'ultra' | 'max';
 export type StyleId =
   | 'classic'
@@ -65,6 +88,9 @@ export interface PlanStatus {
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
+  liveTvTerm: LiveTvTerm | null;
+  liveTvExpiresAt: string | null;
+  liveTvTerms: LiveTvTermSpec[];
   ads: boolean;
   stream: StreamTier;
   maxHeight: 720 | 1080 | 2160;
@@ -100,6 +126,9 @@ export const FALLBACK_PLAN: PlanStatus = {
   synthwaveAddonPence: 499,
   mocks: false,
   liveTv: false,
+  liveTvTerm: null,
+  liveTvExpiresAt: null,
+  liveTvTerms: [...LIVE_TV_TERMS],
   ads: true,
   stream: 'basic',
   maxHeight: 720,
@@ -222,6 +251,7 @@ export interface CheckoutRequest {
   consent: boolean;
   requestId: string;
   liveTv?: boolean;
+  liveTvTerm?: LiveTvTerm | null;
   pack?: 'synthwave' | 'anime' | 'theme-bundle';
   synthwave?: boolean;
   simulate?: 'success' | 'decline' | 'cancel';
@@ -341,15 +371,38 @@ export function cardholderLooksValid(value: string): boolean {
   return name.length >= 2 && name.length <= 80 && /[A-Za-z]/.test(name);
 }
 
-export function checkoutQuote(plan: PlanStatus, selectedId: PlanId, liveTv: boolean, synthwave: boolean, packOnly = false, pack?: ThemePack): {
-  monthlyPence: number; oneTimePence: number; referenceTotalPence: number;
+export function checkoutQuote(
+  plan: PlanStatus,
+  selectedId: PlanId,
+  liveTv: boolean,
+  synthwave: boolean,
+  packOnly = false,
+  pack?: ThemePack,
+  liveTvTerm: LiveTvTerm | null = null,
+): {
+  monthlyPence: number;
+  oneTimePence: number;
+  liveTvPence: number;
+  liveTvTerm: LiveTvTerm | null;
+  dueTodayPence: number;
+  referenceTotalPence: number;
 } {
   const entry = plan.catalog.find((item) => item.id === (packOnly ? plan.id : selectedId));
   if (entry === undefined || entry.basePricePence === undefined) throw new Error('Plan information is unavailable.');
-  const includeLive = packOnly ? plan.liveTv : liveTv;
-  const monthlyPence = entry.basePricePence + (includeLive ? entry.liveTvAddonPence ?? 0 : 0);
-  const oneTimePence = pack === 'theme-bundle' ? (plan.bundleOwned ? 0 : plan.themeBundlePence) : pack === 'anime' ? (plan.animeOwned || plan.bundleOwned ? 0 : plan.animeAddonPence) : synthwave && !plan.synthwaveOwned && !plan.bundleOwned ? plan.synthwaveAddonPence : 0;
-  return { monthlyPence, oneTimePence, referenceTotalPence: (packOnly ? 0 : monthlyPence) + oneTimePence };
+  const terms = plan.liveTvTerms.length > 0 ? plan.liveTvTerms : LIVE_TV_TERMS;
+  const term = packOnly ? plan.liveTvTerm : (liveTvTerm ?? (liveTv ? 'quarter' : null));
+  const spec = term === null ? null : terms.find((row) => row.id === term) ?? null;
+  const monthlyPence = packOnly ? 0 : entry.basePricePence;
+  const liveTvPence = packOnly || spec === null || spec.id === 'lifetime' ? 0 : spec.amountPence;
+  const lifetimePence = packOnly || spec === null || spec.id !== 'lifetime' ? 0 : spec.amountPence;
+  const packPence = pack === 'theme-bundle'
+    ? (plan.bundleOwned ? 0 : plan.themeBundlePence)
+    : pack === 'anime'
+      ? (plan.animeOwned || plan.bundleOwned ? 0 : plan.animeAddonPence)
+      : synthwave && !plan.synthwaveOwned && !plan.bundleOwned ? plan.synthwaveAddonPence : 0;
+  const oneTimePence = packPence + lifetimePence;
+  const dueTodayPence = monthlyPence + liveTvPence + oneTimePence;
+  return { monthlyPence, oneTimePence, liveTvPence, liveTvTerm: spec?.id ?? null, dueTodayPence, referenceTotalPence: dueTodayPence };
 }
 
 function checkedPlan(body: Partial<PlanStatus>): PlanStatus {

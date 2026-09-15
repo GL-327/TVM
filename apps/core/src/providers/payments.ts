@@ -35,6 +35,7 @@ export interface PaymentOrder {
   fingerprint: string;
   planId: string;
   liveTv: boolean;
+  liveTvTerm?: string | null;
   anime: boolean;
   bundle: boolean;
   synthwave: boolean;
@@ -123,6 +124,8 @@ export interface OrderQuote {
   /** Charged now: the first month plus any one-off packs. */
   amountPence: number;
   liveTv: boolean;
+  liveTvTerm?: string | null;
+  liveTvPence?: number;
   anime: boolean;
   bundle: boolean;
   synthwave: boolean;
@@ -328,6 +331,7 @@ export function createPaymentService(options: PaymentServiceOptions) {
           requestId,
           planId: quote.planId,
           liveTv: String(quote.liveTv),
+          liveTvTerm: quote.liveTvTerm ?? '',
           anime: String(quote.anime),
           bundle: String(quote.bundle),
           synthwave: String(quote.synthwave),
@@ -345,6 +349,7 @@ export function createPaymentService(options: PaymentServiceOptions) {
         fingerprint: quote.fingerprint,
         planId: quote.planId,
         liveTv: quote.liveTv,
+        liveTvTerm: quote.liveTvTerm ?? null,
         anime: quote.anime,
         bundle: quote.bundle,
         synthwave: quote.synthwave,
