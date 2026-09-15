@@ -366,10 +366,14 @@ enum TVMArchive {
         var status = inflateInit2_(&stream, 16 + MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
         guard status == Z_OK else { throw ClientError.message("gzip init failed") }
         defer { inflateEnd(&stream) }
+        // Read the length before taking the mutable access: touching
+        // incoming.count inside withUnsafeMutableBytes is an overlapping access
+        // to the same variable, which Swift refuses.
+        let incomingCount = incoming.count
         return try incoming.withUnsafeMutableBytes { src -> Data in
             guard let base = src.bindMemory(to: UInt8.self).baseAddress else { throw ClientError.message("gzip empty") }
             stream.next_in = base
-            stream.avail_in = uInt(incoming.count)
+            stream.avail_in = uInt(incomingCount)
             var out = Data()
             var buffer = [UInt8](repeating: 0, count: 64 * 1024)
             repeat {
