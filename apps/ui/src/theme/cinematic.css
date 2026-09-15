@@ -1,0 +1,303 @@
+/*
+ * Cinematic — the streaming-service look, built for a computer screen.
+ *
+ * Two ideas carry the whole theme.
+ *
+ * First, the picture is the interface. Everything that is not artwork drops to
+ * near-black and near-silent: no coloured panels behind posters, no borders
+ * competing with cover art, one accent used sparingly for the thing you are
+ * meant to press. The eye should land on the programme, not on the chrome.
+ *
+ * Second, smooth beats decorated. Every other theme here leans on
+ * backdrop-filter and large soft shadows; both are per-frame GPU work that a
+ * laptop pays for on every scroll, which is exactly the sluggishness this was
+ * asked to fix. This theme animates `transform` and `opacity` and nothing
+ * else — the two properties a compositor can handle without re-rasterising —
+ * and pays for depth with flat colour instead of blur.
+ *
+ * Motion is deliberately governed by the shared switch in motion.css rather
+ * than a local media query, so Performance mode and the OS preference cannot
+ * disagree.
+ */
+
+html[data-theme='cinematic'] {
+  color-scheme: dark;
+
+  --tvm-bg: #0b0b0f;
+  --tvm-bg-deep: #000000;
+  --tvm-bg-elevated: #16161c;
+  --tvm-surface: #1c1c24;
+  --tvm-surface-hover: #262630;
+  --tvm-surface-glass: rgba(14, 14, 18, 0.92);
+  --tvm-border: #2e2e3a;
+  --tvm-border-soft: rgba(255, 255, 255, 0.09);
+
+  --tvm-text: #f5f5f7;
+  --tvm-text-muted: #a8a8b3;
+  --tvm-text-faint: #6f6f7c;
+
+  /* One accent, used for the primary action and nothing else. */
+  --tvm-accent: #e5162c;
+  --tvm-accent-strong: #ff3347;
+  --tvm-accent-blue: #7dd3fc;
+  --tvm-accent-ink: #ffffff;
+  --tvm-mark: #e5162c;
+  --tvm-mark-glow: rgba(229, 22, 44, 0.42);
+
+  --tvm-danger: #ff5a6a;
+  --tvm-success: #49d68a;
+  --tvm-warning: #ffc861;
+  --tvm-info: #7dd3fc;
+
+  --tvm-focus-ring-color: #ffffff;
+  /* Tight and dark: a wide soft shadow on every poster is a full-page repaint. */
+  --tvm-shadow-card: 0 0.35rem 1rem rgba(0, 0, 0, 0.6);
+  --tvm-shadow-focus: 0 1rem 2rem rgba(0, 0, 0, 0.75);
+
+  --tvm-scene-sky: #14141c;
+  --tvm-scene-sky-mid: #0d0d12;
+  --tvm-scene-horizon: #22222c;
+  --tvm-scene-sea: #08080c;
+  --tvm-scene-sea-deep: #000000;
+  --tvm-scene-land: #121218;
+  --tvm-scene-land-far: #0e0e14;
+  --tvm-scene-foam: #3a3a48;
+  --tvm-scene-sun: #d8d8e4;
+  /* The animated backdrop is a texture here, not a feature. */
+  --tvm-scene-opacity: 0.18;
+  --tvm-scene-grain: 0.03;
+}
+
+[data-theme='cinematic'] body,
+[data-theme='cinematic'] .app {
+  background: var(--tvm-bg-deep);
+  color: var(--tvm-text);
+}
+
+[data-theme='cinematic'] .page,
+[data-theme='cinematic'] .home,
+[data-theme='cinematic'] .home__shelf,
+[data-theme='cinematic'] .stream-page {
+  background: var(--tvm-bg);
+}
+
+/* ---- Hero -------------------------------------------------------------- */
+
+/*
+ * The artwork runs to the edges and the text sits in a gradient cut out of the
+ * same black as the page, so the hero ends without a visible seam.
+ */
+[data-theme='cinematic'] .stage__vignette {
+  background:
+    linear-gradient(90deg, var(--tvm-bg) 0%, rgba(11, 11, 15, 0.72) 26%, rgba(11, 11, 15, 0) 62%),
+    linear-gradient(0deg, var(--tvm-bg) 0%, rgba(11, 11, 15, 0.55) 22%, rgba(11, 11, 15, 0) 55%);
+}
+
+[data-theme='cinematic'] .stage__art--fallback {
+  background: linear-gradient(135deg, #1c1c24, #000 72%);
+}
+
+[data-theme='cinematic'] .page__heading,
+[data-theme='cinematic'] .stage h1 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0.15rem 0.6rem rgba(0, 0, 0, 0.7);
+}
+
+/* ---- Rails ------------------------------------------------------------- */
+
+[data-theme='cinematic'] .rail__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--tvm-text-muted);
+}
+
+[data-theme='cinematic'] .rail:hover .rail__title,
+[data-theme='cinematic'] .rail:focus-within .rail__title {
+  color: var(--tvm-text);
+}
+
+/* ---- Posters ----------------------------------------------------------- */
+
+[data-theme='cinematic'] .poster__art {
+  border-radius: 6px;
+  border-color: transparent;
+  background: var(--tvm-surface);
+  box-shadow: var(--tvm-shadow-card);
+}
+
+/*
+ * The signature interaction: the card lifts toward the viewer and its
+ * neighbours stay put.
+ *
+ * The app already scales artwork on D-pad focus, but nothing happened under a
+ * mouse — on a computer the rows sat completely inert. This adds hover to the
+ * existing focus rule rather than inventing a second mechanism, and reuses
+ * --tvm-focus-scale so that Performance mode and reduced motion, which set
+ * that token to 1, switch this off along with everything else. A hardcoded
+ * scale here would have been invisible to that switch.
+ *
+ * Only `transform` moves, so the lift costs one composited layer rather than
+ * a layout pass per frame.
+ */
+[data-theme='cinematic'] .poster:hover .poster__art {
+  transform: translateZ(0) scale(var(--tvm-focus-scale));
+  box-shadow: var(--tvm-shadow-focus);
+  transition: transform var(--tvm-motion-base) var(--tvm-motion-ease);
+  z-index: 3;
+}
+
+/* Focus keeps its ring; hover alone does not need one. */
+[data-theme='cinematic'] .poster[data-focused='true'] .poster__art {
+  outline-color: #fff;
+  box-shadow: var(--tvm-shadow-focus);
+}
+
+/* Lifting inside a clipped row would crop the card against its neighbours. */
+[data-theme='cinematic'] .rail__track {
+  overflow-y: visible;
+}
+
+/* The title under a card is reference, not decoration: quiet until wanted. */
+[data-theme='cinematic'] .poster__meta {
+  opacity: 0.75;
+  transition: opacity 200ms ease;
+}
+
+[data-theme='cinematic'] .poster:hover .poster__meta,
+[data-theme='cinematic'] .poster[data-focused='true'] .poster__meta {
+  opacity: 1;
+}
+
+[data-theme='cinematic'] .poster__title {
+  font-weight: 600;
+}
+
+/* Continue-watching progress: one red line, the only red on the shelf. */
+[data-theme='cinematic'] .poster__progress {
+  background: rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+[data-theme='cinematic'] .poster__progress-bar {
+  background: var(--tvm-accent);
+}
+
+/* ---- Buttons ----------------------------------------------------------- */
+
+[data-theme='cinematic'] .tvm-button {
+  border-radius: 4px;
+  border-color: var(--tvm-border);
+  background: var(--tvm-surface);
+  color: var(--tvm-text);
+  font-weight: 600;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+[data-theme='cinematic'] .tvm-button:hover,
+[data-theme='cinematic'] .tvm-button:focus-visible,
+[data-theme='cinematic'] .tvm-button[data-focused='true'] {
+  background: var(--tvm-surface-hover);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+[data-theme='cinematic'] .tvm-button--primary,
+[data-theme='cinematic'] .stage .tvm-button--primary {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0b0b0f;
+}
+
+[data-theme='cinematic'] .tvm-button--primary:hover,
+[data-theme='cinematic'] .tvm-button--primary:focus-visible,
+[data-theme='cinematic'] .tvm-button--primary[data-focused='true'] {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.82);
+}
+
+/*
+ * Glass buttons exist for themes built around blur. Here they become plain
+ * translucent black — same contrast, none of the per-frame cost.
+ */
+[data-theme='cinematic'] .tvm-button--glass {
+  background: rgba(30, 30, 38, 0.9);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: var(--tvm-border-soft);
+}
+
+/* ---- Ribbon ------------------------------------------------------------ */
+
+/*
+ * A solid bar that fades into the page rather than blurring what is behind it.
+ * The blurred version had to re-sample the whole hero on every scroll frame.
+ */
+[data-theme='cinematic'] .ribbon {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0) 100%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: none;
+}
+
+[data-theme='cinematic'] .ribbon__glyph,
+[data-theme='cinematic'] .ribbon__avatar-svg {
+  background: transparent;
+  color: var(--tvm-text-muted);
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+[data-theme='cinematic'] .ribbon [data-focused='true'] .ribbon__glyph,
+[data-theme='cinematic'] .ribbon a:hover .ribbon__glyph,
+[data-theme='cinematic'] .ribbon button:hover .ribbon__glyph {
+  color: var(--tvm-text);
+}
+
+/* ---- Panels and rows --------------------------------------------------- */
+
+[data-theme='cinematic'] .settings-row,
+[data-theme='cinematic'] .billing-panel,
+[data-theme='cinematic'] .live-check__verdict {
+  background: var(--tvm-surface);
+  border: 1px solid var(--tvm-border-soft);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+[data-theme='cinematic'] .search-pill__panel {
+  background: rgba(12, 12, 16, 0.96);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-theme='cinematic'] .details__vignette {
+  background:
+    linear-gradient(90deg, var(--tvm-bg) 0%, rgba(11, 11, 15, 0.7) 30%, rgba(11, 11, 15, 0) 66%),
+    linear-gradient(0deg, var(--tvm-bg) 0%, rgba(11, 11, 15, 0.5) 24%, rgba(11, 11, 15, 0) 58%);
+}
+
+[data-theme='cinematic'] .player {
+  background: #000;
+}
+
+[data-theme='cinematic'] .loading-state--plate {
+  background: radial-gradient(48% 42% at 50% 46%, rgba(229, 22, 44, 0.14), transparent 62%), #000;
+}
+
+/* Artwork is never tinted: a poster is the studio's, not the theme's. */
+[data-theme='cinematic'] .poster__art,
+[data-theme='cinematic'] .poster[data-focused='true'] .poster__art {
+  filter: none;
+}
+
+/*
+ * The animated scene is dropped almost to nothing rather than switched off.
+ * Removing it entirely leaves a flat black page behind the hero; at this
+ * opacity it reads as grain on the black and costs nothing noticeable.
+ */
+[data-theme='cinematic'] .home__scene,
+[data-theme='cinematic'] .glass-scene {
+  opacity: var(--tvm-scene-opacity);
+}

@@ -1,5 +1,6 @@
-import { resolveTheme, type ThemeId } from './registry';
+import { DEFAULT_THEME, resolveTheme, type ThemeId } from './registry';
 
+import './cinematic.css';
 import './default.css';
 import './happy.css';
 import './light.css';
@@ -23,7 +24,12 @@ import './motion.css';
 import './mobile.css';
 
 export const THEME_STORAGE_KEY = 'tvm.theme';
-const THEME_DEFAULT_BOOT = 'tvm.theme.isle-boot';
+/*
+ * Bumped when the shipped default changes. The old key's value stays behind,
+ * so each new default is introduced exactly once per device and a theme the
+ * viewer picks afterwards is never overwritten again.
+ */
+const THEME_DEFAULT_BOOT = 'tvm.theme.cinematic-boot';
 const themeListeners = new Set<(id: ThemeId) => void>();
 
 export function subscribeTheme(listener: (id: ThemeId) => void): () => void {
@@ -73,7 +79,7 @@ export function applyStoredTheme(): ThemeId {
     } catch {
       // private mode — still apply for this session
     }
-    return applyTheme('default');
+    return applyTheme(DEFAULT_THEME);
   }
   return applyTheme(readStoredTheme());
 }
