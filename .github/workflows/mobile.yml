@@ -80,7 +80,10 @@ jobs:
         run: |
           corepack pnpm install --frozen-lockfile
           node apps/android/bundle-ui.mjs
+          node apps/android/export-fallback-catalog.mjs
+          node scripts/write-build-info.mjs android
           test -f apps/android/app/src/main/assets/ui/index.html
+          test -f apps/android/app/src/main/assets/BuildInfo.json
       - name: Assemble debug APK
         if: steps.android.outputs.present == 'true'
         working-directory: apps/android
@@ -111,6 +114,8 @@ jobs:
           node apps/ios/generate-app-icon.mjs
           node apps/ios/bundle-ui.mjs
           node -e 'require("fs").writeFileSync("apps/ios/TVM/BundledUI/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,player:"MobileVLCKit-3.6.0"}))'
+          node scripts/write-build-info.mjs ios
+          test -f apps/ios/TVM/BuildInfo.json
           test -f apps/ios/TVM/BundledUI/index.html
           test -d apps/ios/TVM/BundledUI/assets
       - name: Validate Xcode project (standalone app + bundled UI)

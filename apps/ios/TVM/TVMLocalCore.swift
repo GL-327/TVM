@@ -51,10 +51,10 @@ final class TVMLocalCore {
             ])
         }
         if path == "/api/update/status" && method == "GET" {
-            return .json(200, updateStatus())
+            return .json(200, await updateStatus())
         }
         if path == "/api/update/check" && method == "POST" {
-            return .json(200, updateStatus())
+            return .json(200, await updateStatus())
         }
         if path == "/api/update/apply" && method == "POST" {
             return .json(403, ["error": "apply_refused", "reason": "The iPhone app is updated from a new IPA, not from GitHub."])
@@ -293,18 +293,75 @@ final class TVMLocalCore {
         return .json(404, ["error": "not_found"])
     }
 
-    private func updateStatus() -> [String: Any] {
-        [
-            "current": StandalonePolicy.version,
+    /// The commit this build came from, stamped in by scripts/write-build-info.mjs.
+    private var buildCommit: String {
+        guard let url = Bundle.main.url(forResource: "BuildInfo", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let commit = JSONValue.object(data)["commit"] as? String, !commit.isEmpty else { return "unknown" }
+        return commit
+    }
+
+    /**
+     A sideloaded app cannot install its own update — Apple does not permit it,
+     and there is no store behind a re-signed IPA. It can still tell you that a
+     newer build exists, which is the part that was missing: this used to report
+     "you are on the latest published app build" without ever asking anyone.
+
+     Read-only, unauthenticated, and failure is not an error state: if GitHub is
+     unreachable the screen says the check did not complete rather than
+     inventing an answer.
+     */
+    private func updateStatus() async -> [String: Any] {
+        let current = buildCommit
+        var body: [String: Any] = [
+            "current": "\(StandalonePolicy.version) (\(current))",
             "channel": "ios-standalone",
-            "lastCheck": NSNull(),
-            "available": NSNull(),
             "configured": false,
             "applyAllowed": false,
-            "applyReason": "Install a new IPA. This app does not pull GitHub releases.",
-            "kind": "idle",
-            "notice": "Phone updates are a new sideloaded IPA, not an in-app GitHub download.",
+            "applyReason": "iOS cannot install its own update. Download the newest IPA from GitHub Releases and re-sign it with Sideloadly or AltStore.",
         ]
+
+        guard let latest = await latestRelease() else {
+            body["lastCheck"] = NSNull()
+            body["available"] = NSNull()
+            body["kind"] = "idle"
+            body["notice"] = "TVM could not reach GitHub to check for a newer build. Check your connection and try again."
+            return body
+        }
+
+        body["lastCheck"] = ISO8601DateFormatter().string(from: Date())
+        let tag = latest.tag
+        // Releases are tagged mobile-<short sha>; same sha means same build.
+        let isCurrent = current != "unknown" && tag.hasSuffix(current)
+        if isCurrent {
+            body["available"] = NSNull()
+            body["kind"] = "up_to_date"
+            body["notice"] = "This is the newest published build (\(tag))."
+        } else {
+            body["available"] = ["version": tag, "notes": latest.notes]
+            body["kind"] = "available"
+            body["notice"] = current == "unknown"
+                ? "A published build exists (\(tag)). This copy does not record which commit it came from, so TVM cannot tell whether it is newer."
+                : "A newer build is published (\(tag)). You have \(current). Download its IPA and re-sign it to update."
+        }
+        return body
+    }
+
+    private struct ReleaseInfo { let tag: String; let notes: String }
+
+    private func latestRelease() async -> ReleaseInfo? {
+        guard let url = URL(string: "https://api.github.com/repos/GL-327/TVM/releases/latest") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("TVM-iOS", forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let body = JSONValue.object(data)
+        guard let tag = body["tag_name"] as? String, !tag.isEmpty else { return nil }
+        let notes = (body["body"] as? String ?? "")
+            .split(separator: "\n").prefix(6).joined(separator: "\n")
+        return ReleaseInfo(tag: tag, notes: String(notes.prefix(600)))
     }
 
     private func art(_ src: String, head: Bool) async -> HTTPReply {

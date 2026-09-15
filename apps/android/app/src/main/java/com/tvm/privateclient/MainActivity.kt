@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         webView.visibility = View.VISIBLE
         thread {
             try {
-                val core = TvmLocalCore.create(filesDir) { readBundledCatalog() }
+                val core = TvmLocalCore.create(filesDir, { readBundledCatalog() }, { readBuildInfo() })
                 val server = TvmLocalServer(core) { path -> readUiAsset(path) }
                 server.start()
                 localServer = server
@@ -136,6 +136,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun readBundledCatalog(): String? = runCatching {
         assets.open("FallbackCatalog.json").use { it.readBytes().toString(Charsets.UTF_8) }
+    }.getOrNull()
+
+    private fun readBuildInfo(): String? = runCatching {
+        assets.open("BuildInfo.json").use { it.readBytes().toString(Charsets.UTF_8) }
     }.getOrNull()
 
     override fun onDestroy() {

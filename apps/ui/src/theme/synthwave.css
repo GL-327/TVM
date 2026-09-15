@@ -297,17 +297,6 @@ html[data-theme='synthwave']:has([data-screen='player']) .rt-set {
   text-align: left;
 }
 
-.rt-set__osd-ch span {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  animation: rt-osd-cycle 16s steps(1) infinite;
-}
-
-.rt-set__osd-ch span:nth-child(1) { animation-delay: 0s; }
-.rt-set__osd-ch span:nth-child(2) { animation-delay: -4s; }
-.rt-set__osd-ch span:nth-child(3) { animation-delay: -8s; }
-.rt-set__osd-ch span:nth-child(4) { animation-delay: -12s; }
 
 .rt-set__osd-play {
   animation: rt-osd-blink 1s steps(1) infinite;

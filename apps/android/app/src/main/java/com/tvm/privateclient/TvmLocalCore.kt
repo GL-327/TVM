@@ -27,6 +27,7 @@ class TvmLocalCore(
     val rd: TvmRealDebrid,
     val plans: TvmPlans,
     val media: TvmMedia,
+    private val buildInfo: () -> String? = { null },
 ) {
     private val startedAt = System.currentTimeMillis()
     private val lock = Any()
@@ -42,7 +43,11 @@ class TvmLocalCore(
         private const val MAX_CHANNELS = 2000
 
         /** Wires the whole stack against one data directory and the bundled catalogue. */
-        fun create(root: File, bundledCatalog: () -> String?): TvmLocalCore {
+        fun create(
+            root: File,
+            bundledCatalog: () -> String?,
+            buildInfo: () -> String? = { null },
+        ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
             XtreamKeychain.attach(root)
@@ -50,7 +55,7 @@ class TvmLocalCore(
             val rd = TvmRealDebrid(RdKeychain)
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans)
-            return TvmLocalCore(store, catalog, rd, plans, media)
+            return TvmLocalCore(store, catalog, rd, plans, media, buildInfo)
         }
     }
 
@@ -325,14 +330,72 @@ class TvmLocalCore(
         return HttpReply.json(404, Json.obj("error" to "not_found"))
     }
 
-    private fun updateStatus(): JSONObject = Json.obj(
-        "current" to StandalonePolicy.VERSION,
-        "latest" to StandalonePolicy.VERSION,
-        "updateAvailable" to false,
-        "channel" to "standalone",
-        "checkedAt" to JSONObject.NULL,
-        "notes" to "This phone app updates through your app installer.",
-    )
+    /**
+     * A hand-installed APK has no store behind it, so it cannot update itself.
+     * It can still say that a newer build exists, which is the useful half.
+     * A failed check reports that it failed rather than claiming to be current.
+     */
+    private fun updateStatus(): JSONObject {
+        val current = buildCommit()
+        val body = Json.obj(
+            "current" to "${StandalonePolicy.VERSION} ($current)",
+            "channel" to "android-standalone",
+            "configured" to false,
+            "applyAllowed" to false,
+            "applyReason" to "Android cannot install its own update here. Download the newest APK from GitHub Releases and install it over this one.",
+        )
+        val latest = latestRelease()
+        if (latest == null) {
+            body.put("lastCheck", JSONObject.NULL)
+            body.put("available", JSONObject.NULL)
+            body.put("kind", "idle")
+            body.put("notice", "TVM could not reach GitHub to check for a newer build. Check your connection and try again.")
+            return body
+        }
+        val (tag, notes) = latest
+        body.put("lastCheck", java.time.Instant.now().toString())
+        // Releases are tagged mobile-<short sha>; the same sha is the same build.
+        if (current != "unknown" && tag.endsWith(current)) {
+            body.put("available", JSONObject.NULL)
+            body.put("kind", "up_to_date")
+            body.put("notice", "This is the newest published build ($tag).")
+        } else {
+            body.put("available", Json.obj("version" to tag, "notes" to notes))
+            body.put("kind", "available")
+            body.put(
+                "notice",
+                if (current == "unknown") {
+                    "A published build exists ($tag). This copy does not record which commit it came from, so TVM cannot tell whether it is newer."
+                } else {
+                    "A newer build is published ($tag). You have $current. Install its APK to update."
+                },
+            )
+        }
+        return body
+    }
+
+    /** Stamped in by scripts/write-build-info.mjs; absent in a hand build. */
+    private fun buildCommit(): String {
+        val text = buildInfo() ?: return "unknown"
+        return Json.string(Json.parseObject(text).opt("commit")) ?: "unknown"
+    }
+
+    private fun latestRelease(): Pair<String, String>? = runCatching {
+        val connection = URL("https://api.github.com/repos/GL-327/TVM/releases/latest").openConnection() as HttpURLConnection
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 10_000
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        connection.setRequestProperty("User-Agent", "TVM-Android")
+        try {
+            if (connection.responseCode !in 200..299) return null
+            val body = Json.parseObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+            val tag = Json.string(body.opt("tag_name")) ?: return null
+            val notes = (Json.string(body.opt("body")) ?: "").lineSequence().take(6).joinToString("\n").take(600)
+            tag to notes
+        } finally {
+            connection.disconnect()
+        }
+    }.getOrNull()
 
     private fun playLive(id: String): HttpReply {
         if (!Json.bool(plans.status().opt("liveTv"), false)) {
