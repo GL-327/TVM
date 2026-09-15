@@ -136,12 +136,19 @@ final class StandaloneTests: XCTestCase {
         let play = JSONValue.data(["id": "live:1"])
         let blocked = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: play)
         XCTAssertEqual(blocked.status, 403)
-        for id in ["basic", "premium", "ultra", "max"] {
+        // Basic is a television and desktop tier now; phones start at Premium.
+        _ = try core.plans.setPlan("basic")
+        XCTAssertFalse(core.plans.mobileAllowed())
+        for id in ["premium", "ultra", "max"] {
             _ = try core.plans.setPlan(id)
             XCTAssertTrue(core.plans.mobileAllowed())
         }
-        _ = try core.plans.setPlan("basic")
-        _ = try core.plans.setLiveTv(true)
+        // Live TV arrives with a tier now. setLiveTv(true) deliberately refuses,
+        // because a buyer used to pick a term at checkout and there is no
+        // checkout any more.
+        XCTAssertThrowsError(try core.plans.setLiveTv(true))
+        core.plans.grantTier("stream-live")
+        XCTAssertTrue(core.plans.mobileAllowed())
         let playlist = "#EXTM3U\n#EXTINF:-1,Test HLS\nhttps://cdn.example/live.m3u8\n#EXTINF:-1,Raw TS\nhttps://cdn.example/live.ts\n"
         _ = await core.handle(method: "PUT", path: "/api/live", query: [:], headers: [:], body: JSONValue.data(["text": playlist]))
         let hls = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: play)

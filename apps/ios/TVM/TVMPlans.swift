@@ -78,7 +78,10 @@ final class TVMPlans {
     func developer() -> Bool { developerUnlocked }
     func mobileAllowed() -> Bool {
         let current = status()
-        return ["basic", "premium", "ultra", "max"].contains(current["id"] as? String ?? "") &&
+        // Premium and above, matching apps/core/src/mobileAccess.ts. The three
+        // platforms disagreeing about who may watch on a phone is worse than
+        // either answer on its own.
+        return ["premium", "ultra", "max"].contains(current["id"] as? String ?? "") &&
             (JSONValue.int(current["maxHeight"]) ?? 0) >= 1080
     }
     func setDeveloper(_ value: Bool) { developerUnlocked = value }
