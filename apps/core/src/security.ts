@@ -12,7 +12,23 @@ export function tokenMatches(header: string | undefined, expected: string | unde
   return supplied.length === wanted.length && timingSafeEqual(supplied, wanted);
 }
 
+/**
+ * Stripe's webhook is the one endpoint that must accept a request from the
+ * public internet. Every check below is a network-origin check — loopback,
+ * host name, Origin header — and Stripe satisfies none of them.
+ *
+ * It does not need to. The request carries an HMAC-SHA256 signature over its
+ * raw body, made with a secret only Stripe and this server hold, and
+ * payments.webhook() verifies that in constant time before reading a single
+ * field. A forged request fails the signature and changes nothing; if no
+ * webhook secret is configured, every request is refused. That is stronger
+ * authentication than "arrived from 127.0.0.1", not weaker, which is why this
+ * exemption is safe and why it is limited to exactly this one path.
+ */
+const SIGNED_WEBHOOK = '/api/billing/webhook';
+
 export function accessError(request: IncomingMessage, path: string, env: NodeJS.ProcessEnv, sessionAuthenticated = false): string | null {
+  if (path === SIGNED_WEBHOOK && request.method === 'POST') return null;
   const local = isLoopback(request.socket.remoteAddress);
   let host: URL;
   try {
@@ -47,8 +63,29 @@ export function setSecurityHeaders(response: ServerResponse): void {
   response.setHeader('x-content-type-options', 'nosniff');
   response.setHeader('referrer-policy', 'no-referrer');
   response.setHeader('x-frame-options', 'SAMEORIGIN');
-  response.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-  response.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: http://127.0.0.1:* blob:; connect-src 'self' https: http://127.0.0.1:*; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+  // payment=() would switch off the Payment Request API, and with it Apple Pay
+  // and Google Pay inside Stripe's element.
+  response.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(self "https://js.stripe.com")');
+  // Stripe.js must be loaded from Stripe rather than bundled — their terms
+  // require it, so that fraud checks cannot go stale — and the card fields are
+  // an iframe from js.stripe.com, with hooks.stripe.com used for 3-D Secure.
+  // These three origins are the whole of the addition; script-src stays
+  // otherwise closed.
+  response.setHeader('content-security-policy', [
+    "default-src 'self'",
+    "script-src 'self' https://js.stripe.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' https: data: blob:",
+    "media-src 'self' https: http://127.0.0.1:* blob:",
+    "connect-src 'self' https: http://127.0.0.1:*",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+    "worker-src 'self' blob:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+  ].join('; '));
 }
 
 export function createUnlockLimiter(now = Date.now): () => boolean {
