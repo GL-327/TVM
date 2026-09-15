@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
-import { accessError, createUnlockLimiter } from './security.ts';
+import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
 import { readSecret, writeSecret } from './providers/secrets.ts';
 import { createPlanService } from './providers/plans.ts';
 import { createDevUnlockService } from './providers/devUnlock.ts';
@@ -15,6 +15,49 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 function request(headers: Record<string, string> = {}, remote = '127.0.0.1'): IncomingMessage {
   return { headers: { host: '127.0.0.1:7345', ...headers }, method: 'POST', socket: { remoteAddress: remote, localAddress: '127.0.0.1' } } as IncomingMessage;
 }
+describe('card payment security headers', () => {
+  function headers(): Record<string, string> {
+    const set: Record<string, string> = {};
+    setSecurityHeaders({ setHeader: (name: string, value: string) => { set[name] = value; } } as never);
+    return set;
+  }
+
+  it('lets Stripe load its script and mount its card iframe', () => {
+    const csp = headers()['content-security-policy'] ?? '';
+    // Without these the payment element silently never appears: the browser
+    // blocks the script and the iframe, and the console error is easy to miss.
+    expect(csp).toContain("script-src 'self' https://js.stripe.com");
+    expect(csp).toContain('frame-src');
+    expect(csp).toContain('https://js.stripe.com');
+    expect(csp).toContain('https://hooks.stripe.com');
+    // Nothing else gained script access along the way.
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).not.toContain("script-src *");
+  });
+
+  it('leaves the Payment Request API available to Stripe', () => {
+    // payment=() would disable Apple Pay and Google Pay inside the element.
+    expect(headers()['permissions-policy']).toContain('payment=(self "https://js.stripe.com")');
+  });
+
+  it('accepts the signed Stripe webhook from off-box, and nothing else', () => {
+    const remote = (path: string, method = 'POST') => accessError(
+      { headers: { host: '127.0.0.1:7345' }, method, socket: { remoteAddress: '203.0.113.9', localAddress: '127.0.0.1' } } as IncomingMessage,
+      path,
+      {},
+    );
+    // The webhook proves itself with an HMAC signature instead of an origin.
+    expect(remote('/api/billing/webhook')).toBeNull();
+    // The exemption is exactly one path and one method; everything else in the
+    // billing surface stays local-only.
+    expect(remote('/api/billing/webhook', 'GET')).not.toBeNull();
+    expect(remote('/api/billing/checkout')).not.toBeNull();
+    expect(remote('/api/billing/refund')).not.toBeNull();
+    expect(remote('/api/billing/stripe/keys')).not.toBeNull();
+    expect(remote('/api/billing/webhook/../checkout')).not.toBeNull();
+  });
+});
+
 describe('initial test security', () => {
   it('blocks cross-site requests, rebinding and remote admin, allows local UI', () => {
     expect(accessError(request({ origin: 'https://evil.example' }), '/api/dev/unlock', {})).toBe('untrusted_origin');
