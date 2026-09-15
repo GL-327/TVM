@@ -4,15 +4,18 @@ import { FocusField } from '../components/FocusField';
 import { TvmMark } from '../brand/TvmMark';
 import {
   acceptTerms,
+  activateAccount,
+  fetchAccount,
   fetchTerms,
   fetchTiers,
   registerAccount,
   signIn,
   type AccountState,
+  type AccountTier,
   type TermsDocument,
   type TiersResponse,
 } from '../data/account';
-import { formatBillingMoney } from '../data/plan';
+import { formatBillingMoney, unlockDeveloper } from '../data/plan';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import './accountGate.css';
 
@@ -79,6 +82,125 @@ function Prices({ tiers }: { tiers: TiersResponse }): React.JSX.Element {
       <p className="gate-prices__route">
         <strong>{tiers.route.headline}.</strong> {tiers.route.detail}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The owner's way in.
+ *
+ * Activation is done from developer mode, and developer mode is a screen — but
+ * the gate renders instead of the screens, so on a fresh install the owner
+ * registered, landed here, and had nowhere to go. Their own app was shut to
+ * them, and the admin screen they were meant to use was on the other side of
+ * the door it unlocks. Two buttons, "Check again" and "Sign out", and no third
+ * one that led anywhere.
+ *
+ * So the door takes the developer code directly. It grants nothing the
+ * Developer screen would not: the code goes to the same endpoint, which is
+ * rate-limited and refuses anything that is not a local client, and switching
+ * an account on still goes through the same admin route that checks developer
+ * mode on every call. The only thing that changes is that it is reachable.
+ *
+ * Deliberately last on the panel and deliberately dull. Anyone who is not the
+ * owner should read this, understand it is not for them, and go back to
+ * waiting.
+ */
+function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => void }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [unlocked, setUnlocked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const unlock = async (value: string): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await unlockDeveloper(value);
+      if (!result.unlocked) {
+        setError(result.error ?? 'That code is not valid.');
+        return;
+      }
+      setCode('');
+      setUnlocked(true);
+    } catch {
+      setError('That could not be checked. Is TVM still running?');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const activate = async (tier: AccountTier): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await activateAccount({ id: accountId, tier });
+      onDone();
+    } catch (activateError) {
+      setError(activateError instanceof Error ? activateError.message : 'That account could not be switched on.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="gate__owner">
+        <FocusButton id="owner-unlock" className="tvm-button--quiet" onSelect={() => setOpen(true)}>
+          I am the app owner
+        </FocusButton>
+      </div>
+    );
+  }
+
+  return (
+    <div className="gate__owner gate__owner--open">
+      <h2 className="gate__owner-title">Owner access</h2>
+      {!unlocked ? (
+        <>
+          <p className="gate__owner-lede">
+            Enter the developer code to switch this account on. Everyone else should
+            ask the owner instead.
+          </p>
+          <label className="gate__field">
+            <span>Developer code</span>
+            <FocusField
+              id="owner-code"
+              type="password"
+              value={code}
+              onChange={setCode}
+              onConfirm={(value) => void unlock(value)}
+              placeholder="Developer code"
+            />
+          </label>
+          {error !== null && <p className="gate__error" role="alert">{error}</p>}
+          <div className="gate__actions">
+            <FocusButton id="owner-go" variant="primary" disabled={busy || code === ''} onSelect={() => void unlock(code)}>
+              {busy ? 'Checking…' : 'Unlock'}
+            </FocusButton>
+            <FocusButton id="owner-cancel" disabled={busy} onSelect={() => { setOpen(false); setError(null); setCode(''); }}>
+              Cancel
+            </FocusButton>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="gate__owner-lede">
+            Developer mode is on. Choose what this account gets; you can change it later
+            from Developer → Accounts.
+          </p>
+          {error !== null && <p className="gate__error" role="alert">{error}</p>}
+          <div className="gate__actions">
+            <FocusButton id="owner-stream" variant="primary" disabled={busy} onSelect={() => void activate('stream')}>
+              Movies and TV shows
+            </FocusButton>
+            <FocusButton id="owner-live" disabled={busy} onSelect={() => void activate('stream-live')}>
+              Movies, TV shows and Live TV
+            </FocusButton>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -198,13 +320,19 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
           )}
           {tiers !== null && !suspended && <Prices tiers={tiers} />}
           <div className="gate__actions">
-            <FocusButton id="recheck" variant="primary" disabled={busy} onSelect={() => { void (async () => { const { fetchAccount } = await import('../data/account'); onChanged(await fetchAccount()); })(); }}>
+            <FocusButton id="recheck" variant="primary" disabled={busy} onSelect={() => { void fetchAccount().then(onChanged); }}>
               Check again
             </FocusButton>
-            <FocusButton id="signout" onSelect={() => { void (async () => { const { signOut, fetchAccount } = await import('../data/account'); await signOut(); onChanged(await fetchAccount()); })(); }}>
+            <FocusButton id="signout" onSelect={() => { void (async () => { const { signOut } = await import('../data/account'); await signOut(); onChanged(await fetchAccount()); })(); }}>
               Sign out
             </FocusButton>
           </div>
+          {state.account !== null && (
+            <OwnerUnlock
+              accountId={state.account.id}
+              onDone={() => { void fetchAccount().then(onChanged); }}
+            />
+          )}
         </div>
       </main>
     );
