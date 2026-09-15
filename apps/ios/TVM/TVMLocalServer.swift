@@ -99,12 +99,10 @@ final class TVMLocalServer: @unchecked Sendable {
     }
 
     private func staticFile(path: String, method: String) -> HTTPReply {
-        guard let root = Bundle.main.resourceURL?.appendingPathComponent("BundledUI", isDirectory: true) else {
-            return HTTPReply.json(500, ["error": "bundled UI missing"])
-        }
         let relative = path == "/" ? "index.html" : String(path.dropFirst())
         let decoded = relative.removingPercentEncoding ?? relative
         if decoded.contains("..") { return HTTPReply.json(400, ["error": "bad path"]) }
+        let root = TVMBundledUI.root(store: core.store)
         var file = root.appendingPathComponent(decoded).standardizedFileURL
         let rootPath = root.standardizedFileURL.path
         if !file.path.hasPrefix(rootPath) { return HTTPReply.json(400, ["error": "bad path"]) }

@@ -173,7 +173,9 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
               className={`ribbon__icon${active === 'profile' ? ' ribbon__icon--on' : ''}`}
               onSelect={() => navigate.push('profile')}
             >
-              <IconProfile className="ribbon__avatar-svg" />
+              <span className="ribbon__avatar">
+                <IconProfile className="ribbon__avatar-svg" />
+              </span>
               <span className="ribbon__label">Profile</span>
             </FocusButton>
           </div>

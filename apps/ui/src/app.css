@@ -1427,6 +1427,37 @@ img.stage__art.art--ready {
   margin-top: var(--tvm-space-3);
 }
 
+.panel--changelog {
+  width: min(42rem, 100%);
+}
+
+.changelog-block {
+  margin: 0 0 var(--tvm-space-4);
+}
+
+.changelog {
+  margin: 0 0 var(--tvm-space-4);
+  padding: 0;
+  max-height: min(50vh, 28rem);
+  overflow: auto;
+  list-style: none;
+}
+
+.changelog__item {
+  padding: var(--tvm-space-2) 0;
+  border-bottom: 1px solid var(--tvm-border-soft);
+}
+
+.changelog__title {
+  margin: 0;
+  font-weight: 650;
+}
+
+.changelog__body {
+  margin: 0.35rem 0 0;
+  color: var(--tvm-text-muted);
+}
+
 .token-field {
   display: flex;
   flex-direction: column;
@@ -2246,10 +2277,12 @@ html.tvm-egg--happy .app::after {
   flex: 0 0 auto;
   width: 1.95rem;
   height: 1.95rem;
-  overflow: visible;
+  overflow: hidden;
   border-radius: 999px;
   background: #2a2a2a;
   color: #fff;
+  aspect-ratio: 1;
+  box-sizing: border-box;
   transform: translateZ(0) scale(1);
   transform-origin: center;
   transition:
@@ -2269,7 +2302,9 @@ html.tvm-egg--happy .app::after {
   display: block;
   width: 1.1rem;
   height: 1.1rem;
-  overflow: visible;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
@@ -2277,12 +2312,16 @@ html.tvm-egg--happy .app::after {
 }
 
 .ribbon__avatar-svg {
-  width: 1.95rem;
-  height: 1.95rem;
+  width: 100%;
+  height: 100%;
+  max-width: 1.95rem;
+  max-height: 1.95rem;
+  overflow: hidden;
   background: transparent;
   color: unset;
   fill: unset;
   stroke: unset;
+  border-radius: inherit;
 }
 
 .ribbon__glyph--tvm {
@@ -3277,14 +3316,16 @@ html.tvm-native-plane .player-root {
   justify-content: center;
   width: 1.7rem;
   height: 1.7rem;
-  border-radius: 0.35rem;
+  border-radius: 50%;
   overflow: hidden;
+  aspect-ratio: 1;
+  box-sizing: border-box;
 }
 
 .profile-orb--lg {
   width: 7.2rem;
   height: 7.2rem;
-  border-radius: 0.7rem;
+  border-radius: 50%;
 }
 
 .profile-orb--add {

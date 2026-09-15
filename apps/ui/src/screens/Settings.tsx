@@ -5,6 +5,9 @@ import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
 import { fetchLive, fetchSession } from '../data/media';
 import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, saveLiveTv, saveStyle, styleMinPlanLabel, styleUnlocked, themeUnlocked, type PlanStatus, type StyleId } from '../data/plan';
+import { hydratePrefs, readPrefs, savePrefs } from '../data/prefs';
+import { languageName, nextLanguage } from '../i18n/locale';
+import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
@@ -22,11 +25,17 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
   const [motion, setMotion] = useState(readMotionPreference);
   const [performance, setPerformance] = useState(readPerformanceMode);
+  const [language, setLanguage] = useState(() => readPrefs().language);
+  const [autoUpdate, setAutoUpdate] = useState(() => readPrefs().autoUpdate);
   const pageRef = useRef<HTMLElement>(null);
 
   useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   useEffect(() => {
+    void hydratePrefs().then((prefs) => {
+      setLanguage(prefs.language);
+      setAutoUpdate(prefs.autoUpdate);
+    });
     void fetchLive()
       .then((status) => {
         if (status === null) {
@@ -155,6 +164,21 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         })}
         </section>
         <section className="settings-group">
+          <h2 className="settings-group__title">Language</h2>
+        <FocusButton
+          id="language"
+          className="settings-row"
+          detail={languageName(language)}
+          onSelect={() => {
+            const next = nextLanguage(language);
+            setLanguage(next);
+            void savePrefs({ language: next });
+          }}
+        >
+          App language
+        </FocusButton>
+        </section>
+        <section className="settings-group">
           <h2 className="settings-group__title">Account</h2>
         <FocusButton id="privacy" className="settings-row" detail="Terms, data export and deletion" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
         <FocusButton
@@ -217,7 +241,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton
           id="display"
           className="settings-row"
-          detail={`${displayMaxLabel(plan.maxHeight)} · ${window.innerWidth} × ${window.innerHeight} view`}
+          detail={`${displayMaxLabel(playbackMaxHeight(plan.maxHeight, readDeviceChrome().maxHeight))} · ${readDeviceChrome().model}`}
           onSelect={() => navigate.push('system-info', { params: { section: 'display' } })}
         >
           Display
@@ -240,6 +264,18 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </FocusButton>
         <FocusButton id="updates" className="settings-row" detail="GLogic Studios" onSelect={() => navigate.push('updates')}>
           Updates
+        </FocusButton>
+        <FocusButton
+          id="auto-update"
+          className="settings-row"
+          detail={autoUpdate ? 'On · apply when this app opens' : 'Off · check from Updates'}
+          onSelect={() => {
+            const next = !autoUpdate;
+            setAutoUpdate(next);
+            void savePrefs({ autoUpdate: next });
+          }}
+        >
+          Automatic updates
         </FocusButton>
         <FocusButton
           id="linux-desktop"

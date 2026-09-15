@@ -4,17 +4,22 @@ import { fieldValue, FocusField } from '../components/FocusField';
 import { TopBar } from '../components/TopBar';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import { formatAppDate } from '../i18n/locale';
+import { readAutoUpdate, savePrefs } from '../data/prefs';
+import { rememberPendingChangelog, type ChangelogEntry, type ChangelogRecord, parseChangelogRecord } from '../data/changelog';
 
 interface UpdateStatus {
   current: string;
   channel: string;
   lastCheck: string | null;
-  available: { version: string; notes: string } | null;
+  available: { version: string; notes: string; changelog?: ChangelogEntry[] } | null;
   configured: boolean;
   applyAllowed: boolean;
   applyReason: string | null;
   kind?: 'idle' | 'no_release' | 'up_to_date' | 'available' | 'auth_required' | 'rate_limited';
   notice?: string | null;
+  autoUpdate?: boolean;
+  changelog?: ChangelogRecord | null;
 }
 
 const EMPTY: UpdateStatus = {
@@ -27,6 +32,7 @@ const EMPTY: UpdateStatus = {
   applyReason: null,
   kind: 'idle',
   notice: null,
+  changelog: null,
 };
 
 export function Updates(_props: ScreenProps): React.JSX.Element {
@@ -80,7 +86,13 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
         setMessage(body.reason ?? body.error ?? 'Apply was refused');
         return;
       }
-      setMessage('Applied. The service will restart.');
+      rememberPendingChangelog({
+        version: status.available?.version ?? 'github',
+        entries: status.available?.changelog,
+        notes: status.available?.notes,
+      });
+      setMessage('Applied. Reloading…');
+      window.setTimeout(() => window.location.reload(), 400);
     } catch {
       setMessage('Apply failed.');
     } finally {
@@ -118,9 +130,9 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       <p className="stage__kicker">GLogic Studios</p>
       <h1 className="page__heading">Updates</h1>
       <p className="page__lede">
-        App builds come from the public GitHub Releases feed ({status.channel}). This device does not need a GitHub
-        login. Check works here; Apply is for a production appliance, not this development checkout. A token is only
-        for a private fork. The operating system image is a separate update.
+        Builds come from GitHub ({status.channel}). When automatic updates are on, this app checks as
+        soon as it opens and applies the latest interface. Turn that off in Settings to stay on this
+        copy until you tap Apply.
       </p>
 
       <dl className="panel__rows settings-summary">
@@ -130,7 +142,7 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
         </div>
         <div className="panel__row">
           <dt>Last check</dt>
-          <dd>{status.lastCheck === null ? 'Never' : new Date(status.lastCheck).toLocaleString()}</dd>
+          <dd>{status.lastCheck === null ? 'Never' : formatAppDate(status.lastCheck)}</dd>
         </div>
         <div className="panel__row">
           <dt>Available</dt>
@@ -143,9 +155,15 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       </dl>
 
       {message !== null && <p className="page__message">{message}</p>}
-      {status.available?.notes !== undefined && status.available.notes !== '' && (
-        <p className="page__lede">{status.available.notes}</p>
-      )}
+      <ChangelogList
+        heading={status.available !== null ? "What's coming" : "What's new"}
+        entries={
+          status.available?.changelog ??
+          parseChangelogRecord(status.changelog)?.entries ??
+          []
+        }
+        fallback={status.available?.notes}
+      />
 
       <div className="hero__actions">
         <FocusButton id="check" variant="primary" disabled={busy !== null} onSelect={() => void check()}>
@@ -156,7 +174,19 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
           disabled={busy !== null || status.available === null || !status.applyAllowed}
           onSelect={() => void apply()}
         >
-          {status.applyAllowed ? 'Apply' : 'Apply (disabled here)'}
+          {status.applyAllowed ? 'Apply now' : 'Apply (disabled here)'}
+        </FocusButton>
+        <FocusButton
+          id="auto-update"
+          disabled={busy !== null}
+          onSelect={() => {
+            const next = !readAutoUpdate();
+            void savePrefs({ autoUpdate: next }).then(() => {
+              setMessage(next ? 'Automatic updates on. The next open will apply GitHub.' : 'Automatic updates off.');
+            });
+          }}
+        >
+          {readAutoUpdate() ? 'Automatic updates on' : 'Automatic updates off'}
         </FocusButton>
         <FocusButton id="back" onSelect={() => navigate.pop()}>
           Back
@@ -182,4 +212,34 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       </FocusButton>
     </main>
   );
+}
+
+function ChangelogList({
+  heading,
+  entries,
+  fallback,
+}: {
+  heading: string;
+  entries: ChangelogEntry[];
+  fallback?: string;
+}): React.JSX.Element | null {
+  if (entries.length > 0) {
+    return (
+      <section className="changelog-block" aria-label={heading}>
+        <h2 className="settings-group__title">{heading}</h2>
+        <ol className="changelog">
+          {entries.map((entry) => (
+            <li key={`${entry.sha}-${entry.title}`} className="changelog__item">
+              <p className="changelog__title">{entry.title}</p>
+              {entry.body !== '' ? <p className="changelog__body">{entry.body}</p> : null}
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
+  }
+  if (fallback !== undefined && fallback !== '') {
+    return <p className="page__lede">{fallback}</p>;
+  }
+  return null;
 }

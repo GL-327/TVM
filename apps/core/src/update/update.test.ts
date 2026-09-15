@@ -237,6 +237,8 @@ describe('update service', () => {
     await expect(service.apply()).resolves.toEqual({ version: '0.2.0' });
     expect(await readFile(join(dir, 'app', 'current'), 'utf8')).toContain('0.2.0');
     expect(await readFile(join(dir, 'app', '0.2.0', 'core', 'index.js'), 'utf8')).toBe('ok');
+    expect(service.changelog()?.pending).toBe(true);
+    expect(service.changelog()?.entries[0]?.title).toBe('newer');
   });
 
   it('treats a missing latest release as a successful empty check', async () => {
@@ -257,6 +259,38 @@ describe('update service', () => {
     expect(status.lastCheck).not.toBeNull();
     expect(status.notice).toMatch(/No GitHub Release/);
     expect(status.applyAllowed).toBe(false);
+  });
+
+  it('treats a newer GitHub main commit as an available update', async () => {
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'development' },
+      currentVersion: '0.1.0',
+      currentCommit: 'aaa111',
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes('/releases/latest')) return new Response('{"message":"Not Found"}', { status: 404 });
+        if (url.includes('/releases')) return new Response('[]', { status: 200 });
+        if (url.includes('/commits')) {
+          return new Response(
+            JSON.stringify([
+              {
+                sha: 'bbb222ccc',
+                commit: { message: 'Fix player chrome\n\nbody', committer: { date: '2026-09-14T12:00:00Z' } },
+              },
+              { sha: 'aaa111000', commit: { message: 'Old build' } },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response('no', { status: 404 });
+      },
+    });
+    const status = await service.check();
+    expect(status.kind).toBe('available');
+    expect(status.available?.version).toBe('bbb222c');
+    expect(status.available?.notes).toBe('Fix player chrome');
+    expect(status.available?.changelog?.map((entry) => entry.title)).toEqual(['Fix player chrome']);
   });
 
   it('uses a published prerelease when /releases/latest is empty', async () => {

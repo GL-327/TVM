@@ -36,6 +36,12 @@ final class StandaloneRuntime: ObservableObject {
     func start() async {
         guard session == nil || starting else { return }
         do {
+            await TVMUpdater.applyIfNeeded(store: core.store, session: URLSession(configuration: {
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.timeoutIntervalForRequest = 90
+                configuration.httpShouldSetCookies = false
+                return configuration
+            }()))
             let server = TVMLocalServer(core: core)
             try server.start()
             self.server = server

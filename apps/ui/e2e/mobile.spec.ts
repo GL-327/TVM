@@ -17,6 +17,23 @@ async function ready(page: Page, paid: boolean): Promise<void> {
   await page.route('**/api/home', (route) => route.fulfill({ json: { rd: { configured: true, premium: true }, featured: title, library: [], watchlist: [], continueWatching: [], rails: [{ id: 'films', title: 'Popular films', items: Array.from({ length: 12 }, (_, i) => ({ ...title, id: `tt${i + 1000000}`, title: `Film ${i + 1}` })) }] } }));
   await page.route('**/api/profiles', (route) => route.fulfill({ json: { activeId: 'profile-1', profiles: [{ id: 'profile-1', name: 'Test profile', hue: 350 }] } }));
   await page.route('**/api/apps', (route) => route.fulfill({ json: { ribbon: [], grid: [] } }));
+  await page.route('**/api/prefs', (route) => route.fulfill({ json: { language: 'en', autoUpdate: true } }));
+  await page.route('**/api/update/**', (route) =>
+    route.fulfill({
+      json: {
+        current: '0.1.0',
+        channel: 'github:GL-327/TVM',
+        lastCheck: null,
+        available: null,
+        configured: false,
+        applyAllowed: false,
+        applyReason: null,
+        kind: 'up_to_date',
+        notice: null,
+        autoUpdate: true,
+      },
+    }),
+  );
   await page.goto('/?e2e=1');
 }
 
@@ -72,6 +89,24 @@ test.describe('iPhone WebKit', () => {
     await expect(page.locator('.home__shelf')).toBeVisible();
     await page.evaluate(() => window.dispatchEvent(new Event('tvm:navigate-back')));
     await expect(page.locator('.home__shelf')).toBeVisible();
+  });
+
+  test('defaults to English and keeps the profile icon inside its oval', async ({ page }) => {
+    await ready(page, true);
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+    const avatar = page.locator('.ribbon__avatar').first();
+    const svg = page.locator('.ribbon__avatar-svg').first();
+    await expect(avatar).toBeVisible();
+    const oval = await avatar.boundingBox();
+    const face = await svg.boundingBox();
+    expect(oval).toBeTruthy();
+    expect(face).toBeTruthy();
+    expect(face!.width).toBeLessThanOrEqual(oval!.width + 1);
+    expect(face!.height).toBeLessThanOrEqual(oval!.height + 1);
+    expect(face!.x).toBeGreaterThanOrEqual(oval!.x - 1);
+    expect(face!.y).toBeGreaterThanOrEqual(oval!.y - 1);
+    expect(face!.x + face!.width).toBeLessThanOrEqual(oval!.x + oval!.width + 1);
+    expect(face!.y + face!.height).toBeLessThanOrEqual(oval!.y + oval!.height + 1);
   });
 
   test('a left-edge swipe leaves Settings without a Back button', async ({ page }) => {

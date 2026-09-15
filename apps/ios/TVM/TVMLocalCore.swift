@@ -23,6 +23,7 @@ final class TVMLocalCore {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 20
             configuration.httpShouldSetCookies = false
+            configuration.httpAdditionalHeaders = ["Accept-Language": TVMPrefs.acceptLanguage(TVMPrefs.load(store).language)]
             self.session = URLSession(configuration: configuration)
         }
         catalog = TVMCatalog(store: store, session: self.session)
@@ -50,14 +51,36 @@ final class TVMLocalCore {
                 "mode": "standalone",
             ])
         }
+        if path == "/api/prefs" && method == "GET" {
+            return .json(200, TVMPrefs.load(store).json())
+        }
+        if path == "/api/prefs" && method == "PUT" {
+            var prefs = TVMPrefs.load(store)
+            if let language = json["language"] as? String, TVMPrefs.languages.contains(language) {
+                prefs.language = language
+            }
+            if let auto = json["autoUpdate"] as? Bool {
+                prefs.autoUpdate = auto
+            }
+            prefs.save(store)
+            return .json(200, prefs.json())
+        }
         if path == "/api/update/status" && method == "GET" {
-            return .json(200, updateStatus())
+            return .json(200, TVMUpdater.snapshot(store: store).json())
         }
         if path == "/api/update/check" && method == "POST" {
-            return .json(200, updateStatus())
+            do { return .json(200, try await TVMUpdater.check(store: store, session: session).json()) }
+            catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "check failed"]) }
         }
         if path == "/api/update/apply" && method == "POST" {
-            return .json(403, ["error": "apply_refused", "reason": "The iPhone app is updated from a new IPA, not from GitHub."])
+            do { return .json(200, try await TVMUpdater.apply(store: store, session: session)) }
+            catch { return .json(400, ["error": "apply_refused", "reason": (error as? LocalizedError)?.errorDescription ?? "apply failed"]) }
+        }
+        if path == "/api/update/changelog" && method == "GET" {
+            return .json(200, TVMChangelog.record(store: store) ?? ["pending": false, "version": "", "from": NSNull(), "to": NSNull(), "appliedAt": "", "entries": []])
+        }
+        if path == "/api/update/changelog/seen" && method == "POST" {
+            return .json(200, TVMChangelog.markSeen(store: store))
         }
         if path == "/api/update/token" && method == "PUT" {
             return .json(200, ["configured": false])
@@ -288,20 +311,6 @@ final class TVMLocalCore {
         }
         if path.hasPrefix("/api/") { return .json(404, ["error": "not_found"]) }
         return .json(404, ["error": "not_found"])
-    }
-
-    private func updateStatus() -> [String: Any] {
-        [
-            "current": StandalonePolicy.version,
-            "channel": "ios-standalone",
-            "lastCheck": NSNull(),
-            "available": NSNull(),
-            "configured": false,
-            "applyAllowed": false,
-            "applyReason": "Install a new IPA. This app does not pull GitHub releases.",
-            "kind": "idle",
-            "notice": "Phone updates are a new sideloaded IPA, not an in-app GitHub download.",
-        ]
     }
 
     private func art(_ src: String, head: Bool) async -> HTTPReply {

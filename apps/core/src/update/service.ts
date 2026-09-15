@@ -6,6 +6,7 @@ import { compareSemver, isNewer } from './semver.ts';
 import {
   applyPolicy,
   appDir,
+  changelogPath,
   currentPointer,
   resolveUpdateRepo,
   secretsDir,
@@ -13,12 +14,22 @@ import {
   tokenPath,
 } from './paths.ts';
 import { extractTarGz, parseSha256File } from './tar.ts';
+import {
+  entriesFromGithubCommits,
+  entriesFromReleaseNotes,
+  notesFromEntries,
+  parseChangelogRecord,
+  sameCommit,
+  type ChangelogEntry,
+  type ChangelogRecord,
+} from './changelog.ts';
 
 export type UpdateCheckKind = 'idle' | 'no_release' | 'up_to_date' | 'available' | 'auth_required' | 'rate_limited';
 
 export interface AvailableUpdate {
   version: string;
   notes: string;
+  changelog?: ChangelogEntry[];
 }
 
 export interface UpdateStatus {
@@ -31,6 +42,7 @@ export interface UpdateStatus {
   applyReason: string | null;
   kind: UpdateCheckKind;
   notice: string | null;
+  changelog: ChangelogRecord | null;
 }
 
 interface CachedStatus {
@@ -57,6 +69,8 @@ export interface UpdateService {
   status(): UpdateStatus;
   check(): Promise<UpdateStatus>;
   apply(): Promise<{ version: string }>;
+  changelog(): ChangelogRecord | null;
+  markChangelogSeen(): ChangelogRecord | null;
   setToken(token: string): { configured: boolean };
 }
 
@@ -65,6 +79,7 @@ export interface UpdateServiceOptions {
   env?: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
   currentVersion?: string;
+  currentCommit?: string;
   now?: () => Date;
 }
 
@@ -94,6 +109,59 @@ function readCache(dataDir: string): CachedStatus {
 function writeCache(dataDir: string, cache: CachedStatus): void {
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(statusPath(dataDir), JSON.stringify(cache));
+}
+
+function readChangelogFile(dataDir: string): ChangelogRecord | null {
+  try {
+    return parseChangelogRecord(JSON.parse(readFileSync(changelogPath(dataDir), 'utf8')) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function writeChangelogFile(dataDir: string, record: ChangelogRecord): void {
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(changelogPath(dataDir), JSON.stringify(record));
+}
+
+function persistAppliedChangelog(
+  dataDir: string,
+  available: AvailableUpdate,
+  from: string | null,
+  to: string | null,
+  nowIso: string,
+): ChangelogRecord | null {
+  const entries = available.changelog ?? [];
+  if (entries.length === 0) {
+    const fallback = parseCommitMessageAsEntry(available.notes, available.version);
+    if (fallback === null) return readChangelogFile(dataDir);
+    const record: ChangelogRecord = {
+      pending: true,
+      version: available.version,
+      from,
+      to,
+      appliedAt: nowIso,
+      entries: [fallback],
+    };
+    writeChangelogFile(dataDir, record);
+    return record;
+  }
+  const record: ChangelogRecord = {
+    pending: true,
+    version: available.version,
+    from,
+    to,
+    appliedAt: nowIso,
+    entries,
+  };
+  writeChangelogFile(dataDir, record);
+  return record;
+}
+
+function parseCommitMessageAsEntry(notes: string, version: string): ChangelogEntry | null {
+  const title = notes.trim().slice(0, 160);
+  if (title === '') return null;
+  return { sha: version, title, body: '', date: null };
 }
 
 function storedToken(dataDir: string): string | null {
@@ -141,6 +209,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   const env = options.env ?? process.env;
   const fetchImpl = options.fetch ?? fetch;
   const currentVersion = options.currentVersion ?? CORE_VERSION;
+  const currentCommit = options.currentCommit ?? env['TVM_GIT_SHA']?.trim() ?? '';
   const now = options.now ?? (() => new Date());
   const { dataDir } = options;
   const repo = resolveUpdateRepo(env);
@@ -160,6 +229,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       applyReason: policy.reason,
       kind,
       notice: cache.notice ?? null,
+      changelog: readChangelogFile(dataDir),
     };
   };
 
@@ -272,6 +342,15 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     return { kind: 'no_release', release: pickNewestRelease(releases) };
   };
 
+  const loadCommitChangelog = async (untilSha: string): Promise<ChangelogEntry[]> => {
+    const listed = await github(
+      `https://api.github.com/repos/${repo}/commits?sha=main&per_page=20`,
+      'application/vnd.github+json',
+    );
+    if (!listed.ok) return [];
+    return entriesFromGithubCommits(await listed.json(), untilSha);
+  };
+
   return {
     status: snapshot,
 
@@ -282,12 +361,38 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       }
       const release = found.release;
       const version = stripTag((release?.tag_name ?? '').trim());
-      if (release === null || version === '') {
-        return remember('no_release', null);
+      if (release !== null && version !== '') {
+        if (!isNewer(version, currentVersion)) {
+          return remember('up_to_date', null);
+        }
+        const fromNotes = entriesFromReleaseNotes(release.body ?? '', version);
+        const changelog = fromNotes.length > 0 ? fromNotes : await loadCommitChangelog(currentCommit);
+        const notes = notesFromEntries(changelog, (release.body ?? '').split('\n')[0] ?? `Version ${version}`).slice(0, 400);
+        return remember('available', { version, notes, changelog });
       }
-      const available =
-        isNewer(version, currentVersion) ? { version, notes: (release.body ?? '').slice(0, 400) } : null;
-      return remember(available === null ? 'up_to_date' : 'available', available);
+
+      if (currentCommit !== '') {
+        const listed = await github(
+          `https://api.github.com/repos/${repo}/commits?sha=main&per_page=20`,
+          'application/vnd.github+json',
+        );
+        if (listed.status === 429) return remember('rate_limited', null);
+        if (listed.ok) {
+          const payload = (await listed.json()) as unknown;
+          const commits = Array.isArray(payload) ? payload : [];
+          const head = commits[0] as { sha?: unknown } | undefined;
+          const sha = typeof head?.sha === 'string' ? head.sha.trim() : '';
+          if (sha !== '' && sameCommit(sha, currentCommit)) {
+            return remember('up_to_date', null);
+          }
+          if (sha !== '') {
+            const changelog = entriesFromGithubCommits(commits, currentCommit);
+            const notes = notesFromEntries(changelog);
+            return remember('available', { version: sha.slice(0, 7), notes, changelog });
+          }
+        }
+      }
+      return remember('no_release', null);
     },
 
     async apply(): Promise<{ version: string }> {
@@ -342,8 +447,27 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       mkdirSync(dest, { recursive: true });
       extractTarGz(archive, dest);
       writeFileSync(currentPointer(dataDir), `${available.version}\n`, { encoding: 'utf8' });
+      persistAppliedChangelog(dataDir, available, currentVersion, available.version, now().toISOString());
+      writeCache(dataDir, {
+        lastCheck: now().toISOString(),
+        available: null,
+        kind: 'up_to_date',
+        notice: `Applied v${available.version}.`,
+      });
       log(`tvm-core: applied app ${available.version}`);
       return { version: available.version };
+    },
+
+    changelog(): ChangelogRecord | null {
+      return readChangelogFile(dataDir);
+    },
+
+    markChangelogSeen(): ChangelogRecord | null {
+      const current = readChangelogFile(dataDir);
+      if (current === null) return null;
+      const next = { ...current, pending: false };
+      writeChangelogFile(dataDir, next);
+      return next;
     },
 
     setToken(token: string): { configured: boolean } {
@@ -356,11 +480,22 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   };
 }
 
-export function startUpdatePolling(service: UpdateService, intervalMs: number): () => void {
+export function startUpdatePolling(
+  service: UpdateService,
+  intervalMs: number,
+  options: { autoApply?: () => boolean } = {},
+): () => void {
   const tick = (): void => {
-    void service.check().catch((error: unknown) => {
-      log('tvm-core: update check failed', error instanceof Error ? error.message : error);
-    });
+    void service
+      .check()
+      .then(async (status) => {
+        if (options.autoApply?.() !== true || !status.applyAllowed || status.available === null) return;
+        await service.apply();
+        restartAfterApply();
+      })
+      .catch((error: unknown) => {
+        log('tvm-core: update check failed', error instanceof Error ? error.message : error);
+      });
   };
   tick();
   const timer = setInterval(tick, intervalMs);

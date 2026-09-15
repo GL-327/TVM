@@ -628,6 +628,26 @@ check('the shared UI starts pointer input for tap-to-select',
   'phones must not require a D-pad hover-focus before a tap opens a title');
 check('the shared UI starts the phone visualViewport helper',
   mainUi.includes('startPhoneViewport'));
+check('the shared UI starts device chrome (notch / island / bezel)',
+  mainUi.includes('startDeviceChrome') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'nav', 'deviceChrome.ts')) ?? '').includes('dataset.deviceFamily') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'theme', 'mobile.css')) ?? '').includes('--tvm-chrome-top') &&
+  (read(join(ROOT, 'TVM', 'TVMDeviceChrome.swift')) ?? '').includes('TVMDeviceFamily') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('TVMDeviceChrome.bootScript'));
+check('English is the default language unless Settings override it',
+  (read(join(REPO, 'apps', 'ui', 'src', 'i18n', 'locale.ts')) ?? '').includes("DEFAULT_LANGUAGE = 'en'") &&
+  mainUi.includes('applyStoredLanguage') &&
+  (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('defaultLanguage = "en"'));
+check('the iPhone applies a GitHub UI bundle on open unless auto-update is off',
+  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('TVMUpdater.applyIfNeeded') &&
+  (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('tvm-ios-ui.tar.gz') &&
+  (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/apply') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'data', 'launchUpdate.ts')) ?? '').includes('applyGithubUpdateOnLaunch'));
+check('an applied GitHub update shows a changelog on the next open',
+  (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('TVMChangelog.writePending') &&
+  (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/changelog') &&
+  (read(join(REPO, 'apps', 'ui', 'src', 'screens', 'ChangelogModal.tsx')) ?? '').includes("What's new") &&
+  (read(join(REPO, '.github', 'workflows', 'mobile.yml')) ?? '').includes('write-changelog.mjs'));
 
 check('the client sends Authorization: Bearer from the supplied token',
   sessionClient.includes('Bearer \\(connection.token)'),
