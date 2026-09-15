@@ -76,8 +76,12 @@ jobs:
   ios-ipa:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'android'
     runs-on: macos-14
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 25
       - uses: pnpm/action-setup@v4
         with:
           version: 11.22.0
@@ -91,8 +95,10 @@ jobs:
           node apps/ios/export-fallback-catalog.mjs
           node apps/ios/generate-app-icon.mjs
           node apps/ios/bundle-ui.mjs
+          node apps/ios/write-changelog.mjs
           node -e 'require("fs").writeFileSync("apps/ios/TVM/BundledUI/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,player:"MobileVLCKit-3.6.0"}))'
           test -f apps/ios/TVM/BundledUI/index.html
+          test -f apps/ios/TVM/BundledUI/changelog.json
           test -d apps/ios/TVM/BundledUI/assets
       - name: Validate Xcode project (standalone app + bundled UI)
         run: node apps/ios/check-project.mjs
@@ -151,6 +157,15 @@ jobs:
             build
           chmod +x package-unsigned-ipa.sh
           ./package-unsigned-ipa.sh
+      - name: Publish rolling iOS UI bundle
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar -czf tvm-ios-ui.tar.gz -C apps/ios/TVM/BundledUI .
+          gh release view ios-ui >/dev/null 2>&1 || gh release create ios-ui --title "iOS UI (rolling)" --notes-file apps/ios/TVM/BundledUI/CHANGELOG.md
+          gh release edit ios-ui --title "iOS UI (rolling)" --notes-file apps/ios/TVM/BundledUI/CHANGELOG.md
+          gh release upload ios-ui tvm-ios-ui.tar.gz --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: tvm-ios-unsigned-ipa

@@ -38,9 +38,9 @@
 
 @media (max-width: 63.99rem) {
   :root {
-    --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
-    --tvm-safe-y: max(0.75rem, env(safe-area-inset-top));
-    --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right), var(--tvm-chrome-left, 0px));
+    --tvm-safe-y: max(0.75rem, env(safe-area-inset-top), var(--tvm-chrome-top, 0px));
+    --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom), var(--tvm-chrome-bottom, 0px));
     --tvm-font-size-display: 2.25rem;
     --tvm-font-size-title: 1.5rem;
   }
@@ -65,7 +65,7 @@
     pointer-events: auto;
     opacity: 1;
     transform: translate(-50%, 0);
-    top: max(0.35rem, env(safe-area-inset-top));
+    top: max(0.35rem, env(safe-area-inset-top), var(--tvm-chrome-top, 0px));
   }
 
   .tvm-button.ribbon__icon,
@@ -92,10 +92,10 @@
    * Two-row tab bar: HDMI Inputs is hidden, eight destinations remain.
    */
   :root {
-    --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
-    --tvm-safe-y: max(0.75rem, env(safe-area-inset-top));
-    --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
-    --tvm-tabbar: calc(6.55rem + env(safe-area-inset-bottom));
+    --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right), var(--tvm-chrome-left, 0px));
+    --tvm-safe-y: max(0.75rem, env(safe-area-inset-top), var(--tvm-chrome-top, 0px));
+    --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom), var(--tvm-chrome-bottom, 0px));
+    --tvm-tabbar: calc(6.55rem + max(env(safe-area-inset-bottom, 0px), var(--tvm-chrome-bottom, 0px)));
 
     --tvm-font-size-caption: 0.75rem;
     --tvm-font-size-body: 0.9375rem;
@@ -317,7 +317,7 @@
     width: 100%;
     max-width: 100%;
     margin: 0;
-    padding: 0.28rem 0.2rem calc(0.28rem + env(safe-area-inset-bottom));
+    padding: 0.28rem 0.2rem calc(0.28rem + max(env(safe-area-inset-bottom, 0px), var(--tvm-chrome-bottom, 0px)));
     overflow: visible;
     pointer-events: auto;
     opacity: 1;
@@ -417,6 +417,23 @@
   .ribbon__avatar-svg {
     width: 1.7rem;
     height: 1.7rem;
+    overflow: hidden;
+    aspect-ratio: 1;
+  }
+
+  .ribbon__glyph svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    max-width: 70%;
+    max-height: 70%;
+    overflow: hidden;
+  }
+
+  .ribbon__avatar-svg {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .ribbon__label,
@@ -481,7 +498,7 @@
   .search-pill {
     align-items: stretch;
     justify-items: stretch;
-    padding: env(safe-area-inset-top) 0 0;
+    padding: env(safe-area-inset-top, var(--tvm-chrome-top, 0px)) 0 0;
     background: color-mix(in srgb, var(--tvm-bg-deep, #050810) 72%, transparent);
   }
 
@@ -659,10 +676,10 @@
   [data-player-root],
   .chrome-frame,
   .stream-page {
-    --player-safe-x: max(0.85rem, env(safe-area-inset-left), env(safe-area-inset-right));
-    --player-safe-y: max(0.55rem, env(safe-area-inset-top));
+    --player-safe-x: max(0.85rem, env(safe-area-inset-left), env(safe-area-inset-right), var(--tvm-chrome-left, 0px));
+    --player-safe-y: max(0.55rem, env(safe-area-inset-top), var(--tvm-chrome-top, 0px));
     --player-safe-top: calc(var(--player-safe-y) + env(titlebar-area-height, 0px));
-    --player-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    --player-safe-bottom: max(0.75rem, env(safe-area-inset-bottom), var(--tvm-chrome-bottom, 0px));
     --player-dock: 4.4rem;
     --player-tools-lift: calc(var(--player-safe-bottom) + 9.2rem);
     --player-bar-width: calc(100% - 0.7rem);
@@ -990,10 +1007,48 @@ html.phone-shell textarea {
 }
 
 html.phone-shell {
-  --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
-  --tvm-safe-y: max(0.75rem, env(safe-area-inset-top));
-  --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
-  --tvm-tabbar: calc(6.55rem + env(safe-area-inset-bottom));
+  --tvm-inset-top: 0px;
+  --tvm-inset-right: 0px;
+  --tvm-inset-bottom: 0px;
+  --tvm-inset-left: 0px;
+  --tvm-device-top: 0px;
+  --tvm-device-bottom: 0px;
+  --tvm-chrome-extra-top: 0px;
+  --tvm-chrome-extra-bottom: 0px;
+  --tvm-chrome-extra-x: 0px;
+  --tvm-chrome-top: max(env(safe-area-inset-top, 0px), var(--tvm-inset-top), var(--tvm-device-top));
+  --tvm-chrome-right: max(env(safe-area-inset-right, 0px), var(--tvm-inset-right));
+  --tvm-chrome-bottom: max(env(safe-area-inset-bottom, 0px), var(--tvm-inset-bottom), var(--tvm-device-bottom));
+  --tvm-chrome-left: max(env(safe-area-inset-left, 0px), var(--tvm-inset-left));
+  --tvm-safe-x: max(1rem, calc(var(--tvm-chrome-left) + var(--tvm-chrome-extra-x)), calc(var(--tvm-chrome-right) + var(--tvm-chrome-extra-x)));
+  --tvm-safe-y: max(0.75rem, calc(var(--tvm-chrome-top) + var(--tvm-chrome-extra-top)));
+  --tvm-safe-bottom: max(0.75rem, calc(var(--tvm-chrome-bottom) + var(--tvm-chrome-extra-bottom)));
+  --tvm-tabbar: calc(6.55rem + var(--tvm-chrome-bottom) + var(--tvm-chrome-extra-bottom));
+}
+
+html.phone-shell[data-device-family='island'] {
+  --tvm-device-top: 59px;
+  --tvm-device-bottom: 34px;
+  --tvm-chrome-extra-top: 10px;
+}
+
+html.phone-shell[data-device-family='notch'] {
+  --tvm-device-top: 47px;
+  --tvm-device-bottom: 34px;
+  --tvm-chrome-extra-top: 6px;
+}
+
+html.phone-shell[data-device-family='home-button'] {
+  --tvm-device-top: 20px;
+  --tvm-device-bottom: 0px;
+  --tvm-chrome-extra-x: 8px;
+  --tvm-chrome-extra-bottom: 6px;
+}
+
+html.phone-shell[data-device-family='ipad'] {
+  --tvm-device-top: 24px;
+  --tvm-device-bottom: 20px;
+  --tvm-chrome-extra-top: 4px;
 }
 
 html.phone-shell,
@@ -1152,7 +1207,7 @@ html.phone-shell[data-theme='synthwave'] .ribbon--open {
   width: 100%;
   max-width: 100%;
   margin: 0;
-  padding: 0.28rem 0.2rem calc(0.28rem + env(safe-area-inset-bottom));
+  padding: 0.28rem 0.2rem calc(0.28rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
   overflow: visible;
   pointer-events: auto;
   opacity: 1;
@@ -1200,7 +1255,7 @@ html.phone-shell .ribbon [data-focus-id='inputs'] {
 /* Portrait: readable column. Landscape: use width; 16:9 art still contains. */
 
 html.phone-shell[data-orientation='portrait'] {
-  --tvm-tabbar: calc(6.55rem + env(safe-area-inset-bottom));
+  --tvm-tabbar: calc(6.55rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 html.phone-shell[data-orientation='portrait'] .home__launcher {
@@ -1230,7 +1285,7 @@ html.phone-shell[data-orientation='portrait'] .player.player--portrait .player__
 }
 
 html.phone-shell[data-orientation='landscape'] {
-  --tvm-tabbar: calc(4.35rem + env(safe-area-inset-bottom));
+  --tvm-tabbar: calc(4.35rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 html.phone-shell[data-orientation='landscape'] .home__launcher {
@@ -1244,7 +1299,7 @@ html.phone-shell[data-orientation='landscape'] .tvm-button.launch-tile {
 
 html.phone-shell[data-orientation='landscape'] .ribbon,
 html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon {
-  padding-block: 0.12rem calc(0.12rem + env(safe-area-inset-bottom));
+  padding-block: 0.12rem calc(0.12rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 html.phone-shell[data-orientation='landscape'] .ribbon__list,

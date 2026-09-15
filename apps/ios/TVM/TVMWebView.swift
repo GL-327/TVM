@@ -150,9 +150,15 @@ final class TVMWebHostController: UIViewController {
         ])
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        TVMDeviceChrome.publish(to: webView, insets: webView.safeAreaInsets)
+    }
+
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         additionalSafeAreaInsets = .zero
+        TVMDeviceChrome.publish(to: webView, insets: webView.safeAreaInsets)
     }
 }
 
@@ -176,8 +182,21 @@ struct TVMWebView: UIViewControllerRepresentable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         )
+        let device = WKUserScript(
+            source: TVMDeviceChrome.bootScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        let language = TVMPrefs.load(TVMStore()).language
+        let lang = WKUserScript(
+            source: "document.documentElement.lang='\(language)';document.documentElement.dataset.lang='\(language)';",
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
         configuration.ignoresViewportScaleLimits = false
         configuration.userContentController.addUserScript(viewport)
+        configuration.userContentController.addUserScript(device)
+        configuration.userContentController.addUserScript(lang)
         configuration.userContentController.add(context.coordinator, name: "tvmPlayer")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -417,6 +436,7 @@ struct TVMWebView: UIViewControllerRepresentable {
             parent.loading = false
             lockZoom(webView)
             preferBackGesture(webView)
+            TVMDeviceChrome.publish(to: webView, insets: webView.safeAreaInsets)
         }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }

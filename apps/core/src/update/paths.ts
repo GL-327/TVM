@@ -179,3 +179,11 @@ export function catalogCachePath(dataDir: string): string {
 export function statusPath(dataDir: string): string {
   return join(dataDir, 'update-status.json');
 }
+
+export function changelogPath(dataDir: string): string {
+  return join(dataDir, 'changelog.json');
+}
+
+export function prefsPath(dataDir: string): string {
+  return join(dataDir, 'prefs.json');
+}

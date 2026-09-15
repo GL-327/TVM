@@ -29,6 +29,7 @@ const Settings = lazy(() => import('../screens/Settings').then((m) => ({ default
 const Setup = lazy(() => import('../screens/Setup').then((m) => ({ default: m.Setup })));
 const SystemInfo = lazy(() => import('../screens/SystemInfo').then((m) => ({ default: m.SystemInfo })));
 const Updates = lazy(() => import('../screens/Updates').then((m) => ({ default: m.Updates })));
+const Changelog = lazy(() => import('../screens/ChangelogModal').then((m) => ({ default: m.ChangelogModal })));
 
 export interface ScreenProps {
   params: Readonly<Record<string, unknown>>;
@@ -69,6 +70,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   diagnostics: { component: DiagnosticsModal, defaultFocus: 'close' },
   confirm: { component: ConfirmModal, defaultFocus: 'confirm' },
   notice: { component: NoticeModal, defaultFocus: 'close' },
+  changelog: { component: Changelog, defaultFocus: 'close' },
   search: { component: SearchModal, defaultFocus: 'query' },
   player: { component: Player, defaultFocus: 'pause' },
 };

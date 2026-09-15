@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { tmdbKeyPath } from '../update/paths.ts';
+import { readPrefs } from '../prefs.ts';
 import { createCatalogService, type CatalogBundle, type CatalogService, type TitleMeta } from './cinemeta.ts';
 import { HUB_SEEDS } from './hubSeeds.ts';
 import { hueFor } from './title.ts';
@@ -416,14 +417,14 @@ export function createAppsService(options: AppsServiceOptions = {}) {
     const ids: string[] = [];
     try {
       const list = await fetchImpl(
-        `${TMDB}/discover/${media}?api_key=${encodeURIComponent(key)}&watch_region=US&with_watch_providers=${providers.join('|')}&with_watch_monetization_types=flatrate&sort_by=popularity.desc`,
+        `${TMDB}/discover/${media}?api_key=${encodeURIComponent(key)}&language=${encodeURIComponent(readPrefs(dataDir).language)}&watch_region=US&with_watch_providers=${providers.join('|')}&with_watch_monetization_types=flatrate&sort_by=popularity.desc`,
         { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(FETCH_MS) },
       );
       if (!list.ok) return [];
       const body = (await list.json()) as { results?: Array<{ id?: number }> };
       for (const row of body.results ?? []) {
         if (typeof row.id !== 'number') continue;
-        const extra = await fetchImpl(`${TMDB}/${media}/${row.id}/external_ids?api_key=${encodeURIComponent(key)}`, {
+        const extra = await fetchImpl(`${TMDB}/${media}/${row.id}/external_ids?api_key=${encodeURIComponent(key)}&language=${encodeURIComponent(readPrefs(dataDir).language)}`, {
           headers: { accept: 'application/json' },
           signal: AbortSignal.timeout(FETCH_MS),
         });

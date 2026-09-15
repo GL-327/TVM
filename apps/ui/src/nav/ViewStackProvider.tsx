@@ -33,6 +33,8 @@ import { FocusButton } from '../components/FocusButton';
 import { MobilePlanGate } from '../components/MobilePlanGate';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { installEasterEggs } from '../brand/easterEggs';
+import { applyGithubUpdateOnLaunch } from '../data/launchUpdate';
+import { presentPendingChangelog } from '../data/changelog';
 
 startFocusEngine();
 
@@ -127,7 +129,7 @@ export function ViewStackProvider(): React.JSX.Element {
 
   useEffect(() => {
     if (root === null || root === 'recovery') return;
-    void fetch('/api/update/check', { method: 'POST' }).catch(() => undefined);
+    void applyGithubUpdateOnLaunch();
   }, [root]);
 
   if (root === 'recovery') {
@@ -216,6 +218,11 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       window.removeEventListener('pointercancel', up);
     };
   }, []);
+
+  useEffect(() => {
+    if (root === 'recovery') return;
+    void presentPendingChangelog((name, options) => navigate.pushModal(name, options));
+  }, [navigate, root]);
   const activeKeyRef = useRef(active.key);
   activeKeyRef.current = active.key;
 

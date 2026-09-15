@@ -8,6 +8,7 @@ import { notifySystemdReady } from './notify.ts';
 import { CHECK_INTERVAL_MS, resolveDataDir } from './update/paths.ts';
 import { appliedLaunch } from './update/launch.ts';
 import { createUpdateService, startUpdatePolling } from './update/service.ts';
+import { readPrefs } from './prefs.ts';
 
 const dataDir = resolveDataDir();
 const hop = appliedLaunch(dataDir, import.meta.url, process.env);
@@ -49,7 +50,9 @@ const update = createUpdateService({ dataDir });
 const bindHost = resolveBindHost();
 const core = await startCoreServer(resolvePort(), { uiDist, rokuPreview, update, dataDir });
 notifySystemdReady();
-const stopPolling = startUpdatePolling(update, CHECK_INTERVAL_MS);
+const stopPolling = startUpdatePolling(update, CHECK_INTERVAL_MS, {
+  autoApply: () => readPrefs(dataDir).autoUpdate,
+});
 
 console.log(`tvm-core listening on http://${bindHost}:${core.port}`);
 if (bindHost !== CORE_HOST) {

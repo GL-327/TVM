@@ -431,6 +431,68 @@ final class StandaloneTests: XCTestCase {
         XCTAssertNoThrow(try Connection.validated(address: "http://192.168.1.2:7345", token: token, allowLocalHTTP: true))
         XCTAssertThrowsError(try Connection.validated(address: "http://192.168.1.2", token: token, allowLocalHTTP: false))
     }
+
+    func testDeviceChromeMapsIslandNotchAndHomeButton() {
+        let se = TVMDeviceChrome.profile(identifier: "iPhone14,6", idiom: .phone)
+        XCTAssertEqual(se.family, .homeButton)
+        XCTAssertEqual(se.maxHeight, 1080)
+        XCTAssertGreaterThan(se.extraX, 0)
+        let fourteen = TVMDeviceChrome.profile(identifier: "iPhone14,7", idiom: .phone)
+        XCTAssertEqual(fourteen.family, .notch)
+        XCTAssertEqual(fourteen.maxHeight, 1080)
+        let pro = TVMDeviceChrome.profile(identifier: "iPhone17,1", idiom: .phone)
+        XCTAssertEqual(pro.family, .island)
+        XCTAssertEqual(pro.maxHeight, 2160)
+        XCTAssertGreaterThan(pro.extraTop, fourteen.extraTop)
+        XCTAssertEqual(TVMDeviceChrome.playbackHeight(planMax: 2160), min(2160, TVMDeviceChrome.current.maxHeight))
+        let pad = TVMDeviceChrome.profile(identifier: "iPad14,1", idiom: .pad)
+        XCTAssertEqual(pad.family, .ipad)
+        XCTAssertEqual(pad.maxHeight, 2160)
+    }
+
+    func testPrefsDefaultToEnglishAndAutoUpdate() {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-prefs-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        let prefs = TVMPrefs.load(store)
+        XCTAssertEqual(prefs.language, "en")
+        XCTAssertTrue(prefs.autoUpdate)
+        var next = prefs
+        next.language = "fr"
+        next.autoUpdate = false
+        next.save(store)
+        let loaded = TVMPrefs.load(store)
+        XCTAssertEqual(loaded.language, "fr")
+        XCTAssertFalse(loaded.autoUpdate)
+        XCTAssertEqual(TVMPrefs.acceptLanguage("en"), "en,en-US;q=0.9")
+    }
+
+    func testUpdateSnapshotAllowsInAppApply() {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-upd-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        let status = TVMUpdater.snapshot(store: store)
+        XCTAssertTrue(status.applyAllowed)
+        XCTAssertTrue(status.autoUpdate)
+        XCTAssertTrue(status.channel.contains("GL-327/TVM"))
+    }
+
+    func testChangelogKeepsCommitTitlesUntilCurrentSha() {
+        let parsed = TVMChangelog.parseMessage("Fix player chrome\n\nSafe areas")
+        XCTAssertEqual(parsed.title, "Fix player chrome")
+        XCTAssertEqual(parsed.body, "Safe areas")
+        XCTAssertTrue(TVMChangelog.skip("Merge pull request #12 from a/b"))
+        XCTAssertTrue(TVMChangelog.sameCommit("abcdef123", "abcdef"))
+        let entries = TVMChangelog.entries(from: [
+            ["sha": "bbb222ccc", "commit": ["message": "Fix player chrome\n\nSafe areas", "committer": ["date": "2026-09-14T12:00:00Z"]]],
+            ["sha": "ccc333ddd", "commit": ["message": "Merge pull request #1"]],
+            ["sha": "aaa111000", "commit": ["message": "Old build"]],
+        ], until: "aaa111")
+        XCTAssertEqual(entries.compactMap { $0["title"] as? String }, ["Fix player chrome"])
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-cl-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        TVMChangelog.writePending(store: store, version: "bbb222c", from: "aaa111", to: "bbb222ccc", entries: entries)
+        XCTAssertEqual(TVMChangelog.record(store: store)?["pending"] as? Bool, true)
+        XCTAssertEqual(TVMChangelog.markSeen(store: store)["pending"] as? Bool, false)
+    }
 }
 
 final class MockPlaybackProtocol: URLProtocol {
