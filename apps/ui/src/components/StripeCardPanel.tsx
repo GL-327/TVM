@@ -224,18 +224,14 @@ export function StripeCardPanel({ order, mode, disabled = false, recurring = fal
   };
 
   return (
-    <section className="billing-panel">
+    <section className="billing-panel" data-stripe-mode={mode}>
       <p className="plan-current__kicker">Payment card</p>
-      <h2>{mode === 'live' ? 'Pay by card' : 'Pay by card · Stripe test mode'}</h2>
-      {mode === 'live' ? (
-        <p>
-          This is a real payment. Your card will be charged
-          {amountPence === null ? '' : ` ${formatBillingMoney(amountPence)}`}
-          {recurring ? ' today and the same amount every month until you cancel.' : ' once.'}
-        </p>
-      ) : (
-        <p>Stripe is in test mode, so no real money moves. Use card <code>4242 4242 4242 4242</code>, any future expiry, any CVC and any postcode.</p>
-      )}
+      <h2>{mode === 'live' ? 'Pay by card' : 'Pay by card'}</h2>
+      <p>
+        Your card will be charged
+        {amountPence === null ? '' : ` ${formatBillingMoney(amountPence)}`}
+        {recurring ? ' today. Recurring items then renew automatically until you cancel.' : ' today.'}
+      </p>
       <p className="billing-fineprint">
         The card fields below are served by Stripe, not by TVM. Your card number is sent
         straight to Stripe and is never stored on this device or by TVM.

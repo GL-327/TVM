@@ -112,10 +112,6 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const locked = !gated && !plan.liveTv && channels.length === 0 && (status.total ?? 0) === 0;
   const groups = useMemo(() => groupedChannels(channels), [channels]);
   const visibleGroups = group === null ? groups : groups.filter((entry) => entry.name === group);
-  const liveOnPrice =
-    plan.liveTvAddonPence > 0
-      ? `£${((plan.basePricePence + plan.liveTvAddonPence) / 100).toFixed(2)}`
-      : 'a paid plan';
   const picked = status.picked ?? 0;
   const total = status.total ?? 0;
   const pickLimit = status.pickLimit ?? 48;
@@ -223,14 +219,14 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           title="Live TV is a paid add-on"
           body={
             plan.liveTvOptional
-              ? `Turn Live TV on in Settings to restore the included pack at ${liveOnPrice}. You can also paste an M3U playlist you are allowed to use.`
-              : 'Basic and up include a Live TV pack. You can remove it at checkout or in Settings to keep the previous price. You can still add a playlist you are allowed to use.'
+              ? 'Live TV is billed separately: 3-month $39.99, 1-year $89.99, or lifetime $599. Choose a term at checkout. You can also paste an M3U playlist you are allowed to use.'
+              : 'Live TV is available on Basic and up, billed as 3-month, 1-year or lifetime. You can still add a playlist you are allowed to use.'
           }
           actions={
             <>
               {plan.liveTvOptional ? (
-                <FocusButton id="live-enable" variant="primary" onSelect={() => navigate.push('settings')}>
-                  Open Settings
+                <FocusButton id="live-enable" variant="primary" onSelect={() => navigate.push('checkout', { params: { planId: plan.id } })}>
+                  Choose Live TV
                 </FocusButton>
               ) : (
                 <FocusButton id="live-upgrade" variant="primary" onSelect={() => navigate.push('plans')}>

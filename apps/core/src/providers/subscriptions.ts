@@ -1,6 +1,7 @@
 import { subscriptionsPath } from '../update/paths.ts';
 import { readSealed, writeSealed } from './vault.ts';
 import type { StripeClient, StripeSubscription } from './stripeClient.ts';
+import { liveTvExpiryIso, liveTvSpec, parseLiveTvTerm, type LiveTvTerm } from './liveTv.ts';
 
 /**
  * Monthly billing that actually recurs.
@@ -31,8 +32,10 @@ export interface SubscriptionRecord {
   subscriptionId: string;
   customerId: string;
   planId: string;
-  /** Live TV is part of the monthly figure, so it is part of the subscription. */
   liveTv: boolean;
+  liveTvTerm?: LiveTvTerm | null;
+  liveTvKind?: 'plan' | 'livetv';
+  liveTvSubscriptionId?: string | null;
   amountPence: number;
   currency: 'GBP';
   state: SubscriptionState;
@@ -143,11 +146,16 @@ export function publicSubscription(record: SubscriptionRecord | null): PublicSub
 
 /** What subscriptions needs from the plan catalogue. */
 export interface SubscriptionPlanPort {
-  /** Prices the monthly part of an order. One-off packs are not part of it. */
-  monthlyQuote(input: Record<string, unknown>): { planId: string; liveTv: boolean; monthlyPence: number; description: string };
-  /** Applies the plan once a payment has actually cleared. Safe to call twice. */
+  monthlyQuote(input: Record<string, unknown>): {
+    planId: string;
+    liveTv: boolean;
+    liveTvTerm?: LiveTvTerm | null;
+    monthlyPence: number;
+    liveTvPence?: number;
+    oneTimePence?: number;
+    description: string;
+  };
   grantMonthly(record: SubscriptionRecord, paidPence: number, at: string): void;
-  /** Takes the plan back when the subscription ends for good. */
   revokeMonthly(record: SubscriptionRecord): void;
 }
 
@@ -194,6 +202,29 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
     amountPence: remote.amountPence > 0 ? remote.amountPence : record.amountPence,
   });
 
+  const armLiveTv = async (record: SubscriptionRecord): Promise<SubscriptionRecord> => {
+    const term = parseLiveTvTerm(record.liveTvTerm);
+    if (!record.liveTv || term === null || term === 'lifetime') return record;
+    if (typeof record.liveTvSubscriptionId === 'string' && record.liveTvSubscriptionId !== '') return record;
+    const spec = liveTvSpec(term);
+    if (spec.interval === null) return record;
+    const expiry = liveTvExpiryIso(term, now());
+    const trialEnd = expiry === null ? undefined : Math.floor(new Date(expiry).getTime() / 1000);
+    const remote = await options.client().createSubscription({
+      customerId: record.customerId,
+      amountPence: spec.amountPence,
+      productName: `TVM Live TV ${spec.name}`,
+      interval: spec.interval,
+      intervalCount: spec.intervalCount,
+      trialEnd,
+      metadata: { kind: 'livetv', planId: record.planId, liveTvTerm: term },
+      idempotencyKey: `tvm_livetv_${record.subscriptionId}`,
+    });
+    const next = { ...record, liveTvSubscriptionId: remote.id };
+    save(next);
+    return next;
+  };
+
   return {
     current(): PublicSubscription {
       return publicSubscription(read().current);
@@ -204,7 +235,7 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
     },
 
     /**
-     * Starts a monthly subscription and returns the first payment to confirm.
+     * Starts a subscription and returns the first payment to confirm.
      *
      * Nothing is granted here. The subscription is created `incomplete`, so a
      * card that declines leaves no plan behind.
@@ -223,7 +254,10 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
       }
 
       const quote = plans.monthlyQuote(input);
-      if (quote.monthlyPence <= 0) {
+      const liveTvPence = quote.liveTvPence ?? 0;
+      const oneTimePence = quote.oneTimePence ?? 0;
+      const liveTvTerm = parseLiveTvTerm(quote.liveTvTerm);
+      if (quote.monthlyPence <= 0 && liveTvPence <= 0) {
         throw new Error('The free plan has nothing to bill. Choose a paid plan to subscribe.');
       }
 
@@ -233,19 +267,36 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
       }
 
       const client = options.client();
-      // Reuse the customer so a returning subscriber keeps one billing record
-      // rather than accumulating a new one on every attempt.
       const customerId = ledger.current?.customerId
         ?? (await client.createCustomer({
           metadata: { app: 'tvm' },
           idempotencyKey: `tvm_customer_${requestId}`,
         })).id;
 
+      const invoiceItems: Array<{ amountPence: number; description: string }> = [];
+      if (oneTimePence > 0) invoiceItems.push({ amountPence: oneTimePence, description: 'TVM one-time items' });
+      if (liveTvPence > 0 && quote.monthlyPence > 0) {
+        invoiceItems.push({
+          amountPence: liveTvPence,
+          description: liveTvTerm !== null ? `TVM Live TV ${liveTvSpec(liveTvTerm).name}` : 'TVM Live TV',
+        });
+      }
+
+      const recurringPence = quote.monthlyPence > 0 ? quote.monthlyPence : liveTvPence;
+      const liveSpec = liveTvTerm !== null && liveTvTerm !== 'lifetime' ? liveTvSpec(liveTvTerm) : null;
       const remote = await client.createSubscription({
         customerId,
-        amountPence: quote.monthlyPence,
+        amountPence: recurringPence,
         productName: quote.description,
-        metadata: { requestId, planId: quote.planId, liveTv: String(quote.liveTv) },
+        interval: quote.monthlyPence > 0 ? 'month' : (liveSpec?.interval ?? 'month'),
+        intervalCount: quote.monthlyPence > 0 ? 1 : (liveSpec?.intervalCount ?? 1),
+        invoiceItems,
+        metadata: {
+          requestId,
+          planId: quote.planId,
+          liveTv: String(quote.liveTv),
+          liveTvTerm: liveTvTerm ?? '',
+        },
         idempotencyKey: `tvm_sub_${requestId}`,
       });
 
@@ -253,12 +304,16 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
         throw new Error('Stripe did not return a payment to confirm for this subscription.');
       }
 
+      const firstInvoicePence = quote.monthlyPence + liveTvPence + oneTimePence;
       save({
         subscriptionId: remote.id,
         customerId,
         planId: quote.planId,
         liveTv: quote.liveTv,
-        amountPence: quote.monthlyPence,
+        liveTvTerm,
+        liveTvKind: 'plan',
+        liveTvSubscriptionId: null,
+        amountPence: quote.monthlyPence > 0 ? quote.monthlyPence : liveTvPence,
         currency: 'GBP',
         state: stateFromStripe(remote.status),
         currentPeriodEnd: remote.currentPeriodEnd,
@@ -271,7 +326,7 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
       return {
         subscriptionId: remote.id,
         clientSecret: remote.clientSecret,
-        amountPence: quote.monthlyPence,
+        amountPence: firstInvoicePence,
         planId: quote.planId,
         liveTv: quote.liveTv,
         description: quote.description,
@@ -285,9 +340,12 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
       if (record === null) throw new Error('There is no subscription to confirm.');
 
       const remote = await options.client().retrieveSubscription(record.subscriptionId);
-      const next = sync(record, remote);
+      let next = sync(record, remote);
       save(next);
-      if (grantsAccess(next)) plans.grantMonthly(next, next.amountPence, now().toISOString());
+      if (grantsAccess(next)) {
+        plans.grantMonthly(next, next.amountPence, now().toISOString());
+        next = await armLiveTv(next);
+      }
       return publicSubscription(next);
     },
 
@@ -313,24 +371,29 @@ export function createSubscriptionService(options: SubscriptionServiceOptions) {
 
       if (type === 'invoice.paid' || type === 'invoice.payment_succeeded') {
         const subscriptionId = typeof object['subscription'] === 'string' ? object['subscription'] : '';
-        if (subscriptionId !== record.subscriptionId) { remember(); return { handled: 'other_subscription' }; }
+        const liveTvSub = record.liveTvSubscriptionId ?? '';
+        if (subscriptionId !== record.subscriptionId && subscriptionId !== liveTvSub) {
+          remember();
+          return { handled: 'other_subscription' };
+        }
         const invoiceId = typeof object['id'] === 'string' ? object['id'] : '';
         const paid = typeof object['amount_paid'] === 'number' ? object['amount_paid'] : record.amountPence;
         if (record.invoices.some((entry) => entry.id === invoiceId)) { remember(); return { handled: 'duplicate_invoice' }; }
 
         const at = now().toISOString();
-        // Re-read the subscription so the next due date comes from Stripe
-        // rather than being guessed a month forward.
-        const remote = await options.client().retrieveSubscription(record.subscriptionId);
-        const next: SubscriptionRecord = {
-          ...sync(record, remote),
+        const liveTvInvoice = liveTvSub !== '' && subscriptionId === liveTvSub;
+        const remote = await options.client().retrieveSubscription(liveTvInvoice ? liveTvSub : record.subscriptionId);
+        let next: SubscriptionRecord = {
+          ...sync(record, liveTvInvoice ? { ...remote, currentPeriodEnd: record.currentPeriodEnd } : remote),
           invoices: [{ id: invoiceId, paidPence: paid, at }, ...record.invoices],
           lastError: null,
         };
+        if (liveTvInvoice) next = { ...next, liveTvKind: 'livetv' };
         save(next);
-        plans.grantMonthly(next, paid, at);
+        plans.grantMonthly(liveTvInvoice ? { ...next, liveTvKind: 'livetv', liveTv: true } : next, paid, at);
+        if (!liveTvInvoice && grantsAccess(next)) next = await armLiveTv(next);
         remember();
-        return { handled: 'renewed' };
+        return { handled: liveTvInvoice ? 'livetv_renewed' : 'renewed' };
       }
 
       if (type === 'invoice.payment_failed') {

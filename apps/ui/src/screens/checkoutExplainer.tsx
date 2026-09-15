@@ -1,12 +1,12 @@
-import { formatBillingMoney } from '../data/plan';
+import { formatBillingMoney, formatUsdCents, type LiveTvTermSpec } from '../data/plan';
 
 /**
  * The part of checkout that explains itself.
  *
  * On a phone the order summary is the whole screen rather than a column beside
  * the plan, so the questions a buyer actually has — when am I charged, how much
- * is it every month, what happens to my card, how do I stop — have to be
- * answered in the flow instead of in a footer nobody scrolls to.
+ * is it, what happens to my card, how do I stop — have to be answered in the
+ * flow instead of in a footer nobody scrolls to.
  *
  * Every line here is a fact the code can prove: the amount comes from the
  * catalogue, the renewal date from Stripe, and "your card details never reach
@@ -16,7 +16,9 @@ import { formatBillingMoney } from '../data/plan';
 export interface ExplainerProps {
   monthlyPence: number;
   oneTimePence: number;
-  /** True once a processor is configured; the sandbox explains itself differently. */
+  liveTvPence: number;
+  liveTvTerm: LiveTvTermSpec | null;
+  dueTodayPence: number;
   cardPayments: boolean;
   liveMoney: boolean;
   /** Formatted date of the first renewal, when known. */
@@ -36,8 +38,15 @@ function Line({ label, value, note }: { label: string; value: string; note?: str
   );
 }
 
-export function CheckoutTotals({ monthlyPence, oneTimePence, cardPayments }: ExplainerProps): React.JSX.Element {
-  const today = monthlyPence + oneTimePence;
+export function CheckoutTotals({
+  monthlyPence,
+  oneTimePence,
+  liveTvPence,
+  liveTvTerm,
+  dueTodayPence,
+}: ExplainerProps): React.JSX.Element {
+  const lifetimePence = liveTvTerm?.id === 'lifetime' ? liveTvTerm.amountPence : 0;
+  const packPence = Math.max(0, oneTimePence - lifetimePence);
   return (
     <section className="checkout-card" aria-label="What you pay">
       <h2 className="checkout-card__title">What you pay</h2>
@@ -50,24 +59,32 @@ export function CheckoutTotals({ monthlyPence, oneTimePence, cardPayments }: Exp
         />
       )}
 
-      {oneTimePence > 0 && (
+      {liveTvTerm !== null && (
+        <Line
+          label={`Live TV · ${liveTvTerm.name}`}
+          value={formatUsdCents(liveTvTerm.usdCents)}
+          note={`${liveTvTerm.blurb}. Charged as ${formatBillingMoney(liveTvTerm.amountPence)}`}
+        />
+      )}
+
+      {packPence > 0 && (
         <Line
           label="Visual pack"
-          value={formatBillingMoney(oneTimePence)}
+          value={formatBillingMoney(packPence)}
           note="One payment. Yours to keep, even if you cancel"
         />
       )}
 
       <div className="checkout-line checkout-line--total">
         <div className="checkout-line__label"><span>Total today</span></div>
-        <span className="checkout-line__value">
-          {cardPayments ? formatBillingMoney(today) : '£0.00'}
-        </span>
+        <span className="checkout-line__value">{formatBillingMoney(dueTodayPence)}</span>
       </div>
 
-      {monthlyPence > 0 && cardPayments && (
+      {(monthlyPence > 0 || liveTvPence > 0) && (
         <p className="checkout-card__after">
-          Then {formatBillingMoney(monthlyPence)} every month until you cancel.
+          {monthlyPence > 0 ? `Then ${formatBillingMoney(monthlyPence)} every month until you cancel.` : ''}
+          {liveTvTerm?.id === 'quarter' ? ' Live TV is billed every 3 months.' : ''}
+          {liveTvTerm?.id === 'year' ? ' Live TV is billed once per year.' : ''}
         </p>
       )}
     </section>
@@ -78,11 +95,10 @@ export function CheckoutTotals({ monthlyPence, oneTimePence, cardPayments }: Exp
  * The four questions, answered before they are asked.
  *
  * Written as statements of fact rather than reassurance: each one describes
- * something the system actually does, which is why the copy changes with the
- * mode rather than staying vague enough to cover both.
+ * something the system actually does.
  */
-export function CheckoutExplainer({ monthlyPence, cardPayments, liveMoney, nextChargeAt }: ExplainerProps): React.JSX.Element {
-  const recurring = monthlyPence > 0;
+export function CheckoutExplainer({ monthlyPence, liveTvTerm, cardPayments, liveMoney, nextChargeAt }: ExplainerProps): React.JSX.Element {
+  const recurring = monthlyPence > 0 || (liveTvTerm !== null && liveTvTerm.id !== 'lifetime');
   return (
     <section className="checkout-card checkout-explainer" aria-label="How this works">
       <h2 className="checkout-card__title">How this works</h2>
@@ -94,7 +110,7 @@ export function CheckoutExplainer({ monthlyPence, cardPayments, liveMoney, nextC
             <p>
               {cardPayments
                 ? 'The card form on the next step is served by Stripe, not by TVM. Your card number goes straight to Stripe and is never stored on this device or by TVM — only the last four digits come back, for the receipt.'
-                : 'No payment processor is connected yet, so nothing is charged and no card is needed. This is a test checkout.'}
+                : 'Confirm this order to start the plan on this device. Connect Stripe to take the card payment through the hosted card form.'}
             </p>
           </div>
         </li>
@@ -102,13 +118,11 @@ export function CheckoutExplainer({ monthlyPence, cardPayments, liveMoney, nextC
         <li>
           <span className="checkout-steps__num" aria-hidden="true">2</span>
           <div>
-            <h3>{recurring ? 'It renews every month' : 'It is a single payment'}</h3>
+            <h3>{recurring ? 'Recurring charges continue until you cancel' : 'It is a single payment'}</h3>
             <p>
               {recurring
-                ? cardPayments
-                  ? `The same amount is taken automatically each month${nextChargeAt != null ? `, starting ${nextChargeAt}` : ''}. Nobody has to be here for it to happen — that is what makes it a subscription rather than a one-off purchase.`
-                  : 'In a live setup this would renew each month automatically. Nothing renews in the sandbox.'
-                : 'A visual pack is bought once. There is no renewal and nothing further is taken.'}
+                ? `The plan renews automatically${nextChargeAt != null ? `, next on ${nextChargeAt}` : ''}. Nobody has to be here for it to happen.`
+                : 'This purchase is taken once. There is no monthly renewal for these items.'}
             </p>
           </div>
         </li>
@@ -120,7 +134,7 @@ export function CheckoutExplainer({ monthlyPence, cardPayments, liveMoney, nextC
             <p>
               {cardPayments
                 ? 'Not when the card form says so — TVM asks Stripe directly and only then unlocks the plan. A declined card leaves nothing behind and costs you nothing.'
-                : 'The plan applies immediately on this device.'}
+                : 'The plan applies on this device once this order is confirmed.'}
             </p>
           </div>
         </li>
@@ -131,7 +145,7 @@ export function CheckoutExplainer({ monthlyPence, cardPayments, liveMoney, nextC
             <div>
               <h3>You can stop any time</h3>
               <p>
-                Cancel from Settings. You keep the month you have already paid
+                Cancel from Plans. You keep the period you have already paid
                 for, and nothing is taken again after that.
                 {liveMoney ? ' Under UK consumer law you also have 14 days to change your mind.' : ''}
               </p>
@@ -207,10 +221,6 @@ export const CHECKOUT_CSS = `
 .checkout-steps h3 { margin: 0 0 0.2rem; font-size: 0.97rem; }
 .checkout-steps p { margin: 0; font-size: 0.87rem; color: var(--tvm-text-muted); line-height: 1.45; }
 
-/*
- * On a phone the summary is the screen rather than a sidebar, so it stacks and
- * the touch targets grow. 44px is the smallest reliably tappable height.
- */
 @media (max-width: 760px) {
   .checkout-card { padding: 1rem; border-radius: 12px; }
   .checkout-line { padding: 0.65rem 0; }

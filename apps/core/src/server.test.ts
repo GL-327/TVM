@@ -5,7 +5,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CORE_HOST, DEFAULT_CORE_PORT, resolveBindHost, resolvePort } from './config.ts';
 import { startCoreServer, type RunningCore, mediaPublicOrigin, portOfHost } from './server.ts';
 import { resolveStaticPath } from './static.ts';
-import { LIVE_TV_ADDON_PENCE } from './providers/plans.ts';
 
 describe('HTML5 hop origin', () => {
   it('sends Vite Host hops to Core and keeps Roku/Core Hosts', () => {
@@ -189,8 +188,19 @@ describe('core API', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: true }),
     });
-    expect(added.status).toBe(200);
-    expect(await added.json()).toMatchObject({ id: 'basic', liveTv: true, pricePence: 499 + LIVE_TV_ADDON_PENCE });
+    expect(added.status).toBe(400);
+
+    const withLive = await fetch(`${baseUrl}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        planId: 'basic',
+        consent: true, requestId: crypto.randomUUID(),
+        liveTvTerm: 'quarter',
+      }),
+    });
+    expect(withLive.status).toBe(200);
+    expect(await withLive.json()).toMatchObject({ id: 'basic', liveTv: true, liveTvTerm: 'quarter', pricePence: 499 });
 
     await fetch(`${baseUrl}/api/billing/checkout`, {
       method: 'POST',
