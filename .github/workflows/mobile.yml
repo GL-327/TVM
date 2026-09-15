@@ -60,15 +60,21 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      # Pinned: the floating cmdline-tools release started failing sdkmanager
-      # with exit 1 on the licence prompt, which took the whole run red even
-      # when the iOS job had produced its IPA.
-      - uses: android-actions/setup-android@v3
+      # No setup-android action. It insists on installing the long-obsolete
+      # `tools` package, which is gone from the SDK repository, so sdkmanager
+      # exits 1 and takes the whole run red even when the iOS job produced its
+      # IPA. The ubuntu runner already ships a complete Android SDK with
+      # ANDROID_HOME set; all it needs is the licences accepted.
+      - name: Accept Android SDK licences
         if: steps.android.outputs.present == 'true'
-        with:
-          cmdline-tools-version: "11076708"
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
+        run: |
+          test -d "$ANDROID_HOME" || { echo "No Android SDK on this runner"; exit 1; }
+          mkdir -p "$ANDROID_HOME/licenses"
+          # Published SDK licence hashes; accepting them is what the removed
+          # action did, without touching sdkmanager's package list.
+          printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf '84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
       - name: Bundle the production UI into the Android app
         if: steps.android.outputs.present == 'true'
         run: |
