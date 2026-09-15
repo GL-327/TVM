@@ -14,3 +14,4 @@ captures/
 # by any local build; tracking 7MB of hashed assets would only create conflicts.
 app/src/main/assets/ui/**
 !app/src/main/assets/ui/.gitkeep
+app/src/main/assets/BuildInfo.json
