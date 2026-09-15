@@ -10,11 +10,9 @@ import {
   emptyCardVault,
   parseCardIntake,
   publicPaymentMethod,
-  readSealedPan,
   rememberToken,
   tokenizeCard,
 } from './cardVault.ts';
-import { openJson } from './vault.ts';
 
 describe('card format', () => {
   it('accepts a Luhn-valid PAN and rejects junk', () => {
@@ -53,7 +51,7 @@ describe('card vault', () => {
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it('tokenizes a PAN, encrypts it at rest, and only exposes last4/brand/expiry/token', async () => {
+  it('keeps only last4, brand and expiry, and retains the number nowhere', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-card-vault-'));
     dirs.push(dir);
     const pan = '4242424242424242';
@@ -68,18 +66,32 @@ describe('card vault', () => {
     expect(minted.token.brand).toBe('visa');
     expect(minted.token.expiry).toBe('12/99');
     expect(minted.token.tokenId.startsWith('tok_')).toBe(true);
-    expect(JSON.stringify(minted.token)).not.toContain(pan);
-    expect(minted.sealedPan).not.toContain(pan);
 
-    const opened = openJson<{ pan: string }>(dir, minted.sealedPan);
-    expect(opened).toEqual({ pan });
-    expect(readSealedPan(dir, minted.sealedPan)).toBe(pan);
+    // The number and the CVC must not survive tokenisation in any form. An
+    // earlier build sealed the PAN for "a future processor"; holding one at all
+    // is what PCI DSS forbids, so there is no longer anywhere for it to go.
+    expect(JSON.stringify(minted)).not.toContain(pan);
+    expect(JSON.stringify(minted)).not.toContain('123');
+    expect(Object.keys(minted)).toEqual(['token']);
 
-    const state = rememberToken(emptyCardVault(), minted.token, minted.sealedPan);
+    const state = rememberToken(emptyCardVault(), minted.token);
+    expect(Object.keys(state)).toEqual(['version', 'tokens']);
     const published = publicPaymentMethod(state);
     expect(published).toMatchObject({ last4: '4242', brand: 'visa', expiry: '12/99', tokenId: minted.token.tokenId });
     expect(JSON.stringify(published)).not.toContain(pan);
     expect(JSON.stringify(published)).not.toContain('123');
+  });
+
+  it('drops a sealed PAN map left behind by an older build', async () => {
+    const { hydrateCardVault } = await import('./cardVault.ts');
+    const legacy = {
+      version: 1,
+      tokens: [{ tokenId: 'tok_x', last4: '4242', brand: 'visa', expiry: '12/99', name: 'Ada', zip: null, createdAt: '' }],
+      instruments: { tok_x: 'sealed-blob-from-an-older-build' },
+    };
+    const hydrated = hydrateCardVault(legacy) as unknown as Record<string, unknown>;
+    expect(hydrated['instruments']).toBeUndefined();
+    expect(JSON.stringify(hydrated)).not.toContain('sealed-blob-from-an-older-build');
   });
 
   it('writes no plaintext PAN into a sealed vault file', async () => {
@@ -89,7 +101,7 @@ describe('card vault', () => {
     const path = join(dir, 'secrets', 'cards.enc');
     const pan = '4242424242424242';
     const minted = tokenizeCard(dir, { name: 'Ada Lovelace', number: pan, expiry: '12/99', cvc: '123' });
-    writeSealed(dir, path, rememberToken(emptyCardVault(), minted.token, minted.sealedPan));
+    writeSealed(dir, path, rememberToken(emptyCardVault(), minted.token));
     const blob = readFileSync(path, 'utf8');
     expect(blob).not.toContain(pan);
     expect(blob).not.toContain('Ada Lovelace');

@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { cvcOk, digitsOnly, expiryOk, lastFour, luhnOk } from './card.ts';
-import { openJson, sealJson } from './vault.ts';
 
 export const CARD_DATA_NOT_SUPPORTED = 'card_data_not_supported';
 
@@ -27,8 +26,6 @@ export interface PublicCardToken {
 export interface CardVaultState {
   version: 1;
   tokens: PublicCardToken[];
-  /** tokenId → AES-256-GCM blob of `{ pan }`. Never returned by GET billing. */
-  instruments: Record<string, string>;
 }
 
 export interface CardFieldInput {
@@ -40,7 +37,7 @@ export interface CardFieldInput {
 }
 
 export function emptyCardVault(): CardVaultState {
-  return { version: 1, tokens: [], instruments: {} };
+  return { version: 1, tokens: [] };
 }
 
 export function cardFieldsPresent(input: CardFieldInput): boolean {
@@ -102,8 +99,17 @@ export function parseCardIntake(input: CardFieldInput): { ok: true; intake: Card
   };
 }
 
-/** Replace PAN with a token. CVC is validated by the caller and never stored. */
-export function tokenizeCard(dataDir: string, intake: CardIntake, now = new Date()): { token: PublicCardToken; sealedPan: string } {
+/**
+ * Derives the displayable remnants of a card and throws the rest away.
+ *
+ * Nothing here retains the number. Storing a PAN — even sealed — puts the
+ * holder inside PCI DSS scope that a project this size cannot satisfy, and
+ * encryption does not change that: the key travels with the application, so
+ * anything the application can decrypt, an attacker who has the application
+ * can decrypt too. Real card payments go through Stripe, where the number
+ * moves from the browser to Stripe and is never seen here at all.
+ */
+export function tokenizeCard(_dataDir: string, intake: CardIntake, now = new Date()): { token: PublicCardToken } {
   const pan = digitsOnly(intake.number);
   const token: PublicCardToken = {
     tokenId: `tok_${randomUUID().replace(/-/g, '')}`,
@@ -114,14 +120,13 @@ export function tokenizeCard(dataDir: string, intake: CardIntake, now = new Date
     zip: intake.zip?.trim() ? intake.zip.trim() : null,
     createdAt: now.toISOString(),
   };
-  return { token, sealedPan: sealJson(dataDir, { pan }) };
+  return { token };
 }
 
-export function rememberToken(state: CardVaultState, token: PublicCardToken, sealedPan: string): CardVaultState {
+export function rememberToken(state: CardVaultState, token: PublicCardToken): CardVaultState {
   return {
     version: 1,
     tokens: [token, ...state.tokens.filter((entry) => entry.tokenId !== token.tokenId)].slice(0, 8),
-    instruments: { ...state.instruments, [token.tokenId]: sealedPan },
   };
 }
 
@@ -147,19 +152,10 @@ export function findToken(state: CardVaultState, tokenId: string | undefined): P
   return state.tokens.find((token) => token.tokenId === tokenId) ?? null;
 }
 
-/** Opens the sealed PAN for a future processor. Callers must not return or log it. */
-export function readSealedPan(dataDir: string, sealed: string | undefined): string | null {
-  if (sealed === undefined || sealed === '') return null;
-  const opened = openJson<{ pan?: unknown }>(dataDir, sealed);
-  return typeof opened?.pan === 'string' && luhnOk(opened.pan) ? opened.pan : null;
-}
-
 export function hydrateCardVault(raw: unknown): CardVaultState {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return emptyCardVault();
-  const value = raw as { version?: unknown; tokens?: unknown; instruments?: unknown };
-  if (value.version !== 1 || !Array.isArray(value.tokens) || value.instruments === null || typeof value.instruments !== 'object' || Array.isArray(value.instruments)) {
-    return emptyCardVault();
-  }
+  const value = raw as { version?: unknown; tokens?: unknown };
+  if (value.version !== 1 || !Array.isArray(value.tokens)) return emptyCardVault();
   const tokens: PublicCardToken[] = [];
   for (const entry of value.tokens) {
     if (entry === null || typeof entry !== 'object') continue;
@@ -175,9 +171,7 @@ export function hydrateCardVault(raw: unknown): CardVaultState {
       createdAt: typeof token.createdAt === 'string' ? token.createdAt : '',
     }));
   }
-  const instruments: Record<string, string> = {};
-  for (const [id, blob] of Object.entries(value.instruments as Record<string, unknown>)) {
-    if (typeof blob === 'string' && blob !== '') instruments[id] = blob;
-  }
-  return { version: 1, tokens, instruments };
+  // An `instruments` map from a build that sealed PANs is simply not carried
+  // forward, so upgrading drops the stored numbers on the next write.
+  return { version: 1, tokens };
 }

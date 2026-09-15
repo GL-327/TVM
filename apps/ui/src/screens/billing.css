@@ -19,3 +19,16 @@
 .legal-copy { max-width: 1000px; line-height: 1.65; }
 .legal-copy h2 { margin-top: 32px; }
 @media (max-width: 900px) { .billing-layout { grid-template-columns: 1fr; } }
+
+/*
+ * Stripe mounts its card iframe here. It sizes itself, so this only needs to
+ * give it room and keep it inside the panel's rhythm.
+ */
+.stripe-element {
+  margin: 1rem 0;
+  min-height: 12rem;
+}
+
+.stripe-element iframe {
+  max-width: 100%;
+}
