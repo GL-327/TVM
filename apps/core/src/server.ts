@@ -3,7 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { CORE_HOST, CORE_VERSION, resolveBindHost, resolvePort } from './config.ts';
-import { readJson, sendJson } from './http.ts';
+import { readJson, readRawBody, sendJson } from './http.ts';
+import { buyerMessage, createPaymentService, PaymentsNotConfigured, type PaymentService } from './providers/payments.ts';
+import { clearStripeConfig, saveStripeConfig } from './providers/stripeConfig.ts';
 import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
 import { mobilePlaybackBlocked } from './mobileAccess.ts';
 import { createLanSessions, serveLanPairing } from './lanSessions.ts';
@@ -393,6 +395,7 @@ export interface CoreOptions {
   apps?: AppsService;
   session?: SessionService;
   plans?: PlanService;
+  payments?: PaymentService;
   developer?: DevUnlockService;
   streamer?: StreamerService;
   dataDir?: string;
@@ -415,6 +418,7 @@ async function handleApi(
   dataDir: string,
   streamer: StreamerService,
   env: NodeJS.ProcessEnv,
+  payments: PaymentService,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -940,6 +944,103 @@ async function handleApi(
     return true;
   }
 
+  // ---- Card payments (Stripe) -------------------------------------------
+  //
+  // The browser talks to Stripe directly with the publishable key; this side
+  // only ever sees a payment reference. No route here can receive a card
+  // number, and none of them returns the secret key.
+
+  if (path === '/api/billing/stripe' && request.method === 'GET') {
+    sendJson(response, 200, payments.status());
+    return true;
+  }
+
+  if (path === '/api/billing/stripe/verify' && request.method === 'POST') {
+    sendJson(response, 200, await payments.verify());
+    return true;
+  }
+
+  // Storing keys is a developer action: it decides where real money lands.
+  if (path === '/api/billing/stripe/keys' && request.method === 'PUT') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    const body = (await readJson(request)) as { secretKey?: unknown; publishableKey?: unknown; webhookSecret?: unknown };
+    const saved = saveStripeConfig(dataDir, body);
+    if (!saved.configured) {
+      sendJson(response, 400, { error: saved.reason, detail: saved.detail });
+      return true;
+    }
+    sendJson(response, 200, payments.status());
+    return true;
+  }
+
+  if (path === '/api/billing/stripe/keys' && request.method === 'DELETE') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    clearStripeConfig(dataDir);
+    sendJson(response, 200, payments.status());
+    return true;
+  }
+
+  if (path === '/api/billing/intent' && request.method === 'POST') {
+    try {
+      sendJson(response, 200, await payments.begin((await readJson(request)) as Record<string, unknown>));
+    } catch (error) {
+      sendJson(response, error instanceof PaymentsNotConfigured ? 503 : 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/confirm' && request.method === 'POST') {
+    try {
+      const body = (await readJson(request)) as { paymentIntentId?: unknown };
+      sendJson(response, 200, await payments.confirm(String(body.paymentIntentId ?? '')));
+    } catch (error) {
+      sendJson(response, 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
+  // Stripe's own callback. Unauthenticated by design — the signature is the
+  // authentication — so it is verified against the raw bytes before use.
+  if (path === '/api/billing/webhook' && request.method === 'POST') {
+    try {
+      const raw = await readRawBody(request);
+      const signature = request.headers['stripe-signature'];
+      const result = await payments.webhook(raw, typeof signature === 'string' ? signature : undefined);
+      sendJson(response, result.ok ? 200 : 400, result);
+    } catch {
+      sendJson(response, 400, { ok: false, reason: 'unreadable_body' });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/refund' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { paymentIntentId?: unknown; amountPence?: unknown };
+      sendJson(response, 200, await payments.refund(
+        String(body.paymentIntentId ?? ''),
+        typeof body.amountPence === 'number' ? body.amountPence : undefined,
+      ));
+    } catch (error) {
+      sendJson(response, 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/orders' && request.method === 'GET') {
+    sendJson(response, 200, { orders: payments.orders() });
+    return true;
+  }
+
   if (path === '/api/billing/checkout' && request.method === 'POST') {
     try {
       const body = (await readJson(request)) as {
@@ -1048,6 +1149,18 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   const update = options.update ?? createUpdateService({ dataDir, env });
   const developer = options.developer ?? createDevUnlockService({ dataDir });
   const plans = options.plans ?? createPlanService({ dataDir, developer: () => developer.unlocked(), env });
+  // Card payments. The plan service is the only thing that can grant an
+  // entitlement, so payments reaches it through a three-function port rather
+  // than writing entitlements itself.
+  const payments = options.payments ?? createPaymentService({
+    dataDir,
+    env,
+    plans: {
+      quote: (input) => plans.quote(input),
+      grant: (order, payment) => { plans.grantPaid(order, payment); },
+      revoke: (order) => { plans.revokePaid(order); },
+    },
+  });
   const live = options.live ?? createLiveService({ dataDir, includeMock: () => plans.status().liveTv });
   const session = options.session ?? createSessionService({ dataDir });
   const streamer = options.streamer ?? createStreamer({ dataDir, env });
@@ -1113,7 +1226,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         return;
       }
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });

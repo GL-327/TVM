@@ -15,7 +15,6 @@ import {
   hydrateCardVault,
   parseCardIntake,
   publicPaymentMethod,
-  readSealedPan,
   rememberToken,
   tokenizeCard,
   type CardIntake,
@@ -25,6 +24,8 @@ import {
 import { declineCharge, type ChargeResult } from './charges.ts';
 import { deleteSecret } from './secrets.ts';
 import { readSealed, writeSealed } from './vault.ts';
+import { loadStripeConfig, publicStripeStatus } from './stripeConfig.ts';
+import type { OrderQuote, PaymentOrder, SettledPayment } from './payments.ts';
 
 export const PLAN_IDS = ['free', 'basic', 'premium', 'ultra', 'max'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
@@ -250,18 +251,25 @@ export interface Entitlement {
   synthwaveAddon?: boolean;
 }
 
+/**
+ * `mock` and `mode` are what separate a sandbox receipt from one backed by a
+ * real card payment, and `chargedPence` is what was actually taken. They used
+ * to be the literals `true`, `'sandbox'` and `0`, which made a real charge
+ * impossible to represent; a sandbox receipt is now simply one where `mock` is
+ * true and `chargedPence` is zero.
+ */
 export interface BillingReceipt {
   id: string;
   requestId: string;
   fingerprint: string;
   planId: PlanId;
-  mock: true;
-  mode: 'sandbox';
-  event: 'checkout' | 'cancellation';
+  mock: boolean;
+  mode: 'sandbox' | 'test' | 'live';
+  event: 'checkout' | 'cancellation' | 'refund';
   currency: 'GBP';
   monthlyPence: number;
   oneTimePence: number;
-  chargedPence: 0;
+  chargedPence: number;
   liveTv: boolean;
   animePurchased?: boolean;
   bundlePurchased?: boolean;
@@ -270,15 +278,18 @@ export interface BillingReceipt {
   at: string;
   tokenId?: string;
   last4?: string;
+  /** Present on a card payment. Ties the receipt to the Stripe dashboard. */
+  paymentIntentId?: string;
+  receiptUrl?: string | null;
 }
 
 export interface BillingStatus {
-  mode: 'sandbox';
-  livePaymentsEnabled: false;
+  mode: 'sandbox' | 'test' | 'live';
+  livePaymentsEnabled: boolean;
   currency: 'GBP';
-  subscription: 'free' | 'test-active';
+  subscription: 'free' | 'test-active' | 'active';
   monthlyPence: number;
-  nextChargeAt: null;
+  nextChargeAt: string | null;
   synthwaveOwned: boolean;
   anime?: boolean;
   bundle?: boolean;
@@ -287,7 +298,7 @@ export interface BillingStatus {
   animeOwned?: boolean;
   bundleOwned?: boolean;
   receipts: BillingReceipt[];
-  processor: { linked: false; reason: 'no_processor' };
+  processor: { linked: boolean; reason: string; mode: 'test' | 'live' | null; webhookConfigured: boolean };
   paymentMethod: PublicCardToken | null;
 }
 
@@ -659,6 +670,67 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     };
   };
 
+  /**
+   * Prices an order.
+   *
+   * The single place a total is worked out, so the amount a card is charged
+   * cannot drift from the amount the sandbox records or the interface quoted.
+   * Every caller passes the buyer's *request*; the price comes from the
+   * catalogue here, never from the client.
+   */
+  const priceOrder = (input: CheckoutInput, card: boolean) => {
+    if (!isPlanId(input.planId)) throw new Error('unknown_plan');
+    for (const value of [input.liveTv, input.synthwave, input.packOnly]) {
+      if (value !== undefined && typeof value !== 'boolean') throw new Error('Invalid checkout option.');
+    }
+    if (input.pack !== undefined && (typeof input.pack !== 'string' || !['anime', 'synthwave', 'theme-bundle'].includes(input.pack))) {
+      throw new Error('Unknown theme pack.');
+    }
+    const current = readEntitlement();
+    const plan = definition(input.packOnly === true ? current.id : input.planId);
+    const includeLive = input.packOnly === true
+      ? liveTvIncluded(plan, current.liveTvAddon)
+      : checkoutWantsLiveTv(plan, input.liveTv);
+    const includeBundle = input.pack === 'theme-bundle';
+    const includeAnime = includeBundle || input.pack === 'anime';
+    const includeSynthwave = includeBundle || input.pack === 'synthwave' || input.synthwave === true;
+    const monthlyPence = priceFor(plan, includeLive).pricePence;
+    const oneTimePence = current.themeBundle
+      ? 0
+      : includeBundle
+        ? THEME_BUNDLE_PENCE
+        : (includeAnime && !current.animeAddon ? ANIME_ADDON_PENCE : 0)
+          + (includeSynthwave && !current.synthwaveAddon ? SYNTHWAVE_ADDON_PENCE : 0);
+    const fingerprint = JSON.stringify({
+      event: 'checkout', pack: input.pack ?? null, planId: input.planId, liveTv: input.liveTv ?? null,
+      synthwave: includeSynthwave, packOnly: input.packOnly === true,
+      quotedMonthlyPence: input.quotedMonthlyPence ?? null,
+      quotedOneTimePence: input.quotedOneTimePence ?? null,
+      card,
+    });
+    // A quote the buyer has already seen must not change under them.
+    if ((input.quotedMonthlyPence !== undefined && input.quotedMonthlyPence !== monthlyPence)
+      || (input.quotedOneTimePence !== undefined && input.quotedOneTimePence !== oneTimePence)) {
+      throw new Error('The order has changed. Reopen checkout to review the current total.');
+    }
+    return { current, plan, includeLive, includeAnime, includeBundle, includeSynthwave, monthlyPence, oneTimePence, fingerprint };
+  };
+
+  /** Applies what an order bought. Shared by the sandbox and the card path. */
+  const applyOrder = (priced: ReturnType<typeof priceOrder>): void => {
+    const { current, plan, includeLive, includeAnime, includeBundle, includeSynthwave } = priced;
+    writeEntitlement({
+      ...current,
+      id: plan.id,
+      source: plan.id === 'free' && !includeSynthwave && !includeAnime ? 'free' : 'checkout',
+      styleId: clampStyle(plan.id, current.styleId),
+      liveTvAddon: includeLive,
+      animeAddon: includeAnime ? true : current.animeAddon,
+      themeBundle: includeBundle ? true : current.themeBundle,
+      synthwaveAddon: includeSynthwave ? true : current.synthwaveAddon,
+    });
+  };
+
   return {
     status(): PlanStatus {
       return compose();
@@ -724,36 +796,12 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         intake = parsed.intake;
       }
       const requestId = requestKey(input);
-      if (!isPlanId(input.planId)) throw new Error('unknown_plan');
-      for (const value of [input.liveTv, input.synthwave, input.packOnly]) {
-        if (value !== undefined && typeof value !== 'boolean') throw new Error('Invalid checkout option.');
-      }
       if (input.simulate !== undefined && !['success', 'decline', 'cancel'].includes(String(input.simulate))) {
         throw new Error('Invalid test outcome.');
       }
-      const current = readEntitlement();
-      const plan = definition(input.packOnly === true ? current.id : input.planId);
-      const includeLive = input.packOnly === true
-        ? liveTvIncluded(plan, current.liveTvAddon)
-        : checkoutWantsLiveTv(plan, input.liveTv);
-      if (input.pack !== undefined && (typeof input.pack !== 'string' || !['anime', 'synthwave', 'theme-bundle'].includes(input.pack))) throw new Error('Unknown theme pack.');
-      const includeBundle = input.pack === 'theme-bundle';
-      const includeAnime = includeBundle || input.pack === 'anime';
-      const includeSynthwave = includeBundle || input.pack === 'synthwave' || input.synthwave === true;
-      const fingerprint = JSON.stringify({
-        event: 'checkout', pack: input.pack ?? null, planId: input.planId, liveTv: input.liveTv ?? null,
-        synthwave: includeSynthwave, packOnly: input.packOnly === true,
-        quotedMonthlyPence: input.quotedMonthlyPence ?? null,
-        quotedOneTimePence: input.quotedOneTimePence ?? null,
-        card: intake !== null,
-      });
+      const priced = priceOrder(input, intake !== null);
+      const { plan, includeLive, includeAnime, includeBundle, includeSynthwave, monthlyPence, oneTimePence, fingerprint } = priced;
       if (alreadyProcessed(requestId, fingerprint)) return compose();
-      const monthlyPence = priceFor(plan, includeLive).pricePence;
-      const oneTimePence = current.themeBundle ? 0 : includeBundle ? THEME_BUNDLE_PENCE : (includeAnime && !current.animeAddon ? ANIME_ADDON_PENCE : 0) + (includeSynthwave && !current.synthwaveAddon ? SYNTHWAVE_ADDON_PENCE : 0);
-      if ((input.quotedMonthlyPence !== undefined && input.quotedMonthlyPence !== monthlyPence)
-        || (input.quotedOneTimePence !== undefined && input.quotedOneTimePence !== oneTimePence)) {
-        throw new Error('The order has changed. Reopen checkout to review the current total.');
-      }
       if (input.simulate === 'decline') throw new Error('Test payment declined. Your plan has not changed. Choose Success to try again.');
       if (input.simulate === 'cancel') throw new Error('Test checkout cancelled. Your plan has not changed.');
       const ledger = readLedger();
@@ -762,20 +810,11 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       let last4: string | undefined;
       if (intake !== null) {
         const minted = tokenizeCard(dataDir, intake);
-        cards = rememberToken(cards, minted.token, minted.sealedPan);
+        cards = rememberToken(cards, minted.token);
         tokenId = minted.token.tokenId;
         last4 = minted.token.last4;
       }
-      writeEntitlement({
-        ...current,
-        id: plan.id,
-        source: plan.id === 'free' && !includeSynthwave && !includeAnime ? 'free' : 'checkout',
-        styleId: clampStyle(plan.id, current.styleId),
-        liveTvAddon: includeLive,
-        animeAddon: includeAnime ? true : current.animeAddon,
-        themeBundle: includeBundle ? true : current.themeBundle,
-        synthwaveAddon: includeSynthwave ? true : current.synthwaveAddon,
-      });
+      applyOrder(priced);
       saveReceipt({
         id: `TEST-${randomUUID()}`,
         requestId,
@@ -797,6 +836,112 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       }, cards);
       return compose();
     },
+    /**
+     * Prices an order for the card path.
+     *
+     * Deliberately shares priceOrder with the sandbox checkout, so the figure
+     * a card is charged is the same figure the catalogue quotes. Grants
+     * nothing — the buyer has not paid at this point.
+     */
+    quote(input: Record<string, unknown>): OrderQuote {
+      const priced = priceOrder(input as CheckoutInput, false);
+      const parts = [priced.plan.name];
+      if (priced.includeLive) parts.push('Live TV');
+      if (priced.includeBundle) parts.push('theme bundle');
+      else {
+        if (priced.includeAnime) parts.push('Anime pack');
+        if (priced.includeSynthwave) parts.push('Retro pack');
+      }
+      return {
+        planId: priced.plan.id,
+        fingerprint: priced.fingerprint,
+        monthlyPence: priced.monthlyPence,
+        oneTimePence: priced.oneTimePence,
+        // Taken now: the first month plus any one-off packs.
+        amountPence: priced.monthlyPence + priced.oneTimePence,
+        liveTv: priced.includeLive,
+        anime: priced.includeAnime,
+        bundle: priced.includeBundle,
+        synthwave: priced.includeSynthwave,
+        packOnly: (input as CheckoutInput).packOnly === true,
+        description: `TVM — ${parts.join(' + ')}`,
+      };
+    },
+
+    /**
+     * Applies a paid order. Called only after Stripe has confirmed the money
+     * moved, from the webhook and from the buyer's return trip, so it has to be
+     * safe to run twice: a receipt already written for this payment wins.
+     */
+    grantPaid(order: PaymentOrder, payment: SettledPayment): PlanStatus {
+      const existing = readReceipts().find((receipt) => receipt.paymentIntentId === order.paymentIntentId);
+      if (existing !== undefined) return compose();
+      const priced = priceOrder({
+        planId: order.planId,
+        liveTv: order.liveTv,
+        synthwave: order.synthwave,
+        packOnly: order.packOnly,
+        pack: order.bundle ? 'theme-bundle' : order.anime ? 'anime' : order.synthwave ? 'synthwave' : undefined,
+      } as CheckoutInput, false);
+      applyOrder(priced);
+      saveReceipt({
+        id: order.paymentIntentId,
+        requestId: order.requestId,
+        fingerprint: order.fingerprint,
+        planId: priced.plan.id,
+        mock: false,
+        mode: payment.mode,
+        event: 'checkout',
+        currency: 'GBP',
+        monthlyPence: order.monthlyPence,
+        oneTimePence: order.oneTimePence,
+        chargedPence: payment.chargedPence,
+        liveTv: order.liveTv,
+        animePurchased: order.anime,
+        bundlePurchased: order.bundle,
+        synthwavePurchased: order.synthwave,
+        consentVersion: BILLING_CONSENT_VERSION,
+        at: payment.at,
+        paymentIntentId: order.paymentIntentId,
+        receiptUrl: payment.receiptUrl,
+      });
+      return compose();
+    },
+
+    /** Takes back what a refunded order bought, and records why. */
+    revokePaid(order: PaymentOrder): PlanStatus {
+      const current = readEntitlement();
+      writeEntitlement({
+        ...current,
+        id: 'free',
+        source: 'free',
+        styleId: 'classic',
+        liveTvAddon: false,
+        ...(order.anime ? { animeAddon: undefined } : {}),
+        ...(order.bundle ? { themeBundle: undefined } : {}),
+        ...(order.synthwave ? { synthwaveAddon: undefined } : {}),
+      });
+      saveReceipt({
+        id: `refund_${order.paymentIntentId}`,
+        requestId: order.requestId,
+        fingerprint: order.fingerprint,
+        planId: 'free',
+        mock: false,
+        mode: order.mode,
+        event: 'refund',
+        currency: 'GBP',
+        monthlyPence: 0,
+        oneTimePence: 0,
+        chargedPence: -order.refundedPence,
+        liveTv: false,
+        synthwavePurchased: false,
+        consentVersion: BILLING_CONSENT_VERSION,
+        at: new Date().toISOString(),
+        paymentIntentId: order.paymentIntentId,
+      });
+      return compose();
+    },
+
     cancel(input: { consent?: unknown; requestId?: unknown }): PlanStatus {
       const requestId = requestKey(input);
       const fingerprint = JSON.stringify({ event: 'cancellation' });
@@ -814,11 +959,21 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
     billing(): BillingStatus {
       const status = compose();
       const ledger = readLedger();
+      const stripe = publicStripeStatus(loadStripeConfig(dataDir, options.env ?? process.env));
+      const paidByCard = ledger.receipts.some((receipt) => receipt.mock === false && receipt.event === 'checkout');
       return {
-        mode: 'sandbox', livePaymentsEnabled: false, currency: 'GBP',
-        subscription: status.id === 'free' ? 'free' : 'test-active', monthlyPence: status.pricePence,
+        mode: stripe.configured && stripe.mode !== null ? stripe.mode : 'sandbox',
+        livePaymentsEnabled: stripe.configured && stripe.mode === 'live',
+        currency: 'GBP',
+        subscription: status.id === 'free' ? 'free' : paidByCard ? 'active' : 'test-active',
+        monthlyPence: status.pricePence,
         nextChargeAt: null, anime: status.anime, bundle: status.bundle, animeAddonPence: ANIME_ADDON_PENCE, themeBundlePence: THEME_BUNDLE_PENCE, animeOwned: status.animeOwned, bundleOwned: status.bundleOwned, synthwaveOwned: status.synthwaveOwned, receipts: ledger.receipts.map(publicReceipt),
-        processor: { linked: false, reason: 'no_processor' },
+        processor: {
+          linked: stripe.configured,
+          reason: stripe.reason ?? (stripe.mode === 'live' ? 'stripe_live' : 'stripe_test'),
+          mode: stripe.mode,
+          webhookConfigured: stripe.webhookConfigured,
+        },
         paymentMethod: publicPaymentMethod(ledger.cards ?? emptyCardVault()),
       };
     },
@@ -826,9 +981,8 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       const ledger = readLedger();
       const cards = ledger.cards ?? emptyCardVault();
       const token = findToken(cards, typeof input.tokenId === 'string' ? input.tokenId : undefined);
-      if (token !== null) {
-        readSealedPan(dataDir, cards.instruments[token.tokenId]);
-      }
+      // Nothing to charge against: no card number is kept. A real charge goes
+      // through /api/billing/intent and Stripe.
       return declineCharge(token);
     },
     receipt(): BillingReceipt | null {

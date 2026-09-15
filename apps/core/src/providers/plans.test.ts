@@ -168,7 +168,7 @@ describe('plans', () => {
     expect(status.id).toBe('premium');
     const billing = plans.billing();
     expect(billing.livePaymentsEnabled).toBe(false);
-    expect(billing.processor).toEqual({ linked: false, reason: 'no_processor' });
+    expect(billing.processor).toMatchObject({ linked: false, mode: null, webhookConfigured: false });
     expect(billing.paymentMethod).toMatchObject({ last4: '4242', brand: 'visa', expiry: '12/99', zip: 'SW1A 1AA' });
     const leaked = JSON.stringify(billing);
     expect(leaked).not.toContain(pan);
