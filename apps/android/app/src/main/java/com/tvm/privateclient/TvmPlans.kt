@@ -305,6 +305,48 @@ class TvmPlans(private val store: TvmPlansStore) {
         return status()
     }
 
+    /**
+     * Applies what an activated account is entitled to.
+     *
+     * setLiveTv() refuses to switch Live TV on because a buyer is meant to
+     * pick a term at checkout, and there is no checkout. Both tiers map to
+     * the fullest plan and differ only by Live TV. Recorded as lifetime
+     * with no expiry because it lasts as long as the account stays active.
+     */
+    fun grantTier(tier: String): JSONObject {
+        val entitlement = readEntitlement()
+        writeEntitlement(
+            entitlement.copy(
+                id = "max",
+                source = "checkout",
+                styleId = clampStyle("max", entitlement.styleId),
+                liveTvAddon = tier == "stream-live",
+                liveTvTerm = if (tier == "stream-live") "lifetime" else null,
+                liveTvExpiresAt = null,
+                // Both tiers promise every visual style, and nothing is sold here.
+                themeBundle = true,
+                animeAddon = true,
+                synthwaveAddon = true,
+            )
+        )
+        return status()
+    }
+
+    /** No usable account means no access; free is what that looks like now. */
+    fun revokeTier(): JSONObject {
+        val entitlement = readEntitlement()
+        writeEntitlement(
+            entitlement.copy(
+                id = "free",
+                source = "free",
+                liveTvAddon = false,
+                liveTvTerm = null,
+                liveTvExpiresAt = null,
+            )
+        )
+        return status()
+    }
+
     fun setLiveTv(enabled: Boolean): JSONObject {
         val plan = definition(readEntitlement().id)
         if (plan.liveTvAddonPence <= 0) throw ClientException("Live TV is a paid add-on from Basic up.")
