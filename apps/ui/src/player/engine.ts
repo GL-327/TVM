@@ -1,4 +1,5 @@
 import type Hls from 'hls.js';
+import { catchUpTarget, driftFromLive, liveEdgeOf } from './liveEdge';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
 import { publishHls } from './hlsBridge';
@@ -44,6 +45,10 @@ export interface PlayerEngine {
   setMuted(muted: boolean): void;
   position(): number;
   duration(): number;
+  /** Seconds behind the broadcast; 0 for anything that is not live. */
+  liveDrift(): number;
+  /** Jump back to the live edge. No-op off a live stream. */
+  goLive(): void;
 }
 
 export type AttachKind = 'hls' | 'ts-live' | 'file';
@@ -149,6 +154,8 @@ function createMissingNativeEngine(events: EngineEvents): PlayerEngine {
     setMuted() {},
     position: () => 0,
     duration: () => 0,
+    liveDrift: () => 0,
+    goLive() {},
   };
 }
 
@@ -599,5 +606,34 @@ export function createPlayerEngine(
     },
     position: () => absolutePosition(video.currentTime, offset),
     duration: () => displayDuration(stream.durationSeconds, video.duration, offset),
+
+    liveDrift() {
+      if (!live || destroyed) return 0;
+      return driftFromLive(video.currentTime, liveEdgeOf(video.seekable, video.buffered));
+    },
+
+    /**
+     * The one seek a live stream is allowed.
+     *
+     * seekTo() refuses on live because scrubbing a broadcast is meaningless,
+     * but returning to the edge after a pause is the opposite: it is how a
+     * viewer undoes a delay they did not choose to keep.
+     */
+    goLive() {
+      if (!live || destroyed || failed) return;
+      const edge = liveEdgeOf(video.seekable, video.buffered);
+      if (edge <= 0) return;
+      const target = catchUpTarget(edge);
+      if (target <= 0) return;
+      try {
+        video.currentTime = target;
+      } catch {
+        // Some readers reject a seek until the first fragment lands.
+        return;
+      }
+      lastProgressAt = Date.now();
+      wantsPlayback = true;
+      tryPlay();
+    },
   };
 }

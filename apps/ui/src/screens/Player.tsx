@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { readAudioPrefs, restoredAudio, writeAudioPrefs } from '../player/audioPrefs';
 import { requestPlayback, saveProgress, type PlaybackResult } from '../data/media';
 import { FALLBACK_PLAN, fetchPlan, tickUsage, type PlanStatus } from '../data/plan';
 import { playbackErrorMessage } from '../data/playbackErrors';
 import { useNavigate } from '../nav/ViewStackContext';
 import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverlay';
+import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
 import { TvmMark } from '../brand/TvmMark';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
 import { iosPlaybackBridge } from '../player/iosEngine';
@@ -26,7 +28,9 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const lastSaved = useRef(0);
   const lastTick = useRef(0);
   const billableRef = useRef(false);
-  const audioRef = useRef({ volume: 1, muted: false });
+  // Seeded once from storage: the level the room was last left at.
+  const storedAudio = useRef(restoredAudio(readAudioPrefs()));
+  const audioRef = useRef({ volume: storedAudio.current.volume, muted: storedAudio.current.muted });
 
   const [title, setTitle] = useState('Loading');
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +40,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [hasFrame, setHasFrame] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(() => storedAudio.current.volume);
+  const [muted, setMuted] = useState(() => storedAudio.current.muted);
   const [attempt, setAttempt] = useState(0);
   const [playbackEngine, setPlaybackEngine] = useState<PlayerSession['engine']>('loading');
   const [overlay, setOverlay] = useState<'queue' | 'ad' | null>('queue');
@@ -248,6 +252,9 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     const syncAudio = (): void => {
       setVolume(video.volume);
       setMuted(video.muted);
+      // volumechange is the one place the level has actually settled, whether
+      // it came from the remote, the slider, the keyboard or the OS.
+      writeAudioPrefs({ volume: video.volume, muted: video.muted });
     };
     const saveWhenHidden = (): void => {
       if (document.visibilityState === 'hidden') persist();
@@ -298,6 +305,13 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     },
     [live, showControls],
   );
+
+  // How far behind the broadcast we have fallen, and the one seek that undoes it.
+  const drift = useLiveDrift(live, useCallback(() => engineRef.current?.liveDrift() ?? 0, []));
+  const goLive = useCallback((): void => {
+    engineRef.current?.goLive();
+    showControls();
+  }, [showControls]);
 
   const adjustVolume = useCallback(
     (delta: number): void => {
@@ -438,6 +452,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       <div className="player__stage" data-player-stage="">
         <video ref={videoRef} className="player__video" data-player-video="" playsInline preload="auto" />
       </div>
+      <style>{GO_LIVE_CSS}</style>
+      <GoLive live={live} drift={drift} onGoLive={goLive} />
       <PlayerRoot session={session} />
       {overlay === 'queue' && (
         <div className="player__queue" aria-live="polite">
