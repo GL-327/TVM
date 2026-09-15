@@ -129,7 +129,7 @@ export const FALLBACK_PLAN: PlanStatus = {
   liveTvTerm: null,
   liveTvExpiresAt: null,
   liveTvTerms: [...LIVE_TV_TERMS],
-  ads: true,
+  ads: false,
   stream: 'basic',
   maxHeight: 720,
   queueMs: 28_000,
