@@ -82,6 +82,16 @@ export function displayDuration(streamDuration: number | undefined, elementDurat
 export const GENERIC_START_ERROR = 'This stream could not start. Press Retry, or Back to pick another file.';
 
 /**
+ * A browser with no Media Source Extensions cannot play MPEG-TS at all, and
+ * mobile Safari is the case that matters: the TVM app plays these channels
+ * through its native player, but the same channel opened in Safari on the
+ * same phone has nothing to decode with. Saying "could not start" sent people
+ * looking for a fault in the channel, which was the wrong place.
+ */
+export const NO_MSE_LIVE_ERROR =
+  'This browser cannot play this channel: it needs Media Source Extensions, which mobile Safari does not provide. Open it in the TVM app, which plays it natively, or use Chrome.';
+
+/**
  * hls.js details that mean "this was never a playlist", as opposed to a
  * playlist that failed to load. Only these justify retrying a live channel as
  * raw MPEG-TS.
@@ -359,7 +369,7 @@ export function createPlayerEngine(
       if (destroyed || failed) return;
       const api = resolveMpegts(mod) ?? resolveMpegts((globalThis as { mpegts?: unknown }).mpegts);
       if (api === null || api.isSupported?.() === false) {
-        fail(GENERIC_START_ERROR);
+        fail(NO_MSE_LIVE_ERROR);
         return;
       }
       const player = api.createPlayer(
