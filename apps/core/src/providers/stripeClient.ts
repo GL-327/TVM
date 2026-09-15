@@ -99,6 +99,47 @@ export function parsePaymentIntent(raw: unknown): StripePaymentIntent {
   };
 }
 
+export interface StripeSubscription {
+  id: string;
+  status: string;
+  /** Unix seconds; when the next charge lands. */
+  currentPeriodEnd: number;
+  cancelAtPeriodEnd: boolean;
+  amountPence: number;
+  customerId: string | null;
+  latestInvoiceId: string | null;
+  /** Present while the first payment is still unconfirmed. */
+  clientSecret: string | null;
+  paymentIntentId: string | null;
+  metadata: Record<string, string>;
+}
+
+export function parseSubscription(raw: unknown): StripeSubscription {
+  const body = asRecord(raw);
+  const invoice = asRecord(body['latest_invoice']);
+  const intent = asRecord(invoice['payment_intent']);
+  const item = asRecord(asRecord(body['items'])['data'] instanceof Array
+    ? (asRecord(body['items'])['data'] as unknown[])[0]
+    : undefined);
+  const price = asRecord(item['price']);
+  const metadata: Record<string, string> = {};
+  for (const [key, value] of Object.entries(asRecord(body['metadata']))) {
+    if (typeof value === 'string') metadata[key] = value;
+  }
+  return {
+    id: asString(body['id']) ?? '',
+    status: asString(body['status']) ?? 'unknown',
+    currentPeriodEnd: typeof body['current_period_end'] === 'number' ? body['current_period_end'] : 0,
+    cancelAtPeriodEnd: body['cancel_at_period_end'] === true,
+    amountPence: typeof price['unit_amount'] === 'number' ? price['unit_amount'] : 0,
+    customerId: asString(body['customer']) ?? asString(asRecord(body['customer'])['id']),
+    latestInvoiceId: asString(body['latest_invoice']) ?? asString(invoice['id']),
+    clientSecret: asString(intent['client_secret']),
+    paymentIntentId: asString(intent['id']) ?? asString(invoice['payment_intent']),
+    metadata,
+  };
+}
+
 export interface StripeFetch {
   (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }): Promise<{
     status: number;
@@ -116,7 +157,7 @@ export function createStripeClient(options: StripeClientOptions) {
   const { config } = options;
   const doFetch = options.fetchImpl ?? (globalThis.fetch as unknown as StripeFetch);
 
-  async function call(path: string, method: 'GET' | 'POST', form: Record<string, unknown>, idempotencyKey?: string): Promise<unknown> {
+  async function call(path: string, method: 'GET' | 'POST' | 'DELETE', form: Record<string, unknown>, idempotencyKey?: string): Promise<unknown> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${config.secretKey}`,
       'Stripe-Version': API_VERSION,
@@ -131,6 +172,7 @@ export function createStripeClient(options: StripeClientOptions) {
       // dropped connection cannot charge the same card twice.
       if (idempotencyKey !== undefined && idempotencyKey !== '') headers['Idempotency-Key'] = idempotencyKey;
     } else if (encoded !== '') {
+      // GET and DELETE both carry their parameters in the query string.
       url = `${url}?${encoded}`;
     }
 
@@ -186,10 +228,21 @@ export function createStripeClient(options: StripeClientOptions) {
       metadata: Record<string, string>;
       idempotencyKey: string;
       receiptEmail?: string | null;
+      /** Bill a saved card with nobody present — the path a renewal takes. */
+      customerId?: string;
+      offSession?: boolean;
+      confirm?: boolean;
     }): Promise<StripePaymentIntent> {
-      if (!Number.isInteger(input.amountPence) || input.amountPence < 30) {
-        // Stripe's GBP minimum is 30p; below it the charge is rejected.
-        throw new StripeError('A card payment must be at least £0.30.', { type: 'invalid_request_error' });
+      const offSession = input.offSession === true;
+      // Stripe's GBP floor is 30p for an interactive payment. An off-session
+      // charge against an already-saved card is exempt, which is what lets the
+      // developer probe work with a penny.
+      const minimum = offSession ? 1 : 30;
+      if (!Number.isInteger(input.amountPence) || input.amountPence < minimum) {
+        throw new StripeError(
+          offSession ? 'An off-session charge must be at least £0.01.' : 'A card payment must be at least £0.30.',
+          { type: 'invalid_request_error' },
+        );
       }
       const raw = await call('/payment_intents', 'POST', {
         amount: input.amountPence,
@@ -197,7 +250,12 @@ export function createStripeClient(options: StripeClientOptions) {
         description: input.description,
         metadata: input.metadata,
         receipt_email: input.receiptEmail ?? undefined,
-        automatic_payment_methods: { enabled: true },
+        customer: input.customerId,
+        // automatic_payment_methods and off_session are mutually exclusive:
+        // there is no browser to present a wallet to.
+        ...(offSession
+          ? { off_session: true, confirm: input.confirm === true }
+          : { automatic_payment_methods: { enabled: true } }),
       }, input.idempotencyKey);
       return parsePaymentIntent(raw);
     },
@@ -209,6 +267,83 @@ export function createStripeClient(options: StripeClientOptions) {
     async retrievePaymentIntent(id: string): Promise<StripePaymentIntent> {
       const raw = await call(`/payment_intents/${encodeURIComponent(id)}`, 'GET', { expand: ['latest_charge'] });
       return parsePaymentIntent(raw);
+    },
+
+    /**
+     * Finds or creates the Stripe customer this install bills as.
+     *
+     * A subscription must belong to a customer — that is the record Stripe
+     * charges again next month, and without one there is nothing to renew.
+     */
+    async createCustomer(input: { email?: string | null; metadata: Record<string, string>; idempotencyKey: string }): Promise<{ id: string }> {
+      const raw = asRecord(await call('/customers', 'POST', {
+        email: input.email ?? undefined,
+        metadata: input.metadata,
+      }, input.idempotencyKey));
+      const id = asString(raw['id']);
+      if (id === null) throw new StripeError('Stripe did not return a customer.');
+      return { id };
+    },
+
+    /**
+     * Opens a monthly subscription and hands back the first invoice's payment.
+     *
+     * The price is built inline rather than referencing a dashboard Price, so
+     * there is no manual setup step to forget and no way for the catalogue and
+     * Stripe to hold different numbers.
+     *
+     * payment_behavior=default_incomplete is the important flag: the
+     * subscription exists but stays inactive until that first payment
+     * succeeds, so a declined card leaves no entitlement behind.
+     */
+    async createSubscription(input: {
+      customerId: string;
+      amountPence: number;
+      productName: string;
+      metadata: Record<string, string>;
+      idempotencyKey: string;
+    }): Promise<StripeSubscription> {
+      if (!Number.isInteger(input.amountPence) || input.amountPence < 30) {
+        throw new StripeError('A subscription must be at least £0.30 a month.', { type: 'invalid_request_error' });
+      }
+      const raw = await call('/subscriptions', 'POST', {
+        customer: input.customerId,
+        items: [{
+          price_data: {
+            currency: 'gbp',
+            product_data: { name: input.productName },
+            recurring: { interval: 'month' },
+            unit_amount: input.amountPence,
+          },
+        }],
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        metadata: input.metadata,
+        expand: ['latest_invoice.payment_intent'],
+      }, input.idempotencyKey);
+      return parseSubscription(raw);
+    },
+
+    async retrieveSubscription(id: string): Promise<StripeSubscription> {
+      return parseSubscription(await call(`/subscriptions/${encodeURIComponent(id)}`, 'GET', {
+        expand: ['latest_invoice.payment_intent'],
+      }));
+    },
+
+    /**
+     * Ends a subscription.
+     *
+     * `atPeriodEnd` is the honest default for a cancellation the customer
+     * asked for: they paid for this month, so they keep it. Immediate
+     * cancellation is for a refund, where the money is going back.
+     */
+    async cancelSubscription(input: { id: string; atPeriodEnd: boolean }): Promise<StripeSubscription> {
+      if (input.atPeriodEnd) {
+        return parseSubscription(await call(`/subscriptions/${encodeURIComponent(input.id)}`, 'POST', {
+          cancel_at_period_end: true,
+        }));
+      }
+      return parseSubscription(await call(`/subscriptions/${encodeURIComponent(input.id)}`, 'DELETE', {}));
     },
 
     async refund(input: { paymentIntentId: string; amountPence?: number; idempotencyKey: string }): Promise<{ id: string; status: string; amount: number }> {

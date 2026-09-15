@@ -199,3 +199,7 @@ export function paymentsLedgerPath(dataDir: string): string {
 export function liveChecksPath(dataDir: string): string {
   return join(dataDir, 'live-checks.json');
 }
+
+export function subscriptionsPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'subscriptions.enc');
+}

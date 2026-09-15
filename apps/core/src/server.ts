@@ -5,7 +5,10 @@ import { pipeline } from 'node:stream/promises';
 import { CORE_HOST, CORE_VERSION, resolveBindHost, resolvePort } from './config.ts';
 import { readJson, readRawBody, sendJson } from './http.ts';
 import { buyerMessage, createPaymentService, PaymentsNotConfigured, type PaymentService } from './providers/payments.ts';
-import { clearStripeConfig, saveStripeConfig } from './providers/stripeConfig.ts';
+import { clearStripeConfig, loadStripeConfig, saveStripeConfig } from './providers/stripeConfig.ts';
+import { createStripeClient } from './providers/stripeClient.ts';
+import { createSubscriptionService, type SubscriptionService } from './providers/subscriptions.ts';
+import { createBillingProbe, type BillingProbe } from './providers/billingProbe.ts';
 import { accessError, createUnlockLimiter, setSecurityHeaders } from './security.ts';
 import { mobilePlaybackBlocked } from './mobileAccess.ts';
 import { createLanSessions, serveLanPairing } from './lanSessions.ts';
@@ -396,6 +399,8 @@ export interface CoreOptions {
   session?: SessionService;
   plans?: PlanService;
   payments?: PaymentService;
+  subscriptions?: SubscriptionService;
+  billingProbe?: BillingProbe;
   developer?: DevUnlockService;
   streamer?: StreamerService;
   dataDir?: string;
@@ -419,6 +424,8 @@ async function handleApi(
   streamer: StreamerService,
   env: NodeJS.ProcessEnv,
   payments: PaymentService,
+  subscriptions: SubscriptionService,
+  billingProbe: BillingProbe,
 ): Promise<boolean> {
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -1008,6 +1015,69 @@ async function handleApi(
     return true;
   }
 
+  // ---- Monthly subscriptions --------------------------------------------
+  //
+  // A PaymentIntent takes one payment. These take one every month, which is
+  // what the plan cards have always promised.
+
+  // The probe takes real money — a penny at a time — and gives it straight
+  // back. Developer mode only, on every call rather than once at start.
+  if (path === '/api/billing/probe' && request.method === 'GET') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    sendJson(response, 200, billingProbe.status());
+    return true;
+  }
+
+  if (path === '/api/billing/probe' && request.method === 'POST') {
+    if (!developer.unlocked()) {
+      sendJson(response, 403, { error: 'developer_required' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { running?: unknown };
+      sendJson(response, 200, body.running === false ? billingProbe.stop() : billingProbe.start());
+    } catch (error) {
+      sendJson(response, 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/subscription' && request.method === 'GET') {
+    sendJson(response, 200, subscriptions.current());
+    return true;
+  }
+
+  if (path === '/api/billing/subscription' && request.method === 'POST') {
+    try {
+      sendJson(response, 200, await subscriptions.begin((await readJson(request)) as Record<string, unknown>));
+    } catch (error) {
+      sendJson(response, error instanceof PaymentsNotConfigured ? 503 : 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/subscription/confirm' && request.method === 'POST') {
+    try {
+      sendJson(response, 200, await subscriptions.confirm());
+    } catch (error) {
+      sendJson(response, 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
+  if (path === '/api/billing/subscription' && request.method === 'DELETE') {
+    try {
+      const body = (await readJson(request)) as { immediately?: unknown };
+      sendJson(response, 200, await subscriptions.cancel(body.immediately !== true));
+    } catch (error) {
+      sendJson(response, 400, { error: buyerMessage(error) });
+    }
+    return true;
+  }
+
   if (path === '/api/billing/intent' && request.method === 'POST') {
     try {
       sendJson(response, 200, await payments.begin((await readJson(request)) as Record<string, unknown>));
@@ -1033,7 +1103,11 @@ async function handleApi(
     try {
       const raw = await readRawBody(request);
       const signature = request.headers['stripe-signature'];
-      const result = await payments.webhook(raw, typeof signature === 'string' ? signature : undefined);
+      const result = await payments.webhook(raw, typeof signature === 'string' ? signature : undefined, async (type, object, eventId) => {
+        // Renewals only ever arrive here: nobody is present for a charge made
+        // a month later, so this is the one path that can see it.
+        await subscriptions.applyEvent(type, object, eventId);
+      });
       sendJson(response, result.ok ? 200 : 400, result);
     } catch {
       sendJson(response, 400, { ok: false, reason: 'unreadable_body' });
@@ -1183,6 +1257,36 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       revoke: (order) => { plans.revokePaid(order); },
     },
   });
+  // Monthly billing. Shares the plan service's pricing so a subscription can
+  // never charge a different figure from the one on the plan card.
+  const subscriptions = options.subscriptions ?? createSubscriptionService({
+    dataDir,
+    plans: {
+      monthlyQuote: (input) => plans.monthlyQuote(input),
+      grantMonthly: (record, paid, at) => { plans.grantMonthly(record, paid, at); },
+      revokeMonthly: (record) => { plans.revokeMonthly(record); },
+    },
+    client: () => {
+      const state = loadStripeConfig(dataDir, env);
+      if (!state.configured) throw new PaymentsNotConfigured(state.detail);
+      return createStripeClient({ config: state.config });
+    },
+  });
+  // Developer-only proof that recurring billing works, without waiting a month
+  // for a renewal. Off by default and never started implicitly.
+  const billingProbe = options.billingProbe ?? createBillingProbe({
+    client: () => {
+      const state = loadStripeConfig(dataDir, env);
+      if (!state.configured) throw new PaymentsNotConfigured(state.detail);
+      return createStripeClient({ config: state.config });
+    },
+    customerId: () => subscriptions.record()?.customerId ?? null,
+    developer: () => developer.unlocked(),
+    mode: () => {
+      const state = loadStripeConfig(dataDir, env);
+      return state.configured ? state.config.mode : null;
+    },
+  });
   const live = options.live ?? createLiveService({ dataDir, includeMock: () => plans.status().liveTv });
   const session = options.session ?? createSessionService({ dataDir });
   const streamer = options.streamer ?? createStreamer({ dataDir, env });
@@ -1248,7 +1352,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         return;
       }
       if (await handleStreamApi(path, request, response, streamer)) return;
-      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments)) return;
+      if (await handleApi(path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork, dataDir, streamer, env, payments, subscriptions, billingProbe)) return;
 
       if (path.startsWith('/api/')) {
         sendJson(response, 404, { error: 'not_found', path });
