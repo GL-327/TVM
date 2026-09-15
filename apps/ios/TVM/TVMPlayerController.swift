@@ -24,6 +24,18 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private let source: URL
     private let mediaTitle: String
     private let live: Bool
+    /**
+     Seconds behind the broadcast.
+
+     A live stream advances with the clock, so any wall-clock time that does
+     not turn into playback position is time spent behind: pause for thirty
+     seconds and you are thirty seconds late for the rest of the channel.
+     Measuring it this way works for MPEG-TS, where VLC reports neither a
+     length nor a seekable range to compare against.
+     */
+    private var liveDrift: Double = 0
+    private var driftAnchor: Date?
+    private var driftBase: Double = 0
     private var resumeAt: Double
     private let player = VLCMediaPlayer()
     private let picture = UIView()
@@ -209,6 +221,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         try? AVAudioSession.sharedInstance().setActive(true)
         failed = false; sawPlayback = false; startedAt = Date()
         errorSince = nil; lastProgressAt = Date(); lastGoodPosition = 0
+        // Reopening reconnects at the live edge, so the gap starts again at zero.
+        liveDrift = 0; driftBase = 0; driftAnchor = live ? Date() : nil
         player.drawable = picture
         let media = VLCMedia(url: source)
         media.addOptions([
@@ -228,6 +242,14 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         case "seek": if let seconds = data["seconds"] as? Double { seek(seconds) }
         case "volume": if let volume = data["volume"] as? Double, volume.isFinite { player.audio?.volume = Int32(max(0, min(100, volume * 100))) }
         case "mute": player.audio?.isMuted = data["muted"] as? Bool ?? false
+        case "goLive":
+            // VLC cannot seek forward in a live transport stream — there is no
+            // index to seek within. Reopening the source reconnects at the
+            // edge, which is what returning to live actually means here.
+            guard live else { break }
+            player.stop()
+            startPlayback()
+            reveal()
         case "stop": if !finished { shutdown(); dismiss(animated: false) }
         default: break
         }
@@ -238,6 +260,10 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         let position = max(0, Double(player.time.intValue) / 1000)
         let duration = max(0, Double(player.media?.length.intValue ?? 0) / 1000)
         if duration > 0 { lastDuration = duration }
+        if live, let anchor = driftAnchor {
+            let elapsed = Date().timeIntervalSince(anchor)
+            liveDrift = max(0, driftBase + elapsed - position)
+        }
         let phase = tvmNativePhase(player.state)
         if phase != .ended {
             if position + 0.75 < lastGoodPosition {
@@ -298,7 +324,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     }
     private func emitState(buffering: Bool, hasFrame: Bool? = nil) {
         emit("state", ["position": lastPosition, "duration": lastDuration, "paused": !player.isPlaying,
-                       "buffering": buffering, "hasFrame": hasFrame ?? (sawPlayback || player.hasVideoOut)])
+                       "buffering": buffering, "hasFrame": hasFrame ?? (sawPlayback || player.hasVideoOut),
+                       "liveDrift": live ? liveDrift : 0])
     }
     private func emit(_ command: String, _ fields: [String: Any] = [:]) {
         var data = fields; data["id"] = sessionID; data["command"] = command; onEvent?(data)
