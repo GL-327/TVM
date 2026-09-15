@@ -1,0 +1,105 @@
+/*
+ * Access and donations.
+ *
+ * The donate block is deliberately fenced off from the prices: a different
+ * background, a rule above it, and a long way down the page, so it cannot be
+ * mistaken for the way to pay for a plan.
+ */
+
+.tier-current {
+  background: var(--tvm-surface);
+  border: 1px solid var(--tvm-border-soft);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.25rem;
+}
+
+.tier-current h2 { margin: 0.15rem 0 0.25rem; font-size: 1.05rem; overflow-wrap: anywhere; }
+.tier-current p { margin: 0; color: var(--tvm-text-muted); font-size: 0.9rem; }
+
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.tier-card {
+  background: var(--tvm-surface);
+  border: 1px solid var(--tvm-border-soft);
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+}
+
+.tier-card--mine { border-color: color-mix(in srgb, var(--tvm-accent) 55%, transparent); }
+
+.tier-card__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.tier-card__name { margin: 0 0 0.2rem; font-size: 1.1rem; }
+.tier-card__summary { margin: 0; font-size: 0.87rem; color: var(--tvm-text-muted); }
+
+.tier-card__price {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tier-card__price span { font-size: 0.78rem; font-weight: 400; color: var(--tvm-text-faint); }
+
+.tier-card__mine {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--tvm-accent);
+}
+
+.tier-card__list { margin: 0.9rem 0 0; padding-left: 1.1rem; }
+.tier-card__list li { margin-bottom: 0.3rem; font-size: 0.89rem; color: var(--tvm-text-muted); }
+
+.tier-card__terms {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--tvm-border-soft);
+}
+
+.tier-card__terms h3 { margin: 0 0 0.5rem; font-size: 0.78rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--tvm-text-faint); }
+.tier-card__terms ul { list-style: none; margin: 0; padding: 0; }
+.tier-card__terms li { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.75rem; padding: 0.35rem 0; font-size: 0.88rem; }
+.tier-card__term-price { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.tier-card__term-note { grid-column: 1 / -1; font-size: 0.78rem; color: var(--tvm-text-faint); }
+
+.tier-card__fineprint { margin: 0.75rem 0 0; font-size: 0.8rem; color: var(--tvm-text-faint); line-height: 1.45; }
+
+.tier-route {
+  background: color-mix(in srgb, var(--tvm-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tvm-accent) 35%, transparent);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 2.5rem;
+}
+
+.tier-route h2 { margin: 0 0 0.35rem; font-size: 1rem; }
+.tier-route p { margin: 0; font-size: 0.9rem; color: var(--tvm-text-muted); line-height: 1.5; }
+
+/* Fenced off from everything above it. */
+.tier-donate {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--tvm-border);
+}
+
+.tier-donate h2 { margin: 0 0 0.3rem; font-size: 1rem; }
+.tier-donate__lede { margin: 0 0 0.6rem; font-weight: 600; color: var(--tvm-text); }
+.tier-donate__detail { margin: 0 0 0.6rem; font-size: 0.88rem; color: var(--tvm-text-muted); line-height: 1.5; max-width: 42rem; }
+.tier-donate__refunds { margin: 0; font-size: 0.85rem; color: var(--tvm-text-faint); }
+.tier-donate--done { border-top: none; }
+
+.donate-amounts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.25rem 0; }
+
+@media (max-width: 620px) {
+  .tier-card { padding: 1rem; }
+  .tier-card__head { flex-direction: column; gap: 0.5rem; }
+  .tier-card__price { font-size: 1.2rem; }
+  .donate-amounts .tvm-button,
+  .tier-donate .tvm-button { flex: 1 1 8rem; min-height: 44px; }
+}
