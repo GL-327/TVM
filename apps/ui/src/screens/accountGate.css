@@ -108,6 +108,39 @@
 .gate-terms p { margin: 0 0 0.55rem; color: var(--tvm-text-muted); }
 .gate-terms__intro { color: var(--tvm-text); }
 
+/*
+ * The owner panel. Quiet on purpose: it sits below everything else, reads as
+ * administration rather than as a second way to sign in, and anyone who is not
+ * the owner should skip past it.
+ */
+.gate__owner {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--tvm-border-soft);
+}
+
+.gate__owner--open {
+  padding: 1rem;
+  border: 1px solid var(--tvm-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tvm-surface) 60%, transparent);
+}
+
+.gate__owner-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tvm-text-faint);
+}
+
+.gate__owner-lede {
+  margin: 0 0 0.9rem;
+  font-size: 0.85rem;
+  color: var(--tvm-text-muted);
+  line-height: 1.5;
+}
+
 .gate-prices { margin-top: 1.5rem; border-top: 1px solid var(--tvm-border-soft); padding-top: 1.1rem; }
 .gate-prices h2 { margin: 0 0 0.8rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tvm-text-faint); }
 
