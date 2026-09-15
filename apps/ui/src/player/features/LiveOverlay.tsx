@@ -36,7 +36,9 @@ export function liveOverlayPolicy(id: string, planSkipRecap: boolean): LiveOverl
       skipRecap: planSkipRecap,
       persistProgress: true,
       queue: true,
-      ads: true,
+      // No tier carries advertising any more: there is no free tier to fund
+      // with it, and access is arranged with the operator instead.
+      ads: false,
     };
   }
   return {
