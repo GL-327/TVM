@@ -207,7 +207,14 @@ final class TVMLocalCore {
         }
         if path == "/api/dev/status" && method == "GET" { return .json(200, ["unlocked": plans.developer()]) }
         if path == "/api/dev/unlock" && method == "POST" {
-            return .json(403, ["unlocked": false, "error": "Developer unlock is available on the desktop Core, not on this phone app."])
+            // The shared code is verified here rather than refused, so developer
+            // mode behaves the same on a phone as on the desktop Core.
+            let password = (json["password"] as? String) ?? ""
+            guard TVMDevUnlock.verify(password) else {
+                return .json(403, ["unlocked": false, "error": "That developer code was not recognised."])
+            }
+            plans.setDeveloper(true)
+            return .json(200, ["unlocked": true])
         }
         if path == "/api/dev/lock" && method == "POST" {
             plans.setDeveloper(false)

@@ -1,5 +1,5 @@
 const MESSAGES: Readonly<Record<string, string>> = {
-  'mobile-plan-required': 'Mobile viewing requires Basic, Premium, Ultra or MAX with at least 1080p. Open Settings → Plans to continue.',
+  'mobile-plan-required': 'Watching on a phone or tablet needs Premium, Ultra or MAX. Open Settings → Plans to upgrade.',
   'live-hls-required': 'This channel supplies raw MPEG-TS. Use an HLS (.m3u8) playlist from your provider, or connect to a home Core with FFmpeg.',
   'not-in-library': 'No playable stream was found. It may not be cached on Real-Debrid yet.',
   empty: 'Torrentio returned no streams for this title. Try another episode, or retry later.',

@@ -18,7 +18,7 @@ describe('mobile playback entitlement', () => {
       expect(denied.status).toBe(403);
       expect(await denied.json()).toMatchObject({ reason: 'mobile-plan-required' });
       expect((await fetch(`${base}/api/plan`, { headers })).status).toBe(200);
-      plans.checkout({ planId: 'basic', consent: true, requestId: 'mobile-upgrade-test' });
+      plans.checkout({ planId: 'premium', consent: true, requestId: 'mobile-upgrade-test' });
       const allowed = await fetch(`${base}/api/playback`, { method: 'POST', headers, body: JSON.stringify({ id: 'fixture' }) });
       expect(allowed.status).not.toBe(403);
       expect(await allowed.json()).not.toMatchObject({ reason: 'mobile-plan-required' });
@@ -32,10 +32,12 @@ describe('mobile playback entitlement', () => {
     for (const ua of ['TVM-iOS', 'TVM-Android', 'Mozilla iPhone']) {
       for (const path of ['/api/playback', '/api/stream/hls/session/index.m3u8', '/api/stream/direct/token']) {
         expect(mobilePlaybackBlocked(request(ua), path, { id: 'free', maxHeight: 720 })).toBe(true);
-        expect(mobilePlaybackBlocked(request(ua), path, { id: 'basic', maxHeight: 1080 })).toBe(false);
+        expect(mobilePlaybackBlocked(request(ua), path, { id: 'premium', maxHeight: 1080 })).toBe(false);
+        // Basic is a television and desktop tier now, not a phone one.
+        expect(mobilePlaybackBlocked(request(ua), path, { id: 'basic', maxHeight: 1080 })).toBe(true);
       }
       expect(mobilePlaybackBlocked(request(ua), '/api/plan', { id: 'free', maxHeight: 720 })).toBe(false);
-      expect(mobilePlaybackBlocked(request(ua), '/api/playback', { id: 'basic', maxHeight: 720 })).toBe(true);
+      expect(mobilePlaybackBlocked(request(ua), '/api/playback', { id: 'premium', maxHeight: 720 })).toBe(true);
     }
     expect(mobilePlaybackBlocked(request('Windows'), '/api/playback', { id: 'free', maxHeight: 720 })).toBe(false);
     expect(mobilePlaybackBlocked(request('Roku'), '/api/playback', { id: 'free', maxHeight: 720 })).toBe(false);
