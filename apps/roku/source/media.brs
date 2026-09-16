@@ -409,7 +409,7 @@ end function
 
 function tvmAppList() as Object
   return [
-    { id: "tvm-stream", name: "TVM Stream", wordmark: "TVM", accent: "0x5B3DFFFF", tile: "pkg:/images/apps/tvm-stream.png" }
+    { id: "tvm-stream", name: "TVM Stream", wordmark: "TVM", accent: "0x7C4DFFFF", tile: "pkg:/images/apps/tvm-stream.png" }
     { id: "netflix", name: "Netflix", wordmark: "NETFLIX", accent: "0xE50914FF", tile: "pkg:/images/apps/netflix.png" }
     { id: "prime", name: "Prime Video", wordmark: "prime video", accent: "0x00A8E1FF", tile: "pkg:/images/apps/prime.png" }
     { id: "max", name: "HBO Max", wordmark: "max", accent: "0x002BE7FF", tile: "pkg:/images/apps/max.png" }

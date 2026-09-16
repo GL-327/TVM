@@ -108,7 +108,7 @@ function tvmAppBrand(id as String) as Object
   key = LCase(id)
 
   if key = "tvm-stream"
-    b.plate = "0x5B3DFFFF"
+    b.plate = "0x7C4DFFFF"
     b.layout = "tvm"
     b.wordSize = 44
     b.mark = "pkg:/images/apps/marks/tvm-gem.png"
