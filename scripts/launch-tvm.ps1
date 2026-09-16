@@ -29,9 +29,17 @@ if (-not (Test-Http "http://127.0.0.1:7345/api/health")) {
     Write-Host "Starting TVM core..."
     $env:TVM_ENV = "development"
     $env:TVM_CORE_BIND = "127.0.0.1"
-    Start-Process -FilePath "node" -ArgumentList "--watch", "src/index.ts" -WorkingDirectory (Join-Path $repo "apps\core") -WindowStyle Hidden
+    $logDir = Join-Path $(if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }) "TVM\logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $coreOut = Join-Path $logDir "core.out.log"
+    $coreErr = Join-Path $logDir "core.err.log"
+    Start-Process -FilePath "node" -ArgumentList "--watch", "src/index.ts" -WorkingDirectory (Join-Path $repo "apps\core") -WindowStyle Hidden -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
     if (-not (Wait-Http "http://127.0.0.1:7345/api/health" 40)) {
-        throw "TVM core did not start on http://127.0.0.1:7345"
+        $tail = @()
+        if (Test-Path $coreErr) { $tail += Get-Content $coreErr -Tail 20 -ErrorAction SilentlyContinue }
+        if (Test-Path $coreOut) { $tail += Get-Content $coreOut -Tail 20 -ErrorAction SilentlyContinue }
+        $detail = if ($tail.Count -gt 0) { "`n" + ($tail -join "`n") } else { "" }
+        throw "TVM core did not start on http://127.0.0.1:7345$detail"
     }
 }
 

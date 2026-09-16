@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { BaseWindow, BrowserWindow } from 'electron';
 import { buildMpvArgs } from './mpv';
 import { ensureMpvExecutable } from './mpvInstall';
+import { nativeWindowIdFromHandle } from './nativeHandle';
 import {
   applyMpvProperty,
   initialMpvState,
@@ -30,9 +31,7 @@ export type NativePlayerEvent =
   | { type: 'error'; message: string };
 
 function nativeWindowId(window: BaseWindow): string {
-  const handle = window.getNativeWindowHandle();
-  if (process.platform === 'win32' && handle.byteLength >= 8) return handle.readBigUInt64LE(0).toString();
-  return handle.readUInt32LE(0).toString();
+  return nativeWindowIdFromHandle(window.getNativeWindowHandle());
 }
 
 function ipcPath(): string {

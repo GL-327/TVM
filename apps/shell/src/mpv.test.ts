@@ -33,6 +33,24 @@ describe('mpv launch', () => {
     );
   });
 
+  it('finds Homebrew and mpv.app on macOS, and the system binary on Linux', () => {
+    const macHome = '/Users/tvm';
+    const macEnv = { HOME: macHome };
+    expect(mpvInstallDir(macEnv, 'darwin')).toBe(join(macHome, 'Library', 'Application Support', 'TVM', 'mpv'));
+    expect(mpvCandidatePaths(macEnv, undefined, 'darwin')).toContain('/opt/homebrew/bin/mpv');
+    expect(mpvCandidatePaths(macEnv, undefined, 'darwin')).toContain('/Applications/mpv.app/Contents/MacOS/mpv');
+    expect(
+      resolveMpvExecutable(macEnv, undefined, 'darwin', (path) => path === '/opt/homebrew/bin/mpv'),
+    ).toBe('/opt/homebrew/bin/mpv');
+
+    const linuxEnv = { HOME: '/home/tvm', XDG_DATA_HOME: '/tmp/xdg' };
+    expect(mpvInstallDir(linuxEnv, 'linux')).toBe(join('/tmp/xdg', 'tvm', 'mpv'));
+    expect(mpvCandidatePaths(linuxEnv, undefined, 'linux')).toContain('/usr/bin/mpv');
+    expect(
+      resolveMpvExecutable(linuxEnv, undefined, 'linux', (path) => path === '/usr/bin/mpv'),
+    ).toBe('/usr/bin/mpv');
+  });
+
   it('finds a portable install under LocalAppData instead of spawning a bare mpv.exe', () => {
     const env = { LOCALAPPDATA: 'C:\\Users\\tvm\\AppData\\Local', USERPROFILE: 'C:\\Users\\tvm' };
     const portable = join(mpvInstallDir(env, 'win32'), 'mpv.exe');

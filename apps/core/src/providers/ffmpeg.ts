@@ -33,7 +33,7 @@ export type PlaybackDecision =
       scaleToHeight?: number;
     };
 
-export type H264Encoder = 'h264_nvenc' | 'h264_qsv' | 'h264_amf' | 'libx264';
+export type H264Encoder = 'h264_nvenc' | 'h264_qsv' | 'h264_amf' | 'h264_videotoolbox' | 'libx264';
 
 export interface FfmpegToolkit {
   available(): boolean;
@@ -43,7 +43,7 @@ export interface FfmpegToolkit {
   probe(url: string): Promise<MediaProbe | null>;
 }
 
-const HW_ENCODERS: H264Encoder[] = ['h264_nvenc', 'h264_qsv', 'h264_amf'];
+const HW_ENCODERS: H264Encoder[] = ['h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_videotoolbox'];
 
 /** Hardware encoders this build advertises, in preference order. */
 export function pickH264Encoders(encodersText: string): H264Encoder[] {
@@ -86,7 +86,15 @@ function candidatePaths(name: string, env: NodeJS.ProcessEnv): string[] {
     list.push(join(local, 'Microsoft', 'WinGet', 'Links', exe));
     list.push(...wingetFfmpegPaths(exe, local));
   } else {
-    list.push(`/usr/bin/${name}`, `/usr/local/bin/${name}`, `/opt/homebrew/bin/${name}`);
+    const home = env['HOME'] ?? homedir();
+    list.push(
+      `/usr/bin/${name}`,
+      `/usr/local/bin/${name}`,
+      `/opt/homebrew/bin/${name}`,
+      `/opt/homebrew/opt/ffmpeg/bin/${name}`,
+      `/opt/local/bin/${name}`,
+      join(home, '.local', 'bin', name),
+    );
   }
   return list;
 }
