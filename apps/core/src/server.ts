@@ -24,6 +24,9 @@ import { createAppsService, type AppsService } from './providers/apps.ts';
 import { createDevUnlockService, type DevUnlockService } from './providers/devUnlock.ts';
 import { createLiveService, type LiveProxyResult, type LiveService } from './providers/live.ts';
 import { probeContentLength } from './providers/hlsProxy.ts';
+// Server Side Live: the universal IPTV proxy. Registered under /api/live so it
+// inherits Core's content-route auth rather than defining its own.
+import { handleServerSideLive } from './Server Side Live/routes.ts';
 import { createMediaService, type MediaService } from './providers/media.ts';
 import {
   createPlanService,
@@ -669,6 +672,20 @@ async function handleApi(
       return true;
     }
     sendJson(response, 200, { items: media.removeFromWatchlist(body.id) });
+    return true;
+  }
+
+  if (
+    await handleServerSideLive(path, request, response, {
+      dataDir,
+      env,
+      sendJson,
+      readJson,
+      sendProxy: (res, result, verb) => sendLiveProxy(res, result as LiveProxyResult, verb),
+      cors: PROXY_CORS,
+      publicUrl: (relative) => `${mediaPublicOrigin(request.headers.host, listenPort)}${relative}`,
+    })
+  ) {
     return true;
   }
 
