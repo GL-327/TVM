@@ -27,6 +27,7 @@ export const PLAYBACK_ERROR_CASES = [
   'stalled',
   'native',
   'internal',
+  'off-air',
   'message',
 ] as const;
 
@@ -133,6 +134,16 @@ const COPY: Record<Exclude<PlaybackErrorKind, 'message'>, PlaybackErrorCopy> = {
     body: playbackErrorMessage('internal'),
     showPlans: false,
   },
+  /*
+   * A channel going off air is not a failure, and calling it one sends people
+   * to check their own setup over something that happened at the broadcaster.
+   */
+  'off-air': {
+    kind: 'off-air',
+    title: 'Channel off air',
+    body: 'This channel stopped broadcasting. Try it again, or choose another channel.',
+    showPlans: false,
+  },
 };
 
 function normalize(text: string): string {
@@ -220,6 +231,9 @@ export function describePlaybackError(
   }
   if (text.includes('playback failed inside') || text === 'internal' || text === 'internal_error') {
     return COPY.internal;
+  }
+  if (text.includes('stopped broadcasting')) {
+    return COPY['off-air'];
   }
 
   return {
