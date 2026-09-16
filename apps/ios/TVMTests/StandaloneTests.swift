@@ -541,3 +541,192 @@ final class MockPlaybackProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 }
+
+/**
+ * The phone's account rules.
+ *
+ * The iPhone build runs its own embedded core, so the gate in front of
+ * everything is answered here rather than by a desktop. The desktop equivalent
+ * has had tests since it was written; this had none, which is the wrong way
+ * round, because the rules that matter most are the ones about who gets in.
+ *
+ * Each test names the rule it protects rather than the method it calls: the
+ * point is that this, the Kotlin port and the TypeScript core agree.
+ */
+final class TVMAccountsTests: XCTestCase {
+    private var roots: [URL] = []
+    private let password = "a good long password"
+
+    override func tearDown() {
+        for root in roots { try? FileManager.default.removeItem(at: root) }
+        roots.removeAll()
+        super.tearDown()
+    }
+
+    private func makeAccounts() -> (TVMAccounts, URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-accounts-\(UUID().uuidString)")
+        roots.append(root)
+        return (TVMAccounts(store: TVMStore(root: root)), root)
+    }
+
+    @discardableResult
+    private func register(_ accounts: TVMAccounts, email: String = "someone@example.com") throws -> String {
+        let made = try accounts.register(email: email, password: password, displayName: "Someone", client: "test").get()
+        return try XCTUnwrap(made["id"] as? String)
+    }
+
+    private func token(_ accounts: TVMAccounts, email: String = "someone@example.com") throws -> String {
+        let signedIn = try accounts.signIn(email: email, password: password, client: "test").get()
+        return try XCTUnwrap(signedIn["token"] as? String)
+    }
+
+    func testAccountStartsInertAndGrantsNothing() throws {
+        let (accounts, _) = makeAccounts()
+        let made = try accounts.register(email: "someone@example.com", password: password, displayName: "Someone", client: "test").get()
+        XCTAssertEqual(made["activated"] as? Bool, false)
+        XCTAssertNil(made["tier"] as? String)
+
+        let signedIn = try accounts.signIn(email: "someone@example.com", password: password, client: "test").get()
+        let usable = try XCTUnwrap(signedIn["usable"] as? [String: Any])
+        XCTAssertEqual(usable["ok"] as? Bool, false)
+        XCTAssertEqual(usable["reason"] as? String, "awaiting_activation")
+    }
+
+    func testActivationAloneIsNotEnoughTheTermsStillHaveToBeAgreed() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        XCTAssertNotNil(accounts.activate(id: id, tier: "stream-live", note: nil))
+
+        let version = TVMAccounts.termsVersion()
+        let waiting = TVMAccounts.usable(accounts.resolve(token: try token(accounts)), termsVersion: version)
+        XCTAssertEqual(waiting["reason"] as? String, "terms_required")
+
+        _ = accounts.acceptTerms(id: id)
+        let allowed = TVMAccounts.usable(accounts.resolve(token: try token(accounts)), termsVersion: version)
+        XCTAssertEqual(allowed["ok"] as? Bool, true)
+    }
+
+    func testWrongPasswordAndMissingAccountAnswerIdentically() throws {
+        let (accounts, _) = makeAccounts()
+        try register(accounts)
+
+        var wrongPassword: String?
+        var noSuchAccount: String?
+        if case .failure(let error) = accounts.signIn(email: "someone@example.com", password: "not the password", client: "test") {
+            wrongPassword = error.message
+        }
+        if case .failure(let error) = accounts.signIn(email: "nobody@example.com", password: "not the password", client: "test") {
+            noSuchAccount = error.message
+        }
+        XCTAssertNotNil(wrongPassword)
+        XCTAssertEqual(wrongPassword, noSuchAccount)
+    }
+
+    func testSigningUpTwiceSaysNothingAboutWhetherTheAddressIsTaken() throws {
+        let (accounts, _) = makeAccounts()
+        try register(accounts)
+
+        guard case .failure(let error) = accounts.register(email: "someone@example.com", password: "a different long password", displayName: nil, client: nil) else {
+            return XCTFail("a duplicate address must not be accepted")
+        }
+        XCTAssertFalse(error.message.contains("already registered"))
+        XCTAssertFalse(error.message.contains("taken"))
+        XCTAssertTrue(error.message.contains("could not be created"))
+    }
+
+    func testNothingOnDiskCanProduceThePasswordAndSaltsAreNeverShared() throws {
+        let (accounts, root) = makeAccounts()
+        try register(accounts, email: "one@example.com")
+        try register(accounts, email: "two@example.com")
+
+        let ledger = try String(contentsOf: root.appendingPathComponent("accounts.json"), encoding: .utf8)
+        XCTAssertFalse(ledger.contains(password))
+
+        let parsed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(ledger.utf8)) as? [String: Any])
+        let rows = try XCTUnwrap(parsed["accounts"] as? [[String: Any]])
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertNotEqual(rows[0]["passwordSalt"] as? String, rows[1]["passwordSalt"] as? String)
+        // Same password, different salt, so the digests have to differ too.
+        XCTAssertNotEqual(rows[0]["passwordHash"] as? String, rows[1]["passwordHash"] as? String)
+    }
+
+    func testTheOwnerListingNeverCarriesTheDigestOrTheSalt() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        _ = accounts.activate(id: id, tier: "stream", note: nil)
+
+        let listed = try XCTUnwrap(accounts.list(search: nil, state: nil)["accounts"] as? [[String: Any]])
+        let first = try XCTUnwrap(listed.first)
+        XCTAssertNil(first["passwordHash"])
+        XCTAssertNil(first["passwordSalt"])
+    }
+
+    func testATokenStopsWorkingTheMomentItIsSignedOut() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        _ = accounts.activate(id: id, tier: "stream", note: nil)
+        _ = accounts.acceptTerms(id: id)
+
+        let live = try token(accounts)
+        XCTAssertNotNil(accounts.resolve(token: live))
+        accounts.signOut(token: live)
+        XCTAssertNil(accounts.resolve(token: live))
+    }
+
+    func testSuspendingCutsLiveSessionsRatherThanWaitingForThemToLapse() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        _ = accounts.activate(id: id, tier: "stream", note: nil)
+        _ = accounts.acceptTerms(id: id)
+
+        let live = try token(accounts)
+        XCTAssertNotNil(accounts.resolve(token: live))
+        _ = accounts.setSuspended(id: id, suspended: true)
+        XCTAssertNil(accounts.resolve(token: live))
+    }
+
+    func testErasingTakesTheAccountAndItsSessionsTogether() throws {
+        let (accounts, root) = makeAccounts()
+        let id = try register(accounts)
+        _ = accounts.activate(id: id, tier: "stream", note: nil)
+        _ = accounts.acceptTerms(id: id)
+        let live = try token(accounts)
+
+        accounts.erase(id: id)
+        XCTAssertNil(accounts.resolve(token: live))
+        XCTAssertEqual((accounts.list(search: nil, state: nil)["accounts"] as? [[String: Any]])?.count, 0)
+        let ledger = try String(contentsOf: root.appendingPathComponent("accounts.json"), encoding: .utf8)
+        XCTAssertFalse(ledger.contains("someone@example.com"))
+    }
+
+    func testOnlyTheTwoRealTiersCanBeGranted() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        XCTAssertNil(accounts.activate(id: id, tier: "free", note: nil))
+        XCTAssertNil(accounts.activate(id: id, tier: "premium", note: nil))
+        XCTAssertNotNil(accounts.activate(id: id, tier: "stream", note: nil))
+        XCTAssertNotNil(accounts.activate(id: id, tier: "stream-live", note: nil))
+    }
+
+    func testTermsAgreedToAnOlderVersionDoNotCarryOver() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        _ = accounts.activate(id: id, tier: "stream", note: nil)
+        _ = accounts.acceptTerms(id: id)
+
+        let account = accounts.resolve(token: try token(accounts))
+        XCTAssertEqual(TVMAccounts.usable(account, termsVersion: TVMAccounts.termsVersion())["ok"] as? Bool, true)
+        // The same account, judged by a build carrying newer terms.
+        XCTAssertEqual(TVMAccounts.usable(account, termsVersion: "2099-01-01")["reason"] as? String, "terms_required")
+    }
+
+    func testAPasswordBelowTenCharactersIsRefused() throws {
+        let (accounts, _) = makeAccounts()
+        if case .success = accounts.register(email: "someone@example.com", password: "short", displayName: nil, client: nil) {
+            XCTFail("a five character password must not be accepted")
+        }
+        if case .failure(let error) = accounts.register(email: "someone@example.com", password: "0123456789", displayName: nil, client: nil) {
+            XCTFail("ten characters is the documented minimum: \(error.message)")
+        }
+    }
+}
