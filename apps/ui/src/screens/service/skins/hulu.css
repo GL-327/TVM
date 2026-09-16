@@ -374,3 +374,20 @@
 .hulu-hub__skeleton {
   min-height: 70vh;
 }
+
+/*
+ * Phone: the rail was taking nearly half the screen, and what was left could
+ * not hold the play button's min-width — the hub's primary action sat past the
+ * right edge with nothing to scroll. The rail gives some width back and the
+ * buttons are allowed to shrink to what remains.
+ */
+@media (max-width: 560px) {
+  .hulu-hub {
+    --hulu-rail: 7.4rem;
+  }
+
+  .hulu-hub .tvm-button.hulu-hub__play,
+  .hulu-hub .tvm-button.hulu-hub__more {
+    min-width: 0;
+  }
+}
