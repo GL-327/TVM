@@ -522,7 +522,14 @@ const css = `
   background: color-mix(in srgb, var(--tvm-surface-glass, rgba(28, 28, 28, 0.78)) 88%, #000);
   box-shadow: var(--tvm-shadow-card, 0 0.8rem 2rem rgba(0, 0, 0, 0.55));
   color: var(--tvm-text, #f5f5f5);
-  backdrop-filter: blur(12px);
+  /*
+   * Frost is a theme decision, not this overlay's. --player-chip-filter is
+   * "none" for every theme shipped (see player-chrome.css): blurring live
+   * video is per-frame GPU work on the one surface where smoothness matters
+   * most, and the fill below is already opaque enough to read against.
+   */
+  -webkit-backdrop-filter: var(--player-chip-filter, none);
+  backdrop-filter: var(--player-chip-filter, none);
 }
 .player-trickplay__thumb {
   flex: 0 0 auto;

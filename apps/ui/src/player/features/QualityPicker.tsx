@@ -375,7 +375,14 @@ const QUALITY_CSS = `
   border-radius: 0.7rem;
   background: color-mix(in srgb, #0b0b0b, transparent 12%);
   box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(16px);
+  /*
+   * Frost is a theme decision, not this overlay's. --player-chip-filter is
+   * "none" for every theme shipped (see player-chrome.css): blurring live
+   * video is per-frame GPU work on the one surface where smoothness matters
+   * most, and the fill below is already opaque enough to read against.
+   */
+  -webkit-backdrop-filter: var(--player-chip-filter, none);
+  backdrop-filter: var(--player-chip-filter, none);
 }
 .player-quality__heading {
   margin: 0 0.2rem 0.15rem;

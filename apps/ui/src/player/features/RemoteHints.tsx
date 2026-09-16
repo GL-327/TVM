@@ -260,12 +260,18 @@ const REMOTE_HINTS_CSS = `
   border-radius: var(--tvm-radius-pill, 999rem);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 46%),
-    color-mix(in srgb, var(--tvm-bg-deep, #000) 42%, transparent);
+    color-mix(in srgb, var(--tvm-bg-deep, #000) 76%, transparent);
   box-shadow:
     0 0.55rem 1.6rem rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  -webkit-backdrop-filter: blur(0.85rem) saturate(1.15);
-  backdrop-filter: blur(0.85rem) saturate(1.15);
+  /*
+   * Frost is a theme decision, not this overlay's. --player-chip-filter is
+   * "none" for every theme shipped (see player-chrome.css): blurring live
+   * video is per-frame GPU work on the one surface where smoothness matters
+   * most, and the fill below is already opaque enough to read against.
+   */
+  -webkit-backdrop-filter: var(--player-chip-filter, none);
+  backdrop-filter: var(--player-chip-filter, none);
 }
 
 .player-remote-hints__lesson {
