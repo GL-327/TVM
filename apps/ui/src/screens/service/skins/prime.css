@@ -248,6 +248,8 @@
 }
 
 .prime-hub__actions {
+  /* Wraps so the last action cannot fall off a phone screen. */
+  flex-wrap: wrap;
   gap: 0.7rem;
 }
 

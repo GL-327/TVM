@@ -68,7 +68,16 @@
   justify-content: center;
   contain: layout style;
   min-height: var(--dplus-nav-h);
-  padding: 0.7rem 1.4rem 0.35rem;
+  /*
+   * The side padding is reserving room for Back, which is positioned absolutely
+   * at the left edge and therefore takes no space of its own. On a phone the
+   * tab strip grew into that space and covered it: elementFromPoint over the
+   * Back button returned a tab, so the only way off the hub was unclickable.
+   *
+   * Symmetric, so the strip stays centred on a wide screen where it is far
+   * narrower than the bar and the padding costs nothing.
+   */
+  padding: 0.7rem 5.5rem 0.35rem;
   background: linear-gradient(180deg, rgba(4, 7, 20, 0.94) 0%, rgba(4, 7, 20, 0.22) 78%, transparent);
 }
 
@@ -79,16 +88,54 @@
   color: #fff;
 }
 
+/*
+ * The wordmark steps aside on a phone.
+ *
+ * Back and the wordmark are both positioned absolutely at fixed offsets, so
+ * neither yields as the bar narrows — and the tab strip, which does have to
+ * grow, ran straight through the wordmark. The two were printed on top of each
+ * other, which is how it looked.
+ *
+ * There is one row of space and the tabs are the part you navigate with, so
+ * they get it. Nothing is lost: the hub is unmistakably Disney+ from the
+ * artwork filling the screen behind it.
+ */
+@media (max-width: 560px) {
+  .dplus-nav__brand {
+    display: none;
+  }
+}
+
 .dplus-mark {
   width: 8.8rem;
   height: 1.8rem;
 }
 
+/*
+ * The tab strip has to be reachable on a phone.
+ *
+ * Six tabs need 536px; a phone has 390. Centred, that put Home at -73px and
+ * Originals past the right edge, and .service clips rather than scrolls — so
+ * both ends were simply gone, with nothing to drag. Same trap as a centred
+ * dialog taller than its window: centring keeps centring once the content no
+ * longer fits, and pushes the start of it out of reach.
+ *
+ * min-width lets the strip shrink to the bar instead of overflowing it, the
+ * strip then scrolls itself, and safe centring keeps the tabs centred while
+ * they fit and falls back to start alignment when they do not. overflow-y is
+ * hidden deliberately: a visible axis beside a scrolling one computes to auto
+ * and turns this into a vertical scroller too.
+ */
 .dplus-nav__tabs {
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: safe center;
   gap: 0.82rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
 .dplus-hub .tvm-button.dplus-back {
@@ -313,6 +360,8 @@
 }
 
 .dplus-hero__actions {
+  /* Wraps so the last action cannot fall off a phone screen. */
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 0.7rem;
