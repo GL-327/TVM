@@ -17,6 +17,25 @@ describe('profiles', () => {
     return dir;
   }
 
+  /*
+   * The first profile a fresh install makes used to be crimson: the one colour
+   * the palette reserves for failure, on the screen that greets a new viewer,
+   * in an app whose signature is violet.
+   */
+  it('gives the first profile the brand colour, and never the failure red', async () => {
+    const profiles = createProfileService(await dataDir());
+    const first = profiles.list().profiles[0];
+    expect(first).toBeDefined();
+    // #7c4dff, the signature in palette.css, is hue 256.
+    expect(first!.hue).toBe(256);
+
+    for (let i = 1; i < MAX_PROFILES; i += 1) profiles.create(`Person ${i}`);
+    for (const profile of profiles.list().profiles) {
+      // Red is reserved for things going wrong.
+      expect(profile.hue < 340 && profile.hue > 20).toBe(true);
+    }
+  });
+
   it('creates a default profile and migrates leftover progress', async () => {
     const dir = await dataDir();
     await writeFile(join(dir, 'progress.json'), JSON.stringify({ 'rd:1': { position: 90, duration: 3600, updated: '2026-01-01' } }));

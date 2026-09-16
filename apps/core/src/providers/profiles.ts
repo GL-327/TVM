@@ -18,7 +18,20 @@ export interface ProfileRegistry {
   profiles: Profile[];
 }
 
-const HUES = [350, 220, 140, 32, 280];
+/*
+ * Profile colours, starting on the brand.
+ *
+ * The first hue was 350 — crimson — so the one profile a fresh install
+ * creates was red: the single colour the palette reserves for failure, on the
+ * screen that greets a new viewer, in an app whose signature is violet. The
+ * list now opens on that signature (#7c4dff is hue 256) and the rest are
+ * spaced far enough apart to tell people apart at a glance, with red left out
+ * so a profile never reads as an error.
+ *
+ * Existing profiles keep the hue they were stored with; this only decides what
+ * a new one gets.
+ */
+const HUES = [256, 190, 145, 38, 315];
 
 function defaultProfile(index = 0): Profile {
   return {
