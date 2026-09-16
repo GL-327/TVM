@@ -23,7 +23,13 @@ data class ProfileRegistry(var activeId: String, val profiles: MutableList<Profi
 
 class TvmStore(private val root: File) {
     private val monitor = Any()
-    private val hues: List<Int> = listOf(350, 220, 140, 32, 280)
+    /*
+     * Profile colours, starting on the brand, matching apps/core/src/providers/profiles.ts.
+     * The first hue was 350 — crimson — so the one profile a fresh install creates was
+     * red: the colour the palette reserves for failure, on the screen that greets a new
+     * viewer, in an app whose signature is violet (#7c4dff, hue 256). Red is left out.
+     */
+    private val hues: List<Int> = listOf(256, 190, 145, 38, 315)
 
     init {
         synchronized(monitor) {
