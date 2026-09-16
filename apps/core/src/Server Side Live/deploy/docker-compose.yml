@@ -1,0 +1,68 @@
+# TVM Core with Server Side Live.
+#
+# Host networking, deliberately. Core has to be reachable on the LAN at
+# :7345 for Roku and phones, and bridge networking plus published ports adds a
+# NAT hop that the VPN work in vpn-egress.md then has to route replies back
+# through. Keeping Core on the host means the LAN path is the same one it has
+# always been, and the tunnel never comes near it.
+#
+# The VPN is NOT a sidecar here. Egress goes through a proxy in its own network
+# namespace on the host (see tvm-egress-netns.sh), so a tunnel outage can take
+# Live TV down and nothing else — not the container, not LAN ingress, not the
+# friend's other services. See vpn-egress.md for why that beats
+# network_mode: service:vpn for this particular app.
+
+services:
+  core:
+    image: node:22-bookworm-slim
+    container_name: tvm-core
+    working_dir: /app
+    command: ["node", "apps/core/src/index.ts"]
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./:/app:ro
+      # The sealed credential store, the token secret and the channel list.
+      # Must persist: losing it rotates every proxy URL and forgets the panel.
+      - tvm-data:/var/lib/tvm
+    environment:
+      TVM_ENV: production
+      TVM_DATA_DIR: /var/lib/tvm
+
+      # LAN ingress. Both are required together: binding 0.0.0.0 without a
+      # token would expose Core to the whole network, and Core refuses to.
+      TVM_CORE_BIND: "0.0.0.0"
+      TVM_CORE_PORT: "7345"
+      TVM_LAN_TOKEN: "${TVM_LAN_TOKEN:?set a 32+ character token in .env}"
+
+      # Egress through the VPN namespace proxy. NO_PROXY is not optional: it is
+      # what keeps loopback and the LAN off the tunnel.
+      NODE_USE_ENV_PROXY: "1"
+      HTTP_PROXY: "http://127.0.0.1:8888"
+      HTTPS_PROXY: "http://127.0.0.1:8888"
+      NO_PROXY: "127.0.0.1,localhost,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+      TVM_LIVE_EGRESS_PROXY: "http://127.0.0.1:8888"
+
+      # Server Side Live. Header defaults are fallbacks only — a playlist's own
+      # #EXTVLCOPT / #EXTHTTP lines win per channel.
+      TVM_LIVE_USER_AGENT: "${TVM_LIVE_USER_AGENT:-VLC/3.0.20 LibVLC/3.0.20}"
+      TVM_LIVE_REFERER: "${TVM_LIVE_REFERER:-}"
+      TVM_LIVE_ORIGIN: "${TVM_LIVE_ORIGIN:-}"
+      # A panel cookie is a credential. It comes from .env, never from a file
+      # in the repo.
+      TVM_LIVE_COOKIE: "${TVM_LIVE_COOKIE:-}"
+
+      # 32GB of RAM on this box, so the cache is worth having. Manifest TTL
+      # stays low — a live window slides, and a stale playlist stalls a player.
+      TVM_LIVE_CACHE_MANIFEST_MS: "2000"
+      TVM_LIVE_CACHE_SEGMENT_MS: "30000"
+      TVM_LIVE_CACHE_TOTAL_BYTES: "1073741824"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7345/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  tvm-data:
