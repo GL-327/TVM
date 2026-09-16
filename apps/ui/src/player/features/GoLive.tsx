@@ -94,7 +94,14 @@ export const GO_LIVE_CSS = `
   font: inherit;
   font-size: 0.95rem;
   cursor: pointer;
-  backdrop-filter: blur(8px);
+  /*
+   * Frost is a theme decision, not this overlay's. --player-chip-filter is
+   * "none" for every theme shipped (see player-chrome.css): blurring live
+   * video is per-frame GPU work on the one surface where smoothness matters
+   * most, and the fill below is already opaque enough to read against.
+   */
+  -webkit-backdrop-filter: var(--player-chip-filter, none);
+  backdrop-filter: var(--player-chip-filter, none);
   transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
 }
 

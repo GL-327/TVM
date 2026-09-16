@@ -173,6 +173,25 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           },
           onFirstFrame: () => setHasFrame(true),
           onEnded: () => {
+            /*
+             * A live channel that ends did not finish; it stopped.
+             *
+             * Treating the two the same closed the player and dropped the
+             * viewer back on the channel list with no explanation, which reads
+             * as a crash. It is reachable today: pressing "Back to live" lands
+             * three seconds short of the edge, and if the feed is not actually
+             * advancing — an off-air channel, a dead upstream, or a provider
+             * serving a finite file as a channel — those three seconds run out
+             * and the stream ends.
+             *
+             * Say so and stay put, so the viewer can retry the channel or pick
+             * another one instead of guessing what happened.
+             */
+            if (live) {
+              setBuffering(false);
+              setError('This channel stopped broadcasting. Try it again, or choose another channel.');
+              return;
+            }
             persist(durationRef.current, durationRef.current);
             navigate.pop();
           },

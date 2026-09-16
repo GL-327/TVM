@@ -166,11 +166,30 @@
   margin-top: 0.7rem;
 }
 
+/*
+ * Legible over the artwork, not only over the gradient.
+ *
+ * The wash behind the hero fades out at a percentage of the frame while this
+ * column is an absolute 54ch that starts after the poster, so the two part
+ * company as the window narrows and the last words end up on bare backdrop.
+ * On The Dark Knight that is a wall of fire, and 78% white with no shadow
+ * stopped being readable there.
+ *
+ * The shadow is the fix rather than more gradient: it travels with the text at
+ * every width and on every theme, it is what the title beside it already does,
+ * and it paints once instead of per frame. The ink comes up to meet it.
+ */
 .details .stage__synopsis {
   margin: 0.9rem 0 0;
   max-width: 54ch;
-  color: rgba(245, 245, 247, 0.78);
+  color: rgba(245, 245, 247, 0.92);
+  text-shadow: 0 0.08rem 0.4rem rgba(0, 0, 0, 0.72);
   -webkit-line-clamp: 3;
+}
+
+/* The same column, the same problem: year, runtime and genres sit on artwork. */
+.details .stage__meta {
+  text-shadow: 0 0.08rem 0.4rem rgba(0, 0, 0, 0.72);
 }
 
 .details .hero__actions,
