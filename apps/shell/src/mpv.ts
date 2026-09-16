@@ -66,6 +66,11 @@ export function mpvInstallDir(
     return join(root, 'TVM', 'mpv');
   }
   const home = env['HOME'] ?? '';
+  if (platform === 'darwin') {
+    return join(home, 'Library', 'Application Support', 'TVM', 'mpv');
+  }
+  const xdg = env['XDG_DATA_HOME'];
+  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'tvm', 'mpv');
   return join(home, '.local', 'share', 'tvm', 'mpv');
 }
 
@@ -134,8 +139,15 @@ export function mpvCandidatePaths(
         // WinGet is optional.
       }
     }
+  } else if (platform === 'darwin') {
+    paths.push(
+      '/opt/homebrew/bin/mpv',
+      '/usr/local/bin/mpv',
+      '/opt/local/bin/mpv',
+      '/Applications/mpv.app/Contents/MacOS/mpv',
+    );
   } else {
-    paths.push('/usr/bin/mpv', '/usr/local/bin/mpv', '/opt/homebrew/bin/mpv');
+    paths.push('/usr/bin/mpv', '/usr/local/bin/mpv', '/snap/bin/mpv');
   }
 
   for (const dir of pathDirs(env)) {

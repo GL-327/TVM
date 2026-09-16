@@ -63,6 +63,7 @@ const ENCODER_ARGS: Record<H264Encoder, string[]> = {
   h264_nvenc: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '22', '-b:v', '0', '-profile:v', 'high', '-forced-idr', '1'],
   h264_qsv: ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '22', '-forced_idr', '1'],
   h264_amf: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '21', '-qp_p', '23'],
+  h264_videotoolbox: ['-c:v', 'h264_videotoolbox', '-b:v', '8M', '-allow_sw', '1', '-realtime', '1', '-profile:v', 'high'],
 };
 
 export function hlsArgs(input: OpenSessionInput, _outDir: string, encoder: H264Encoder = 'libx264'): string[] {

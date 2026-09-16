@@ -69,11 +69,13 @@ export function cacheOptions(env: NodeJS.ProcessEnv = process.env): CacheOptions
 export class LiveCache {
   private readonly entries = new Map<string, CacheEntry>();
   private bytes = 0;
+  private readonly options: CacheOptions;
+  private readonly now: () => number;
 
-  constructor(
-    private readonly options: CacheOptions = DEFAULT_CACHE,
-    private readonly now: () => number = Date.now,
-  ) {}
+  constructor(options: CacheOptions = DEFAULT_CACHE, now: () => number = Date.now) {
+    this.options = options;
+    this.now = now;
+  }
 
   get(key: string): CacheEntry | null {
     const entry = this.entries.get(key);

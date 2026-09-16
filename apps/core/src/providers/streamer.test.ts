@@ -134,6 +134,9 @@ describe('hls session arguments', () => {
     const hw = hlsArgs({ ...base, decision: encode }, '/tmp/out', 'h264_nvenc');
     expect(hw[hw.indexOf('-c:v') + 1]).toBe('h264_nvenc');
     expect(hw.indexOf('-hwaccel')).toBeLessThan(hw.indexOf('-i'));
+    const mac = hlsArgs({ ...base, decision: encode }, '/tmp/out', 'h264_videotoolbox');
+    expect(mac[mac.indexOf('-c:v') + 1]).toBe('h264_videotoolbox');
+    expect(mac).toContain('-allow_sw');
     const remux = hlsArgs({ ...base, decision: { mode: 'hls', video: 'copy', audio: 'copy' } }, '/tmp/out', 'h264_nvenc');
     expect(remux).not.toContain('-hwaccel');
   });
@@ -143,6 +146,7 @@ describe('h264 encoder selection', () => {
   it('lists advertised GPU encoders in preference order', () => {
     expect(pickH264Encoders('V. h264_qsv  V. h264_nvenc  V. libx264')).toEqual(['h264_nvenc', 'h264_qsv']);
     expect(pickH264Encoders('V. h264_amf  V. libx264')).toEqual(['h264_amf']);
+    expect(pickH264Encoders('V. h264_videotoolbox  V. libx264')).toEqual(['h264_videotoolbox']);
     expect(pickH264Encoders('V. libx264 only')).toEqual([]);
   });
 });

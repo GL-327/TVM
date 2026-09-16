@@ -13,7 +13,7 @@ already subscribe to, behind one home screen.
 | --- | --- |
 | `apps/ui` | React interface, built for a ten-foot viewing distance |
 | `apps/core` | Local service on `127.0.0.1` by default. Owns all business logic, and serves the interface in production |
-| `apps/shell` | Electron kiosk window for the Windows SKU |
+| `apps/shell` | Electron kiosk window (Windows, Linux, macOS) |
 | `apps/roku` | Roku SceneGraph source. Talks to Core over HTTP on the LAN with a bearer token. No physical Roku has been accepted; see [apps/roku/README.md](apps/roku/README.md) |
 | `apps/ios` | Standalone iPhone app: bundled `apps/ui` + on-device Core. No PC or LAN token required. IPA is CI/Mac only and is not App Store signed. See [apps/ios/README.md](apps/ios/README.md) |
 | `apps/android` | Kotlin WebView client source. Same LAN Bearer + `tvm_lan_session` contract as iOS. Debug APK is local/CI only (gitignored); not Play. See [apps/android/README.md](apps/android/README.md) |
@@ -29,10 +29,19 @@ over `/api`, and core talks to everything else.
 
 - Node.js 22 or newer
 - pnpm 11, via corepack: `corepack enable pnpm`
+- **Linux / macOS:** `curl`, plus `ffmpeg` and `mpv` for transcodes and native playback. See [docs/DESKTOP.md](docs/DESKTOP.md).
 
 On Windows, `corepack enable` writes into `C:\Program Files\nodejs` and needs an
 elevated terminal. Without it, prefix commands with `corepack`, as in
 `corepack pnpm install`.
+
+On Linux and macOS:
+
+```bash
+chmod +x TVM.sh TVM-windowed.sh scripts/*.sh
+./scripts/setup-desktop.sh --with-media
+./TVM-windowed.sh
+```
 
 ## Commands
 
@@ -56,7 +65,7 @@ Useful environment variables:
 | `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. LAN clients require bearer authentication; see the testing guide |
 | `TVM_LAN_TOKEN` | At least 32 characters for authenticated LAN clients; never place it in the UI bundle. Admin, billing and privacy routes stay local |
 | `TVM_UI_URL` | Origin the shell loads |
-| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd`, `Desktop/TVM.cmd`, and the Desktop copies set this; `TVM.cmd` does not |
+| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd` / `TVM-windowed.sh`, `Desktop/TVM.cmd`, and the Desktop copies set this; `TVM.cmd` / `TVM.sh` do not |
 | `TVM_ENV=production` | Shell loads the interface from core. Apply for GitHub app updates is allowed; core hops to the applied bundle on restart |
 | `TVM_GITHUB_TOKEN` | Optional private-fork only. The public `GL-327/TVM` feed needs no token and no GitHub login on any device |
 | `TVM_UPDATE_REPO` | Optional. `owner/name` override for the app update channel. Default `GL-327/TVM` |
@@ -119,18 +128,21 @@ apps/android/
 
 ## Laptop / Desktop copies
 
-The living-room launcher (`TVM.cmd`) is a fullscreen kiosk. For a laptop, use the windowed copies:
+The living-room launcher (`TVM.cmd` / `TVM.sh`) is a fullscreen kiosk. For a laptop, use the windowed copies:
 
 | Copy | How to run |
 | --- | --- |
-| Desktop app (windowed) | `Desktop/TVM.cmd` (Windows) or `Desktop/TVM.sh` (Linux/macOS) |
-| Roku preview + zip | `Desktop/TVM-roku.cmd` or `Desktop/TVM-roku.sh` |
+| Desktop app (windowed) | `Desktop/TVM.cmd` (Windows) or `./TVM-windowed.sh` (Linux/macOS). Finder: `TVM-windowed.command` |
+| Roku preview + zip | `TVM-roku.cmd` (Windows) or `./TVM-roku.sh` (Linux/macOS) |
 
-Double-click `Install-to-Desktop.cmd` (or run `scripts/copy-to-desktop.sh`) to put **both** the windowed desktop app and the Roku sideload zip on your Desktop:
+Double-click `Install-to-Desktop.cmd` (or run `./Install-to-Desktop.sh`) to put **both** the windowed desktop app and the Roku sideload zip on your Desktop:
 
 - `TVM.cmd` / `TVM.sh` — window sized to the laptop work area, mouse cursor visible
+- `TVM.command` — same windowed start, double-click in macOS Finder
 - `TVM Roku.cmd` / `TVM-roku.sh` — TV-frame preview of the same UI
 - `TVM-roku.zip` — sideload onto a developer-mode Roku
+
+Linux and macOS setup, package names, and the GitHub desktop tarball: [docs/DESKTOP.md](docs/DESKTOP.md).
 
 ## The appliance
 
@@ -148,7 +160,7 @@ flash kit onto D:.
 - **Core binds `127.0.0.1` by default.** It holds credentials, so the appliance
   and production Electron SKU never expose it. A Roku, iPhone or Android phone
   on the LAN needs `TVM_CORE_BIND=0.0.0.0` and `TVM_LAN_TOKEN`; laptop
-  launchers do not, so Windows never asks to allow Node on Wi-Fi.
+  launchers do not.
 - **No torrent indexing, magnet search or scraping.** Real-Debrid is a client
   for files the user already owns and links the user supplies, not a search
   engine.
