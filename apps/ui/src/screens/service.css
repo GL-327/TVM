@@ -35,6 +35,29 @@
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.12));
 }
 
+/*
+ * The bar has to be reachable on a phone.
+ *
+ * Every hub puts Back, the wordmark and the tabs in one nowrap row. On the
+ * Netflix hub that row needs 752px; a phone has 390, the row does not wrap, and
+ * .service clips rather than scrolls — so TV Shows, Movies, New & Popular, My
+ * List, search and the profile button were all simply gone, with nothing to
+ * drag. Six controls, on the screen you reach by opening any service.
+ *
+ * Scoped to data-wrap="row", the flag the markup already sets for a top bar, so
+ * the Prime sidebar keeps its own behaviour. overflow-y is left alone on
+ * purpose: naming it hidden would clip the hubs whose rail runs vertically, and
+ * letting it resolve alongside overflow-x costs nothing when the content fits.
+ */
+.service-nav[data-wrap='row'] {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.service-nav[data-wrap='row']::-webkit-scrollbar {
+  display: none;
+}
+
 .service-nav__tabs {
   display: flex;
   gap: 0.35rem;
@@ -152,8 +175,17 @@
   overflow: hidden;
 }
 
+/*
+ * Three buttons, one line, no wrap: on a phone the third one ran off the edge.
+ * Play, More Info and My List needed 374px inside a 323px column, so My List
+ * sat at 340..441 with the viewport ending at 390 and nothing to scroll.
+ *
+ * These are the actions the hero exists for, so they wrap onto a second line
+ * rather than scroll — all three should be visible, not merely reachable.
+ */
 .service-hero__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   align-items: center;
 }

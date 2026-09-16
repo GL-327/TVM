@@ -235,6 +235,8 @@
 }
 
 .legacy-hub__actions {
+  /* Wraps so the last action cannot fall off a phone screen. */
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 0.7rem;

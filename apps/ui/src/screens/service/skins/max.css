@@ -52,6 +52,18 @@
   padding: 0.5rem var(--max-edge) 0.15rem;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.4) 74%, transparent);
   contain: layout style;
+  /*
+   * Scrolls rather than clips. The row does not wrap, and on a phone it needs
+   * more width than there is — the tabs past the fold were unreachable, with
+   * nothing to drag, because the hub clips its overflow. Same fix as the shared
+   * bar in service.css; this skin styles its own nav, so it needs saying twice.
+   */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.max-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .max-nav__brand {
@@ -259,6 +271,8 @@
 }
 
 .max-hero__actions {
+  /* Wraps so the last action cannot fall off a phone screen. */
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 0.75rem;
