@@ -8,7 +8,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -18,6 +22,20 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Check Unix launchers
+        run: |
+          set -euo pipefail
+          bash -n scripts/launch-tvm.sh
+          bash -n scripts/setup-desktop.sh
+          bash -n scripts/copy-to-desktop.sh
+          bash -n scripts/roku-dev.sh
+          bash -n TVM.sh
+          bash -n TVM-windowed.sh
+          bash -n TVM.command
+          bash -n TVM-windowed.command
+          bash -n TVM-roku.sh
+          bash -n Install-to-Desktop.sh
+          test -f docs/DESKTOP.md
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm --filter @tvm/core test

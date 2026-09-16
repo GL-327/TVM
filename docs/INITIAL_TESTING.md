@@ -4,7 +4,7 @@ This build is for private, local desktop testing. It is not approved for a publi
 
 ## Start here
 
-Close TVM and reopen `TVM-windowed.cmd` from the project directory. The launcher starts the local service, interface and desktop shell. If an older service is already running without watch mode, restart that service first. For a clean test profile, set `TVM_DATA_DIR` to a new absolute directory before starting; do not delete your existing data just to test.
+Close TVM and reopen `TVM-windowed.cmd` (Windows) or `./TVM-windowed.sh` (Linux/macOS) from the project directory. The launcher starts the local service, interface and desktop shell. If an older service is already running without watch mode, restart that service first. For a clean test profile, set `TVM_DATA_DIR` to a new absolute directory before starting; do not delete your existing data just to test. Linux and macOS setup is in [DESKTOP.md](DESKTOP.md).
 
 1. In Settings, enable Retro using the existing Developer unlock, or choose its clearly labelled sandbox checkout. The existing developer code is unchanged.
 2. Browse with arrows, OK and Back; test the mouse too. Change Motion to Reduced and check the calmer result. Minimise and restore the app; effects should resume without an animation jump or runaway loop.

@@ -86,6 +86,9 @@ function createWindow(): BrowserWindow {
           titleBarOverlay: { color: '#0b0b0b', symbolColor: '#f5f5f5', height: 36 },
         }
       : {}),
+    ...(windowed && process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 14 } }
+      : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -201,5 +204,6 @@ void app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  if (process.platform === 'darwin' && windowed) return;
   app.quit();
 });

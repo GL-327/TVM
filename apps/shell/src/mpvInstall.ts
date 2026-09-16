@@ -93,7 +93,8 @@ async function installWindowsMpv(
 
 /**
  * Find mpv, or download a portable Windows build into %LOCALAPPDATA%\TVM\mpv.
- * Linux/macOS keep using a system install. Tests set TVM_SKIP_MPV_INSTALL=1.
+ * Linux/macOS keep using a system install (`brew install mpv`, `apt install mpv`).
+ * Tests set TVM_SKIP_MPV_INSTALL=1.
  */
 export async function ensureMpvExecutable(
   env: NodeJS.ProcessEnv = process.env,

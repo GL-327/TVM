@@ -61,12 +61,21 @@ jobs:
           mkdir -p stage/core stage/ui
           cp -r apps/core/dist/. stage/core/
           cp -r apps/ui/dist/. stage/ui/
-          cp scripts/launch-tvm.cmd scripts/launch-tvm.ps1 scripts/launch-tvm.sh stage/
+          cp scripts/launch-tvm.sh scripts/launch-tvm.cmd scripts/launch-tvm.ps1 stage/
+          cp TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command stage/
+          cp docs/DESKTOP.md stage/README.md
           cp package.json stage/
+          chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM-windowed.sh stage/TVM.command stage/TVM-windowed.command
           node -e 'require("fs").writeFileSync("stage/build-info.json", JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,version:process.env.VERSION}))'
           mkdir -p release
           tar -czf "release/TVM-desktop-$VERSION.tar.gz" -C stage .
-          (cd release && sha256sum "TVM-desktop-$VERSION.tar.gz" > "TVM-desktop-$VERSION.sha256")
+          if command -v sha256sum >/dev/null; then
+            (cd release && sha256sum "TVM-desktop-$VERSION.tar.gz" > "TVM-desktop-$VERSION.sha256")
+          else
+            (cd release && shasum -a 256 "TVM-desktop-$VERSION.tar.gz" > "TVM-desktop-$VERSION.sha256")
+          fi
+          bash -n stage/launch-tvm.sh
+          bash -n stage/TVM-windowed.sh
 
       - name: Publish the Desktop release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -84,15 +93,33 @@ jobs:
           | Build | \`$SHA\` |
           | Needs | [Node.js 22+](https://nodejs.org) |
 
-          ### Install
+          ### Git checkout (Electron kiosk)
+
+          Clone [the repository](https://github.com/GL-327/TVM) and follow
+          [docs/DESKTOP.md](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
+
+          \`\`\`bash
+          git clone https://github.com/GL-327/TVM.git
+          cd TVM
+          chmod +x TVM-windowed.sh scripts/*.sh
+          ./scripts/setup-desktop.sh --with-media
+          ./TVM-windowed.sh
+          \`\`\`
+
+          On Windows, double-click \`TVM-windowed.cmd\` after \`pnpm install\`.
+
+          ### Tarball (Core + UI, browser if Electron is not installed)
+
           1. Download and extract **TVM-desktop-$VERSION.tar.gz**.
           2. Run the launcher for your system:
              - **Windows** — double-click \`launch-tvm.cmd\`
-             - **macOS / Linux** — \`./launch-tvm.sh\`
-          3. TVM opens in your browser at \`http://localhost:8788\`.
+             - **macOS** — double-click \`TVM-windowed.command\`, or \`./TVM-windowed.sh\`
+             - **Linux** — \`./TVM-windowed.sh\`
+          3. Core serves the UI at \`http://127.0.0.1:7345/\`.
 
           \`TVM-desktop-$VERSION.sha256\` is the checksum — verify with
-          \`sha256sum -c TVM-desktop-$VERSION.sha256\`.
+          \`sha256sum -c TVM-desktop-$VERSION.sha256\` (Linux) or
+          \`shasum -a 256 -c TVM-desktop-$VERSION.sha256\` (macOS).
           EOF
           gh release create desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md
