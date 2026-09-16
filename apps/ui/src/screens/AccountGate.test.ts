@@ -50,6 +50,47 @@ describe('the door', () => {
     expect(declared.length).toBe(panels.length);
   });
 
+  /*
+   * Reported as "the login page doesn't work", and it looked exactly like that.
+   *
+   * mode, the typed values and the last notice all outlived the session that
+   * produced them, so signing out landed on the register form — pre-filled with
+   * the name and address of the account you had just left, under a green
+   * "Account created" from the last time you pressed the button. Pressing it
+   * again answered "That account could not be created", which is a truthful
+   * reply to a question nobody asked.
+   */
+  it('returns to the sign-in form when the session ends', () => {
+    const src = gate();
+    const reset = src.slice(src.indexOf('if (state.signedIn) return;'));
+    expect(reset).toContain("setMode('signin')");
+    expect(reset).toContain("setEmail('')");
+    expect(reset).toContain("setPassword('')");
+    expect(reset).toContain("setDisplayName('')");
+    expect(reset).toContain('setNotice(null)');
+    expect(reset).toContain('setMessage(null)');
+    // Keyed on the session rather than the screen, so an expiry resets it too.
+    expect(src).toContain('}, [state.signedIn]);');
+  });
+
+  /*
+   * Reported as the developer section not letting the owner grant access.
+   *
+   * On a fresh install this is their only way in, and it was the last thing on
+   * a panel 1380px tall — about 600px below the fold on a laptop, underneath
+   * the whole price list. Quiet is right; buried is not, and the person who
+   * cannot find it is the one person who needs it.
+   */
+  it('puts the owner unlock above the price list, not below it', () => {
+    const src = gate();
+    const waiting = src.slice(src.indexOf('Almost there'));
+    const owner = waiting.indexOf('<OwnerUnlock');
+    const prices = waiting.indexOf('<Prices tiers={tiers}');
+    expect(owner).toBeGreaterThan(-1);
+    expect(prices).toBeGreaterThan(-1);
+    expect(owner).toBeLessThan(prices);
+  });
+
   it('keeps the door itself free of anything that grants access on its own', () => {
     const src = gate();
     // The code is checked by the core and never compared here, so the gate
