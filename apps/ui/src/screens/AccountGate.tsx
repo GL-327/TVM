@@ -233,6 +233,32 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
 
   useEffect(() => bindKeyboardFields(pageRef.current), [state.usable.reason, mode]);
 
+  /*
+   * Signing out returns you to the sign-in form.
+   *
+   * It did not. The mode, the typed values and the last notice all outlived the
+   * session that produced them, so signing out landed on "Ask for an account" —
+   * pre-filled with the name and address of the account you had just left,
+   * under a green "Account created" from the last time you pressed the button.
+   * Press it again and the answer is "That account could not be created", which
+   * is a truthful reply to a question nobody asked and reads exactly like the
+   * sign-in being broken. The only way back was to spot "I already have an
+   * account" among all that.
+   *
+   * The address goes too. This is a television in a living room as often as it
+   * is a laptop, and the next person to walk up should not be shown the last
+   * person's email.
+   */
+  useEffect(() => {
+    if (state.signedIn) return;
+    setMode('signin');
+    setEmail('');
+    setPassword('');
+    setDisplayName('');
+    setNotice(null);
+    setMessage(null);
+  }, [state.signedIn]);
+
   useEffect(() => {
     let cancelled = false;
     void fetchTerms().then((doc) => { if (!cancelled) setTerms(doc); });
@@ -318,7 +344,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
               app owner and ask them to activate it.
             </p>
           )}
-          {tiers !== null && !suspended && <Prices tiers={tiers} />}
           <div className="gate__actions">
             <FocusButton id="recheck" variant="primary" disabled={busy} onSelect={() => { void fetchAccount().then(onChanged); }}>
               Check again
@@ -327,12 +352,23 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
               Sign out
             </FocusButton>
           </div>
+          {/*
+            * Above the price list, not below it.
+            *
+            * This is the owner's only way into their own app on a fresh
+            * install, and it was the last thing on a panel 1380px tall — about
+            * 600px below the fold on a laptop, past the prices and the "access
+            * is arranged with the app owner" notice. Quiet is right; buried is
+            * not, and the person who cannot find it is the one person who needs
+            * it.
+            */}
           {state.account !== null && (
             <OwnerUnlock
               accountId={state.account.id}
               onDone={() => { void fetchAccount().then(onChanged); }}
             />
           )}
+          {tiers !== null && !suspended && <Prices tiers={tiers} />}
         </div>
       </main>
     );
