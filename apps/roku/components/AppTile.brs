@@ -393,7 +393,7 @@ sub paintParamount()
 end sub
 
 sub paintTvm()
-  m.plate.color = "0x5B3DFFFF"
+  m.plate.color = "0x7C4DFFFF"
   placeRect(m.glow, "0xB4DCFF5A", 70, 8, 144, 64, 32)
   paintSheen("0xFFFFFF1F")
   placeWord("TVM", "0xFFFFFFFF", 44, 0, 42, 284, 72, "center")
