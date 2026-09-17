@@ -35,13 +35,11 @@ final class StandaloneRuntime: ObservableObject {
 
     func start() async {
         guard session == nil || starting else { return }
+        // Local only, and instant: an interface staged on the last run goes live
+        // now, and one left over from a different app build is dropped. The
+        // launch used to wait here on a GitHub download of up to 90 seconds.
+        TVMBundledUI.prepare(store: core.store)
         do {
-            await TVMUpdater.applyIfNeeded(store: core.store, session: URLSession(configuration: {
-                let configuration = URLSessionConfiguration.ephemeral
-                configuration.timeoutIntervalForRequest = 90
-                configuration.httpShouldSetCookies = false
-                return configuration
-            }()))
             let server = TVMLocalServer(core: core)
             try server.start()
             self.server = server
@@ -51,6 +49,12 @@ final class StandaloneRuntime: ObservableObject {
             self.error = "TVM could not start its on-device core."
         }
         starting = false
+        // Look for the next interface while the viewer carries on. It is staged
+        // for the next open and never swapped under them.
+        let store = core.store
+        Task.detached(priority: .utility) {
+            await TVMUpdater.applyIfNeeded(store: store, session: TVMUpdater.downloadSession())
+        }
     }
 
     func useLocal() {

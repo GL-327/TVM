@@ -1,19 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.TVM" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:statusBarColor">@color/tvm_bg</item>
-        <item name="android:navigationBarColor">@color/tvm_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowBackground">@color/tvm_bg</item>
         <item name="android:colorBackground">@color/tvm_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="colorPrimary">@color/tvm_accent</item>
         <item name="colorOnPrimary">@color/tvm_ink</item>
         <item name="colorSecondary">@color/tvm_accent</item>
+        <item name="colorSurface">@color/tvm_surface</item>
+        <item name="colorOnSurface">@color/tvm_text</item>
         <item name="android:textColor">@color/tvm_text</item>
         <item name="android:textColorPrimary">@color/tvm_text</item>
         <item name="checkboxStyle">@style/Widget.TVM.CheckBox</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.TVM.BottomSheet</item>
     </style>
+
     <style name="Widget.TVM.CheckBox" parent="Widget.MaterialComponents.CompoundButton.CheckBox">
         <item name="buttonTint">@color/tvm_accent</item>
+    </style>
+
+    <style name="Widget.TVM.Button.Primary" parent="Widget.MaterialComponents.Button">
+        <item name="backgroundTint">@color/tvm_accent</item>
+        <item name="android:textColor">@color/tvm_ink</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="cornerRadius">12dp</item>
+    </style>
+
+    <style name="Widget.TVM.Button.Quiet" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">@color/tvm_accent</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="TextAppearance.TVM.Label" parent="">
+        <item name="android:textColor">@color/tvm_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ThemeOverlay.TVM.BottomSheet" parent="ThemeOverlay.MaterialComponents.BottomSheetDialog">
+        <item name="android:windowSoftInputMode">adjustResize</item>
+        <item name="bottomSheetStyle">@style/Widget.TVM.BottomSheet</item>
+    </style>
+
+    <style name="Widget.TVM.BottomSheet" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="backgroundTint">@color/tvm_surface</item>
     </style>
 </resources>

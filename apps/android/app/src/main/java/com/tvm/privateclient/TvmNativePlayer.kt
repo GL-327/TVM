@@ -47,8 +47,8 @@ class TvmNativePlayer(
         @JavascriptInterface
         fun send(payload: String) {
             val message = runCatching { JSONObject(payload) }.getOrNull() ?: return
-            val id = message.optString("id", "")
-            val command = message.optString("command", "")
+            val id = message.text("id", "")
+            val command = message.text("command", "")
             if (id.isEmpty() || command.isEmpty()) return
             main.post { handle(id, command, message) }
         }

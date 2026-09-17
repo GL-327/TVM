@@ -56,7 +56,11 @@ function stableId(url: string, name: string, index: number): string {
   return `ch_${hash.toString(16).padStart(8, '0')}`;
 }
 
-function applyHeaderLine(profile: HeaderProfile, line: string): void {
+/**
+ * Folds one #EXTVLCOPT or #EXTHTTP line into a profile. Shared with Core's
+ * Live TV playlist reader, so both paths obey the same instructions.
+ */
+export function applyHeaderLine(profile: HeaderProfile, line: string): void {
   const vlc = VLC_OPT.exec(line);
   if (vlc !== null) {
     const name = (vlc[1] ?? '').trim().toLowerCase();
@@ -85,7 +89,7 @@ function applyHeaderLine(profile: HeaderProfile, line: string): void {
   }
 }
 
-function hasAnyHeader(profile: HeaderProfile): boolean {
+export function hasAnyHeader(profile: HeaderProfile): boolean {
   return (
     profile.userAgent !== undefined ||
     profile.referer !== undefined ||
