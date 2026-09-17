@@ -19,6 +19,13 @@ interface FocusFieldProps {
   enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
   /** After a paste, move the highlight to this in-screen control (usually Save). */
   afterPasteFocusId?: string;
+  /**
+   * Off unless a screen asks. The sign-in form asks, so a password manager and
+   * the phone's own keychain can fill it — typing a ten-character password on a
+   * TV keyboard is the other option.
+   */
+  autoComplete?: string;
+  name?: string;
 }
 
 /**
@@ -36,6 +43,8 @@ export function FocusField({
   inputMode,
   enterKeyHint,
   afterPasteFocusId,
+  autoComplete = 'off',
+  name,
 }: FocusFieldProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
   const saveKey = useScopedFocusKey(afterPasteFocusId ?? '');
@@ -93,7 +102,8 @@ export function FocusField({
     <input
       ref={ref}
       type={type}
-      autoComplete="off"
+      name={name}
+      autoComplete={autoComplete}
       spellCheck={false}
       className="token-field__input"
       tabIndex={-1}

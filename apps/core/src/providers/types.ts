@@ -1,3 +1,5 @@
+import type { HeaderProfile } from '../Server Side Live/headers.ts';
+
 export type ProviderId = string;
 export type MediaId = `${ProviderId}:${string}`;
 
@@ -106,6 +108,11 @@ export interface LiveChannel {
   url: string;
   group?: string;
   logo?: string;
+  /**
+   * Request headers the playlist asked for (#EXTVLCOPT / #EXTHTTP). Used only
+   * upstream; never part of anything sent to a client.
+   */
+  profile?: HeaderProfile;
 }
 
 export interface LiveGroup {

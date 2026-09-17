@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { deleteSecret, readSecret, writeSecret } from '../providers/secrets.ts';
 import { CORE_VERSION } from '../config.ts';
-import { compareSemver, isNewer } from './semver.ts';
 import {
   applyPolicy,
   appDir,
@@ -13,27 +12,59 @@ import {
   statusPath,
   tokenPath,
 } from './paths.ts';
-import { extractTarGz, parseSha256File } from './tar.ts';
+import { requestRestart } from './restart.ts';
+import { extractTarGz } from './tar.ts';
 import {
-  entriesFromGithubCommits,
-  entriesFromReleaseNotes,
+  changesSince,
+  feedIncludes,
+  FEED_TAGS,
+  DESKTOP_MANIFEST,
+  parseFeedManifest,
+  releaseDownloadUrl,
+  shortCommit,
+  type FeedManifest,
+} from './feed.ts';
+import {
   notesFromEntries,
   parseChangelogRecord,
+  parseCommitMessage,
   sameCommit,
+  shouldSkipCommitTitle,
   type ChangelogEntry,
   type ChangelogRecord,
 } from './changelog.ts';
+import {
+  DEPENDENCY_FILES,
+  detectInstall,
+  gitRunner,
+  runningUnderWatch,
+  type GitRunner,
+  type InstallInfo,
+  type InstallKind,
+} from './install.ts';
 
-export type UpdateCheckKind = 'idle' | 'no_release' | 'up_to_date' | 'available' | 'auth_required' | 'rate_limited';
+export type UpdateCheckKind =
+  | 'idle'
+  | 'no_release'
+  | 'up_to_date'
+  | 'available'
+  | 'auth_required'
+  | 'rate_limited'
+  | 'app_update_required'
+  | 'failed';
 
 export interface AvailableUpdate {
+  /** Short commit, which is what a person reads. */
   version: string;
+  commit?: string;
   notes: string;
   changelog?: ChangelogEntry[];
 }
 
 export interface UpdateStatus {
   current: string;
+  currentCommit: string | null;
+  install: InstallKind;
   channel: string;
   lastCheck: string | null;
   available: AvailableUpdate | null;
@@ -45,30 +76,37 @@ export interface UpdateStatus {
   changelog: ChangelogRecord | null;
 }
 
+/** What apply did, and what has to happen for it to take effect. */
+export interface ApplyResult {
+  version: string;
+  commit: string | null;
+  changed: boolean;
+  /**
+   * automatic  the files changed under a `node --watch` Core, which restarts itself
+   * self       the caller must exit so the launcher starts the new bundle
+   * manual     the person has to restart TVM
+   * reload     (phones) only the page needs reloading; never sent by this Core
+   */
+  restart: 'automatic' | 'self' | 'manual' | 'reload';
+}
+
 interface CachedStatus {
   lastCheck: string | null;
   available: AvailableUpdate | null;
   kind?: UpdateCheckKind;
   notice?: string | null;
+  applyAllowed?: boolean;
+  applyReason?: string | null;
 }
 
 interface GithubRelease {
-  tag_name?: string;
-  body?: string;
-  draft?: boolean;
-  prerelease?: boolean;
-  assets?: Array<{
-    name?: string;
-    id?: number;
-    url?: string;
-    browser_download_url?: string;
-  }>;
+  assets?: Array<{ name?: string; url?: string; browser_download_url?: string }>;
 }
 
 export interface UpdateService {
   status(): UpdateStatus;
   check(): Promise<UpdateStatus>;
-  apply(): Promise<{ version: string }>;
+  apply(): Promise<ApplyResult>;
   changelog(): ChangelogRecord | null;
   markChangelogSeen(): ChangelogRecord | null;
   setToken(token: string): { configured: boolean };
@@ -79,12 +117,19 @@ export interface UpdateServiceOptions {
   env?: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
   currentVersion?: string;
+  /** Overrides the detected commit (tests, or TVM_GIT_SHA). */
   currentCommit?: string;
+  /** Overrides install detection. */
+  install?: InstallInfo;
+  /** Overrides git for a checkout (tests). */
+  git?: GitRunner;
+  /** Whether Core restarts itself on file changes. Defaults to `node --watch` detection. */
+  watching?: boolean;
   now?: () => Date;
 }
 
 function redact(value: string): string {
-  return value.replace(/(Bearer\s+)(\S+)/gi, '$1[redacted]').replace(/ghp_[A-Za-z0-9]+/g, 'ghp_[redacted]');
+  return value.replace(/(Bearer\s+)(\S+)/gi, '$1[redacted]').replace(/gh[pousr]_[A-Za-z0-9]+/g, 'gh_[redacted]');
 }
 
 function log(...parts: unknown[]): void {
@@ -100,6 +145,8 @@ function readCache(dataDir: string): CachedStatus {
       available: raw.available ?? null,
       kind: raw.kind,
       notice: raw.notice ?? null,
+      applyAllowed: raw.applyAllowed,
+      applyReason: raw.applyReason ?? null,
     };
   } catch {
     return { lastCheck: null, available: null };
@@ -124,46 +171,6 @@ function writeChangelogFile(dataDir: string, record: ChangelogRecord): void {
   writeFileSync(changelogPath(dataDir), JSON.stringify(record));
 }
 
-function persistAppliedChangelog(
-  dataDir: string,
-  available: AvailableUpdate,
-  from: string | null,
-  to: string | null,
-  nowIso: string,
-): ChangelogRecord | null {
-  const entries = available.changelog ?? [];
-  if (entries.length === 0) {
-    const fallback = parseCommitMessageAsEntry(available.notes, available.version);
-    if (fallback === null) return readChangelogFile(dataDir);
-    const record: ChangelogRecord = {
-      pending: true,
-      version: available.version,
-      from,
-      to,
-      appliedAt: nowIso,
-      entries: [fallback],
-    };
-    writeChangelogFile(dataDir, record);
-    return record;
-  }
-  const record: ChangelogRecord = {
-    pending: true,
-    version: available.version,
-    from,
-    to,
-    appliedAt: nowIso,
-    entries,
-  };
-  writeChangelogFile(dataDir, record);
-  return record;
-}
-
-function parseCommitMessageAsEntry(notes: string, version: string): ChangelogEntry | null {
-  const title = notes.trim().slice(0, 160);
-  if (title === '') return null;
-  return { sha: version, title, body: '', date: null };
-}
-
 function storedToken(dataDir: string): string | null {
   return readSecret(tokenPath(dataDir));
 }
@@ -175,287 +182,374 @@ function resolveToken(dataDir: string, env: NodeJS.ProcessEnv): string | null {
   return fromEnv !== undefined && fromEnv !== '' ? fromEnv : null;
 }
 
-function assetName(version: string, ext: 'tar.gz' | 'sha256'): string {
-  return `tvm-app-${version}.${ext}`;
-}
+const FIELD = '\u001f';
+const RECORD = '\u001e';
 
-function stripTag(tag: string): string {
-  return tag.replace(/^v/i, '');
-}
-
-function pickNewestRelease(releases: readonly GithubRelease[]): GithubRelease | null {
-  const usable = releases.filter((release) => release.draft !== true && (release.tag_name ?? '').trim() !== '');
-  if (usable.length === 0) return null;
-  const sorted = [...usable].sort((left, right) => compareSemver(stripTag(right.tag_name ?? ''), stripTag(left.tag_name ?? '')));
-  return sorted[0] ?? null;
-}
-
-function noticeFor(kind: UpdateCheckKind, repo: string, available: AvailableUpdate | null): string | null {
-  if (kind === 'no_release') {
-    return `No GitHub Release is published on ${repo} yet.`;
+/** `git log` in a shape that survives any commit message. */
+export function parseGitLog(output: string, limit = 12): ChangelogEntry[] {
+  const entries: ChangelogEntry[] = [];
+  for (const record of output.split(RECORD)) {
+    const trimmed = record.replace(/^\s+/, '');
+    if (trimmed === '') continue;
+    const [sha = '', date = '', ...message] = trimmed.split(FIELD);
+    const { title, body } = parseCommitMessage(message.join(FIELD));
+    if (shouldSkipCommitTitle(title)) continue;
+    entries.push({ sha: sha.trim().slice(0, 7), title, body, date: date.trim() === '' ? null : date.trim() });
+    if (entries.length >= limit) break;
   }
-  if (kind === 'up_to_date') return 'You are on the latest published app build.';
-  if (kind === 'available' && available !== null) return `Version ${available.version} is available.`;
-  if (kind === 'auth_required') {
-    return 'This update channel looks private. The public GL-327/TVM feed needs no GitHub login — set TVM_GITHUB_TOKEN only for a private fork.';
-  }
-  if (kind === 'rate_limited') {
-    return 'GitHub rate-limited this check. Wait, or set TVM_GITHUB_TOKEN for a higher quota on a private channel.';
-  }
-  return null;
+  return entries;
 }
 
 export function createUpdateService(options: UpdateServiceOptions): UpdateService {
   const env = options.env ?? process.env;
   const fetchImpl = options.fetch ?? fetch;
   const currentVersion = options.currentVersion ?? CORE_VERSION;
-  const currentCommit = options.currentCommit ?? env['TVM_GIT_SHA']?.trim() ?? '';
   const now = options.now ?? (() => new Date());
   const { dataDir } = options;
   const repo = resolveUpdateRepo(env);
-  const channel = `github:${repo}`;
+  const install = options.install ?? detectInstall();
+  const kind: InstallKind = install.kind;
+  const git = options.git ?? (install.root !== null ? gitRunner(install.root) : null);
+  const watching = options.watching ?? runningUnderWatch();
+  const channel = kind === 'checkout' ? `git:${repo}#main` : `github:${repo}#${FEED_TAGS.desktop}`;
+  const envCommit = env['TVM_GIT_SHA']?.trim() ?? '';
+
+  let commitCache: string | null | undefined =
+    options.currentCommit !== undefined && options.currentCommit !== ''
+      ? options.currentCommit
+      : envCommit !== ''
+        ? envCommit
+        : install.build?.commit;
+
+  const readHead = async (): Promise<string | null> => {
+    if (git === null) return null;
+    try {
+      const head = await git(['rev-parse', 'HEAD']);
+      return /^[0-9a-f]{40}$/i.test(head) ? head.toLowerCase() : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const currentCommit = async (): Promise<string | null> => {
+    // A checkout moves under us (a pull, a commit), so it is read each time.
+    if (kind === 'checkout' && options.currentCommit === undefined && envCommit === '') {
+      commitCache = await readHead();
+      return commitCache;
+    }
+    return commitCache ?? null;
+  };
 
   const snapshot = (): UpdateStatus => {
     const cache = readCache(dataDir);
-    const policy = applyPolicy(env);
-    const kind = cache.lastCheck === null ? 'idle' : (cache.kind ?? (cache.available === null ? 'up_to_date' : 'available'));
+    const policy = kind === 'package' ? applyPolicy(env) : { allowed: false, reason: null };
+    const checked = cache.lastCheck !== null;
     return {
       current: currentVersion,
+      currentCommit: commitCache ?? null,
+      install: kind,
       channel,
       lastCheck: cache.lastCheck,
       available: cache.available,
       configured: resolveToken(dataDir, env) !== null,
-      applyAllowed: policy.allowed,
-      applyReason: policy.reason,
-      kind,
+      // A package's permission is policy; a checkout's depends on its state,
+      // which only a check can see.
+      applyAllowed: kind === 'package' ? policy.allowed : checked && cache.applyAllowed === true,
+      applyReason:
+        kind === 'package'
+          ? policy.reason
+          : checked
+            ? (cache.applyReason ?? null)
+            : 'Check for updates first.',
+      kind: checked ? (cache.kind ?? (cache.available === null ? 'up_to_date' : 'available')) : 'idle',
       notice: cache.notice ?? null,
       changelog: readChangelogFile(dataDir),
     };
   };
 
-  const remember = (kind: UpdateCheckKind, available: AvailableUpdate | null): UpdateStatus => {
-    const notice = noticeFor(kind, repo, available);
-    writeCache(dataDir, { lastCheck: now().toISOString(), available, kind, notice });
+  const remember = (entry: Omit<CachedStatus, 'lastCheck'>): UpdateStatus => {
+    writeCache(dataDir, { ...entry, lastCheck: now().toISOString() });
     return snapshot();
   };
 
-  const headersFor = (accept: string, authorize: boolean): Record<string, string> => {
-    const headers: Record<string, string> = {
+  const headers = (accept: string, authorize: boolean): Record<string, string> => {
+    const out: Record<string, string> = {
       Accept: accept,
       'User-Agent': 'tvm-core',
       'X-GitHub-Api-Version': '2022-11-28',
     };
     const token = authorize ? resolveToken(dataDir, env) : null;
-    if (token !== null) headers.Authorization = `Bearer ${token}`;
-    return headers;
-  };
-
-  const github = async (
-    url: string,
-    accept: string,
-    mode: 'follow' | 'manual' | 'error' = 'follow',
-  ): Promise<Response> => {
-    log('tvm-core: github', url);
-    // Public repos (GL-327/TVM) must work with no token. A leftover or expired
-    // token 401s even on public releases, so always try anonymous first.
-    const anonymous = await fetchImpl(url, { headers: headersFor(accept, false), redirect: mode });
-    if (anonymous.ok || anonymous.status === 429) return anonymous;
-    const token = resolveToken(dataDir, env);
-    const maybePrivate = anonymous.status === 401 || anonymous.status === 403 || anonymous.status === 404;
-    if (token === null || !maybePrivate) return anonymous;
-    const authorized = await fetchImpl(url, { headers: headersFor(accept, true), redirect: mode });
-    if (authorized.ok || authorized.status === 429) return authorized;
-    return anonymous;
-  };
-
-  const requireOk = async (url: string, accept: string): Promise<Response> => {
-    const response = await github(url, accept);
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error('GitHub rejected the credentials. The public feed needs no token; set TVM_GITHUB_TOKEN only for a private fork.');
-      }
-      if (response.status === 429) {
-        throw new Error('GitHub rate-limited this download. Wait, or set TVM_GITHUB_TOKEN for a higher quota.');
-      }
-      if (response.status === 404) {
-        throw new Error(`Release is missing on ${repo}.`);
-      }
-      throw new Error(`GitHub replied ${response.status}`);
-    }
-    return response;
+    if (token !== null) out.Authorization = `Bearer ${token}`;
+    return out;
   };
 
   /**
-   * Private assets need the API URL + token. Follow the signed redirect without
-   * forwarding Authorization — S3 rejects a GitHub bearer.
+   * Downloads one file from a release.
+   *
+   * The public download host first, with no token: it has no API quota, and a
+   * leftover expired token must never break a public feed. A private fork
+   * falls back to the API asset URL with the token, and the signed redirect
+   * that follows is fetched without it — the storage host rejects a GitHub
+   * bearer.
    */
-  const downloadAsset = async (asset: { url?: string; browser_download_url?: string }): Promise<Buffer> => {
-    if (asset.url !== undefined && asset.url !== '') {
-      const first = await github(asset.url, 'application/octet-stream', 'manual');
-      if (first.status >= 300 && first.status < 400) {
-        const location = first.headers.get('location');
-        if (location === null || location === '') {
-          throw new Error('GitHub asset redirect was missing a Location header');
-        }
-        const second = await fetchImpl(location, { headers: headersFor('application/octet-stream', false) });
-        if (!second.ok) throw new Error(`GitHub asset download failed (${second.status})`);
-        return Buffer.from(await second.arrayBuffer());
-      }
-      if (!first.ok) throw new Error(`GitHub asset download failed (${first.status})`);
-      return Buffer.from(await first.arrayBuffer());
+  const releaseFile = async (tag: string, file: string): Promise<Response> => {
+    const direct = releaseDownloadUrl(repo, tag, file);
+    log('tvm-core: update feed', direct);
+    const anonymous = await fetchImpl(direct, { headers: headers('application/octet-stream', false), redirect: 'follow' });
+    if (anonymous.ok || anonymous.status === 429) return anonymous;
+    const token = resolveToken(dataDir, env);
+    if (token === null || ![401, 403, 404].includes(anonymous.status)) return anonymous;
+    const listed = await fetchImpl(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
+      headers: headers('application/vnd.github+json', true),
+    });
+    if (!listed.ok) return anonymous;
+    const release = (await listed.json()) as GithubRelease;
+    const asset = (release.assets ?? []).find((item) => item.name === file);
+    if (asset?.url === undefined || asset.url === '') return anonymous;
+    const first = await fetchImpl(asset.url, { headers: headers('application/octet-stream', true), redirect: 'manual' });
+    if (first.status >= 300 && first.status < 400) {
+      const location = first.headers.get('location');
+      if (location === null || location === '') return anonymous;
+      return fetchImpl(location, { headers: headers('application/octet-stream', false) });
     }
-    if (asset.browser_download_url !== undefined && asset.browser_download_url !== '') {
-      const response = await fetchImpl(asset.browser_download_url, {
-        headers: headersFor('application/octet-stream', false),
+    return first;
+  };
+
+  const readManifest = async (): Promise<{ kind: UpdateCheckKind; manifest: FeedManifest | null; detail?: string }> => {
+    let response: Response;
+    try {
+      response = await releaseFile(FEED_TAGS.desktop, DESKTOP_MANIFEST);
+    } catch (error) {
+      return { kind: 'failed', manifest: null, detail: error instanceof Error ? error.message : String(error) };
+    }
+    if (response.status === 429) return { kind: 'rate_limited', manifest: null };
+    if (response.status === 401 || response.status === 403) return { kind: 'auth_required', manifest: null };
+    if (response.status === 404) {
+      return { kind: resolveToken(dataDir, env) === null && repo !== 'GL-327/TVM' ? 'auth_required' : 'no_release', manifest: null };
+    }
+    if (!response.ok) return { kind: 'failed', manifest: null, detail: `GitHub replied ${response.status}` };
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return { kind: 'failed', manifest: null, detail: 'The update manifest was not valid JSON.' };
+    }
+    const manifest = parseFeedManifest(body);
+    return manifest === null
+      ? { kind: 'failed', manifest: null, detail: 'The update manifest was incomplete.' }
+      : { kind: 'available', manifest };
+  };
+
+  const noticeFor = (outcome: UpdateCheckKind, detail?: string): string => {
+    switch (outcome) {
+      case 'no_release':
+        return `No desktop build is published on ${repo} yet.`;
+      case 'auth_required':
+        return 'This update channel looks private. The public GL-327/TVM feed needs no GitHub login — set TVM_GITHUB_TOKEN only for a private fork.';
+      case 'rate_limited':
+        return 'GitHub rate-limited this check. Try again in a few minutes.';
+      case 'failed':
+        return `The update check did not finish${detail !== undefined && detail !== '' ? `: ${detail}` : '.'}`;
+      case 'up_to_date':
+        return 'You are on the latest published build.';
+      default:
+        return '';
+    }
+  };
+
+  // ---- package -------------------------------------------------------------
+
+  const checkPackage = async (): Promise<UpdateStatus> => {
+    const found = await readManifest();
+    if (found.manifest === null) {
+      return remember({ available: null, kind: found.kind, notice: noticeFor(found.kind, found.detail) });
+    }
+    const manifest = found.manifest;
+    const current = await currentCommit();
+    if (current !== null && sameCommit(manifest.commit, current)) {
+      return remember({ available: null, kind: 'up_to_date', notice: noticeFor('up_to_date') });
+    }
+    if (current !== null && !feedIncludes(manifest, current) && manifest.builtAt !== '' && install.build?.builtAt != null
+      && install.build.builtAt > manifest.builtAt) {
+      // Built after the published bundle, so there is nothing newer to fetch.
+      return remember({ available: null, kind: 'up_to_date', notice: 'This build is newer than the published one.' });
+    }
+    const changelog = changesSince(manifest, current);
+    const available: AvailableUpdate = {
+      version: shortCommit(manifest.commit),
+      commit: manifest.commit,
+      notes: notesFromEntries(changelog, `Build ${shortCommit(manifest.commit)}`),
+      changelog,
+    };
+    return remember({ available, kind: 'available', notice: `Build ${available.version} is available.` });
+  };
+
+  const applyPackage = async (): Promise<ApplyResult> => {
+    const policy = applyPolicy(env);
+    if (!policy.allowed) {
+      const error = new Error(policy.reason ?? 'apply refused');
+      error.name = 'ApplyRefused';
+      throw error;
+    }
+    const found = await readManifest();
+    if (found.manifest === null) throw new Error(noticeFor(found.kind, found.detail));
+    const manifest = found.manifest;
+    const from = await currentCommit();
+    if (from !== null && sameCommit(from, manifest.commit)) {
+      return { version: shortCommit(manifest.commit), commit: manifest.commit, changed: false, restart: 'manual' };
+    }
+    const response = await releaseFile(FEED_TAGS.desktop, manifest.asset);
+    if (!response.ok) throw new Error(`The desktop bundle could not be downloaded (${response.status}).`);
+    const archive = Buffer.from(await response.arrayBuffer());
+    const actual = createHash('sha256').update(archive).digest('hex');
+    if (actual !== manifest.sha256) throw new Error('SHA-256 did not match the published checksum.');
+
+    const id = shortCommit(manifest.commit);
+    const dest = appDir(dataDir, id);
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(dest, { recursive: true });
+    extractTarGz(archive, dest);
+    writeFileSync(currentPointer(dataDir), `${id}\n`, { encoding: 'utf8' });
+
+    const entries = changesSince(manifest, from);
+    writeChangelogFile(dataDir, {
+      pending: true,
+      version: id,
+      from: from === null ? null : shortCommit(from),
+      to: id,
+      appliedAt: now().toISOString(),
+      entries: entries.length > 0 ? entries : [{ sha: id, title: `Build ${id}`, body: '', date: null }],
+    });
+    remember({ available: null, kind: 'up_to_date', notice: `Applied build ${id}. TVM is restarting.` });
+    log(`tvm-core: applied desktop build ${id}`);
+    return { version: id, commit: manifest.commit, changed: true, restart: 'self' };
+  };
+
+  // ---- checkout ------------------------------------------------------------
+
+  interface CheckoutState {
+    head: string;
+    remote: string;
+    behind: number;
+    ahead: number;
+    allowed: boolean;
+    reason: string | null;
+    entries: ChangelogEntry[];
+  }
+
+  const inspectCheckout = async (runner: GitRunner): Promise<CheckoutState> => {
+    await runner(['fetch', '--quiet', '--no-tags', 'origin', 'main']);
+    const head = (await runner(['rev-parse', 'HEAD'])).toLowerCase();
+    const remote = (await runner(['rev-parse', 'FETCH_HEAD'])).toLowerCase();
+    const counts = (await runner(['rev-list', '--left-right', '--count', `${head}...${remote}`])).split(/\s+/);
+    const ahead = Number(counts[0] ?? 0) || 0;
+    const behind = Number(counts[1] ?? 0) || 0;
+    let entries: ChangelogEntry[] = [];
+    let allowed = true;
+    let reason: string | null = null;
+    if (behind > 0) {
+      const history = await runner(['log', '-n', '20', `--format=%H${FIELD}%cI${FIELD}%B${RECORD}`, `${head}..${remote}`]);
+      entries = parseGitLog(history);
+      const branch = await runner(['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '');
+      const dirty = await runner(['status', '--porcelain', '--untracked-files=no']);
+      const deps = await runner(['diff', '--name-only', head, remote, '--', ...DEPENDENCY_FILES]);
+      if (branch !== 'main') {
+        allowed = false;
+        reason = `This checkout is on "${branch || 'a detached commit'}", not main. Switch to main to update.`;
+      } else if (ahead > 0) {
+        allowed = false;
+        reason = `This checkout has ${ahead} commit${ahead === 1 ? '' : 's'} that are not on GitHub. Push or rebase them first.`;
+      } else if (dirty !== '') {
+        allowed = false;
+        reason = 'This checkout has uncommitted changes. Commit or stash them, and TVM will update.';
+      } else if (deps !== '') {
+        allowed = false;
+        reason = 'This update changes dependencies. Run "git pull" and then "corepack pnpm install" to take it.';
+      }
+    }
+    return { head, remote, behind, ahead, allowed, reason, entries };
+  };
+
+  const checkCheckout = async (): Promise<UpdateStatus> => {
+    if (git === null) return remember({ available: null, kind: 'failed', notice: noticeFor('failed', 'git is not available') });
+    let state: CheckoutState;
+    try {
+      state = await inspectCheckout(git);
+    } catch (error) {
+      return remember({ available: null, kind: 'failed', notice: noticeFor('failed', error instanceof Error ? error.message : String(error)), applyAllowed: false });
+    }
+    commitCache = state.head;
+    if (state.behind === 0) {
+      return remember({
+        available: null,
+        kind: 'up_to_date',
+        notice: state.ahead > 0
+          ? `This checkout is ${state.ahead} commit${state.ahead === 1 ? '' : 's'} ahead of GitHub.`
+          : 'This checkout matches GitHub main.',
+        applyAllowed: false,
+        applyReason: null,
       });
-      if (!response.ok) throw new Error(`GitHub asset download failed (${response.status})`);
-      return Buffer.from(await response.arrayBuffer());
     }
-    throw new Error('Release asset has no URL');
+    const available: AvailableUpdate = {
+      version: shortCommit(state.remote),
+      commit: state.remote,
+      notes: notesFromEntries(state.entries, `Build ${shortCommit(state.remote)}`),
+      changelog: state.entries,
+    };
+    return remember({
+      available,
+      kind: 'available',
+      notice: `GitHub main is ${state.behind} commit${state.behind === 1 ? '' : 's'} ahead of this checkout.`,
+      applyAllowed: state.allowed,
+      applyReason: state.reason,
+    });
   };
 
-  const readLatestRelease = async (): Promise<{ kind: UpdateCheckKind; release: GithubRelease | null }> => {
-    const latest = await github(`https://api.github.com/repos/${repo}/releases/latest`, 'application/vnd.github+json');
-    if (latest.status === 429) return { kind: 'rate_limited', release: null };
-    if (latest.status === 401 || latest.status === 403) return { kind: 'auth_required', release: null };
-    if (latest.ok) {
-      return { kind: 'up_to_date', release: (await latest.json()) as GithubRelease };
+  const applyCheckout = async (): Promise<ApplyResult> => {
+    if (git === null) throw new Error('git is not available, so this checkout cannot update itself.');
+    const state = await inspectCheckout(git);
+    if (state.behind === 0) {
+      remember({ available: null, kind: 'up_to_date', notice: 'This checkout matches GitHub main.', applyAllowed: false, applyReason: null });
+      return { version: shortCommit(state.head), commit: state.head, changed: false, restart: 'manual' };
     }
-    if (latest.status !== 404) {
-      throw new Error(`GitHub replied ${latest.status}`);
+    if (!state.allowed) {
+      const error = new Error(state.reason ?? 'apply refused');
+      error.name = 'ApplyRefused';
+      throw error;
     }
-
-    const listed = await github(
-      `https://api.github.com/repos/${repo}/releases?per_page=10`,
-      'application/vnd.github+json',
-    );
-    if (listed.status === 429) return { kind: 'rate_limited', release: null };
-    if (listed.status === 401 || listed.status === 403) return { kind: 'auth_required', release: null };
-    if (!listed.ok) {
-      if (listed.status === 404) {
-        return { kind: resolveToken(dataDir, env) === null ? 'auth_required' : 'no_release', release: null };
-      }
-      throw new Error(`GitHub replied ${listed.status}`);
-    }
-    const payload = (await listed.json()) as unknown;
-    const releases = Array.isArray(payload) ? (payload as GithubRelease[]) : [];
-    return { kind: 'no_release', release: pickNewestRelease(releases) };
-  };
-
-  const loadCommitChangelog = async (untilSha: string): Promise<ChangelogEntry[]> => {
-    const listed = await github(
-      `https://api.github.com/repos/${repo}/commits?sha=main&per_page=20`,
-      'application/vnd.github+json',
-    );
-    if (!listed.ok) return [];
-    return entriesFromGithubCommits(await listed.json(), untilSha);
+    // Fast-forward only: it cannot rewrite history or touch uncommitted work,
+    // and it refuses outright rather than merging if anything has diverged.
+    await git(['merge', '--ff-only', '--quiet', state.remote]);
+    const id = shortCommit(state.remote);
+    commitCache = state.remote;
+    writeChangelogFile(dataDir, {
+      pending: true,
+      version: id,
+      from: shortCommit(state.head),
+      to: id,
+      appliedAt: now().toISOString(),
+      entries: state.entries.length > 0 ? state.entries : [{ sha: id, title: `Build ${id}`, body: '', date: null }],
+    });
+    remember({
+      available: null,
+      kind: 'up_to_date',
+      notice: watching ? `Updated to ${id}. TVM is restarting.` : `Updated to ${id}. Restart TVM to finish.`,
+      applyAllowed: false,
+      applyReason: null,
+    });
+    log(`tvm-core: fast-forwarded checkout to ${id}`);
+    return { version: id, commit: state.remote, changed: true, restart: watching ? 'automatic' : 'manual' };
   };
 
   return {
     status: snapshot,
 
     async check(): Promise<UpdateStatus> {
-      const found = await readLatestRelease();
-      if (found.kind === 'rate_limited' || found.kind === 'auth_required') {
-        return remember(found.kind, null);
-      }
-      const release = found.release;
-      const version = stripTag((release?.tag_name ?? '').trim());
-      if (release !== null && version !== '') {
-        if (!isNewer(version, currentVersion)) {
-          return remember('up_to_date', null);
-        }
-        const fromNotes = entriesFromReleaseNotes(release.body ?? '', version);
-        const changelog = fromNotes.length > 0 ? fromNotes : await loadCommitChangelog(currentCommit);
-        const notes = notesFromEntries(changelog, (release.body ?? '').split('\n')[0] ?? `Version ${version}`).slice(0, 400);
-        return remember('available', { version, notes, changelog });
-      }
-
-      if (currentCommit !== '') {
-        const listed = await github(
-          `https://api.github.com/repos/${repo}/commits?sha=main&per_page=20`,
-          'application/vnd.github+json',
-        );
-        if (listed.status === 429) return remember('rate_limited', null);
-        if (listed.ok) {
-          const payload = (await listed.json()) as unknown;
-          const commits = Array.isArray(payload) ? payload : [];
-          const head = commits[0] as { sha?: unknown } | undefined;
-          const sha = typeof head?.sha === 'string' ? head.sha.trim() : '';
-          if (sha !== '' && sameCommit(sha, currentCommit)) {
-            return remember('up_to_date', null);
-          }
-          if (sha !== '') {
-            const changelog = entriesFromGithubCommits(commits, currentCommit);
-            const notes = notesFromEntries(changelog);
-            return remember('available', { version: sha.slice(0, 7), notes, changelog });
-          }
-        }
-      }
-      return remember('no_release', null);
+      return kind === 'checkout' ? checkCheckout() : checkPackage();
     },
 
-    async apply(): Promise<{ version: string }> {
-      const policy = applyPolicy(env);
-      if (!policy.allowed) {
-        const error = new Error(policy.reason ?? 'apply refused');
-        error.name = 'ApplyRefused';
-        throw error;
-      }
-
-      const latest = await this.check();
-      const available = latest.available;
-      if (available === null) {
-        throw new Error(latest.notice ?? 'No newer app build is available.');
-      }
-
-      const found = await readLatestRelease();
-      if (found.kind === 'auth_required' || found.kind === 'rate_limited') {
-        throw new Error(noticeFor(found.kind, repo, null) ?? found.kind);
-      }
-      let release = found.release;
-      if (release === null || stripTag((release.tag_name ?? '').trim()) !== available.version) {
-        const listed = await requireOk(
-          `https://api.github.com/repos/${repo}/releases?per_page=20`,
-          'application/vnd.github+json',
-        );
-        const payload = (await listed.json()) as unknown;
-        const match = (Array.isArray(payload) ? (payload as GithubRelease[]) : []).find(
-          (item) => stripTag((item.tag_name ?? '').trim()) === available.version,
-        );
-        if (match === undefined) {
-          throw new Error(`Release is missing ${assetName(available.version, 'tar.gz')} or its .sha256`);
-        }
-        release = match;
-      }
-      const assets = release.assets ?? [];
-      const tarball = assets.find((asset) => asset.name === assetName(available.version, 'tar.gz'));
-      const checksum = assets.find((asset) => asset.name === assetName(available.version, 'sha256'));
-      if (tarball === undefined || checksum === undefined) {
-        throw new Error(`Release is missing ${assetName(available.version, 'tar.gz')} or its .sha256`);
-      }
-
-      const checksumText = (await downloadAsset(checksum)).toString('utf8');
-      const expected = parseSha256File(checksumText);
-      const archive = await downloadAsset(tarball);
-      const actual = createHash('sha256').update(archive).digest('hex');
-      if (actual !== expected) {
-        throw new Error('SHA-256 did not match the release checksum');
-      }
-
-      const dest = appDir(dataDir, available.version);
-      mkdirSync(dest, { recursive: true });
-      extractTarGz(archive, dest);
-      writeFileSync(currentPointer(dataDir), `${available.version}\n`, { encoding: 'utf8' });
-      persistAppliedChangelog(dataDir, available, currentVersion, available.version, now().toISOString());
-      writeCache(dataDir, {
-        lastCheck: now().toISOString(),
-        available: null,
-        kind: 'up_to_date',
-        notice: `Applied v${available.version}.`,
-      });
-      log(`tvm-core: applied app ${available.version}`);
-      return { version: available.version };
+    async apply(): Promise<ApplyResult> {
+      return kind === 'checkout' ? applyCheckout() : applyPackage();
     },
 
     changelog(): ChangelogRecord | null {
@@ -485,27 +579,32 @@ export function startUpdatePolling(
   intervalMs: number,
   options: { autoApply?: () => boolean } = {},
 ): () => void {
+  let running = false;
   const tick = (): void => {
+    if (running) return;
+    running = true;
     void service
       .check()
       .then(async (status) => {
         if (options.autoApply?.() !== true || !status.applyAllowed || status.available === null) return;
-        await service.apply();
-        restartAfterApply();
+        const result = await service.apply();
+        if (result.changed && result.restart === 'self') restartAfterApply();
       })
       .catch((error: unknown) => {
         log('tvm-core: update check failed', error instanceof Error ? error.message : error);
+      })
+      .finally(() => {
+        running = false;
       });
   };
   tick();
   const timer = setInterval(tick, intervalMs);
+  timer.unref?.();
   return () => clearInterval(timer);
 }
 
 export function restartAfterApply(): void {
-  setTimeout(() => {
-    process.exit(0);
-  }, 250);
+  requestRestart();
 }
 
 export function tokenConfigured(dataDir: string, env: NodeJS.ProcessEnv = process.env): boolean {

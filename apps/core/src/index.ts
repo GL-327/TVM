@@ -8,6 +8,7 @@ import { notifySystemdReady } from './notify.ts';
 import { CHECK_INTERVAL_MS, resolveDataDir } from './update/paths.ts';
 import { appliedLaunch } from './update/launch.ts';
 import { createUpdateService, startUpdatePolling } from './update/service.ts';
+import { onRestartRequested, relaunchDetached, supervised } from './update/restart.ts';
 import { readPrefs } from './prefs.ts';
 
 const dataDir = resolveDataDir();
@@ -55,6 +56,14 @@ const stopPolling = startUpdatePolling(update, CHECK_INTERVAL_MS, {
 });
 
 console.log(`tvm-core listening on http://${bindHost}:${core.port}`);
+
+// After an applied update: free the port, then let systemd restart Core, or
+// start the replacement ourselves when nothing else will.
+onRestartRequested(async () => {
+  stopPolling();
+  await Promise.race([core.close(), new Promise((done) => setTimeout(done, 3000))]);
+  if (!supervised()) relaunchDetached();
+});
 if (bindHost !== CORE_HOST) {
   const token = process.env['TVM_LAN_TOKEN'] ?? '';
   if (token.length < 32) {

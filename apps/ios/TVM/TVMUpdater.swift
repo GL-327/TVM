@@ -1,3 +1,4 @@
+import CommonCrypto
 import Foundation
 import zlib
 
@@ -33,26 +34,167 @@ struct TVMPrefs {
     }
 }
 
+/// What an interface bundle says about itself, from the build-info.json that
+/// scripts/stamp-ui-bundle.mjs writes into it.
+struct TVMBundleInfo {
+    var commit: String?
+    var contentHash: String?
+    var nativeApi: Int
+
+    static func read(_ root: URL) -> TVMBundleInfo {
+        let url = root.appendingPathComponent("build-info.json")
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return TVMBundleInfo(commit: nil, contentHash: nil, nativeApi: 0)
+        }
+        let commit = (object["commit"] as? String).flatMap { $0.isEmpty ? nil : $0.lowercased() }
+        let hash = (object["contentHash"] as? String).flatMap { $0.isEmpty ? nil : $0.lowercased() }
+        return TVMBundleInfo(commit: commit, contentHash: hash, nativeApi: JSONValue.int(object["nativeApi"]) ?? 0)
+    }
+}
+
+/**
+ The interface this app serves: the copy inside the app, or a newer one
+ downloaded from GitHub.
+
+ A downloaded copy is only used on top of the exact app build it was applied
+ to. It used to be used whatever app was installed, so sideloading a new IPA
+ kept serving the interface downloaded by the old one — and an interface
+ newer than its native half calls routes the native half does not have.
+ */
 enum TVMBundledUI {
-    static func overlayRoot(store: TVMStore) -> URL {
-        store.url("BundledUI")
+    static let overlayName = "BundledUI"
+    static let stagedName = "BundledUI.staged"
+    static let markerName = "BundledUI.native.json"
+    static let stagedMetaName = "BundledUI.staged.json"
+    private static let lock = NSLock()
+    /// The resolved root per store, so serving a file does not re-read two JSON files. Guarded by `lock`.
+    private static var resolved: [String: URL] = [:]
+
+    /// Every move of the bundle folders goes through here; the launch and the Updates screen can both reach them.
+    static func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
     }
 
-    static func root(store: TVMStore, bundle: Bundle = .main) -> URL {
-        let overlay = overlayRoot(store: store).appendingPathComponent("index.html")
-        if FileManager.default.fileExists(atPath: overlay.path) {
-            return overlayRoot(store: store)
-        }
-        return bundle.resourceURL?.appendingPathComponent("BundledUI", isDirectory: true)
+    static func overlayRoot(store: TVMStore) -> URL { store.url(overlayName) }
+    static func stagedRoot(store: TVMStore) -> URL { store.url(stagedName) }
+
+    static func bundledRoot(bundle: Bundle = .main) -> URL {
+        bundle.resourceURL?.appendingPathComponent("BundledUI", isDirectory: true)
             ?? URL(fileURLWithPath: "BundledUI")
     }
 
-    static func commit(in root: URL) -> String? {
-        let url = root.appendingPathComponent("build-info.json")
-        guard let data = try? Data(contentsOf: url),
+    /// The commit this installed app was built from (BuildInfo.json).
+    static func appBuild(bundle: Bundle = .main) -> String {
+        guard let url = bundle.url(forResource: "BuildInfo", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let commit = object["commit"] as? String, !commit.isEmpty else { return nil }
-        return commit
+              let commit = object["commit"] as? String, !commit.isEmpty else { return "unknown" }
+        return commit.lowercased()
+    }
+
+    static func overlayUsable(store: TVMStore, bundle: Bundle = .main) -> Bool {
+        let overlay = overlayRoot(store: store)
+        guard FileManager.default.fileExists(atPath: overlay.appendingPathComponent("index.html").path),
+              let marker = store.readJSON(markerName) as? [String: Any],
+              let applied = marker["appBuild"] as? String,
+              applied == appBuild(bundle: bundle) else { return false }
+        return TVMBundleInfo.read(overlay).nativeApi <= StandalonePolicy.nativeAPI
+    }
+
+    static func root(store: TVMStore, bundle: Bundle = .main) -> URL {
+        withLock { resolveLocked(store: store, bundle: bundle) }
+    }
+
+    /// For code already inside `withLock`; NSLock is not reentrant.
+    private static func resolveLocked(store: TVMStore, bundle: Bundle) -> URL {
+        let key = "\(store.root.path)|\(bundle.bundlePath)"
+        if let hit = resolved[key] { return hit }
+        let url = overlayUsable(store: store, bundle: bundle) ? overlayRoot(store: store) : bundledRoot(bundle: bundle)
+        resolved[key] = url
+        return url
+    }
+
+    /// After anything outside this file deletes the bundle folders (a factory reset).
+    static func invalidate() {
+        withLock { resolved.removeAll() }
+    }
+
+    static func commit(in root: URL) -> String? {
+        TVMBundleInfo.read(root).commit
+    }
+
+    /**
+     Launch housekeeping, before anything is on screen. No network.
+
+     Drops a downloaded interface that belongs to a different app build, and
+     puts a bundle staged by the previous run in place.
+     */
+    static func prepare(store: TVMStore, bundle: Bundle = .main) {
+        withLock { () -> Void in
+            resolved.removeAll()
+            if !overlayUsable(store: store, bundle: bundle) {
+                try? FileManager.default.removeItem(at: overlayRoot(store: store))
+                store.remove(markerName)
+            }
+            _ = promoteLocked(store: store, bundle: bundle, onlyCommit: nil)
+        }
+    }
+
+    /// Moves a verified staged bundle into place. Call inside `withLock`.
+    static func promoteLocked(store: TVMStore, bundle: Bundle, onlyCommit: String?) -> [String: Any]? {
+        let fm = FileManager.default
+        let staged = stagedRoot(store: store)
+        let stagedInfo = TVMBundleInfo.read(staged)
+        guard fm.fileExists(atPath: staged.appendingPathComponent("index.html").path),
+              let meta = store.readJSON(stagedMetaName) as? [String: Any],
+              let stagedCommit = meta["commit"] as? String,
+              let bundleCommit = stagedInfo.commit,
+              TVMChangelog.sameCommit(stagedCommit, bundleCommit),
+              (meta["appBuild"] as? String) == appBuild(bundle: bundle),
+              stagedInfo.nativeApi <= StandalonePolicy.nativeAPI else {
+            try? fm.removeItem(at: staged)
+            store.remove(stagedMetaName)
+            return nil
+        }
+        if let onlyCommit, !TVMChangelog.sameCommit(onlyCommit, stagedCommit) { return nil }
+        let version = String(stagedCommit.prefix(7))
+        let live = resolveLocked(store: store, bundle: bundle)
+        let previous = commit(in: live)
+        if let previous, TVMChangelog.sameCommit(previous, stagedCommit) {
+            // Already the interface on screen; nothing to announce twice.
+            try? fm.removeItem(at: staged)
+            store.remove(stagedMetaName)
+            return ["version": version, "commit": stagedCommit, "changed": false]
+        }
+        let dest = overlayRoot(store: store)
+        resolved.removeAll()
+        try? fm.removeItem(at: dest)
+        do {
+            try fm.moveItem(at: staged, to: dest)
+        } catch {
+            return nil
+        }
+        store.writeJSON(markerName, [
+            "appBuild": appBuild(bundle: bundle),
+            "commit": stagedCommit,
+            "appliedAt": ISO8601DateFormatter().string(from: Date()),
+        ])
+        store.remove(stagedMetaName)
+        var entries = meta["entries"] as? [[String: Any]] ?? []
+        if entries.isEmpty {
+            entries = [["sha": version, "title": "Interface \(version)", "body": ""]]
+        }
+        TVMChangelog.writePending(
+            store: store,
+            version: version,
+            from: previous.map { String($0.prefix(7)) },
+            to: stagedCommit,
+            entries: entries
+        )
+        return ["version": version, "commit": stagedCommit, "changed": true]
     }
 }
 
@@ -84,6 +226,7 @@ enum TVMChangelog {
         return (title, body)
     }
 
+    /// Entries from a GitHub commits listing, newest first, stopping at `current`.
     static func entries(from commits: [[String: Any]], until current: String?) -> [[String: Any]] {
         var out: [[String: Any]] = []
         for item in commits {
@@ -102,9 +245,36 @@ enum TVMChangelog {
         return out
     }
 
+    /**
+     What changed between the running interface and a published one.
+
+     The feed's history lists every commit, so the running build is found even
+     when it changed nothing worth listing; only entries above it are new.
+     Mirrors changesSince in apps/core/src/update/feed.ts.
+     */
+    static func changes(entries: [[String: Any]], history: [String], since current: String?) -> [[String: Any]] {
+        let valid = entries.filter { ($0["title"] as? String)?.isEmpty == false }
+        guard let current, !current.isEmpty else { return Array(valid.prefix(limit)) }
+        if let at = history.firstIndex(where: { sameCommit($0, current) }) {
+            let newer = Array(history[..<at])
+            let picked = valid.filter { entry in
+                let sha = entry["sha"] as? String ?? ""
+                return newer.contains { sameCommit($0, sha) }
+            }
+            return Array(picked.prefix(limit))
+        }
+        var out: [[String: Any]] = []
+        for entry in valid {
+            if let sha = entry["sha"] as? String, sameCommit(sha, current) { break }
+            out.append(entry)
+            if out.count >= limit { break }
+        }
+        return out
+    }
+
     static func notes(_ entries: [[String: Any]]) -> String {
         let titles = entries.compactMap { $0["title"] as? String }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        if titles.isEmpty { return "Latest GitHub main" }
+        if titles.isEmpty { return "The latest TVM interface" }
         return String(titles.joined(separator: " · ").prefix(400))
     }
 
@@ -141,10 +311,54 @@ enum TVMChangelog {
     }
 }
 
+/**
+ Keeps the bundled interface current from GitHub.
+
+ Reads the small manifest published next to the bundle on the `ios-ui`
+ release and compares it with the interface this app is running. The check
+ used to compare against the tip of GitHub main instead, which is often a
+ commit that produced no new bundle: every check said "update available",
+ every apply fetched the same bundle, and the page reloaded forever.
+
+ Nothing here blocks the launch. A bundle found in the background is staged
+ and goes live on the next open; the interface can also apply it at once.
+ */
 enum TVMUpdater {
     static let repo = "GL-327/TVM"
     static let releaseTag = "ios-ui"
     static let assetName = "tvm-ios-ui.tar.gz"
+    static let manifestName = "tvm-ios-ui.json"
+
+    struct Manifest {
+        var commit: String
+        var asset: String
+        var sha256: String
+        var nativeApi: Int
+        var contentHash: String
+        var entries: [[String: Any]]
+        var history: [String]
+
+        static func parse(_ raw: Any?) -> Manifest? {
+            guard let object = raw as? [String: Any],
+                  let commit = (object["commit"] as? String)?.lowercased(),
+                  commit.count >= 7, commit.allSatisfy({ $0.isHexDigit }),
+                  let asset = object["asset"] as? String,
+                  !asset.isEmpty, !asset.contains("/"), !asset.contains(".."),
+                  let sha = (object["sha256"] as? String)?.lowercased(),
+                  sha.count == 64, sha.allSatisfy({ $0.isHexDigit }) else { return nil }
+            let entries = (object["entries"] as? [[String: Any]] ?? []).filter { ($0["title"] as? String)?.isEmpty == false }
+            let history = (object["history"] as? [Any] ?? []).compactMap { $0 as? String }.map { $0.lowercased() }
+            return Manifest(
+                commit: commit,
+                asset: asset,
+                sha256: sha,
+                nativeApi: JSONValue.int(object["nativeApi"]) ?? 0,
+                contentHash: ((object["contentHash"] as? String) ?? "").lowercased(),
+                entries: entries,
+                history: history
+            )
+        }
+    }
 
     struct Status {
         var current: String
@@ -178,6 +392,28 @@ enum TVMUpdater {
         }
     }
 
+    /// A session for GitHub downloads: no cookies, no cache, patient enough for a bundle.
+    static func downloadSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 180
+        configuration.httpShouldSetCookies = false
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }
+
+    static func downloadURL(_ file: String) -> URL {
+        URL(string: "https://github.com/\(repo)/releases/download/\(releaseTag)/\(file)")!
+    }
+
+    static func sha256Hex(_ data: Data) -> String {
+        var digest = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { buffer in
+            _ = CC_SHA256(buffer.baseAddress, CC_LONG(buffer.count), &digest)
+        }
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
     static func snapshot(store: TVMStore, bundle: Bundle = .main) -> Status {
         let prefs = TVMPrefs.load(store)
         let commit = TVMBundledUI.commit(in: TVMBundledUI.root(store: store, bundle: bundle))
@@ -198,118 +434,171 @@ enum TVMUpdater {
         )
     }
 
-    /// Cold start: pull the latest bundled UI from GitHub unless the user turned automatic updates off.
-    static func applyIfNeeded(store: TVMStore, session: URLSession, bundle: Bundle = .main) async {
-        let prefs = TVMPrefs.load(store)
-        guard prefs.autoUpdate else { return }
+    private enum Fetched {
+        case manifest(Manifest)
+        case problem(kind: String, notice: String)
+    }
+
+    private static func fetchManifest(session: URLSession) async -> Fetched {
+        var request = URLRequest(url: downloadURL(manifestName))
+        request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 15
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         do {
-            let status = try await check(store: store, session: session, bundle: bundle)
-            guard status.available != nil else { return }
-            _ = try await apply(store: store, session: session, bundle: bundle)
+            let (data, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 404 { return .problem(kind: "no_release", notice: "No iPhone interface is published on GitHub yet.") }
+            if status == 429 { return .problem(kind: "rate_limited", notice: "GitHub rate-limited this check. Try again in a few minutes.") }
+            if status == 401 || status == 403 { return .problem(kind: "auth_required", notice: "GitHub refused this check.") }
+            guard (200...299).contains(status) else {
+                return .problem(kind: "failed", notice: "GitHub answered \(status). Try again later.")
+            }
+            guard let manifest = Manifest.parse(try? JSONSerialization.jsonObject(with: data)) else {
+                return .problem(kind: "failed", notice: "The update information on GitHub was incomplete.")
+            }
+            return .manifest(manifest)
         } catch {
-            // Stay on the IPA copy. The Updates screen can retry.
+            return .problem(kind: "failed", notice: "Could not reach GitHub. Check the connection and try again.")
+        }
+    }
+
+    /// Checks GitHub and records the answer. Returns the manifest only when it is worth applying.
+    private static func evaluate(store: TVMStore, session: URLSession, bundle: Bundle) async -> (Status, Manifest?) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        switch await fetchManifest(session: session) {
+        case .problem(let kind, let notice):
+            return (remember(store: store, kind: kind, available: nil, notice: notice, lastCheck: now, bundle: bundle), nil)
+        case .manifest(let manifest):
+            let current = TVMBundleInfo.read(TVMBundledUI.root(store: store, bundle: bundle))
+            if let commit = current.commit, TVMChangelog.sameCommit(commit, manifest.commit) {
+                return (remember(store: store, kind: "up_to_date", available: nil, notice: "You have the latest interface.", lastCheck: now, bundle: bundle), nil)
+            }
+            // Rebuilt for a commit that changed nothing here: same files, nothing to fetch.
+            if !manifest.contentHash.isEmpty, manifest.contentHash == current.contentHash {
+                return (remember(store: store, kind: "up_to_date", available: nil, notice: "You have the latest interface.", lastCheck: now, bundle: bundle), nil)
+            }
+            if manifest.nativeApi > StandalonePolicy.nativeAPI {
+                return (remember(
+                    store: store,
+                    kind: "app_update_required",
+                    available: nil,
+                    notice: "A newer TVM app is on GitHub Releases. Install it to get the latest interface.",
+                    lastCheck: now,
+                    bundle: bundle
+                ), nil)
+            }
+            let changelog = TVMChangelog.changes(entries: manifest.entries, history: manifest.history, since: current.commit)
+            let version = String(manifest.commit.prefix(7))
+            let status = remember(
+                store: store,
+                kind: "available",
+                available: [
+                    "version": version,
+                    "commit": manifest.commit,
+                    "notes": TVMChangelog.notes(changelog),
+                    "changelog": changelog,
+                ],
+                notice: "Interface \(version) is ready to apply.",
+                lastCheck: now,
+                bundle: bundle
+            )
+            return (status, manifest)
         }
     }
 
     static func check(store: TVMStore, session: URLSession, bundle: Bundle = .main) async throws -> Status {
-        let current = TVMBundledUI.commit(in: TVMBundledUI.root(store: store, bundle: bundle))
-        let url = URL(string: "https://api.github.com/repos/\(repo)/commits?sha=main&per_page=20")!
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        let (data, response) = try await session.data(for: request)
-        let http = response as? HTTPURLResponse
-        let now = ISO8601DateFormatter().string(from: Date())
-        if http?.statusCode == 429 {
-            return remember(store: store, kind: "rate_limited", available: nil, notice: "GitHub rate-limited this check. Try again in a minute.", lastCheck: now, bundle: bundle)
-        }
-        if http?.statusCode == 401 || http?.statusCode == 403 {
-            return remember(store: store, kind: "auth_required", available: nil, notice: "GitHub rejected this check.", lastCheck: now, bundle: bundle)
-        }
-        guard let http, (200...299).contains(http.statusCode),
-              let payload = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-              let head = payload.first,
-              let sha = head["sha"] as? String, sha.count >= 7 else {
-            return remember(store: store, kind: "no_release", available: nil, notice: "Could not read GitHub main.", lastCheck: now, bundle: bundle)
-        }
-        if let current, TVMChangelog.sameCommit(current, sha) {
-            return remember(store: store, kind: "up_to_date", available: nil, notice: "You are on the latest GitHub build.", lastCheck: now, bundle: bundle)
-        }
-        let changelog = TVMChangelog.entries(from: payload, until: current)
-        let notes = TVMChangelog.notes(changelog)
-        return remember(
-            store: store,
-            kind: "available",
-            available: [
-                "version": String(sha.prefix(7)),
-                "commit": sha,
-                "notes": notes,
-                "changelog": changelog,
-            ] as [String: Any],
-            notice: "GitHub main moved. This iPhone will apply the new interface.",
-            lastCheck: now,
-            bundle: bundle
-        )
+        await evaluate(store: store, session: session, bundle: bundle).0
     }
 
-    static func apply(store: TVMStore, session: URLSession, bundle: Bundle = .main) async throws -> [String: Any] {
-        let dest = TVMBundledUI.overlayRoot(store: store)
-        let from = TVMBundledUI.commit(in: TVMBundledUI.root(store: store, bundle: bundle))
-        let cached = store.readJSON("update-status.json") as? [String: Any]
-        let cachedAvailable = cached?["available"] as? [String: Any]
-        let urls = [
-            URL(string: "https://github.com/\(repo)/releases/download/\(releaseTag)/\(assetName)")!,
-            URL(string: "https://github.com/\(repo)/releases/latest/download/\(assetName)")!,
-        ]
-        var lastError: Error = ClientError.message("The iPhone UI bundle was missing on GitHub.")
-        for url in urls {
-            do {
-                var request = URLRequest(url: url)
-                request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
-                request.timeoutInterval = 90
-                let (data, response) = try await session.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), data.count > 64 else {
-                    lastError = ClientError.message("GitHub did not return an iPhone UI bundle.")
-                    continue
-                }
-                let staging = dest.deletingLastPathComponent().appendingPathComponent("BundledUI.next")
-                try? FileManager.default.removeItem(at: staging)
-                try extractTarGz(data, to: staging)
-                guard FileManager.default.fileExists(atPath: staging.appendingPathComponent("index.html").path) else {
-                    throw ClientError.message("The update archive did not contain index.html.")
-                }
-                try? FileManager.default.removeItem(at: dest)
-                try FileManager.default.moveItem(at: staging, to: dest)
-                let commit = TVMBundledUI.commit(in: dest)
-                let version = commit.map { String($0.prefix(7)) } ?? StandalonePolicy.version
-                var entries = cachedAvailable?["changelog"] as? [[String: Any]] ?? []
-                if entries.isEmpty { entries = TVMChangelog.bundled(in: dest) }
-                if entries.isEmpty, let notes = cachedAvailable?["notes"] as? String, !notes.isEmpty {
-                    entries = [["sha": version, "title": notes, "body": ""]]
-                }
-                TVMChangelog.writePending(store: store, version: version, from: from, to: commit, entries: entries)
-                _ = remember(
-                    store: store,
-                    kind: "up_to_date",
-                    available: nil,
-                    notice: "Applied GitHub build \(version).",
-                    lastCheck: ISO8601DateFormatter().string(from: Date()),
-                    bundle: bundle
-                )
-                var result: [String: Any] = ["version": version]
-                if let commit { result["commit"] = commit }
-                result["changelog"] = TVMChangelog.record(store: store) ?? NSNull()
-                return result
-            } catch {
-                lastError = error
-            }
+    /// Downloads and verifies a bundle into the staging folder. Nothing on screen changes until it is promoted.
+    static func stage(_ manifest: Manifest, store: TVMStore, session: URLSession, bundle: Bundle = .main) async throws {
+        let fm = FileManager.default
+        let alreadyStaged = TVMBundledUI.withLock { () -> Bool in
+            guard let meta = store.readJSON(TVMBundledUI.stagedMetaName) as? [String: Any],
+                  let commit = meta["commit"] as? String else { return false }
+            return TVMChangelog.sameCommit(commit, manifest.commit)
+                && fm.fileExists(atPath: TVMBundledUI.stagedRoot(store: store).appendingPathComponent("index.html").path)
         }
-        throw lastError
+        if alreadyStaged { return }
+
+        var request = URLRequest(url: downloadURL(manifest.asset))
+        request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 120
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), data.count > 64 else {
+            throw ClientError.message("GitHub did not return the iPhone interface bundle.")
+        }
+        guard sha256Hex(data) == manifest.sha256 else {
+            throw ClientError.message("The downloaded interface did not match its published checksum.")
+        }
+        let work = store.url("BundledUI.download-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: work) }
+        try TVMArchive.extractTarGz(data, to: work)
+        let info = TVMBundleInfo.read(work)
+        guard fm.fileExists(atPath: work.appendingPathComponent("index.html").path),
+              let commit = info.commit, TVMChangelog.sameCommit(commit, manifest.commit) else {
+            throw ClientError.message("The downloaded interface was incomplete.")
+        }
+        guard info.nativeApi <= StandalonePolicy.nativeAPI else {
+            throw ClientError.message("This interface needs a newer TVM app.")
+        }
+        let current = TVMBundledUI.commit(in: TVMBundledUI.root(store: store, bundle: bundle))
+        let entries = TVMChangelog.changes(entries: manifest.entries, history: manifest.history, since: current)
+        let appBuild = TVMBundledUI.appBuild(bundle: bundle)
+        try TVMBundledUI.withLock { () throws -> Void in
+            let staged = TVMBundledUI.stagedRoot(store: store)
+            try? fm.removeItem(at: staged)
+            try fm.moveItem(at: work, to: staged)
+            store.writeJSON(TVMBundledUI.stagedMetaName, [
+                "commit": manifest.commit,
+                "appBuild": appBuild,
+                "entries": entries,
+                "stagedAt": ISO8601DateFormatter().string(from: Date()),
+            ])
+        }
+    }
+
+    /// Applies the published interface now, from the staging folder when it is already there.
+    static func apply(store: TVMStore, session: URLSession, bundle: Bundle = .main) async throws -> [String: Any] {
+        let (status, found) = await evaluate(store: store, session: session, bundle: bundle)
+        guard let manifest = found else {
+            if status.kind == "up_to_date" {
+                let version = status.currentCommit.map { String($0.prefix(7)) } ?? StandalonePolicy.version
+                return ["version": version, "changed": false, "restart": "reload"]
+            }
+            throw ClientError.message(status.notice ?? "No interface update is available.")
+        }
+        try await stage(manifest, store: store, session: session, bundle: bundle)
+        let promoted = TVMBundledUI.withLock {
+            TVMBundledUI.promoteLocked(store: store, bundle: bundle, onlyCommit: manifest.commit)
+        }
+        guard var result = promoted else {
+            throw ClientError.message("The new interface could not be put in place. Try again.")
+        }
+        let version = result["version"] as? String ?? String(manifest.commit.prefix(7))
+        _ = remember(
+            store: store,
+            kind: "up_to_date",
+            available: nil,
+            notice: "Applied interface \(version).",
+            lastCheck: ISO8601DateFormatter().string(from: Date()),
+            bundle: bundle
+        )
+        result["restart"] = "reload"
+        result["changelog"] = TVMChangelog.record(store: store) ?? NSNull()
+        return result
+    }
+
+    /// Launch, in the background: find the next interface and stage it for the next open.
+    static func applyIfNeeded(store: TVMStore, session: URLSession, bundle: Bundle = .main) async {
+        guard TVMPrefs.load(store).autoUpdate else { return }
+        let (status, found) = await evaluate(store: store, session: session, bundle: bundle)
+        guard status.available != nil, let manifest = found else { return }
+        try? await stage(manifest, store: store, session: session, bundle: bundle)
     }
 
     private static func remember(store: TVMStore, kind: String, available: [String: Any]?, notice: String?, lastCheck: String, bundle: Bundle) -> Status {
-        var payload: [String: Any] = ["kind": kind, "lastCheck": lastCheck, "notice": notice as Any]
+        var payload: [String: Any] = ["kind": kind, "lastCheck": lastCheck, "notice": JSONValue.orNull(notice)]
         if let available { payload["available"] = available }
         store.writeJSON("update-status.json", payload)
         return snapshot(store: store, bundle: bundle)

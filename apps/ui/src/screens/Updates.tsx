@@ -8,18 +8,46 @@ import { formatAppDate } from '../i18n/locale';
 import { readAutoUpdate, savePrefs } from '../data/prefs';
 import { rememberPendingChangelog, type ChangelogEntry, type ChangelogRecord, parseChangelogRecord } from '../data/changelog';
 
+type UpdateKind =
+  | 'idle'
+  | 'no_release'
+  | 'up_to_date'
+  | 'available'
+  | 'auth_required'
+  | 'rate_limited'
+  | 'app_update_required'
+  | 'failed';
+
 interface UpdateStatus {
   current: string;
+  /** The build this copy is running, when the core knows it. */
+  currentCommit?: string | null;
+  /** checkout: a git clone; package: a downloaded bundle; phone cores leave it out. */
+  install?: 'checkout' | 'package';
   channel: string;
   lastCheck: string | null;
-  available: { version: string; notes: string; changelog?: ChangelogEntry[] } | null;
+  available: { version: string; commit?: string; notes: string; changelog?: ChangelogEntry[] } | null;
   configured: boolean;
   applyAllowed: boolean;
   applyReason: string | null;
-  kind?: 'idle' | 'no_release' | 'up_to_date' | 'available' | 'auth_required' | 'rate_limited';
+  kind?: UpdateKind;
   notice?: string | null;
   autoUpdate?: boolean;
   changelog?: ChangelogRecord | null;
+}
+
+interface ApplyResult {
+  version?: string;
+  changed?: boolean;
+  restart?: 'automatic' | 'self' | 'manual' | 'reload';
+  error?: string;
+  reason?: string;
+}
+
+/** "v1.0.0 · 90a7563" — the version alone never changes, so the commit is what tells builds apart. */
+export function describeBuild(version: string, commit: string | null | undefined): string {
+  const short = typeof commit === 'string' ? commit.trim().slice(0, 7) : '';
+  return short === '' ? `v${version}` : `v${version} · ${short}`;
 }
 
 const EMPTY: UpdateStatus = {
@@ -81,18 +109,31 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
     setMessage(null);
     try {
       const response = await fetch('/api/update/apply', { method: 'POST' });
-      const body = (await response.json()) as { error?: string; reason?: string };
+      const body = (await response.json()) as ApplyResult;
       if (!response.ok) {
         setMessage(body.reason ?? body.error ?? 'Apply was refused');
         return;
       }
+      if (body.changed === false) {
+        setMessage('This copy is already on that build.');
+        await refresh().catch(() => undefined);
+        return;
+      }
       rememberPendingChangelog({
-        version: status.available?.version ?? 'github',
+        version: body.version ?? status.available?.version ?? 'github',
+        from: status.currentCommit?.slice(0, 7) ?? null,
         entries: status.available?.changelog,
         notes: status.available?.notes,
       });
-      setMessage('Applied. Reloading…');
-      window.setTimeout(() => window.location.reload(), 400);
+      if (body.restart === 'manual') {
+        setMessage('Updated. Close TVM and open it again to finish.');
+        await refresh().catch(() => undefined);
+        return;
+      }
+      // A desktop Core restarts to load the new build; a phone only swaps the page.
+      const restarting = body.restart === 'self' || body.restart === 'automatic';
+      setMessage(restarting ? 'Updated. TVM is restarting…' : 'Applied. Reloading…');
+      window.setTimeout(() => window.location.reload(), restarting ? 2500 : 400);
     } catch {
       setMessage('Apply failed.');
     } finally {
@@ -138,7 +179,7 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       <dl className="panel__rows settings-summary">
         <div className="panel__row">
           <dt>This box</dt>
-          <dd>v{status.current}</dd>
+          <dd>{describeBuild(status.current, status.currentCommit)}</dd>
         </div>
         <div className="panel__row">
           <dt>Last check</dt>
@@ -146,7 +187,13 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
         </div>
         <div className="panel__row">
           <dt>Available</dt>
-          <dd>{status.available === null ? 'None' : `v${status.available.version}`}</dd>
+          <dd>
+            {status.available !== null
+              ? `Build ${status.available.version}`
+              : status.kind === 'app_update_required'
+                ? 'Needs the new app'
+                : 'None'}
+          </dd>
         </div>
         <div className="panel__row">
           <dt>GitHub login</dt>
@@ -155,6 +202,9 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       </dl>
 
       {message !== null && <p className="page__message">{message}</p>}
+      {message === null && status.notice != null && status.notice !== '' && status.kind !== 'idle' && (
+        <p className="page__message">{status.notice}</p>
+      )}
       <ChangelogList
         heading={status.available !== null ? "What's coming" : "What's new"}
         entries={

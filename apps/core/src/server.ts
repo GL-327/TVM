@@ -39,7 +39,7 @@ import { createRealDebrid } from './providers/realdebrid.ts';
 import { createSessionService, type SessionService } from './providers/session.ts';
 import { createStreamer, type StreamerService } from './providers/streamer.ts';
 import { serveExactStatic, serveStatic } from './static.ts';
-import { applyPolicy, resolveDataDir } from './update/paths.ts';
+import { resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
 import { readPrefs, writePrefs } from './prefs.ts';
 
@@ -163,6 +163,20 @@ async function sendLiveProxy(response: ServerResponse, result: LiveProxyResult, 
       response.socket?.setNoDelay(true);
     } catch {
       // Socket already closed.
+    }
+    /*
+     * A cached segment arrives as bytes, not a stream. Handing those to
+     * Readable.fromWeb threw after the headers had gone out, the cleanup threw
+     * as well, and the response was simply never finished — so every segment
+     * small enough to cache hung the player that asked for it.
+     */
+    if (result.body instanceof Uint8Array) {
+      if (method === 'HEAD' || response.writableEnded) {
+        if (!response.writableEnded) response.end();
+        return;
+      }
+      response.end(Buffer.from(result.body.buffer, result.body.byteOffset, result.body.byteLength));
+      return;
     }
     if (method === 'HEAD' || response.writableEnded) {
       try {
@@ -475,7 +489,9 @@ async function handleApi(
     try {
       const result = await update.apply();
       sendJson(response, 200, result);
-      if (applyPolicy(env).allowed) restartAfterApply();
+      // Only a package hops to the downloaded bundle by exiting; a checkout
+      // under `node --watch` restarts itself when the pulled files land.
+      if (result.changed && result.restart === 'self') restartAfterApply();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'apply failed';
       const status = error instanceof Error && error.name === 'ApplyRefused' ? 403 : 400;

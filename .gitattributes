@@ -19,3 +19,6 @@ gradlew        text eol=lf
 *.woff2 binary
 *.raw binary
 *.img binary
+
+# Test video for the IPTV tester. Named .mpegts so TypeScript never reads it.
+*.mpegts binary

@@ -2,6 +2,7 @@ import { Component, Suspense, useCallback, useEffect, useMemo, useReducer, useRe
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import {
   activeEntry,
+  canGoBack,
   createViewStack,
   onIntent,
   openModals,
@@ -186,6 +187,11 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   );
 
   const active = activeEntry(state);
+  // Tells a native shell whether its Back button has anywhere to go in here,
+  // or should leave the app — Android's Back is not a swipe the page can see.
+  useEffect(() => {
+    document.documentElement.dataset.canGoBack = canGoBack(state) ? 'true' : 'false';
+  }, [state]);
   useEffect(() => {
     const back = (): void => navigate.pop();
     window.addEventListener('tvm:navigate-back', back);

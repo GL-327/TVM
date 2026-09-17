@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TVM</string>
-    <string name="title">Your TVM, on your phone</string>
-    <string name="subtitle">Connect to the computer running TVM on your home network.</string>
-    <string name="section_host">TVM connection</string>
-    <string name="address_hint">http://192.168.1.20:7345</string>
-    <string name="token_hint">LAN token</string>
-    <string name="allow_http">Allow private LAN HTTP</string>
-    <string name="http_footer">Use the LAN token configured on your TVM computer. HTTP is for trusted private Wi-Fi testing and does not encrypt network traffic.</string>
-    <string name="connect">Connect to TVM</string>
-    <string name="forget">Forget saved connection</string>
+    <string name="settings">App settings</string>
     <string name="reload">Reload TVM</string>
-    <string name="settings">Connection settings</string>
-    <string name="reconnect">Reconnect</string>
+    <string name="reload_short">Reload</string>
+    <string name="use_home_core">Use a home Core (optional)</string>
+    <string name="back_to_phone">Back to this phone</string>
+    <string name="home_core_title">Home Core</string>
+    <string name="home_core_lede">Optional. TVM on this phone already runs by itself. Use this only if you want the computer Core on your Wi-Fi.</string>
+    <string name="host_address">Host address</string>
+    <string name="lan_token">LAN token</string>
+    <string name="address_hint">http://192.168.1.20:7345</string>
+    <string name="token_hint">Paste the host LAN token</string>
+    <string name="allow_http">Allow private LAN HTTP</string>
+    <string name="connect">Connect to home Core</string>
+    <string name="connecting">Connecting…</string>
+    <string name="close">Close</string>
+    <string name="back_again">Press back again to leave TVM</string>
+    <string name="start_failed">TVM could not start its on-device core.</string>
+    <string name="home_core_unreachable">Could not reach the optional home Core. This phone app still works without a PC.</string>
 </resources>

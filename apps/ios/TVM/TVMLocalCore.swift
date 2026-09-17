@@ -9,6 +9,8 @@ final class TVMLocalCore {
     let accounts: TVMAccounts
     private let startedAt = Date()
     private let session: URLSession
+    /// GitHub downloads get their own patient, cookie-free session.
+    private let updateSession = TVMUpdater.downloadSession()
     private let lock = NSLock()
     private var liveURL: String?
     private var liveHost: String?
@@ -86,11 +88,11 @@ final class TVMLocalCore {
             return .json(200, TVMUpdater.snapshot(store: store).json())
         }
         if path == "/api/update/check" && method == "POST" {
-            do { return .json(200, try await TVMUpdater.check(store: store, session: session).json()) }
+            do { return .json(200, try await TVMUpdater.check(store: store, session: updateSession).json()) }
             catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "check failed"]) }
         }
         if path == "/api/update/apply" && method == "POST" {
-            do { return .json(200, try await TVMUpdater.apply(store: store, session: session)) }
+            do { return .json(200, try await TVMUpdater.apply(store: store, session: updateSession)) }
             catch { return .json(400, ["error": "apply_refused", "reason": (error as? LocalizedError)?.errorDescription ?? "apply failed"]) }
         }
         if path == "/api/update/changelog" && method == "GET" {
@@ -363,6 +365,7 @@ final class TVMLocalCore {
                 return .json(400, ["error": "confirmation_required"])
             }
             store.factoryReset()
+            TVMBundledUI.invalidate()
             media.clearCache()
             liveURL = nil
             liveHost = nil

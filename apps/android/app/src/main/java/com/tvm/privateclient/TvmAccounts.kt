@@ -83,7 +83,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         return parsed
     }
 
-    fun termsVersion(): String = access().optString("termsVersion", "")
+    fun termsVersion(): String = access().text("termsVersion", "")
 
     // ---- Storage ----------------------------------------------------------
 
@@ -97,7 +97,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         val live = JSONObject()
         for (key in sessions.keys()) {
             val session = sessions.optJSONObject(key) ?: continue
-            if (parseIso(session.optString("expiresAt")) > now) live.put(key, session)
+            if (parseIso(session.text("expiresAt")) > now) live.put(key, session)
         }
         return accounts to live
     }
@@ -149,10 +149,10 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         val out = JSONObject()
         if (account == null) return out.put("ok", false).put("reason", "no_account")
         if (account.optBoolean("suspended")) return out.put("ok", false).put("reason", "suspended")
-        if (!account.optBoolean("activated") || account.optString("tier").isEmpty()) {
+        if (!account.optBoolean("activated") || account.text("tier").isEmpty()) {
             return out.put("ok", false).put("reason", "awaiting_activation")
         }
-        if (account.optString("termsVersion") != termsVersion() || account.optString("termsAcceptedAt").isEmpty()) {
+        if (account.text("termsVersion") != termsVersion() || account.text("termsAcceptedAt").isEmpty()) {
             return out.put("ok", false).put("reason", "terms_required")
         }
         return out.put("ok", true).put("reason", JSONObject.NULL)
@@ -162,13 +162,13 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
     fun publicOf(account: JSONObject): JSONObject = publicJson(account)
 
     private fun publicJson(account: JSONObject): JSONObject = JSONObject().apply {
-        put("id", account.optString("id"))
-        put("email", account.optString("email"))
-        put("displayName", account.optString("displayName"))
+        put("id", account.text("id"))
+        put("email", account.text("email"))
+        put("displayName", account.text("displayName"))
         put("activated", account.optBoolean("activated"))
         put("tier", account.opt("tier") ?: JSONObject.NULL)
         put("suspended", account.optBoolean("suspended"))
-        put("createdAt", account.optString("createdAt"))
+        put("createdAt", account.text("createdAt"))
         put("termsVersion", account.opt("termsVersion") ?: JSONObject.NULL)
         put("termsAcceptedAt", account.opt("termsAcceptedAt") ?: JSONObject.NULL)
     }
@@ -194,7 +194,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         val (accounts, sessions) = load()
         // Saying "already registered" would turn signup into a way of testing
         // which addresses have accounts.
-        if (accounts.any { it.optString("email") == email }) {
+        if (accounts.any { it.text("email") == email }) {
             return Result.failure(Exception("That account could not be created. If it already exists, sign in instead."))
         }
 
@@ -227,7 +227,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
     fun signIn(rawEmail: String, password: String, client: String?): Result<JSONObject> {
         val email = normalize(rawEmail)
         val (accounts, sessions) = load()
-        val index = accounts.indexOfFirst { it.optString("email") == email }
+        val index = accounts.indexOfFirst { it.text("email") == email }
         if (index < 0) {
             // Do the work anyway so a missing account and a wrong password take
             // the same time and cannot be told apart from outside.
@@ -235,7 +235,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
             return Result.failure(Exception("That email address and password do not match."))
         }
         val account = accounts[index]
-        val ok = TvmPassword.matches(password, account.optString("passwordHash"), account.optString("passwordSalt"))
+        val ok = TvmPassword.matches(password, account.text("passwordHash"), account.text("passwordSalt"))
         if (!ok) return Result.failure(Exception("That email address and password do not match."))
 
         val token = newToken()
@@ -244,7 +244,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         account.put("signIns", account.optInt("signIns") + 1)
         if (client != null) account.put("lastClient", client.take(200))
         sessions.put(digest(token), JSONObject().apply {
-            put("accountId", account.optString("id"))
+            put("accountId", account.text("id"))
             put("issuedAt", iso(now))
             put("expiresAt", iso(Date(now.time + sessionMillis)))
             put("client", client ?: JSONObject.NULL)
@@ -267,13 +267,13 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         if (token.isNullOrEmpty()) return null
         val (accounts, sessions) = load()
         val session = sessions.optJSONObject(digest(token)) ?: return null
-        val id = session.optString("accountId")
-        return accounts.firstOrNull { it.optString("id") == id }
+        val id = session.text("accountId")
+        return accounts.firstOrNull { it.text("id") == id }
     }
 
     fun acceptTerms(id: String): JSONObject? {
         val (accounts, sessions) = load()
-        val account = accounts.firstOrNull { it.optString("id") == id } ?: return null
+        val account = accounts.firstOrNull { it.text("id") == id } ?: return null
         account.put("termsVersion", termsVersion())
         account.put("termsAcceptedAt", iso())
         save(accounts, sessions)
@@ -286,14 +286,14 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         val (accounts, sessions) = load()
         val counts = mutableMapOf<String, Int>()
         for (key in sessions.keys()) {
-            val id = sessions.optJSONObject(key)?.optString("accountId") ?: continue
+            val id = sessions.optJSONObject(key)?.text("accountId") ?: continue
             counts[id] = (counts[id] ?: 0) + 1
         }
         val needle = (search ?: "").trim().lowercase(Locale.US)
         val filtered = accounts.filter { account ->
             if (needle.isNotEmpty()
-                && !account.optString("email").contains(needle)
-                && !account.optString("displayName").lowercase(Locale.US).contains(needle)
+                && !account.text("email").contains(needle)
+                && !account.text("displayName").lowercase(Locale.US).contains(needle)
             ) return@filter false
             when (state) {
                 "waiting" -> !account.optBoolean("activated") && !account.optBoolean("suspended")
@@ -301,17 +301,17 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
                 "suspended" -> account.optBoolean("suspended")
                 else -> true
             }
-        }.sortedByDescending { it.optString("createdAt") }
+        }.sortedByDescending { it.text("createdAt") }
 
         val tiers = JSONArray()
         val source = access().optJSONArray("tiers") ?: JSONArray()
         for (i in 0 until source.length()) {
             val tier = source.optJSONObject(i) ?: continue
-            tiers.put(JSONObject().put("id", tier.optString("id")).put("name", tier.optString("name")))
+            tiers.put(JSONObject().put("id", tier.text("id")).put("name", tier.text("name")))
         }
 
         return JSONObject().apply {
-            put("accounts", JSONArray(filtered.map { adminJson(it, counts[it.optString("id")] ?: 0) }))
+            put("accounts", JSONArray(filtered.map { adminJson(it, counts[it.text("id")] ?: 0) }))
             put("summary", JSONObject().apply {
                 put("total", accounts.size)
                 put("waiting", accounts.count { !it.optBoolean("activated") && !it.optBoolean("suspended") })
@@ -325,9 +325,9 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
     fun activate(id: String, tier: String, note: String?): JSONObject? {
         if (tier != "stream" && tier != "stream-live") return null
         val (accounts, sessions) = load()
-        val account = accounts.firstOrNull { it.optString("id") == id } ?: return null
+        val account = accounts.firstOrNull { it.text("id") == id } ?: return null
         account.put("activated", true)
-        if (account.optString("activatedAt").isEmpty()) account.put("activatedAt", iso())
+        if (account.text("activatedAt").isEmpty()) account.put("activatedAt", iso())
         account.put("tier", tier)
         account.put("suspended", false)
         if (note != null) account.put("note", note.take(500))
@@ -337,13 +337,13 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
 
     fun setSuspended(id: String, suspended: Boolean): JSONObject? {
         val (accounts, sessions) = load()
-        val account = accounts.firstOrNull { it.optString("id") == id } ?: return null
+        val account = accounts.firstOrNull { it.text("id") == id } ?: return null
         account.put("suspended", suspended)
         if (suspended) {
             account.put("activated", false)
             // Revoking must not wait for a token to lapse.
             for (key in sessions.keys().asSequence().toList()) {
-                if (sessions.optJSONObject(key)?.optString("accountId") == id) sessions.remove(key)
+                if (sessions.optJSONObject(key)?.text("accountId") == id) sessions.remove(key)
             }
         }
         save(accounts, sessions)
@@ -352,7 +352,7 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
 
     fun setNote(id: String, note: String?): JSONObject? {
         val (accounts, sessions) = load()
-        val account = accounts.firstOrNull { it.optString("id") == id } ?: return null
+        val account = accounts.firstOrNull { it.text("id") == id } ?: return null
         account.put("note", note?.take(500) ?: JSONObject.NULL)
         save(accounts, sessions)
         return adminJson(account, 0)
@@ -360,9 +360,9 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
 
     fun erase(id: String) {
         val (accounts, sessions) = load()
-        accounts.removeAll { it.optString("id") == id }
+        accounts.removeAll { it.text("id") == id }
         for (key in sessions.keys().asSequence().toList()) {
-            if (sessions.optJSONObject(key)?.optString("accountId") == id) sessions.remove(key)
+            if (sessions.optJSONObject(key)?.text("accountId") == id) sessions.remove(key)
         }
         save(accounts, sessions)
     }

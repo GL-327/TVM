@@ -20,11 +20,14 @@ import {
   looksLikeHlsBody,
   looksLikeHlsBytes,
   looksLikeMpegTs,
+  mintHop,
   probeContentLength,
   rewriteHlsPlaylist,
   skipMediaSniff,
 } from './hlsProxy.ts';
 import { httpAssetUrl, isHttpUrl } from './title.ts';
+import { buildUpstreamHeaders, globalProfile, mergeProfiles, type HeaderProfile } from '../Server Side Live/headers.ts';
+import { applyHeaderLine, hasAnyHeader } from '../Server Side Live/playlist.ts';
 import { readSealed, writeSealed } from './vault.ts';
 import {
   fetchXtreamAccount,
@@ -52,7 +55,8 @@ export interface LiveCatalogQuery {
 
 export interface LiveProxyResult {
   kind: 'playlist' | 'media' | 'error';
-  body?: string | ReadableStream<Uint8Array>;
+  /** Server Side Live answers a cached segment with the bytes themselves. */
+  body?: string | ReadableStream<Uint8Array> | Uint8Array;
   contentType?: string;
   status?: number;
   reason?: string;
@@ -219,6 +223,9 @@ export function parseM3u(text: string): LiveChannel[] {
   const used = new Set<string>();
   let pending: { name: string; group?: string; logo?: string } | null = null;
   let groupHint: string | undefined;
+  // Headers a panel asks for between #EXTINF and its URL. Ignoring them is
+  // why a channel plays in VLC and answers 403 here.
+  let hints: HeaderProfile = { id: '' };
 
   for (const raw of lines) {
     const line = raw.trim();
@@ -238,10 +245,14 @@ export function parseM3u(text: string): LiveChannel[] {
       const logoRaw = attribute(line, 'tvg-logo');
       const logo = logoRaw !== undefined ? httpAssetUrl(logoRaw) : undefined;
       pending = { name: (named !== undefined && named !== '' ? named : title) || 'Channel', group, logo };
+      hints = { id: '' };
       continue;
     }
 
-    if (line.startsWith('#')) continue;
+    if (line.startsWith('#')) {
+      if (pending !== null) applyHeaderLine(hints, line);
+      continue;
+    }
     if (!isHttpUrl(line)) {
       pending = null;
       continue;
@@ -262,8 +273,10 @@ export function parseM3u(text: string): LiveChannel[] {
     };
     if (pending?.group !== undefined && pending.group !== '') channel.group = pending.group;
     if (pending?.logo !== undefined) channel.logo = pending.logo;
+    if (pending !== null && hasAnyHeader(hints)) channel.profile = { ...hints, id };
     channels.push(channel);
     pending = null;
+    hints = { id: '' };
   }
 
   return channels;
@@ -476,10 +489,11 @@ async function diagnoseSegment(
   segment: string,
   report: LiveDiagnosis,
   fetchImpl: typeof fetch,
+  profile?: HeaderProfile,
 ): Promise<LiveDiagnosis> {
   report.step = 'segment';
   try {
-    const headers = upstreamHeaders(segment, undefined, false);
+    const headers = upstreamHeaders(segment, undefined, false, profile);
     const response = await fetchImpl(segment, {
       method: 'GET',
       redirect: 'follow',
@@ -776,6 +790,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
    */
   const probeChannel = async (id: string): Promise<ProbeOutcome> => {
     const upstream = await resolveUpstream(id);
+    const profile = (await findChannel(id))?.profile;
     if (upstream === null || upstream === '') {
       return { status: null, networkError: 'this channel is not in the current playlist' };
     }
@@ -786,7 +801,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       const response = await fetchImpl(upstream, {
         method: 'GET',
         redirect: 'follow',
-        headers: upstreamHeaders(upstream, undefined, false),
+        headers: upstreamHeaders(upstream, undefined, false, profile),
         signal: controller.signal,
       });
       const outcome: ProbeOutcome = {
@@ -819,7 +834,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         const media = await fetchImpl(segment, {
           method: 'GET',
           redirect: 'follow',
-          headers: upstreamHeaders(segment, undefined, false),
+          headers: upstreamHeaders(segment, undefined, false, profile),
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS * 2),
         });
         outcome.segmentStatus = media.status;
@@ -1087,6 +1102,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
 
     async diagnose(id: string): Promise<LiveDiagnosis> {
       const upstream = await resolveUpstream(id);
+      const profile = (await findChannel(id))?.profile;
       if (upstream === null) return { ok: false, step: 'resolve', detail: 'This channel is not in the current playlist.' };
 
       const fromUrl = mediaTypeFromUrl(upstream);
@@ -1095,7 +1111,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         step: 'fetch',
         urlHasExtension: fromUrl !== null,
         typeFromUrl: fromUrl,
-        userAgent: liveUserAgent(),
+        userAgent: profile?.userAgent ?? liveUserAgent(),
       };
 
       const controller = new AbortController();
@@ -1104,7 +1120,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         const response = await fetchImpl(upstream, {
           method: 'GET',
           redirect: 'follow',
-          headers: upstreamHeaders(upstream, undefined, false),
+          headers: upstreamHeaders(upstream, undefined, false, profile),
           signal: controller.signal,
         });
         report.status = response.status;
@@ -1172,7 +1188,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
           report.detail = 'The provider is sending an HLS playlist, but it lists no segments yet.';
           return report;
         }
-        return await diagnoseSegment(upstream, segment, report, fetchImpl);
+        return await diagnoseSegment(upstream, segment, report, fetchImpl, profile);
       } catch (error) {
         const name = error instanceof Error ? error.name : '';
         report.step = 'fetch';
@@ -1188,7 +1204,8 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
     async proxyChannel(id: string, headers?: Record<string, string>, method = 'GET'): Promise<LiveProxyResult> {
       const upstream = await resolveUpstream(id);
       if (upstream === null) return { kind: 'error', status: 404, reason: 'not-found' };
-      return loadMedia(upstream, fetchImpl, { headers, playlist: isHlsPlaylist(upstream, ''), method });
+      const profile = (await findChannel(id))?.profile;
+      return loadMedia(upstream, fetchImpl, { headers, playlist: isHlsPlaylist(upstream, ''), method, profile });
     },
 
     async proxyHop(token: string, headers?: Record<string, string>, method = 'GET'): Promise<LiveProxyResult> {
@@ -1199,6 +1216,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         playlist: hop.playlist,
         method,
         hintType: hop.mimeType,
+        profile: hop.profile,
       });
     },
   };
@@ -1232,7 +1250,13 @@ function upstreamHeaders(
   url: string,
   incoming?: Record<string, string>,
   playlist = false,
+  profile?: HeaderProfile,
 ): Headers {
+  if (profile !== undefined && !isRealDebrid(url)) {
+    // The playlist said what this panel wants; it wins field by field over
+    // the defaults, exactly as Server Side Live applies it.
+    return buildUpstreamHeaders({ profile: mergeProfiles(globalProfile(process.env), profile), incoming, playlist });
+  }
   const from = new Headers(incoming);
   const headers = new Headers();
   const range = from.get('range');
@@ -1352,8 +1376,9 @@ async function probeMediaHead(
   fetchImpl: typeof fetch,
   incoming: Record<string, string> | undefined,
   hintType: string,
+  profile?: HeaderProfile,
 ): Promise<LiveProxyResult> {
-  const headers = upstreamHeaders(upstream, incoming, false);
+  const headers = upstreamHeaders(upstream, incoming, false, profile);
   headers.delete('Range');
   const fallbackType = resolveMediaType(upstream, '', hintType);
   try {
@@ -1402,16 +1427,16 @@ async function peekForSniff(reader: ReadableStreamDefaultReader<Uint8Array>): Pr
 async function loadMedia(
   upstream: string,
   fetchImpl: typeof fetch,
-  options: { headers?: Record<string, string>; playlist?: boolean; method?: string; hintType?: string } = {},
+  options: { headers?: Record<string, string>; playlist?: boolean; method?: string; hintType?: string; profile?: HeaderProfile } = {},
 ): Promise<LiveProxyResult> {
   try {
     const hintedPlaylist = options.playlist === true || isHlsPlaylist(upstream, options.hintType ?? '');
     const method = options.method === 'HEAD' ? 'HEAD' : 'GET';
     const hintType = options.hintType ?? '';
     if (method === 'HEAD' && !hintedPlaylist) {
-      return probeMediaHead(upstream, fetchImpl, options.headers, hintType);
+      return probeMediaHead(upstream, fetchImpl, options.headers, hintType, options.profile);
     }
-    const headers = upstreamHeaders(upstream, options.headers, hintedPlaylist);
+    const headers = upstreamHeaders(upstream, options.headers, hintedPlaylist, options.profile);
     const response = await fetchImpl(upstream, {
       method: 'GET',
       redirect: 'follow',
@@ -1435,9 +1460,11 @@ async function loadMedia(
       const bytes = await readAllBytes(head, reader);
       const text = new TextDecoder('utf-8').decode(bytes);
       if (looksLikeHlsBody(text)) {
+        const profile = options.profile;
         return {
           kind: 'playlist',
-          body: rewriteHlsPlaylist(text, upstream),
+          // Every segment, variant and key inherits the channel's headers.
+          body: rewriteHlsPlaylist(text, upstream, (url, playlist, mime) => mintHop(url, playlist, mime, profile)),
           contentType: 'application/vnd.apple.mpegurl',
         };
       }
