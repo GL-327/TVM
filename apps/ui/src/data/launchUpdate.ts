@@ -65,17 +65,17 @@ export async function applyGithubUpdateOnLaunch(): Promise<boolean> {
     const body = (await check.json()) as LaunchUpdateStatus;
     if (body.available == null || body.applyAllowed !== true) return false;
     const version = body.available.version ?? 'github';
-    // Recorded before applying, so a core that restarts mid-request cannot
-    // lead to a second attempt in the same session either.
-    try {
-      store?.setItem(LAUNCH_APPLY_KEY, version);
-    } catch {
-      // Without session storage the changed flag below is the only guard.
-    }
     const apply = await fetch('/api/update/apply', { method: 'POST' });
     if (!apply.ok) return false;
     const result = (await apply.json().catch(() => ({}))) as ApplyResponse;
     if (!shouldReloadAfterApply(result, null)) return false;
+    // After a successful apply only: a failed download must still be retried
+    // in this session, but a core that always says "available" must not loop.
+    try {
+      store?.setItem(LAUNCH_APPLY_KEY, version);
+    } catch {
+      // Without session storage the changed flag above is the only guard.
+    }
     rememberPendingChangelog({
       version: result.version ?? version,
       from: body.currentCommit?.slice(0, 7) ?? null,

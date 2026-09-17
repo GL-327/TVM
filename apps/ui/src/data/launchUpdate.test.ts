@@ -79,6 +79,42 @@ describe('applying an update at launch', () => {
     expect(applies).toBe(0);
   });
 
+  it('retries later in the same session if apply fails', async () => {
+    let applyStatus = 500;
+    vi.stubGlobal('fetch', async (input: string) => {
+      if (input === '/api/update/check') {
+        return Response.json({
+          available: { version: '90a7563', notes: 'Retry me' },
+          applyAllowed: true,
+        });
+      }
+      if (input === '/api/update/apply') {
+        applies += 1;
+        return new Response('no', { status: applyStatus });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    await expect(applyGithubUpdateOnLaunch()).resolves.toBe(false);
+    expect(session.getItem(LAUNCH_APPLY_KEY)).toBeNull();
+    applyStatus = 200;
+    vi.stubGlobal('fetch', async (input: string) => {
+      if (input === '/api/update/check') {
+        return Response.json({
+          available: { version: '90a7563', notes: 'Retry me' },
+          applyAllowed: true,
+        });
+      }
+      if (input === '/api/update/apply') {
+        applies += 1;
+        return Response.json({ version: '90a7563', changed: true, restart: 'reload' });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    await expect(applyGithubUpdateOnLaunch()).resolves.toBe(true);
+    expect(applies).toBe(2);
+    expect(reloads).toBe(1);
+  });
+
   it('leaves a manual restart to the person rather than reloading into a stopped core', () => {
     expect(shouldReloadAfterApply({ changed: true, restart: 'manual' }, null)).toBe(false);
     expect(shouldReloadAfterApply({ changed: true, restart: 'self' }, null)).toBe(true);
