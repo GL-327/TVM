@@ -219,6 +219,12 @@ struct TVMWebView: UIViewControllerRepresentable {
         webView.scrollView.keyboardDismissMode = .interactive
         webView.scrollView.alwaysBounceHorizontal = false
         webView.scrollView.bounces = false
+        // The document does not scroll; .home / .page / rails do. Leaving the
+        // WK scroll view enabled steals vertical pans from those cameras,
+        // especially when a finger starts on a horizontal rail.
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.delaysContentTouches = false
+        webView.scrollView.canCancelContentTouches = false
         webView.scrollView.contentInset = TVMKeyboardLayout.webViewContentInset
         webView.scrollView.scrollIndicatorInsets = .zero
         context.coordinator.attach(webView)
@@ -241,6 +247,9 @@ struct TVMWebView: UIViewControllerRepresentable {
         webView.scrollView.maximumZoomScale = 1
         webView.scrollView.bouncesZoom = false
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.delaysContentTouches = false
+        webView.scrollView.canCancelContentTouches = false
         controller.additionalSafeAreaInsets = .zero
     }
 
@@ -349,6 +358,9 @@ struct TVMWebView: UIViewControllerRepresentable {
             webView.scrollView.scrollIndicatorInsets = .zero
             webView.scrollView.verticalScrollIndicatorInsets = .zero
             webView.scrollView.horizontalScrollIndicatorInsets = .zero
+            webView.scrollView.isScrollEnabled = false
+            webView.scrollView.delaysContentTouches = false
+            webView.scrollView.canCancelContentTouches = false
             lockZoom(webView)
             if let host = webView.parentViewController as? TVMWebHostController {
                 host.additionalSafeAreaInsets = .zero
@@ -364,16 +376,14 @@ struct TVMWebView: UIViewControllerRepresentable {
 
         private func preferBackGesture(_ webView: WKWebView) {
             guard let back = backGesture else { return }
+            // Only the document pan waits. Requiring every pan on the view —
+            // including nested overflow cameras — to wait for the edge gesture
+            // delayed taps and made vertical scrolling feel dead.
             webView.scrollView.panGestureRecognizer.require(toFail: back)
-            webView.scrollView.gestureRecognizers?.forEach { recognizer in
-                if recognizer !== back && recognizer is UIPanGestureRecognizer {
-                    recognizer.require(toFail: back)
-                }
-            }
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
-            gestureRecognizer === backGesture
+            false
         }
 
         private func publishKeyboard(_ notification: Notification) {

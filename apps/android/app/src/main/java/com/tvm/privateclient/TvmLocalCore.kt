@@ -38,6 +38,8 @@ class TvmLocalCore(
     val updater = TvmUpdater(store, bundledUi, http)
 
     private fun bearerToken(headers: Map<String, String>): String? {
+        val dedicated = headers["x-tvm-account"]?.trim().orEmpty()
+        if (dedicated.isNotEmpty()) return dedicated
         val raw = headers["authorization"] ?: return null
         return if (raw.startsWith("Bearer ")) raw.removePrefix("Bearer ") else null
     }
@@ -57,6 +59,7 @@ class TvmLocalCore(
     private var liveUser: String? = null
     private var liveChannels: MutableList<JSONObject> = mutableListOf()
     private var livePicks: MutableSet<String> = mutableSetOf()
+    private val liveReflector = TvmLiveReflector()
 
     companion object {
         private const val PICK_LIMIT = 48
@@ -526,6 +529,11 @@ class TvmLocalCore(
             )
         }
 
+        if (path.startsWith("/api/live/proxy/") && (method == "GET" || method == "HEAD")) {
+            val token = path.removePrefix("/api/live/proxy/")
+            return liveReflector.serve(token, method)
+        }
+
         return HttpReply.json(404, Json.obj("error" to "not_found"))
     }
 
@@ -550,15 +558,16 @@ class TvmLocalCore(
          */
         val path = runCatching { URI(raw).path ?: "" }.getOrDefault("")
         val hls = path.substringAfterLast('.', "").lowercase(Locale.US) == "m3u8"
+        val reflected = liveReflector.publish(raw)
         return HttpReply.json(
             200,
             Json.obj(
                 "kind" to "stream",
-                "url" to raw,
+                "url" to reflected,
                 "title" to (Json.string(channel.opt("name")) ?: "Live TV"),
                 "filename" to path.substringAfterLast('/', ""),
                 "mimeType" to if (hls) "application/vnd.apple.mpegurl" else "video/mp2t",
-                "engine" to "native",
+                "engine" to "html5",
                 "transport" to if (hls) "hls" else "ts-live",
                 "isLive" to true,
             ),

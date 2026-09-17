@@ -68,6 +68,7 @@ function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     show: false,
     title: 'TVM',
+    icon: join(__dirname, '..', 'icon.png'),
     width: bounds.width,
     height: bounds.height,
     minWidth: 640,
@@ -83,7 +84,7 @@ function createWindow(): BrowserWindow {
     ...(windowed && process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,
-          titleBarOverlay: { color: '#0b0b0b', symbolColor: '#f5f5f5', height: 36 },
+          titleBarOverlay: { color: '#071033', symbolColor: '#f4f8ff', height: 36 },
         }
       : {}),
     ...(windowed && process.platform === 'darwin'

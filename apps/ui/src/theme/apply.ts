@@ -30,7 +30,7 @@ export const THEME_STORAGE_KEY = 'tvm.theme';
  * so each new default is introduced exactly once per device and a theme the
  * viewer picks afterwards is never overwritten again.
  */
-const THEME_DEFAULT_BOOT = 'tvm.theme.cinematic-boot';
+const THEME_DEFAULT_BOOT = 'tvm.theme.orbit-boot';
 const themeListeners = new Set<(id: ThemeId) => void>();
 
 export function subscribeTheme(listener: (id: ThemeId) => void): () => void {

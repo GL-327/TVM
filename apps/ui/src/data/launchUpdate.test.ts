@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyGithubUpdateOnLaunch, LAUNCH_APPLY_KEY, shouldReloadAfterApply } from './launchUpdate';
+
+const dir = dirname(fileURLToPath(import.meta.url));
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -120,5 +125,12 @@ describe('applying an update at launch', () => {
     expect(shouldReloadAfterApply({ changed: true, restart: 'self' }, null)).toBe(true);
     expect(shouldReloadAfterApply({ changed: true, restart: 'reload' }, null)).toBe(true);
     expect(shouldReloadAfterApply({ changed: true, restart: 'reload' }, 'abc1234')).toBe(false);
+  });
+
+  it('starts from the app shell so a signed-out device can still update', () => {
+    const app = readFileSync(join(dir, '../App.tsx'), 'utf8');
+    const stack = readFileSync(join(dir, '../nav/ViewStackProvider.tsx'), 'utf8');
+    expect(app).toContain('applyGithubUpdateOnLaunch');
+    expect(stack).not.toContain('applyGithubUpdateOnLaunch');
   });
 });

@@ -121,6 +121,50 @@ describe('live service', () => {
     expect(await live.upstreamUrl(id)).toBe(url);
   });
 
+  it('hands the player a Core proxy when a reflector is wired up', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-proxy-'));
+    dirs.push(dir);
+    const url = 'https://example.com/bbc1.m3u8';
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async () => new Response(`#EXTM3U\n#EXTINF:-1,BBC One\n${url}\n`, { status: 200 }),
+      reflect: () => '/api/live/proxy/0123456789abcdef0123456789abcdef',
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    const play = await live.play(liveChannelId(url));
+    expect(play).toMatchObject({
+      kind: 'stream',
+      url: '/api/live/proxy/0123456789abcdef0123456789abcdef',
+    });
+    expect(play.kind === 'stream' ? play.url : '').not.toContain('/api/live/stream/');
+    expect(play.kind === 'stream' ? play.url : '').not.toContain('example.com');
+  });
+
+  it('hands the reflector the playlist headers a strict channel asked for', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-headers-'));
+    dirs.push(dir);
+    const url = 'https://example.com/strict.m3u8';
+    const seen: Array<{ url: string; profile?: { userAgent?: string; referer?: string } }> = [];
+    const live = createLiveService({
+      dataDir: dir,
+      fetch: async () => new Response(
+        `#EXTM3U\n#EXTINF:-1,Strict\n#EXTVLCOPT:http-user-agent=SpecialPlayer/2.0\n#EXTVLCOPT:http-referrer=https://panel.example/portal\n${url}\n`,
+        { status: 200 },
+      ),
+      reflect: (target, profile) => {
+        seen.push({ url: target, profile });
+        return '/api/live/proxy/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      },
+    });
+    await live.setPlaylist('https://example.com/playlist.m3u');
+    await live.play(liveChannelId(url));
+    expect(seen[0]?.url).toBe(url);
+    expect(seen[0]?.profile).toMatchObject({
+      userAgent: 'SpecialPlayer/2.0',
+      referer: 'https://panel.example/portal',
+    });
+  });
+
   it('plays an MPEG-TS channel as video/mp2t so the desktop player uses mpegts.js', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-live-ts-'));
     dirs.push(dir);

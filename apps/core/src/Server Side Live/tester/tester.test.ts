@@ -281,7 +281,15 @@ describe('the Live TV screen path against the tester', () => {
 
     for (const id of [101, 102, 103]) {
       const item = items.find((entry) => entry.name === channel(id).name)!;
-      const master = await fetch(`${base}/api/live/stream/${encodeURIComponent(item.id)}`);
+      const playRes = await fetch(`${base}/api/playback`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: item.id }),
+      });
+      expect(playRes.status, channel(id).name).toBe(200);
+      const play = (await playRes.json()) as { url?: string };
+      expect(play.url, channel(id).name).toMatch(/\/api\/live\/proxy\//);
+      const master = await fetch(play.url!);
       expect(master.status, channel(id).name).toBe(200);
       const text = await master.text();
       expect(text).not.toContain(panel.origin);
@@ -315,7 +323,15 @@ describe('the Live TV screen path against the tester', () => {
     expect(saved.status).toBe(200);
     const items = await catalog();
     expect(items.map((item) => item.id)).toEqual(TESTER_CHANNELS.map((item) => `live:xtream:${item.id}`));
-    const response = await fetch(`${base}/api/live/stream/${encodeURIComponent('live:xtream:104')}`);
+    const playRes = await fetch(`${base}/api/playback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'live:xtream:104' }),
+    });
+    expect(playRes.status).toBe(200);
+    const play = (await playRes.json()) as { url?: string; mimeType?: string };
+    expect(play.url).toMatch(/\/api\/live\/proxy\//);
+    const response = await fetch(play.url!);
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('video/mp2t');
     const bytes = await head(response, 60_000);

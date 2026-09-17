@@ -331,7 +331,7 @@ final class TVMMedia {
 
     func appsList() -> [String: Any] {
         let tiles: [[String: Any]] = [
-            ["id": "tvm-stream", "name": "TVM Stream", "accent": "#5b3dff", "wordmark": "TVM", "icon": "/apps/tvm.svg", "url": "internal:library", "layout": "hub", "mock": false, "ribbon": true],
+            ["id": "tvm-stream", "name": "TVM Stream", "accent": "#2f6bff", "wordmark": "TVM", "icon": "/apps/tvm.png", "url": "internal:library", "layout": "hub", "mock": false, "ribbon": true],
             ["id": "netflix", "name": "Netflix", "accent": "#e50914", "wordmark": "NETFLIX", "icon": "/apps/netflix.svg", "url": "https://www.netflix.com/", "layout": "netflix", "mock": true, "ribbon": true],
             ["id": "prime", "name": "Prime Video", "accent": "#00a8e1", "wordmark": "prime video", "icon": "/apps/marks/prime.svg", "url": "https://www.primevideo.com/", "layout": "prime", "mock": true, "ribbon": true],
             ["id": "max", "name": "HBO Max", "accent": "#002be7", "wordmark": "max", "icon": "/apps/marks/max.svg", "url": "https://www.max.com/", "layout": "max", "mock": true, "ribbon": true],
@@ -370,7 +370,7 @@ final class TVMMedia {
         return [
             "id": spec["id"] ?? id,
             "name": spec["name"] ?? id,
-            "accent": spec["accent"] ?? "#5b3dff",
+            "accent": spec["accent"] ?? "#2f6bff",
             "layout": spec["layout"] ?? "hub",
             "wordmark": spec["wordmark"] ?? spec["name"] ?? id,
             "logo": spec["icon"] ?? "",

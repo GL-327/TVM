@@ -30,6 +30,8 @@ final class StandaloneRuntime: ObservableObject {
     @Published var session: BrowseSession?
     @Published var error: String?
     @Published var starting = true
+    /// Bumped when a GitHub interface lands while this open is already showing a page.
+    @Published var uiEpoch = 0
     let core = TVMLocalCore()
     private var server: TVMLocalServer?
 
@@ -49,11 +51,14 @@ final class StandaloneRuntime: ObservableObject {
             self.error = "TVM could not start its on-device core."
         }
         starting = false
-        // Look for the next interface while the viewer carries on. It is staged
-        // for the next open and never swapped under them.
+        // Look for a newer interface while the first page loads. If GitHub has
+        // one, put it on disk and reload so this open is not stuck on the copy
+        // that shipped in the IPA.
         let store = core.store
-        Task.detached(priority: .utility) {
-            await TVMUpdater.applyIfNeeded(store: store, session: TVMUpdater.downloadSession())
+        Task.detached(priority: .utility) { [weak self] in
+            let swapped = await TVMUpdater.applyIfNeeded(store: store, session: TVMUpdater.downloadSession())
+            guard swapped else { return }
+            await MainActor.run { self?.uiEpoch += 1 }
         }
     }
 
@@ -117,7 +122,7 @@ struct StandaloneRoot: View {
     var body: some View {
         Group {
             if let session = runtime.session {
-                PlayerShell(session: session, onUseLocal: runtime.useLocal)
+                PlayerShell(session: session, uiEpoch: runtime.uiEpoch, onUseLocal: runtime.useLocal)
             } else if let error = runtime.error {
                 VStack(spacing: 16) {
                     Text("TVM").font(.largeTitle.bold())
@@ -151,6 +156,7 @@ enum TVMViewport {
 
 struct PlayerShell: View {
     let session: BrowseSession
+    var uiEpoch: Int = 0
     var onUseLocal: () -> Void
     @StateObject private var lan = AppModel()
     @State private var reload = UUID()
@@ -200,7 +206,14 @@ struct PlayerShell: View {
                 }
                 .accessibilityLabel("App settings")
             }
-            .padding(.trailing, 8)
+            // The web view is edge-to-edge under the Dynamic Island. This menu
+            // has to sit in the same band the page uses, not in the island.
+            .padding(.top, TVMDeviceChrome.current.fallbackTop)
+            .padding(.trailing, 10)
+        }
+        .onChange(of: uiEpoch) { _ in
+            guard uiEpoch > 0 else { return }
+            reloadPage()
         }
         .sheet(isPresented: $showHomeCore) {
             OptionalHomeCoreSheet(model: lan) {

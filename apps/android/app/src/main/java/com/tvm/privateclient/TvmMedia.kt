@@ -412,7 +412,7 @@ class TvmMedia(
         return Json.obj(
             "id" to spec.text("id", id),
             "name" to name,
-            "accent" to spec.text("accent", "#5b3dff"),
+            "accent" to spec.text("accent", "#2f6bff"),
             "layout" to spec.text("layout", "hub"),
             "wordmark" to spec.text("wordmark", name),
             "logo" to spec.text("icon", ""),
@@ -862,7 +862,7 @@ class TvmMedia(
         error is RdClientException.NeedsAuth || error is RdClientException.NotConfigured
 
     private fun appTiles(): List<JSONObject> = listOf(
-        tile("tvm-stream", "TVM Stream", "#5b3dff", "TVM", "/apps/tvm.svg", "internal:library", "hub", false, true),
+        tile("tvm-stream", "TVM Stream", "#2f6bff", "TVM", "/apps/tvm.png", "internal:library", "hub", false, true),
         tile("netflix", "Netflix", "#e50914", "NETFLIX", "/apps/netflix.svg", "https://www.netflix.com/", "netflix", true, true),
         tile("prime", "Prime Video", "#00a8e1", "prime video", "/apps/marks/prime.svg", "https://www.primevideo.com/", "prime", true, true),
         tile("max", "HBO Max", "#002be7", "max", "/apps/marks/max.svg", "https://www.max.com/", "max", true, true),

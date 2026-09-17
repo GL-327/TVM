@@ -37,8 +37,9 @@ import kotlin.concurrent.thread
  * The phone runs its own core and the interface fills the screen edge to edge.
  * A quiet menu top right reloads TVM or, optionally, connects to a home Core on
  * the Wi-Fi — exactly the two things the iOS menu offers. The interface
- * refreshes itself from GitHub: a bundle found in the background is staged and
- * goes live on the next open, and the interface can apply one at once.
+ * refreshes itself from GitHub: a newer bundle is put on disk as soon as it
+ * verifies, and this activity reloads so the open session is not stuck on the
+ * copy that shipped in the APK.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -147,7 +148,12 @@ class MainActivity : AppCompatActivity() {
                 refreshBootScript()
                 showStandalone()
             }
-            runCatching { made.updater.applyIfNeeded() }
+            val swapped = runCatching { made.updater.applyIfNeeded() }.getOrDefault(false)
+            if (swapped) {
+                runOnUiThread {
+                    if (standaloneOrigin != null && !this.isFinishing) webView.reload()
+                }
+            }
         }
     }
 
@@ -461,6 +467,9 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusableInTouchMode = true
         webView.isClickable = true
         webView.overScrollMode = View.OVER_SCROLL_NEVER
+        webView.isNestedScrollingEnabled = true
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
         // Do not set OnTouchListener: that would swallow DOM click and overlay taps.
         webView.settings.javaScriptEnabled = true
         webView.settings.userAgentString = webView.settings.userAgentString + " TVM-Android"

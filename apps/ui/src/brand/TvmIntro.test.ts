@@ -6,11 +6,10 @@ import { describe, expect, it } from 'vitest';
 const dir = dirname(fileURLToPath(import.meta.url));
 
 describe('TVM brand mark', () => {
-  it('draws a custom screen-and-play mark, not a licensed logo', () => {
+  it('draws the orbital mark, not a licensed logo', () => {
     const src = readFileSync(join(dir, 'TvmMark.tsx'), 'utf8');
-    expect(src).toContain('tvm-mark__bezel');
-    expect(src).toContain('tvm-mark__play');
-    expect(src).toContain('viewBox="0 0 80 80"');
+    expect(src).toContain('/tvm-icon.png');
+    expect(src).toContain('tvm-mark');
     expect(src.toLowerCase()).not.toContain('apple');
     expect(src.toLowerCase()).not.toContain('sf pro');
   });

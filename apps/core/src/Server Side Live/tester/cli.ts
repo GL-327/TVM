@@ -121,8 +121,11 @@ async function check(panel: TesterPanel): Promise<boolean> {
   return failures === 0;
 }
 
+const host = process.env['TVM_LIVE_TESTER_HOST'] === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1';
+
 const panel = await startTesterPanel({
   port,
+  host,
   onRequest: quiet
     ? undefined
     : (entry) => {
@@ -133,6 +136,9 @@ const panel = await startTesterPanel({
 });
 
 console.log('TVM IPTV tester is running.');
+if (host === '127.0.0.1') {
+  console.log('Listening on loopback only. Set TVM_LIVE_TESTER_HOST=0.0.0.0 if other devices should reach this panel.');
+}
 console.log('');
 console.log(`  Playlist (M3U):   ${panel.playlistUrl()}`);
 console.log(`  Xtream login:     server ${panel.xtream.host}   user ${panel.xtream.username}   password ${panel.xtream.password}`);

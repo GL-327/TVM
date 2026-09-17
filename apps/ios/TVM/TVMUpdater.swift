@@ -327,8 +327,9 @@ enum TVMChangelog {
  commit that produced no new bundle: every check said "update available",
  every apply fetched the same bundle, and the page reloaded forever.
 
- Nothing here blocks the launch. A bundle found in the background is staged
- and goes live on the next open; the interface can also apply it at once.
+ Nothing here blocks the launch. A newer bundle is put in place as soon as
+ it verifies, and the shell reloads the page so the old interface is not
+ left on screen until the next open.
  */
 enum TVMUpdater {
     static let repo = "GL-327/TVM"
@@ -602,12 +603,35 @@ enum TVMUpdater {
         return result
     }
 
-    /// Launch, in the background: find the next interface and stage it for the next open.
-    static func applyIfNeeded(store: TVMStore, session: URLSession, bundle: Bundle = .main) async {
-        guard TVMPrefs.load(store).autoUpdate else { return }
+    /// Launch, in the background: download a newer interface and put it on screen.
+    /// Returns true when the files on disk changed, so the shell can reload.
+    @discardableResult
+    static func applyIfNeeded(store: TVMStore, session: URLSession, bundle: Bundle = .main) async -> Bool {
+        guard TVMPrefs.load(store).autoUpdate else { return false }
         let (status, found) = await evaluate(store: store, session: session, bundle: bundle)
-        guard status.available != nil, let manifest = found else { return }
-        try? await stage(manifest, store: store, session: session, bundle: bundle)
+        guard status.available != nil, let manifest = found else { return false }
+        do {
+            try await stage(manifest, store: store, session: session, bundle: bundle)
+            let promoted = TVMBundledUI.withLock {
+                TVMBundledUI.promoteLocked(store: store, bundle: bundle, onlyCommit: manifest.commit)
+            }
+            guard let result = promoted else { return false }
+            let changed = (result["changed"] as? Bool) ?? true
+            if changed {
+                let version = result["version"] as? String ?? String(manifest.commit.prefix(7))
+                _ = remember(
+                    store: store,
+                    kind: "up_to_date",
+                    available: nil,
+                    notice: "Applied interface \(version).",
+                    lastCheck: ISO8601DateFormatter().string(from: Date()),
+                    bundle: bundle
+                )
+            }
+            return changed
+        } catch {
+            return false
+        }
     }
 
     private static func remember(store: TVMStore, kind: String, available: [String: Any]?, notice: String?, lastCheck: String, bundle: Bundle) -> Status {

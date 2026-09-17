@@ -27,7 +27,7 @@ const SCRYPT = { N: 16_384, r: 8, p: 1 } as const;
  * a digest cannot be run backwards to recover it.
  */
 export const PBKDF2_SALT = Buffer.from('f80d2573b5a64e22beac1d5146baa2bc', 'hex');
-export const PBKDF2_HASH = Buffer.from('15add22bda5d479cb1b3fb9caf874c112e84d589582164624b89d00ca79e22a7', 'hex');
+export const PBKDF2_HASH = Buffer.from('8544f326d1e3124dda1679d4ca0d5ea48a02c80e3284babc2bacc11184d4bc09', 'hex');
 export const PBKDF2_ITERATIONS = 600_000;
 
 function matchesScrypt(password: string): boolean {

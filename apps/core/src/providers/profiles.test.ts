@@ -20,14 +20,14 @@ describe('profiles', () => {
   /*
    * The first profile a fresh install makes used to be crimson: the one colour
    * the palette reserves for failure, on the screen that greets a new viewer,
-   * in an app whose signature is violet.
+   * in an app whose signature is the orbital blue.
    */
   it('gives the first profile the brand colour, and never the failure red', async () => {
     const profiles = createProfileService(await dataDir());
     const first = profiles.list().profiles[0];
     expect(first).toBeDefined();
-    // #7c4dff, the signature in palette.css, is hue 256.
-    expect(first!.hue).toBe(256);
+    // #2f6bff, the signature in palette.css, is hue 221.
+    expect(first!.hue).toBe(221);
 
     for (let i = 1; i < MAX_PROFILES; i += 1) profiles.create(`Person ${i}`);
     for (const profile of profiles.list().profiles) {

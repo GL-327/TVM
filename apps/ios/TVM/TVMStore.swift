@@ -8,9 +8,9 @@ final class TVMStore {
      * Profile colours, starting on the brand, matching apps/core/src/providers/profiles.ts.
      * The first hue was 350 — crimson — so the one profile a fresh install creates was
      * red: the colour the palette reserves for failure, on the screen that greets a new
-     * viewer, in an app whose signature is violet (#7c4dff, hue 256). Red is left out.
+     * viewer, in an app whose signature is the orbital blue (#2f6bff, hue 221). Red is left out.
      */
-    private let hues = [256, 190, 145, 38, 315]
+    private let hues = [221, 190, 145, 38, 315]
 
     init(root testRoot: URL? = nil) {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first

@@ -17,6 +17,7 @@ final class TVMLocalCore {
     private var liveUser: String?
     private var liveChannels: [[String: Any]] = []
     private var livePicks = Set<String>()
+    private let liveReflector: TVMLiveReflector
 
     init(session: URLSession? = nil, store: TVMStore = TVMStore()) {
         self.store = store
@@ -34,6 +35,7 @@ final class TVMLocalCore {
         plans = TVMPlans(store: store)
         media = TVMMedia(store: store, catalog: catalog, rd: rd, plans: plans)
         accounts = TVMAccounts(store: store)
+        liveReflector = TVMLiveReflector(session: self.session)
         if let saved = store.readJSON("live.json") as? [String: Any] {
             liveURL = saved["url"] as? String
             liveHost = saved["host"] as? String
@@ -44,6 +46,8 @@ final class TVMLocalCore {
     }
 
     private func bearerToken(_ headers: [String: String]) -> String? {
+        let dedicated = headers["x-tvm-account"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !dedicated.isEmpty { return dedicated }
         guard let raw = headers["authorization"], raw.hasPrefix("Bearer ") else { return nil }
         return String(raw.dropFirst(7))
     }
@@ -443,6 +447,10 @@ final class TVMLocalCore {
         if path == "/api/lan/session" {
             return .json(404, ["error": "standalone_mode", "reason": "This iPhone app runs its own core. A LAN token is not required."])
         }
+        if path.hasPrefix("/api/live/proxy/") && (method == "GET" || method == "HEAD") {
+            let token = String(path.dropFirst("/api/live/proxy/".count))
+            return await liveReflector.serve(token, method: method)
+        }
         if path.hasPrefix("/api/") { return .json(404, ["error": "not_found"]) }
         return .json(404, ["error": "not_found"])
     }
@@ -480,7 +488,8 @@ final class TVMLocalCore {
             return .json(409, ["kind": "unavailable", "reason": "not-in-library"])
         }
         let hls = url.pathExtension.lowercased() == "m3u8"
-        return .json(200, ["kind": "stream", "url": raw, "title": channel["name"] as? String ?? "Live TV", "filename": url.lastPathComponent, "mimeType": hls ? "application/vnd.apple.mpegurl" : "video/mp2t", "engine": "native", "transport": hls ? "hls" : "ts-live", "isLive": true])
+        let reflected = liveReflector.publish(url)
+        return .json(200, ["kind": "stream", "url": reflected, "title": channel["name"] as? String ?? "Live TV", "filename": url.lastPathComponent, "mimeType": hls ? "application/vnd.apple.mpegurl" : "video/mp2t", "engine": "html5", "transport": hls ? "hls" : "ts-live", "isLive": true])
     }
 
     private func liveStatus() -> [String: Any] {

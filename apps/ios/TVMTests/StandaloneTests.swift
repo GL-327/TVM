@@ -163,10 +163,13 @@ final class StandaloneTests: XCTestCase {
         let hls = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: play)
         XCTAssertEqual(hls.status, 200)
         XCTAssertEqual(JSONValue.object(hls.body)["transport"] as? String, "hls")
+        XCTAssertEqual(JSONValue.object(hls.body)["engine"] as? String, "html5")
+        XCTAssertTrue((JSONValue.object(hls.body)["url"] as? String ?? "").contains("/api/live/proxy/"))
+        XCTAssertFalse((JSONValue.object(hls.body)["url"] as? String ?? "").contains("cdn.example"))
         let ts = await core.handle(method: "POST", path: "/api/playback", query: [:], headers: [:], body: JSONValue.data(["id": "live:2"]))
         XCTAssertEqual(ts.status, 200)
         XCTAssertEqual(JSONValue.object(ts.body)["transport"] as? String, "ts-live")
-        XCTAssertEqual(JSONValue.object(ts.body)["engine"] as? String, "native")
+        XCTAssertEqual(JSONValue.object(ts.body)["engine"] as? String, "html5")
     }
 
     func testProgressAppearsAfterThirtySecondsNotFourPercent() {
@@ -464,6 +467,18 @@ final class StandaloneTests: XCTestCase {
         let pad = TVMDeviceChrome.profile(identifier: "iPad14,1", idiom: .pad)
         XCTAssertEqual(pad.family, .ipad)
         XCTAssertEqual(pad.maxHeight, 2160)
+        let seventeen = TVMDeviceChrome.profile(identifier: "iPhone18,1", idiom: .phone)
+        XCTAssertEqual(seventeen.family, .island)
+        XCTAssertGreaterThanOrEqual(seventeen.fallbackTop, 59)
+        XCTAssertGreaterThan(seventeen.extraTop, fourteen.extraTop)
+    }
+
+    func testBootScriptPaintsIslandInsetsBeforeTheBundle() {
+        let script = TVMDeviceChrome.bootScript()
+        XCTAssertTrue(script.contains("--tvm-inset-top"))
+        XCTAssertTrue(script.contains("dataset.deviceFamily"))
+        XCTAssertTrue(script.contains("phone-shell"))
+        XCTAssertTrue(script.contains("--tvm-chrome-extra-top"))
     }
 
     func testPrefsDefaultToEnglishAndAutoUpdate() {
@@ -633,6 +648,29 @@ final class StandaloneTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: before.path))
         try? FileManager.default.createDirectory(at: before, withIntermediateDirectories: true)
         XCTAssertEqual(before, TVMBundledUI.overlayRoot(store: store))
+    }
+
+    func testAccountSessionPrefersTheRokuHeader() async throws {
+        let core = testCore()
+        let registered = await core.handle(
+            method: "POST", path: "/api/account/register", query: [:], headers: [:],
+            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password", "displayName": "Someone"])
+        )
+        XCTAssertEqual(registered.status, 200)
+        let signed = await core.handle(
+            method: "POST", path: "/api/account/signin", query: [:], headers: [:],
+            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password"])
+        )
+        XCTAssertEqual(signed.status, 200)
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: signed.body) as? [String: Any])
+        let token = try XCTUnwrap(payload["token"] as? String)
+        let viaHeader = await core.handle(
+            method: "GET", path: "/api/account", query: [:],
+            headers: ["x-tvm-account": token], body: nil
+        )
+        XCTAssertEqual(viaHeader.status, 200)
+        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: viaHeader.body) as? [String: Any])
+        XCTAssertEqual(body["signedIn"] as? Bool, true)
     }
 }
 

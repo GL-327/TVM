@@ -130,9 +130,11 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           <FocusButton id="live-picks" variant="primary" onSelect={() => navigate.push('live-picks')}>
             Choose channels
           </FocusButton>
+          {plan.developer ? (
           <FocusButton id="live-check" variant="quiet" onSelect={() => navigate.push('live-check')}>
             Check channels
           </FocusButton>
+          ) : null}
           <FocusButton id="live-settings" variant="quiet" onSelect={() => navigate.push('live-xtream')}>
             Login
           </FocusButton>

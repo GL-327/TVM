@@ -24,7 +24,9 @@
   height: 100dvh;
   display: grid;
   place-items: safe center;
-  padding: clamp(1rem, 4vw, 3rem);
+  padding: max(1.25rem, env(safe-area-inset-top, 0px), var(--tvm-safe-y, 1.25rem))
+    clamp(1rem, 4vw, 3rem)
+    max(1.25rem, env(safe-area-inset-bottom, 0px), var(--tvm-safe-bottom, 1.25rem));
   color: var(--tvm-text, #f5f5f7);
   overflow-y: auto;
 
@@ -58,6 +60,14 @@
 .gate__panel--wide { width: min(46rem, 100%); }
 
 .gate__mark { display: block; margin-bottom: 1rem; }
+
+.gate__mark-hit {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: default;
+}
 
 .gate h1 {
   margin: 0 0 0.5rem;

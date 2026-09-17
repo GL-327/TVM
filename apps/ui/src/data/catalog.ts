@@ -705,10 +705,10 @@ export const HERO_SLIDE_IDS = ['outer-range', 'reacher', 'yellowjackets', 'the-w
 export const TVM_STREAM: AppTile = {
   id: 'tvm-stream',
   name: 'TVM Stream',
-  accent: '#5b3dff',
+  accent: '#2f6bff',
   url: 'internal:library',
   wordmark: 'TVM',
-  icon: '/apps/tvm.svg',
+  icon: '/apps/tvm.png',
 };
 
 export const APPS: readonly AppTile[] = [

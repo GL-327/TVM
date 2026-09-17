@@ -221,7 +221,7 @@
     gap: 0.55rem;
     min-height: 0;
     padding: 0.15rem var(--tvm-safe-x) 0.85rem;
-    overflow-x: visible;
+    overflow: hidden;
   }
 
   .tvm-button.launch-tile {
@@ -905,7 +905,6 @@
    * D-pad camera. On touch the finger must win, and it must keep iOS momentum,
    * so the scrollers opt out of scroll chaining rather than out of scrolling.
    */
-  .rail__track,
   .page--library,
   .page--settings,
   .page--recovery,
@@ -918,28 +917,49 @@
   }
 
   /*
-   * Both axes, everywhere a finger can land.
+   * Vertical is the page camera. Horizontal rails are not native scrollers.
    *
-   * These used to read `pan-x` on a rail inside `pan-y` on the page, which
-   * looks reasonable and is not: touch-action intersects down the hit-test
-   * chain, so a touch that started on a poster — which is most of the screen —
-   * had horizontal allowed by one rule and vertical by the other, and ended up
-   * fighting itself. Swiping down over artwork did nothing, and swiping across
-   * only sometimes caught.
-   *
-   * Letting the browser decide from the gesture angle is what native carousels
-   * do. Direction is already constrained by the scroll containers themselves —
-   * a rail only scrolls in x, a page only in y — and overscroll-behavior below
-   * stops a rail handing its momentum to the page mid-swipe.
+   * iOS (and Android Chromium, less often) gives every `overflow-x: auto`
+   * a nested scroller that claims the pan. A vertical swipe that starts on
+   * a poster — which is most of Home — is then eaten by a row that cannot
+   * move in Y, so the page does not scroll. `pan-x` on the rail inside
+   * `pan-y` on the page is worse: touch-action intersects, and both axes
+   * cancel. The rails therefore opt out of native panning (`pan-y` plus
+   * `overflow: hidden`); pointerInput drives scrollLeft / scrollTop once a
+   * gesture has a clear axis. Selectors here must beat hub sheets that still
+   * say `overflow-x: auto` for the living-room layout.
    */
   .rail__track,
+  [data-wrap='row'],
+  .service-nav[data-wrap='row'],
+  .service-nav__tabs,
+  .home__launcher,
+  .season-row,
+  .max-nav,
+  .max-nav__tabs,
+  .dplus-nav__tabs,
+  .dplus-brands,
+  .channel-chips,
+  .search-recent__items {
+    overflow-x: hidden;
+    overflow-y: hidden;
+    touch-action: pan-y;
+    overscroll-behavior: none;
+  }
+
   .home,
   .page--library,
   .page--settings,
   .page--recovery,
   .details,
-  .search-pill__panel {
-    touch-action: pan-x pan-y;
+  .search-pill__panel,
+  .gate,
+  .gate-terms,
+  .billing-page {
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 
   .tvm-button,
@@ -1041,7 +1061,7 @@ html.phone-shell {
 html.phone-shell[data-device-family='island'] {
   --tvm-device-top: 59px;
   --tvm-device-bottom: 34px;
-  --tvm-chrome-extra-top: 10px;
+  --tvm-chrome-extra-top: 16px;
 }
 
 html.phone-shell[data-device-family='notch'] {
@@ -1061,6 +1081,24 @@ html.phone-shell[data-device-family='ipad'] {
   --tvm-device-top: 24px;
   --tvm-device-bottom: 20px;
   --tvm-chrome-extra-top: 4px;
+}
+
+html.phone-shell[data-orientation='landscape'][data-device-family='island'],
+html.phone-shell[data-orientation='landscape'][data-device-family='notch'] {
+  --tvm-chrome-extra-x: 10px;
+}
+
+html.phone-shell .gate,
+html.phone-shell .gate-terms {
+  /*
+   * Sign-in is the first paint, and on a modern iPhone the Dynamic Island
+   * covers the top 59–62pt. The panel used a 1rem pad, so the mark sat
+   * under the cutout. Same inset the home stage already uses.
+   */
+  padding-top: max(var(--tvm-safe-y), 1.25rem);
+  padding-right: max(var(--tvm-safe-x), 1rem);
+  padding-bottom: max(var(--tvm-safe-bottom), 1.25rem);
+  padding-left: max(var(--tvm-safe-x), 1rem);
 }
 
 html.phone-shell,
@@ -1150,7 +1188,7 @@ html.phone-shell .home__launcher {
   gap: 0.55rem;
   min-height: 0;
   padding: 0.15rem var(--tvm-safe-x) 0.85rem;
-  overflow-x: visible;
+  overflow: hidden;
 }
 
 html.phone-shell .home__shelf {
@@ -1451,7 +1489,7 @@ html.phone-shell body,
 html.phone-shell #root {
   overflow: hidden;
   overscroll-behavior: none;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 html.phone-shell .search-pill__panel,
 html.phone-shell .setup-card,
@@ -1471,7 +1509,37 @@ html.phone-shell .details__body > * { min-width: 0; }
 html.phone-shell .page__lede,
 html.phone-shell .settings-row,
 html.phone-shell .page__message { overflow-wrap: anywhere; }
-html.phone-shell .rail__track { overscroll-behavior-x: contain; overscroll-behavior-y: auto; }
+html.phone-shell .rail__track,
+html.phone-shell [data-wrap='row'],
+html.phone-shell .service-nav[data-wrap='row'],
+html.phone-shell .service-nav__tabs,
+html.phone-shell .home__launcher,
+html.phone-shell .season-row,
+html.phone-shell .max-nav,
+html.phone-shell .max-nav__tabs,
+html.phone-shell .dplus-nav__tabs,
+html.phone-shell .dplus-brands,
+html.phone-shell .channel-chips,
+html.phone-shell .search-recent__items {
+  overflow-x: hidden;
+  overflow-y: hidden;
+  touch-action: pan-y;
+  overscroll-behavior: none;
+}
+html.phone-shell .home,
+html.phone-shell .page--library,
+html.phone-shell .page--settings,
+html.phone-shell .page--recovery,
+html.phone-shell .details,
+html.phone-shell .search-pill__panel,
+html.phone-shell .gate,
+html.phone-shell .gate-terms,
+html.phone-shell [data-keyboard-fields] {
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
 html.phone-shell .ribbon__spacer { display: none; }
 html.phone-shell .ribbon .tvm-button.ribbon__icon {
   min-width: 0;
