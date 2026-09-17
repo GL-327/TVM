@@ -45,6 +45,15 @@ final class StandaloneTests: XCTestCase {
         testFolders.removeAll()
         super.tearDown()
     }
+
+    private func assertSameFolder(_ left: URL, _ right: URL, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(
+            URL(fileURLWithPath: left.path, isDirectory: true).standardizedFileURL,
+            URL(fileURLWithPath: right.path, isDirectory: true).standardizedFileURL,
+            file: file,
+            line: line
+        )
+    }
     func testSixteenNineFrameFitsWithoutCropping() {
         for available in [CGSize(width: 844, height: 390), CGSize(width: 568, height: 320), CGSize(width: 390, height: 844), CGSize(width: 1024, height: 768)] {
             let size = TVMViewport.fittedSize(in: available)
@@ -558,15 +567,16 @@ final class StandaloneTests: XCTestCase {
         let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-overlay-\(UUID().uuidString)"))
         testFolders.append(store.root)
         let overlay = TVMBundledUI.overlayRoot(store: store)
+        XCTAssertTrue(overlay.hasDirectoryPath)
         try writeBundle(overlay, commit: "1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
         store.writeJSON(TVMBundledUI.markerName, ["appBuild": TVMBundledUI.appBuild()])
         TVMBundledUI.prepare(store: store)
-        XCTAssertEqual(TVMBundledUI.root(store: store), overlay)
+        assertSameFolder(TVMBundledUI.root(store: store), overlay)
 
         store.writeJSON(TVMBundledUI.markerName, ["appBuild": "someotherbuild"])
         TVMBundledUI.prepare(store: store)
-        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
+        assertSameFolder(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
         XCTAssertFalse(FileManager.default.fileExists(atPath: overlay.path), "a stale download is removed, not kept")
     }
 
@@ -576,7 +586,7 @@ final class StandaloneTests: XCTestCase {
         try writeBundle(TVMBundledUI.overlayRoot(store: store), commit: "2222222", nativeApi: StandalonePolicy.nativeAPI + 1)
         store.writeJSON(TVMBundledUI.markerName, ["appBuild": TVMBundledUI.appBuild()])
         TVMBundledUI.prepare(store: store)
-        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
+        assertSameFolder(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
     }
 
     func testStagedInterfaceGoesLiveOnTheNextLaunchWithItsChangelog() throws {
@@ -590,7 +600,7 @@ final class StandaloneTests: XCTestCase {
             "entries": [["sha": "3333333", "title": "Fix the sign-in form", "body": ""]],
         ])
         TVMBundledUI.prepare(store: store)
-        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.overlayRoot(store: store))
+        assertSameFolder(TVMBundledUI.root(store: store), TVMBundledUI.overlayRoot(store: store))
         XCTAssertEqual(TVMBundledUI.commit(in: TVMBundledUI.root(store: store)), commit)
         XCTAssertFalse(FileManager.default.fileExists(atPath: TVMBundledUI.stagedRoot(store: store).path))
         let record = TVMChangelog.record(store: store)
@@ -611,8 +621,18 @@ final class StandaloneTests: XCTestCase {
         try writeBundle(TVMBundledUI.stagedRoot(store: store), commit: "4444444")
         store.writeJSON(TVMBundledUI.stagedMetaName, ["commit": "4444444", "appBuild": "someotherbuild"])
         TVMBundledUI.prepare(store: store)
-        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
+        assertSameFolder(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
         XCTAssertFalse(FileManager.default.fileExists(atPath: TVMBundledUI.stagedRoot(store: store).path))
+    }
+
+    func testOverlayRootStaysADirectoryURLBeforeTheFolderExists() {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-dirurl-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        let before = TVMBundledUI.overlayRoot(store: store)
+        XCTAssertTrue(before.hasDirectoryPath)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: before.path))
+        try? FileManager.default.createDirectory(at: before, withIntermediateDirectories: true)
+        XCTAssertEqual(before, TVMBundledUI.overlayRoot(store: store))
     }
 }
 

@@ -78,12 +78,19 @@ enum TVMBundledUI {
         return try body()
     }
 
-    static func overlayRoot(store: TVMStore) -> URL { store.url(overlayName) }
-    static func stagedRoot(store: TVMStore) -> URL { store.url(stagedName) }
+    static func overlayRoot(store: TVMStore) -> URL { directoryURL(store.url(overlayName)) }
+    static func stagedRoot(store: TVMStore) -> URL { directoryURL(store.url(stagedName)) }
 
     static func bundledRoot(bundle: Bundle = .main) -> URL {
         bundle.resourceURL?.appendingPathComponent("BundledUI", isDirectory: true)
-            ?? URL(fileURLWithPath: "BundledUI")
+            ?? URL(fileURLWithPath: "BundledUI", isDirectory: true)
+    }
+
+    /// Always a directory URL. Recent Foundation otherwise adds a trailing
+    /// slash only after the folder exists, so a URL taken before createDirectory
+    /// and one taken after compared unequal and failed the simulator tests.
+    private static func directoryURL(_ url: URL) -> URL {
+        URL(fileURLWithPath: url.path, isDirectory: true)
     }
 
     /// The commit this installed app was built from (BuildInfo.json).
@@ -399,6 +406,10 @@ enum TVMUpdater {
         configuration.timeoutIntervalForResource = 180
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpAdditionalHeaders = [
+            "User-Agent": "tvm-ios",
+            "Accept-Encoding": "identity",
+        ]
         return URLSession(configuration: configuration)
     }
 
@@ -442,6 +453,7 @@ enum TVMUpdater {
     private static func fetchManifest(session: URLSession) async -> Fetched {
         var request = URLRequest(url: downloadURL(manifestName))
         request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.timeoutInterval = 15
         request.cachePolicy = .reloadIgnoringLocalCacheData
         do {
@@ -523,6 +535,7 @@ enum TVMUpdater {
 
         var request = URLRequest(url: downloadURL(manifest.asset))
         request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.timeoutInterval = 120
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), data.count > 64 else {

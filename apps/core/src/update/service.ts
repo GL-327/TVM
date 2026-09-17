@@ -276,6 +276,8 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     const out: Record<string, string> = {
       Accept: accept,
       'User-Agent': 'tvm-core',
+      // Raw bytes so a tar.gz checksum still matches after GitHub's 302.
+      'Accept-Encoding': 'identity',
       'X-GitHub-Api-Version': '2022-11-28',
     };
     const token = authorize ? resolveToken(dataDir, env) : null;
