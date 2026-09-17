@@ -307,21 +307,35 @@ fun interface TvmHttp {
         /** The largest bundle the updater will accept. */
         const val MAX_BYTES = 64 * 1024 * 1024
 
-        val Default = TvmHttp { url, timeoutMs ->
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = timeoutMs
-            connection.readTimeout = timeoutMs
-            connection.instanceFollowRedirects = true
-            connection.useCaches = false
-            connection.setRequestProperty("User-Agent", "tvm-android")
-            try {
-                val status = connection.responseCode
-                if (status !in 200..299) return@TvmHttp (status to ByteArray(0))
-                val body = connection.inputStream.use { readLimited(it, MAX_BYTES) }
-                (status to body)
-            } finally {
-                connection.disconnect()
+        val Default = TvmHttp { start, timeoutMs ->
+            // Follow redirects ourselves. GitHub's download host 302s onto
+            // another hostname, and HttpURLConnection has dropped that hop
+            // (and decoded gzip under the checksum) on some Android builds.
+            var current = start
+            var lastStatus = 0
+            for (hop in 0 until 8) {
+                val connection = URL(current).openConnection() as HttpURLConnection
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = timeoutMs
+                connection.readTimeout = timeoutMs
+                connection.useCaches = false
+                connection.setRequestProperty("User-Agent", "tvm-android")
+                connection.setRequestProperty("Accept-Encoding", "identity")
+                try {
+                    lastStatus = connection.responseCode
+                    if (lastStatus in 301..308) {
+                        val location = connection.getHeaderField("Location") ?: return@TvmHttp (lastStatus to ByteArray(0))
+                        current = URL(URL(current), location).toString()
+                        continue
+                    }
+                    if (lastStatus !in 200..299) return@TvmHttp (lastStatus to ByteArray(0))
+                    val body = connection.inputStream.use { readLimited(it, MAX_BYTES) }
+                    return@TvmHttp (lastStatus to body)
+                } finally {
+                    connection.disconnect()
+                }
             }
+            lastStatus to ByteArray(0)
         }
 
         fun readLimited(input: InputStream, limit: Int): ByteArray {

@@ -249,6 +249,22 @@ describe('update service: packaged install', () => {
     expect(seen.some((url) => url.includes('/releases/latest'))).toBe(false);
   });
 
+  it('asks GitHub for raw bytes so a tar.gz checksum still matches', async () => {
+    const encodings: string[] = [];
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'production' },
+      install: PACKAGE,
+      currentCommit: OLD,
+      fetch: async (_input, init) => {
+        encodings.push(new Headers(init?.headers).get('Accept-Encoding') ?? '');
+        return new Response('no', { status: 404 });
+      },
+    });
+    await service.check();
+    expect(encodings[0]).toBe('identity');
+  });
+
   it('reports a missing feed, a rate limit and a refusal without throwing', async () => {
     const missing = createUpdateService({ dataDir: await dataDir(), env: {}, install: PACKAGE, fetch: feed({}) });
     await expect(missing.check()).resolves.toMatchObject({ kind: 'no_release', available: null });
