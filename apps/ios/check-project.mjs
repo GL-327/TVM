@@ -658,8 +658,8 @@ check('English is the default language unless Settings override it',
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('defaultLanguage = "en"'));
 check('the iPhone applies a GitHub UI bundle on open unless auto-update is off',
   (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('TVMUpdater.applyIfNeeded') &&
-  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('uiEpoch') &&
-  /func applyIfNeeded[\s\S]{0,1200}promoteLocked/.test(read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '') &&
+  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('tvmInterfaceDidApply') &&
+  /func applyIfNeeded[\s\S]{0,1600}promoteLocked/.test(read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '') &&
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('tvm-ios-ui.tar.gz') &&
   (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/apply') &&
   (read(join(REPO, 'apps', 'ui', 'src', 'data', 'launchUpdate.ts')) ?? '').includes('applyGithubUpdateOnLaunch'));

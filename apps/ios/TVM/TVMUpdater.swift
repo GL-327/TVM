@@ -331,6 +331,11 @@ enum TVMChangelog {
  it verifies, and the shell reloads the page so the old interface is not
  left on screen until the next open.
  */
+extension Notification.Name {
+    /// The on-device core put a new interface on disk. The web view should reload.
+    static let tvmInterfaceDidApply = Notification.Name("tvm.interface.didApply")
+}
+
 enum TVMUpdater {
     static let repo = "GL-327/TVM"
     static let releaseTag = "ios-ui"
@@ -627,6 +632,9 @@ enum TVMUpdater {
                     lastCheck: ISO8601DateFormatter().string(from: Date()),
                     bundle: bundle
                 )
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .tvmInterfaceDidApply, object: nil)
+                }
             }
             return changed
         } catch {

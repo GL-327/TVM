@@ -18,13 +18,6 @@ on:
         default: all
   push:
     branches: [main]
-    paths:
-      - "apps/core/**"
-      - "apps/ui/**"
-      - "apps/shell/**"
-      - "apps/roku/**"
-      - "scripts/**"
-      - ".github/workflows/release.yml"
 
 jobs:
   desktop:
