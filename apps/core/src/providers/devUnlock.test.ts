@@ -56,7 +56,7 @@ describe('the shared developer credential', () => {
   it('keeps no plaintext password in any app source', () => {
     const needle = ['TheBest', 'DayEver'].join('');
     const skip = new Set(['node_modules', 'dist', 'BundledUI', 'cache', '.git']);
-    const walk = (dir, acc = []) => {
+    const walk = (dir: string, acc: string[] = []): string[] => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (skip.has(entry.name)) continue;
         const full = join(dir, entry.name);

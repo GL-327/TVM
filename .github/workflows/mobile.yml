@@ -15,18 +15,11 @@ on:
           - ios
           - android
         default: all
+  # Every push to main rebuilds the IPA and APK. Path filters previously
+  # skipped a phone package when only Core or brand files changed, and the
+  # Releases page kept serving yesterday's install.
   push:
-    paths:
-      - "apps/android/**"
-      - "apps/ios/**"
-      - "apps/ui/**"
-      - "apps/core/src/lanSessions.ts"
-      - "apps/core/src/server.ts"
-      - "packages/**"
-      - "scripts/stamp-ui-bundle.mjs"
-      - "scripts/update-feed-lib.mjs"
-      - "scripts/native-api.json"
-      - ".github/workflows/mobile.yml"
+    branches: [main]
   pull_request:
     paths:
       - "apps/android/**"
