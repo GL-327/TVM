@@ -48,10 +48,18 @@ export function accessError(request: IncomingMessage, path: string, env: NodeJS.
     if (!allowed.has(origin)) return 'untrusted_origin';
   }
   if (request.headers['sec-fetch-site'] === 'cross-site') return 'cross_site_request';
-  if (!local && path !== '/api/health') {
-    if (!sessionAuthenticated && !tokenMatches(request.headers.authorization, env['TVM_LAN_TOKEN'])) return 'lan_authentication_required';
-    if (/^\/api\/(dev|billing|maintenance|update|system|privacy)(\/|$)/.test(path) ||
-        /^\/api\/plan/.test(path) && request.method !== 'GET') return 'local_access_required';
+    if (!local && path !== '/api/health') {
+    if (!sessionAuthenticated && !tokenMatches(request.headers.authorization, env['TVM_LAN_TOKEN'])) {
+      return 'lan_authentication_required';
+    }
+    const ownerUnlock = path === '/api/dev/unlock' && request.method === 'POST';
+    if (
+      !ownerUnlock &&
+      (/^\/api\/(dev|billing|maintenance|update|system|privacy)(\/|$)/.test(path) ||
+        (/^\/api\/plan/.test(path) && request.method !== 'GET'))
+    ) {
+      return 'local_access_required';
+    }
   }
   const contentType = request.headers['content-type'];
   if (path.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method ?? 'GET') &&

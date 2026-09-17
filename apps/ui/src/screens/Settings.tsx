@@ -215,14 +215,16 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
             Live TV
           </FocusButton>
         ) : null}
+        {plan.developer ? (
         <FocusButton
           id="developer"
           className="settings-row"
-          detail={plan.developer ? 'Open' : 'Locked'}
-          onSelect={() => navigate.push(plan.developer ? 'developer' : 'developer-unlock')}
+          detail="Open"
+          onSelect={() => navigate.push('developer')}
         >
           Developer
         </FocusButton>
+        ) : null}
         <FocusButton id="profiles" className="settings-row" detail="TVM Stream only" onSelect={() => navigate.push('profiles')}>
           Profiles
         </FocusButton>

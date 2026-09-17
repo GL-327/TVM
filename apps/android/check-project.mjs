@@ -160,8 +160,16 @@ check('WebView does not install a touch listener that can swallow DOM clicks',
   !main.includes('setOnTouchListener') && !web.includes('setOnTouchListener'));
 check('WebView disables pinch zoom',
   main.includes('setSupportZoom(false)') && main.includes('builtInZoomControls = false'));
+check('TvmLiveReflector.kt exists', existsSync(join(SRC, 'TvmLiveReflector.kt')));
+check('TvmDevUnlock.kt exists', existsSync(join(SRC, 'TvmDevUnlock.kt')));
+check('launcher foreground is the orbital PNG',
+  existsSync(join(ROOT, 'app', 'src', 'main', 'res', 'drawable', 'ic_launcher_foreground.png')));
+check('live playback is a local proxy',
+  (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/live/proxy/'));
 check('the Android app applies a GitHub UI bundle on open unless auto-update is off',
   main.includes('applyIfNeeded') &&
+  main.includes('webView.reload()') &&
+  /fun applyIfNeeded[\s\S]{0,800}promoteLocked/.test(read(join(SRC, 'TvmUpdater.kt')) ?? '') &&
   (read(join(SRC, 'TvmUpdater.kt')) ?? '').includes('tvm-android-ui.tar.gz') &&
   (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/update/apply'));
 check('an applied GitHub update shows a changelog on the next open',
@@ -170,7 +178,8 @@ check('an applied GitHub update shows a changelog on the next open',
 check('Android publishes device chrome like iOS',
   existsSync(join(SRC, 'TvmDeviceChrome.kt')) &&
   main.includes('TvmDeviceChrome.publish') &&
-  (read(join(SRC, 'TvmDeviceChrome.kt')) ?? '').includes('playbackHeight'));
+  (read(join(SRC, 'TvmDeviceChrome.kt')) ?? '').includes('playbackHeight') &&
+  (read(join(SRC, 'TvmDeviceChrome.kt')) ?? '').includes('--tvm-inset-top'));
 check('activity applies IME/system-bar insets',
   main.includes('WindowInsetsCompat.Type.ime()') && main.includes('displayCutout'));
 check('cookies are not flushed to disk on purpose',

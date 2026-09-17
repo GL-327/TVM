@@ -187,7 +187,28 @@ object TvmShellScripts {
         })();
     """.trimIndent()
 
-    fun device(profile: JSONObject): String = "window.__tvmDevice=$profile;"
+    fun device(profile: JSONObject): String = """
+        window.__tvmDevice=$profile;
+        (function(){
+          var d=window.__tvmDevice||{};
+          var r=document.documentElement;
+          function px(n){n=Number(n);return ((isFinite(n)&&n>=0)?Math.round(n):0)+'px';}
+          if(d.family){
+            r.dataset.deviceFamily=d.family;
+            r.classList.toggle('tvm-island', d.family==='island');
+            r.classList.toggle('tvm-notch', d.family==='notch');
+            r.classList.toggle('tvm-home-button', d.family==='home-button');
+            r.classList.toggle('tvm-ipad', d.family==='ipad');
+          }
+          r.style.setProperty('--tvm-inset-top', px(d.insetTop));
+          r.style.setProperty('--tvm-inset-right', px(d.insetRight));
+          r.style.setProperty('--tvm-inset-bottom', px(d.insetBottom));
+          r.style.setProperty('--tvm-inset-left', px(d.insetLeft));
+          r.style.setProperty('--tvm-chrome-extra-top', px(d.extraTop));
+          r.style.setProperty('--tvm-chrome-extra-bottom', px(d.extraBottom));
+          r.style.setProperty('--tvm-chrome-extra-x', px(d.extraX));
+        })();
+    """.trimIndent()
 
     fun language(code: String): String {
         val safe = code.filter { it.isLetter() }.take(8).ifEmpty { "en" }

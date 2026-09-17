@@ -362,6 +362,15 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   intent = intentFromKey(key)
   if intent = "" then return false
   if intent = "back" then return false
+  if intent = "info"
+    if m.ownerTaps = invalid then m.ownerTaps = 0
+    m.ownerTaps = m.ownerTaps + 1
+    if m.ownerTaps >= 7
+      m.ownerTaps = 0
+      emit("ownerDoor", invalid)
+    end if
+    return true
+  end if
   if intent = "home"
     emit("home", invalid)
     return true

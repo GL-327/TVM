@@ -59,7 +59,7 @@ function tvmAccentInk() as String
 end function
 
 function tvmAccentBlue() as String
-  return tvmThemeColor("accentBlue", "0x00A8E1FF")
+  return tvmThemeColor("accentBlue", "0x2F6BFFFF")
 end function
 
 function tvmDanger() as String

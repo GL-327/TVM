@@ -115,6 +115,27 @@ export function hashToken(token: string): string {
 }
 
 /**
+ * The session token for a TVM account, as sent by the interface or by Roku.
+ *
+ * Phones and the desktop send it as Authorization. Roku already uses that
+ * header for the LAN device token, so it sends the account as X-TVM-Account
+ * instead. A LAN token must never be treated as a session.
+ */
+export function accountSessionToken(
+  authorization: string | undefined,
+  accountHeader: string | undefined,
+  lanToken?: string,
+): string | undefined {
+  const dedicated = typeof accountHeader === 'string' ? accountHeader.trim() : '';
+  if (dedicated !== '') return dedicated;
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) return undefined;
+  const token = authorization.slice(7).trim();
+  if (token === '') return undefined;
+  if (typeof lanToken === 'string' && lanToken.length >= 32 && token === lanToken) return undefined;
+  return token;
+}
+
+/**
  * Whether this account may use TVM right now.
  *
  * Four things must all hold, and the order matters only for the message the

@@ -1837,7 +1837,7 @@ html.tvm-egg--happy .app::after {
     90deg,
     color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 45%, #ffffff),
     var(--tvm-mark, var(--tvm-brand-violet)) 55%,
-    color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 60%, #150a2e)
+    color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 60%, #071033)
   );
   transform: translateX(-120%);
   animation: tvm-loading-slide 1.15s cubic-bezier(0.22, 1, 0.36, 1) infinite;

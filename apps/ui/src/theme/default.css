@@ -1,6 +1,6 @@
 /*
- * Default — mint green and navy blue, Scottish-isle seaside.
- * Boot look. Fun and jolly, still a dark TV stage (not light mode).
+ * Original — same blue-cyan as the mark, kept as a selectable look rather
+ * than the boot theme (that is Cinematic).
  */
 
 :root,
@@ -8,44 +8,44 @@ html:not([data-theme]),
 [data-theme='default'] {
   color-scheme: dark;
 
-  --tvm-bg: #123056;
-  --tvm-bg-deep: #071428;
-  --tvm-bg-elevated: #1a3f6c;
-  --tvm-surface: #21507e;
-  --tvm-surface-hover: #2a628f;
-  --tvm-surface-glass: rgba(18, 48, 86, 0.78);
-  --tvm-border: #7dffd4;
-  --tvm-border-soft: rgba(184, 255, 232, 0.32);
+  --tvm-bg: #0c2468;
+  --tvm-bg-deep: #071033;
+  --tvm-bg-elevated: #16357a;
+  --tvm-surface: #1a448c;
+  --tvm-surface-hover: #2456a8;
+  --tvm-surface-glass: rgba(12, 36, 104, 0.78);
+  --tvm-border: #7dd3fc;
+  --tvm-border-soft: rgba(125, 211, 252, 0.32);
 
-  --tvm-text: #f4fffb;
-  --tvm-text-muted: #c5f8e8;
-  --tvm-text-faint: #9ad4c8;
+  --tvm-text: #f4f8ff;
+  --tvm-text-muted: #c5def8;
+  --tvm-text-faint: #8eadd4;
 
-  --tvm-accent: #7dffd4;
-  --tvm-accent-strong: #b8ffe8;
-  --tvm-accent-blue: #8ee8ff;
-  --tvm-accent-ink: #062018;
-  --tvm-mark: #7dffd4;
-  --tvm-mark-glow: rgba(125, 255, 212, 0.5);
+  --tvm-accent: #2f6bff;
+  --tvm-accent-strong: #7dd3fc;
+  --tvm-accent-blue: #7dd3fc;
+  --tvm-accent-ink: #061028;
+  --tvm-mark: #2f6bff;
+  --tvm-mark-glow: rgba(47, 107, 255, 0.5);
 
   --tvm-danger: #ff8aa0;
-  --tvm-success: #7dffd4;
+  --tvm-success: #3ddc97;
   --tvm-warning: #ffe08a;
-  --tvm-info: #8ee8ff;
+  --tvm-info: #7dd3fc;
 
-  --tvm-focus-ring-color: #b8ffe8;
-  --tvm-shadow-card: 0 0.8rem 2rem rgba(4, 16, 32, 0.42);
-  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(125, 255, 212, 0.28);
+  --tvm-focus-ring-color: #7dd3fc;
+  --tvm-shadow-card: 0 0.8rem 2rem rgba(4, 12, 40, 0.42);
+  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(47, 107, 255, 0.28);
 
-  --tvm-scene-sky: #86d2f0;
-  --tvm-scene-sky-mid: #8ee8d8;
-  --tvm-scene-horizon: #d4fff6;
-  --tvm-scene-sea: #165a88;
-  --tvm-scene-sea-deep: #071e3a;
-  --tvm-scene-land: #3d8a68;
-  --tvm-scene-land-far: #2a6a78;
-  --tvm-scene-foam: #f2fffb;
-  --tvm-scene-sun: #fff4c4;
+  --tvm-scene-sky: #1d4ed8;
+  --tvm-scene-sky-mid: #2f6bff;
+  --tvm-scene-horizon: #7dd3fc;
+  --tvm-scene-sea: #0c1c4a;
+  --tvm-scene-sea-deep: #071033;
+  --tvm-scene-land: #132a68;
+  --tvm-scene-land-far: #0c2268;
+  --tvm-scene-foam: #c8e4ff;
+  --tvm-scene-sun: #7dd3fc;
   --tvm-scene-opacity: 0.46;
   --tvm-scene-grain: 0.048;
 }

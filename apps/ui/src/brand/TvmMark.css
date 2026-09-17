@@ -1,87 +1,16 @@
-/*
- * The mark wears the theme signature rather than a colour of its own.
- *
- * Every stop used to be a literal: a cyan-to-orange wash that made sense when
- * TVM had no colour, and stopped making sense the moment palette.css said TVM
- * is violet. On the account gate the logo appeared three times in cyan and
- * amber directly above a violet button, which reads less like a brand than
- * like two of them.
- *
- * Every theme already names its signature in --tvm-mark, so the mark reads
- * that and derives its highlight, shadow and glass from it. Violet is then
- * simply what the default theme names, and the logo agrees with whichever
- * theme it is sitting in instead of agreeing with one and clashing with the
- * other eight.
- */
 .tvm-mark {
-  --mark-core: var(--tvm-mark, var(--tvm-brand-violet));
-  --mark-light: color-mix(in srgb, var(--mark-core) 30%, #ffffff);
-  --mark-deep: color-mix(in srgb, var(--mark-core) 55%, #150a2e);
-  /*
-   * The glass stays near-black on every theme, light ones included, because it
-   * is standing in for a switched-off screen. It only takes a cast of the
-   * signature so it does not read as a hole punched in the mark.
-   */
-  --mark-glass: color-mix(in srgb, var(--mark-core) 18%, #0d0718);
-  --mark-glass-deep: color-mix(in srgb, var(--mark-core) 7%, #05030a);
-
   display: block;
-  overflow: visible;
+  overflow: hidden;
   flex-shrink: 0;
-  transform-box: fill-box;
-}
-
-.tvm-mark__wash-a,
-.tvm-mark__gem-a {
-  stop-color: var(--mark-light);
-}
-
-.tvm-mark__wash-b,
-.tvm-mark__gem-b {
-  stop-color: var(--mark-core);
-}
-
-.tvm-mark__wash-c,
-.tvm-mark__gem-c {
-  stop-color: var(--mark-deep);
-}
-
-.tvm-mark__screen-a {
-  stop-color: var(--mark-glass);
-}
-
-.tvm-mark__screen-b {
-  stop-color: var(--mark-glass-deep);
-}
-
-.tvm-mark__glow-a {
-  stop-color: var(--mark-light);
-  stop-opacity: 0.9;
-}
-
-.tvm-mark__glow-b {
-  stop-color: var(--mark-core);
-  stop-opacity: 0.42;
-}
-
-/* Fades to the same hue rather than to grey, so the bloom has no muddy edge. */
-.tvm-mark__glow-c {
-  stop-color: var(--mark-core);
-  stop-opacity: 0;
-}
-
-.tvm-mark__play-edge {
-  stroke: var(--mark-light);
-  stroke-opacity: 0.5;
-}
-
-.tvm-mark__scan {
-  stroke: var(--mark-light);
+  border-radius: 22%;
+  object-fit: cover;
+  background: #2f6bff;
 }
 
 .tvm-mark--sm {
   width: 1.35rem;
   height: 1.35rem;
+  border-radius: 24%;
 }
 
 .tvm-mark--md {
@@ -94,167 +23,43 @@
   height: min(13.5rem, 46vw);
 }
 
-.tvm-mark__bloom,
-.tvm-mark__bezel,
-.tvm-mark__glass,
-.tvm-mark__play,
-.tvm-mark__play-edge,
-.tvm-mark__scan {
-  transform-box: fill-box;
-  transform-origin: 40px 38px;
-}
-
-.tvm-mark__bloom {
-  opacity: 0.72;
-}
-
-.tvm-mark--animated .tvm-mark__bloom {
+.tvm-mark--animated {
   animation: tvm-mark-bloom 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.tvm-mark--animated .tvm-mark__bezel {
-  stroke-dasharray: 220;
-  stroke-dashoffset: 220;
-  animation: tvm-mark-draw 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
-}
-
-.tvm-mark--animated .tvm-mark__glass {
-  opacity: 0;
-  animation: tvm-mark-fade 0.7s ease 0.42s both;
-}
-
-.tvm-mark--animated .tvm-mark__play,
-.tvm-mark--animated .tvm-mark__play-edge {
-  transform: scale(0.12) rotate(-28deg);
-  opacity: 0;
-  animation: tvm-mark-play 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.68s both;
-}
-
-.tvm-mark--animated .tvm-mark__scan {
-  stroke-dasharray: 40;
-  stroke-dashoffset: 40;
-  animation: tvm-mark-scan 1.2s cubic-bezier(0.22, 1, 0.36, 1) 1.05s both;
-}
-
-.tvm-mark--loop .tvm-mark__bloom {
+.tvm-mark--loop {
   animation: tvm-mark-idle-bloom 2.6s ease-in-out infinite;
 }
 
-.tvm-mark--loop .tvm-mark__scan {
-  stroke-dasharray: 40;
-  animation: tvm-mark-idle-scan 1.7s linear infinite;
-}
-
-.tvm-mark--loop .tvm-mark__play,
-.tvm-mark--loop .tvm-mark__play-edge {
-  transform-origin: 40px 38px;
-  animation: tvm-mark-idle-play 2.2s ease-in-out infinite;
-}
-
-.tvm-mark--loop.tvm-mark--animated .tvm-mark__bloom {
+.tvm-mark--loop.tvm-mark--animated {
   animation:
     tvm-mark-bloom 2.4s cubic-bezier(0.22, 1, 0.36, 1) both,
     tvm-mark-idle-bloom 2.6s ease-in-out 2.4s infinite;
 }
 
-.tvm-mark--loop.tvm-mark--animated .tvm-mark__scan {
-  animation:
-    tvm-mark-scan 1.2s cubic-bezier(0.22, 1, 0.36, 1) 1.05s both,
-    tvm-mark-idle-scan 1.7s linear 2.2s infinite;
-}
-
 @keyframes tvm-mark-bloom {
   0% {
     opacity: 0;
-    transform: scale(0.35);
+    transform: scale(0.72);
   }
-  45% {
+  55% {
     opacity: 1;
-    transform: scale(1.16);
+    transform: scale(1.04);
   }
   100% {
-    opacity: 0.72;
+    opacity: 1;
     transform: scale(1);
-  }
-}
-
-@keyframes tvm-mark-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes tvm-mark-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes tvm-mark-play {
-  0% {
-    opacity: 0;
-    transform: scale(0.12) rotate(-28deg);
-  }
-  62% {
-    opacity: 1;
-    transform: scale(1.14) rotate(6deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-}
-
-@keyframes tvm-mark-scan {
-  0% {
-    stroke-dashoffset: 40;
-    opacity: 0;
-  }
-  30% {
-    opacity: 1;
-  }
-  100% {
-    stroke-dashoffset: -40;
-    opacity: 0.2;
   }
 }
 
 @keyframes tvm-mark-idle-bloom {
   0%,
   100% {
-    opacity: 0.55;
+    opacity: 0.92;
     transform: scale(1);
   }
   50% {
     opacity: 1;
-    transform: scale(1.08);
+    transform: scale(1.03);
   }
 }
-
-@keyframes tvm-mark-idle-scan {
-  0% {
-    stroke-dashoffset: 40;
-    opacity: 0.15;
-  }
-  40% {
-    opacity: 0.95;
-  }
-  100% {
-    stroke-dashoffset: -40;
-    opacity: 0.15;
-  }
-}
-
-@keyframes tvm-mark-idle-play {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.06);
-  }
-}
-

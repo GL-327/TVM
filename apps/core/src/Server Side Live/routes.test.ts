@@ -64,6 +64,7 @@ describe('who may reach the live proxy', () => {
     expect(accessError(lan, '/api/live/sources', env)).toBeNull();
     // ...while the routes that must stay local still are.
     expect(accessError(lan, '/api/dev/unlock', env)).toBe('local_access_required');
+    expect(accessError({ ...lan, method: 'POST' }, '/api/dev/unlock', env)).toBeNull();
     expect(accessError(lan, '/api/privacy/export', env)).toBe('local_access_required');
     expect(accessError(lan, '/api/billing/status', env)).toBe('local_access_required');
   });

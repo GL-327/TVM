@@ -32,6 +32,10 @@ sub exec()
   if token <> invalid and Len(token.Trim()) >= 32
     transfer.AddHeader("Authorization", "Bearer " + token.Trim())
   end if
+  account = m.top.accountToken
+  if account <> invalid and Len(account.Trim()) >= 32
+    transfer.AddHeader("X-TVM-Account", account.Trim())
+  end if
   if m.top.profileId <> invalid and m.top.profileId <> ""
     transfer.AddHeader("X-TVM-Profile", m.top.profileId)
   end if

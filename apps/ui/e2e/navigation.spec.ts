@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { allowAccount } from './account';
 
 async function waitForFocus(page: Page): Promise<void> {
   await expect(page.locator('[data-focus-id="screen-back"]')).toHaveCount(0, { timeout: 10_000 });
@@ -214,6 +215,7 @@ async function pressUntil(page: Page, id: string): Promise<void> {
 }
 
 async function stubReady(page: Page): Promise<void> {
+  await allowAccount(page);
   await page.route('**/api/profiles', (route) => route.fulfill({ json: PROFILE }));
   await page.route('**/api/profiles/active', (route) => route.fulfill({ json: PROFILE }));
   await page.route('**/api/profiles/remove', (route) => route.fulfill({ json: PROFILE }));
@@ -238,7 +240,7 @@ async function stubReady(page: Page): Promise<void> {
     route.fulfill({
       json: {
         ribbon: [
-          { id: 'tvm-stream', name: 'TVM Stream', accent: '#5b3dff', wordmark: 'TVM', icon: '/apps/tvm.svg', url: 'internal:library' },
+          { id: 'tvm-stream', name: 'TVM Stream', accent: '#2f6bff', wordmark: 'TVM', icon: '/apps/tvm.png', url: 'internal:library' },
           { id: 'netflix', name: 'Netflix', accent: '#e50914', wordmark: 'NETFLIX', icon: '/apps/netflix.svg', url: 'internal:mock' },
         ],
         grid: [],
@@ -602,6 +604,7 @@ test('Settings opens Plans', async ({ page }) => {
   await pressUntil(page, 'settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await expect(page.locator('[data-focus-id="developer"]')).toHaveCount(0);
   await waitForFocus(page);
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
@@ -651,11 +654,9 @@ test('Privacy controls and Retro reduced motion are reachable', async ({ page })
 });
 
 test('Developer rejects a wrong password', async ({ page }) => {
-  await pressUntil(page, 'settings');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
-  await pressUntil(page, 'developer');
-  await page.keyboard.press('Enter');
+  const mark = page.locator('[data-focus-id="hero-mark"]');
+  await expect(mark).toBeVisible();
+  for (let n = 0; n < 7; n++) await mark.click();
   await expect(page.locator('[data-screen="developer-unlock"]')).toBeVisible();
   await page.locator('[data-focus-id="dev-password"]').fill('nope');
   await pressUntil(page, 'dev-unlock');

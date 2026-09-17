@@ -1,5 +1,5 @@
 import { pbkdf2Sync, timingSafeEqual } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -48,8 +48,30 @@ describe('the shared developer credential', () => {
     // The digest is one-way; a plaintext beside it would make it decorative.
     const source = readFileSync(join(HERE, 'devUnlock.ts'), 'utf8');
     expect(source).not.toMatch(/SpongeBob/i);
+    expect(source).not.toContain(['TheBest', 'DayEver'].join(''));
     expect(source).toContain('pbkdf2Sync');
     expect(source).toContain('timingSafeEqual');
+  });
+
+  it('keeps no plaintext password in any app source', () => {
+    const needle = ['TheBest', 'DayEver'].join('');
+    const skip = new Set(['node_modules', 'dist', 'BundledUI', 'cache', '.git']);
+    const walk = (dir, acc = []) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (skip.has(entry.name)) continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full, acc);
+        else if (/\.(test|spec)\.(ts|tsx|js)$/.test(entry.name)) continue;
+        else if (/\.(ts|tsx|js|mjs|swift|kt|brs|xml|css)$/.test(entry.name)) acc.push(full);
+      }
+      return acc;
+    };
+    const repo = join(HERE, '..', '..', '..', '..');
+    for (const file of walk(join(repo, 'apps'))) {
+      const text = readFileSync(file, 'utf8');
+      expect(text, file).not.toMatch(/SpongeBob/i);
+      expect(text, file).not.toContain(needle);
+    }
   });
 });
 

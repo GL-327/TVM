@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The brand violet, as the iPhone app and the interface use it. -->
+<!-- Same blue as the orbital mark. -->
 <resources>
-    <color name="tvm_bg">#FF000000</color>
-    <color name="tvm_surface">#FF14122B</color>
-    <color name="tvm_text">#FFF4F2FF</color>
-    <color name="tvm_muted">#FFB6AFD8</color>
-    <color name="tvm_accent">#FF7C4DFF</color>
+    <color name="tvm_bg">#FF071033</color>
+    <color name="tvm_surface">#FF0C1C4A</color>
+    <color name="tvm_text">#FFF4F8FF</color>
+    <color name="tvm_muted">#FF9EB0D4</color>
+    <color name="tvm_accent">#FF2F6BFF</color>
     <color name="tvm_ink">#FFFFFFFF</color>
-    <color name="tvm_field">#FF0C0A1D</color>
-    <color name="tvm_border">#FF4B3F92</color>
+    <color name="tvm_field">#FF071033</color>
+    <color name="tvm_border">#FF27448A</color>
     <color name="tvm_warning">#FFFFB454</color>
-    <color name="tvm_icon_bg">#FF10133A</color>
+    <color name="tvm_icon_bg">#FF2F6BFF</color>
     <color name="tvm_menu_bg">#73000000</color>
 </resources>

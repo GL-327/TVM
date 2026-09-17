@@ -25,9 +25,24 @@ const DESKTOP_CLASS = 'desktop-shell';
 /** Ignore sub-pixel jitter and the synthetic move a scroll emits under a still mouse. */
 const MOVE_EPSILON = 2;
 /** A rail is a horizontal camera; a plain wheel over one should still scroll it. */
-const RAIL_SELECTOR = '.rail__track, [data-wrap="row"]';
+export const RAIL_SELECTOR = [
+  '.rail__track',
+  '[data-wrap="row"]',
+  '.service-nav[data-wrap="row"]',
+  '.service-nav__tabs',
+  '.home__launcher',
+  '.season-row',
+  '.max-nav',
+  '.max-nav__tabs',
+  '.dplus-nav__tabs',
+  '.dplus-brands',
+  '.channel-chips',
+  '.search-recent__items',
+].join(', ');
 const TOUCH_TAP_SLOP = 8;
 const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
+/** Player chrome and sliders own the finger; do not steal their pointer stream. */
+const OWNED_TOUCH_SELECTOR = '.player, [data-player], .tvm-progress, [role="slider"]';
 /** Gap between a focused field and the visual-viewport edge (keyboard). */
 export const FIELD_GAP = 20;
 export const VISUAL_HEIGHT_VAR = '--tvm-visual-height';
@@ -37,15 +52,24 @@ export function tapShouldActivate(moved: boolean, distance: number, slop = TOUCH
   return !moved && Number.isFinite(distance) && distance <= slop;
 }
 
-/** Inputs must receive the real tap so iOS/Android can open the system keyboard. */
-export function isTextEntryTarget(node: EventTarget | null): boolean {
+function closestMatches(node: EventTarget | null, selector: string): boolean {
   if (node == null || typeof Element === 'undefined') return false;
   if (!(node instanceof Element) || typeof node.closest !== 'function') return false;
   try {
-    return node.closest(FIELD_SELECTOR) !== null;
+    return node.closest(selector) !== null;
   } catch {
     return false;
   }
+}
+
+/** Inputs must receive the real tap so iOS/Android can open the system keyboard. */
+export function isTextEntryTarget(node: EventTarget | null): boolean {
+  return closestMatches(node, FIELD_SELECTOR);
+}
+
+/** Seeking, volume and idle-chrome live on these nodes and must see the pointer. */
+export function isOwnedTouchTarget(node: EventTarget | null): boolean {
+  return closestMatches(node, OWNED_TOUCH_SELECTOR);
 }
 
 export function isPhoneNavShell(root: { classList: { contains(name: string): boolean } } = document.documentElement): boolean {
@@ -172,7 +196,24 @@ function isCoarsePointerEnv(): boolean {
 function isTapPointer(event: PointerEvent): boolean {
   if (event.pointerType === 'touch') return true;
   if (event.pointerType === 'pen') return false;
+  // WKWebView often reports `mouse` for a finger. phone-shell is the
+  // injected truth on iOS/Android; coarse media-query is the rest.
+  if (isPhoneNavShell()) return true;
   return isCoarsePointerEnv();
+}
+
+/** Lock a gesture to one axis once it has left the tap slop. */
+export function panAxis(dx: number, dy: number, slop = TOUCH_TAP_SLOP): 'x' | 'y' | null {
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  if (ax <= slop && ay <= slop) return null;
+  return ax > ay ? 'x' : 'y';
+}
+
+/** Horizontal camera follow from a finger that started at `startX`. */
+export function railPanLeft(startScroll: number, startX: number, x: number): number {
+  if (![startScroll, startX, x].every(Number.isFinite)) return startScroll;
+  return startScroll - (x - startX);
 }
 
 export interface ScrollBox {
@@ -237,7 +278,18 @@ export function startPointerInput(): () => void {
   let lastY = Number.NaN;
   let hoverRaf = 0;
   let hoverTarget: HTMLElement | null = null;
-  let touch: { id: number; x: number; y: number; host: HTMLElement | null; moved: boolean } | null = null;
+  let touch: {
+    id: number;
+    x: number;
+    y: number;
+    host: HTMLElement | null;
+    moved: boolean;
+    rail: HTMLElement | null;
+    page: HTMLElement | null;
+    startScroll: number;
+    startPage: number;
+    axis: 'x' | 'y' | null;
+  } | null = null;
   let suppressTrustedClickUntil = 0;
 
   const clearHover = (): void => {
@@ -288,7 +340,29 @@ export function startPointerInput(): () => void {
 
   const onPointerMove = (event: PointerEvent): void => {
     if (touch !== null && event.pointerId === touch.id) {
-      touch.moved ||= Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > TOUCH_TAP_SLOP;
+      const dx = event.clientX - touch.x;
+      const dy = event.clientY - touch.y;
+      touch.moved ||= Math.hypot(dx, dy) > TOUCH_TAP_SLOP;
+      if (touch.axis === null) {
+        touch.axis = panAxis(dx, dy);
+        if (touch.axis === 'x' && touch.rail !== null) {
+          if (touch.rail.dataset.wrapping === 'true') cancelLoopingTrack(touch.rail);
+          try {
+            touch.rail.setPointerCapture(event.pointerId);
+          } catch {
+            // Capture is optional; document listeners still see the move.
+          }
+        }
+        if (touch.axis === 'y') touch.rail = null;
+      }
+      if (touch.axis === 'x' && touch.rail !== null) {
+        event.preventDefault();
+        touch.rail.scrollLeft = railPanLeft(touch.startScroll, touch.x, event.clientX);
+      }
+      if (touch.axis === 'y' && touch.page !== null) {
+        event.preventDefault();
+        touch.page.scrollTop = railPanLeft(touch.startPage, touch.y, event.clientY);
+      }
       return;
     }
     if (!isMouse(event)) return;
@@ -313,16 +387,26 @@ export function startPointerInput(): () => void {
     const node = event.target;
     if (!(node instanceof Element)) return;
     if (isTextEntryTarget(node)) return;
+    if (isOwnedTouchTarget(node)) {
+      releaseCamera(node);
+      return;
+    }
     if (isTapPointer(event)) {
       // Native scrolling/pinch takes precedence. Focus only a completed tap;
       // selecting on touch-down pans the card away from the finger mid-swipe.
-      // Capture-phase stop keeps ViewStackProvider from focusing on finger-down
-      // (that listener treats every pointer like a D-pad hover).
-      event.stopImmediatePropagation();
+      // Do not stopImmediatePropagation: that swallowed React pointer handlers
+      // (progress, idle chrome) and the window bubble edge-swipe.
       releaseCamera(node);
+      const rail = node.closest<HTMLElement>(RAIL_SELECTOR);
+      const panRail = rail !== null && canScroll(rail, 'x') ? rail : null;
+      const page = nearestScrollable(node, 'y');
       touch = event.isPrimary === false ? null : {
         id: event.pointerId, x: event.clientX, y: event.clientY,
         host: node.closest<HTMLElement>('[data-focus-id]'), moved: false,
+        rail: panRail, page,
+        startScroll: panRail?.scrollLeft ?? 0,
+        startPage: page?.scrollTop ?? 0,
+        axis: null,
       };
       return;
     }
@@ -341,7 +425,7 @@ export function startPointerInput(): () => void {
     const tap = touch;
     if (tap === null || tap.id !== event.pointerId) return;
     touch = null;
-    if (tap.moved || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TOUCH_TAP_SLOP) return;
+    if (tap.axis !== null || tap.moved || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TOUCH_TAP_SLOP) return;
     const host = tap.host;
     if (host === null || !host.isConnected || host.closest('[inert]') !== null) return;
     const key = focusKeyFor(host);
@@ -404,10 +488,17 @@ export function startPointerInput(): () => void {
 
   const stopFields = bindKeyboardFields(document);
 
-  document.addEventListener('pointermove', onPointerMove, { passive: true });
+  const onTouchMove = (event: TouchEvent): void => {
+    // iOS will not honour preventDefault on pointermove; the native
+    // touchmove must also cancel once we have claimed a pan.
+    if (touch?.axis === 'x' || touch?.axis === 'y') event.preventDefault();
+  };
+
+  document.addEventListener('pointermove', onPointerMove, { passive: false });
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('pointerup', onPointerUp, true);
   document.addEventListener('pointercancel', onPointerCancel, true);
+  document.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
   document.addEventListener('click', onClick, true);
   document.addEventListener('wheel', onWheel, { passive: false });
   document.addEventListener('keydown', onKeyDown);
@@ -419,6 +510,7 @@ export function startPointerInput(): () => void {
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('pointercancel', onPointerCancel, true);
+    document.removeEventListener('touchmove', onTouchMove, true);
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('wheel', onWheel);
     document.removeEventListener('keydown', onKeyDown);

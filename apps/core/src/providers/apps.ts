@@ -273,9 +273,9 @@ const HUBS: readonly HubSpec[] = [
 const TVM_STREAM_TILE: AppTileSpec = {
   id: 'tvm-stream',
   name: 'TVM Stream',
-  accent: '#5b3dff',
+  accent: '#2f6bff',
   wordmark: 'TVM',
-  icon: '/apps/tvm.svg',
+  icon: '/apps/tvm.png',
   url: 'internal:library',
   layout: 'hub',
   mock: false,

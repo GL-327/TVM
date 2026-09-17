@@ -104,7 +104,7 @@ export function Donate(_props: ScreenProps): React.JSX.Element {
         appearance: {
           theme: 'night',
           variables: {
-            colorPrimary: styles.getPropertyValue('--tvm-accent').trim() || '#7c4dff',
+            colorPrimary: styles.getPropertyValue('--tvm-accent').trim() || '#2f6bff',
             colorBackground: styles.getPropertyValue('--tvm-surface').trim() || '#17122a',
             borderRadius: '10px',
           },

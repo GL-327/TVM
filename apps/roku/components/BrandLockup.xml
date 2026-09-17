@@ -8,6 +8,6 @@
   <script type="text/brightscript" uri="BrandLockup.brs" />
   <children>
     <Poster id="mark" uri="pkg:/images/chrome/lockup-mark.png" loadDisplayMode="scaleToFit" />
-    <Label id="word" color="0x00A8E1FF" />
+    <Label id="word" color="0x2F6BFFFF" />
   </children>
 </component>

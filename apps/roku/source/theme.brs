@@ -1,13 +1,11 @@
-' Theme ids match apps/ui: happy (default), dark, glass (Liquid Glass).
-' Persist on this Roku via the tvm registry section. Scene apply paints
-' letterbox / stage / boot. TVMScene calls applyGlassTheme when glass.
+' Theme ids match apps/ui. Cinematic is the boot look (the orbital blue).
 
 function tvmThemeDefault() as String
-  return "happy"
+  return "cinematic"
 end function
 
 function tvmThemeIds() as Object
-  return ["happy", "dark", "glass"]
+  return ["cinematic", "happy", "dark", "glass"]
 end function
 
 function normalizeThemeId(id as Dynamic) as String
@@ -18,14 +16,18 @@ function normalizeThemeId(id as Dynamic) as String
   if key = "glass" then return "glass"
   if key = "liquid-glass" then return "glass"
   if key = "liquidglass" then return "glass"
-  return "happy"
+  if key = "happy" then return "happy"
+  if key = "cinematic" then return "cinematic"
+  if key = "default" then return "cinematic"
+  return tvmThemeDefault()
 end function
 
 function tvmThemeLabel(id as Dynamic) as String
   key = normalizeThemeId(id)
   if key = "dark" then return "Dark"
   if key = "glass" then return "Liquid Glass"
-  return "Happy"
+  if key = "happy" then return "Happy"
+  return "Cinematic"
 end function
 
 sub rememberThemeId(id as Dynamic)
@@ -120,7 +122,7 @@ function tvmThemePalette(id as Dynamic) as Object
     p.sceneMid = "0x6EC8E859"
     p.sceneNear = "0x123A6270"
     p.sceneSun = "0xFFF6E43D"
-  else
+  else if key = "happy"
     p.bg = "0x2A1C28FF"
     p.bgDeep = "0x1A1218FF"
     p.bgElevated = "0x3A2836FF"
@@ -137,6 +139,23 @@ function tvmThemePalette(id as Dynamic) as Object
     p.sceneMid = "0xFF9A6C59"
     p.sceneNear = "0x5A204070"
     p.sceneSun = "0xFFE5664D"
+  else
+    p.bg = "0x071033FF"
+    p.bgDeep = "0x04081CFF"
+    p.bgElevated = "0x0C1C4AFF"
+    p.surface = "0x132A68FF"
+    p.surfaceHover = "0x1D4ED8FF"
+    p.glass = "0x0C1C4AD6"
+    p.text = "0xF4F8FFFF"
+    p.muted = "0x9EB0D4FF"
+    p.faint = "0x6B7A9AFF"
+    p.focus = "0xFFFFFFFF"
+    p.accentInk = "0x071033FF"
+    p.accentBlue = "0x2F6BFFFF"
+    p.sceneFar = "0x1D4ED888"
+    p.sceneMid = "0x2F6BFF59"
+    p.sceneNear = "0x07103370"
+    p.sceneSun = "0x7DD3FC4D"
   end if
   return p
 end function

@@ -65,7 +65,8 @@ describe('initial test security', () => {
     expect(accessError(request({ origin: 'http://127.0.0.1:5173' }), '/api/plan', {})).toBeNull();
     expect(accessError(request({}, '192.168.1.9'), '/api/profiles', {})).toBe('lan_authentication_required');
     const token = 'a'.repeat(32);
-    expect(accessError(request({ authorization: `Bearer ${token}` }, '192.168.1.9'), '/api/dev/unlock', { TVM_LAN_TOKEN: token })).toBe('local_access_required');
+    expect(accessError(request({ authorization: `Bearer ${token}` }, '192.168.1.9'), '/api/dev/unlock', { TVM_LAN_TOKEN: token })).toBeNull();
+    expect(accessError(request({ authorization: `Bearer ${token}` }, '192.168.1.9'), '/api/dev/overrides', { TVM_LAN_TOKEN: token })).toBe('local_access_required');
   });
   it('limits unlock attempts and restores access after the window', () => {
     let now = 0; const allowed = createUnlockLimiter(() => now);

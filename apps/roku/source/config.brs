@@ -84,6 +84,22 @@ function isCoreToken(token as Dynamic) as Boolean
   return n >= 32 and n <= 512
 end function
 
+function loadAccountToken() as String
+  section = registrySection()
+  if section.Exists("accountToken") then return section.Read("accountToken")
+  return ""
+end function
+
+function saveAccountToken(token as String) as Boolean
+  section = registrySection()
+  section.Write("accountToken", token.Trim())
+  return section.Flush()
+end function
+
+function isAccountToken(token as Dynamic) as Boolean
+  return isCoreToken(token)
+end function
+
 function joinCorePath(base as String, path as String) as String
   b = normalizeCoreUrl(base)
   p = path

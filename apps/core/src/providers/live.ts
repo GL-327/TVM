@@ -122,6 +122,8 @@ export interface LiveServiceOptions {
   dataDir: string;
   fetch?: typeof fetch;
   includeMock?: () => boolean;
+  /** Mint a Core-local /api/live/proxy/... path for an upstream URL. */
+  reflect?: (url: string, profile?: HeaderProfile) => string;
 }
 
 const MUX = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
@@ -593,8 +595,11 @@ function playbackFor(
   engine: 'html5' | 'native' = 'html5',
   proxied = true,
   probed: string | null = null,
+  reflect?: (url: string, profile?: HeaderProfile) => string,
 ): PlaybackResolution {
-  const source = proxied ? liveStreamPath(channel.id) : channel.url;
+  const source = proxied
+    ? (reflect?.(channel.url, channel.profile) ?? liveStreamPath(channel.id))
+    : channel.url;
   /*
    * Order matters: an explicit extension is a stronger signal than a probe
    * (a `.m3u8` whose first bytes are a redirect page is still a playlist), but
@@ -1002,7 +1007,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       const mock = MOCK_LIVE_CHANNELS.find((entry) => entry.id === id);
       if (mock !== undefined) {
         if (options.includeMock?.() !== true) return { kind: 'unavailable', reason: 'region-blocked' };
-        return playbackFor(mock, 'html5', false);
+        return playbackFor(mock, 'html5', true, null, options.reflect);
       }
       const channel = await findChannel(id);
       if (channel === undefined) return { kind: 'unavailable', reason: 'not-in-library' };
@@ -1018,7 +1023,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       const probed = upstream !== '' && mediaTypeFromUrl(upstream) === null
         ? await probeLiveType(upstream, fetchImpl)
         : null;
-      return playbackFor({ ...channel, url: upstream }, 'html5', true, probed);
+      return playbackFor({ ...channel, url: upstream }, 'html5', true, probed, options.reflect);
     },
 
     async upstreamUrl(id: string): Promise<string | null> {

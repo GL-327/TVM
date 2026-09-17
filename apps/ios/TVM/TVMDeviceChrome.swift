@@ -53,17 +53,18 @@ enum TVMDeviceChrome {
 
     static func publish(to webView: WKWebView, insets: UIEdgeInsets) {
         let profile = current
-        let top = insets.top > 0.5 ? insets.top : profile.fallbackTop
-        let bottom = insets.bottom > 0.5 ? insets.bottom : profile.fallbackBottom
+        let resolved = resolvedInsets(from: webView, reported: insets)
+        let top = resolved.top > 0.5 ? resolved.top : profile.fallbackTop
+        let bottom = resolved.bottom > 0.5 ? resolved.bottom : profile.fallbackBottom
         let payload: [String: Any] = [
             "identifier": profile.identifier,
             "model": profile.marketingName,
             "family": profile.family.rawValue,
             "maxHeight": profile.maxHeight,
             "insetTop": Double(top),
-            "insetRight": Double(insets.right),
+            "insetRight": Double(resolved.right),
             "insetBottom": Double(bottom),
-            "insetLeft": Double(insets.left),
+            "insetLeft": Double(resolved.left),
             "extraTop": Double(profile.extraTop),
             "extraBottom": Double(profile.extraBottom),
             "extraX": Double(profile.extraX),
@@ -71,6 +72,27 @@ enum TVMDeviceChrome {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         webView.evaluateJavaScript("window.__tvmDevice=\(json);window.__tvmApplyDevice&&window.__tvmApplyDevice();")
+    }
+
+    /// WKWebView reports 0 insets when SwiftUI lays it edge-to-edge under the
+    /// island. The window still knows the real cutout.
+    static func resolvedInsets(from view: UIView, reported: UIEdgeInsets) -> UIEdgeInsets {
+        let window = view.window?.safeAreaInsets ?? .zero
+        var scene = UIEdgeInsets.zero
+        if let windows = view.window?.windowScene?.windows {
+            for candidate in windows {
+                scene.top = max(scene.top, candidate.safeAreaInsets.top)
+                scene.left = max(scene.left, candidate.safeAreaInsets.left)
+                scene.bottom = max(scene.bottom, candidate.safeAreaInsets.bottom)
+                scene.right = max(scene.right, candidate.safeAreaInsets.right)
+            }
+        }
+        return UIEdgeInsets(
+            top: max(reported.top, view.safeAreaInsets.top, window.top, scene.top),
+            left: max(reported.left, view.safeAreaInsets.left, window.left, scene.left),
+            bottom: max(reported.bottom, view.safeAreaInsets.bottom, window.bottom, scene.bottom),
+            right: max(reported.right, view.safeAreaInsets.right, window.right, scene.right)
+        )
     }
 
     static func bootScript() -> String {
@@ -90,8 +112,33 @@ enum TVMDeviceChrome {
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return "" }
-        return "window.__tvmDevice=\(json);"
+        // Paint the island inset before the JS bundle runs, otherwise the
+        // sign-in mark sits under the cutout for the first second.
+        return """
+        window.__tvmDevice=\(json);
+        (function(){
+          var d=window.__tvmDevice||{};
+          var r=document.documentElement;
+          function px(n){n=Number(n);return ((isFinite(n)&&n>=0)?Math.round(n):0)+'px';}
+          r.classList.add('phone-shell');
+          if(d.family){
+            r.dataset.deviceFamily=d.family;
+            r.classList.toggle('tvm-island', d.family==='island');
+            r.classList.toggle('tvm-notch', d.family==='notch');
+            r.classList.toggle('tvm-home-button', d.family==='home-button');
+            r.classList.toggle('tvm-ipad', d.family==='ipad');
+          }
+          r.style.setProperty('--tvm-inset-top', px(d.insetTop));
+          r.style.setProperty('--tvm-inset-right', px(d.insetRight));
+          r.style.setProperty('--tvm-inset-bottom', px(d.insetBottom));
+          r.style.setProperty('--tvm-inset-left', px(d.insetLeft));
+          r.style.setProperty('--tvm-chrome-extra-top', px(d.extraTop));
+          r.style.setProperty('--tvm-chrome-extra-bottom', px(d.extraBottom));
+          r.style.setProperty('--tvm-chrome-extra-x', px(d.extraX));
+        })();
+        """
     }
+
 
     private static func withIdentifier(_ profile: TVMDeviceProfile, _ identifier: String) -> TVMDeviceProfile {
         var next = profile
@@ -105,7 +152,7 @@ enum TVMDeviceChrome {
             return phone(identifier, "iPhone", .homeButton, 1080, 20, 0, 0, 6, 8)
         }
         if major >= 15 || identifier.hasPrefix("iPhone15,") || identifier.hasPrefix("iPhone16,") || identifier.hasPrefix("iPhone17,") || identifier.hasPrefix("iPhone18,") {
-            return phone(identifier, "iPhone", .island, 2160, 59, 34, 10, 0, 0)
+            return phone(identifier, "iPhone", .island, 2160, 59, 34, 16, 0, 0)
         }
         if major >= 10 {
             return phone(identifier, "iPhone", .notch, 1080, 47, 34, 6, 0, 0)
@@ -160,17 +207,21 @@ enum TVMDeviceChrome {
         put(["iPhone14,3"], "iPhone 13 Pro Max", .notch, 2160, 47, 34, 6, 0, 0)
         put(["iPhone14,7"], "iPhone 14", .notch, 1080, 47, 34, 6, 0, 0)
         put(["iPhone14,8"], "iPhone 14 Plus", .notch, 1080, 47, 34, 6, 0, 0)
-        put(["iPhone15,2"], "iPhone 14 Pro", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone15,3"], "iPhone 14 Pro Max", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone15,4"], "iPhone 15", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone15,5"], "iPhone 15 Plus", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone16,1"], "iPhone 15 Pro", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone16,2"], "iPhone 15 Pro Max", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone17,3"], "iPhone 16", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone17,4"], "iPhone 16 Plus", .island, 2160, 59, 34, 10, 0, 0)
-        put(["iPhone17,1"], "iPhone 16 Pro", .island, 2160, 62, 34, 10, 0, 0)
-        put(["iPhone17,2"], "iPhone 16 Pro Max", .island, 2160, 62, 34, 10, 0, 0)
+        put(["iPhone15,2"], "iPhone 14 Pro", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone15,3"], "iPhone 14 Pro Max", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone15,4"], "iPhone 15", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone15,5"], "iPhone 15 Plus", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone16,1"], "iPhone 15 Pro", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone16,2"], "iPhone 15 Pro Max", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone17,3"], "iPhone 16", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone17,4"], "iPhone 16 Plus", .island, 2160, 59, 34, 16, 0, 0)
+        put(["iPhone17,1"], "iPhone 16 Pro", .island, 2160, 62, 34, 16, 0, 0)
+        put(["iPhone17,2"], "iPhone 16 Pro Max", .island, 2160, 62, 34, 16, 0, 0)
         put(["iPhone17,5"], "iPhone 16e", .notch, 1080, 47, 34, 6, 0, 0)
+        put(["iPhone18,3"], "iPhone 17", .island, 2160, 62, 34, 16, 0, 0)
+        put(["iPhone18,4"], "iPhone 17 Air", .island, 2160, 62, 34, 16, 0, 0)
+        put(["iPhone18,1"], "iPhone 17 Pro", .island, 2160, 62, 34, 16, 0, 0)
+        put(["iPhone18,2"], "iPhone 17 Pro Max", .island, 2160, 62, 34, 16, 0, 0)
         return map
     }()
 }

@@ -7,6 +7,12 @@ sub init()
   if m.bootLabel <> invalid then m.bootLabel.font = tvmFontHero()
   m.coreUrl = loadCoreBaseUrl()
   m.coreToken = loadCoreToken()
+  m.accountToken = loadAccountToken()
+  m.accountEmail = ""
+  m.accountPassword = ""
+  m.accountName = ""
+  m.accountMode = "signin"
+  m.accountState = {}
   m.requestSeq = 0
   m.profileId = ""
   m.keyboardMode = "coreUrl"
@@ -31,6 +37,7 @@ sub init()
   m.homeNode = invalid
   m.settingsNode = invalid
   m.setupNode = invalid
+  m.accountNode = invalid
   m.catalogNode = invalid
   m.liveNode = invalid
   m.livePicksNode = invalid
@@ -111,11 +118,7 @@ sub onBoot()
     if isValidCoreUrl(m.coreUrl) and not isCoreToken(m.coreToken) then showTokenKeyboard()
     return
   end if
-  m.stack = createViewStack("home")
-  renderStack()
-  loadHealth(false)
-  loadHome()
-  loadProfiles(false)
+  loadAccount(true)
 end sub
 
 sub rememberActiveFocus()
@@ -124,6 +127,7 @@ sub rememberActiveFocus()
   if screen.name = "home" and m.homeNode <> invalid then key = m.homeNode.focusKey
   if screen.name = "settings" and m.settingsNode <> invalid then key = m.settingsNode.focusKey
   if screen.name = "setup" and m.setupNode <> invalid then key = m.setupNode.focusKey
+  if screen.name = "account" and m.accountNode <> invalid then key = m.accountNode.focusKey
   if key <> invalid then m.stack = viewStackRememberFocus(m.stack, key)
 end sub
 
@@ -189,6 +193,10 @@ sub renderStack()
     m.setupNode.coreUrl = m.coreUrl
     m.setupNode.visible = true
     if top.kind <> "modal" then m.setupNode.setFocus(true)
+  else if screen.name = "account"
+    ensureAccount()
+    m.accountNode.visible = true
+    if top.kind <> "modal" then m.accountNode.setFocus(true)
   else if screen.name = "catalog"
     ensureCatalog()
     applyCatalogCopy(screen.params)
@@ -255,6 +263,7 @@ sub hideScreens()
   if m.homeNode <> invalid then m.homeNode.visible = false
   if m.settingsNode <> invalid then m.settingsNode.visible = false
   if m.setupNode <> invalid then m.setupNode.visible = false
+  if m.accountNode <> invalid then m.accountNode.visible = false
   if m.catalogNode <> invalid then m.catalogNode.visible = false
   if m.liveNode <> invalid then m.liveNode.visible = false
   if m.livePicksNode <> invalid then m.livePicksNode.visible = false
@@ -297,6 +306,14 @@ sub ensureSetup()
   node.observeField("action", "onSetupAction")
   m.screenHost.appendChild(node)
   m.setupNode = node
+end sub
+
+sub ensureAccount()
+  if m.accountNode <> invalid then return
+  node = CreateObject("roSGNode", "AccountScreen")
+  node.observeField("action", "onAccountAction")
+  m.screenHost.appendChild(node)
+  m.accountNode = node
 end sub
 
 sub ensureCatalog()
@@ -518,6 +535,7 @@ end function
 
 sub handleScreenAction(action as Object)
   kind = aaGet(action, "type", "")
+  if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
   if handleRibbonKind(action) then return
   if kind = "retry" then loadHome()
   if kind = "details" then navigate("push", "details", { item: aaGet(action, "item", {}) })
@@ -574,6 +592,7 @@ sub onSettingsAction()
     navigate("home", "home", {})
     loadHome()
   end if
+  if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
 end sub
 
 sub onSetupAction()
@@ -582,6 +601,24 @@ sub onSetupAction()
   kind = aaGet(action, "type", "")
   if kind = "editUrl" then showUrlKeyboard()
   if kind = "editToken" then showTokenKeyboard()
+end sub
+
+sub onAccountAction()
+  action = m.accountNode.action
+  if action = invalid then return
+  kind = aaGet(action, "type", "")
+  if kind = "editEmail" then showKeyboard("accountEmail", "Email", m.accountEmail, "Next")
+  if kind = "editPassword" then showKeyboard("accountPassword", "Password", "", "Next")
+  if kind = "editName" then showKeyboard("accountName", "Your name", m.accountName, "Next")
+  if kind = "switchMode"
+    if m.accountMode = "register" then m.accountMode = "signin" else m.accountMode = "register"
+    paintAccountGate(m.accountState)
+  end if
+  if kind = "submit" then submitAccount()
+  if kind = "recheck" then loadAccount(true)
+  if kind = "signout" then signOutAccount()
+  if kind = "agree" then agreeAccountTerms()
+  if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
 end sub
 
 sub onCatalogAction()
@@ -753,9 +790,12 @@ sub showKeyboard(mode as String, title as String, text as String, confirmLabel a
   dialog.title = title
   dialog.text = text
   dialog.buttons = [confirmLabel, "Cancel"]
-  if mode = "coreToken" or mode = "rdToken"
+  if mode = "coreToken" or mode = "rdToken" or mode = "accountPassword" or mode = "ownerCode"
     dialog.keyboardDomain = "password"
     dialog.textEditBox.secureMode = true
+  end if
+  if mode = "accountEmail"
+    dialog.keyboardDomain = "email"
   end if
   dialog.observeField("buttonSelected", "onKeyboardButton")
   m.top.dialog = dialog
@@ -818,6 +858,26 @@ sub onKeyboardButton()
     createProfile(text.Trim())
     return
   end if
+  if mode = "accountEmail"
+    m.accountEmail = text.Trim()
+    if m.accountNode <> invalid then m.accountNode.emailDetail = m.accountEmail
+    restoreScreenFocus()
+    return
+  end if
+  if mode = "accountPassword"
+    m.accountPassword = text
+    restoreScreenFocus()
+    return
+  end if
+  if mode = "accountName"
+    m.accountName = text.Trim()
+    restoreScreenFocus()
+    return
+  end if
+  if mode = "ownerCode"
+    submitOwnerCode(text)
+    return
+  end if
   restoreScreenFocus()
 end sub
 
@@ -839,6 +899,8 @@ sub applyCoreUrl(text as String)
   if LCase(url) <> LCase(m.coreUrl)
     m.coreToken = ""
     saveCoreToken("")
+    m.accountToken = ""
+    saveAccountToken("")
   end if
   m.coreUrl = url
   if m.setupNode <> invalid
@@ -854,12 +916,14 @@ sub applyCoreUrl(text as String)
 end sub
 
 sub restoreScreenFocus()
+  if m.stack = invalid then return
   top = activeEntry(m.stack)
   screen = visibleScreen(m.stack)
   if top.kind = "modal" then return
   if screen.name = "home" and m.homeNode <> invalid then m.homeNode.setFocus(true)
   if screen.name = "settings" and m.settingsNode <> invalid then m.settingsNode.setFocus(true)
   if screen.name = "setup" and m.setupNode <> invalid then m.setupNode.setFocus(true)
+  if screen.name = "account" and m.accountNode <> invalid then m.accountNode.setFocus(true)
   if screen.name = "catalog" and m.catalogNode <> invalid then m.catalogNode.setFocus(true)
   if screen.name = "live" and m.liveNode <> invalid then m.liveNode.setFocus(true)
   if screen.name = "live-picks" and m.livePicksNode <> invalid then m.livePicksNode.setFocus(true)
@@ -900,12 +964,7 @@ sub onHealthDone()
   if m.healthWaitHome = true
     m.healthWaitHome = false
     if task.ok
-      screen = visibleScreen(m.stack)
-      if screen.name = "setup"
-        navigate("reset", "home", {})
-      end if
-      loadHome()
-      loadProfiles(false)
+      loadAccount(true)
     else
       if task.error = "lan_authentication_required"
         m.coreToken = ""
@@ -920,6 +979,218 @@ sub onHealthDone()
   else
     restoreScreenFocus()
   end if
+end sub
+
+sub loadAccount(thenHome as Boolean)
+  m.accountWaitHome = thenHome
+  if m.coreUrl = "" or not isValidCoreUrl(m.coreUrl)
+    body = {}
+    body.signedIn = false
+    showAccountGate(body)
+    return
+  end if
+  m.accountTask = startApiGet(joinCorePath(m.coreUrl, "/api/account"), "onAccountDone")
+end sub
+
+sub onAccountDone()
+  task = m.accountTask
+  if task = invalid then return
+  json = task.json
+  if json = invalid then json = {}
+  if task.ok
+    usable = aaGet(json, "usable", {})
+    if aaGet(usable, "ok", false) = true and m.accountWaitHome = true
+      enterHome()
+      return
+    end if
+    showAccountGate(json)
+    return
+  end if
+  body = {}
+  body.signedIn = false
+  body.error = task.error
+  showAccountGate(body)
+end sub
+
+sub enterHome()
+  m.stack = createViewStack("home")
+  renderStack()
+  loadHealth(false)
+  loadHome()
+  loadProfiles(false)
+end sub
+
+sub showAccountGate(json as Object)
+  if json = invalid then json = {}
+  m.accountState = json
+  ensureAccount()
+  paintAccountGate(json)
+  m.stack = createViewStack("account")
+  renderStack()
+end sub
+
+sub paintAccountGate(json as Object)
+  if m.accountNode = invalid then return
+  if json = invalid then json = {}
+  signedIn = aaGet(json, "signedIn", false)
+  usable = aaGet(json, "usable", {})
+  reason = asText(aaGet(usable, "reason", "no_account"))
+  account = aaGet(json, "account", {})
+  email = asText(aaGet(account, "email", m.accountEmail))
+  m.accountNode.signedAs = email
+  m.accountNode.emailDetail = m.accountEmail
+  err = asText(aaGet(json, "error", ""))
+  if signedIn = true and reason = "awaiting_activation"
+    m.accountNode.phase = "waiting"
+    m.accountNode.heading = "Almost there"
+    m.accountNode.lede = "Your account exists and your sign-in works. It needs the app owner to switch it on before there is anything to watch."
+  else if signedIn = true and reason = "suspended"
+    m.accountNode.phase = "suspended"
+    m.accountNode.heading = "This account is switched off"
+    m.accountNode.lede = "Access to this account has been turned off by the app owner."
+  else if signedIn = true and reason = "terms_required"
+    m.accountNode.phase = "terms"
+    m.accountNode.heading = "Before you start"
+    m.accountNode.lede = "Please agree to the current terms on this device to continue."
+  else if m.accountMode = "register"
+    m.accountNode.phase = "register"
+    m.accountNode.heading = "Ask for an account"
+    m.accountNode.lede = "Creating an account does not give you access on its own. The app owner switches accounts on by hand."
+  else
+    m.accountNode.phase = "signin"
+    m.accountNode.heading = "Sign in to TVM"
+    m.accountNode.lede = "TVM is not open to the public. Sign in with the account the app owner set up for you."
+  end if
+  m.accountNode.status = err
+end sub
+
+sub submitAccount()
+  email = m.accountEmail.Trim()
+  password = m.accountPassword
+  if email = "" or password = ""
+    if m.accountNode <> invalid then m.accountNode.status = "Enter your email and password."
+    restoreScreenFocus()
+    return
+  end if
+  body = {}
+  body.email = email
+  body.password = password
+  if m.accountMode = "register"
+    body.displayName = m.accountName
+    m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/register"), "POST", FormatJson(body), "onAccountRegisterDone")
+    return
+  end if
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signin"), "POST", FormatJson(body), "onAccountSignInDone")
+end sub
+
+sub submitOwnerCode(code as String)
+  body = {}
+  body.password = code
+  m.ownerUnlockTask = startApiRequest(joinCorePath(m.coreUrl, "/api/dev/unlock"), "POST", FormatJson(body), "onOwnerUnlockDone")
+end sub
+
+sub onOwnerUnlockDone()
+  task = m.ownerUnlockTask
+  if task = invalid then return
+  if not task.ok or aaGet(task.json, "unlocked", false) <> true
+    if m.accountNode <> invalid then m.accountNode.status = "That code is not valid."
+    restoreScreenFocus()
+    return
+  end if
+  usable = aaGet(m.accountState, "usable", {})
+  reason = asText(aaGet(usable, "reason", ""))
+  if aaGet(usable, "ok", false) = true or reason <> "awaiting_activation"
+    loadAccount(true)
+    return
+  end if
+  account = aaGet(m.accountState, "account", {})
+  id = asText(aaGet(account, "id", ""))
+  if id = ""
+    loadAccount(true)
+    return
+  end if
+  body = {}
+  body.id = id
+  body.tier = "stream-live"
+  m.ownerActivateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/admin/accounts/activate"), "POST", FormatJson(body), "onOwnerActivateDone")
+end sub
+
+sub onOwnerActivateDone()
+  if m.ownerActivateTask <> invalid and not m.ownerActivateTask.ok
+    if m.accountNode <> invalid then m.accountNode.status = asText(aaGet(m.ownerActivateTask.json, "error", "That account could not be switched on."))
+    restoreScreenFocus()
+    return
+  end if
+  loadAccount(true)
+end sub
+
+sub onAccountRegisterDone()
+  task = m.accountTask
+  if task = invalid then return
+  if not task.ok
+    err = asText(aaGet(task.json, "error", "That account could not be created."))
+    if m.accountNode <> invalid then m.accountNode.status = err
+    restoreScreenFocus()
+    return
+  end if
+  body = {}
+  body.email = m.accountEmail.Trim()
+  body.password = m.accountPassword
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signin"), "POST", FormatJson(body), "onAccountSignInDone")
+end sub
+
+sub onAccountSignInDone()
+  task = m.accountTask
+  if task = invalid then return
+  if not task.ok
+    err = asText(aaGet(task.json, "error", "Sign in failed."))
+    if m.accountNode <> invalid then m.accountNode.status = err
+    restoreScreenFocus()
+    return
+  end if
+  json = task.json
+  token = asText(aaGet(json, "token", ""))
+  if not isAccountToken(token)
+    if m.accountNode <> invalid then m.accountNode.status = "Sign in did not return a session."
+    restoreScreenFocus()
+    return
+  end if
+  if not saveAccountToken(token)
+    navigate("modal", "notice", { title: "Could not save sign-in", body: "The Roku could not save its settings. Restart the channel and try again." })
+    return
+  end if
+  m.accountToken = token
+  m.accountPassword = ""
+  usable = aaGet(json, "usable", {})
+  if aaGet(usable, "ok", false) = true
+    enterHome()
+    return
+  end if
+  showAccountGate(json)
+end sub
+
+sub signOutAccount()
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signout"), "POST", "{}", "onAccountSignOutDone")
+end sub
+
+sub onAccountSignOutDone()
+  m.accountToken = ""
+  saveAccountToken("")
+  m.accountEmail = ""
+  m.accountPassword = ""
+  m.accountName = ""
+  m.accountMode = "signin"
+  body = {}
+  body.signedIn = false
+  showAccountGate(body)
+end sub
+
+sub agreeAccountTerms()
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/terms"), "POST", "{}", "onAccountTermsDone")
+end sub
+
+sub onAccountTermsDone()
+  loadAccount(true)
 end sub
 
 sub loadHome()

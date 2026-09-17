@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { accountsPath } from '../update/paths.ts';
 import {
   accountUsable,
+  accountSessionToken,
   createAccountsService,
   emailLooksValid,
   hashPassword,
@@ -189,6 +190,24 @@ describe('who may actually use TVM', () => {
 
   it('requires acceptance again when the terms change', () => {
     expect(accountUsable({ ...base, termsVersion: '2020-01-01' }, TERMS).reason).toBe('terms_required');
+  });
+});
+
+describe('how the session arrives', () => {
+  const lan = 'a'.repeat(32);
+  const session = 'b'.repeat(64);
+
+  it('reads the dedicated Roku header first, so Authorization can stay the LAN token', () => {
+    expect(accountSessionToken(`Bearer ${lan}`, session, lan)).toBe(session);
+  });
+
+  it('does not treat the LAN device token as an account session', () => {
+    expect(accountSessionToken(`Bearer ${lan}`, undefined, lan)).toBeUndefined();
+  });
+
+  it('still accepts Authorization from the phones and the desktop', () => {
+    expect(accountSessionToken(`Bearer ${session}`, undefined, lan)).toBe(session);
+    expect(accountSessionToken(undefined, undefined, lan)).toBeUndefined();
   });
 });
 

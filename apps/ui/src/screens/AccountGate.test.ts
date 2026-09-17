@@ -5,8 +5,16 @@ import { describe, expect, it } from 'vitest';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const gate = (): string => readFileSync(join(dir, 'AccountGate.tsx'), 'utf8');
+const app = (): string => readFileSync(join(dir, '../App.tsx'), 'utf8');
 
 describe('the door', () => {
+  it('is the app shell on every platform that loads the React UI', () => {
+    const src = app();
+    expect(src).toContain('AccountGate');
+    expect(src).toContain('if (!account.usable.ok)');
+    expect(src).toContain('<ViewStackProvider />');
+    expect(src.indexOf('AccountGate')).toBeLessThan(src.indexOf('<ViewStackProvider />'));
+  });
   it('names the state someone is in rather than failing generically', () => {
     const src = gate();
     expect(src).toContain('Almost there');
@@ -29,11 +37,11 @@ describe('the door', () => {
     expect(src).toContain('function OwnerUnlock');
     expect(src).toContain('unlockDeveloper');
     expect(src).toContain('activateAccount');
-    expect(src).toContain('I am the app owner');
-    // Offered on the panel that strands them, not only in the abstract.
+    expect(src).toContain('tvm:secret-door');
+    expect(src).toContain('bumpMarkEgg');
+    expect(src).not.toContain('I am the app owner');
     const waiting = src.slice(src.indexOf('Almost there'));
     expect(waiting).toContain('<OwnerUnlock');
-    // Both tiers, so the owner is not forced into the smaller one.
     expect(src).toContain("activate('stream')");
     expect(src).toContain("activate('stream-live')");
   });
@@ -122,6 +130,7 @@ describe('the door', () => {
     // The code is checked by the core and never compared here, so the gate
     // cannot be read to learn it.
     expect(src).not.toContain('SpongeBob');
+    expect(src).not.toContain(['TheBest', 'DayEver'].join(''));
     // Activation goes through the admin route, which re-checks developer mode
     // on every call; the gate must not write account state itself.
     expect(src).not.toContain('localStorage.setItem');
