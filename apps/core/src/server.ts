@@ -9,7 +9,7 @@ import { clearStripeConfig, loadStripeConfig, saveStripeConfig } from './provide
 import { createStripeClient } from './providers/stripeClient.ts';
 import { createSubscriptionService, type SubscriptionService } from './providers/subscriptions.ts';
 import { createBillingProbe, type BillingProbe } from './providers/billingProbe.ts';
-import { createAccountsService, isAccountTier, type AccountsService } from './providers/accounts.ts';
+import { createAccountsService, isAccountTier, accountSessionToken, type AccountsService } from './providers/accounts.ts';
 import { entitlementForTier, ACCESS_TIERS, ACCESS_ROUTE, STREAM_MONTHLY_PENCE } from './providers/accessTiers.ts';
 import { TERMS, TERMS_SUMMARY, TERMS_VERSION } from './providers/terms.ts';
 import { createDonationService, DONATION_COPY, type DonationService } from './providers/donations.ts';
@@ -26,7 +26,7 @@ import { createLiveService, type LiveProxyResult, type LiveService } from './pro
 import { probeContentLength } from './providers/hlsProxy.ts';
 // Server Side Live: the universal IPTV proxy. Registered under /api/live so it
 // inherits Core's content-route auth rather than defining its own.
-import { handleServerSideLive } from './Server Side Live/routes.ts';
+import { handleServerSideLive, serverSideLiveFor } from './Server Side Live/routes.ts';
 import { createMediaService, type MediaService } from './providers/media.ts';
 import {
   createPlanService,
@@ -886,10 +886,9 @@ async function handleApi(
             season: typeof body.season === 'number' ? body.season : undefined,
             episode: typeof body.episode === 'number' ? body.episode : undefined,
           });
-    // On-demand streams keep their upstream URL. Routing Real-Debrid media
-    // through the Core hop re-buffers every byte in Node and was the desktop
-    // play→buffer loop; the hop exists for live panels that need CORS and
-    // password stripping, and those already resolve to /api/live/stream/.
+    // Routing Real-Debrid media through Core re-buffers every byte in Node and
+    // was the desktop play→buffer loop. Live channels already come back as
+    // /api/live/proxy/... from the reflector; on-demand keeps its upstream URL.
     sendJson(response, result.kind === 'stream' ? 200 : 409, withPublicUrl(request, result, listenPort));
     return true;
   }
@@ -1092,8 +1091,11 @@ async function handleApi(
   // and the tier they were switched on at is what they get.
 
   const bearer = (): string | undefined => {
-    const header = request.headers['authorization'];
-    return typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : undefined;
+    return accountSessionToken(
+      incomingHeader(request.headers.authorization) || undefined,
+      incomingHeader(request.headers['x-tvm-account']) || undefined,
+      env['TVM_LAN_TOKEN'],
+    );
   };
   const clientLabel = (): string => {
     const agent = request.headers['user-agent'];
@@ -1552,7 +1554,11 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       return state.configured ? state.config.publishableKey : null;
     },
   });
-  const live = options.live ?? createLiveService({ dataDir, includeMock: () => plans.status().liveTv });
+  const live = options.live ?? createLiveService({
+    dataDir,
+    includeMock: () => plans.status().liveTv && developer.unlocked(),
+    reflect: (url, profile) => serverSideLiveFor(dataDir, env).publish(url, profile),
+  });
   const session = options.session ?? createSessionService({ dataDir });
   const streamer = options.streamer ?? createStreamer({ dataDir, env });
   const media =

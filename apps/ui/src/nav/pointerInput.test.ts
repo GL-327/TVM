@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   canScrollAxis,
   fieldScrollDelta,
+  isOwnedTouchTarget,
   isPhoneNavShell,
   navShouldIgnoreKey,
+  panAxis,
+  RAIL_SELECTOR,
+  railPanLeft,
   tapShouldActivate,
   wheelPixels,
   wheelTarget,
@@ -69,6 +73,20 @@ describe('coarse tap activation', () => {
   });
 });
 
+describe('nested rail pan', () => {
+  it('waits for the slop before locking an axis', () => {
+    expect(panAxis(2, 3)).toBeNull();
+    expect(panAxis(4, 20)).toBe('y');
+    expect(panAxis(24, 3)).toBe('x');
+  });
+
+  it('follows the finger along a horizontal rail from the press origin', () => {
+    expect(railPanLeft(400, 80, 30)).toBe(450);
+    expect(railPanLeft(400, 80, 120)).toBe(360);
+    expect(railPanLeft(Number.NaN, 0, 10)).toBe(Number.NaN);
+  });
+});
+
 describe('keyboard field geometry', () => {
   it('lifts a field that sits under the keyboard', () => {
     expect(fieldScrollDelta(700, 780, 0, 520, 20)).toBe(280);
@@ -98,5 +116,19 @@ describe('phone nav shell', () => {
     expect(navShouldIgnoreKey({ key: 'a', target: null }, true)).toBe(false);
     expect(navShouldIgnoreKey({ key: 'Escape', target: null }, true)).toBe(false);
     expect(navShouldIgnoreKey({ key: 'Backspace', target: null }, false)).toBe(false);
+  });
+});
+
+describe('phone cameras', () => {
+  it('treats launch tiles, seasons and hub bars as rails as well as poster rows', () => {
+    expect(RAIL_SELECTOR).toContain('.rail__track');
+    expect(RAIL_SELECTOR).toContain('.home__launcher');
+    expect(RAIL_SELECTOR).toContain('.season-row');
+    expect(RAIL_SELECTOR).toContain('.max-nav');
+    expect(RAIL_SELECTOR).toContain('.dplus-brands');
+  });
+
+  it('does not steal a pointer that is not on owned chrome', () => {
+    expect(isOwnedTouchTarget(null)).toBe(false);
   });
 });

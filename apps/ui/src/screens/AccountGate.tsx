@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
+import { bumpMarkEgg } from '../brand/easterEggs';
 import { TvmMark } from '../brand/TvmMark';
 import {
   acceptTerms,
@@ -88,25 +89,28 @@ function Prices({ tiers }: { tiers: TiersResponse }): React.JSX.Element {
   );
 }
 
+function GateMark(): React.JSX.Element {
+  const [, setTaps] = useState(0);
+  return (
+    <button
+      type="button"
+      className="gate__mark-hit"
+      aria-hidden="true"
+      tabIndex={-1}
+      onClick={() => setTaps((count) => bumpMarkEgg(count))}
+    >
+      <TvmMark size="md" className="gate__mark" />
+    </button>
+  );
+}
+
 /**
- * The owner's way in.
+ * The owner's way in, reached by tapping the mark seven times.
  *
- * Activation is done from developer mode, and developer mode is a screen — but
- * the gate renders instead of the screens, so on a fresh install the owner
- * registered, landed here, and had nowhere to go. Their own app was shut to
- * them, and the admin screen they were meant to use was on the other side of
- * the door it unlocks. Two buttons, "Check again" and "Sign out", and no third
- * one that led anywhere.
- *
- * So the door takes the developer code directly. It grants nothing the
- * Developer screen would not: the code goes to the same endpoint, which is
- * rate-limited and refuses anything that is not a local client, and switching
- * an account on still goes through the same admin route that checks developer
- * mode on every call. The only thing that changes is that it is reachable.
- *
- * Deliberately last on the panel and deliberately dull. Anyone who is not the
- * owner should read this, understand it is not for them, and go back to
- * waiting.
+ * Activation lives in developer mode, and developer mode is a screen, but the
+ * gate renders instead of the screens. On a fresh install the owner would
+ * otherwise be stranded. The form is not advertised; anyone who is not the
+ * owner just waits.
  */
 function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => void }): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -148,22 +152,16 @@ function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => v
     }
   };
 
-  if (!open) {
-    return (
-      <div className="gate__owner">
-        <FocusButton
-          id="owner-unlock"
-          className="tvm-button--quiet"
-          onSelect={() => {
-            setOpen(true);
-            window.setTimeout(() => requestFocus(gateFocusKey('owner-code')), 0);
-          }}
-        >
-          I am the app owner
-        </FocusButton>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const onDoor = (): void => {
+      setOpen(true);
+      window.setTimeout(() => requestFocus(gateFocusKey('owner-code')), 0);
+    };
+    window.addEventListener('tvm:secret-door', onDoor);
+    return () => window.removeEventListener('tvm:secret-door', onDoor);
+  }, []);
+
+  if (!open) return <div className="gate__owner" hidden />;
 
   return (
     <div className="gate__owner gate__owner--open">
@@ -357,7 +355,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     return (
       <main ref={pageRef} className="gate" data-keyboard-fields="">
         <div className="gate__panel gate__panel--wide">
-          <TvmMark size="md" className="gate__mark" />
+          <GateMark />
           <h1>Before you start</h1>
           <p className="gate__lede">{terms.summary}</p>
           <p className="gate__meta">Version {terms.version} · updated {terms.updated}</p>
@@ -379,7 +377,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     return (
       <main ref={pageRef} className="gate" data-keyboard-fields="">
         <div className="gate__panel">
-          <TvmMark size="md" className="gate__mark" />
+          <GateMark />
           <h1>{suspended ? 'This account is switched off' : 'Almost there'}</h1>
           <p className="gate__lede">
             {suspended
@@ -426,7 +424,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   return (
     <main ref={pageRef} className="gate" data-keyboard-fields="">
       <div className="gate__panel">
-        <TvmMark size="md" className="gate__mark" />
+        <GateMark />
         <h1>{mode === 'signin' ? 'Sign in to TVM' : 'Ask for an account'}</h1>
         <p className="gate__lede">
           {mode === 'signin'

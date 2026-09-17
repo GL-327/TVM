@@ -41,12 +41,12 @@ function setup() {
 }
 
 describe('native touch navigation', () => {
-  it('stops later capture listeners so a finger-down does not D-pad-focus mid-swipe', () => {
+  it('does not D-pad-focus on finger-down, and leaves the event for controls', () => {
     const { pointer } = setup();
     const extra = vi.fn();
     document.addEventListener('pointerdown', extra, true);
     pointer('pointerdown');
-    expect(extra).not.toHaveBeenCalled();
+    expect(extra).toHaveBeenCalledOnce();
     expect(requestFocus).not.toHaveBeenCalled();
   });
 
@@ -105,5 +105,21 @@ describe('native touch navigation', () => {
     pointer('pointerdown', 80, { pointerId: 2, isPrimary: false });
     pointer('pointerup');
     expect(requestFocus).not.toHaveBeenCalled();
+  });
+
+  it('treats a WKWebView mouse pointer as a finger when phone-shell is on', () => {
+    const { pointer } = setup();
+    document.documentElement.classList.contains = (name: string) => name === 'phone-shell';
+    pointer('pointerdown', 20, { pointerType: 'mouse' });
+    expect(requestFocus).not.toHaveBeenCalled();
+  });
+
+  it('leaves player chrome to its own pointer handlers', () => {
+    const { host, pointer } = setup();
+    host.closest = (selector: string) => selector.includes('.player') || selector === '[data-focus-id]' ? host : null;
+    pointer('pointerdown');
+    pointer('pointerup');
+    expect(requestFocus).not.toHaveBeenCalled();
+    expect(host.click).not.toHaveBeenCalled();
   });
 });

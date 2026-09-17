@@ -32,7 +32,8 @@ describe('LAN sessions', () => {
     const client = request({ cookie: cookie.split(';')[0]! });
     expect(sessions.authenticated(client)).toBe(true);
     expect(accessError(client, '/api/stream/abc/segment-1.ts', env, sessions.authenticated(client))).toBeNull();
-    expect(accessError(client, '/api/dev/unlock', env, true)).toBe('local_access_required');
+    expect(accessError({ ...client, method: 'POST' } as IncomingMessage, '/api/dev/unlock', env, true)).toBeNull();
+    expect(accessError(client, '/api/dev/overrides', env, true)).toBe('local_access_required');
     expect(accessError(request({ origin: 'https://evil.test' }), '/api/profiles', env, true)).toBe('untrusted_origin');
     sessions.revoke(client, result.response);
     expect(sessions.authenticated(client)).toBe(false);

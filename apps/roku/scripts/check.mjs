@@ -42,6 +42,8 @@ const requiredFiles = [
   "components/TVMScene.brs",
   "components/SetupScreen.xml",
   "components/SetupScreen.brs",
+  "components/AccountScreen.xml",
+  "components/AccountScreen.brs",
   "components/SettingsScreen.xml",
   "components/SettingsScreen.brs",
   "DEVICE_TESTING.md",
@@ -215,6 +217,10 @@ if (components.get("ApiTask")?.extends !== "Task") fail("ApiTask must extend Tas
 if (!components.get("ApiTask")?.source.includes('id="authToken"')) {
   fail("ApiTask must expose authToken so LAN requests can send a bearer");
 }
+if (!components.get("ApiTask")?.source.includes('id="accountToken"')) {
+  fail("ApiTask must expose accountToken so Roku can send a TVM account session");
+}
+if (components.get("AccountScreen")?.extends !== "Group") fail("AccountScreen must extend Group");
 
 const apiTaskBrs = existsSync(join(rokuRoot, "components/ApiTask.brs"))
   ? read(join(rokuRoot, "components/ApiTask.brs"))
@@ -222,10 +228,16 @@ const apiTaskBrs = existsSync(join(rokuRoot, "components/ApiTask.brs"))
 if (!/AddHeader\(\s*"Authorization"\s*,\s*"Bearer "\s*\+/.test(apiTaskBrs)) {
   fail("ApiTask.brs must send Authorization: Bearer for LAN Core");
 }
+if (!/AddHeader\(\s*"X-TVM-Account"/.test(apiTaskBrs)) {
+  fail("ApiTask.brs must send X-TVM-Account so sign-in can share the Authorization header with the LAN token");
+}
 
 const apiBrs = existsSync(join(rokuRoot, "source/api.brs")) ? read(join(rokuRoot, "source/api.brs")) : "";
 if (!/task\.authToken/.test(apiBrs) || !/isCoreToken\(/.test(apiBrs)) {
   fail("api.brs must attach the stored Core token to ApiTask");
+}
+if (!/task\.accountToken/.test(apiBrs) || !/isAccountToken\(/.test(apiBrs)) {
+  fail("api.brs must attach the stored account session to ApiTask");
 }
 
 const configBrs = existsSync(join(rokuRoot, "source/config.brs")) ? read(join(rokuRoot, "source/config.brs")) : "";
@@ -233,6 +245,9 @@ if (!/function loadCoreToken\(/.test(configBrs) || !/function saveCoreToken\(/.t
   fail("config.brs must store the LAN token in the device registry, not config.json");
 }
 if (!/function isCoreToken\(/.test(configBrs)) fail("config.brs must validate TVM_LAN_TOKEN length");
+if (!/function loadAccountToken\(/.test(configBrs) || !/function saveAccountToken\(/.test(configBrs)) {
+  fail("config.brs must store the TVM account session in the device registry");
+}
 
 const sceneBrs = existsSync(join(rokuRoot, "components/TVMScene.brs"))
   ? read(join(rokuRoot, "components/TVMScene.brs"))
@@ -240,9 +255,30 @@ const sceneBrs = existsSync(join(rokuRoot, "components/TVMScene.brs"))
 if (!/loadCoreToken\(/.test(sceneBrs) || !/showTokenKeyboard\(/.test(sceneBrs)) {
   fail("TVMScene must collect and persist the LAN access token");
 }
+if (!/loadAccountToken\(/.test(sceneBrs) || !/showAccountGate\(/.test(sceneBrs)) {
+  fail("TVMScene must collect a TVM account before Home");
+}
+if (!/createViewStack\("home"\)/.test(sceneBrs) || !/enterHome\(/.test(sceneBrs)) {
+  fail("TVMScene must only open Home after a usable account");
+}
 if (!/headers\["Authorization"\] = "Bearer " \+ m\.coreToken/.test(sceneBrs)) {
   fail("TVMScene must send the LAN bearer on Core-hosted streams");
 }
+if (!/submitOwnerCode\(/.test(sceneBrs) || !/ownerDoor/.test(sceneBrs)) {
+  fail("TVMScene must accept the hidden owner code without advertising it");
+}
+const accountBrs = existsSync(join(rokuRoot, "components/AccountScreen.brs"))
+  ? read(join(rokuRoot, "components/AccountScreen.brs"))
+  : "";
+if (!/ownerDoor/.test(accountBrs)) fail("AccountScreen must open the owner door from seven Info presses");
+const homeBrs = existsSync(join(rokuRoot, "components/HomeScreen.brs"))
+  ? read(join(rokuRoot, "components/HomeScreen.brs"))
+  : "";
+if (!/ownerDoor/.test(homeBrs)) fail("HomeScreen must open the owner door from seven Info presses");
+const settingsBrs = existsSync(join(rokuRoot, "components/SettingsScreen.brs"))
+  ? read(join(rokuRoot, "components/SettingsScreen.brs"))
+  : "";
+if (!/ownerDoor/.test(settingsBrs)) fail("SettingsScreen must open the owner door from seven Info presses");
 
 const rokuReadme = existsSync(join(rokuRoot, "README.md")) ? read(join(rokuRoot, "README.md")) : "";
 if (/no API authentication/i.test(rokuReadme)) {

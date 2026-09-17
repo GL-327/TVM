@@ -193,4 +193,34 @@ class TvmAccountsTest {
         assertTrue(a.register("someone@example.com", "short", null, null).isFailure)
         assertTrue(a.register("someone@example.com", "0123456789", null, null).isSuccess)
     }
+
+    @Test
+    fun rokuAccountHeaderIsAcceptedByTheOnDeviceCore() {
+        val dir = Files.createTempDirectory("tvm-core").toFile()
+        dirs.add(dir)
+        val core = TvmLocalCore.create(dir, { null })
+        val register = core.handle(
+            "POST",
+            "/api/account/register",
+            "",
+            JSONObject()
+                .put("email", "someone@example.com")
+                .put("password", password)
+                .put("displayName", "Someone")
+                .toString()
+                .toByteArray(),
+        )
+        assertEquals(200, register.status)
+        val signed = core.handle(
+            "POST",
+            "/api/account/signin",
+            "",
+            JSONObject().put("email", "someone@example.com").put("password", password).toString().toByteArray(),
+        )
+        assertEquals(200, signed.status)
+        val token = JSONObject(String(signed.body)).getString("token")
+        val viaHeader = core.handle("GET", "/api/account", "", ByteArray(0), mapOf("x-tvm-account" to token))
+        assertEquals(200, viaHeader.status)
+        assertTrue(JSONObject(String(viaHeader.body)).getBoolean("signedIn"))
+    }
 }

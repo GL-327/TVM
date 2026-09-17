@@ -355,8 +355,8 @@ fun interface TvmHttp {
 /**
  * Keeps the bundled interface current from GitHub, from the manifest published
  * next to the bundle on the `android-ui` release. Nothing blocks the launch: a
- * bundle found in the background is staged for the next open, and the
- * interface can apply one at once.
+ * newer bundle is put in place as soon as it verifies, and the activity reloads
+ * so this open is not left on the copy that shipped in the APK.
  */
 class TvmUpdater(
     private val store: TvmStore,
@@ -564,12 +564,18 @@ class TvmUpdater(
         return result
     }
 
-    /** Launch, in the background: find the next interface and stage it for the next open. */
-    fun applyIfNeeded() {
-        if (!TvmPrefs.load(store).autoUpdate) return
-        val (status, manifest) = runCatching { evaluate() }.getOrNull() ?: return
-        if (manifest == null || status.optJSONObject("available") == null) return
-        runCatching { stage(manifest) }
+    /** Launch, in the background: download a newer interface and put it on screen. */
+    fun applyIfNeeded(): Boolean {
+        if (!TvmPrefs.load(store).autoUpdate) return false
+        val (status, manifest) = runCatching { evaluate() }.getOrNull() ?: return false
+        if (manifest == null || status.optJSONObject("available") == null) return false
+        return runCatching {
+            stage(manifest)
+            val result = bundle.withLock { bundle.promoteLocked(manifest.commit) } ?: return@runCatching false
+            val changed = result.optBoolean("changed", true)
+            if (changed) remember("up_to_date", null, "Applied interface ${result.text("version")}.")
+            changed
+        }.getOrDefault(false)
     }
 }
 

@@ -235,7 +235,7 @@ class TvmUpdaterTest {
     }
 
     @Test
-    fun aBackgroundStageGoesLiveOnTheNextLaunchOnly() {
+    fun aLaunchApplyGoesLiveWithoutWaitingForTheNextOpen() {
         val store = store()
         app.files["build-info.json"] = stamp("aaaaaaa")
         app.files["index.html"] = "<html>bundled</html>".toByteArray()
@@ -244,13 +244,9 @@ class TvmUpdaterTest {
         publish(github, commit)
 
         val running = TvmBundledUi(store, app)
-        TvmUpdater(store, running, github.http).applyIfNeeded()
-        // Nothing changes under the viewer.
-        assertEquals("<html>bundled</html>", String(running.read("index.html")!!))
-
-        val nextLaunch = TvmBundledUi(store, app)
-        nextLaunch.prepare()
-        assertEquals("<html>$commit</html>", String(nextLaunch.read("index.html")!!))
+        val swapped = TvmUpdater(store, running, github.http).applyIfNeeded()
+        assertTrue(swapped)
+        assertEquals("<html>$commit</html>", String(running.read("index.html")!!))
         assertEquals("1234567", TvmChangelog.record(store)!!.getString("version"))
     }
 

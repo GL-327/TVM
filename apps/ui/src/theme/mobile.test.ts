@@ -32,6 +32,8 @@ describe('phone layer', () => {
     expect(css).toContain('--tvm-chrome-top');
     expect(css).toContain("data-device-family='island'");
     expect(css).toContain('--tvm-chrome-extra-top');
+    expect(css).toContain('html.phone-shell .gate');
+    expect(css).toContain('padding-top: max(var(--tvm-safe-y)');
   });
 
   it('docks the ribbon as a labelled bottom tab bar instead of a hover peek', () => {
@@ -64,6 +66,17 @@ describe('phone layer', () => {
     expect(pointer).toContain("event.pointerType === 'touch'");
     expect(pointer).toContain('host.click()');
     expect(pointer).toContain('isTextEntryTarget');
+    expect(pointer).toContain('isOwnedTouchTarget');
+    expect(pointer).toContain('isPhoneNavShell()');
+    expect(pointer).toContain('railPanLeft');
+    expect(pointer).toContain("touchmove");
+    expect(pointer).toContain('.home__launcher');
+    expect(css).toContain('touch-action: pan-y');
+    expect(css).not.toContain('touch-action: pan-x pan-y');
+    expect(css).toContain('html.phone-shell .rail__track');
+    expect(css).toContain('html.phone-shell .max-nav');
+    expect(css).toContain("overflow-x: hidden");
+    expect(css).toContain('overflow-y: auto');
     expect(css).toContain('repeat(auto-fill, minmax(6.5rem, 1fr))');
     expect(viewport).toContain('visualViewport');
     expect(viewport).toContain('--tvm-keyboard-inset');

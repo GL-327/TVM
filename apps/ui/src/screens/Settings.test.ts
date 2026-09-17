@@ -55,3 +55,17 @@ describe('Settings 10-foot type stays on theme ink', () => {
     }
   });
 });
+
+describe('hidden studio controls', () => {
+  it('does not list Developer until developer mode is on', () => {
+    const src = read('Settings.tsx');
+    expect(src).toContain('{plan.developer ? (');
+    expect(src).toContain('id="developer"');
+  });
+
+  it('hides live channel diagnostics until developer mode is on', () => {
+    const src = read('LiveTV.tsx');
+    expect(src).toContain('{plan.developer ? (');
+    expect(src).toContain('id="live-check"');
+  });
+});

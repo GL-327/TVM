@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FALLBACK_PLAN } from '../src/data/plan';
+import { allowAccount } from './account';
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 TVM-iOS';
 const catalog = ['free', 'basic', 'premium', 'ultra', 'max'].map((id) => ({ id, name: `TVM ${id}`, price: id === 'free' ? 'Free' : 'Test plan', pricePence: 0, mocks: false, liveTv: false, extras: [] }));
@@ -7,6 +8,7 @@ const title = { id: 'tt0137523', title: 'Test film', year: 2022, kind: 'movie', 
 
 async function ready(page: Page, paid: boolean): Promise<void> {
   const plan = { ...FALLBACK_PLAN, id: paid ? 'basic' : 'free', name: paid ? 'TVM Basic' : 'TVM Free', maxHeight: paid ? 1080 : 720, synthwave: true, synthwaveOwned: true, catalog };
+  await allowAccount(page);
   await page.addInitScript(() => {
     localStorage.setItem('tvm.theme.isle-boot', '1'); localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.motion', 'full'); localStorage.setItem('tvm.performance', 'off');
     // Exercise the compatibility path used by the minimum supported iOS version.
@@ -39,6 +41,64 @@ async function ready(page: Page, paid: boolean): Promise<void> {
 
 test.use({ browserName: 'webkit', userAgent: IPHONE, hasTouch: true, isMobile: true, viewport: { width: 704, height: 396 } });
 test.describe('iPhone WebKit', () => {
+  test('signed-out iPhone is stopped at the account door', async ({ page }) => {
+    await page.route('**/api/account', (route) =>
+      route.fulfill({
+        json: { signedIn: false, account: null, usable: { ok: false, reason: 'no_account' }, termsVersion: '2026-09-15' },
+      }),
+    );
+    await page.route('**/api/update/**', (route) =>
+      route.fulfill({ json: { kind: 'up_to_date', notice: null, configured: false, available: null, applyAllowed: false } }),
+    );
+    await page.route('**/api/terms', (route) => route.fulfill({ json: { version: '2026-09-15', summary: '', updated: '', sections: [] } }));
+    await page.route('**/api/tiers', (route) => route.fulfill({ json: { tiers: [], route: { headline: '', detail: '' }, streamMonthlyPence: 0 } }));
+    await page.goto('/?e2e=1');
+    await expect(page.getByRole('heading', { name: 'Sign in to TVM' })).toBeVisible();
+    await expect(page.locator('.home__shelf')).toHaveCount(0);
+    await expect(page.locator('#gate-email, [data-focus-id="gate-email"]')).toBeVisible();
+  });
+
+  test('horizontal rails yield vertical pans to the page', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await ready(page, true);
+    const rail = page.locator('.rail__track').first();
+    await expect(rail).toBeVisible();
+    const style = await rail.evaluate((el) => {
+      const css = getComputedStyle(el);
+      return { touchAction: css.touchAction, overflowX: css.overflowX };
+    });
+    expect(style.touchAction).toMatch(/pan-y/);
+    expect(style.overflowX).toBe('hidden');
+    const root = await page.evaluate(() => getComputedStyle(document.documentElement).touchAction);
+    expect(root).toMatch(/pan-y/);
+    const launcher = await page.locator('.home__launcher').evaluate((el) => getComputedStyle(el).overflowX);
+    expect(launcher).toBe('hidden');
+    const moved = await rail.evaluate((el) => {
+      const pageEl = el.closest('.home');
+      const origin = el.getBoundingClientRect();
+      const x = origin.left + Math.min(40, origin.width / 2);
+      const y = origin.top + Math.min(40, origin.height / 2);
+      const fire = (type: string, cx: number, cy: number) => {
+        el.dispatchEvent(new PointerEvent(type, {
+          bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch',
+          clientX: cx, clientY: cy, isPrimary: true,
+        }));
+      };
+      const beforeY = pageEl instanceof HTMLElement ? pageEl.scrollTop : 0;
+      fire('pointerdown', x, y);
+      fire('pointermove', x, y - 120);
+      fire('pointerup', x, y - 120);
+      const afterY = pageEl instanceof HTMLElement ? pageEl.scrollTop : 0;
+      const beforeX = el.scrollLeft;
+      fire('pointerdown', x, y);
+      fire('pointermove', x - 120, y);
+      fire('pointerup', x - 120, y);
+      return { dy: afterY - beforeY, dx: el.scrollLeft - beforeX };
+    });
+    expect(moved.dy).toBeGreaterThan(0);
+    expect(moved.dx).toBeGreaterThan(0);
+  });
+
   test('Free is gated but plan selection remains reachable by touch', async ({ page }) => {
     await ready(page, false);
     await expect(page.locator('.mobile-plan-gate')).toBeVisible();

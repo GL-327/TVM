@@ -21,7 +21,7 @@ import {
 } from './focusEngine';
 import { acceptHeldHop, createAxisHopQueue } from './hopQueue';
 import { isWrappingTrack, settleWrappingTrack, wrapLoopingTrack } from './loopingRail';
-import { isTextEntryTarget } from './pointerInput';
+import { isTextEntryTarget, RAIL_SELECTOR } from './pointerInput';
 import { edgeSwipeGoesBack } from './phoneViewport';
 import { focusKeyFor, isVerticalNavContext, neighborFocusTarget, ribbonFocusTarget } from './railNav';
 import { conveyorHop, wrapHop } from './wrapFocus';
@@ -34,7 +34,6 @@ import { FocusButton } from '../components/FocusButton';
 import { MobilePlanGate } from '../components/MobilePlanGate';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { installEasterEggs } from '../brand/easterEggs';
-import { applyGithubUpdateOnLaunch } from '../data/launchUpdate';
 import { presentPendingChangelog } from '../data/changelog';
 
 startFocusEngine();
@@ -128,11 +127,6 @@ export function ViewStackProvider(): React.JSX.Element {
 
   useEffect(() => installEasterEggs(), []);
 
-  useEffect(() => {
-    if (root === null || root === 'recovery') return;
-    void applyGithubUpdateOnLaunch();
-  }, [root]);
-
   if (root === 'recovery') {
     return <ViewStack root={root} />;
   }
@@ -198,12 +192,20 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
     return () => window.removeEventListener('tvm:navigate-back', back);
   }, [navigate]);
   useEffect(() => {
+    const door = (): void => {
+      if (activeEntry(state).name === 'developer-unlock' || activeEntry(state).name === 'developer') return;
+      navigate.push('developer-unlock');
+    };
+    window.addEventListener('tvm:secret-door', door);
+    return () => window.removeEventListener('tvm:secret-door', door);
+  }, [navigate, state]);
+  useEffect(() => {
     let startX = 0;
     let startY = 0;
     let tracking = false;
     const down = (event: PointerEvent): void => {
       if (isTextEntryTarget(event.target)) return;
-      if (event.target instanceof Element && event.target.closest('.player, [data-player], .rail__track')) return;
+      if (event.target instanceof Element && event.target.closest(`.player, [data-player], ${RAIL_SELECTOR}`)) return;
       tracking = event.clientX <= 28;
       startX = event.clientX;
       startY = event.clientY;
@@ -378,6 +380,9 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
     const onPointerDown = (event: PointerEvent): void => {
       const node = event.target;
       if (!(node instanceof Element) || isTextEntryTarget(node)) return;
+      // Finger-down must not D-pad-focus. iOS often labels a touch as mouse;
+      // phone-shell is the injected flag that pointerInput already treats as tap.
+      if (event.pointerType === 'touch' || document.documentElement.classList.contains('phone-shell')) return;
       const host = node.closest<HTMLElement>('[data-focus-id]');
       if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
         document.documentElement.classList.add('desktop-shell');

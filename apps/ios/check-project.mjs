@@ -500,6 +500,12 @@ check('AppIcon 1024 exists',
   existsSync(join(ROOT, 'TVM', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon.png')));
 check('generate-app-icon.mjs writes AppIcon.png',
   (read(join(ROOT, 'generate-app-icon.mjs')) ?? '').includes('AppIcon.png'));
+check('generate-app-icon.mjs copies the brand PNG',
+  (read(join(ROOT, 'generate-app-icon.mjs')) ?? '').includes("join(ROOT, '..', 'brand', 'tvm-icon.png')"));
+check('Info.plist user-visible version is 1.0.0',
+  (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes('<string>1.0.0</string>'));
+check('TVMLiveReflector.swift exists',
+  existsSync(join(ROOT, 'TVM', 'TVMLiveReflector.swift')));
 check('native VLC playback is wired for iPhone',
   (read(join(ROOT, 'Podfile')) ?? '').includes('MobileVLCKit') &&
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('tvmPlayer') &&
@@ -640,12 +646,20 @@ check('the shared UI starts device chrome (notch / island / bezel)',
   (read(join(REPO, 'apps', 'ui', 'src', 'theme', 'mobile.css')) ?? '').includes('--tvm-chrome-top') &&
   (read(join(ROOT, 'TVM', 'TVMDeviceChrome.swift')) ?? '').includes('TVMDeviceFamily') &&
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('TVMDeviceChrome.bootScript'));
+check('sign-in and chrome sit below the Dynamic Island',
+  (read(join(REPO, 'apps', 'ui', 'src', 'theme', 'mobile.css')) ?? '').includes('padding-top: max(var(--tvm-safe-y)') &&
+  (read(join(ROOT, 'TVM', 'TVMDeviceChrome.swift')) ?? '').includes('--tvm-inset-top') &&
+  (read(join(ROOT, 'TVM', 'TVMDeviceChrome.swift')) ?? '').includes('resolvedInsets') &&
+  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('fallbackTop'),
+  'the island covers the top of an edge-to-edge WKWebView');
 check('English is the default language unless Settings override it',
   (read(join(REPO, 'apps', 'ui', 'src', 'i18n', 'locale.ts')) ?? '').includes("DEFAULT_LANGUAGE = 'en'") &&
   mainUi.includes('applyStoredLanguage') &&
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('defaultLanguage = "en"'));
 check('the iPhone applies a GitHub UI bundle on open unless auto-update is off',
   (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('TVMUpdater.applyIfNeeded') &&
+  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('uiEpoch') &&
+  /func applyIfNeeded[\s\S]{0,1200}promoteLocked/.test(read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '') &&
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('tvm-ios-ui.tar.gz') &&
   (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/apply') &&
   (read(join(REPO, 'apps', 'ui', 'src', 'data', 'launchUpdate.ts')) ?? '').includes('applyGithubUpdateOnLaunch'));

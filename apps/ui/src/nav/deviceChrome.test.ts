@@ -41,13 +41,13 @@ describe('device chrome classification', () => {
 
   it('gives the island extra top inset so the bar sits below the cutout', () => {
     expect(fallbackInsets('island')).toEqual({ top: 59, bottom: 34 });
-    expect(extrasForFamily('island').extraTop).toBe(10);
+    expect(extrasForFamily('island').extraTop).toBe(16);
     expect(extrasForFamily('home-button').extraX).toBe(8);
   });
 
   it('prefers a native payload over the web probe', () => {
     const parsed = parseDeviceChrome(
-      { family: 'island', model: 'iPhone 16 Pro', maxHeight: 2160, insetTop: 62, extraTop: 10 },
+      { family: 'island', model: 'iPhone 16 Pro', maxHeight: 2160, insetTop: 62, extraTop: 16 },
       {
         identifier: 'web',
         model: 'notch',

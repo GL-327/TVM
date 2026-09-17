@@ -92,7 +92,7 @@ export function fallbackInsets(family: DeviceFamily): { top: number; bottom: num
 }
 
 export function extrasForFamily(family: DeviceFamily): { extraTop: number; extraBottom: number; extraX: number } {
-  if (family === 'island') return { extraTop: 10, extraBottom: 0, extraX: 0 };
+    if (family === 'island') return { extraTop: 16, extraBottom: 0, extraX: 0 };
   if (family === 'notch') return { extraTop: 6, extraBottom: 0, extraX: 0 };
   if (family === 'home-button') return { extraTop: 0, extraBottom: 6, extraX: 8 };
   if (family === 'ipad') return { extraTop: 4, extraBottom: 0, extraX: 0 };
