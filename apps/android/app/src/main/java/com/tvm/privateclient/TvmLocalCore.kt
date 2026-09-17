@@ -27,10 +27,15 @@ class TvmLocalCore(
     val rd: TvmRealDebrid,
     val plans: TvmPlans,
     val media: TvmMedia,
-    private val buildInfo: () -> String? = { null },
+    app: TvmAppBundle = TvmAppBundle.None,
     private val bundledAccess: () -> String? = { null },
+    http: TvmHttp = TvmHttp.Default,
 ) {
     private val accounts = TvmAccounts(store, bundledAccess)
+
+    /** The interface this app serves, and the updater that keeps it current. */
+    val bundledUi = TvmBundledUi(store, app)
+    val updater = TvmUpdater(store, bundledUi, http)
 
     private fun bearerToken(headers: Map<String, String>): String? {
         val raw = headers["authorization"] ?: return null
@@ -40,7 +45,7 @@ class TvmLocalCore(
     /** Keeps the plan engine agreeing with the account on every read. */
     private fun applyAccountTier(account: JSONObject) {
         val usable = accounts.usable(account)
-        val tier = account.optString("tier")
+        val tier = account.text("tier")
         if (usable.optBoolean("ok") && tier.isNotEmpty()) plans.grantTier(tier) else plans.revokeTier()
     }
 
@@ -61,7 +66,7 @@ class TvmLocalCore(
         fun create(
             root: File,
             bundledCatalog: () -> String?,
-            buildInfo: () -> String? = { null },
+            app: TvmAppBundle = TvmAppBundle.None,
             bundledAccess: () -> String? = { null },
         ): TvmLocalCore {
             val store = TvmStore(root)
@@ -71,7 +76,7 @@ class TvmLocalCore(
             val rd = TvmRealDebrid(RdKeychain)
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans)
-            return TvmLocalCore(store, catalog, rd, plans, media, buildInfo, bundledAccess)
+            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess)
         }
     }
 
@@ -98,7 +103,18 @@ class TvmLocalCore(
         body: ByteArray,
         headers: Map<String, String> = emptyMap(),
     ): HttpReply = runBlocking {
-        route(method, path, parseQuery(query), Json.parseObject(body.toString(Charsets.UTF_8)), headers)
+        /*
+         * A module that throws must still produce an answer. An uncaught
+         * exception used to end the request with no response at all, which the
+         * interface can only show as a network failure — a locked style or a
+         * declined checkout looked like the app had lost its core. The Swift
+         * core answers these with 400 and the reason, and so does this one.
+         */
+        try {
+            route(method, path, parseQuery(query), Json.parseObject(body.toString(Charsets.UTF_8)), headers)
+        } catch (problem: Exception) {
+            HttpReply.json(400, Json.obj("error" to (problem.message ?: "request failed")))
+        }
     }
 
     private suspend fun route(
@@ -108,7 +124,7 @@ class TvmLocalCore(
         json: JSONObject,
         headers: Map<String, String> = emptyMap(),
     ): HttpReply {
-        media.applyProfileHeader(null)
+        media.applyProfileHeader(headers["x-tvm-profile"])
 
         if (path == "/api/health" && method == "GET") {
             return HttpReply.json(
@@ -122,23 +138,45 @@ class TvmLocalCore(
             )
         }
 
-        if (path == "/api/update/status" && method == "GET") return HttpReply.json(200, updateStatus())
-        if (path == "/api/update/check" && method == "POST") return HttpReply.json(200, updateStatus())
-        if (path == "/api/update/apply" && method == "POST") {
-            return HttpReply.json(
-                409,
-                Json.obj("ok" to false, "error" to "This phone app updates through your app installer, not from inside TVM."),
-            )
+        if (path == "/api/prefs" && method == "GET") return HttpReply.json(200, TvmPrefs.load(store).json())
+        if (path == "/api/prefs" && method == "PUT") {
+            val prefs = TvmPrefs.load(store)
+            val language = json.opt("language") as? String
+            if (language != null && language in TvmPrefs.LANGUAGES) prefs.language = language
+            val auto = json.opt("autoUpdate") as? Boolean
+            if (auto != null) prefs.autoUpdate = auto
+            prefs.save(store)
+            return HttpReply.json(200, prefs.json())
         }
-        if (path == "/api/update/token" && method == "PUT") return HttpReply.json(200, Json.obj("ok" to true))
+        if (path == "/api/update/status" && method == "GET") return HttpReply.json(200, updater.snapshot())
+        if (path == "/api/update/check" && method == "POST") return HttpReply.json(200, updater.check())
+        if (path == "/api/update/apply" && method == "POST") {
+            return try {
+                HttpReply.json(200, updater.apply())
+            } catch (problem: Exception) {
+                HttpReply.json(400, Json.obj("error" to "apply_refused", "reason" to (problem.message ?: "apply failed")))
+            }
+        }
+        if (path == "/api/update/changelog" && method == "GET") {
+            return HttpReply.json(200, TvmChangelog.record(store) ?: TvmChangelog.empty())
+        }
+        if (path == "/api/update/changelog/seen" && method == "POST") {
+            return HttpReply.json(200, TvmChangelog.markSeen(store))
+        }
+        if (path == "/api/update/token" && method == "PUT") return HttpReply.json(200, Json.obj("configured" to false))
 
         if (path == "/api/rd/status" && method == "GET") return HttpReply.json(200, media.status().json())
         if (path == "/api/rd/configured" && method == "GET") {
             return HttpReply.json(200, Json.obj("configured" to rd.configured()))
         }
         if (path == "/api/rd/token" && method == "PUT") {
-            val token = Json.string(json.opt("token")) ?: ""
-            return HttpReply.json(200, media.setToken(token).json())
+            val token = json.opt("token") as? String
+                ?: return HttpReply.json(400, Json.obj("error" to "token must be a string"))
+            return try {
+                HttpReply.json(200, media.setToken(token).json())
+            } catch (problem: Exception) {
+                HttpReply.json(400, Json.obj("error" to (problem.message ?: "token rejected")))
+            }
         }
 
         if (path == "/api/profiles" && method == "GET") return HttpReply.json(200, media.profilesJson())
@@ -146,15 +184,17 @@ class TvmLocalCore(
             return HttpReply.json(200, media.createProfile(Json.string(json.opt("name")) ?: ""))
         }
         if (path == "/api/profiles" && method == "PUT") {
-            val id = Json.string(json.opt("id")) ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
-            return HttpReply.json(200, media.renameProfile(id, Json.string(json.opt("name")) ?: ""))
+            val id = json.opt("id") as? String
+            val name = json.opt("name") as? String
+            if (id == null || name == null) return HttpReply.json(400, Json.obj("error" to "id and name are required"))
+            return HttpReply.json(200, media.renameProfile(id, name))
         }
         if (path == "/api/profiles/active" && method == "POST") {
-            val id = Json.string(json.opt("id")) ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
+            val id = json.opt("id") as? String ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
             return HttpReply.json(200, media.switchProfile(id))
         }
         if (path == "/api/profiles/remove" && method == "POST") {
-            val id = Json.string(json.opt("id")) ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
+            val id = json.opt("id") as? String ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
             return HttpReply.json(200, media.removeProfile(id))
         }
 
@@ -170,12 +210,12 @@ class TvmLocalCore(
             return HttpReply.json(200, Json.obj("items" to Json.array(media.library().map { it.json() })))
         }
         if (path == "/api/media" && method == "GET") {
-            val id = query["id"] ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
+            val id = query["id"] ?: ""
             val item = media.item(id) ?: return HttpReply.json(404, Json.obj("error" to "not_found"))
             return HttpReply.json(200, item.json())
         }
         if (path == "/api/media/children" && method == "GET") {
-            val id = query["id"] ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
+            val id = query["id"] ?: ""
             return HttpReply.json(200, Json.obj("items" to Json.array(media.children(id).map { it.json() })))
         }
 
@@ -186,7 +226,7 @@ class TvmLocalCore(
             return HttpReply.json(200, Json.obj("items" to Json.array(media.addWatchlist(json.opt("item")).map { it.json() })))
         }
         if (path == "/api/watchlist/remove" && method == "POST") {
-            val id = Json.string(json.opt("id")) ?: ""
+            val id = json.opt("id") as? String ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
             return HttpReply.json(200, Json.obj("items" to Json.array(media.removeWatchlist(id).map { it.json() })))
         }
 
@@ -196,6 +236,9 @@ class TvmLocalCore(
         }
 
         if (path == "/api/playback" && method == "POST") {
+            if (!plans.mobileAllowed()) {
+                return HttpReply.json(403, Json.obj("kind" to "unavailable", "reason" to "mobile-plan-required"))
+            }
             val id = Json.string(json.opt("id"))
             if (id != null && id.startsWith("live:")) return playLive(id)
             val (status, payload) = media.play(
@@ -209,12 +252,13 @@ class TvmLocalCore(
         }
 
         if (path == "/api/progress" && method == "POST") {
-            val id = Json.string(json.opt("id")) ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
-            media.saveProgress(
-                id,
-                Json.double(json.opt("position")) ?: 0.0,
-                Json.double(json.opt("duration")) ?: 0.0,
-            )
+            val id = json.opt("id") as? String
+            val position = Json.double(json.opt("position"))
+            val duration = Json.double(json.opt("duration"))
+            if (id == null || position == null || duration == null) {
+                return HttpReply.json(400, Json.obj("error" to "invalid progress"))
+            }
+            media.saveProgress(id, position, duration)
             return HttpReply.json(200, Json.obj("ok" to true))
         }
 
@@ -224,17 +268,29 @@ class TvmLocalCore(
 
         if (path == "/api/plan" && method == "GET") return HttpReply.json(200, plans.status())
         if (path == "/api/plan" && method == "PUT") {
-            val id = Json.string(json.opt("id")) ?: return HttpReply.json(400, Json.obj("error" to "id is required"))
-            return HttpReply.json(200, plans.setPlan(id))
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            return try {
+                HttpReply.json(200, plans.setPlan(json.opt("id") as? String ?: ""))
+            } catch (problem: Exception) {
+                HttpReply.json(400, Json.obj("error" to (problem.message ?: "unknown_plan")))
+            }
         }
         if (path == "/api/plan/style" && method == "POST") {
-            return HttpReply.json(200, plans.setStyle(Json.string(json.opt("id")) ?: ""))
+            return try {
+                HttpReply.json(200, plans.setStyle(json.opt("id") as? String ?: ""))
+            } catch (problem: Exception) {
+                HttpReply.json(403, Json.obj("error" to (problem.message ?: "style locked")))
+            }
         }
         if (path == "/api/plan/live-tv" && method == "POST") {
-            return HttpReply.json(200, plans.setLiveTv(json.optBoolean("enabled", false)))
+            val enabled = json.opt("enabled") as? Boolean
+                ?: return HttpReply.json(400, Json.obj("error" to "enabled must be a boolean"))
+            return HttpReply.json(200, plans.setLiveTv(enabled))
         }
         if (path == "/api/plan/synthwave" && method == "POST") {
-            return HttpReply.json(200, plans.setSynthwave(json.optBoolean("enabled", false)))
+            val enabled = json.opt("enabled") as? Boolean
+                ?: return HttpReply.json(400, Json.obj("error" to "enabled must be a boolean"))
+            return HttpReply.json(200, plans.setSynthwave(enabled))
         }
 
         if (path == "/api/billing" && method == "GET") return HttpReply.json(200, plans.billing())
@@ -242,9 +298,19 @@ class TvmLocalCore(
         if (path == "/api/billing/checkout" && method == "POST") return HttpReply.json(200, plans.checkout(json))
         if (path == "/api/billing/charge" && method == "POST") return HttpReply.json(200, plans.charge())
 
-        if (path == "/api/usage/tick" && method == "POST") return HttpReply.json(200, plans.status())
-        if (path == "/api/usage/reset" && method == "POST") return HttpReply.json(200, plans.status())
-        if (path == "/api/ads/preroll" && method == "GET") return HttpReply.json(200, Json.obj("ads" to JSONArray()))
+        if (path == "/api/usage/tick" && method == "POST") {
+            return HttpReply.json(
+                200,
+                plans.tickUsage(Json.double(json.opt("seconds")) ?: 0.0, json.opt("billable") as? Boolean ?: true),
+            )
+        }
+        if (path == "/api/usage/reset" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            return HttpReply.json(200, plans.resetUsage())
+        }
+        if (path == "/api/ads/preroll" && method == "GET") {
+            return HttpReply.json(200, Json.obj("skipped" to true, "reason" to "advertising_disabled_during_private_testing"))
+        }
 
         // ---- Accounts ------------------------------------------------
         //
@@ -310,7 +376,7 @@ class TvmLocalCore(
         if (path == "/api/account/terms" && method == "POST") {
             val account = accounts.resolve(bearerToken(headers))
                 ?: return HttpReply.json(401, Json.obj("error" to "Sign in first."))
-            val body = accounts.acceptTerms(account.optString("id"))
+            val body = accounts.acceptTerms(account.text("id"))
                 ?: return HttpReply.json(401, Json.obj("error" to "Sign in first."))
             accounts.resolve(bearerToken(headers))?.let { applyAccountTier(it) }
             return HttpReply.json(200, body)
@@ -395,6 +461,7 @@ class TvmLocalCore(
                 return HttpReply.json(400, Json.obj("error" to "confirmation_required"))
             }
             store.factoryReset()
+            bundledUi.invalidate()
             media.clearCache()
             synchronized(lock) {
                 liveUrl = null
@@ -462,73 +529,6 @@ class TvmLocalCore(
         return HttpReply.json(404, Json.obj("error" to "not_found"))
     }
 
-    /**
-     * A hand-installed APK has no store behind it, so it cannot update itself.
-     * It can still say that a newer build exists, which is the useful half.
-     * A failed check reports that it failed rather than claiming to be current.
-     */
-    private fun updateStatus(): JSONObject {
-        val current = buildCommit()
-        val body = Json.obj(
-            "current" to "${StandalonePolicy.VERSION} ($current)",
-            "channel" to "android-standalone",
-            "configured" to false,
-            "applyAllowed" to false,
-            "applyReason" to "Android cannot install its own update here. Download the newest APK from GitHub Releases and install it over this one.",
-        )
-        val latest = latestRelease()
-        if (latest == null) {
-            body.put("lastCheck", JSONObject.NULL)
-            body.put("available", JSONObject.NULL)
-            body.put("kind", "idle")
-            body.put("notice", "TVM could not reach GitHub to check for a newer build. Check your connection and try again.")
-            return body
-        }
-        val (tag, notes) = latest
-        body.put("lastCheck", java.time.Instant.now().toString())
-        // Releases are tagged mobile-<short sha>; the same sha is the same build.
-        if (current != "unknown" && tag.endsWith(current)) {
-            body.put("available", JSONObject.NULL)
-            body.put("kind", "up_to_date")
-            body.put("notice", "This is the newest published build ($tag).")
-        } else {
-            body.put("available", Json.obj("version" to tag, "notes" to notes))
-            body.put("kind", "available")
-            body.put(
-                "notice",
-                if (current == "unknown") {
-                    "A published build exists ($tag). This copy does not record which commit it came from, so TVM cannot tell whether it is newer."
-                } else {
-                    "A newer build is published ($tag). You have $current. Install its APK to update."
-                },
-            )
-        }
-        return body
-    }
-
-    /** Stamped in by scripts/write-build-info.mjs; absent in a hand build. */
-    private fun buildCommit(): String {
-        val text = buildInfo() ?: return "unknown"
-        return Json.string(Json.parseObject(text).opt("commit")) ?: "unknown"
-    }
-
-    private fun latestRelease(): Pair<String, String>? = runCatching {
-        val connection = URL("https://api.github.com/repos/GL-327/TVM/releases/latest").openConnection() as HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 10_000
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
-        connection.setRequestProperty("User-Agent", "TVM-Android")
-        try {
-            if (connection.responseCode !in 200..299) return null
-            val body = Json.parseObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
-            val tag = Json.string(body.opt("tag_name")) ?: return null
-            val notes = (Json.string(body.opt("body")) ?: "").lineSequence().take(6).joinToString("\n").take(600)
-            tag to notes
-        } finally {
-            connection.disconnect()
-        }
-    }.getOrNull()
-
     private fun playLive(id: String): HttpReply {
         if (!Json.bool(plans.status().opt("liveTv"), false)) {
             return HttpReply.json(
@@ -536,7 +536,7 @@ class TvmLocalCore(
                 Json.obj("kind" to "unavailable", "reason" to "Live TV requires the Live TV add-on."),
             )
         }
-        val channel = synchronized(lock) { liveChannels.firstOrNull { it.optString("id") == id } }
+        val channel = synchronized(lock) { liveChannels.firstOrNull { it.text("id") == id } }
             ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
         val raw = Json.string(channel.opt("url"))
             ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
@@ -567,13 +567,13 @@ class TvmLocalCore(
 
     private fun groupSummary(): JSONArray {
         val out = JSONArray()
-        val grouped = synchronized(lock) { liveChannels.groupBy { it.optString("group", "Other").ifEmpty { "Other" } } }
+        val grouped = synchronized(lock) { liveChannels.groupBy { it.text("group", "Other").ifEmpty { "Other" } } }
         for ((name, list) in grouped) {
             out.put(
                 Json.obj(
                     "name" to name,
                     "count" to list.size,
-                    "picked" to list.count { livePicks.contains(it.optString("id")) },
+                    "picked" to list.count { livePicks.contains(it.text("id")) },
                 ),
             )
         }
@@ -582,7 +582,7 @@ class TvmLocalCore(
 
     private fun card(channel: JSONObject): JSONObject {
         val copy = JSONObject(channel.toString())
-        copy.put("picked", livePicks.contains(channel.optString("id")))
+        copy.put("picked", livePicks.contains(channel.text("id")))
         copy.remove("url") // the URL carries the subscription credentials
         return copy
     }
@@ -611,10 +611,10 @@ class TvmLocalCore(
         val matched = synchronized(lock) {
             var items: List<JSONObject> = liveChannels
             if (q.isNotEmpty()) {
-                items = items.filter { it.optString("name", "").contains(q, ignoreCase = true) }
+                items = items.filter { it.text("name", "").contains(q, ignoreCase = true) }
             }
             if (group.isNotEmpty()) {
-                items = items.filter { it.optString("group", "") == group }
+                items = items.filter { it.text("group", "") == group }
             }
             items
         }

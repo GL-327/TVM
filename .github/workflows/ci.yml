@@ -35,6 +35,7 @@ jobs:
           bash -n TVM-windowed.command
           bash -n TVM-roku.sh
           bash -n Install-to-Desktop.sh
+          bash -n scripts/iptv-tester.sh
           test -f docs/DESKTOP.md
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck

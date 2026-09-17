@@ -500,6 +500,120 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(TVMChangelog.record(store: store)?["pending"] as? Bool, true)
         XCTAssertEqual(TVMChangelog.markSeen(store: store)["pending"] as? Bool, false)
     }
+
+    // MARK: Update feed
+
+    func testManifestParsingRefusesAnythingIncomplete() {
+        let sha = String(repeating: "a", count: 64)
+        let good = TVMUpdater.Manifest.parse([
+            "commit": "ABCDEF1234567", "asset": "tvm-ios-ui.tar.gz", "sha256": sha, "nativeApi": 2,
+            "contentHash": String(repeating: "B", count: 64),
+            "entries": [["sha": "abcdef1", "title": "Newest"], ["sha": "", "title": ""]],
+            "history": ["abcdef1", 7, "1234567"],
+        ])
+        XCTAssertEqual(good?.commit, "abcdef1234567")
+        XCTAssertEqual(good?.nativeApi, 2)
+        XCTAssertEqual(good?.entries.count, 1)
+        XCTAssertEqual(good?.history, ["abcdef1", "1234567"])
+        XCTAssertNil(TVMUpdater.Manifest.parse(["commit": "nothex!", "asset": "a.tar.gz", "sha256": sha]))
+        XCTAssertNil(TVMUpdater.Manifest.parse(["commit": "abcdef1", "asset": "../evil", "sha256": sha]))
+        XCTAssertNil(TVMUpdater.Manifest.parse(["commit": "abcdef1", "asset": "a.tar.gz", "sha256": "short"]))
+        XCTAssertNil(TVMUpdater.Manifest.parse(nil))
+    }
+
+    /// The same vectors as changesSince in apps/core/src/update/update.test.ts.
+    func testChangesUseTheHistoryToFindTheRunningBuild() {
+        let entries: [[String: Any]] = [
+            ["sha": "eee5555", "title": "Newest interface change"],
+            ["sha": "ccc3333", "title": "Older interface change"],
+        ]
+        let history = ["eee5555", "ddd4444", "ccc3333", "bbb2222"]
+        func titles(_ current: String?) -> [String] {
+            TVMChangelog.changes(entries: entries, history: history, since: current).compactMap { $0["title"] as? String }
+        }
+        XCTAssertEqual(titles("ddd4444" + String(repeating: "0", count: 33)), ["Newest interface change"])
+        XCTAssertEqual(titles("bbb2222"), ["Newest interface change", "Older interface change"])
+        XCTAssertEqual(titles("eee5555"), [])
+        XCTAssertEqual(titles(nil).count, 2)
+        // Unknown to the history: fall back to walking the entries.
+        XCTAssertEqual(TVMChangelog.changes(entries: entries, history: [], since: "ccc3333").compactMap { $0["title"] as? String }, ["Newest interface change"])
+    }
+
+    func testChecksumMatchesKnownVector() {
+        XCTAssertEqual(TVMUpdater.sha256Hex(Data("abc".utf8)), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+
+    private func writeBundle(_ root: URL, commit: String, nativeApi: Int = StandalonePolicy.nativeAPI) throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("<html>\(commit)</html>".utf8).write(to: root.appendingPathComponent("index.html"))
+        try JSONValue.data(["commit": commit, "nativeApi": nativeApi]).write(to: root.appendingPathComponent("build-info.json"))
+    }
+
+    /*
+     A downloaded interface is only used on the app build it was applied to.
+     Before this, sideloading a new IPA kept serving whatever the old one had
+     downloaded, which could be older than the new app, or newer than it.
+     */
+    func testDownloadedInterfaceIsOnlyUsedOnTheAppBuildItWasAppliedTo() throws {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-overlay-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        let overlay = TVMBundledUI.overlayRoot(store: store)
+        try writeBundle(overlay, commit: "1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
+        store.writeJSON(TVMBundledUI.markerName, ["appBuild": TVMBundledUI.appBuild()])
+        TVMBundledUI.prepare(store: store)
+        XCTAssertEqual(TVMBundledUI.root(store: store), overlay)
+
+        store.writeJSON(TVMBundledUI.markerName, ["appBuild": "someotherbuild"])
+        TVMBundledUI.prepare(store: store)
+        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: overlay.path), "a stale download is removed, not kept")
+    }
+
+    func testInterfaceNeedingNewerNativeCodeIsNeverUsed() throws {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-native-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        try writeBundle(TVMBundledUI.overlayRoot(store: store), commit: "2222222", nativeApi: StandalonePolicy.nativeAPI + 1)
+        store.writeJSON(TVMBundledUI.markerName, ["appBuild": TVMBundledUI.appBuild()])
+        TVMBundledUI.prepare(store: store)
+        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
+    }
+
+    func testStagedInterfaceGoesLiveOnTheNextLaunchWithItsChangelog() throws {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-staged-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        let commit = "3333333ccccccccccccccccccccccccccccccccc"
+        try writeBundle(TVMBundledUI.stagedRoot(store: store), commit: commit)
+        store.writeJSON(TVMBundledUI.stagedMetaName, [
+            "commit": commit,
+            "appBuild": TVMBundledUI.appBuild(),
+            "entries": [["sha": "3333333", "title": "Fix the sign-in form", "body": ""]],
+        ])
+        TVMBundledUI.prepare(store: store)
+        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.overlayRoot(store: store))
+        XCTAssertEqual(TVMBundledUI.commit(in: TVMBundledUI.root(store: store)), commit)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: TVMBundledUI.stagedRoot(store: store).path))
+        let record = TVMChangelog.record(store: store)
+        XCTAssertEqual(record?["pending"] as? Bool, true)
+        XCTAssertEqual(record?["version"] as? String, "3333333")
+        XCTAssertEqual((record?["entries"] as? [[String: Any]])?.first?["title"] as? String, "Fix the sign-in form")
+
+        // A second launch with nothing staged changes nothing and announces nothing new.
+        _ = TVMChangelog.markSeen(store: store)
+        TVMBundledUI.prepare(store: store)
+        XCTAssertEqual(TVMBundledUI.commit(in: TVMBundledUI.root(store: store)), commit)
+        XCTAssertEqual(TVMChangelog.record(store: store)?["pending"] as? Bool, false)
+    }
+
+    func testStagedInterfaceForAnotherAppBuildIsDiscarded() throws {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-staged-other-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        try writeBundle(TVMBundledUI.stagedRoot(store: store), commit: "4444444")
+        store.writeJSON(TVMBundledUI.stagedMetaName, ["commit": "4444444", "appBuild": "someotherbuild"])
+        TVMBundledUI.prepare(store: store)
+        XCTAssertEqual(TVMBundledUI.root(store: store), TVMBundledUI.bundledRoot())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: TVMBundledUI.stagedRoot(store: store).path))
+    }
 }
 
 final class MockPlaybackProtocol: URLProtocol {

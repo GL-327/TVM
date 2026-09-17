@@ -20,11 +20,40 @@ object StandalonePolicy {
     val BUNDLED_LAN_TOKEN: String? = null
     const val VERSION = "1.0.0"
 
+    /**
+     * What this build's native code provides to the interface. Bump it, and
+     * scripts/native-api.json, when the interface starts relying on a new
+     * native route; an interface that needs more is never applied here.
+     * Same value as StandalonePolicy.nativeAPI in the iOS app.
+     */
+    const val NATIVE_API = 2
+
     enum class Mode { ON_DEVICE, OPTIONAL_HOME_CORE }
 
     val DEFAULT_MODE = Mode.ON_DEVICE
 
     fun localOrigin(port: Int): String = "http://127.0.0.1:$port/"
+}
+
+/**
+ * `optString` without Android's trap.
+ *
+ * On a device, `JSONObject.optString` turns a JSON null into the four letters
+ * "null" — the JVM's org.json, which the unit tests run against, returns the
+ * fallback instead, so the difference never showed up in a test. On a phone it
+ * made a null tier read as present and a null synopsis print as "null". Every
+ * string read in this app goes through these two instead.
+ */
+fun JSONObject.text(name: String, fallback: String = ""): String = when (val value = opt(name)) {
+    null, JSONObject.NULL -> fallback
+    is String -> value
+    else -> value.toString()
+}
+
+fun JSONArray.text(index: Int, fallback: String = ""): String = when (val value = opt(index)) {
+    null, JSONObject.NULL -> fallback
+    is String -> value
+    else -> value.toString()
 }
 
 /** JSON coercion helpers. org.json hands back boxed numbers and JSONObject.NULL. */
@@ -48,7 +77,7 @@ object Json {
 
     fun strings(value: Any?): List<String> {
         val array = value as? JSONArray ?: return emptyList()
-        return (0 until array.length()).mapNotNull { array.optString(it, "").ifBlank { null } }
+        return (0 until array.length()).mapNotNull { array.text(it, "").ifBlank { null } }
     }
 
     /** Mirrors JSONValue.int: accepts numbers and numeric strings, rejects NULL. */
@@ -161,11 +190,11 @@ data class MediaItem(
                 title = title,
                 year = Json.int(o.opt("year")),
                 kind = Json.string(o.opt("kind")) ?: "movie",
-                synopsis = o.optString("synopsis", ""),
-                poster = o.optString("poster", ""),
-                backdrop = o.optString("backdrop", ""),
+                synopsis = o.text("synopsis", ""),
+                poster = o.text("poster", ""),
+                backdrop = o.text("backdrop", ""),
                 genres = Json.strings(o.opt("genres")),
-                rating = o.optString("rating", ""),
+                rating = o.text("rating", ""),
                 runtime = Json.string(o.opt("runtime")),
                 playable = Json.bool(o.opt("playable"), true),
                 progress = Json.double(o.opt("progress")),

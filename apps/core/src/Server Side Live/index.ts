@@ -126,6 +126,8 @@ export function createServerSideLive(options: ServerSideLiveOptions): ServerSide
         { url, profileId, playlist: false },
         undefined,
         'GET',
+        // A channel list, not a stream: read it as it is, never rewritten.
+        { raw: true },
       );
       if (result.kind === 'error') {
         throw new Error(result.reason ?? 'playlist_unreachable');

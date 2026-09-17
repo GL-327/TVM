@@ -160,6 +160,17 @@ check('WebView does not install a touch listener that can swallow DOM clicks',
   !main.includes('setOnTouchListener') && !web.includes('setOnTouchListener'));
 check('WebView disables pinch zoom',
   main.includes('setSupportZoom(false)') && main.includes('builtInZoomControls = false'));
+check('the Android app applies a GitHub UI bundle on open unless auto-update is off',
+  main.includes('applyIfNeeded') &&
+  (read(join(SRC, 'TvmUpdater.kt')) ?? '').includes('tvm-android-ui.tar.gz') &&
+  (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/update/apply'));
+check('an applied GitHub update shows a changelog on the next open',
+  (read(join(SRC, 'TvmUpdater.kt')) ?? '').includes('writePending') &&
+  (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/update/changelog'));
+check('Android publishes device chrome like iOS',
+  existsSync(join(SRC, 'TvmDeviceChrome.kt')) &&
+  main.includes('TvmDeviceChrome.publish') &&
+  (read(join(SRC, 'TvmDeviceChrome.kt')) ?? '').includes('playbackHeight'));
 check('activity applies IME/system-bar insets',
   main.includes('WindowInsetsCompat.Type.ime()') && main.includes('displayCutout'));
 check('cookies are not flushed to disk on purpose',

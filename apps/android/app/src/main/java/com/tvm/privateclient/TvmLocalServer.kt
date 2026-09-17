@@ -26,6 +26,12 @@ import java.util.concurrent.TimeUnit
 class TvmLocalServer(
     private val core: TvmLocalCore,
     private val assets: AssetReader,
+    /**
+     * Script that must run before the interface does — the Android twin of the
+     * WKUserScripts the iOS app injects at document start: viewport, keyboard,
+     * device chrome and language. Written into the top of index.html.
+     */
+    private val headScript: () -> String = { "" },
 ) {
     /** Supplies the bundled interface. Kept as an interface so this is testable off-device. */
     fun interface AssetReader {
@@ -176,13 +182,30 @@ class TvmLocalServer(
         // No traversal out of the asset folder.
         if (clean.contains("..")) return HttpReply.json(403, Json.obj("error" to "forbidden"))
         val direct = assets.read(clean)
-        if (direct != null) return HttpReply.bytes(200, contentType(clean), direct)
+        if (direct != null) {
+            return if (clean == "index.html") page(direct) else HttpReply.bytes(200, contentType(clean), direct)
+        }
         if (clean.startsWith("assets/") || clean.contains('.')) {
             return HttpReply.json(404, Json.obj("error" to "not_found"))
         }
         val index = assets.read("index.html")
             ?: return HttpReply.json(500, Json.obj("error" to "interface missing from this build"))
-        return HttpReply.bytes(200, "text/html; charset=utf-8", index)
+        return page(index)
+    }
+
+    /** index.html with the native boot script ahead of the interface's own module. */
+    private fun page(html: ByteArray): HttpReply {
+        val script = runCatching { headScript() }.getOrDefault("")
+        if (script.isEmpty()) return HttpReply.bytes(200, "text/html; charset=utf-8", html)
+        val text = html.toString(Charsets.UTF_8)
+        val tag = "<script>$script</script>"
+        val head = Regex("<head[^>]*>", RegexOption.IGNORE_CASE).find(text)
+        val injected = if (head != null) {
+            text.substring(0, head.range.last + 1) + tag + text.substring(head.range.last + 1)
+        } else {
+            tag + text
+        }
+        return HttpReply.bytes(200, "text/html; charset=utf-8", injected.toByteArray(Charsets.UTF_8))
     }
 
     private fun contentType(path: String): String = when {

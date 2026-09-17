@@ -91,6 +91,32 @@ describe('the door', () => {
     expect(owner).toBeLessThan(prices);
   });
 
+  /*
+   * Reported as "the login doesn't work at all".
+   *
+   * The gate renders instead of the view stack, and the view stack is the only
+   * thing listening to the remote — so nothing had focus, arrows did nothing,
+   * and pressing Enter after typing a password did nothing either.
+   */
+  it('can be driven with a keyboard or a remote, and Enter signs in', () => {
+    const src = gate();
+    expect(src).toContain('useGateRemote({');
+    // Both text panels are real forms that confirm fields on Enter.
+    expect(src.match(/<form\s+className="gate__form"/g)?.length).toBe(2);
+    expect(src.match(/onKeyDown={confirmFieldOnEnter}/g)?.length).toBe(2);
+    expect(src.match(/<button type="submit" className="gate__implicit-submit"/g)?.length).toBe(2);
+    // Enter in the email field moves on; in the password field it submits.
+    const email = src.slice(src.indexOf('id="gate-email"'), src.indexOf('id="gate-password"'));
+    expect(email).toContain("onConfirm={next('gate-password')}");
+    const password = src.slice(src.indexOf('id="gate-password"'), src.indexOf('id="gate-submit"'));
+    expect(password).toContain('onConfirm={() => void submit()}');
+    // A phone keyboard and a password manager both need to know what the fields are.
+    expect(email).toContain('inputMode="email"');
+    expect(password).toContain("'current-password'");
+    // A double press must not register twice.
+    expect(src).toContain('inFlight.current');
+  });
+
   it('keeps the door itself free of anything that grants access on its own', () => {
     const src = gate();
     // The code is checked by the core and never compared here, so the gate

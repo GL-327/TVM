@@ -1,146 +1,101 @@
 package com.tvm.privateclient
 
 import android.annotation.SuppressLint
+import android.content.res.AssetManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
-import android.webkit.WebStorage
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import java.util.Locale
 import kotlin.concurrent.thread
 
+/**
+ * The Android shell, built to behave as the iPhone app does (apps/ios/TVM/TVMApp.swift).
+ *
+ * The phone runs its own core and the interface fills the screen edge to edge.
+ * A quiet menu top right reloads TVM or, optionally, connects to a home Core on
+ * the Wi-Fi — exactly the two things the iOS menu offers. The interface
+ * refreshes itself from GitHub: a bundle found in the background is staged and
+ * goes live on the next open, and the interface can apply one at once.
+ */
 class MainActivity : AppCompatActivity() {
-    private lateinit var connectionPane: View
-    private lateinit var playerPane: View
-    private lateinit var playerMessage: View
-    private lateinit var address: EditText
-    private lateinit var token: EditText
-    private lateinit var allowHttp: CheckBox
-    private lateinit var error: TextView
-    private lateinit var connect: Button
-    private lateinit var forget: Button
-    private lateinit var connecting: ProgressBar
     private lateinit var webView: WebView
-    private lateinit var playerLoading: ProgressBar
-    private lateinit var playerError: TextView
-    private lateinit var reconnect: Button
+    private lateinit var starting: ProgressBar
+    private lateinit var errorPane: View
+    private lateinit var errorTitle: TextView
+    private lateinit var errorIcon: View
+    private lateinit var errorText: TextView
+    private lateinit var errorReload: Button
+    private lateinit var chrome: View
+    private lateinit var pageLoading: ProgressBar
+    private lateinit var menuButton: ImageButton
 
-    private var active: Pair<Connection, SessionCookie>? = null
-    private var busy = false
-    private var restored = false
+    private var core: TvmLocalCore? = null
     private var localServer: TvmLocalServer? = null
     private var nativePlayer: TvmNativePlayer? = null
     private var standaloneOrigin: String? = null
 
+    /** The optional home Core, when one is in use instead of this phone's own. */
+    private var active: Pair<Connection, SessionCookie>? = null
+    private var bridgeAttached = false
+    private var insets: WindowInsetsCompat? = null
+    private var lastBack = 0L
+
+    /** Read by the loopback server's worker threads when it serves index.html. */
+    @Volatile
+    private var bootScript: String = ""
+
+    private val television: Boolean by lazy { TvmDeviceChrome.isTelevision(this) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        connectionPane = findViewById(R.id.connection_pane)
-        playerPane = findViewById(R.id.player_pane)
-        playerMessage = findViewById(R.id.player_message)
-        address = findViewById(R.id.address)
-        token = findViewById(R.id.token)
-        allowHttp = findViewById(R.id.allow_http)
-        error = findViewById(R.id.error)
-        connect = findViewById(R.id.connect)
-        forget = findViewById(R.id.forget)
-        connecting = findViewById(R.id.connecting)
         webView = findViewById(R.id.webview)
-        playerLoading = findViewById(R.id.player_loading)
-        playerError = findViewById(R.id.player_error)
-        reconnect = findViewById(R.id.reconnect)
+        starting = findViewById(R.id.starting)
+        errorPane = findViewById(R.id.error_pane)
+        errorTitle = findViewById(R.id.error_title)
+        errorIcon = findViewById(R.id.error_icon)
+        errorText = findViewById(R.id.error_text)
+        errorReload = findViewById(R.id.error_reload)
+        chrome = findViewById(R.id.chrome)
+        pageLoading = findViewById(R.id.page_loading)
+        menuButton = findViewById(R.id.menu)
 
-        connect.setOnClickListener { connect() }
-        forget.setOnClickListener { disconnect() }
-        findViewById<View>(R.id.reload).setOnClickListener { reload() }
-        findViewById<View>(R.id.settings).setOnClickListener { confirmDisconnect() }
-        reconnect.setOnClickListener { disconnect() }
-        token.addTextChangedListener(SimpleWatcher { forget.visibility = if (token.text.isNotEmpty()) View.VISIBLE else View.GONE })
+        errorReload.setOnClickListener { reloadPage() }
+        menuButton.setOnClickListener { showMenu(it) }
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() = goBack()
+            },
+        )
         configureWindow()
         configureWebView()
-        if (StandalonePolicy.DEFAULT_MODE == StandalonePolicy.Mode.ON_DEVICE) startStandalone() else restore()
+        refreshBootScript()
+        startStandalone()
     }
-
-    /**
-     * On-device mode: the app is the core.
-     *
-     * A loopback HTTP server serves the bundled `apps/ui` build and answers its
-     * API, so the interface gets a real http:// origin — ES modules and
-     * same-origin fetches both fail from file://. Nothing on the Wi-Fi network
-     * can reach 127.0.0.1, which is why this needs no LAN token.
-     *
-     * The LAN client below is still here as the optional home-core path, the
-     * same arrangement as iOS.
-     */
-    private fun startStandalone() {
-        connectionPane.visibility = View.GONE
-        playerPane.visibility = View.VISIBLE
-        hidePlayerMessage()
-        playerLoading.visibility = View.VISIBLE
-        webView.visibility = View.VISIBLE
-        thread {
-            try {
-                val core = TvmLocalCore.create(filesDir, { readBundledCatalog() }, { readBuildInfo() }, { readBundledAccess() })
-                val server = TvmLocalServer(core) { path -> readUiAsset(path) }
-                server.start()
-                localServer = server
-                runOnUiThread { attachStandalone(server) }
-            } catch (problem: Exception) {
-                runOnUiThread {
-                    showPlayerMessage(
-                        "TVM could not start its on-device core: " +
-                            (problem.message ?: "unknown error") +
-                            ". Reopen the app, and reinstall it if this keeps happening.",
-                    )
-                }
-            }
-        }
-    }
-
-    private fun attachStandalone(server: TvmLocalServer) {
-        /*
-         * The native player bridge is attached ONLY here, where the WebView is
-         * about to load our own loopback origin. Attaching it on the LAN path
-         * would hand a remote core a native surface on this phone.
-         */
-        val player = TvmNativePlayer(this, webView)
-        nativePlayer = player
-        webView.addJavascriptInterface(player.bridge(), "tvmPlayer")
-        standaloneOrigin = server.origin
-        webView.webViewClient = StandaloneWebViewClient(
-            origin = server.origin,
-            onLoading = { loading -> playerLoading.visibility = if (loading) View.VISIBLE else View.GONE },
-            onError = { message -> showPlayerMessage(message) },
-        )
-        webView.loadUrl(server.origin)
-    }
-
-    private fun readUiAsset(path: String): ByteArray? = runCatching {
-        assets.open("ui/$path").use { it.readBytes() }
-    }.getOrNull()
-
-    private fun readBundledCatalog(): String? = runCatching {
-        assets.open("FallbackCatalog.json").use { it.readBytes().toString(Charsets.UTF_8) }
-    }.getOrNull()
-
-    private fun readBuildInfo(): String? = runCatching {
-        assets.open("BuildInfo.json").use { it.readBytes().toString(Charsets.UTF_8) }
-    }.getOrNull()
 
     override fun onDestroy() {
         nativePlayer?.release()
@@ -149,182 +104,363 @@ class MainActivity : AppCompatActivity() {
         localServer = null
         webView.stopLoading()
         webView.webViewClient = android.webkit.WebViewClient()
+        (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()
         super.onDestroy()
     }
 
-    /** Terms and tiers, generated from the core by scripts/export-access.mjs. */
-    private fun readBundledAccess(): String? = runCatching {
-        assets.open("Access.json").bufferedReader().use { it.readText() }
+    // ---- Standalone: the phone is the core ------------------------------------
+
+    /**
+     * Starts the on-device core and its loopback server, then shows the
+     * interface. Only local work happens before the first paint; the check for
+     * a newer interface runs afterwards, on this same background thread.
+     */
+    private fun startStandalone() {
+        showStarting()
+        thread(name = "tvm-core-start") {
+            val started = try {
+                val made = TvmLocalCore.create(
+                    filesDir,
+                    { readAsset("FallbackCatalog.json") },
+                    ApkBundle(assets),
+                    { readAsset("Access.json") },
+                )
+                // An interface staged on the last run goes live now; one left
+                // over from a different app build is dropped.
+                made.bundledUi.prepare()
+                val server = TvmLocalServer(made, { path -> made.bundledUi.read(path) }) { bootScript }
+                server.start()
+                made to server
+            } catch (problem: Exception) {
+                null
+            }
+            if (started == null) {
+                runOnUiThread { showStartupError(getString(R.string.start_failed)) }
+                return@thread
+            }
+            val (made, server) = started
+            runOnUiThread {
+                core = made
+                localServer = server
+                standaloneOrigin = server.origin
+                refreshBootScript()
+                showStandalone()
+            }
+            runCatching { made.updater.applyIfNeeded() }
+        }
+    }
+
+    private fun showStandalone() {
+        val origin = standaloneOrigin ?: return
+        attachStandaloneBridge()
+        webView.webViewClient = StandaloneWebViewClient(
+            origin = origin,
+            onLoading = { loading -> setLoading(loading) },
+            onError = { message -> showPageError(message) },
+        )
+        clearError()
+        setLoading(true)
+        webView.loadUrl(origin)
+    }
+
+    /**
+     * The native player bridge is attached ONLY while this phone's own
+     * standalone loopback origin is loaded. A home Core on the network must
+     * never be handed a native surface on this phone, so switching to one
+     * removes the bridge first.
+     */
+    private fun attachStandaloneBridge() {
+        if (bridgeAttached || standaloneOrigin == null) return
+        val player = nativePlayer ?: TvmNativePlayer(this, webView).also { nativePlayer = it }
+        webView.addJavascriptInterface(player.bridge(), "tvmPlayer")
+        bridgeAttached = true
+    }
+
+    private fun detachBridge() {
+        if (!bridgeAttached) return
+        nativePlayer?.release()
+        nativePlayer = null
+        webView.removeJavascriptInterface("tvmPlayer")
+        bridgeAttached = false
+    }
+
+    private fun readAsset(name: String): String? = runCatching {
+        assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }.getOrNull()
 
-    private fun configureWindow() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-        )
-        window.attributes = window.attributes.apply {
-            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+    /** The interface and build stamp inside the APK. */
+    private class ApkBundle(private val assets: AssetManager) : TvmAppBundle {
+        private val build: String by lazy {
+            val text = runCatching { assets.open("BuildInfo.json").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
+            Json.string(Json.parseObject(text).opt("commit"))?.lowercase(Locale.US) ?: "unknown"
         }
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { _, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-            )
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            val bottom = maxOf(bars.bottom, ime.bottom)
-            connectionPane.setPadding(bars.left, bars.top, bars.right, bottom)
-            playerPane.setPadding(bars.left, bars.top, bars.right, bottom)
-            insets
-        }
+
+        override fun appBuild(): String = build
+
+        override fun readBundled(path: String): ByteArray? =
+            runCatching { assets.open("ui/$path").use { it.readBytes() } }.getOrNull()
     }
 
-    private fun restore() {
-        if (restored) return
-        restored = true
-        val saved = CredentialStore.read(this) ?: return
-        address.setText(saved.origin.toString())
-        token.setText(saved.token)
-        allowHttp.isChecked = saved.allowLocalHttp
-        connect()
+    // ---- Optional home Core ---------------------------------------------------
+
+    private fun showMenu(anchor: View) {
+        val menu = PopupMenu(this, anchor)
+        menu.menu.add(0, MENU_RELOAD, 0, getString(R.string.reload))
+        if (active == null) {
+            menu.menu.add(0, MENU_HOME_CORE, 1, getString(R.string.use_home_core))
+        } else {
+            menu.menu.add(0, MENU_BACK_TO_PHONE, 1, getString(R.string.back_to_phone))
+        }
+        menu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                MENU_RELOAD -> reloadPage()
+                MENU_HOME_CORE -> showHomeCoreSheet()
+                MENU_BACK_TO_PHONE -> backToThisPhone()
+            }
+            true
+        }
+        menu.show()
     }
 
-    private fun connect() {
-        if (busy) return
-        busy = true
-        error.visibility = View.GONE
-        connecting.visibility = View.VISIBLE
-        connect.isEnabled = false
-        val addressText = address.text.toString()
-        val tokenText = token.text.toString()
-        val http = allowHttp.isChecked
-        thread {
-            try {
-                val connection = Connection.validated(addressText, tokenText, http)
-                val cookie = SessionClient.connect(connection)
+    private fun showHomeCoreSheet() {
+        val dialog = BottomSheetDialog(this)
+        val sheet = layoutInflater.inflate(R.layout.sheet_home_core, null)
+        val address = sheet.findViewById<EditText>(R.id.address)
+        val token = sheet.findViewById<EditText>(R.id.token)
+        val allowHttp = sheet.findViewById<CheckBox>(R.id.allow_http)
+        val error = sheet.findViewById<TextView>(R.id.error)
+        val connecting = sheet.findViewById<ProgressBar>(R.id.connecting)
+        val connect = sheet.findViewById<Button>(R.id.connect)
+        sheet.findViewById<View>(R.id.close).setOnClickListener { dialog.dismiss() }
+        runCatching { CredentialStore.read(this) }.getOrNull()?.let { saved ->
+            address.setText(saved.origin.toString())
+            allowHttp.isChecked = saved.allowLocalHttp
+        }
+
+        fun failed(message: String) {
+            connecting.visibility = View.GONE
+            connect.isEnabled = true
+            connect.text = getString(R.string.connect)
+            error.text = message
+            error.visibility = View.VISIBLE
+        }
+
+        connect.setOnClickListener {
+            error.visibility = View.GONE
+            connecting.visibility = View.VISIBLE
+            connect.isEnabled = false
+            connect.text = getString(R.string.connecting)
+            val addressText = address.text.toString()
+            val tokenText = token.text.toString()
+            val http = allowHttp.isChecked
+            thread(name = "tvm-home-core") {
                 try {
-                    CredentialStore.save(applicationContext, connection)
+                    val connection = Connection.validated(addressText, tokenText, http)
+                    val cookie = SessionClient.connect(connection)
+                    try {
+                        CredentialStore.save(applicationContext, connection)
+                    } catch (problem: ClientException) {
+                        SessionClient.disconnect(connection, cookie)
+                        throw problem
+                    }
+                    runOnUiThread {
+                        dialog.dismiss()
+                        useHomeCore(connection, cookie)
+                    }
                 } catch (problem: ClientException) {
-                    SessionClient.disconnect(connection, cookie)
-                    throw problem
-                }
-                runOnUiThread { attached(connection, cookie) }
-            } catch (problem: ClientException) {
-                runOnUiThread { failed(problem.message) }
-            } catch (_: Exception) {
-                runOnUiThread {
-                    failed("Could not reach TVM. Check that Core is running and both devices share Wi-Fi.")
+                    runOnUiThread { failed(problem.message ?: getString(R.string.home_core_unreachable)) }
+                } catch (_: Exception) {
+                    runOnUiThread { failed(getString(R.string.home_core_unreachable)) }
                 }
             }
         }
+        dialog.setContentView(sheet)
+        dialog.show()
     }
 
-    private fun attached(connection: Connection, cookie: SessionCookie) {
-        busy = false
-        connecting.visibility = View.GONE
-        connect.isEnabled = true
+    private fun useHomeCore(connection: Connection, cookie: SessionCookie) {
+        detachBridge()
         active = connection to cookie
-        connectionPane.visibility = View.GONE
-        playerPane.visibility = View.VISIBLE
-        hidePlayerMessage()
-        webView.visibility = View.VISIBLE
-        load(connection, cookie)
-    }
-
-    private fun failed(message: String?) {
-        busy = false
-        connecting.visibility = View.GONE
-        connect.isEnabled = true
-        error.text = message ?: "Could not reach TVM."
-        error.visibility = View.VISIBLE
-    }
-
-    private fun disconnect() {
-        try {
-            CredentialStore.clear(this)
-        } catch (problem: ClientException) {
-            error.text = problem.message
-            error.visibility = View.VISIBLE
-            return
-        }
-        val previous = active
-        active = null
-        token.setText("")
-        error.visibility = View.GONE
-        forget.visibility = View.GONE
-        clearWebData()
-        connectionPane.visibility = View.VISIBLE
-        playerPane.visibility = View.GONE
-        if (previous != null) {
-            thread { SessionClient.disconnect(previous.first, previous.second) }
-        }
-    }
-
-    private fun confirmDisconnect() {
-        val host = active?.first?.origin?.toString() ?: return
-        AlertDialog.Builder(this)
-            .setTitle("TVM connection")
-            .setMessage(host)
-            .setPositiveButton("Disconnect and forget token") { _, _ -> disconnect() }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun reload() {
-        val current = active ?: return
-        hidePlayerMessage()
-        webView.visibility = View.VISIBLE
-        playerLoading.visibility = View.VISIBLE
-        load(current.first, current.second)
-    }
-
-    private fun hidePlayerMessage() {
-        playerMessage.visibility = View.GONE
-        playerError.visibility = View.GONE
-        reconnect.visibility = View.GONE
-    }
-
-    /** Standalone has nothing to reconnect to, so that button stays hidden. */
-    private fun showPlayerMessage(message: String) {
-        playerLoading.visibility = View.GONE
-        webView.visibility = View.GONE
-        playerError.text = message
-        playerError.visibility = View.VISIBLE
-        playerMessage.visibility = View.VISIBLE
-        reconnect.visibility = if (standaloneOrigin == null) View.VISIBLE else View.GONE
-    }
-
-    private fun load(connection: Connection, cookie: SessionCookie) {
-        playerLoading.visibility = View.VISIBLE
-        val store = CookieManager.getInstance()
-        store.setAcceptCookie(true)
-        store.setAcceptThirdPartyCookies(webView, false)
-        store.removeAllCookies {
-            store.setCookie(
+        clearError()
+        setLoading(true)
+        val cookies = CookieManager.getInstance()
+        cookies.setAcceptCookie(true)
+        cookies.setAcceptThirdPartyCookies(webView, false)
+        cookies.removeAllCookies {
+            cookies.setCookie(
                 connection.origin.toString(),
                 cookie.webViewCookie(connection.origin.scheme.equals("https", ignoreCase = true)),
             ) {
                 webView.webViewClient = TVMWebViewClient(
                     connection,
-                    onLoading = { loading -> playerLoading.visibility = if (loading) View.VISIBLE else View.GONE },
-                    onError = { message ->
-                        playerError.text = message
-                        playerError.visibility = View.VISIBLE
-                        reconnect.visibility = View.VISIBLE
-                        playerMessage.visibility = View.VISIBLE
-                    },
+                    onLoading = { loading -> setLoading(loading) },
+                    onError = { message -> showPageError(message) },
                 )
                 webView.loadUrl(connection.origin.toString())
             }
         }
     }
 
+    private fun backToThisPhone() {
+        val previous = active ?: return
+        active = null
+        runCatching { CredentialStore.clear(this) }
+        CookieManager.getInstance().removeAllCookies(null)
+        thread(name = "tvm-home-core-close") { runCatching { SessionClient.disconnect(previous.first, previous.second) } }
+        showStandalone()
+    }
+
+    // ---- Page state -----------------------------------------------------------
+
+    private fun reloadPage() {
+        clearError()
+        val current = active
+        when {
+            current != null -> useHomeCore(current.first, current.second)
+            standaloneOrigin != null -> showStandalone()
+            else -> startStandalone()
+        }
+    }
+
+    private fun setLoading(loading: Boolean) {
+        pageLoading.visibility = if (loading) View.VISIBLE else View.GONE
+        if (!loading) {
+            starting.visibility = View.GONE
+            if (errorPane.visibility != View.VISIBLE) webView.visibility = View.VISIBLE
+            // As TVMWebView's didFinish: the page now has its real surroundings.
+            publishChrome()
+        }
+    }
+
+    /** Insets, but only where the page actually draws under the bars. */
+    private fun edgeInsets(): WindowInsetsCompat? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) insets else null
+
+    private fun publishChrome() {
+        val current = edgeInsets()
+        TvmDeviceChrome.publish(webView, TvmDeviceChrome.profile(this, current))
+        webView.evaluateJavascript(
+            "window.__tvmKeyboardInset && window.__tvmKeyboardInset(${TvmDeviceChrome.keyboardInset(this, current)});",
+            null,
+        )
+    }
+
+    private fun showStarting() {
+        starting.visibility = View.VISIBLE
+        chrome.visibility = View.GONE
+        errorPane.visibility = View.GONE
+        webView.visibility = View.INVISIBLE
+    }
+
+    private fun clearError() {
+        errorPane.visibility = View.GONE
+        chrome.visibility = View.VISIBLE
+    }
+
+    /** As PlayerShell's error: an icon, the reason, and Reload. */
+    private fun showPageError(message: String) {
+        starting.visibility = View.GONE
+        pageLoading.visibility = View.GONE
+        webView.visibility = View.INVISIBLE
+        errorTitle.visibility = View.GONE
+        errorIcon.visibility = View.VISIBLE
+        errorReload.visibility = View.VISIBLE
+        errorText.text = message
+        errorPane.visibility = View.VISIBLE
+        chrome.visibility = View.VISIBLE
+        errorReload.requestFocus()
+    }
+
+    /** As StandaloneRoot's error: the name and the reason, nothing to press. */
+    private fun showStartupError(message: String) {
+        starting.visibility = View.GONE
+        chrome.visibility = View.GONE
+        webView.visibility = View.INVISIBLE
+        errorTitle.visibility = View.VISIBLE
+        errorIcon.visibility = View.GONE
+        errorReload.visibility = View.GONE
+        errorText.text = message
+        errorPane.visibility = View.VISIBLE
+    }
+
+    /**
+     * Back goes back inside TVM while there is somewhere to go, and leaves the
+     * app from its first screen. The interface publishes which is which as
+     * `data-can-go-back`; iOS gets the same effect from its edge swipe.
+     */
+    private fun goBack() {
+        if (errorPane.visibility == View.VISIBLE || webView.visibility != View.VISIBLE) {
+            leaveApp()
+            return
+        }
+        webView.evaluateJavascript(BACK_SCRIPT) { result ->
+            if (result?.trim('"') == "true") return@evaluateJavascript
+            leaveApp()
+        }
+    }
+
+    private fun leaveApp() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastBack < 2_000) {
+            lastBack = 0
+            moveTaskToBack(true)
+            return
+        }
+        lastBack = now
+        Toast.makeText(this, R.string.back_again, Toast.LENGTH_SHORT).show()
+    }
+
+    // ---- Window and insets ----------------------------------------------------
+
+    /**
+     * Edge to edge, as the iOS web view is: the page draws under the bars and
+     * lays itself out from the insets published to it. The keyboard is the one
+     * thing the window still makes room for, so a focused field is never under it.
+     */
+    private fun configureWindow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+                navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            )
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        val root = findViewById<View>(R.id.root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, latest ->
+            insets = latest
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val ime = latest.getInsets(WindowInsetsCompat.Type.ime())
+                root.setPadding(0, 0, 0, ime.bottom)
+            }
+            val edge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+            val bars = latest.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            (chrome.layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
+                val density = resources.displayMetrics.density
+                params.topMargin = (if (edge) bars.top else 0) + (4 * density).toInt()
+                params.marginEnd = (if (edge) bars.right else 0) + (8 * density).toInt()
+                chrome.layoutParams = params
+            }
+            refreshBootScript()
+            if (webView.visibility == View.VISIBLE) publishChrome()
+            latest
+        }
+    }
+
+    private fun refreshBootScript() {
+        val language = core?.store?.let { TvmDeviceChrome.language(it) } ?: TvmPrefs.DEFAULT_LANGUAGE
+        bootScript = TvmShellScripts.boot(!television, TvmDeviceChrome.profile(this, edgeInsets()), language)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
-        webView.setBackgroundColor(0xFF000000.toInt())
+        webView.setBackgroundColor(Color.BLACK)
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.isClickable = true
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
         // Do not set OnTouchListener: that would swallow DOM click and overlay taps.
         webView.settings.javaScriptEnabled = true
         webView.settings.userAgentString = webView.settings.userAgentString + " TVM-Android"
@@ -335,7 +471,8 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowContentAccess = false
         webView.settings.javaScriptCanOpenWindowsAutomatically = false
         webView.settings.setSupportMultipleWindows(false)
-        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        // The loopback server marks everything no-store; an updated interface must never be served from cache.
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = false
         webView.settings.setSupportZoom(false)
@@ -344,18 +481,17 @@ class MainActivity : AppCompatActivity() {
         webView.webChromeClient = WebChromeClient()
     }
 
-    private fun clearWebData() {
-        webView.stopLoading()
-        webView.loadUrl("about:blank")
-        CookieManager.getInstance().removeAllCookies(null)
-        WebStorage.getInstance().deleteAllData()
-        webView.clearCache(true)
-        webView.clearHistory()
-    }
+    private companion object {
+        const val MENU_RELOAD = 1
+        const val MENU_HOME_CORE = 2
+        const val MENU_BACK_TO_PHONE = 3
 
-    private class SimpleWatcher(private val after: () -> Unit) : android.text.TextWatcher {
-        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-        override fun afterTextChanged(s: android.text.Editable?) = after()
+        const val BACK_SCRIPT = """
+            (function () {
+              var can = document.documentElement.dataset.canGoBack === 'true';
+              if (can) window.dispatchEvent(new Event('tvm:navigate-back'));
+              return can ? 'true' : 'false';
+            })();
+        """
     }
 }

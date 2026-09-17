@@ -1,0 +1,112 @@
+name: Interface update feed
+
+# The phones refresh their bundled interface from two pre-release tags,
+# ios-ui and android-ui. Each holds the bundle and a small manifest that says
+# exactly what was built: commit, checksum, content hash, the native level the
+# interface needs, and the changelog. The apps compare themselves with that
+# manifest, never with the tip of main.
+#
+# This runs for every push to main, with no path filter, so the feed always
+# describes main. It needs no macOS runner and no Android SDK: the interface
+# is plain web code, stamped and packed the same way the IPA and the APK
+# stamp their own copies.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ui-feed
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The changelog and the commit history come from here.
+          fetch-depth: 250
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build the interface
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @tvm/ui run build
+
+      - name: Stage and stamp both phone bundles
+        run: |
+          set -euo pipefail
+          node apps/ios/bundle-ui.mjs --copy-only
+          node apps/ios/write-changelog.mjs
+          node apps/android/bundle-ui.mjs --copy-only
+          node scripts/stamp-ui-bundle.mjs apps/android/app/src/main/assets/ui android
+          mkdir -p feed
+          # ustar keeps every entry a plain header both phone extractors read.
+          tar --format=ustar -czf feed/tvm-ios-ui.tar.gz -C apps/ios/TVM/BundledUI .
+          tar --format=ustar -czf feed/tvm-android-ui.tar.gz -C apps/android/app/src/main/assets/ui .
+          node scripts/write-update-feed.mjs --channel ios-ui --asset feed/tvm-ios-ui.tar.gz \
+            --out feed/tvm-ios-ui.json --bundle apps/ios/TVM/BundledUI
+          node scripts/write-update-feed.mjs --channel android-ui --asset feed/tvm-android-ui.tar.gz \
+            --out feed/tvm-android-ui.json --bundle apps/android/app/src/main/assets/ui
+          ls -la feed
+
+      - name: Check the bundles unpack as the phones will
+        run: |
+          set -euo pipefail
+          for name in ios android; do
+            rm -rf "check-$name" && mkdir "check-$name"
+            tar -xzf "feed/tvm-$name-ui.tar.gz" -C "check-$name"
+            test -f "check-$name/index.html"
+            test -f "check-$name/build-info.json"
+            node -e '
+              const [dir, manifest] = process.argv.slice(1);
+              const info = JSON.parse(require("fs").readFileSync(dir + "/build-info.json", "utf8"));
+              const feed = JSON.parse(require("fs").readFileSync(manifest, "utf8"));
+              if (info.commit !== feed.commit) throw new Error("commit mismatch");
+              if (info.contentHash !== feed.contentHash) throw new Error("content hash mismatch");
+              if (info.nativeApi !== feed.nativeApi) throw new Error("native level mismatch");
+              console.log(dir, "ok", feed.commit.slice(0, 7), "native", feed.nativeApi);
+            ' "check-$name" "feed/tvm-$name-ui.json"
+          done
+
+      - name: Publish
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          publish() {
+            local tag="$1" title="$2" platform="$3"
+            {
+              echo "> **Not an app download.** Install the app from the **$platform** release."
+              echo ">"
+              echo "> This holds the interface an installed app downloads to update itself."
+              echo "> The app reads \`tvm-$4-ui.json\` first and only fetches the bundle when it is newer,"
+              echo "> matches its checksum, and suits the installed app."
+              echo
+              echo "Build \`$(git rev-parse --short HEAD)\`"
+              echo
+              node -e '
+                const feed = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                for (const entry of feed.entries.slice(0, 12)) console.log(`- ${entry.title}`);
+              ' "feed/tvm-$4-ui.json"
+            } > "feed/$tag-notes.md"
+            gh release create "$tag" --prerelease --title "$title" --notes-file "feed/$tag-notes.md" 2>/dev/null \
+              || gh release edit "$tag" --prerelease --title "$title" --notes-file "feed/$tag-notes.md"
+            # The bundle first, then the manifest that points at it, so a phone
+            # never reads a manifest whose bundle is not there yet.
+            gh release upload "$tag" "feed/tvm-$4-ui.tar.gz" --clobber
+            gh release upload "$tag" "feed/tvm-$4-ui.json" --clobber
+          }
+          publish ios-ui "Component — iOS interface bundle (auto-update feed)" "iOS — iPhone & iPad" ios
+          publish android-ui "Component — Android interface bundle (auto-update feed)" "Android — phone, tablet & TV" android

@@ -395,7 +395,7 @@ class TvmMedia(
     }
 
     suspend fun appHub(id: String): JSONObject? {
-        val spec: JSONObject = appTiles().firstOrNull { it.optString("id", "") == id } ?: return null
+        val spec: JSONObject = appTiles().firstOrNull { it.text("id", "") == id } ?: return null
         if (id == "tvm-stream") return null
         val bundle: CatalogBundle = catalog.bundle()
         val movies: List<MediaItem> = bundle.moviesTop.take(16)
@@ -408,14 +408,14 @@ class TvmMedia(
         }
         val pool: List<MediaItem> = if (seeded.isEmpty()) movies + shows else seeded + movies
         val hero: MediaItem? = pool.firstOrNull { it.backdrop.isNotEmpty() } ?: pool.firstOrNull()
-        val name: String = spec.optString("name", id)
+        val name: String = spec.text("name", id)
         return Json.obj(
-            "id" to spec.optString("id", id),
+            "id" to spec.text("id", id),
             "name" to name,
-            "accent" to spec.optString("accent", "#5b3dff"),
-            "layout" to spec.optString("layout", "hub"),
-            "wordmark" to spec.optString("wordmark", name),
-            "logo" to spec.optString("icon", ""),
+            "accent" to spec.text("accent", "#5b3dff"),
+            "layout" to spec.text("layout", "hub"),
+            "wordmark" to spec.text("wordmark", name),
+            "logo" to spec.text("icon", ""),
             "disclaimer" to "Not the licensed $name app. Playback uses TVM Stream / Real-Debrid.",
             "hero" to hero?.json(),
             "continueWatching" to JSONArray(),
@@ -540,7 +540,7 @@ class TvmMedia(
             }
             return 409 to Json.obj("kind" to "unavailable", "reason" to "empty")
         }
-        val height: Int = plans.maxHeight()
+        val height: Int = TvmDeviceChrome.playbackHeight(plans.maxHeight())
         val capped: List<RdStream> = streams.filter { rd.streamHeight("${it.name} ${it.title}") <= height }
         val ranked: List<RdStream> = (if (capped.isEmpty()) streams else capped).take(8)
         var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to "empty")
@@ -551,7 +551,7 @@ class TvmMedia(
                     val result = playFromLink(resolved, mediaId ?: imdb)
                     if (result.first == 200) return result
                     last = result.second
-                    if (last.optString("reason", "") == "needs-auth") return result
+                    if (last.text("reason", "") == "needs-auth") return result
                 }
             }
             val hash: String? = stream.infoHash
@@ -559,10 +559,10 @@ class TvmMedia(
                 val magnet = playFromMagnet(hash, mediaId ?: imdb)
                 if (magnet.first == 200) return magnet
                 last = magnet.second
-                if (last.optString("reason", "") == "needs-auth") return magnet
+                if (last.text("reason", "") == "needs-auth") return magnet
             }
         }
-        if (last.optString("reason", "") == "empty" && catalogTitle != null) {
+        if (last.text("reason", "") == "empty" && catalogTitle != null) {
             val matched = findLibraryPlayback(catalogTitle, seasonNo, episodeNo)
             if (matched != null) {
                 val owned = resolveOwnedLink(matched)
@@ -591,7 +591,7 @@ class TvmMedia(
             val result = playFromLink(link, mediaId)
             if (result.first == 200) return result
             last = result.second
-            if (last.optString("reason", "") == "needs-auth") return result
+            if (last.text("reason", "") == "needs-auth") return result
         }
         return 409 to last
     }

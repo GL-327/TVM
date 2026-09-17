@@ -16,7 +16,9 @@ import {
   type TiersResponse,
 } from '../data/account';
 import { formatBillingMoney, unlockDeveloper } from '../data/plan';
+import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
+import { confirmFieldOnEnter, gateFocusKey, useGateRemote } from './gateKeys';
 import './accountGate.css';
 
 /**
@@ -124,6 +126,8 @@ function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => v
       }
       setCode('');
       setUnlocked(true);
+      // The field that held focus is gone; a remote needs somewhere to be.
+      window.setTimeout(() => requestFocus(gateFocusKey('owner-stream')), 0);
     } catch {
       setError('That could not be checked. Is TVM still running?');
     } finally {
@@ -147,7 +151,14 @@ function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => v
   if (!open) {
     return (
       <div className="gate__owner">
-        <FocusButton id="owner-unlock" className="tvm-button--quiet" onSelect={() => setOpen(true)}>
+        <FocusButton
+          id="owner-unlock"
+          className="tvm-button--quiet"
+          onSelect={() => {
+            setOpen(true);
+            window.setTimeout(() => requestFocus(gateFocusKey('owner-code')), 0);
+          }}
+        >
           I am the app owner
         </FocusButton>
       </div>
@@ -163,26 +174,37 @@ function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => v
             Enter the developer code to switch this account on. Everyone else should
             ask the owner instead.
           </p>
-          <label className="gate__field">
-            <span>Developer code</span>
-            <FocusField
-              id="owner-code"
-              type="password"
-              value={code}
-              onChange={setCode}
-              onConfirm={(value) => void unlock(value)}
-              placeholder="Developer code"
-            />
-          </label>
-          {error !== null && <p className="gate__error" role="alert">{error}</p>}
-          <div className="gate__actions">
-            <FocusButton id="owner-go" variant="primary" disabled={busy || code === ''} onSelect={() => void unlock(code)}>
-              {busy ? 'Checking…' : 'Unlock'}
-            </FocusButton>
-            <FocusButton id="owner-cancel" disabled={busy} onSelect={() => { setOpen(false); setError(null); setCode(''); }}>
-              Cancel
-            </FocusButton>
-          </div>
+          <form
+            className="gate__form"
+            noValidate
+            onKeyDown={confirmFieldOnEnter}
+            onSubmit={(event) => { event.preventDefault(); if (!busy && code !== '') void unlock(code); }}
+          >
+            <label className="gate__field">
+              <span>Developer code</span>
+              <FocusField
+                id="owner-code"
+                type="password"
+                name="owner-code"
+                autoComplete="off"
+                enterKeyHint="go"
+                value={code}
+                onChange={setCode}
+                onConfirm={(value) => { if (!busy && value !== '') void unlock(value); }}
+                placeholder="Developer code"
+              />
+            </label>
+            {error !== null && <p className="gate__error" role="alert">{error}</p>}
+            <div className="gate__actions">
+              <FocusButton id="owner-go" variant="primary" disabled={busy || code === ''} onSelect={() => void unlock(code)}>
+                {busy ? 'Checking…' : 'Unlock'}
+              </FocusButton>
+              <FocusButton id="owner-cancel" disabled={busy} onSelect={() => { setOpen(false); setError(null); setCode(''); }}>
+                Cancel
+              </FocusButton>
+            </div>
+            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
+          </form>
         </>
       ) : (
         <>
@@ -230,6 +252,9 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   const [terms, setTerms] = useState<TermsDocument | null>(null);
   const [tiers, setTiers] = useState<TiersResponse | null>(null);
   const pageRef = useRef<HTMLElement>(null);
+  // State updates are asynchronous, so `busy` alone lets a double press (or
+  // Enter plus a click) send two registrations before the first re-render.
+  const inFlight = useRef(false);
 
   useEffect(() => bindKeyboardFields(pageRef.current), [state.usable.reason, mode]);
 
@@ -267,7 +292,8 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   }, []);
 
   const submit = async (): Promise<void> => {
-    if (busy) return;
+    if (busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage(null);
     setNotice(null);
@@ -285,12 +311,14 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'That did not work. Please try again.');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
   const agree = async (): Promise<void> => {
-    if (busy) return;
+    if (busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -298,11 +326,31 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'That could not be recorded. Please try again.');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
   const reason = state.usable.reason;
+  const panel = !state.signedIn
+    ? mode
+    : reason === 'terms_required' && terms !== null
+      ? 'terms'
+      : reason ?? 'ready';
+  const switchMode = (): void => {
+    setMode(mode === 'signin' ? 'register' : 'signin');
+    setMessage(null);
+    setNotice(null);
+  };
+  useGateRemote({
+    panel,
+    first: panel === 'terms' ? 'agree' : state.signedIn ? 'recheck' : mode === 'register' ? 'gate-name' : 'gate-email',
+    // Back from "Ask for an account" returns to signing in; elsewhere it has
+    // nowhere to go, because there is nothing behind the door.
+    onBack: !state.signedIn && mode === 'register' ? switchMode : undefined,
+  });
+  /** Enter in one field moves to the next; in the last one it submits. */
+  const next = (id: string) => (): void => requestFocus(gateFocusKey(id));
 
   // ---- Terms ------------------------------------------------------------
   if (state.signedIn && reason === 'terms_required' && terms !== null) {
@@ -389,33 +437,73 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
         {notice !== null && <p className="gate__notice" role="status">{notice}</p>}
         {message !== null && <p className="gate__error" role="alert">{message}</p>}
 
-        {mode === 'register' && (
+        {/*
+          * A real form, so the phone keyboard's Go key and a desktop's Enter
+          * both sign in. It never navigates: submit is always intercepted.
+          */}
+        <form
+          className="gate__form"
+          noValidate
+          onKeyDown={confirmFieldOnEnter}
+          onSubmit={(event) => { event.preventDefault(); void submit(); }}
+        >
+          {mode === 'register' && (
+            <label className="gate__field">
+              <span>Your name</span>
+              <FocusField
+                id="gate-name"
+                name="name"
+                autoComplete="name"
+                enterKeyHint="next"
+                value={displayName}
+                onChange={setDisplayName}
+                onConfirm={next('gate-email')}
+                afterPasteFocusId="gate-email"
+                placeholder="What should the owner call you?"
+              />
+            </label>
+          )}
           <label className="gate__field">
-            <span>Your name</span>
-            <FocusField id="gate-name" value={displayName} onChange={setDisplayName} onConfirm={setDisplayName} afterPasteFocusId="gate-email" placeholder="What should the owner call you?" />
+            <span>Email</span>
+            <FocusField
+              id="gate-email"
+              name="email"
+              inputMode="email"
+              autoComplete={mode === 'register' ? 'email' : 'username'}
+              enterKeyHint="next"
+              value={email}
+              onChange={setEmail}
+              onConfirm={next('gate-password')}
+              afterPasteFocusId="gate-password"
+              placeholder="you@example.com"
+            />
           </label>
-        )}
-        <label className="gate__field">
-          <span>Email</span>
-          <FocusField id="gate-email" value={email} onChange={setEmail} onConfirm={setEmail} afterPasteFocusId="gate-password" placeholder="you@example.com" />
-        </label>
-        <label className="gate__field">
-          <span>Password</span>
-          <FocusField id="gate-password" type="password" value={password} onChange={setPassword} onConfirm={setPassword} afterPasteFocusId="gate-submit" placeholder={mode === 'register' ? 'At least 10 characters' : 'Your password'} />
-        </label>
+          <label className="gate__field">
+            <span>Password</span>
+            <FocusField
+              id="gate-password"
+              type="password"
+              name="password"
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              enterKeyHint="go"
+              value={password}
+              onChange={setPassword}
+              onConfirm={() => void submit()}
+              afterPasteFocusId="gate-submit"
+              placeholder={mode === 'register' ? 'At least 10 characters' : 'Your password'}
+            />
+          </label>
 
-        <div className="gate__actions">
-          <FocusButton id="gate-submit" variant="primary" disabled={busy} onSelect={() => void submit()}>
-            {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
-          </FocusButton>
-          <FocusButton
-            id="gate-switch"
-            disabled={busy}
-            onSelect={() => { setMode(mode === 'signin' ? 'register' : 'signin'); setMessage(null); setNotice(null); }}
-          >
-            {mode === 'signin' ? 'I need an account' : 'I already have an account'}
-          </FocusButton>
-        </div>
+          <div className="gate__actions">
+            <FocusButton id="gate-submit" variant="primary" disabled={busy} onSelect={() => void submit()}>
+              {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+            </FocusButton>
+            <FocusButton id="gate-switch" disabled={busy} onSelect={switchMode}>
+              {mode === 'signin' ? 'I need an account' : 'I already have an account'}
+            </FocusButton>
+          </div>
+          <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
+        </form>
 
         {tiers !== null && <Prices tiers={tiers} />}
       </div>

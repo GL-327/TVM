@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { HeaderProfile } from '../Server Side Live/headers.ts';
 
 const HOP_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -7,6 +8,8 @@ export interface MediaHop {
   playlist: boolean;
   expires: number;
   mimeType?: string;
+  /** The headers of the channel this hop belongs to, so segments and keys get them too. */
+  profile?: HeaderProfile;
 }
 
 export type HopMint = (url: string, playlist?: boolean, mimeType?: string) => string;
@@ -19,7 +22,7 @@ function pruneHops(now = Date.now()): void {
   }
 }
 
-export function mintHop(url: string, playlist = isHlsPlaylist(url, ''), mimeType = ''): string {
+export function mintHop(url: string, playlist = isHlsPlaylist(url, ''), mimeType = '', profile?: HeaderProfile): string {
   pruneHops();
   const token = randomBytes(12).toString('hex');
   hops.set(token, {
@@ -27,6 +30,7 @@ export function mintHop(url: string, playlist = isHlsPlaylist(url, ''), mimeType
     playlist,
     expires: Date.now() + HOP_TTL_MS,
     ...(mimeType !== '' ? { mimeType } : {}),
+    ...(profile !== undefined ? { profile } : {}),
   });
   return `/api/live/hop/${token}`;
 }
