@@ -191,6 +191,18 @@ check('the Android app applies a GitHub UI bundle on open unless auto-update is 
     testUrl !== '' && core.includes(`"${testUrl}"`) && core.includes('testChannels().firstOrNull'),
     'apps/core/src/providers/live.ts TEST_CHANNEL_URL and TvmLocalCore.TEST_CHANNEL_URL must match');
 }
+{
+  const workflow = read(join(REPO, '.github', 'workflows', 'mobile.yml')) ?? '';
+  const smokeAt = workflow.indexOf('node scripts/android-smoke.mjs');
+  check('the APK is installed and opened on an emulator before it is released',
+    existsSync(join(REPO, 'scripts', 'android-smoke.mjs')) &&
+    smokeAt !== -1 && smokeAt < workflow.indexOf('name: Publish the Android release'));
+  check("CI signs the APK with TVM's key when the secret is set",
+    workflow.includes('secrets.TVM_ANDROID_SIGNING') &&
+    appGradle.includes('System.getenv("TVM_ANDROID_KEYSTORE")') &&
+    appGradle.includes('signingConfig = signingConfigs.getByName("tvm")'),
+    'without a stable key a new APK will not install over the previous one');
+}
 check('an applied GitHub update shows a changelog on the next open',
   (read(join(SRC, 'TvmUpdater.kt')) ?? '').includes('writePending') &&
   (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/update/changelog'));
