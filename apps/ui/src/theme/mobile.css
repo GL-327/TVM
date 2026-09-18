@@ -89,13 +89,13 @@
    * never touches the glass. env() resolves to 0 unless the document carries
    * viewport-fit=cover (index.html and the iOS WKUserScript).
    *
-   * Two-row tab bar: HDMI Inputs is hidden, eight destinations remain.
+   * One-row tab bar: four destinations and More. HDMI Inputs is hidden.
    */
   :root {
     --tvm-safe-x: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right), var(--tvm-chrome-left, 0px));
     --tvm-safe-y: max(0.75rem, env(safe-area-inset-top), var(--tvm-chrome-top, 0px));
     --tvm-safe-bottom: max(0.75rem, env(safe-area-inset-bottom), var(--tvm-chrome-bottom, 0px));
-    --tvm-tabbar: calc(6.55rem + max(env(safe-area-inset-bottom, 0px), var(--tvm-chrome-bottom, 0px)));
+    --tvm-tabbar: calc(3.65rem + max(env(safe-area-inset-bottom, 0px), var(--tvm-chrome-bottom, 0px)));
 
     --tvm-font-size-caption: 0.75rem;
     --tvm-font-size-body: 0.9375rem;
@@ -178,12 +178,46 @@
   /* Hero / Home -----------------------------------------------------------
    * A phone featured card, not a 58vh living-room billboard. The TV clock
    * and "learn the remote" line are ten-foot chrome.
+   *
+   * The hero is the one part of the phone layout that is still 16:9, and it
+   * is the part that should be: it holds a 16:9 backdrop. It runs the full
+   * width of the glass and up underneath the status bar and the Dynamic
+   * Island, the way a native app does, rather than starting below them and
+   * leaving a black strip over the artwork. `--tvm-safe-y` then pushes the
+   * copy clear of the island, and `.stage::before` keeps the system clock
+   * readable over a bright backdrop.
+   *
+   * min-height rather than aspect-ratio so a long title or a large accessible
+   * text size makes the band taller instead of overflowing it.
    */
 
   .stage,
   .home--launcher .stage--home {
-    min-height: 28vh;
+    min-height: calc(100vw * 9 / 16);
     padding: calc(var(--tvm-safe-y) + 0.35rem) var(--tvm-safe-x) 0.7rem;
+  }
+
+  /* Landscape is already a 16:9 window; a 16:9 hero inside it is the screen. */
+  html[data-orientation='landscape'] .stage,
+  html[data-orientation='landscape'] .home--launcher .stage--home {
+    min-height: 52vh;
+  }
+
+  .stage::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 1;
+    height: calc(var(--tvm-safe-y) + 0.75rem);
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, #000 55%, transparent) 0%,
+      color-mix(in srgb, #000 22%, transparent) 55%,
+      transparent 100%
+    );
   }
 
   .stage__title {
@@ -288,10 +322,14 @@
   }
 
   /* Bottom tab bar --------------------------------------------------------
-   * Replaces the hover-peek ribbon. Labels stay visible. HDMI Inputs is a
-   * television affordance and is removed so the eight remaining destinations
-   * land on a 4×2 grid: Home, Search, Live, Watchlist / Library, Apps,
-   * Settings, Profile.
+   * Replaces the hover-peek ribbon with the platform's own shape: one row of
+   * five. Home, Search, Live TV and Watchlist are the destinations; the fifth
+   * is More, which opens a sheet holding Profile, Library, Apps and Settings.
+   *
+   * It used to carry all eight on a 4×2 grid, which read as a keyboard and
+   * took about a sixth of a 812px screen before the home indicator. Ribbon.tsx
+   * decides which set to render; this styles both. HDMI Inputs is dropped on a
+   * phone entirely — it asks you to change your television's input.
    */
 
   .ribbon-zone {
@@ -383,6 +421,11 @@
     width: 100%;
     max-width: 100%;
     overflow: visible;
+  }
+
+  .ribbon__list--tabs,
+  [data-theme='glass'] .ribbon__list--tabs {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .ribbon__spacer {
@@ -495,10 +538,20 @@
    * system keyboard; fields stay 16px so iOS does not pinch-zoom.
    */
 
+  /*
+   * `env(safe-area-inset-top, fallback)` does not do what it looks like it
+   * does. The fallback is for browsers that have never heard of the variable;
+   * a browser that knows it and resolves it to 0 — which is every browser
+   * outside a `viewport-fit=cover` document, and a WKWebView before the first
+   * layout — takes the 0 and ignores the fallback entirely. The search sheet
+   * therefore opened with no top inset and put its field under the Dynamic
+   * Island. max() picks whichever is actually larger, which is the question
+   * being asked.
+   */
   .search-pill {
     align-items: stretch;
     justify-items: stretch;
-    padding: env(safe-area-inset-top, var(--tvm-chrome-top, 0px)) 0 0;
+    padding: max(env(safe-area-inset-top, 0px), var(--tvm-chrome-top, 0px)) 0 0;
     background: color-mix(in srgb, var(--tvm-bg-deep, #050810) 72%, transparent);
   }
 
@@ -1055,7 +1108,7 @@ html.phone-shell {
   --tvm-safe-x: max(1rem, calc(var(--tvm-chrome-left) + var(--tvm-chrome-extra-x)), calc(var(--tvm-chrome-right) + var(--tvm-chrome-extra-x)));
   --tvm-safe-y: max(0.75rem, calc(var(--tvm-chrome-top) + var(--tvm-chrome-extra-top)));
   --tvm-safe-bottom: max(0.75rem, calc(var(--tvm-chrome-bottom) + var(--tvm-chrome-extra-bottom)));
-  --tvm-tabbar: calc(6.55rem + var(--tvm-chrome-bottom) + var(--tvm-chrome-extra-bottom));
+  --tvm-tabbar: calc(3.65rem + var(--tvm-chrome-bottom) + var(--tvm-chrome-extra-bottom));
 }
 
 html.phone-shell[data-device-family='island'] {
@@ -1168,12 +1221,36 @@ html.phone-shell .poster {
   min-height: 0;
 }
 
+/*
+ * A 16:9 band across the full width of the glass, running up under the status
+ * bar and the Dynamic Island. `min-height` rather than `aspect-ratio` so a
+ * long title or a large accessible text size grows the band instead of
+ * spilling out of it; `--tvm-safe-y` keeps the copy off the island and
+ * `.stage::before` keeps the system clock legible over bright artwork.
+ */
 html.phone-shell .stage,
 html.phone-shell .home--launcher .stage--home,
 html.phone-shell[data-theme='glass'] .home .stage,
 html.phone-shell[data-theme='glass'] .home:not(.stream-page) .stage {
-  min-height: 28vh;
+  min-height: calc(100vw * 9 / 16);
   padding: calc(var(--tvm-safe-y) + 0.35rem) var(--tvm-safe-x) 0.7rem;
+}
+
+html.phone-shell .stage::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: calc(var(--tvm-safe-y) + 0.75rem);
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #000 55%, transparent) 0%,
+    color-mix(in srgb, #000 22%, transparent) 55%,
+    transparent 100%
+  );
 }
 
 html.phone-shell .stage__watchline-rule,
@@ -1278,6 +1355,11 @@ html.phone-shell[data-theme='glass'] .ribbon__frost {
   box-shadow: none;
 }
 
+html.phone-shell .ribbon__list--tabs,
+html.phone-shell[data-theme='glass'] .ribbon__list--tabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 html.phone-shell .ribbon__list,
 html.phone-shell[data-theme='glass'] .ribbon__list {
   display: grid;
@@ -1305,7 +1387,7 @@ html.phone-shell .ribbon [data-focus-id='inputs'] {
 /* Portrait: readable column. Landscape: use width; 16:9 art still contains. */
 
 html.phone-shell[data-orientation='portrait'] {
-  --tvm-tabbar: calc(6.55rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
+  --tvm-tabbar: calc(3.65rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
 html.phone-shell[data-orientation='portrait'] .home__launcher {
@@ -1315,6 +1397,11 @@ html.phone-shell[data-orientation='portrait'] .home__launcher {
 html.phone-shell[data-orientation='portrait'] .ribbon__list,
 html.phone-shell[data-orientation='portrait'][data-theme='glass'] .ribbon__list {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html.phone-shell[data-orientation='portrait'] .ribbon__list--tabs,
+html.phone-shell[data-orientation='portrait'][data-theme='glass'] .ribbon__list--tabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 html.phone-shell[data-orientation='portrait'] .ribbon__label {
@@ -1355,6 +1442,11 @@ html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon {
 html.phone-shell[data-orientation='landscape'] .ribbon__list,
 html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon__list {
   grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+html.phone-shell[data-orientation='landscape'] .ribbon__list--tabs,
+html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon__list--tabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 html.phone-shell[data-orientation='landscape'] .ribbon__label {
@@ -1541,6 +1633,150 @@ html.phone-shell [data-keyboard-fields] {
   -webkit-overflow-scrolling: touch;
 }
 html.phone-shell .ribbon__spacer { display: none; }
+
+/* More sheet ----------------------------------------------------------------
+ * The four destinations that do not fit on a five-tab bar, as a sheet that
+ * rises out of it. Rendered only when Ribbon.tsx is in phone shape, so these
+ * rules need no media query of their own.
+ */
+
+/*
+ * Painted in DOM order, not with a z-index.
+ *
+ * `z-index: -1` put the scrim behind the tab bar's own background inside the
+ * nav's stacking context, where it dimmed nothing. As the first child it
+ * covers the viewport, the sheet paints over it and the bar paints over both.
+ */
+.ribbon-sheet__scrim {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: color-mix(in srgb, #000 58%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: ribbon-sheet-scrim var(--tvm-motion-fast, 160ms) var(--tvm-motion-ease, ease-out) both;
+}
+
+@keyframes ribbon-sheet-scrim {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/*
+ * Its own fill, not the bar's.
+ *
+ * The nav's background box only covers the tab strip, so a sheet that rose out
+ * of it had poster art showing straight through the rows — and the per-theme
+ * `[data-theme='x'] .ribbon` rules are translucent by design, so inheriting
+ * from the bar would never have been safe either. Opaque here, whatever theme
+ * is on.
+ */
+.ribbon-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.55rem 0.5rem;
+  border-radius: 1rem 1rem 0 0;
+  background: color-mix(in srgb, var(--tvm-bg, #071428) 96%, #000);
+  box-shadow: 0 -0.5rem 1.6rem rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  animation: ribbon-sheet-in var(--tvm-motion-fast, 180ms) var(--tvm-motion-ease, ease-out) both;
+}
+
+@keyframes ribbon-sheet-in {
+  from { opacity: 0; transform: translateY(0.9rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ribbon-sheet__grip {
+  width: 2.25rem;
+  height: 0.25rem;
+  margin: 0.1rem auto 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tvm-text, #f6f5fb) 28%, transparent);
+}
+
+.ribbon-sheet .tvm-button.ribbon-sheet__row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.85rem;
+  text-align: left;
+  background: color-mix(in srgb, var(--tvm-text, #f6f5fb) 6%, transparent);
+}
+
+.ribbon-sheet .tvm-button.ribbon-sheet__row .tvm-button__label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.ribbon-sheet .tvm-button.ribbon-sheet__row:hover,
+.ribbon-sheet .tvm-button.ribbon-sheet__row:focus,
+.ribbon-sheet .tvm-button.ribbon-sheet__row[data-focused='true'],
+.ribbon-sheet .tvm-button.ribbon-sheet__row.tvm-button--focused {
+  transform: none;
+  background: color-mix(in srgb, var(--tvm-text, #f6f5fb) 15%, transparent);
+}
+
+.ribbon-sheet__row--on {
+  box-shadow: inset 0 0 0 1px var(--tvm-accent, #8b5cff);
+}
+
+.ribbon-sheet__glyph {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--tvm-accent, #8b5cff) 22%, transparent);
+  color: var(--tvm-text, #f6f5fb);
+}
+
+.ribbon-sheet__glyph svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.ribbon-sheet__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.ribbon-sheet__text strong {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ribbon-sheet__text > span {
+  overflow: hidden;
+  color: var(--tvm-text-dim, #a9a3c4);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The sheet is the page while it is open; it must not sit behind a rail. */
+.ribbon--more {
+  max-height: 100dvh;
+  overflow: visible;
+}
 html.phone-shell .ribbon .tvm-button.ribbon__icon {
   min-width: 0;
   min-height: 48px;

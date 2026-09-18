@@ -21,7 +21,12 @@ describe('theme apply imports', () => {
     // The boot key is bumped whenever the shipped default changes, so each
     // new default is introduced once per device and a theme the viewer picks
     // afterwards is never overwritten again.
-    expect(applySrc).toContain('tvm.theme.orbit-boot');
+    // The key lives in bootKey.ts so the browser tests can import it rather
+    // than hard-code a name that has already gone stale three times.
+    const bootSrc = readFileSync(join(dir, 'bootKey.ts'), 'utf8');
+    expect(bootSrc).toContain('tvm.theme.orbit-boot');
+    expect(applySrc).toContain("import { THEME_DEFAULT_BOOT } from './bootKey'");
+    expect(applySrc).toContain('store.getItem(THEME_DEFAULT_BOOT)');
     expect(applySrc).not.toContain('tvm.theme.isle-boot');
     expect(applySrc).toContain('subscribeTheme');
     // Applied by name, so changing DEFAULT_THEME cannot leave this behind.

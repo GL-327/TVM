@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { FALLBACK_PLAN } from '../src/data/plan';
+import { THEME_DEFAULT_BOOT } from '../src/theme/bootKey';
 import { allowAccount } from './account';
 const film = {id:'tt1',title:'Finished film',year:2025,kind:'movie',poster:'',backdrop:'',genres:['Drama'],rating:'8',synopsis:'An original story.',playable:true,hue:220};
 test('Anime purchase, scenes, notebook, bundle and quiet tableau', async ({page}) => {
@@ -7,7 +8,7 @@ test('Anime purchase, scenes, notebook, bundle and quiet tableau', async ({page}
   let plan = {...FALLBACK_PLAN, catalog:[{id:'free',name:'Free',basePricePence:0,pricePence:0,price:'Free',mocks:false,liveTv:false,extras:[]}]};
   const packs: string[] = [];
   await allowAccount(page);
-  await page.addInitScript(()=>{localStorage.setItem('tvm.theme.isle-boot','1');localStorage.setItem('tvm.prefs',JSON.stringify({autoUpdate:false,language:'en'}));});
+  await page.addInitScript((bootKey)=>{localStorage.setItem(bootKey,'1');localStorage.setItem('tvm.prefs',JSON.stringify({autoUpdate:false,language:'en'}));}, THEME_DEFAULT_BOOT);
   await page.route('**/api/plan', route=>route.fulfill({json:plan}));
   await page.route('**/api/billing/checkout',async route=>{
     const body=route.request().postDataJSON();packs.push(body.pack);
@@ -67,11 +68,11 @@ test('Anime purchase, scenes, notebook, bundle and quiet tableau', async ({page}
 test('Six Eyes follows D-pad focus on a phone shell and freezes in reduced motion', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
   await allowAccount(page);
-  await page.addInitScript(()=>{
-    localStorage.setItem('tvm.theme.isle-boot','1');localStorage.setItem('tvm.theme','anime');
+  await page.addInitScript((bootKey)=>{
+    localStorage.setItem(bootKey,'1');localStorage.setItem('tvm.theme','anime');
     localStorage.setItem('tvm.theme.anime.scene','gojo-six-eyes');
     document.addEventListener('DOMContentLoaded',()=>document.documentElement.classList.add('phone-shell'));
-  });
+  }, THEME_DEFAULT_BOOT);
   await page.route('**/api/plan',route=>route.fulfill({json:{...FALLBACK_PLAN,id:'basic',anime:true,animeOwned:true}}));
   await page.route('**/api/home',route=>route.fulfill({json:{rd:{configured:true,premium:true},featured:film,library:[],watchlist:[],continueWatching:[],rails:[]}}));
   await page.route('**/api/profiles',route=>route.fulfill({json:{activeId:'p1',profiles:[{id:'p1',name:'Viewer',hue:22}]}}));

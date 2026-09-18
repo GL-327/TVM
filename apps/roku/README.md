@@ -201,7 +201,8 @@ After sideload:
 5. Ribbon Search opens an on-screen keyboard. Live TV / Watchlist / Profile /
    Settings / Apps open those screens. Apps tiles open TVM originals hubs.
 6. Back closes overlays. Back on Home stays on Home.
-7. Settings can edit the Core URL and device access token, open the Real-Debrid
+7. Settings can sign out of the TVM account (with a confirm step), edit the Core
+   URL and device access token, open the Real-Debrid
    screen, set a live playlist, open Profiles, and show network status. Display
    reports the 4K canvas scale. Billing, updates, cache wipe and factory reset
    stay on the computer.

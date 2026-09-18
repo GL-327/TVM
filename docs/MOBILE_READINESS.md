@@ -1,10 +1,10 @@
-# Mobile testing handoff — 14 September 2026
+# Mobile testing handoff — 18 September 2026
 
 ## Implemented
 
-- Mobile viewing requires **Basic, Premium, Ultra or MAX**, with a plan cap of at least 1080p. Free is still available on television/desktop. Plan selection, setup, legal pages and DEV settings remain accessible on mobile. DEV can select a paid test plan; Free does not silently become a paid plan.
+- Mobile viewing requires **Premium, Ultra or MAX**, with a plan cap of at least 1080p. Free and Basic are still available on television/desktop. Plan selection, setup, legal pages and DEV settings remain accessible on mobile. DEV can select a paid test plan; Free does not silently become a paid plan.
 - The shared UI checks mobile entitlements before mounting viewing screens. Core rejects mobile playback/stream requests on Free; the standalone iOS Core independently rejects playback. Native shells identify themselves as TVM-iOS / TVM-Android. These are private testing controls, not a replacement for verified subscription receipts or device attestation.
-- iPhone supports both landscape orientations. Its web app is centred inside a **16:9 rectangle that fits the available safe area**, with black borders on wider displays. The video uses `object-fit: contain`; cinema/4:3 sources retain their proportions. iPad can still rotate and gets the same fitted rectangle. 16:9 describes shape, not resolution; a paid plan does not upscale a low-resolution source.
+- iPhone supports both landscape orientations. The app fills the screen; the **hero band** is the 16:9 rectangle, running the full width of the glass and up under the status bar and Dynamic Island the way a native app does, with a scrim so the system clock stays legible over bright artwork. The video uses `object-fit: contain`; cinema/4:3 sources retain their proportions. iPad can still rotate. 16:9 describes shape, not resolution; a paid plan does not upscale a low-resolution source.
 - Actual WebKit screenshots exposed a mobile selector that hid the entire launcher label. It now hides only the subtitle, and landscape places Stream, Live TV, Watchlist and Apps in one readable row. Browser tests assert those labels stay visible.
 - Safari/WKWebView prefers native HLS even when MSE is available. iOS 16 has cancellation API fallbacks. Desktop/Android retain the existing JavaScript player where native HLS is unavailable.
 - iOS now opens HLS Live TV independently of Real-Debrid. Xtream setup actually retrieves a provider playlist, requests `output=m3u8`, checks HTTP success and requires channels before accepting the connection. Raw TS gets a specific recovery message.
@@ -15,11 +15,61 @@
 
 ## How to test
 
-Open mobile Settings → DEV to select Basic or higher for testing, or use the existing sandbox plan flow. There is no live payment processor or verified paid subscription service. On Android/home-Core mode, select the test plan on the Windows host because billing/DEV administration stays host-only.
+Open mobile Settings → DEV to select Premium or higher for testing, or use the existing sandbox plan flow. There is no live payment processor or verified paid subscription service. On Android/home-Core mode, select the test plan on the Windows host because billing/DEV administration stays host-only.
 
 `pnpm -r run typecheck`, `pnpm -r run test`, `pnpm -r run build` cover this workspace. Browser coverage now includes WebKit at 568×320, 704×396 and 800×450: Free gating, touch access to Plans, paid Home, actual running background transforms, and rail scrolling. Screenshots are written to `cache/ios-webkit-*.png`; they use fixture catalogue entries. This is Windows WebKit testing, not an installed iPhone test.
 
 `node apps/ios/bundle-ui.mjs --copy-only` copies the freshly built UI into the native app. `node apps/ios/check-project.mjs` validates package structure. `.github/workflows/mobile.yml` already builds/tests with Xcode on a macOS runner and produces an unsigned IPA. Run it on a commit containing these changes; an old downloaded IPA will not contain them.
+
+### 18 September 2026 — phone shell and keyboards
+
+Four things were missing or wrong. They are listed with how each was proven,
+because two of them had been written down as done.
+
+**The 16:9 fitted rectangle was never implemented.** `.app` was `width: 100%;
+height: 100dvh`, and the browser test that asserted `.app` is 16:9 ran only at
+568×320, 704×396 and 800×450 — viewports that are already 16:9, so it could
+not fail. The hero is now a real 16:9 band (`min-height: calc(100vw * 9 / 16)`,
+so a long title grows it rather than overflowing) that starts at y=0 and runs
+under the island, with `--tvm-safe-y` holding the copy clear of it. Measured on
+a 390×844 notch device: hero 219px at ratio 1.778, first content at y=68.
+
+**The search sheet opened under the Dynamic Island.** `.search-pill` used
+`env(safe-area-inset-top, var(--tvm-chrome-top))`. A CSS `env()` fallback is for
+browsers that do not know the variable, not for one that resolves it to 0, so it
+never fired and the field got about 10px of top inset. `max()` of the two is the
+question that was meant to be asked. Measured: 47px of padding, field at y=57.
+
+**The bottom bar was eight destinations on two rows**, about a sixth of the
+screen. It is now one row of five — Home, Search, Live TV, Watchlist, More —
+with Profile, TVM Library, Apps and Settings in a sheet behind More. The sheet
+has its own opaque fill: the per-theme `.ribbon` fills are translucent by design
+and the nav's background box only covers the tab strip, so an inherited fill let
+poster art show through the rows. HDMI Inputs is dropped on a phone; it asks you
+to change your television's input. Measured: bar 749–844, five equal columns,
+every tab at least 44px tall.
+
+**`mobilePlanAllowed` said `basic`** while `apps/core/src/mobileAccess.ts`, the
+iOS plans and the Android plans all said `premium`. The interface let a Basic
+account into the catalogue and open a title, and core then refused
+`/api/playback`. The client copy exists only to prevent that, so a looser copy
+is worse than none; it now matches core.
+
+`FocusField` now derives `inputMode` and `enterKeyHint` from `type` when a screen
+does not name them, accepts `email` and `tel`, and takes `autoCapitalize` — so a
+server-URL field gets `/` and `.com` and a Go key, and a provider username is not
+capitalised. The sign-in form already carried its own keyboard and autofill
+attributes (`gateKeys.ts`, 17 September); this covers every other field.
+
+Browser tests: the one-rail fixture Home in `e2e/mobile.spec.ts` fitted on one
+390×844 screen once the bar became a single row, so "horizontal rails yield
+vertical pans to the page" had nothing to pan and failed for a reason unrelated
+to rails. The fixture now has four rails, as a real Home does, and the test
+asserts the page overflows before it pans. The default-theme boot key moved to
+`apps/ui/src/theme/bootKey.ts` so specs import it; it had been renamed three
+times (isle, cinematic, orbit) and each rename silently reset the theme the
+specs pinned. 12 of 12 mobile cases pass. Four cases in `navigation.spec.ts` and
+`anime.spec.ts` fail identically on clean `main` and are not addressed here.
 
 ## Remaining gates — do not mark these complete without evidence
 

@@ -6,9 +6,9 @@ sub init()
   m.rows = []
   m.col = 0
   m.seq = 0
-  m.ids = ["theme", "url", "token", "profiles", "realdebrid", "network", "display", "livetv", "computer", "restart"]
-  m.kinds = ["cycleTheme", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "livePlaylist", "computerSettings", "restart"]
-  labels = ["Theme", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Manage on computer", "Reload Home"]
+  m.ids = ["theme", "account", "url", "token", "profiles", "realdebrid", "network", "display", "livetv", "computer", "restart"]
+  m.kinds = ["cycleTheme", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "livePlaylist", "computerSettings", "restart"]
+  labels = ["Theme", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Manage on computer", "Reload Home"]
   i = 0
   while i < labels.Count()
     btn = CreateObject("roSGNode", "FocusButton")
@@ -54,6 +54,7 @@ sub onHealth()
     setRowDetail("network", "Offline")
   end if
   setRowDetail("profiles", "TVM Stream only")
+  setRowDetail("account", "Sign out of this TVM account")
   setRowDetail("realdebrid", "Saved securely by Core on your computer")
   setRowDetail("token", "Replace the saved device credential")
   setRowDetail("computer", "Billing, updates and data controls")

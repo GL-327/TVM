@@ -556,6 +556,17 @@ sub onSettingsAction()
   if kind = "setTheme" then applyAndSaveTheme(aaGet(action, "themeId", tvmThemeDefault()))
   if kind = "editUrl" then showUrlKeyboard()
   if kind = "editToken" then showTokenKeyboard()
+  ' The account screen offers Sign out only while it is showing, which it
+  ' stops doing once the account is usable. Without this row a Roku that had
+  ' reached Home had no way back out to hand the television to someone else.
+  if kind = "signOut"
+    navigate("modal", "confirm", {
+      title: "Sign out of TVM?"
+      body: "This television will need an account email address and password again before it shows anything. Its connection to your computer is kept."
+      confirmLabel: "Sign out"
+      confirmId: "sign-out"
+    })
+  end if
   if kind = "computerSettings"
     navigate("modal", "notice", { title: "Manage on your computer", body: "Open TVM on the computer for billing, updates, diagnostics, clearing caches and deleting data. These controls are restricted to that computer." })
   end if
@@ -747,7 +758,9 @@ sub onConfirmAction()
   end if
   confirmId = aaGet(action, "confirmId", "")
   navigate("pop", "", {})
-  if confirmId = "clear-cache"
+  if confirmId = "sign-out"
+    signOutAccount()
+  else if confirmId = "clear-cache"
     m.mutateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/maintenance/clear-cache"), "POST", "{}", "onCacheDone")
   else if confirmId = "factory-reset"
     m.mutateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/maintenance/factory-reset"), "POST", "{}", "onResetDone")

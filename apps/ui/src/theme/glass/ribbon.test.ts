@@ -31,18 +31,26 @@ describe('glass ribbon centering', () => {
     expect(css).not.toContain('contain: layout paint');
   });
 
+  /*
+   * The list is nested inside the frost host, which is the thing that carries
+   * the blur and must not be transformed.
+   *
+   * This used to compare source offsets, which worked while there was one
+   * literal list in the file. There are two now — the television row and the
+   * phone tab bar — and both are built above the JSX that renders them, so
+   * offsets say nothing. What matters is that neither reaches the DOM except
+   * through `.ribbon__frost`.
+   */
   it('wraps the list in an untransformed frost host', () => {
     const src = readFileSync(join(ui, 'components/Ribbon.tsx'), 'utf8');
-    const frost = src.indexOf('<div className="ribbon__frost">');
-    const list = src.indexOf('<div className="ribbon__list" data-wrap="row">');
-    const listClose = src.lastIndexOf('</div>');
-    expect(frost).toBeGreaterThan(-1);
-    expect(list).toBeGreaterThan(frost);
     expect(src).toContain('className="ribbon__frost"');
-    expect(src).toContain('className="ribbon__list"');
-    expect(listClose).toBeGreaterThan(list);
-    const inner = src.slice(frost, src.indexOf('</nav>'));
-    expect(inner.match(/<div/g)?.length).toBe(inner.match(/<\/div>/g)?.length);
+    expect(src).toContain('<div className="ribbon__list" data-wrap="row">');
+    expect(src).toContain('<div className="ribbon__list ribbon__list--tabs" data-wrap="row">');
+    // Every list reaches the page through the frost host and nowhere else.
+    expect(src).toMatch(/<div className="ribbon__frost">\{phone \? phoneBar : tvList\}<\/div>/);
+    expect(src.match(/className="ribbon__list/g)).toHaveLength(2);
+    const nav = src.slice(src.indexOf('<nav'), src.indexOf('</nav>'));
+    expect(nav.match(/<div/g)?.length).toBe(nav.match(/<\/div>/g)?.length);
   });
 
   it('forwards wheel on the pill to the page so Settings can still scroll', () => {
