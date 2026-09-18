@@ -116,6 +116,7 @@ export function LiveXtream(_props: ScreenProps): React.JSX.Element {
         <FocusField
           id="host"
           type="url"
+          enterKeyHint="next"
           value={host}
           onChange={setHost}
           onConfirm={() => void save()}
@@ -127,6 +128,8 @@ export function LiveXtream(_props: ScreenProps): React.JSX.Element {
         <span>Username</span>
         <FocusField
           id="username"
+          autoCapitalize="none"
+          enterKeyHint="next"
           value={username}
           onChange={setUsername}
           onConfirm={() => void save()}

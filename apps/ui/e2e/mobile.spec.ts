@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FALLBACK_PLAN } from '../src/data/plan';
+import { THEME_DEFAULT_BOOT } from '../src/theme/bootKey';
 import { allowAccount } from './account';
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 TVM-iOS';
@@ -7,16 +8,24 @@ const catalog = ['free', 'basic', 'premium', 'ultra', 'max'].map((id) => ({ id, 
 const title = { id: 'tt0137523', title: 'Test film', year: 2022, kind: 'movie', poster: '', backdrop: '', synopsis: 'Your favourite films, in one place.', genres: ['Drama'], rating: '', playable: true, hue: 32 };
 
 async function ready(page: Page, paid: boolean): Promise<void> {
-  const plan = { ...FALLBACK_PLAN, id: paid ? 'basic' : 'free', name: paid ? 'TVM Basic' : 'TVM Free', maxHeight: paid ? 1080 : 720, synthwave: true, synthwaveOwned: true, catalog };
+  const plan = { ...FALLBACK_PLAN, id: paid ? 'premium' : 'free', name: paid ? 'TVM Premium' : 'TVM Free', maxHeight: paid ? 1080 : 720, synthwave: true, synthwaveOwned: true, catalog };
   await allowAccount(page);
-  await page.addInitScript(() => {
-    localStorage.setItem('tvm.theme.isle-boot', '1'); localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.motion', 'full'); localStorage.setItem('tvm.performance', 'off');
+  await page.addInitScript((bootKey) => {
+    localStorage.setItem(bootKey, '1'); localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.motion', 'full'); localStorage.setItem('tvm.performance', 'off');
     // Exercise the compatibility path used by the minimum supported iOS version.
     Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
-  });
+  }, THEME_DEFAULT_BOOT);
   await page.route('**/api/plan', (route) => route.fulfill({ json: plan }));
-  await page.route('**/api/home', (route) => route.fulfill({ json: { rd: { configured: true, premium: true }, featured: title, library: [], watchlist: [], continueWatching: [], rails: [{ id: 'films', title: 'Popular films', items: Array.from({ length: 12 }, (_, i) => ({ ...title, id: `tt${i + 1000000}`, title: `Film ${i + 1}` })) }] } }));
+  // Several rails, as a real Home has. With one, the whole page fitted on a
+  // 390×844 screen once the tab bar became a single row, and a test about
+  // vertical panning had nothing to pan.
+  const rails = ['Popular films', 'New this week', 'Because you watched', 'Series'].map((name, r) => ({
+    id: `rail-${r}`,
+    title: name,
+    items: Array.from({ length: 12 }, (_, i) => ({ ...title, id: `tt${(r + 1) * 1000000 + i}`, title: r === 0 ? `Film ${i + 1}` : `${name} ${i + 1}` })),
+  }));
+  await page.route('**/api/home', (route) => route.fulfill({ json: { rd: { configured: true, premium: true }, featured: title, library: [], watchlist: [], continueWatching: [], rails } }));
   await page.route('**/api/profiles', (route) => route.fulfill({ json: { activeId: 'profile-1', profiles: [{ id: 'profile-1', name: 'Test profile', hue: 350 }] } }));
   await page.route('**/api/apps', (route) => route.fulfill({ json: { ribbon: [], grid: [] } }));
   await page.route('**/api/prefs', (route) => route.fulfill({ json: { language: 'en', autoUpdate: true } }));
@@ -73,6 +82,10 @@ test.describe('iPhone WebKit', () => {
     expect(root).toMatch(/pan-y/);
     const launcher = await page.locator('.home__launcher').evaluate((el) => getComputedStyle(el).overflowX);
     expect(launcher).toBe('hidden');
+    // A page that fits on one screen cannot pan, and would fail below for a
+    // reason that has nothing to do with rails. Say so here instead.
+    const room = await page.locator('.home').evaluate((el) => el.scrollHeight - el.clientHeight);
+    expect(room, 'fixture Home must be taller than the screen').toBeGreaterThan(120);
     const moved = await rail.evaluate((el) => {
       const pageEl = el.closest('.home');
       const origin = el.getBoundingClientRect();
@@ -103,12 +116,13 @@ test.describe('iPhone WebKit', () => {
     await ready(page, false);
     await expect(page.locator('.mobile-plan-gate')).toBeVisible();
     await expect(page.locator('.home__shelf')).toHaveCount(0);
+    await expect(page.getByText('included with Premium, Ultra and MAX', { exact: false })).toBeVisible();
     await page.locator('[data-focus-id="mobile-plans"]').tap();
     await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-    await expect(page.getByText('iOS and Android viewing is included', { exact: false })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
   });
   for (const size of [{ width: 568, height: 320 }, { width: 704, height: 396 }, { width: 800, height: 450 }]) {
-    test(`Basic opens a usable animated 16:9 layout at ${size.width}`, async ({ page }) => {
+    test(`Premium opens a usable animated 16:9 layout at ${size.width}`, async ({ page }) => {
       await page.setViewportSize(size);
       await ready(page, true);
       await expect(page.locator('.home__shelf')).toBeVisible();
@@ -171,7 +185,8 @@ test.describe('iPhone WebKit', () => {
 
   test('a left-edge swipe leaves Settings without a Back button', async ({ page }) => {
     await ready(page, true);
-    await page.locator('[data-focus-id="settings"]').tap();
+    await page.locator('[data-focus-id="more"]').tap();
+    await page.locator('[data-focus-id="more-settings"]').tap();
     await expect(page.locator('[data-screen="settings"]')).toBeVisible();
     await page.mouse.move(6, 240);
     await page.mouse.down();
@@ -202,16 +217,23 @@ test.describe('iPhone WebKit', () => {
       expect(overflow.width).toBeLessThanOrEqual(size.width);
       expect(overflow.left).toBe(0);
       expect(overflow.homeWidth).toBeLessThanOrEqual(overflow.homeClient + 1);
-      const tabs = await page.locator('.ribbon button:visible').all();
-      expect(tabs).toHaveLength(8);
+      const tabs = await page.locator('.ribbon__list button:visible').all();
+      expect(tabs).toHaveLength(5);
       for (const tab of tabs) {
         const box = await tab.boundingBox();
         expect(box!.height).toBeGreaterThanOrEqual(44);
         expect(box!.y + box!.height).toBeLessThanOrEqual(size.height + 1);
       }
-      if (size.width > size.height) {
-        const top = (await tabs[0]!.boundingBox())!.y;
-        for (const tab of tabs) expect((await tab.boundingBox())!.y).toBeCloseTo(top, 0);
+      // One row, always: every tab shares a top edge in both orientations.
+      const top = (await tabs[0]!.boundingBox())!.y;
+      for (const tab of tabs) expect((await tab.boundingBox())!.y).toBeCloseTo(top, 0);
+
+      // The four destinations that came off the bar are still one tap away.
+      await page.locator('[data-focus-id="more"]').tap();
+      for (const id of ['more-profile', 'more-library', 'more-apps', 'more-settings']) {
+        const row = page.locator(`[data-focus-id="${id}"]`);
+        await expect(row).toBeVisible();
+        expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       }
       await page.screenshot({ path: `../../cache/ios-fit-${size.width}.png` });
     });
