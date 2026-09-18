@@ -53,8 +53,11 @@ async function step(name, seconds, check) {
  */
 function request(port, path, { method = 'GET', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
+    // The phone's server reads Content-Length and does not understand a
+    // chunked body, which is what Node sends when the length is left out.
+    const length = body === undefined ? {} : { 'content-length': String(Buffer.byteLength(body)) };
     const req = http.request(
-      { host: '127.0.0.1', port, path, method, agent: false, timeout: 30_000, headers: { 'content-type': 'application/json', ...headers } },
+      { host: '127.0.0.1', port, path, method, agent: false, timeout: 30_000, headers: { 'content-type': 'application/json', ...length, ...headers } },
       (res) => {
         let text = '';
         res.setEncoding('utf8');
