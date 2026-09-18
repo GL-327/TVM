@@ -93,10 +93,65 @@ jobs:
           test -f apps/android/app/src/main/assets/ui/build-info.json
           test -f apps/android/app/src/main/assets/BuildInfo.json
           test -f apps/android/app/src/main/assets/Access.json
+      # TVM_ANDROID_SIGNING holds the key every APK is signed with, so a new
+      # one installs over the last. First line: the keystore password. Rest:
+      # the PKCS12 keystore, base64. Without it the APK gets a throwaway debug
+      # key and Android refuses to install it over an older TVM.
+      - name: Unpack the TVM signing key
+        if: steps.android.outputs.present == 'true'
+        env:
+          TVM_ANDROID_SIGNING: ${{ secrets.TVM_ANDROID_SIGNING }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TVM_ANDROID_SIGNING:-}" ]; then
+            echo "::warning::TVM_ANDROID_SIGNING is not set. This APK will not install over an older TVM without uninstalling it first."
+            exit 0
+          fi
+          secret="$(printf '%s\n' "$TVM_ANDROID_SIGNING" | tr -d '\r')"
+          password="$(printf '%s\n' "$secret" | sed -n 1p)"
+          echo "::add-mask::$password"
+          printf '%s\n' "$secret" | sed -n '2,$p' | tr -d ' \n' | base64 -d > "$RUNNER_TEMP/tvm-android.p12"
+          echo "TVM_ANDROID_KEYSTORE=$RUNNER_TEMP/tvm-android.p12" >> "$GITHUB_ENV"
+          echo "TVM_ANDROID_KEYSTORE_PASSWORD=$password" >> "$GITHUB_ENV"
       - name: Assemble debug APK
         if: steps.android.outputs.present == 'true'
         working-directory: apps/android
         run: chmod +x gradlew && ./gradlew assembleDebug testDebugUnitTest --stacktrace
+      - name: Check the APK signature
+        if: steps.android.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          apk="$(ls apps/android/app/build/outputs/apk/debug/*.apk | head -1)"
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk" | tee apk-signature.txt
+          if [ -n "${TVM_ANDROID_KEYSTORE:-}" ] && grep -q "CN=Android Debug" apk-signature.txt; then
+            echo "::error::The signing key was provided but the APK is still signed with a debug key."
+            exit 1
+          fi
+      # A real install on a real Android system, before anything is published:
+      # the APK must install, open, start its core and reach the sign-in screen.
+      - name: Let the emulator use KVM
+        if: steps.android.outputs.present == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and open the APK on an Android emulator
+        if: steps.android.outputs.present == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: node scripts/android-smoke.mjs "$(ls apps/android/app/build/outputs/apk/debug/*.apk | head -1)" android-smoke
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.android.outputs.present == 'true'
+        with:
+          name: tvm-android-smoke
+          path: android-smoke
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: steps.android.outputs.present == 'true'
         with:
@@ -117,6 +172,11 @@ jobs:
           cp apps/android/app/build/outputs/apk/debug/*.apk release/TVM-android.apk
           cp release/TVM-android.apk release/TVM.apk
           SHA="$(git rev-parse --short HEAD)"
+          if [ -n "${TVM_ANDROID_KEYSTORE:-}" ]; then
+            SIGNED="Signed with TVM's own key, so a newer APK installs over this one and keeps your sign-in."
+          else
+            SIGNED="Signed with a one-off debug key. If an older TVM is installed, uninstall it first or Android will say the app is not installed."
+          fi
           cat > release/NOTES.md <<EOF
           **Android phone, tablet and Android TV.**
 
@@ -131,7 +191,10 @@ jobs:
           2. Open it. Android will ask you to allow installs from this source — allow it.
           3. Launch TVM.
 
-          This is a debug-signed build for private testing, not a Play Store release.
+          This is a debug build for private testing, not a Play Store release.
+          $SIGNED
+          Before publishing, CI installed this APK on an Android 14 emulator,
+          opened it and checked it reached the sign-in screen.
           Once installed, the app updates its own interface from GitHub. When an
           update needs newer app code, the Updates screen says so; install this
           release again to take it.
