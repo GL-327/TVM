@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// CI signs with TVM's own key (the TVM_ANDROID_SIGNING secret, unpacked by
+// mobile.yml) so each APK installs over the last. A local build without it
+// gets Gradle's usual debug key.
+val tvmKeystore: String? = System.getenv("TVM_ANDROID_KEYSTORE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.tvm.privateclient"
     compileSdk = 35
@@ -16,7 +21,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        val keystore = tvmKeystore
+        if (keystore != null) {
+            create("tvm") {
+                storeFile = file(keystore)
+                storeType = "pkcs12"
+                storePassword = System.getenv("TVM_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = "tvm"
+                keyPassword = System.getenv("TVM_ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (tvmKeystore != null) signingConfig = signingConfigs.getByName("tvm")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

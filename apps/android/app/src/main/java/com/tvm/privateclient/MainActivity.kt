@@ -1,6 +1,7 @@
 package com.tvm.privateclient
 
 import android.annotation.SuppressLint
+import android.content.pm.ApplicationInfo
 import android.content.res.AssetManager
 import android.graphics.Color
 import android.os.Build
@@ -468,6 +469,11 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
+        // Debug builds can be inspected over USB. CI's install test reads the
+        // page this way to check the app reaches the sign-in screen.
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         webView.setBackgroundColor(Color.BLACK)
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
