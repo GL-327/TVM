@@ -1,4 +1,5 @@
 import { DEFAULT_THEME, resolveTheme, type ThemeId } from './registry';
+import { THEME_DEFAULT_BOOT } from './bootKey';
 
 import './palette.css';
 import './cinematic.css';
@@ -25,12 +26,7 @@ import './motion.css';
 import './mobile.css';
 
 export const THEME_STORAGE_KEY = 'tvm.theme';
-/*
- * Bumped when the shipped default changes. The old key's value stays behind,
- * so each new default is introduced exactly once per device and a theme the
- * viewer picks afterwards is never overwritten again.
- */
-const THEME_DEFAULT_BOOT = 'tvm.theme.orbit-boot';
+export { THEME_DEFAULT_BOOT };
 const themeListeners = new Set<(id: ThemeId) => void>();
 
 export function subscribeTheme(listener: (id: ThemeId) => void): () => void {

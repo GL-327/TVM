@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { THEME_DEFAULT_BOOT } from '../src/theme/bootKey';
 import { allowAccount } from './account';
 
 async function waitForFocus(page: Page): Promise<void> {
@@ -636,7 +637,7 @@ test('Free plan confirms without a card', async ({ page }) => {
 
 test('Privacy controls and Retro reduced motion are reachable', async ({ page }) => {
   await page.route('**/api/plan', (route) => route.fulfill({ json: { ...E2E_PLAN, synthwave: true, synthwaveOwned: true } }));
-  await page.evaluate(() => { localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.theme.isle-boot', '1'); });
+  await page.evaluate((bootKey) => { localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem(bootKey, '1'); }, THEME_DEFAULT_BOOT);
   await page.reload();
   await waitForFocus(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'synthwave');
