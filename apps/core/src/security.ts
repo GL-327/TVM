@@ -55,7 +55,7 @@ export function accessError(request: IncomingMessage, path: string, env: NodeJS.
     const ownerUnlock = path === '/api/dev/unlock' && request.method === 'POST';
     if (
       !ownerUnlock &&
-      (/^\/api\/(dev|billing|maintenance|update|system|privacy)(\/|$)/.test(path) ||
+      (/^\/api\/(dev|billing|maintenance|update|system|privacy|admin\/mail)(\/|$)/.test(path) ||
         (/^\/api\/plan/.test(path) && request.method !== 'GET'))
     ) {
       return 'local_access_required';

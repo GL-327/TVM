@@ -115,6 +115,7 @@ jobs:
           set -euo pipefail
           mkdir -p release
           cp apps/android/app/build/outputs/apk/debug/*.apk release/TVM-android.apk
+          cp release/TVM-android.apk release/TVM.apk
           SHA="$(git rev-parse --short HEAD)"
           cat > release/NOTES.md <<EOF
           **Android phone, tablet and Android TV.**
@@ -138,7 +139,8 @@ jobs:
           EOF
           gh release create android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md
-          gh release upload android release/TVM-android.apk --clobber
+          gh release upload android release/TVM-android.apk release/TVM.apk --clobber
+          bash scripts/publish-device-package.sh release/TVM-android.apk release/TVM.apk
 
   ios-ipa:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'android'
@@ -299,4 +301,7 @@ jobs:
           EOF
           gh release create ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md
-          gh release upload ios release/TVM-ios.ipa --clobber
+          cp release/TVM-ios.ipa release/TVM.ipa
+          cp release/TVM-ios.ipa release/TVM-unsigned.ipa
+          gh release upload ios release/TVM-ios.ipa release/TVM.ipa release/TVM-unsigned.ipa --clobber
+          bash scripts/publish-device-package.sh release/TVM-ios.ipa release/TVM.ipa release/TVM-unsigned.ipa

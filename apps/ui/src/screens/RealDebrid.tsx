@@ -38,7 +38,7 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
       setToken('');
       if (body.error === 'needs-auth') setMessage('Real-Debrid rejected that token.');
       else if (body.username !== null) setMessage(`Signed in as ${body.username}.`);
-      else setMessage('Token stored on this machine.');
+      else setMessage(body.source === 'account' ? 'Token saved to your account.' : 'Token saved on this machine.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The token was not stored.');
     } finally {
@@ -52,15 +52,22 @@ export function RealDebrid(_props: ScreenProps): React.JSX.Element {
       <p className="stage__kicker">Account and cloud</p>
       <h1 className="page__heading">Real-Debrid</h1>
       <p className="page__lede">
-        Paste an API token from real-debrid.com/apitoken. TVM stores it on this machine until you replace it here
-        or fully reset the app. It is encrypted on disk and sent to Real-Debrid and the Torrentio resolver when
-        you request catalogue playback. Review those services’ terms and use only content you are authorised to watch.
+        Paste an API token from real-debrid.com/apitoken. It is saved to your account, so it only plays for you.
+        The dev account’s token is saved on this machine and used by anyone who has not added their own. TVM sends
+        it to Real-Debrid and the Torrentio resolver when you play from the catalogue. Review those services’ terms
+        and use only content you are authorised to watch.
       </p>
       <dl className="panel__rows settings-summary">
         <div className="panel__row">
           <dt>Account</dt>
           <dd>{status.configured ? (status.username ?? 'Configured') : 'Not configured'}</dd>
         </div>
+        {status.source !== undefined && status.source !== null && (
+          <div className="panel__row">
+            <dt>Token</dt>
+            <dd>{status.source === 'account' ? 'Yours' : 'This machine’s'}</dd>
+          </div>
+        )}
         <div className="panel__row">
           <dt>Premium</dt>
           <dd>{status.premium ? 'Yes' : 'No'}</dd>

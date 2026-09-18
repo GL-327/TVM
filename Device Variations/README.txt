@@ -1,29 +1,31 @@
 TVM Device Variations
 =====================
-Sideload packages only. This folder is on disk at:
+Sideload packages for every device, pulled from GitHub Releases:
 
-  C:\Users\Gathe\Desktop\TVM\Device Variations
+  powershell -File ".\Device Variations\fetch-ipa.ps1"
 
-APK / IPA / zip binaries are gitignored so git stays small. They live here so
-you can find them. Do not treat a zip of Swift source as an IPA.
+That writes the current IPA, APK, Roku zip and desktop tarball into this
+folder. Binaries are gitignored so git stays small. Do not treat a zip of
+Swift source as an IPA.
+
+GitHub: https://github.com/GL-327/TVM/releases/tag/devices
 
 Files
 -----
-TVM.apk              Android debug APK (LAN WebView client unless rebuilt later)
+TVM.ipa / TVM-ios.ipa / TVM-unsigned.ipa
+                     iPhone & iPad. Same bytes. Unsigned — re-sign first.
+TVM.apk / TVM-android.apk
+                     Android phone, tablet and TV. Debug-signed; install directly.
 TVM-roku.zip         Roku developer sideload channel
-TVM.ipa              Real iOS IPA from GitHub Actions macos-14 xcodebuild
-TVM-unsigned.ipa     Same bytes as TVM.ipa (official CI artifact name)
-fetch-ipa.ps1        Re-download the IPA from Actions if this copy is missing
+TVM-desktop.tar.gz   Windows, macOS and Linux (also the versioned tarball)
+fetch-ipa.ps1        Re-download every package from GitHub Releases
 
-iOS — TVM.ipa  (STANDALONE compiled app, NOT App Store signed)
+iOS — TVM.ipa  (standalone compiled app, not App Store signed)
 --------------------------------------------------------------
-This file is a Payload/TVM.app zip produced by the Mobile packages ios-ipa job
-on GitHub. The executable is a Mach-O binary that embeds the production UI and
-an on-device Core. It does not need a PC, host address, LAN token, or Core on
-your computer. It is ad-hoc / unsigned. It will NOT launch on an iPhone until
-you re-sign it with YOUR Apple ID (Sideloadly, AltStore, or Xcode).
-
-After a signed install the TVM icon appears on the Home Screen like a normal app.
+Payload/TVM.app from the Mobile packages ios-ipa job. Embeds the production
+UI and an on-device Core. No PC, host address, LAN token, or Core on your
+computer. Ad-hoc / unsigned: it will NOT launch until you re-sign it with
+YOUR Apple ID (Sideloadly, AltStore, or Xcode).
 
 Sideloadly (Windows)
   1. Install https://sideloadly.io/
@@ -32,48 +34,30 @@ Sideloadly (Windows)
   4. Phone: Settings > General > VPN & Device Management > trust that Apple ID.
   5. Free Apple IDs expire in 7 days. Re-sign before then.
 
-AltStore
-  1. Install AltServer (https://altstore.io/) on this PC or a Mac on the same Wi-Fi.
-  2. Install AltStore onto the iPhone, then sideload TVM.ipa.
-  3. Trust the cert as above. Refresh in AltStore before the 7-day expiry.
+After a signed install, opening TVM checks GitHub and pulls a newer
+interface when one is published. A new IPA is only needed when the native
+half changes; the Updates screen says so.
 
-Xcode on a Mac (most reliable)
-  Run: node apps/ios/bundle-ui.mjs
-  Open apps/ios/TVM.xcodeproj, set your team under Signing & Capabilities,
-  plug in the phone (Developer Mode on), Product > Run.
-  Or: cd apps/ios && ./export-ipa.sh development
+Android
+-------
+Open TVM.apk. Allow installs from this source. Opening the app checks
+GitHub the same way.
 
-To fetch a newer CI IPA later (does not invent a file if Actions has none):
+Roku
+----
+Sideload TVM-roku.zip from the Roku developer page on your network. Point
+it at the desktop Core. The channel itself is the zip; Core updates from
+GitHub when the desktop app opens.
 
-  powershell -File "C:\Users\Gathe\Desktop\TVM\Device Variations\fetch-ipa.ps1"
+Desktop
+-------
+Extract the tarball and run the launcher for your OS. Opening it checks
+GitHub and applies Core + UI when a newer desktop.json is published.
 
 What this IPA cannot do
 -----------------------
-No ffmpeg on iOS: if Real-Debrid cannot offer MP4/M4V/MOV or an HLS `apple`
-ladder, TVM says the format is not playable here — it does not pretend there
-are "no streams". Connect Real-Debrid in the app (Profile) if the phone has
-no token yet. Re-sign every new IPA (Sideloadly/AltStore).
-Live TV MPEG-TS hops are not remuxed on the phone.
-No GitHub login and no in-app update apply — install a new IPA.
-Not App Store signed.
+Apple will not let an unsigned IPA install itself. Sideloadly/AltStore is
+the native-app update. The interface inside the app does update itself
+from GitHub on open.
 
-After you install this build
-----------------------------
-1. Re-sign with Sideloadly or AltStore, then trust the cert on the phone.
-2. Open Settings → DEV and pick Basic or higher (mobile viewing is not Free).
-3. Connect Real-Debrid under Profile. Playback uses Torrentio → unrestrict →
-   MP4 or Apple HLS. Missing RD shows a connect sheet, not an empty list.
-4. Search: tap the field; the system keyboard should open. Results open the
-   same details/play path as Home posters.
-5. Continue Watching: play about 30 seconds, leave, return to Home. The title
-   should stay on the rail even if it is not in today's catalogue row.
-
-Android / Roku
---------------
-The Android APK in this folder may still be the older LAN-client until that
-project is rewritten. Roku still talks to a LAN Core. The iOS IPA is standalone.
-
-What failed / what this is not
-------------------------------
 Windows cannot run xcodebuild. The IPA is compiled on GitHub's macOS runner.
-There is no App Store IPA, Play AAB, or Roku Channel Store package in this repo.

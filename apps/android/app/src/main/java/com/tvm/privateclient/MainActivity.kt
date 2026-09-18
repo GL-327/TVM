@@ -29,6 +29,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
@@ -114,13 +115,14 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Starts the on-device core and its loopback server, then shows the
-     * interface. Only local work happens before the first paint; the check for
-     * a newer interface runs afterwards, on this same background thread.
+     * interface. GitHub is asked first, for up to 20 seconds, so this open is
+     * not the copy that shipped in the APK. If the download is still going we
+     * open anyway and reload when it lands.
      */
     private fun startStandalone() {
         showStarting()
         thread(name = "tvm-core-start") {
-            val started = try {
+            try {
                 val made = TvmLocalCore.create(
                     filesDir,
                     { readAsset("FallbackCatalog.json") },
@@ -130,29 +132,33 @@ class MainActivity : AppCompatActivity() {
                 // An interface staged on the last run goes live now; one left
                 // over from a different app build is dropped.
                 made.bundledUi.prepare()
+                val swapped = AtomicBoolean(false)
+                val apply = thread(name = "tvm-update-launch") {
+                    swapped.set(runCatching { made.updater.applyIfNeeded() }.getOrDefault(false))
+                }
+                apply.join(20_000)
+                val pending = apply.isAlive
                 val server = TvmLocalServer(made, { path -> made.bundledUi.read(path) }) { bootScript }
                 server.start()
-                made to server
-            } catch (problem: Exception) {
-                null
-            }
-            if (started == null) {
-                runOnUiThread { showStartupError(getString(R.string.start_failed)) }
-                return@thread
-            }
-            val (made, server) = started
-            runOnUiThread {
-                core = made
-                localServer = server
-                standaloneOrigin = server.origin
-                refreshBootScript()
-                showStandalone()
-            }
-            val swapped = runCatching { made.updater.applyIfNeeded() }.getOrDefault(false)
-            if (swapped) {
                 runOnUiThread {
-                    if (standaloneOrigin != null && !this.isFinishing) webView.reload()
+                    core = made
+                    localServer = server
+                    standaloneOrigin = server.origin
+                    refreshBootScript()
+                    showStandalone()
                 }
+                if (pending) {
+                    thread(name = "tvm-update-late") {
+                        apply.join()
+                        if (swapped.get()) {
+                            runOnUiThread {
+                                if (standaloneOrigin != null && !this.isFinishing) webView.reload()
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { showStartupError(getString(R.string.start_failed)) }
             }
         }
     }

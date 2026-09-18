@@ -207,3 +207,7 @@ export function subscriptionsPath(dataDir: string): string {
 export function accountsPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'accounts.enc');
 }
+
+export function mailPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'mail.enc');
+}

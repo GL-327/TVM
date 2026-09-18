@@ -54,6 +54,9 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const pageRef = useRef<HTMLElement>(null);
+  // The login form, until there is something to watch. The dev account's test
+  // channels count, so they can be played before any provider is added.
+  const needsLogin = status.configured !== true && status.channels.length === 0;
 
   const load = (): void => {
     setLoading(true);
@@ -77,10 +80,10 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
       const timer = window.setTimeout(() => requestFocus(`${scope}/live-loading-back`), 0);
       return () => window.clearTimeout(timer);
     }
-    const id = status.configured === true ? 'live-picks' : 'host';
+    const id = needsLogin ? 'host' : 'live-picks';
     const timer = window.setTimeout(() => requestFocus(`${scope}/${id}`), 0);
     return () => window.clearTimeout(timer);
-  }, [busy, loading, status.configured, scope]);
+  }, [busy, loading, needsLogin, scope]);
 
   const connect = async (): Promise<void> => {
     const nextHost = (fieldValue('host') || host).trim();
@@ -108,7 +111,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   };
 
   const channels = status.channels;
-  const gated = !loading && status.configured !== true;
+  const gated = !loading && needsLogin;
   const locked = !gated && !plan.liveTv && channels.length === 0 && (status.total ?? 0) === 0;
   const groups = useMemo(() => groupedChannels(channels), [channels]);
   const visibleGroups = group === null ? groups : groups.filter((entry) => entry.name === group);
@@ -288,8 +291,11 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           <p className="page__lede">
             {total > 0 ? `${picked || channels.length} of ${total} channels on Live TV.` : `${channels.length} channels.`}
             {status.needsPicks === true ? ' Choose which channels to keep on this screen.' : ''}
-            {plan.liveTv && status.needsPicks !== true
-              ? ' Sample tiles use licensed demo streams for layout only — they are not Sky, TNT, or USA Network.'
+            {channels.some((channel) => channel.id.startsWith('live:test:'))
+              ? ' DW News is the test channel for the dev account: a real broadcast, played through the TVM proxy.'
+              : ''}
+            {channels.some((channel) => channel.id.startsWith('live:mock:'))
+              ? ' Sample tiles use demo streams for layout only. They are not Sky, TNT or USA Network.'
               : ''}
           </p>
           {groups.length > 1 ? (

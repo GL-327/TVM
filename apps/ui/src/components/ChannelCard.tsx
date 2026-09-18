@@ -69,6 +69,7 @@ function ChannelFace({
         )}
         {picking ? <span className={`channel-card__mark${selected ? ' channel-card__mark--on' : ''}`}>{selected ? 'On' : 'Add'}</span> : null}
         {!picking && channel.id.startsWith('live:mock:') ? <span className="channel-card__mark">Sample</span> : null}
+        {!picking && channel.id.startsWith('live:test:') ? <span className="channel-card__mark">Test</span> : null}
       </span>
       <strong className="channel-card__name">{channel.name}</strong>
       <span className="channel-card__group">{group}</span>

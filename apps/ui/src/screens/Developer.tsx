@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { TopBar } from '../components/TopBar';
+import { announceAccountChange, fetchAccount, isDevAccount, signOut } from '../data/account';
 import {
   applyPlanClass,
   FALLBACK_PLAN,
@@ -21,6 +22,7 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [message, setMessage] = useState<string | null>(null);
+  const [devAccount, setDevAccount] = useState(false);
 
   const refresh = (status: PlanStatus): void => {
     applyPlanClass(status);
@@ -35,6 +37,7 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
       }
       refresh(status);
     });
+    void fetchAccount().then((state) => setDevAccount(isDevAccount(state)));
     // Unlock is checked once when this panel mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -65,6 +68,14 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
           onSelect={() => navigate.push('accounts')}
         >
           Accounts
+        </FocusButton>
+        <FocusButton
+          id="dev-mail"
+          className="settings-row"
+          detail="Sends the sign-up codes"
+          onSelect={() => navigate.push('mail-settings')}
+        >
+          Email
         </FocusButton>
         {ORDER.map((id) => (
           <FocusButton
@@ -128,10 +139,12 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
           id="dev-lock"
           className="settings-row"
           onSelect={() => {
-            void lockDeveloper().then(() => navigate.home());
+            // Dev mode belongs to the dev account, so leaving it means signing out.
+            if (devAccount) void signOut().finally(announceAccountChange);
+            else void lockDeveloper().then(() => navigate.home());
           }}
         >
-          Leave developer mode
+          {devAccount ? 'Sign out of the dev account' : 'Leave developer mode'}
         </FocusButton>
       </div>
     </main>

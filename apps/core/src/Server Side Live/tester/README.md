@@ -63,3 +63,7 @@ them for relaying through a proxy — so a test that depended on one would fail
 abroad, could break whenever the BBC changes a URL, and would be pointing TVM's
 proxy at a broadcaster that has not agreed to it. A local panel tests exactly
 the same code paths, every time, anywhere.
+
+For a real broadcast, the dev account gets DW News on the Live TV screen.
+Deutsche Welle publishes it free for anyone, and it plays through the same
+proxy.

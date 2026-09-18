@@ -4,6 +4,7 @@ import { Home } from '../screens/Home';
 import { NoticeModal } from '../screens/NoticeModal';
 
 // Keep Home and lightweight notices ready; fetch secondary screens on demand.
+const Account = lazy(() => import('../screens/Account').then((m) => ({ default: m.Account })));
 const Accounts = lazy(() => import('../screens/Accounts').then((m) => ({ default: m.Accounts })));
 const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
 const Donate = lazy(() => import('../screens/Donate').then((m) => ({ default: m.Donate })));
@@ -21,7 +22,7 @@ const LiveXtream = lazy(() => import('../screens/LiveXtream').then((m) => ({ def
 const Player = lazy(() => import('../screens/Player').then((m) => ({ default: m.Player })));
 const Plans = lazy(() => import('../screens/Plans').then((m) => ({ default: m.Plans })));
 const Legal = lazy(() => import('../screens/Legal').then((m) => ({ default: m.Legal })));
-const Profile = lazy(() => import('../screens/Profile').then((m) => ({ default: m.Profile })));
+const MailSettings = lazy(() => import('../screens/MailSettings').then((m) => ({ default: m.MailSettings })));
 const Profiles = lazy(() => import('../screens/Profiles').then((m) => ({ default: m.Profiles })));
 const RealDebrid = lazy(() => import('../screens/RealDebrid').then((m) => ({ default: m.RealDebrid })));
 const Recovery = lazy(() => import('../screens/Recovery').then((m) => ({ default: m.Recovery })));
@@ -55,7 +56,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   donate: { component: Donate, defaultFocus: 'donate-continue' },
   apps: { component: Apps, defaultFocus: 'app-tvm-stream' },
   service: { component: Service, defaultFocus: 'service-back' },
-  profile: { component: Profile, defaultFocus: 'realdebrid' },
+  profile: { component: Account, defaultFocus: 'realdebrid' },
   profiles: { component: Profiles, defaultFocus: 'profile-pick' },
   details: { component: Details, defaultFocus: 'back' },
   settings: { component: Settings, defaultFocus: 'performance' },
@@ -64,6 +65,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
 
   developer: { component: Developer, defaultFocus: 'dev-free' },
   'developer-unlock': { component: DeveloperUnlock, defaultFocus: 'dev-password' },
+  'mail-settings': { component: MailSettings, defaultFocus: 'mail-host' },
   'system-info': { component: SystemInfo, defaultFocus: 'back' },
   updates: { component: Updates, defaultFocus: 'check' },
   realdebrid: { component: RealDebrid, defaultFocus: 'token' },

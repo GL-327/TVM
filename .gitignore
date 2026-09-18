@@ -48,6 +48,9 @@ Desktop/*.zip
 /Device Variations/*.apk
 /Device Variations/*.ipa
 /Device Variations/*.zip
+/Device Variations/*.tar.gz
+/Device Variations/*.sha256
+/Device Variations/BUILD.txt
 
 # Editor and OS
 .DS_Store

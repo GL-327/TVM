@@ -4,7 +4,7 @@ import { isMobileClient, mobilePlanAllowed, MOBILE_PLAN_EVENT } from '../data/mo
 import { useNavigate } from '../nav/ViewStackContext';
 import { FocusButton } from './FocusButton';
 
-const SETUP_SCREENS = new Set(['plans', 'donate', 'accounts', 'settings', 'profile', 'developer', 'developer-unlock', 'legal', 'notice', 'confirm', 'changelog', 'updates', 'realdebrid', 'setup', 'recovery', 'system-info']);
+const SETUP_SCREENS = new Set(['plans', 'donate', 'accounts', 'settings', 'profile', 'developer', 'developer-unlock', 'mail-settings', 'legal', 'notice', 'confirm', 'changelog', 'updates', 'realdebrid', 'setup', 'recovery', 'system-info']);
 
 export function MobilePlanGate({ screen, children }: { screen: string; children: ReactNode }): React.JSX.Element {
   const mobile = isMobileClient();

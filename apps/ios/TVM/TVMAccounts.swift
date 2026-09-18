@@ -2,26 +2,17 @@ import Foundation
 import CommonCrypto
 
 /**
- Accounts on the phone.
+ Accounts on the phone. The iPhone app runs its own core, so the sign-in
+ screen is answered here, with the same rules as apps/core/src/providers/
+ accounts.ts: a new account can do nothing until the dev switches it on, a
+ wrong password and a missing account get the same answer, and passwords are
+ only ever stored as salted digests (PBKDF2, because scrypt is in neither
+ CryptoKit nor CommonCrypto).
 
- The phone builds run their own embedded core, so the account gate the
- interface puts in front of everything has to be answered here rather than by
- a desktop somewhere. Without this the apps load, ask who is signed in, get
- nothing, and sit on a sign-in form that cannot register anybody — which is
- exactly what shipping the gate without this file would have done.
+ The dev account is built in. Its password is the developer code.
 
- The rules are deliberately identical to the TypeScript core: an account
- starts inert, activation is the only route to using TVM, a wrong password and
- a missing account give the same answer, and nothing stored can produce a
- password. Where the desktop uses scrypt, this uses PBKDF2-HMAC-SHA256 — the
- same choice and the same reason as the developer code: scrypt is in neither
- CryptoKit nor CommonCrypto, and a credential that cannot be checked on a
- phone is not much of a credential.
-
- Accounts live in the app-private container, which iOS already isolates per
- app and per device. The owner activates one by unlocking developer mode with
- the universal code and switching it on, which is why that code was made to
- work here in the first place.
+ Phones do not send email, so nobody here is asked for a code; the dev can
+ mark an address verified by hand instead.
  */
 
 enum TVMPassword {
@@ -91,6 +82,7 @@ struct TVMAccount {
     var passwordHash: String
     var passwordSalt: String
     var createdAt: String
+    var role: String
     var activated: Bool
     var activatedAt: String?
     var tier: String?
@@ -98,31 +90,42 @@ struct TVMAccount {
     var suspended: Bool
     var termsVersion: String?
     var termsAcceptedAt: String?
+    var emailVerifiedAt: String?
+    /// This account's own Real-Debrid key. It wins over the one saved on the phone.
+    var rdToken: String?
     var lastSeenAt: String?
     var signIns: Int
     var lastClient: String?
+
+    var isDev: Bool { role == "dev" }
 
     func json() -> [String: Any] {
         [
             "id": id, "email": email, "displayName": displayName,
             "passwordHash": passwordHash, "passwordSalt": passwordSalt,
-            "createdAt": createdAt, "activated": activated,
+            "createdAt": createdAt, "role": role, "activated": activated,
             "activatedAt": JSONValue.orNull(activatedAt), "tier": JSONValue.orNull(tier),
             "note": JSONValue.orNull(note), "suspended": suspended,
             "termsVersion": JSONValue.orNull(termsVersion), "termsAcceptedAt": JSONValue.orNull(termsAcceptedAt),
+            "emailVerifiedAt": JSONValue.orNull(emailVerifiedAt), "rdToken": JSONValue.orNull(rdToken),
             "lastSeenAt": JSONValue.orNull(lastSeenAt), "signIns": signIns,
             "lastClient": JSONValue.orNull(lastClient),
         ]
     }
 
-    /// Never includes the digest or the salt. There is no screen that could show a password.
+    /// Never includes the digest, the salt or a Real-Debrid key.
     func publicJSON() -> [String: Any] {
         [
             "id": id, "email": email, "displayName": displayName,
+            "role": isDev ? "dev" : "member",
             "activated": activated, "tier": JSONValue.orNull(tier), "suspended": suspended,
             "createdAt": createdAt,
             "termsVersion": JSONValue.orNull(termsVersion),
             "termsAcceptedAt": JSONValue.orNull(termsAcceptedAt),
+            "emailVerified": emailVerifiedAt != nil,
+            // Phones never send a code.
+            "emailCodeSent": false,
+            "rdKey": rdToken != nil,
         ]
     }
 
@@ -134,6 +137,12 @@ struct TVMAccount {
         out["lastClient"] = JSONValue.orNull(lastClient)
         out["note"] = JSONValue.orNull(note)
         out["activeSessions"] = activeSessions
+        out["emailVerifiedAt"] = JSONValue.orNull(emailVerifiedAt)
+        if let key = rdToken {
+            out["rdKeyHint"] = key.count <= 4 ? "••••" : "••••" + String(key.suffix(4))
+        } else {
+            out["rdKeyHint"] = NSNull()
+        }
         return out
     }
 
@@ -148,6 +157,7 @@ struct TVMAccount {
             displayName: row["displayName"] as? String ?? email,
             passwordHash: hash, passwordSalt: salt,
             createdAt: row["createdAt"] as? String ?? "",
+            role: (row["role"] as? String) == "dev" ? "dev" : "member",
             activated: row["activated"] as? Bool ?? false,
             activatedAt: row["activatedAt"] as? String,
             tier: row["tier"] as? String,
@@ -155,6 +165,8 @@ struct TVMAccount {
             suspended: row["suspended"] as? Bool ?? false,
             termsVersion: row["termsVersion"] as? String,
             termsAcceptedAt: row["termsAcceptedAt"] as? String,
+            emailVerifiedAt: (row["emailVerifiedAt"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            rdToken: (row["rdToken"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             lastSeenAt: row["lastSeenAt"] as? String,
             signIns: row["signIns"] as? Int ?? 0,
             lastClient: row["lastClient"] as? String
@@ -163,6 +175,10 @@ struct TVMAccount {
 }
 
 final class TVMAccounts {
+    static let devAccountID = "acc_dev"
+    /// Not an address, so nobody can register it or sign in to it with a password.
+    private static let devEmail = "dev"
+
     private let store: TVMStore
     private let file = "accounts.json"
     private let sessionDays: TimeInterval = 30 * 86_400
@@ -235,11 +251,37 @@ final class TVMAccounts {
         return !host.hasPrefix(".") && !email.contains(" ")
     }
 
+    private static func sessionCount(_ sessions: [String: [String: Any]], id: String) -> Int {
+        sessions.values.filter { ($0["accountId"] as? String) == id }.count
+    }
+
+    /// Opens a session for the account at `index` and returns its token.
+    private static func openSession(_ accounts: inout [TVMAccount], _ index: Int, _ sessions: inout [String: [String: Any]], client: String?, days: TimeInterval) -> String {
+        let token = newToken()
+        let now = Date()
+        accounts[index].lastSeenAt = iso(now)
+        accounts[index].signIns += 1
+        if let client { accounts[index].lastClient = String(client.prefix(200)) }
+        sessions[digest(token)] = [
+            "accountId": accounts[index].id,
+            "issuedAt": iso(now),
+            "expiresAt": iso(now.addingTimeInterval(days)),
+            "client": JSONValue.orNull(client),
+        ]
+        return token
+    }
+
+    /// Members only: the dev account is not managed from the Accounts screen.
+    private func memberIndex(_ accounts: [TVMAccount], _ id: String) -> Int? {
+        accounts.firstIndex { $0.id == id && !$0.isDev }
+    }
+
     // MARK: Rules
 
-    /// Identical to the desktop core: activation, a tier, current terms, not suspended.
+    /// Same as the desktop core: switched on, a tier, current terms, not suspended. The dev account always passes.
     static func usable(_ account: TVMAccount?, termsVersion: String) -> [String: Any] {
         guard let account else { return ["ok": false, "reason": "no_account"] }
+        if account.isDev { return ["ok": true, "reason": NSNull()] }
         if account.suspended { return ["ok": false, "reason": "suspended"] }
         if !account.activated || account.tier == nil { return ["ok": false, "reason": "awaiting_activation"] }
         if account.termsVersion != termsVersion || account.termsAcceptedAt == nil {
@@ -257,9 +299,9 @@ final class TVMAccounts {
         guard password.count <= 200 else { return .failure(TVMAccountError("That password is too long.")) }
 
         var (accounts, sessions) = load()
-        // Saying "already registered" would turn signup into a way of testing
-        // which addresses have accounts.
-        guard !accounts.contains(where: { $0.email == email }) else {
+        // Same answer whether or not the address exists, so signup cannot be
+        // used to find out who has an account.
+        guard !accounts.contains(where: { $0.email == email && !$0.isDev }) else {
             return .failure(TVMAccountError("That account could not be created. If it already exists, sign in instead."))
         }
 
@@ -271,8 +313,9 @@ final class TVMAccounts {
             id: "acc_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))",
             email: email, displayName: String(name.prefix(80)),
             passwordHash: hash, passwordSalt: salt,
-            createdAt: TVMAccounts.iso(), activated: false, activatedAt: nil, tier: nil,
+            createdAt: TVMAccounts.iso(), role: "member", activated: false, activatedAt: nil, tier: nil,
             note: nil, suspended: false, termsVersion: nil, termsAcceptedAt: nil,
+            emailVerifiedAt: nil, rdToken: nil,
             lastSeenAt: nil, signIns: 0, lastClient: client.map { String($0.prefix(200)) }
         )
         accounts.append(account)
@@ -283,34 +326,59 @@ final class TVMAccounts {
     func signIn(email rawEmail: String, password: String, client: String?) -> Result<[String: Any], TVMAccountError> {
         let email = TVMAccounts.normalize(rawEmail)
         var (accounts, sessions) = load()
-        guard let index = accounts.firstIndex(where: { $0.email == email }) else {
-            // Do the work anyway so a missing account and a wrong password take
-            // the same time and cannot be told apart from outside.
+        guard let index = accounts.firstIndex(where: { $0.email == email && !$0.isDev }) else {
+            // Hash anyway, so a missing account and a wrong password take the
+            // same time.
             _ = TVMPassword.hash(password, salt: TVMPassword.newSalt())
             return .failure(TVMAccountError("That email address and password do not match."))
         }
-        let account = accounts[index]
-        guard TVMPassword.matches(password, hash: account.passwordHash, salt: account.passwordSalt) else {
+        guard TVMPassword.matches(password, hash: accounts[index].passwordHash, salt: accounts[index].passwordSalt) else {
             return .failure(TVMAccountError("That email address and password do not match."))
         }
 
-        let token = TVMAccounts.newToken()
-        let now = Date()
-        accounts[index].lastSeenAt = TVMAccounts.iso(now)
-        accounts[index].signIns += 1
-        if let client { accounts[index].lastClient = String(client.prefix(200)) }
-        sessions[TVMAccounts.digest(token)] = [
-            "accountId": account.id,
-            "issuedAt": TVMAccounts.iso(now),
-            "expiresAt": TVMAccounts.iso(now.addingTimeInterval(sessionDays)),
-            "client": JSONValue.orNull(client),
-        ]
+        let token = TVMAccounts.openSession(&accounts, index, &sessions, client: client, days: sessionDays)
         save(accounts, sessions)
         return .success([
             "token": token,
             "account": accounts[index].publicJSON(),
             "usable": TVMAccounts.usable(accounts[index], termsVersion: TVMAccounts.termsVersion()),
         ])
+    }
+
+    /// Signs in to the dev account, creating it the first time. The caller checks the developer code first.
+    func signInDev(client: String?) -> [String: Any] {
+        var (accounts, sessions) = load()
+        let index: Int
+        if let existing = accounts.firstIndex(where: { $0.id == TVMAccounts.devAccountID }) {
+            index = existing
+        } else {
+            let now = TVMAccounts.iso()
+            accounts.append(TVMAccount(
+                id: TVMAccounts.devAccountID, email: TVMAccounts.devEmail, displayName: "Dev",
+                passwordHash: "", passwordSalt: "",
+                createdAt: now, role: "dev", activated: true, activatedAt: now, tier: "stream-live",
+                note: nil, suspended: false, termsVersion: nil, termsAcceptedAt: nil,
+                emailVerifiedAt: nil, rdToken: nil,
+                lastSeenAt: nil, signIns: 0, lastClient: nil
+            ))
+            index = accounts.count - 1
+        }
+        accounts[index].role = "dev"
+        accounts[index].activated = true
+        accounts[index].tier = "stream-live"
+        accounts[index].suspended = false
+        let token = TVMAccounts.openSession(&accounts, index, &sessions, client: client, days: sessionDays)
+        save(accounts, sessions)
+        return [
+            "token": token,
+            "account": accounts[index].publicJSON(),
+            "usable": TVMAccounts.usable(accounts[index], termsVersion: TVMAccounts.termsVersion()),
+        ]
+    }
+
+    /// Whether the dev account has a session open on this phone.
+    func devSignedIn() -> Bool {
+        TVMAccounts.sessionCount(load().sessions, id: TVMAccounts.devAccountID) > 0
     }
 
     func signOut(token: String) {
@@ -327,6 +395,11 @@ final class TVMAccounts {
         return accounts.first { $0.id == id }
     }
 
+    /// The account's own Real-Debrid key for this session, if it has one.
+    func rdTokenFor(token: String?) -> String? {
+        resolve(token: token)?.rdToken
+    }
+
     func acceptTerms(id: String) -> [String: Any]? {
         var (accounts, sessions) = load()
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return nil }
@@ -336,10 +409,11 @@ final class TVMAccounts {
         return accounts[index].publicJSON()
     }
 
-    // MARK: Owner
+    // MARK: Dev only
 
     func list(search: String?, state: String?) -> [String: Any] {
-        let (accounts, sessions) = load()
+        let (all, sessions) = load()
+        let accounts = all.filter { !$0.isDev }
         var counts: [String: Int] = [:]
         for session in sessions.values {
             if let id = session["accountId"] as? String { counts[id, default: 0] += 1 }
@@ -372,19 +446,52 @@ final class TVMAccounts {
     func activate(id: String, tier: String, note: String?) -> [String: Any]? {
         guard tier == "stream" || tier == "stream-live" else { return nil }
         var (accounts, sessions) = load()
-        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return nil }
+        guard let index = memberIndex(accounts, id) else { return nil }
         accounts[index].activated = true
         accounts[index].activatedAt = accounts[index].activatedAt ?? TVMAccounts.iso()
         accounts[index].tier = tier
         accounts[index].suspended = false
         if let note { accounts[index].note = String(note.prefix(500)) }
         save(accounts, sessions)
-        return accounts[index].adminJSON(activeSessions: 0)
+        return accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id))
+    }
+
+    /// Turns Live TV on or off for an account that is already switched on.
+    func setLiveTv(id: String, enabled: Bool) -> Result<[String: Any], TVMAccountError> {
+        var (accounts, sessions) = load()
+        guard let index = memberIndex(accounts, id) else { return .failure(TVMAccountError("No such account.")) }
+        guard accounts[index].activated, accounts[index].tier != nil else {
+            return .failure(TVMAccountError("Switch the account on first."))
+        }
+        accounts[index].tier = enabled ? "stream-live" : "stream"
+        save(accounts, sessions)
+        return .success(accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id)))
+    }
+
+    /// Saves or clears this account's own Real-Debrid key.
+    func setRdToken(id: String, token: String) -> Result<[String: Any], TVMAccountError> {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 200, trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return .failure(TVMAccountError("That does not look like a Real-Debrid key."))
+        }
+        var (accounts, sessions) = load()
+        guard let index = memberIndex(accounts, id) else { return .failure(TVMAccountError("No such account.")) }
+        accounts[index].rdToken = trimmed.isEmpty ? nil : trimmed
+        save(accounts, sessions)
+        return .success(accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id)))
+    }
+
+    func setEmailVerified(id: String, verified: Bool) -> Result<[String: Any], TVMAccountError> {
+        var (accounts, sessions) = load()
+        guard let index = memberIndex(accounts, id) else { return .failure(TVMAccountError("No such account.")) }
+        accounts[index].emailVerifiedAt = verified ? (accounts[index].emailVerifiedAt ?? TVMAccounts.iso()) : nil
+        save(accounts, sessions)
+        return .success(accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id)))
     }
 
     func setSuspended(id: String, suspended: Bool) -> [String: Any]? {
         var (accounts, sessions) = load()
-        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return nil }
+        guard let index = memberIndex(accounts, id) else { return nil }
         accounts[index].suspended = suspended
         if suspended {
             accounts[index].activated = false
@@ -394,18 +501,19 @@ final class TVMAccounts {
             }
         }
         save(accounts, sessions)
-        return accounts[index].adminJSON(activeSessions: 0)
+        return accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id))
     }
 
     func setNote(id: String, note: String?) -> [String: Any]? {
         var (accounts, sessions) = load()
-        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return nil }
+        guard let index = memberIndex(accounts, id) else { return nil }
         accounts[index].note = note.map { String($0.prefix(500)) }
         save(accounts, sessions)
-        return accounts[index].adminJSON(activeSessions: 0)
+        return accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id))
     }
 
     func erase(id: String) {
+        guard id != TVMAccounts.devAccountID else { return }
         var (accounts, sessions) = load()
         accounts.removeAll { $0.id == id }
         for (key, session) in sessions where (session["accountId"] as? String) == id {
