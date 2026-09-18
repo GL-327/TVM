@@ -129,8 +129,17 @@ export interface LiveServiceOptions {
 const MUX = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
 const BIPBOP =
   'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8';
+/**
+ * DW News, Deutsche Welle's free English channel, straight from DW. It is a
+ * real live broadcast with five renditions, relative segment paths and a
+ * subtitle track, which makes it a good check that the proxy rewrites all of
+ * them. BBC channels are UK-only and need a TV licence, so they are not used.
+ */
+export const TEST_CHANNEL_URL = 'https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8';
 
+/** Shown to the dev account only, alongside a provider's channels. */
 export const MOCK_LIVE_CHANNELS: readonly LiveChannel[] = [
+  { id: 'live:test:dw-news', name: 'DW News', url: TEST_CHANNEL_URL, group: 'Test' },
   { id: 'live:mock:sky-sports', name: 'Sample sports 1', url: MUX, group: 'Sample' },
   { id: 'live:mock:tnt-sports', name: 'Sample sports 2', url: BIPBOP, group: 'Sample' },
   { id: 'live:mock:bein-sports', name: 'Sample sports 3', url: MUX, group: 'Sample' },

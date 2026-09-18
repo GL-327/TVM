@@ -1,15 +1,7 @@
-import { apiFetch } from './media';
+import { apiFetch, invalidateHome } from './media';
+import { readToken, writeToken } from './sessionToken';
 
-/**
- * The account the app is signed in as, if any.
- *
- * The token lives in localStorage rather than a cookie because the interface
- * is served from a local core and also loaded inside two native shells, where
- * cookie handling differs in ways that are not worth fighting. It is sent as a
- * bearer header, so nothing depends on the request's origin.
- */
-
-const TOKEN_KEY = 'tvm.account.token';
+export { readToken, writeToken };
 
 export type AccountTier = 'stream' | 'stream-live';
 
@@ -17,22 +9,29 @@ export interface AccountView {
   id: string;
   email: string;
   displayName: string;
+  role: 'member' | 'dev';
   activated: boolean;
   tier: AccountTier | null;
   suspended: boolean;
   createdAt: string;
   termsVersion: string | null;
   termsAcceptedAt: string | null;
+  emailVerified: boolean;
+  emailCodeSent: boolean;
+  /** The account has its own Real-Debrid key. */
+  rdKey: boolean;
 }
 
 /** Why TVM is not usable, when it is not. */
-export type AccountBlock = 'no_account' | 'suspended' | 'awaiting_activation' | 'terms_required';
+export type AccountBlock = 'no_account' | 'suspended' | 'email_unverified' | 'awaiting_activation' | 'terms_required';
 
 export interface AccountState {
   signedIn: boolean;
   account: AccountView | null;
   usable: { ok: boolean; reason: AccountBlock | null };
   termsVersion: string;
+  /** This TVM can email sign-up codes. Missing on older cores. */
+  canSendEmail?: boolean;
 }
 
 export const SIGNED_OUT: AccountState = {
@@ -42,33 +41,26 @@ export const SIGNED_OUT: AccountState = {
   termsVersion: '',
 };
 
-export function readToken(): string | null {
-  try {
-    const value = window.localStorage.getItem(TOKEN_KEY);
-    return value !== null && value !== '' ? value : null;
-  } catch {
-    return null;
-  }
+/** Tells the app shell to ask who is signed in again, after a sign-out or an account switch. */
+export const ACCOUNT_CHANGED = 'tvm:account-changed';
+
+export function announceAccountChange(): void {
+  window.dispatchEvent(new Event(ACCOUNT_CHANGED));
 }
 
-export function writeToken(token: string | null): void {
-  try {
-    if (token === null) window.localStorage.removeItem(TOKEN_KEY);
-    else window.localStorage.setItem(TOKEN_KEY, token);
-  } catch {
-    // Private mode: the session still works for this run.
-  }
+export function isDevAccount(state: AccountState | null | undefined): boolean {
+  return state?.account?.role === 'dev';
 }
 
-function authed(init: RequestInit = {}): RequestInit {
-  const token = readToken();
-  const headers = new Headers(init.headers);
-  if (token !== null) headers.set('Authorization', `Bearer ${token}`);
-  return { ...init, headers };
+/** A new session: the last account's home screen must not be shown to this one. */
+function startSession(token: string | null): void {
+  writeToken(token);
+  invalidateHome();
 }
 
+/** apiFetch sends the session token, so every call here is made as the signed-in account. */
 async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await apiFetch(path, authed(init));
+  const response = await apiFetch(path, init);
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Something went wrong.');
   return body;
@@ -96,10 +88,28 @@ export async function signIn(input: { email: string; password: string }): Promis
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
   });
-  writeToken(result.token);
+  startSession(result.token);
   // Re-read rather than trusting the sign-in response: the server applies the
   // account's tier to the plan engine on this call, and the answer it gives
   // back is the one the rest of the app should agree with.
+  return fetchAccount();
+}
+
+/**
+ * The dev account. The developer code is its password. Whoever was signed in
+ * before is signed out, but only once the code has been accepted.
+ */
+export async function signInDev(code: string): Promise<AccountState> {
+  const previous = readToken();
+  const result = await json<{ token: string }>('/api/account/dev', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  startSession(result.token);
+  if (previous !== null && previous !== result.token) {
+    await apiFetch('/api/account/signout', { method: 'POST', headers: { Authorization: `Bearer ${previous}` } }).catch(() => undefined);
+  }
   return fetchAccount();
 }
 
@@ -107,12 +117,25 @@ export async function signOut(): Promise<void> {
   try {
     await json('/api/account/signout', { method: 'POST' });
   } finally {
-    writeToken(null);
+    startSession(null);
   }
 }
 
 export async function acceptTerms(): Promise<AccountState> {
   await json('/api/account/terms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  return fetchAccount();
+}
+
+export async function sendEmailCode(): Promise<void> {
+  await json('/api/account/email/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+}
+
+export async function verifyEmailCode(code: string): Promise<AccountState> {
+  await json('/api/account/email/verify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
   return fetchAccount();
 }
 
@@ -169,7 +192,7 @@ export async function fetchTiers(): Promise<TiersResponse | null> {
   }
 }
 
-// ---- Owner's admin -------------------------------------------------------
+// ---- Accounts screen (dev mode) -------------------------------------------
 
 export interface AdminAccountView extends AccountView {
   activatedAt: string | null;
@@ -178,6 +201,9 @@ export interface AdminAccountView extends AccountView {
   lastClient: string | null;
   note: string | null;
   activeSessions: number;
+  emailVerifiedAt: string | null;
+  /** The last four characters of the account's Real-Debrid key, never the key. */
+  rdKeyHint: string | null;
 }
 
 export interface AdminAccountsResponse {
@@ -223,6 +249,76 @@ export async function eraseAccount(id: string): Promise<void> {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id }),
+  });
+}
+
+async function postAdmin(path: string, body: Record<string, unknown>): Promise<AdminAccountView> {
+  return json<AdminAccountView>(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export function setAccountLiveTv(id: string, enabled: boolean): Promise<AdminAccountView> {
+  return postAdmin('/api/admin/accounts/live-tv', { id, enabled });
+}
+
+/** An empty key removes it, and the account goes back to the machine's key. */
+export function setAccountRdKey(id: string, token: string): Promise<AdminAccountView> {
+  return postAdmin('/api/admin/accounts/rd', { id, token });
+}
+
+export function setAccountVerified(id: string, verified: boolean): Promise<AdminAccountView> {
+  return postAdmin('/api/admin/accounts/verify', { id, verified });
+}
+
+// ---- Mail settings, for the sign-up codes --------------------------------
+
+export type MailSecurity = 'tls' | 'starttls' | 'none';
+
+export interface MailStatus {
+  configured: boolean;
+  host: string | null;
+  port: number | null;
+  security: MailSecurity | null;
+  username: string | null;
+  from: string | null;
+  /** False on the phones, which do not send email. */
+  supported: boolean;
+}
+
+export interface MailInput {
+  host: string;
+  port: number;
+  security: MailSecurity;
+  username: string;
+  /** Empty keeps the saved password. */
+  password: string;
+  from: string;
+}
+
+export function fetchMail(): Promise<MailStatus> {
+  return json<MailStatus>('/api/admin/mail');
+}
+
+export function saveMail(input: MailInput): Promise<MailStatus> {
+  return json<MailStatus>('/api/admin/mail', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export function clearMail(): Promise<MailStatus> {
+  return json<MailStatus>('/api/admin/mail', { method: 'DELETE' });
+}
+
+export async function sendTestMail(to: string): Promise<void> {
+  await json('/api/admin/mail/test', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ to }),
   });
 }
 

@@ -27,7 +27,7 @@ export async function runLaunchChecks(): Promise<LaunchChecks> {
 
 export const RD_NOTICE = {
   title: 'Real-Debrid is not connected',
-  body: 'This title opens, but playback needs a Real-Debrid account. Connect one now or later from Profile.',
+  body: 'This title opens, but playback needs a Real-Debrid account. Connect one now or later from Account.',
   action: 'realdebrid',
 } as const;
 

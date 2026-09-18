@@ -8,8 +8,10 @@ import {
   accountUsable,
   accountSessionToken,
   createAccountsService,
+  DEV_ACCOUNT_ID,
   emailLooksValid,
   hashPassword,
+  hydrateAccounts,
   MIN_PASSWORD_LENGTH,
   normalizeEmail,
   passwordMatches,
@@ -173,8 +175,9 @@ describe('signing in', () => {
 describe('who may actually use TVM', () => {
   const base: AccountRecord = {
     id: 'a', email: 'a@b.c', displayName: 'A', passwordHash: '', passwordSalt: '',
-    createdAt: '', activated: true, activatedAt: '', tier: 'stream', note: null, suspended: false,
+    createdAt: '', role: 'member', activated: true, activatedAt: '', tier: 'stream', note: null, suspended: false,
     termsVersion: TERMS, termsAcceptedAt: '2026-09-15T00:00:00.000Z',
+    emailVerifiedAt: null, emailCode: null, rdToken: null,
     lastSeenAt: null, signIns: 0, lastClient: null,
   };
 
@@ -190,6 +193,185 @@ describe('who may actually use TVM', () => {
 
   it('requires acceptance again when the terms change', () => {
     expect(accountUsable({ ...base, termsVersion: '2020-01-01' }, TERMS).reason).toBe('terms_required');
+  });
+
+  it('asks for a verified email only when this machine can send the code', () => {
+    expect(accountUsable(base, TERMS, false).ok).toBe(true);
+    expect(accountUsable(base, TERMS, true).reason).toBe('email_unverified');
+    expect(accountUsable({ ...base, emailVerifiedAt: '2026-09-18T00:00:00.000Z' }, TERMS, true).ok).toBe(true);
+    // Suspension still wins, so a switched-off account is not asked for a code.
+    expect(accountUsable({ ...base, suspended: true }, TERMS, true).reason).toBe('suspended');
+  });
+
+  it('lets the dev account straight in', () => {
+    const dev: AccountRecord = { ...base, role: 'dev', termsAcceptedAt: null, termsVersion: null };
+    expect(accountUsable(dev, TERMS, true)).toEqual({ ok: true, reason: null });
+  });
+});
+
+describe('the dev account', () => {
+  it('is created on first sign-in, switched on, and not a member', async () => {
+    const { accounts } = await service();
+    const first = accounts.signInDev({ client: 'TVM-desktop' });
+    expect(first.account.role).toBe('dev');
+    expect(first.account.id).toBe(DEV_ACCOUNT_ID);
+    expect(first.usable).toEqual({ ok: true, reason: null });
+    expect(accounts.resolve(first.token)?.role).toBe('dev');
+
+    // Signing in again reuses the same account rather than making another.
+    const second = accounts.signInDev();
+    expect(second.account.id).toBe(DEV_ACCOUNT_ID);
+    expect(accounts.list()).toHaveLength(0);
+    expect(accounts.summary().total).toBe(0);
+  });
+
+  it('cannot be reached with a password', async () => {
+    const { accounts } = await service();
+    accounts.signInDev();
+    expect(() => accounts.signIn({ email: 'dev', password: '' })).toThrow(/do not match/);
+    expect(() => accounts.signIn({ email: 'dev', password: 'anything at all' })).toThrow(/do not match/);
+  });
+
+  it('cannot be suspended, erased or edited from the Accounts screen', async () => {
+    const { accounts } = await service();
+    const { token } = accounts.signInDev();
+    expect(() => accounts.setSuspended(DEV_ACCOUNT_ID, true)).toThrow(/dev account/);
+    expect(() => accounts.erase(DEV_ACCOUNT_ID)).toThrow(/dev account/);
+    expect(() => accounts.activate({ id: DEV_ACCOUNT_ID, tier: 'stream' })).toThrow(/dev account/);
+    expect(() => accounts.setRdToken(DEV_ACCOUNT_ID, 'abc')).toThrow(/dev account/);
+    expect(accounts.resolve(token)?.role).toBe('dev');
+  });
+
+  it('counts as signed in until its last session ends', async () => {
+    const { accounts } = await service();
+    expect(accounts.devSignedIn()).toBe(false);
+    const desktop = accounts.signInDev();
+    const phone = accounts.signInDev();
+    expect(accounts.devSignedIn()).toBe(true);
+    accounts.signOut(desktop.token);
+    expect(accounts.devSignedIn()).toBe(true);
+    accounts.signOut(phone.token);
+    expect(accounts.devSignedIn()).toBe(false);
+  });
+
+  it('does not count a member session', async () => {
+    const { accounts } = await service();
+    accounts.register({ email: 'ada@example.com', password: 'correct horse battery' });
+    accounts.signIn({ email: 'ada@example.com', password: 'correct horse battery' });
+    expect(accounts.devSignedIn()).toBe(false);
+  });
+});
+
+describe('email codes', () => {
+  async function waiting(options: { at?: () => Date } = {}) {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-accounts-'));
+    dirs.push(dir);
+    const accounts = createAccountsService({ dataDir: dir, termsVersion: TERMS, emailRequired: () => true, now: options.at });
+    const created = accounts.register({ email: 'ada@example.com', password: 'correct horse battery' });
+    return { dir, accounts, id: created.id };
+  }
+
+  it('issues a six-digit code and stores only a digest of it', async () => {
+    const { dir, accounts, id } = await waiting();
+    const issued = accounts.issueEmailCode(id);
+    expect(issued.code).toMatch(/^\d{6}$/);
+    expect(issued.email).toBe('ada@example.com');
+    expect(accounts.list()[0]!.emailCodeSent).toBe(true);
+    const raw = JSON.stringify(accounts.list());
+    expect(raw).not.toContain(issued.code);
+    expect(readFileSync(accountsPath(dir), 'utf8')).not.toContain(issued.code);
+  });
+
+  it('verifies the right code once, and the account moves on to waiting for the dev', async () => {
+    const { accounts, id } = await waiting();
+    const { code } = accounts.issueEmailCode(id);
+    const { token } = accounts.signIn({ email: 'ada@example.com', password: 'correct horse battery' });
+    expect(accounts.usable(accounts.resolve(token)).reason).toBe('email_unverified');
+
+    const verified = accounts.verifyEmailCode(id, ` ${code.slice(0, 3)} ${code.slice(3)} `);
+    expect(verified.emailVerified).toBe(true);
+    expect(verified.emailCodeSent).toBe(false);
+    expect(accounts.usable(accounts.resolve(token)).reason).toBe('awaiting_activation');
+    expect(() => accounts.issueEmailCode(id)).toThrow(/already verified/);
+  });
+
+  it('refuses a wrong code and gives up after five tries', async () => {
+    const { accounts, id } = await waiting();
+    const { code } = accounts.issueEmailCode(id);
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      expect(() => accounts.verifyEmailCode(id, wrong)).toThrow(/not right/);
+    }
+    expect(() => accounts.verifyEmailCode(id, wrong)).toThrow(/Too many/);
+    // The right code no longer works either; a new one has to be sent.
+    expect(() => accounts.verifyEmailCode(id, code)).toThrow(/expired/);
+    expect(() => accounts.verifyEmailCode(id, 'abcdef')).toThrow();
+  });
+
+  it('expires a code after fifteen minutes and makes you wait a minute between codes', async () => {
+    let clock = new Date('2026-09-18T10:00:00.000Z');
+    const { accounts, id } = await waiting({ at: () => clock });
+    const { code } = accounts.issueEmailCode(id);
+    expect(() => accounts.issueEmailCode(id)).toThrow(/Wait 60 seconds/);
+    clock = new Date('2026-09-18T10:00:45.000Z');
+    expect(() => accounts.issueEmailCode(id)).toThrow(/Wait 15 seconds/);
+    clock = new Date('2026-09-18T10:16:00.000Z');
+    expect(() => accounts.verifyEmailCode(id, code)).toThrow(/expired/);
+    expect(accounts.issueEmailCode(id).code).toMatch(/^\d{6}$/);
+  });
+
+  it('forgets a code that could not be sent', async () => {
+    const { accounts, id } = await waiting();
+    accounts.issueEmailCode(id);
+    accounts.cancelEmailCode(id);
+    expect(accounts.list()[0]!.emailCodeSent).toBe(false);
+    expect(accounts.issueEmailCode(id).code).toMatch(/^\d{6}$/);
+  });
+
+  it('can be marked verified by the dev instead', async () => {
+    const { accounts, id } = await waiting();
+    expect(accounts.setEmailVerified(id, true).emailVerified).toBe(true);
+    expect(accounts.setEmailVerified(id, false).emailVerified).toBe(false);
+  });
+});
+
+describe('what the dev sets per account', () => {
+  it('keeps a Real-Debrid key for the account and only ever shows its end', async () => {
+    const { accounts } = await service();
+    const created = accounts.register({ email: 'ada@example.com', password: 'correct horse battery' });
+    const { token } = accounts.signIn({ email: 'ada@example.com', password: 'correct horse battery' });
+    expect(accounts.rdTokenFor(token)).toBeNull();
+
+    const saved = accounts.setRdToken(created.id, '  ABCDEFGHIJKLMNOPQRSTUVWXYZ1234  ');
+    expect(saved.rdKey).toBe(true);
+    expect(saved.rdKeyHint).toBe('••••1234');
+    expect(JSON.stringify(saved)).not.toContain('ABCDEFGHIJ');
+    expect(accounts.rdTokenFor(token)).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ1234');
+    expect(accounts.rdTokenFor(undefined)).toBeNull();
+
+    expect(accounts.setRdToken(created.id, '').rdKey).toBe(false);
+    expect(accounts.rdTokenFor(token)).toBeNull();
+    expect(() => accounts.setRdToken(created.id, 'has a space')).toThrow(/Real-Debrid key/);
+  });
+
+  it('turns Live TV on and off for an account that is switched on', async () => {
+    const { accounts } = await service();
+    const created = accounts.register({ email: 'ada@example.com', password: 'correct horse battery' });
+    expect(() => accounts.setLiveTv(created.id, true)).toThrow(/Switch the account on/);
+    accounts.activate({ id: created.id, tier: 'stream' });
+    expect(accounts.setLiveTv(created.id, true).tier).toBe('stream-live');
+    expect(accounts.setLiveTv(created.id, false).tier).toBe('stream');
+  });
+
+  it('reads a ledger written before these fields existed', async () => {
+    const { accounts } = await service();
+    const created = accounts.register({ email: 'ada@example.com', password: 'correct horse battery' });
+    const old = hydrateAccounts({
+      version: 1,
+      accounts: [{ ...accounts.list()[0]!, passwordHash: 'aa', passwordSalt: 'bb', role: undefined, emailVerifiedAt: undefined, emailCode: undefined, rdToken: undefined }],
+      sessions: {},
+    });
+    expect(old.accounts[0]).toMatchObject({ id: created.id, role: 'member', emailVerifiedAt: null, emailCode: null, rdToken: null });
   });
 });
 

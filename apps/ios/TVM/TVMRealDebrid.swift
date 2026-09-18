@@ -89,8 +89,33 @@ final class TVMRealDebrid {
         }
     }
 
+    /// The signed-in account's own key. It wins over the one saved on the phone.
+    private var accountToken: String?
+    private let accountLock = NSLock()
+
+    /// Returns true when the key in use changed, so cached library data is stale.
+    func useAccountToken(_ token: String?) -> Bool {
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let next: String? = trimmed.isEmpty ? nil : trimmed
+        accountLock.lock()
+        defer { accountLock.unlock() }
+        if next == accountToken { return false }
+        accountToken = next
+        return true
+    }
+
+    func hasAccountToken() -> Bool {
+        accountLock.lock()
+        defer { accountLock.unlock() }
+        return accountToken != nil
+    }
+
     func configured() -> Bool { tokenValue() != nil }
     func tokenValue() -> String? {
+        accountLock.lock()
+        let personal = accountToken
+        accountLock.unlock()
+        if let personal { return personal }
         if ignoreKeychain { return testToken }
         if let testToken, !testToken.isEmpty { return testToken }
         return RdKeychain.read()

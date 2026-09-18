@@ -167,11 +167,30 @@ check('launcher foreground is the orbital PNG',
 check('live playback is a local proxy',
   (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/live/proxy/'));
 check('the Android app applies a GitHub UI bundle on open unless auto-update is off',
-  main.includes('applyIfNeeded') &&
+  /applyIfNeeded[\s\S]{0,800}showStandalone/.test(main) &&
+  main.indexOf('applyIfNeeded') < main.indexOf('showStandalone()') &&
+  main.includes('apply.join(20_000)') &&
   main.includes('webView.reload()') &&
   /fun applyIfNeeded[\s\S]{0,800}promoteLocked/.test(read(join(SRC, 'TvmUpdater.kt')) ?? '') &&
   (read(join(SRC, 'TvmUpdater.kt')) ?? '').includes('tvm-android-ui.tar.gz') &&
   (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/update/apply'));
+{
+  const core = read(join(SRC, 'TvmLocalCore.kt')) ?? '';
+  const accounts = read(join(SRC, 'TvmAccounts.kt')) ?? '';
+  const desktopLive = read(join(REPO, 'apps', 'core', 'src', 'providers', 'live.ts')) ?? '';
+  const testUrl = /TEST_CHANNEL_URL = '([^']+)'/.exec(desktopLive)?.[1] ?? '';
+  check('Android answers the dev account the same way the desktop does',
+    core.includes('"/api/account/dev"') && core.includes('TvmDevUnlock.verify(code)') &&
+    core.includes('plans.setDeveloper(true)') && core.includes('!accounts.devSignedIn()') &&
+    accounts.includes('fun signInDev(') && accounts.includes('const val DEV_ACCOUNT_ID = "acc_dev"'));
+  check('the dev can set Live TV, a Real-Debrid key and a verified address per account on Android',
+    ['/api/admin/accounts/live-tv', '/api/admin/accounts/rd', '/api/admin/accounts/verify', '/api/admin/mail']
+      .every((route) => core.includes(`"${route}"`)) &&
+    core.includes('rd.useAccountToken(accounts.rdTokenFor('));
+  check('Android plays the same DW News test channel as the desktop, through its proxy',
+    testUrl !== '' && core.includes(`"${testUrl}"`) && core.includes('testChannels().firstOrNull'),
+    'apps/core/src/providers/live.ts TEST_CHANNEL_URL and TvmLocalCore.TEST_CHANNEL_URL must match');
+}
 check('an applied GitHub update shows a changelog on the next open',
   (read(join(SRC, 'TvmUpdater.kt')) ?? '').includes('writePending') &&
   (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/update/changelog'));

@@ -506,6 +506,17 @@ final class StandaloneTests: XCTestCase {
         XCTAssertTrue(status.channel.contains("GL-327/TVM"))
     }
 
+    func testLaunchWaitSkipsGitHubWhenAutoUpdateIsOff() async {
+        let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-wait-\(UUID().uuidString)"))
+        testFolders.append(store.root)
+        var prefs = TVMPrefs.load(store)
+        prefs.autoUpdate = false
+        prefs.save(store)
+        let started = Date()
+        await TVMUpdater.waitForLaunchApply(store: store, session: TVMUpdater.downloadSession(), seconds: 20)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
     func testChangelogKeepsCommitTitlesUntilCurrentSha() {
         let parsed = TVMChangelog.parseMessage("Fix player chrome\n\nSafe areas")
         XCTAssertEqual(parsed.title, "Fix player chrome")
@@ -671,6 +682,47 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(viaHeader.status, 200)
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: viaHeader.body) as? [String: Any])
         XCTAssertEqual(body["signedIn"] as? Bool, true)
+    }
+
+    func testAWrongDevCodeIsRefusedAndDevModeStaysOff() async throws {
+        let core = testCore()
+        let reply = await core.handle(
+            method: "POST", path: "/api/account/dev", query: [:], headers: [:],
+            body: JSONValue.data(["code": "not the code"])
+        )
+        XCTAssertEqual(reply.status, 403)
+        XCTAssertFalse(core.plans.developer())
+    }
+
+    func testDevOnlyRoutesNeedDevModeAndPhonesSayTheyDoNotSendEmail() async throws {
+        let core = testCore()
+        for path in ["/api/admin/accounts/live-tv", "/api/admin/accounts/rd", "/api/admin/accounts/verify"] {
+            let reply = await core.handle(method: "POST", path: path, query: [:], headers: [:], body: JSONValue.data(["id": "x"]))
+            XCTAssertEqual(reply.status, 403, path)
+        }
+        let locked = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
+        XCTAssertEqual(locked.status, 403)
+
+        core.plans.setDeveloper(true)
+        let mail = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
+        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: mail.body) as? [String: Any])
+        XCTAssertEqual(body["supported"] as? Bool, false)
+        let send = await core.handle(method: "POST", path: "/api/account/email/send", query: [:], headers: [:], body: nil)
+        XCTAssertEqual(send.status, 503)
+    }
+
+    func testTheTestChannelIsOnlyThereInDevModeAndHidesItsAddress() async throws {
+        let core = testCore()
+        let before = await core.handle(method: "GET", path: "/api/live", query: [:], headers: [:], body: nil)
+        let hidden = try XCTUnwrap(try JSONSerialization.jsonObject(with: before.body) as? [String: Any])
+        XCTAssertEqual((hidden["channels"] as? [[String: Any]])?.count, 0)
+
+        core.plans.setDeveloper(true)
+        let after = await core.handle(method: "GET", path: "/api/live", query: [:], headers: [:], body: nil)
+        let shown = try XCTUnwrap(try JSONSerialization.jsonObject(with: after.body) as? [String: Any])
+        let first = try XCTUnwrap((shown["channels"] as? [[String: Any]])?.first)
+        XCTAssertEqual(first["id"] as? String, "live:test:dw-news")
+        XCTAssertNil(first["url"])
     }
 }
 
@@ -900,5 +952,91 @@ final class TVMAccountsTests: XCTestCase {
         if case .failure(let error) = accounts.register(email: "someone@example.com", password: "0123456789", displayName: nil, client: nil) {
             XCTFail("ten characters is the documented minimum: \(error.message)")
         }
+    }
+
+    // MARK: The dev account
+
+    func testDevAccountIsBuiltInAlwaysUsableAndNotListed() throws {
+        let (accounts, _) = makeAccounts()
+        let first = accounts.signInDev(client: "test")
+        let account = try XCTUnwrap(first["account"] as? [String: Any])
+        XCTAssertEqual(account["role"] as? String, "dev")
+        XCTAssertEqual((first["usable"] as? [String: Any])?["ok"] as? Bool, true)
+        let second = accounts.signInDev(client: "test")
+        XCTAssertEqual((second["account"] as? [String: Any])?["id"] as? String, TVMAccounts.devAccountID)
+        XCTAssertEqual((accounts.list(search: nil, state: nil)["accounts"] as? [[String: Any]])?.count, 0)
+        XCTAssertEqual((accounts.list(search: nil, state: nil)["summary"] as? [String: Any])?["total"] as? Int, 0)
+    }
+
+    func testDevAccountCannotBeReachedWithAPassword() {
+        let (accounts, _) = makeAccounts()
+        _ = accounts.signInDev(client: "test")
+        if case .success = accounts.signIn(email: "dev", password: "", client: "test") {
+            XCTFail("the dev account has no password")
+        }
+        if case .success = accounts.signIn(email: "dev", password: password, client: "test") {
+            XCTFail("the dev account has no password")
+        }
+    }
+
+    func testDevAccountCannotBeSwitchedOffOrErasedFromTheAccountsScreen() throws {
+        let (accounts, _) = makeAccounts()
+        let token = try XCTUnwrap(accounts.signInDev(client: "test")["token"] as? String)
+        XCTAssertNil(accounts.setSuspended(id: TVMAccounts.devAccountID, suspended: true))
+        XCTAssertNil(accounts.activate(id: TVMAccounts.devAccountID, tier: "stream", note: nil))
+        if case .success = accounts.setRdToken(id: TVMAccounts.devAccountID, token: "abc") {
+            XCTFail("the dev account is not edited from the Accounts screen")
+        }
+        accounts.erase(id: TVMAccounts.devAccountID)
+        XCTAssertNotNil(accounts.resolve(token: token))
+    }
+
+    func testDevCountsAsSignedInUntilItsLastSessionEnds() throws {
+        let (accounts, _) = makeAccounts()
+        XCTAssertFalse(accounts.devSignedIn())
+        let one = try XCTUnwrap(accounts.signInDev(client: "test")["token"] as? String)
+        let two = try XCTUnwrap(accounts.signInDev(client: "test")["token"] as? String)
+        accounts.signOut(token: one)
+        XCTAssertTrue(accounts.devSignedIn())
+        accounts.signOut(token: two)
+        XCTAssertFalse(accounts.devSignedIn())
+    }
+
+    // MARK: What the dev sets per account
+
+    func testAnAccountKeepsItsOwnRealDebridKeyAndOnlyShowsItsEnd() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        let live = try token(accounts)
+        XCTAssertNil(accounts.rdTokenFor(token: live))
+
+        let saved = try accounts.setRdToken(id: id, token: "  ABCDEFGHIJKLMNOPQRSTUVWXYZ1234  ").get()
+        XCTAssertEqual(saved["rdKey"] as? Bool, true)
+        XCTAssertEqual(saved["rdKeyHint"] as? String, "••••1234")
+        XCTAssertEqual(accounts.rdTokenFor(token: live), "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234")
+
+        XCTAssertEqual(try accounts.setRdToken(id: id, token: "").get()["rdKey"] as? Bool, false)
+        XCTAssertNil(accounts.rdTokenFor(token: live))
+        if case .success = accounts.setRdToken(id: id, token: "has a space") {
+            XCTFail("a Real-Debrid key has no spaces")
+        }
+    }
+
+    func testLiveTvIsSwitchedOnlyForAnAccountThatIsOn() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        if case .success = accounts.setLiveTv(id: id, enabled: true) {
+            XCTFail("the account is not switched on yet")
+        }
+        _ = accounts.activate(id: id, tier: "stream", note: nil)
+        XCTAssertEqual(try accounts.setLiveTv(id: id, enabled: true).get()["tier"] as? String, "stream-live")
+        XCTAssertEqual(try accounts.setLiveTv(id: id, enabled: false).get()["tier"] as? String, "stream")
+    }
+
+    func testTheDevCanMarkAnAddressVerified() throws {
+        let (accounts, _) = makeAccounts()
+        let id = try register(accounts)
+        XCTAssertEqual(try accounts.setEmailVerified(id: id, verified: true).get()["emailVerified"] as? Bool, true)
+        XCTAssertEqual(try accounts.setEmailVerified(id: id, verified: false).get()["emailVerified"] as? Bool, false)
     }
 }

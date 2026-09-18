@@ -657,12 +657,37 @@ check('English is the default language unless Settings override it',
   mainUi.includes('applyStoredLanguage') &&
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('defaultLanguage = "en"'));
 check('the iPhone applies a GitHub UI bundle on open unless auto-update is off',
-  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('TVMUpdater.applyIfNeeded') &&
+  (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('waitForLaunchApply') &&
+  /func start\(\) async \{[\s\S]*waitForLaunchApply[\s\S]*session = BrowseSession/.test(read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '') &&
   (read(join(ROOT, 'TVM', 'TVMApp.swift')) ?? '').includes('tvmInterfaceDidApply') &&
   /func applyIfNeeded[\s\S]{0,1600}promoteLocked/.test(read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '') &&
+  (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('waitForLaunchApply') &&
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('tvm-ios-ui.tar.gz') &&
   (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/apply') &&
   (read(join(REPO, 'apps', 'ui', 'src', 'data', 'launchUpdate.ts')) ?? '').includes('applyGithubUpdateOnLaunch'));
+check('Device Variations ships the IPA next to the other device packages',
+  (read(join(REPO, 'Device Variations', 'fetch-ipa.ps1')) ?? '').includes('TVM-ios.ipa') &&
+  (read(join(REPO, 'Device Variations', 'fetch-ipa.ps1')) ?? '').includes('TVM-android.apk') &&
+  (read(join(REPO, 'Device Variations', 'fetch-ipa.ps1')) ?? '').includes('TVM-roku.zip') &&
+  (read(join(REPO, '.github', 'workflows', 'mobile.yml')) ?? '').includes('publish-device-package.sh'),
+  'Sideloadly was pointed at this folder, which previously had no IPA');
+{
+  const core = read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '';
+  const accounts = read(join(ROOT, 'TVM', 'TVMAccounts.swift')) ?? '';
+  const desktopLive = read(join(REPO, 'apps', 'core', 'src', 'providers', 'live.ts')) ?? '';
+  const testUrl = /TEST_CHANNEL_URL = '([^']+)'/.exec(desktopLive)?.[1] ?? '';
+  check('the iPhone answers the dev account the same way the desktop does',
+    core.includes('"/api/account/dev"') && core.includes('TVMDevUnlock.verify(code)') &&
+    core.includes('plans.setDeveloper(true)') && core.includes('!accounts.devSignedIn()') &&
+    accounts.includes('func signInDev(') && accounts.includes('static let devAccountID = "acc_dev"'));
+  check('the dev can set Live TV, a Real-Debrid key and a verified address per account on the iPhone',
+    ['/api/admin/accounts/live-tv', '/api/admin/accounts/rd', '/api/admin/accounts/verify', '/api/admin/mail']
+      .every((route) => core.includes(`"${route}"`)) &&
+    core.includes('rd.useAccountToken(accounts.rdTokenFor('));
+  check('the iPhone plays the same DW News test channel as the desktop, through its proxy',
+    testUrl !== '' && core.includes(`"${testUrl}"`) && core.includes('(testChannels() + liveChannels)'),
+    'apps/core/src/providers/live.ts TEST_CHANNEL_URL and TVMLocalCore.testChannelURL must match');
+}
 check('an applied GitHub update shows a changelog on the next open',
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('TVMChangelog.writePending') &&
   (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/changelog') &&

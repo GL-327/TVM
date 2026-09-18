@@ -8,7 +8,10 @@ import {
   activateAccount,
   eraseAccount,
   fetchAdminAccounts,
+  setAccountLiveTv,
   setAccountNote,
+  setAccountRdKey,
+  setAccountVerified,
   shortDate,
   suspendAccount,
   type AccountTier,
@@ -21,17 +24,9 @@ import './billing.css';
 import './accounts.css';
 
 /**
- * Everyone who has asked for TVM, and the switch that lets them in.
- *
- * Developer mode only — the server checks that on every call, so this screen
- * cannot be reached by knowing the route. It shows everything the owner needs
- * to decide whether somebody is real: when they signed up, whether they have
- * ever signed in, how often, and from what.
- *
- * It shows no password, and there is no screen that could. Passwords are
- * stored as salted scrypt digests, which allow checking one and never reading
- * one, so "see all account details" stops short of the one detail that would
- * be a liability to hold.
+ * Everyone who has signed up, and what they get. Dev mode only; Core checks
+ * that on every call. Passwords are salted digests, so there is nothing here
+ * that could show one.
  */
 
 const STATES = [
@@ -58,6 +53,7 @@ export function Accounts(): React.JSX.Element {
   const [state, setState] = useState<(typeof STATES)[number]['id']>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [rdKey, setRdKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmErase, setConfirmErase] = useState<string | null>(null);
@@ -155,7 +151,7 @@ export function Accounts(): React.JSX.Element {
                 type="button"
                 className="acct-row__head"
                 data-focus-id={`account-${account.id}`}
-                onClick={() => { setOpenId(openId === account.id ? null : account.id); setNote(account.note ?? ''); setConfirmErase(null); }}
+                onClick={() => { setOpenId(openId === account.id ? null : account.id); setNote(account.note ?? ''); setRdKey(''); setConfirmErase(null); }}
               >
                 <span className="acct-row__who">
                   <span className="acct-row__name">{account.displayName}</span>
@@ -173,13 +169,10 @@ export function Accounts(): React.JSX.Element {
                     <div><dt>Sign-ins</dt><dd>{account.signIns}</dd></div>
                     <div><dt>Open sessions</dt><dd>{account.activeSessions}</dd></div>
                     <div><dt>Terms</dt><dd>{account.termsAcceptedAt === null ? 'Not agreed' : `v${account.termsVersion ?? '?'}`}</dd></div>
+                    <div><dt>Email</dt><dd>{account.emailVerified ? `Verified ${shortDate(account.emailVerifiedAt)}` : account.emailCodeSent ? 'Code sent' : 'Not verified'}</dd></div>
+                    <div><dt>Real-Debrid</dt><dd>{account.rdKeyHint ?? "This machine's key"}</dd></div>
                     <div className="acct-facts__wide"><dt>Last device</dt><dd>{account.lastClient ?? '—'}</dd></div>
                   </dl>
-
-                  <p className="acct-detail__privacy">
-                    There is no password here and no screen that could show one — they are
-                    stored as salted scrypt digests, which can be checked but never read.
-                  </p>
 
                   <label className="acct-note">
                     <span>Your note (private)</span>
@@ -193,21 +186,40 @@ export function Accounts(): React.JSX.Element {
                   </label>
 
                   <div className="acct-actions">
+                    {account.activated ? (
+                      <FocusButton
+                        id={`live-tv-${account.id}`}
+                        disabled={busy}
+                        onSelect={() => void act(() => setAccountLiveTv(account.id, account.tier !== 'stream-live'))}
+                      >
+                        {account.tier === 'stream-live' ? 'Live TV: on' : 'Live TV: off'}
+                      </FocusButton>
+                    ) : (
+                      <>
+                        <FocusButton
+                          id={`grant-stream-${account.id}`}
+                          variant="primary"
+                          disabled={busy}
+                          onSelect={() => void act(() => activateAccount({ id: account.id, tier: 'stream' as AccountTier, note: note || undefined }))}
+                        >
+                          Switch on · Movies & TV
+                        </FocusButton>
+                        <FocusButton
+                          id={`grant-live-${account.id}`}
+                          variant="primary"
+                          disabled={busy}
+                          onSelect={() => void act(() => activateAccount({ id: account.id, tier: 'stream-live' as AccountTier, note: note || undefined }))}
+                        >
+                          Switch on · with Live TV
+                        </FocusButton>
+                      </>
+                    )}
                     <FocusButton
-                      id={`grant-stream-${account.id}`}
-                      variant={account.activated && account.tier === 'stream' ? undefined : 'primary'}
+                      id={`verify-${account.id}`}
                       disabled={busy}
-                      onSelect={() => void act(() => activateAccount({ id: account.id, tier: 'stream' as AccountTier, note: note || undefined }))}
+                      onSelect={() => void act(() => setAccountVerified(account.id, !account.emailVerified))}
                     >
-                      {account.tier === 'stream' ? '✓ Movies & TV' : 'Activate · Movies & TV'}
-                    </FocusButton>
-                    <FocusButton
-                      id={`grant-live-${account.id}`}
-                      variant={account.activated && account.tier === 'stream-live' ? undefined : 'primary'}
-                      disabled={busy}
-                      onSelect={() => void act(() => activateAccount({ id: account.id, tier: 'stream-live' as AccountTier, note: note || undefined }))}
-                    >
-                      {account.tier === 'stream-live' ? '✓ Movies, TV & Live' : 'Activate · + Live TV'}
+                      {account.emailVerified ? 'Mark email unverified' : 'Mark email verified'}
                     </FocusButton>
                     <FocusButton
                       id={`suspend-${account.id}`}
@@ -216,6 +228,37 @@ export function Accounts(): React.JSX.Element {
                     >
                       {account.suspended ? 'Restore' : 'Suspend'}
                     </FocusButton>
+                  </div>
+
+                  <label className="acct-note">
+                    <span>Real-Debrid key for this account</span>
+                    <FocusField
+                      id={`rd-${account.id}`}
+                      type="password"
+                      value={rdKey}
+                      onChange={setRdKey}
+                      onConfirm={(value) => void act(async () => { await setAccountRdKey(account.id, value); setRdKey(''); })}
+                      afterPasteFocusId={`rd-save-${account.id}`}
+                      placeholder={account.rdKey ? 'Paste a new key to replace it' : "Empty uses this machine's key"}
+                    />
+                  </label>
+                  <div className="acct-actions">
+                    <FocusButton
+                      id={`rd-save-${account.id}`}
+                      disabled={busy || rdKey.trim() === ''}
+                      onSelect={() => void act(async () => { await setAccountRdKey(account.id, rdKey); setRdKey(''); })}
+                    >
+                      Save key
+                    </FocusButton>
+                    {account.rdKey && (
+                      <FocusButton
+                        id={`rd-remove-${account.id}`}
+                        disabled={busy}
+                        onSelect={() => void act(() => setAccountRdKey(account.id, ''))}
+                      >
+                        Remove key
+                      </FocusButton>
+                    )}
                   </div>
 
                   {/* Erasure is irreversible, so it asks once rather than

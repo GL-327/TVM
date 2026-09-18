@@ -80,17 +80,11 @@
 .acct-facts dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
 .acct-facts__wide { grid-column: 1 / -1; }
 
-.acct-detail__privacy {
-  margin: 0 0 1rem;
-  font-size: 0.82rem;
-  color: var(--tvm-text-faint);
-  line-height: 1.45;
-}
-
 .acct-note { display: block; margin-bottom: 1rem; }
 .acct-note > span { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: var(--tvm-text-muted); }
 
 .acct-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.acct-actions + .acct-note { margin-top: 1rem; }
 
 .acct-actions--danger {
   margin-top: 0.9rem;

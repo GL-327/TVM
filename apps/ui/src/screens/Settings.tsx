@@ -228,7 +228,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton id="profiles" className="settings-row" detail="TVM Stream only" onSelect={() => navigate.push('profiles')}>
           Profiles
         </FocusButton>
-        <FocusButton id="realdebrid" className="settings-row" detail="Saved on this machine" onSelect={() => navigate.push('realdebrid')}>
+        <FocusButton id="realdebrid" className="settings-row" detail="Your token" onSelect={() => navigate.push('realdebrid')}>
           Real-Debrid
         </FocusButton>
         </section>

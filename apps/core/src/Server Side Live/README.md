@@ -75,8 +75,8 @@ leaks the provider host on the first decryption.
 
 | Route | Method | Who |
 | --- | --- | --- |
-| `/api/live/proxy/<token>` | GET, HEAD, OPTIONS | Content route: loopback free, LAN needs the bearer token |
-| `/api/live/sources` | GET | Same — opaque channels only |
+| `/api/live/proxy/<token>` | GET, HEAD, OPTIONS | Loopback free. LAN needs the bearer token **and** the dev account signed in on this Core |
+| `/api/live/sources` | GET | Same, opaque channels only |
 | `/api/live/sources` | PUT | **Loopback only** — the body carries provider credentials |
 | `/api/live/rotate` | POST | **Loopback only** — cuts off every client at once |
 | `/api/live/egress` | GET | **Loopback only** — answers with an IP address |
@@ -86,6 +86,17 @@ hard part, and `/api/live` is not in its loopback-only list, so the proxy is a
 content route and a Roku reaches it with `Authorization: Bearer <TVM_LAN_TOKEN>`
 — exactly the header it already sends for Core-hosted streams. Admin, billing
 and privacy stay loopback-only and nothing here changes that.
+
+On top of that, a Core only relays live TV to other devices while the dev
+account is signed in on it (`liveRelayRefused()` in `server.ts`). Anything
+else on the LAN gets `403 dev_account_required` from the proxy, stream and hop
+routes, and `/api/playback` answers `live-server-offline` for a live channel
+before handing out an address. This machine's own player is never refused.
+
+Signed in as the dev account, the Live TV screen also lists **DW News**
+(`TEST_CHANNEL_URL` in `providers/live.ts`), a real broadcast that exercises
+variant playlists, relative segment paths and a subtitle rendition through the
+proxy.
 
 ## Tokens: stable and revocable
 

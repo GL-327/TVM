@@ -494,6 +494,7 @@ function playbackNotice(reason as String) as String
   if reason = "needs-auth" then return "Real-Debrid rejected the saved token. Open TVM Stream and paste a new one."
   if reason = "not-configured" then return "Real-Debrid is not connected. Open TVM Stream and paste a token."
   if reason = "region-blocked" then return "This title is not available here."
+  if reason = "live-server-offline" then return "Live TV comes through the computer running TVM, and the dev account is not signed in there right now."
   if reason = "network" then return "TVM could not reach the local core. Check that the app is running, then retry."
   if reason = "internal" or reason = "internal_error" then return "Playback failed inside TVM. Retry, or check that core is running."
   if reason <> "" then return reason

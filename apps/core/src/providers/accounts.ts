@@ -1,26 +1,21 @@
-import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { accountsPath } from '../update/paths.ts';
 import { readSealed, writeSealed } from './vault.ts';
 
 /**
- * Accounts: who may use this TVM, and who decided so.
+ * Accounts: who may use this TVM.
  *
- * TVM is not self-serve. Signing up creates a record and nothing else — every
- * account starts inert and only the owner can switch it on. That is the whole
- * access model: there is no plan to buy, no trial that expires, no card that
- * unlocks anything. Someone asks, the owner decides.
+ * Nobody gets in by signing up. A new account can sign in and see that it is
+ * waiting; the dev switches it on from the Accounts screen.
  *
- * Passwords are stored as scrypt digests with a per-account salt, never
- * encrypted and never recoverable. Encryption would be the wrong tool: it
- * implies someone can read them back, and nobody should be able to, including
- * the owner looking at the admin screen.
+ * Passwords are salted scrypt digests and cannot be read back by anyone. The
+ * ledger is sealed with the same AES-256-GCM vault as the other secrets.
  *
- * Everything on disk goes through the same AES-256-GCM vault as the rest of
- * the secrets directory, so a stolen data folder yields neither passwords nor
- * email addresses.
+ * The dev account is built in. It has no password: you get into it with the
+ * developer code, it is always switched on, and it cannot be suspended or
+ * erased.
  */
 
-/** What the owner granted. There is no free tier: an inactive account sees nothing. */
 export type AccountTier = 'stream' | 'stream-live';
 
 export const ACCOUNT_TIERS: readonly AccountTier[] = ['stream', 'stream-live'];
@@ -29,32 +24,48 @@ export function isAccountTier(value: unknown): value is AccountTier {
   return typeof value === 'string' && (ACCOUNT_TIERS as readonly string[]).includes(value);
 }
 
+export type AccountRole = 'member' | 'dev';
+
+export const DEV_ACCOUNT_ID = 'acc_dev';
+/** Not an address, so nobody can register it or sign in to it with a password. */
+const DEV_EMAIL = 'dev';
+
+/** A code waiting to be typed in. Only a salted digest of it is kept. */
+export interface EmailCode {
+  digest: string;
+  salt: string;
+  sentAt: string;
+  expiresAt: string;
+  attempts: number;
+}
+
 export interface AccountRecord {
   id: string;
   /** Lowercased and trimmed; the unique key. */
   email: string;
   displayName: string;
-  /** scrypt(password, salt). Not reversible, by design. */
   passwordHash: string;
   passwordSalt: string;
   createdAt: string;
+  role: AccountRole;
 
-  /** Nothing works until the owner sets this. */
   activated: boolean;
   activatedAt: string | null;
   tier: AccountTier | null;
-  /** Owner's private note. Never shown to the account holder. */
+  /** The dev's private note. Never shown to the account holder. */
   note: string | null;
-  /** Switched off without deleting, so the record and its history survive. */
   suspended: boolean;
 
-  /** Acceptance is recorded per version, so a change of terms can require a fresh one. */
   termsVersion: string | null;
   termsAcceptedAt: string | null;
 
+  emailVerifiedAt: string | null;
+  emailCode: EmailCode | null;
+  /** Real-Debrid key for this account. Overrides the one saved on the machine. */
+  rdToken: string | null;
+
   lastSeenAt: string | null;
   signIns: number;
-  /** Coarse, for the owner to spot an account being shared. Never a precise history. */
   lastClient: string | null;
 }
 
@@ -69,6 +80,9 @@ const SCRYPT = { N: 16_384, r: 8, p: 1 } as const;
 const HASH_BYTES = 32;
 const SESSION_DAYS = 30;
 export const MIN_PASSWORD_LENGTH = 10;
+export const EMAIL_CODE_MINUTES = 15;
+export const EMAIL_CODE_RESEND_SECONDS = 60;
+const EMAIL_CODE_ATTEMPTS = 5;
 
 export function emptyAccounts(): AccountsLedger {
   return { version: 1, accounts: [], sessions: {} };
@@ -78,11 +92,7 @@ export function normalizeEmail(value: unknown): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-/**
- * Deliberately permissive. The job here is to reject obvious nonsense, not to
- * adjudicate the email RFC — a real address is proven by the owner recognising
- * it when they activate the account, not by a regular expression.
- */
+/** Rejects obvious nonsense. Whether the address is real is what the email code is for. */
 export function emailLooksValid(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= 254;
 }
@@ -114,12 +124,16 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function codeDigest(code: string, salt: string): string {
+  return createHash('sha256').update(`${salt}:${code}`).digest('hex');
+}
+
 /**
- * The session token for a TVM account, as sent by the interface or by Roku.
+ * The session token, as sent by the interface or by Roku.
  *
  * Phones and the desktop send it as Authorization. Roku already uses that
- * header for the LAN device token, so it sends the account as X-TVM-Account
- * instead. A LAN token must never be treated as a session.
+ * header for the LAN token, so it sends the account as X-TVM-Account. The LAN
+ * token is never treated as a session.
  */
 export function accountSessionToken(
   authorization: string | undefined,
@@ -135,56 +149,70 @@ export function accountSessionToken(
   return token;
 }
 
+export type AccountBlock = 'no_account' | 'suspended' | 'email_unverified' | 'awaiting_activation' | 'terms_required';
+
 /**
- * Whether this account may use TVM right now.
+ * Whether this account may use TVM right now, and if not, why.
  *
- * Four things must all hold, and the order matters only for the message the
- * caller shows. An account can exist, have accepted the terms and still see
- * nothing, because activation is a decision somebody makes.
+ * The email check only applies when this machine can send the code. Without
+ * mail settings nobody could pass it.
  */
-export function accountUsable(record: AccountRecord | null, termsVersion: string): { ok: boolean; reason: string | null } {
+export function accountUsable(
+  record: AccountRecord | null,
+  termsVersion: string,
+  emailRequired = false,
+): { ok: boolean; reason: AccountBlock | null } {
   if (record === null) return { ok: false, reason: 'no_account' };
+  if (record.role === 'dev') return { ok: true, reason: null };
   if (record.suspended) return { ok: false, reason: 'suspended' };
+  if (emailRequired && record.emailVerifiedAt === null) return { ok: false, reason: 'email_unverified' };
   if (!record.activated || record.tier === null) return { ok: false, reason: 'awaiting_activation' };
   if (record.termsVersion !== termsVersion || record.termsAcceptedAt === null) return { ok: false, reason: 'terms_required' };
   return { ok: true, reason: null };
 }
 
-/** What an account holder may see about themselves. Never the hash or the salt. */
+/** What an account holder may see about themselves. Never the hash, the salt or a key. */
 export interface PublicAccount {
   id: string;
   email: string;
   displayName: string;
+  role: AccountRole;
   activated: boolean;
   tier: AccountTier | null;
   suspended: boolean;
   createdAt: string;
   termsVersion: string | null;
   termsAcceptedAt: string | null;
+  emailVerified: boolean;
+  /** A code has been sent and has not expired. */
+  emailCodeSent: boolean;
+  /** Whether this account has its own Real-Debrid key. */
+  rdKey: boolean;
 }
 
-export function publicAccount(record: AccountRecord): PublicAccount {
+function codeLive(code: EmailCode | null, at: Date): boolean {
+  return code !== null && new Date(code.expiresAt).getTime() > at.getTime();
+}
+
+export function publicAccount(record: AccountRecord, at: Date = new Date()): PublicAccount {
   return {
     id: record.id,
     email: record.email,
     displayName: record.displayName,
+    role: record.role,
     activated: record.activated,
     tier: record.tier,
     suspended: record.suspended,
     createdAt: record.createdAt,
     termsVersion: record.termsVersion,
     termsAcceptedAt: record.termsAcceptedAt,
+    emailVerified: record.emailVerifiedAt !== null,
+    emailCodeSent: codeLive(record.emailCode, at),
+    rdKey: record.rdToken !== null,
   };
 }
 
-/**
- * What the owner sees in the admin screen.
- *
- * Adds the operational detail an owner needs to decide whether to activate
- * somebody — when they signed up, how often they have signed in, what they
- * last used — and still never includes the password digest. There is no
- * screen anywhere that reveals a password, because nothing stored can.
- */
+/** The dev's view of an account. Still no password, and the Real-Debrid key only as its last four characters. */
 export interface AdminAccount extends PublicAccount {
   activatedAt: string | null;
   lastSeenAt: string | null;
@@ -192,17 +220,56 @@ export interface AdminAccount extends PublicAccount {
   lastClient: string | null;
   note: string | null;
   activeSessions: number;
+  emailVerifiedAt: string | null;
+  rdKeyHint: string | null;
+}
+
+function keyHint(token: string | null): string | null {
+  if (token === null) return null;
+  return token.length <= 4 ? '••••' : `••••${token.slice(-4)}`;
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+function readEmailCode(value: unknown): EmailCode | null {
+  if (value === null || typeof value !== 'object') return null;
+  const code = value as Partial<EmailCode>;
+  if (typeof code.digest !== 'string' || typeof code.salt !== 'string'
+    || typeof code.sentAt !== 'string' || typeof code.expiresAt !== 'string') return null;
+  return {
+    digest: code.digest,
+    salt: code.salt,
+    sentAt: code.sentAt,
+    expiresAt: code.expiresAt,
+    attempts: typeof code.attempts === 'number' ? code.attempts : 0,
+  };
+}
+
+/** Fills in fields that older ledgers were written without. */
+function readRecord(entry: AccountRecord): AccountRecord {
+  const raw = entry as Partial<AccountRecord> & AccountRecord;
+  return {
+    ...raw,
+    role: raw.role === 'dev' ? 'dev' : 'member',
+    emailVerifiedAt: textOrNull(raw.emailVerifiedAt),
+    emailCode: readEmailCode(raw.emailCode),
+    rdToken: textOrNull(raw.rdToken),
+  };
 }
 
 export function hydrateAccounts(raw: unknown): AccountsLedger {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return emptyAccounts();
   const value = raw as Partial<AccountsLedger>;
   if (value.version !== 1 || !Array.isArray(value.accounts)) return emptyAccounts();
-  const accounts = value.accounts.filter((entry): entry is AccountRecord =>
-    entry !== null && typeof entry === 'object'
-    && typeof (entry as AccountRecord).id === 'string'
-    && typeof (entry as AccountRecord).email === 'string'
-    && typeof (entry as AccountRecord).passwordHash === 'string');
+  const accounts = value.accounts
+    .filter((entry): entry is AccountRecord =>
+      entry !== null && typeof entry === 'object'
+      && typeof (entry as AccountRecord).id === 'string'
+      && typeof (entry as AccountRecord).email === 'string'
+      && typeof (entry as AccountRecord).passwordHash === 'string')
+    .map(readRecord);
   const sessions: AccountsLedger['sessions'] = {};
   if (value.sessions !== null && typeof value.sessions === 'object') {
     for (const [key, entry] of Object.entries(value.sessions as Record<string, unknown>)) {
@@ -218,12 +285,15 @@ export interface AccountsServiceOptions {
   dataDir: string;
   /** Bumped when the terms change; acceptance is per version. */
   termsVersion: string;
+  /** True when this machine can email a code, which makes verifying one compulsory. */
+  emailRequired?: () => boolean;
   now?: () => Date;
 }
 
 export function createAccountsService(options: AccountsServiceOptions) {
   const { dataDir, termsVersion } = options;
   const now = options.now ?? (() => new Date());
+  const emailRequired = (): boolean => options.emailRequired?.() === true;
 
   const read = (): AccountsLedger => hydrateAccounts(readSealed<AccountsLedger>(dataDir, accountsPath(dataDir)));
   const write = (ledger: AccountsLedger): void => {
@@ -240,24 +310,83 @@ export function createAccountsService(options: AccountsServiceOptions) {
     return { ...ledger, sessions };
   };
 
-  const find = (ledger: AccountsLedger, email: string): AccountRecord | null =>
-    ledger.accounts.find((account) => account.email === email) ?? null;
+  const findMember = (ledger: AccountsLedger, email: string): AccountRecord | null =>
+    ledger.accounts.find((account) => account.email === email && account.role !== 'dev') ?? null;
 
   const replace = (ledger: AccountsLedger, record: AccountRecord): AccountsLedger => ({
     ...ledger,
     accounts: ledger.accounts.map((entry) => (entry.id === record.id ? record : entry)),
   });
 
+  /** Members only. The dev account is not managed from the Accounts screen. */
+  const member = (ledger: AccountsLedger, id: string): AccountRecord => {
+    const record = ledger.accounts.find((entry) => entry.id === id);
+    if (record === undefined) throw new Error('No such account.');
+    if (record.role === 'dev') throw new Error('The dev account cannot be changed here.');
+    return record;
+  };
+
+  const openSession = (
+    ledger: AccountsLedger,
+    record: AccountRecord,
+    client: string | null,
+  ): { token: string; ledger: AccountsLedger; record: AccountRecord } => {
+    const token = randomBytes(32).toString('hex');
+    const issued = now();
+    const updated: AccountRecord = {
+      ...record,
+      lastSeenAt: issued.toISOString(),
+      signIns: record.signIns + 1,
+      lastClient: client ?? record.lastClient,
+    };
+    return {
+      token,
+      record: updated,
+      ledger: {
+        ...replace(ledger, updated),
+        sessions: {
+          ...ledger.sessions,
+          [hashToken(token)]: {
+            accountId: record.id,
+            issuedAt: issued.toISOString(),
+            expiresAt: new Date(issued.getTime() + SESSION_DAYS * 86_400_000).toISOString(),
+            client,
+          },
+        },
+      },
+    };
+  };
+
+  const clientText = (value: unknown): string | null => (typeof value === 'string' ? value.slice(0, 200) : null);
+
+  const lookup = (token: string | undefined): { ledger: AccountsLedger; record: AccountRecord } | null => {
+    if (typeof token !== 'string' || token === '') return null;
+    const ledger = prune(read());
+    const session = ledger.sessions[hashToken(token)];
+    if (session === undefined) return null;
+    const record = ledger.accounts.find((entry) => entry.id === session.accountId);
+    return record === undefined ? null : { ledger, record };
+  };
+
+  const toAdmin = (account: AccountRecord, sessions: number): AdminAccount => ({
+    ...publicAccount(account, now()),
+    activatedAt: account.activatedAt,
+    lastSeenAt: account.lastSeenAt,
+    signIns: account.signIns,
+    lastClient: account.lastClient,
+    note: account.note,
+    activeSessions: sessions,
+    emailVerifiedAt: account.emailVerifiedAt,
+    rdKeyHint: keyHint(account.rdToken),
+  });
+
+  const adminView = (ledger: AccountsLedger, record: AccountRecord): AdminAccount =>
+    toAdmin(record, Object.values(ledger.sessions).filter((session) => session.accountId === record.id).length);
+
   return {
     termsVersion,
 
-    /**
-     * Creates an inert account.
-     *
-     * The first account is not special and is not auto-activated: an owner
-     * unlocks developer mode with a code, and that is the only route to
-     * activating anybody, including themselves.
-     */
+    /** Creates an account that can sign in but cannot watch anything yet. */
     register(input: { email?: unknown; password?: unknown; displayName?: unknown; client?: string | null }): PublicAccount {
       const email = normalizeEmail(input.email);
       if (!emailLooksValid(email)) throw new Error('Enter a valid email address.');
@@ -265,9 +394,9 @@ export function createAccountsService(options: AccountsServiceOptions) {
       if (problem !== null) throw new Error(problem);
 
       const ledger = prune(read());
-      // Do not say whether the address already exists: that turns signup into
-      // a way of testing which addresses have accounts.
-      if (find(ledger, email) !== null) throw new Error('That account could not be created. If it already exists, sign in instead.');
+      // Same answer whether or not the address exists, so signup cannot be
+      // used to find out who has an account.
+      if (findMember(ledger, email) !== null) throw new Error('That account could not be created. If it already exists, sign in instead.');
 
       const { hash, salt } = hashPassword(input.password as string);
       const record: AccountRecord = {
@@ -279,6 +408,7 @@ export function createAccountsService(options: AccountsServiceOptions) {
         passwordHash: hash,
         passwordSalt: salt,
         createdAt: now().toISOString(),
+        role: 'member',
         activated: false,
         activatedAt: null,
         tier: null,
@@ -286,30 +416,30 @@ export function createAccountsService(options: AccountsServiceOptions) {
         suspended: false,
         termsVersion: null,
         termsAcceptedAt: null,
+        emailVerifiedAt: null,
+        emailCode: null,
+        rdToken: null,
         lastSeenAt: null,
         signIns: 0,
-        lastClient: typeof input.client === 'string' ? input.client.slice(0, 200) : null,
+        lastClient: clientText(input.client),
       };
       write({ ...ledger, accounts: [...ledger.accounts, record] });
-      return publicAccount(record);
+      return publicAccount(record, now());
     },
 
     /**
-     * Signs in and issues a session token.
-     *
-     * Succeeds for an account that is not yet activated: the holder needs to
-     * be able to sign in and see that they are waiting, rather than being told
-     * their password is wrong. What they cannot do is use TVM — that is
-     * `accountUsable`, checked separately on every request.
+     * Signs in with email and password. Works for an account that is not
+     * switched on yet, so its holder can see they are waiting rather than
+     * being told the password is wrong.
      */
     signIn(input: { email?: unknown; password?: unknown; client?: string | null }): { token: string; account: PublicAccount; usable: ReturnType<typeof accountUsable> } {
       const email = normalizeEmail(input.email);
       const password = typeof input.password === 'string' ? input.password : '';
       const ledger = prune(read());
-      const record = find(ledger, email);
+      const record = findMember(ledger, email);
 
-      // Always do the work, so a missing account and a wrong password take the
-      // same time and cannot be told apart from outside.
+      // Hash either way, so a missing account and a wrong password take the
+      // same time.
       const reference = record ?? {
         passwordHash: hashPassword('never-matches-this').hash,
         passwordSalt: 'x'.repeat(32),
@@ -317,31 +447,51 @@ export function createAccountsService(options: AccountsServiceOptions) {
       const matched = passwordMatches(password, reference);
       if (record === null || !matched) throw new Error('That email address and password do not match.');
 
-      const token = randomBytes(32).toString('hex');
-      const issued = now();
-      const expires = new Date(issued.getTime() + SESSION_DAYS * 86_400_000);
-      const client = typeof input.client === 'string' ? input.client.slice(0, 200) : null;
-
-      const updated: AccountRecord = {
-        ...record,
-        lastSeenAt: issued.toISOString(),
-        signIns: record.signIns + 1,
-        lastClient: client ?? record.lastClient,
+      const opened = openSession(ledger, record, clientText(input.client));
+      write(opened.ledger);
+      return {
+        token: opened.token,
+        account: publicAccount(opened.record, now()),
+        usable: accountUsable(opened.record, termsVersion, emailRequired()),
       };
-      write({
-        ...replace(ledger, updated),
-        sessions: {
-          ...ledger.sessions,
-          [hashToken(token)]: {
-            accountId: record.id,
-            issuedAt: issued.toISOString(),
-            expiresAt: expires.toISOString(),
-            client,
-          },
-        },
-      });
+    },
 
-      return { token, account: publicAccount(updated), usable: accountUsable(updated, termsVersion) };
+    /**
+     * Signs in to the dev account, creating it the first time. The caller
+     * checks the developer code before calling this.
+     */
+    signInDev(input: { client?: string | null } = {}): { token: string; account: PublicAccount; usable: ReturnType<typeof accountUsable> } {
+      const ledger = prune(read());
+      const existing = ledger.accounts.find((entry) => entry.id === DEV_ACCOUNT_ID);
+      const at = now().toISOString();
+      const record: AccountRecord = existing !== undefined
+        ? { ...existing, role: 'dev', activated: true, tier: 'stream-live', suspended: false }
+        : {
+        id: DEV_ACCOUNT_ID,
+        email: DEV_EMAIL,
+        displayName: 'Dev',
+        passwordHash: '',
+        passwordSalt: '',
+        createdAt: at,
+        role: 'dev',
+        activated: true,
+        activatedAt: at,
+        tier: 'stream-live',
+        note: null,
+        suspended: false,
+        termsVersion: null,
+        termsAcceptedAt: null,
+        emailVerifiedAt: null,
+        emailCode: null,
+        rdToken: null,
+        lastSeenAt: null,
+        signIns: 0,
+        lastClient: null,
+      };
+      const base = existing === undefined ? { ...ledger, accounts: [...ledger.accounts, record] } : ledger;
+      const opened = openSession(base, record, clientText(input.client));
+      write(opened.ledger);
+      return { token: opened.token, account: publicAccount(opened.record, now()), usable: accountUsable(opened.record, termsVersion) };
     },
 
     signOut(token: string): void {
@@ -353,17 +503,12 @@ export function createAccountsService(options: AccountsServiceOptions) {
       write({ ...ledger, sessions });
     },
 
-    /** Resolves a token to its account, refreshing last-seen. Null when unknown or expired. */
+    /** The account behind a token, or null when unknown or expired. Refreshes last-seen once a day. */
     resolve(token: string | undefined): AccountRecord | null {
-      if (typeof token !== 'string' || token === '') return null;
-      const ledger = prune(read());
-      const session = ledger.sessions[hashToken(token)];
-      if (session === undefined) return null;
-      const record = ledger.accounts.find((entry) => entry.id === session.accountId) ?? null;
-      if (record === null) return null;
+      const found = lookup(token);
+      if (found === null) return null;
+      const { ledger, record } = found;
       const seen = now().toISOString();
-      // Only rewrite when the day has changed; every request otherwise means a
-      // vault write per request.
       if (record.lastSeenAt === null || record.lastSeenAt.slice(0, 10) !== seen.slice(0, 10)) {
         write(replace(ledger, { ...record, lastSeenAt: seen }));
         return { ...record, lastSeenAt: seen };
@@ -371,28 +516,90 @@ export function createAccountsService(options: AccountsServiceOptions) {
       return record;
     },
 
-    /** Records acceptance of the current terms for this account. */
+    /** The Real-Debrid key to use for this session, if the account has its own. No side effects. */
+    rdTokenFor(token: string | undefined): string | null {
+      return lookup(token)?.record.rdToken ?? null;
+    },
+
+    /** Whether the dev account is signed in anywhere on this machine. */
+    devSignedIn(): boolean {
+      const ledger = prune(read());
+      return Object.values(ledger.sessions).some((session) => session.accountId === DEV_ACCOUNT_ID);
+    },
+
     acceptTerms(accountId: string): PublicAccount {
       const ledger = prune(read());
       const record = ledger.accounts.find((entry) => entry.id === accountId);
       if (record === undefined) throw new Error('No such account.');
       const updated: AccountRecord = { ...record, termsVersion, termsAcceptedAt: now().toISOString() };
       write(replace(ledger, updated));
-      return publicAccount(updated);
+      return publicAccount(updated, now());
     },
 
     usable(record: AccountRecord | null): ReturnType<typeof accountUsable> {
-      return accountUsable(record, termsVersion);
+      return accountUsable(record, termsVersion, emailRequired());
     },
 
-    // ---- Owner-only, behind developer unlock -----------------------------
+    // ---- Email codes ------------------------------------------------------
 
     /**
-     * Every account, newest first, optionally filtered.
-     *
-     * The search is a plain substring over address and name. Anything cleverer
-     * would be guessing at what the owner meant.
+     * Makes a new six-digit code and returns it for the caller to email.
+     * Only a salted digest is stored. One code a minute at most.
      */
+    issueEmailCode(accountId: string): { code: string; email: string; expiresAt: string } {
+      const ledger = prune(read());
+      const record = member(ledger, accountId);
+      if (record.emailVerifiedAt !== null) throw new Error('This email address is already verified.');
+      const at = now();
+      if (record.emailCode !== null) {
+        const wait = EMAIL_CODE_RESEND_SECONDS - Math.floor((at.getTime() - new Date(record.emailCode.sentAt).getTime()) / 1000);
+        if (wait > 0) throw new Error(`Wait ${wait} seconds before asking for another code.`);
+      }
+      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+      const salt = randomBytes(16).toString('hex');
+      const expiresAt = new Date(at.getTime() + EMAIL_CODE_MINUTES * 60_000).toISOString();
+      const emailCode: EmailCode = { digest: codeDigest(code, salt), salt, sentAt: at.toISOString(), expiresAt, attempts: 0 };
+      write(replace(ledger, { ...record, emailCode }));
+      return { code, email: record.email, expiresAt };
+    },
+
+    /** Forgets a code that could not be sent, so the next request is not made to wait. */
+    cancelEmailCode(accountId: string): void {
+      const ledger = prune(read());
+      const record = ledger.accounts.find((entry) => entry.id === accountId);
+      if (record === undefined || record.emailCode === null) return;
+      write(replace(ledger, { ...record, emailCode: null }));
+    },
+
+    verifyEmailCode(accountId: string, input: unknown): PublicAccount {
+      const ledger = prune(read());
+      const record = member(ledger, accountId);
+      if (record.emailVerifiedAt !== null) return publicAccount(record, now());
+      const code = typeof input === 'string' ? input.replace(/\s+/g, '') : '';
+      const pending = record.emailCode;
+      if (pending === null || !codeLive(pending, now())) {
+        if (pending !== null) write(replace(ledger, { ...record, emailCode: null }));
+        throw new Error('That code has expired. Send a new one.');
+      }
+      const expected = Buffer.from(pending.digest, 'hex');
+      const given = Buffer.from(codeDigest(code, pending.salt), 'hex');
+      if (!/^\d{6}$/.test(code) || !timingSafeEqual(expected, given)) {
+        const attempts = pending.attempts + 1;
+        if (attempts >= EMAIL_CODE_ATTEMPTS) {
+          write(replace(ledger, { ...record, emailCode: null }));
+          throw new Error('Too many wrong codes. Send a new one.');
+        }
+        write(replace(ledger, { ...record, emailCode: { ...pending, attempts } }));
+        throw new Error('That code is not right. Check the email and try again.');
+      }
+      const updated: AccountRecord = { ...record, emailVerifiedAt: now().toISOString(), emailCode: null };
+      write(replace(ledger, updated));
+      return publicAccount(updated, now());
+    },
+
+    // ---- Dev only ---------------------------------------------------------
+
+    /** Every member account, newest first. Search is a plain substring over address and name. */
     list(query: { search?: string; state?: 'all' | 'waiting' | 'active' | 'suspended' } = {}): AdminAccount[] {
       const ledger = prune(read());
       const search = (query.search ?? '').trim().toLowerCase();
@@ -403,6 +610,7 @@ export function createAccountsService(options: AccountsServiceOptions) {
       }
       return ledger.accounts
         .filter((account) => {
+          if (account.role === 'dev') return false;
           if (search !== '' && !account.email.includes(search) && !account.displayName.toLowerCase().includes(search)) return false;
           if (state === 'waiting') return !account.activated && !account.suspended;
           if (state === 'active') return account.activated && !account.suspended;
@@ -410,23 +618,14 @@ export function createAccountsService(options: AccountsServiceOptions) {
           return true;
         })
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .map((account) => ({
-          ...publicAccount(account),
-          activatedAt: account.activatedAt,
-          lastSeenAt: account.lastSeenAt,
-          signIns: account.signIns,
-          lastClient: account.lastClient,
-          note: account.note,
-          activeSessions: counts.get(account.id) ?? 0,
-        }));
+        .map((account) => toAdmin(account, counts.get(account.id) ?? 0));
     },
 
-    /** Switches an account on, at a tier. This is the only route to using TVM. */
+    /** Switches an account on at a tier. This is the only route to using TVM. */
     activate(input: { id: string; tier: AccountTier; note?: string | null }): AdminAccount {
       if (!isAccountTier(input.tier)) throw new Error('Choose a valid tier.');
       const ledger = prune(read());
-      const record = ledger.accounts.find((entry) => entry.id === input.id);
-      if (record === undefined) throw new Error('No such account.');
+      const record = member(ledger, input.id);
       const updated: AccountRecord = {
         ...record,
         activated: true,
@@ -436,19 +635,47 @@ export function createAccountsService(options: AccountsServiceOptions) {
         note: input.note === undefined ? record.note : (input.note?.slice(0, 500) ?? null),
       };
       write(replace(ledger, updated));
-      return this.list({ search: updated.email })[0]!;
+      return adminView(ledger, updated);
     },
 
-    /**
-     * Switches an account off without deleting it.
-     *
-     * Its sessions are dropped immediately, so revoking access does not wait
-     * for a token to expire.
-     */
+    /** Turns Live TV on or off for an account that is already switched on. */
+    setLiveTv(id: string, enabled: boolean): AdminAccount {
+      const ledger = prune(read());
+      const record = member(ledger, id);
+      if (!record.activated || record.tier === null) throw new Error('Switch the account on first.');
+      const updated: AccountRecord = { ...record, tier: enabled ? 'stream-live' : 'stream' };
+      write(replace(ledger, updated));
+      return adminView(ledger, updated);
+    },
+
+    /** Saves or clears this account's own Real-Debrid key. */
+    setRdToken(id: string, token: string | null): AdminAccount {
+      const ledger = prune(read());
+      const record = member(ledger, id);
+      const trimmed = typeof token === 'string' ? token.trim() : '';
+      if (trimmed.length > 200 || /\s/.test(trimmed)) throw new Error('That does not look like a Real-Debrid key.');
+      const updated: AccountRecord = { ...record, rdToken: trimmed === '' ? null : trimmed };
+      write(replace(ledger, updated));
+      return adminView(ledger, updated);
+    },
+
+    /** For an address the dev knows is right, or on a machine that cannot send codes. */
+    setEmailVerified(id: string, verified: boolean): AdminAccount {
+      const ledger = prune(read());
+      const record = member(ledger, id);
+      const updated: AccountRecord = {
+        ...record,
+        emailVerifiedAt: verified ? (record.emailVerifiedAt ?? now().toISOString()) : null,
+        emailCode: null,
+      };
+      write(replace(ledger, updated));
+      return adminView(ledger, updated);
+    },
+
+    /** Switches an account off without deleting it. Its sessions end straight away. */
     setSuspended(id: string, suspended: boolean): AdminAccount {
       const ledger = prune(read());
-      const record = ledger.accounts.find((entry) => entry.id === id);
-      if (record === undefined) throw new Error('No such account.');
+      const record = member(ledger, id);
       const updated: AccountRecord = { ...record, suspended, activated: suspended ? false : record.activated };
       const sessions = { ...ledger.sessions };
       if (suspended) {
@@ -456,27 +683,23 @@ export function createAccountsService(options: AccountsServiceOptions) {
           if (session.accountId === id) delete sessions[key];
         }
       }
-      write({ ...replace(ledger, updated), sessions });
-      return this.list({ search: updated.email })[0]!;
+      const next = { ...replace(ledger, updated), sessions };
+      write(next);
+      return adminView(next, updated);
     },
 
     setNote(id: string, note: string | null): AdminAccount {
       const ledger = prune(read());
-      const record = ledger.accounts.find((entry) => entry.id === id);
-      if (record === undefined) throw new Error('No such account.');
+      const record = member(ledger, id);
       const updated: AccountRecord = { ...record, note: note === null ? null : note.slice(0, 500) };
       write(replace(ledger, updated));
-      return this.list({ search: updated.email })[0]!;
+      return adminView(ledger, updated);
     },
 
-    /**
-     * Deletes an account and everything attached to it.
-     *
-     * Needed for a UK GDPR erasure request, which is not optional once real
-     * people have accounts.
-     */
+    /** Deletes an account and its sessions, for a UK GDPR erasure request. */
     erase(id: string): void {
       const ledger = prune(read());
+      if (id === DEV_ACCOUNT_ID) throw new Error('The dev account cannot be erased.');
       const sessions = { ...ledger.sessions };
       for (const [key, session] of Object.entries(sessions)) {
         if (session.accountId === id) delete sessions[key];

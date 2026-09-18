@@ -5,42 +5,38 @@ import { bumpMarkEgg } from '../brand/easterEggs';
 import { TvmMark } from '../brand/TvmMark';
 import {
   acceptTerms,
-  activateAccount,
   fetchAccount,
   fetchTerms,
   fetchTiers,
   registerAccount,
+  sendEmailCode,
   signIn,
+  signInDev,
+  signOut,
+  verifyEmailCode,
   type AccountState,
-  type AccountTier,
   type TermsDocument,
   type TiersResponse,
 } from '../data/account';
-import { formatBillingMoney, unlockDeveloper } from '../data/plan';
+import { formatBillingMoney } from '../data/plan';
 import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { confirmFieldOnEnter, gateFocusKey, useGateRemote } from './gateKeys';
 import './accountGate.css';
 
 /**
- * The door.
+ * The sign-in screen. Nothing in TVM works until an account is signed in,
+ * switched on by the dev and has agreed to the terms, and this is rendered
+ * instead of the app until then. Each state gets its own panel:
  *
- * Nothing in TVM works until an account exists, has been switched on by the
- * owner, and has agreed to the terms. This screen covers all four states that
- * can stand between someone and the app, and says which one they are in rather
- * than failing generically:
- *
- *   signed out            sign in, or ask for an account
- *   awaiting activation   the owner has not switched them on yet
+ *   signed out            sign in, ask for an account, or use the dev account
+ *   email unverified      type in the code we emailed
+ *   awaiting activation   the dev has not switched them on yet
  *   terms required        current terms have not been agreed
  *   suspended             switched off
- *
- * "Awaiting activation" is the common one and the one worth getting right. It
- * is not an error and must not read like a fault in the app — the person has
- * done everything correctly and is waiting on a human.
  */
 
-type Mode = 'signin' | 'register';
+type Mode = 'signin' | 'register' | 'dev';
 
 export interface AccountGateProps {
   state: AccountState;
@@ -58,8 +54,7 @@ function Prices({ tiers }: { tiers: TiersResponse }): React.JSX.Element {
             {tier.monthlyPence !== null && (
               <span className="gate-price__amount">
                 {formatBillingMoney(tier.monthlyPence)}<span>/month</span>
-                {/* Both tiers cost the same monthly figure, so without this the first
-                    screen anyone sees quoted one price for two different things. */}
+                {/* Both tiers share the monthly figure; Live TV is what differs. */}
                 {tier.liveTvTerms.length > 0 && (
                   <span className="gate-price__plus">
                     plus Live TV from{' '}
@@ -104,127 +99,6 @@ function GateMark(): React.JSX.Element {
   );
 }
 
-/**
- * The owner's way in, reached by tapping the mark seven times.
- *
- * Activation lives in developer mode, and developer mode is a screen, but the
- * gate renders instead of the screens. On a fresh install the owner would
- * otherwise be stranded. The form is not advertised; anyone who is not the
- * owner just waits.
- */
-function OwnerUnlock({ accountId, onDone }: { accountId: string; onDone: () => void }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-  const [code, setCode] = useState('');
-  const [unlocked, setUnlocked] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const unlock = async (value: string): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await unlockDeveloper(value);
-      if (!result.unlocked) {
-        setError(result.error ?? 'That code is not valid.');
-        return;
-      }
-      setCode('');
-      setUnlocked(true);
-      // The field that held focus is gone; a remote needs somewhere to be.
-      window.setTimeout(() => requestFocus(gateFocusKey('owner-stream')), 0);
-    } catch {
-      setError('That could not be checked. Is TVM still running?');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const activate = async (tier: AccountTier): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    try {
-      await activateAccount({ id: accountId, tier });
-      onDone();
-    } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : 'That account could not be switched on.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  useEffect(() => {
-    const onDoor = (): void => {
-      setOpen(true);
-      window.setTimeout(() => requestFocus(gateFocusKey('owner-code')), 0);
-    };
-    window.addEventListener('tvm:secret-door', onDoor);
-    return () => window.removeEventListener('tvm:secret-door', onDoor);
-  }, []);
-
-  if (!open) return <div className="gate__owner" hidden />;
-
-  return (
-    <div className="gate__owner gate__owner--open">
-      <h2 className="gate__owner-title">Owner access</h2>
-      {!unlocked ? (
-        <>
-          <p className="gate__owner-lede">
-            Enter the developer code to switch this account on. Everyone else should
-            ask the owner instead.
-          </p>
-          <form
-            className="gate__form"
-            noValidate
-            onKeyDown={confirmFieldOnEnter}
-            onSubmit={(event) => { event.preventDefault(); if (!busy && code !== '') void unlock(code); }}
-          >
-            <label className="gate__field">
-              <span>Developer code</span>
-              <FocusField
-                id="owner-code"
-                type="password"
-                name="owner-code"
-                autoComplete="off"
-                enterKeyHint="go"
-                value={code}
-                onChange={setCode}
-                onConfirm={(value) => { if (!busy && value !== '') void unlock(value); }}
-                placeholder="Developer code"
-              />
-            </label>
-            {error !== null && <p className="gate__error" role="alert">{error}</p>}
-            <div className="gate__actions">
-              <FocusButton id="owner-go" variant="primary" disabled={busy || code === ''} onSelect={() => void unlock(code)}>
-                {busy ? 'Checking…' : 'Unlock'}
-              </FocusButton>
-              <FocusButton id="owner-cancel" disabled={busy} onSelect={() => { setOpen(false); setError(null); setCode(''); }}>
-                Cancel
-              </FocusButton>
-            </div>
-            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
-          </form>
-        </>
-      ) : (
-        <>
-          <p className="gate__owner-lede">
-            Developer mode is on. Choose what this account gets; you can change it later
-            from Developer → Accounts.
-          </p>
-          {error !== null && <p className="gate__error" role="alert">{error}</p>}
-          <div className="gate__actions">
-            <FocusButton id="owner-stream" variant="primary" disabled={busy} onSelect={() => void activate('stream')}>
-              Movies and TV shows
-            </FocusButton>
-            <FocusButton id="owner-live" disabled={busy} onSelect={() => void activate('stream-live')}>
-              Movies, TV shows and Live TV
-            </FocusButton>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function TermsBody({ terms }: { terms: TermsDocument }): React.JSX.Element {
   return (
     <div className="gate-terms" role="document" tabIndex={0}>
@@ -244,40 +118,31 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [devCode, setDevCode] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [terms, setTerms] = useState<TermsDocument | null>(null);
   const [tiers, setTiers] = useState<TiersResponse | null>(null);
   const pageRef = useRef<HTMLElement>(null);
-  // State updates are asynchronous, so `busy` alone lets a double press (or
-  // Enter plus a click) send two registrations before the first re-render.
+  // `busy` only updates on the next render, so a double press could otherwise
+  // send two requests.
   const inFlight = useRef(false);
 
   useEffect(() => bindKeyboardFields(pageRef.current), [state.usable.reason, mode]);
 
-  /*
-   * Signing out returns you to the sign-in form.
-   *
-   * It did not. The mode, the typed values and the last notice all outlived the
-   * session that produced them, so signing out landed on "Ask for an account" —
-   * pre-filled with the name and address of the account you had just left,
-   * under a green "Account created" from the last time you pressed the button.
-   * Press it again and the answer is "That account could not be created", which
-   * is a truthful reply to a question nobody asked and reads exactly like the
-   * sign-in being broken. The only way back was to spot "I already have an
-   * account" among all that.
-   *
-   * The address goes too. This is a television in a living room as often as it
-   * is a laptop, and the next person to walk up should not be shown the last
-   * person's email.
-   */
+  // Signing out goes back to a clean sign-in form. On a shared television the
+  // next person should not see the last person's address, or a notice meant
+  // for them.
   useEffect(() => {
     if (state.signedIn) return;
     setMode('signin');
     setEmail('');
     setPassword('');
     setDisplayName('');
+    setDevCode('');
+    setEmailCode('');
     setNotice(null);
     setMessage(null);
   }, [state.signedIn]);
@@ -289,23 +154,14 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     return () => { cancelled = true; };
   }, []);
 
-  const submit = async (): Promise<void> => {
+  /** Runs one request at a time and shows its error, if any. */
+  const run = async (work: () => Promise<void>): Promise<void> => {
     if (busy || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
-    setNotice(null);
     try {
-      if (mode === 'register') {
-        await registerAccount({ email, password, displayName });
-        // Sign straight in so they land on "waiting to be switched on" rather
-        // than a form they have just filled in.
-        onChanged(await signIn({ email, password }));
-        setNotice('Account created. It needs to be switched on by the app owner before you can watch anything.');
-      } else {
-        onChanged(await signIn({ email, password }));
-      }
-      setPassword('');
+      await work();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'That did not work. Please try again.');
     } finally {
@@ -314,20 +170,47 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     }
   };
 
-  const agree = async (): Promise<void> => {
-    if (busy || inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setMessage(null);
-    try {
-      onChanged(await acceptTerms());
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'That could not be recorded. Please try again.');
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
+  const submit = (): Promise<void> => run(async () => {
+    setNotice(null);
+    if (mode === 'register') {
+      await registerAccount({ email, password, displayName });
+      // Straight in, so they land on the next step rather than a form they
+      // have just filled in.
+      onChanged(await signIn({ email, password }));
+    } else {
+      onChanged(await signIn({ email, password }));
     }
-  };
+    setPassword('');
+  });
+
+  const submitDev = (code: string): Promise<void> => run(async () => {
+    if (code.trim() === '') throw new Error('Enter the dev code.');
+    onChanged(await signInDev(code.trim()));
+    setDevCode('');
+  });
+
+  const confirmEmail = (code: string): Promise<void> => run(async () => {
+    const digits = code.replace(/\s+/g, '');
+    if (!/^\d{6}$/.test(digits)) throw new Error('The code is the six digits in the email.');
+    onChanged(await verifyEmailCode(digits));
+    setEmailCode('');
+  });
+
+  const resendEmail = (): Promise<void> => run(async () => {
+    setNotice(null);
+    await sendEmailCode();
+    setNotice(`A new code is on its way to ${state.account?.email ?? 'your inbox'}.`);
+    window.setTimeout(() => requestFocus(gateFocusKey('gate-code')), 0);
+  });
+
+  const agree = (): Promise<void> => run(async () => {
+    onChanged(await acceptTerms());
+  });
+
+  const leave = (): Promise<void> => run(async () => {
+    await signOut();
+    onChanged(await fetchAccount());
+  });
 
   const reason = state.usable.reason;
   const panel = !state.signedIn
@@ -335,17 +218,25 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     : reason === 'terms_required' && terms !== null
       ? 'terms'
       : reason ?? 'ready';
-  const switchMode = (): void => {
-    setMode(mode === 'signin' ? 'register' : 'signin');
+  const switchMode = (next: Mode): void => {
+    setMode(next);
     setMessage(null);
     setNotice(null);
   };
+  const firstFocus = (): string => {
+    if (panel === 'terms') return 'agree';
+    if (panel === 'email_unverified') return 'gate-code';
+    if (state.signedIn) return 'recheck';
+    if (mode === 'register') return 'gate-name';
+    if (mode === 'dev') return 'gate-dev-code';
+    return 'gate-email';
+  };
   useGateRemote({
     panel,
-    first: panel === 'terms' ? 'agree' : state.signedIn ? 'recheck' : mode === 'register' ? 'gate-name' : 'gate-email',
-    // Back from "Ask for an account" returns to signing in; elsewhere it has
-    // nowhere to go, because there is nothing behind the door.
-    onBack: !state.signedIn && mode === 'register' ? switchMode : undefined,
+    first: firstFocus(),
+    // Back from "Ask for an account" or the dev code returns to signing in.
+    // Anywhere else there is nothing behind the door to go back to.
+    onBack: !state.signedIn && mode !== 'signin' ? () => switchMode('signin') : undefined,
   });
   /** Enter in one field moves to the next; in the last one it submits. */
   const next = (id: string) => (): void => requestFocus(gateFocusKey(id));
@@ -371,7 +262,61 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     );
   }
 
-  // ---- Waiting on the owner ---------------------------------------------
+  // ---- The emailed code -------------------------------------------------
+  if (state.signedIn && reason === 'email_unverified') {
+    const address = state.account?.email ?? 'your email address';
+    return (
+      <main ref={pageRef} className="gate" data-keyboard-fields="">
+        <div className="gate__panel">
+          <GateMark />
+          <h1>Check your email</h1>
+          <p className="gate__lede">
+            {state.account?.emailCodeSent === true
+              ? `We sent a six-digit code to ${address}. Type it in to confirm the address is yours. It works for 15 minutes.`
+              : `We need to send a code to ${address} to confirm it's yours. Ask for one below.`}
+          </p>
+          {notice !== null && <p className="gate__notice" role="status">{notice}</p>}
+          {message !== null && <p className="gate__error" role="alert">{message}</p>}
+          <form
+            className="gate__form"
+            noValidate
+            onKeyDown={confirmFieldOnEnter}
+            onSubmit={(event) => { event.preventDefault(); void confirmEmail(emailCode); }}
+          >
+            <label className="gate__field">
+              <span>Code</span>
+              <FocusField
+                id="gate-code"
+                name="one-time-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                enterKeyHint="go"
+                value={emailCode}
+                onChange={setEmailCode}
+                onConfirm={(value) => void confirmEmail(value)}
+                afterPasteFocusId="gate-code-submit"
+                placeholder="123456"
+              />
+            </label>
+            <div className="gate__actions">
+              <FocusButton id="gate-code-submit" variant="primary" disabled={busy} onSelect={() => void confirmEmail(emailCode)}>
+                {busy ? 'Checking…' : 'Confirm'}
+              </FocusButton>
+              <FocusButton id="gate-code-resend" disabled={busy} onSelect={() => void resendEmail()}>
+                {state.account?.emailCodeSent === true ? 'Send a new code' : 'Send the code'}
+              </FocusButton>
+              <FocusButton id="signout" disabled={busy} onSelect={() => void leave()}>
+                Sign out
+              </FocusButton>
+            </div>
+            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
+          </form>
+        </div>
+      </main>
+    );
+  }
+
+  // ---- Waiting on the dev -----------------------------------------------
   if (state.signedIn && (reason === 'awaiting_activation' || reason === 'suspended')) {
     const suspended = reason === 'suspended';
     return (
@@ -390,31 +335,63 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
               app owner and ask them to activate it.
             </p>
           )}
+          {message !== null && <p className="gate__error" role="alert">{message}</p>}
           <div className="gate__actions">
             <FocusButton id="recheck" variant="primary" disabled={busy} onSelect={() => { void fetchAccount().then(onChanged); }}>
               Check again
             </FocusButton>
-            <FocusButton id="signout" onSelect={() => { void (async () => { const { signOut } = await import('../data/account'); await signOut(); onChanged(await fetchAccount()); })(); }}>
+            <FocusButton id="signout" disabled={busy} onSelect={() => void leave()}>
               Sign out
             </FocusButton>
           </div>
-          {/*
-            * Above the price list, not below it.
-            *
-            * This is the owner's only way into their own app on a fresh
-            * install, and it was the last thing on a panel 1380px tall — about
-            * 600px below the fold on a laptop, past the prices and the "access
-            * is arranged with the app owner" notice. Quiet is right; buried is
-            * not, and the person who cannot find it is the one person who needs
-            * it.
-            */}
-          {state.account !== null && (
-            <OwnerUnlock
-              accountId={state.account.id}
-              onDone={() => { void fetchAccount().then(onChanged); }}
-            />
-          )}
           {tiers !== null && !suspended && <Prices tiers={tiers} />}
+        </div>
+      </main>
+    );
+  }
+
+  // ---- The dev account ---------------------------------------------------
+  if (!state.signedIn && mode === 'dev') {
+    return (
+      <main ref={pageRef} className="gate" data-keyboard-fields="">
+        <div className="gate__panel">
+          <GateMark />
+          <h1>Dev account</h1>
+          <p className="gate__lede">
+            Enter the dev code to sign in to the dev account. Dev mode stays on until you sign out.
+          </p>
+          {message !== null && <p className="gate__error" role="alert">{message}</p>}
+          <form
+            className="gate__form"
+            noValidate
+            onKeyDown={confirmFieldOnEnter}
+            onSubmit={(event) => { event.preventDefault(); void submitDev(devCode); }}
+          >
+            <label className="gate__field">
+              <span>Dev code</span>
+              <FocusField
+                id="gate-dev-code"
+                type="password"
+                name="dev-code"
+                autoComplete="off"
+                enterKeyHint="go"
+                value={devCode}
+                onChange={setDevCode}
+                onConfirm={(value) => void submitDev(value)}
+                afterPasteFocusId="gate-dev-submit"
+                placeholder="Dev code"
+              />
+            </label>
+            <div className="gate__actions">
+              <FocusButton id="gate-dev-submit" variant="primary" disabled={busy} onSelect={() => void submitDev(devCode)}>
+                {busy ? 'Checking…' : 'Sign in'}
+              </FocusButton>
+              <FocusButton id="gate-dev-back" disabled={busy} onSelect={() => switchMode('signin')}>
+                Back
+              </FocusButton>
+            </div>
+            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
+          </form>
         </div>
       </main>
     );
@@ -429,16 +406,16 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
         <p className="gate__lede">
           {mode === 'signin'
             ? 'TVM is not open to the public. Sign in with the account the app owner set up for you.'
-            : 'Creating an account does not give you access on its own. The app owner switches accounts on by hand.'}
+            : state.canSendEmail === true
+              ? "We'll email you a code to confirm your address. After that the app owner switches the account on by hand."
+              : 'Creating an account does not give you access on its own. The app owner switches accounts on by hand.'}
         </p>
 
         {notice !== null && <p className="gate__notice" role="status">{notice}</p>}
         {message !== null && <p className="gate__error" role="alert">{message}</p>}
 
-        {/*
-          * A real form, so the phone keyboard's Go key and a desktop's Enter
-          * both sign in. It never navigates: submit is always intercepted.
-          */}
+        {/* A real form, so a phone's Go key and a desktop's Enter both sign
+            in. Submit is always intercepted, so it never navigates. */}
         <form
           className="gate__form"
           noValidate
@@ -496,9 +473,14 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
             <FocusButton id="gate-submit" variant="primary" disabled={busy} onSelect={() => void submit()}>
               {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
             </FocusButton>
-            <FocusButton id="gate-switch" disabled={busy} onSelect={switchMode}>
+            <FocusButton id="gate-switch" disabled={busy} onSelect={() => switchMode(mode === 'signin' ? 'register' : 'signin')}>
               {mode === 'signin' ? 'I need an account' : 'I already have an account'}
             </FocusButton>
+            {mode === 'signin' && (
+              <FocusButton id="gate-dev" disabled={busy} onSelect={() => switchMode('dev')}>
+                I'm a dev
+              </FocusButton>
+            )}
           </div>
           <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
         </form>

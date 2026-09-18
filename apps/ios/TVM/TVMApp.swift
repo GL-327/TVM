@@ -35,10 +35,13 @@ final class StandaloneRuntime: ObservableObject {
 
     func start() async {
         guard session == nil || starting else { return }
-        // Local only, and instant: an interface staged on the last run goes live
-        // now, and one left over from a different app build is dropped. The
-        // launch used to wait here on a GitHub download of up to 90 seconds.
+        // An interface staged on the last run goes live now; one left over from
+        // a different app build is dropped. Then we give GitHub a short window
+        // to replace the copy that shipped in the IPA, so the first page is
+        // already current. If the network is slow we still open, and reload
+        // when the download finishes.
         TVMBundledUI.prepare(store: core.store)
+        await TVMUpdater.waitForLaunchApply(store: core.store, session: TVMUpdater.downloadSession())
         do {
             let server = TVMLocalServer(core: core)
             try server.start()
@@ -49,13 +52,6 @@ final class StandaloneRuntime: ObservableObject {
             self.error = "TVM could not start its on-device core."
         }
         starting = false
-        // Look for a newer interface while the first page loads. If GitHub has
-        // one, put it on disk and reload so this open is not stuck on the copy
-        // that shipped in the IPA.
-        let store = core.store
-        Task.detached(priority: .utility) {
-            _ = await TVMUpdater.applyIfNeeded(store: store, session: TVMUpdater.downloadSession())
-        }
     }
 
     func useLocal() {

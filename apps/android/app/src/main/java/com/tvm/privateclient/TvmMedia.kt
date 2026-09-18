@@ -435,6 +435,11 @@ class TvmMedia(
         store.clearCacheFiles()
     }
 
+    /** A different Real-Debrid key is in use; its library is not this one. */
+    fun forgetLibrary() {
+        synchronized(lock) { libraryCache = null }
+    }
+
     private suspend fun probeAuth(): JSONObject? {
         if (!rd.configured()) return Json.obj("kind" to "unavailable", "reason" to "not-configured")
         val status: RdStatus = rd.status()

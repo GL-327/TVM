@@ -93,9 +93,24 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
     var testToken: String? = null
     var ignoreKeychain: Boolean = false
 
+    /** The signed-in account's own key. It wins over the one saved on the phone. */
+    @Volatile
+    private var accountToken: String? = null
+
+    /** Returns true when the key in use changed, so cached library data is stale. */
+    fun useAccountToken(token: String?): Boolean {
+        val next = token?.trim()?.ifEmpty { null }
+        if (next == accountToken) return false
+        accountToken = next
+        return true
+    }
+
+    fun hasAccountToken(): Boolean = accountToken != null
+
     fun configured(): Boolean = tokenValue() != null
 
     fun tokenValue(): String? {
+        accountToken?.let { return it }
         if (ignoreKeychain) return testToken
         val injected = testToken
         if (injected != null && injected.isNotEmpty()) return injected

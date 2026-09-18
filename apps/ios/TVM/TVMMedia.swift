@@ -393,6 +393,13 @@ final class TVMMedia {
         store.clearCacheFiles()
     }
 
+    /// A different Real-Debrid key is in use; its library is not this one.
+    func forgetLibrary() {
+        lock.lock()
+        libraryCache = nil
+        lock.unlock()
+    }
+
     private let hubSeeds: [String: [String]] = [
         "netflix": ["tt4574334", "tt0903747", "tt1375666"],
         "prime": ["tt8111088", "tt1160419", "tt10872600"],
