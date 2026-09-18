@@ -9,6 +9,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   'needs-auth': 'Real-Debrid rejected the saved token. Reconnect Real-Debrid and paste a new one.',
   'not-configured': 'Real-Debrid is not connected. Open the connection settings and paste a token.',
   'hours-cap': 'This account has reached its weekly watch limit. Contact the app owner.',
+  'live-server-offline': 'Live TV on this device comes through the TVM the dev account runs, and nobody is signed in to it as dev right now. Try again once they are.',
   /*
    * Live TV upstream failures, named rather than collapsed. "Playback failed"
    * read identically whether the subscription was rejected, the channel path

@@ -4,6 +4,7 @@ import { imdbScore } from './playId';
 import { normalizeTitle, titlesMatch } from './matchTitle';
 import { asSeason } from './seasons';
 import { createRequestCache } from './requestCache';
+import { readToken } from './sessionToken';
 
 export { normalizeTitle };
 
@@ -35,6 +36,8 @@ export interface RdStatus {
   username: string | null;
   premium: boolean;
   error: string | null;
+  /** Whose key is in use: the account's own, or the one saved on this machine. */
+  source?: 'account' | 'device' | null;
 }
 
 export interface CatalogRail {
@@ -219,6 +222,10 @@ export function setActiveProfileId(id: string): void {
 export function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (activeProfileId !== '') headers.set('X-TVM-Profile', activeProfileId);
+  // Core needs to know whose request this is, for one: an account can have
+  // its own Real-Debrid key.
+  const token = readToken();
+  if (token !== null && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
   return fetch(input, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(20_000) });
 }
 

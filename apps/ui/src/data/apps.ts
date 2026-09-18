@@ -1,5 +1,5 @@
 import { APPS, MORE_APPS, TITLES, TVM_STREAM, type AppTile } from './catalog';
-import { toMediaItem } from './media';
+import { apiFetch, toMediaItem } from './media';
 
 export const MOCK_APP_IDS = ['netflix', 'prime', 'max', 'appletv', 'disney', 'hulu', 'peacock'] as const;
 export type MockAppId = (typeof MOCK_APP_IDS)[number];
@@ -79,7 +79,7 @@ export function searchApps(query: string, catalog: AppsCatalog = fallbackApps())
 
 export async function fetchApps(): Promise<AppsCatalog> {
   try {
-    const response = await fetch('/api/apps');
+    const response = await apiFetch('/api/apps');
     if (!response.ok) return fallbackApps();
     const body = (await response.json()) as { ribbon?: unknown; grid?: unknown };
     const ribbon = Array.isArray(body.ribbon) ? body.ribbon.map((entry) => asTile(entry as AppTile)) : [];
@@ -152,7 +152,7 @@ export function fallbackAppHub(id: string): AppHubPayload {
 
 async function loadAppHub(id: string): Promise<AppHubPayload> {
   try {
-    const response = await fetch(`/api/apps/${encodeURIComponent(id)}`);
+    const response = await apiFetch(`/api/apps/${encodeURIComponent(id)}`);
     if (response.ok) {
       const payload = (await response.json()) as AppHubPayload;
       hubCache.set(id, payload);

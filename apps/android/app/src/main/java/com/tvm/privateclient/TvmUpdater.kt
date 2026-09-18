@@ -319,7 +319,7 @@ fun interface TvmHttp {
                 connection.connectTimeout = timeoutMs
                 connection.readTimeout = timeoutMs
                 connection.useCaches = false
-                connection.setRequestProperty("User-Agent", "tvm-android")
+                connection.setRequestProperty("User-Agent", "TVM/1.0 (Android; +https://github.com/GL-327/TVM)")
                 connection.setRequestProperty("Accept-Encoding", "identity")
                 try {
                     lastStatus = connection.responseCode
@@ -354,9 +354,8 @@ fun interface TvmHttp {
 
 /**
  * Keeps the bundled interface current from GitHub, from the manifest published
- * next to the bundle on the `android-ui` release. Nothing blocks the launch: a
- * newer bundle is put in place as soon as it verifies, and the activity reloads
- * so this open is not left on the copy that shipped in the APK.
+ * next to the bundle on the `android-ui` release. Launch waits a few seconds
+ * for that download so the first page is already the GitHub copy.
  */
 class TvmUpdater(
     private val store: TvmStore,
@@ -460,22 +459,52 @@ class TvmUpdater(
         val (status, body) = try {
             http.get(downloadUrl(MANIFEST_NAME), 15_000)
         } catch (_: Exception) {
-            return Fetched.Problem("failed", "Could not reach GitHub. Check the connection and try again.")
+            return fetchManifestFromApi() ?: Fetched.Problem("failed", "Could not reach GitHub. Check the connection and try again.")
         }
         return when {
             status == 404 -> Fetched.Problem("no_release", "No Android interface is published on GitHub yet.")
             status == 429 -> Fetched.Problem("rate_limited", "GitHub rate-limited this check. Try again in a few minutes.")
-            status == 401 || status == 403 -> Fetched.Problem("auth_required", "GitHub refused this check.")
-            status !in 200..299 -> Fetched.Problem("failed", "GitHub answered $status. Try again later.")
+            status == 401 || status == 403 -> fetchManifestFromApi()
+                ?: Fetched.Problem("auth_required", "GitHub refused this check.")
+            status !in 200..299 -> fetchManifestFromApi()
+                ?: Fetched.Problem("failed", "GitHub answered $status. Try again later.")
             else -> {
                 val manifest = Manifest.parse(runCatching { JSONObject(body.toString(Charsets.UTF_8)) }.getOrNull())
-                if (manifest == null) {
-                    Fetched.Problem("failed", "The update information on GitHub was incomplete.")
-                } else {
+                if (manifest != null) {
                     Fetched.Found(manifest)
+                } else {
+                    fetchManifestFromApi()
+                        ?: Fetched.Problem("failed", "The update information on GitHub was incomplete.")
                 }
             }
         }
+    }
+
+    private fun fetchManifestFromApi(): Fetched.Found? {
+        val (status, body) = try {
+            http.get("https://api.github.com/repos/$REPO/releases/tags/$RELEASE_TAG", 15_000)
+        } catch (_: Exception) {
+            return null
+        }
+        if (status !in 200..299) return null
+        val assets = runCatching { JSONObject(body.toString(Charsets.UTF_8)).optJSONArray("assets") }.getOrNull() ?: return null
+        var fileUrl: String? = null
+        for (index in 0 until assets.length()) {
+            val row = assets.optJSONObject(index) ?: continue
+            if (row.text("name") == MANIFEST_NAME) {
+                fileUrl = row.text("browser_download_url")
+                break
+            }
+        }
+        if (fileUrl.isNullOrEmpty()) return null
+        val fetched = try {
+            http.get(fileUrl, 15_000)
+        } catch (_: Exception) {
+            return null
+        }
+        if (fetched.first !in 200..299) return null
+        val manifest = Manifest.parse(runCatching { JSONObject(fetched.second.toString(Charsets.UTF_8)) }.getOrNull())
+        return manifest?.let { Fetched.Found(it) }
     }
 
     /** Checks GitHub and records the answer; the manifest comes back only when it is worth applying. */

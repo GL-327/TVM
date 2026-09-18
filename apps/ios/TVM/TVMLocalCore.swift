@@ -65,6 +65,11 @@ final class TVMLocalCore {
     func handle(method: String, path: String, query: [String: String], headers: [String: String], body: Data?) async -> HTTPReply {
         media.applyProfileHeader(headers["x-tvm-profile"])
         let json = JSONValue.object(body)
+        // An account's own Real-Debrid key wins over the one saved on the phone.
+        // Skipped for stream segments and artwork, which never touch it.
+        if !path.hasPrefix("/api/live/proxy/") && path != "/api/art" {
+            if rd.useAccountToken(accounts.rdTokenFor(token: bearerToken(headers))) { media.forgetLibrary() }
+        }
 
         if path == "/api/health" && method == "GET" {
             return .json(200, [
@@ -109,14 +114,22 @@ final class TVMLocalCore {
             return .json(200, ["configured": false])
         }
         if path == "/api/rd/status" && method == "GET" {
-            return .json(200, (await media.status()).json())
+            return .json(200, rdStatusJSON(await media.status()))
         }
         if path == "/api/rd/configured" && method == "GET" {
             return .json(200, ["configured": rd.configured()])
         }
         if path == "/api/rd/token" && method == "PUT" {
             guard let token = json["token"] as? String else { return .json(400, ["error": "token must be a string"]) }
-            do { return .json(200, (try await media.setToken(token)).json()) }
+            // A member's key goes on their account. The dev's key is the phone's.
+            if let me = accounts.resolve(token: bearerToken(headers)), !me.isDev {
+                if case .failure(let error) = accounts.setRdToken(id: me.id, token: token) {
+                    return .json(400, ["error": error.message])
+                }
+                if rd.useAccountToken(accounts.rdTokenFor(token: bearerToken(headers))) { media.forgetLibrary() }
+                return .json(200, rdStatusJSON(await media.status()))
+            }
+            do { return .json(200, rdStatusJSON(try await media.setToken(token))) }
             catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "token rejected"]) }
         }
         if path == "/api/profiles" && method == "GET" { return .json(200, media.profilesJSON()) }
@@ -266,8 +279,21 @@ final class TVMLocalCore {
             case .failure(let error): return .json(401, ["error": error.message])
             }
         }
+        // The dev account. The developer code is its password, and signing in
+        // turns developer mode on.
+        if path == "/api/account/dev" && method == "POST" {
+            let code = ((json["code"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard TVMDevUnlock.verify(code) else { return .json(403, ["error": "That code is not valid."]) }
+            plans.setDeveloper(true)
+            return .json(200, accounts.signInDev(client: headers["user-agent"]))
+        }
         if path == "/api/account/signout" && method == "POST" {
-            if let token = bearerToken(headers) { accounts.signOut(token: token) }
+            if let token = bearerToken(headers) {
+                let leaving = accounts.resolve(token: token)
+                accounts.signOut(token: token)
+                // Developer mode goes with the dev account's last session.
+                if leaving?.isDev == true && !accounts.devSignedIn() { plans.setDeveloper(false) }
+            }
             return .json(200, ["ok": true])
         }
         if path == "/api/account" && method == "GET" {
@@ -277,15 +303,22 @@ final class TVMLocalCore {
                     "signedIn": false, "account": NSNull(),
                     "usable": ["ok": false, "reason": "no_account"],
                     "termsVersion": version,
+                    "canSendEmail": false,
                 ])
             }
+            if account.isDev && !plans.developer() { plans.setDeveloper(true) }
             applyAccountTier(account)
             return .json(200, [
                 "signedIn": true,
                 "account": account.publicJSON(),
                 "usable": TVMAccounts.usable(account, termsVersion: version),
                 "termsVersion": version,
+                "canSendEmail": false,
             ])
+        }
+        // Phones do not send email; the desktop TVM does.
+        if (path == "/api/account/email/send" || path == "/api/account/email/verify") && method == "POST" {
+            return .json(503, ["error": "This phone cannot send email. Ask the dev to switch your account on."])
         }
         if path == "/api/account/terms" && method == "POST" {
             guard let account = accounts.resolve(token: bearerToken(headers)),
@@ -296,7 +329,7 @@ final class TVMLocalCore {
             return .json(200, body)
         }
 
-        // Owner only, checked here rather than by hiding the route.
+        // Dev mode only, checked here rather than by hiding the route.
         if path == "/api/admin/accounts" && method == "GET" {
             guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
             return .json(200, accounts.list(search: query["search"], state: query["state"]))
@@ -330,6 +363,35 @@ final class TVMLocalCore {
             guard let id = json["id"] as? String else { return .json(400, ["error": "Choose an account."]) }
             accounts.erase(id: id)
             return .json(200, ["ok": true])
+        }
+        if path == "/api/admin/accounts/live-tv" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String, let enabled = json["enabled"] as? Bool else {
+                return .json(400, ["error": "Choose an account."])
+            }
+            return adminReply(accounts.setLiveTv(id: id, enabled: enabled))
+        }
+        if path == "/api/admin/accounts/rd" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String, let token = json["token"] as? String else {
+                return .json(400, ["error": "Choose an account."])
+            }
+            return adminReply(accounts.setRdToken(id: id, token: token))
+        }
+        if path == "/api/admin/accounts/verify" && method == "POST" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard let id = json["id"] as? String else { return .json(400, ["error": "Choose an account."]) }
+            return adminReply(accounts.setEmailVerified(id: id, verified: (json["verified"] as? Bool) ?? true))
+        }
+        if path == "/api/admin/mail" || path == "/api/admin/mail/test" {
+            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            if method == "GET" {
+                return .json(200, [
+                    "configured": false, "supported": false, "host": NSNull(), "port": NSNull(),
+                    "security": NSNull(), "username": NSNull(), "from": NSNull(),
+                ])
+            }
+            return .json(501, ["error": "Set email up on the desktop TVM. Phones do not send it."])
         }
 
         if path == "/api/dev/status" && method == "GET" { return .json(200, ["unlocked": plans.developer()]) }
@@ -479,10 +541,41 @@ final class TVMLocalCore {
         return nil
     }
 
+    /// DW News, straight from Deutsche Welle. Same test channel as apps/core/src/providers/live.ts.
+    static let testChannelURL = "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8"
+
+    /// A real live broadcast for checking the proxy with. Dev account only.
+    private func testChannels() -> [[String: Any]] {
+        guard plans.developer() else { return [] }
+        return [["id": "live:test:dw-news", "name": "DW News", "url": TVMLocalCore.testChannelURL, "group": "Test", "logo": ""]]
+    }
+
+    private func adminReply(_ result: Result<[String: Any], TVMAccountError>) -> HTTPReply {
+        switch result {
+        case .success(let body): return .json(200, body)
+        case .failure(let error): return .json(400, ["error": error.message])
+        }
+    }
+
+    /// Whose key this is: the account's own, or the one saved on the phone.
+    private func rdStatusJSON(_ status: RdStatus) -> [String: Any] {
+        var out = status.json()
+        let source: Any
+        if rd.hasAccountToken() {
+            source = "account"
+        } else if status.configured {
+            source = "device"
+        } else {
+            source = NSNull()
+        }
+        out["source"] = source
+        return out
+    }
+
     // Native VLC handles HLS, raw MPEG-TS and extensionless provider streams.
     private func playLive(_ id: String) async -> HTTPReply {
         guard plans.status()["liveTv"] as? Bool == true else { return .json(409, ["kind": "unavailable", "reason": "Live TV requires the Live TV add-on."]) }
-        guard let channel = liveChannels.first(where: { $0["id"] as? String == id }),
+        guard let channel = (testChannels() + liveChannels).first(where: { $0["id"] as? String == id }),
               let raw = channel["url"] as? String, let url = URL(string: raw),
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
             return .json(409, ["kind": "unavailable", "reason": "not-in-library"])
@@ -500,7 +593,7 @@ final class TVMLocalCore {
             "host": JSONValue.orNull(liveHost),
             "username": JSONValue.orNull(liveUser),
             "configured": liveURL != nil || liveHost != nil,
-            "channels": liveChannels.prefix(48).map { channel in
+            "channels": (testChannels() + Array(liveChannels.prefix(48))).map { channel in
                 var card = channel
                 card["picked"] = livePicks.contains(channel["id"] as? String ?? "")
                 card.removeValue(forKey: "url")

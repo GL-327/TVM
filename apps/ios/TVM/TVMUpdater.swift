@@ -327,9 +327,9 @@ enum TVMChangelog {
  commit that produced no new bundle: every check said "update available",
  every apply fetched the same bundle, and the page reloaded forever.
 
- Nothing here blocks the launch. A newer bundle is put in place as soon as
- it verifies, and the shell reloads the page so the old interface is not
- left on screen until the next open.
+ Launch waits a few seconds for that download so the first page is already
+ the GitHub copy. If the network is slow the bundled interface still opens,
+ and the shell reloads when the download finishes.
  */
 extension Notification.Name {
     /// The on-device core put a new interface on disk. The web view should reload.
@@ -413,7 +413,7 @@ enum TVMUpdater {
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpAdditionalHeaders = [
-            "User-Agent": "tvm-ios",
+            "User-Agent": "TVM/1.0 (iOS; +https://github.com/GL-327/TVM)",
             "Accept-Encoding": "identity",
         ]
         return URLSession(configuration: configuration)
@@ -456,28 +456,74 @@ enum TVMUpdater {
         case problem(kind: String, notice: String)
     }
 
+    private static let githubUserAgent = "TVM/1.0 (iOS; +https://github.com/GL-327/TVM)"
+
     private static func fetchManifest(session: URLSession) async -> Fetched {
-        var request = URLRequest(url: downloadURL(manifestName))
-        request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
-        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-        request.timeoutInterval = 15
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        do {
-            let (data, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if status == 404 { return .problem(kind: "no_release", notice: "No iPhone interface is published on GitHub yet.") }
-            if status == 429 { return .problem(kind: "rate_limited", notice: "GitHub rate-limited this check. Try again in a few minutes.") }
-            if status == 401 || status == 403 { return .problem(kind: "auth_required", notice: "GitHub refused this check.") }
-            guard (200...299).contains(status) else {
-                return .problem(kind: "failed", notice: "GitHub answered \(status). Try again later.")
-            }
-            guard let manifest = Manifest.parse(try? JSONSerialization.jsonObject(with: data)) else {
-                return .problem(kind: "failed", notice: "The update information on GitHub was incomplete.")
-            }
+        let (status, data) = await githubGet(downloadURL(manifestName), session: session, timeout: 15)
+        if status == 404 { return .problem(kind: "no_release", notice: "No iPhone interface is published on GitHub yet.") }
+        if status == 429 { return .problem(kind: "rate_limited", notice: "GitHub rate-limited this check. Try again in a few minutes.") }
+        if (200...299).contains(status), let manifest = Manifest.parse(try? JSONSerialization.jsonObject(with: data)) {
             return .manifest(manifest)
-        } catch {
+        }
+        if let manifest = await fetchManifestFromApi(session: session) {
+            return .manifest(manifest)
+        }
+        if status == 401 || status == 403 {
+            return .problem(kind: "auth_required", notice: "GitHub refused this check.")
+        }
+        if status == 0 {
             return .problem(kind: "failed", notice: "Could not reach GitHub. Check the connection and try again.")
         }
+        if (200...299).contains(status) {
+            return .problem(kind: "failed", notice: "The update information on GitHub was incomplete.")
+        }
+        return .problem(kind: "failed", notice: "GitHub answered \(status). Try again later.")
+    }
+
+    /// Direct download first; the API is the fallback when GitHub's file host
+    /// answers HTML or a redirect the session will not follow.
+    private static func fetchManifestFromApi(session: URLSession) async -> Manifest? {
+        guard let api = URL(string: "https://api.github.com/repos/\(repo)/releases/tags/\(releaseTag)") else { return nil }
+        var request = URLRequest(url: api)
+        request.setValue(githubUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 15
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let assets = object["assets"] as? [[String: Any]] else { return nil }
+        guard let asset = assets.first(where: { ($0["name"] as? String) == manifestName }),
+              let fileURL = (asset["browser_download_url"] as? String).flatMap(URL.init(string:)) else { return nil }
+        let fetched = await githubGet(fileURL, session: session, timeout: 15)
+        guard (200...299).contains(fetched.0) else { return nil }
+        return Manifest.parse(try? JSONSerialization.jsonObject(with: fetched.1))
+    }
+
+    private static func githubGet(_ url: URL, session: URLSession, timeout: TimeInterval) async -> (Int, Data) {
+        var current = url
+        for _ in 0..<8 {
+            var request = URLRequest(url: current)
+            request.setValue(githubUserAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+            request.timeoutInterval = timeout
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.httpShouldHandleCookies = false
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse else { return (0, Data()) }
+                if (301...308).contains(http.statusCode),
+                   let location = http.value(forHTTPHeaderField: "Location"),
+                   let next = URL(string: location, relativeTo: current)?.absoluteURL {
+                    current = next
+                    continue
+                }
+                return (http.statusCode, data)
+            } catch {
+                return (0, Data())
+            }
+        }
+        return (0, Data())
     }
 
     /// Checks GitHub and records the answer. Returns the manifest only when it is worth applying.
@@ -539,12 +585,8 @@ enum TVMUpdater {
         }
         if alreadyStaged { return }
 
-        var request = URLRequest(url: downloadURL(manifest.asset))
-        request.setValue("tvm-ios", forHTTPHeaderField: "User-Agent")
-        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-        request.timeoutInterval = 120
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), data.count > 64 else {
+        let (status, data) = await githubGet(downloadURL(manifest.asset), session: session, timeout: 120)
+        guard (200...299).contains(status), data.count > 64 else {
             throw ClientError.message("GitHub did not return the iPhone interface bundle.")
         }
         guard sha256Hex(data) == manifest.sha256 else {
@@ -608,7 +650,31 @@ enum TVMUpdater {
         return result
     }
 
-    /// Launch, in the background: download a newer interface and put it on screen.
+    /**
+     Open: give GitHub this many seconds to put a newer interface on disk
+     before the first page loads. The download keeps going if it is not done
+     in time; `tvmInterfaceDidApply` reloads the web view when it is.
+     */
+    static func waitForLaunchApply(
+        store: TVMStore,
+        session: URLSession,
+        bundle: Bundle = .main,
+        seconds: TimeInterval = 20
+    ) async {
+        guard TVMPrefs.load(store).autoUpdate else { return }
+        let work = Task.detached(priority: .utility) {
+            await applyIfNeeded(store: store, session: session, bundle: bundle)
+        }
+        let nanos = UInt64(max(1, seconds) * 1_000_000_000)
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { _ = await work.value }
+            group.addTask { try? await Task.sleep(nanoseconds: nanos) }
+            _ = await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// Launch: download a newer interface and put it on screen.
     /// Returns true when the files on disk changed, so the shell can reload.
     @discardableResult
     static func applyIfNeeded(store: TVMStore, session: URLSession, bundle: Bundle = .main) async -> Bool {

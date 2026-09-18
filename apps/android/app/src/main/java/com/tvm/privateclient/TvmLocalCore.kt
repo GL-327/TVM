@@ -65,6 +65,9 @@ class TvmLocalCore(
         private const val PICK_LIMIT = 48
         private const val MAX_CHANNELS = 2000
 
+        /** DW News, straight from Deutsche Welle. Same test channel as apps/core/src/providers/live.ts. */
+        const val TEST_CHANNEL_URL = "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8"
+
         /** Wires the whole stack against one data directory and the bundled catalogue. */
         fun create(
             root: File,
@@ -128,6 +131,11 @@ class TvmLocalCore(
         headers: Map<String, String> = emptyMap(),
     ): HttpReply {
         media.applyProfileHeader(headers["x-tvm-profile"])
+        // An account's own Real-Debrid key wins over the one saved on the phone.
+        // Skipped for stream segments and artwork, which never touch it.
+        if (!path.startsWith("/api/live/proxy/") && path != "/api/art") {
+            if (rd.useAccountToken(accounts.rdTokenFor(bearerToken(headers)))) media.forgetLibrary()
+        }
 
         if (path == "/api/health" && method == "GET") {
             return HttpReply.json(
@@ -168,15 +176,25 @@ class TvmLocalCore(
         }
         if (path == "/api/update/token" && method == "PUT") return HttpReply.json(200, Json.obj("configured" to false))
 
-        if (path == "/api/rd/status" && method == "GET") return HttpReply.json(200, media.status().json())
+        if (path == "/api/rd/status" && method == "GET") return HttpReply.json(200, rdStatusJson(media.status()))
         if (path == "/api/rd/configured" && method == "GET") {
             return HttpReply.json(200, Json.obj("configured" to rd.configured()))
         }
         if (path == "/api/rd/token" && method == "PUT") {
             val token = json.opt("token") as? String
                 ?: return HttpReply.json(400, Json.obj("error" to "token must be a string"))
+            // A member's key goes on their account. The dev's key is the phone's.
+            val self = accounts.resolve(bearerToken(headers))
+            if (self != null && self.text("role") != "dev") {
+                val saved = accounts.setRdToken(self.text("id"), token)
+                if (saved.isFailure) {
+                    return HttpReply.json(400, Json.obj("error" to (saved.exceptionOrNull()?.message ?: "token rejected")))
+                }
+                if (rd.useAccountToken(accounts.rdTokenFor(bearerToken(headers)))) media.forgetLibrary()
+                return HttpReply.json(200, rdStatusJson(media.status()))
+            }
             return try {
-                HttpReply.json(200, media.setToken(token).json())
+                HttpReply.json(200, rdStatusJson(media.setToken(token)))
             } catch (problem: Exception) {
                 HttpReply.json(400, Json.obj("error" to (problem.message ?: "token rejected")))
             }
@@ -355,8 +373,22 @@ class TvmLocalCore(
                 { HttpReply.json(401, Json.obj("error" to (it.message ?: "Sign in failed."))) },
             )
         }
+        // The dev account. The developer code is its password, and signing in
+        // turns developer mode on.
+        if (path == "/api/account/dev" && method == "POST") {
+            val code = Json.string(json.opt("code")) ?: ""
+            if (!TvmDevUnlock.verify(code)) return HttpReply.json(403, Json.obj("error" to "That code is not valid."))
+            plans.setDeveloper(true)
+            return HttpReply.json(200, accounts.signInDev(headers["user-agent"]))
+        }
         if (path == "/api/account/signout" && method == "POST") {
-            bearerToken(headers)?.let { accounts.signOut(it) }
+            val token = bearerToken(headers)
+            if (token != null) {
+                val leaving = accounts.resolve(token)
+                accounts.signOut(token)
+                // Developer mode goes with the dev account's last session.
+                if (leaving?.text("role") == "dev" && !accounts.devSignedIn()) plans.setDeveloper(false)
+            }
             return HttpReply.json(200, Json.obj("ok" to true))
         }
         if (path == "/api/account" && method == "GET") {
@@ -367,14 +399,24 @@ class TvmLocalCore(
                     put("account", JSONObject.NULL)
                     put("usable", JSONObject().put("ok", false).put("reason", "no_account"))
                     put("termsVersion", version)
+                    put("canSendEmail", false)
                 })
+            if (account.text("role") == "dev" && !plans.developer()) plans.setDeveloper(true)
             applyAccountTier(account)
             return HttpReply.json(200, JSONObject().apply {
                 put("signedIn", true)
                 put("account", accounts.publicOf(account))
                 put("usable", accounts.usable(account))
                 put("termsVersion", version)
+                put("canSendEmail", false)
             })
+        }
+        // Phones do not send email; the desktop TVM does.
+        if ((path == "/api/account/email/send" || path == "/api/account/email/verify") && method == "POST") {
+            return HttpReply.json(
+                503,
+                Json.obj("error" to "This phone cannot send email. Ask the dev to switch your account on."),
+            )
         }
         if (path == "/api/account/terms" && method == "POST") {
             val account = accounts.resolve(bearerToken(headers))
@@ -385,7 +427,7 @@ class TvmLocalCore(
             return HttpReply.json(200, body)
         }
 
-        // Owner only, checked here rather than by hiding the route.
+        // Dev mode only, checked here rather than by hiding the route.
         if (path == "/api/admin/accounts" && method == "GET") {
             if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             return HttpReply.json(200, accounts.list(query["search"], query["state"]))
@@ -418,6 +460,39 @@ class TvmLocalCore(
                 ?: return HttpReply.json(400, Json.obj("error" to "Choose an account."))
             accounts.erase(id)
             return HttpReply.json(200, Json.obj("ok" to true))
+        }
+        if (path == "/api/admin/accounts/live-tv" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+            val enabled = json.opt("enabled") as? Boolean
+            if (id == null || enabled == null) return HttpReply.json(400, Json.obj("error" to "Choose an account."))
+            return adminReply(accounts.setLiveTv(id, enabled))
+        }
+        if (path == "/api/admin/accounts/rd" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+            val token = json.opt("token") as? String
+            if (id == null || token == null) return HttpReply.json(400, Json.obj("error" to "Choose an account."))
+            return adminReply(accounts.setRdToken(id, token))
+        }
+        if (path == "/api/admin/accounts/verify" && method == "POST") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            val id = Json.string(json.opt("id"))
+                ?: return HttpReply.json(400, Json.obj("error" to "Choose an account."))
+            return adminReply(accounts.setEmailVerified(id, json.optBoolean("verified", true)))
+        }
+        if (path == "/api/admin/mail" || path == "/api/admin/mail/test") {
+            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (method == "GET") {
+                return HttpReply.json(
+                    200,
+                    Json.obj(
+                        "configured" to false, "supported" to false, "host" to null, "port" to null,
+                        "security" to null, "username" to null, "from" to null,
+                    ),
+                )
+            }
+            return HttpReply.json(501, Json.obj("error" to "Set email up on the desktop TVM. Phones do not send it."))
         }
 
         if (path == "/api/dev/status" && method == "GET") {
@@ -537,6 +612,29 @@ class TvmLocalCore(
         return HttpReply.json(404, Json.obj("error" to "not_found"))
     }
 
+    private fun adminReply(result: Result<JSONObject>): HttpReply =
+        result.fold(
+            { HttpReply.json(200, it) },
+            { HttpReply.json(400, Json.obj("error" to (it.message ?: "That account could not be changed."))) },
+        )
+
+    /** Whose key this is: the account's own, or the one saved on the phone. */
+    private fun rdStatusJson(status: RdStatus): JSONObject = status.json().apply {
+        put("source", when {
+            rd.hasAccountToken() -> "account"
+            status.configured -> "device"
+            else -> JSONObject.NULL
+        })
+    }
+
+    /** A real live broadcast for checking the proxy with. Dev account only. */
+    private fun testChannels(): List<JSONObject> =
+        if (plans.developer()) {
+            listOf(Json.obj("id" to "live:test:dw-news", "name" to "DW News", "url" to TEST_CHANNEL_URL, "group" to "Test"))
+        } else {
+            emptyList()
+        }
+
     private fun playLive(id: String): HttpReply {
         if (!Json.bool(plans.status().opt("liveTv"), false)) {
             return HttpReply.json(
@@ -544,7 +642,8 @@ class TvmLocalCore(
                 Json.obj("kind" to "unavailable", "reason" to "Live TV requires the Live TV add-on."),
             )
         }
-        val channel = synchronized(lock) { liveChannels.firstOrNull { it.text("id") == id } }
+        val channel = testChannels().firstOrNull { it.text("id") == id }
+            ?: synchronized(lock) { liveChannels.firstOrNull { it.text("id") == id } }
             ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
         val raw = Json.string(channel.opt("url"))
             ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
@@ -602,7 +701,7 @@ class TvmLocalCore(
             "host" to liveHost,
             "username" to liveUser,
             "configured" to (liveUrl != null || liveHost != null),
-            "channels" to Json.array(liveChannels.take(PICK_LIMIT).map { card(it) }),
+            "channels" to Json.array(testChannels().map { card(it) } + liveChannels.take(PICK_LIMIT).map { card(it) }),
             "error" to if (liveChannels.isEmpty() && liveUrl != null) {
                 "The playlist had no channels this phone can list."
             } else {

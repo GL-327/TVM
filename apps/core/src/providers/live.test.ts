@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createLiveService, liveChannelId, looksLikePlaylistText, parseM3u } from './live.ts';
+import { createLiveService, liveChannelId, looksLikePlaylistText, parseM3u, TEST_CHANNEL_URL } from './live.ts';
 import { mintHop } from './hlsProxy.ts';
 
 describe('parseM3u', () => {
@@ -68,6 +68,7 @@ describe('live service', () => {
     const live = createLiveService({ dataDir: dir, includeMock: () => true, fetch: async () => new Response('no', { status: 404 }) });
     const status = await live.status();
     expect(status.channels.map((channel) => channel.name)).toEqual([
+      'DW News',
       'Sample sports 1',
       'Sample sports 2',
       'Sample sports 3',
@@ -76,6 +77,32 @@ describe('live service', () => {
     const play = await live.play('live:mock:sky-sports');
     expect(play.kind).toBe('stream');
     if (play.kind === 'stream') expect(play.engine).toBe('html5');
+  });
+
+  it('plays the DW News test channel through the proxy', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-test-'));
+    dirs.push(dir);
+    const published: string[] = [];
+    const live = createLiveService({
+      dataDir: dir,
+      includeMock: () => true,
+      fetch: async () => new Response('no', { status: 404 }),
+      reflect: (url) => {
+        published.push(url);
+        return '/api/live/proxy/0123456789abcdef0123456789abcdef';
+      },
+    });
+    const play = await live.play('live:test:dw-news');
+    expect(play).toMatchObject({ kind: 'stream', url: '/api/live/proxy/0123456789abcdef0123456789abcdef', transport: 'hls' });
+    expect(published).toEqual([TEST_CHANNEL_URL]);
+  });
+
+  it('keeps the test channel from anyone but the dev', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-live-test-'));
+    dirs.push(dir);
+    const live = createLiveService({ dataDir: dir, includeMock: () => false, fetch: async () => new Response('no', { status: 404 }) });
+    expect((await live.status()).channels).toEqual([]);
+    expect((await live.play('live:test:dw-news')).kind).toBe('unavailable');
   });
 
   it('returns an empty status until a playlist is stored', async () => {

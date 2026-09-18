@@ -146,6 +146,7 @@ jobs:
           # installed copy never reads a manifest whose bundle is missing.
           gh release upload desktop release/tvm-app.tar.gz --clobber
           gh release upload desktop release/desktop.json --clobber
+          bash scripts/publish-device-package.sh "release/TVM-desktop-$VERSION.tar.gz" "release/TVM-desktop-$VERSION.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -221,6 +222,7 @@ jobs:
           gh release create roku --title "Roku — streaming players & Roku TV" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit roku --title "Roku — streaming players & Roku TV" --notes-file release/NOTES.md
           gh release upload roku release/TVM-roku.zip --clobber
+          bash scripts/publish-device-package.sh release/TVM-roku.zip
 
       - uses: actions/upload-artifact@v4
         with:

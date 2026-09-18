@@ -176,7 +176,7 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
               <span className="ribbon__avatar">
                 <IconProfile className="ribbon__avatar-svg" />
               </span>
-              <span className="ribbon__label">Profile</span>
+              <span className="ribbon__label">Account</span>
             </FocusButton>
           </div>
         </div>

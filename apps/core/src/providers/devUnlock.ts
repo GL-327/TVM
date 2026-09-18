@@ -87,21 +87,26 @@ export function createDevUnlockService(options: { dataDir: string }) {
 
   load();
 
+  /** Developer mode without a code. Only for the dev account, whose sign-in already checked one. */
+  const grant = (): void => {
+    writeSealed(options.dataDir, devUnlockPath(options.dataDir), {
+      unlocked: true,
+      at: new Date().toISOString(),
+    } satisfies DevUnlockRecord);
+    memory = true;
+    deleteSecret(devUnlockFlagPath(options.dataDir));
+  };
+
   return {
     unlocked(): boolean {
       return load();
     },
     unlock(password: string): boolean {
       if (!verifyDeveloperPassword(password)) return false;
-      const at = new Date().toISOString();
-      writeSealed(options.dataDir, devUnlockPath(options.dataDir), {
-        unlocked: true,
-        at,
-      } satisfies DevUnlockRecord);
-      memory = true;
-      deleteSecret(devUnlockFlagPath(options.dataDir));
+      grant();
       return true;
     },
+    grant,
     lock(): void {
       memory = false;
       deleteSecret(devUnlockPath(options.dataDir));

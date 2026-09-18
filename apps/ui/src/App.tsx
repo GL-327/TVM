@@ -4,7 +4,7 @@ import { SceneField } from './theme/SceneField';
 import { SynthwaveCrt } from './theme/SynthwaveCrt';
 import { ViewStackProvider } from './nav/ViewStackProvider';
 import { AccountGate } from './screens/AccountGate';
-import { fetchAccount, readToken, SIGNED_OUT, type AccountState } from './data/account';
+import { ACCOUNT_CHANGED, fetchAccount, readToken, SIGNED_OUT, type AccountState } from './data/account';
 import { applyPlanClass, fetchPlan } from './data/plan';
 import { applyGithubUpdateOnLaunch } from './data/launchUpdate';
 
@@ -37,6 +37,12 @@ export function App(): React.JSX.Element {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  // Signing out, or switching to the dev account, from inside the app.
+  useEffect(() => {
+    const changed = (): void => { void refresh(); };
+    window.addEventListener(ACCOUNT_CHANGED, changed);
+    return () => window.removeEventListener(ACCOUNT_CHANGED, changed);
+  }, [refresh]);
   // Behind the door as well: a fresh install must still be able to pull a
   // new interface before anyone has signed in, which is how iOS auto-update
   // is tested. ViewStack used to start this, and that never mounts here.

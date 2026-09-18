@@ -180,6 +180,13 @@ function fileNameFromPath(path: string): string {
 const LIBRARY_TTL_MS = 45_000;
 const STATUS_TTL_MS = 20_000;
 
+interface RdCache {
+  library: { at: number; torrents: RdTorrent[]; downloads: RdDownload[]; items: MediaItem[] } | null;
+  status: { at: number; value: RdStatus } | null;
+  libraryPending: Promise<MediaItem[]> | null;
+  statusPending: Promise<RdStatus> | null;
+}
+
 export function applyProgress(items: readonly MediaItem[], progress: ReturnType<typeof readProgress>): MediaItem[] {
   // Index ancestor IDs once. Previously every card scanned the entire watch history.
   const descendants = new Map<string, number>();
@@ -213,14 +220,23 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   const catalog: CatalogService = createCatalogService({ dataDir, fetch: fetchImpl });
   const artwork = createLibraryArtwork(dataDir, fetchImpl);
   const scope = (): string => profiles.scope();
-  let libraryCache: { at: number; torrents: RdTorrent[]; downloads: RdDownload[]; items: MediaItem[] } | null = null;
-  let statusCache: { at: number; value: RdStatus } | null = null;
-  let libraryPending: Promise<MediaItem[]> | null = null;
-  let statusPending: Promise<RdStatus> | null = null;
+  // One set of caches per Real-Debrid key: an account can have its own key,
+  // and one account must never be shown another's library.
+  const caches = new Map<string, RdCache>();
+  const cacheFor = (): RdCache => {
+    const key = rd.tokenValue() ?? '';
+    let entry = caches.get(key);
+    if (entry === undefined) {
+      if (caches.size >= 16) caches.clear();
+      entry = { library: null, status: null, libraryPending: null, statusPending: null };
+      caches.set(key, entry);
+    }
+    return entry;
+  };
   let generation = 0;
 
-  const refreshLibrary = async (version: number): Promise<MediaItem[]> => {
-    const previous = libraryCache;
+  const refreshLibrary = async (version: number, cache: RdCache): Promise<MediaItem[]> => {
+    const previous = cache.library;
     const [downloadResult, torrentResult] = await Promise.allSettled([rd.downloads(), rd.torrents()]);
     if (version !== generation) return [];
     const downloads = downloadResult.status === 'fulfilled' ? downloadResult.value : previous?.downloads ?? [];
@@ -244,11 +260,11 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     if (version !== generation) return next;
     artwork.flush();
     const snapshot = { at: Date.now(), torrents, downloads, items: next };
-    libraryCache = snapshot;
+    cache.library = snapshot;
     if (rest.length > 0) {
       void mapPool(rest, 4, async (item) => version === generation ? artwork.decorate(item) : item)
         .then((decoratedRest) => {
-          if (libraryCache !== snapshot || version !== generation) return;
+          if (cache.library !== snapshot || version !== generation) return;
           snapshot.items = [...decoratedEager, ...decoratedRest];
           artwork.flush();
         }).catch(() => undefined);
@@ -258,34 +274,37 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
 
   const loadLibrary = async (): Promise<MediaItem[]> => {
     if (!rd.configured()) return [];
-    if (libraryCache !== null && Date.now() - libraryCache.at < LIBRARY_TTL_MS) return libraryCache.items;
-    if (libraryPending !== null) return libraryPending;
-    const promise = refreshLibrary(generation).finally(() => {
-      if (libraryPending === promise) libraryPending = null;
+    const cache = cacheFor();
+    if (cache.library !== null && Date.now() - cache.library.at < LIBRARY_TTL_MS) return cache.library.items;
+    if (cache.libraryPending !== null) return cache.libraryPending;
+    const promise = refreshLibrary(generation, cache).finally(() => {
+      if (cache.libraryPending === promise) cache.libraryPending = null;
     });
-    libraryPending = promise;
+    cache.libraryPending = promise;
     return promise;
   };
 
   const cachedStatus = async (): Promise<RdStatus> => {
-    if (statusCache !== null && Date.now() - statusCache.at < STATUS_TTL_MS) return statusCache.value;
-    if (statusPending !== null) return statusPending;
+    const cache = cacheFor();
+    if (cache.status !== null && Date.now() - cache.status.at < STATUS_TTL_MS) return cache.status.value;
+    if (cache.statusPending !== null) return cache.statusPending;
     const version = generation;
     const promise = rd.status().then((value) => {
-      if (version === generation) statusCache = { at: Date.now(), value };
+      if (version === generation) cache.status = { at: Date.now(), value };
       return value;
     }).finally(() => {
-      if (statusPending === promise) statusPending = null;
+      if (cache.statusPending === promise) cache.statusPending = null;
     });
-    statusPending = promise;
+    cache.statusPending = promise;
     return promise;
   };
 
   const probePlaybackAuth = async (): Promise<PlaybackResolution | null> => {
     if (!rd.configured()) return { kind: 'unavailable', reason: 'not-configured' };
-    statusCache = null;
+    const cache = cacheFor();
+    cache.status = null;
     const status = await rd.status();
-    statusCache = { at: Date.now(), value: status };
+    cache.status = { at: Date.now(), value: status };
     if (status.error === 'needs-auth') return { kind: 'unavailable', reason: 'needs-auth' };
     if (status.error === null && !status.premium) return { kind: 'unavailable', reason: 'needs-auth' };
     return null;
@@ -327,8 +346,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
 
     const resolveOwnedLink = async (id: string): Promise<string | null> => {
     await loadLibrary();
-    const torrents = libraryCache?.torrents ?? [];
-    const downloads = libraryCache?.downloads ?? [];
+    const owned = cacheFor().library;
+    const torrents = owned?.torrents ?? [];
+    const downloads = owned?.downloads ?? [];
     if (id.startsWith('rd:t:')) {
       const torrentId = torrentIdFrom(id);
       const index = torrentIndexFrom(id);
@@ -563,10 +583,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     status: () => cachedStatus(),
     async setToken(token) {
       generation += 1;
-      libraryPending = null;
-      statusPending = null;
-      libraryCache = null;
-      statusCache = null;
+      caches.clear();
       return rd.setToken(token);
     },
 
@@ -579,7 +596,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         library = await loadLibrary();
       } catch (caught) {
         error = caught instanceof Error && caught.name === 'RdAuth' ? 'needs-auth' : 'unreachable';
-        library = libraryCache?.items ?? [];
+        library = cacheFor().library?.items ?? [];
       }
       const progress = readProgress(profileScope);
       library = applyProgress(library, progress);
@@ -750,10 +767,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
 
     clearCache() {
       generation += 1;
-      libraryPending = null;
-      statusPending = null;
-      libraryCache = null;
-      statusCache = null;
+      caches.clear();
       artwork.clear();
       catalog.clear();
       clearCacheDir(dataDir);
@@ -762,8 +776,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     factoryReset() {
       this.clearCache();
       factoryResetDir(dataDir);
-      libraryCache = null;
-      statusCache = null;
+      caches.clear();
       profiles = createProfileService(dataDir);
     },
   };

@@ -1,137 +1,150 @@
 # Access, accounts and Live TV
 
-How somebody gets into TVM, where their account lives, and why Live TV works
-the way it does.
+How people get into TVM, where accounts live, and how Live TV is served.
 
 ## Access
 
-There are two tiers and no free one.
+Two tiers, no free one.
 
 | Tier | What it is | Indicative price |
 |---|---|---|
 | `stream` | Movies and TV shows | £9.99/month |
 | `stream-live` | Movies and TV shows + Live TV | £9.99/month + Live TV term |
 
-Live TV is priced separately at the upstream panel's own three terms: £39.99
-for 3 months, £89.99 for a year, £599 once. Those are the panel's dollar
-figures charged in pounds, which is the margin — sterling is worth more than
-the dollar.
+Live TV is priced at the upstream panel's own terms: £39.99 for 3 months,
+£89.99 for a year, £599 once.
 
-**Nothing is sold inside the app.** There is no checkout, no card form for
-access, and no route from any screen to a purchase. Somebody signs up, you
-switch them on from **Settings → Developer → Accounts**, and the tier you
-switch them on at is what they get.
+Nothing is sold inside the app. Somebody signs up, you switch them on from
+**Account → Accounts** (signed in as the dev account), and the tier you pick
+is what they get. You can turn Live TV on or off for them later from the same
+screen.
 
-A new account is inert. It can sign in, and it can see that it is waiting.
-It cannot watch anything.
+## The dev account
 
-## The four states
+Every TVM has one built-in dev account. On the sign-in screen choose
+**I'm a dev** and enter the developer code. That signs you in to the dev
+account and turns dev mode on; signing out turns it off again. There is no
+password to set, and nobody can register it, suspend it or erase it.
+
+It works the same on the desktop, iPhone and Android. The code is checked by
+Core (scrypt or PBKDF2-HMAC-SHA256 at 600,000 iterations); neither code is in
+this repository.
+
+Dev mode unlocks the Accounts screen, Email settings, the Developer screen,
+the billing probe and the Stripe key routes. Core checks it on every call.
+
+Tapping the TVM logo seven times inside the app still opens the code screen;
+it now switches you to the dev account.
+
+## Signing up
 
 | State | What the person sees |
 |---|---|
-| Signed out | Sign in, or ask for an account |
-| `awaiting_activation` | "Almost there" — their address, and to send it to you |
+| Signed out | Sign in, ask for an account, or I'm a dev |
+| `email_unverified` | "Check your email": a box for the six-digit code |
+| `awaiting_activation` | "Almost there": their address, and to send it to you |
 | `terms_required` | The terms, with an agree button |
 | `suspended` | "This account is switched off" |
 
-The gate is rendered *instead of* the app, not as a screen inside it, so no
-route, back gesture or deep link reaches the catalogue without a usable
-account. The server enforces the same rule independently on every request.
+The sign-in screen is rendered instead of the app, so no route, back gesture
+or deep link reaches the catalogue without a usable account.
 
-## What is stored, and what is not
+### Email codes
+
+When **Account → Email** is set up on the desktop TVM, everyone who signs up is
+emailed a six-digit code and cannot go further until they type it in. The code
+lasts 15 minutes, five wrong tries cancel it, and a new one can be sent once a
+minute. Only a salted digest of the code is stored.
+
+Any SMTP account works. Use an app password, not your real one:
+
+| Provider | Server | Port | Security |
+|---|---|---|---|
+| iCloud Mail | smtp.mail.me.com | 587 | STARTTLS |
+| Gmail | smtp.gmail.com | 465 | TLS |
+
+TVM refuses to send a password over an unencrypted connection, except to a
+relay on the same machine. The settings are sealed in `secrets/mail.enc` and
+the password is never sent back to the interface.
+
+Phones do not send email, so accounts made on a phone are never asked for a
+code. The mail password would otherwise have to sit on every phone TVM is
+installed on. From Accounts you can mark any address verified by hand.
+
+Without email set up, nobody is asked for a code and accounts go straight to
+waiting for you.
+
+## What is stored
 
 | Stored | Where |
 |---|---|
 | Email, display name | `secrets/accounts.enc`, AES-256-GCM sealed |
-| Password **digest** | Same file — salted scrypt, per account |
+| Password digest | Same file, salted scrypt per account |
+| Email code | Same file, salted SHA-256 digest, until used or expired |
+| Account's Real-Debrid key | Same file |
 | Signed up, last seen, sign-in count, last device | Same file |
-| Session tokens | Only as sha256 digests |
+| Session tokens | Only as SHA-256 digests |
 
-**No password is stored and none can be recovered.** Not by a user, not by
-you, not by anyone with the data folder. scrypt allows checking a password and
-never reading one, which is why the admin screen shows everything about an
-account *except* that, and why there is no "reveal password" anywhere: nothing
-stored could produce one.
+No password is stored and none can be recovered, by anyone. The Accounts
+screen shows everything about an account except that, and shows a Real-Debrid
+key only as its last four characters.
 
-Session tokens are stored hashed for the same reason — a stolen data folder
-yields no live sessions.
+On the phones the same ledger is `accounts.json` in the app's private
+container.
 
 ### Under UK GDPR
 
-You are the data controller once real people have accounts. The obligations
-that follow are not optional:
+You are the data controller once real people have accounts:
 
-- **Access** — someone can ask what you hold. The admin screen shows all of it.
-- **Erasure** — the *Erase account* button deletes the record and every session
-  it owns, immediately. It asks once, because it cannot be undone.
-- **Accuracy** — you can correct a display name or note.
+- **Access**: the Accounts screen shows everything held.
+- **Erasure**: *Erase account* deletes the record and its sessions at once. It
+  asks first, because it cannot be undone.
+- **Accuracy**: you can correct a display name or note.
 
-Erasing an account cuts its live sessions on the next request rather than
-waiting for a token to expire.
+## Real-Debrid keys
+
+Each account can have its own Real-Debrid key. You can paste one for them from
+Accounts, or they can paste their own on the Real-Debrid screen. An account's
+own key is used for everything that account plays. Accounts without one use
+the key saved on the machine, which is the one the dev account saves.
 
 ## Where accounts live
 
-Today: **on the machine running the core**, sealed in the data directory.
+On the machine running Core, sealed in the data directory. That suits a
+single-owner appliance: nothing leaves the machine and there is no server to
+run.
 
-For a single-owner appliance that is the right answer — the accounts are where
-the app is, nothing leaves the machine, and there is no server to pay for,
-patch or lose.
-
-It is *not* the right answer if you want one account to work across several
-independent installs without you activating each one. That needs a server, and
-it needs to be a real one: accounts are the thing worth attacking, so it wants
-HTTPS, backups, and somewhere the data is not simply a file on a laptop.
-
-`createAccountsService` is deliberately the only thing that touches the store,
-so a hosted backend is a matter of giving it a different implementation rather
-than rewriting the callers. What it would need:
-
-```
-POST /accounts            create (returns the inert record)
-POST /accounts/signin     verify, issue a session
-GET  /accounts/session    resolve a token
-POST /accounts/activate   owner only
-GET  /accounts            owner only, search and filter
-```
-
-That server does not exist and is not scaffolded here, because untested
-scaffolding for a service nobody is running is worse than nothing — it looks
-finished and is not. Stand the server up, then swap the backend.
+It does not suit one account working across several separate installs. That
+needs a real hosted server with HTTPS and backups. `createAccountsService` is
+the only thing that touches the store, so a hosted backend would be a new
+implementation of it rather than a rewrite of its callers. No such server
+exists yet.
 
 ## Live TV
 
-**Each person supplies their own IPTV subscription.** TVM stores the Xtream
-login per install and connects to it directly from that device.
+**Each person supplies their own IPTV subscription.** TVM stores the provider
+login per install and fetches from it through Core's proxy.
 
-That is the architecture, and it is deliberate. The alternative — one
-subscription on a server, re-streamed to every copy of TVM — is redistributing
-Sky Sports, BBC, ITV and ESPN to third parties from a single account. In the UK
-that is copyright infringement, and running it as a service has brought
-criminal prosecutions under s.297A of the Copyright, Designs and Patents Act
-1988 and the Fraud Act 2006. Putting a VPN in front of it does not change what
-it is; it only describes an intention to avoid being traced.
+The alternative, one subscription on a server re-streamed to other people, is
+redistributing channels to third parties. In the UK that is copyright
+infringement, and running it as a service has led to prosecutions under
+s.297A of the Copyright, Designs and Patents Act 1988 and the Fraud Act 2006.
+Live TV is a tier that lets someone use their own provider, and the terms make
+each account responsible for what they connect.
 
-So: Live TV is a tier that lets somebody use **their own** provider, and the
-terms make each account responsible for having the right to whatever they
-connect. That is also what makes the disclaimer in section 3 of the terms
-true rather than decorative.
+### Serving other devices
 
-If the goal is simply that Live TV works away from home on your *own*
-subscription, that is a different thing and it is legitimate — it is remote
-access to a service you hold, like Plex remote access. It needs the core
-reachable over the network with authentication, not a public relay.
+The desktop Core can relay Live TV to other devices on the LAN (a Roku, or a
+phone in home-Core mode). It only does that while the dev account is signed in
+on that Core. Otherwise other devices get `403 dev_account_required` from the
+proxy routes, and the Live TV screen says why. The machine's own player is
+never refused. Phones only listen on loopback, so they never serve anyone.
 
-## Developer mode
+### Test channel
 
-Two unlock codes. Both work on desktop, iOS and Android — the phone builds
-used to refuse developer unlock outright, so a code was never actually
-universal.
-
-The newer code uses PBKDF2-HMAC-SHA256 at 600,000 iterations rather than
-scrypt, because scrypt is in neither CryptoKit nor the Android platform
-libraries, and a credential that cannot be checked on a phone is not a
-universal credential. Neither password is in this repository, and a digest
-does not run backwards.
-
-Developer mode gates the accounts admin, the billing probe and the Stripe key
-routes, checked on the server on every call rather than by hiding a route.
+Signed in as the dev account, Live TV shows **DW News**, Deutsche Welle's free
+English channel, even before a provider is added. It is a real live broadcast
+(five renditions, relative paths, a subtitle track) and plays through the
+proxy, so it is a quick check that proxy reflection works. BBC channels are
+UK-only and need a TV licence, so they are not used. For offline, repeatable
+checks use the IPTV tester in `apps/core/src/Server Side Live/tester`.

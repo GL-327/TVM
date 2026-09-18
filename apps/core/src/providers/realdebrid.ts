@@ -63,6 +63,8 @@ export interface RealDebridOptions {
   dataDir: string;
   env?: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
+  /** The signed-in account's own key. It wins over the one saved on the machine. */
+  accountToken?: () => string | null;
 }
 
 function redact(value: string): string {
@@ -79,6 +81,8 @@ export function createRealDebrid(options: RealDebridOptions): RealDebrid {
   const { dataDir } = options;
 
   const token = (): string | null => {
+    const personal = options.accountToken?.() ?? null;
+    if (personal !== null && personal !== '') return personal;
     const path = rdTokenPath(dataDir);
     const stored = readSecret(path);
     if (stored !== null) return stored;
