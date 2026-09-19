@@ -37,6 +37,17 @@ class TvmLocalCore(
     val bundledUi = TvmBundledUi(store, app)
     val updater = TvmUpdater(store, bundledUi, http)
 
+    /**
+     * Dev mode belongs to the dev account, so dev-only routes check who is
+     * asking. Any app on the phone can reach this server, not just TVM.
+     */
+    private fun devRequest(headers: Map<String, String>): Boolean {
+        val account = accounts.resolve(bearerToken(headers)) ?: return false
+        if (account.text("role") != "dev") return false
+        if (!plans.developer()) plans.setDeveloper(true)
+        return true
+    }
+
     private fun bearerToken(headers: Map<String, String>): String? {
         val dedicated = headers["x-tvm-account"]?.trim().orEmpty()
         if (dedicated.isNotEmpty()) return dedicated
@@ -287,9 +298,14 @@ class TvmLocalCore(
             return art(query["src"] ?: "", method == "HEAD")
         }
 
-        if (path == "/api/plan" && method == "GET") return HttpReply.json(200, plans.status())
+        if (path == "/api/plan" && method == "GET") {
+            // Only the dev is shown the Developer screen.
+            val status = plans.status()
+            if (status.optBoolean("developer") && !devRequest(headers)) status.put("developer", false)
+            return HttpReply.json(200, status)
+        }
         if (path == "/api/plan" && method == "PUT") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             return try {
                 HttpReply.json(200, plans.setPlan(json.opt("id") as? String ?: ""))
             } catch (problem: Exception) {
@@ -326,7 +342,7 @@ class TvmLocalCore(
             )
         }
         if (path == "/api/usage/reset" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             return HttpReply.json(200, plans.resetUsage())
         }
         if (path == "/api/ads/preroll" && method == "GET") {
@@ -429,11 +445,11 @@ class TvmLocalCore(
 
         // Dev mode only, checked here rather than by hiding the route.
         if (path == "/api/admin/accounts" && method == "GET") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             return HttpReply.json(200, accounts.list(query["search"], query["state"]))
         }
         if (path == "/api/admin/accounts/activate" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
             val tier = Json.string(json.opt("tier"))
             val body = if (id != null && tier != null) accounts.activate(id, tier, Json.string(json.opt("note"))) else null
@@ -441,48 +457,48 @@ class TvmLocalCore(
                 ?: HttpReply.json(400, Json.obj("error" to "Choose an account and a tier."))
         }
         if (path == "/api/admin/accounts/suspend" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
             val body = id?.let { accounts.setSuspended(it, json.optBoolean("suspended", true)) }
             return body?.let { HttpReply.json(200, it) }
                 ?: HttpReply.json(400, Json.obj("error" to "Choose an account."))
         }
         if (path == "/api/admin/accounts/note" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
             val body = id?.let { accounts.setNote(it, Json.string(json.opt("note"))) }
             return body?.let { HttpReply.json(200, it) }
                 ?: HttpReply.json(400, Json.obj("error" to "Choose an account."))
         }
         if (path == "/api/admin/accounts/erase" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
                 ?: return HttpReply.json(400, Json.obj("error" to "Choose an account."))
             accounts.erase(id)
             return HttpReply.json(200, Json.obj("ok" to true))
         }
         if (path == "/api/admin/accounts/live-tv" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
             val enabled = json.opt("enabled") as? Boolean
             if (id == null || enabled == null) return HttpReply.json(400, Json.obj("error" to "Choose an account."))
             return adminReply(accounts.setLiveTv(id, enabled))
         }
         if (path == "/api/admin/accounts/rd" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
             val token = json.opt("token") as? String
             if (id == null || token == null) return HttpReply.json(400, Json.obj("error" to "Choose an account."))
             return adminReply(accounts.setRdToken(id, token))
         }
         if (path == "/api/admin/accounts/verify" && method == "POST") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             val id = Json.string(json.opt("id"))
                 ?: return HttpReply.json(400, Json.obj("error" to "Choose an account."))
             return adminReply(accounts.setEmailVerified(id, json.optBoolean("verified", true)))
         }
         if (path == "/api/admin/mail" || path == "/api/admin/mail/test") {
-            if (!plans.developer()) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+            if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
             if (method == "GET") {
                 return HttpReply.json(
                     200,
@@ -496,7 +512,7 @@ class TvmLocalCore(
         }
 
         if (path == "/api/dev/status" && method == "GET") {
-            return HttpReply.json(200, Json.obj("unlocked" to plans.developer()))
+            return HttpReply.json(200, Json.obj("unlocked" to devRequest(headers)))
         }
         if (path == "/api/dev/unlock" && method == "POST") {
             // Verified here rather than refused, so developer mode behaves the
