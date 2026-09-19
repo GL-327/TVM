@@ -643,7 +643,7 @@ class TvmLocalCore(
         })
     }
 
-    /** A real live broadcast for checking the proxy with. Dev account only. */
+    /** A real live broadcast for checking the proxy with, listed while the dev account is signed in. */
     private fun testChannels(): List<JSONObject> =
         if (plans.developer()) {
             listOf(Json.obj("id" to "live:test:dw-news", "name" to "DW News", "url" to TEST_CHANNEL_URL, "group" to "Test"))
