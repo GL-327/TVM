@@ -1196,7 +1196,10 @@ async function handleApi(
       return null;
     } catch (error) {
       accounts.cancelEmailCode(accountId);
-      return { status: 502, error: `The code could not be sent. ${error instanceof Error ? error.message : ''}`.trim() };
+      // The mail server's own words are for the dev (the test button in
+      // Email settings shows them too), not for someone signing up.
+      console.log(`tvm-core: email code not sent: ${error instanceof Error ? error.message : String(error)}`);
+      return { status: 502, error: 'The code could not be sent. Try again in a minute, or ask the app owner to check the email settings.' };
     }
   };
 
