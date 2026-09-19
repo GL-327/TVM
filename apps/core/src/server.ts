@@ -473,6 +473,18 @@ async function handleApi(
   donations: DonationService,
   mail: MailService,
 ): Promise<boolean> {
+  // Dev mode belongs to the dev account, so dev-only routes check who is
+  // asking rather than a switch for the whole machine. Otherwise anyone on
+  // the LAN could use them while the dev is signed in on this Core.
+  let devAsking: boolean | null = null;
+  const devRequest = (): boolean => {
+    if (devAsking === null) {
+      devAsking = accounts.resolve(currentSessionToken())?.role === 'dev';
+      if (devAsking && !developer.unlocked()) developer.grant();
+    }
+    return devAsking;
+  };
+
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
     try {
@@ -979,12 +991,14 @@ async function handleApi(
   }
 
   if (path === '/api/plan' && request.method === 'GET') {
-    sendJson(response, 200, plans.status());
+    const status = plans.status();
+    // Only the dev is shown the Developer screen.
+    sendJson(response, 200, status.developer && !devRequest() ? { ...status, developer: false } : status);
     return true;
   }
 
   if (path === '/api/plan' && request.method === 'PUT') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1071,7 +1085,7 @@ async function handleApi(
 
   // Storing keys is a developer action: it decides where real money lands.
   if (path === '/api/billing/stripe/keys' && request.method === 'PUT') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1086,7 +1100,7 @@ async function handleApi(
   }
 
   if (path === '/api/billing/stripe/keys' && request.method === 'DELETE') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1103,7 +1117,7 @@ async function handleApi(
   // The probe takes real money — a penny at a time — and gives it straight
   // back. Developer mode only, on every call rather than once at start.
   if (path === '/api/billing/probe' && request.method === 'GET') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1112,7 +1126,7 @@ async function handleApi(
   }
 
   if (path === '/api/billing/probe' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1332,7 +1346,7 @@ async function handleApi(
   // stored could produce one.
 
   if (path === '/api/admin/accounts' && request.method === 'GET') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1349,7 +1363,7 @@ async function handleApi(
   }
 
   if (path === '/api/admin/accounts/activate' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1368,7 +1382,7 @@ async function handleApi(
   }
 
   if (path === '/api/admin/accounts/suspend' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1383,7 +1397,7 @@ async function handleApi(
   }
 
   if (path === '/api/admin/accounts/note' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1399,7 +1413,7 @@ async function handleApi(
 
   /** Erasure, for a UK GDPR request. Irreversible by design. */
   if (path === '/api/admin/accounts/erase' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1415,7 +1429,7 @@ async function handleApi(
   }
 
   if (path === '/api/admin/accounts/live-tv' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1430,7 +1444,7 @@ async function handleApi(
   }
 
   if (path === '/api/admin/accounts/rd' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1445,7 +1459,7 @@ async function handleApi(
   }
 
   if (path === '/api/admin/accounts/verify' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1461,7 +1475,7 @@ async function handleApi(
 
   // Mail settings. Loopback only (see accessError), because they hold a password.
   if (path === '/api/admin/mail' || path === '/api/admin/mail/test') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1565,7 +1579,7 @@ async function handleApi(
   }
 
   if (path === '/api/billing/refund' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1629,7 +1643,7 @@ async function handleApi(
   }
 
   if (path === '/api/usage/reset' && request.method === 'POST') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }
@@ -1643,7 +1657,7 @@ async function handleApi(
   }
 
   if (path === '/api/dev/status' && request.method === 'GET') {
-    sendJson(response, 200, { unlocked: developer.unlocked() });
+    sendJson(response, 200, { unlocked: devRequest() });
     return true;
   }
 
@@ -1663,7 +1677,7 @@ async function handleApi(
   }
 
   if (path === '/api/dev/overrides' && request.method === 'PUT') {
-    if (!developer.unlocked()) {
+    if (!devRequest()) {
       sendJson(response, 403, { error: 'developer_required' });
       return true;
     }

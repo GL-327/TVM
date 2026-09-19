@@ -12,6 +12,7 @@ sub init()
   m.accountPassword = ""
   m.accountName = ""
   m.accountMode = "signin"
+  m.ownerDevToken = ""
   m.accountState = {}
   m.requestSeq = 0
   m.profileId = ""
@@ -1087,39 +1088,66 @@ sub submitAccount()
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signin"), "POST", FormatJson(body), "onAccountSignInDone")
 end sub
 
+' The owner code signs in to the dev account just long enough to switch this
+' account on. The Roku itself stays signed in as whoever was here.
 sub submitOwnerCode(code as String)
   body = {}
-  body.password = code
-  m.ownerUnlockTask = startApiRequest(joinCorePath(m.coreUrl, "/api/dev/unlock"), "POST", FormatJson(body), "onOwnerUnlockDone")
+  body.code = code
+  m.ownerUnlockTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/dev"), "POST", FormatJson(body), "onOwnerUnlockDone")
 end sub
 
 sub onOwnerUnlockDone()
   task = m.ownerUnlockTask
   if task = invalid then return
-  if not task.ok or aaGet(task.json, "unlocked", false) <> true
+  devToken = asText(aaGet(task.json, "token", ""))
+  if not task.ok or not isAccountToken(devToken)
     if m.accountNode <> invalid then m.accountNode.status = "That code is not valid."
     restoreScreenFocus()
     return
   end if
+  m.ownerDevToken = devToken
   usable = aaGet(m.accountState, "usable", {})
   reason = asText(aaGet(usable, "reason", ""))
   if aaGet(usable, "ok", false) = true or reason <> "awaiting_activation"
+    ownerSignOut()
     loadAccount(true)
     return
   end if
   account = aaGet(m.accountState, "account", {})
   id = asText(aaGet(account, "id", ""))
   if id = ""
+    ownerSignOut()
     loadAccount(true)
     return
   end if
   body = {}
   body.id = id
   body.tier = "stream-live"
-  m.ownerActivateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/admin/accounts/activate"), "POST", FormatJson(body), "onOwnerActivateDone")
+  m.ownerActivateTask = startApiAsDev(joinCorePath(m.coreUrl, "/api/admin/accounts/activate"), "POST", FormatJson(body), "onOwnerActivateDone")
+end sub
+
+' Sends one request as the dev account instead of this Roku's own account.
+function startApiAsDev(url as String, method as String, body as String, callback as String) as Object
+  saved = m.accountToken
+  m.accountToken = m.ownerDevToken
+  task = startApiRequest(url, method, body, callback)
+  m.accountToken = saved
+  return task
+end function
+
+' The dev session was only needed for one request. Left open, it would keep
+' the Core relaying live TV to the LAN until it expired.
+sub ownerSignOut()
+  if not isAccountToken(m.ownerDevToken) then return
+  m.ownerSignOutTask = startApiAsDev(joinCorePath(m.coreUrl, "/api/account/signout"), "POST", "{}", "onOwnerSignOutDone")
+  m.ownerDevToken = ""
+end sub
+
+sub onOwnerSignOutDone()
 end sub
 
 sub onOwnerActivateDone()
+  ownerSignOut()
   if m.ownerActivateTask <> invalid and not m.ownerActivateTask.ok
     if m.accountNode <> invalid then m.accountNode.status = asText(aaGet(m.ownerActivateTask.json, "error", "That account could not be switched on."))
     restoreScreenFocus()
@@ -1184,6 +1212,7 @@ sub onAccountSignOutDone()
   m.accountPassword = ""
   m.accountName = ""
   m.accountMode = "signin"
+  m.ownerDevToken = ""
   body = {}
   body.signedIn = false
   showAccountGate(body)

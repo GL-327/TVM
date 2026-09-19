@@ -309,11 +309,20 @@ class TvmAccountsTest {
 
     // ---- The on-device core -------------------------------------------------
 
+    private val access = "{\"termsVersion\":\"2026-09-15\",\"tiers\":[]}"
+    private val coreDirs = mutableMapOf<TvmLocalCore, File>()
+
     private fun core(): TvmLocalCore {
         val dir = Files.createTempDirectory("tvm-core").toFile()
         dirs.add(dir)
-        return TvmLocalCore.create(dir, { null }, bundledAccess = { "{\"termsVersion\":\"2026-09-15\",\"tiers\":[]}" })
+        val made = TvmLocalCore.create(dir, { null }, bundledAccess = { access })
+        coreDirs[made] = dir
+        return made
     }
+
+    /** A dev session on this core, as the right developer code would give. The code is not in the repo. */
+    private fun devToken(core: TvmLocalCore): String =
+        TvmAccounts(TvmStore(coreDirs.getValue(core))) { access }.signInDev("test").getString("token")
 
     private fun call(core: TvmLocalCore, method: String, path: String, body: JSONObject? = null, token: String? = null): Pair<Int, JSONObject> {
         val headers = if (token == null) emptyMap() else mapOf("authorization" to "Bearer $token")
@@ -337,11 +346,29 @@ class TvmAccountsTest {
             assertEquals(403, call(c, "POST", path, JSONObject().put("id", "x")).first)
         }
         assertEquals(403, call(c, "GET", "/api/admin/mail").first)
+        // Dev mode switched on for the phone is not enough; it has to be the dev asking.
         c.plans.setDeveloper(true)
-        val mail = call(c, "GET", "/api/admin/mail")
+        assertEquals(403, call(c, "GET", "/api/admin/mail").first)
+        assertFalse(call(c, "GET", "/api/plan").second.getBoolean("developer"))
+
+        val dev = devToken(c)
+        val mail = call(c, "GET", "/api/admin/mail", token = dev)
         assertEquals(200, mail.first)
         assertFalse(mail.second.getBoolean("supported"))
+        assertTrue(call(c, "GET", "/api/plan", token = dev).second.getBoolean("developer"))
         assertEquals(503, call(c, "POST", "/api/account/email/send").first)
+    }
+
+    @Test
+    fun aMemberCannotUseTheAccountsScreenWhileTheDevIsSignedIn() {
+        val c = core()
+        val signUp = JSONObject().put("email", "someone@example.com").put("password", password)
+        call(c, "POST", "/api/account/register", signUp)
+        val member = call(c, "POST", "/api/account/signin", signUp).second.getString("token")
+        val dev = devToken(c)
+        c.plans.setDeveloper(true)
+        assertEquals(403, call(c, "GET", "/api/admin/accounts", token = member).first)
+        assertEquals(200, call(c, "GET", "/api/admin/accounts", token = dev).first)
     }
 
     @Test
@@ -360,9 +387,9 @@ class TvmAccountsTest {
         val signUp = JSONObject().put("email", "someone@example.com").put("password", password)
         call(c, "POST", "/api/account/register", signUp)
         val token = call(c, "POST", "/api/account/signin", signUp).second.getString("token")
-        c.plans.setDeveloper(true)
-        val id = call(c, "GET", "/api/admin/accounts").second.getJSONArray("accounts").getJSONObject(0).getString("id")
-        val saved = call(c, "POST", "/api/admin/accounts/rd", JSONObject().put("id", id).put("token", "RDKEY0000WXYZ"))
+        val dev = devToken(c)
+        val id = call(c, "GET", "/api/admin/accounts", token = dev).second.getJSONArray("accounts").getJSONObject(0).getString("id")
+        val saved = call(c, "POST", "/api/admin/accounts/rd", JSONObject().put("id", id).put("token", "RDKEY0000WXYZ"), dev)
         assertEquals("••••WXYZ", saved.second.getString("rdKeyHint"))
         val me = call(c, "GET", "/api/account", token = token).second
         assertTrue(me.getJSONObject("account").getBoolean("rdKey"))
