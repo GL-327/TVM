@@ -26,9 +26,11 @@ Every TVM has one built-in dev account. On the sign-in screen choose
 account and turns dev mode on; signing out turns it off again. There is no
 password to set, and nobody can register it, suspend it or erase it.
 
-It works the same on the desktop, iPhone and Android. The code is checked by
-Core (scrypt or PBKDF2-HMAC-SHA256 at 600,000 iterations); neither code is in
-this repository.
+It is one code, the same on the desktop, iPhone and Android. Each checks it
+against the same PBKDF2-HMAC-SHA256 digest (600,000 iterations), and a test
+fails if the three copies ever differ. The code itself is not in this
+repository. A phone needs the app build that carries the current digest, so
+after the code changes, install the latest IPA or APK.
 
 Dev mode unlocks the Accounts screen, Email settings, the Developer screen,
 the billing probe and the Stripe key routes. On every call Core checks that
