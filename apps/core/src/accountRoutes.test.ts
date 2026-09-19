@@ -108,6 +108,39 @@ describe('the dev account over HTTP', () => {
   });
 });
 
+describe('dev mode belongs to the dev account, not the machine', () => {
+  it('refuses the Accounts screen to everyone else while the dev is signed in', async () => {
+    const { call, member, developer } = await boot();
+    const token = await member();
+    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
+    expect(developer.on()).toBe(true);
+
+    const listed = await call('/api/admin/accounts', { token: dev });
+    expect(listed.status).toBe(200);
+    const id = (listed.body['accounts'] as Array<{ id: string }>)[0]!.id;
+
+    expect((await call('/api/admin/accounts', { token })).status).toBe(403);
+    expect((await call('/api/admin/accounts')).status).toBe(403);
+    expect((await call('/api/admin/accounts/activate', { token, body: { id, tier: 'stream-live' } })).status).toBe(403);
+    expect((await call('/api/admin/accounts/rd', { token, body: { id, token: 'RDKEY' } })).status).toBe(403);
+    expect((await call('/api/plan', { method: 'PUT', token, body: { id: 'max' } })).status).toBe(403);
+
+    // Nobody else is told dev mode is on, so nobody else is shown the screen.
+    expect((await call('/api/plan', { token })).body['developer']).toBe(false);
+    expect((await call('/api/plan', { token: dev })).body['developer']).toBe(true);
+    expect((await call('/api/dev/status', { token })).body['unlocked']).toBe(false);
+    expect((await call('/api/dev/status', { token: dev })).body['unlocked']).toBe(true);
+  });
+
+  it('turns dev mode back on for the dev account if something switched it off', async () => {
+    const { call, developer } = await boot();
+    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
+    developer.lock();
+    expect((await call('/api/admin/accounts', { token: dev })).status).toBe(200);
+    expect(developer.on()).toBe(true);
+  });
+});
+
 describe('email codes over HTTP', () => {
   it('sends a code on sign-up and holds the account until it is typed in', async () => {
     const { call, member, outbox } = await boot({ mail: true });

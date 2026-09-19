@@ -45,6 +45,14 @@ final class TVMLocalCore {
         }
     }
 
+    /// Dev mode belongs to the dev account, so dev-only routes check who is
+    /// asking. Any app on the phone can reach this server, not just TVM.
+    private func devRequest(_ headers: [String: String]) -> Bool {
+        guard let account = accounts.resolve(token: bearerToken(headers)), account.isDev else { return false }
+        if !plans.developer() { plans.setDeveloper(true) }
+        return true
+    }
+
     private func bearerToken(_ headers: [String: String]) -> String? {
         let dedicated = headers["x-tvm-account"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !dedicated.isEmpty { return dedicated }
@@ -204,9 +212,14 @@ final class TVMLocalCore {
         if path == "/api/art" && (method == "GET" || method == "HEAD") {
             return await art(query["src"] ?? "", head: method == "HEAD")
         }
-        if path == "/api/plan" && method == "GET" { return .json(200, plans.status()) }
+        if path == "/api/plan" && method == "GET" {
+            // Only the dev is shown the Developer screen.
+            var status = plans.status()
+            if (status["developer"] as? Bool) == true && !devRequest(headers) { status["developer"] = false }
+            return .json(200, status)
+        }
         if path == "/api/plan" && method == "PUT" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             do { return .json(200, try plans.setPlan(json["id"] as? String ?? "")) }
             catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "unknown_plan"]) }
         }
@@ -235,7 +248,7 @@ final class TVMLocalCore {
             return .json(200, plans.tickUsage(json["seconds"] as? Double ?? 0, billable: json["billable"] as? Bool ?? true))
         }
         if path == "/api/usage/reset" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             return .json(200, plans.resetUsage())
         }
         if path == "/api/ads/preroll" && method == "GET" {
@@ -331,11 +344,11 @@ final class TVMLocalCore {
 
         // Dev mode only, checked here rather than by hiding the route.
         if path == "/api/admin/accounts" && method == "GET" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             return .json(200, accounts.list(search: query["search"], state: query["state"]))
         }
         if path == "/api/admin/accounts/activate" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String, let tier = json["tier"] as? String,
                   let body = accounts.activate(id: id, tier: tier, note: json["note"] as? String) else {
                 return .json(400, ["error": "Choose an account and a tier."])
@@ -343,7 +356,7 @@ final class TVMLocalCore {
             return .json(200, body)
         }
         if path == "/api/admin/accounts/suspend" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String,
                   let body = accounts.setSuspended(id: id, suspended: (json["suspended"] as? Bool) ?? true) else {
                 return .json(400, ["error": "Choose an account."])
@@ -351,7 +364,7 @@ final class TVMLocalCore {
             return .json(200, body)
         }
         if path == "/api/admin/accounts/note" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String,
                   let body = accounts.setNote(id: id, note: json["note"] as? String) else {
                 return .json(400, ["error": "Choose an account."])
@@ -359,32 +372,32 @@ final class TVMLocalCore {
             return .json(200, body)
         }
         if path == "/api/admin/accounts/erase" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String else { return .json(400, ["error": "Choose an account."]) }
             accounts.erase(id: id)
             return .json(200, ["ok": true])
         }
         if path == "/api/admin/accounts/live-tv" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String, let enabled = json["enabled"] as? Bool else {
                 return .json(400, ["error": "Choose an account."])
             }
             return adminReply(accounts.setLiveTv(id: id, enabled: enabled))
         }
         if path == "/api/admin/accounts/rd" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String, let token = json["token"] as? String else {
                 return .json(400, ["error": "Choose an account."])
             }
             return adminReply(accounts.setRdToken(id: id, token: token))
         }
         if path == "/api/admin/accounts/verify" && method == "POST" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             guard let id = json["id"] as? String else { return .json(400, ["error": "Choose an account."]) }
             return adminReply(accounts.setEmailVerified(id: id, verified: (json["verified"] as? Bool) ?? true))
         }
         if path == "/api/admin/mail" || path == "/api/admin/mail/test" {
-            guard plans.developer() else { return .json(403, ["error": "developer_required"]) }
+            guard devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
             if method == "GET" {
                 return .json(200, [
                     "configured": false, "supported": false, "host": NSNull(), "port": NSNull(),
@@ -394,7 +407,7 @@ final class TVMLocalCore {
             return .json(501, ["error": "Set email up on the desktop TVM. Phones do not send it."])
         }
 
-        if path == "/api/dev/status" && method == "GET" { return .json(200, ["unlocked": plans.developer()]) }
+        if path == "/api/dev/status" && method == "GET" { return .json(200, ["unlocked": devRequest(headers)]) }
         if path == "/api/dev/unlock" && method == "POST" {
             // The shared code is verified here rather than refused, so developer
             // mode behaves the same on a phone as on the desktop Core.

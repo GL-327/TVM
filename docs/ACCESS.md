@@ -31,10 +31,17 @@ Core (scrypt or PBKDF2-HMAC-SHA256 at 600,000 iterations); neither code is in
 this repository.
 
 Dev mode unlocks the Accounts screen, Email settings, the Developer screen,
-the billing probe and the Stripe key routes. Core checks it on every call.
+the billing probe and the Stripe key routes. On every call Core checks that
+the request carries the dev account's own session, not just that dev mode is
+on somewhere. The desktop only serves other devices while you are signed in
+as dev, so a machine-wide switch would have let anyone on the network use
+these routes at exactly that time. The phones check the same way, since any
+app on a phone can reach its local server.
 
 Tapping the TVM logo seven times inside the app still opens the code screen;
-it now switches you to the dev account.
+it now switches you to the dev account. On a Roku, the owner code on the
+waiting screen signs in as dev for one request, switches that account on,
+and signs the dev session out again.
 
 ## Signing up
 

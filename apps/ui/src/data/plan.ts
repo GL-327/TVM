@@ -1,5 +1,14 @@
 import { THEMES } from '../theme/registry';
 import { MOBILE_PLAN_EVENT } from './mobileAccess';
+import { readToken } from './sessionToken';
+
+/** Sent as the signed-in account: some of these routes are for the dev account only. */
+function send(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = readToken();
+  if (token !== null && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...init, headers });
+}
 
 export type LiveTvTerm = 'quarter' | 'year' | 'lifetime';
 
@@ -169,7 +178,7 @@ async function requestJson<T>(url: string, init: RequestInit = {}, timeoutMs = 1
   if (signal?.aborted) controller.abort();
   const timeout = setTimeout(abort, timeoutMs);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await send(url, { ...init, signal: controller.signal });
     const body = (await response.json()) as T & { error?: string };
     if (!response.ok) throw new Error(body.error ?? 'The request could not be completed. Please try again.');
     return body;
@@ -447,7 +456,7 @@ export async function chargeSavedCard(tokenId?: string): Promise<ChargeResult> {
 }
 
 export async function savePlan(id: PlanId): Promise<PlanStatus> {
-  const response = await fetch('/api/plan', {
+  const response = await send('/api/plan', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id }),
@@ -458,7 +467,7 @@ export async function savePlan(id: PlanId): Promise<PlanStatus> {
 }
 
 export async function saveLiveTv(enabled: boolean): Promise<PlanStatus> {
-  const response = await fetch('/api/plan/live-tv', {
+  const response = await send('/api/plan/live-tv', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ enabled }),
@@ -469,7 +478,7 @@ export async function saveLiveTv(enabled: boolean): Promise<PlanStatus> {
 }
 
 export async function saveSynthwave(enabled: boolean): Promise<PlanStatus> {
-  const response = await fetch('/api/plan/synthwave', {
+  const response = await send('/api/plan/synthwave', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ enabled }),
@@ -480,7 +489,7 @@ export async function saveSynthwave(enabled: boolean): Promise<PlanStatus> {
 }
 
 export async function saveStyle(id: StyleId): Promise<PlanStatus> {
-  const response = await fetch('/api/plan/style', {
+  const response = await send('/api/plan/style', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id }),
@@ -491,7 +500,7 @@ export async function saveStyle(id: StyleId): Promise<PlanStatus> {
 }
 
 export async function tickUsage(seconds: number, billable: boolean): Promise<PlanStatus> {
-  const response = await fetch('/api/usage/tick', {
+  const response = await send('/api/usage/tick', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ seconds, billable }),
@@ -501,28 +510,15 @@ export async function tickUsage(seconds: number, billable: boolean): Promise<Pla
 }
 
 export async function resetUsage(): Promise<PlanStatus> {
-  const response = await fetch('/api/usage/reset', { method: 'POST' });
+  const response = await send('/api/usage/reset', { method: 'POST' });
   const body = (await response.json()) as Partial<PlanStatus> & { error?: string };
   if (!response.ok) throw new Error(body.error ?? 'Hours were not reset.');
   return asPlan(body);
 }
 
-export async function unlockDeveloper(password: string): Promise<{ unlocked: boolean; error?: string }> {
-  const response = await fetch('/api/dev/unlock', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ password }),
-  });
-  return (await response.json()) as { unlocked: boolean; error?: string };
-}
-
-export async function lockDeveloper(): Promise<void> {
-  await fetch('/api/dev/lock', { method: 'POST' });
-}
-
 export async function fetchDeveloper(): Promise<{ unlocked: boolean }> {
   try {
-    const response = await fetch('/api/dev/status');
+    const response = await send('/api/dev/status');
     if (!response.ok) return { unlocked: false };
     return (await response.json()) as { unlocked: boolean };
   } catch {
@@ -531,7 +527,7 @@ export async function fetchDeveloper(): Promise<{ unlocked: boolean }> {
 }
 
 export async function saveOverrides(overrides: Record<string, unknown>): Promise<PlanStatus> {
-  const response = await fetch('/api/dev/overrides', {
+  const response = await send('/api/dev/overrides', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(overrides),
