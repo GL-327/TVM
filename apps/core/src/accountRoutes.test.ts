@@ -161,6 +161,32 @@ describe('email codes over HTTP', () => {
     expect((await call('/api/account', { token })).body['usable']).toEqual({ ok: false, reason: 'awaiting_activation' });
   });
 
+  it('keeps the mail server\'s error for the dev and tells the person something they can act on', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'tvm-account-routes-'));
+    dirs.push(dataDir);
+    const mail = createMailService({ dataDir, send: async () => { throw new Error('The mail server refused the sign-in (535 5.7.8 bad credentials).'); } });
+    mail.save({ host: 'smtp.example.com', port: 587, security: 'starttls', username: 'tvm@example.com', password: 'secret-pass', from: 'tvm@example.com' });
+    const accounts = createAccountsService({ dataDir, termsVersion: TERMS_VERSION, emailRequired: () => mail.configured() });
+    const core = await startCoreServer(0, { dataDir, env: {}, developer: fakeDeveloper(), mail, accounts });
+    running.push(core);
+    const base = `http://${CORE_HOST}:${core.port}`;
+    const post = async (path: string, body: unknown, token?: string) => {
+      const response = await fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: (await response.json()) as Record<string, any> };
+    };
+    const signUp = { email: 'ada@example.com', password: 'correct horse battery' };
+    expect((await post('/api/account/register', signUp)).status).toBe(200);
+    const token = (await post('/api/account/signin', signUp)).body['token'] as string;
+    const again = await post('/api/account/email/send', {}, token);
+    expect(again.status).toBe(502);
+    expect(again.body['error']).toMatch(/could not be sent/);
+    expect(again.body['error']).not.toContain('535');
+  });
+
   it('makes you wait before sending another', async () => {
     const { call, member } = await boot({ mail: true });
     const token = await member();
