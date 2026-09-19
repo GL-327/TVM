@@ -292,7 +292,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
             {total > 0 ? `${picked || channels.length} of ${total} channels on Live TV.` : `${channels.length} channels.`}
             {status.needsPicks === true ? ' Choose which channels to keep on this screen.' : ''}
             {channels.some((channel) => channel.id.startsWith('live:test:'))
-              ? ' DW News is the test channel for the dev account: a real broadcast, played through the TVM proxy.'
+              ? ' DW News is a test channel for the TVM proxy: a real broadcast, shown while the dev is signed in.'
               : ''}
             {channels.some((channel) => channel.id.startsWith('live:mock:'))
               ? ' Sample tiles use demo streams for layout only. They are not Sky, TNT or USA Network.'

@@ -557,7 +557,7 @@ final class TVMLocalCore {
     /// DW News, straight from Deutsche Welle. Same test channel as apps/core/src/providers/live.ts.
     static let testChannelURL = "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8"
 
-    /// A real live broadcast for checking the proxy with. Dev account only.
+    /// A real live broadcast for checking the proxy with, listed while the dev account is signed in.
     private func testChannels() -> [[String: Any]] {
         guard plans.developer() else { return [] }
         return [["id": "live:test:dw-news", "name": "DW News", "url": TVMLocalCore.testChannelURL, "group": "Test", "logo": ""]]
