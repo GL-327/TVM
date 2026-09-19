@@ -2,32 +2,21 @@ import Foundation
 import CommonCrypto
 
 /**
- Developer unlock on the phone.
-
- The phone builds used to refuse this outright — "available on the desktop
- Core, not on this phone app" — which meant a developer code was not actually
- universal. This verifies the shared code locally so every build answers the
- same way.
-
- The credential is PBKDF2-HMAC-SHA256 rather than the desktop Core's scrypt for
- one practical reason: scrypt has no implementation in CryptoKit or CommonCrypto,
- so checking a scrypt digest here would have meant vendoring a crypto library
- into the app. PBKDF2 is in the system library on every platform TVM ships to,
- which is what makes one shared credential possible.
-
- The password itself is not in this source tree and cannot be recovered from
- the digest. 600,000 iterations is the OWASP floor for this construction.
+ The developer code, checked on the phone. It is one code for the desktop,
+ iPhone and Android: the same PBKDF2-HMAC-SHA256 salt and digest are in
+ apps/core/src/providers/devUnlock.ts and TvmDevUnlock.kt, and a test checks
+ they match. The code itself is not in this repository.
  */
 enum TVMDevUnlock {
     private static let salt: [UInt8] = [
-        0xf8, 0x0d, 0x25, 0x73, 0xb5, 0xa6, 0x4e, 0x22,
-        0xbe, 0xac, 0x1d, 0x51, 0x46, 0xba, 0xa2, 0xbc,
+        0x73, 0x18, 0xf8, 0x16, 0x72, 0x54, 0x13, 0x7f,
+        0xe7, 0x4c, 0xa4, 0xb6, 0x68, 0x2c, 0x1a, 0xaa,
     ]
     private static let expected: [UInt8] = [
-        0x85, 0x44, 0xf3, 0x26, 0xd1, 0xe3, 0x12, 0x4d,
-        0xda, 0x16, 0x79, 0xd4, 0xca, 0x0d, 0x5e, 0xa4,
-        0x8a, 0x02, 0xc8, 0x0e, 0x32, 0x84, 0xba, 0xbc,
-        0x2b, 0xac, 0xc1, 0x11, 0x84, 0xd4, 0xbc, 0x09,
+        0x8e, 0x14, 0x4e, 0xd5, 0x29, 0x28, 0x9b, 0x3b,
+        0x61, 0x7e, 0x50, 0xee, 0x6c, 0x4f, 0x0f, 0xfb,
+        0x3e, 0x98, 0x90, 0xa1, 0xbb, 0xd2, 0x24, 0xfb,
+        0x2a, 0x33, 0x9c, 0xac, 0x7a, 0xaa, 0xbc, 0xa2,
     ]
     private static let iterations: UInt32 = 600_000
 

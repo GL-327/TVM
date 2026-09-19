@@ -4,34 +4,21 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
 /**
- * Developer unlock on the phone.
- *
- * The phone builds used to refuse this outright — "available on the desktop
- * Core, not on this phone app" — so a developer code was never actually
- * universal. This verifies the shared code locally, so every build answers the
- * same way.
- *
- * PBKDF2-HMAC-SHA256 rather than the desktop Core's scrypt for one practical
- * reason: scrypt is not in the Android platform libraries, so checking a scrypt
- * digest here would have meant vendoring a crypto library into the app.
- * PBKDF2WithHmacSHA256 ships with the platform, which is what makes a single
- * shared credential possible across desktop, iOS and Android.
- *
- * The password itself is not in this source tree and cannot be recovered from
- * the digest. 600,000 iterations is the OWASP floor for this construction; the
- * salt is public by design, its only job being to stop one precomputed table
- * serving every install.
+ * The developer code, checked on the phone. It is one code for the desktop,
+ * iPhone and Android: the same PBKDF2-HMAC-SHA256 salt and digest are in
+ * apps/core/src/providers/devUnlock.ts and TVMDevUnlock.swift, and a test
+ * checks they match. The code itself is not in this repository.
  */
 object TvmDevUnlock {
     private val salt = byteArrayOf(
-        0xf8.toByte(), 0x0d, 0x25, 0x73, 0xb5.toByte(), 0xa6.toByte(), 0x4e, 0x22,
-        0xbe.toByte(), 0xac.toByte(), 0x1d, 0x51, 0x46, 0xba.toByte(), 0xa2.toByte(), 0xbc.toByte(),
+        0x73, 0x18, 0xf8.toByte(), 0x16, 0x72, 0x54, 0x13, 0x7f,
+        0xe7.toByte(), 0x4c, 0xa4.toByte(), 0xb6.toByte(), 0x68, 0x2c, 0x1a, 0xaa.toByte(),
     )
     private val expected = byteArrayOf(
-        0x85.toByte(), 0x44, 0xf3.toByte(), 0x26, 0xd1.toByte(), 0xe3.toByte(), 0x12, 0x4d,
-        0xda.toByte(), 0x16, 0x79, 0xd4.toByte(), 0xca.toByte(), 0x0d, 0x5e, 0xa4.toByte(),
-        0x8a.toByte(), 0x02, 0xc8.toByte(), 0x0e, 0x32, 0x84.toByte(), 0xba.toByte(), 0xbc.toByte(),
-        0x2b, 0xac.toByte(), 0xc1.toByte(), 0x11, 0x84.toByte(), 0xd4.toByte(), 0xbc.toByte(), 0x09,
+        0x8e.toByte(), 0x14, 0x4e, 0xd5.toByte(), 0x29, 0x28, 0x9b.toByte(), 0x3b,
+        0x61, 0x7e, 0x50, 0xee.toByte(), 0x6c, 0x4f, 0x0f, 0xfb.toByte(),
+        0x3e, 0x98.toByte(), 0x90.toByte(), 0xa1.toByte(), 0xbb.toByte(), 0xd2.toByte(), 0x24, 0xfb.toByte(),
+        0x2a, 0x33, 0x9c.toByte(), 0xac.toByte(), 0x7a, 0xaa.toByte(), 0xbc.toByte(), 0xa2.toByte(),
     )
     private const val ITERATIONS = 600_000
 

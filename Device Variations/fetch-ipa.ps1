@@ -39,7 +39,17 @@ function Download-Url([string] $Url, [string] $Dest) {
         Remove-Item -Force $tmp -ErrorAction SilentlyContinue
         throw "download failed: $Url"
     }
-    Move-Item -Force $tmp $Dest
+    # Antivirus often holds a fresh download open for a moment, so the rename
+    # is retried rather than failing with the old file already gone.
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            Move-Item -Force $tmp $Dest -ErrorAction Stop
+            break
+        } catch {
+            if ($attempt -ge 20) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
     Write-Host ("    {0:N1} MB -> {1}" -f ((Get-Item $Dest).Length / 1MB), (Split-Path -Leaf $Dest))
 }
 
