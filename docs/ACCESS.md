@@ -149,9 +149,11 @@ never refused. Phones only listen on loopback, so they never serve anyone.
 
 ### Test channel
 
-Signed in as the dev account, Live TV shows **DW News**, Deutsche Welle's free
-English channel, even before a provider is added. It is a real live broadcast
-(five renditions, relative paths, a subtitle track) and plays through the
-proxy, so it is a quick check that proxy reflection works. BBC channels are
+While the dev account is signed in on a TVM, Live TV there lists **DW News**,
+Deutsche Welle's free English channel, even before a provider is added. It is
+a real live broadcast (five renditions, relative paths, a subtitle track) and
+plays through the proxy, so it is a quick check that proxy reflection works.
+Every device using that TVM sees it, so the relay can be tested from a Roku
+or a phone as well as the machine itself. BBC channels are
 UK-only and need a TV licence, so they are not used. For offline, repeatable
 checks use the IPTV tester in `apps/core/src/Server Side Live/tester`.

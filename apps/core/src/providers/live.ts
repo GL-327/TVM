@@ -137,7 +137,7 @@ const BIPBOP =
  */
 export const TEST_CHANNEL_URL = 'https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8';
 
-/** Shown to the dev account only, alongside a provider's channels. */
+/** Listed on every device using this Core while the dev account is signed in, next to a provider's channels. */
 export const MOCK_LIVE_CHANNELS: readonly LiveChannel[] = [
   { id: 'live:test:dw-news', name: 'DW News', url: TEST_CHANNEL_URL, group: 'Test' },
   { id: 'live:mock:sky-sports', name: 'Sample sports 1', url: MUX, group: 'Sample' },
