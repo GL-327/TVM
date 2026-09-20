@@ -17,9 +17,17 @@ export const PBKDF2_SALT = Buffer.from('7318f8167254137fe74ca4b6682c1aaa', 'hex'
 export const PBKDF2_HASH = Buffer.from('8e144ed529289b3b617e50ee6c4f0ffb3e9890a1bbd224fb2a339cac7aaabca2', 'hex');
 export const PBKDF2_ITERATIONS = 600_000;
 
-/** Constant time, so how long it takes says nothing about how close a guess was. */
+/**
+ * Constant time, so how long it takes says nothing about how close a guess was.
+ *
+ * Surrounding space is dropped first. A television remote, a phone keyboard
+ * and a paste all add one easily, and "that code is not valid" for a space is
+ * indistinguishable from the wrong code.
+ */
 export function verifyDeveloperPassword(password: string): boolean {
-  if (typeof password !== 'string' || password.length === 0 || password.length > 128) return false;
+  if (typeof password !== 'string') return false;
+  password = password.trim();
+  if (password.length === 0 || password.length > 128) return false;
   try {
     const derived = pbkdf2Sync(password, PBKDF2_SALT, PBKDF2_ITERATIONS, PBKDF2_HASH.length, 'sha256');
     return timingSafeEqual(derived, PBKDF2_HASH);
