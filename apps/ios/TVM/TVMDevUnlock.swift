@@ -29,9 +29,12 @@ enum TVMDevUnlock {
         return difference == 0
     }
 
+    /// Surrounding space is dropped first. A phone keyboard adds one easily,
+    /// and "that code is not valid" for a space looks the same as a wrong code.
     static func verify(_ password: String) -> Bool {
-        guard !password.isEmpty, password.count <= 128 else { return false }
-        guard let passwordData = password.data(using: .utf8) else { return false }
+        let code = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty, code.count <= 128 else { return false }
+        guard let passwordData = code.data(using: .utf8) else { return false }
 
         var derived = [UInt8](repeating: 0, count: expected.count)
         let status = passwordData.withUnsafeBytes { passwordBytes -> Int32 in
