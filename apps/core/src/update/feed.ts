@@ -21,8 +21,13 @@ import { parseChangelogEntry, sameCommit, type ChangelogEntry } from './changelo
 export const FEED_SCHEMA = 1;
 
 /** Stable release tags, rebuilt in place on every push to main. */
+/**
+ * The release each platform's update feed is published to. These are not the
+ * download pages: `desktop`, `ios`, `android` and `roku` hold one file each,
+ * for people, and the feeds sit beside them.
+ */
 export const FEED_TAGS = {
-  desktop: 'desktop',
+  desktop: 'desktop-ui',
   ios: 'ios-ui',
   android: 'android-ui',
 } as const;

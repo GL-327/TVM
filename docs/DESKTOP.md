@@ -82,26 +82,24 @@ If a start fails, the launcher prints the last lines of those logs.
 
 ## 3. GitHub desktop package
 
-Releases also publish `TVM-desktop-<version>.tar.gz` (built core + UI, no
-Electron binary). Extract it and run:
+The [Desktop release](https://github.com/GL-327/TVM/releases/tag/desktop)
+publishes one file, `TVM-desktop.zip`: built core and interface, no Electron
+binary. Extract it and start it the way that system does.
 
 ```bash
-tar -tzf TVM-desktop-*.tar.gz | head
-tar -xzf TVM-desktop-*.tar.gz
+unzip TVM-desktop.zip -d TVM
+cd TVM
 chmod +x launch-tvm.sh TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command
-./TVM-windowed.sh
+./TVM.sh
 ```
 
-That start is **production**: Core serves the UI on port 7345 and the script
-opens Electron if this machine already has a TVM git checkout’s Electron, or
-the browser if not. For the full kiosk window, clone the repo (section 1).
+On Windows double-click `TVM.cmd`; on macOS right-click `TVM.command` and
+choose Open, which macOS requires the first time.
 
-Verify the checksum:
-
-```bash
-sha256sum -c TVM-desktop-*.sha256    # Linux
-shasum -a 256 -c TVM-desktop-*.sha256  # macOS
-```
+An extracted package is an **install**: Core serves the interface on port
+7345, the launcher opens Electron if this machine has a checkout's copy and
+the browser if not, and it updates itself from GitHub. For the full kiosk
+window, clone the repo (section 1).
 
 ## 4. Environment
 

@@ -57,7 +57,9 @@ apps/android/
 | Debug APK in git | **Not committed.** `app/build/` and `*.apk` are ignored. After the SDK is present, `gradlew.bat assembleDebug` writes a debug-signed APK under `app/build/outputs/apk/debug/` for private testing only. If that file exists on disk from a previous build, it is still not a repository artifact. |
 | Play Store / signed release AAB | Not in this tree |
 
-GitHub Actions `mobile.yml` runs the same `assembleDebug` on a runner that has the SDK and uploads that debug APK. It is not a Play release.
+GitHub Actions `mobile.yml` runs the same `assembleDebug` on a runner that has the SDK. It is not a Play release, but it is signed with TVM's own key, so each release installs over the last and keeps the phone's sign-ins. The key comes from the `TVM_ANDROID_SIGNING` secret: the keystore password on the first line, then the PKCS12 keystore (alias `tvm`) in base64. The key itself is kept outside the repository. A local build without it gets Gradle's usual debug key.
+
+Before anything is released, `scripts/android-smoke.mjs` installs the APK on an Android 14 emulator, opens it, and checks that the phone's own core answers, the sign-in screen appears and an account can be created. The screenshot and logcat are kept as the `tvm-android-smoke` artifact.
 
 ## What you need to produce an APK
 
