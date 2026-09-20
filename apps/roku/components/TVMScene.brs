@@ -560,6 +560,7 @@ sub onSettingsAction()
   if kind = "computerSettings"
     navigate("modal", "notice", { title: "Manage on your computer", body: "Open TVM on the computer for billing, updates, diagnostics, clearing caches and deleting data. These controls are restricted to that computer." })
   end if
+  if kind = "channelInfo" then showChannelInfo()
   if kind = "realdebrid" then navigate("push", "realdebrid", {})
   if kind = "livePlaylist" then showLiveKeyboard()
   if kind = "profiles" then navigate("push", "profiles", {})
@@ -619,6 +620,8 @@ sub onAccountAction()
   if kind = "recheck" then loadAccount(true)
   if kind = "signout" then signOutAccount()
   if kind = "agree" then agreeAccountTerms()
+  if kind = "editEmailCode" then showKeyboard("emailCode", "Six-digit code", "", "Check")
+  if kind = "resendCode" then resendEmailCode()
   if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
 end sub
 
@@ -875,6 +878,10 @@ sub onKeyboardButton()
     restoreScreenFocus()
     return
   end if
+  if mode = "emailCode"
+    submitEmailCode(text)
+    return
+  end if
   if mode = "ownerCode"
     submitOwnerCode(text)
     return
@@ -1046,9 +1053,9 @@ sub paintAccountGate(json as Object)
     m.accountNode.heading = "Almost there"
     m.accountNode.lede = "Your account exists and your sign-in works. It needs the app owner to switch it on before there is anything to watch."
   else if signedIn = true and reason = "email_unverified"
-    m.accountNode.phase = "waiting"
+    m.accountNode.phase = "verify"
     m.accountNode.heading = "Check your email"
-    m.accountNode.lede = "We sent a six-digit code to " + email + ". Type it in on TVM on your phone or computer, then choose Check again."
+    m.accountNode.lede = "We sent a six-digit code to " + email + ". Type it in here. It lasts fifteen minutes."
   else if signedIn = true and reason = "suspended"
     m.accountNode.phase = "suspended"
     m.accountNode.heading = "This account is switched off"
@@ -1218,12 +1225,72 @@ sub onAccountSignOutDone()
   showAccountGate(body)
 end sub
 
+' A Roku cannot replace a sideloaded channel by itself, so say plainly what
+' to do about it instead of pretending there is a button for it.
+sub showChannelInfo()
+  info = CreateObject("roAppInfo")
+  build = info.GetValue("tvm_commit")
+  line = "Channel version " + info.GetVersion()
+  if build <> invalid and build <> "" then line = line + ", build " + build + "."
+  navigate("modal", "notice", {
+    title: "This channel"
+    body: line + " Most of what you see comes from the computer running TVM, so it keeps up on its own. The channel itself is replaced by hand: download TVM-roku.zip from the TVM releases page and upload it at http://" + rokuAddress() + " the way you installed it."
+  })
+end sub
+
+function rokuAddress() as String
+  device = CreateObject("roDeviceInfo")
+  address = device.GetIPAddrs()
+  for each name in address
+    value = address[name]
+    if value <> invalid and value <> "" then return value
+  end for
+  return "your Roku's address"
+end function
+
 sub agreeAccountTerms()
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/terms"), "POST", "{}", "onAccountTermsDone")
 end sub
 
 sub onAccountTermsDone()
   loadAccount(true)
+end sub
+
+' The six digits from the sign-up email. Before this a Roku could only wait
+' for somebody to type them on another device.
+sub submitEmailCode(text as String)
+  code = text.Trim()
+  if code = ""
+    restoreScreenFocus()
+    return
+  end if
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/email/verify"), "POST", FormatJson({ code: code }), "onEmailCodeDone")
+end sub
+
+sub onEmailCodeDone()
+  restoreScreenFocus()
+  task = m.accountTask
+  if task = invalid then return
+  if not task.ok
+    err = asText(aaGet(task.json, "error", "That code was not accepted."))
+    if m.accountNode <> invalid then m.accountNode.status = err
+    return
+  end if
+  loadAccount(true)
+end sub
+
+sub resendEmailCode()
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/email/send"), "POST", "{}", "onResendEmailCodeDone")
+end sub
+
+sub onResendEmailCodeDone()
+  task = m.accountTask
+  if task = invalid or m.accountNode = invalid then return
+  if not task.ok
+    m.accountNode.status = asText(aaGet(task.json, "error", "That code could not be sent. Try again in a minute."))
+    return
+  end if
+  m.accountNode.status = "A new code is on its way."
 end sub
 
 sub loadHome()

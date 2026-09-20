@@ -25,5 +25,9 @@
     <FocusButton id="recheck" translation="[160, 1180]" />
     <FocusButton id="signout" translation="[160, 1380]" />
     <FocusButton id="agree" translation="[160, 1180]" />
+    <!-- The email code, typed on the television rather than somewhere else.
+         These share slots with buttons that never show at the same time. -->
+    <FocusButton id="emailCode" translation="[160, 980]" />
+    <FocusButton id="resendCode" translation="[160, 1180]" />
   </children>
 </component>

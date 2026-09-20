@@ -11,6 +11,8 @@ sub init()
   m.recheck = m.top.findNode("recheck")
   m.signout = m.top.findNode("signout")
   m.agree = m.top.findNode("agree")
+  m.emailCode = m.top.findNode("emailCode")
+  m.resendCode = m.top.findNode("resendCode")
   m.seq = 0
   m.col = 0
   m.name.variant = "row"
@@ -37,6 +39,12 @@ sub init()
   m.agree.variant = "primary"
   m.agree.label = "I have read and agree"
   m.agree.itemId = "agree"
+  m.emailCode.variant = "primary"
+  m.emailCode.label = "Enter the code"
+  m.emailCode.itemId = "emailCode"
+  m.resendCode.variant = "row"
+  m.resendCode.label = "Send a new code"
+  m.resendCode.itemId = "resendCode"
   paint()
 end sub
 
@@ -74,6 +82,10 @@ function formButtons() as Object
     buttons.Push(m.password)
     buttons.Push(m.submit)
     buttons.Push(m.switchMode)
+  else if phase = "verify"
+    buttons.Push(m.emailCode)
+    buttons.Push(m.resendCode)
+    buttons.Push(m.signout)
   else if phase = "waiting" or phase = "suspended"
     buttons.Push(m.recheck)
     buttons.Push(m.signout)
@@ -94,7 +106,9 @@ sub paint()
   m.switchMode.visible = signin
   m.recheck.visible = (phase = "waiting" or phase = "suspended")
   m.agree.visible = (phase = "terms")
-  m.signout.visible = (phase = "waiting" or phase = "suspended" or phase = "terms")
+  m.emailCode.visible = (phase = "verify")
+  m.resendCode.visible = (phase = "verify")
+  m.signout.visible = (phase = "waiting" or phase = "suspended" or phase = "terms" or phase = "verify")
   if phase = "register"
     m.submit.label = "Create account"
     m.switchMode.label = "I already have an account"
@@ -116,6 +130,8 @@ sub paint()
   m.recheck.hasFocusStyle = false
   m.signout.hasFocusStyle = false
   m.agree.hasFocusStyle = false
+  m.emailCode.hasFocusStyle = false
+  m.resendCode.hasFocusStyle = false
   if buttons.Count() = 0
     m.top.focusKey = ""
     return
@@ -167,6 +183,8 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
       if id = "recheck" then emit("recheck")
       if id = "signout" then emit("signout")
       if id = "agree" then emit("agree")
+      if id = "emailCode" then emit("editEmailCode")
+      if id = "resendCode" then emit("resendCode")
     end if
     return true
   end if

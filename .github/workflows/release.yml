@@ -192,6 +192,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Nothing here runs BrightScript, so a typo used to reach the Roku
+      # itself and show as a channel that opens to a grey screen. This parses
+      # and validates every .brs and component before anything is published.
+      - name: Check the channel compiles
+        run: npx --yes brighterscript@0.73.5 --project apps/roku/bsconfig.json
 
       # A Roku sideload package is just a zip with the manifest at its root.
       # No Roku SDK is involved, so this is a plain packaging + lint job.
@@ -215,6 +224,11 @@ jobs:
           VERSION="$(sed -n 's/^major_version=\(.*\)/\1/p' apps/roku/manifest).$(sed -n 's/^minor_version=\(.*\)/\1/p' apps/roku/manifest).$(sed -n 's/^build_version=\(.*\)/\1/p' apps/roku/manifest)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p release
+          # Which build is on the television. A sideloaded channel is installed
+          # by hand, so without this nobody can tell one from another.
+          SHA="$(git rev-parse --short HEAD)"
+          printf 'tvm_commit=%s\ntvm_built_at=%s\n' "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> apps/roku/manifest
+          grep '^tvm_commit=' apps/roku/manifest
           (cd apps/roku && zip -q -r "$GITHUB_WORKSPACE/release/TVM-roku.zip" . -x 'bsconfig.json' '*.md')
           unzip -l release/TVM-roku.zip | head -20
 
