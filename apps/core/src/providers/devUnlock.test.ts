@@ -44,6 +44,23 @@ describe('the shared developer credential', () => {
     expect(verifyDeveloperPassword(42 as unknown as string)).toBe(false);
   });
 
+  // A television remote, a phone keyboard and a paste all add a space, and
+  // the refusal for one is word for word the refusal for a wrong code.
+  it('ignores space around the code, on all three platforms', () => {
+    const candidate = 'a-password-that-is-not-the-real-one';
+    expect(verifyDeveloperPassword(`  ${candidate}\n`)).toBe(verifyDeveloperPassword(candidate));
+    expect(verifyDeveloperPassword('   ')).toBe(false);
+    // The phones check the code themselves, so trimming has to be in their
+    // own verifiers rather than in whatever called them.
+    const ios = readFileSync(join(HERE, '..', '..', '..', 'ios', 'TVM', 'TVMDevUnlock.swift'), 'utf8');
+    const android = readFileSync(
+      join(HERE, '..', '..', '..', 'android', 'app', 'src', 'main', 'java', 'com', 'tvm', 'privateclient', 'TvmDevUnlock.kt'),
+      'utf8',
+    );
+    expect(ios).toContain('trimmingCharacters(in: .whitespacesAndNewlines)');
+    expect(android).toContain('password.trim()');
+  });
+
   it('keeps no plaintext password anywhere in the source', () => {
     // The digest is one-way; a plaintext beside it would make it decorative.
     const source = readFileSync(join(HERE, 'devUnlock.ts'), 'utf8');

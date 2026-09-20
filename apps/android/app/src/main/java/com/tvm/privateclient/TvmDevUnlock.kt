@@ -30,10 +30,15 @@ object TvmDevUnlock {
         return difference == 0
     }
 
+    /**
+     * Surrounding space is dropped first. A phone keyboard adds one easily,
+     * and "that code is not valid" for a space looks the same as a wrong code.
+     */
     fun verify(password: String): Boolean {
-        if (password.isEmpty() || password.length > 128) return false
+        val code = password.trim()
+        if (code.isEmpty() || code.length > 128) return false
         return try {
-            val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, expected.size * 8)
+            val spec = PBEKeySpec(code.toCharArray(), salt, ITERATIONS, expected.size * 8)
             val derived = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
             spec.clearPassword()
             constantTimeEquals(derived, expected)
