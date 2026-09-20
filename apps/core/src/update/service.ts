@@ -242,7 +242,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
 
   const snapshot = (): UpdateStatus => {
     const cache = readCache(dataDir);
-    const policy = kind === 'package' ? applyPolicy(env) : { allowed: false, reason: null };
+    const policy = kind === 'package' ? applyPolicy(env, kind) : { allowed: false, reason: null };
     const checked = cache.lastCheck !== null;
     return {
       current: currentVersion,
@@ -387,7 +387,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   };
 
   const applyPackage = async (): Promise<ApplyResult> => {
-    const policy = applyPolicy(env);
+    const policy = applyPolicy(env, 'package');
     if (!policy.allowed) {
       const error = new Error(policy.reason ?? 'apply refused');
       error.name = 'ApplyRefused';

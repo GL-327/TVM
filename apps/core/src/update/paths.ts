@@ -45,12 +45,29 @@ export function resolveDataDir(
   return path.join(path.resolve('.'), 'tvm-data');
 }
 
-export function applyPolicy(env: NodeJS.ProcessEnv = process.env): { allowed: boolean; reason: string | null } {
+/**
+ * Whether a downloaded build may be applied.
+ *
+ * An installed package applies into the data directory and moves the `current`
+ * pointer, so it never writes over what it is running from. That is how a
+ * desktop install is meant to update itself, and asking for a switch first
+ * only means it never updates: TVM_ENV is set by whichever launcher started
+ * it, and the Windows one said development, so every Windows install refused
+ * its own updates.
+ *
+ * A checkout is source. A download landing on top of it would overwrite work,
+ * so it updates by pulling instead, unless someone deliberately asks.
+ */
+export function applyPolicy(
+  env: NodeJS.ProcessEnv = process.env,
+  kind: 'checkout' | 'package' = 'package',
+): { allowed: boolean; reason: string | null } {
+  if (kind === 'package') return { allowed: true, reason: null };
   if (env['TVM_ENV'] === 'production') return { allowed: true, reason: null };
   if (env['TVM_ALLOW_APPLY'] === '1') return { allowed: true, reason: null };
   return {
     allowed: false,
-    reason: 'Apply is disabled in this checkout so a download cannot overwrite the source tree. Publish a release and apply it on an appliance, or set TVM_ENV=production.',
+    reason: 'This is a git checkout, so TVM updates by pulling from GitHub rather than by downloading a build. Set TVM_ALLOW_APPLY=1 to apply one anyway.',
   };
 }
 
