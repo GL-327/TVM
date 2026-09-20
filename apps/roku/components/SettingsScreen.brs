@@ -6,9 +6,9 @@ sub init()
   m.rows = []
   m.col = 0
   m.seq = 0
-  m.ids = ["theme", "url", "token", "profiles", "realdebrid", "network", "display", "livetv", "computer", "restart"]
-  m.kinds = ["cycleTheme", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "livePlaylist", "computerSettings", "restart"]
-  labels = ["Theme", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Manage on computer", "Reload Home"]
+  m.ids = ["theme", "url", "token", "profiles", "realdebrid", "network", "display", "livetv", "computer", "restart", "channel"]
+  m.kinds = ["cycleTheme", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "livePlaylist", "computerSettings", "restart", "channelInfo"]
+  labels = ["Theme", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Manage on computer", "Reload Home", "This channel"]
   i = 0
   while i < labels.Count()
     btn = CreateObject("roSGNode", "FocusButton")
@@ -21,7 +21,20 @@ sub init()
     i = i + 1
   end while
   paintThemeRow()
+  paintChannelRow()
   paintFocus()
+end sub
+
+' A sideloaded channel is uploaded by hand, so it can sit years behind the
+' TVM it talks to with nothing on screen to say so. CI writes tvm_commit into
+' the manifest when it packages this.
+sub paintChannelRow()
+  info = CreateObject("roAppInfo")
+  build = info.GetValue("tvm_commit")
+  detail = "Version " + info.GetVersion()
+  if build <> invalid and build <> "" then detail = detail + " · build " + build
+  if info.IsDev() then detail = detail + " · sideloaded"
+  setRowDetail("channel", detail)
 end sub
 
 function rowById(id as String) as Object
