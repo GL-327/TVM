@@ -61,14 +61,23 @@ describe('tar safety', () => {
 });
 
 describe('apply policy', () => {
-  it('refuses a development checkout', () => {
-    expect(applyPolicy({ TVM_ENV: 'development' }).allowed).toBe(false);
-    expect(applyPolicy({}).allowed).toBe(false);
+  it('refuses a checkout, which updates by pulling instead', () => {
+    expect(applyPolicy({ TVM_ENV: 'development' }, 'checkout').allowed).toBe(false);
+    expect(applyPolicy({}, 'checkout').allowed).toBe(false);
   });
 
-  it('allows production', () => {
-    expect(applyPolicy({ TVM_ENV: 'production' }).allowed).toBe(true);
-    expect(applyPolicy({ TVM_ALLOW_APPLY: '1' }).allowed).toBe(true);
+  it('lets a checkout apply when asked deliberately', () => {
+    expect(applyPolicy({ TVM_ENV: 'production' }, 'checkout').allowed).toBe(true);
+    expect(applyPolicy({ TVM_ALLOW_APPLY: '1' }, 'checkout').allowed).toBe(true);
+  });
+
+  // The bug this replaces: an installed package asked TVM_ENV for permission,
+  // and the Windows launcher set it to development, so no Windows install
+  // could ever apply its own update.
+  it('allows an installed package whatever the launcher set', () => {
+    expect(applyPolicy({ TVM_ENV: 'development' }, 'package').allowed).toBe(true);
+    expect(applyPolicy({}, 'package').allowed).toBe(true);
+    expect(applyPolicy({}, 'package').reason).toBeNull();
   });
 });
 
@@ -289,16 +298,18 @@ describe('update service: packaged install', () => {
     await expect(offline.check()).resolves.toMatchObject({ kind: 'failed', available: null });
   });
 
-  it('refuses apply outside production before touching the network', async () => {
-    let touched = false;
+  // An install applies whatever its launcher put in the environment. It used
+  // to ask for TVM_ENV=production, which the Windows launcher never set, so
+  // Windows installs quietly refused every update they found.
+  it('applies an installed package whatever TVM_ENV says', async () => {
     const service = createUpdateService({
       dataDir: await dataDir(),
       env: { TVM_ENV: 'development' },
       install: PACKAGE,
-      fetch: async () => { touched = true; return new Response('no', { status: 500 }); },
+      fetch: async () => new Response('no', { status: 500 }),
     });
-    await expect(service.apply()).rejects.toMatchObject({ name: 'ApplyRefused' });
-    expect(touched).toBe(false);
+    await expect(service.apply()).rejects.not.toMatchObject({ name: 'ApplyRefused' });
+    expect(service.status().applyAllowed).toBe(true);
   });
 
   it('refuses a bundle whose checksum does not match', async () => {
@@ -602,9 +613,13 @@ describe('applied launch', () => {
     const currentUrl = pathToFileURL(coreEntry).href;
     const imageUrl = pathToFileURL(join(dir, 'image', 'core', 'index.js')).href;
     expect(resolveAppliedApp(dir)).toMatchObject({ version: '0.2.0', coreEntry });
-    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'development' })).toBeNull();
-    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'production' })?.coreEntry).toBe(coreEntry);
-    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'production' })).toBeNull();
+    // A checkout stays on its own source; an install boots what it applied,
+    // whatever its launcher put in the environment.
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'development' }, 'checkout')).toBeNull();
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'development' }, 'package')?.coreEntry).toBe(coreEntry);
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'production' }, 'package')?.coreEntry).toBe(coreEntry);
+    // Already the applied build: nothing to hop into.
+    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'production' }, 'package')).toBeNull();
   });
 });
 
