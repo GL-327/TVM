@@ -59,6 +59,8 @@ jobs:
           cp -r apps/ui/dist/. stage/ui/
           cp scripts/launch-tvm.sh scripts/launch-tvm.cmd scripts/launch-tvm.ps1 stage/
           cp TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command stage/
+          # Windows gets the same two entry points as macOS and Linux.
+          cp TVM.cmd TVM-windowed.cmd stage/
           cp docs/DESKTOP.md stage/README.md
           cp package.json stage/
           chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM-windowed.sh stage/TVM.command stage/TVM-windowed.command
@@ -73,12 +75,14 @@ jobs:
           test -f check-app/core/index.js
           test -f check-app/core/build-info.json
           test -f check-app/ui/index.html
-          tar -czf "release/TVM-desktop-$VERSION.tar.gz" -C stage .
-          if command -v sha256sum >/dev/null; then
-            (cd release && sha256sum "TVM-desktop-$VERSION.tar.gz" > "TVM-desktop-$VERSION.sha256")
-          else
-            (cd release && shasum -a 256 "TVM-desktop-$VERSION.tar.gz" > "TVM-desktop-$VERSION.sha256")
-          fi
+          # One download for all three systems. A zip opens with a double-click
+          # on Windows, which a tarball does not.
+          (cd stage && zip -q -r "$GITHUB_WORKSPACE/release/TVM-desktop.zip" .)
+          rm -rf check-zip && mkdir check-zip && unzip -q "release/TVM-desktop.zip" -d check-zip
+          test -f check-zip/core/index.js
+          test -f check-zip/ui/index.html
+          test -f check-zip/TVM.cmd
+          test -f check-zip/TVM.command
           bash -n stage/launch-tvm.sh
           bash -n stage/TVM-windowed.sh
 
@@ -94,14 +98,40 @@ jobs:
 
           | | |
           |---|---|
-          | Download | \`TVM-desktop-$VERSION.tar.gz\` |
+          | Download | \`TVM-desktop.zip\` |
           | Build | \`$SHA\` |
           | Needs | [Node.js 22+](https://nodejs.org) |
 
-          ### Git checkout (Electron kiosk)
+          One zip for all three systems. It carries TVM's core and its
+          interface; your browser is the screen.
 
-          Clone [the repository](https://github.com/GL-327/TVM) and follow
-          [docs/DESKTOP.md](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
+          ### Set up
+
+          1. Install [Node.js 22 or newer](https://nodejs.org) if you have not.
+          2. Download **TVM-desktop.zip** and extract it anywhere — Desktop is fine.
+          3. Start it:
+             - **Windows** — double-click \`TVM.cmd\` (or \`TVM-windowed.cmd\`).
+               SmartScreen may warn about an unknown publisher: *More info →
+               Run anyway*.
+             - **macOS** — right-click \`TVM.command\` → Open, and confirm once.
+               macOS blocks a plain double-click the first time.
+             - **Linux** — \`chmod +x TVM.sh && ./TVM.sh\`
+          4. TVM opens at \`http://127.0.0.1:7345/\`. Leave the window running;
+             that is TVM itself, not just a page.
+          5. Sign in, or press **I'm a dev** and enter the developer code.
+
+          Phones and Rokus on your network talk to this machine, so it is worth
+          leaving on.
+
+          ### Keeping it current
+
+          It updates itself. On opening, it asks GitHub whether a newer build
+          exists, downloads it, checks its SHA-256, and restarts into it. You
+          only come back here if you delete the folder. Turn it off in
+          **Settings** if you would rather press Apply yourself, and see which
+          build you are on under **Account → Updates**.
+
+          ### From a git checkout instead
 
           \`\`\`bash
           git clone https://github.com/GL-327/TVM.git
@@ -111,48 +141,46 @@ jobs:
           ./TVM-windowed.sh
           \`\`\`
 
-          On Windows, double-click \`TVM-windowed.cmd\` after \`pnpm install\`.
-
-          ### Tarball (Core + UI, browser if Electron is not installed)
-
-          1. Download and extract **TVM-desktop-$VERSION.tar.gz**.
-          2. Run the launcher for your system:
-             - **Windows** — double-click \`launch-tvm.cmd\`
-             - **macOS** — double-click \`TVM-windowed.command\`, or \`./TVM-windowed.sh\`
-             - **Linux** — \`./TVM-windowed.sh\`
-          3. Core serves the UI at \`http://127.0.0.1:7345/\`.
-
-          ### Updates
-          An installed tarball updates itself from this release: it reads
-          \`desktop.json\`, downloads \`tvm-app.tar.gz\`, checks its SHA-256 and
-          restarts into it. A git checkout updates by fast-forwarding to
-          \`main\` instead, and only when it has no local changes.
-
-          \`TVM-desktop-$VERSION.sha256\` is the checksum — verify with
-          \`sha256sum -c TVM-desktop-$VERSION.sha256\` (Linux) or
-          \`shasum -a 256 -c TVM-desktop-$VERSION.sha256\` (macOS).
+          A checkout runs the Electron kiosk and updates with \`git pull\`
+          rather than by downloading a build. On Windows, double-click
+          \`TVM-windowed.cmd\` after \`pnpm install\`. Details in
+          [docs/DESKTOP.md](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
           EOF
           gh release create desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md
-          # Clear stale assets so an old version's tarball cannot linger next to the new one.
+          # One file per platform: drop the older tarballs, checksums and the
+          # update feed, which now has a release of its own.
           for old in $(gh release view desktop --json assets --jq '.assets[].name' 2>/dev/null || true); do
-            case "$old" in
-              "TVM-desktop-$VERSION.tar.gz"|"TVM-desktop-$VERSION.sha256"|tvm-app.tar.gz|desktop.json) ;;
-              *) gh release delete-asset desktop "$old" --yes || true ;;
-            esac
+            [ "$old" = "TVM-desktop.zip" ] || gh release delete-asset desktop "$old" --yes || true
           done
-          gh release upload desktop "release/TVM-desktop-$VERSION.tar.gz" "release/TVM-desktop-$VERSION.sha256" --clobber
-          # The update bundle first, then the manifest that names it, so an
-          # installed copy never reads a manifest whose bundle is missing.
-          gh release upload desktop release/tvm-app.tar.gz --clobber
-          gh release upload desktop release/desktop.json --clobber
-          bash scripts/publish-device-package.sh "release/TVM-desktop-$VERSION.tar.gz" "release/TVM-desktop-$VERSION.sha256"
+          gh release upload desktop release/TVM-desktop.zip --clobber
+          bash scripts/publish-device-package.sh release/TVM-desktop.zip
+
+      # What installed copies download to update themselves. Kept off the
+      # Desktop page, which is for people, in the same shape as the ios-ui and
+      # android-ui feeds.
+      - name: Publish the desktop update feed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "The interface feed installed desktop copies read. Not a download:" \
+            "people want [the Desktop release](https://github.com/GL-327/TVM/releases/tag/desktop)." \
+            > release/FEED.md
+          gh release create desktop-ui --prerelease --title "Desktop interface feed" --notes-file release/FEED.md 2>/dev/null \
+            || gh release edit desktop-ui --prerelease --title "Desktop interface feed" --notes-file release/FEED.md
+          # The bundle first, then the manifest that names it, so an installed
+          # copy never reads a manifest whose bundle is missing.
+          gh release upload desktop-ui release/tvm-app.tar.gz --clobber
+          gh release upload desktop-ui release/desktop.json --clobber
 
       - uses: actions/upload-artifact@v4
         with:
           name: tvm-desktop
           path: |
-            release/TVM-desktop-*
+            release/TVM-desktop.zip
             release/tvm-app.tar.gz
             release/desktop.json
           if-no-files-found: error
@@ -206,21 +234,38 @@ jobs:
           | Channel version | \`$VERSION\` |
           | Build | \`$SHA\` |
 
-          ### Install (sideload)
-          Roku calls this "developer mode". The channel is not in the Channel Store.
+          ### Set up (sideload)
+          Roku calls this "developer mode". The channel is not in the Channel
+          Store, so it is uploaded to the box from a browser.
 
-          1. On the Roku remote press: **Home ×3, Up ×2, Right, Left, Right, Left, Right**.
-          2. Enable developer mode, set a password, and note the IP address shown.
-          3. In a browser on the same network go to \`http://<that-ip>\` and sign in
-             with username \`rokudev\` and the password you set.
-          4. Upload **TVM-roku.zip** and press **Install**.
+          1. **The Roku needs TVM running on your computer first.** Start the
+             desktop TVM and sign in as the dev there, or the Roku has nothing
+             to talk to.
+          2. On the Roku remote press: **Home ×3, Up ×2, Right, Left, Right, Left, Right**.
+          3. Enable developer mode, set a password, and note the IP address shown.
+             The Roku restarts.
+          4. In a browser on the same network go to \`http://<that-ip>\` and sign
+             in with username \`rokudev\` and the password you set.
+          5. Upload **TVM-roku.zip** and press **Install**. TVM appears on the
+             Roku home screen.
+          6. Open it. It finds the computer running TVM by itself; if it cannot,
+             type that computer's address on the waiting screen.
 
-          A sideloaded channel stays until you re-image the device. TVM must be
-          running on the same network — point it at your desktop's address in
-          **Settings** on first launch.
+          ### Keeping it current
+          A Roku cannot update a sideloaded channel by itself, so this one is
+          installed by hand: when the channel says a newer one is out, upload
+          this zip again the same way. Everything the channel shows comes from
+          the computer running TVM, so most changes reach it without any new
+          upload at all.
+
+          A sideloaded channel stays until you re-image the device.
           EOF
           gh release create roku --title "Roku — streaming players & Roku TV" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit roku --title "Roku — streaming players & Roku TV" --notes-file release/NOTES.md
+          # One file per platform.
+          for old in $(gh release view roku --json assets --jq '.assets[].name' 2>/dev/null || true); do
+            [ "$old" = "TVM-roku.zip" ] || gh release delete-asset roku "$old" --yes || true
+          done
           gh release upload roku release/TVM-roku.zip --clobber
           bash scripts/publish-device-package.sh release/TVM-roku.zip
 

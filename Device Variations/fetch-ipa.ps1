@@ -87,33 +87,33 @@ $desktop = @(Release-Assets "desktop")
 
 Write-Host "Downloading device packages into $here"
 
-$ipa = Find-Asset $devices @("TVM.ipa", "TVM-ios.ipa", "TVM-unsigned.ipa")
-if (-not $ipa) { $ipa = Find-Asset $ios @("TVM-ios.ipa", "TVM.ipa", "TVM-unsigned.ipa") }
-if (-not $ipa) { Fail "No IPA on the devices or ios GitHub release." }
+# One file per platform, the same names the release pages carry.
+$ipa = Find-Asset $devices @("TVM.ipa")
+if (-not $ipa) { $ipa = Find-Asset $ios @("TVM.ipa") }
+if (-not $ipa) { Fail "No TVM.ipa on the devices or ios GitHub release." }
 Save-Asset $ipa (Join-Path $here "TVM.ipa") | Out-Null
-Copy-Item -Force (Join-Path $here "TVM.ipa") (Join-Path $here "TVM-unsigned.ipa")
-Copy-Item -Force (Join-Path $here "TVM.ipa") (Join-Path $here "TVM-ios.ipa")
 
-$apk = Find-Asset $devices @("TVM.apk", "TVM-android.apk")
-if (-not $apk) { $apk = Find-Asset $android @("TVM-android.apk", "TVM.apk") }
-if (-not $apk) { Fail "No APK on the devices or android GitHub release." }
+$apk = Find-Asset $devices @("TVM.apk")
+if (-not $apk) { $apk = Find-Asset $android @("TVM.apk") }
+if (-not $apk) { Fail "No TVM.apk on the devices or android GitHub release." }
 Save-Asset $apk (Join-Path $here "TVM.apk") | Out-Null
-Copy-Item -Force (Join-Path $here "TVM.apk") (Join-Path $here "TVM-android.apk")
 
 $rokuZip = Find-Asset $devices @("TVM-roku.zip")
 if (-not $rokuZip) { $rokuZip = Find-Asset $roku @("TVM-roku.zip") }
 if (-not $rokuZip) { Fail "No TVM-roku.zip on the devices or roku GitHub release." }
 Save-Asset $rokuZip (Join-Path $here "TVM-roku.zip") | Out-Null
 
-$tarball = $devices | Where-Object { $_.name -like "TVM-desktop-*.tar.gz" } | Select-Object -First 1
-if (-not $tarball) { $tarball = $desktop | Where-Object { $_.name -like "TVM-desktop-*.tar.gz" } | Select-Object -First 1 }
-if (-not $tarball) { Fail "No desktop tarball on the devices or desktop GitHub release." }
-$tarName = $tarball.name
-Save-Asset $tarball (Join-Path $here $tarName) | Out-Null
-Copy-Item -Force (Join-Path $here $tarName) (Join-Path $here "TVM-desktop.tar.gz")
+$desktopZip = Find-Asset $devices @("TVM-desktop.zip")
+if (-not $desktopZip) { $desktopZip = Find-Asset $desktop @("TVM-desktop.zip") }
+if (-not $desktopZip) { Fail "No TVM-desktop.zip on the devices or desktop GitHub release." }
+Save-Asset $desktopZip (Join-Path $here "TVM-desktop.zip") | Out-Null
 
-$sha = $desktop | Where-Object { $_.name -like "TVM-desktop-*.sha256" } | Select-Object -First 1
-if ($sha) { Save-Asset $sha (Join-Path $here $sha.name) | Out-Null }
+# Older names this folder used to hold, so a stale APK cannot be installed by
+# mistake months from now.
+foreach ($gone in @("TVM-ios.ipa", "TVM-unsigned.ipa", "TVM-android.apk", "TVM-desktop.tar.gz")) {
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $here $gone)
+}
+Get-ChildItem -Path $here -Filter "TVM-desktop-*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 $stamp = @"
 TVM Device Variations
@@ -121,7 +121,7 @@ Fetched: $(Get-Date -Format o)
 IPA:    $((Get-Item (Join-Path $here 'TVM.ipa')).Length) bytes
 APK:    $((Get-Item (Join-Path $here 'TVM.apk')).Length) bytes
 Roku:   $((Get-Item (Join-Path $here 'TVM-roku.zip')).Length) bytes
-Desktop:$((Get-Item (Join-Path $here $tarName)).Length) bytes ($tarName)
+Desktop:$((Get-Item (Join-Path $here 'TVM-desktop.zip')).Length) bytes
 Source: https://github.com/$githubRepo/releases/tag/devices
 "@
 Set-Content -Path (Join-Path $here "BUILD.txt") -Value $stamp -Encoding UTF8
@@ -160,9 +160,7 @@ if ($FromActions -or $Trigger -or $Watch -or $RunId) {
     gh run download $RunId --name tvm-ios-unsigned-ipa --dir $stage
     $found = Get-ChildItem -Path $stage -Recurse -File -Filter *.ipa | Select-Object -First 1
     if ($found) {
-        Copy-Item -Force $found.FullName (Join-Path $here "TVM-unsigned.ipa")
         Copy-Item -Force $found.FullName (Join-Path $here "TVM.ipa")
-        Copy-Item -Force $found.FullName (Join-Path $here "TVM-ios.ipa")
         Write-Host "Replaced IPA from Actions run $RunId"
     }
     Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue

@@ -215,10 +215,10 @@ describe('update service: packaged install', () => {
       env: { TVM_ENV: 'production', TVM_GITHUB_TOKEN: 'leftover-expired' },
       install: PACKAGE,
       currentCommit: OLD,
-      fetch: feed({ '/releases/download/desktop/desktop.json': Response.json(manifestFor(archive)) }, seen),
+      fetch: feed({ '/releases/download/desktop-ui/desktop.json': Response.json(manifestFor(archive)) }, seen),
     });
     const status = await service.check();
-    expect(seen).toEqual(['https://github.com/GL-327/TVM/releases/download/desktop/desktop.json']);
+    expect(seen).toEqual(['https://github.com/GL-327/TVM/releases/download/desktop-ui/desktop.json']);
     expect(status.kind).toBe('available');
     expect(status.available?.version).toBe('3333333');
     expect(status.available?.changelog?.map((entry) => entry.title)).toEqual(['Third change', 'Second change']);
@@ -376,7 +376,7 @@ describe('update service: packaged install', () => {
       const authorized = new Headers(init?.headers).has('Authorization');
       seen.push(`${authorized ? 'auth ' : ''}${url}`);
       if (url.startsWith('https://github.com/')) return new Response('Not Found', { status: 404 });
-      if (url.endsWith('/releases/tags/desktop') && authorized) {
+      if (url.endsWith('/releases/tags/desktop-ui') && authorized) {
         return Response.json({ assets: [
           { name: 'desktop.json', url: 'https://api.github.com/assets/1' },
           { name: 'tvm-app.tar.gz', url: 'https://api.github.com/assets/2' },
@@ -398,7 +398,7 @@ describe('update service: packaged install', () => {
     });
     await expect(service.apply()).resolves.toMatchObject({ changed: true });
     expect(seen.some((line) => line.startsWith('auth https://objects.example/'))).toBe(false);
-    expect(seen).toContain('auth https://api.github.com/repos/acme/private-tv/releases/tags/desktop');
+    expect(seen).toContain('auth https://api.github.com/repos/acme/private-tv/releases/tags/desktop-ui');
   });
 
   it('clears a stored token so TVM_GITHUB_TOKEN can be used', async () => {
