@@ -376,6 +376,8 @@ enum TVMUpdater {
     struct Status {
         var current: String
         var currentCommit: String?
+        /// The commit this installed app was built from, so an app older than the interface can be spotted.
+        var appBuild: String
         var channel: String
         var lastCheck: String?
         var available: [String: Any]?
@@ -391,6 +393,7 @@ enum TVMUpdater {
             [
                 "current": current,
                 "currentCommit": JSONValue.orNull(currentCommit),
+                "appBuild": appBuild,
                 "channel": channel,
                 "lastCheck": JSONValue.orNull(lastCheck),
                 "available": available.map { $0 as Any } ?? NSNull(),
@@ -438,6 +441,7 @@ enum TVMUpdater {
         return Status(
             current: StandalonePolicy.version,
             currentCommit: commit,
+            appBuild: TVMBundledUI.appBuild(bundle: bundle),
             channel: "github:\(repo)#\(releaseTag)",
             lastCheck: cache?["lastCheck"] as? String,
             available: cache?["available"] as? [String: Any],

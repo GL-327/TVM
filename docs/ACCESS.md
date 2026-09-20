@@ -32,6 +32,12 @@ fails if the three copies ever differ. The code itself is not in this
 repository. A phone needs the app build that carries the current digest, so
 after the code changes, install the latest IPA or APK.
 
+A phone checks the code with the app, not with the interface it downloaded, so
+the right code is refused by an app installed before the code changed. When
+that happens the phone says which build it is underneath, and Updates shows the
+same under **Installed app**. The desktop has one build for both halves and
+says nothing.
+
 Dev mode unlocks the Accounts screen, Email settings, the Developer screen,
 the billing probe and the Stripe key routes. On every call Core checks that
 the request carries the dev account's own session, not just that dev mode is

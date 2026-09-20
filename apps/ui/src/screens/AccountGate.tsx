@@ -18,6 +18,7 @@ import {
   type TermsDocument,
   type TiersResponse,
 } from '../data/account';
+import { fetchAppBuild, type AppBuild } from '../data/appBuild';
 import { formatBillingMoney } from '../data/plan';
 import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
@@ -119,6 +120,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [devCode, setDevCode] = useState('');
+  const [devBuild, setDevBuild] = useState<AppBuild | null>(null);
   const [emailCode, setEmailCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -142,6 +144,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setPassword('');
     setDisplayName('');
     setDevCode('');
+    setDevBuild(null);
     setEmailCode('');
     setNotice(null);
     setMessage(null);
@@ -185,7 +188,15 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
 
   const submitDev = (code: string): Promise<void> => run(async () => {
     if (code.trim() === '') throw new Error('Enter the dev code.');
-    onChanged(await signInDev(code.trim()));
+    try {
+      onChanged(await signInDev(code.trim()));
+    } catch (error) {
+      // The code is checked by the app, not by this interface, and a phone
+      // updates the two separately. Naming the build turns "that code is not
+      // valid" into something you can act on.
+      setDevBuild(await fetchAppBuild());
+      throw error;
+    }
     setDevCode('');
   });
 
@@ -222,6 +233,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setMode(next);
     setMessage(null);
     setNotice(null);
+    setDevBuild(null);
   };
   const firstFocus = (): string => {
     if (panel === 'terms') return 'agree';
@@ -361,6 +373,15 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
             Enter the dev code to sign in to the dev account. Dev mode stays on until you sign out.
           </p>
           {message !== null && <p className="gate__error" role="alert">{message}</p>}
+          {devBuild !== null && devBuild.kind !== 'desktop' && (
+            <p className="gate__hint">
+              {devBuild.kind === 'known'
+                ? `This app was built from ${devBuild.build}.`
+                : 'This app is too old to say which build it is.'}{' '}
+              The code is checked by the app itself, not by this screen, so install the latest
+              build from GitHub and try again.
+            </p>
+          )}
           <form
             className="gate__form"
             noValidate
