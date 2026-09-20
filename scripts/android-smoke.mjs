@@ -167,6 +167,30 @@ try {
     return true;
   });
 
+  // The phone refreshes its interface from GitHub by itself. Nothing else
+  // exercises that on a real Android against the real feed, so a feed the
+  // app cannot use — too new for its native half, or missing — would only
+  // show up as phones that quietly stop updating.
+  await step('it says which build it is', 30, async () => {
+    const reply = await core('/api/update/status');
+    const build = reply.body.appBuild;
+    if (typeof build !== 'string' || build === '' || build === 'unknown') {
+      throw new Error(`appBuild is ${JSON.stringify(build)}`);
+    }
+    return true;
+  });
+  await step('it can read the interface feed', 150, async () => {
+    const reply = await core('/api/update/check', { method: 'POST', body: '{}' });
+    if (reply.status !== 200) throw new Error(JSON.stringify(reply.body));
+    const kind = reply.body.kind;
+    // up_to_date or available are both fine; the feed is published by another
+    // workflow, so it may be this commit or the one before.
+    if (kind !== 'up_to_date' && kind !== 'available') {
+      throw new Error(`the update check said ${kind}: ${reply.body.notice ?? ''}`);
+    }
+    return true;
+  });
+
   const crashes = adb('logcat', '-d', '-b', 'crash');
   if (crashes.includes(PACKAGE)) throw new Error(`TVM crashed:\n${crashes.slice(-2000)}`);
   if (adb('shell', 'pidof', PACKAGE).trim() === '') throw new Error('TVM is no longer running');
