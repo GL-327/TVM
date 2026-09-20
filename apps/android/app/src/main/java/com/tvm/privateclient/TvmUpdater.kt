@@ -166,7 +166,7 @@ class TvmBundledUi(private val store: TvmStore, private val app: TvmAppBundle) {
             STAGED_META,
             Json.obj(
                 "commit" to commit,
-                "appBuild" to bundle.appBuild(),
+                "appBuild" to app.appBuild(),
                 "entries" to entries,
                 "stagedAt" to Instant.now().toString(),
             ),
