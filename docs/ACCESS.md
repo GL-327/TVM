@@ -86,6 +86,10 @@ Phones do not send email, so accounts made on a phone are never asked for a
 code. The mail password would otherwise have to sit on every phone TVM is
 installed on. From Accounts you can mark any address verified by hand.
 
+A Roku signing up against a desktop TVM is asked for the code like anything
+else, and takes the six digits on the waiting screen. It can ask for a new
+one from there too.
+
 Without email set up, nobody is asked for a code and accounts go straight to
 waiting for you.
 
