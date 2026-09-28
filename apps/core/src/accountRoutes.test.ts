@@ -108,6 +108,39 @@ describe('the dev account over HTTP', () => {
   });
 });
 
+describe('dev mode belongs to the dev account, not the machine', () => {
+  it('refuses the Accounts screen to everyone else while the dev is signed in', async () => {
+    const { call, member, developer } = await boot();
+    const token = await member();
+    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
+    expect(developer.on()).toBe(true);
+
+    const listed = await call('/api/admin/accounts', { token: dev });
+    expect(listed.status).toBe(200);
+    const id = (listed.body['accounts'] as Array<{ id: string }>)[0]!.id;
+
+    expect((await call('/api/admin/accounts', { token })).status).toBe(403);
+    expect((await call('/api/admin/accounts')).status).toBe(403);
+    expect((await call('/api/admin/accounts/activate', { token, body: { id, tier: 'stream-live' } })).status).toBe(403);
+    expect((await call('/api/admin/accounts/rd', { token, body: { id, token: 'RDKEY' } })).status).toBe(403);
+    expect((await call('/api/plan', { method: 'PUT', token, body: { id: 'max' } })).status).toBe(403);
+
+    // Nobody else is told dev mode is on, so nobody else is shown the screen.
+    expect((await call('/api/plan', { token })).body['developer']).toBe(false);
+    expect((await call('/api/plan', { token: dev })).body['developer']).toBe(true);
+    expect((await call('/api/dev/status', { token })).body['unlocked']).toBe(false);
+    expect((await call('/api/dev/status', { token: dev })).body['unlocked']).toBe(true);
+  });
+
+  it('turns dev mode back on for the dev account if something switched it off', async () => {
+    const { call, developer } = await boot();
+    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
+    developer.lock();
+    expect((await call('/api/admin/accounts', { token: dev })).status).toBe(200);
+    expect(developer.on()).toBe(true);
+  });
+});
+
 describe('email codes over HTTP', () => {
   it('sends a code on sign-up and holds the account until it is typed in', async () => {
     const { call, member, outbox } = await boot({ mail: true });
@@ -126,6 +159,32 @@ describe('email codes over HTTP', () => {
     expect(right.status).toBe(200);
     expect(right.body['emailVerified']).toBe(true);
     expect((await call('/api/account', { token })).body['usable']).toEqual({ ok: false, reason: 'awaiting_activation' });
+  });
+
+  it('keeps the mail server\'s error for the dev and tells the person something they can act on', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'tvm-account-routes-'));
+    dirs.push(dataDir);
+    const mail = createMailService({ dataDir, send: async () => { throw new Error('The mail server refused the sign-in (535 5.7.8 bad credentials).'); } });
+    mail.save({ host: 'smtp.example.com', port: 587, security: 'starttls', username: 'tvm@example.com', password: 'secret-pass', from: 'tvm@example.com' });
+    const accounts = createAccountsService({ dataDir, termsVersion: TERMS_VERSION, emailRequired: () => mail.configured() });
+    const core = await startCoreServer(0, { dataDir, env: {}, developer: fakeDeveloper(), mail, accounts });
+    running.push(core);
+    const base = `http://${CORE_HOST}:${core.port}`;
+    const post = async (path: string, body: unknown, token?: string) => {
+      const response = await fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: (await response.json()) as Record<string, any> };
+    };
+    const signUp = { email: 'ada@example.com', password: 'correct horse battery' };
+    expect((await post('/api/account/register', signUp)).status).toBe(200);
+    const token = (await post('/api/account/signin', signUp)).body['token'] as string;
+    const again = await post('/api/account/email/send', {}, token);
+    expect(again.status).toBe(502);
+    expect(again.body['error']).toMatch(/could not be sent/);
+    expect(again.body['error']).not.toContain('535');
   });
 
   it('makes you wait before sending another', async () => {

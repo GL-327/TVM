@@ -8,9 +8,12 @@ sub init()
   m.password = m.top.findNode("password")
   m.submit = m.top.findNode("submit")
   m.switchMode = m.top.findNode("switchMode")
+  m.dev = m.top.findNode("dev")
   m.recheck = m.top.findNode("recheck")
   m.signout = m.top.findNode("signout")
   m.agree = m.top.findNode("agree")
+  m.emailCode = m.top.findNode("emailCode")
+  m.resendCode = m.top.findNode("resendCode")
   m.seq = 0
   m.col = 0
   m.name.variant = "row"
@@ -28,6 +31,9 @@ sub init()
   m.switchMode.variant = "row"
   m.switchMode.label = "I need an account"
   m.switchMode.itemId = "switch"
+  m.dev.variant = "row"
+  m.dev.label = "I'm a dev"
+  m.dev.itemId = "dev"
   m.recheck.variant = "primary"
   m.recheck.label = "Check again"
   m.recheck.itemId = "recheck"
@@ -37,6 +43,12 @@ sub init()
   m.agree.variant = "primary"
   m.agree.label = "I have read and agree"
   m.agree.itemId = "agree"
+  m.emailCode.variant = "primary"
+  m.emailCode.label = "Enter the code"
+  m.emailCode.itemId = "emailCode"
+  m.resendCode.variant = "row"
+  m.resendCode.label = "Send a new code"
+  m.resendCode.itemId = "resendCode"
   paint()
 end sub
 
@@ -74,6 +86,11 @@ function formButtons() as Object
     buttons.Push(m.password)
     buttons.Push(m.submit)
     buttons.Push(m.switchMode)
+    if phase = "signin" then buttons.Push(m.dev)
+  else if phase = "verify"
+    buttons.Push(m.emailCode)
+    buttons.Push(m.resendCode)
+    buttons.Push(m.signout)
   else if phase = "waiting" or phase = "suspended"
     buttons.Push(m.recheck)
     buttons.Push(m.signout)
@@ -92,9 +109,12 @@ sub paint()
   m.password.visible = signin
   m.submit.visible = signin
   m.switchMode.visible = signin
+  m.dev.visible = (phase = "signin")
   m.recheck.visible = (phase = "waiting" or phase = "suspended")
   m.agree.visible = (phase = "terms")
-  m.signout.visible = (phase = "waiting" or phase = "suspended" or phase = "terms")
+  m.emailCode.visible = (phase = "verify")
+  m.resendCode.visible = (phase = "verify")
+  m.signout.visible = (phase = "waiting" or phase = "suspended" or phase = "terms" or phase = "verify")
   if phase = "register"
     m.submit.label = "Create account"
     m.switchMode.label = "I already have an account"
@@ -113,9 +133,12 @@ sub paint()
   m.password.hasFocusStyle = false
   m.submit.hasFocusStyle = false
   m.switchMode.hasFocusStyle = false
+  m.dev.hasFocusStyle = false
   m.recheck.hasFocusStyle = false
   m.signout.hasFocusStyle = false
   m.agree.hasFocusStyle = false
+  m.emailCode.hasFocusStyle = false
+  m.resendCode.hasFocusStyle = false
   if buttons.Count() = 0
     m.top.focusKey = ""
     return
@@ -164,9 +187,12 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
       if id = "password" then emit("editPassword")
       if id = "submit" then emit("submit")
       if id = "switch" then emit("switchMode")
+      if id = "dev" then emit("dev")
       if id = "recheck" then emit("recheck")
       if id = "signout" then emit("signout")
       if id = "agree" then emit("agree")
+      if id = "emailCode" then emit("editEmailCode")
+      if id = "resendCode" then emit("resendCode")
     end if
     return true
   end if

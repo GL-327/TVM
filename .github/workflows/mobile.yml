@@ -171,8 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          cp apps/android/app/build/outputs/apk/debug/*.apk release/TVM-android.apk
-          cp release/TVM-android.apk release/TVM.apk
+          cp apps/android/app/build/outputs/apk/debug/*.apk release/TVM.apk
           SHA="$(git rev-parse --short HEAD)"
           if [ -n "${TVM_ANDROID_KEYSTORE:-}" ]; then
             SIGNED="Signed with TVM's own key, so a newer APK installs over this one and keeps your sign-in."
@@ -184,28 +183,39 @@ jobs:
 
           | | |
           |---|---|
-          | Download | \`TVM-android.apk\` |
+          | Download | \`TVM.apk\` |
           | Build | \`$SHA\` |
           | Minimum | Android 8.0 (API 26) |
 
-          ### Install
-          1. Download **TVM-android.apk** below.
-          2. Open it. Android will ask you to allow installs from this source — allow it.
-          3. Launch TVM.
+          ### Set up
+          1. Download **TVM.apk** below, on the phone itself.
+          2. Open it from the notification or from Files. Android asks whether to
+             allow installs from this source — allow it, then press Install.
+          3. Open TVM. It starts its own core on the phone; nothing else to run.
+          4. Sign in, or press **I'm a dev** and enter the developer code.
 
-          This is a debug build for private testing, not a Play Store release.
+          Android TV has no browser, so sideload it from a computer instead:
+          \`adb connect <tv-ip>\` then \`adb install TVM.apk\`.
+
+          ### Keeping it current
+          TVM refreshes its interface from GitHub every time it opens. The app
+          around that interface only changes when you install an APK, so when
+          **Account → Updates** says a newer app is needed, come back here and
+          install this file again. Updates also shows which build you have.
+
+          This is a private test build, not a Play Store release.
           $SIGNED
           Before publishing, CI installed this APK on an Android 14 emulator,
           opened it and checked it reached the sign-in screen.
-          Once installed, the app updates its own interface from GitHub. When an
-          update needs newer app code, the Updates screen says so; install this
-          release again to take it.
-          Android TV: sideload with \`adb install TVM-android.apk\`.
           EOF
           gh release create android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md
-          gh release upload android release/TVM-android.apk release/TVM.apk --clobber
-          bash scripts/publish-device-package.sh release/TVM-android.apk release/TVM.apk
+          # One file per platform: drop anything an older build left behind.
+          for old in $(gh release view android --json assets --jq '.assets[].name' 2>/dev/null || true); do
+            [ "$old" = "TVM.apk" ] || gh release delete-asset android "$old" --yes || true
+          done
+          gh release upload android release/TVM.apk --clobber
+          bash scripts/publish-device-package.sh release/TVM.apk
 
   ios-ipa:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'android'
@@ -338,35 +348,45 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          cp apps/ios/build/TVM-unsigned.ipa release/TVM-ios.ipa
+          cp apps/ios/build/TVM-unsigned.ipa release/TVM.ipa
           SHA="$(git rev-parse --short HEAD)"
           cat > release/NOTES.md <<EOF
           **iPhone and iPad.**
 
           | | |
           |---|---|
-          | Download | \`TVM-ios.ipa\` |
+          | Download | \`TVM.ipa\` |
           | Build | \`$SHA\` |
           | Minimum | iOS 15 |
 
-          ### Install
-          This IPA is **unsigned**, so it will not install as-is. Apple does not
-          allow an app outside the App Store to install itself. Re-sign it with
-          your own free Apple ID:
+          ### Set up
+          This IPA is **unsigned**. Apple does not let an app outside the App
+          Store install itself, so you sign it with your own free Apple ID. Do
+          this on a computer:
 
-          1. Download **TVM-ios.ipa** below.
-          2. Open [Sideloadly](https://sideloadly.io) (or AltStore).
-          3. Drag the IPA in, enter your Apple ID, and install.
-          4. On the iPhone: **Settings → General → VPN & Device Management** → trust your developer certificate.
+          1. Download **TVM.ipa** below.
+          2. Install [Sideloadly](https://sideloadly.io) (or AltStore).
+          3. Plug the iPhone in, drag the IPA into Sideloadly, enter your Apple
+             ID, and press Start.
+          4. On the iPhone: **Settings → General → VPN & Device Management**,
+             then trust your developer certificate.
+          5. Open TVM. It runs its own core on the phone; nothing else to run.
+          6. Sign in, or press **I'm a dev** and enter the developer code.
 
-          A free Apple ID signature lasts 7 days; re-run Sideloadly to renew it.
-          Once installed, the app updates its own interface from GitHub. When an
-          update needs newer app code, the Updates screen says so; install this
-          release again to take it.
+          A free Apple ID signature lasts 7 days. Running Sideloadly again
+          renews it and keeps everything you have saved.
+
+          ### Keeping it current
+          TVM refreshes its interface from GitHub every time it opens. The app
+          around that interface only changes when you install an IPA, so when
+          **Account → Updates** says a newer app is needed, come back here and
+          install this file again. Updates also shows which build you have.
           EOF
           gh release create ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md 2>/dev/null \
             || gh release edit ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md
-          cp release/TVM-ios.ipa release/TVM.ipa
-          cp release/TVM-ios.ipa release/TVM-unsigned.ipa
-          gh release upload ios release/TVM-ios.ipa release/TVM.ipa release/TVM-unsigned.ipa --clobber
-          bash scripts/publish-device-package.sh release/TVM-ios.ipa release/TVM.ipa release/TVM-unsigned.ipa
+          # One file per platform: drop anything an older build left behind.
+          for old in $(gh release view ios --json assets --jq '.assets[].name' 2>/dev/null || true); do
+            [ "$old" = "TVM.ipa" ] || gh release delete-asset ios "$old" --yes || true
+          done
+          gh release upload ios release/TVM.ipa --clobber
+          bash scripts/publish-device-package.sh release/TVM.ipa

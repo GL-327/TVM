@@ -610,11 +610,11 @@ test('Settings opens Plans', async ({ page }) => {
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Upgrade TVM' })).toBeVisible();
-  await expect(page.locator('[data-focus-id="plan-free"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
+  await expect(page.getByText(/no card is taken here/i)).toBeVisible();
 });
 
-test('Free plan confirms without a card', async ({ page }) => {
+test('Plans explains access without taking a card', async ({ page }) => {
   await pressUntil(page, 'settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
@@ -622,17 +622,11 @@ test('Free plan confirms without a card', async ({ page }) => {
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-  await pressUntil(page, 'plan-free');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('[data-screen="checkout"]')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Review TVM Free' })).toBeVisible();
-  await page.screenshot({ path: '../../cache/checkout-preview.png', animations: 'disabled' });
-  await expect(page.locator('[data-focus-id="card-name"]')).toHaveCount(0);
-  await pressUntil(page, 'checkout-consent');
-  await page.keyboard.press('Enter');
-  await pressUntil(page, 'pay');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Your test plan is ready' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
+  await expect(page.getByText(/nothing to buy/i)).toBeVisible();
+  await expect(page.locator('[data-focus-id="card-name"], [data-focus-id="pay"], [data-focus-id="checkout-consent"]')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
+  await expect(page.getByText(/it gives you nothing/i)).toBeVisible();
 });
 
 test('Privacy controls and Retro reduced motion are reachable', async ({ page }) => {

@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { TopBar } from '../components/TopBar';
-import { announceAccountChange, fetchAccount, isDevAccount, signOut } from '../data/account';
+import { announceAccountChange, signOut } from '../data/account';
 import {
   applyPlanClass,
   FALLBACK_PLAN,
   fetchPlan,
-  lockDeveloper,
   resetUsage,
   saveOverrides,
   savePlan,
@@ -22,7 +21,6 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [message, setMessage] = useState<string | null>(null);
-  const [devAccount, setDevAccount] = useState(false);
 
   const refresh = (status: PlanStatus): void => {
     applyPlanClass(status);
@@ -37,7 +35,6 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
       }
       refresh(status);
     });
-    void fetchAccount().then((state) => setDevAccount(isDevAccount(state)));
     // Unlock is checked once when this panel mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -138,13 +135,10 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
         <FocusButton
           id="dev-lock"
           className="settings-row"
-          onSelect={() => {
-            // Dev mode belongs to the dev account, so leaving it means signing out.
-            if (devAccount) void signOut().finally(announceAccountChange);
-            else void lockDeveloper().then(() => navigate.home());
-          }}
+          detail="Turns dev mode off"
+          onSelect={() => void signOut().finally(announceAccountChange)}
         >
-          {devAccount ? 'Sign out of the dev account' : 'Leave developer mode'}
+          Sign out of the dev account
         </FocusButton>
       </div>
     </main>

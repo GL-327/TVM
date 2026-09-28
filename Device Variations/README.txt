@@ -4,20 +4,18 @@ Sideload packages for every device, pulled from GitHub Releases:
 
   powershell -File ".\Device Variations\fetch-ipa.ps1"
 
-That writes the current IPA, APK, Roku zip and desktop tarball into this
-folder. Binaries are gitignored so git stays small. Do not treat a zip of
-Swift source as an IPA.
+That writes one file per platform into this folder and removes the older
+names it used to keep. Binaries are gitignored so git stays small. Do not
+treat a zip of Swift source as an IPA.
 
 GitHub: https://github.com/GL-327/TVM/releases/tag/devices
 
 Files
 -----
-TVM.ipa / TVM-ios.ipa / TVM-unsigned.ipa
-                     iPhone & iPad. Same bytes. Unsigned — re-sign first.
-TVM.apk / TVM-android.apk
-                     Android phone, tablet and TV. Debug-signed; install directly.
+TVM.ipa              iPhone & iPad. Unsigned — re-sign first.
+TVM.apk              Android phone, tablet and TV. Install directly.
 TVM-roku.zip         Roku developer sideload channel
-TVM-desktop.tar.gz   Windows, macOS and Linux (also the versioned tarball)
+TVM-desktop.zip      Windows, macOS and Linux, all in one
 fetch-ipa.ps1        Re-download every package from GitHub Releases
 
 iOS — TVM.ipa  (standalone compiled app, not App Store signed)
@@ -43,6 +41,14 @@ Android
 Open TVM.apk. Allow installs from this source. Opening the app checks
 GitHub the same way.
 
+Builds are signed with TVM's own key, so a newer APK installs over an older
+one and keeps your sign-in. The first time you move from an older build
+(made before 18 Sept 2026) Android may say "App not installed": uninstall
+TVM once, then install this one.
+
+Every APK is installed and opened on an Android emulator by CI before it is
+released.
+
 Roku
 ----
 Sideload TVM-roku.zip from the Roku developer page on your network. Point
@@ -51,8 +57,10 @@ GitHub when the desktop app opens.
 
 Desktop
 -------
-Extract the tarball and run the launcher for your OS. Opening it checks
-GitHub and applies Core + UI when a newer desktop.json is published.
+Extract TVM-desktop.zip and run the entry point for your OS: TVM.cmd on
+Windows, TVM.command on macOS, ./TVM.sh on Linux. It needs Node.js 22 or
+newer. From then on it updates itself: on opening it checks GitHub, applies
+Core and the interface, and restarts into them.
 
 What this IPA cannot do
 -----------------------

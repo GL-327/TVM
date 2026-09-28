@@ -3,19 +3,12 @@ import { FALLBACK_PLAN } from '../src/data/plan';
 import { THEME_DEFAULT_BOOT } from '../src/theme/bootKey';
 import { allowAccount } from './account';
 const film = {id:'tt1',title:'Finished film',year:2025,kind:'movie',poster:'',backdrop:'',genres:['Drama'],rating:'8',synopsis:'An original story.',playable:true,hue:220};
-test('Anime purchase, scenes, notebook, bundle and quiet tableau', async ({page}) => {
+test('Anime scenes, notebook and quiet tableau', async ({page}) => {
   test.setTimeout(60000);
-  let plan = {...FALLBACK_PLAN, catalog:[{id:'free',name:'Free',basePricePence:0,pricePence:0,price:'Free',mocks:false,liveTv:false,extras:[]}]};
-  const packs: string[] = [];
+  const plan = {...FALLBACK_PLAN, anime:true, animeOwned:true, catalog:[{id:'free',name:'Free',basePricePence:0,pricePence:0,price:'Free',mocks:false,liveTv:false,extras:[]}]};
   await allowAccount(page);
   await page.addInitScript((bootKey)=>{localStorage.setItem(bootKey,'1');localStorage.setItem('tvm.prefs',JSON.stringify({autoUpdate:false,language:'en'}));}, THEME_DEFAULT_BOOT);
   await page.route('**/api/plan', route=>route.fulfill({json:plan}));
-  await page.route('**/api/billing/checkout',async route=>{
-    const body=route.request().postDataJSON();packs.push(body.pack);
-    if(body.pack==='anime')plan={...plan,anime:true,animeOwned:true};
-    if(body.pack==='theme-bundle')plan={...plan,bundle:true,bundleOwned:true,anime:true,animeOwned:true,synthwave:true,synthwaveOwned:true};
-    await route.fulfill({json:plan});
-  });
   await page.route('**/api/home',route=>route.fulfill({json:{rd:{configured:true,premium:true},featured:film,library:[film],watchlist:[film],continueWatching:[],finished:[film],adaptationGeneration:1,rails:[{id:'anime-adapted',title:'Adapted for you',items:[{...film,id:'tt2',title:'Next film'}]},{id:'films',title:'Films',items:[film,{...film,id:'tt3',title:'Brother film'}]}]}}));
   await page.route('**/api/profiles',route=>route.fulfill({json:{activeId:'p1',profiles:[{id:'p1',name:'Viewer',hue:22}]}}));
   await page.route('**/api/apps',route=>route.fulfill({json:{ribbon:[],grid:[]}}));
@@ -25,12 +18,7 @@ test('Anime purchase, scenes, notebook, bundle and quiet tableau', async ({page}
   await page.locator('.ribbon-zone').hover({ force: true });
   await page.locator('[data-focus-id="settings"]').click();
   await page.locator('[data-focus-id="theme-anime"]').click();
-  await expect(page.getByRole('heading',{name:'Unlock Anime'})).toBeVisible();
-  await page.locator('[data-focus-id="checkout-consent"]').click();
-  await page.locator('[data-focus-id="pay"]').click();
-  await expect(page.getByRole('heading',{name:'Your test plan is ready'})).toBeVisible();
-  expect(packs).toEqual(['anime']);
-  await page.locator('[data-focus-id="checkout-home"]').click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('.anime-stage')).toBeVisible();
   await expect(page.locator('.tvm-scene')).toHaveCount(0);
   await page.screenshot({path:'test-results/anime-six-eyes.png',animations:'disabled'});
@@ -57,12 +45,6 @@ test('Anime purchase, scenes, notebook, bundle and quiet tableau', async ({page}
   await page.locator('[data-focus-id="settings"]').click();
   await page.locator('[data-focus-id="performance"]').click();
   await expect(page.locator('.anime-stage')).toHaveAttribute('data-quiet','true');
-  await page.locator('[data-focus-id="theme-bundle"]').click();
-  await expect(page.getByRole('heading',{name:'Unlock All paid themes'})).toBeVisible();
-  await page.locator('[data-focus-id="checkout-consent"]').click();
-  await page.locator('[data-focus-id="pay"]').click();
-  await expect(page.getByRole('heading',{name:'Your test plan is ready'})).toBeVisible();
-  expect(packs).toEqual(['anime','theme-bundle']);
 });
 
 test('Six Eyes follows D-pad focus on a phone shell and freezes in reduced motion', async ({page}) => {
