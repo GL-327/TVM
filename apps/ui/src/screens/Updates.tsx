@@ -22,6 +22,8 @@ interface UpdateStatus {
   current: string;
   /** The build this copy is running, when the core knows it. */
   currentCommit?: string | null;
+  /** The build the installed app was made from. Phones only; see the row below. */
+  appBuild?: string | null;
   /** checkout: a git clone; package: a downloaded bundle; phone cores leave it out. */
   install?: 'checkout' | 'package';
   channel: string;
@@ -165,6 +167,10 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
     }
   };
 
+  const appBuild = typeof status.appBuild === 'string' && status.appBuild !== 'unknown'
+    ? status.appBuild.slice(0, 7)
+    : null;
+
   return (
     <main className="page page--settings">
       <TopBar title="Updates" />
@@ -181,6 +187,14 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
           <dt>This box</dt>
           <dd>{describeBuild(status.current, status.currentCommit)}</dd>
         </div>
+        {/* The interface above updates itself; the app around it only changes
+            when a new IPA or APK is installed, so the two builds can differ. */}
+        {appBuild !== null && (
+          <div className="panel__row">
+            <dt>Installed app</dt>
+            <dd>{appBuild}</dd>
+          </div>
+        )}
         <div className="panel__row">
           <dt>Last check</dt>
           <dd>{status.lastCheck === null ? 'Never' : formatAppDate(status.lastCheck)}</dd>

@@ -703,12 +703,40 @@ final class StandaloneTests: XCTestCase {
         let locked = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
         XCTAssertEqual(locked.status, 403)
 
+        // Dev mode switched on for the phone is not enough; it has to be the dev asking.
         core.plans.setDeveloper(true)
-        let mail = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
+        let stillLocked = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
+        XCTAssertEqual(stillLocked.status, 403)
+
+        let dev = try XCTUnwrap(core.accounts.signInDev(client: "test")["token"] as? String)
+        let mail = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: ["authorization": "Bearer \(dev)"], body: nil)
+        XCTAssertEqual(mail.status, 200)
         let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: mail.body) as? [String: Any])
         XCTAssertEqual(body["supported"] as? Bool, false)
         let send = await core.handle(method: "POST", path: "/api/account/email/send", query: [:], headers: [:], body: nil)
         XCTAssertEqual(send.status, 503)
+    }
+
+    func testAMemberCannotUseTheAccountsScreenWhileTheDevIsSignedIn() async throws {
+        let core = testCore()
+        _ = await core.handle(
+            method: "POST", path: "/api/account/register", query: [:], headers: [:],
+            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password"])
+        )
+        let signed = await core.handle(
+            method: "POST", path: "/api/account/signin", query: [:], headers: [:],
+            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password"])
+        )
+        let member = try XCTUnwrap((try JSONSerialization.jsonObject(with: signed.body) as? [String: Any])?["token"] as? String)
+        let dev = try XCTUnwrap(core.accounts.signInDev(client: "test")["token"] as? String)
+        core.plans.setDeveloper(true)
+
+        let asMember = await core.handle(method: "GET", path: "/api/admin/accounts", query: [:], headers: ["authorization": "Bearer \(member)"], body: nil)
+        XCTAssertEqual(asMember.status, 403)
+        let asDev = await core.handle(method: "GET", path: "/api/admin/accounts", query: [:], headers: ["authorization": "Bearer \(dev)"], body: nil)
+        XCTAssertEqual(asDev.status, 200)
+        let plan = await core.handle(method: "GET", path: "/api/plan", query: [:], headers: ["authorization": "Bearer \(member)"], body: nil)
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: plan.body) as? [String: Any])?["developer"] as? Bool, false)
     }
 
     func testTheTestChannelIsOnlyThereInDevModeAndHidesItsAddress() async throws {

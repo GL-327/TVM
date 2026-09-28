@@ -140,7 +140,7 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
       {tab('watchlist', 'Watchlist', <IconWatchlist />, active === 'watchlist', go(() => navigate.push('watchlist')))}
       <FocusButton
         id="more"
-        className={`ribbon__icon ribbon__icon--more${more || PHONE_PRIMARY.includes(active) ? '' : ' ribbon__icon--on'}`}
+        className={`ribbon__icon ribbon__icon--more${more || !PHONE_PRIMARY.includes(active) ? ' ribbon__icon--on' : ''}`}
         onSelect={() => setMore((value) => !value)}
       >
         <span className="ribbon__avatar">

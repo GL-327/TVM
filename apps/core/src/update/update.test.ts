@@ -61,14 +61,23 @@ describe('tar safety', () => {
 });
 
 describe('apply policy', () => {
-  it('refuses a development checkout', () => {
-    expect(applyPolicy({ TVM_ENV: 'development' }).allowed).toBe(false);
-    expect(applyPolicy({}).allowed).toBe(false);
+  it('refuses a checkout, which updates by pulling instead', () => {
+    expect(applyPolicy({ TVM_ENV: 'development' }, 'checkout').allowed).toBe(false);
+    expect(applyPolicy({}, 'checkout').allowed).toBe(false);
   });
 
-  it('allows production', () => {
-    expect(applyPolicy({ TVM_ENV: 'production' }).allowed).toBe(true);
-    expect(applyPolicy({ TVM_ALLOW_APPLY: '1' }).allowed).toBe(true);
+  it('lets a checkout apply when asked deliberately', () => {
+    expect(applyPolicy({ TVM_ENV: 'production' }, 'checkout').allowed).toBe(true);
+    expect(applyPolicy({ TVM_ALLOW_APPLY: '1' }, 'checkout').allowed).toBe(true);
+  });
+
+  // The bug this replaces: an installed package asked TVM_ENV for permission,
+  // and the Windows launcher set it to development, so no Windows install
+  // could ever apply its own update.
+  it('allows an installed package whatever the launcher set', () => {
+    expect(applyPolicy({ TVM_ENV: 'development' }, 'package').allowed).toBe(true);
+    expect(applyPolicy({}, 'package').allowed).toBe(true);
+    expect(applyPolicy({}, 'package').reason).toBeNull();
   });
 });
 
@@ -206,10 +215,10 @@ describe('update service: packaged install', () => {
       env: { TVM_ENV: 'production', TVM_GITHUB_TOKEN: 'leftover-expired' },
       install: PACKAGE,
       currentCommit: OLD,
-      fetch: feed({ '/releases/download/desktop/desktop.json': Response.json(manifestFor(archive)) }, seen),
+      fetch: feed({ '/releases/download/desktop-ui/desktop.json': Response.json(manifestFor(archive)) }, seen),
     });
     const status = await service.check();
-    expect(seen).toEqual(['https://github.com/GL-327/TVM/releases/download/desktop/desktop.json']);
+    expect(seen).toEqual(['https://github.com/GL-327/TVM/releases/download/desktop-ui/desktop.json']);
     expect(status.kind).toBe('available');
     expect(status.available?.version).toBe('3333333');
     expect(status.available?.changelog?.map((entry) => entry.title)).toEqual(['Third change', 'Second change']);
@@ -289,16 +298,18 @@ describe('update service: packaged install', () => {
     await expect(offline.check()).resolves.toMatchObject({ kind: 'failed', available: null });
   });
 
-  it('refuses apply outside production before touching the network', async () => {
-    let touched = false;
+  // An install applies whatever its launcher put in the environment. It used
+  // to ask for TVM_ENV=production, which the Windows launcher never set, so
+  // Windows installs quietly refused every update they found.
+  it('applies an installed package whatever TVM_ENV says', async () => {
     const service = createUpdateService({
       dataDir: await dataDir(),
       env: { TVM_ENV: 'development' },
       install: PACKAGE,
-      fetch: async () => { touched = true; return new Response('no', { status: 500 }); },
+      fetch: async () => new Response('no', { status: 500 }),
     });
-    await expect(service.apply()).rejects.toMatchObject({ name: 'ApplyRefused' });
-    expect(touched).toBe(false);
+    await expect(service.apply()).rejects.not.toMatchObject({ name: 'ApplyRefused' });
+    expect(service.status().applyAllowed).toBe(true);
   });
 
   it('refuses a bundle whose checksum does not match', async () => {
@@ -365,7 +376,7 @@ describe('update service: packaged install', () => {
       const authorized = new Headers(init?.headers).has('Authorization');
       seen.push(`${authorized ? 'auth ' : ''}${url}`);
       if (url.startsWith('https://github.com/')) return new Response('Not Found', { status: 404 });
-      if (url.endsWith('/releases/tags/desktop') && authorized) {
+      if (url.endsWith('/releases/tags/desktop-ui') && authorized) {
         return Response.json({ assets: [
           { name: 'desktop.json', url: 'https://api.github.com/assets/1' },
           { name: 'tvm-app.tar.gz', url: 'https://api.github.com/assets/2' },
@@ -387,7 +398,7 @@ describe('update service: packaged install', () => {
     });
     await expect(service.apply()).resolves.toMatchObject({ changed: true });
     expect(seen.some((line) => line.startsWith('auth https://objects.example/'))).toBe(false);
-    expect(seen).toContain('auth https://api.github.com/repos/acme/private-tv/releases/tags/desktop');
+    expect(seen).toContain('auth https://api.github.com/repos/acme/private-tv/releases/tags/desktop-ui');
   });
 
   it('clears a stored token so TVM_GITHUB_TOKEN can be used', async () => {
@@ -602,9 +613,13 @@ describe('applied launch', () => {
     const currentUrl = pathToFileURL(coreEntry).href;
     const imageUrl = pathToFileURL(join(dir, 'image', 'core', 'index.js')).href;
     expect(resolveAppliedApp(dir)).toMatchObject({ version: '0.2.0', coreEntry });
-    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'development' })).toBeNull();
-    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'production' })?.coreEntry).toBe(coreEntry);
-    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'production' })).toBeNull();
+    // A checkout stays on its own source; an install boots what it applied,
+    // whatever its launcher put in the environment.
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'development' }, 'checkout')).toBeNull();
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'development' }, 'package')?.coreEntry).toBe(coreEntry);
+    expect(appliedLaunch(dir, imageUrl, { TVM_ENV: 'production' }, 'package')?.coreEntry).toBe(coreEntry);
+    // Already the applied build: nothing to hop into.
+    expect(appliedLaunch(dir, currentUrl, { TVM_ENV: 'production' }, 'package')).toBeNull();
   });
 });
 

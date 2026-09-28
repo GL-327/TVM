@@ -49,7 +49,10 @@ describe('the door', () => {
     expect(devPanel).toContain('id="gate-dev-code"');
     expect(devPanel).toContain('type="password"');
     expect(devPanel).toContain('void submitDev(');
-    expect(src).toContain('signInDev(code.trim())');
+    expect(src).toContain("typed('gate-dev-code', code).trim()");
+    expect(src).toContain('signInDev(next)');
+    expect(src).toContain("typed('gate-email', email).trim()");
+    expect(src).toContain("typed('gate-password', password)");
   });
 
   it('no longer needs the hidden owner form', () => {
