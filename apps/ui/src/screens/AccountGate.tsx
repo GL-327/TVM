@@ -18,11 +18,25 @@ import {
   type TermsDocument,
   type TiersResponse,
 } from '../data/account';
+import { fetchAppBuild, type AppBuild } from '../data/appBuild';
 import { formatBillingMoney } from '../data/plan';
 import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { confirmFieldOnEnter, gateFocusKey, useGateRemote } from './gateKeys';
 import './accountGate.css';
+
+/**
+ * What the field actually contains.
+ *
+ * React state is a render behind the DOM. Enter and a phone's Go key submit
+ * in the same turn as the last character, and the state they would have read
+ * is the password without that character — which then fails as "those do not
+ * match" for a password that was typed correctly.
+ */
+function typed(id: string, fallback: string): string {
+  const node = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-focus-id="${id}"]`);
+  return node?.value ?? fallback;
+}
 
 /**
  * The sign-in screen. Nothing in TVM works until an account is signed in,
@@ -119,6 +133,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [devCode, setDevCode] = useState('');
+  const [devBuild, setDevBuild] = useState<AppBuild | null>(null);
   const [emailCode, setEmailCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -142,6 +157,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setPassword('');
     setDisplayName('');
     setDevCode('');
+    setDevBuild(null);
     setEmailCode('');
     setNotice(null);
     setMessage(null);
@@ -172,25 +188,37 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
 
   const submit = (): Promise<void> => run(async () => {
     setNotice(null);
+    const nextEmail = typed('gate-email', email).trim();
+    const nextPassword = typed('gate-password', password);
+    const nextName = typed('gate-name', displayName).trim();
     if (mode === 'register') {
-      await registerAccount({ email, password, displayName });
+      await registerAccount({ email: nextEmail, password: nextPassword, displayName: nextName });
       // Straight in, so they land on the next step rather than a form they
       // have just filled in.
-      onChanged(await signIn({ email, password }));
+      onChanged(await signIn({ email: nextEmail, password: nextPassword }));
     } else {
-      onChanged(await signIn({ email, password }));
+      onChanged(await signIn({ email: nextEmail, password: nextPassword }));
     }
     setPassword('');
   });
 
   const submitDev = (code: string): Promise<void> => run(async () => {
-    if (code.trim() === '') throw new Error('Enter the dev code.');
-    onChanged(await signInDev(code.trim()));
+    const next = typed('gate-dev-code', code).trim();
+    if (next === '') throw new Error('Enter the dev code.');
+    try {
+      onChanged(await signInDev(next));
+    } catch (error) {
+      // The code is checked by the app, not by this interface, and a phone
+      // updates the two separately. Naming the build turns "that code is not
+      // valid" into something you can act on.
+      setDevBuild(await fetchAppBuild());
+      throw error;
+    }
     setDevCode('');
   });
 
   const confirmEmail = (code: string): Promise<void> => run(async () => {
-    const digits = code.replace(/\s+/g, '');
+    const digits = typed('gate-code', code).replace(/\s+/g, '');
     if (!/^\d{6}$/.test(digits)) throw new Error('The code is the six digits in the email.');
     onChanged(await verifyEmailCode(digits));
     setEmailCode('');
@@ -222,6 +250,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setMode(next);
     setMessage(null);
     setNotice(null);
+    setDevBuild(null);
   };
   const firstFocus = (): string => {
     if (panel === 'terms') return 'agree';
@@ -361,6 +390,15 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
             Enter the dev code to sign in to the dev account. Dev mode stays on until you sign out.
           </p>
           {message !== null && <p className="gate__error" role="alert">{message}</p>}
+          {devBuild !== null && devBuild.kind !== 'desktop' && (
+            <p className="gate__hint">
+              {devBuild.kind === 'known'
+                ? `This app was built from ${devBuild.build}.`
+                : 'This app is too old to say which build it is.'}{' '}
+              The code is checked by the app itself, not by this screen, so install the latest
+              build from GitHub and try again.
+            </p>
+          )}
           <form
             className="gate__form"
             noValidate

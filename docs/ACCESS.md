@@ -26,15 +26,33 @@ Every TVM has one built-in dev account. On the sign-in screen choose
 account and turns dev mode on; signing out turns it off again. There is no
 password to set, and nobody can register it, suspend it or erase it.
 
-It works the same on the desktop, iPhone and Android. The code is checked by
-Core (scrypt or PBKDF2-HMAC-SHA256 at 600,000 iterations); neither code is in
-this repository.
+It is one code, the same on the desktop, iPhone, Android and Roku. The
+desktop, iPhone and Android each check it against the same
+PBKDF2-HMAC-SHA256 digest (600,000 iterations), and a test fails if the three
+copies ever differ. A Roku does not keep a copy: its sign-in screen offers
+the same **I'm a dev** button, and the computer it is pointed at checks the
+code. The code itself is not in this repository. A phone needs the app build
+that carries the current digest, so after the code changes, install the
+latest IPA or APK.
+
+A phone checks the code with the app, not with the interface it downloaded, so
+the right code is refused by an app installed before the code changed. When
+that happens the phone says which build it is underneath, and Updates shows the
+same under **Installed app**. The desktop has one build for both halves and
+says nothing.
 
 Dev mode unlocks the Accounts screen, Email settings, the Developer screen,
-the billing probe and the Stripe key routes. Core checks it on every call.
+the billing probe and the Stripe key routes. On every call Core checks that
+the request carries the dev account's own session, not just that dev mode is
+on somewhere. The desktop only serves other devices while you are signed in
+as dev, so a machine-wide switch would have let anyone on the network use
+these routes at exactly that time. The phones check the same way, since any
+app on a phone can reach its local server.
 
 Tapping the TVM logo seven times inside the app still opens the code screen;
-it now switches you to the dev account.
+it now switches you to the dev account. On a Roku, the owner code on the
+waiting screen signs in as dev for one request, switches that account on,
+and signs the dev session out again.
 
 ## Signing up
 
@@ -70,6 +88,10 @@ the password is never sent back to the interface.
 Phones do not send email, so accounts made on a phone are never asked for a
 code. The mail password would otherwise have to sit on every phone TVM is
 installed on. From Accounts you can mark any address verified by hand.
+
+A Roku signing up against a desktop TVM is asked for the code like anything
+else, and takes the six digits on the waiting screen. It can ask for a new
+one from there too.
 
 Without email set up, nobody is asked for a code and accounts go straight to
 waiting for you.
@@ -142,9 +164,11 @@ never refused. Phones only listen on loopback, so they never serve anyone.
 
 ### Test channel
 
-Signed in as the dev account, Live TV shows **DW News**, Deutsche Welle's free
-English channel, even before a provider is added. It is a real live broadcast
-(five renditions, relative paths, a subtitle track) and plays through the
-proxy, so it is a quick check that proxy reflection works. BBC channels are
+While the dev account is signed in on a TVM, Live TV there lists **DW News**,
+Deutsche Welle's free English channel, even before a provider is added. It is
+a real live broadcast (five renditions, relative paths, a subtitle track) and
+plays through the proxy, so it is a quick check that proxy reflection works.
+Every device using that TVM sees it, so the relay can be tested from a Roku
+or a phone as well as the machine itself. BBC channels are
 UK-only and need a TV licence, so they are not used. For offline, repeatable
 checks use the IPTV tester in `apps/core/src/Server Side Live/tester`.

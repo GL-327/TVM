@@ -424,6 +424,8 @@ class TvmUpdater(
         return Json.obj(
             "current" to StandalonePolicy.VERSION,
             "currentCommit" to bundle.currentInfo().commit,
+            // The commit this installed app was built from, so an app older than the interface can be spotted.
+            "appBuild" to bundle.appBuild(),
             "channel" to "github:$REPO#$RELEASE_TAG",
             "lastCheck" to (cache?.opt("lastCheck") as? String),
             "available" to (cache?.optJSONObject("available")),

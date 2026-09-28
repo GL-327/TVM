@@ -111,7 +111,7 @@ function watchFocusTree(): void {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['data-focus-id', 'data-loop-clone'],
+    attributeFilter: ['data-focus-id', 'data-loop-clone', 'disabled'],
   });
 }
 
@@ -145,7 +145,10 @@ export function focusablesIn(row: HTMLElement): HTMLElement[] {
   const hit = focusablesCache.get(row);
   if (hit !== undefined && hit.gen === gen && itemsLive(hit.items)) return hit.items;
 
-  const found = [...row.querySelectorAll<HTMLElement>('[data-focus-id]:not([data-loop-clone="true"])')];
+  // A disabled row still carries data-focus-id. Leaving it in the list makes
+  // Down try to land on it and stop, so everything under the first disabled
+  // settings row (Plan, Privacy, the themes) is unreachable from a remote.
+  const found = [...row.querySelectorAll<HTMLElement>('[data-focus-id]:not([data-loop-clone="true"]):not(:disabled)')];
   const seen = new Set<string>();
   const unique: HTMLElement[] = [];
   for (const element of found) {

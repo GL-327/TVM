@@ -62,6 +62,11 @@ function startSession(token: string | null): void {
 async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await apiFetch(path, init);
   const body = (await response.json()) as T & { error?: string };
+  // The phone apps refresh this interface from GitHub on their own, so a new
+  // screen can reach an older app that does not have the route behind it yet.
+  if (response.status === 404 && body.error === 'not_found') {
+    throw new Error('This copy of TVM is too old for that. Install the latest version from GitHub, then try again.');
+  }
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Something went wrong.');
   return body;
 }

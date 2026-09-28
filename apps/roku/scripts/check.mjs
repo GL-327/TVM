@@ -271,6 +271,13 @@ const accountBrs = existsSync(join(rokuRoot, "components/AccountScreen.brs"))
   ? read(join(rokuRoot, "components/AccountScreen.brs"))
   : "";
 if (!/ownerDoor/.test(accountBrs)) fail("AccountScreen must open the owner door from seven Info presses");
+if (!/I'm a dev/.test(accountBrs)) fail("AccountScreen must offer I'm a dev on the sign-in screen");
+if (!/devCode/.test(sceneBrs) || !/submitDevSignIn\(/.test(sceneBrs)) {
+  fail("TVMScene must sign the Roku in as the dev account and keep that session");
+}
+if (!/sub onAccountSignInDone\(\)[\s\S]*?loadAccount\(true\)/.test(sceneBrs)) {
+  fail("A successful Roku sign-in must reload /api/account so the gate sees signedIn");
+}
 const homeBrs = existsSync(join(rokuRoot, "components/HomeScreen.brs"))
   ? read(join(rokuRoot, "components/HomeScreen.brs"))
   : "";
