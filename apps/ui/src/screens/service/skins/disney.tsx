@@ -570,9 +570,7 @@ const DisneyCard = memo(function DisneyCard({
       data-loop-clone={clone ? 'true' : undefined}
       data-loop-copy={String(loopCopy)}
       aria-hidden={clone || undefined}
-      onClick={() => {
-        if (!clone) onSelect(title);
-      }}
+      onClick={() => onSelect(title)}
     >
       <span className="tvm-button__label">
         <span className="dplus-card__frame">

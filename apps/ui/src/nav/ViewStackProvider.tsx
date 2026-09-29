@@ -383,13 +383,12 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       // Finger-down must not D-pad-focus. iOS often labels a touch as mouse;
       // phone-shell is the injected flag that pointerInput already treats as tap.
       if (event.pointerType === 'touch' || document.documentElement.classList.contains('phone-shell')) return;
-      const host = node.closest<HTMLElement>('[data-focus-id]');
       if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
         document.documentElement.classList.add('desktop-shell');
       }
-      if (host === null) return;
-      const key = focusKeyFor(host);
-      if (key !== null) requestFocus(key);
+      // pointerInput focuses and activates on pointerup. Focusing here
+      // re-renders the card before the click, so the title never opens and a
+      // conveyor copy teleports the row onto the other set.
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);

@@ -88,7 +88,7 @@
 }
 
 /* Chrome overlay is z-index 4 over the video. Opaque paint here is a black screen. */
-.player-speed { position: relative; pointer-events: auto; }
+.player-speed { position: relative; z-index: 6; pointer-events: auto; }
 .player-speed__toggle { min-width: 3.2rem; min-height: 2.7rem; padding: 0.3rem 0.6rem; font-variant-numeric: tabular-nums; }
 .player-speed__menu {
   position: absolute;
@@ -105,6 +105,8 @@
   background: color-mix(in srgb, var(--tvm-bg-elevated, #151515) 96%, transparent);
   box-shadow: 0 1rem 3rem #0008;
   transform-origin: bottom right;
+  z-index: 7;
+  pointer-events: auto;
   animation: player-menu-enter 180ms var(--player-ease) both;
 }
 .player-speed__heading { margin: 0.2rem 0.4rem 0.5rem; color: var(--player-ink-muted); font-size: 0.85rem; }
@@ -798,6 +800,8 @@ html:not([data-theme]) .stream-page,
 }
 
 .player-dock__tools {
+  position: relative;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1021,7 +1025,7 @@ html:not([data-theme]) .stream-page,
   left: auto;
   right: auto;
   bottom: auto;
-  z-index: auto;
+  z-index: 1;
   width: 100%;
   max-width: none;
   padding-inline: 0;
@@ -1105,6 +1109,7 @@ html:not([data-theme]) .stream-page,
 .player .player-quality,
 .player-root .player-cc,
 .player .player-cc,
+.player-dock__tools .player-speed,
 .player-dock__tools .player-audio,
 .player-dock__tools .player-quality,
 .player-dock__tools .player-cc {
@@ -1335,11 +1340,18 @@ html:not([data-theme]) .stream-page,
 }
 
 .player--mobile .player-watchlist,
-.player--mobile .player-volume,
 .player--mobile .player-audio__word,
 .player--mobile .player-cc__word,
 .player--mobile .player-quality__word {
   display: none;
+}
+
+.player--mobile .player-volume {
+  display: flex;
+  flex: 1 1 8rem;
+  min-width: 8rem;
+  max-width: 14rem;
+  margin-right: 0;
 }
 
 .player--mobile .player-chrome-back,

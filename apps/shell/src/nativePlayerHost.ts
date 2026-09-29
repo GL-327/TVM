@@ -53,6 +53,9 @@ export class NativePlayerHost {
   private lineBuffer = '';
   private lastStateSentAt = 0;
   private mpv: MpvPlaybackState = initialMpvState();
+  private level = 1;
+  private muted = false;
+  private rate = 1;
 
   constructor(window: BrowserWindow) {
     this.window = window;
@@ -157,6 +160,24 @@ export class NativePlayerHost {
   seekTo(seconds: number): void {
     if (this.socket === null) return;
     this.write(['seek', Math.max(0, seconds), 'absolute']);
+  }
+
+  setVolume(volume: number): void {
+    if (!Number.isFinite(volume)) return;
+    this.level = Math.max(0, Math.min(1, volume));
+    if (this.level > 0) this.muted = false;
+    this.writeAudio();
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    this.writeAudio();
+  }
+
+  setRate(rate: number): void {
+    if (!Number.isFinite(rate)) return;
+    this.rate = Math.max(0.25, Math.min(2, rate));
+    this.write(['set_property', 'speed', this.rate]);
   }
 
   stop(notify = true): void {
@@ -278,11 +299,19 @@ export class NativePlayerHost {
         if (this.socket === socket) this.socket = null;
       });
       for (const command of MPV_AUDIO_COMMANDS) this.write([...command]);
+      this.writeAudio();
+      if (this.rate !== 1) this.write(['set_property', 'speed', this.rate]);
       for (const property of MPV_OBSERVED_PROPERTIES) {
         this.write(['observe_property', 1, property]);
       }
     });
     socket.once('error', onConnectError);
+  }
+
+  private writeAudio(): void {
+    const volume = Math.round(this.level * 100);
+    this.write(['set_property', 'mute', this.muted || volume === 0]);
+    this.write(['set_property', 'volume', this.muted ? 0 : volume]);
   }
 
   private write(command: unknown[]): void {

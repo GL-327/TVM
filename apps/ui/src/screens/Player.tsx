@@ -8,7 +8,8 @@ import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverla
 import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
 import { TvmMark } from '../brand/TvmMark';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
-import { iosPlaybackBridge } from '../player/iosEngine';
+import { desktopPlaybackBridge, html5CanAttach } from '../player/desktopEngine';
+import { nativePlaybackBridge } from '../player/iosEngine';
 import { PlayerRoot, type PlayerSession } from '../player';
 import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
 import { playerShellClass, readPlayerLayout } from '../player/playerLayout';
@@ -126,7 +127,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
 
     const start = (stream: EngineStream): void => {
       if (cancelled) return;
-      const native = Boolean(iosPlaybackBridge());
+      const native = nativePlaybackBridge() !== undefined || (desktopPlaybackBridge() !== undefined && !html5CanAttach(stream));
       const video = videoRef.current;
       if (!native && video === null) {
         startFrame = window.requestAnimationFrame(() => start(stream));
@@ -332,19 +333,39 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     showControls();
   }, [showControls]);
 
-  const adjustVolume = useCallback(
-    (delta: number): void => {
+  const applyVolume = useCallback(
+    (value: number): void => {
+      const next = Math.max(0, Math.min(1, value));
       showControls();
-      setVolume((current) => {
-        const next = Math.max(0, Math.min(1, current + delta));
-        engineRef.current?.setVolume(next);
-        return next;
-      });
-      setMuted(false);
-      engineRef.current?.setMuted(false);
+      setVolume(next);
+      engineRef.current?.setVolume(next);
+      if (next > 0) {
+        setMuted(false);
+        engineRef.current?.setMuted(false);
+      }
     },
     [showControls],
   );
+
+  const adjustVolume = useCallback(
+    (delta: number): void => {
+      setVolume((current) => {
+        const next = Math.max(0, Math.min(1, current + delta));
+        showControls();
+        engineRef.current?.setVolume(next);
+        if (next > 0) {
+          setMuted(false);
+          engineRef.current?.setMuted(false);
+        }
+        return next;
+      });
+    },
+    [showControls],
+  );
+
+  const applyPlaybackRate = useCallback((rate: number): void => {
+    engineRef.current?.setRate(rate);
+  }, []);
 
   const applyMuted = useCallback(
     (next: boolean): void => {
@@ -391,6 +412,12 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     return () => window.removeEventListener('tvm:media-intent', onIntent);
   }, [adjustVolume, close, pause, play, seek, showControls, togglePlayback]);
 
+  useEffect(() => {
+    if (playbackEngine !== 'native') return;
+    document.documentElement.classList.add('tvm-native-playback');
+    return () => document.documentElement.classList.remove('tvm-native-playback');
+  }, [playbackEngine]);
+
   const busy = loading || (buffering && !hasFrame);
   const session: PlayerSession = useMemo(
     () => ({
@@ -422,11 +449,15 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       retry,
       showControls,
       adjustVolume,
+      setVolume: applyVolume,
       setMuted: applyMuted,
+      setPlaybackRate: applyPlaybackRate,
     }),
     [
       adjustVolume,
       applyMuted,
+      applyPlaybackRate,
+      applyVolume,
       badges,
       buffering,
       busy,

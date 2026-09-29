@@ -30,6 +30,10 @@ describe('iOS native playback', () => {
     expect(events.onPlayState).toHaveBeenCalledTimes(1);
     engine.seekBy(10);
     expect(postMessage).toHaveBeenLastCalledWith({ id: open['id'], command: 'seek', seconds: 151 });
+    engine.setVolume(0.4);
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'volume', volume: 0.4 }));
+    engine.setRate(2);
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'rate', rate: 2 }));
     emit({ id: open['id'], command: 'closed' });
     expect(events.onClosed).toHaveBeenCalledOnce();
     expect(events.onEnded).not.toHaveBeenCalled();

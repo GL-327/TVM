@@ -386,9 +386,7 @@ const MaxCard = memo(function MaxCard({
       data-loop-clone={clone ? 'true' : undefined}
       data-loop-copy={String(loopCopy)}
       aria-hidden={clone || undefined}
-      onClick={() => {
-        if (!clone) onActivate(title);
-      }}
+      onClick={() => onActivate(title)}
     >
       <span className="max-card__frame">
         <Artwork title={title} kind="backdrop" className="max-card__art" decorative={clone} />
