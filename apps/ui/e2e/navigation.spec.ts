@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { THEME_DEFAULT_BOOT } from '../src/theme/bootKey';
 import { allowAccount } from './account';
@@ -703,6 +704,63 @@ test('MAX shows the mock live pack', async ({ page }) => {
   await expect(page.getByRole('button', { name: /TNT Sports/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /beIN Sports/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /USA Network/ })).toBeVisible();
+});
+
+test('clicking a film opens the title instead of only jumping the row', async ({ page }) => {
+  const poster = page.locator('[data-focus-id="films-tt0816692-0"]');
+  await expect(poster).toBeVisible();
+  await poster.click();
+  await expect(page.locator('[data-screen="details"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dune' })).toBeVisible();
+});
+
+test('volume slider sets a level and a speed pick does not scrub', async ({ page }) => {
+  const sample = readFileSync(new URL('./sample.mp4', import.meta.url));
+  await page.route('**/e2e-sample.mp4', (route) =>
+    route.fulfill({ status: 200, contentType: 'video/mp4', body: sample }),
+  );
+  await page.unroute('**/api/playback');
+  await page.route('**/api/playback', (route) =>
+    route.fulfill({
+      json: {
+        kind: 'stream',
+        url: 'http://127.0.0.1:15173/e2e-sample.mp4',
+        title: 'Dune',
+        filename: 'dune.mp4',
+        mimeType: 'video/mp4',
+        engine: 'html5',
+        transport: 'file',
+        durationSeconds: 2,
+      },
+    }),
+  );
+  await enterTvmStream(page);
+  await pressUntil(page, 'films-tt0816692-0');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="details"]')).toBeVisible();
+  await expect.poll(async () => focusedId(page)).toBe('play');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="player"]')).toBeVisible();
+  await expect(page.locator('[data-player-volume="programmable"]')).toBeVisible();
+
+  const track = page.locator('.player-volume__track');
+  const box = await track.boundingBox();
+  if (box === null) throw new Error('Volume track has no box');
+  await page.mouse.click(box.x + box.width * 0.25, box.y + box.height / 2);
+  const volume = await page.locator('video').evaluate((node: HTMLVideoElement) => node.volume);
+  expect(volume).toBeGreaterThan(0.15);
+  expect(volume).toBeLessThan(0.85);
+
+  await expect(page.locator('[data-focus-id="player-progress"]')).toBeEnabled();
+  const before = await page.locator('video').evaluate((node: HTMLVideoElement) => node.currentTime);
+  await page.locator('[data-focus-id="player-speed"]').click();
+  await page.locator('[data-focus-id="player-speed-2"]').click();
+  const after = await page.locator('video').evaluate((node: HTMLVideoElement) => ({
+    time: node.currentTime,
+    rate: node.playbackRate,
+  }));
+  expect(after.rate).toBe(2);
+  expect(Math.abs(after.time - before)).toBeLessThan(3);
 });
 
 test('Live TV asks for a login until configured, and Back returns Home', async ({ page }) => {

@@ -1,6 +1,7 @@
 package com.tvm.privateclient
 
 import android.app.Activity
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
@@ -10,6 +11,7 @@ import android.widget.FrameLayout
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -41,6 +43,8 @@ class TvmNativePlayer(
     private var ticking = false
     /** Media3 only reports a live offset for a stream it knows is live. */
     private var isLive = false
+    /** Last level from the slider. Mute must not throw that away and unmute at full. */
+    private var level = 1f
 
     /** Exposed to the page as `window.tvmPlayer`. JS interfaces only take primitives. */
     inner class Bridge {
@@ -67,9 +71,18 @@ class TvmNativePlayer(
             }
             "volume" -> {
                 val volume = message.optDouble("volume", 1.0)
-                if (volume.isFinite()) player?.volume = volume.coerceIn(0.0, 1.0).toFloat()
+                if (volume.isFinite()) {
+                    level = volume.coerceIn(0.0, 1.0).toFloat()
+                    player?.volume = level
+                }
             }
-            "mute" -> player?.volume = if (message.optBoolean("muted", false)) 0f else 1f
+            "mute" -> player?.volume = if (message.optBoolean("muted", false)) 0f else level
+            "rate" -> {
+                val rate = message.optDouble("rate", 1.0)
+                if (rate.isFinite()) {
+                    player?.playbackParameters = PlaybackParameters(rate.coerceIn(0.25, 2.0).toFloat())
+                }
+            }
             // Media3 knows where the live edge is, so returning to it is a
             // genuine seek rather than a reconnect: the buffer is kept.
             "goLive" -> player?.let { exo ->
@@ -126,6 +139,8 @@ class TvmNativePlayer(
             override fun onIsPlayingChanged(isPlaying: Boolean) = pushState(id)
         })
 
+        // The picture is behind the WebView. An opaque page or WebView paints black over it.
+        webView.setBackgroundColor(Color.TRANSPARENT)
         attachView(exo)
         if (!live && startAt > 0) exo.seekTo((startAt * 1000).toLong())
         exo.prepare()
@@ -208,6 +223,7 @@ class TvmNativePlayer(
             (frame.parent as? ViewGroup)?.removeView(frame)
         }
         container = null
+        webView.setBackgroundColor(Color.BLACK)
         if (notify && id != null) emit(id, "closed", JSONObject())
         sessionId = null
     }

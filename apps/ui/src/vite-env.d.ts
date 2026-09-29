@@ -19,9 +19,14 @@ interface Window {
     start(input: { url: string; title: string; startAt?: number }): Promise<{ ok: true }>;
     command(command: TvmNativePlayerCommand): Promise<void>;
     seekTo(seconds: number): Promise<void>;
+    setVolume?(volume: number): Promise<void>;
+    setMuted?(muted: boolean): Promise<void>;
+    setRate?(rate: number): Promise<void>;
     stop(): Promise<void>;
     onEvent(listener: (event: TvmNativePlayerEvent) => void): () => void;
   };
+  /** Linux shells stay on HTML5. Windows and macOS may hand files to mpv. */
+  tvmDesktop?: { nativePlayback: boolean };
   tvmServiceBrowser?: {
     start(input: { id: string; url: string; title: string }): Promise<{ ok: true }>;
     stop(): Promise<void>;

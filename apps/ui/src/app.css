@@ -2868,6 +2868,18 @@ html.tvm-native-plane .player-root {
   background: transparent;
 }
 
+/* Native picture sits behind the WebView. Opaque ancestors would hide it. */
+html.tvm-native-playback,
+html.tvm-native-playback body,
+html.tvm-native-playback #root,
+html.tvm-native-playback .app,
+html.tvm-native-playback .app__screen,
+html.tvm-native-playback .screen-layer,
+html.tvm-native-playback .player--native,
+html.tvm-native-playback .player--native .player__stage {
+  background: transparent;
+}
+
 .player__stage {
   position: absolute;
   inset: 0;

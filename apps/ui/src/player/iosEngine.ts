@@ -79,6 +79,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
     seekTo: (seconds) => send('seek', { seconds }),
     setVolume: (volume) => send('volume', { volume }),
     setMuted: (muted) => send('mute', { muted }),
+    setRate: (rate) => send('rate', { rate }),
     position: () => position, duration: () => duration,
     liveDrift: () => (options.live === true ? drift : 0),
     goLive: () => { if (options.live === true) send('goLive'); },

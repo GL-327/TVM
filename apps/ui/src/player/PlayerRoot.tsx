@@ -58,7 +58,9 @@ export interface PlayerSession {
   retry: () => void;
   showControls: () => void;
   adjustVolume: (delta: number) => void;
+  setVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
+  setPlaybackRate: (rate: number) => void;
 }
 
 export interface PlayerRootProps {

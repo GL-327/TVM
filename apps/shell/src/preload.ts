@@ -1,11 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { NativePlaybackInput, NativePlayerCommand, NativePlayerEvent } from './nativePlayerHost';
 import type { ServiceEvent, ServiceStartInput } from './serviceHost';
+import { desktopNativePlayback } from './windowChrome';
+
+contextBridge.exposeInMainWorld('tvmDesktop', {
+  nativePlayback: desktopNativePlayback(process.platform),
+});
 
 contextBridge.exposeInMainWorld('tvmNativePlayer', {
   start: (input: NativePlaybackInput): Promise<{ ok: true }> => ipcRenderer.invoke('tvm:native-player:start', input),
   command: (command: NativePlayerCommand): Promise<void> => ipcRenderer.invoke('tvm:native-player:command', command),
   seekTo: (seconds: number): Promise<void> => ipcRenderer.invoke('tvm:native-player:seek-to', seconds),
+  setVolume: (volume: number): Promise<void> => ipcRenderer.invoke('tvm:native-player:volume', volume),
+  setMuted: (muted: boolean): Promise<void> => ipcRenderer.invoke('tvm:native-player:muted', muted),
+  setRate: (rate: number): Promise<void> => ipcRenderer.invoke('tvm:native-player:rate', rate),
   stop: (): Promise<void> => ipcRenderer.invoke('tvm:native-player:stop'),
   onEvent: (listener: (event: NativePlayerEvent) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: NativePlayerEvent): void => listener(payload);

@@ -3,6 +3,7 @@ import { catchUpTarget, driftFromLive, liveEdgeOf } from './liveEdge';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
 import { publishHls } from './hlsBridge';
+import { createDesktopPlayerEngine, desktopPlaybackBridge, html5CanAttach } from './desktopEngine';
 import { createIOSPlayerEngine, nativePlaybackBridge } from './iosEngine';
 
 /**
@@ -43,6 +44,7 @@ export interface PlayerEngine {
   seekTo(seconds: number): void;
   setVolume(value: number): void;
   setMuted(muted: boolean): void;
+  setRate(rate: number): void;
   position(): number;
   duration(): number;
   /** Seconds behind the broadcast; 0 for anything that is not live. */
@@ -162,6 +164,7 @@ function createMissingNativeEngine(events: EngineEvents): PlayerEngine {
     seekTo() {},
     setVolume() {},
     setMuted() {},
+    setRate() {},
     position: () => 0,
     duration: () => 0,
     liveDrift: () => 0,
@@ -179,6 +182,11 @@ export function createPlayerEngine(
   // HTML5 <video> cannot open MKV/WebM/TS and is what surfaces "Can't open
   // this file" — never attach those URLs there.
   if (nativePlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
+  // Windows and macOS can hand Matroska and other browser-blind files to mpv.
+  // Playable MP4/HLS stays in <video> so a machine without mpv still watches.
+  if (!html5CanAttach(stream) && desktopPlaybackBridge() !== undefined) {
+    return createDesktopPlayerEngine({ ...stream, engine: 'native' }, options, events);
+  }
   if (stream.engine === 'native') return createMissingNativeEngine(events);
   const fetchImpl = options.fetchImpl ?? fetch;
   const live = options.live;
@@ -613,6 +621,10 @@ export function createPlayerEngine(
     },
     setMuted(muted) {
       video.muted = muted;
+    },
+    setRate(rate) {
+      if (!Number.isFinite(rate)) return;
+      video.playbackRate = Math.max(0.25, Math.min(2, rate));
     },
     position: () => absolutePosition(video.currentTime, offset),
     duration: () => displayDuration(stream.durationSeconds, video.duration, offset),
