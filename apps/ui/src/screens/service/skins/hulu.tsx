@@ -352,9 +352,7 @@ const HuluCard = memo(function HuluCard({
       data-loop-clone={clone ? 'true' : undefined}
       data-loop-copy={String(loopCopy)}
       aria-hidden={clone || undefined}
-      onClick={() => {
-        if (!clone) onSelect();
-      }}
+      onClick={() => onSelect()}
     >
       <span className="hulu-card__frame">
         <Artwork title={title} kind="backdrop" className="poster__art hulu-card__art" decorative={clone} />

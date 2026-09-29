@@ -291,6 +291,13 @@ export function startPointerInput(): () => void {
     axis: 'x' | 'y' | null;
   } | null = null;
   let suppressTrustedClickUntil = 0;
+  let clickPress: {
+    id: number;
+    x: number;
+    y: number;
+    host: HTMLElement | null;
+    moved: boolean;
+  } | null = null;
 
   const clearHover = (): void => {
     if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
@@ -339,6 +346,9 @@ export function startPointerInput(): () => void {
   };
 
   const onPointerMove = (event: PointerEvent): void => {
+    if (clickPress !== null && event.pointerId === clickPress.id) {
+      clickPress.moved ||= Math.hypot(event.clientX - clickPress.x, event.clientY - clickPress.y) > TOUCH_TAP_SLOP;
+    }
     if (touch !== null && event.pointerId === touch.id) {
       const dx = event.clientX - touch.x;
       const dy = event.clientY - touch.y;
@@ -412,31 +422,50 @@ export function startPointerInput(): () => void {
     }
     if (isMouse(event)) showCursor();
     clearHover();
-    const host = node.closest<HTMLElement>('[data-focus-id]');
-    if (host === null) return;
-    const key = focusKeyFor(host);
-    if (key !== null) {
-      suppressNextReveal(host);
-      requestFocus(key);
+    // Focus waits until pointerup. Focusing on the way down re-renders the
+    // card (and, for a conveyor clone, jumps the camera onto the other copy)
+    // before the click can open the title.
+    clickPress = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      host: node.closest<HTMLElement>('[data-focus-id]'),
+      moved: false,
+    };
+  };
+
+  const activatePress = (host: HTMLElement): void => {
+    if (!host.isConnected || host.closest('[inert]') !== null) return;
+    // A clone is the copy under the finger. Focusing the real card instead
+    // teleports the row onto the other set and never opens this one.
+    const clone = host.closest('[data-loop-clone="true"]') !== null;
+    if (!clone) {
+      const key = focusKeyFor(host);
+      if (key !== null) requestFocus(key);
     }
+    suppressTrustedClickUntil = performance.now() + 250;
+    host.click();
   };
 
   const onPointerUp = (event: PointerEvent): void => {
+    const press = clickPress;
+    if (press !== null && press.id === event.pointerId) {
+      clickPress = null;
+      const moved = press.moved || Math.hypot(event.clientX - press.x, event.clientY - press.y) > TOUCH_TAP_SLOP;
+      if (!moved && press.host !== null) activatePress(press.host);
+    }
     const tap = touch;
     if (tap === null || tap.id !== event.pointerId) return;
     touch = null;
     if (tap.axis !== null || tap.moved || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TOUCH_TAP_SLOP) return;
-    const host = tap.host;
-    if (host === null || !host.isConnected || host.closest('[inert]') !== null) return;
-    const key = focusKeyFor(host);
-    if (key !== null) { suppressNextReveal(host); requestFocus(key); }
-    // Activate in this turn. Waiting for the compatibility click loses the tap
-    // after requestFocus re-renders the card.
-    suppressTrustedClickUntil = performance.now() + 80;
-    host.click();
+    if (tap.host === null) return;
+    activatePress(tap.host);
   };
 
-  const onPointerCancel = (): void => { touch = null; };
+  const onPointerCancel = (): void => {
+    touch = null;
+    clickPress = null;
+  };
 
   const onClick = (event: MouseEvent): void => {
     if (!event.isTrusted || performance.now() >= suppressTrustedClickUntil) return;

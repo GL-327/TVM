@@ -51,6 +51,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private let skipFlash = UILabel()
     private let audioButton = UIButton(type: .system)
     private let subtitleButton = UIButton(type: .system)
+    private let volumeSlider = UISlider()
+    private var audioLevel: Int32 = 100
     private var timer: Timer?
     private var hideWork: DispatchWorkItem?
     private var startedAt = Date()
@@ -138,6 +140,20 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         clock.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium); clock.textColor = UIColor.white.withAlphaComponent(0.78)
         clock.textAlignment = .right
         let timeline = UIStackView(arrangedSubviews: [elapsed, slider, clock]); timeline.spacing = 10
+        volumeSlider.minimumValue = 0
+        volumeSlider.maximumValue = 100
+        volumeSlider.value = 100
+        volumeSlider.minimumTrackTintColor = .white
+        volumeSlider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.28)
+        volumeSlider.accessibilityLabel = "Volume"
+        volumeSlider.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            let level = Int32(self.volumeSlider.value.rounded())
+            self.audioLevel = max(0, min(100, level))
+            self.player.audio?.volume = self.audioLevel
+            self.player.audio?.isMuted = self.audioLevel == 0
+            self.reveal()
+        }, for: .valueChanged)
         elapsed.setContentCompressionResistancePriority(.required, for: .horizontal)
         clock.setContentCompressionResistancePriority(.required, for: .horizontal)
         configure(audioButton, symbol: "waveform", label: "Audio")
@@ -154,7 +170,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         speed.isEnabled = !live
         let tools = UIStackView(arrangedSubviews: [audioButton, subtitleButton, speed])
         tools.distribution = .equalSpacing
-        let footer = UIStackView(arrangedSubviews: [timeline, tools]); footer.axis = .vertical; footer.spacing = 8
+        let footer = UIStackView(arrangedSubviews: [timeline, volumeSlider, tools]); footer.axis = .vertical; footer.spacing = 8
         status.textColor = .white; status.font = .systemFont(ofSize: 14, weight: .medium)
         status.numberOfLines = 3; status.textAlignment = .center
         spinner.color = .white; spinner.hidesWhenStopped = true
@@ -240,8 +256,22 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         case "play": player.play(); reveal()
         case "pause": player.pause(); reveal()
         case "seek": if let seconds = data["seconds"] as? Double { seek(seconds) }
-        case "volume": if let volume = data["volume"] as? Double, volume.isFinite { player.audio?.volume = Int32(max(0, min(100, volume * 100))) }
-        case "mute": player.audio?.isMuted = data["muted"] as? Bool ?? false
+        case "volume":
+            if let volume = data["volume"] as? Double, volume.isFinite {
+                let level = Int32(max(0, min(100, volume * 100)))
+                audioLevel = level
+                player.audio?.volume = level
+                player.audio?.isMuted = level == 0
+                volumeSlider.value = Float(level)
+            }
+        case "mute":
+            let muted = data["muted"] as? Bool ?? false
+            player.audio?.isMuted = muted
+            volumeSlider.value = muted ? 0 : Float(audioLevel)
+        case "rate":
+            if let rate = data["rate"] as? Double, rate.isFinite {
+                player.rate = Float(max(0.25, min(2, rate)))
+            }
         case "goLive":
             // VLC cannot seek forward in a live transport stream — there is no
             // index to seek within. Reopening the source reconnects at the

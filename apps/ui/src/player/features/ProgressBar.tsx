@@ -226,6 +226,17 @@ function ensureStyles(): void {
   document.head.appendChild(style);
 }
 
+/** A speed/audio/quality row sitting under this point, even when the seek bar is painted above it. */
+export function menuButtonAtPoint(nodes: readonly EventTarget[]): HTMLButtonElement | null {
+  for (const node of nodes) {
+    if (!(node instanceof Element)) continue;
+    if (node.closest('[data-player-menu]') === null) continue;
+    const button = node.closest('button');
+    if (button instanceof HTMLButtonElement) return button;
+  }
+  return null;
+}
+
 export function formatPlayerTime(value: number): string {
   if (!Number.isFinite(value) || value < 0) return '0:00';
   const total = Math.floor(value);
@@ -507,6 +518,14 @@ export function ProgressBar({
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (!seekable) return;
     if (event.pointerType !== 'mouse' && event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+      return;
+    }
+    const stack = typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(event.clientX, event.clientY) : [];
+    const menuButton = menuButtonAtPoint(stack);
+    if (menuButton !== null && menuButton !== event.currentTarget) {
+      event.preventDefault();
+      event.stopPropagation();
+      menuButton.click();
       return;
     }
     event.preventDefault();

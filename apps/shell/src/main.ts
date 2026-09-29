@@ -11,6 +11,7 @@ import { ServiceHost, type ServiceStartInput } from './serviceHost';
 import { createCrashWatch, urlForLoad } from './watchdog';
 import { isWindowedShell, uiLoadUrl, windowedBounds } from './windowedBounds';
 import { ensureMpvExecutable } from './mpvInstall';
+import { shellWindowChrome } from './windowChrome';
 
 const windowed = isWindowedShell();
 const ORIGIN = uiOrigin();
@@ -65,6 +66,7 @@ function createWindow(): BrowserWindow {
     ? windowedBounds(screen.getPrimaryDisplay().workAreaSize)
     : { width: 1280, height: 720 };
 
+  const chrome = shellWindowChrome(process.platform);
   const window = new BrowserWindow({
     show: false,
     title: 'TVM',
@@ -77,9 +79,9 @@ function createWindow(): BrowserWindow {
     kiosk: !windowed,
     frame: false,
     autoHideMenuBar: true,
-    transparent: true,
-    backgroundColor: '#00000000',
-    ...(process.platform === 'win32' ? { backgroundMaterial: 'none' as const } : {}),
+    transparent: chrome.transparent,
+    backgroundColor: chrome.backgroundColor,
+    ...(process.platform === 'win32' && chrome.transparent ? { backgroundMaterial: 'none' as const } : {}),
     ...(windowed ? { center: true, resizable: true } : {}),
     ...(windowed && process.platform === 'win32'
       ? {
@@ -163,6 +165,25 @@ ipcMain.handle('tvm:native-player:seek-to', (event, seconds: unknown) => {
     throw new Error('Invalid native player seek.');
   }
   playerFor(event).seekTo(seconds);
+});
+
+ipcMain.handle('tvm:native-player:volume', (event, volume: unknown) => {
+  if (typeof volume !== 'number' || !Number.isFinite(volume)) {
+    throw new Error('Invalid native player volume.');
+  }
+  playerFor(event).setVolume(volume);
+});
+
+ipcMain.handle('tvm:native-player:muted', (event, muted: unknown) => {
+  if (typeof muted !== 'boolean') throw new Error('Invalid native player mute.');
+  playerFor(event).setMuted(muted);
+});
+
+ipcMain.handle('tvm:native-player:rate', (event, rate: unknown) => {
+  if (typeof rate !== 'number' || !Number.isFinite(rate)) {
+    throw new Error('Invalid native player speed.');
+  }
+  playerFor(event).setRate(rate);
 });
 
 ipcMain.handle('tvm:native-player:stop', (event) => {

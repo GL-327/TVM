@@ -20,6 +20,8 @@ export interface VolumeControlProps {
   /** Force the OS-only hint (native/mpv). When omitted, probed from engine + video.volume. */
   osOnly?: boolean;
   adjustVolume?: (delta: number) => void;
+  /** Absolute gain, 0–1. Dragging the track uses this so the level is not only mute. */
+  setVolume?: (volume: number) => void;
   setMuted?: (muted: boolean) => void;
   showControls?: () => void;
 }
@@ -85,20 +87,32 @@ const CSS = `
 }
 
 .player-volume__meter {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.55rem;
   min-width: 0;
+  min-height: 2.75rem;
   flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  touch-action: none;
 }
 
 .player-volume__track {
+  position: relative;
   display: block;
   width: 7.6rem;
   height: 0.42rem;
   overflow: hidden;
   border-radius: var(--tvm-radius-pill, 999rem);
   background: var(--player-track, rgba(255, 255, 255, 0.22));
+  pointer-events: none;
 }
 
 .player-volume__fill {
@@ -181,13 +195,23 @@ export function canSetVideoVolume(media: HTMLMediaElement | null | undefined): b
   }
 }
 
+/** 0 at the left edge of the track, 1 at the right. */
+export function volumeFromClientX(clientX: number, rect: { left: number; width: number }): number {
+  if (!Number.isFinite(clientX) || !Number.isFinite(rect.left) || !Number.isFinite(rect.width) || rect.width <= 0) {
+    return 0;
+  }
+  return clampVolume((clientX - rect.left) / rect.width);
+}
+
 export function resolveVolumeMode(input: {
   engine?: string;
   video?: HTMLVideoElement | null;
   osOnly?: boolean;
+  /** Native shells (VLC / Media3) can set gain even when `video.volume` cannot. */
+  programmable?: boolean;
 }): VolumeMode {
   if (input.osOnly === true) return 'os';
-  if (input.engine === 'native') return 'os';
+  if (input.engine === 'native') return input.programmable === true ? 'programmable' : 'os';
   if (input.video != null) return canSetVideoVolume(input.video) ? 'programmable' : 'os';
   if (input.engine === 'html5') return 'programmable';
   return 'pending';
@@ -234,6 +258,7 @@ export function VolumeControl({
   visible,
   osOnly,
   adjustVolume,
+  setVolume,
   setMuted,
   showControls,
 }: VolumeControlProps): React.JSX.Element | null {
@@ -278,12 +303,33 @@ export function VolumeControl({
     engine: engine ?? (nativeShell(hostRef.current) ? 'native' : undefined),
     video: node,
     osOnly,
+    programmable: setVolume !== undefined,
   });
 
   const volume = clampVolume(volumeProp ?? localVolume);
   const muted = mutedProp ?? localMuted;
   const silent = muted || volume === 0;
   const shown = Math.round((silent ? 0 : volume) * 100);
+
+  const applyLevel = useCallback(
+    (next: number): void => {
+      if (mode !== 'programmable') return;
+      const value = clampVolume(next);
+      bumpActivity(showControls);
+      if (setVolume !== undefined) {
+        setVolume(value);
+        return;
+      }
+      const media = resolveVideo();
+      if (media !== null) {
+        media.volume = value;
+        media.muted = value === 0;
+      }
+      setLocalVolume(value);
+      setLocalMuted(value === 0);
+    },
+    [mode, resolveVideo, setVolume, showControls],
+  );
 
   const applyDelta = useCallback(
     (delta: number): void => {
@@ -377,7 +423,40 @@ export function VolumeControl({
         )}
         <span className="player-volume__sr">{silent ? 'Unmute' : 'Mute'}</span>
       </FocusButton>
-      <div className="player-volume__meter" aria-hidden="true">
+      <button
+        type="button"
+        className="player-volume__meter"
+        role="slider"
+        aria-label="Volume"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={shown}
+        aria-valuetext={silent ? 'Muted' : `${shown} percent`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const track = event.currentTarget.querySelector('.player-volume__track') ?? event.currentTarget;
+          applyLevel(volumeFromClientX(event.clientX, track.getBoundingClientRect()));
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            // Capture is optional; the move handler still runs while the pointer stays on the track.
+          }
+        }}
+        onPointerMove={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const track = event.currentTarget.querySelector('.player-volume__track') ?? event.currentTarget;
+          applyLevel(volumeFromClientX(event.clientX, track.getBoundingClientRect()));
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+      >
         <span className="player-volume__track player__vol-track">
           <span
             className="player-volume__fill player__vol-fill"
@@ -385,7 +464,7 @@ export function VolumeControl({
           />
         </span>
         <span className="player-volume__pct">{shown}</span>
-      </div>
+      </button>
     </div>
   );
 }
