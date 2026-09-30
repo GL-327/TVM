@@ -14,11 +14,13 @@ describe('iOS native playback', () => {
     const events = { onTime: vi.fn(), onPlayState: vi.fn(), onBuffering: vi.fn(), onFirstFrame: vi.fn(), onEnded: vi.fn(), onClosed: vi.fn(), onError: vi.fn() };
     const stream: EngineStream = { kind: 'stream', url: 'https://cdn.example/film.mkv', title: 'Film', filename: 'film.mkv', mimeType: 'video/x-matroska', engine: 'native' };
     // No HTML element API is required or touched by the native engine.
-    const engine = createPlayerEngine({} as HTMLVideoElement, stream, { live: false, startAt: 128 }, events);
+    const engine = createPlayerEngine({} as HTMLVideoElement, stream, {
+      live: false, startAt: 128, initialVolume: 0.35, initialMuted: true,
+    }, events);
     engine.attach(); engine.attach();
     expect(postMessage).toHaveBeenCalledTimes(1);
     const open = postMessage.mock.calls[0]![0] as Record<string, unknown>;
-    expect(open).toMatchObject({ command: 'open', url: stream.url, startAt: 128 });
+    expect(open).toMatchObject({ command: 'open', url: stream.url, startAt: 128, initialVolume: 0.35, initialMuted: true });
     const state = { id: open['id'], command: 'state', position: 140, duration: 7200, paused: false, buffering: false, hasFrame: true };
     const emit = (data: Record<string, unknown>): void => { win.dispatchEvent(new CustomEvent('tvm:native-player', { detail: data })); };
     emit({ ...state, id: 'old-session' });

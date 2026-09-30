@@ -106,7 +106,10 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function fullscreenAvailable(): boolean {
-  return typeof document !== 'undefined' && document.fullscreenEnabled === true;
+  if (typeof document === 'undefined') return false;
+  const video = document.querySelector<HTMLVideoElement>('.player__video, .player video');
+  return document.fullscreenEnabled === true ||
+    typeof (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void } | null)?.webkitEnterFullscreen === 'function';
 }
 
 export function playerRootOf(node?: ParentNode | null): ParentNode {
@@ -322,14 +325,26 @@ export function applyVolumeBy(delta: number, root: ParentNode = document): boole
 export async function toggleFullscreen(target?: Element | null): Promise<boolean> {
   if (!fullscreenAvailable()) return false;
   try {
-    if (document.fullscreenElement !== null) {
+    if (document.fullscreenElement != null) {
       await document.exitFullscreen();
       return true;
     }
+    const video = document.querySelector<HTMLVideoElement>('.player__video, .player video') as
+      (HTMLVideoElement & { webkitEnterFullscreen?: () => void; webkitExitFullscreen?: () => void; webkitDisplayingFullscreen?: boolean }) | null;
+    if (video?.webkitDisplayingFullscreen === true && typeof video.webkitExitFullscreen === 'function') {
+      video.webkitExitFullscreen();
+      return true;
+    }
     const el = target ?? (document.querySelector(PLAYER_HOST_SELECTOR) as Element | null) ?? document.documentElement;
-    if (typeof el.requestFullscreen !== 'function') return false;
-    await el.requestFullscreen();
-    return true;
+    if (document.fullscreenEnabled === true && typeof el.requestFullscreen === 'function') {
+      await el.requestFullscreen();
+      return true;
+    }
+    if (typeof video?.webkitEnterFullscreen === 'function') {
+      video.webkitEnterFullscreen();
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }

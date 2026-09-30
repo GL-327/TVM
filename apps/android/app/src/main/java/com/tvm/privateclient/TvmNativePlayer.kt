@@ -119,6 +119,9 @@ class TvmNativePlayer(
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             .build()
         player = exo
+        val initialVolume = message.optDouble("initialVolume", 1.0)
+        level = if (initialVolume.isFinite()) initialVolume.coerceIn(0.0, 1.0).toFloat() else 1f
+        exo.volume = if (message.optBoolean("initialMuted", false)) 0f else level
 
         val builder = Media3Item.Builder().setUri(url)
         // Let Media3 sniff rather than trusting a provider's Content-Type,

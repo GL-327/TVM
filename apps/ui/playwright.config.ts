@@ -1,8 +1,13 @@
 import { defineConfig } from '@playwright/test';
-import { resolve } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const uiPort = '15173';
 const corePort = '17345';
+// DPAPI ties encrypted test data to a Windows account. A fresh directory also
+// prevents stale profiles or saved plans from affecting later browser runs.
+const coreDataDir = mkdtempSync(join(tmpdir(), 'tvm-e2e-core-'));
 
 export default defineConfig({
   testDir: './e2e',
@@ -23,7 +28,7 @@ export default defineConfig({
       cwd: '../core',
       url: `http://127.0.0.1:${corePort}/api/health`,
       reuseExistingServer: false,
-      env: { ...process.env, TVM_ENV: 'development', TVM_CORE_PORT: corePort, TVM_CORE_BIND: '127.0.0.1', TVM_DATA_DIR: resolve('cache/e2e-core') },
+      env: { ...process.env, TVM_ENV: 'development', TVM_CORE_PORT: corePort, TVM_CORE_BIND: '127.0.0.1', TVM_DATA_DIR: coreDataDir },
     },
     {
       command: `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port ${uiPort}`,

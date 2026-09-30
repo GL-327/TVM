@@ -4,6 +4,7 @@ import {
   fieldScrollDelta,
   isOwnedTouchTarget,
   isPhoneNavShell,
+  momentumTarget,
   navShouldIgnoreKey,
   panAxis,
   RAIL_SELECTOR,
@@ -120,12 +121,18 @@ describe('phone nav shell', () => {
 });
 
 describe('phone cameras', () => {
+  it('continues a swipe briefly in the same direction and bounds implausible velocity', () => {
+    expect(momentumTarget(400, -1)).toBe(580);
+    expect(momentumTarget(400, 1)).toBe(220);
+    expect(momentumTarget(400, 100)).toBe(40);
+  });
   it('treats launch tiles, seasons and hub bars as rails as well as poster rows', () => {
     expect(RAIL_SELECTOR).toContain('.rail__track');
     expect(RAIL_SELECTOR).toContain('.home__launcher');
     expect(RAIL_SELECTOR).toContain('.season-row');
     expect(RAIL_SELECTOR).toContain('.max-nav');
     expect(RAIL_SELECTOR).toContain('.dplus-brands');
+    expect(RAIL_SELECTOR).toContain('.search-results');
   });
 
   it('does not steal a pointer that is not on owned chrome', () => {

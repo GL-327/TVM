@@ -73,6 +73,8 @@ export function createDesktopPlayerEngine(stream: EngineStream, options: EngineO
       } catch {
         url = stream.url;
       }
+      if (options.initialVolume !== undefined) void bridge.setVolume?.(options.initialVolume);
+      if (options.initialMuted !== undefined) void bridge.setMuted?.(options.initialMuted);
       void bridge.start({ url, title: stream.title, startAt: position }).catch(() => {
         fail('Native playback is not installed on this device. Install mpv or set TVM_MPV_PATH, then retry.');
       });

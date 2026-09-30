@@ -23,6 +23,7 @@ describe('desktop native playback', () => {
     const start = vi.fn().mockResolvedValue({ ok: true });
     const setVolume = vi.fn();
     const setRate = vi.fn();
+    const setMuted = vi.fn();
     vi.stubGlobal('window', {
       location: { href: 'http://127.0.0.1:5173/' },
       tvmDesktop: { nativePlayback: true },
@@ -32,7 +33,7 @@ describe('desktop native playback', () => {
         seekTo: vi.fn(),
         stop: vi.fn(),
         setVolume,
-        setMuted: vi.fn(),
+        setMuted,
         setRate,
         onEvent: () => () => {},
       },
@@ -45,9 +46,13 @@ describe('desktop native playback', () => {
       mimeType: 'video/x-matroska',
       engine: 'html5',
     };
-    const native = createPlayerEngine({} as HTMLVideoElement, mkv, { live: false, startAt: 12 }, events);
+    const native = createPlayerEngine({} as HTMLVideoElement, mkv, {
+      live: false, startAt: 12, initialVolume: 0.35, initialMuted: true,
+    }, events);
     native.attach();
     expect(start).toHaveBeenCalledWith(expect.objectContaining({ url: mkv.url, title: 'Film', startAt: 12 }));
+    expect(setVolume).toHaveBeenCalledWith(0.35);
+    expect(setMuted).toHaveBeenCalledWith(true);
     native.setVolume(0.4);
     native.setRate(1.5);
     expect(setVolume).toHaveBeenCalledWith(0.4);
