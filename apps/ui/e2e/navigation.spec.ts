@@ -404,6 +404,23 @@ test('a modal traps focus and Back closes the modal', async ({ page }) => {
   await waitForFocus(page);
 });
 
+test('the search results row scrolls with an ordinary mouse wheel', async ({ page }) => {
+  const matches = Array.from({ length: 30 }, (_, index) => ({
+    id: `tt${1000000 + index}`, title: `Result ${index + 1}`, year: 2020,
+    kind: 'movie', poster: '', backdrop: '', synopsis: '', genres: [], rating: '', playable: true,
+  }));
+  await page.route('**/api/search**', (route) => route.fulfill({ json: { items: matches } }));
+  await pressUntil(page, 'search');
+  await page.keyboard.press('Enter');
+  const field = page.locator('.search-pill__field .token-field__input');
+  await field.fill('result');
+  const row = page.getByLabel('Search results');
+  await expect(row.getByRole('button')).toHaveCount(30);
+  await row.hover();
+  await page.mouse.wheel(0, 360);
+  await expect.poll(() => row.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+});
+
 test('focus is restored to the same element after returning', async ({ page }) => {
   await enterTvmStream(page);
 
@@ -742,6 +759,7 @@ test('volume slider sets a level and a speed pick does not scrub', async ({ page
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="player"]')).toBeVisible();
   await expect(page.locator('[data-player-volume="programmable"]')).toBeVisible();
+  await expect(page.locator('[data-focus-id="player-fullscreen"]')).toBeVisible();
 
   const track = page.locator('.player-volume__track');
   const box = await track.boundingBox();

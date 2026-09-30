@@ -327,7 +327,9 @@ struct TVMWebView: UIViewControllerRepresentable {
                 }
                 let start = data["startAt"] as? Double ?? 0
                 let controller = TVMPlayerController(id: id, url: url, title: data["title"] as? String ?? "TVM",
-                                                     startAt: start.isFinite ? max(0, start) : 0, live: data["live"] as? Bool ?? false)
+                                                     startAt: start.isFinite ? max(0, start) : 0, live: data["live"] as? Bool ?? false,
+                                                     initialVolume: data["initialVolume"] as? Double ?? 1,
+                                                     initialMuted: data["initialMuted"] as? Bool ?? false)
                 controller.onEvent = { [weak self] in self?.publishPlayer($0) }
                 let present = { [weak self] in
                     self?.playerController = controller
