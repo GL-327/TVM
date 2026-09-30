@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   type ComponentType,
   type CSSProperties,
   type LazyExoticComponent,
@@ -19,6 +20,7 @@ import { mountIdleChromeStyles, syncIdleChromeHosts } from './features/IdleChrom
 import { isInRecapWindow, useIdleChrome } from './features/useIdleChrome';
 import { FocusButton } from '../components/FocusButton';
 import { IconChevronLeft } from '../components/Icons';
+import { fullscreenAvailable, toggleFullscreen } from './features/KeyboardMap';
 import './features/player-chrome.css';
 import './features/perf.css';
 
@@ -197,6 +199,34 @@ const rootStyle: CSSProperties = {
   background: 'transparent',
 };
 
+function FullscreenControl(): React.JSX.Element | null {
+  const [available, setAvailable] = useState(false);
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    const sync = (): void => {
+      setAvailable(fullscreenAvailable());
+      const video = document.querySelector<HTMLVideoElement>('.player__video, .player video') as
+        (HTMLVideoElement & { webkitDisplayingFullscreen?: boolean }) | null;
+      setActive(document.fullscreenElement != null || video?.webkitDisplayingFullscreen === true);
+    };
+    sync();
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('webkitbeginfullscreen', sync, true);
+    document.addEventListener('webkitendfullscreen', sync, true);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      document.removeEventListener('webkitbeginfullscreen', sync, true);
+      document.removeEventListener('webkitendfullscreen', sync, true);
+    };
+  }, []);
+
+  if (!available) return null;
+  return <FocusButton id="player-fullscreen" className="player-chrome-fullscreen" onSelect={() => {
+    void toggleFullscreen(document.querySelector('.player'));
+  }}>{active ? 'Exit fullscreen' : 'Fullscreen'}</FocusButton>;
+}
+
 /**
  * Desktop playback chrome shell. Each named feature is a separate lazy chunk
  * at `./features/<Name>`. Title and transport live in ChromeFrame; overlays
@@ -274,9 +304,10 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
                   <TitleOverlay {...visibleSession} />
                 </Slot>
               </div>
-              <Slot>
-                <WatchlistAction {...visibleSession} />
-              </Slot>
+              <div className="player-chrome-head__actions">
+                <Slot><WatchlistAction {...visibleSession} /></Slot>
+                <FullscreenControl />
+              </div>
             </div>
           }
           bottom={

@@ -71,6 +71,18 @@ describe('playback decisions', () => {
     });
   });
 
+  it('converts audio that can leave MP4 or fMP4 HLS playing silently', () => {
+    expect(decidePlayback(probe({ container: 'mov,mp4', audioCodec: 'opus' }), 2160)).toEqual({
+      mode: 'hls', video: 'copy', audio: 'aac',
+    });
+    expect(decidePlayback(probe({ audioCodec: 'opus' }), 2160)).toEqual({
+      mode: 'hls', video: 'copy', audio: 'aac',
+    });
+    expect(decidePlayback(probe({ audioCodec: 'mp3' }), 2160)).toEqual({
+      mode: 'hls', video: 'copy', audio: 'aac',
+    });
+  });
+
   it('transcodes HEVC to H.264 and caps a 4K re-encode at 1080p', () => {
     expect(decidePlayback(probe({ videoCodec: 'hevc', audioCodec: 'dts' }), 2160)).toEqual({
       mode: 'hls',

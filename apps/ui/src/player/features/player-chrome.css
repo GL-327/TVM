@@ -752,6 +752,24 @@ html:not([data-theme]) .stream-page,
   flex: 1 1 auto;
 }
 
+.player-chrome-head__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.player-chrome-fullscreen {
+  min-height: 2.75rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--player-chip-border) 80%, transparent);
+  background: color-mix(in srgb, var(--player-chip) 55%, transparent);
+  color: var(--player-ink);
+  pointer-events: auto;
+}
+
 .player-chrome-back {
   flex: 0 0 auto;
   min-width: 2.75rem;

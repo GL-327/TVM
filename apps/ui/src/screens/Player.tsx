@@ -145,7 +145,13 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       const engine = createPlayerEngine(
         video ?? document.createElement('video'),
         native ? { ...stream, engine: 'native' } : stream,
-        { live, startAt: stream.startAt ?? 0, maxHeight: playbackMaxHeight(planRef.current.maxHeight, readDeviceChrome().maxHeight) },
+        {
+          live,
+          startAt: stream.startAt ?? 0,
+          maxHeight: playbackMaxHeight(planRef.current.maxHeight, readDeviceChrome().maxHeight),
+          initialVolume: audioRef.current.volume,
+          initialMuted: audioRef.current.muted,
+        },
         {
           onTime: (nextPosition, nextDuration) => {
             positionRef.current = nextPosition;

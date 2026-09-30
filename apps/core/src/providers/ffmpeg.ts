@@ -166,12 +166,15 @@ const MP4_CONTAINERS = /\b(mp4|mov|m4v)\b/;
 /** ffprobe names both .webm and .mkv "matroska,webm"; codecs tell them apart. */
 const MATROSKA_CONTAINERS = /\b(matroska|webm)\b/;
 const MP4_VIDEO = new Set(['h264', 'vp9', 'av1']);
-const MP4_AUDIO = new Set(['aac', 'mp3', 'opus', 'flac', 'alac']);
+// Browsers may paint MP4 video while silently dropping Opus/FLAC/ALAC audio.
+// Route those files through the AAC HLS path instead of claiming direct playback.
+const MP4_AUDIO = new Set(['aac', 'mp3']);
 const WEBM_VIDEO = new Set(['vp8', 'vp9', 'av1']);
 const WEBM_AUDIO = new Set(['opus', 'vorbis']);
 /** Codecs Chromium decodes that fMP4 HLS can carry without re-encoding. */
 const HLS_COPY_VIDEO = new Set(['h264', 'vp9', 'av1']);
-const HLS_COPY_AUDIO = new Set(['aac', 'mp3', 'opus']);
+// fMP4 HLS with Opus or MP3 audio is not portable across WebKit/Chromium.
+const HLS_COPY_AUDIO = new Set(['aac']);
 
 export function directMimeFor(container: string): string {
   return MP4_CONTAINERS.test(container) ? 'video/mp4' : 'video/webm';

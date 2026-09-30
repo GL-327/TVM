@@ -38,6 +38,7 @@ export const RAIL_SELECTOR = [
   '.dplus-brands',
   '.channel-chips',
   '.search-recent__items',
+  '.search-results',
 ].join(', ');
 const TOUCH_TAP_SLOP = 8;
 const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
@@ -216,6 +217,12 @@ export function railPanLeft(startScroll: number, startX: number, x: number): num
   return startScroll - (x - startX);
 }
 
+/** A short coast after a finger swipe; the camera animator clamps at the edge. */
+export function momentumTarget(scroll: number, fingerVelocity: number): number {
+  if (!Number.isFinite(scroll) || !Number.isFinite(fingerVelocity)) return scroll;
+  return scroll - Math.max(-2, Math.min(2, fingerVelocity)) * 180;
+}
+
 export interface ScrollBox {
   scrollWidth: number;
   clientWidth: number;
@@ -289,6 +296,11 @@ export function startPointerInput(): () => void {
     startScroll: number;
     startPage: number;
     axis: 'x' | 'y' | null;
+    lastX: number;
+    lastY: number;
+    lastAt: number;
+    velocityX: number;
+    velocityY: number;
   } | null = null;
   let suppressTrustedClickUntil = 0;
   let clickPress: {
@@ -352,6 +364,15 @@ export function startPointerInput(): () => void {
     if (touch !== null && event.pointerId === touch.id) {
       const dx = event.clientX - touch.x;
       const dy = event.clientY - touch.y;
+      const now = performance.now();
+      const elapsed = now - touch.lastAt;
+      if (elapsed >= 8 && elapsed <= 80) {
+        touch.velocityX = (event.clientX - touch.lastX) / elapsed;
+        touch.velocityY = (event.clientY - touch.lastY) / elapsed;
+      }
+      touch.lastX = event.clientX;
+      touch.lastY = event.clientY;
+      touch.lastAt = now;
       touch.moved ||= Math.hypot(dx, dy) > TOUCH_TAP_SLOP;
       if (touch.axis === null) {
         touch.axis = panAxis(dx, dy);
@@ -417,6 +438,8 @@ export function startPointerInput(): () => void {
         startScroll: panRail?.scrollLeft ?? 0,
         startPage: page?.scrollTop ?? 0,
         axis: null,
+        lastX: event.clientX, lastY: event.clientY,
+        lastAt: performance.now(), velocityX: 0, velocityY: 0,
       };
       return;
     }
@@ -457,6 +480,13 @@ export function startPointerInput(): () => void {
     const tap = touch;
     if (tap === null || tap.id !== event.pointerId) return;
     touch = null;
+    if (performance.now() - tap.lastAt < 80) {
+      if (tap.axis === 'x' && tap.rail !== null && tap.velocityX !== 0) {
+        animate(tap.rail, 'x', momentumTarget(tap.rail.scrollLeft, tap.velocityX));
+      } else if (tap.axis === 'y' && tap.page !== null && tap.velocityY !== 0) {
+        animate(tap.page, 'y', momentumTarget(tap.page.scrollTop, tap.velocityY));
+      }
+    }
     if (tap.axis !== null || tap.moved || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TOUCH_TAP_SLOP) return;
     if (tap.host === null) return;
     activatePress(tap.host);
@@ -485,7 +515,7 @@ export function startPointerInput(): () => void {
     // else pans the page.
     const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
     const rail = target?.closest<HTMLElement>(RAIL_SELECTOR) ?? null;
-    if (rail !== null && wheelWantsRail(event.deltaX, event.deltaY, event.shiftKey) && canScroll(rail, 'x')) {
+    if (rail !== null && (rail.matches('.search-results') || wheelWantsRail(event.deltaX, event.deltaY, event.shiftKey)) && canScroll(rail, 'x')) {
       if (rail.dataset.wrapping === 'true') cancelLoopingTrack(rail);
       const delta = wheelPixels(horizontal ? event.deltaX : event.deltaY, event.deltaMode, rail.clientWidth);
       if (delta === 0) return;

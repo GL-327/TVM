@@ -53,6 +53,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private let subtitleButton = UIButton(type: .system)
     private let volumeSlider = UISlider()
     private var audioLevel: Int32 = 100
+    private var initiallyMuted = false
     private var timer: Timer?
     private var hideWork: DispatchWorkItem?
     private var startedAt = Date()
@@ -68,8 +69,10 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
     private var lastProgressAt = Date()
     private var errorSince: Date?
 
-    init(id: String, url: URL, title: String, startAt: Double, live: Bool) {
+    init(id: String, url: URL, title: String, startAt: Double, live: Bool, initialVolume: Double = 1, initialMuted: Bool = false) {
         sessionID = id; source = url; mediaTitle = title; resumeAt = startAt; self.live = live
+        audioLevel = initialVolume.isFinite ? Int32(max(0, min(100, initialVolume * 100))) : 100
+        initiallyMuted = initialMuted
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -142,7 +145,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         let timeline = UIStackView(arrangedSubviews: [elapsed, slider, clock]); timeline.spacing = 10
         volumeSlider.minimumValue = 0
         volumeSlider.maximumValue = 100
-        volumeSlider.value = 100
+        volumeSlider.value = initiallyMuted ? 0 : Float(audioLevel)
         volumeSlider.minimumTrackTintColor = .white
         volumeSlider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.28)
         volumeSlider.accessibilityLabel = "Volume"
@@ -150,6 +153,7 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
             guard let self else { return }
             let level = Int32(self.volumeSlider.value.rounded())
             self.audioLevel = max(0, min(100, level))
+            self.initiallyMuted = self.audioLevel == 0
             self.player.audio?.volume = self.audioLevel
             self.player.audio?.isMuted = self.audioLevel == 0
             self.reveal()
@@ -249,6 +253,8 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
         ])
         player.media = media
         player.play()
+        player.audio?.volume = audioLevel
+        player.audio?.isMuted = initiallyMuted || audioLevel == 0
         status.text = "Opening stream…"; spinner.startAnimating(); playButton.alpha = 0; playButton.isEnabled = false; reveal()
     }
     func command(_ name: String, data: [String: Any]) {
@@ -260,12 +266,14 @@ final class TVMPlayerController: UIViewController, UIGestureRecognizerDelegate {
             if let volume = data["volume"] as? Double, volume.isFinite {
                 let level = Int32(max(0, min(100, volume * 100)))
                 audioLevel = level
+                initiallyMuted = level == 0
                 player.audio?.volume = level
                 player.audio?.isMuted = level == 0
                 volumeSlider.value = Float(level)
             }
         case "mute":
             let muted = data["muted"] as? Bool ?? false
+            initiallyMuted = muted
             player.audio?.isMuted = muted
             volumeSlider.value = muted ? 0 : Float(audioLevel)
         case "rate":

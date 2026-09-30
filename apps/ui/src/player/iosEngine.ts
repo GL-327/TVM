@@ -70,7 +70,14 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
       if (attached || destroyed) return;
       attached = true;
       window.addEventListener('tvm:native-player', receive);
-      send('open', { url: new URL(stream.url, window.location.href).href, title: stream.title, startAt: position, live: options.live });
+      send('open', {
+        url: new URL(stream.url, window.location.href).href,
+        title: stream.title,
+        startAt: position,
+        live: options.live,
+        initialVolume: options.initialVolume ?? 1,
+        initialMuted: options.initialMuted ?? false,
+      });
     },
     destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); },
     play: () => send('play'), pause: () => send('pause'),

@@ -142,6 +142,8 @@ export interface EngineOptions {
   live: boolean;
   startAt?: number;
   maxHeight?: number;
+  initialVolume?: number;
+  initialMuted?: boolean;
   fetchImpl?: typeof fetch;
 }
 

@@ -265,7 +265,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
         )}
         {visibleResults.length > 0 && (
           <div className="search-results" aria-label="Search results">
-            {visibleResults.slice(0, 24).map((item, index) => (
+            {visibleResults.map((item, index) => (
               <PosterCard
                 key={`${item.id}-${index}`}
                 title={asTitle(item)}
