@@ -32,7 +32,11 @@ describe('charges', () => {
       tokenId: minted.token.tokenId,
     });
     expect(JSON.stringify(result)).not.toContain('4242424242424242');
-    expect(JSON.stringify(result)).not.toContain('123');
+    // A random public token ID may contain these digits by chance; verify the
+    // sensitive field itself is absent instead of matching a short substring.
+    expect(result).not.toHaveProperty('cvc');
+    expect(result).not.toHaveProperty('number');
+    expect(result).not.toHaveProperty('expiry');
   });
 
   it('returns missing_token when no card was stored', () => {
