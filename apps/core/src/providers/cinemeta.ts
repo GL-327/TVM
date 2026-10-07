@@ -8,6 +8,8 @@ import type { MediaItem } from './types.ts';
 const CINEMETA = 'https://v3-cinemeta.strem.io';
 const TVMAZE = 'https://api.tvmaze.com';
 const FETCH_MS = 12_000;
+/** One dead genre catalog must not hold Home for the full catalog timeout. */
+const GENRE_FETCH_MS = 4_000;
 const BUNDLE_TTL_MS = 12 * 60 * 1000;
 const GENRE_TTL_MS = 20 * 60 * 1000;
 const META_TTL_MS = 30 * 60 * 1000;
@@ -25,7 +27,9 @@ export const GENRE_RAILS = [
 ] as const;
 
 export function seriesGenresForRail(genre: string): readonly string[] {
-  return genre === 'Anime' ? ['Anime', 'Animation'] : [genre];
+  // Cinemeta's series Anime catalog answers 504 and holds the socket until the
+  // client gives up. Animation is the list that actually contains these shows.
+  return genre === 'Anime' ? ['Animation'] : [genre];
 }
 
 export interface CatalogBundle {
@@ -209,8 +213,8 @@ export function createCatalogService(options: CatalogServiceOptions) {
   const metaMem = new Map<string, { at: number; data: TitleMeta }>();
   const metaInflight = new Map<string, Promise<TitleMeta | null>>();
 
-  const fetchCatalog = async (path: string, kind: 'movie' | 'series'): Promise<MediaItem[]> => {
-    const response = await fetchImpl(`${CINEMETA}${path}`, { signal: AbortSignal.timeout(FETCH_MS) });
+  const fetchCatalog = async (path: string, kind: 'movie' | 'series', timeoutMs = FETCH_MS): Promise<MediaItem[]> => {
+    const response = await fetchImpl(`${CINEMETA}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) return [];
     const body = (await response.json()) as { metas?: Array<Record<string, unknown>> };
     return (body.metas ?? [])
@@ -300,12 +304,18 @@ export function createCatalogService(options: CatalogServiceOptions) {
       const key = `${kind}:${genre}`;
       const hit = genreMem.get(key);
       if (hit !== undefined && Date.now() - hit.at < GENRE_TTL_MS) return hit.items;
-      const items = await fetchCatalog(
-        `/catalog/${kind}/top/genre=${encodeURIComponent(genre)}.json`,
-        kind,
-      );
-      genreMem.set(key, { at: Date.now(), items });
-      return items;
+      try {
+        const items = await fetchCatalog(
+          `/catalog/${kind}/top/genre=${encodeURIComponent(genre)}.json`,
+          kind,
+          GENRE_FETCH_MS,
+        );
+        genreMem.set(key, { at: Date.now(), items });
+        return items;
+      } catch {
+        // A timed-out genre must not reject Home. Leave it uncached so the next load can retry.
+        return [];
+      }
     },
 
     async meta(id: string): Promise<TitleMeta | null> {

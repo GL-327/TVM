@@ -158,8 +158,31 @@ describe('cinemeta mapping', () => {
     expect(fresh.map((item) => item.id)).toEqual(['tt1']);
   });
 
-  it('adds Animation when filling the Anime series rail', () => {
-    expect(seriesGenresForRail('Anime')).toEqual(['Anime', 'Animation']);
+  it('returns no titles when a genre catalog request fails, without caching the failure', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tvm-genre-fail-'));
+    let offline = true;
+    try {
+      const catalog = createCatalogService({
+        dataDir: dir,
+        fetch: async () => {
+          if (offline) throw new Error('catalog timed out');
+          return new Response(
+            JSON.stringify({ metas: [{ id: 'tt0816692', name: 'Dune', year: '2021' }] }),
+            { status: 200 },
+          );
+        },
+      });
+      await expect(catalog.genre('movie', 'Sci-Fi')).resolves.toEqual([]);
+      offline = false;
+      const items = await catalog.genre('movie', 'Sci-Fi');
+      expect(items.map((item) => item.id)).toEqual(['tt0816692']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('fills the Anime series rail from Animation, not the catalog that 504s', () => {
+    expect(seriesGenresForRail('Anime')).toEqual(['Animation']);
     expect(seriesGenresForRail('Comedy')).toEqual(['Comedy']);
   });
 
