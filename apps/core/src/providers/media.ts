@@ -563,12 +563,16 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
 
     const genreLists = await Promise.all(
       GENRE_RAILS.map(async (rail) => {
-        const seriesGenres = seriesGenresForRail(rail.genre);
-        const [movies, ...showLists] = await Promise.all([
-          catalog.genre('movie', rail.genre),
-          ...seriesGenres.map((genre) => catalog.genre('series', genre)),
-        ]);
-        return { rail, movies, shows: dedupeItems(showLists.flat()) };
+        try {
+          const seriesGenres = seriesGenresForRail(rail.genre);
+          const [movies, ...showLists] = await Promise.all([
+            catalog.genre('movie', rail.genre),
+            ...seriesGenres.map((genre) => catalog.genre('series', genre)),
+          ]);
+          return { rail, movies, shows: dedupeItems(showLists.flat()) };
+        } catch {
+          return { rail, movies: [], shows: [] };
+        }
       }),
     );
     for (const { rail, movies, shows } of genreLists) {
@@ -611,7 +615,12 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         progress,
       );
       const watchlist = readWatchlist(profileScope);
-      const rails = await buildRails(continueWatching, watchlist);
+      let rails: CatalogRail[] = [];
+      try {
+        rails = await buildRails(continueWatching, watchlist);
+      } catch {
+        rails = [];
+      }
       const finished = [...catalogItems, ...library, ...watchlist].filter((item, index, all) =>
         all.findIndex(other => other.id === item.id) === index && (isFinished(progress[item.id]) || !!progress[item.id]?.completedAt));
       finished.sort((a, b) => (progress[b.id]?.completedAt ?? progress[b.id]?.updated ?? '').localeCompare(progress[a.id]?.completedAt ?? progress[a.id]?.updated ?? ''));
