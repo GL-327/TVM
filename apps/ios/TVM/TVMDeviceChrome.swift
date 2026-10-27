@@ -22,8 +22,8 @@ struct TVMDeviceProfile: Equatable {
     var extraX: CGFloat
 }
 
-/// Maps utsname machine ids to chrome + a quality cap. Newer island/Pro
-/// phones may fetch 4K; home-button bezels stay at 1080/720.
+/// Maps utsname machine ids to safe-area chrome and physical screen metadata.
+/// Playback quality follows the account preference rather than screen size.
 enum TVMDeviceChrome {
     static var current: TVMDeviceProfile { profile(identifier: machineIdentifier(), idiom: UIDevice.current.userInterfaceIdiom) }
 
@@ -48,7 +48,7 @@ enum TVMDeviceChrome {
     }
 
     static func playbackHeight(planMax: Int) -> Int {
-        min(planMax, current.maxHeight)
+        planMax
     }
 
     static func publish(to webView: WKWebView, insets: UIEdgeInsets) {

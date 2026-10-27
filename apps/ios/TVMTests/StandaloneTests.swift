@@ -463,7 +463,7 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(pro.family, .island)
         XCTAssertEqual(pro.maxHeight, 2160)
         XCTAssertGreaterThan(pro.extraTop, fourteen.extraTop)
-        XCTAssertEqual(TVMDeviceChrome.playbackHeight(planMax: 2160), min(2160, TVMDeviceChrome.current.maxHeight))
+        XCTAssertEqual(TVMDeviceChrome.playbackHeight(planMax: 2160), 2160)
         let pad = TVMDeviceChrome.profile(identifier: "iPad14,1", idiom: .pad)
         XCTAssertEqual(pad.family, .ipad)
         XCTAssertEqual(pad.maxHeight, 2160)

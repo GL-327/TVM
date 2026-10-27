@@ -26,7 +26,7 @@ applyStoredPerformanceMode();
 void hydratePrefs();
 void fetchPlan().then((plan) => {
   applyPlanClass(plan);
-  if (!themeUnlocked(plan, readStoredTheme())) applyTheme('default');
+  if (!themeUnlocked(plan, readStoredTheme())) applyTheme('dark');
 });
 
 const container = document.getElementById('root');

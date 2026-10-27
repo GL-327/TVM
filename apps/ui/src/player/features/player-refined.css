@@ -1,0 +1,55 @@
+/* Compact, responsive cinema controls. All picture shading leaves with chrome. */
+.player.player--cinema .player-root {
+  --player-safe-x: clamp(1.2rem, 3vw, 3rem);
+  --player-safe-y: 1.25rem;
+  --player-safe-bottom: 1.4rem;
+  --player-bar-width: 100%;
+}
+.player.player--cinema .chrome-frame__safe { height: 100%; min-height: 0; }
+.player.player--cinema .chrome-frame__veil--vignette { display: none; }
+.player.player--cinema .chrome-frame__veil--top { height: 8rem; background: linear-gradient(#0009, transparent); }
+.player.player--cinema .chrome-frame__veil--bottom { height: 12rem; background: linear-gradient(0deg, #000d, transparent); }
+.player.player--cinema .player-chrome-head { align-items: center; gap: 1rem; }
+.player.player--cinema .player-chrome-head__lead { align-items: center; gap: 1rem; }
+.player.player--cinema .player-title-overlay__title { font-size: clamp(1rem, 2vw, 1.6rem); font-weight: 650; line-height: 1.25; letter-spacing: -.025em; }
+.player.player--cinema .player-title-overlay__kicker,
+.player.player--cinema .player-title-overlay__title::after { display: none; }
+.player.player--cinema .player-title-overlay__meta { margin-top: .3rem; font-size: .72rem; font-weight: 450; opacity: .75; }
+.player.player--cinema .player-chrome-head .tvm-button { min-height: 2.35rem; min-width: 0; padding: .45rem .85rem; border-radius: 999px; border: 1px solid #ffffff24; background: #10151b88; color: #f6f7f8; font-size: .72rem; box-shadow: none; }
+.player.player--cinema .player-chrome-head .tvm-button[data-focused='true'] { outline: 2px solid var(--player-focus); outline-offset: 3px; transform: none; }
+.player.player--cinema .player-dock { grid-template-columns: minmax(0, 1fr) auto; gap: .45rem 1rem; padding: 0; }
+.player.player--cinema .player-dock .player-transport { display: flex; align-items: center; justify-content: flex-start; gap: 1.25rem; min-width: 0; padding: 0; }
+.player.player--cinema .player-transport__cluster { align-items: center; gap: .5rem; min-width: 0; }
+.player.player--cinema .player-transport__cluster--center { order: -1; gap: .35rem; }
+.player.player--cinema .player-transport__cluster--end:empty { display: none; }
+.player.player--cinema .player-transport .tvm-button.player-transport__btn { width: 2.4rem; height: 2.4rem; min-width: 2.4rem; min-height: 2.4rem; padding: 0; border-radius: 50%; background: transparent; border: 1px solid transparent; box-shadow: none; }
+.player.player--cinema .player-transport .tvm-button.player-transport__btn--play { width: 2.85rem; height: 2.85rem; min-width: 2.85rem; min-height: 2.85rem; background: #f5f7fa; color: #10151b; }
+.player.player--cinema .player-transport .tvm-button.player-transport__btn[data-focused='true'] { outline: 2px solid var(--player-focus); outline-offset: 3px; transform: none; box-shadow: none; }
+.player.player--cinema .player-transport .tvm-button.player-transport__btn--back { display: none; }
+.player.player--cinema .player-transport .player-transport__glyph,
+.player.player--cinema .player-transport .tvm-button.player-transport__btn--play .player-transport__glyph { width: 1.3rem; height: 1.3rem; }
+.player.player--cinema .player-dock__tools { gap: .45rem; flex-wrap: wrap; width: auto; max-width: 100%; }
+.player.player--cinema .player-dock__tools .tvm-button { min-height: 2.2rem; min-width: 2.2rem; font-size: .72rem; padding: .35rem .55rem; border-radius: .5rem; border-color: #ffffff22; background: transparent; box-shadow: none; }
+.player.player--cinema .player-dock__tools .player-volume { margin: 0 .35rem 0 0; gap: .35rem; }
+.player.player--cinema .player-volume__meter { width: 5rem; min-width: 0; gap: .5rem; }
+.player.player--cinema .player-volume__pct { display: none; }
+.player.player--cinema .player-volume__track { width: 4rem; }
+.player.player--cinema .player-dock .tvm-progress { grid-template-columns: auto minmax(0, 1fr) auto; gap: .8rem; padding: 0; }
+.player.player--cinema .tvm-progress__time { font-size: .7rem; font-weight: 500; min-width: 0; }
+.player.player--cinema .tvm-progress__remain { display: none; }
+.player.player--cinema .player-dock .tvm-progress__track { height: .18rem; }
+.player.player--cinema .player-dock .tvm-progress__knob { width: .65rem; height: .65rem; box-shadow: 0 0 0 .12rem #0003; }
+.player.player--cinema .player-skip-recap .tvm-button { min-height: 2.35rem; padding: .45rem .9rem; font-size: .75rem; border-radius: .5rem; }
+.player.player--cinema .player-error .error-state { width: min(31rem, 90%); padding: 1.8rem; border-radius: 1rem; background: #111821f5; border-color: #ffffff20; }
+.player.player--cinema .player-error .empty-state__title { font-size: 1.65rem; }
+.player.player--cinema .player-error .page__lede { font-size: .9rem; line-height: 1.6; }
+.player.player--cinema .player-error .tvm-button { min-width: 6rem; min-height: 2.6rem; padding: .6rem 1rem; font-size: .8rem; border-radius: .5rem; }
+.player.player--cinema .chrome-frame[inert],
+.player.player--cinema .chrome-frame[inert] * { pointer-events: none !important; }
+@media (max-width: 1000px) {
+  .player.player--cinema .player-dock { grid-template-columns: 1fr; grid-template-areas: 'progress' 'transport' 'tools'; gap: .3rem; }
+  .player.player--cinema .player-dock__tools { justify-content: center; }
+  .player.player--cinema .player-dock .player-transport { justify-content: center; }
+  .player.player--cinema .player-chrome-head__actions { gap: .3rem; }
+  .player.player--cinema .player-watchlist { display: none; }
+}

@@ -8,4 +8,4 @@
  * then cinematic, then orbit) every spec still setting the old name had its
  * theme silently replaced by the new default.
  */
-export const THEME_DEFAULT_BOOT = 'tvm.theme.orbit-boot';
+export const THEME_DEFAULT_BOOT = 'tvm.theme.duo-boot';

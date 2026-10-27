@@ -951,6 +951,40 @@ describe('media service', () => {
     });
   });
 
+  it('downloads the complete original file without starting an HLS conversion', async () => {
+    const dir = await dataDir();
+    const { streamer, calls } = stubStreamer({ url: '/unused', mimeType: 'video/mp4', transport: 'direct' });
+    const media = createMediaService({ dataDir: dir, rd: rdWithFile(dir, 'Film.1080p.English.mkv', 'https://cdn.example/original.mkv'), streamer: streamer as never });
+    const result = await media.play({ link: 'https://real-debrid.com/d/FILM', download: { language: 'en', maxHeight: 1080 } });
+    expect(result).toMatchObject({ kind: 'stream', url: 'https://cdn.example/original.mkv', transport: 'file', filename: 'Film.1080p.English.mkv' });
+    expect(calls).toHaveLength(0);
+    const wrongLanguage = await media.play({ link: 'https://real-debrid.com/d/FILM', download: { language: 'ja', maxHeight: 1080 } });
+    expect(wrongLanguage.kind).toBe('unavailable');
+    const aboveCap = await media.play({ link: 'https://real-debrid.com/d/FILM', download: { language: 'original', maxHeight: 720 } });
+    expect(aboveCap.kind).toBe('unavailable');
+  });
+
+  it('hands the original HEVC file to desktop decoding and preserves an explicit recovery position', async () => {
+    const dir = await dataDir();
+    const { streamer, calls } = stubStreamer({ url: '/unused', mimeType: 'video/mp4', transport: 'direct' });
+    const media = createMediaService({ dataDir: dir, rd: rdWithFile(dir, 'Film.2160p.HEVC.mkv', 'https://cdn.example/original.mkv'), streamer: streamer as never });
+    const result = await media.play({ link: 'https://real-debrid.com/d/FILM', native: true, startAt: 173.25 });
+    expect(result).toMatchObject({ kind: 'stream', url: 'https://cdn.example/original.mkv', transport: 'file', engine: 'native', startAt: 173.25 });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('shares overlapping playback resolution instead of spawning competing conversions', async () => {
+    const dir = await dataDir();
+    const { streamer, calls } = stubStreamer({ url: '/api/stream/direct/one', mimeType: 'video/mp4', transport: 'direct' });
+    const media = createMediaService({ dataDir: dir, rd: rdWithFile(dir, 'Film.mp4', 'https://cdn.example/original.mp4'), streamer: streamer as never });
+    const input = { link: 'https://real-debrid.com/d/FILM' };
+    const results = await Promise.all([media.play(input), media.play(input)]);
+    expect(results[0]).toEqual(results[1]);
+    expect(calls).toHaveLength(1);
+    await media.play(input); // A deliberate retry obtains a fresh resolution.
+    expect(calls).toHaveLength(2);
+  });
+
   it('resolves a browser-safe MP4 to the same-origin direct proxy', async () => {
     const dir = await dataDir();
     const { streamer } = stubStreamer({

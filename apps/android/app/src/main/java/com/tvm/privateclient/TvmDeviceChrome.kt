@@ -24,10 +24,6 @@ import kotlin.math.roundToInt
  * a television, as "unknown", which adds no extra padding of its own.
  */
 object TvmDeviceChrome {
-    /** Last published screen cap. 2160 until the shell has measured the device. */
-    @Volatile
-    private var screenMaxHeight = 2160
-
     fun isTelevision(context: Context): Boolean {
         val modes = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
         if (modes?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) return true
@@ -59,7 +55,6 @@ object TvmDeviceChrome {
             television -> 1080
             else -> 720
         }
-        screenMaxHeight = maxHeight
         val (extraTop, extraBottom, extraX) = when (family) {
             "ipad" -> Triple(4, 0, 0)
             "notch" -> Triple(6, 0, 0)
@@ -103,7 +98,7 @@ object TvmDeviceChrome {
     fun language(store: TvmStore): String = TvmPrefs.load(store).language.lowercase(Locale.US)
 
     /** Same cap as TVMDeviceChrome.playbackHeight: plan limit, then the screen. */
-    fun playbackHeight(planMax: Int): Int = min(planMax, screenMaxHeight)
+    fun playbackHeight(planMax: Int): Int = planMax
 }
 
 /**

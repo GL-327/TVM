@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -7,38 +7,24 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const applySrc = readFileSync(join(dir, 'apply.ts'), 'utf8');
 
 describe('theme apply imports', () => {
-  it('imports every theme sheet and introduces a new default exactly once', () => {
-    expect(applySrc).toContain("import './cinematic.css'");
-    expect(applySrc).toContain("import './default.css'");
-    expect(applySrc).toContain("import './happy.css'");
+  it('imports only the two selectable theme sheets', () => {
     expect(applySrc).toContain("import './light.css'");
     expect(applySrc).toContain("import './dark.css'");
-    expect(applySrc).toContain("import './sunset.css'");
-    expect(applySrc).toContain("import './heather.css'");
     expect(applySrc).toContain("import './scene.css'");
-    expect(applySrc).toContain("import './synthwave.css'");
-    expect(applySrc).toContain("import.meta.glob('./glass/*.css', { eager: true })");
-    // The boot key is bumped whenever the shipped default changes, so each
-    // new default is introduced once per device and a theme the viewer picks
-    // afterwards is never overwritten again.
-    // The key lives in bootKey.ts so the browser tests can import it rather
-    // than hard-code a name that has already gone stale three times.
+    for (const retired of ['cinematic', 'default', 'happy', 'sunset', 'heather', 'synthwave', 'anime', 'glass']) {
+      expect(applySrc).not.toContain(`import './${retired}.css'`);
+    }
     const bootSrc = readFileSync(join(dir, 'bootKey.ts'), 'utf8');
-    expect(bootSrc).toContain('tvm.theme.orbit-boot');
+    expect(bootSrc).toContain('tvm.theme.duo-boot');
     expect(applySrc).toContain("import { THEME_DEFAULT_BOOT } from './bootKey'");
     expect(applySrc).toContain('store.getItem(THEME_DEFAULT_BOOT)');
     expect(applySrc).not.toContain('tvm.theme.isle-boot');
     expect(applySrc).toContain('subscribeTheme');
-    // Applied by name, so changing DEFAULT_THEME cannot leave this behind.
-    expect(applySrc).toContain('applyTheme(DEFAULT_THEME)');
+    // Keep an existing Light preference while mapping retired IDs to Dark.
+    expect(applySrc).toContain('applyTheme(readStoredTheme())');
     expect(applySrc).not.toContain("applyTheme('glass')");
     expect(applySrc).not.toContain('tvm.theme.happy-boot');
 
-    const sheets = readdirSync(join(dir, 'glass')).filter((name) => name.endsWith('.css'));
-    expect(sheets.length).toBeGreaterThan(0);
-    for (const sheet of sheets) {
-      expect(applySrc).toContain(`import './glass/${sheet}'`);
-    }
   });
 
   it('does not cover chrome with a cinematic wash or island blobs', () => {
@@ -58,15 +44,8 @@ describe('theme apply imports', () => {
   it('does not paint an opaque fill on .player-root (that layer sits on top of <video>)', () => {
     const sheets = [
       'scene.css',
-      'default.css',
       'dark.css',
       'light.css',
-      'sunset.css',
-      'heather.css',
-      'happy.css',
-      'synthwave.css',
-      'cinematic.css',
-      join('glass', 'player.css'),
     ];
     const opaque = /\.player-root[^{]*\{[^}]*background:\s*(#000|#000000|black)\b/i;
     for (const name of sheets) {

@@ -1,10 +1,10 @@
-import { ANIME_SCENES, setAnimeScene, useAnimeScene } from '../theme/anime/catalog';
 import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
 import { fetchLive, fetchSession } from '../data/media';
-import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, saveLiveTv, saveStyle, styleMinPlanLabel, styleUnlocked, themeUnlocked, type PlanStatus, type StyleId } from '../data/plan';
+import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
+import { fetchAccount } from '../data/account';
 import { hydratePrefs, readPrefs, savePrefs } from '../data/prefs';
 import { languageName, nextLanguage } from '../i18n/locale';
 import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
@@ -17,11 +17,11 @@ import { applyMotionPreference, applyPerformanceMode, readMotionPreference, read
 
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
-  const animeScene = useAnimeScene();
   const [liveDetail, setLiveDetail] = useState('Loading…');
   const [desktopDetail, setDesktopDetail] = useState('Loading…');
   const [appliance, setAppliance] = useState(false);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
+  const [accessDetail, setAccessDetail] = useState('Loading…');
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
   const [motion, setMotion] = useState(readMotionPreference);
   const [performance, setPerformance] = useState(readPerformanceMode);
@@ -59,10 +59,13 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
     void fetchPlan().then((status) => {
       applyPlanClass(status);
       setPlan(status);
-      if (!themeUnlocked(status, readStoredTheme())) {
-        setTheme(applyTheme('default'));
-      }
+      setTheme(readStoredTheme());
     });
+    void fetchAccount().then((state) => {
+      setAccessDetail(state.account?.activated
+        ? state.account.tier === 'stream-live' ? 'TVM Stream + Live TV' : 'TVM Stream'
+        : 'Waiting for activation');
+    }).catch(() => setAccessDetail('View access'));
   }, []);
 
   return (
@@ -78,7 +81,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
       <div className="settings-list" data-wrap="y">
         <section className="settings-group">
           <h2 className="settings-group__title">Picture</h2>
-          <FocusButton id="motion" className="settings-row" detail={motion === 'reduced' ? 'Reduced · freeze decorative loops' : 'Auto · Retro and UI animate'} onSelect={() => {
+          <FocusButton id="motion" className="settings-row" detail={motion === 'reduced' ? 'Reduced · freeze decorative loops' : 'Auto · UI animates'} onSelect={() => {
             const next = motion === 'reduced' ? 'auto' : 'reduced';
             applyMotionPreference(next);
             setMotion(next);
@@ -86,7 +89,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
           <FocusButton
             id="performance"
             className="settings-row"
-            detail={performance ? 'On · hide Retro loops, snap motion' : 'Off · Retro and UI keep animating'}
+            detail={performance ? 'On · simpler effects and motion' : 'Off · full UI motion'}
             onSelect={() => {
               const next = !performance;
               applyPerformanceMode(next);
@@ -98,65 +101,18 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </section>
         <section className="settings-group">
           <h2 className="settings-group__title">Look</h2>
-        <FocusButton id="theme-bundle" disabled className="settings-row" detail={plan.bundle ? 'Included with your access' : 'Included once your account is switched on'} onSelect={() => undefined}>All paid themes bundle</FocusButton>
         {THEMES.map((spec) => {
-          const locked = spec.premium === true && !themeUnlocked(plan, spec.id);
           return (
             <FocusButton
               key={spec.id}
               id={`theme-${spec.id}`}
               className="settings-row"
-              detail={
-                locked
-                  ? `£${((spec.id === 'anime' ? plan.animeAddonPence : plan.synthwaveAddonPence) / 100).toFixed(2)} · Unlock`
-                  : theme === spec.id
-                    ? 'On'
-                    : 'Apply'
-              }
+              detail={theme === spec.id ? 'On' : 'Apply'}
               onSelect={() => {
-                if (locked) {
-                  navigate.push('plans');
-                  return;
-                }
                 setTheme(applyTheme(spec.id));
               }}
             >
               Theme · {spec.name}
-            </FocusButton>
-          );
-        })}
-        {theme === 'anime' && <section className="anime-scene-picker" aria-label="Anime scenes">{ANIME_SCENES.map(scene => <FocusButton key={scene.id} id={`anime-scene-${scene.id}`} className="settings-row" detail={scene.id === animeScene.id ? 'On · ' + scene.hook : scene.summary} onSelect={() => setAnimeScene(scene.id)}>{scene.title}</FocusButton>)}</section>}
-        {(plan.styles.length > 0 ? plan.styles : FALLBACK_PLAN.styles).map((style) => {
-          const unlocked = styleUnlocked(plan, style.id as StyleId);
-          return (
-            <FocusButton
-              key={style.id}
-              id={`style-${style.id}`}
-              className="settings-row"
-              detail={
-                !unlocked
-                  ? `Locked · ${style.minPlan}`
-                  : plan.styleId === style.id
-                    ? 'On'
-                    : 'Apply'
-              }
-              onSelect={() => {
-                if (!unlocked) {
-                  navigate.pushModal('notice', {
-                    params: {
-                      title: style.name,
-                      body: `This style unlocks on ${styleMinPlanLabel(style.minPlan)}.`,
-                    },
-                  });
-                  return;
-                }
-                void saveStyle(style.id as StyleId).then((status) => {
-                  applyPlanClass(status);
-                  setPlan(status);
-                });
-              }}
-            >
-              Style · {style.name}
             </FocusButton>
           );
         })}
@@ -182,39 +138,11 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton
           id="plan"
           className="settings-row"
-          detail={`${plan.name} · ${plan.price}`}
+          detail={accessDetail}
           onSelect={() => navigate.push('plans')}
         >
           Plan
         </FocusButton>
-        {plan.liveTvOptional ? (
-          <FocusButton
-            id="live-tv-addon"
-            className="settings-row"
-            detail={plan.liveTv ? `On${plan.liveTvTerm ? ` · ${plan.liveTvTerm}` : ''}` : '3-month, 1-year or lifetime'}
-            onSelect={() => {
-              if (!plan.liveTv) {
-                navigate.push('plans');
-                return;
-              }
-              void saveLiveTv(false)
-                .then((status) => {
-                  applyPlanClass(status);
-                  setPlan(status);
-                })
-                .catch((error: unknown) => {
-                  navigate.pushModal('notice', {
-                    params: {
-                      title: 'Live TV',
-                      body: error instanceof Error ? error.message : 'Live TV was not updated.',
-                    },
-                  });
-                });
-            }}
-          >
-            Live TV
-          </FocusButton>
-        ) : null}
         {plan.developer ? (
         <FocusButton
           id="developer"

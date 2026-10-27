@@ -540,8 +540,7 @@ export async function saveOverrides(overrides: Record<string, unknown>): Promise
 export function applyPlanClass(plan: PlanStatus): void {
   if (typeof document === 'undefined') return;
   document.documentElement.dataset.plan = plan.id;
-  const allowed = plan.developer || plan.styleIds.includes(plan.styleId);
-  document.documentElement.dataset.style = allowed ? plan.styleId : 'classic';
+  delete document.documentElement.dataset.style;
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(MOBILE_PLAN_EVENT, { detail: plan }));
 }
 

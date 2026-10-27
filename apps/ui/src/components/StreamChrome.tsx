@@ -45,6 +45,7 @@ export function StreamChrome({ profile, lane, onLane }: StreamChromeProps): Reac
         Movies
       </FocusButton>
       <BrandLockup kind="wordmark" focusId="stream-mark" className="stream-chrome__mark-btn" />
+      <FocusButton id="stream-downloads" className="stream-chrome__link" onSelect={() => navigate.pushModal('downloads')}>Downloads</FocusButton>
     </nav>
   );
 }

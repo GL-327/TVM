@@ -1,0 +1,29 @@
+.modal-layer .page.downloads { background: radial-gradient(ellipse at 85% 0%, #163c543d, transparent 55%), var(--tvm-bg-deep, #080d18); overflow-y: auto; padding: 3rem clamp(1.25rem, 6vw, 6rem); }
+.downloads__content { max-width: 62rem; margin: auto; }
+.downloads__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2rem; }
+.downloads__eyebrow { color: var(--tvm-accent, #7ad7ff); font-size: .64rem; font-weight: 750; letter-spacing: .2em; }
+.downloads h1 { font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.045em; margin: .4rem 0; }
+.downloads__header p:last-child { color: var(--tvm-text-muted); margin: .5rem 0; }
+.downloads__card { background: #ffffff05; border: 1px solid #ffffff15; border-radius: 1.1rem; padding: 1.5rem; }
+.downloads__form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem; }
+.download-choice { display: grid; gap: .55rem; color: var(--tvm-text-muted); font-size: .8rem; }
+.download-choice select { font: inherit; color: var(--tvm-text); background: var(--tvm-surface, #151d2c); border: 1px solid #ffffff26; border-radius: .55rem; min-width: 0; width: 100%; padding: .8rem; cursor: pointer; }
+.download-choice select:focus, .download-choice select[data-focused='true'] { outline: 2px solid var(--tvm-accent); outline-offset: 3px; }
+.downloads__note { color: var(--tvm-text-muted); font-size: .72rem; line-height: 1.6; margin: 1.1rem 0; }
+.downloads__destination { display: flex; justify-content: space-between; gap: 1rem; align-items: center; border-block: 1px solid #ffffff12; padding: 1.1rem 0; margin: 1.25rem 0; }
+.downloads__destination > div { min-width: 0; }
+.downloads__destination span { color: var(--tvm-text-muted); font-size: .7rem; }
+.downloads__destination p { overflow-wrap: anywhere; font-size: .84rem; margin: .35rem 0; }
+.downloads .tvm-button { min-height: 2.6rem; font-size: .8rem; padding: .65rem 1.05rem; border-radius: .55rem; flex-shrink: 0; }
+.downloads__message { border-left: 2px solid var(--tvm-accent); padding: .5rem 1rem; font-size: .85rem; }
+.downloads__queue { margin-top: 2rem; }
+.downloads__queue-heading { display: flex; justify-content: space-between; align-items: center; }
+.downloads h2 { font-size: 1.1rem; }
+.downloads__queue-heading > span, .downloads__empty { color: var(--tvm-text-muted); font-size: .8rem; }
+.downloads__empty { padding: 1rem 0; }
+.download-job { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.2rem 0; border-bottom: 1px solid #ffffff12; }
+.download-job__info { flex: 1; min-width: 0; }
+.download-job h3 { margin: 0; font-size: .9rem; font-weight: 600; }
+.download-job p, .download-job small { display: block; overflow-wrap: anywhere; color: var(--tvm-text-muted); font-size: .72rem; margin: .45rem 0; }
+.download-job progress { width: 100%; height: .25rem; display: block; margin-top: .7rem; accent-color: var(--tvm-accent); border: none; }
+@media (max-width: 650px) { .downloads__form { grid-template-columns: 1fr; } .modal-layer .page.downloads { padding: 1.5rem 1rem; } .downloads__card { padding: 1rem; } .downloads__destination { flex-wrap: wrap; } }

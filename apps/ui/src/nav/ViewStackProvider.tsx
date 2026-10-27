@@ -411,7 +411,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
         </div>
 
         {modals.map((modal) => (
-          <EntryHost key={modal.key} entry={modal} isModal />
+          <EntryHost key={modal.key} entry={modal} isModal inactive={modal.key !== active.key} />
         ))}
       </div>
     </ViewStackContextProvider>
@@ -421,9 +421,10 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
 interface EntryHostProps {
   entry: ViewEntry;
   isModal: boolean;
+  inactive?: boolean;
 }
 
-function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
+function EntryHost({ entry, isModal, inactive = false }: EntryHostProps): React.JSX.Element {
   const definition = screenDefinition(entry.name);
   const focusId =
     typeof definition.defaultFocus === 'function' ? definition.defaultFocus(entry.params) : definition.defaultFocus;
@@ -447,6 +448,7 @@ function EntryHost({ entry, isModal }: EntryHostProps): React.JSX.Element {
         <div
           ref={ref}
           className={isModal ? 'modal-layer' : 'screen-layer'}
+          inert={inactive}
           data-screen={entry.name}
           data-focus-scope={entry.key}
         >

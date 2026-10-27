@@ -1670,13 +1670,16 @@ sub onUpdatesDone()
   json = task.json
   current = asText(aaGet(json, "current", ""))
   available = aaGet(json, "available", invalid)
-  body = "This Core is " + current + ". Apply updates from the TVM app on the computer, not this Roku."
+  automatic = "Off"
+  if aaGet(json, "autoUpdate", false) = true then automatic = "On"
+  body = "Core " + current + ". Automatic Core updates: " + automatic + ". Manage them in TVM on the computer."
   if available <> invalid and GetInterface(available, "ifAssociativeArray") <> invalid
     version = asText(aaGet(available, "version", ""))
     if version <> ""
       body = "Core " + current + " can update to " + version + ". Apply it from the TVM app on the computer."
     end if
   end if
+  body = body + chr(10) + chr(10) + "This developer-mode channel receives catalog and playback changes from Core. To update the Roku channel code, upload the latest TVM-roku.zip again."
   navigate("modal", "notice", { title: "Updates", body: body })
 end sub
 

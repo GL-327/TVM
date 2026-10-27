@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { bumpMarkEgg } from '../brand/easterEggs';
 import { TvmMark } from '../brand/TvmMark';
 import { FocusButton } from './FocusButton';
@@ -20,9 +20,9 @@ function LockupFace({ kind }: { kind: 'stream' | 'wordmark' }): React.JSX.Elemen
 }
 
 export function BrandLockup({ kind = 'stream', focusId, className }: BrandLockupProps): React.JSX.Element {
-  const [, setTaps] = useState(0);
+  const taps = useRef(0);
   const bump = (): void => {
-    setTaps((count) => bumpMarkEgg(count));
+    taps.current = bumpMarkEgg(taps.current);
   };
   const classes = ['tvm-lockup', `tvm-lockup--${kind}`, className].filter(Boolean).join(' ');
 

@@ -49,6 +49,14 @@ describe('torrentio stream pick', () => {
     expect(capStreamsToHeight([cached!, hd!], 720).map((stream) => stream.url)).toEqual(['https://real-debrid.com/d/LOW']);
   });
 
+  it('prefers 4K over a cached lower resolution file when the plan allows it', () => {
+    const low = parseDebridStream({ name: '720p cached', title: 'Film 720p', url: 'https://example.test/low' })!;
+    const ultra = parseDebridStream({ name: '4K', title: 'Film 2160p', url: 'https://example.test/ultra' })!;
+    expect(rankDebridStreams([low, ultra])[0]).toBe(ultra);
+    expect(capStreamsToHeight([low, ultra], 2160)).toContain(ultra);
+    expect(capStreamsToHeight([low, ultra], 720)).toEqual([low]);
+  });
+
   it('returns no streams when Torrentio fetch aborts', async () => {
     const streams = await fetchTorrentioStreams('token', 'tt0111161', undefined, undefined, async () => {
       const error = new Error('The operation was aborted');

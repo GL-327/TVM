@@ -9,6 +9,7 @@ const Accounts = lazy(() => import('../screens/Accounts').then((m) => ({ default
 const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
 const Donate = lazy(() => import('../screens/Donate').then((m) => ({ default: m.Donate })));
 const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
+const Downloads = lazy(() => import('../screens/Downloads').then((m) => ({ default: m.Downloads })));
 const Developer = lazy(() => import('../screens/Developer').then((m) => ({ default: m.Developer })));
 const DeveloperUnlock = lazy(() => import('../screens/DeveloperUnlock').then((m) => ({ default: m.DeveloperUnlock })));
 const DiagnosticsModal = lazy(() => import('../screens/DiagnosticsModal').then((m) => ({ default: m.DiagnosticsModal })));
@@ -59,6 +60,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   profile: { component: Account, defaultFocus: 'realdebrid' },
   profiles: { component: Profiles, defaultFocus: 'profile-pick' },
   details: { component: Details, defaultFocus: 'back' },
+  downloads: { component: Downloads, defaultFocus: 'downloads-close' },
   settings: { component: Settings, defaultFocus: 'performance' },
   plans: { component: Plans, defaultFocus: 'plan-free' },
   legal: { component: Legal, defaultFocus: 'legal-back' },
@@ -76,7 +78,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   notice: { component: NoticeModal, defaultFocus: 'close' },
   changelog: { component: Changelog, defaultFocus: 'close' },
   search: { component: SearchModal, defaultFocus: 'query' },
-  player: { component: Player, defaultFocus: 'pause' },
+  player: { component: Player, defaultFocus: 'player-play' },
 };
 
 export function screenDefinition(name: string): ScreenDefinition {

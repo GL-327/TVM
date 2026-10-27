@@ -23,6 +23,7 @@ Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path (Join-Path $stage "core") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $stage "ui") | Out-Null
 Copy-Item -Recurse (Join-Path $repo "apps\core\dist\*") (Join-Path $stage "core")
+Copy-Item (Join-Path $repo "apps\core\package.json") (Join-Path $stage "core\package.json")
 Copy-Item -Recurse (Join-Path $repo "apps\ui\dist\*") (Join-Path $stage "ui")
 
 $tarName = "tvm-app-$Version.tar.gz"

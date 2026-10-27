@@ -14,15 +14,15 @@ import {
   type RefObject,
 } from 'react';
 
-import { ChromeFrame } from './features/ChromeFrame';
+import { CinemaControls, PlayerGlyph } from './CinemaControls';
 import { KeyboardLayer } from './features/KeyboardLayer';
-import { mountIdleChromeStyles, syncIdleChromeHosts } from './features/IdleChrome';
-import { isInRecapWindow, useIdleChrome } from './features/useIdleChrome';
+import { applyIdleChromeHost, isInRecapWindow, useIdleChrome } from './features/useIdleChrome';
 import { FocusButton } from '../components/FocusButton';
-import { IconChevronLeft } from '../components/Icons';
 import { fullscreenAvailable, toggleFullscreen } from './features/KeyboardMap';
 import './features/player-chrome.css';
 import './features/perf.css';
+import './cinema-controls.css';
+import { useNavigate } from '../nav/ViewStackContext';
 
 export type PlayerEngine = 'loading' | 'html5' | 'native';
 export type PlayerOverlay = 'queue' | 'ad' | null;
@@ -151,9 +151,7 @@ function lazyFeature(name: FeatureName): LazyExoticComponent<ComponentType<Playe
 
 const SkipRecap = lazyFeature('SkipRecap');
 const SeekSkip = lazyFeature('SeekSkip');
-const TransportBar = lazyFeature('TransportBar');
 const ProgressBar = lazyFeature('ProgressBar');
-const TitleOverlay = lazyFeature('TitleOverlay');
 const LiveOverlay = lazyFeature('LiveOverlay');
 const NextUp = lazyFeature('NextUp');
 const SubtitlePicker = lazyFeature('SubtitlePicker');
@@ -222,9 +220,9 @@ function FullscreenControl(): React.JSX.Element | null {
   }, []);
 
   if (!available) return null;
-  return <FocusButton id="player-fullscreen" className="player-chrome-fullscreen" onSelect={() => {
+  return <FocusButton id="player-fullscreen" ariaLabel={active ? 'Exit fullscreen' : 'Fullscreen'} title={active ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} onSelect={() => {
     void toggleFullscreen(document.querySelector('.player'));
-  }}>{active ? 'Exit fullscreen' : 'Fullscreen'}</FocusButton>;
+  }}><PlayerGlyph name="fullscreen" /></FocusButton>;
 }
 
 /**
@@ -233,6 +231,7 @@ function FullscreenControl(): React.JSX.Element | null {
  * stay siblings so a missing module cannot swallow the rest of the controls.
  */
 export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps): React.JSX.Element {
+  const navigate = useNavigate();
   const session = sourceSession;
   const idle = useIdleChrome({
     paused: session.paused,
@@ -252,11 +251,8 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
   const visibleSession = useMemo(() => ({ ...sourceSession, controlsVisible: idle.chromeVisible }), [sourceSession, idle.chromeVisible]);
 
   useEffect(() => {
-    mountIdleChromeStyles();
-  }, []);
-
-  useEffect(() => {
-    syncIdleChromeHosts(idle.chromeVisible, idle.recapVisible);
+    const player = document.querySelector('.player');
+    if (player) applyIdleChromeHost(player, idle.chromeVisible, idle.recapVisible);
   }, [idle.chromeVisible, idle.recapVisible]);
 
   return (
@@ -267,6 +263,9 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
         data-wrap="x"
         data-controls={idle.chromeVisible ? 'visible' : 'hidden'}
         data-engine={session.engine}
+        data-paused={session.paused ? 'true' : 'false'}
+        data-buffering={session.buffering ? 'true' : 'false'}
+        data-busy={session.busy ? 'true' : 'false'}
         style={rootStyle}
       >
         <Slot>{session.engine === 'native' ? null : <AmbientBackdrop {...session} />}</Slot>
@@ -285,58 +284,18 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
             volumeBy={session.adjustVolume}
           />
         </Slot>
-        <ChromeFrame
-          visible={idle.chromeVisible}
-          top={
-            <div className="player-chrome-head">
-              <div className="player-chrome-head__lead">
-                <Slot>
-                  <FocusButton
-                    id="player-exit"
-                    className="player-chrome-back"
-                    onSelect={session.close}
-                  >
-                    <IconChevronLeft className="player-chrome-back__glyph" />
-                    Back
-                  </FocusButton>
-                </Slot>
-                <Slot>
-                  <TitleOverlay {...visibleSession} />
-                </Slot>
-              </div>
-              <div className="player-chrome-head__actions">
-                <Slot><WatchlistAction {...visibleSession} /></Slot>
-                <FullscreenControl />
-              </div>
-            </div>
-          }
-          bottom={
-            <div className="player-dock" data-player-dock="">
-              <div className="player-dock__tools">
-                <Slot>
-                  <VolumeControl {...visibleSession} />
-                </Slot>
-                <Slot>
-                  <SubtitlePicker {...session} />
-                </Slot>
-                <Slot>
-                  <AudioPicker {...visibleSession} />
-                </Slot>
-                <Slot>
-                  <QualityPicker {...visibleSession} />
-                </Slot>
-                <Slot>
-                  <PlaybackSpeed {...visibleSession} />
-                </Slot>
-              </div>
-              <Slot>
-                <ProgressBar {...session} />
-              </Slot>
-              <Slot>
-                <TransportBar {...visibleSession} />
-              </Slot>
-            </div>
-          }
+        <CinemaControls session={visibleSession}
+          progress={<Slot><ProgressBar {...visibleSession} /></Slot>}
+          volume={<Slot><VolumeControl {...visibleSession} /></Slot>}
+          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot></>}
+          fullscreen={<FullscreenControl />}
+          actions={<>
+            {!session.live && <FocusButton id="player-download" ariaLabel="Download" title="Download" onSelect={() => {
+              session.pause();
+              navigate.pushModal('downloads', { params: { id: session.mediaId.replace(/^(tt\d+):\d+:\d+$/, '$1'), title: session.title, series: session.season !== undefined, season: session.season, episode: session.episode, episodeId: session.mediaId } });
+            }}><PlayerGlyph name="download" /></FocusButton>}
+            <Slot><WatchlistAction {...visibleSession} /></Slot>
+          </>}
         />
         <Slot>
           <LiveOverlay {...session} />
@@ -360,7 +319,7 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
           <NextUp {...session} />
         </Slot>
         <Slot>
-          <RemoteHints {...session} />
+          <RemoteHints {...visibleSession} />
         </Slot>
         {children}
       </div>

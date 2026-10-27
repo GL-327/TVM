@@ -225,6 +225,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   let lastPointerType = 'mouse';
   let canvasDrag: { pointerId: number; startX: number; startY: number; seeking: boolean } | null = null;
   let suppressClick = false;
+  let lastPoint: { x: number; y: number } | null = null;
 
   const hideCursor = (): void => {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -268,8 +269,9 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
       }
     }
     if (event.pointerType === 'touch') return;
+    if (lastPoint && Math.hypot(event.clientX - lastPoint.x, event.clientY - lastPoint.y) < 4) return;
+    lastPoint = { x: event.clientX, y: event.clientY };
     pokeCursor();
-    reveal();
   };
 
   const onPointerDown = (event: PointerEvent): void => {
@@ -351,7 +353,6 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   };
 
   host.addEventListener('pointermove', onPointerMove);
-  host.addEventListener('pointerenter', onPointerMove);
   host.addEventListener('pointerdown', onPointerDown, true);
   host.addEventListener('pointerup', onPointerUp, true);
   host.addEventListener('pointercancel', onPointerUp, true);
@@ -361,7 +362,6 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   return () => {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
     host.removeEventListener('pointermove', onPointerMove);
-    host.removeEventListener('pointerenter', onPointerMove);
     host.removeEventListener('pointerdown', onPointerDown, true);
     host.removeEventListener('pointerup', onPointerUp, true);
     host.removeEventListener('pointercancel', onPointerUp, true);

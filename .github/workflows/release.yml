@@ -56,6 +56,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p stage/core stage/ui
           cp -r apps/core/dist/. stage/core/
+          cp apps/core/package.json stage/core/package.json
           cp -r apps/ui/dist/. stage/ui/
           cp scripts/launch-tvm.sh scripts/launch-tvm.cmd scripts/launch-tvm.ps1 stage/
           cp TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command stage/
@@ -63,6 +64,16 @@ jobs:
           cp TVM.cmd TVM-windowed.cmd stage/
           cp docs/DESKTOP.md stage/README.md
           cp package.json stage/
+          # The Windows download runs without a separate Node installation.
+          # Verify the official Node executable before placing it in the zip.
+          NODE_VERSION="$(node -p 'process.versions.node')"
+          mkdir -p stage/bin
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/win-x64/node.exe" -o stage/bin/node.exe
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o stage/bin/SHASUMS256.txt
+          EXPECTED="$(awk '$2 == "win-x64/node.exe" { print $1 }' stage/bin/SHASUMS256.txt)"
+          ACTUAL="$(sha256sum stage/bin/node.exe | cut -d' ' -f1)"
+          test -n "$EXPECTED" && test "$EXPECTED" = "$ACTUAL"
+          rm stage/bin/SHASUMS256.txt
           chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM-windowed.sh stage/TVM.command stage/TVM-windowed.command
           # Core finds this beside itself and knows it is a package, at this commit.
           node -e 'const info=JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,version:process.env.VERSION,builtAt:new Date().toISOString()});require("fs").writeFileSync("stage/build-info.json",info);require("fs").writeFileSync("stage/core/build-info.json",info)'
@@ -73,6 +84,7 @@ jobs:
           node scripts/write-update-feed.mjs --channel desktop --asset release/tvm-app.tar.gz --out release/desktop.json
           rm -rf check-app && mkdir check-app && tar -xzf release/tvm-app.tar.gz -C check-app
           test -f check-app/core/index.js
+          test -f check-app/core/package.json
           test -f check-app/core/build-info.json
           test -f check-app/ui/index.html
           # One download for all three systems. A zip opens with a double-click
@@ -80,6 +92,7 @@ jobs:
           (cd stage && zip -q -r "$GITHUB_WORKSPACE/release/TVM-desktop.zip" .)
           rm -rf check-zip && mkdir check-zip && unzip -q "release/TVM-desktop.zip" -d check-zip
           test -f check-zip/core/index.js
+          test -f check-zip/bin/node.exe
           test -f check-zip/ui/index.html
           test -f check-zip/TVM.cmd
           test -f check-zip/TVM.command
@@ -100,14 +113,14 @@ jobs:
           |---|---|
           | Download | \`TVM-desktop.zip\` |
           | Build | \`$SHA\` |
-          | Needs | [Node.js 22+](https://nodejs.org) |
+          | Needs | Node.js 22+ on macOS/Linux; Windows runtime included |
 
           One zip for all three systems. It carries TVM's core and its
           interface; your browser is the screen.
 
           ### Set up
 
-          1. Install [Node.js 22 or newer](https://nodejs.org) if you have not.
+          1. On macOS or Linux, install [Node.js 22 or newer](https://nodejs.org). Windows has it in the zip.
           2. Download **TVM-desktop.zip** and extract it anywhere — Desktop is fine.
           3. Start it:
              - **Windows** — double-click \`TVM.cmd\` (or \`TVM-windowed.cmd\`).

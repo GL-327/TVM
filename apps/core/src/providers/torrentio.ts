@@ -15,6 +15,7 @@ export interface DebridStream {
   title: string;
   quality: number;
   cached: boolean;
+  description?: string;
 }
 
 export function torrentioBaseUrl(token: string): string {
@@ -80,6 +81,7 @@ export function parseDebridStream(raw: Record<string, unknown>): DebridStream | 
     title,
     quality: qualityScore(`${String(raw.name ?? '')} ${title}`),
     cached: CACHED_PATTERN.test(`${String(raw.name ?? '')} ${title}`),
+    description: `${String(raw.name ?? '')} ${String(raw.title ?? '')}`,
   };
 }
 
@@ -94,14 +96,17 @@ export function streamHeight(label: string): number {
 }
 
 export function capStreamsToHeight(streams: readonly DebridStream[], maxHeight: number): DebridStream[] {
-  const capped = streams.filter((stream) => streamHeight(`${stream.title}`) <= maxHeight);
+  const capped = streams.filter((stream) => streamHeight(stream.description ?? stream.title) <= maxHeight);
   return capped.length > 0 ? capped : streams.filter((stream) => stream.quality <= 15);
 }
 
 export function rankDebridStreams(streams: readonly DebridStream[]): DebridStream[] {
   return [...streams].sort((left, right) => {
+    // A cached low resolution file should not win over a 4K source when the
+    // viewer has chosen 4K. Cache status only breaks ties at one resolution.
+    if (left.quality !== right.quality) return right.quality - left.quality;
     if (left.cached !== right.cached) return left.cached ? -1 : 1;
-    return right.quality - left.quality;
+    return 0;
   });
 }
 

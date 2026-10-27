@@ -409,6 +409,9 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
   const visible = copy !== null && (fromProps !== null || !transient);
 
   useEffect(() => {
+    // The session engine owns recovery and publishes terminal failures.
+    // A second observer must not turn its recoverable media event into a modal.
+    if (ctx !== null) return;
     let attached: HTMLVideoElement | null = null;
     let graceTimer = 0;
     const root =

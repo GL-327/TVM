@@ -40,7 +40,7 @@ export const ACCESS_TIERS: readonly AccessTierSpec[] = [
   {
     id: 'stream',
     name: 'Movies and TV shows',
-    summary: 'The full library, every picture setting, no advertising.',
+    summary: 'Films and series from your own sources, with the best available picture.',
     planId: 'max',
     liveTv: false,
     monthlyPence: STREAM_MONTHLY_PENCE,
@@ -48,7 +48,7 @@ export const ACCESS_TIERS: readonly AccessTierSpec[] = [
     includes: [
       'Films and series through your own sources',
       '4K where the source has it, HDR and Atmos passthrough',
-      'Every visual style, including MAX Gold and Aurora',
+      'Light and Dark appearance',
       'Up to 10 viewing profiles',
       'No advertising, no queue, no watch-hour limit',
     ],

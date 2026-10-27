@@ -20,7 +20,7 @@ computer on the same Wi-Fi. It is not required to launch or watch.
 | Needs `TVM_LAN_TOKEN` / PC Core | **No** (optional only). |
 | ffmpeg remux / transcode on iOS | **No FFmpeg service.** MobileVLCKit 3.6.0 decodes MP4, MKV, WebM, AVI, MPEG-TS and HLS on the phone. |
 | Live TV provider login | Playlist / Xtream credentials can be stored. HLS and raw MPEG-TS use native VLC playback. |
-| GitHub login / in-app update | **No.** Install a new IPA. |
+| GitHub login / in-app update | No GitHub login. The shared UI bundle checks a verified update feed on launch. Native Swift changes still require a newly signed IPA. |
 | Home Screen icon named TVM | Yes, after Sideloadly/AltStore/Xcode install of a signed build. |
 
 ## What works on this Windows workspace
@@ -49,7 +49,7 @@ relative `/api` on that origin. Implemented locally (Swift):
 - apps list + hub catalogs (Cinemeta; mock hubs are not licensed apps)
 - live playlist store (HLS and raw MPEG-TS through VLC)
 - art proxy (allow-listed image hosts), settings/legal export + erase
-- ads preroll skipped, system session (not an appliance), update apply refused
+- ads preroll skipped, system session (not an appliance), verified UI bundle updates
 
 Playback uses unrestricted HTTP(S) sources in a full-screen native MobileVLCKit player. Container support no longer depends on WebKit or a Real-Debrid Apple transcode. The picture fits and centers in portrait and landscape; controls provide 10-second seeking, a scrubber, embedded audio/subtitles, speed, rotation and left-edge Back. Progress returns to the shared UI. Missing, expired, DRM-protected or damaged sources can still fail; supported codecs also depend on the decoder and device.
 

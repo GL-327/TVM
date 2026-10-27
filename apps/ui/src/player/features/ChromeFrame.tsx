@@ -45,6 +45,7 @@ export function ChromeFrame({
       data-chrome-hidden={shown ? 'false' : 'true'}
       data-chrome-visible={shown ? 'true' : 'false'}
       aria-hidden={shown ? undefined : true}
+      inert={!shown ? true : undefined}
     >
       <div className="chrome-frame__veil chrome-frame__veil--vignette" aria-hidden="true" />
       <div className="chrome-frame__veil chrome-frame__veil--top" aria-hidden="true" />

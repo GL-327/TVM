@@ -1,5 +1,7 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, screen, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type IpcMainInvokeEvent } from 'electron';
+import { realpath } from 'node:fs/promises';
+import { createDownloadQueue, type DownloadRequest } from './downloads';
 import { bootErrorPage } from './bootError';
 import { LOAD_RETRY_DELAY_MS, LOAD_RETRY_LIMIT, uiOrigin } from './config';
 import {
@@ -16,6 +18,52 @@ import { shellWindowChrome } from './windowChrome';
 const windowed = isWindowedShell();
 const ORIGIN = uiOrigin();
 const TARGET = uiLoadUrl(ORIGIN, windowed);
+const downloadFolders = new Set<string>();
+const downloads = createDownloadQueue(ORIGIN, (input, init) => {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('TVM is closing.');
+  return mainWindow.webContents.session.fetch(input instanceof URL ? input.href : input, init);
+}, () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tvm:downloads:changed');
+});
+
+function downloadWindow(event: IpcMainInvokeEvent): BrowserWindow {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame ||
+      new URL(event.senderFrame.url).origin !== new URL(ORIGIN).origin) throw new Error('Downloads are unavailable.');
+  return mainWindow;
+}
+
+ipcMain.handle('tvm:downloads:choose-folder', async (event) => {
+  const window = downloadWindow(event);
+  const result = await dialog.showOpenDialog(window, { title: 'Download to', defaultPath: app.getPath('downloads'), properties: ['openDirectory', 'createDirectory'] });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const directory = await realpath(result.filePaths[0]);
+  downloadFolders.add(directory);
+  return directory;
+});
+ipcMain.handle('tvm:downloads:list', (event) => { downloadWindow(event); return downloads.list(); });
+ipcMain.handle('tvm:downloads:cancel', (event, id: unknown) => {
+  downloadWindow(event); if (typeof id === 'string') downloads.cancel(id);
+});
+ipcMain.handle('tvm:downloads:enqueue', (event, value: unknown) => {
+  downloadWindow(event);
+  const input = value as DownloadRequest | null;
+  if (!input || !downloadFolders.has(input.directory) || !Array.isArray(input.items) || input.items.length === 0 || input.items.length > 1000 ||
+      input.items.some((item) => !item || typeof item.id !== 'string' || item.id.length > 512 || typeof item.title !== 'string' || item.title.length > 500) ||
+      !input.preferences || !['original', 'en', 'ja', 'fr', 'de', 'es', 'it', 'pt', 'ko', 'hi'].includes(input.preferences.language) ||
+      ![480, 720, 1080, 2160].includes(input.preferences.maxHeight)) throw new Error('Choose a download folder and valid options.');
+  const headers: Record<string, string> = {};
+  for (const name of ['Authorization', 'X-TVM-Profile']) {
+    const value = input.headers?.[name];
+    if (typeof value === 'string' && value.length <= 4096 && !/[\r\n]/.test(value)) headers[name] = value;
+  }
+  return downloads.enqueue({ directory: input.directory, items: input.items, preferences: input.preferences, headers });
+});
+ipcMain.handle('tvm:downloads:show', (event, id: unknown) => {
+  downloadWindow(event);
+  const job = downloads.list().find((entry) => entry.id === id && entry.state === 'complete');
+  if (job?.path) shell.showItemInFolder(job.path);
+});
+app.on('before-quit', () => downloads.stop());
 let mainWindow: BrowserWindow | null = null;
 let nativePlayer: NativePlayerHost | null = null;
 let serviceHost: ServiceHost | null = null;
