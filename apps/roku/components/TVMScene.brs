@@ -91,9 +91,11 @@ sub applyCurrentTheme()
 end sub
 
 sub applyAndSaveTheme(id as Dynamic)
+  previous = tvmThemePalette(currentThemeId())
   key = normalizeThemeId(id)
   saveThemeId(key)
   applyCurrentTheme()
+  repaintThemeNodes(m.screenHost, tvmPalettePairs(previous, tvmThemePalette(key)))
   if m.settingsNode <> invalid then m.settingsNode.themeId = key
 end sub
 
@@ -257,6 +259,9 @@ sub renderStack()
     if top.name = "player" then showPlayer(top.params)
     if top.name = "confirm" then showConfirm(top.params)
     if top.name = "search" then showSearch()
+  end if
+  if currentThemeId() = "light"
+    repaintThemeNodes(m.screenHost, tvmPalettePairs(tvmThemePalette("dark"), tvmThemePalette("light")))
   end if
 end sub
 

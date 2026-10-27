@@ -19,7 +19,7 @@ This is Device Variations on GitHub. One file per device:
 | \`TVM.ipa\` | iPhone & iPad | Unsigned. Re-sign with [Sideloadly](https://sideloadly.io) or AltStore, then trust the certificate in **Settings → General → VPN & Device Management**. [Full steps](https://github.com/GL-327/TVM/releases/tag/ios) |
 | \`TVM.apk\` | Android phone, tablet & TV | Open it on the phone and allow installs from that source. On a TV: \`adb install TVM.apk\`. [Full steps](https://github.com/GL-327/TVM/releases/tag/android) |
 | \`TVM-roku.zip\` | Roku players & Roku TV | Enable developer mode on the Roku, then upload the zip at \`http://<roku-ip>\` and press Install. [Full steps](https://github.com/GL-327/TVM/releases/tag/roku) |
-| \`TVM-desktop.zip\` | Windows, macOS & Linux | Needs [Node.js 22+](https://nodejs.org). Extract, then run \`TVM.cmd\`, \`TVM.command\` or \`./TVM.sh\`. [Full steps](https://github.com/GL-327/TVM/releases/tag/desktop) |
+| \`TVM-desktop.zip\` | Windows, macOS & Linux | Windows includes Node. macOS/Linux need [Node.js 22+](https://nodejs.org). Extract, then run \`TVM.cmd\`, \`TVM.command\` or \`./TVM.sh\`. [Full steps](https://github.com/GL-327/TVM/releases/tag/desktop) |
 
 The desktop updates itself completely. Phones and the desktop both refresh
 their interface from GitHub when they open; the app around it changes only
