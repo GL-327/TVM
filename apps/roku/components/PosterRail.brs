@@ -1,4 +1,5 @@
 sub init()
+  m.top.findNode("heading").color = tvmText()
   m.heading = m.top.findNode("heading")
   m.track = m.top.findNode("track")
   m.slideAnim = m.top.findNode("slideAnim")

@@ -1,11 +1,11 @@
-' Theme ids match apps/ui. Cinematic is the boot look (the orbital blue).
+' Theme ids match the shared interface. Retired saved themes resolve to Dark.
 
 function tvmThemeDefault() as String
-  return "cinematic"
+  return "dark"
 end function
 
 function tvmThemeIds() as Object
-  return ["cinematic", "happy", "dark", "glass"]
+  return ["light", "dark"]
 end function
 
 function normalizeThemeId(id as Dynamic) as String
@@ -13,21 +13,14 @@ function normalizeThemeId(id as Dynamic) as String
   if GetInterface(id, "ifString") = invalid then return tvmThemeDefault()
   key = LCase(id.Trim())
   if key = "dark" then return "dark"
-  if key = "glass" then return "glass"
-  if key = "liquid-glass" then return "glass"
-  if key = "liquidglass" then return "glass"
-  if key = "happy" then return "happy"
-  if key = "cinematic" then return "cinematic"
-  if key = "default" then return "cinematic"
+  if key = "light" then return "light"
   return tvmThemeDefault()
 end function
 
 function tvmThemeLabel(id as Dynamic) as String
   key = normalizeThemeId(id)
   if key = "dark" then return "Dark"
-  if key = "glass" then return "Liquid Glass"
-  if key = "happy" then return "Happy"
-  return "Cinematic"
+  return "Light"
 end function
 
 sub rememberThemeId(id as Dynamic)
@@ -105,57 +98,23 @@ function tvmThemePalette(id as Dynamic) as Object
     p.sceneMid = "0x1A4A7259"
     p.sceneNear = "0x07101C70"
     p.sceneSun = "0xD8EEFE3D"
-  else if key = "glass"
-    p.bg = "0x08141EFF"
-    p.bgDeep = "0x02080EFF"
-    p.bgElevated = "0x101C2CFF"
-    p.surface = "0x081422CC"
-    p.surfaceHover = "0x1A2C40FF"
-    p.glass = "0x0A182694"
-    p.text = "0xF4FAFFFF"
-    p.muted = "0xD2DCE8FF"
-    p.faint = "0xA8B6C6FF"
-    p.focus = "0xFFFEF6FF"
-    p.accentInk = "0x0A1624FF"
-    p.accentBlue = "0x6EE4FFFF"
-    p.sceneFar = "0x08141E80"
-    p.sceneMid = "0x6EC8E859"
-    p.sceneNear = "0x123A6270"
-    p.sceneSun = "0xFFF6E43D"
-  else if key = "happy"
-    p.bg = "0x2A1C28FF"
-    p.bgDeep = "0x1A1218FF"
-    p.bgElevated = "0x3A2836FF"
-    p.surface = "0x443240FF"
-    p.surfaceHover = "0x564450FF"
-    p.glass = "0x443240D6"
-    p.text = "0xFFFDF8FF"
-    p.muted = "0xF3E6D4FF"
-    p.faint = "0xD0BBA8FF"
-    p.focus = "0xFFFEF8FF"
-    p.accentInk = "0x1A1220FF"
-    p.accentBlue = "0x3EC8FFFF"
-    p.sceneFar = "0x6A203888"
-    p.sceneMid = "0xFF9A6C59"
-    p.sceneNear = "0x5A204070"
-    p.sceneSun = "0xFFE5664D"
   else
-    p.bg = "0x071033FF"
-    p.bgDeep = "0x04081CFF"
-    p.bgElevated = "0x0C1C4AFF"
-    p.surface = "0x132A68FF"
-    p.surfaceHover = "0x1D4ED8FF"
-    p.glass = "0x0C1C4AD6"
-    p.text = "0xF4F8FFFF"
-    p.muted = "0x9EB0D4FF"
-    p.faint = "0x6B7A9AFF"
-    p.focus = "0xFFFFFFFF"
-    p.accentInk = "0x071033FF"
-    p.accentBlue = "0x2F6BFFFF"
-    p.sceneFar = "0x1D4ED888"
-    p.sceneMid = "0x2F6BFF59"
-    p.sceneNear = "0x07103370"
-    p.sceneSun = "0x7DD3FC4D"
+    p.bg = "0xF4F5F7FF"
+    p.bgDeep = "0xE8ECF2FF"
+    p.bgElevated = "0xFFFFFFFF"
+    p.surface = "0xE8ECF2FF"
+    p.surfaceHover = "0xD8E0EAFF"
+    p.glass = "0xFFFFFFE8"
+    p.text = "0x18222EFF"
+    p.muted = "0x435166FF"
+    p.faint = "0x526176FF"
+    p.focus = "0x18222EFF"
+    p.accentInk = "0xFFFFFFFF"
+    p.accentBlue = "0x0068A8FF"
+    p.sceneFar = "0x00000000"
+    p.sceneMid = "0x00000000"
+    p.sceneNear = "0x00000000"
+    p.sceneSun = "0x00000000"
   end if
   return p
 end function
@@ -174,6 +133,66 @@ sub applyThemeColorsToScene(scene as Object, id as Dynamic)
   if boot <> invalid then boot.color = palette.text
   scene.backgroundColor = palette.bgDeep
   paintSceneWash(scene, palette)
+end sub
+
+' SceneGraph XML has fixed initial colors. Repaint cached screens when the
+' palette changes, while picture overlays keep their authored contrast.
+function tvmPalettePairs(previous as Object, current as Object) as Object
+  probe = CreateObject("roSGNode", "Rectangle")
+  labels = []
+  rectangles = []
+  for each key in ["text", "muted", "faint"]
+    probe.color = previous[key]
+    oldColor = probe.color
+    probe.color = current[key]
+    labels.Push({ oldColor: oldColor, newColor: probe.color })
+  end for
+  for each row in [{ value: "0xF5F5F5FF", key: "text" }, { value: "0xFFFFFFFF", key: "text" }, { value: "0xC4C4C4FF", key: "muted" }, { value: "0x8A8A8AFF", key: "faint" }]
+    probe.color = row.value
+    oldColor = probe.color
+    probe.color = current[row.key]
+    labels.Push({ oldColor: oldColor, newColor: probe.color })
+  end for
+  for each key in ["bg", "bgDeep", "bgElevated", "surface", "surfaceHover", "glass"]
+    probe.color = previous[key]
+    oldColor = probe.color
+    probe.color = current[key]
+    rectangles.Push({ oldColor: oldColor, newColor: probe.color })
+  end for
+  for each row in [{ value: "0x000000FF", key: "bgDeep" }, { value: "0x0B0B0BFF", key: "bg" }, { value: "0x161616FF", key: "bgElevated" }, { value: "0x1D1D1DFF", key: "surface" }, { value: "0x2B2B2BFF", key: "surfaceHover" }]
+    probe.color = row.value
+    oldColor = probe.color
+    probe.color = current[row.key]
+    rectangles.Push({ oldColor: oldColor, newColor: probe.color })
+  end for
+  return { labels: labels, rectangles: rectangles }
+end function
+
+sub repaintThemeNodes(node as Object, pairs as Object)
+  if node = invalid then return
+  kind = node.subtype()
+  if kind = "PlayerScreen" or kind = "DetailsPanel" or kind = "ServiceScreen" or kind = "BrandLockup" then return
+  if node.id <> invalid and Left(LCase(node.id), 4) = "hero" then return
+  if kind = "FocusButton"
+    variant = node.variant
+    node.variant = ""
+    node.variant = variant
+    return
+  end if
+  colors = invalid
+  if kind = "Label" then colors = pairs.labels
+  if kind = "Rectangle" then colors = pairs.rectangles
+  if colors <> invalid
+    for each pair in colors
+      if node.color = pair.oldColor
+        node.color = pair.newColor
+        exit for
+      end if
+    end for
+  end if
+  for i = 0 to node.getChildCount() - 1
+    repaintThemeNodes(node.getChild(i), pairs)
+  end for
 end sub
 
 sub paintSceneWash(scene as Object, palette as Object)
