@@ -41,11 +41,10 @@ describe('plan helpers', () => {
     expect(styleUnlocked({ ...FALLBACK_PLAN, developer: true }, 'gold')).toBe(true);
   });
 
-  it('locks Synthwave until it is bought or developer mode is on', () => {
-    expect(themeUnlocked(FALLBACK_PLAN, 'default')).toBe(true);
-    expect(themeUnlocked(FALLBACK_PLAN, 'synthwave')).toBe(false);
-    expect(themeUnlocked({ ...FALLBACK_PLAN, synthwave: true }, 'synthwave')).toBe(true);
-    expect(themeUnlocked({ ...FALLBACK_PLAN, developer: true }, 'synthwave')).toBe(true);
+  it('offers only Light and Dark regardless of legacy entitlements', () => {
+    expect(themeUnlocked(FALLBACK_PLAN, 'light')).toBe(true);
+    expect(themeUnlocked(FALLBACK_PLAN, 'dark')).toBe(true);
+    expect(themeUnlocked({ ...FALLBACK_PLAN, developer: true, synthwave: true }, 'synthwave')).toBe(false);
   });
 
   it('reports 4K when the plan allows 2160', () => {
@@ -65,7 +64,7 @@ describe('plan helpers', () => {
     expect(cardholderLooksValid('A')).toBe(false);
   });
 
-  it('applies plan and style to the document', () => {
+  it('applies access data without restoring an obsolete style', () => {
     const plan: PlanStatus = { ...FALLBACK_PLAN, id: 'ultra', styleId: 'ember', styleIds: ['classic', 'ember'] };
     const root = { dataset: {} as Record<string, string> };
     (globalThis as { document?: { documentElement: { dataset: Record<string, string> } } }).document = {
@@ -73,6 +72,6 @@ describe('plan helpers', () => {
     };
     applyPlanClass(plan);
     expect(root.dataset.plan).toBe('ultra');
-    expect(root.dataset.style).toBe('ember');
+    expect(root.dataset.style).toBeUndefined();
   });
 });

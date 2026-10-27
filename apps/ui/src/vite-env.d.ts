@@ -15,6 +15,7 @@ type TvmNativePlayerEvent =
 type TvmServiceEvent = { type: 'started'; title: string } | { type: 'closed' } | { type: 'error'; message: string };
 
 interface Window {
+  tvmDownloads?: import('./data/downloads').DownloadBridge;
   tvmNativePlayer?: {
     start(input: { url: string; title: string; startAt?: number }): Promise<{ ok: true }>;
     command(command: TvmNativePlayerCommand): Promise<void>;

@@ -2880,6 +2880,14 @@ html.tvm-native-playback .player--native .player__stage {
   background: transparent;
 }
 
+/* Only the active overlay belongs above the native video plane. Keeping
+   catalogue contents visible here painted the details page over the film. */
+html.tvm-native-playback .app__screen[inert],
+html.tvm-native-playback .modal-layer[inert],
+html.tvm-native-playback .tvm-scene,
+html.tvm-native-playback .rt-set,
+html.tvm-native-playback .anime-stage { visibility: hidden; }
+
 .player__stage {
   position: absolute;
   inset: 0;
@@ -3938,3 +3946,13 @@ html.phone-shell body {
   height: 100dvh;
   min-height: 100dvh;
 }
+
+/* Scale artwork into the space above it, leaving its own title/year clear. */
+.poster .poster__art { transform-origin: bottom center; }
+.poster[data-focused='true'] .poster__art,
+.home .poster[data-focused='true'] .poster__art {
+  transform: translateY(-.12rem) scale(1.015);
+  box-shadow: 0 .45rem 1rem #0005;
+}
+.poster .poster__meta { position: relative; z-index: 1; }
+.rail { contain: layout style; }

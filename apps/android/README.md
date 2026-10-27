@@ -1,10 +1,10 @@
 # TVM for Android
 
-Native Kotlin / WebView client for TVM Core. Same LAN contract as the iOS app: `POST /api/lan/session` with `Authorization: Bearer <TVM_LAN_TOKEN>` mints the HttpOnly `tvm_lan_session` cookie; `DELETE` revokes it. The bearer is never written into the WebView. Credentials are stored in EncryptedSharedPreferences.
+Standalone Kotlin / WebView app with bundled UI and an on-device Core. Optional home-Core pairing uses `POST /api/lan/session` with `Authorization: Bearer <TVM_LAN_TOKEN>` to mint an HttpOnly `tvm_lan_session` cookie; `DELETE` revokes it. The bearer is never written into the WebView. Credentials are stored in EncryptedSharedPreferences.
 
-The app does not contain Core. It loads the shared `apps/ui` interface from your TVM computer on a trusted network. Phone layout comes from `apps/ui/src/theme/mobile.css`. The WebView injects `viewport-fit=cover` and a `visualViewport` keyboard helper so form fields stay above the IME; pinch zoom is off; DOM clicks and overlay taps are not intercepted. There is no JavascriptInterface.
+The app serves its bundled `apps/ui` interface from loopback and checks the verified UI update feed on launch. Native Kotlin changes require a new APK. Phone layout comes from `apps/ui/src/theme/mobile.css`. The WebView injects `viewport-fit=cover` and a `visualViewport` keyboard helper so form fields stay above the IME; pinch zoom is off; DOM clicks and overlay taps are not intercepted.
 
-This is not a Play Store app. Core must be started with `TVM_CORE_BIND=0.0.0.0` and a unique `TVM_LAN_TOKEN` of at least 32 characters.
+This is not a Play Store app. Home-Core pairing needs `TVM_CORE_BIND=0.0.0.0` and a unique `TVM_LAN_TOKEN` of at least 32 characters on the computer.
 
 ## Source tree
 

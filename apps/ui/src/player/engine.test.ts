@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { absolutePosition, attachKindFor, createPlayerEngine, displayDuration, withinSessionWindow, STARTUP_TIMEOUT_MS, STALL_TIMEOUT_MS, STALLED_ERROR, type EngineStream } from './engine';
+import { absolutePosition, attachKindFor, createPlayerEngine, displayDuration, hlsConfig, withinSessionWindow, STARTUP_TIMEOUT_MS, STALL_TIMEOUT_MS, STALLED_ERROR, type EngineStream } from './engine';
 import { attachedHls } from './hlsBridge';
 
 const fakeHls = vi.hoisted(() => {
@@ -11,6 +11,7 @@ const fakeHls = vi.hoisted(() => {
     listeners = new Map<string, (...args: unknown[]) => void>();
     levels = [{ height: 480 }, { height: 720 }, { height: 1080 }];
     autoLevelCapping = -1;
+    startLevel = -1;
     destroy = vi.fn();
     loadSource = vi.fn();
     attachMedia = vi.fn();
@@ -55,9 +56,15 @@ function setup(source = stream, options = {}) {
 }
 
 beforeEach(() => { fakeHls.instances = []; });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('attach kind', () => {
+  it('never catches a converted film up to a live edge or nudges its playhead', () => {
+    expect(hlsConfig(false, 120)).toMatchObject({ startPosition: 120, lowLatencyMode: false, liveMaxLatencyDuration: Infinity, maxLiveSyncPlaybackRate: 1, nudgeOffset: 0, nudgeMaxRetry: 0, nudgeOnVideoHole: false });
+    expect(hlsConfig(false, 0).capLevelToPlayerSize).toBe(false);
+    expect(hlsConfig(true, 0).liveSyncDuration).toBeUndefined();
+    expect(hlsConfig(true, 0).nudgeMaxRetry).toBeUndefined();
+  });
   it('routes by explicit transport first', () => {
     expect(attachKindFor({ mimeType: 'video/mp4', url: '/api/stream/hls/a/index.m3u8', transport: 'hls-session' }, false)).toBe('hls');
     expect(attachKindFor({ mimeType: 'video/mp2t', url: '/api/live/stream/x', transport: 'ts-live' }, true)).toBe('ts-live');
@@ -114,6 +121,7 @@ describe('playback lifecycle', () => {
   });
 
   it('prefers native HLS on iPhone and restores the requested position', async () => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1' });
     const { video, engine } = setup({ ...stream, transport: 'hls', mimeType: 'application/vnd.apple.mpegurl', url: '/film.m3u8' }, { startAt: 180 });
     video.canPlayType.mockReturnValue('probably');
     engine.attach();
@@ -131,9 +139,13 @@ describe('playback lifecycle', () => {
     await vi.dynamicImportSettled();
     const instance = fakeHls.instances[0]!;
     expect(instance.config.startPosition).toBe(0);
+    expect(instance.config.autoStartLoad).toBe(false);
+    expect(instance.startLoad).not.toHaveBeenCalled();
     expect(attachedHls(video as unknown as HTMLVideoElement)).toBe(instance);
     instance.listeners.get('manifest')?.();
     expect(instance.autoLevelCapping).toBe(1);
+    expect(instance.startLevel).toBe(1);
+    expect(instance.startLoad).toHaveBeenCalledExactlyOnceWith(0);
     engine.destroy();
     expect(attachedHls(video as unknown as HTMLVideoElement)).toBeNull();
     expect(instance.destroy).toHaveBeenCalledOnce();
@@ -216,13 +228,42 @@ describe('playback lifecycle', () => {
     engine.destroy();
   });
 
-  it('surfaces a rejected browser play promise instead of leaving loading active', async () => {
+  it('retries one rejected startup before reporting a terminal error', async () => {
+    vi.useFakeTimers();
     const { video, events, engine } = setup();
     video.play.mockRejectedValue(new DOMException('Unsupported source', 'NotSupportedError'));
     engine.attach();
-    await vi.waitFor(() => expect(events.onError).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(video.load).toHaveBeenCalledTimes(2);
+    expect(events.onError).toHaveBeenCalledOnce();
     expect(events.onBuffering).toHaveBeenLastCalledWith(false);
     engine.destroy();
+  });
+
+  it('recovers a cold first request without exposing a playback error', async () => {
+    vi.useFakeTimers();
+    const { video, events, engine } = setup();
+    video.play.mockRejectedValueOnce(new DOMException('Cold source', 'NotSupportedError'));
+    engine.attach();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(video.play).toHaveBeenCalledTimes(2);
+    video.dispatchEvent(new Event('playing'));
+    expect(events.onFirstFrame).toHaveBeenCalledOnce();
+    expect(events.onError).not.toHaveBeenCalled();
+    engine.destroy();
+  });
+
+  it('cancels a pending startup reload when leaving the player', async () => {
+    vi.useFakeTimers();
+    const { video, events, engine } = setup();
+    video.play.mockRejectedValue(new DOMException('Cold source', 'NotSupportedError'));
+    engine.attach();
+    await vi.advanceTimersByTimeAsync(10);
+    engine.destroy();
+    const loads = video.load.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(video.load).toHaveBeenCalledTimes(loads);
+    expect(events.onError).not.toHaveBeenCalled();
   });
 
   it('bounds HLS network recovery to one retry and stops loading on fatal failure', async () => {

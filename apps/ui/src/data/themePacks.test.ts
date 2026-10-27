@@ -8,10 +8,10 @@ describe('paid theme checkout', () => {
     expect(checkoutQuote(plan,'free',false,false,true,'theme-bundle').oneTimePence).toBe(999);
     expect(checkoutQuote({...plan,bundleOwned:true},'free',false,false,true,'anime').oneTimePence).toBe(0);
   });
-  it('keeps free packs available and requires the matching entitlement or bundle', () => {
+  it('keeps retired packs unavailable even with a stored entitlement', () => {
     expect(themeUnlocked(FALLBACK_PLAN,'light')).toBe(true);
     expect(themeUnlocked({...FALLBACK_PLAN,synthwave:true},'anime')).toBe(false);
     expect(themeUnlocked({...FALLBACK_PLAN,anime:true},'synthwave')).toBe(false);
-    for(const id of ['anime','synthwave']) { expect(themeUnlocked({...FALLBACK_PLAN,bundle:true},id)).toBe(true); expect(themeUnlocked({...FALLBACK_PLAN,developer:true},id)).toBe(true); }
+    for(const id of ['anime','synthwave']) { expect(themeUnlocked({...FALLBACK_PLAN,bundle:true},id)).toBe(false); expect(themeUnlocked({...FALLBACK_PLAN,developer:true},id)).toBe(false); }
   });
 });

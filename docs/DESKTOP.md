@@ -1,4 +1,4 @@
-# TVM on Linux and macOS
+# TVM desktop packages
 
 TVM’s desktop shell is the same Electron app on Windows, Linux and macOS. Core
 still binds `127.0.0.1` by default. A Roku or phone on the LAN is the only
@@ -83,8 +83,9 @@ If a start fails, the launcher prints the last lines of those logs.
 ## 3. GitHub desktop package
 
 The [Desktop release](https://github.com/GL-327/TVM/releases/tag/desktop)
-publishes one file, `TVM-desktop.zip`: built core and interface, no Electron
-binary. Extract it and start it the way that system does.
+publishes `TVM-desktop.zip`: built core and interface, with a bundled Node
+runtime for Windows. Extract it and start it the way that system does. GitHub's
+“Source code (zip)” is a source checkout and requires Node.js, pnpm, and a build.
 
 ```bash
 unzip TVM-desktop.zip -d TVM
@@ -93,7 +94,8 @@ chmod +x launch-tvm.sh TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command
 ./TVM.sh
 ```
 
-On Windows double-click `TVM.cmd`; on macOS right-click `TVM.command` and
+On Windows double-click `TVM.cmd`; no separate Node install is needed for the
+release zip. On macOS right-click `TVM.command` and
 choose Open, which macOS requires the first time.
 
 An extracted package is an **install**: Core serves the interface on port

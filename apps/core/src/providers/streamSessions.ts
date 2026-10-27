@@ -220,6 +220,7 @@ export function createStreamSessions(options: StreamSessionOptions): StreamSessi
       const text = readPlaylist(state);
       if (state.encoder !== 'libx264' && sessions.has(state.id) && (text === null || !playlistReady(text))) {
         state.encoder = 'libx264';
+        state.gen += 1; // Never reuse a failed encoder's partial init/segments.
         launch(state);
       }
     });
@@ -362,8 +363,8 @@ export function createStreamSessions(options: StreamSessionOptions): StreamSessi
         if (state === null) return null;
         const text = readPlaylist(state);
         if (text !== null && playlistReady(text)) return text;
-        if (state.ended && state.proc === null) return text;
-        if (now() >= deadline) return text;
+        if (state.ended && state.proc === null) return null;
+        if (now() >= deadline) return null;
         await sleep(200);
       }
     },

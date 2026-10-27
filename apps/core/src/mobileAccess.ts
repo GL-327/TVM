@@ -20,5 +20,5 @@ export function mobilePlanAllowed(plan: { id: string; maxHeight: number }): bool
 
 export function mobilePlaybackBlocked(request: IncomingMessage, path: string, plan: { id: string; maxHeight: number }): boolean {
   const mobile = /TVM-iOS|TVM-Android|iPhone|iPad|iPod|Android/i.test(request.headers['user-agent'] ?? '');
-  return mobile && !mobilePlanAllowed(plan) && (path === '/api/playback' || path.startsWith('/api/stream/'));
+  return mobile && !mobilePlanAllowed(plan) && (path === '/api/playback' || path === '/api/downloads/resolve' || path.startsWith('/api/stream/'));
 }

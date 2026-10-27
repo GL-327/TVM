@@ -19,6 +19,7 @@ out="$repo/dist-release"
 rm -rf "$stage"
 mkdir -p "$stage/core" "$stage/ui"
 cp -r "$repo/apps/core/dist/." "$stage/core/"
+cp "$repo/apps/core/package.json" "$stage/core/package.json"
 cp -r "$repo/apps/ui/dist/." "$stage/ui/"
 
 tar_name="tvm-app-${version}.tar.gz"

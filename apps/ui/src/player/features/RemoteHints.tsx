@@ -35,6 +35,7 @@ export interface RemoteHintsProps {
   live?: boolean;
   /** Force-hide (fatal error chrome, blocking pickers). */
   hidden?: boolean;
+  controlsVisible?: boolean;
   /** PlayerRoot spreads the session; these fields drive first-play timing. */
   mediaId?: string;
   engine?: string;
@@ -97,6 +98,7 @@ function resolveReady(props: RemoteHintsProps): boolean {
 }
 
 function resolveHidden(props: RemoteHintsProps): boolean {
+  if (props.controlsVisible === false) return true;
   if (props.hidden === true) return true;
   if (props.error != null && props.error !== '') return true;
   if (props.overlay != null) return true;

@@ -107,11 +107,32 @@ export const STARTUP_TIMEOUT_MS = 45_000;
 export const STALL_TIMEOUT_MS = 30_000;
 export const STALLED_ERROR = 'Playback stalled. The source stopped sending playable video. Press Retry, or Back to choose another title.';
 
-function hlsConfig(live: boolean, startAt: number): Partial<HlsConfig> {
-  const config: Partial<HlsConfig> = { enableWorker: true, maxBufferLength: 30, backBufferLength: 60 };
+export function preferNativeHls(userAgent: string): boolean {
+  // Chromium may advertise HLS support while its demuxer rejects fMP4 EVENT
+  // playlists. Safari's native HLS is intentional; desktop Chromium uses MSE.
+  return /AppleWebKit/i.test(userAgent) && !/Chrome|Chromium|Electron|Edg\//i.test(userAgent);
+}
+
+export function hlsConfig(live: boolean, startAt: number): Partial<HlsConfig> {
+  const config: Partial<HlsConfig> = { enableWorker: true, maxBufferLength: 30, backBufferLength: 60, capLevelToPlayerSize: false };
   // A growing server conversion looks live to HLS. Always start VOD at its
   // requested position, including zero, instead of chasing the produced edge.
-  if (!live) config.startPosition = Math.max(0, startAt);
+  if (!live) Object.assign(config, {
+    autoStartLoad: false,
+    startPosition: Math.max(0, startAt),
+    lowLatencyMode: false,
+    // EVENT playlists are growing conversions of a film, not broadcasts.
+    // Keep the live sync target at the beginning and never chase its edge.
+    liveSyncDuration: Number.MAX_SAFE_INTEGER,
+    liveMaxLatencyDuration: Infinity,
+    maxLiveSyncPlaybackRate: 1,
+    liveSyncOnStallIncrease: 0,
+    // A stalled decoder must recover at its current position; repeatedly
+    // nudging currentTime forwards was visibly skipping pieces of the film.
+    nudgeOffset: 0,
+    nudgeMaxRetry: 0,
+    nudgeOnVideoHole: false,
+  });
   return config;
 }
 
@@ -186,7 +207,7 @@ export function createPlayerEngine(
   if (nativePlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
   // Windows and macOS can hand Matroska and other browser-blind files to mpv.
   // Playable MP4/HLS stays in <video> so a machine without mpv still watches.
-  if (!html5CanAttach(stream) && desktopPlaybackBridge() !== undefined) {
+  if ((stream.engine === 'native' || !html5CanAttach(stream)) && desktopPlaybackBridge() !== undefined) {
     return createDesktopPlayerEngine({ ...stream, engine: 'native' }, options, events);
   }
   if (stream.engine === 'native') return createMissingNativeEngine(events);
@@ -209,6 +230,9 @@ export function createPlayerEngine(
   let seekRestartPending = false;
   let pendingSeek: number | null = null;
   let requestedSeek: number | null = null;
+  let fileGeneration = 0;
+  let startupReloaded = false;
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
   const requests = new AbortController();
   let keepAlive: ReturnType<typeof setInterval> | null = null;
   let watchdog: ReturnType<typeof setInterval> | null = null;
@@ -269,7 +293,9 @@ export function createPlayerEngine(
 
   const tryPlay = (): void => {
     if (destroyed || failed || !wantsPlayback || !video.paused) return;
+    const generation = fileGeneration;
     void video.play().catch((reason: unknown) => {
+      if (generation !== fileGeneration) return;
       const name = reason !== null && typeof reason === 'object' && 'name' in reason ? String(reason.name) : '';
       if (name === 'AbortError' || destroyed || failed || !wantsPlayback) return;
       if (name === 'NotAllowedError' && !video.muted) {
@@ -277,6 +303,7 @@ export function createPlayerEngine(
         void video.play().catch(() => fail('The browser blocked playback. Press Retry to start, or Back to leave.'));
         return;
       }
+      if (name !== 'NotAllowedError' && recoverFileStartup()) return;
       fail(name === 'NotAllowedError' ? 'The browser blocked playback. Press Retry to start, or Back to leave.' : GENERIC_START_ERROR);
     });
   };
@@ -302,7 +329,7 @@ export function createPlayerEngine(
     restartedNetwork = false;
     // WKWebView's native HLS handles cookies, AirPlay and hardware decoding.
     // A recent iPhone may also expose MSE; prefer native support explicitly.
-    if (video.canPlayType?.('application/vnd.apple.mpegurl')) {
+    if (video.canPlayType?.('application/vnd.apple.mpegurl') && preferNativeHls(typeof navigator === 'undefined' ? '' : navigator.userAgent)) {
       video.src = sessionUrl();
       on('loadedmetadata', () => {
         if (!live) video.currentTime = isSession ? 0 : startPosition;
@@ -322,12 +349,18 @@ export function createPlayerEngine(
       hls = instance;
       instance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (destroyed || failed || hls !== instance) return;
-        const maxHeight = options.maxHeight;
-        if (maxHeight !== undefined) {
-          const allowed = instance.levels.map((level, index) => ({ level, index }))
-            .filter(({ level }) => level.height <= maxHeight);
-          instance.autoLevelCapping = allowed.at(-1)?.index ?? 0;
-        }
+        const maxHeight = options.maxHeight ?? Infinity;
+        const allowed = instance.levels.map((level, index) => ({ level, index }))
+          .filter(({ level }) => level.height <= maxHeight);
+        const best = allowed.reduce<typeof allowed[number] | null>((winner, row) =>
+          winner === null || row.level.height > winner.level.height ||
+          (row.level.height === winner.level.height && row.level.bitrate > winner.level.bitrate)
+            ? row : winner, null);
+        instance.autoLevelCapping = best?.index ?? 0;
+        // Choose startup quality before allowing the first fragment request.
+        // ABR may still step down when bandwidth cannot sustain this level.
+        if (!live && best !== null) instance.startLevel = best.index;
+        if (!live) instance.startLoad(isSession ? 0 : startPosition);
         tryPlay();
       });
       instance.on(Hls.Events.ERROR, (_event, data) => {
@@ -413,8 +446,7 @@ export function createPlayerEngine(
   };
 
   const attachFile = (): void => {
-    video.src = stream.url;
-    video.load();
+    fileGeneration += 1;
     const startAt = options.startAt ?? 0;
     if (!live && startAt > 0) {
       let resumed = false;
@@ -425,9 +457,27 @@ export function createPlayerEngine(
         tryPlay();
       };
       on('loadedmetadata', seekOnce);
+      video.src = stream.url;
+      video.load();
       return;
     }
+    video.src = stream.url;
+    video.load();
     tryPlay();
+  };
+
+  const recoverFileStartup = (): boolean => {
+    if (kind !== 'file' || live || sawFrame || startupReloaded || destroyed || failed) return false;
+    startupReloaded = true;
+    fileGeneration += 1; // Ignore play promises belonging to the failed load.
+    events.onBuffering(true);
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      if (destroyed || failed) return;
+      lastProgressAt = Date.now();
+      attachFile();
+    }, 900);
+    return true;
   };
 
   const sessionSeek = async (target: number): Promise<void> => {
@@ -546,6 +596,7 @@ export function createPlayerEngine(
       on('error', () => {
         if (hls !== null || ts !== null) return; // engine-level handlers own MSE errors
         if (video.error === null) return;
+        if (reloadTimer !== null || recoverFileStartup()) return;
         fail(GENERIC_START_ERROR);
       });
 
@@ -569,6 +620,7 @@ export function createPlayerEngine(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      if (reloadTimer !== null) clearTimeout(reloadTimer);
       requests.abort();
       if (watchdog !== null) {
         clearInterval(watchdog);

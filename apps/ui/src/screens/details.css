@@ -430,3 +430,8 @@
   display: none;
   animation: none;
 }
+
+.episode-download-row { display: flex; align-items: center; gap: .8rem; width: min(58rem, 100%); }
+.details .episode-download-row .episode-item { min-width: 0; flex: 1; width: auto; }
+.episode-download-row__action { flex: 0 0 auto; font-size: .78rem; min-height: 2.7rem; padding: .6rem .9rem; }
+@media (max-width: 650px) { .episode-download-row { flex-wrap: wrap; gap: .4rem; padding-bottom: .8rem; } .details .episode-download-row .episode-item { flex-basis: 100%; } }

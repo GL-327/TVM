@@ -56,6 +56,7 @@ export class NativePlayerHost {
   private level = 1;
   private muted = false;
   private rate = 1;
+  private generation = 0;
 
   constructor(window: BrowserWindow) {
     this.window = window;
@@ -78,13 +79,16 @@ export class NativePlayerHost {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only HTTP(S) streams can be played.');
 
     this.stop(false);
+    const generation = this.generation;
     this.stopping = false;
     this.connectAttempt = 0;
     this.mpv = initialMpvState(input.startAt);
+    this.lineBuffer = '';
+    this.lastStateSentAt = 0;
 
     const pipe = ipcPath();
     const executable = await ensureMpvExecutable();
-    if (this.stopping) return { ok: true };
+    if (this.stopping || generation !== this.generation) return { ok: true };
     if (executable === undefined) throw new Error('mpv missing');
 
     const host = this.createVideoHost();
@@ -114,19 +118,19 @@ export class NativePlayerHost {
       });
     } catch {
       if (this.child === child) this.child = null;
-      this.destroyVideoHost();
+      if (generation === this.generation) this.destroyVideoHost();
       throw new Error('mpv missing');
     }
-    if (this.stopping || this.child !== child) {
+    if (this.stopping || generation !== this.generation || this.child !== child) {
       if (this.child === child) this.child = null;
       if (child.exitCode === null) child.kill();
-      this.destroyVideoHost();
+      if (generation === this.generation) this.destroyVideoHost();
       return { ok: true };
     }
 
     this.attachOverlay();
     this.send({ type: 'started', title: input.title });
-    this.connect(pipe);
+    this.connect(pipe, generation);
     child.once('error', () => {
       if (this.child !== child || this.stopping) return;
       this.child = null;
@@ -181,6 +185,7 @@ export class NativePlayerHost {
   }
 
   stop(notify = true): void {
+    this.generation += 1;
     const hadSession = this.child !== null || this.videoHost !== null;
     this.stopping = true;
     this.write(['quit']);
@@ -273,28 +278,29 @@ export class NativePlayerHost {
     this.videoHost.show();
   }
 
-  private connect(pipe: string): void {
-    if (this.stopping || this.child === null) return;
+  private connect(pipe: string, generation: number): void {
+    if (this.stopping || generation !== this.generation || this.child === null) return;
     this.connectAttempt += 1;
     const socket = createConnection(pipe);
     const onConnectError = (): void => {
       socket.destroy();
+      if (generation !== this.generation || this.stopping) return;
       if (this.connectAttempt >= 60 || this.child === null || this.stopping) {
         this.showError('The native player started but TVM could not connect to its controls.');
         return;
       }
-      setTimeout(() => this.connect(pipe), 100).unref();
+      setTimeout(() => this.connect(pipe, generation), 100).unref();
     };
     socket.once('connect', () => {
       socket.removeListener('error', onConnectError);
-      if (this.stopping) {
+      if (this.stopping || generation !== this.generation) {
         socket.destroy();
         return;
       }
       this.socket = socket;
       this.connectAttempt = 0;
       socket.setEncoding('utf8');
-      socket.on('data', (chunk: string) => this.onData(chunk));
+      socket.on('data', (chunk: string) => { if (generation === this.generation) this.onData(chunk); });
       socket.on('error', () => {
         if (this.socket === socket) this.socket = null;
       });
@@ -334,7 +340,10 @@ export class NativePlayerHost {
           continue;
         }
         const now = Date.now();
-        if (now - this.lastStateSentAt < 250 && !this.mpv.pausedForCache) continue;
+        // Duration/pause/cache transitions must not be swallowed behind the
+        // clock throttle. A paused first frame may have no later time-pos
+        // event to deliver them, leaving the UI at unknown time indefinitely.
+        if (message.name === 'time-pos' && now - this.lastStateSentAt < 250 && !this.mpv.pausedForCache) continue;
         this.lastStateSentAt = now;
         this.send({
           type: 'state',

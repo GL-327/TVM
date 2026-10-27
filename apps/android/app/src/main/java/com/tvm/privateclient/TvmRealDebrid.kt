@@ -359,9 +359,10 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
             if (streams.isNotEmpty()) break
         }
         return streams.sortedWith(Comparator<RdStream> { left, right ->
+            if (left.quality != right.quality) return@Comparator right.quality.compareTo(left.quality)
             if (left.cached != right.cached) return@Comparator if (left.cached) -1 else 1
             if (left.phoneHint != right.phoneHint) return@Comparator if (left.phoneHint) -1 else 1
-            right.quality.compareTo(left.quality)
+            0
         })
     }
 

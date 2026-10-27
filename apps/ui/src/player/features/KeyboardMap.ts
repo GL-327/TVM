@@ -444,6 +444,7 @@ export function bindPlayerKeyboard(
   const listener = (raw: Event): void => {
     const event = raw as KeyboardEvent;
     const context = options.getContext?.() ?? readPlayerKeyboardContext();
+    if (context.root instanceof Element && context.root.closest('[inert]')) return;
     handlePlayerKeyDown(event, handlers, context, {
       seekStepSeconds: options.seekStepSeconds,
       volumeStep: options.volumeStep,

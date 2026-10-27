@@ -433,7 +433,9 @@ export function ProgressBar({
   }, [video, videoRef]);
 
   const time = currentTime ?? position ?? clock.time;
-  const length = duration ?? clock.duration;
+  // A session starts with duration=0 before metadata arrives. That is an
+  // unknown film length, never proof that it is a live broadcast.
+  const length = isSeekableDuration(duration ?? 0) ? duration! : clock.duration;
   const bufferEnd =
     buffered !== undefined ? bufferedEndSeconds(buffered, time, length) : clock.buffered + Math.max(0, time - clock.time);
   const display = scrub ?? time;
@@ -604,7 +606,7 @@ export function ProgressBar({
         aria-valuetext={
           seekable
             ? `${formatPlayerTime(display)} of ${formatPlayerTime(length)}`
-            : 'Live'
+            : resolvedLive ? 'Live' : 'Duration loading'
         }
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -635,7 +637,7 @@ export function ProgressBar({
           <span className="tvm-progress__remain">−{formatPlayerTime(remaining)}</span>
         </span>
       ) : (
-        <span className="tvm-progress__live">Live</span>
+        <span className="tvm-progress__live">{resolvedLive ? 'Live' : '—:—'}</span>
       )}
     </div>
   );

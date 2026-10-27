@@ -33,6 +33,8 @@ export const PLAYER_FOCUS_GRAPH = {
     'player-next-up',
   ] as const,
   extras: [
+    'player-settings',
+    'player-fullscreen',
     'player-cc',
     'player-audio',
     'player-quality',
@@ -241,13 +243,15 @@ function focusIsHealthy(player: HTMLElement): boolean {
   return control !== null && isSelectable(control);
 }
 
-function repairFocus(scope: string, player: HTMLElement, showControls?: () => void): void {
+function repairFocus(scope: string, player: HTMLElement): void {
+  // An idle player deliberately parks its controls. Repairing focus here
+  // immediately revealed them again on every class/disabled mutation.
+  if (player.querySelector('[data-player-root][data-controls="hidden"]') !== null &&
+      player.querySelector('[data-player-overlay="error"]') === null) return;
   if (focusIsHealthy(player)) return;
   const key = preferredFocusKey(scope, player);
   if (key === null || key === currentFocusKey()) return;
   requestFocus(key);
-  showControls?.();
-  window.dispatchEvent(new CustomEvent('tvm:user-activity'));
 }
 
 function stampStreamPage(): void {
@@ -285,7 +289,6 @@ export function FocusLayer(props: Partial<PlayerSession> = {}): null {
   const session = usePlayerSession();
   const scope = useFocusScope();
   const videoRef = props.videoRef ?? session?.videoRef;
-  const showControls = props.showControls ?? session?.showControls;
 
   useEffect(() => {
     const player = findPlayerHost();
@@ -298,7 +301,7 @@ export function FocusLayer(props: Partial<PlayerSession> = {}): null {
       applyPlayerFocusMap(player);
       if (player !== null) {
         disarmVideo(player, videoRef);
-        repairFocus(scope, player, showControls);
+        repairFocus(scope, player);
       }
     };
 
@@ -328,7 +331,7 @@ export function FocusLayer(props: Partial<PlayerSession> = {}): null {
     const onFocusIn = (event: FocusEvent): void => {
       if (event.target instanceof HTMLVideoElement) {
         event.target.blur();
-        if (player !== null) repairFocus(scope, player, showControls);
+        if (player !== null) repairFocus(scope, player);
       }
     };
     document.addEventListener('focusin', onFocusIn);
@@ -340,7 +343,7 @@ export function FocusLayer(props: Partial<PlayerSession> = {}): null {
       observer.disconnect();
       document.removeEventListener('focusin', onFocusIn);
     };
-  }, [scope, showControls, videoRef]);
+  }, [scope, videoRef]);
 
   return null;
 }

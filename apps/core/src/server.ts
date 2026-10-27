@@ -44,6 +44,7 @@ import { serveExactStatic, serveStatic } from './static.ts';
 import { resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
 import { readPrefs, writePrefs } from './prefs.ts';
+import { validDownloadPreferences } from './providers/downloadPreferences.ts';
 
 export { CORE_VERSION };
 
@@ -910,6 +911,29 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/downloads/resolve' && request.method === 'POST') {
+    const body = await readJson(request) as { id?: unknown; preferences?: unknown };
+    if (typeof body.id !== 'string' || body.id.length > 512 || body.id.startsWith('live:') ||
+        !validDownloadPreferences(body.preferences)) {
+      sendJson(response, 400, { error: 'Choose a film or episode and valid download options.' });
+      return true;
+    }
+    if (plans.hoursBlocked()) {
+      sendJson(response, 409, { error: 'Your viewing allowance has been reached.' });
+      return true;
+    }
+    const result = await media.play({ id: body.id, download: body.preferences });
+    if (result.kind !== 'stream' || result.transport === 'hls' || /mpegurl/i.test(result.mimeType)) {
+      sendJson(response, 409, { error: result.kind === 'unavailable' && result.reason === 'not-configured'
+        ? 'Connect your media account in Settings to download this title.'
+        : 'No downloadable file matches these options. Try another language or quality.' });
+    } else {
+      const token = streamer.direct.mint(result.url, 'application/octet-stream');
+      sendJson(response, 200, { url: result.url, browserUrl: `/api/stream/direct/${token}`, filename: result.filename });
+    }
+    return true;
+  }
+
   if (path === '/api/playback' && request.method === 'POST') {
     const body = (await readJson(request)) as {
       id?: unknown;
@@ -917,6 +941,8 @@ async function handleApi(
       title?: unknown;
       season?: unknown;
       episode?: unknown;
+      startAt?: unknown;
+      native?: unknown;
     };
     const id = typeof body.id === 'string' ? body.id : undefined;
     if (id !== undefined && !id.startsWith('live:') && plans.hoursBlocked()) {
@@ -937,6 +963,8 @@ async function handleApi(
             title: typeof body.title === 'string' ? body.title : undefined,
             season: typeof body.season === 'number' ? body.season : undefined,
             episode: typeof body.episode === 'number' ? body.episode : undefined,
+            startAt: typeof body.startAt === 'number' && Number.isFinite(body.startAt) ? Math.max(0, body.startAt) : undefined,
+            native: body.native === true,
           });
     // Routing Real-Debrid media through Core re-buffers every byte in Node and
     // was the desktop play→buffer loop. Live channels already come back as
@@ -1843,7 +1871,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const addr = server.address();
       const listenPort = addr !== null && typeof addr === 'object' ? addr.port : resolvePort(env);
 
-      if ((path === '/api/playback' || path.startsWith('/api/stream/')) && mobilePlaybackBlocked(request, path, plans.status())) {
+      if ((path === '/api/playback' || path === '/api/downloads/resolve' || path.startsWith('/api/stream/')) && mobilePlaybackBlocked(request, path, plans.status())) {
         sendJson(response, 403, { kind: 'unavailable', reason: 'mobile-plan-required', error: 'Mobile viewing requires Basic or higher with at least 1080p.' });
         return;
       }

@@ -641,20 +641,21 @@ test('Plans explains access without taking a card', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
-  await expect(page.getByText(/nothing to buy/i)).toBeVisible();
+  await expect(page.locator('.page__lede')).toContainText('nothing to buy');
   await expect(page.locator('[data-focus-id="card-name"], [data-focus-id="pay"], [data-focus-id="checkout-consent"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
   await expect(page.getByText(/it gives you nothing/i)).toBeVisible();
 });
 
-test('Privacy controls and Retro reduced motion are reachable', async ({ page }) => {
-  await page.route('**/api/plan', (route) => route.fulfill({ json: { ...E2E_PLAN, synthwave: true, synthwaveOwned: true } }));
+test('Retired themes fall back to Dark; privacy and motion are reachable', async ({ page }) => {
   await page.evaluate((bootKey) => { localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem(bootKey, '1'); }, THEME_DEFAULT_BOOT);
   await page.reload();
   await waitForFocus(page);
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'synthwave');
-  await page.screenshot({ path: '../../cache/retro-preview.png', animations: 'disabled' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await pressUntil(page, 'settings'); await page.keyboard.press('Enter'); await waitForFocus(page);
+  await expect(page.locator('[data-focus-id^="theme-"]')).toHaveCount(2);
+  await expect(page.locator('[data-focus-id="theme-light"]')).toBeVisible();
+  await expect(page.locator('[data-focus-id="theme-dark"]')).toBeVisible();
   await pressUntil(page, 'motion'); await page.keyboard.press('Enter');
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
   await pressUntil(page, 'privacy'); await page.keyboard.press('Enter'); await waitForFocus(page);
@@ -790,4 +791,239 @@ test('Live TV asks for a login until configured, and Back returns Home', async (
   await pressUntil(page, 'live-back');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
+});
+
+test('a cold first video request recovers and idle chrome stays hidden', async ({ page }) => {
+  let requests = 0;
+  const sample = readFileSync(new URL('./sample.mp4', import.meta.url));
+  await page.route('**/cold-video.mp4', (route) => {
+    requests += 1;
+    return requests === 1 ? route.fulfill({ status: 503, body: 'warming up' }) : route.fulfill({ contentType: 'video/mp4', body: sample });
+  });
+  await page.unroute('**/api/playback');
+  await page.route('**/api/playback', (route) => route.fulfill({ json: {
+    kind: 'stream', url: 'http://127.0.0.1:15173/cold-video.mp4', title: 'Dune', filename: 'dune.mp4', mimeType: 'video/mp4', engine: 'html5', transport: 'file',
+  } }));
+  await enterTvmStream(page);
+  await page.locator('[data-focus-id="films-tt0816692-0"]').click();
+  await expect(page.locator('[data-screen="details"]')).toBeVisible();
+  await page.locator('[data-focus-id="play"]').click();
+  const video = page.locator('video.player__video');
+  await expect(video).toHaveCount(1);
+  // Stretch the two-second fixture beyond the idle window. Loop boundaries
+  // legitimately buffer and reveal chrome, unlike an uninterrupted film.
+  await video.evaluate((node: HTMLVideoElement) => { node.loop = true; node.defaultPlaybackRate = 0.1; });
+  await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => video.evaluate((node: HTMLVideoElement) => !node.paused && node.readyState >= 2)).toBe(true);
+  await video.evaluate((node: HTMLVideoElement) => { node.playbackRate = 0.1; });
+  await page.mouse.move(640, 340);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden', { timeout: 10_000 });
+  await page.waitForTimeout(1100);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden');
+  await expect(page.locator('.player-error')).toHaveCount(0);
+  await expect(page.locator('.player-remote-hints')).not.toBeVisible();
+  await page.screenshot({ path: '../../cache/player-idle-fixed.png' });
+  await page.mouse.move(660, 340);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'visible');
+  await page.locator('[data-focus-id="player-play"]').click();
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'true');
+  await expect.poll(() => page.locator('.cinema-chrome').evaluate((node) => Number(getComputedStyle(node).opacity))).toBe(1);
+  await page.waitForTimeout(350); // Let the entrance fade finish for visual review.
+  await page.screenshot({ path: '../../cache/player-controls-fixed.png' });
+  const titleSize = await page.locator('.cinema-chrome__now').evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+  expect(titleSize).toBeLessThan(40);
+  await page.locator('[data-focus-id="player-exit"]').click();
+  await expect(page.locator('[data-screen="details"]')).toBeVisible();
+});
+
+test('downloads select a full series or one episode with language, quality and folder', async ({ page }) => {
+  await page.evaluate(() => {
+    const captured: unknown[] = [];
+    (window as unknown as { capturedDownloads: unknown[] }).capturedDownloads = captured;
+    window.tvmDownloads = {
+      chooseFolder: async () => 'D:\\My movies', list: async () => [], onChanged: () => () => {},
+      enqueue: async (input) => { captured.push(input); return input.items.map((item, index) => ({ id: String(index), title: item.title, state: 'queued', bytes: 0, total: 0 })); },
+      cancel: async () => {}, show: async () => {},
+    };
+  });
+  await enterTvmStream(page);
+  await page.locator('[data-focus-id="shows-tt1230051-0"]').click();
+  await expect(page.locator('[data-screen="details"]')).toBeVisible();
+  await page.locator('[data-focus-id="download"]').click();
+  await expect(page.locator('[data-screen="downloads"]')).toBeVisible();
+  await expect(page.locator('[data-focus-id="download-start"]')).toBeDisabled();
+  await page.locator('[data-focus-id="download-language"]').selectOption('ja');
+  await page.locator('[data-focus-id="download-quality"]').selectOption('720');
+  await page.locator('[data-focus-id="download-folder"]').click();
+  await expect(page.getByText('D:\\My movies')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Take it with you.' })).toBeInViewport();
+  await expect.poll(() => page.locator('[data-screen="downloads"] .screen-content').evaluate((node) => Number(getComputedStyle(node).opacity))).toBe(1);
+  await page.screenshot({ path: '../../cache/download-options-fixed.png' });
+  await page.locator('[data-focus-id="download-start"]').click();
+  const inputs = await page.evaluate(() => (window as unknown as { capturedDownloads: Array<{ items: Array<{ id: string }>; directory: string; preferences: unknown }> }).capturedDownloads);
+  expect(inputs[0]?.items.map((item) => item.id)).toEqual(['tt1230051:1:1', 'tt1230051:1:2', 'tt1230051:2:1']);
+  expect(inputs[0]?.preferences).toEqual({ language: 'ja', maxHeight: 720 });
+  expect(inputs[0]?.directory).toBe('D:\\My movies');
+  await page.locator('[data-focus-id="downloads-close"]').click();
+  await page.locator('[data-focus-id="season-1"]').click();
+  await page.locator('[data-focus-id="download-ep-tt1230051:1:2"]').click();
+  await expect(page.locator('[data-focus-id="download-scope"]')).toHaveValue('episode');
+  await expect(page.locator('[data-focus-id="download-episode"]')).toHaveValue('tt1230051:1:2');
+  await page.locator('[data-focus-id="download-folder"]').click();
+  await page.locator('[data-focus-id="download-start"]').click();
+  const episode = await page.evaluate(() => (window as unknown as { capturedDownloads: Array<{ items: Array<{ id: string }> }> }).capturedDownloads[1]?.items);
+  expect(episode?.map((item) => item.id)).toEqual(['tt1230051:1:2']);
+});
+
+test('focused poster artwork leaves room for its label', async ({ page }) => {
+  await enterTvmStream(page);
+  await pressUntil(page, 'films-tt0816692-0');
+  const card = page.locator('[data-focus-id="films-tt0816692-0"]');
+  await expect.poll(async () => {
+    const art = await card.locator('.poster__art').boundingBox();
+    const label = await card.locator('.poster__meta').boundingBox();
+    return art && label ? art.y + art.height <= label.y + 1 : false;
+  }).toBe(true);
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect.poll(async () => {
+      const art = await card.locator('.poster__art').boundingBox();
+      const label = await card.locator('.poster__meta').boundingBox();
+      const heading = await page.locator('.rail').filter({ has: card }).locator('.rail__title').boundingBox();
+      return !!art && !!label && !!heading
+        && art.x >= 0 && art.x + art.width <= viewport.width + 1
+        && heading.y >= 0 && label.y + label.height <= viewport.height + 1;
+    }).toBe(true);
+  }
+});
+
+test('desktop recovery preserves position, never labels an unknown film Live, and hides parked controls', async ({ page }) => {
+  const requests: Array<{ native?: boolean; startAt?: number }> = [];
+  // A browser fixture has no mpv window behind the transparent document.
+  await page.addStyleTag({ content: 'html.tvm-native-playback { background: #04050a !important; }' });
+  await page.evaluate(() => {
+    const listeners = new Set<(event: TvmNativePlayerEvent) => void>();
+    const state = { starts: [] as number[], seeks: [] as number[], position: 73, paused: false, duration: 0, timer: 0 };
+    (window as unknown as { nativeRegression: typeof state }).nativeRegression = state;
+    const emit = (): void => { listeners.forEach((listener) => listener({ type: 'state', paused: state.paused, buffering: false, position: state.position, duration: state.duration })); };
+    window.tvmDesktop = { nativePlayback: true };
+    window.tvmNativePlayer = {
+      async start(input) {
+        state.starts.push(input.startAt ?? 0); state.position = input.startAt ?? 73; state.paused = false;
+        window.setTimeout(emit, 30);
+        if (state.starts.length === 1) window.setTimeout(() => listeners.forEach((listener) => listener({ type: 'error', message: 'Temporary source failure' })), 650);
+        else {
+          state.timer = window.setInterval(() => { if (!state.paused) state.position += .25; emit(); }, 250);
+          window.setTimeout(() => { state.duration = 3600; emit(); }, 1000);
+        }
+        return { ok: true };
+      },
+      async command(command) { if (command === 'pause') state.paused = true; if (command === 'play') state.paused = false; emit(); },
+      async seekTo(value) { state.seeks.push(value); state.position = value; emit(); },
+      async stop() { window.clearInterval(state.timer); },
+      async setVolume() {}, async setMuted() {}, async setRate() {},
+      onEvent(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    };
+  });
+  await page.unroute('**/api/playback');
+  await page.route('**/api/playback', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { kind: 'stream', url: 'https://media.example/original-hevc.mkv', filename: 'Film.2160p.HEVC.mkv', title: 'Dune', engine: 'native', transport: 'file', mimeType: 'application/octet-stream', startAt: requests.at(-1)?.startAt ?? 73 } });
+  });
+  await enterTvmStream(page);
+  await page.locator('[data-focus-id="films-tt0816692-0"]').click();
+  await page.locator('[data-focus-id="play"]').click();
+  await expect(page.locator('.tvm-progress__live')).toHaveText('—:—');
+  await expect(page.getByText('Live', { exact: true })).not.toBeVisible();
+  await expect.poll(() => requests.some((request) => request.startAt === 73)).toBe(true);
+  expect(requests[0]?.native).toBe(true);
+  expect(requests.at(-1)?.startAt).toBe(73);
+  await expect(page.locator('[data-focus-id="player-progress"]')).toHaveAttribute('aria-valuemax', '3600');
+  await expect(page.locator('.player-error')).toHaveCount(0);
+  await expect(page.locator('.app__screen[inert]')).toHaveCSS('visibility', 'hidden');
+  const play = page.locator('[data-focus-id="player-play"]');
+  await play.hover();
+  const box = await play.boundingBox();
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden', { timeout: 7000 });
+  await expect(page.locator('.cinema-chrome')).toHaveCSS('opacity', '0');
+  await page.waitForTimeout(1000);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden');
+  if (box) await page.mouse.move(box.x + box.width / 2 + 1, box.y + box.height / 2 + 1);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden');
+  await page.mouse.move(640, 300);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'visible');
+  await play.click();
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'true');
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: '../../cache/player-cinema-redesign.png' });
+  await play.click();
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'false');
+  expect(await page.evaluate(() => (window as unknown as { nativeRegression: { seeks: number[] } }).nativeRegression.seeks)).toEqual([]);
+  await play.click();
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'true');
+  for (const viewport of [{ width: 900, height: 600 }, { width: 375, height: 667 }]) {
+    await page.setViewportSize(viewport);
+    await expect(page.locator('.cinema-chrome')).toHaveCSS('opacity', '1');
+    const tools = page.locator(`[data-focus-id="player-play"], [data-focus-id="player-seek-back"], [data-focus-id="player-seek-fwd"], [data-focus-id="player-mute"], [data-focus-id="${viewport.width === 375 ? 'player-settings' : 'player-speed'}"], [data-focus-id="player-fullscreen"]`);
+    await expect.poll(async () => tools.evaluateAll((nodes) => nodes.every((node) => {
+      const box = node.getBoundingClientRect(); return box.width > 0 && box.left >= 0 && box.right <= window.innerWidth + 1 && box.top >= 0 && box.bottom <= window.innerHeight + 1;
+    }))).toBe(true);
+    if (viewport.width === 375) {
+      await expect(page.locator('.cinema-chrome__back svg')).toBeVisible();
+      await page.locator('[data-focus-id="player-settings"]').click();
+      await expect(page.locator('[data-focus-id="player-speed"]')).toBeVisible();
+      const settingsBox = await page.locator('.cinema-chrome__settings-panel').boundingBox();
+      expect(settingsBox && settingsBox.x >= 0 && settingsBox.x + settingsBox.width <= viewport.width + 1).toBeTruthy();
+    }
+    await page.screenshot({ path: `../../cache/player-cinema-${viewport.width}.png` });
+    if (viewport.width === 375) {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.cinema-chrome__settings-panel')).not.toBeVisible();
+      await expect(page.locator('[data-player-root]')).toHaveCount(1);
+    }
+  }
+});
+
+test('growing HLS films keep finite time and do not jump when paused or resumed', async ({ page }) => {
+  test.setTimeout(45_000);
+  const playlist = readFileSync(new URL('./fixtures/vod-event/index.m3u8', import.meta.url), 'utf8');
+  let started = 0;
+  await page.route('**/vod-event/**', async (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    if (name === 'index.m3u8') {
+      if (!started) started = Date.now();
+      const available = Math.min(16, 2 + Math.floor((Date.now() - started) / 2000));
+      const [header, ...segments] = playlist.split('#EXTINF:');
+      const body = `${header}${segments.slice(0, available).map((part) => `#EXTINF:${part.replace('#EXT-X-ENDLIST', '')}`).join('')}${available === 16 ? '#EXT-X-ENDLIST\n' : ''}`;
+      await route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body });
+    } else await route.fulfill({ contentType: name.endsWith('.m4s') ? 'video/iso.segment' : 'video/mp4', body: readFileSync(new URL(`./fixtures/vod-event/${name}`, import.meta.url)) });
+  });
+  await page.unroute('**/api/playback');
+  await page.route('**/api/playback', (route) => route.fulfill({ json: { kind: 'stream', url: 'http://127.0.0.1:15173/vod-event/index.m3u8', title: 'Dune', filename: 'film.mkv', engine: 'html5', mimeType: 'application/vnd.apple.mpegurl', transport: 'hls', startAt: 0, durationSeconds: 32 } }));
+  await enterTvmStream(page);
+  await page.locator('[data-focus-id="films-tt0816692-0"]').click();
+  await page.locator('[data-focus-id="play"]').click();
+  const video = page.locator('video.player__video');
+  try {
+    await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.currentTime), { timeout: 12000 }).toBeGreaterThan(1);
+  } catch (error) {
+    console.log('HLS diagnostics', await video.evaluate(async (node: HTMLVideoElement) => {
+      const path = '/src/player/hlsBridge.ts'; const module = await import(path); const hls = module.attachedHls(node);
+      return { ready: node.readyState, error: node.error?.message, time: node.currentTime, duration: node.duration, paused: node.paused, root: document.querySelector<HTMLElement>('[data-player-root]')?.dataset, details: hls?.latestLevelDetails ? { edge: hls.latestLevelDetails.edge, fragments: hls.latestLevelDetails.fragments.length, live: hls.latestLevelDetails.live } : null, state: hls?.streamController?.state };
+    })); throw error;
+  }
+  await expect(page.locator('[data-focus-id="player-progress"]')).toHaveAttribute('aria-valuemax', '32');
+  await expect(page.getByText('Live', { exact: true })).not.toBeVisible();
+  await video.evaluate((node: HTMLVideoElement) => { (window as unknown as { filmSeeks: number[] }).filmSeeks = []; node.addEventListener('seeking', () => (window as unknown as { filmSeeks: number[] }).filmSeeks.push(node.currentTime)); });
+  await page.mouse.move(640, 300);
+  await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden');
+  await page.mouse.move(660, 300);
+  await page.locator('[data-focus-id="player-play"]').click();
+  const pausedAt = await video.evaluate((node: HTMLVideoElement) => node.currentTime);
+  await page.waitForTimeout(1200);
+  expect(await video.evaluate((node: HTMLVideoElement) => node.currentTime)).toBeCloseTo(pausedAt, 1);
+  await page.locator('[data-focus-id="player-play"]').click();
+  await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.currentTime)).toBeGreaterThan(pausedAt + 3);
+  expect(await page.evaluate(() => (window as unknown as { filmSeeks: number[] }).filmSeeks)).toEqual([]);
+  await expect(page.locator('.player-error')).toHaveCount(0);
 });

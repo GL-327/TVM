@@ -1,4 +1,6 @@
-export type ThemeId = 'cinematic' | 'default' | 'light' | 'dark' | 'happy' | 'sunset' | 'heather' | 'glass' | 'synthwave' | 'anime';
+// Keep retired IDs in the type for old data and compatibility code. Only
+// values in THEMES are accepted by parseTheme or rendered by the app.
+export type ThemeId = 'light' | 'dark' | 'cinematic' | 'default' | 'happy' | 'sunset' | 'heather' | 'glass' | 'synthwave' | 'anime';
 
 export interface ThemeSpec {
   id: ThemeId;
@@ -7,31 +9,12 @@ export interface ThemeSpec {
   premium?: boolean;
 }
 
-/**
- * Cinematic is the look TVM ships with on a computer. Every earlier theme is
- * still here and still selectable — this changes which one you meet first,
- * not which ones exist.
- */
-export const DEFAULT_THEME: ThemeId = 'cinematic';
+export const DEFAULT_THEME: ThemeId = 'dark';
 
-/** Theme id stays `synthwave` for stored preferences and entitlements; the pack is sold as Retro. */
-export const SYNTHWAVE_THEME_NAME = 'Retro';
-
-/** Default is mint-and-navy. Retro is a paid 1970s/80s television-set pack. */
 export const THEMES: readonly ThemeSpec[] = [
-  { id: 'cinematic', name: 'Cinematic' },
-  { id: 'default', name: 'Original' },
   { id: 'light', name: 'Light' },
   { id: 'dark', name: 'Dark' },
-  { id: 'happy', name: 'Happy' },
-  { id: 'sunset', name: 'Sunset' },
-  { id: 'heather', name: 'Heather' },
-  { id: 'glass', name: 'Liquid Glass' },
-  { id: 'anime', name: 'Anime', premium: true },
-  { id: 'synthwave', name: SYNTHWAVE_THEME_NAME, premium: true },
 ];
-
-export const SYNTHWAVE_THEME: ThemeId = 'synthwave';
 
 const IDS: ReadonlySet<string> = new Set(THEMES.map((theme) => theme.id));
 

@@ -1,27 +1,10 @@
-import { DEFAULT_THEME, resolveTheme, type ThemeId } from './registry';
+import { resolveTheme, type ThemeId } from './registry';
 import { THEME_DEFAULT_BOOT } from './bootKey';
 
 import './palette.css';
-import './cinematic.css';
-import './default.css';
-import './happy.css';
 import './light.css';
 import './dark.css';
-import './sunset.css';
-import './heather.css';
 import './scene.css';
-import './glass/tokens.css';
-import './glass/home.css';
-import './glass/cards.css';
-import './glass/ribbon.css';
-import './glass/player.css';
-import './glass/apps.css';
-import './glass/search.css';
-import './glass/settings.css';
-import './glass/motion.css';
-import './glass/kit.css';
-import.meta.glob('./glass/*.css', { eager: true });
-import './synthwave.css';
 import './motion.css';
 import './mobile.css';
 
@@ -76,10 +59,6 @@ export function applyStoredTheme(): ThemeId {
     } catch {
       // private mode — still apply for this session
     }
-    return applyTheme(DEFAULT_THEME);
   }
   return applyTheme(readStoredTheme());
 }
-
-import './anime/anime.css';
-import './signatures.css';

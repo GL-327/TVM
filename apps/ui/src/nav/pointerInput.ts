@@ -320,6 +320,7 @@ export function startPointerInput(): () => void {
   const releaseCamera = (target: Element | null): void => {
     clearHover();
     cancelPendingReveal();
+
     let node = target;
     while (node !== null) {
       if (node instanceof HTMLElement) {
@@ -511,6 +512,18 @@ export function startPointerInput(): () => void {
     clearHover();
     cancelPendingReveal();
 
+    // Pixel deltas already carry trackpad momentum; avoid a second tween.
+    const pan = (host: HTMLElement, axis: 'x' | 'y', delta: number): void => {
+      if (event.deltaMode === 0 && Math.abs(delta) < 80) {
+        cancelScrollAnim(host);
+        if (axis === 'x') host.scrollLeft += delta;
+        else host.scrollTop += delta;
+      } else {
+        const current = axis === 'x' ? host.scrollLeft : host.scrollTop;
+        animate(host, axis, wheelTarget(current, scrollTarget(host, axis), delta));
+      }
+    };
+
     // A sideways wheel (or Shift+wheel) over a rail nudges the rail; anything
     // else pans the page.
     const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
@@ -522,7 +535,7 @@ export function startPointerInput(): () => void {
       event.preventDefault();
       // Retarget the running tween rather than cancelling it: the camera keeps
       // its momentum and successive notches stack up instead of stuttering.
-      animate(rail, 'x', wheelTarget(rail.scrollLeft, scrollTarget(rail, 'x'), delta));
+      pan(rail, 'x', delta);
       return;
     }
 
@@ -531,7 +544,7 @@ export function startPointerInput(): () => void {
     const step = wheelPixels(event.deltaY, event.deltaMode, page.clientHeight);
     if (step === 0) return;
     event.preventDefault();
-    animate(page, 'y', wheelTarget(page.scrollTop, scrollTarget(page, 'y'), step));
+    pan(page, 'y', step);
   };
 
   // Any remote/keyboard press means the viewer is back on the couch —
