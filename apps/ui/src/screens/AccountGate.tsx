@@ -99,14 +99,14 @@ function Prices({ tiers }: { tiers: TiersResponse }): React.JSX.Element {
 }
 
 function GateMark(): React.JSX.Element {
-  const [, setTaps] = useState(0);
+  const taps = useRef(0);
   return (
     <button
       type="button"
       className="gate__mark-hit"
       aria-hidden="true"
       tabIndex={-1}
-      onClick={() => setTaps((count) => bumpMarkEgg(count))}
+      onClick={() => { taps.current = bumpMarkEgg(taps.current); }}
     >
       <TvmMark size="md" className="gate__mark" />
     </button>

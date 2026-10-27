@@ -8,10 +8,10 @@ const catalog = ['free', 'basic', 'premium', 'ultra', 'max'].map((id) => ({ id, 
 const title = { id: 'tt0137523', title: 'Test film', year: 2022, kind: 'movie', poster: '', backdrop: '', synopsis: 'Your favourite films, in one place.', genres: ['Drama'], rating: '', playable: true, hue: 32 };
 
 async function ready(page: Page, paid: boolean): Promise<void> {
-  const plan = { ...FALLBACK_PLAN, id: paid ? 'premium' : 'free', name: paid ? 'TVM Premium' : 'TVM Free', maxHeight: paid ? 1080 : 720, synthwave: true, synthwaveOwned: true, catalog };
+  const plan = { ...FALLBACK_PLAN, id: paid ? 'premium' : 'free', name: paid ? 'TVM Premium' : 'TVM Free', maxHeight: paid ? 1080 : 720, catalog };
   await allowAccount(page);
   await page.addInitScript((bootKey) => {
-    localStorage.setItem(bootKey, '1'); localStorage.setItem('tvm.theme', 'synthwave'); localStorage.setItem('tvm.motion', 'full'); localStorage.setItem('tvm.performance', 'off');
+    localStorage.setItem(bootKey, '1'); localStorage.setItem('tvm.theme', 'dark'); localStorage.setItem('tvm.motion', 'full'); localStorage.setItem('tvm.performance', 'off');
     // Exercise the compatibility path used by the minimum supported iOS version.
     Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
@@ -70,6 +70,9 @@ test.describe('iPhone WebKit', () => {
   test('horizontal rails yield vertical pans to the page', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await ready(page, true);
+    // The loading skeleton also has a visible rail track. Measure the page
+    // only after the four fixture rails replace it.
+    await expect(page.locator('.home .rail')).toHaveCount(4);
     const rail = page.locator('.rail__track').first();
     await expect(rail).toBeVisible();
     const style = await rail.evaluate((el) => {
@@ -122,7 +125,7 @@ test.describe('iPhone WebKit', () => {
     await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
   });
   for (const size of [{ width: 568, height: 320 }, { width: 704, height: 396 }, { width: 800, height: 450 }]) {
-    test(`Premium opens a usable animated 16:9 layout at ${size.width}`, async ({ page }) => {
+    test(`Premium opens a usable 16:9 layout at ${size.width}`, async ({ page }) => {
       await page.setViewportSize(size);
       await ready(page, true);
       await expect(page.locator('.home__shelf')).toBeVisible();
@@ -132,9 +135,8 @@ test.describe('iPhone WebKit', () => {
       const frame = await page.locator('.app').boundingBox();
       expect(frame!.width / frame!.height).toBeCloseTo(16 / 9, 2);
       expect(frame!.width).toBeLessThanOrEqual(size.width);
-      const layer = page.locator('.rt-set__burst').first();
-      const before = await layer.evaluate((el) => getComputedStyle(el).transform);
-      await expect.poll(() => layer.evaluate((el) => getComputedStyle(el).transform)).not.toBe(before);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      await expect(page.locator('.rt-set')).toHaveCount(0);
       await page.screenshot({ path: `../../cache/ios-home-webkit-${size.width}.png` });
       const rail = page.locator('.rail__track').first();
       await rail.scrollIntoViewIfNeeded();

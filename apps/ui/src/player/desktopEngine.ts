@@ -39,6 +39,12 @@ export function createDesktopPlayerEngine(stream: EngineStream, options: EngineO
     if (!destroyed) events.onError(message);
   };
 
+  const updatePaused = (next: boolean): void => {
+    if (paused === next) return;
+    paused = next;
+    if (!destroyed) events.onPlayState(next);
+  };
+
   return {
     attach() {
       if (attached || destroyed) return;
@@ -53,10 +59,7 @@ export function createDesktopPlayerEngine(stream: EngineStream, options: EngineO
           position = event.position;
           if (event.duration > 0) duration = event.duration;
           events.onTime(position, duration);
-          if (paused !== event.paused) {
-            paused = event.paused;
-            events.onPlayState(paused);
-          }
+          updatePaused(event.paused);
           events.onBuffering(event.buffering);
           if (!firstFrame && position > 0.2 && !event.buffering) {
             firstFrame = true;
@@ -75,8 +78,10 @@ export function createDesktopPlayerEngine(stream: EngineStream, options: EngineO
       }
       if (options.initialVolume !== undefined) void bridge.setVolume?.(options.initialVolume);
       if (options.initialMuted !== undefined) void bridge.setMuted?.(options.initialMuted);
-      void bridge.start({ url, title: stream.title, startAt: position }).catch(() => {
-        fail('Native playback is not installed on this device. Install mpv or set TVM_MPV_PATH, then retry.');
+      void bridge.start({ url, title: stream.title, startAt: position }).catch((error: unknown) => {
+        fail(error instanceof Error && /mpv missing|not installed/i.test(error.message)
+          ? 'Native playback is not installed on this device. Install mpv or set TVM_MPV_PATH, then retry.'
+          : 'The file could not start. TVM will try reconnecting at the same position.');
       });
     },
     destroy() {
@@ -85,16 +90,19 @@ export function createDesktopPlayerEngine(stream: EngineStream, options: EngineO
       void bridge?.stop();
     },
     play() {
-      paused = false;
+      updatePaused(false);
       void bridge?.command('play');
     },
     pause() {
-      paused = true;
+      updatePaused(true);
       void bridge?.command('pause');
     },
     toggle() {
-      void bridge?.command(paused ? 'play' : 'pause');
-      paused = !paused;
+      // Publish the new state before issuing the command: the bridge can emit
+      // its state synchronously, and flipping after that would undo it.
+      const next = !paused;
+      updatePaused(next);
+      void bridge?.command(next ? 'pause' : 'play');
     },
     seekBy(delta) {
       void bridge?.seekTo(Math.max(0, position + delta));

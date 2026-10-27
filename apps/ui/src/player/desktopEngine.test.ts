@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPlayerEngine, type EngineStream } from './engine';
-import { html5CanAttach } from './desktopEngine';
+import { createDesktopPlayerEngine, html5CanAttach } from './desktopEngine';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,6 +15,34 @@ const events = {
 };
 
 describe('desktop native playback', () => {
+  it('keeps pause and play stable when the bridge answers synchronously', () => {
+    let send: ((event: { type: 'state'; paused: boolean; buffering: boolean; position: number; duration: number }) => void) | undefined;
+    let bridgePaused = false;
+    const command = vi.fn((action: string) => {
+      bridgePaused = action === 'pause';
+      send?.({ type: 'state', paused: bridgePaused, buffering: false, position: 73, duration: 3600 });
+    });
+    vi.stubGlobal('window', {
+      location: { href: 'http://127.0.0.1:5173/' },
+      tvmDesktop: { nativePlayback: true },
+      tvmNativePlayer: {
+        start: vi.fn().mockResolvedValue({ ok: true }), command, seekTo: vi.fn(), stop: vi.fn(),
+        onEvent: (listener: typeof send) => { send = listener; return () => { send = undefined; }; },
+      },
+    });
+    const onPlayState = vi.fn();
+    const stream: EngineStream = { kind: 'stream', url: 'https://media.example/film.mkv', title: 'Film', filename: 'film.mkv', mimeType: 'application/octet-stream', engine: 'native' };
+    const engine = createDesktopPlayerEngine(stream, { live: false }, { ...events, onPlayState });
+    engine.attach();
+    send?.({ type: 'state', paused: false, buffering: false, position: 73, duration: 3600 });
+    engine.toggle();
+    engine.toggle();
+    engine.toggle();
+    expect(command.mock.calls.map(([action]) => action)).toEqual(['pause', 'play', 'pause']);
+    expect(onPlayState.mock.calls.map(([value]) => value)).toEqual([false, true, false, true]);
+    engine.destroy();
+  });
+
   it('keeps browser formats in the page and sends Matroska to mpv', () => {
     expect(html5CanAttach({ mimeType: 'video/mp4', transport: 'file', url: 'http://127.0.0.1/a.mp4' })).toBe(true);
     expect(html5CanAttach({ mimeType: 'application/vnd.apple.mpegurl', transport: 'hls', url: 'http://127.0.0.1/a.m3u8' })).toBe(true);

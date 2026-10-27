@@ -31,6 +31,24 @@ if (Test-Path (Join-Path $repo "apps\core\src\index.ts")) {
     throw "TVM core is missing from $repo"
 }
 
+$bundledNode = Join-Path $repo "bin\node.exe"
+$nodeExe = if ($mode -eq "package" -and (Test-Path $bundledNode)) {
+    $bundledNode
+} else {
+    $command = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        throw "Node.js 22 or newer is required. Download TVM-desktop.zip from Releases (it includes Node on Windows), or install Node.js 22+ from nodejs.org."
+    }
+    $command.Source
+}
+$nodeVersion = & $nodeExe --version
+if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v(\d+)\.') {
+    throw "Could not read the Node.js version from $nodeExe."
+}
+if ([int]$Matches[1] -lt 22) {
+    throw "TVM requires Node.js 22 or newer. Found $nodeVersion. Download the current TVM-desktop.zip from Releases or upgrade Node.js."
+}
+
 $port = if ($env:TVM_CORE_PORT) { $env:TVM_CORE_PORT } else { "7345" }
 $coreHealth = "http://127.0.0.1:$port/api/health"
 $packageUi = "http://127.0.0.1:$port/"
@@ -69,9 +87,10 @@ if (-not (Test-Http $coreHealth)) {
     $coreOut = Join-Path $logDir "core.out.log"
     $coreErr = Join-Path $logDir "core.err.log"
     if ($mode -eq "source") {
-        Start-Process -FilePath "node" -ArgumentList "--watch", "src/index.ts" -WorkingDirectory (Join-Path $repo "apps\core") -WindowStyle Hidden -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
+        Start-Process -FilePath $nodeExe -ArgumentList "--watch", "src/index.ts" -WorkingDirectory (Join-Path $repo "apps\core") -WindowStyle Hidden -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
     } else {
-        Start-Process -FilePath "node" -ArgumentList (Join-Path $repo "core\index.js") -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
+        $coreEntryArg = '"{0}"' -f (Join-Path $repo "core\index.js")
+        Start-Process -FilePath $nodeExe -ArgumentList $coreEntryArg -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
     }
     if (-not (Wait-Http $coreHealth 40)) {
         $tail = @()
@@ -94,7 +113,7 @@ if ($mode -eq "package") {
 if (-not (Test-Http "http://127.0.0.1:5173/")) {
     Write-Host "Starting TVM UI..."
     $vite = Join-Path $repo "apps\ui\node_modules\vite\bin\vite.js"
-    Start-Process -FilePath "node" -ArgumentList $vite -WorkingDirectory (Join-Path $repo "apps\ui") -WindowStyle Hidden
+    Start-Process -FilePath $nodeExe -ArgumentList ('"{0}"' -f $vite) -WorkingDirectory (Join-Path $repo "apps\ui") -WindowStyle Hidden
     if (-not (Wait-Http "http://127.0.0.1:5173/" 40)) {
         throw "TVM UI did not start on http://127.0.0.1:5173"
     }
@@ -137,7 +156,7 @@ if (-not $electron) {
         Write-Host "Downloading Electron..."
         Push-Location (Join-Path $shellDir "node_modules\electron")
         try {
-            & node install.js
+            & $nodeExe install.js
         } finally {
             Pop-Location
         }

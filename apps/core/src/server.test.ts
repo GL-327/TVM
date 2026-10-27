@@ -48,6 +48,16 @@ describe('core API', () => {
     expect(response.status).toBe(404);
   });
 
+  it('validates downloads and reports unavailable media without generating a fake file', async () => {
+    for (const body of [{ id: 'live:1', preferences: { language: 'en', maxHeight: 1080 } }, { id: 'tt1', preferences: { language: 'en', maxHeight: 9999 } }]) {
+      const response = await fetch(`${baseUrl}/api/downloads/resolve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      expect(response.status).toBe(400);
+    }
+    const response = await fetch(`${baseUrl}/api/downloads/resolve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'tt1', preferences: { language: 'original', maxHeight: 1080 } }) });
+    expect(response.status).toBe(409);
+    expect(await response.json()).not.toHaveProperty('url');
+  });
+
   it('refuses art hops off the allowlist', async () => {
     const blocked = await fetch(`${baseUrl}/api/art?src=${encodeURIComponent('https://evil.example/secret.jpg')}`);
     expect(blocked.status).toBe(400);

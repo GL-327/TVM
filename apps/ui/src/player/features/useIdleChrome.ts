@@ -81,9 +81,7 @@ export function idleHideMs(layer: 'chrome' | 'recap', inRecapWindow: boolean): n
 export function idleChromePinned(input: IdleChromePinInput = {}): boolean {
   if (input.pinned === true) return true;
   if (input.paused === true) return true;
-  if (input.playing === false) return true;
   if (typeof input.error === 'string' && input.error !== '') return true;
-  if (input.buffering === true) return true;
   if (input.busy === true) return true;
   if (input.overlay !== undefined && input.overlay !== null && input.overlay !== '') return true;
   return false;
@@ -226,6 +224,12 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
     if (pinnedRef.current) return;
     chromeTimer.current = window.setTimeout(() => {
       chromeTimer.current = null;
+      // A stationary pointer must not pin the entire player. Only an open
+      // menu or an active drag owns the controls beyond the inactivity timer.
+      if (document.querySelector('.player [data-player-menu], .player [role="listbox"], .player [data-scrubbing="true"]')) {
+        scheduleHide();
+        return;
+      }
       setChromeVisible(false);
     }, hideMsRef.current);
     recapTimer.current = window.setTimeout(
@@ -283,9 +287,21 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (isRevealKey(event.key)) show();
     };
+    let lastPoint: { x: number; y: number } | null = null;
     const onPointer = (event: PointerEvent): void => {
       if (event.pointerType === 'touch') return;
+      if (!(event.target instanceof Element) || event.target.closest('.player') === null) return;
+      if (event.type === 'pointermove') {
+        if (lastPoint && Math.hypot(event.clientX - lastPoint.x, event.clientY - lastPoint.y) < 4) return;
+        lastPoint = { x: event.clientX, y: event.clientY };
+      }
       show();
+    };
+    const onLeave = (event: PointerEvent): void => {
+      if (event.pointerType === 'touch' || !(event.target instanceof Element)) return;
+      const player = event.target.closest('.player');
+      if (player === null || (event.relatedTarget instanceof Node && player.contains(event.relatedTarget))) return;
+      hide();
     };
 
     window.addEventListener('tvm:user-activity', onShow);
@@ -295,6 +311,8 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointermove', onPointer);
     window.addEventListener('pointerdown', onPointer);
+    window.addEventListener('pointerout', onLeave);
+    window.addEventListener('blur', onHide);
     return () => {
       window.removeEventListener('tvm:user-activity', onShow);
       window.removeEventListener('tvm:media-intent', onShow);
@@ -303,6 +321,8 @@ export function useIdleChrome(options: IdleChromeOptions = {}): IdleChromeApi {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('pointermove', onPointer);
       window.removeEventListener('pointerdown', onPointer);
+      window.removeEventListener('pointerout', onLeave);
+      window.removeEventListener('blur', onHide);
     };
   }, [hide, show, toggle]);
 

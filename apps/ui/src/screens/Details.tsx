@@ -261,6 +261,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                 {title.progress !== undefined ? 'Resume' : 'Play'}
               </FocusButton>
             )}
+            <FocusButton id="download" className="tvm-button--glass" onSelect={() => navigate.pushModal('downloads', { params: { id: title.id, title: title.title, series: seriesLike, episodes: files } })}>Download</FocusButton>
             {imdbUrl !== null && (
               <FocusButton id="imdb" className="tvm-button--glass" onSelect={() => openWeb(imdbUrl, 'IMDb')}>
                 IMDb
@@ -341,6 +342,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                 const episodeScore = imdbScore(file.rating);
                 const aired = file.aired !== undefined ? formatAired(file.aired) : null;
                 return (
+                  <div key={file.id} className="episode-download-row">
                   <FocusButton
                     key={file.id}
                     id={`ep-${file.id}`}
@@ -364,6 +366,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                       {file.synopsis !== '' && <span className="episode-item__synopsis">{file.synopsis}</span>}
                     </span>
                   </FocusButton>
+                  <FocusButton id={`download-ep-${file.id}`} className="episode-download-row__action" onSelect={() => navigate.pushModal('downloads', { params: { id: title.id, title: title.title, series: true, episodes: files, season: file.season, episode: file.episode, episodeId: file.id } })}>Download</FocusButton>
+                  </div>
                 );
               })}
             </div>

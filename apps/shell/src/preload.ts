@@ -3,6 +3,19 @@ import type { NativePlaybackInput, NativePlayerCommand, NativePlayerEvent } from
 import type { ServiceEvent, ServiceStartInput } from './serviceHost';
 import { desktopNativePlayback } from './windowChrome';
 
+contextBridge.exposeInMainWorld('tvmDownloads', {
+  chooseFolder: (): Promise<string | null> => ipcRenderer.invoke('tvm:downloads:choose-folder'),
+  list: () => ipcRenderer.invoke('tvm:downloads:list'),
+  enqueue: (request: unknown) => ipcRenderer.invoke('tvm:downloads:enqueue', request),
+  cancel: (id: string) => ipcRenderer.invoke('tvm:downloads:cancel', id),
+  show: (id: string) => ipcRenderer.invoke('tvm:downloads:show', id),
+  onChanged: (listener: () => void): (() => void) => {
+    const handler = (): void => listener();
+    ipcRenderer.on('tvm:downloads:changed', handler);
+    return () => ipcRenderer.removeListener('tvm:downloads:changed', handler);
+  },
+});
+
 contextBridge.exposeInMainWorld('tvmDesktop', {
   nativePlayback: desktopNativePlayback(process.platform),
 });

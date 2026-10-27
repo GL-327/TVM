@@ -47,8 +47,10 @@ export function asMaxHeight(value: unknown): DeviceMaxHeight {
   return 720;
 }
 
-export function playbackMaxHeight(planMax: number, deviceMax: number): DeviceMaxHeight {
-  return asMaxHeight(Math.min(planMax, deviceMax));
+export function playbackMaxHeight(planMax: number, _deviceMax: number): DeviceMaxHeight {
+  // A 1080p window can still display a sharper 4K source when it is scaled
+  // down. Device geometry must not silently override the viewer's plan cap.
+  return asMaxHeight(planMax);
 }
 
 /**

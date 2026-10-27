@@ -339,9 +339,10 @@ final class TVMRealDebrid {
             if !streams.isEmpty { break }
         }
         return streams.sorted { left, right in
+            if left.quality != right.quality { return left.quality > right.quality }
             if left.cached != right.cached { return left.cached && !right.cached }
             if left.phoneHint != right.phoneHint { return left.phoneHint && !right.phoneHint }
-            return left.quality > right.quality
+            return false
         }
     }
 

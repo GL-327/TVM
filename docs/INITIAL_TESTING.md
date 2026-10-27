@@ -6,11 +6,11 @@ This build is for private, local desktop testing. It is not approved for a publi
 
 Close TVM and reopen `TVM-windowed.cmd` (Windows) or `./TVM-windowed.sh` (Linux/macOS) from the project directory. The launcher starts the local service, interface and desktop shell. If an older service is already running without watch mode, restart that service first. For a clean test profile, set `TVM_DATA_DIR` to a new absolute directory before starting; do not delete your existing data just to test. Linux and macOS setup is in [DESKTOP.md](DESKTOP.md).
 
-1. In Settings, enable Retro using the existing Developer unlock, or choose its clearly labelled sandbox checkout. The existing developer code is unchanged.
+1. In Settings, switch between Light and Dark. A retired saved theme should migrate to Dark, while a saved Light preference stays Light. The existing developer code is unchanged.
 2. Browse with arrows, OK and Back; test the mouse too. Change Motion to Reduced and check the calmer result. Minimise and restore the app; effects should resume without an animation jump or runaway loop.
 3. Connect your own authorised IPTV or Real-Debrid account. Open a film and a concrete cloud episode, seek, pause, resume, retry a failed source and press Back while loading. A provider subscription or a working source is still required. Catalogue availability is not proof that a title can be played.
-4. Open Plans. Complete a test transaction after selecting the acknowledgement. Try Success, Decline and Cancel outcomes. No card details are accepted or charged. The API rejects card payloads.
-5. Check the plan, receipt and cancellation controls. Retro is a one-time £4.99 reference purchase and stays owned when changing/cancelling a test plan; it is excluded from the monthly price. Repeat a request with the same request ID to verify only one receipt is created.
+4. Open Plans. Check the two current access tiers, their prices and the instructions for contacting the owner. No card form or checkout should appear.
+5. Sign in as an activated test account and verify the access label in Settings. Check both Stream and Stream + Live TV accounts. Donations must not activate or change access.
 6. Open Settings → Privacy & terms. Export data and inspect the downloaded JSON. Use deletion only on disposable test data: it wipes all profiles, viewing history, lists, credentials and test receipts and locks DEV mode. Other services’ accounts/cookies are separate.
 
 ## What changed

@@ -361,6 +361,8 @@ export async function requestPlayback(input: {
   title?: string;
   season?: number;
   episode?: number;
+  startAt?: number;
+  native?: boolean;
 }, signal?: AbortSignal): Promise<PlaybackResult> {
   const timeout = AbortSignal.timeout(PLAYBACK_RESOLVE_TIMEOUT_MS);
   try {

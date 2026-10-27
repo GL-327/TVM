@@ -255,21 +255,10 @@ export function createFfmpegToolkit(env: NodeJS.ProcessEnv = process.env): Ffmpe
       } catch {
         return (encoder = 'libx264');
       }
-      // Every ffmpeg build lists GPU encoders whether or not the GPU exists,
-      // so prove each one with a blink-of-an-eye test encode before trusting it.
-      for (const candidate of listed) {
-        try {
-          execFileSync(
-            bin,
-            ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=duration=0.2:size=320x180:rate=30', '-c:v', candidate, '-f', 'null', '-'],
-            { timeout: 15_000, windowsHide: true, stdio: 'ignore' },
-          );
-          return (encoder = candidate);
-        } catch {
-          // GPU missing or driver refused; try the next one.
-        }
-      }
-      return (encoder = 'libx264');
+      // Do not block Core on up to four 15-second GPU test encodes during a
+      // viewer's first Play. The session already retries failed GPU startup
+      // once with software, before exposing a playable manifest.
+      return (encoder = listed[0] ?? 'libx264');
     },
 
     probe(url: string): Promise<MediaProbe | null> {

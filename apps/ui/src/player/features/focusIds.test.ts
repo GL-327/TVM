@@ -23,9 +23,9 @@ describe('TransportBar focus ids', () => {
 
 describe('PlayerRoot chrome ids', () => {
   it('puts Back on the top Netflix chrome', () => {
-    const src = readFileSync(join(featuresDir, '..', 'PlayerRoot.tsx'), 'utf8');
+    const src = readFileSync(join(featuresDir, '..', 'CinemaControls.tsx'), 'utf8');
     expect(src).toContain('player-exit');
-    expect(src).toContain('player-chrome-back');
+    expect(src).toContain('cinema-chrome__back');
   });
 });
 

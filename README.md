@@ -1,11 +1,12 @@
 # TVM
 
-A remote-first television appliance. A small computer boots TVM from USB,
-outputs HDMI to a television, and is driven entirely with a D-pad remote: your
-own media, licensed sources you already pay for, and the streaming services you
-already subscribe to, behind one home screen.
+TVM runs on desktop, in a browser served by Core, on iPhone and Android, and
+as a Roku channel. Browse and play your own media and sources you already use
+from one interface.
 
-**Status.** Card payments go through Stripe. Live TV is billed separately as 3-month, 1-year or lifetime. Read [the testing guide](docs/INITIAL_TESTING.md) before changing anything structural.
+**Status.** TVM Stream and TVM Stream + Live TV are activated by the app owner. There is no checkout in the app. Read [the testing guide](docs/INITIAL_TESTING.md) before changing anything structural.
+
+The five supported apps and their update paths are described in [PLATFORMS.md](docs/PLATFORMS.md).
 
 ## Layout
 
@@ -14,12 +15,11 @@ already subscribe to, behind one home screen.
 | `apps/ui` | React interface, built for a ten-foot viewing distance |
 | `apps/core` | Local service on `127.0.0.1` by default. Owns all business logic, and serves the interface in production |
 | `apps/shell` | Electron kiosk window (Windows, Linux, macOS) |
-| `apps/roku` | Roku SceneGraph source. Talks to Core over HTTP on the LAN with a bearer token. No physical Roku has been accepted; see [apps/roku/README.md](apps/roku/README.md) |
+| `apps/roku` | Roku SceneGraph source. Talks to Core over HTTP on the LAN with a bearer token. A developer-mode sideload still needs device testing; see [apps/roku/README.md](apps/roku/README.md) |
 | `apps/ios` | Standalone iPhone app: bundled `apps/ui` + on-device Core. No PC or LAN token required. IPA is CI/Mac only and is not App Store signed. See [apps/ios/README.md](apps/ios/README.md) |
-| `apps/android` | Kotlin WebView client source. Same LAN Bearer + `tvm_lan_session` contract as iOS. Debug APK is local/CI only (gitignored); not Play. See [apps/android/README.md](apps/android/README.md) |
+| `apps/android` | Standalone Kotlin WebView app with an on-device Core; optional home-Core pairing uses a LAN bearer. Debug APK is local/CI only; see [apps/android/README.md](apps/android/README.md) |
 | `packages/design` | Design tokens: colour, type scale, spacing, motion, focus |
 | `packages/nav` | Remote input normalised into intents |
-| `os/` | The Debian appliance image, USB flashing and the boot checklist |
 | `docs/` | Architecture and implementation plan |
 
 The interface never talks to a provider or holds a credential. It talks to core
@@ -27,7 +27,7 @@ over `/api`, and core talks to everything else.
 
 ## Prerequisites
 
-- Node.js 22 or newer
+- Node.js 22 or newer for source checkouts and macOS/Linux packages. The Windows desktop release bundles Node.
 - pnpm 11, via corepack: `corepack enable pnpm`
 - **Linux / macOS:** `curl`, plus `ffmpeg` and `mpv` for transcodes and native playback. See [docs/DESKTOP.md](docs/DESKTOP.md).
 
@@ -80,9 +80,9 @@ The iPhone app is standalone and does not need this bind or token. Android (and 
 
 ## Android
 
-`apps/android` is a Kotlin WebView client (`com.tvm.privateclient`, minSdk 26). It loads the shared `apps/ui` waiter from Core on a trusted LAN. It does not contain Core. The phone layout is `apps/ui/src/theme/mobile.css`.
+`apps/android` is a Kotlin WebView client (`com.tvm.privateclient`, minSdk 26) with an on-device Core and bundled UI. It can optionally pair with a home Core on a trusted LAN. The phone layout is `apps/ui/src/theme/mobile.css`.
 
-Same contract as iOS: Core must listen with `TVM_CORE_BIND=0.0.0.0` and a unique `TVM_LAN_TOKEN` of at least 32 characters. The app sends `Authorization: Bearer <token>` to `POST /api/lan/session` and keeps the HttpOnly `tvm_lan_session` cookie. The bearer is never written into the WebView. Credentials use EncryptedSharedPreferences.
+For optional LAN pairing, Core listens with `TVM_CORE_BIND=0.0.0.0` and a unique `TVM_LAN_TOKEN` of at least 32 characters. The app sends `Authorization: Bearer <token>` to `POST /api/lan/session` and keeps the HttpOnly `tvm_lan_session` cookie. The bearer is never written into the WebView. Credentials use EncryptedSharedPreferences.
 
 A debug APK can be built on this Windows workspace after JDK 17 or 21 and the Android SDK are installed (`gradlew.bat assembleDebug` from `apps/android`). That output is under `app/build/` and is gitignored — there is no committed APK. GitHub Actions `mobile.yml` can assemble the same debug APK on a runner. This is not a Play Store or signed release. Widevine L1 / Android TV certification is out of scope.
 
@@ -144,20 +144,12 @@ Double-click `Install-to-Desktop.cmd` (or run `./Install-to-Desktop.sh`) to put 
 
 Linux and macOS setup, package names, and the GitHub desktop tarball: [docs/DESKTOP.md](docs/DESKTOP.md).
 
-## The appliance
-
-See [os/README.md](os/README.md) and [os/USB.md](os/USB.md). In short: a flash
-drive plugged into a television's USB port cannot boot an operating system.
-TVM boots a small x86 computer from USB, and that computer drives the
-television over HDMI. On this PC run `os/scripts/prepare-usb.ps1` to copy the
-flash kit onto D:.
-
 ## Rules that are not negotiable
 
 - **No secrets in the repository.** Not in source, not in committed env files,
   never in the interface bundle. Credentials belong in the operating system's
   credential store, reached only by core.
-- **Core binds `127.0.0.1` by default.** It holds credentials, so the appliance
+- **Core binds `127.0.0.1` by default.** It holds credentials, so the desktop
   and production Electron SKU never expose it. A Roku, iPhone or Android phone
   on the LAN needs `TVM_CORE_BIND=0.0.0.0` and `TVM_LAN_TOKEN`; laptop
   launchers do not.

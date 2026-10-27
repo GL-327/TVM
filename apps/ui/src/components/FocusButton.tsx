@@ -18,6 +18,9 @@ interface FocusButtonProps {
   disabled?: boolean;
   onArrowPress?: (direction: string) => boolean;
   dataLoopCopy?: number;
+  ariaLabel?: string;
+  ariaExpanded?: boolean;
+  title?: string;
 }
 
 /**
@@ -37,6 +40,9 @@ export function FocusButton({
   disabled = false,
   onArrowPress,
   dataLoopCopy,
+  ariaLabel,
+  ariaExpanded,
+  title,
 }: FocusButtonProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
   const { ref, focused } = useFocusable<object, HTMLButtonElement>({
@@ -57,6 +63,9 @@ export function FocusButton({
     <button
       ref={ref}
       type="button"
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      title={title}
       className={classes}
       // Kept out of the tab order: the appliance is driven by a D-pad, and
       // the focus engine moves focus itself.

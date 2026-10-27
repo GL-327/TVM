@@ -127,6 +127,13 @@ function panPageY(scroller: HTMLElement, target: number): void {
 
 function revealPageY(scroller: HTMLElement, element: HTMLElement): void {
   if (element.closest('.ribbon') !== null) return;
+  if (scroller.hasAttribute('data-scroll-nearest')) {
+    const view = scroller.getBoundingClientRect();
+    const item = element.getBoundingClientRect();
+    if (item.top < view.top + 16) animate(scroller, 'y', scroller.scrollTop + item.top - view.top - 16);
+    else if (item.bottom > view.bottom - 16) animate(scroller, 'y', scroller.scrollTop + item.bottom - view.bottom + 16);
+    return;
+  }
 
   if (element.closest(PAGE_TOP_FOCUS) !== null) {
     lockedHomeRail = null;

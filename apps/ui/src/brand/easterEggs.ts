@@ -1,5 +1,3 @@
-import { applyTheme } from '../theme/apply';
-
 const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight'];
 
 export const EGG_CLASS = {
@@ -30,9 +28,8 @@ export function searchEaster(query: string): string | null {
   if (q === 'why not') return 'Because the remote said so.';
   if (q === 'why not 2' || q === 'electric boogaloo') return 'The sequel nobody asked for, everybody needed.';
   if (q === 'bee happy' || q === 'be happy') {
-    applyTheme('happy');
     pulseEgg('happy');
-    return 'Happy mode engaged. The posters are smiling back.';
+    return 'The posters are smiling back.';
   }
   if (q === 'hello tvm') return 'Hello. The mark is watching — in a friendly way.';
   if (q === 'konami') {
@@ -53,7 +50,6 @@ export function searchEaster(query: string): string | null {
 export function profileEaster(name: string): string | null {
   const q = name.trim().toLowerCase();
   if (q === 'bee' || q === 'happy') {
-    applyTheme('happy');
     pulseEgg('happy');
     return 'That profile brought the sunshine.';
   }

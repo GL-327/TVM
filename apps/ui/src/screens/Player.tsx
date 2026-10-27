@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readAudioPrefs, restoredAudio, writeAudioPrefs } from '../player/audioPrefs';
-import { requestPlayback, saveProgress, type PlaybackResult } from '../data/media';
+import { apiFetch, requestPlayback, saveProgress, type PlaybackResult } from '../data/media';
 import { FALLBACK_PLAN, fetchPlan, tickUsage, type PlanStatus } from '../data/plan';
 import { playbackErrorMessage } from '../data/playbackErrors';
 import { useNavigate } from '../nav/ViewStackContext';
@@ -29,6 +29,9 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const lastSaved = useRef(0);
   const lastTick = useRef(0);
   const billableRef = useRef(false);
+  const retryAt = useRef<number | undefined>(undefined);
+  const recoveries = useRef(0);
+  const mediaKey = useRef('');
   // Seeded once from storage: the level the room was last left at.
   const storedAudio = useRef(restoredAudio(readAudioPrefs()));
   const audioRef = useRef({ volume: storedAudio.current.volume, muted: storedAudio.current.muted });
@@ -110,12 +113,19 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     setHasFrame(false);
     setError(null);
     setOverlay('queue');
-    setPosition(0);
-    setDuration(0);
-    positionRef.current = 0;
-    durationRef.current = 0;
+    const key = `${id}|${link}`;
+    if (mediaKey.current !== key) {
+      mediaKey.current = key;
+      retryAt.current = undefined;
+      recoveries.current = 0;
+      positionRef.current = 0;
+      durationRef.current = 0;
+    }
+    setPosition(retryAt.current ?? 0);
+    setDuration(durationRef.current);
     lastSaved.current = Date.now();
     let startFrame: number | null = null;
+    let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const playbackTask = requestPlayback({
       id: id === '' ? undefined : id,
@@ -123,11 +133,13 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       title: playbackTitle === '' ? undefined : playbackTitle,
       season: playbackSeason,
       episode: playbackEpisode,
+      startAt: retryAt.current,
+      native: !live && desktopPlaybackBridge() !== undefined,
     }, request.signal);
 
     const start = (stream: EngineStream): void => {
       if (cancelled) return;
-      const native = nativePlaybackBridge() !== undefined || (desktopPlaybackBridge() !== undefined && !html5CanAttach(stream));
+      const native = nativePlaybackBridge() !== undefined || (desktopPlaybackBridge() !== undefined && (stream.engine === 'native' || !html5CanAttach(stream)));
       const video = videoRef.current;
       if (!native && video === null) {
         startFrame = window.requestAnimationFrame(() => start(stream));
@@ -154,6 +166,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         },
         {
           onTime: (nextPosition, nextDuration) => {
+            if (cancelled) return;
             positionRef.current = nextPosition;
             if (nextDuration > 0) durationRef.current = nextDuration;
             // The chrome clock displays whole seconds. Keep exact progress in
@@ -169,16 +182,18 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             tick();
           },
           onPlayState: (isPaused) => {
+            if (cancelled) return;
             billableRef.current = !live && !isPaused;
             lastTick.current = Date.now();
             setPaused(isPaused);
             if (isPaused) persist();
           },
           onBuffering: (waiting) => {
+            if (cancelled) return;
             lastTick.current = Date.now();
             setBuffering(waiting);
           },
-          onFirstFrame: () => setHasFrame(true),
+          onFirstFrame: () => { if (!cancelled) setHasFrame(true); },
           onEnded: () => {
             /*
              * A live channel that ends did not finish; it stopped.
@@ -204,7 +219,22 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           },
           onClosed: () => { persist(); navigate.pop(); },
           onError: (message) => {
+            if (cancelled || recoveryTimer !== null) return;
             billableRef.current = false;
+            if (!live && recoveries.current < 2 && !/not installed|browser blocked|not.*device/i.test(message)) {
+              recoveries.current += 1;
+              retryAt.current = positionRef.current > 0 ? positionRef.current : stream.startAt ?? 0;
+              setLoading(true);
+              setBuffering(true);
+              setError(null);
+              // Retire the failed conversion before resolving again. Reusing
+              // its still-running session reproduced the same first error.
+              const stop = stream.sessionId ? apiFetch(`/api/stream/hls/${stream.sessionId}/stop`, { method: 'POST' }).catch(() => undefined) : Promise.resolve();
+              recoveryTimer = setTimeout(() => {
+                void stop.finally(() => { if (!cancelled) setAttempt((value) => value + 1); });
+              }, 700);
+              return;
+            }
             setBuffering(false);
             setError(message);
           },
@@ -237,6 +267,11 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       }
       if (cancelled) return;
       if (result.kind !== 'stream') {
+        if (!live && recoveries.current < 2 && ['network', 'timeout', 'empty', 'unsupported'].includes(result.reason)) {
+          recoveries.current += 1;
+          recoveryTimer = setTimeout(() => { if (!cancelled) setAttempt((value) => value + 1); }, 1000);
+          return;
+        }
         setOverlay(null);
         setLoading(false);
         setBuffering(false);
@@ -265,6 +300,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       billableRef.current = false;
       persist();
       if (startFrame !== null) window.cancelAnimationFrame(startFrame);
+      if (recoveryTimer !== null) clearTimeout(recoveryTimer);
       engineRef.current?.destroy();
       engineRef.current = null;
     };
@@ -388,6 +424,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   }, [navigate, persist]);
 
   const retry = useCallback((): void => {
+    retryAt.current = positionRef.current;
+    recoveries.current = 0;
     setError(null);
     setBuffering(true);
     setHasFrame(false);
@@ -503,7 +541,6 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      onMouseMove={showControls}
     >
       <div className="player__stage" data-player-stage="">
         <video ref={videoRef} className="player__video" data-player-video="" playsInline preload="auto" />

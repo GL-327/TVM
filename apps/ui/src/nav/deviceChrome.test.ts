@@ -33,7 +33,7 @@ describe('device chrome classification', () => {
   });
 
   it('caps plan quality to what the glass can show', () => {
-    expect(playbackMaxHeight(2160, 1080)).toBe(1080);
+    expect(playbackMaxHeight(2160, 1080)).toBe(2160);
     expect(playbackMaxHeight(720, 2160)).toBe(720);
     expect(playbackMaxHeight(2160, 2160)).toBe(2160);
     expect(asMaxHeight(1440)).toBe(1080);

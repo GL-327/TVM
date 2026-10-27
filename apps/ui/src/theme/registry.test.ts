@@ -2,38 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_THEME, parseTheme, resolveTheme, themeName, THEMES } from './registry';
 
 describe('theme registry', () => {
-  it('ships Cinematic first and keeps every earlier theme selectable', () => {
-    // The look changed; the catalogue did not. Someone who preferred the
-    // mint-and-navy isle must still be able to choose it.
-    expect(DEFAULT_THEME).toBe('cinematic');
-    expect(THEMES.map((theme) => theme.id)).toEqual([
-      'cinematic',
-      'default',
-      'light',
-      'dark',
-      'happy',
-      'sunset',
-      'heather',
-      'glass',
-      'anime',
-      'synthwave',
-    ]);
-    expect(themeName('cinematic')).toBe('Cinematic');
-    expect(themeName('default')).toBe('Original');
-    expect(themeName('happy')).toBe('Happy');
-    expect(themeName('glass')).toBe('Liquid Glass');
-    expect(themeName('synthwave')).toBe('Retro');
+  it('offers only Light and Dark', () => {
+    expect(DEFAULT_THEME).toBe('dark');
+    expect(THEMES.map((theme) => theme.id)).toEqual(['light', 'dark']);
+    expect(themeName('light')).toBe('Light');
+    expect(themeName('dark')).toBe('Dark');
   });
 
-  it('resolves unknown values to default', () => {
-    expect(parseTheme('glass')).toBe('glass');
-    expect(parseTheme('happy')).toBe('happy');
-    expect(parseTheme('sunset')).toBe('sunset');
-    expect(parseTheme('synthwave')).toBe('synthwave');
-    expect(parseTheme('cinematic')).toBe('cinematic');
-    // 'cinema' is a plan style, not a theme, and must stay unrecognised here.
-    expect(parseTheme('cinema')).toBeNull();
-    expect(resolveTheme(null)).toBe('cinematic');
-    expect(resolveTheme('midnight')).toBe('cinematic');
+  it('migrates retired themes to Dark', () => {
+    for (const old of ['cinematic', 'default', 'happy', 'sunset', 'heather', 'glass', 'anime', 'synthwave']) {
+      expect(parseTheme(old)).toBeNull();
+      expect(resolveTheme(old)).toBe('dark');
+    }
+    expect(parseTheme('light')).toBe('light');
+    expect(parseTheme('dark')).toBe('dark');
+    expect(resolveTheme(null)).toBe('dark');
   });
 });

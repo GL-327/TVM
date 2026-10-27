@@ -29,10 +29,12 @@ import {
   PLAYABLE_STREAM_LIMIT,
   capStreamsToHeight,
   rankDebridStreams,
+  streamHeight,
   resolveTorrentioUrl,
 } from './torrentio.ts';
 import type { CatalogRail, HomePayload, MediaItem, PlaybackResolution, RdStatus } from './types.ts';
 import { addWatchlist, readWatchlist, removeWatchlist, type WatchlistItem } from './watchlist.ts';
+import { downloadLanguageMatches, type DownloadPreferences } from './downloadPreferences.ts';
 
 export interface MediaService {
   configured(): boolean;
@@ -49,6 +51,9 @@ export interface MediaService {
     title?: string;
     season?: number;
     episode?: number;
+    download?: DownloadPreferences;
+    startAt?: number;
+    native?: boolean;
   }): Promise<PlaybackResolution>;
   saveProgress(id: string, position: number, duration: number): void;
   watchlist(): WatchlistItem[];
@@ -223,6 +228,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   // One set of caches per Real-Debrid key: an account can have its own key,
   // and one account must never be shown another's library.
   const caches = new Map<string, RdCache>();
+  const playbackPending = new Map<string, Promise<PlaybackResolution>>();
   const cacheFor = (): RdCache => {
     const key = rd.tokenValue() ?? '';
     let entry = caches.get(key);
@@ -422,7 +428,20 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     filename: string,
     title: string,
     startAt: number | undefined,
+    download?: DownloadPreferences,
+    native = false,
   ): Promise<PlaybackResolution> => {
+    if (download !== undefined) {
+      const limit = Math.min(download.maxHeight, options.plan?.().maxHeight ?? 2160);
+      if (/\b(2160p|1080p|720p|480p|4k|uhd)\b/i.test(filename) && streamHeight(filename) > limit) {
+        return { kind: 'unavailable', reason: 'empty' };
+      }
+      return { kind: 'stream', url: downloadUrl, title, filename, mimeType: 'application/octet-stream', engine: 'html5', transport: 'file' };
+    }
+    // Desktop mpv decodes the original file and owns its finite timeline.
+    // Converting an HEVC film to a growing "live" playlist first adds a
+    // second decoder, a cold encoder startup and live-edge corrections.
+    if (native) return { kind: 'stream', url: downloadUrl, title, filename, mimeType: 'application/octet-stream', engine: 'native', transport: 'file', startAt };
     const streamer = options.streamer;
     if (streamer === undefined) {
       const mime = /\.webm(\?|$)/i.test(filename) ? 'video/webm' : 'video/mp4';
@@ -452,12 +471,13 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     };
   };
 
-  const playFromLink = async (link: string, mediaId?: string): Promise<PlaybackResolution> => {
+  const playFromLink = async (link: string, mediaId?: string, download?: DownloadPreferences, requestedStart?: number, native = false): Promise<PlaybackResolution> => {
     if (!isHttpUrl(link)) return { kind: 'unavailable', reason: 'unsupported' };
     try {
-      const startAt = mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]);
+      const startAt = requestedStart ?? (mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]));
       if (!needsUnrestrict(link)) {
         const filename = link.split('/').pop()?.split('?')[0] ?? 'stream';
+        if (download !== undefined && !downloadLanguageMatches(filename, download.language)) return { kind: 'unavailable', reason: 'empty' };
         if (/\.m3u8(\?|$)/i.test(link)) {
           return {
             kind: 'stream',
@@ -470,7 +490,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             ...(startAt !== undefined ? { startAt } : {}),
           };
         }
-        return resolveFileStream(link, filename, parseFilename(filename).title, startAt);
+        return resolveFileStream(link, filename, parseFilename(filename).title, startAt, download, native);
       }
       const unrestricted = await rd.unrestrict(link);
       if (unrestricted.download === undefined || unrestricted.download === '') {
@@ -480,7 +500,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const episode = parseEpisode(unrestricted.filename);
       const title =
         episode !== null ? `${parsed.title} · ${episodeLabel(episode.season, episode.episode)}` : parsed.title;
-      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt);
+      if (download !== undefined && !downloadLanguageMatches(unrestricted.filename, download.language)) {
+        return { kind: 'unavailable', reason: 'empty' };
+      }
+      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt, download, native);
     } catch (error) {
       if (error instanceof Error && error.name === 'RdAuth') return { kind: 'unavailable', reason: 'needs-auth' };
       return { kind: 'unavailable', reason: 'unsupported' };
@@ -492,6 +515,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     season?: number,
     episode?: number,
     mediaId?: string,
+    download?: DownloadPreferences,
+    requestedStart?: number,
+    native = false,
   ): Promise<PlaybackResolution> => {
     try {
       const personal = rd.tokenValue();
@@ -510,8 +536,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       }
       const streams = await fetchTorrentioStreams(token, imdb, seasonNo, episodeNo, fetchImpl);
       if (streams.length === 0) return { kind: 'unavailable', reason: 'empty' };
-      const height = options.plan?.().maxHeight ?? 2160;
-      const ranked = capStreamsToHeight(rankDebridStreams(streams), height).slice(0, PLAYABLE_STREAM_LIMIT);
+      const height = Math.min(options.plan?.().maxHeight ?? 2160, download?.maxHeight ?? 2160);
+      const eligible = download === undefined ? streams : streams.filter((stream) =>
+        downloadLanguageMatches(stream.description ?? stream.title, download.language) && streamHeight(stream.description ?? stream.title) <= height);
+      const ranked = capStreamsToHeight(rankDebridStreams(eligible), height).slice(0, PLAYABLE_STREAM_LIMIT);
       if (ranked.length === 0) return { kind: 'unavailable', reason: 'empty' };
       const id =
         mediaId ?? (seasonNo !== undefined && episodeNo !== undefined ? `${imdb}:${seasonNo}:${episodeNo}` : imdb);
@@ -519,7 +547,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       for (const stream of ranked) {
         const resolved = await resolveTorrentioUrl(stream.url, fetchImpl);
         if (resolved === null || isTorrentioHost(resolved)) continue;
-        const result = await playFromLink(resolved, id);
+        // Language was checked against the release metadata, which also
+        // describes multilingual files whose hoster filename omits it.
+        const result = await playFromLink(resolved, id, download === undefined ? undefined : { ...download, language: 'original' }, requestedStart, native);
         if (result.kind === 'stream') return result;
         last = result;
         if (result.reason === 'needs-auth') return result;
@@ -709,18 +739,28 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       title?: string;
       season?: number;
       episode?: number;
+      download?: DownloadPreferences;
+      startAt?: number;
+      native?: boolean;
     }): Promise<PlaybackResolution> {
+      // StrictMode/remounts and two rapid Play presses must share resolution,
+      // rather than start competing probes and conversions for one film.
+      const plan = options.plan?.();
+      const key = JSON.stringify([rd.tokenValue(), scope(), plan?.id, plan?.maxHeight, input]);
+      const pending = playbackPending.get(key);
+      if (pending) return pending;
+      const resolve = async (): Promise<PlaybackResolution> => {
       try {
         const blocked = await probePlaybackAuth();
         if (blocked !== null) return blocked;
 
         let mediaId = input.id;
         let link = input.link?.trim() ?? '';
-        if (link !== '') return playFromLink(link, mediaId);
+        if (link !== '') return playFromLink(link, mediaId, input.download, input.startAt, input.native);
 
         if (mediaId !== undefined && mediaId.startsWith('rd:')) {
           const owned = await resolveOwnedLink(mediaId);
-          if (owned !== null) return playFromLink(owned, mediaId);
+          if (owned !== null) return playFromLink(owned, mediaId, input.download, input.startAt, input.native);
         }
 
         const parsed = mediaId !== undefined ? parsePlayId(mediaId) : null;
@@ -730,6 +770,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             input.season ?? parsed.season,
             input.episode ?? parsed.episode,
             mediaId,
+            input.download,
+            input.startAt,
+            input.native,
           );
         }
 
@@ -739,7 +782,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         const episode = input.episode ?? tail?.episode;
 
         if (imdb !== null) {
-          return playFromTorrentio(imdb, season, episode, mediaId);
+          return playFromTorrentio(imdb, season, episode, mediaId, input.download, input.startAt, input.native);
         }
 
         if (mediaId !== undefined && mediaId.startsWith('rd:')) {
@@ -751,13 +794,13 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
           const matchedId = await findLibraryPlayback(wanted, season, episode);
           if (matchedId !== null) {
             const owned = await resolveOwnedLink(matchedId);
-            if (owned !== null) return playFromLink(owned, matchedId);
+            if (owned !== null) return playFromLink(owned, matchedId, input.download, input.startAt, input.native);
           }
           try {
             const hits = await catalog.search(wanted);
             const hit = hits.find((item) => item.kind === (season !== undefined ? 'series' : item.kind)) ?? hits[0];
             if (hit !== undefined) {
-              return playFromTorrentio(hit.id, season, episode, hit.id);
+              return playFromTorrentio(hit.id, season, episode, hit.id, input.download, input.startAt, input.native);
             }
           } catch {
             // Fall through to not-in-library.
@@ -768,6 +811,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       } catch {
         return { kind: 'unavailable', reason: 'empty' };
       }
+      };
+      const task = resolve().finally(() => { if (playbackPending.get(key) === task) playbackPending.delete(key); });
+      playbackPending.set(key, task);
+      return task;
     },
 
     saveProgress(id, position, duration) {
@@ -776,6 +823,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
 
     clearCache() {
       generation += 1;
+      playbackPending.clear();
       caches.clear();
       artwork.clear();
       catalog.clear();
