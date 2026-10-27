@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="TVMScene" extends="Scene">
   <interface>
-    <field id="themeId" type="string" value="cinematic" />
+    <field id="themeId" type="string" value="dark" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="pkg:/source/viewStack.brs" />
