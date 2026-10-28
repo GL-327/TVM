@@ -265,7 +265,8 @@ std::vector<DebridStream> KeepLanguage(const std::vector<DebridStream>& streams,
     std::vector<std::pair<int, DebridStream>> fitted;
     for (const DebridStream& stream : streams) {
         const int fit = LanguageFit(stream.description.empty() ? stream.title : stream.description, language);
-        if (fit >= 0) fitted.emplace_back(fit, stream);
+        // Only a release in that language alone: a multilingual file that also has it can open on another track.
+        if (fit == 0) fitted.emplace_back(fit, stream);
     }
     std::stable_sort(fitted.begin(), fitted.end(), [](const auto& left, const auto& right) { return left.first < right.first; });
     std::vector<DebridStream> kept;
