@@ -244,9 +244,9 @@ TEST(an_english_download_never_takes_a_stream_marked_as_another_language) {
     english.title = "Home.2015.1080p";
     english.description = "Home.2015.1080p.BluRay";
     const std::vector<DebridStream> kept = tvm::playback::KeepLanguage({french, mixed, english}, "en");
-    REQUIRE_EQ(kept.size(), std::size_t{2});
+    // The release with English beside French is left out too: it can open on the French track.
+    REQUIRE_EQ(kept.size(), std::size_t{1});
     REQUIRE_EQ(kept[0].title, english.title);
-    REQUIRE_EQ(kept[1].title, mixed.title);
     REQUIRE_EQ(tvm::playback::KeepLanguage({french}, "en").size(), std::size_t{0});
 }
 

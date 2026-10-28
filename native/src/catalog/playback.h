@@ -57,7 +57,8 @@ struct DebridStream {
 // others, and -1 when it is in another language. Torrentio flags the languages that are not English, so a name
 // with no language marks counts as English.
 int LanguageFit(const std::string& description, const std::string& language);
-// The streams that fit a language, best fit first, each fit keeping the ranked order. Empty language keeps all.
+// The streams in a language alone, in their ranked order. A multilingual release is left out, since it can start
+// on another track. Empty language keeps all.
 std::vector<DebridStream> KeepLanguage(const std::vector<DebridStream>& streams, const std::string& language);
 
 // Nothing for a stream with no address, a refused link, or a camera copy.

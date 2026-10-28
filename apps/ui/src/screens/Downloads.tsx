@@ -25,6 +25,26 @@ function size(bytes: number): string {
 
 const ACTIVE = new Set(['queued', 'resolving', 'downloading']);
 
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: 'English', original: 'Original / any language', ja: 'Japanese', fr: 'French', de: 'German', es: 'Spanish',
+  it: 'Italian', pt: 'Portuguese', ko: 'Korean', hi: 'Hindi',
+};
+
+/** The language and quality last chosen, so the next download starts with them. A blocked store is not an error. */
+const CHOICE_KEY = 'tvm.downloads.choices';
+function savedChoices(): { language: string; quality: string } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CHOICE_KEY) ?? '{}') as { language?: unknown; quality?: unknown };
+    return {
+      language: typeof raw.language === 'string' && raw.language in LANGUAGE_LABELS ? raw.language : 'en',
+      quality: typeof raw.quality === 'string' && ['480', '720', '1080', '2160'].includes(raw.quality) ? raw.quality : '1080',
+    };
+  } catch { return { language: 'en', quality: '1080' }; }
+}
+function saveChoices(language: string, quality: string): void {
+  try { localStorage.setItem(CHOICE_KEY, JSON.stringify({ language, quality })); } catch { /* private window */ }
+}
+
 export function Downloads({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const id = typeof params['id'] === 'string' ? params['id'] : '';
@@ -36,8 +56,9 @@ export function Downloads({ params }: ScreenProps): React.JSX.Element {
   const [batch, setBatch] = useState(params['episode'] !== undefined ? 'episode' : 'series');
   const [season, setSeason] = useState(String(params['season'] ?? initialFiles[0]?.season ?? 1));
   const [episode, setEpisode] = useState(typeof params['episodeId'] === 'string' ? params['episodeId'] : initialFiles[0]?.id ?? '');
-  const [language, setLanguage] = useState('original');
-  const [quality, setQuality] = useState('1080');
+  const [language, setLanguage] = useState(() => savedChoices().language);
+  const [quality, setQuality] = useState(() => savedChoices().quality);
+  useEffect(() => saveChoices(language, quality), [language, quality]);
   const [maxHeight, setMaxHeight] = useState(1080);
   const [directory, setDirectory] = useState('');
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
@@ -99,16 +120,16 @@ export function Downloads({ params }: ScreenProps): React.JSX.Element {
           {series && batch !== 'series' && <Choice id="download-season" label="Season" value={season} change={(value) => { setSeason(value); setEpisode(episodes.find((file) => String(file.season) === value)?.id ?? ''); }}>{seasons.map((value) => <option key={value} value={value}>Season {value}</option>)}</Choice>}
           {series && batch === 'episode' && <Choice id="download-episode" label="Episode" value={episode} change={setEpisode}>{seasonEpisodes.map((file) => <option key={file.id} value={file.id}>Episode {file.episode} · {file.episodeName ?? file.title}</option>)}</Choice>}
           <Choice id="download-language" label="Audio language" value={language} change={setLanguage}>
-            <option value="original">Original / any language</option><option value="en">English</option><option value="ja">Japanese</option><option value="fr">French</option><option value="de">German</option><option value="es">Spanish</option><option value="it">Italian</option><option value="pt">Portuguese</option><option value="ko">Korean</option><option value="hi">Hindi</option>
+            <option value="en">English</option><option value="original">Original / any language</option><option value="ja">Japanese</option><option value="fr">French</option><option value="de">German</option><option value="es">Spanish</option><option value="it">Italian</option><option value="pt">Portuguese</option><option value="ko">Korean</option><option value="hi">Hindi</option>
           </Choice>
           <Choice id="download-quality" label="Maximum quality" value={quality} change={setQuality}>{[480, 720, 1080, 2160].filter((value) => value <= maxHeight).map((value) => <option key={value} value={value}>{value === 2160 ? '4K · 2160p' : `${value}p`}</option>)}</Choice>
         </div>
-        <p className="downloads__note">Matches the source’s listed languages. Original files keep all included audio and subtitle tracks. Availability can vary by episode.</p>
+        <p className="downloads__note">The audio language is a must: a source marked as another language, or as MULTi, is never downloaded instead, and the download stops if none is found. Original files keep all included audio and subtitle tracks. Availability can vary by episode.</p>
         <div className="downloads__destination"><div><span>Save to</span><p title={directory}>{directory || 'Choose a folder on this device'}</p></div><FocusButton id="download-folder" disabled={!available} onSelect={() => { void chooseFolder(); }}>Choose folder</FocusButton></div>
         {!available && <p className="downloads__note">Open TVM Desktop, Chrome or Edge to choose where files are saved.</p>}
         {loading && <p role="status">Loading episodes…</p>}
         {series && !loading && episodes.length === 0 && <p role="status">No episodes are available to download yet.</p>}
-        <FocusButton id="download-start" variant="primary" disabled={busy || !directory || count === 0 || loading} onSelect={() => { void enqueue(); }}>{busy ? 'Adding…' : count > 1 ? `Download ${count} episodes` : 'Download'}</FocusButton>
+        <FocusButton id="download-start" variant="primary" disabled={busy || !directory || count === 0 || loading} onSelect={() => { void enqueue(); }}>{busy ? 'Adding…' : `${count > 1 ? `Download ${count} episodes` : 'Download'} · ${LANGUAGE_LABELS[language] ?? language} · ${quality === '2160' ? '4K' : `${quality}p`}`}</FocusButton>
       </section>}
       {message && <p className="downloads__message" role="status">{message}</p>}
       <section className="downloads__queue" aria-label="Download queue"><div className="downloads__queue-heading"><h2>Your downloads</h2><span>{jobs.filter((job) => ACTIVE.has(job.state)).length} active</span></div>
