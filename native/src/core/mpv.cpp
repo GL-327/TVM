@@ -1,5 +1,6 @@
 #include "core/mpv.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <locale>
@@ -24,6 +25,10 @@ std::string BoostFilter(double gain) {
     filter << "@tvmboost:lavfi=[volume=volume=" << std::fixed << std::setprecision(2) << gain
            << ":precision=float,alimiter=limit=0.89:attack=5:release=80:level=disabled]";
     return filter.str();
+}
+
+double BoostGain(double volume) {
+    return std::pow(std::clamp(volume, 1.0, 10.0), 1.6);
 }
 
 std::vector<std::string> BuildArgs(const LaunchOptions& options) {
