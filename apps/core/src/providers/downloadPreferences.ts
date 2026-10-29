@@ -71,7 +71,7 @@ export function languageFit(label: string, language: string): number {
     else other = true;
   }
   if (OTHER_LANGUAGES.some(speaks)) other = true;
-  const known = new Set([...Object.values(DOWNLOAD_LANGUAGES), ...OTHER_LANGUAGES].flatMap((marks) => [...marks.flags]));
+  const known = new Set<string>([...Object.values(DOWNLOAD_LANGUAGES), ...OTHER_LANGUAGES].flatMap((marks) => [...marks.flags]));
   if (flags.some((flag) => !known.has(flag))) other = true;
   if (hasWord(source, 'multi') || hasWord(source, 'dual')) other = true;
   if (language === 'en' && !other) return 0;
