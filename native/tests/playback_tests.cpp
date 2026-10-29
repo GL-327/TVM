@@ -193,6 +193,21 @@ TEST(mpv_draws_into_tvms_window_with_its_own_controls_off) {
     REQUIRE_EQ(args.back(), options.url);
 }
 
+TEST(sound_past_100_percent_is_a_limited_boost_not_mpvs_own_volume) {
+    tvm::mpv::LaunchOptions options;
+    options.url = "https://cdn.example/film.mkv";
+    options.boost = 10.0;
+    const std::vector<std::string> args = tvm::mpv::BuildArgs(options);
+    const auto has = [&](const std::string& arg) { return std::find(args.begin(), args.end(), arg) != args.end(); };
+    // mpv's volume is cubic past 100%: at 1000% it is 60 dB of gain, which only clips.
+    REQUIRE(has("--volume-max=100"));
+    REQUIRE(has("--af=" + tvm::mpv::BoostFilter(10.0)));
+    const std::string filter = tvm::mpv::BoostFilter(10.0);
+    REQUIRE(filter.find("volume=volume=10.00") != std::string::npos);
+    REQUIRE(filter.find("alimiter=limit=0.89") != std::string::npos);
+    REQUIRE(tvm::mpv::BoostFilter(1.0).find("volume=volume=1.00") != std::string::npos);
+}
+
 TEST(mpv_is_looked_for_where_the_old_app_installs_it_first_after_the_variable) {
     const std::vector<std::filesystem::path> paths =
         tvm::mpv::CandidatePaths(EnvWith({{L"TVM_MPV_PATH", L"D:\\mpv.exe"}, {L"LOCALAPPDATA", L"C:\\L"}}));

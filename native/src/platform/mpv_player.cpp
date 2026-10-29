@@ -1,5 +1,6 @@
 #include "platform/mpv_player.h"
 
+#include <algorithm>
 #include <chrono>
 #include <vector>
 
@@ -100,6 +101,8 @@ bool MpvPlayer::Start(const std::filesystem::path& executable, const std::string
     launch.windowId = std::to_string(reinterpret_cast<std::uintptr_t>(host_));
     launch.ipcPath = util::ToUtf8(pipeName);
     launch.startAt = startAt;
+    boost_ = std::clamp(volume, 1.0, 10.0);
+    launch.boost = boost_;
 
     std::wstring commandLine = QuoteArgument(executable.wstring());
     for (const std::string& arg : mpv::BuildArgs(launch)) commandLine += L" " + QuoteArgument(util::ToWide(arg));
@@ -172,12 +175,20 @@ void MpvPlayer::SeekTo(double seconds) {
 }
 
 void MpvPlayer::SetAudio(double volume, bool muted) {
-    // From 0 to 10: mpv runs to 1000% with --volume-max.
+    std::lock_guard<std::mutex> lock(audioLock_);
+    // From 0 to 10. mpv's own volume covers up to 1, and the boost filter the rest.
     volume_ = volume < 0.0 ? 0.0 : (volume > 10.0 ? 10.0 : volume);
     muted_ = muted;
-    const int level = static_cast<int>(volume_ * 100.0 + 0.5);
+    const int level = static_cast<int>(std::min(volume_, 1.0) * 100.0 + 0.5);
     Write(nlohmann::json::array({"set_property", "mute", muted_ || level == 0}));
     Write(nlohmann::json::array({"set_property", "volume", muted_ ? 0 : level}));
+    // Changing the filter rebuilds mpv's audio chain, so it is only sent when the gain moves. The whole
+    // filter is set rather than its gain changed in place: mpv rebuilds the filter on every seek, from this.
+    const double boost = std::max(volume_, 1.0);
+    if (boost != boost_) {
+        boost_ = boost;
+        Write(nlohmann::json::array({"set_property", "af", mpv::BoostFilter(boost_)}));
+    }
 }
 
 bool MpvPlayer::RunOnce(const std::filesystem::path& executable, const std::vector<std::string>& args, DWORD timeoutMs) {

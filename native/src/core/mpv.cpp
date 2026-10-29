@@ -1,6 +1,8 @@
 #include "core/mpv.h"
 
 #include <cmath>
+#include <iomanip>
+#include <locale>
 #include <set>
 #include <sstream>
 
@@ -14,6 +16,15 @@ std::filesystem::path EnvPath(const util::EnvLookup& env, const wchar_t* name) {
 }
 
 }  // namespace
+
+std::string BoostFilter(double gain) {
+    std::ostringstream filter;
+    filter.imbue(std::locale::classic());
+    // The limit is -1 dBFS, and the release is slow enough that speech does not pump.
+    filter << "@tvmboost:lavfi=[volume=volume=" << std::fixed << std::setprecision(2) << gain
+           << ":precision=float,alimiter=limit=0.89:attack=5:release=80:level=disabled]";
+    return filter.str();
+}
 
 std::vector<std::string> BuildArgs(const LaunchOptions& options) {
     std::vector<std::string> args = {
@@ -46,8 +57,9 @@ std::vector<std::string> BuildArgs(const LaunchOptions& options) {
         "--gpu-context=d3d11",
         // mpv's own high-quality scaling, debanding and tone mapping, so a 4K or HDR file looks as it should.
         "--profile=high-quality",
-        // The sound goes to 1000%, the most mpv allows, for very quiet releases.
-        "--volume-max=1000",
+        // mpv's volume stops at 100%. Louder than that is the boost filter's job.
+        "--volume-max=100",
+        "--af=" + BoostFilter(options.boost),
     };
     if (options.startAt.has_value() && std::isfinite(*options.startAt) && *options.startAt > 0.0) {
         std::ostringstream start;
