@@ -172,8 +172,8 @@ void MpvPlayer::SeekTo(double seconds) {
 }
 
 void MpvPlayer::SetAudio(double volume, bool muted) {
-    // From 0 to 4: mpv runs to 400% with --volume-max.
-    volume_ = volume < 0.0 ? 0.0 : (volume > 4.0 ? 4.0 : volume);
+    // From 0 to 10: mpv runs to 1000% with --volume-max.
+    volume_ = volume < 0.0 ? 0.0 : (volume > 10.0 ? 10.0 : volume);
     muted_ = muted;
     const int level = static_cast<int>(volume_ * 100.0 + 0.5);
     Write(nlohmann::json::array({"set_property", "mute", muted_ || level == 0}));

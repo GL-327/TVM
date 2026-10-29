@@ -52,7 +52,7 @@ public:
     void SetPaused(bool paused);
     void SeekBy(double seconds);
     void SeekTo(double seconds);
-    // `volume` is from 0 to 4, where 1 is the file's own level.
+    // `volume` is from 0 to 10, where 1 is the file's own level.
     void SetAudio(double volume, bool muted);
     // Any mpv property, such as "aid", "sid" or "speed".
     void SetProperty(const std::string& name, const nlohmann::json& value);

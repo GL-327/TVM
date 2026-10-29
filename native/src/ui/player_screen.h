@@ -22,8 +22,8 @@
 
 namespace tvm::ui {
 
-// The loudest the sound goes: 400%, as mpv's --volume-max allows.
-inline constexpr double kMaxVolume = 4.0;
+// The loudest the sound goes: 1000%, the most mpv's --volume-max allows.
+inline constexpr double kMaxVolume = 10.0;
 
 // One row of a player menu: subtitles, audio, quality or speed.
 struct PlayerOption {
