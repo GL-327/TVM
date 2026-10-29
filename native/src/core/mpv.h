@@ -21,7 +21,14 @@ struct LaunchOptions {
     std::string windowId;
     std::string ipcPath;
     std::optional<double> startAt;
+    // The gain past 100%, from 1 to 10, that the boost filter starts with.
+    double boost = 1.0;
 };
+
+// The audio filter that makes the sound louder than the file's own level: a gain, then a limiter that
+// holds the peaks just under full scale. mpv's own volume is cubic past 100% and clips the sound into
+// noise long before it gets much louder, so it is kept at 100% and the boost happens here instead.
+std::string BoostFilter(double gain);
 
 // mpv draws into TVM's own child window, with its controls, its on-screen text and its own key
 // bindings turned off, so TVM's chrome is the only one. auto-copy is the decode path that paints

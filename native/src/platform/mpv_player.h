@@ -84,8 +84,12 @@ private:
 
     std::mutex pipeLock_;
     HANDLE pipe_ = INVALID_HANDLE_VALUE;
+    // SetAudio runs on the reader once the pipe opens, as well as on the window's thread.
+    std::mutex audioLock_;
     double volume_ = 1.0;
     bool muted_ = false;
+    // The boost filter's gain as mpv last heard it.
+    double boost_ = 1.0;
 };
 
 }  // namespace tvm::platform
