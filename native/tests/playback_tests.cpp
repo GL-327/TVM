@@ -206,6 +206,10 @@ TEST(sound_past_100_percent_is_a_limited_boost_not_mpvs_own_volume) {
     REQUIRE(filter.find("volume=volume=10.00") != std::string::npos);
     REQUIRE(filter.find("alimiter=limit=0.89") != std::string::npos);
     REQUIRE(tvm::mpv::BoostFilter(1.0).find("volume=volume=1.00") != std::string::npos);
+    // Nothing up to 100%, then up to 40x, as loud as a browser volume booster.
+    REQUIRE_NEAR(tvm::mpv::BoostGain(0.5), 1.0, 1e-9);
+    REQUIRE_NEAR(tvm::mpv::BoostGain(1.0), 1.0, 1e-9);
+    REQUIRE_NEAR(tvm::mpv::BoostGain(10.0), 39.81, 0.01);
 }
 
 TEST(mpv_is_looked_for_where_the_old_app_installs_it_first_after_the_variable) {

@@ -21,7 +21,7 @@ struct LaunchOptions {
     std::string windowId;
     std::string ipcPath;
     std::optional<double> startAt;
-    // The gain past 100%, from 1 to 10, that the boost filter starts with.
+    // The boost filter's starting gain, from BoostGain.
     double boost = 1.0;
 };
 
@@ -29,6 +29,9 @@ struct LaunchOptions {
 // holds the peaks just under full scale. mpv's own volume is cubic past 100% and clips the sound into
 // noise long before it gets much louder, so it is kept at 100% and the boost happens here instead.
 std::string BoostFilter(double gain);
+// The boost filter's gain for a volume from 0 to 10. Nothing up to 1, then steeper than the slider, so
+// 200% is 3x, 400% is 9x and 1000% is 40x (+32 dB): as loud as a browser volume booster, without its clipping.
+double BoostGain(double volume);
 
 // mpv draws into TVM's own child window, with its controls, its on-screen text and its own key
 // bindings turned off, so TVM's chrome is the only one. auto-copy is the decode path that paints
