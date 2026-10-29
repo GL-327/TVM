@@ -46,8 +46,8 @@ std::vector<std::string> BuildArgs(const LaunchOptions& options) {
         "--gpu-context=d3d11",
         // mpv's own high-quality scaling, debanding and tone mapping, so a 4K or HDR file looks as it should.
         "--profile=high-quality",
-        // The sound goes to 400%, past the file's own level, for quiet releases.
-        "--volume-max=400",
+        // The sound goes to 1000%, the most mpv allows, for very quiet releases.
+        "--volume-max=1000",
     };
     if (options.startAt.has_value() && std::isfinite(*options.startAt) && *options.startAt > 0.0) {
         std::ostringstream start;
