@@ -1,12 +1,8 @@
 #pragma once
 
 // Settings. The rows, labels and detail text follow apps/ui/src/screens/Settings.tsx.
-// Motion, performance mode, language and automatic updates are real: they are
-// saved through the preference store. The other rows open the screens that
-// are not ported yet, so they show a placeholder instead of doing nothing.
-//
-// Not included: the Look group (light and dark themes need the theme port),
-// and the Linux desktop row, which only applies to the TVM USB stick.
+// Motion, performance mode, language, theme and update checks are saved through
+// the preference store. The other rows open their native pages.
 
 #include <string>
 #include <vector>
@@ -47,6 +43,7 @@ private:
         Group,
         Motion,
         Performance,
+        Theme,
         Language,
         AutoUpdate,
         Push,

@@ -22,6 +22,7 @@
 #include "core/config.h"
 #include "core/profiles.h"
 #include "core/util.h"
+#include "core/downloads.h"
 
 namespace tvm::platform {
 
@@ -93,16 +94,6 @@ std::filesystem::path KnownFolder(const KNOWNFOLDERID& id) {
 }
 
 // A file name Windows accepts: no reserved characters, and not too long.
-std::wstring SafeName(const std::string& title) {
-    std::wstring name = util::ToWide(title);
-    for (wchar_t& c : name) {
-        if (c < 0x20 || std::wstring_view(L"<>:\"/\\|?*").find(c) != std::wstring_view::npos) c = L' ';
-    }
-    while (!name.empty() && (name.back() == L' ' || name.back() == L'.')) name.pop_back();
-    if (name.size() > 150) name.resize(150);
-    return name.empty() ? L"TVM download" : name;
-}
-
 // The file's own extension from its address or name, when it is a video one.
 std::wstring VideoExtension(const std::string& url, const std::string& name) {
     for (const std::string& source : {name, url.substr(0, url.find('?'))}) {
@@ -937,7 +928,7 @@ void App::PumpDownloads() {
             });
             return;
         }
-        const std::filesystem::path file = folder / (SafeName(title) + VideoExtension(found.url, found.title));
+        const std::filesystem::path file = folder / (downloads::SafeName(title) + VideoExtension(found.url, found.title));
         background_->PostToUi([jobId, file, update] {
             update(jobId, [&](DownloadJob& job) {
                 job.state = "downloading";
@@ -969,6 +960,7 @@ void App::PumpDownloads() {
                     job.path.clear();
                 } else if (result.status >= 200 && result.status < 300 && (job.total == 0 || result.bytes >= job.total)) {
                     job.state = "complete";
+                    job.path = result.path;
                 } else {
                     job.state = "failed";
                     job.path.clear();

@@ -41,7 +41,10 @@ Graphics::Graphics() {
 
 ComPtr<ID2D1HwndRenderTarget> Graphics::CreateHwndTarget(HWND window, UINT width, UINT height) {
     ComPtr<ID2D1HwndRenderTarget> target;
-    const D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties();
+    // Layout and pointer hit testing use client pixels. Pin the target to that
+    // same coordinate system instead of multiplying it by the system DPI.
+    const D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties(
+        D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(), 96.0f, 96.0f);
     const D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd =
         D2D1::HwndRenderTargetProperties(window, D2D1::SizeU(width, height));
     Check(d2d_->CreateHwndRenderTarget(properties, hwnd, &target), "Direct2D window target");

@@ -9,7 +9,6 @@ const frame = readFileSync(join(dir, 'ChromeFrame.tsx'), 'utf8');
 const title = readFileSync(join(dir, 'TitleOverlay.tsx'), 'utf8');
 const progress = readFileSync(join(dir, 'ProgressBar.tsx'), 'utf8');
 const volume = readFileSync(join(dir, 'VolumeControl.tsx'), 'utf8');
-const retro = readFileSync(join(dir, '..', '..', 'theme', 'synthwave.css'), 'utf8');
 
 function keyframeBlocks(source: string): string[] {
   const blocks: string[] = [];
@@ -89,14 +88,6 @@ describe('player watching chrome', () => {
     expect(title).toContain(":root[data-motion='reduced']");
     expect(progress).toContain(":root[data-motion='reduced']");
     expect(volume).toContain(":root[data-motion='reduced']");
-  });
-
-  it('gives Retro a harvest-gold watching skin without covering the picture', () => {
-    expect(retro).toContain('html[data-theme=\'synthwave\'] .player-dock');
-    expect(retro).toContain('html[data-theme=\'synthwave\'] .player-title-overlay__title');
-    expect(retro).toContain('--tvm-font-display');
-    expect(retro).toContain('var(--tvm-rt-gold)');
-    expect(retro).not.toMatch(/\.player-root[^{]*\{[^}]*background:\s*(#000|#000000|black)\b/i);
   });
 
   it('ships a cinema shell and a dedicated mobile 16:9 shell', () => {

@@ -18,7 +18,11 @@ build/
 out/
 *.tsbuildinfo
 
-# Appliance images and boot artifacts
+# Native release packages
+/native/package/
+/native/TVM-native-windows.zip
+
+# Keep any local artifacts from the retired appliance out of Git.
 os/**/*.img
 os/**/*.iso
 os/**/*.raw
@@ -55,6 +59,7 @@ Desktop/*.zip
 # Editor and OS
 .DS_Store
 Thumbs.db
+/TVM.lnk
 .vscode/
 .idea/
 

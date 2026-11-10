@@ -5,6 +5,7 @@
 //     --size 1920x1080               snapshot size (default 1920x1080)
 //     --keys Right,Down,Select       remote presses to apply before the snapshot
 //                                    (Up, Down, Left, Right, Select, Back)
+//     --theme light --screen settings  capture the light Settings page
 //
 // The snapshot mode is for visual checks. It runs the same shell and the same
 // animations, then saves the settled frame. It uses a throwaway data folder, so
@@ -33,6 +34,7 @@
 #include "ui/preferences_store.h"
 #include "ui/scene.h"
 #include "ui/shell.h"
+#include "ui/settings_screen.h"
 
 namespace {
 
@@ -95,14 +97,19 @@ void SettleMotion(tvm::ui::Shell& shell, double& nowMs) {
     }
 }
 
-int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys) {
+int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys,
+                tvm::ui::Theme theme, bool settings) {
     tvm::platform::Graphics graphics;
 
     // A throwaway data folder, so a Settings press here cannot change the viewer's files.
     const std::filesystem::path tempData =
         std::filesystem::temp_directory_path() / (L"tvm-snapshot-" + std::to_wstring(GetCurrentProcessId()));
     tvm::ui::FilePreferenceStore store(tempData);
-    tvm::ui::Shell shell(std::make_unique<tvm::ui::Scene>(DemoRails(), store.Motion()), store);
+    store.SaveLook(theme);
+    std::unique_ptr<tvm::ui::Screen> root;
+    if (settings) root = std::make_unique<tvm::ui::SettingsScreen>(store, store.Motion());
+    else root = std::make_unique<tvm::ui::Scene>(DemoRails(), store.Motion());
+    tvm::ui::Shell shell(std::move(root), store);
     shell.Layout(width, height);
 
     double nowMs = 0.0;
@@ -144,6 +151,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
 
         std::optional<std::wstring> snapshot;
         std::wstring keys;
+        tvm::ui::Theme theme = tvm::ui::Theme::Dark;
+        bool settings = false;
         unsigned width = 1920;
         unsigned height = 1080;
         for (std::size_t i = 1; i < args.size(); ++i) {
@@ -151,6 +160,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
                 snapshot = args[++i];
             } else if (args[i] == L"--keys" && i + 1 < args.size()) {
                 keys = args[++i];
+            } else if (args[i] == L"--theme" && i + 1 < args.size()) {
+                theme = tvm::ui::ParseTheme(tvm::util::ToUtf8(args[++i]));
+            } else if (args[i] == L"--screen" && i + 1 < args.size()) {
+                settings = args[++i] == L"settings";
             } else if (args[i] == L"--size" && i + 1 < args.size()) {
                 const auto size = ParseSize(args[++i]);
                 if (!size.has_value()) {
@@ -162,7 +175,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
             }
         }
 
-        if (snapshot.has_value()) return RunSnapshot(*snapshot, width, height, keys);
+        if (snapshot.has_value()) return RunSnapshot(*snapshot, width, height, keys, theme, settings);
 
         tvm::platform::AppOptions options;
         options.dataDir = tvm::paths::ResolveDataDir(tvm::util::ProcessEnvironment()).wstring();

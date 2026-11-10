@@ -49,11 +49,15 @@ public:
         if (patch.autoUpdate.has_value()) core_.autoUpdate = *patch.autoUpdate;
         ++coreSaves;
     }
+    tvm::ui::Theme Look() const override { return theme_; }
+    void SaveLook(tvm::ui::Theme theme) override { theme_ = theme; ++themeSaves; }
 
     MotionSettings motion_;
     tvm::prefs::CorePrefs core_;
     int motionSaves = 0;
     int coreSaves = 0;
+    tvm::ui::Theme theme_ = tvm::ui::Theme::Dark;
+    int themeSaves = 0;
 };
 
 // A root screen whose OK opens Settings. It records the motion it is given, so
@@ -119,11 +123,11 @@ TEST(settings_lists_the_web_rows_in_order) {
     settings.Layout(1920.0, 1080.0);
     const std::vector<std::string> expected = {
         "Picture", "Motion", "Performance mode",
-        "Look", "Themes",
+        "Look", "Theme",
         "Language", "App language",
         "Account", "Privacy & terms", "Plan", "Profiles", "Real-Debrid",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
-        "Device", "Network", "Display", "Live TV login", "Live TV playlist", "Updates", "Automatic updates",
+        "Device", "Network", "Display", "Live TV login", "Live TV playlist", "Updates", "Check for updates on launch",
         "What's new", "Diagnostics", "Developer",
         "Maintenance", "Clear cache", "Fully reset", "Restart",
     };
@@ -169,8 +173,12 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
 
     REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Motion -> Performance
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
-    REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Skips "Look" and "Themes"
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Skips the Look heading.
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("language"));
+    REQUIRE(settings.Navigate(Direction::Up, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
@@ -197,10 +205,22 @@ TEST(settings_automatic_updates_toggle_and_save) {
     settings.Layout(1920.0, 1080.0);
     REQUIRE(settings.FocusItem("auto-update", 0.0, false));
 
-    REQUIRE(settings.DetailOf("auto-update") == "On · apply when this app opens");
+    REQUIRE(settings.DetailOf("auto-update") == "On · check when this app opens");
     (void)settings.Select(0.0);
     REQUIRE(!store.core_.autoUpdate);
     REQUIRE(settings.DetailOf("auto-update") == "Off · check from Updates");
+}
+
+TEST(settings_switches_the_saved_theme_and_keeps_it_on_reopen) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(390, 844);
+    REQUIRE(settings.FocusItem("themes", 0, false));
+    settings.Select(0);
+    REQUIRE(store.theme_ == tvm::ui::Theme::Light);
+    REQUIRE_EQ(store.themeSaves, 1);
+    SettingsScreen reopened(store, MotionSettings{});
+    REQUIRE_EQ(reopened.DetailOf("themes"), std::string("Light"));
 }
 
 TEST(settings_rows_open_the_screens_they_name) {

@@ -14,10 +14,12 @@
 // commands, which the app carries out.
 
 #include <optional>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "ui/button_focus.h"
+#include "ui/layout.h"
 #include "ui/screen_base.h"
 
 namespace tvm::ui {
@@ -189,7 +191,7 @@ private:
     std::vector<std::string> Items() const;
     bool FocusButton(const std::string& key, double nowMs, bool withCamera);
     std::optional<Command> Activate(const std::string& key);
-    double Rem(double rems) const { return rems * height_ / 67.5; }
+    double Rem(double rems) const { return rems * ViewportRem(width_, height_); }
     void PaintQueue(Painter& painter) const;
     void PaintChrome(Painter& painter, double opacity) const;
     void PaintError(Painter& painter) const;
@@ -199,6 +201,7 @@ private:
     // The tool buttons at the right of the toolbar that have something to offer, left to right.
     std::vector<std::string> ToolKeys() const;
     std::string ToolLabel(const std::string& key) const;
+    std::map<std::string, Box> CompactControls() const;
 
     PlayerView view_;
     std::string menu_;

@@ -125,6 +125,5 @@ an OS keychain. Use disk encryption.
 
 ## 5. Not this SKU
 
-- The **USB appliance** image in `os/` is a Debian kiosk for a mini-PC, not a
-  Linux desktop install. See [os/README.md](../os/README.md).
+- The USB appliance has been retired. Linux and macOS use the shared desktop/browser app.
 - **iPhone** builds only on a Mac with Xcode. See [apps/ios/README.md](../apps/ios/README.md).

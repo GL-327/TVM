@@ -1,5 +1,11 @@
 # TVM
 
+TVM supports Windows desktop, web browsers on phones and computers, iOS,
+Android and Roku. The C++20 Windows client is in [`native/`](native/README.md):
+build it with `native\build.bat` and open `TVM-native.cmd`. The shared web and
+mobile clients remain supported; see [platforms](docs/PLATFORMS.md) and
+[native parity](native/PARITY.md) before removing compatibility components.
+
 TVM runs on desktop, in a browser served by Core, on iPhone and Android, and
 as a Roku channel. Browse and play your own media and sources you already use
 from one interface.
