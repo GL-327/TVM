@@ -22,6 +22,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $repo 'scripts/launch-tvm.cmd'),(Join-Path $repo 'scripts/launch-tvm.ps1') -Destination $stage
     $commit = (git rev-parse HEAD).Trim()
     @{commit=$commit; builtAt=[DateTime]::UtcNow.ToString('o'); version=(Get-Content (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).version} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $stage 'native-build.json')
+    # Core's verified updater needs its own stamp, independent of the renderer.
+    Copy-Item -LiteralPath (Join-Path $stage 'native-build.json') -Destination (Join-Path $stage 'build-info.json')
+    Copy-Item -LiteralPath (Join-Path $stage 'native-build.json') -Destination (Join-Path $stage 'core/build-info.json')
     $zip = Join-Path $PSScriptRoot 'TVM-native-windows.zip'
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
     Write-Host "Packaged $zip"
