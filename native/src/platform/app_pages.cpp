@@ -209,7 +209,7 @@ void App::OpenInfoPage(const nav::ViewEntry& entry) {
         fieldMode_ = "host";
         mailSaved_.reset();
         try {
-            mailSaved_ = admin::ReadMail(dataDir_);
+            mailSaved_ = CoreMail();
         } catch (const std::exception&) {
             pageMessage_ = "Email settings could not be read on this device.";
         }
@@ -220,6 +220,7 @@ void App::OpenInfoPage(const nav::ViewEntry& entry) {
         fieldValues_["mail-settings.from"] = mailDraft_.from;
     }
     if (pageName_ == "developer" || pageName_ == "setup") fieldMode_ = "code";
+    if (pageName_ == "account") fieldMode_ = account_.signedIn ? "emailcode" : "email";
     // The check opens the channels Live TV lists, so they are read when Live TV has not read them yet.
     if (pageName_ == "live-check" && !liveLoaded_) RefreshLiveTv();
     ShowInfoPage();
@@ -235,7 +236,8 @@ void App::ShowInfoPage() {
     auto* screen = dynamic_cast<ui::InfoScreen*>(shell_->ScreenNamed(pageName_));
     if (screen == nullptr) return;
     ui::InfoView view;
-    if (pageName_ == "legal") view = LegalView();
+    if (pageName_ == "account") view = AccountView();
+    else if (pageName_ == "legal") view = LegalView();
     else if (pageName_ == "donate") view = DonateView();
     else if (pageName_ == "downloads") view = DownloadsView();
     else if (pageName_ == "changelog") view = ChangelogView();
@@ -273,6 +275,22 @@ void App::ApplyInfoAction(const ui::Command& command) {
         return;
     }
 
+    if (verb.rfind("account-", 0) == 0) { AccountAction(verb.substr(8)); return; }
+
+    if (verb.rfind("service-site-", 0) == 0) {
+        try {
+            const auto apps = core_->Call("/api/apps");
+            for (const auto& app : apps.at("grid")) {
+                if (app.value("id", std::string()) != verb.substr(13)) continue;
+                const auto url = app.value("url", std::string());
+                if (url.rfind("https://", 0) == 0) {
+                    const auto address = util::ToWide(url);
+                    ShellExecuteW(window_, L"open", address.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
+            }
+        } catch (const std::exception& e) { say(e.what(), true); }
+        return;
+    }
     // ---- Legal
     if (verb == "legal-export") {
         ExportPersonalData();
@@ -286,7 +304,10 @@ void App::ApplyInfoAction(const ui::Command& command) {
         pageConfirm_ = false;
     }
     // ---- Donate
-    else if (verb.rfind("donate-", 0) == 0) {
+    else if (verb == "donate-go") {
+        const auto address = util::ToWide(core_->origin() + "/donate");
+        ShellExecuteW(window_, L"open", address.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    } else if (verb.rfind("donate-", 0) == 0) {
         try {
             donateAmount_ = std::stoi(verb.substr(7));
         } catch (const std::exception&) {
@@ -357,11 +378,11 @@ void App::ApplyInfoAction(const ui::Command& command) {
             background_->Run([this, token] {
                 bool stored = true;
                 try {
-                    realDebrid_->SetToken(token);
+                    core_->Call("/api/rd/token", "PUT", {{"token", token}});
                 } catch (const std::exception&) {
                     stored = false;
                 }
-                const realdebrid::Status status = realDebrid_->GetStatus();
+                const realdebrid::Status status = CoreRealDebrid();
                 background_->PostToUi([this, status, stored] {
                     pageBusy_ = false;
                     fieldValues_.erase("setup.code");
@@ -423,8 +444,8 @@ void App::ApplyInfoAction(const ui::Command& command) {
             settings.username = util::Trim(value("username"));
             settings.password = value("password");
             settings.from = util::Trim(value("from"));
-            admin::SaveMail(dataDir_, settings);
-            mailSaved_ = admin::ReadMail(dataDir_);
+            core_->Call("/api/admin/mail", "PUT", {{"host", settings.host}, {"port", settings.port}, {"security", settings.security}, {"username", settings.username}, {"password", settings.password}, {"from", settings.from}});
+            mailSaved_ = CoreMail();
             fieldValues_.erase("mail-settings.password");
             if (fieldMode_ == "password") {
                 if (ui::InfoScreen* screen = TypingPage()) screen->ClearField();
@@ -434,7 +455,7 @@ void App::ApplyInfoAction(const ui::Command& command) {
             say(error.what(), true);
         }
     } else if (verb == "mail-remove") {
-        admin::ClearMail(dataDir_);
+        core_->Call("/api/admin/mail", "DELETE");
         mailSaved_.reset();
         for (const char* key : {"host", "username", "password", "from"}) fieldValues_.erase(std::string("mail-settings.") + key);
         if (ui::InfoScreen* screen = TypingPage()) screen->ClearField();
@@ -469,14 +490,14 @@ void App::ApplyInfoAction(const ui::Command& command) {
         const auto open = std::find_if(accounts_.begin(), accounts_.end(), [&](const admin::Account& a) { return a.id == id; });
         if (open == accounts_.end()) return;
         try {
-            if (verb == "acct-grant-stream") admin::Activate(dataDir_, id, "stream");
-            if (verb == "acct-grant-live") admin::Activate(dataDir_, id, "stream-live");
-            if (verb == "acct-live") admin::SetLiveTv(dataDir_, id, open->tier != "stream-live");
-            if (verb == "acct-verify") admin::SetEmailVerified(dataDir_, id, open->emailVerifiedAt.empty());
-            if (verb == "acct-suspend") admin::SetSuspended(dataDir_, id, !open->suspended);
-            if (verb == "acct-note") admin::SetNote(dataDir_, id, util::Trim(value("note")));
+            if (verb == "acct-grant-stream") core_->Call("/api/admin/accounts/activate", "POST", {{"id", id}, {"tier", "stream"}});
+            if (verb == "acct-grant-live") core_->Call("/api/admin/accounts/activate", "POST", {{"id", id}, {"tier", "stream-live"}});
+            if (verb == "acct-live") core_->Call("/api/admin/accounts/live-tv", "POST", {{"id", id}, {"enabled", open->tier != "stream-live"}});
+            if (verb == "acct-verify") core_->Call("/api/admin/accounts/verify", "POST", {{"id", id}, {"verified", open->emailVerifiedAt.empty()}});
+            if (verb == "acct-suspend") core_->Call("/api/admin/accounts/suspend", "POST", {{"id", id}, {"suspended", !open->suspended}});
+            if (verb == "acct-note") core_->Call("/api/admin/accounts/note", "POST", {{"id", id}, {"note", util::Trim(value("note"))}});
             if (verb == "acct-rd-save" || verb == "acct-rd-remove") {
-                admin::SetRdToken(dataDir_, id, verb == "acct-rd-save" ? util::Trim(value("rd")) : "");
+                core_->Call("/api/admin/accounts/rd", "POST", {{"id", id}, {"token", verb == "acct-rd-save" ? util::Trim(value("rd")) : ""}});
                 fieldValues_.erase("accounts.rd");
                 if (fieldMode_ == "rd") {
                     if (ui::InfoScreen* screen = TypingPage()) screen->ClearField();
@@ -488,7 +509,7 @@ void App::ApplyInfoAction(const ui::Command& command) {
                     ShowInfoPage();
                     return;
                 }
-                admin::Erase(dataDir_, id);
+                core_->Call("/api/admin/accounts/erase", "POST", {{"id", id}});
                 accountOpen_.clear();
                 fieldMode_ = "search";
             }
@@ -503,29 +524,9 @@ void App::ApplyInfoAction(const ui::Command& command) {
         }
     }
     // ---- Developer
-    else if (verb == "dev-unlock") {
-        const std::string code = value("code");
-        if (!pageBusy_) {
-            pageBusy_ = true;
-            pageMessage_.clear();
-            // The check is slow on purpose, so it runs on a worker. The code itself is never kept.
-            background_->Run([this, code] {
-                const bool unlocked = admin::UnlockDev(dataDir_, code);
-                background_->PostToUi([this, unlocked] {
-                    pageBusy_ = false;
-                    fieldValues_.erase("developer.code");
-                    if (ui::InfoScreen* screen = TypingPage()) screen->ClearField();
-                    if (!unlocked) {
-                        pageMessage_ = "That code is not valid.";
-                        pageMessageBad_ = true;
-                    }
-                    if (pageName_ == "developer") ShowInfoPage();
-                });
-            });
-        }
-    } else if (verb == "dev-lock") {
-        admin::LockDev(dataDir_);
-        say("Dev mode is off on this machine.");
+    else if (verb == "dev-unlock" || verb == "dev-lock") {
+        ui::Command door; door.name = "account"; shell_->Execute(door, NowMs());
+        return;
     }
     // ---- Confirm
     else if (verb == "confirm-yes") {
@@ -534,9 +535,7 @@ void App::ApplyInfoAction(const ui::Command& command) {
         if (action == "factory-reset") {
             EraseLocalData();
         } else if (action == "clear-cache") {
-            std::error_code ignored;
-            std::filesystem::remove(paths::CatalogCachePath(dataDir_), ignored);
-            std::filesystem::remove_all(paths::ArtworkCacheDir(dataDir_), ignored);
+            core_->Call("/api/maintenance/clear-cache", "POST");
         } else if (action == "shutdown") {
             PostMessageW(window_, WM_CLOSE, 0, 0);
         }
@@ -608,57 +607,44 @@ ui::InfoView App::LegalView() const {
 }
 
 void App::ExportPersonalData() {
-    // What /api/privacy/export gathers: the profiles and what each has watched and saved. Credentials stay out.
-    nlohmann::json profilesOut = nlohmann::json::array();
-    try {
-        const profiles::Registry registry = profiles::Load(dataDir_);
-        for (const profiles::Profile& profile : registry.profiles) {
-            const paths::fs::path folder = paths::ProfileDir(dataDir_, profile.id);
-            nlohmann::json saved = nlohmann::json::array();
-            for (const catalog::WatchlistEntry& entry : catalog::ReadWatchlist(folder)) {
-                saved.push_back({{"id", entry.item.id}, {"title", entry.item.title}});
-            }
-            profilesOut.push_back({{"id", profile.id},
-                                   {"name", profile.name},
-                                   {"active", profile.id == registry.activeId},
-                                   {"progress", catalog::ReadProgress(folder)},
-                                   {"watchlist", saved}});
-        }
-    } catch (const std::exception&) {
-        pageMessage_ = "Export could not be created. Try again.";
-        pageMessageBad_ = true;
-        return;
-    }
-    const prefs::CorePrefs core = store_->CorePrefs();
-    const nlohmann::json device = {{"app", "TVM native"},
-                                   {"version", config::kCoreVersion},
-                                   {"profiles", profilesOut},
-                                   {"preferences", {{"autoUpdate", core.autoUpdate}}}};
-    const std::filesystem::path file = KnownFolder(FOLDERID_Downloads) / L"tvm-personal-data.json";
-    std::ofstream out(file, std::ios::binary | std::ios::trunc);
-    out << nlohmann::json({{"device", device}}).dump(2);
-    pageMessageBad_ = !out.good();
-    pageMessage_ = out.good() ? "Your data export is ready in Downloads. It contains personal viewing history; keep it private."
-                              : "Export could not be created. Try again.";
+    if (pageBusy_) return;
+    pageBusy_ = true;
+    background_->Run([this] {
+        std::string message; bool bad = false;
+        try {
+            const auto data = core_->Call("/api/privacy/export");
+            const auto file = KnownFolder(FOLDERID_Downloads) / L"tvm-personal-data.json";
+            util::WriteFileAtomically(file, data.dump(2));
+            message = "Your personal-data export is ready in Downloads. Keep it private.";
+        } catch (const std::exception& e) { message = e.what(); bad = true; }
+        background_->PostToUi([this, message, bad] { pageBusy_ = false; pageMessage_ = message; pageMessageBad_ = bad; ShowInfoPage(); });
+    });
 }
 
 void App::EraseLocalData() {
-    if (mpv_) mpv_->Stop();
-    std::error_code ignored;
-    for (const auto& item : std::filesystem::directory_iterator(dataDir_, ignored)) std::filesystem::remove_all(item.path(), ignored);
-    MarkCleanExit();
-    // A fresh copy starts from nothing, as window.location.reload() does after the erase.
-    wchar_t exe[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    std::wstring commandLine = GetCommandLineW();
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process{};
-    if (CreateProcessW(exe, commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
-        CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
-    }
-    PostMessageW(window_, WM_CLOSE, 0, 0);
+    if (pageBusy_) return;
+    StopPlayback();
+    for (auto& job : downloads_) { job.cancel->store(true); if (job.state == "queued") job.state = "cancelled"; }
+    pageBusy_ = true;
+    background_->Run([this] {
+        std::string error;
+        try {
+            core_->Call("/api/privacy/erase", "POST", {{"confirmation", "ERASE_LOCAL_DATA"}});
+            try { core_->SignOut(); } catch (...) {} // Always clears the local native session.
+        } catch (const std::exception& e) { error = e.what(); }
+        background_->PostToUi([this, error] {
+            pageBusy_ = false;
+            if (!error.empty()) { pageMessage_ = error; pageMessageBad_ = true; ShowInfoPage(); return; }
+            MarkCleanExit();
+            wchar_t exe[32768]{}; GetModuleFileNameW(nullptr, exe, 32768);
+            std::wstring commandLine = GetCommandLineW();
+            STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
+            if (CreateProcessW(exe, commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+                CloseHandle(process.hThread); CloseHandle(process.hProcess);
+            }
+            PostMessageW(window_, WM_CLOSE, 0, 0);
+        });
+    });
 }
 
 // ------------------------------------------------------------------ Donate
@@ -679,9 +665,9 @@ ui::InfoView App::DonateView() const {
                   "change anything in the app. If you want access, contact the owner instead \xE2\x80\x94 do not donate and expect it."),
         Note("Donations are not refundable, because nothing was sold."),
         // The card fields are Stripe's own page, which needs a browser. This window never takes a card number.
-        Note("Card payments use Stripe's own card fields, which open in the TVM web app or TVM Desktop. This window never takes a card number."),
+        Note("Continue opens the secure payment screen in your browser. Choose your amount there; this window never takes a card number."),
     };
-    view.actions = {{Button("info:donate-go", "Donate " + Money(donateAmount_), true, true), Button("back", "Cancel")}};
+    view.actions = {{Button("info:donate-go", "Continue in browser", true, false), Button("back", "Cancel")}};
     return view;
 }
 
@@ -905,8 +891,13 @@ void App::PumpDownloads() {
         // The language is a must, not a preference: the resolver drops every stream marked as another language
         // before it picks, so an English download never falls back to a French file.
         playback::ResolveInput input{playId, title, height};
-        input.language = language.id == std::string("original") ? "" : language.id;
-        const playback::Resolution found = resolver_->Resolve(input);
+        input.language = language.id;
+        playback::Resolution found;
+        try {
+            if (!core_->Status().usable) throw std::runtime_error("Sign in with an active account.");
+            const auto resolved = core_->Call("/api/downloads/resolve", "POST", {{"id", playId}, {"preferences", {{"maxHeight", height}, {"language", input.language}}}});
+            found.url = resolved.value("url", std::string()); found.title = resolved.value("filename", title);
+        } catch (const std::exception& e) { found.reason = e.what(); }
         if (cancel->load()) {
             background_->PostToUi([this, jobId, update] {
                 update(jobId, [](DownloadJob& job) { job.state = "cancelled"; });
@@ -916,7 +907,7 @@ void App::PumpDownloads() {
             return;
         }
         if (!found.ok()) {
-            const std::string error = playback::ErrorMessage(found.reason);
+            const std::string error = found.reason.empty() ? "No downloadable file is available." : found.reason;
             background_->PostToUi([this, jobId, error, update] {
                 update(jobId, [&](DownloadJob& job) {
                     job.state = "failed";
@@ -1276,7 +1267,7 @@ ui::InfoView App::MailView() const {
     ui::InfoView view;
     view.kicker = "Sign-up codes";
     view.heading = "Email";
-    if (!admin::DevUnlocked(dataDir_)) {
+    if (!account_.developer) {
         view.lede = "Sign in to the dev account to change this.";
         view.actions = {{Button("open:developer", "Developer", true), Button("back", "Back")}};
         return view;
@@ -1326,13 +1317,32 @@ ui::InfoView App::MailView() const {
 // ------------------------------------------------------------------ Accounts
 
 void App::LoadAccounts() {
-    if (!admin::DevUnlocked(dataDir_)) {
+    if (!account_.developer) {
         accounts_.clear();
         return;
     }
     try {
-        accounts_ = admin::ListAccounts(dataDir_, util::Trim(fieldValues_["accounts.search"]), accountsState_);
-        accountsSummary_ = admin::Summarise(dataDir_);
+        const auto body = core_->Call("/api/admin/accounts");
+        accounts_.clear();
+        for (const auto& item : body.at("accounts")) {
+            admin::Account a;
+            const auto text = [&](const char* key) { return item.contains(key) && item[key].is_string() ? item[key].get<std::string>() : std::string(); };
+            a.id = text("id"); a.email = text("email"); a.displayName = text("displayName");
+            a.createdAt = text("createdAt"); a.activatedAt = text("activatedAt"); a.tier = text("tier"); a.note = text("note");
+            a.termsVersion = text("termsVersion"); a.termsAcceptedAt = text("termsAcceptedAt"); a.emailVerifiedAt = text("emailVerifiedAt");
+            a.lastSeenAt = text("lastSeenAt"); a.lastClient = text("lastClient");
+            a.activated = item.value("activated", false); a.suspended = item.value("suspended", false);
+            a.hasRdKey = item.value("hasRdKey", false); a.emailCodeSent = item.value("emailCodeSent", false);
+            a.signIns = item.value("signIns", 0); a.sessions = item.value("sessions", 0);
+            const auto query = util::Trim(fieldValues_["accounts.search"]);
+            if (!query.empty() && (a.email + a.displayName).find(query) == std::string::npos) continue;
+            if (accountsState_ == "waiting" && (a.activated || a.suspended)) continue;
+            if (accountsState_ == "active" && (!a.activated || a.suspended)) continue;
+            if (accountsState_ == "suspended" && !a.suspended) continue;
+            accounts_.push_back(std::move(a));
+        }
+        const auto summary = body.at("summary");
+        accountsSummary_ = {summary.value("total", 0), summary.value("waiting", 0), summary.value("active", 0), summary.value("suspended", 0)};
     } catch (const std::exception& error) {
         pageMessage_ = error.what();
         pageMessageBad_ = true;
@@ -1343,7 +1353,7 @@ ui::InfoView App::AccountsView() const {
     ui::InfoView view;
     view.kicker = "Developer";
     view.heading = "Accounts";
-    if (!admin::DevUnlocked(dataDir_)) {
+    if (!account_.developer) {
         view.lede = "Sign in to the dev account to see who has signed up.";
         view.actions = {{Button("open:developer", "Developer", true), Button("back", "Back")}};
         return view;
@@ -1437,7 +1447,7 @@ ui::InfoView App::DeveloperView() const {
     ui::InfoView view;
     view.message = pageMessage_;
     view.messageBad = pageMessageBad_;
-    if (!admin::DevUnlocked(dataDir_)) {
+    if (!account_.developer) {
         // DeveloperUnlock.tsx: dev mode comes with the dev account.
         view.kicker = "GLogic Studios";
         view.heading = "Dev account";
@@ -1454,7 +1464,7 @@ ui::InfoView App::DeveloperView() const {
     }
     view.kicker = "Studio panel";
     view.heading = "Developer";
-    view.lede = "Dev mode is on for this machine. Plan switches arrive with the plan port; the tools below work now.";
+    view.lede = "Developer account is active. Changes are handled by the shared Core.";
     view.actions = {
         {Button("open:accounts", "Accounts", true), Button("open:mail-settings", "Email"), Button("open:live-check", "Channel check")},
         {Button("stream-home", "Jump Home"), Button("open:live-tv", "Jump Live TV"), Button("open:apps", "Jump Apps")},
@@ -1478,7 +1488,14 @@ ui::InfoView App::AppsView() const {
         tile.detail = spec.name;
         view.tiles.push_back(tile);
     }
-    view.blocks = {Note("Service names identify independent providers. These hubs are TVM catalogues, not the licensed apps.")};
+    view.blocks = {Note("Service hubs are TVM catalogues. Open official websites below with your own subscription.")};
+    try {
+        const auto apps = core_->Call("/api/apps");
+        for (const auto& app : apps.at("grid")) {
+            if (app.value("url", std::string()).rfind("https://", 0) != 0) continue;
+            view.actions.push_back({Button("info:service-site-" + app.value("id", std::string()), "Open " + app.value("name", std::string()) + " website")});
+        }
+    } catch (...) { view.message = "Service websites could not be loaded. Check Core and reopen Apps."; }
     return view;
 }
 

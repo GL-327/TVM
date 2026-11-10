@@ -182,8 +182,8 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     // already uses the viewer's motion setting.
     dataDir_ = paths::fs::path(options.dataDir);
     store_ = std::make_unique<ui::FilePreferenceStore>(options.dataDir);
+    core_ = std::make_unique<coreapi::Client>(dataDir_, config::ResolvePort(util::ProcessEnvironment()));
     catalog_ = std::make_unique<catalog::CatalogService>(paths::fs::path(options.dataDir));
-    realDebrid_ = std::make_unique<realdebrid::Client>(realdebrid::ClientOptions{dataDir_});
     xtream_ = std::make_unique<xtream::Client>(xtream::ClientOptions{dataDir_});
     LoadAudio();
     hintsSeen_ = std::filesystem::exists(dataDir_ / "player-hints-seen");
@@ -217,6 +217,20 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     shell_ = std::make_unique<ui::Shell>(std::move(home), *store_);
     // Home wears the stream chrome from its first frame, while the catalogue loads.
     BuildBrowse(*home_, true);
+    shell_->SetNavigationGuard([this](const ui::Command& command) {
+        if (command.action) {
+            if (command.name == "back" || command.name == "stream-home") return true;
+            if (command.name.rfind("updates-", 0) == 0) return true;
+            if (command.name.rfind("info:account-", 0) == 0 || (pageName_ == "account" && command.name.rfind("info:field-", 0) == 0)) return true;
+            if (command.name.rfind("info:", 0) == 0) return coreapi::AllowsRoute(account_, pageName_);
+            return account_.usable;
+        }
+        if (coreapi::AllowsRoute(account_, command.name)) return true;
+        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or developer role." : "Sign in with an active account to continue.";
+        ui::Command door; door.name = "account";
+        shell_->Execute(door, NowMs());
+        return false;
+    });
     shell_->SetActionHandler([this](const ui::Command& command) {
         const auto id = command.params.find("id");
         if (command.name == "watchlist" && id != command.params.end()) {
@@ -277,7 +291,7 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         } else if (command.name == "updates-check") {
             CheckForUpdates();
         } else if (command.name == "updates-download") {
-            ShellExecuteW(window_, L"open", L"https://github.com/GL-327/TVM/releases/tag/native-windows", nullptr, nullptr, SW_SHOWNORMAL);
+            InstallNativeUpdate();
         } else if (command.name == "updates-auto") {
             prefs::CorePrefsPatch patch;
             patch.autoUpdate = !store_->CorePrefs().autoUpdate;
@@ -307,7 +321,6 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     // Made with the window, so worker results can be posted to it.
     background_ = std::make_unique<Background>(window_, kWorkers);
 
-    resolver_ = std::make_unique<playback::Resolver>(*realDebrid_, *catalog_);
     overlay_ = std::make_unique<OverlayWindow>(instance_, window_);
     MpvPlayer::Events events;
     events.state = [this](const mpv::State& state) { OnPlayerState(state); };
@@ -377,6 +390,7 @@ int App::Run(int showCommand) {
     Resize();
     intro_->Start(NowMs());
     LoadCatalog();
+    RefreshAccount();
     if (store_->CorePrefs().autoUpdate) CheckForUpdates();
 
     bool running = true;
@@ -405,6 +419,19 @@ int App::Run(int showCommand) {
         SyncPlayer();
         UpdateLiveBehind();
         const double now = NowMs();
+        if (!accountBusy_ && now - accountCheckedMs_ > 30000 && (account_.usable || shell_->ActiveScreenName() != "account")) RefreshAccount();
+        if (usageTickMs_ > 0 && playerOpen_ && playerView_.started && !playerView_.paused && !playerView_.buffering && playerView_.phase == ui::PlayerView::Phase::Playing && !playerLive_) usageSeconds_ += std::clamp((now - usageTickMs_) / 1000.0, 0.0, 2.0);
+        usageTickMs_ = now;
+        if (usageSeconds_ >= 10 && account_.usable) {
+            const double seconds = usageSeconds_; usageSeconds_ = 0;
+            background_->Run([this, seconds] {
+                try {
+                    const auto plan = core_->Call("/api/usage/tick", "POST", {{"seconds", seconds}, {"billable", true}});
+                    if (plan.contains("weeklyRemainingSeconds") && plan["weeklyRemainingSeconds"].is_number() && plan["weeklyRemainingSeconds"].get<double>() <= 0)
+                        background_->PostToUi([this] { if (playerOpen_) ShowPlayerError("Viewing allowance reached", "Your viewing allowance has been reached. Review your plan or try again after it resets."); });
+                } catch (...) {}
+            });
+        }
         TurnHero(now);
         if (const std::optional<nav::Direction> hop = hops_.Tick()) {
             shell_->Navigate(*hop, now);
@@ -427,7 +454,7 @@ int App::Run(int showCommand) {
             const double due = std::max(0.0, lastHeroTurnMs_ + kHeroTurnMs - now);
             MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::ceil(due)), QS_ALLINPUT);
         } else {
-            WaitMessage();
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 1000, QS_ALLINPUT);
         }
     }
     return 0;
@@ -957,7 +984,7 @@ void App::RefreshRealDebrid() {
     dirty_ = true;
 
     background_->Run([this] {
-        const realdebrid::Status status = realDebrid_->GetStatus();
+        const realdebrid::Status status = CoreRealDebrid();
         background_->PostToUi([this, status] { FinishRealDebrid(status, ""); });
     });
 }
@@ -995,11 +1022,11 @@ void App::ChangeRealDebridToken(std::string token, bool clearing) {
         // The token itself is never logged or shown. Only the outcome reaches the screen.
         bool stored = true;
         try {
-            realDebrid_->SetToken(token);
+            core_->Call("/api/rd/token", "PUT", {{"token", token}});
         } catch (const std::exception&) {
             stored = false;
         }
-        const realdebrid::Status status = realDebrid_->GetStatus();
+        const realdebrid::Status status = CoreRealDebrid();
         std::string message = kNotStoredMessage;
         if (stored) message = clearing ? kClearedMessage : SavedMessage(status);
         background_->PostToUi([this, status, message] { FinishRealDebrid(status, message); });
@@ -1376,7 +1403,7 @@ void App::SyncStream() {
 
 void App::RefreshStreamStatus() {
     background_->Run([this] {
-        const realdebrid::Status status = realDebrid_->GetStatus();
+        const realdebrid::Status status = CoreRealDebrid();
         background_->PostToUi([this, status] {
             streamStatus_ = status;
             streamStatusLoaded_ = true;
@@ -1419,11 +1446,21 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
     };
     ui::SceneView view;
     view.style = ui::SceneStyle::Stream;
+    if (!account_.usable) {
+        view.topButtons = {ui::TopButton{"Account", open("account", false)}, ui::TopButton{"Settings", open("settings", false)}, ui::TopButton{"Updates", open("updates", false)}};
+        ui::HeroData door; door.itemId = "account-gate"; door.title = "Welcome to TVM";
+        door.body = accountMessage_.empty() ? (accountBusy_ ? "Starting your account service..." : "Sign in or create an account to continue.") : accountMessage_;
+        door.playLabel = "Your account"; door.playCommand = open("account", false);
+        door.infoLabel = "Access & pricing"; door.infoCommand = open("plans", false);
+        scene.SetView(view, NowMs()); scene.SetHeroes({door}, NowMs()); scene.SetRails({});
+        return;
+    }
     const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_);
     // The profile's name, or "Profile" without one, as StreamChrome labels its orb.
     const std::string profileName = profiles::ActiveName(dataDir_).value_or("Profile");
     view.topButtons = {
         ui::TopButton{profileName, open("profiles", false)},
+        ui::TopButton{"Account", open("account", false)},
         ui::TopButton{"Search", open("search", true)},
         ui::TopButton{"Home", act("stream-home")},
         ui::TopButton{"Shows", act("stream-lane", "shows"), streamLane_ == "shows"},
@@ -1433,7 +1470,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
     };
     if (root) {
         // Home is TVM Stream's page, so Home's own way out to Live TV and Settings join the chrome there.
-        view.topButtons.erase(view.topButtons.begin() + 2);
+        std::erase_if(view.topButtons, [](const ui::TopButton& b) { return b.label == "Home"; });
         view.topButtons.insert(view.topButtons.begin() + 4, ui::TopButton{"My List", open("watchlist", false)});
         view.topButtons.insert(view.topButtons.begin() + 6, ui::TopButton{"Live TV", open("live-tv", false)});
         // The launcher's Apps tile: the service hubs.
@@ -1528,6 +1565,8 @@ void App::SyncPages() {
     // Each visit is filled in once, by the entry's key, so a second hub or a return to a page starts afresh.
     const nav::ViewEntry& entry = nav::ActiveEntry(shell_->stack());
     if (entry.key == pageOpened_) return;
+    fieldValues_.clear();
+    if (auto* previous = dynamic_cast<ui::InfoScreen*>(shell_->ScreenNamed(pageName_))) previous->ClearField();
     pageOpened_ = entry.key;
     const std::string& name = entry.name;
     if (dynamic_cast<ui::InfoScreen*>(&shell_->ActiveScreen()) != nullptr) OpenInfoPage(entry);
@@ -1631,6 +1670,7 @@ void App::ShowProfiles(const std::string& message) {
     view.message = message;
     try {
         const profiles::Registry registry = profiles::Load(dataDir_);
+        view.max = core_->Call("/api/plan").value("profilesMax", std::size_t(10));
         view.activeId = registry.activeId;
         for (const profiles::Profile& profile : registry.profiles) {
             view.profiles.push_back(ui::ProfileEntry{profile.id, profile.name, profile.hue});
@@ -1649,14 +1689,14 @@ void App::ApplyProfileAction(const ui::Command& command) {
     };
     try {
         if (command.name == "profile-remove") {
-            profiles::Remove(dataDir_, param("id"));
+            core_->Call("/api/profiles/remove", "POST", {{"id", param("id")}});
             ShowProfiles("");
             RebuildHome();
             return;
         }
         // Choosing or making a profile switches to it, and Home follows that person's list and progress.
-        if (command.name == "profile-open") profiles::SwitchTo(dataDir_, param("id"));
-        if (command.name == "profile-create") profiles::Create(dataDir_, param("name"));
+        if (command.name == "profile-open") core_->Call("/api/profiles/active", "POST", {{"id", param("id")}});
+        if (command.name == "profile-create") core_->Call("/api/profiles", "POST", {{"name", param("name")}});
         titles_.clear();
         RebuildHome();
         RebuildStream();
@@ -1698,9 +1738,24 @@ void App::CheckForUpdates() {
         const std::optional<http::Response> commits =
             http::Get("https://api.github.com/repos/GL-327/TVM/commits?per_page=8", options);
         std::string available;
+        bool updateNeeded = false;
+        wchar_t executable[32768]{};
+        GetModuleFileNameW(nullptr, executable, 32768);
+        const auto installedPath = std::filesystem::path(executable).parent_path() / L"native-build.json";
+        const auto installed = nlohmann::json::parse(util::StripBom(util::ReadTextFile(installedPath).value_or("{}")), nullptr, false);
+        const std::string installedCommit = installed.is_object() ? installed.value("commit", std::string()) : std::string();
         if (release.has_value() && release->ok()) {
             const nlohmann::json body = nlohmann::json::parse(release->body, nullptr, false);
-            if (body.is_object()) available = "Build " + body.value("tag_name", std::string("latest"));
+            if (body.is_object() && body.contains("assets") && body["assets"].is_array()) {
+                for (const auto& asset : body["assets"]) {
+                    if (asset.value("name", std::string()) != "TVM-native-windows.zip" || !asset.contains("label") || !asset["label"].is_string()) continue;
+                    const auto commit = asset["label"].get<std::string>();
+                    if (commit.size() == 40 && commit != installedCommit) {
+                        available = "Build " + commit.substr(0, 7);
+                        updateNeeded = !installedCommit.empty();
+                    }
+                }
+            }
         }
         std::vector<std::string> changes;
         bool reached = commits.has_value() && commits->ok();
@@ -1715,7 +1770,7 @@ void App::CheckForUpdates() {
                 changes.push_back(title);
             }
         }
-        background_->PostToUi([this, available, changes, reached] {
+        background_->PostToUi([this, available, changes, reached, updateNeeded] {
             updatesView_.busy = false;
             SYSTEMTIME now{};
             GetLocalTime(&now);
@@ -1726,9 +1781,10 @@ void App::CheckForUpdates() {
             updatesView_.available = available;
             if (reached) updatesView_.changes = changes;
             updatesView_.message = !reached            ? "Check failed. Confirm this PC can reach GitHub."
-                                   : available.empty() ? "GitHub has no published build yet. The changes below are the latest."
+                                   : available.empty() ? "No newer native package is published. The changes below are the latest."
                                                        : available + " is published. Install it to update this copy.";
             ShowUpdates();
+            if (updateNeeded && updatesView_.autoUpdate && !playerOpen_ && !downloadRunning_) InstallNativeUpdate();
         });
     });
 }
@@ -1899,6 +1955,7 @@ void App::SyncPlayer() {
 }
 
 void App::StartPlayback() {
+    if (!account_.usable) return;
     const int generation = ++playerGeneration_;
     mpv_->Stop();
     overlay_->Show(false);
@@ -1907,6 +1964,7 @@ void App::StartPlayback() {
     const auto channel = std::find_if(liveCatalog_.channels.begin(), liveCatalog_.channels.end(),
                                       [this](const catalog::LiveChannel& entry) { return entry.id == playerId_; });
     playerLive_ = channel != liveCatalog_.channels.end();
+    if (playerLive_ && !account_.liveTv) { ShowPlayerError("Live TV access", "Live TV requires the appropriate account tier."); return; }
     std::string title = playerLive_ ? channel->name : "";
     if (const auto known = titles_.find(playerId_); known != titles_.end() && title.empty()) title = known->second.title;
 
@@ -1952,7 +2010,7 @@ void App::StartPlayback() {
     }
 
     background_->Run([this, generation, id = playerId_, title] {
-        const playback::Resolution resolution = resolver_->Resolve(playback::ResolveInput{id, title, 2160});
+        const playback::Resolution resolution = CorePlayback(id, title);
         background_->PostToUi([this, generation, resolution] { FinishResolve(generation, resolution); });
     });
 }
@@ -2313,8 +2371,8 @@ void App::SwitchStream(std::size_t choice) {
     playerView_.phase = ui::PlayerView::Phase::Resolving;
     playerView_.started = false;
     shell_->SetPlayerView(playerView_, NowMs());
-    background_->Run([this, generation, wanted, choice, title] {
-        playback::Resolution resolution = resolver_->ResolveChoice(wanted, title);
+    background_->Run([this, generation, wanted, choice, title, id = playerId_] {
+        playback::Resolution resolution = CorePlayback(id, title, wanted.height);
         background_->PostToUi([this, generation, resolution, choice] {
             if (generation != playerGeneration_ || !playerOpen_) return;
             if (resolution.ok()) streamChosen_ = choice;

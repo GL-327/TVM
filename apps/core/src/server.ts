@@ -45,6 +45,7 @@ import { resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
 import { readPrefs, writePrefs } from './prefs.ts';
 import { validDownloadPreferences } from './providers/downloadPreferences.ts';
+import { desktopRuntime } from './desktopRuntime.ts';
 
 export { CORE_VERSION };
 
@@ -493,6 +494,12 @@ async function handleApi(
     } catch {
       // Keep the stored active profile if the header is stale.
     }
+  }
+
+  if (path === '/api/desktop/runtime' && request.method === 'GET') {
+    if (!isLoopback(request.socket.remoteAddress)) sendJson(response, 403, { error: 'local_only' });
+    else sendJson(response, 200, desktopRuntime(dataDir));
+    return true;
   }
 
   if (path === '/api/health' && request.method === 'GET') {

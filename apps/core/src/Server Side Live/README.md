@@ -1,7 +1,7 @@
 # Server Side Live
 
 A universal IPTV proxy inside Core. Every client — Roku, Android, iOS, the
-Electron shell — plays Live TV from a Core-local URL, and no client ever sees
+desktop client — plays Live TV from a Core-local URL, and no client ever sees
 a provider address, a panel password or a session cookie.
 
 ```

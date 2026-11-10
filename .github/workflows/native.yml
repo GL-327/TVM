@@ -3,9 +3,9 @@ name: Native Windows
 on:
   push:
     branches: [main, 'codex/**']
-    paths: ['native/**', 'package.json', '.github/workflows/native.yml']
+    paths: ['native/**', 'apps/core/**', 'apps/ui/**', 'packages/**', 'scripts/launch-tvm*', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/native.yml']
   pull_request:
-    paths: ['native/**', 'package.json', '.github/workflows/native.yml']
+    paths: ['native/**', 'apps/core/**', 'apps/ui/**', 'packages/**', 'scripts/launch-tvm*', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/native.yml']
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Configure
         run: cmake -S native -B native/build -A x64
       - name: Build
@@ -33,10 +41,18 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          cmake --install native/build --config Release --prefix native/package
-          if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
-          Copy-Item native/README.md native/package/README.md
-          Compress-Archive -Path native/package/* -DestinationPath native/TVM-native-windows.zip
+          ./native/package.ps1 -Configuration Release
+      - name: Smoke test packaged Core and browser UI
+        shell: pwsh
+        run: |
+          Copy-Item native/build/Release/tvm_core_check.exe native/package/
+          $env:TVM_DATA_DIR = Join-Path $env:RUNNER_TEMP 'tvm-native-smoke'
+          New-Item -ItemType Directory -Force -Path $env:TVM_DATA_DIR | Out-Null
+          '{"language":"en","autoUpdate":false}' | Set-Content (Join-Path $env:TVM_DATA_DIR 'prefs.json')
+          native/package/tvm_core_check.exe $env:TVM_DATA_DIR 17346
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged native Core did not start' }
+          $ui = Invoke-WebRequest http://127.0.0.1:17346/donate -UseBasicParsing
+          if ($ui.Content -notmatch '<div id="root">') { throw 'Packaged web UI is missing' }
       - uses: actions/upload-artifact@v4
         with:
           name: tvm-native-windows
@@ -51,10 +67,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $notes = 'Windows C++ client. Extract the whole ZIP and run tvm.exe. Playback requires mpv; the existing TVM desktop Core can still serve browser and Roku clients. See native/README.md for the remaining parity limitations.'
+          $notes = 'Windows C++ client. Extract the whole ZIP and run tvm.exe. Includes the shared Core, responsive web UI and Node runtime. Playback requires mpv. Electron is retired. See native/README.md.'
           gh release view native-windows *> $null
           if ($LASTEXITCODE -ne 0) { gh release create native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
           else { gh release edit native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
           if ($LASTEXITCODE -ne 0) { throw 'Could not prepare release' }
-          gh release upload native-windows native/TVM-native-windows.zip --clobber
+          gh release upload native-windows "native/TVM-native-windows.zip#$env:GITHUB_SHA" --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Could not upload release' }

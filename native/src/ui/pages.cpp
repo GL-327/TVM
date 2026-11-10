@@ -672,7 +672,7 @@ std::vector<PageButton> UpdatesScreen::Buttons() const {
     std::vector<PageButton> buttons;
     Row(buttons, Rem(kSafeXRem), Rem(kUpdateButtonsTopRem), Rem(kButtonHeightRem), ViewportRem(width_, height_), 0,
         {{"check", view_.busy ? "Checking\xE2\x80\xA6" : "Check now"},
-         {"download", "Download native build"},
+         {"download", "Install update"},
          {"auto-update", view_.autoUpdate ? "Automatic checks on" : "Automatic checks off"},
          {"back", "Back"}}, width_ - Rem(2.0 * kSafeXRem));
     // Check now keeps the focus while it works, and ignores presses until the answer is in.
@@ -690,8 +690,8 @@ double UpdatesScreen::ChangesTop() const {
 
 void UpdatesScreen::PaintContent(Painter& painter, double scroll) const {
     PaintHeader(painter, Rem(kSafeYRem) - scroll, "GLogic Studios", "Updates",
-                "Builds come from GitHub (GL-327/TVM). This native build does not replace itself: a newer one is "
-                "installed in its place. Check now shows what has changed on GitHub.");
+                "Updates come from GitHub (GL-327/TVM). Install update verifies the download, then restarts the desktop. "
+                "Source checkouts use git pull and a native rebuild.");
     const double x = Rem(kSafeXRem);
     const double width = std::min(width_ - 2.0 * x, Rem(64.0));
     const std::vector<std::pair<std::string, std::string>> rows = {

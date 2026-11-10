@@ -3,7 +3,6 @@ import { catchUpTarget, driftFromLive, liveEdgeOf } from './liveEdge';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
 import { publishHls } from './hlsBridge';
-import { createDesktopPlayerEngine, desktopPlaybackBridge, html5CanAttach } from './desktopEngine';
 import { createIOSPlayerEngine, nativePlaybackBridge } from './iosEngine';
 
 /**
@@ -205,11 +204,6 @@ export function createPlayerEngine(
   // HTML5 <video> cannot open MKV/WebM/TS and is what surfaces "Can't open
   // this file" — never attach those URLs there.
   if (nativePlaybackBridge()) return createIOSPlayerEngine({ ...stream, engine: 'native' }, options, events);
-  // Windows and macOS can hand Matroska and other browser-blind files to mpv.
-  // Playable MP4/HLS stays in <video> so a machine without mpv still watches.
-  if ((stream.engine === 'native' || !html5CanAttach(stream)) && desktopPlaybackBridge() !== undefined) {
-    return createDesktopPlayerEngine({ ...stream, engine: 'native' }, options, events);
-  }
   if (stream.engine === 'native') return createMissingNativeEngine(events);
   const fetchImpl = options.fetchImpl ?? fetch;
   const live = options.live;

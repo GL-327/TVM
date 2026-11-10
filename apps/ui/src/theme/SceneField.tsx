@@ -5,7 +5,7 @@ import { useThemeId } from './useThemeId';
  * Six gradient layers drifting against each other. Deliberately CSS rather than
  * the WebGL field in sceneEngine.ts: these layers animate `transform` and
  * `opacity` only, so they live on the compositor and cost close to nothing on
- * the phone clients and the Electron shell alike. A fullscreen fragment shader
+ * the phone clients and the desktop client alike. A fullscreen fragment shader
  * repainting every frame is the wrong trade for a background, and the earlier
  * attempt at one is what put a canvas over Home's chrome.
  *

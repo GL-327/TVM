@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts TVM on this PC: core + UI if needed, then the Electron shell.
+# Starts the shared Core and opens the responsive desktop interface in a browser.
 # Default is fullscreen kiosk. Pass --windowed for a laptop window.
 #
 # Works from a git checkout (apps/core/src) and from the GitHub desktop
@@ -158,107 +158,9 @@ if [ "$mode" = source ]; then
   fi
 fi
 
-shell_dir="$repo/apps/shell"
-main_js="$shell_dir/dist/main.js"
-shell_src="$shell_dir/src"
-
-if [ "$mode" = source ] && [ -d "$shell_dir" ]; then
-  needs_build=0
-  if [ ! -f "$main_js" ]; then
-    needs_build=1
-  elif [ -d "$shell_src" ]; then
-    set +e
-    newer="$(find "$shell_src" -type f -newer "$main_js" 2>/dev/null | head -n 1)"
-    set -e
-    if [ -n "$newer" ]; then
-      needs_build=1
-    fi
-  fi
-  if [ "$needs_build" -eq 1 ]; then
-    echo "Building TVM shell..."
-    if command -v corepack >/dev/null 2>&1; then
-      (cd "$shell_dir" && corepack pnpm run build)
-    else
-      (cd "$shell_dir" && pnpm run build)
-    fi
-  fi
-fi
-
-electron=""
-for candidate in \
-  "$shell_dir/node_modules/electron/dist/electron" \
-  "$shell_dir/node_modules/electron/dist/electron.exe" \
-  "$shell_dir/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-do
-  if [ -x "$candidate" ] || [ -f "$candidate" ]; then
-    electron="$candidate"
-    break
-  fi
-done
-
-if [ -z "$electron" ] && [ -f "$shell_dir/node_modules/electron/install.js" ]; then
-  echo "Downloading Electron..."
-  (cd "$shell_dir/node_modules/electron" && node install.js)
-  for candidate in \
-    "$shell_dir/node_modules/electron/dist/electron" \
-    "$shell_dir/node_modules/electron/dist/electron.exe" \
-    "$shell_dir/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-  do
-    if [ -x "$candidate" ] || [ -f "$candidate" ]; then
-      electron="$candidate"
-      break
-    fi
-  done
-fi
-
-if [ "$windowed" -eq 1 ]; then
-  browser_url="${package_ui}?desktop=1"
-  [ "$mode" = source ] && browser_url="http://127.0.0.1:5173/?desktop=1"
+# macOS and Linux use the responsive browser desktop client.
+if [ "$mode" = source ]; then
+  open_url "$ui_url?desktop=1"
 else
-  browser_url="$package_ui"
-  [ "$mode" = source ] && browser_url="http://127.0.0.1:5173/"
+  open_url "$package_ui?desktop=1"
 fi
-
-if [ -z "$electron" ] || [ ! -f "$main_js" ]; then
-  echo "Electron is not installed on this device. Opening TVM in the browser..."
-  open_url "$browser_url"
-  exit 0
-fi
-
-chmod +x "$electron" 2>/dev/null || true
-
-case "$(uname -s)" in
-  Darwin)
-    user_data="$HOME/Library/Application Support/TVM/shell"
-    xattr -dr com.apple.quarantine "$electron" 2>/dev/null || true
-    ;;
-  *)
-    user_data="${XDG_CONFIG_HOME:-$HOME/.config}/TVM/shell"
-    ;;
-esac
-mkdir -p "$user_data"
-
-electron_args=(--user-data-dir="$user_data" dist/main.js)
-case "$(uname -s)" in
-  Linux)
-    electron_args=(--ozone-platform-hint=auto "${electron_args[@]}")
-    sandbox="$shell_dir/node_modules/electron/dist/chrome-sandbox"
-    if [ -e "$sandbox" ]; then
-      mode_bits="$(stat -c '%a' "$sandbox" 2>/dev/null || echo "")"
-      if [ "$mode_bits" != "4755" ]; then
-        electron_args=(--no-sandbox "${electron_args[@]}")
-      fi
-    fi
-    ;;
-esac
-
-if [ "$windowed" -eq 1 ]; then
-  export TVM_WINDOWED=1
-  echo "Opening TVM (windowed)..."
-else
-  unset TVM_WINDOWED || true
-  echo "Opening TVM fullscreen..."
-fi
-
-cd "$shell_dir"
-exec "$electron" "${electron_args[@]}"

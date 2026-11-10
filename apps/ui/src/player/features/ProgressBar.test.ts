@@ -34,11 +34,7 @@ describe('applyAbsoluteSeek', () => {
 
   it('does not write an empty native video element', () => {
     const video = { currentTime: 0 } as HTMLVideoElement;
-    const seekTo = vi.fn();
-    vi.stubGlobal('window', { tvmNativePlayer: { seekTo } });
     expect(applyAbsoluteSeek(90, { duration: 200, video, engine: 'native' })).toBe(90);
     expect(video.currentTime).toBe(0);
-    expect(seekTo).toHaveBeenCalledWith(90);
-    vi.unstubAllGlobals();
   });
 });

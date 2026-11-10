@@ -38,12 +38,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # The Electron dependency is a castlabs fork carrying Widevine. Downloading
-      # it is a ~150MB no-op here: this package is the core + UI bundle that the
-      # launch scripts run, matching what scripts/publish-app.ps1 produces.
       - name: Build core and UI
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @tvm/core run build
@@ -60,20 +55,8 @@ jobs:
           cp -r apps/ui/dist/. stage/ui/
           cp scripts/launch-tvm.sh scripts/launch-tvm.cmd scripts/launch-tvm.ps1 stage/
           cp TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command stage/
-          # Windows gets the same two entry points as macOS and Linux.
-          cp TVM.cmd TVM-windowed.cmd stage/
           cp docs/DESKTOP.md stage/README.md
           cp package.json stage/
-          # The Windows download runs without a separate Node installation.
-          # Verify the official Node executable before placing it in the zip.
-          NODE_VERSION="$(node -p 'process.versions.node')"
-          mkdir -p stage/bin
-          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/win-x64/node.exe" -o stage/bin/node.exe
-          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o stage/bin/SHASUMS256.txt
-          EXPECTED="$(awk '$2 == "win-x64/node.exe" { print $1 }' stage/bin/SHASUMS256.txt)"
-          ACTUAL="$(sha256sum stage/bin/node.exe | cut -d' ' -f1)"
-          test -n "$EXPECTED" && test "$EXPECTED" = "$ACTUAL"
-          rm stage/bin/SHASUMS256.txt
           chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM-windowed.sh stage/TVM.command stage/TVM-windowed.command
           # Core finds this beside itself and knows it is a package, at this commit.
           node -e 'const info=JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,version:process.env.VERSION,builtAt:new Date().toISOString()});require("fs").writeFileSync("stage/build-info.json",info);require("fs").writeFileSync("stage/core/build-info.json",info)'
@@ -92,9 +75,7 @@ jobs:
           (cd stage && zip -q -r "$GITHUB_WORKSPACE/release/TVM-desktop.zip" .)
           rm -rf check-zip && mkdir check-zip && unzip -q "release/TVM-desktop.zip" -d check-zip
           test -f check-zip/core/index.js
-          test -f check-zip/bin/node.exe
           test -f check-zip/ui/index.html
-          test -f check-zip/TVM.cmd
           test -f check-zip/TVM.command
           bash -n stage/launch-tvm.sh
           bash -n stage/TVM-windowed.sh
@@ -107,60 +88,13 @@ jobs:
           set -euo pipefail
           SHA="$(git rev-parse --short HEAD)"
           cat > release/NOTES.md <<EOF
-          **Windows, macOS and Linux.**
-
-          | | |
-          |---|---|
-          | Download | \`TVM-desktop.zip\` |
-          | Build | \`$SHA\` |
-          | Needs | Node.js 22+ on macOS/Linux; Windows runtime included |
-
-          One zip for all three systems. It carries TVM's core and its
-          interface; your browser is the screen.
-
-          ### Set up
-
-          1. On macOS or Linux, install [Node.js 22 or newer](https://nodejs.org). Windows has it in the zip.
-          2. Download **TVM-desktop.zip** and extract it anywhere — Desktop is fine.
-          3. Start it:
-             - **Windows** — double-click \`TVM.cmd\` (or \`TVM-windowed.cmd\`).
-               SmartScreen may warn about an unknown publisher: *More info →
-               Run anyway*.
-             - **macOS** — right-click \`TVM.command\` → Open, and confirm once.
-               macOS blocks a plain double-click the first time.
-             - **Linux** — \`chmod +x TVM.sh && ./TVM.sh\`
-          4. TVM opens at \`http://127.0.0.1:7345/\`. Leave the window running;
-             that is TVM itself, not just a page.
-          5. Sign in, or press **I'm a dev** and enter the developer code.
-
-          Phones and Rokus on your network talk to this machine, so it is worth
-          leaving on.
-
-          ### Keeping it current
-
-          It updates itself. On opening, it asks GitHub whether a newer build
-          exists, downloads it, checks its SHA-256, and restarts into it. You
-          only come back here if you delete the folder. Turn it off in
-          **Settings** if you would rather press Apply yourself, and see which
-          build you are on under **Account → Updates**.
-
-          ### From a git checkout instead
-
-          \`\`\`bash
-          git clone https://github.com/GL-327/TVM.git
-          cd TVM
-          chmod +x TVM-windowed.sh scripts/*.sh
-          ./scripts/setup-desktop.sh --with-media
-          ./TVM-windowed.sh
-          \`\`\`
-
-          A checkout runs the Electron kiosk and updates with \`git pull\`
-          rather than by downloading a build. On Windows, double-click
-          \`TVM-windowed.cmd\` after \`pnpm install\`. Details in
-          [docs/DESKTOP.md](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
+          Responsive browser desktop for **macOS and Linux**, with shared Core and UI.
+          Install Node.js 22+, extract TVM-desktop.zip, then run TVM.command on macOS or TVM.sh on Linux.
+          Windows uses the C++ client from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows), which includes Node and the shared Core/UI.
+          Build: $SHA. Electron has been retired. See [desktop setup](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
           EOF
-          gh release create desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \
-            || gh release edit desktop --title "Desktop — Windows, macOS & Linux" --notes-file release/NOTES.md
+          gh release create desktop --title "Desktop browser — macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit desktop --title "Desktop browser — macOS & Linux" --notes-file release/NOTES.md
           # One file per platform: drop the older tarballs, checksums and the
           # update feed, which now has a release of its own.
           for old in $(gh release view desktop --json assets --jq '.assets[].name' 2>/dev/null || true); do

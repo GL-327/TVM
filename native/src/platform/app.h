@@ -29,6 +29,7 @@
 #include "catalog/realdebrid.h"
 #include "catalog/xtream.h"
 #include "core/admin.h"
+#include "core/core_client.h"
 #include "core/paths.h"
 #include "nav/hop_queue.h"
 #include "platform/artwork_store.h"
@@ -161,6 +162,7 @@ private:
     void ShowProfiles(const std::string& message);
     void ApplyProfileAction(const ui::Command& command);
     void CheckForUpdates();
+    void InstallNativeUpdate();
     void ShowUpdates();
 
     // The info pages: Legal, Donate, Downloads, What's new, Diagnostics, System info, Setup, Recovery, the
@@ -169,6 +171,13 @@ private:
     void OpenInfoPage(const nav::ViewEntry& entry);
     void ShowInfoPage();
     void ApplyInfoAction(const ui::Command& command);
+    ui::InfoView AccountView() const;
+    void AccountAction(const std::string& verb);
+    void RefreshAccount();
+    void FinishAccount(const coreapi::AccountState& state, const std::string& message = "");
+    realdebrid::Status CoreRealDebrid() const;
+    std::optional<admin::MailSettings> CoreMail() const;
+    playback::Resolution CorePlayback(const std::string& id, const std::string& title, int maxHeight = 0) const;
     // The info page on top when it has a field to type into.
     ui::InfoScreen* TypingPage();
     // Keeps what was typed into a page's field, and filters Accounts as its search is typed.
@@ -250,11 +259,15 @@ private:
     HINSTANCE instance_;
     HWND window_ = nullptr;
     paths::fs::path dataDir_;
+    std::unique_ptr<coreapi::Client> core_;
+    coreapi::AccountState account_;
+    bool accountBusy_ = false;
+    double accountCheckedMs_ = 0;
+    std::string accountMessage_;
     Graphics graphics_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     std::unique_ptr<ui::FilePreferenceStore> store_;
     std::unique_ptr<catalog::CatalogService> catalog_;
-    std::unique_ptr<realdebrid::Client> realDebrid_;
     std::unique_ptr<xtream::Client> xtream_;
     std::unique_ptr<ArtworkStore> artwork_;
     std::unique_ptr<ImageCache> images_;
@@ -385,7 +398,6 @@ private:
 
     // The playback session. `playerGeneration_` changes with each attempt, so a late answer from an
     // earlier one is dropped.
-    std::unique_ptr<playback::Resolver> resolver_;
     std::unique_ptr<MpvPlayer> mpv_;
     std::unique_ptr<OverlayWindow> overlay_;
     ui::PlayerView playerView_;
@@ -398,6 +410,8 @@ private:
     double playerVolume_ = 1.0;
     bool playerMuted_ = false;
     double lastProgressSaveMs_ = 0.0;
+    double usageTickMs_ = 0.0;
+    double usageSeconds_ = 0.0;
     // The streams the quality menu offers for this title, and the one playing.
     std::vector<playback::StreamChoice> streamChoices_;
     std::size_t streamChosen_ = 0;

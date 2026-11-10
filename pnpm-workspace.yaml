@@ -2,9 +2,7 @@ packages:
   - apps/*
   - packages/*
 
-# Dependencies allowed to run install scripts. Electron downloads its runtime
-# this way; everything else stays blocked.
+# Dependencies allowed to run install scripts.
 onlyBuiltDependencies:
-  - electron
   - esbuild
   - playwright
