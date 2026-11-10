@@ -8,27 +8,26 @@ if [ "$#" -lt 1 ]; then
   exit 1
 fi
 NOTES="$(mktemp)"
-SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+FULL_SHA="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+SHA="${FULL_SHA:0:7}"
 cat > "$NOTES" <<EOF
-**Every installable, same commit \`$SHA\`.**
+# TVM downloads
 
-This is Device Variations on GitHub. One file per device:
+Current installers for Windows, macOS/Linux, iOS, Android, Roku and mobile/desktop web browsers. Release target: \`$SHA\`.
 
-| File | Device | Setting it up |
-| --- | --- | --- |
-| \`TVM.ipa\` | iPhone & iPad | Unsigned. Re-sign with [Sideloadly](https://sideloadly.io) or AltStore, then trust the certificate in **Settings → General → VPN & Device Management**. [Full steps](https://github.com/GL-327/TVM/releases/tag/ios) |
-| \`TVM.apk\` | Android phone, tablet & TV | Open it on the phone and allow installs from that source. On a TV: \`adb install TVM.apk\`. [Full steps](https://github.com/GL-327/TVM/releases/tag/android) |
-| \`TVM-roku.zip\` | Roku players & Roku TV | Enable developer mode on the Roku, then upload the zip at \`http://<roku-ip>\` and press Install. [Full steps](https://github.com/GL-327/TVM/releases/tag/roku) |
-| \`TVM-desktop.zip\` | Windows, macOS & Linux | Windows includes Node. macOS/Linux need [Node.js 22+](https://nodejs.org). Extract, then run \`TVM.cmd\`, \`TVM.command\` or \`./TVM.sh\`. [Full steps](https://github.com/GL-327/TVM/releases/tag/desktop) |
+- **TVM-native-windows.zip** — Windows C++ desktop, with Core/UI and Node included. Extract everything and run TVM.cmd.
+- **TVM-desktop.zip** — macOS/Linux browser desktop. Requires Node.js 22+; run TVM.command or TVM.sh.
+- **TVM-web.zip** — responsive web client with its Core host. Requires Node.js 22+; run TVM-web.cmd or TVM-web.sh. Works in mobile and desktop browsers.
+- **TVM.apk** — Android phone/tablet/TV package.
+- **TVM.ipa** — iPhone/iPad package. Requires signing with your Apple account/team before sideloading.
+- **TVM-roku.zip** — developer-mode Roku channel; connects to a TVM Core on your computer.
 
-The desktop updates itself completely. Phones and the desktop both refresh
-their interface from GitHub when they open; the app around it changes only
-when you install the file again, and **Account → Updates** says when that is
-needed and which build you are on. A Roku is sideloaded, so it is always
-installed by hand.
+Read the [README and installation guide](https://github.com/GL-327/TVM#readme) for what TVM does, accounts, media connections, LAN setup and updates.
+
+Each workflow updates its own file. The asset label records its source commit. Automatic-update component feeds remain separate from these installer downloads.
 EOF
-gh release create devices --title "Device Variations — every platform" --notes-file "$NOTES" 2>/dev/null \
-  || gh release edit devices --title "Device Variations — every platform" --notes-file "$NOTES"
+gh release create devices --title "TVM downloads — every platform" --notes-file "$NOTES" --latest 2>/dev/null \
+  || gh release edit devices --title "TVM downloads — every platform" --notes-file "$NOTES" --latest
 rm -f "$NOTES"
 
 # Each platform's job calls this with its own file, so only replace what it
@@ -45,4 +44,6 @@ for file in "$@"; do
     gh release delete-asset devices "$old" --yes || true
   done
 done
-gh release upload devices "$@" --clobber
+uploads=()
+for file in "$@"; do uploads+=("$file#$FULL_SHA"); done
+gh release upload devices "${uploads[@]}" --clobber

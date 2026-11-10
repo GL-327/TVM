@@ -72,8 +72,14 @@ jobs:
         run: |
           $notes = 'Windows C++ client. Extract the whole ZIP and run tvm.exe. Includes the shared Core, responsive web UI and Node runtime. Playback uses mpv with verified automatic setup when missing. Electron is retired. See native/README.md.'
           gh release view native-windows *> $null
-          if ($LASTEXITCODE -ne 0) { gh release create native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
-          else { gh release edit native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
+          if ($LASTEXITCODE -ne 0) { gh release create native-windows --latest=false --target $env:GITHUB_SHA --title 'Native Windows (C++)' --notes $notes }
+          else { gh release edit native-windows --prerelease=false --latest=false --title 'Native Windows (C++)' --notes $notes }
           if ($LASTEXITCODE -ne 0) { throw 'Could not prepare release' }
           gh release upload native-windows "native/TVM-native-windows.zip#$env:GITHUB_SHA" --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Could not upload release' }
+      - name: Publish Windows on the main downloads page
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: bash scripts/publish-device-package.sh native/TVM-native-windows.zip
