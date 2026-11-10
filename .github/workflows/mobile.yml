@@ -219,7 +219,8 @@ jobs:
 
   ios-ipa:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.package != 'android'
-    runs-on: macos-14
+    # macOS 14 runners retired; macOS 15 retains the Xcode 16 toolchain.
+    runs-on: macos-15
     permissions:
       contents: write
     steps:
