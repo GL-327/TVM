@@ -12,6 +12,7 @@
 
 #include "motion/tween.h"
 #include "ui/button_focus.h"
+#include "ui/layout.h"
 #include "ui/screen_base.h"
 
 namespace tvm::ui {
@@ -58,7 +59,7 @@ protected:
     // Paints a custom button's own look at its scrolled box.
     virtual void PaintCustom(Painter& /*painter*/, const PageButton& /*button*/, const Box& /*box*/, bool /*focused*/) const {}
 
-    double Rem(double rems) const { return rems * height_ / 67.5; }
+    double Rem(double rems) const { return rems * ViewportRem(width_, height_); }
     // The kicker, the heading and the lede, from the top of the page. Returns where the content below starts.
     double PaintHeader(Painter& painter, double top, const std::string& kicker, const std::string& heading,
                        const std::string& lede) const;
@@ -118,6 +119,7 @@ protected:
     void PaintCustom(Painter& painter, const PageButton& button, const Box& box, bool focused) const override;
 
 private:
+    double FieldTop() const;
     ProfilesView view_;
     bool creating_ = false;
     std::string name_;
@@ -156,8 +158,8 @@ struct UpdatesView {
     bool operator==(const UpdatesView&) const = default;
 };
 
-// Updates: the build this is, when GitHub was last asked, what it offers, and what changed. Applying is
-// not offered here: the native app is replaced by installing a new build, not by updating itself.
+// Updates: the build this is, when GitHub was last asked, what it offers, what changed,
+// and a link to the native Windows download. Automatic binary installation is separate.
 class UpdatesScreen final : public PageScreen {
 public:
     UpdatesScreen();
@@ -171,6 +173,7 @@ protected:
     std::optional<Command> Activate(const std::string& key) override;
 
 private:
+    double ChangesTop() const;
     UpdatesView view_;
 };
 

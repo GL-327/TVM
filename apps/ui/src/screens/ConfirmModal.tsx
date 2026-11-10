@@ -1,5 +1,5 @@
 import { FocusButton } from '../components/FocusButton';
-import { clearCache, factoryReset, requestSession } from '../data/media';
+import { clearCache, factoryReset } from '../data/media';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 
@@ -26,22 +26,6 @@ export function ConfirmModal({ params }: ScreenProps): React.JSX.Element {
     if (action === 'factory-reset') {
       void factoryReset().then(() => {
         window.location.reload();
-      });
-      return;
-    }
-    if (action === 'linux-desktop') {
-      void requestSession('desktop').then((result) => {
-        if (result.ok) return;
-        navigate.pop();
-        navigate.pushModal('notice', {
-          params: {
-            title: 'Linux desktop',
-            body:
-              result.reason === 'not_appliance'
-                ? 'The Linux desktop is only on the TVM USB stick, where TVM boots fullscreen by itself.'
-                : 'TVM could not leave the kiosk.',
-          },
-        });
       });
       return;
     }

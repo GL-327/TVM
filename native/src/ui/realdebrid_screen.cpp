@@ -11,7 +11,7 @@ namespace {
 
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
-constexpr double kReferenceRemsHeight = 67.5;
+
 
 // The layout, in rems from the top of the screen's content.
 constexpr double kLedeTopRem = 5.0;
@@ -93,7 +93,7 @@ std::vector<std::string> RealDebridScreen::Items() const {
 }
 
 std::optional<Box> RealDebridScreen::BoxOf(const std::string& key) const {
-    const Metrics metrics{height_ / kReferenceRemsHeight};
+    const Metrics metrics{ViewportRem(width_, height_)};
     double x = metrics.Rem(kSafeXRem);
     const double y = metrics.Rem(kSafeYRem) + metrics.Rem(kButtonsTopRem);
     for (const std::string& item : Items()) {
@@ -121,7 +121,7 @@ bool RealDebridScreen::Animating() const {
 }
 
 void RealDebridScreen::Paint(Painter& painter) const {
-    const Metrics metrics{height_ / kReferenceRemsHeight};
+    const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
 
     const double x = metrics.Rem(kSafeXRem);

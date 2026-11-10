@@ -129,7 +129,7 @@ TEST(plans_page_lists_both_kinds_of_access_and_fences_off_donate) {
     REQUIRE_EQ(screen.Select(0.0)->name, std::string("legal"));
 }
 
-TEST(updates_page_shows_the_build_and_never_offers_to_apply) {
+TEST(updates_page_offers_the_native_download_instead_of_an_electron_update) {
     tvm::ui::UpdatesScreen screen;
     screen.Layout(1920.0, 1080.0);
     tvm::ui::UpdatesView view;
@@ -142,7 +142,10 @@ TEST(updates_page_shows_the_build_and_never_offers_to_apply) {
     REQUIRE(painter.Has("Never"));
     REQUIRE(painter.Has("Fix playback startup"));
     REQUIRE_EQ(screen.Select(0.0)->name, std::string("updates-check"));
-    // Right from Check now passes the disabled Apply and reaches automatic updates.
+    // Right from Check now reaches the native download, then automatic checks.
+    REQUIRE(screen.Navigate(Direction::Right, 0.0));
+    REQUIRE_EQ(screen.FocusedKey(), std::optional<std::string>("download"));
+    REQUIRE_EQ(screen.Select(0)->name, std::string("updates-download"));
     REQUIRE(screen.Navigate(Direction::Right, 0.0));
     REQUIRE_EQ(screen.FocusedKey(), std::optional<std::string>("auto-update"));
     REQUIRE(!screen.ActivateItem("apply", 0.0).has_value());

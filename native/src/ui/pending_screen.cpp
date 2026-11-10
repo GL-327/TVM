@@ -8,7 +8,7 @@ namespace {
 
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
-constexpr double kReferenceRemsHeight = 67.5;
+
 
 // The heading of a screen that is not ported. Route names that are not titles read as their titles.
 std::string DisplayName(const std::string& name) {
@@ -25,7 +25,7 @@ void PendingScreen::Layout(double width, double height) {
 }
 
 void PendingScreen::Paint(Painter& painter) const {
-    const Metrics metrics{height_ / kReferenceRemsHeight};
+    const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
 
     const double x = metrics.Rem(kSafeXRem);

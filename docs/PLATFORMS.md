@@ -1,8 +1,13 @@
 # Supported apps and updates
 
 The supported products are desktop, web browser, iOS, Android and Roku.
-The USB appliance release workflow has been retired. Its historical source
-remains in `os/` for reference.
+The USB appliance has been retired. Its historical source remains in Git history.
+
+Windows also has a C++20 client under `native/`: build with `native/build.bat`
+and start with `TVM-native.cmd`, or use the Native Windows release ZIP. It has
+its own build/test/package workflow. It does not host the API for web or Roku.
+The shared Core/UI and Electron shell remain necessary for the other desktop
+path and account/billing features still being migrated; see [native parity](../native/PARITY.md).
 
 | App | Update behavior | Native package changes |
 | --- | --- | --- |

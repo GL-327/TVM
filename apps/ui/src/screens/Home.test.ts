@@ -27,7 +27,7 @@ describe('Home as the launcher in front of TVM Stream', () => {
     expect(src).toContain('id="launch-stream"');
     expect(src).toContain('home__destinations');
     expect(src).toContain('Where to');
-    expect(src).toContain('shelfTitle(watchingLabel)');
+    expect(src).toContain("shelfTitle('Continue watching')");
     expect(src).toContain("'Continue watching'");
     expect(src).toContain('TVM Stream · ');
     expect(css).toContain('.home--launcher');
@@ -127,7 +127,7 @@ describe('Home rails keep pictures', () => {
     expect(poster).toContain('<Artwork');
     expect(poster).toContain('className="poster__art"');
     expect(art).toContain('<img');
-    expect(art).toContain('src={src}');
+    expect(art).toContain('src={original}');
     expect(home).toContain('memo(function HomeShelves');
     expect(home).toContain('requestAnimationFrame(apply)');
   });
@@ -142,7 +142,7 @@ describe('Home rails keep pictures', () => {
     expect(picks).toContain('<ChannelCard');
     expect(apps).toContain('<AppCard');
     expect(channel).toContain('channel-card__logo');
-    expect(channel).toContain('src={logo}');
+    expect(channel).toContain('src={original}');
     expect(card).toContain('app-card__icon');
     expect(card).toContain('src={app.icon}');
   });
@@ -167,14 +167,11 @@ describe('Home hero fade', () => {
     const css = readFileSync(join(dir, '../app.css'), 'utf8');
     const home = readFileSync(join(dir, 'Home.tsx'), 'utf8');
     const hero = readFileSync(join(dir, '../components/HeroArt.tsx'), 'utf8');
-    const glass = readFileSync(join(dir, '../theme/glass/home.css'), 'utf8');
     const details = readFileSync(join(dir, 'details.css'), 'utf8');
     expect(css).toContain('.stage__pictures');
     expect(css).toContain('.stage__vignette');
     expect(css).toContain('var(--tvm-bg) 92%');
     expect(css).not.toContain('mask-image:');
-    expect(glass).toContain('var(--tvm-bg) 100%');
-    expect(glass).toContain('mask-image: none');
     expect(details).toContain('.details__backdrop');
     expect(details).toContain('var(--tvm-bg) 96%');
     expect(details).not.toContain('mask-image:');

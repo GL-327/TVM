@@ -11,7 +11,7 @@ namespace {
 
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
-constexpr double kReferenceRemsHeight = 67.5;
+
 
 // The layout, in rems from the top of the screen's content.
 constexpr double kLedeTopRem = 5.0;
@@ -127,7 +127,7 @@ std::optional<std::pair<std::size_t, std::size_t>> XtreamScreen::PositionOf(cons
 }
 
 std::optional<Box> XtreamScreen::BoxOf(const std::string& key) const {
-    const Metrics metrics{height_ / kReferenceRemsHeight};
+    const Metrics metrics{ViewportRem(width_, height_)};
     const double x = metrics.Rem(kSafeXRem);
     const double contentWidth = std::min(width_ - 2.0 * x, metrics.Rem(kContentWidthRem));
 
@@ -155,7 +155,7 @@ std::string XtreamScreen::LabelOf(const std::string& key) const {
 }
 
 void XtreamScreen::Paint(Painter& painter) const {
-    const Metrics metrics{height_ / kReferenceRemsHeight};
+    const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
 
     const double x = metrics.Rem(kSafeXRem);

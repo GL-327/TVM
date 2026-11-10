@@ -1,6 +1,5 @@
 import { memo, useState, type CSSProperties, type ReactNode } from 'react';
 import { normalizeArtUrl } from '../data/artwork';
-import { usePhosphorSrc } from '../theme/usePhosphorSrc';
 import { ART_REFERRER, artClassName, markArtReady, paintArtReady } from './artFace';
 import { FocusButton } from './FocusButton';
 import { LoopClone } from './LoopClone';
@@ -38,7 +37,6 @@ function ChannelFace({
   clone: boolean;
 }): ReactNode {
   const original = normalizeArtUrl(channel.logo ?? '');
-  const { src: logo, waiting } = usePhosphorSrc(original, 'logo');
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showLogo = original !== '' && failedSrc !== original;
 
@@ -49,11 +47,11 @@ function ChannelFace({
         style={{ '--channel-hue': String(hue) } as CSSProperties}
       >
         {clone || !showLogo ? null : <span className="skeleton skeleton--art" />}
-        {showLogo && !waiting ? (
+        {showLogo ? (
           <img
-            key={logo}
+            key={original}
             className="channel-card__logo"
-            src={logo}
+            src={original}
             alt=""
             loading="lazy"
             fetchPriority={clone ? 'low' : 'high'}
@@ -64,7 +62,7 @@ function ChannelFace({
             onError={() => setFailedSrc(original)}
             ref={paintArtReady}
           />
-        ) : showLogo ? null : (
+        ) : (
           <span className="channel-card__initial">{initial}</span>
         )}
         {picking ? <span className={`channel-card__mark${selected ? ' channel-card__mark--on' : ''}`}>{selected ? 'On' : 'Add'}</span> : null}

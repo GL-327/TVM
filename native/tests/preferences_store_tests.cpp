@@ -76,4 +76,19 @@ TEST(store_keeps_ui_and_core_prefs_apart) {
     REQUIRE(store.CorePrefs().autoUpdate);
 }
 
+TEST(store_theme_survives_motion_changes_and_keeps_unknown_preferences) {
+    TempFolder folder;
+    const auto path = folder.path() / L"ui-prefs.json";
+    tvm::util::WriteFileAtomically(path, R"({"theme":"light","futureSetting":42})");
+    tvm::ui::FilePreferenceStore store(folder.path());
+    REQUIRE(store.Look() == tvm::ui::Theme::Light);
+    store.SaveMotion(MotionSettings{MotionPreference::Reduced, true});
+    REQUIRE(store.Look() == tvm::ui::Theme::Light);
+    store.SaveLook(tvm::ui::Theme::Dark);
+    REQUIRE(store.Motion() == (MotionSettings{MotionPreference::Reduced, true}));
+    REQUIRE(tvm::util::ReadTextFile(path)->find("\"futureSetting\":42") != std::string::npos);
+    tvm::util::WriteFileAtomically(path, R"({"theme":"retired-theme"})");
+    REQUIRE(store.Look() == tvm::ui::Theme::Dark);
+}
+
 }  // namespace

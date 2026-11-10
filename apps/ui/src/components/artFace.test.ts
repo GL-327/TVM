@@ -57,7 +57,7 @@ describe('artFace', () => {
 
   it('sets a real src and does not wait on referrer for TMDB', () => {
     const art = readFileSync(join(dir, 'Artwork.tsx'), 'utf8');
-    expect(art).toContain('src={src}');
+    expect(art).toContain('src={original}');
     expect(art).toContain('referrerPolicy={ART_REFERRER}');
     expect(art).not.toContain('data-src');
     expect(art).toContain("loading={eager ? 'eager' : 'lazy'}");
@@ -75,7 +75,7 @@ describe('artFace', () => {
     const art = readFileSync(join(dir, 'Artwork.tsx'), 'utf8');
     const css = readFileSync(join(dir, '../app.css'), 'utf8');
     expect(art).toContain('<img');
-    expect(art).toContain('src={src}');
+    expect(art).toContain('src={original}');
     expect(art).toContain('markArtReady');
     const imgAt = art.indexOf('<img');
     const shimmerAt = art.indexOf('skeleton skeleton--art');

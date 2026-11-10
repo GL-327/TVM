@@ -289,9 +289,10 @@ std::optional<Box> PlayerScreen::MenuBox() const {
     if (!button.has_value()) return std::nullopt;
     const std::size_t rows = std::min(MenuOptions(menu_).size(), kMenuRowsShown);
     const double height = Rem(kMenuPadRem) * 2.0 + Rem(kMenuHeadingRem) + static_cast<double>(rows) * Rem(kMenuRowRem);
-    const double width = Rem(menu_ == kQualityKey ? kMenuWidthRem * 1.6 : kMenuWidthRem);
+    const double width = std::min(Rem(menu_ == kQualityKey ? kMenuWidthRem * 1.6 : kMenuWidthRem),
+                                  std::max(1.0, width_ - 2.0 * Rem(kPadXRem)));
     const double x = std::clamp(button->Right() - width, Rem(kPadXRem), width_ - Rem(kPadXRem) - width);
-    return Box{x, button->y - Rem(1.0) - height, width, height};
+    return Box{x, std::max(0.0, button->y - Rem(1.0) - height), width, height};
 }
 
 std::optional<double> PlayerScreen::ShareAt(double x) const {
@@ -390,8 +391,27 @@ std::vector<std::string> PlayerScreen::Items() const {
     return {kBackKey};
 }
 
+std::map<std::string, Box> PlayerScreen::CompactControls() const {
+    const double x = Rem(kPadXRem);
+    FlowLayout flow(x, 0, width_ - 2.0 * x, Rem(kToolGapRem));
+    std::map<std::string, Box> boxes;
+    const double height = std::max(44.0, Rem(kButtonRem));
+    const auto add = [&](const std::string& key, double width) { boxes[key] = flow.Place(width, height); };
+    add(kPlayKey, std::max(44.0, Rem(kPlayWidthRem)));
+    if (!view_.live) { add(kRewindKey, height); add(kForwardKey, height); }
+    add(kMuteKey, height);
+    add("volume-track", Rem(kVolumeTrackRem + 4.6));
+    for (const auto& key : ToolKeys())
+        add(key, std::max(height, static_cast<double>(ToolLabel(key).size()) * 0.55 * Rem(0.85) + Rem(1.4)));
+    add(kFullscreenKey, height);
+    const double top = height_ - Rem(kFooterBottomRem) - flow.Bottom();
+    for (auto& [key, box] : boxes) box.y += top;
+    return boxes;
+}
+
 Box PlayerScreen::TrackBox() const {
-    const double toolbarTop = height_ - Rem(kFooterBottomRem) - Rem(kToolbarRem);
+    const double toolbarTop = CompactViewport(width_, height_) ? CompactControls().at(kPlayKey).y
+                                                              : height_ - Rem(kFooterBottomRem) - Rem(kToolbarRem);
     const double y = toolbarTop - Rem(kTimelineGapRem) - Rem(kTimelineRem);
     const double x = Rem(kPadXRem) + Rem(kTimeWidthRem) + Rem(kTimeGapRem);
     const double width = width_ - 2.0 * x;
@@ -399,12 +419,33 @@ Box PlayerScreen::TrackBox() const {
 }
 
 Box PlayerScreen::VolumeTrackBox() const {
+    if (CompactViewport(width_, height_)) {
+        Box box = CompactControls().at("volume-track");
+        box.width = std::min(Rem(kVolumeTrackRem), box.width);
+        return box;
+    }
     const Box mute = *BoxOf(kMuteKey);
     return Box{mute.Right() + Rem(kVolumeGapRem) + Rem(0.2), mute.y, Rem(kVolumeTrackRem), mute.height};
 }
 
 std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
     const double x = Rem(kPadXRem);
+    const bool compact = CompactViewport(width_, height_);
+    if (compact) {
+        const auto controls = CompactControls();
+        if (const auto found = controls.find(key); found != controls.end()) return found->second;
+        FlowLayout header(x, Rem(kHeaderTopRem), width_ - 2.0 * x, Rem(kActionGapRem));
+        const Box back = header.Place(Rem(13.0), 44.0);
+        if (key == kBackKey) return back;
+        if (!view_.live) {
+            const Box download = header.Place(44.0, 44.0);
+            if (key == kDownloadKey) return download;
+        }
+        if (view_.canSave) {
+            const Box list = header.Place(Rem(kWatchlistWidthRem), 44.0);
+            if (key == kWatchlistKey) return list;
+        }
+    }
     if (key == kBackKey) {
         // .cinema-chrome__back: the arrow, then "Back to browse".
         const double width = Rem(0.3 + kGlyphRem + 0.7 + 0.8) +
@@ -458,8 +499,9 @@ std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
     }
 
     // Next Up's card, at the right over the timeline, and its two buttons.
-    const Box card = Box{width_ - x - Rem(kNextWidthRem), TrackBox().y - Rem(1.2) - Rem(kNextHeightRem),
-                         Rem(kNextWidthRem), Rem(kNextHeightRem)};
+    const double cardWidth = std::min(Rem(kNextWidthRem), width_ - 2.0 * x);
+    const Box card = Box{width_ - x - cardWidth, TrackBox().y - Rem(1.2) - Rem(kNextHeightRem),
+                         cardWidth, Rem(kNextHeightRem)};
     if (key == "next-card") return card;
 
     // Skip recap and the credits' two buttons sit at the right, just over the timeline, as the cinema
@@ -468,7 +510,7 @@ std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
     if (key == kRecapKey) return Box{width_ - x - Rem(9.2), endY, Rem(9.2), button};
     if (key == kCreditsWatchKey) return Box{width_ - x - Rem(9.6), endY, Rem(9.6), button};
     if (key == kCreditsSkipKey) return Box{width_ - x - Rem(9.6) - Rem(0.7) - Rem(11.6), endY, Rem(11.6), button};
-    const double bodyX = card.x + Rem(0.6) + Rem(9.6) + Rem(0.9);
+    const double bodyX = compact ? card.x + Rem(0.8) : card.x + Rem(0.6) + Rem(9.6) + Rem(0.9);
     if (key == kNextPlayKey) return Box{bodyX, card.Bottom() - Rem(0.7) - Rem(2.3), Rem(7.4), Rem(2.3)};
     if (key == kNextDismissKey) return Box{bodyX + Rem(7.9), card.Bottom() - Rem(0.7) - Rem(2.3), Rem(7.2), Rem(2.3)};
 
@@ -754,12 +796,13 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
     const double drain = view_.nextWindow > 0.0 ? std::clamp(view_.nextRemaining / view_.nextWindow, 0.0, 1.0) : 0.0;
     painter.FillRoundRect(Box{card.x + Rem(0.8), card.y, (card.width - Rem(1.6)) * drain, Rem(0.18)}, Rem(0.09), kFill);
 
-    const Box still{card.x + Rem(0.6), card.y + Rem(0.6), Rem(9.6), card.height - Rem(1.2)};
-    if (view_.nextStill.empty() || !painter.ImageFaded(still, view_.nextStill, Rem(0.45), 1.0, 0.5, 0.3)) {
+    const bool compact = CompactViewport(width_, height_);
+    const Box still{card.x + Rem(0.6), card.y + Rem(0.6), compact ? 0.0 : Rem(9.6), card.height - Rem(1.2)};
+    if (!compact && (view_.nextStill.empty() || !painter.ImageFaded(still, view_.nextStill, Rem(0.45), 1.0, 0.5, 0.3))) {
         painter.FillLinearGradient(still, still.x, still.y, still.Right(), still.Bottom(),
                                    {GradientStop{0.0, Rgb(0x1C1C1F)}, GradientStop{1.0, Rgb(0x101012)}});
     }
-    const double x = still.Right() + Rem(0.9);
+    const double x = compact ? card.x + Rem(0.8) : still.Right() + Rem(0.9);
     const double width = card.Right() - x - Rem(0.8);
     const long seconds = static_cast<long>(std::ceil(std::max(0.0, view_.nextRemaining)));
     painter.Text(Box{x, card.y + Rem(0.55), width, Rem(1.1)}, "UP NEXT \xC2\xB7 in " + std::to_string(seconds) + "s",
@@ -767,7 +810,7 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
     painter.Text(Box{x, card.y + Rem(1.55), width, Rem(1.3)}, view_.nextShow, TextStyle{Rem(0.85), false, 550}, kInkMuted);
     painter.Text(Box{x, card.y + Rem(2.75), width, Rem(1.5)}, view_.nextEpisode, TextStyle{Rem(1.0), true, 700}, kInk);
 
-    const Metrics metrics{height_ / 67.5};
+    const Metrics metrics{ViewportRem(width_, height_)};
     DrawButton(painter, metrics, *BoxOf(kNextPlayKey), "Play next",
                ButtonLook{true, focused_ == kNextPlayKey, focused_ == kNextPlayKey ? 1.0 : 0.0});
     const Box dismiss = *BoxOf(kNextDismissKey);
@@ -832,10 +875,12 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const double cinemaWidth = painter.MeasureText("C I N E M A", brandSmall);
     const double tvmWidth = painter.MeasureText("TVM", brandBig);
     const double brandRight = width_ - Rem(kPadXRem);
+    if (!CompactViewport(width_, height_)) {
     painter.Text(Box{brandRight - cinemaWidth, back.y, cinemaWidth + 2.0, back.height}, "C I N E M A", brandSmall,
                  WithAlpha(Rgb(0xFFFFFF, 0.6), opacity));
     painter.Text(Box{brandRight - cinemaWidth - Rem(0.55) - tvmWidth, back.y - Rem(0.1), tvmWidth + 2.0, back.height},
                  "TVM", brandBig, Rgb(0xFFFFFF, opacity));
+    }
 
     // The header's actions: Download, then My List with its bookmark, which fills once the title is saved.
     if (!view_.live) {
@@ -915,7 +960,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                               volumeBar.height + Rem(0.24)},
                           0.0, WithAlpha(kInkMuted, opacity));
     const std::string percent = silent ? "Muted" : Fixed(std::round(view_.volume * 100.0), "%.0f%%");
-    painter.Text(Box{volumeTrack.Right() + Rem(0.55), mute.y, Rem(4.0), mute.height}, percent,
+    painter.Text(Box{volumeTrack.Right() + Rem(0.55), volumeTrack.y, Rem(4.0), volumeTrack.height}, percent,
                  TextStyle{Rem(0.72), true, 600}, view_.volume > 1.0 && !silent ? WithAlpha(kFill, opacity) : ink);
 
     // The tools: subtitles, audio, quality and speed, each a word that opens its menu.
@@ -947,8 +992,8 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const double titleWidth = std::min(painter.MeasureText(title, titleStyle), std::max(0.0, room - episodeWidth));
     const double total = titleWidth + episodeWidth;
     const double startX = std::clamp(width_ / 2.0 - total / 2.0, spaceLeft, std::max(spaceLeft, spaceRight - total));
-    painter.Text(Box{startX, play.y, titleWidth + 2.0, play.height}, title, titleStyle, ink);
-    if (!view_.episode.empty()) {
+    if (!CompactViewport(width_, height_)) painter.Text(Box{startX, play.y, titleWidth + 2.0, play.height}, title, titleStyle, ink);
+    if (!CompactViewport(width_, height_) && !view_.episode.empty()) {
         painter.Text(Box{startX + titleWidth + gap, play.y + Rem(0.08), episodeWidth, play.height}, view_.episode,
                      episodeStyle, WithAlpha(kInkMuted, opacity));
     }
@@ -973,7 +1018,7 @@ void PlayerScreen::PaintSpinner(Painter& painter) const {
 
 void PlayerScreen::PaintError(Painter& painter) const {
     // PlaybackError: the "Playback" kicker, the title, the reason, then Retry and Back.
-    const Metrics metrics{height_ / 67.5};
+    const Metrics metrics{ViewportRem(width_, height_)};
     const double x = Rem(kPadXRem);
     const double width = std::min(width_ - 2.0 * x, Rem(44.0));
     const double top = height_ * 0.5 - Rem(6.5);

@@ -23,7 +23,7 @@ constexpr double kHeadingSizeRem = 1.25;
 // The home camera parks the focused row 72px below the top at 1080p.
 constexpr double kRowCameraPadRem = 4.5;
 // Reference height the metrics are measured against: rem = height / 67.5.
-constexpr double kReferenceRemsHeight = 67.5;
+
 // The row the status line takes above the page, when there is one.
 constexpr double kStatusRowRem = 2.5;
 // The top buttons in the header, until the navigation bar is ported.
@@ -401,7 +401,7 @@ double Scene::HeroFade() const {
 Scene::HeroBoxes Scene::HeroLayout() const {
     const Box hero = HeroBox();
     const double x = metrics_.Rem(kSafeXRem);
-    const double copyWidth = metrics_.Rem(kHeroCopyWidthRem);
+    const double copyWidth = std::min(metrics_.Rem(kHeroCopyWidthRem), viewportWidth_ - 2.0 * x);
     HeroBoxes boxes;
 
     // The copy sits at the foot of the hero and stacks upwards, as `.stage` lays it out with flex-end.
@@ -415,7 +415,8 @@ Scene::HeroBoxes Scene::HeroLayout() const {
     boxes.dots = Box{x, bottom - dot, dotsWidth, dot};
     if (hasDots) bottom -= dot + metrics_.Rem(kHeroDotsMarginRem);
 
-    const double learnHeight = metrics_.Rem(kHeroLearnHeightRem);
+    const bool compact = CompactViewport(viewportWidth_, viewportHeight_);
+    const double learnHeight = compact ? std::max(44.0, metrics_.Rem(kHeroLearnHeightRem)) : metrics_.Rem(kHeroLearnHeightRem);
     const double learnWidthRem = std::max(
         kHeroLearnMinWidthRem, EstimateRem(InfoLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem);
 
@@ -423,23 +424,27 @@ Scene::HeroBoxes Scene::HeroLayout() const {
         // A notice: its two buttons side by side, `.hero__actions`, under a paragraph and a smaller heading.
         const double playWidthRem = std::max(
             kHeroLearnMinWidthRem, EstimateRem(PlayLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem);
-        boxes.watch = Box{x, bottom - learnHeight, metrics_.Rem(playWidthRem), learnHeight};
+        boxes.watch = Box{x, bottom - learnHeight, std::min(copyWidth, metrics_.Rem(playWidthRem)), learnHeight};
         boxes.learn = Box{boxes.watch.Right() + metrics_.Rem(kNoticeButtonGapRem), boxes.watch.y,
-                          metrics_.Rem(learnWidthRem), learnHeight};
+                          std::min(copyWidth, metrics_.Rem(learnWidthRem)), learnHeight};
+        if (boxes.learn.Right() > viewportWidth_ - x) {
+            boxes.learn.x = x;
+            boxes.watch.y -= learnHeight + metrics_.Rem(kNoticeButtonGapRem);
+        }
         bottom = boxes.watch.y - metrics_.Rem(kHeroWatchMarginTopRem);
-        boxes.body = Box{x, bottom - metrics_.Rem(kNoticeBodyRem), copyWidth * 1.3, metrics_.Rem(kNoticeBodyRem)};
+        boxes.body = Box{x, bottom - metrics_.Rem(kNoticeBodyRem), std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), metrics_.Rem(kNoticeBodyRem)};
         bottom = boxes.body.y - metrics_.Rem(kHeroKickerMarginRem);
         const double noticeTitle = metrics_.Rem(kNoticeTitleRem * 1.2);
-        boxes.title = Box{x, bottom - noticeTitle, copyWidth * 1.3, noticeTitle};
+        boxes.title = Box{x, bottom - noticeTitle, std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), noticeTitle};
         bottom = boxes.title.y - metrics_.Rem(kHeroKickerMarginRem);
         boxes.kicker = Box{x, bottom - metrics_.Rem(kHeroKickerHeightRem), copyWidth, metrics_.Rem(kHeroKickerHeightRem)};
         return boxes;
     }
 
-    boxes.learn = Box{x, bottom - learnHeight, metrics_.Rem(learnWidthRem), learnHeight};
+    boxes.learn = Box{x, bottom - learnHeight, std::min(copyWidth, metrics_.Rem(learnWidthRem)), learnHeight};
     bottom = boxes.learn.y - metrics_.Rem(kHeroWatchMarginBottomRem);
 
-    const double watchHeight = metrics_.Rem(kHeroWatchHeightRem);
+    const double watchHeight = compact ? std::max(44.0, metrics_.Rem(kHeroWatchHeightRem)) : metrics_.Rem(kHeroWatchHeightRem);
     boxes.watch = Box{x, bottom - watchHeight, metrics_.Rem(EstimateRem(PlayLabel(), kHeroWatchFontRem, 0.08)),
                       watchHeight};
     bottom = boxes.watch.y - metrics_.Rem(kHeroWatchMarginTopRem);
@@ -636,8 +641,12 @@ std::string Scene::InfoLabel() const {
 
 double Scene::HeaderTop() const {
     if (Streamy()) return ChromeHeight();
-    if (style_ == SceneStyle::Page) return metrics_.Rem(kSafeYRem + kPageRowTopRem + kButtonRowRem + 1.0);
+    if (style_ == SceneStyle::Page) return tops_.empty()
+        ? metrics_.Rem(kSafeYRem + kPageRowTopRem + kButtonRowRem + 1.0)
+        : TopBoxScreen(tops_.size() - 1).Bottom() + metrics_.Rem(1.0);
     if (style_ == SceneStyle::Search) return metrics_.Rem(kSafeYRem + kSearchFieldRem + 0.6);
+    if (CompactViewport(viewportWidth_, viewportHeight_) && !tops_.empty())
+        return TopBoxScreen(tops_.size() - 1).Bottom() + pageScroll_ + metrics_.Rem(1.0);
     return metrics_.Rem(kSafeYRem);
 }
 
@@ -689,7 +698,8 @@ void Scene::PaintPageHeader(Painter& painter) const {
 }
 
 double Scene::ChromeHeight() const {
-    return metrics_.Rem(kChromePadTopRem + kChromeLinkHeightRem + kChromePadBottomRem);
+    return tops_.empty() ? metrics_.Rem(kChromePadTopRem + kChromeLinkHeightRem + kChromePadBottomRem)
+                         : TopBoxScreen(tops_.size() - 1).Bottom() + metrics_.Rem(kChromePadBottomRem);
 }
 
 void Scene::PaintStreamChrome(Painter& painter) const {
@@ -715,45 +725,52 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         }
         painter.Text(Box{x, box.y, box.width, box.height}, tops_[i].label,
                      TextStyle{metrics_.Rem(kChromeFontRem), false, kChromeWeight},
-                     focused || tops_[i].on ? kPlayerInk : kPlayerInkMuted);
+                     focused || tops_[i].on ? tokens::kText : tokens::kTextMuted);
     }
 }
 
 Box Scene::TopBoxScreen(std::size_t index) const {
     if (style_ == SceneStyle::Page) {
         // `.collection-controls`: a row of buttons under the heading, left to right, fixed while the page scrolls.
-        double x = metrics_.Rem(kSafeXRem);
-        for (std::size_t i = 0; i < index && i < tops_.size(); ++i) {
-            x += metrics_.Rem(PageButtonWidthRem(tops_[i]) + kButtonGapRowRem);
-        }
-        const double width = index < tops_.size() ? metrics_.Rem(PageButtonWidthRem(tops_[index])) : 0.0;
-        return Box{x, metrics_.Rem(kSafeYRem + kPageRowTopRem), width, metrics_.Rem(kButtonRowRem)};
+        const double x = metrics_.Rem(kSafeXRem);
+        FlowLayout flow(x, metrics_.Rem(kSafeYRem + kPageRowTopRem), viewportWidth_ - 2.0 * x,
+                        metrics_.Rem(kButtonGapRowRem));
+        Box box;
+        for (std::size_t i = 0; i <= index && i < tops_.size(); ++i)
+            box = flow.Place(metrics_.Rem(PageButtonWidthRem(tops_[i])), metrics_.Rem(kButtonRowRem));
+        return box;
     }
     if (Streamy()) {
         // The stream chrome runs left to right across the top, and stays there while the page scrolls.
-        double x = metrics_.Rem(kSafeXRem);
-        for (std::size_t i = 0; i < index && i < tops_.size(); ++i) {
-            x += metrics_.Rem(ChromeLinkWidthRem(tops_[i]) + kChromeGapRem);
-        }
-        const double width = index < tops_.size() ? metrics_.Rem(ChromeLinkWidthRem(tops_[index])) : 0.0;
-        return Box{x, metrics_.Rem(kChromePadTopRem), width, metrics_.Rem(kChromeLinkHeightRem)};
+        const double x = metrics_.Rem(kSafeXRem);
+        FlowLayout flow(x, metrics_.Rem(kChromePadTopRem), viewportWidth_ - 2.0 * x, metrics_.Rem(kChromeGapRem));
+        Box box;
+        const double height = CompactViewport(viewportWidth_, viewportHeight_) ? std::max(44.0, metrics_.Rem(kChromeLinkHeightRem))
+                                                                             : metrics_.Rem(kChromeLinkHeightRem);
+        for (std::size_t i = 0; i <= index && i < tops_.size(); ++i)
+            box = flow.Place(metrics_.Rem(ChromeLinkWidthRem(tops_[i])), height);
+        return box;
     }
     // The buttons sit in the header row, at the top right, and go leftwards in order. They scroll with the page.
-    const double width = metrics_.Rem(kTopButtonWidthRem);
+    const double width = std::min(metrics_.Rem(kTopButtonWidthRem), std::max(1.0, viewportWidth_ - 2.0 * metrics_.Rem(kSafeXRem)));
     const double height = metrics_.Rem(kTopButtonHeightRem);
     const double step = width + metrics_.Rem(kTopButtonGapRem);
-    const double x = viewportWidth_ - metrics_.Rem(kSafeXRem) - width - static_cast<double>(index) * step;
-    return Box{x, metrics_.Rem(kSafeYRem) - pageScroll_, width, height};
+    const std::size_t columns = std::max(std::size_t{1}, static_cast<std::size_t>(
+        std::max(1.0, viewportWidth_ - 2.0 * metrics_.Rem(kSafeXRem) + metrics_.Rem(kTopButtonGapRem)) / step));
+    const double x = viewportWidth_ - metrics_.Rem(kSafeXRem) - width - static_cast<double>(index % columns) * step;
+    return Box{x, metrics_.Rem(kSafeYRem) + static_cast<double>(index / columns) * (height + metrics_.Rem(kTopButtonGapRem)) - pageScroll_, width, height};
 }
 
 void Scene::Layout(double width, double height) {
     viewportWidth_ = width;
     viewportHeight_ = height;
-    metrics_.rem = height / kReferenceRemsHeight;
+    metrics_.rem = ViewportRem(width, height);
 
     // The hero takes the top of the window, and the rails start below it.
-    heroHeight_ = HeroActive() ? kHeroHeightFraction * height : 0.0;
-    pageTopOffset_ = HeroActive() ? heroHeight_ + metrics_.Rem(kHeroRailGapRem) : 0.0;
+    heroHeight_ = HeroActive() ? std::max(kHeroHeightFraction * height,
+        (CompactViewport(width, height) ? HeaderTop() + metrics_.Rem(24.0) : 0.0)) : 0.0;
+    pageTopOffset_ = HeroActive() ? heroHeight_ + metrics_.Rem(kHeroRailGapRem)
+                                 : std::max(0.0, HeaderTop() - metrics_.Rem(kSafeYRem));
 
     const double contentWidth = width - 2.0 * metrics_.Rem(kSafeXRem);
     railsHeight_ = page_->Measure(contentWidth, metrics_).height;
@@ -934,6 +951,20 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
     }
 
     if (const std::optional<std::size_t> top = TopIndexOf(*focused)) {
+        // Wrapped navigation has real rows; Up/Down first moves through them.
+        if (RowTops() && (direction == nav::Direction::Up || direction == nav::Direction::Down)) {
+            const Box fromBox = TopBoxScreen(*top);
+            std::optional<std::size_t> best;
+            double score = 1e18;
+            for (std::size_t i = 0; i < tops_.size(); ++i) {
+                const Box box = TopBoxScreen(i);
+                const double dy = box.CenterY() - fromBox.CenterY();
+                if (std::abs(dy) < 1.0 || (dy > 0.0) != (direction == nav::Direction::Down)) continue;
+                const double distance = std::abs(dy) * 1000.0 + std::abs(box.CenterX() - fromBox.CenterX());
+                if (distance < score) { best = i; score = distance; }
+            }
+            if (best) { FocusKey(TopKey(*best), nowMs, true); return true; }
+        }
         // Right and left move along the top buttons, as the header lays them out: leftwards from the first
         // on Home, rightwards from the first in the stream chrome.
         const nav::Direction toNext = RowTops() ? nav::Direction::Right : nav::Direction::Left;
