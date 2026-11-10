@@ -19,8 +19,6 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${uiPort}`,
     browserName: 'chromium',
     viewport: { width: 1280, height: 720 },
-    // The suite is the remote. A click here would hide a broken D-pad.
-    launchOptions: { args: ['--disable-extensions'] },
   },
   webServer: [
     {
