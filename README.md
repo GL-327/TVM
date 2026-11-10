@@ -1,164 +1,91 @@
 # TVM
 
-TVM supports Windows desktop, web browsers on phones and computers, iOS,
-Android and Roku. The C++20 Windows client is in [`native/`](native/README.md):
-build it with `native\build.bat` and open `TVM-native.cmd`. The shared web and
-mobile clients remain supported; see [platforms](docs/PLATFORMS.md) and
-[native migration status](native/PARITY.md). Electron has been retired.
+TVM is a media app for Windows, iPhone/iPad, Android, Roku, and web browsers on phones, tablets and computers. It brings your authorised media sources, films, series and Live TV connections into one interface.
 
-TVM runs on desktop, in a browser served by Core, on iPhone and Android, and
-as a Roku channel. Browse and play your own media and sources you already use
-from one interface.
+**Project owner and maintainer: [Arthur Foxall (@GL-327)](https://github.com/GL-327).** The current source lives on `main`. Electron has been retired.
 
-**Status.** TVM Stream and TVM Stream + Live TV are activated by the app owner. There is no checkout in the app. Read [the testing guide](docs/INITIAL_TESTING.md) before changing anything structural.
+## Download the current version
 
-The five supported apps and their update paths are described in [PLATFORMS.md](docs/PLATFORMS.md).
+Get the installers from **[TVM downloads — every platform](https://github.com/GL-327/TVM/releases/tag/devices)**. GitHub's automatic “Source code” archives are for development; use the named download for your device.
 
-## Layout
+- **Windows C++ desktop:** `TVM-native-windows.zip`. Extract the whole folder and run `TVM.cmd` or `tvm.exe`. Node, Core, the browser UI and artwork are included. TVM finds an existing mpv player or installs a portable Windows build after checking its published checksum.
+- **macOS/Linux desktop:** `TVM-desktop.zip`. Install Node.js 22+, extract it, then open `TVM.command` on macOS or run `chmod +x TVM.sh && ./TVM.sh` on Linux. TVM opens in your browser. Install ffmpeg for media that needs browser conversion.
+- **Web browser, mobile or desktop:** `TVM-web.zip`. Install Node.js 22+ on the computer hosting TVM. Extract it and run `TVM-web.cmd` on Windows or `chmod +x TVM-web.sh && ./TVM-web.sh` on macOS/Linux. Open `http://127.0.0.1:7345/` on that computer. The layout adapts to screen size, touch and rotation. Phones connecting to that computer need the authenticated LAN setup below.
+- **Android:** `TVM.apk`. Install it on your phone/tablet or sideload it onto Android TV. It contains its own Core and browser UI. Android may ask you to allow installation from the source you used.
+- **iPhone/iPad:** `TVM.ipa`. This GitHub IPA needs signing with your Apple account/team through a suitable sideloading tool before installation. It is not an App Store release. See [iOS installation](apps/ios/README.md).
+- **Roku:** `TVM-roku.zip`. Enable Roku developer mode and upload this ZIP through the Roku's developer web page. Roku uses a TVM Core running on your computer. See [Roku setup](apps/roku/README.md).
 
-| Path | What it is |
-| --- | --- |
-| `apps/ui` | React interface, built for a ten-foot viewing distance |
-| `apps/core` | Local service on `127.0.0.1` by default. Owns all business logic, and serves the interface in production |
-| `native` | C++20 Windows desktop renderer; starts the shared Core. macOS/Linux desktop use the browser UI |
-| `apps/roku` | Roku SceneGraph source. Talks to Core over HTTP on the LAN with a bearer token. A developer-mode sideload still needs device testing; see [apps/roku/README.md](apps/roku/README.md) |
-| `apps/ios` | Standalone iPhone app: bundled `apps/ui` + on-device Core. No PC or LAN token required. IPA is CI/Mac only and is not App Store signed. See [apps/ios/README.md](apps/ios/README.md) |
-| `apps/android` | Standalone Kotlin WebView app with an on-device Core; optional home-Core pairing uses a LAN bearer. Debug APK is local/CI only; see [apps/android/README.md](apps/android/README.md) |
-| `packages/design` | Design tokens: colour, type scale, spacing, motion, focus |
-| `packages/nav` | Remote input normalised into intents |
-| `docs/` | Architecture and implementation plan |
+Windows also serves the browser interface while its Core is running, so Windows desktop users can open the same local web address without a second download.
 
-The interface never talks to a provider or holds a credential. It talks to core
-over `/api`, and core talks to everything else.
+## How TVM works
 
-## Prerequisites
+1. **The interface** shows the catalogue, search, details, saved lists, profiles, settings and playback controls. Windows has a C++20/Win32/Direct2D interface. The browser uses React; iOS and Android bundle that responsive interface with native playback. Roku has its own SceneGraph interface.
+2. **Core** handles accounts, access tiers, provider connections and media resolution. The Windows and browser packages run the shared Node Core in the background. iOS and Android include on-device Core implementations and can run without a PC. Roku connects to the computer's Core.
+3. **Playback** uses mpv on Windows, native playback on the phone apps, Roku's player on Roku, or browser playback with Core conversion when necessary. TVM does not include media subscriptions or supply rights to third-party content; connect sources you are authorised to use.
 
-- Node.js 22 or newer for source checkouts and macOS/Linux packages. The Windows desktop release bundles Node.
-- pnpm 11, via corepack: `corepack enable pnpm`
-- **Linux / macOS:** `curl`, plus `ffmpeg` and `mpv` for transcodes and native playback. See [docs/DESKTOP.md](docs/DESKTOP.md).
+Credentials and viewing data belong in TVM's local data folder and encrypted storage, not in this repository. Closing the browser or Windows interface leaves the shared Core available to other connected clients.
 
-On Windows, `corepack enable` writes into `C:\Program Files\nodejs` and needs an
-elevated terminal. Without it, prefix commands with `corepack`, as in
-`corepack pnpm install`.
+## Accounts and access
 
-On Linux and macOS:
+Open **Account** to create an account or sign in. A new account stays inactive until the operator activates it. Complete email verification when requested and accept the current terms. Developer tools require a developer account. Live TV requires the appropriate access tier and a source/subscription you supply.
 
-```bash
-chmod +x TVM.sh TVM-windowed.sh scripts/*.sh
-./scripts/setup-desktop.sh --with-media
-./TVM-windowed.sh
+Donations are optional gifts and do not activate or upgrade an account. The Windows client opens the existing donation screen in your browser; payment fields are supplied by Stripe.
+
+## Using a phone browser or Roku on your network
+
+Local desktop/browser use binds Core to `127.0.0.1` by default. For another device on your trusted LAN, configure the host with:
+
+```text
+TVM_CORE_BIND=0.0.0.0
+TVM_LAN_TOKEN=<your own random token of at least 32 characters>
 ```
 
-## Commands
+Allow the host on your private network and use `http://<host-lan-ip>:7345/` on the other device. Complete the connection/pairing screen with the token. Roku has its own connection settings. Admin, billing and privacy controls remain local. Never commit a real token or put it in a public UI bundle. See [connection and testing instructions](docs/INITIAL_TESTING.md).
+
+The standalone iOS and Android apps do not require a home computer for their normal on-device mode.
+
+## Updates
+
+- Installed Windows packages can verify and install renderer updates, then restart. Shared Core and browser UI have their own verified update feed.
+- iOS and Android can update their shared interface. Native player/Core changes require a new IPA/APK installation.
+- Roku channel changes require installing the current channel ZIP again.
+- A source checkout updates from Git and needs rebuilding. Checkouts created before the contributor-history cleanup should be cloned afresh; save any local work first.
+
+The `desktop-ui`, `ios-ui` and `android-ui` prereleases are required automatic-update feeds. The main **TVM downloads** release contains the files people install.
+
+## Build from source
+
+Install Node.js 22+ and pnpm 11. From this repository:
 
 ```bash
 pnpm install
-pnpm dev          # core on 7345, interface on 5173
 pnpm build
-pnpm test
 pnpm typecheck
 ```
 
-In development the Vite server serves the interface and proxies `/api` to core.
-In production core serves both, so the interface is always same-origin with its
-API and there is no CORS layer to get wrong.
+For the browser interface, run `TVM-web.cmd` on Windows or `./TVM-web.sh` on macOS/Linux. During development, `pnpm dev` runs Core on port 7345 and Vite on port 5173.
 
-Useful environment variables:
+For the Windows C++ interface, install Visual Studio C++ Build Tools with CMake, or MSYS2 UCRT64 GCC/CMake/Ninja, then run:
 
-| Variable | Effect |
-| --- | --- |
-| `TVM_CORE_PORT` | Core's port. Default 7345 |
-| `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. LAN clients require bearer authentication; see the testing guide |
-| `TVM_LAN_TOKEN` | At least 32 characters for authenticated LAN clients; never place it in the UI bundle. Admin, billing and privacy routes stay local |
-| `TVM_ENV=production` | Core serves the built browser interface. Apply for GitHub app updates is allowed; core hops to the applied bundle on restart |
-| `TVM_GITHUB_TOKEN` | Optional private-fork only. The public `GL-327/TVM` feed needs no token and no GitHub login on any device |
-| `TVM_UPDATE_REPO` | Optional. `owner/name` override for the app update channel. Default `GL-327/TVM` |
-| `TVM_ALLOW_APPLY=1` | Allow Apply outside production. Do not set this on a source checkout you care about |
-| `TVM_ROKU_HOST` / `TVM_ROKU_PASSWORD` | Optional. `TVM-roku.cmd` uses these to sideload `apps/roku/tvm-roku.zip` onto a developer-mode Roku |
-
-On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the **desktop interface** in a 1920×1080 TV frame at `http://127.0.0.1:5173/?tv=1`. That is the shared browser UI; the Windows desktop uses its C++ renderer. A Roku cannot run that UI.
-
-The Roku product for this version is the sideloaded `apps/roku/tvm-roku.zip` (not a Channel Store or HTTPS build). For a box on the LAN: set `TVM_CORE_BIND=0.0.0.0` and a random `TVM_LAN_TOKEN` of at least 32 characters; allow Core on the Windows private network; enter `http://<this-pc-lan-ip>:7345` and the same token on the Roku setup screen. The channel sends `Authorization: Bearer <token>` on Core API calls and Core-hosted streams. Loopback clients do not need a token. Admin, billing and privacy routes stay local. Never put the token in `config.json` or the zip. Details: [apps/roku/README.md](apps/roku/README.md).
-
-The iPhone app is standalone and does not need this bind or token. Android (and optional iOS “home Core”) still exchange a bearer for an HttpOnly `tvm_lan_session` cookie (`POST /api/lan/session`). See [apps/ios/README.md](apps/ios/README.md) and [apps/android/README.md](apps/android/README.md).
-
-## Android
-
-`apps/android` is a Kotlin WebView client (`com.tvm.privateclient`, minSdk 26) with an on-device Core and bundled UI. It can optionally pair with a home Core on a trusted LAN. The phone layout is `apps/ui/src/theme/mobile.css`.
-
-For optional LAN pairing, Core listens with `TVM_CORE_BIND=0.0.0.0` and a unique `TVM_LAN_TOKEN` of at least 32 characters. The app sends `Authorization: Bearer <token>` to `POST /api/lan/session` and keeps the HttpOnly `tvm_lan_session` cookie. The bearer is never written into the WebView. Credentials use EncryptedSharedPreferences.
-
-A debug APK can be built on this Windows workspace after JDK 17 or 21 and the Android SDK are installed (`gradlew.bat assembleDebug` from `apps/android`). That output is under `app/build/` and is gitignored — there is no committed APK. GitHub Actions `mobile.yml` can assemble the same debug APK on a runner. This is not a Play Store or signed release. Widevine L1 / Android TV certification is out of scope.
-
-`node apps/android/check-project.mjs` validates the tree and the Core contract from Windows. It does not compile Kotlin or prove playback on a device.
-
-```
-apps/android/
-  README.md
-  check-project.mjs
-  .gitignore
-  settings.gradle.kts
-  build.gradle.kts
-  gradle.properties
-  gradlew
-  gradlew.bat
-  gradle/wrapper/gradle-wrapper.properties
-  gradle/wrapper/gradle-wrapper.jar
-  app/build.gradle.kts
-  app/proguard-rules.pro
-  app/src/main/AndroidManifest.xml
-  app/src/main/java/com/tvm/privateclient/Connection.kt
-  app/src/main/java/com/tvm/privateclient/SessionClient.kt
-  app/src/main/java/com/tvm/privateclient/CredentialStore.kt
-  app/src/main/java/com/tvm/privateclient/MainActivity.kt
-  app/src/main/java/com/tvm/privateclient/TVMWebViewClient.kt
-  app/src/main/res/layout/activity_main.xml
-  app/src/main/res/values/strings.xml
-  app/src/main/res/values/themes.xml
-  app/src/main/res/values/colors.xml
-  app/src/main/res/xml/network_security_config.xml
-  app/src/main/res/xml/backup_rules.xml
-  app/src/main/res/xml/data_extraction_rules.xml
-  app/src/main/res/drawable/ic_launcher.xml
-  app/src/main/res/drawable/ic_launcher_foreground.xml
-  app/src/main/res/drawable/field.xml
-  app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-  app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-  app/src/test/java/com/tvm/privateclient/ConnectionTest.kt
-  app/src/test/java/com/tvm/privateclient/SessionClientTest.kt
+```powershell
+native/build.bat
+./TVM.cmd
 ```
 
-`local.properties`, `.gradle/` and `app/build/` are local. Do not commit them.
+Create a complete Windows package with `powershell -File native/package.ps1`. Native details are in [native/README.md](native/README.md). Phone and Roku build instructions are in their app directories.
 
-## Laptop / Desktop copies
+## Repository layout
 
-The living-room launcher (`TVM.cmd` / `TVM.sh`) is a fullscreen kiosk. For a laptop, use the windowed copies:
+- `native/` — Windows C++ interface, playback integration, tests and packaging.
+- `apps/core/` — shared account, catalogue, provider and update services.
+- `apps/ui/` — responsive browser interface, also bundled in the phone apps.
+- `apps/ios/` — Swift iOS host, on-device Core and native playback.
+- `apps/android/` — Kotlin Android host, on-device Core and native playback.
+- `apps/roku/` — Roku channel and package checks.
+- `packages/` — shared design tokens and navigation.
+- `scripts/` and `.github/workflows/` — launchers, validation, packaging and releases.
+- `docs/` — detailed setup, platform and testing information.
 
-| Copy | How to run |
-| --- | --- |
-| Desktop app (windowed) | `Desktop/TVM.cmd` (Windows) or `./TVM-windowed.sh` (Linux/macOS). Finder: `TVM-windowed.command` |
-| Roku preview + zip | `TVM-roku.cmd` (Windows) or `./TVM-roku.sh` (Linux/macOS) |
+Automated checks cover Core/UI/navigation tests, the Windows native build and tests, responsive Chromium/WebKit layouts, Android packaging/emulator checks, iOS packaging/simulator tests and Roku source/package checks. Device signing, store distribution and physical-device playback/accessibility QA are separate platform tasks.
 
-Double-click `Install-to-Desktop.cmd` (or run `./Install-to-Desktop.sh`) to put **both** the windowed desktop app and the Roku sideload zip on your Desktop:
-
-- `TVM.cmd` / `TVM.sh` — window sized to the laptop work area, mouse cursor visible
-- `TVM.command` — same windowed start, double-click in macOS Finder
-- `TVM Roku.cmd` / `TVM-roku.sh` — TV-frame preview of the same UI
-- `TVM-roku.zip` — sideload onto a developer-mode Roku
-
-Linux and macOS setup, package names, and the GitHub desktop tarball: [docs/DESKTOP.md](docs/DESKTOP.md).
-
-## Rules that are not negotiable
-
-- **No secrets in the repository.** Not in source, not in committed env files,
-  never in the interface bundle. Credentials belong in the operating system's
-  credential store, reached only by core.
-- **Core binds `127.0.0.1` by default.** It holds credentials, so the desktop
-  clients keep it local unless configured for LAN access. A Roku, iPhone or Android phone
-  on the LAN needs `TVM_CORE_BIND=0.0.0.0` and `TVM_LAN_TOKEN`; laptop
-  launchers do not.
-- **No torrent indexing, magnet search or scraping.** Real-Debrid is a client
-  for files the user already owns and links the user supplies, not a search
-  engine.
-- **Everything works with arrows, OK and Back.** A control that needs a pointer
-  is not finished.
+Third-party playback engines and libraries retain their licence notices and upstream attribution. See the bundled licence files, `apps/ui/public/licenses`, and `native/third_party`.

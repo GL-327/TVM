@@ -53,11 +53,12 @@ jobs:
           cp -r apps/core/dist/. stage/core/
           cp apps/core/package.json stage/core/package.json
           cp -r apps/ui/dist/. stage/ui/
-          cp scripts/launch-tvm.sh scripts/launch-tvm.cmd scripts/launch-tvm.ps1 stage/
+          cp scripts/launch-tvm.sh scripts/launch-web.mjs stage/
+          cp TVM-web.cmd TVM-web.sh stage/
           cp TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command stage/
           cp docs/DESKTOP.md stage/README.md
           cp package.json stage/
-          chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM-windowed.sh stage/TVM.command stage/TVM-windowed.command
+          chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM-windowed.sh stage/TVM.command stage/TVM-windowed.command stage/TVM-web.sh
           # Core finds this beside itself and knows it is a package, at this commit.
           node -e 'const info=JSON.stringify({commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,version:process.env.VERSION,builtAt:new Date().toISOString()});require("fs").writeFileSync("stage/build-info.json",info);require("fs").writeFileSync("stage/core/build-info.json",info)'
           mkdir -p release
@@ -70,15 +71,36 @@ jobs:
           test -f check-app/core/package.json
           test -f check-app/core/build-info.json
           test -f check-app/ui/index.html
-          # One download for all three systems. A zip opens with a double-click
-          # on Windows, which a tarball does not.
+          # The desktop bundle also carries a portable browser launcher.
           (cd stage && zip -q -r "$GITHUB_WORKSPACE/release/TVM-desktop.zip" .)
+          cp release/TVM-desktop.zip release/TVM-web.zip
+          node --check stage/launch-web.mjs
+          bash -n stage/TVM-web.sh
           rm -rf check-zip && mkdir check-zip && unzip -q "release/TVM-desktop.zip" -d check-zip
           test -f check-zip/core/index.js
           test -f check-zip/ui/index.html
           test -f check-zip/TVM.command
           bash -n stage/launch-tvm.sh
           bash -n stage/TVM-windowed.sh
+
+      - name: Smoke test the browser package
+        run: |
+          node --input-type=module <<'JS'
+          import { mkdtempSync, writeFileSync } from 'node:fs';
+          import { tmpdir } from 'node:os';
+          import { join } from 'node:path';
+          import { launchWeb } from './stage/launch-web.mjs';
+          process.env.TVM_DATA_DIR = mkdtempSync(join(tmpdir(), 'tvm-web-release-'));
+          process.env.TVM_CORE_PORT = '17347';
+          writeFileSync(join(process.env.TVM_DATA_DIR, 'prefs.json'), JSON.stringify({ language: 'en', autoUpdate: false }));
+          const result = await launchWeb({ open: false });
+          try {
+            if (!result.started) throw new Error('Smoke-test port was already occupied.');
+            const response = await fetch(result.url);
+            if (!response.ok || !(await response.text()).includes('<div id="root">')) throw new Error('Packaged browser UI did not load.');
+            console.log('Browser package startup and UI passed.');
+          } finally { if (result.started && result.pid) process.kill(result.pid); }
+          JS
 
       - name: Publish the Desktop release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -100,8 +122,12 @@ jobs:
           for old in $(gh release view desktop --json assets --jq '.assets[].name' 2>/dev/null || true); do
             [ "$old" = "TVM-desktop.zip" ] || gh release delete-asset desktop "$old" --yes || true
           done
-          gh release upload desktop release/TVM-desktop.zip --clobber
-          bash scripts/publish-device-package.sh release/TVM-desktop.zip
+          gh release upload desktop "release/TVM-desktop.zip#$GITHUB_SHA" --clobber
+          printf '%s\n' 'TVM in mobile and desktop browsers. Install Node.js 22+, extract TVM-web.zip, then run TVM-web.cmd or TVM-web.sh. Core serves the responsive UI at http://127.0.0.1:7345/. See the repository README for authenticated LAN access.' > release/WEB.md
+          gh release create web --title 'Web browser — mobile & desktop' --notes-file release/WEB.md --latest=false 2>/dev/null \
+            || gh release edit web --title 'Web browser — mobile & desktop' --notes-file release/WEB.md --latest=false
+          gh release upload web "release/TVM-web.zip#$GITHUB_SHA" --clobber
+          bash scripts/publish-device-package.sh release/TVM-desktop.zip release/TVM-web.zip
 
       # What installed copies download to update themselves. Kept off the
       # Desktop page, which is for people, in the same shape as the ios-ui and
@@ -128,6 +154,7 @@ jobs:
           name: tvm-desktop
           path: |
             release/TVM-desktop.zip
+            release/TVM-web.zip
             release/tvm-app.tar.gz
             release/desktop.json
           if-no-files-found: error
