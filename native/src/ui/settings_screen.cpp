@@ -14,7 +14,7 @@ namespace {
 
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
-constexpr double kReferenceRemsHeight = 67.5;
+
 constexpr double kRowWidthRem = 64.0;
 constexpr double kRowHeightRem = 3.25;
 constexpr double kRowGapRem = 0.5;
@@ -73,7 +73,7 @@ Command Confirm(std::string title, std::string body, std::string confirmLabel, s
 }
 
 // The copy here is taken from Settings.tsx so the wording matches the web app.
-constexpr char kNeedsCore[] = "Needs the core (phase 2)";
+
 
 }  // namespace
 
@@ -99,14 +99,14 @@ void SettingsScreen::BuildRows() {
     row(RowKind::Performance, "performance", "Performance mode");
 
     group("Look");
-    row(RowKind::Info, "themes", "Themes", "Light and dark arrive with the theme port");
+    row(RowKind::Theme, "themes", "Theme");
 
     group("Language");
     row(RowKind::Language, "language", "App language");
 
     group("Account");
     push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
-    push("plan", "Plan", kNeedsCore, Open("plans"));
+    push("plan", "Plan", "Access and pricing", Open("plans"));
     push("profiles", "Profiles", "TVM Stream only", Open("profiles"));
     push("realdebrid", "Real-Debrid", "Your token", Open("realdebrid"));
 
@@ -116,7 +116,7 @@ void SettingsScreen::BuildRows() {
     push("livetv", "Live TV login", "Server, username and password", Open("live-xtream"));
     push("live-playlist", "Live TV playlist", "M3U / M3U8", Open("live-playlist"));
     push("updates", "Updates", "GLogic Studios", Open("updates"));
-    row(RowKind::AutoUpdate, "auto-update", "Automatic updates");
+    row(RowKind::AutoUpdate, "auto-update", "Check for updates on launch");
     push("changelog", "What's new", "The latest changes on GitHub", Open("changelog", {}, true));
     push("diagnostics", "Diagnostics", "", Open("diagnostics", {}, true));
     push("developer", "Developer", "Accounts, email and channel check", Open("developer"));
@@ -158,10 +158,12 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
                                                                        : "Auto · UI animates";
     case RowKind::Performance:
         return motion_.performanceMode ? "On · simpler effects and motion" : "Off · full UI motion";
+    case RowKind::Theme:
+        return store_.Look() == Theme::Light ? "Light" : "Dark";
     case RowKind::Language:
         return LanguageName(core_.language);
     case RowKind::AutoUpdate:
-        return core_.autoUpdate ? "On · apply when this app opens" : "Off · check from Updates";
+        return core_.autoUpdate ? "On · check when this app opens" : "Off · check from Updates";
     case RowKind::Push:
     case RowKind::Info:
         return row.detail;
@@ -191,7 +193,7 @@ std::string SettingsScreen::DetailOf(const std::string& key) const {
 void SettingsScreen::Layout(double width, double height) {
     width_ = width;
     height_ = height;
-    metrics_.rem = height / kReferenceRemsHeight;
+    metrics_.rem = ViewportRem(width, height);
     Arrange();
     pageScroll_ = std::clamp(pageScroll_, 0.0, MaxPageScroll());
 }
@@ -209,7 +211,7 @@ void SettingsScreen::Arrange() {
             y += row.height + metrics_.Rem(0.5);
         } else {
             row.top = y;
-            row.height = metrics_.Rem(kRowHeightRem);
+            row.height = CompactViewport(width_, height_) ? std::max(64.0, metrics_.Rem(kRowHeightRem)) : metrics_.Rem(kRowHeightRem);
             y += row.height + metrics_.Rem(kRowGapRem);
         }
         first = false;
@@ -302,6 +304,11 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
     case RowKind::Language:
         core_.language = NextLanguage(core_.language);
         store_.SaveCorePrefs(prefs::CorePrefsPatch{core_.language, std::nullopt});
+        RefreshDetails();
+        return std::nullopt;
+
+    case RowKind::Theme:
+        store_.SaveLook(store_.Look() == Theme::Dark ? Theme::Light : Theme::Dark);
         RefreshDetails();
         return std::nullopt;
 
@@ -410,6 +417,14 @@ void SettingsScreen::Paint(Painter& painter) const {
 
         // Info rows are not choices, so they read as quieter text.
         const Color labelColor = focused ? tokens::kText : tokens::kTextMuted;
+        if (CompactViewport(width_, height_)) {
+            const double inset = metrics_.Rem(1.0);
+            painter.Text(Box{box.x + inset, box.y, box.width - 2.0 * inset, box.height * 0.5}, row.label,
+                         TextStyle{metrics_.Rem(1.0625), false}, labelColor);
+            painter.Text(Box{box.x + inset, box.y + box.height * 0.5, box.width - 2.0 * inset, box.height * 0.5}, row.detail,
+                         TextStyle{metrics_.Rem(0.9375), false}, tokens::kTextFaint);
+            continue;
+        }
         const double labelWidth = box.width * 0.55;
         painter.Text(Box{box.x + metrics_.Rem(1.0), box.y, labelWidth, box.height}, row.label,
                      TextStyle{metrics_.Rem(1.0625), false}, labelColor);

@@ -1,8 +1,7 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { preferBackdrop, preferPoster } from '../data/artwork';
 import type { Title } from '../data/catalog';
-import { usePhosphorSrc } from '../theme/usePhosphorSrc';
 import { ART_REFERRER, artClassName, markArtReady, paintArtReady } from './artFace';
 
 interface ArtworkProps {
@@ -38,9 +37,7 @@ export const Artwork = memo(function Artwork({
   eager = false,
 }: ArtworkProps): React.JSX.Element {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const host = useRef<HTMLSpanElement>(null);
   const original = kind === 'backdrop' ? preferBackdrop(title.id, title.backdrop, title.poster) : preferPoster(title.id, title.poster, title.backdrop);
-  const { src, waiting } = usePhosphorSrc(original, kind, eager ? undefined : host);
   const failed = original === '' || failedSrc === original;
   const style = { ['--poster-hue' as string]: String(title.hue) } as CSSProperties;
 
@@ -56,12 +53,11 @@ export const Artwork = memo(function Artwork({
   }
 
   return (
-    <span key={waiting ? `pending:${original}` : src} ref={host} className={artClassName('pending', className)} style={style} aria-hidden="true">
+    <span key={original} className={artClassName('pending', className)} style={style} aria-hidden="true">
       {decorative ? null : <span className="skeleton skeleton--art" />}
-      {waiting ? null : (
         <img
-          key={src}
-          src={src}
+          key={original}
+          src={original}
           alt=""
           loading={eager ? 'eager' : 'lazy'}
           fetchPriority={decorative ? 'low' : eager ? 'high' : 'auto'}
@@ -72,7 +68,6 @@ export const Artwork = memo(function Artwork({
           onError={() => setFailedSrc(original)}
           ref={paintArtReady}
         />
-      )}
     </span>
   );
 }, sameArt);

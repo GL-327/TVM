@@ -133,7 +133,7 @@ std::vector<std::string> DetailsScreen::SeasonKeys() const {
 double DetailsScreen::ContentHeight() const {
     if (!IsSeries()) return HeroHeight();
     const double episodes = static_cast<double>(Episodes().size());
-    return HeroHeight() + Rem(1.0) + Rem(kSeasonTabHeightRem) + Rem(1.2) +
+    return HeroHeight() + Rem(1.0) + SeasonsHeight() + Rem(1.2) +
            episodes * (Rem(kEpisodeHeightRem) + Rem(kEpisodeGapRem)) + Rem(2.4);
 }
 
@@ -144,34 +144,45 @@ double DetailsScreen::MaxScroll() const {
 std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
     const double x = Rem(kSafeXRem);
     const double heroBottom = HeroHeight() - scroll_ - Rem(kHeroPadBottomRem);
-    const double posterY = heroBottom - Rem(kDetailsPosterHeightRem);
-    const double copyX = x + Rem(kDetailsPosterWidthRem) + Rem(kCopyGapRem);
+    const bool compact = CompactViewport(width_, height_);
+    const double posterY = compact ? Rem(3.0) - scroll_ : heroBottom - Rem(kDetailsPosterHeightRem);
+    const double copyX = compact ? x : x + Rem(kDetailsPosterWidthRem) + Rem(kCopyGapRem);
     const double buttonsY = posterY + Rem(8.2);
 
-    double left = copyX;
+    FlowLayout actions(copyX, buttonsY, width_ - copyX - x, Rem(kButtonGapRem));
     for (const std::string& action : ActionKeys()) {
         const double width = action == kListKey ? Rem(14.5) : action == kPlayKey ? Rem(8.4) : action == kDownloadKey ? Rem(10.0) : Rem(7.0);
-        if (action == key) return Box{left, buttonsY, width, Rem(kButtonHeightRem)};
-        left += width + Rem(kButtonGapRem);
+        const Box box = actions.Place(width, compact ? std::max(44.0, Rem(kButtonHeightRem)) : Rem(kButtonHeightRem));
+        if (action == key) return box;
     }
 
     const double tabsY = HeroHeight() - scroll_ + Rem(1.0);
-    left = x;
+    FlowLayout tabs(x, tabsY, width_ - 2.0 * x, Rem(0.6));
     for (int season : Seasons()) {
         const std::string label = season == 0 ? "Specials" : "Season " + std::to_string(season);
         const double width = Rem(1.6) + static_cast<double>(label.size()) * 0.56 * Rem(1.0);
-        if (key == kSeasonPrefix + std::to_string(season)) return Box{left, tabsY, width, Rem(kSeasonTabHeightRem)};
-        left += width + Rem(0.6);
+        const Box box = tabs.Place(width, Rem(kSeasonTabHeightRem));
+        if (key == kSeasonPrefix + std::to_string(season)) return box;
     }
 
     if (StartsWith(key, kEpisodePrefix)) {
         const std::size_t index = std::stoul(key.substr(sizeof(kEpisodePrefix) - 1));
         if (index >= Episodes().size()) return std::nullopt;
-        const double top = tabsY + Rem(kSeasonTabHeightRem) + Rem(1.2) +
+        const double top = tabsY + SeasonsHeight() + Rem(1.2) +
                            static_cast<double>(index) * (Rem(kEpisodeHeightRem) + Rem(kEpisodeGapRem));
         return Box{x, top, std::min(width_ - 2.0 * x, Rem(kListMaxRem)), Rem(kEpisodeHeightRem)};
     }
     return std::nullopt;
+}
+
+double DetailsScreen::SeasonsHeight() const {
+    const double x = Rem(kSafeXRem);
+    FlowLayout tabs(x, 0, width_ - 2.0 * x, Rem(0.6));
+    for (int season : Seasons()) {
+        const std::string label = season == 0 ? "Specials" : "Season " + std::to_string(season);
+        tabs.Place(Rem(1.6) + static_cast<double>(label.size()) * 0.56 * Rem(1.0), Rem(kSeasonTabHeightRem));
+    }
+    return tabs.Bottom();
 }
 
 std::string DetailsScreen::MetaLine() const {
@@ -207,7 +218,7 @@ bool DetailsScreen::Animating() const {
 }
 
 void DetailsScreen::Paint(Painter& painter) const {
-    const Metrics metrics{height_ / 67.5};
+    const Metrics metrics{ViewportRem(width_, height_)};
     const Color background = tokens::kBackground;
     painter.Clear(background);
 
@@ -229,14 +240,15 @@ void DetailsScreen::Paint(Painter& painter) const {
 
     // The poster: artwork when it is on disk, a placeholder until then.
     const double x = Rem(kSafeXRem);
-    const double posterY = HeroHeight() - scroll_ - Rem(kHeroPadBottomRem) - Rem(kDetailsPosterHeightRem);
+    const bool compact = CompactViewport(width_, height_);
+    const double posterY = compact ? Rem(3.0) - scroll_ : HeroHeight() - scroll_ - Rem(kHeroPadBottomRem) - Rem(kDetailsPosterHeightRem);
     const Box poster{x, posterY, Rem(kDetailsPosterWidthRem), Rem(kDetailsPosterHeightRem)};
-    if (info_.posterUrl.empty() || !painter.Image(poster, info_.posterUrl, Rem(kPosterRadiusRem))) {
+    if (!compact && (info_.posterUrl.empty() || !painter.Image(poster, info_.posterUrl, Rem(kPosterRadiusRem)))) {
         painter.FillRoundRect(poster, Rem(kPosterRadiusRem), tokens::kSurface);
     }
 
     // The copy: the kicker pill, the title, the metadata, the buttons, then the synopsis.
-    const double copyX = poster.Right() + Rem(kCopyGapRem);
+    const double copyX = compact ? x : poster.Right() + Rem(kCopyGapRem);
     const double copyWidth = std::min(width_ - copyX - x, Rem(kCopyMaxRem));
     const std::string kicker = IsSeries() ? "SERIES" : "FILM";
     const TextStyle kickerStyle{Rem(0.72), true, 750};
@@ -256,7 +268,8 @@ void DetailsScreen::Paint(Painter& painter) const {
         DrawButton(painter, metrics, *BoxOf(key), label,
                    ButtonLook{key == kPlayKey, focused_ == key, buttonFocus_.Amount(key, clockMs_)});
     }
-    const Box synopsis{copyX, posterY + Rem(11.6), copyWidth, Rem(4.4)};
+    const auto lastAction = BoxOf(ActionKeys().back());
+    const Box synopsis{copyX, compact && lastAction ? lastAction->Bottom() + Rem(1.0) : posterY + Rem(11.6), copyWidth, Rem(4.4)};
     std::string body = info_.synopsis;
     if (info_.state == TitleInfo::State::Loading) body = "Loading the details...";
     if (info_.state == TitleInfo::State::Unavailable) {
@@ -339,7 +352,8 @@ void DetailsScreen::FollowFocus(double nowMs) {
     // The buttons sit in the hero, so the page goes back to the top for them. A tab or an episode is
     // brought to a third of the way down, so the rows after it show.
     if (!StartsWith(focused_, kSeasonPrefix) && !StartsWith(focused_, kEpisodePrefix)) {
-        ScrollTo(0.0, nowMs);
+        const auto box = BoxOf(focused_);
+        ScrollTo(box && box->Bottom() > height_ - Rem(1.0) ? box->Bottom() + scroll_ - height_ + Rem(2.0) : 0.0, nowMs);
         return;
     }
     const std::optional<Box> box = BoxOf(focused_);

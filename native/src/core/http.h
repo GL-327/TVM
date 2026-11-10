@@ -61,6 +61,7 @@ struct DownloadResult {
     unsigned status = 0;
     unsigned long long bytes = 0;
     bool cancelled = false;
+    std::filesystem::path path;
     bool ok() const { return status >= 200 && status < 300 && !cancelled; }
 };
 

@@ -37,7 +37,7 @@ constexpr motion::CubicBezier kSoftEase{0.16, 1.0, 0.3, 1.0};
 // mixed 12% toward white for --intro-paper. The stream form swaps the first two, as TvmIntro.css does.
 constexpr Color kAccent = Rgb(0x6EC8FF);
 constexpr Color kCool = Rgb(0x4AA0E0);
-constexpr Color kPaper = Mix(tokens::kText, Rgb(0xFFFFFF), 0.12);
+constexpr Color kPaper = Mix(kDarkPalette.text, Rgb(0xFFFFFF), 0.12);
 // The stream form's flare centre, `#e8fbff` in TvmIntro.css.
 constexpr Color kStreamFlare = Rgb(0xE8FBFF);
 // `.tvm-mark`'s background, which shows through where the picture is see-through.
@@ -189,11 +189,11 @@ constexpr Anim kRayIn[] = {
 // The mote and ray values, one per index, from TvmIntro.css.
 constexpr std::size_t kMoteCount = 6;
 constexpr Color kMoteColor[kMoteCount] = {
-    tokens::kAccentStrong, kAccent, kCool, tokens::kAccentStrong, kAccent, kPaper,
+    kDarkPalette.accentStrong, kAccent, kCool, kDarkPalette.accentStrong, kAccent, kPaper,
 };
 // The stream form's motes: the accent and the cool blue swapped.
 constexpr Color kStreamMoteColor[kMoteCount] = {
-    tokens::kAccentStrong, kCool, kAccent, tokens::kAccentStrong, kCool, kPaper,
+    kDarkPalette.accentStrong, kCool, kAccent, kDarkPalette.accentStrong, kCool, kPaper,
 };
 constexpr double kMoteTurnDeg[kMoteCount] = {20.0, 80.0, 140.0, 200.0, 260.0, 320.0};
 constexpr std::size_t kRayCount = 4;
@@ -264,7 +264,7 @@ void DrawBloom(const Frame& f) {
     // The gradient's radius is the distance from the centre to a corner of its box.
     const double radius = size / std::sqrt(2.0);
     // The stream form's bloom is the cool blue at lower strengths, as `.tvm-intro--stream .tvm-intro__bloom` has it.
-    const Color core = f.stream ? Tinted(kAccent, 0.34) : Tinted(tokens::kAccentStrong, 0.36);
+    const Color core = f.stream ? Tinted(kAccent, 0.34) : Tinted(kDarkPalette.accentStrong, 0.36);
     const double mid = f.stream ? 0.12 : 0.14;
     f.painter.FillRadialGradient(Box{cx - size / 2.0, cy - size / 2.0, size, size}, cx, cy, radius, radius,
                                  Faded({{0.0, core}, {0.46, Tinted(kAccent, mid)},
@@ -300,7 +300,7 @@ void DrawFlare(const Frame& f) {
     const Box box{f.width / 2.0 + shift, f.height / 2.0 - height / 2.0, width, height};
     // The stream form's flare has its own bright centre, and the cool blue where the others have the strong tone.
     const Color centre = f.stream ? kStreamFlare : kPaper;
-    const Color middle = f.stream ? kAccent : tokens::kAccentStrong;
+    const Color middle = f.stream ? kAccent : kDarkPalette.accentStrong;
     f.painter.FillLinearGradient(box, box.x, 0.0, box.Right(), 0.0,
                                  Faded({{0.0, Tinted(kPaper, 0.0)}, {0.32, Tinted(centre, 1.0)},
                                         {0.5, Tinted(middle, 1.0)}, {0.68, Tinted(kAccent, 1.0)},
@@ -348,10 +348,10 @@ void DrawGlow(const Frame& f, double cx, double cy, double glyphRadius, double o
     constexpr double kSteps[] = {0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0};  // in sigmas outside the glyph
     const double sigma = 0.6 * f.rem;
     const double radius = glyphRadius + 3.0 * sigma;
-    std::vector<GradientStop> stops{{0.0, Tinted(tokens::kAccentStrong, 0.8 * kGlowAlpha)}};
+    std::vector<GradientStop> stops{{0.0, Tinted(kDarkPalette.accentStrong, 0.8 * kGlowAlpha)}};
     for (const double t : kSteps) {
         stops.push_back({(glyphRadius + sigma * t) / radius,
-                         Tinted(tokens::kAccentStrong, kGlowAlpha * 0.5 * std::erfc(t / std::sqrt(2.0)))});
+                         Tinted(kDarkPalette.accentStrong, kGlowAlpha * 0.5 * std::erfc(t / std::sqrt(2.0)))});
     }
     for (GradientStop& stop : stops) stop.color = Scaled(stop.color, opacity * f.alpha);
     f.painter.FillRadialGradient(Box{cx - radius, cy - radius, 2.0 * radius, 2.0 * radius}, cx, cy, radius, radius,
@@ -513,7 +513,7 @@ void DrawTag(const Frame& f, double centreX, double top, double size) {
     }
     const Spaced tag = f.stream ? Spaced{"STREAM", kStreamAdvance, kTagSpacingEm}
                                 : Spaced{"WATCH", kWatchAdvance, kTagSpacingEm};
-    const Color colour = f.stream ? kAccent : tokens::kAccentStrong;
+    const Color colour = f.stream ? kAccent : kDarkPalette.accentStrong;
     const double left = centreX - tag.WidthEm() * size / 2.0;
     DrawSpaced(f, tag, left, top + rise, size, kLineHeight * size, kTagWeight,
                Scaled(colour, opacity * f.alpha));
@@ -610,7 +610,7 @@ void Intro::Paint(Painter& painter, double width, double height) const {
 
     DrawWash(frame);
     DrawBloom(frame);
-    DrawRing(frame, std::min(14.0 * frame.rem, 0.28 * frame.smaller), kRingIn, Tinted(tokens::kAccentStrong, 0.55));
+    DrawRing(frame, std::min(14.0 * frame.rem, 0.28 * frame.smaller), kRingIn, Tinted(kDarkPalette.accentStrong, 0.55));
     // The mid ring takes the form's accent, which is the cool blue in the stream form.
     DrawRing(frame, std::min(22.0 * frame.rem, 0.44 * frame.smaller), kMidRingIn,
              Tinted(frame.stream ? kCool : kAccent, 0.38));

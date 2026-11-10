@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.25)
 
 project(TVMNative LANGUAGES CXX)
 
+if(NOT WIN32)
+  message(FATAL_ERROR "TVM native currently targets Windows. Use the shared web app on macOS/Linux.")
+endif()
+
+add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+
 # The folder of the Node app that this build mirrors. The version test reads its package.json.
 # A copy outside the repository sets it on the command line.
 set(TVM_REPO_ROOT "${PROJECT_SOURCE_DIR}/.." CACHE PATH "The TVM repository that this build mirrors")
@@ -9,14 +15,16 @@ set(TVM_REPO_ROOT "${PROJECT_SOURCE_DIR}/.." CACHE PATH "The TVM repository that
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if(MSVC)
   add_compile_options(/W4 /WX /EHsc /permissive- /utf-8)
-  add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
 # Core runtime: configuration, storage and the local vault. No UI, no network.
 add_library(tvm_core STATIC
+  src/core/downloads.cpp
+  src/core/downloads.h
   src/core/util.cpp
   src/core/util.h
   src/core/crypto.cpp
@@ -174,12 +182,25 @@ target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dwrite windowscodecs o
 
 add_executable(tvm WIN32 src/main.cpp)
 target_link_libraries(tvm PRIVATE tvm_platform)
+if(MINGW)
+  target_link_options(tvm PRIVATE -municode -static)
+  target_link_libraries(tvm_platform PUBLIC uuid)
+endif()
+
+# Keep artwork next to the executable in local builds and downloadable packages.
+add_custom_command(TARGET tvm POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:tvm>/assets")
+install(TARGETS tvm RUNTIME DESTINATION .)
+install(DIRECTORY assets DESTINATION .)
 
 enable_testing()
 
 add_executable(tvm_tests
   tests/main.cpp
   tests/core_tests.cpp
+  tests/downloads_tests.cpp
+  tests/layout_tests.cpp
   tests/nav_tests.cpp
   tests/motion_tests.cpp
   tests/ui_tests.cpp
@@ -202,7 +223,7 @@ add_executable(tvm_tests
   tests/player_tests.cpp
   tests/pages_tests.cpp
 )
-target_link_libraries(tvm_tests PRIVATE tvm_engine)
+target_link_libraries(tvm_tests PRIVATE tvm_engine ws2_32)
 target_compile_definitions(tvm_tests PRIVATE
   "TVM_REPO_ROOT=\"${TVM_REPO_ROOT}\""
   "TVM_TEST_DIR=\"${PROJECT_SOURCE_DIR}/tests\"")

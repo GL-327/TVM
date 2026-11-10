@@ -584,12 +584,6 @@ sub onSettingsAction()
   if kind = "network" then showNetworkInfo()
   if kind = "display" then showDisplayInfo()
   if kind = "diagnostics" then showDiagnostics()
-  if kind = "linux"
-    navigate("modal", "notice", {
-      title: "Linux desktop"
-      body: "The Linux desktop lives on the TVM USB stick. TVM still boots fullscreen; this setting opens the OS behind it when you need files or a terminal. On this Windows PC the stick is prepared with os/scripts/prepare-usb.ps1."
-    })
-  end if
   if kind = "cache"
     navigate("modal", "confirm", {
       title: "Clear cache?"

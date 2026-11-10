@@ -46,7 +46,7 @@ std::vector<std::string> BuildThumbnailArgs(const std::string& url, double secon
 // into, the usual install folders, then PATH.
 std::vector<std::filesystem::path> CandidatePaths(const util::EnvLookup& env);
 // The first candidate that exists.
-std::optional<std::filesystem::path> FindExecutable(const util::EnvLookup& env);
+std::optional<std::filesystem::path> FindMpvExecutable(const util::EnvLookup& env);
 
 // The properties TVM watches. `cache-buffering-state` is a percentage, so `paused-for-cache` is the
 // one that means "stalled".

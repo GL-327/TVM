@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "ui/painter.h"
+#include "ui/layout.h"
+#include "ui/theme.h"
 
 namespace tvm::ui {
 
@@ -150,31 +152,6 @@ private:
     double focusAmount_ = 0.0;
     bool focused_ = false;
 };
-
-// Colour tokens of the default look, the dark theme in apps/ui/src/theme/dark.css. Its
-// values override the root tokens of packages/design/src/tokens.css, so they are used here.
-namespace tokens {
-inline constexpr Color kBackground = Rgb(0x071018);     // --tvm-bg
-inline constexpr Color kSurface = Rgb(0x102238);        // --tvm-surface
-inline constexpr Color kSurfaceHover = Rgb(0x163048);   // --tvm-surface-hover
-inline constexpr Color kBorderSoft = Rgb(0x8CB4DC, 0.16);  // --tvm-border-soft
-inline constexpr Color kText = Rgb(0xE8F0F8);           // --tvm-text
-inline constexpr Color kTextMuted = Rgb(0x9BB0C8);      // --tvm-text-muted
-inline constexpr Color kTextFaint = Rgb(0x6A8298);      // --tvm-text-faint
-inline constexpr Color kFocusRing = Rgb(0x9EDCFF);      // --tvm-focus-ring-color
-inline constexpr Color kBackgroundDeep = Rgb(0x000000);      // --tvm-bg-deep
-inline constexpr Color kBackgroundElevated = Rgb(0x0C1A2C);  // --tvm-bg-elevated
-inline constexpr Color kAccentStrong = Rgb(0x9EDCFF);        // --tvm-accent-strong
-inline constexpr Color kAccentInk = Rgb(0x000000);           // --tvm-accent-ink
-// The glass button of the hero, `.tvm-button--glass` in apps/ui/src/app.css: its fill, its
-// border, and its fill when it has focus.
-inline constexpr Color kGlassFill = Rgb(0x282828, 0.72);
-inline constexpr Color kGlassBorder = Rgb(0xFFFFFF, 0.16);
-inline constexpr Color kGlassFocus = Rgb(0xFFFFFF, 0.18);
-// The primary button: `.tvm-button--primary` in apps/ui/src/app.css.
-inline constexpr Color kPrimary = Rgb(0xFFFFFF);
-inline constexpr Color kOnPrimary = Rgb(0x111111);
-}  // namespace tokens
 
 // Layout and motion values shared by the widgets.
 inline constexpr double kFocusScale = 1.08;

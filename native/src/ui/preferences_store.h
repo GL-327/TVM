@@ -8,6 +8,7 @@
 #include "core/paths.h"
 #include "core/prefs.h"
 #include "motion/preferences.h"
+#include "ui/theme.h"
 
 namespace tvm::ui {
 
@@ -20,6 +21,9 @@ public:
 
     virtual prefs::CorePrefs CorePrefs() const = 0;
     virtual void SaveCorePrefs(const prefs::CorePrefsPatch& patch) = 0;
+
+    virtual Theme Look() const { return Theme::Dark; }
+    virtual void SaveLook(Theme /*theme*/) {}
 };
 
 // The real store. UI preferences live in ui-prefs.json. Core preferences use
@@ -33,6 +37,9 @@ public:
 
     prefs::CorePrefs CorePrefs() const override;
     void SaveCorePrefs(const prefs::CorePrefsPatch& patch) override;
+
+    Theme Look() const override;
+    void SaveLook(Theme theme) override;
 
 private:
     paths::fs::path dataDir_;

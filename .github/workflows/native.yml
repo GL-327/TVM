@@ -1,0 +1,60 @@
+name: Native Windows
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths: ['native/**', 'package.json', '.github/workflows/native.yml']
+  pull_request:
+    paths: ['native/**', 'package.json', '.github/workflows/native.yml']
+  workflow_dispatch:
+
+jobs:
+  native:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S native -B native/build -A x64
+      - name: Build
+        run: cmake --build native/build --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir native/build -C Release --output-on-failure
+      - name: Render desktop and portrait snapshots
+        shell: pwsh
+        run: |
+          foreach ($size in @('1920x1080', '1280x720', '390x844', '568x320')) {
+            $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--snapshot', "native/build/home-$size.png", '--size', $size -Wait -PassThru -WindowStyle Hidden
+            if ($process.ExitCode -ne 0) { throw "Snapshot failed at $size" }
+          }
+          $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--snapshot', 'native/build/settings-light.png', '--size', '390x844', '--theme', 'light', '--screen', 'settings' -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw 'Light theme snapshot failed' }
+      - name: Package
+        shell: pwsh
+        run: |
+          cmake --install native/build --config Release --prefix native/package
+          if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
+          Copy-Item native/README.md native/package/README.md
+          Compress-Archive -Path native/package/* -DestinationPath native/TVM-native-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvm-native-windows
+          path: |
+            native/TVM-native-windows.zip
+            native/build/home-*.png
+            native/build/settings-light.png
+          if-no-files-found: error
+      - name: Publish native Windows download
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $notes = 'Windows C++ client. Extract the whole ZIP and run tvm.exe. Playback requires mpv; the existing TVM desktop Core can still serve browser and Roku clients. See native/README.md for the remaining parity limitations.'
+          gh release view native-windows *> $null
+          if ($LASTEXITCODE -ne 0) { gh release create native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
+          else { gh release edit native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
+          if ($LASTEXITCODE -ne 0) { throw 'Could not prepare release' }
+          gh release upload native-windows native/TVM-native-windows.zip --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload release' }

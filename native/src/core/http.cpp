@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/util.h"
+#include "core/downloads.h"
 
 namespace tvm::http {
 
@@ -190,15 +191,21 @@ DownloadResult Download(const std::string& url, const std::filesystem::path& fil
     // Written beside the target and moved into place once it is whole, so a stopped download leaves nothing.
     std::error_code ignored;
     std::filesystem::create_directories(file.parent_path(), ignored);
-    const std::filesystem::path partial = file.wstring() + L".part";
-    HANDLE out = CreateFileW(partial.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    std::filesystem::path target;
+    try { target = downloads::Reserve(file); }
+    catch (const std::exception&) { result.status = 0; return result; }
+    const std::filesystem::path partial = target.wstring() + L".part";
+    HANDLE out = CreateFileW(partial.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (out == INVALID_HANDLE_VALUE) {
+        std::filesystem::remove(target, ignored);
         result.status = 0;
         return result;
     }
     std::vector<char> buffer(1 << 20);
     bool failed = false;
+    if (progress && !progress(0, total)) result.cancelled = true;
     for (;;) {
+        if (result.cancelled) break;
         DWORD read = 0;
         if (!WinHttpReadData(request.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &read)) {
             failed = true;
@@ -219,11 +226,19 @@ DownloadResult Download(const std::string& url, const std::filesystem::path& fil
     CloseHandle(out);
     if (failed || result.cancelled || (total > 0 && result.bytes < total)) {
         std::filesystem::remove(partial, ignored);
-        if (failed) result.status = 0;
+        std::filesystem::remove(target, ignored);
+        result.status = 0;
         return result;
     }
-    std::filesystem::rename(partial, file, ignored);
-    if (ignored) result.status = 0;
+    // Only replace the empty file reserved by this download. A user's existing
+    // file was given a different name by Reserve and cannot be replaced here.
+    if (!MoveFileExW(partial.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::filesystem::remove(partial, ignored);
+        std::filesystem::remove(target, ignored);
+        result.status = 0;
+    } else {
+        result.path = target;
+    }
     return result;
 }
 

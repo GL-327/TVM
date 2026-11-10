@@ -1,6 +1,0 @@
-[Unit]
-Description=Apply TVM session switch (kiosk or Linux desktop)
-
-[Service]
-Type=oneshot
-ExecStart=/usr/lib/tvm/switch-session

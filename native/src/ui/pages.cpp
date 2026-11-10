@@ -51,16 +51,16 @@ std::string Money(int pence) {
 
 // Lays a row of pill buttons out left to right from `x`.
 void Row(std::vector<PageButton>& buttons, double x, double y, double height, double rem, int row,
-         std::vector<std::pair<std::string, std::string>> items) {
+         std::vector<std::pair<std::string, std::string>> items, double availableWidth = 100000.0) {
+    FlowLayout flow(x, y, availableWidth, kButtonGapRem * rem);
     for (auto& [key, label] : items) {
         const double width = ButtonWidthRem(label) * rem;
         PageButton button;
         button.key = key;
         button.label = label;
-        button.box = Box{x, y, width, height};
-        button.row = row;
+        button.box = flow.Place(width, std::max(44.0, height));
+        button.row = row + flow.Row();
         buttons.push_back(std::move(button));
-        x += width + kButtonGapRem * rem;
     }
 }
 
@@ -93,7 +93,7 @@ double PageScreen::MaxScroll() const {
 }
 
 void PageScreen::Paint(Painter& painter) const {
-    const Metrics metrics{height_ / 67.5};
+    const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
     PaintContent(painter, scroll_);
     for (const PageButton& button : Buttons()) {
@@ -312,13 +312,25 @@ void ProfilesScreen::Erase() {
 
 std::vector<PageButton> ProfilesScreen::Buttons() const {
     std::vector<PageButton> buttons;
-    const double rem = height_ / 67.5;
+    const double rem = ViewportRem(width_, height_);
     double x = Rem(kSafeXRem);
+    double top = Rem(kTilesTopRem);
+    int tileRow = 0;
+    const double tileWidth = std::min(Rem(kTileWidthRem), width_ - 2.0 * x);
+    const auto advance = [&] {
+        x += tileWidth + Rem(kTileGapRem);
+        if (x + tileWidth > width_ - Rem(kSafeXRem) + 0.01) {
+            x = Rem(kSafeXRem);
+            top += Rem(kFieldTopRem - kTilesTopRem);
+            tileRow += 2;
+        }
+    };
     for (const ProfileEntry& profile : view_.profiles) {
         PageButton tile;
         tile.key = "pick:" + profile.id;
         tile.label = profile.name;
-        tile.box = Box{x, Rem(kTilesTopRem), Rem(kTileWidthRem), Rem(kTileHeightRem)};
+        tile.box = Box{x, top, tileWidth, Rem(kTileHeightRem)};
+        tile.row = tileRow;
         tile.custom = true;
         buttons.push_back(tile);
         // Remove sits under each tile while there is more than one.
@@ -326,33 +338,42 @@ std::vector<PageButton> ProfilesScreen::Buttons() const {
             PageButton remove;
             remove.key = "remove:" + profile.id;
             remove.label = "Remove";
-            remove.box = Box{x + Rem(1.0), Rem(kRemoveTopRem), Rem(kTileWidthRem - 2.0), Rem(2.5)};
-            remove.row = 1;
+            remove.box = Box{x + Rem(1.0), top + Rem(kRemoveTopRem - kTilesTopRem), tileWidth - Rem(2.0), Rem(2.5)};
+            remove.row = tileRow + 1;
             buttons.push_back(remove);
         }
-        x += Rem(kTileWidthRem + kTileGapRem);
+        advance();
     }
     if (view_.profiles.size() < view_.max && !creating_) {
         PageButton add;
         add.key = "profile-add";
         add.label = "Add profile";
-        add.box = Box{x, Rem(kTilesTopRem), Rem(kTileWidthRem), Rem(kTileHeightRem)};
+        add.box = Box{x, top, tileWidth, Rem(kTileHeightRem)};
+        add.row = tileRow;
         add.custom = true;
         buttons.push_back(add);
     }
-    double y = Rem(kFieldTopRem);
+    double y = FieldTop();
     if (creating_) {
-        Row(buttons, Rem(kSafeXRem), y + Rem(5.2), Rem(kButtonHeightRem), rem, 2,
+        Row(buttons, Rem(kSafeXRem), y + Rem(5.2), Rem(kButtonHeightRem), rem, tileRow + 2,
             {{"profile-save", "Save profile"}, {"profile-cancel", "Cancel"}});
         buttons[buttons.size() - 2].primary = true;
         y += Rem(9.5);
     }
-    Row(buttons, Rem(kSafeXRem), y, Rem(kButtonHeightRem), rem, 3, {{"profiles-back", "Back"}});
+    Row(buttons, Rem(kSafeXRem), y, Rem(kButtonHeightRem), rem, tileRow + 3, {{"profiles-back", "Back"}});
     return buttons;
 }
 
+double ProfilesScreen::FieldTop() const {
+    const double width = std::max(1.0, width_ - Rem(2.0 * kSafeXRem));
+    const int columns = std::max(1, static_cast<int>((width + Rem(kTileGapRem)) / Rem(kTileWidthRem + kTileGapRem)));
+    const std::size_t count = view_.profiles.size() + (view_.profiles.size() < view_.max && !creating_ ? 1 : 0);
+    const int rows = std::max(1, (static_cast<int>(count) + columns - 1) / columns);
+    return Rem(kFieldTopRem + static_cast<double>(rows - 1) * (kFieldTopRem - kTilesTopRem));
+}
+
 double ProfilesScreen::ContentHeight() const {
-    return Rem(kFieldTopRem + (creating_ ? 9.5 : 0.0) + kButtonHeightRem + 3.0);
+    return FieldTop() + Rem((creating_ ? 9.5 : 0.0) + kButtonHeightRem + 3.0);
 }
 
 void ProfilesScreen::PaintContent(Painter& painter, double scroll) const {
@@ -365,9 +386,9 @@ void ProfilesScreen::PaintContent(Painter& painter, double scroll) const {
     if (creating_) {
         // `.token-field`: the label, then the field, typed into from the keyboard.
         const double x = Rem(kSafeXRem);
-        const double top = Rem(kFieldTopRem) - scroll;
+        const double top = FieldTop() - scroll;
         painter.Text(Box{x, top, Rem(30.0), Rem(1.4)}, "Profile name", TextStyle{Rem(0.9), true, 600}, tokens::kTextMuted);
-        const Box field{x, top + Rem(1.6), Rem(30.0), Rem(3.0)};
+        const Box field{x, top + Rem(1.6), std::min(Rem(30.0), width_ - 2.0 * x), Rem(3.0)};
         painter.FillRoundRect(field, Rem(0.6), tokens::kSurface);
         painter.StrokeRoundRect(field, Rem(0.6), Rem(kFocusRingWidthRem), tokens::kFocusRing);
         const TextStyle style{Rem(1.15), false, 500};
@@ -503,18 +524,18 @@ PlansScreen::PlansScreen() {
 }
 
 double PlansScreen::DonateTop() const {
-    return Rem(kCardsTopRem + kCardHeightRem + 1.5 + kRouteHeightRem + 2.0);
+    return Rem(kCardsTopRem + (CompactViewport(width_, height_) ? 2.0 * kCardHeightRem + 1.0 : kCardHeightRem) + 1.5 + kRouteHeightRem + 2.0);
 }
 
 std::vector<PageButton> PlansScreen::Buttons() const {
     std::vector<PageButton> buttons;
-    Row(buttons, Rem(kSafeXRem), DonateTop() + Rem(8.4), Rem(kButtonHeightRem), height_ / 67.5, 0,
-        {{"donate", "Donate"}, {"plans-legal", "Terms & privacy"}, {"plans-back", "Back"}});
+    Row(buttons, Rem(kSafeXRem), DonateTop() + Rem(8.4), Rem(kButtonHeightRem), ViewportRem(width_, height_), 0,
+        {{"donate", "Donate"}, {"plans-legal", "Terms & privacy"}, {"plans-back", "Back"}}, width_ - Rem(2.0 * kSafeXRem));
     return buttons;
 }
 
 double PlansScreen::ContentHeight() const {
-    return DonateTop() + Rem(8.4 + kButtonHeightRem + 2.5);
+    return Buttons().back().box.Bottom() + Rem(2.5);
 }
 
 void PlansScreen::PaintContent(Painter& painter, double scroll) const {
@@ -523,13 +544,15 @@ void PlansScreen::PaintContent(Painter& painter, double scroll) const {
                 "card is taken here.");
     const double x = Rem(kSafeXRem);
     const double contentWidth = width_ - 2.0 * x;
-    const double cardWidth = (contentWidth - Rem(1.0)) / 2.0;
+    const bool stacked = CompactViewport(width_, height_);
+    const double cardWidth = stacked ? contentWidth : (contentWidth - Rem(1.0)) / 2.0;
     const double top = Rem(kCardsTopRem) - scroll;
 
     // `.tier-card`: the name and summary, the price at the right, what it includes, and Live TV's terms.
     for (std::size_t i = 0; i < Tiers().size(); ++i) {
         const Tier& tier = Tiers()[i];
-        const Box card{x + static_cast<double>(i) * (cardWidth + Rem(1.0)), top, cardWidth, Rem(kCardHeightRem)};
+        const Box card{stacked ? x : x + static_cast<double>(i) * (cardWidth + Rem(1.0)),
+                       top + (stacked ? static_cast<double>(i) * Rem(kCardHeightRem + 1.0) : 0.0), cardWidth, Rem(kCardHeightRem)};
         painter.FillRoundRect(card, Rem(0.875), tokens::kSurface);
         painter.StrokeRoundRect(card, Rem(0.875), 1.0, tokens::kBorderSoft);
         const double inner = card.x + Rem(1.2);
@@ -581,7 +604,7 @@ void PlansScreen::PaintContent(Painter& painter, double scroll) const {
     }
 
     // `.tier-route`: how access is arranged, in the accent's tint.
-    const Box route{x, top + Rem(kCardHeightRem + 1.5), contentWidth, Rem(kRouteHeightRem)};
+    const Box route{x, DonateTop() - Rem(kRouteHeightRem + 2.0) - scroll, contentWidth, Rem(kRouteHeightRem)};
     painter.FillRoundRect(route, Rem(0.75), Rgb(0x6EC8FF, 0.12));
     painter.StrokeRoundRect(route, Rem(0.75), 1.0, Rgb(0x6EC8FF, 0.35));
     painter.Text(Box{route.x + Rem(1.2), route.y + Rem(0.8), route.width, Rem(1.6)}, "Access is arranged with the app owner",
@@ -647,20 +670,22 @@ void UpdatesScreen::SetView(UpdatesView view) {
 
 std::vector<PageButton> UpdatesScreen::Buttons() const {
     std::vector<PageButton> buttons;
-    Row(buttons, Rem(kSafeXRem), Rem(kUpdateButtonsTopRem), Rem(kButtonHeightRem), height_ / 67.5, 0,
+    Row(buttons, Rem(kSafeXRem), Rem(kUpdateButtonsTopRem), Rem(kButtonHeightRem), ViewportRem(width_, height_), 0,
         {{"check", view_.busy ? "Checking\xE2\x80\xA6" : "Check now"},
-         {"apply", "Apply (disabled here)"},
-         {"auto-update", view_.autoUpdate ? "Automatic updates on" : "Automatic updates off"},
-         {"back", "Back"}});
+         {"download", "Download native build"},
+         {"auto-update", view_.autoUpdate ? "Automatic checks on" : "Automatic checks off"},
+         {"back", "Back"}}, width_ - Rem(2.0 * kSafeXRem));
     // Check now keeps the focus while it works, and ignores presses until the answer is in.
     buttons[0].primary = true;
-    // The native app is replaced by installing a newer build, so it has nothing to apply to itself.
-    buttons[1].disabled = true;
     return buttons;
 }
 
 double UpdatesScreen::ContentHeight() const {
-    return Rem(kChangesTopRem + 2.0 + static_cast<double>(view_.changes.size()) * kChangeRowRem + 2.0);
+    return ChangesTop() + Rem(2.0 + static_cast<double>(view_.changes.size()) * kChangeRowRem + 2.0);
+}
+
+double UpdatesScreen::ChangesTop() const {
+    return std::max(Rem(kChangesTopRem), Buttons().back().box.Bottom() + Rem(2.0));
 }
 
 void UpdatesScreen::PaintContent(Painter& painter, double scroll) const {
@@ -691,7 +716,7 @@ void UpdatesScreen::PaintContent(Painter& painter, double scroll) const {
     }
     if (view_.changes.empty()) return;
     // The changelog, "What's new": the latest changes, newest first.
-    double y = Rem(kChangesTopRem) - scroll;
+    double y = ChangesTop() - scroll;
     painter.Text(Box{x, y, width, Rem(1.6)}, "What's new", TextStyle{Rem(1.25), true, 700}, tokens::kText);
     y += Rem(2.0);
     for (const std::string& change : view_.changes) {
@@ -760,7 +785,7 @@ void InfoScreen::Arrange() {
     buttons_.clear();
     placed_.clear();
     if (height_ <= 0.0) return;
-    const double rem = height_ / 67.5;
+    const double rem = ViewportRem(width_, height_);
     const double x = Rem(kSafeXRem);
     const double widthRem = std::min(width_ / rem - 2.0 * kSafeXRem, kInfoWidthRem);
     double y = Rem(kSafeYRem + 4.8);
@@ -772,7 +797,7 @@ void InfoScreen::Arrange() {
 
     const auto addRow = [&](const std::vector<InfoAction>& actions) {
         if (actions.empty()) return;
-        double left = x;
+        FlowLayout flow(x, y, Rem(widthRem), Rem(kButtonGapRem));
         for (const InfoAction& action : actions) {
             PageButton button;
             button.key = action.key;
@@ -780,13 +805,12 @@ void InfoScreen::Arrange() {
             button.primary = action.primary;
             button.disabled = action.disabled;
             const double width = ButtonWidthRem(action.label) * rem;
-            button.box = Box{left, y, width, Rem(kButtonHeightRem)};
-            button.row = row;
+            button.box = flow.Place(width, std::max(44.0, Rem(kButtonHeightRem)));
+            button.row = row + flow.Row();
             buttons_.push_back(std::move(button));
-            left += width + Rem(kButtonGapRem);
         }
-        y += Rem(kButtonHeightRem + 1.0);
-        ++row;
+        y = flow.Bottom() + Rem(1.0);
+        row += flow.Row() + 1;
     };
     addRow(view_.topActions);
     for (const std::vector<InfoAction>& filter : view_.filters) addRow(filter);
@@ -860,7 +884,7 @@ void InfoScreen::PaintContent(Painter& painter, double scroll) const {
     }
     const double widthPx = std::min(width_ - 2.0 * x, Rem(kInfoWidthRem));
     if (!view_.message.empty()) {
-        painter.Paragraph(Box{x, messageTop_ - scroll, widthPx, Rem(Lines(view_.message, 1.0, widthPx / (height_ / 67.5)) * 1.6)},
+        painter.Paragraph(Box{x, messageTop_ - scroll, widthPx, Rem(Lines(view_.message, 1.0, widthPx / (ViewportRem(width_, height_))) * 1.6)},
                           view_.message, TextStyle{Rem(1.0), true, 600},
                           view_.messageBad ? Rgb(0xFF8A80) : tokens::kAccentStrong);
     }
@@ -981,6 +1005,10 @@ std::optional<Command> InfoScreen::Activate(const std::string& key) {
 std::optional<Command> UpdatesScreen::Activate(const std::string& key) {
     Command command;
     command.action = true;
+    if (key == "download") {
+        command.name = "updates-download";
+        return command;
+    }
     if (key == "check") {
         if (view_.busy) return std::nullopt;
         command.name = "updates-check";

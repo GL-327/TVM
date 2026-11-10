@@ -125,7 +125,7 @@ std::vector<std::filesystem::path> CandidatePaths(const util::EnvLookup& env) {
     return unique;
 }
 
-std::optional<std::filesystem::path> FindExecutable(const util::EnvLookup& env) {
+std::optional<std::filesystem::path> FindMpvExecutable(const util::EnvLookup& env) {
     for (const std::filesystem::path& path : CandidatePaths(env)) {
         std::error_code error;
         if (std::filesystem::is_regular_file(path, error)) return path;

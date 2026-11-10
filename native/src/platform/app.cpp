@@ -1,4 +1,5 @@
 #include "platform/app.h"
+#include <shellapi.h>
 
 #include <algorithm>
 #include <cmath>
@@ -275,6 +276,8 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             ApplyInfoAction(command);
         } else if (command.name == "updates-check") {
             CheckForUpdates();
+        } else if (command.name == "updates-download") {
+            ShellExecuteW(window_, L"open", L"https://github.com/GL-327/TVM/releases/tag/native-windows", nullptr, nullptr, SW_SHOWNORMAL);
         } else if (command.name == "updates-auto") {
             prefs::CorePrefsPatch patch;
             patch.autoUpdate = !store_->CorePrefs().autoUpdate;
@@ -374,6 +377,7 @@ int App::Run(int showCommand) {
     Resize();
     intro_->Start(NowMs());
     LoadCatalog();
+    if (store_->CorePrefs().autoUpdate) CheckForUpdates();
 
     bool running = true;
     while (running) {
@@ -445,6 +449,14 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
+    case WM_DPICHANGED: {
+        const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+        SetWindowPos(window_, nullptr, suggested->left, suggested->top,
+                     suggested->right - suggested->left, suggested->bottom - suggested->top,
+                     SWP_NOACTIVATE | SWP_NOZORDER);
+        dirty_ = true;
+        return 0;
+    }
     case WM_SIZE:
         Resize();
         if (mpv_) mpv_->Resize();
@@ -1682,7 +1694,7 @@ void App::CheckForUpdates() {
         options.accept = "application/vnd.github+json";
         options.timeoutMs = 12000;
         const std::optional<http::Response> release =
-            http::Get("https://api.github.com/repos/GL-327/TVM/releases/latest", options);
+            http::Get("https://api.github.com/repos/GL-327/TVM/releases/tags/native-windows", options);
         const std::optional<http::Response> commits =
             http::Get("https://api.github.com/repos/GL-327/TVM/commits?per_page=8", options);
         std::string available;
@@ -1965,7 +1977,7 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
         return;
     }
 
-    const std::optional<std::filesystem::path> executable = mpv::FindExecutable(util::ProcessEnvironment());
+    const std::optional<std::filesystem::path> executable = mpv::FindMpvExecutable(util::ProcessEnvironment());
     if (!executable.has_value()) {
         ShowPlayerError("Playback stopped",
                         "Native playback is not installed on this device. Install mpv or set TVM_MPV_PATH, then retry.");
@@ -2328,7 +2340,7 @@ void App::SyncThumbnail() {
         return;
     }
     if (thumbnailBusy_) return;
-    const std::optional<std::filesystem::path> executable = mpv::FindExecutable(util::ProcessEnvironment());
+    const std::optional<std::filesystem::path> executable = mpv::FindMpvExecutable(util::ProcessEnvironment());
     if (!executable.has_value()) return;
 
     thumbnailBusy_ = true;

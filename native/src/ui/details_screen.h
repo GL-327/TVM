@@ -12,6 +12,7 @@
 
 #include "motion/tween.h"
 #include "ui/button_focus.h"
+#include "ui/layout.h"
 #include "ui/catalog_view.h"
 #include "ui/screen_base.h"
 
@@ -58,8 +59,9 @@ private:
     std::vector<std::string> SeasonKeys() const;
     std::string MetaLine() const;
     std::optional<Command> Activate(const std::string& key);
-    double Rem(double rems) const { return rems * height_ / 67.5; }
-    double HeroHeight() const { return height_ * 0.62; }
+    double Rem(double rems) const { return rems * ViewportRem(width_, height_); }
+    double HeroHeight() const { return CompactViewport(width_, height_) ? std::max(height_ * 0.62, Rem(32.0)) : height_ * 0.62; }
+    double SeasonsHeight() const;
     double ContentHeight() const;
     double MaxScroll() const;
     // Moves the page so the focused item is in view.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
-import { fetchLive, fetchSession } from '../data/media';
+import { fetchLive } from '../data/media';
 import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { fetchAccount } from '../data/account';
 import { hydratePrefs, readPrefs, savePrefs } from '../data/prefs';
@@ -18,8 +18,6 @@ import { applyMotionPreference, applyPerformanceMode, readMotionPreference, read
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const [liveDetail, setLiveDetail] = useState('Loading…');
-  const [desktopDetail, setDesktopDetail] = useState('Loading…');
-  const [appliance, setAppliance] = useState(false);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [accessDetail, setAccessDetail] = useState('Loading…');
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
@@ -49,13 +47,6 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         else setLiveDetail(`${status.channels.length} channels`);
       })
       .catch(() => setLiveDetail('Not added'));
-    void fetchSession()
-      .then((status) => {
-        setAppliance(status.appliance);
-        if (status.appliance) setDesktopDetail(status.mode === 'desktop' ? 'Open now' : 'Leave TVM');
-        else setDesktopDetail('TVM stick only');
-      })
-      .catch(() => setDesktopDetail('TVM stick only'));
     void fetchPlan().then((status) => {
       applyPlanClass(status);
       setPlan(status);
@@ -208,32 +199,6 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
           }}
         >
           Automatic updates
-        </FocusButton>
-        <FocusButton
-          id="linux-desktop"
-          className="settings-row"
-          detail={desktopDetail}
-          onSelect={() => {
-            if (!appliance) {
-              navigate.pushModal('notice', {
-                params: {
-                  title: 'Linux desktop',
-                  body: 'The Linux desktop lives on the TVM USB stick. TVM still boots fullscreen; this setting opens the OS behind it when you need files or a terminal. On this Windows PC the stick is prepared with os/scripts/prepare-usb.ps1.',
-                },
-              });
-              return;
-            }
-            navigate.pushModal('confirm', {
-              params: {
-                title: 'Open the Linux desktop?',
-                body: 'TVM closes and the Linux desktop behind it opens. Use Return to TVM on that desktop to come back in fullscreen.',
-                confirmLabel: 'Open desktop',
-                action: 'linux-desktop',
-              },
-            });
-          }}
-        >
-          Linux desktop
         </FocusButton>
         <FocusButton id="diagnostics" className="settings-row" onSelect={() => navigate.pushModal('diagnostics')}>
           Diagnostics
