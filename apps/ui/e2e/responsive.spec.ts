@@ -10,6 +10,22 @@ const title = {
 
 test.use({ browserName: 'chromium' });
 
+test('native donation handoff works signed out and stays on its public page', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/donate', route => route.fulfill({ json: {
+    presets: [200, 500, 1000], minPence: 100, maxPence: 10000, publishableKey: null,
+    copy: { heading: 'Donate to the app owner', lede: 'Entirely optional, and it gives you nothing.', detail: 'A gift only.', refunds: 'Contact the owner.' },
+  } }));
+  await page.goto('/donate?e2e=1');
+  await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
+  await expect(page.getByText('When finished, close this tab and return to the TVM window.')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('tvm:secret-door')));
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
+  await expect(page.locator('[data-screen="home"], [data-screen="developer-unlock"]')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
+});
+
 for (const device of [
   { name: 'desktop browser', touch: false, userAgent: undefined },
   { name: 'Android browser', touch: true, userAgent: 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36' },

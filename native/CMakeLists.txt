@@ -23,6 +23,8 @@ endif()
 
 # Core runtime: configuration, storage and the local vault. No UI, no network.
 add_library(tvm_core STATIC
+  src/core/core_client.cpp
+  src/core/core_client.h
   src/core/downloads.cpp
   src/core/downloads.h
   src/core/util.cpp
@@ -156,7 +158,11 @@ target_link_libraries(tvm_engine PUBLIC tvm_core)
 
 # Platform: the window, the frame loop, Direct2D drawing and PNG snapshots.
 add_library(tvm_platform STATIC
+  src/platform/core_host.cpp
+  src/platform/core_host.h
   src/platform/app.cpp
+  src/platform/app_account.cpp
+  src/platform/app_update.cpp
   src/platform/app_pages.cpp
   src/platform/artwork_store.cpp
   src/platform/artwork_store.h
@@ -193,12 +199,20 @@ add_custom_command(TARGET tvm POST_BUILD
     "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:tvm>/assets")
 install(TARGETS tvm RUNTIME DESTINATION .)
 install(DIRECTORY assets DESTINATION .)
+install(FILES update-native.ps1 DESTINATION bin)
 
 enable_testing()
+
+add_executable(tvm_core_check tools/core_check.cpp)
+target_link_libraries(tvm_core_check PRIVATE tvm_platform)
+if(MINGW)
+  target_link_options(tvm_core_check PRIVATE -static)
+endif()
 
 add_executable(tvm_tests
   tests/main.cpp
   tests/core_tests.cpp
+  tests/core_client_tests.cpp
   tests/downloads_tests.cpp
   tests/layout_tests.cpp
   tests/nav_tests.cpp

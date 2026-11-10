@@ -14,7 +14,7 @@ export function tvScale(width: number, height: number, stageW = STAGE_W, stageH 
   return Math.min(width / stageW, height / stageH);
 }
 
-/** Letterbox the desktop UI onto a 1920×1080 TV stage. Desktop Electron is unchanged. */
+/** Letterbox the desktop UI onto a 1920×1080 TV stage. The native desktop has its own renderer. */
 export function startTvStage(): void {
   if (!isTvPreview()) return;
   const root = document.documentElement;

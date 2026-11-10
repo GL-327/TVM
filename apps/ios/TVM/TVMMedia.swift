@@ -236,14 +236,14 @@ final class TVMMedia {
     func search(_ query: String) async -> [MediaItem] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard needle.count >= 2 else { return [] }
-        async let remote = catalog.search(needle)
+        let remote = await catalog.search(needle)
         let local = ((try? await loadLibrary()) ?? []) + store.recentMedia(for: activeProfile())
         let localHits = local.filter {
             $0.title.localizedCaseInsensitiveContains(needle) || ($0.showTitle ?? "").localizedCaseInsensitiveContains(needle)
         }
         var seen = Set<String>()
         // Cinemeta already ranked the remote hits; do not drop aliases like "lotr".
-        return (localHits + (await remote)).filter { seen.insert($0.id).inserted }
+        return (localHits + remote).filter { seen.insert($0.id).inserted }
     }
 
     private func remember(_ item: MediaItem) -> MediaItem {
@@ -570,10 +570,10 @@ final class TVMMedia {
         let downloads: [RdDownload]
         let torrents: [RdTorrent]
         do {
-            async let downloadTask = rd.downloads()
-            async let torrentTask = rd.torrents()
-            downloads = try await downloadTask
-            torrents = try await torrentTask
+            // Avoid nested async-let stack teardown crashes on the Xcode 16
+            // concurrency runtime. Each request still uses async URLSession.
+            downloads = try await rd.downloads()
+            torrents = try await rd.torrents()
         } catch {
             lock.lock()
             if let libraryCache {

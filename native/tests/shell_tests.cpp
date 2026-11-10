@@ -125,7 +125,7 @@ TEST(settings_lists_the_web_rows_in_order) {
         "Picture", "Motion", "Performance mode",
         "Look", "Theme",
         "Language", "App language",
-        "Account", "Privacy & terms", "Plan", "Profiles", "Real-Debrid",
+        "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Real-Debrid",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
         "Device", "Network", "Display", "Live TV login", "Live TV playlist", "Updates", "Check for updates on launch",
         "What's new", "Diagnostics", "Developer",
@@ -477,3 +477,22 @@ TEST(a_cancelled_touch_opens_nothing) {
 }
 
 }  // namespace
+
+TEST(shell_navigation_guard_blocks_screens_and_actions_before_dispatch) {
+    MemoryStore store;
+    auto home = std::make_unique<Scene>(std::vector<RailSpec>{}, store.Motion());
+    Shell shell(std::move(home), store);
+    shell.Layout(1280, 720);
+    int actions = 0;
+    shell.SetActionHandler([&](const Command&) { ++actions; });
+    shell.SetNavigationGuard([](const Command& command) { return command.name == "account"; });
+    Command command; command.name = "player";
+    shell.Execute(command, 0);
+    REQUIRE_EQ(shell.ActiveScreenName(), "home");
+    command.action = true; command.name = "watchlist";
+    shell.Execute(command, 0);
+    REQUIRE_EQ(actions, 0);
+    command.action = false; command.name = "account";
+    shell.Execute(command, 0);
+    REQUIRE_EQ(shell.ActiveScreenName(), "account");
+}

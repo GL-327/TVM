@@ -185,7 +185,7 @@ SSH proves itself by the session you are typing in staying up.
 | Android | LAN, bearer → `tvm_lan_session` cookie | Existing contract | **No.** Unchanged |
 | iOS standalone | Bundled on-device Core | None needed | **No.** No VPN dependency at all |
 | iOS "home Core" | LAN, same as Android | Existing contract | **No.** Unchanged |
-| Electron / appliance | Loopback | None | **No.** No VPN dependency |
+| Desktop client | Loopback | None | **No.** No VPN dependency |
 
 Only Core's *outbound* fetch to a provider is tunnelled. Nothing a client does
 touches the VPN, and nothing about TVM depends on the VPN being up — with the

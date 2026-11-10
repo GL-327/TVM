@@ -205,8 +205,6 @@ function applySeek(video: HTMLVideoElement | null, from: number, target: number,
     for (let i = 0; i < hops; i += 1) fns.seekBy(delta);
     return;
   }
-  const command = delta < 0 ? 'seekBack' : 'seekForward';
-  for (let i = 0; i < hops; i += 1) void window.tvmNativePlayer?.command(command);
 }
 
 function markPlayer(active: boolean, step: SkipStep | null): void {

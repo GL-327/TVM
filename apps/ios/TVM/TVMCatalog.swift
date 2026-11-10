@@ -57,18 +57,23 @@ final class TVMCatalog {
         }
         lock.unlock()
         do {
-            async let moviesTopTask = fetchCatalog("/catalog/movie/top.json", kind: "movie")
-            async let seriesTopTask = fetchCatalog("/catalog/series/top.json", kind: "series")
-            async let moviesRatedTask = fetchCatalog("/catalog/movie/imdbRating.json", kind: "movie")
-            async let seriesRatedTask = fetchCatalog("/catalog/series/imdbRating.json", kind: "series")
-            async let recentTvTask = fetchCatalog("/catalog/series/last-videos.json", kind: "series")
-            async let moviesSkipTask = fetchCatalog("/catalog/movie/top/skip=100.json", kind: "movie")
-            let moviesTop = await moviesTopTask
-            let seriesTop = await seriesTopTask
-            let moviesRated = await moviesRatedTask
-            let seriesRated = await seriesRatedTask
-            let recentTv = await recentTvTask
-            let moviesSkip = await moviesSkipTask
+            // Task groups retain parallel fetching without async-let stack
+            // allocation ordering, which crashes the Xcode 16 runtime.
+            let requests = [
+                ("/catalog/movie/top.json", "movie"), ("/catalog/series/top.json", "series"),
+                ("/catalog/movie/imdbRating.json", "movie"), ("/catalog/series/imdbRating.json", "series"),
+                ("/catalog/series/last-videos.json", "series"), ("/catalog/movie/top/skip=100.json", "movie"),
+            ]
+            let results = await withTaskGroup(of: (Int, [MediaItem]).self, returning: [[MediaItem]].self) { group in
+                for (index, request) in requests.enumerated() {
+                    group.addTask { (index, await self.fetchCatalog(request.0, kind: request.1)) }
+                }
+                var results = Array(repeating: [MediaItem](), count: requests.count)
+                for await (index, items) in group { results[index] = items }
+                return results
+            }
+            let moviesTop = results[0], seriesTop = results[1], moviesRated = results[2]
+            let seriesRated = results[3], recentTv = results[4], moviesSkip = results[5]
             let movies = dedupe(moviesTop + moviesSkip)
             let data = CatalogBundle(
                 moviesTop: moviesTop,
@@ -98,9 +103,9 @@ final class TVMCatalog {
         if needle.count < 2 { return [] }
         let pathValue = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
         let encoded = needle.addingPercentEncoding(withAllowedCharacters: pathValue) ?? needle
-        async let moviesTask = fetchCatalog("/catalog/movie/top/search=\(encoded).json", kind: "movie")
-        async let seriesTask = fetchCatalog("/catalog/series/top/search=\(encoded).json", kind: "series")
-        let live = dedupe((await moviesTask) + (await seriesTask))
+        let movies = await fetchCatalog("/catalog/movie/top/search=\(encoded).json", kind: "movie")
+        let series = await fetchCatalog("/catalog/series/top/search=\(encoded).json", kind: "series")
+        let live = dedupe(movies + series)
         if !live.isEmpty { return live }
         let lower = needle.lowercased()
         return fallback.filter {
@@ -136,10 +141,8 @@ final class TVMCatalog {
             return data
         }
         lock.unlock()
-        async let movieTask = readKind("movie", imdb: imdb)
-        async let seriesTask = readKind("series", imdb: imdb)
-        let seriesMeta = await seriesTask
-        let movieMeta = await movieTask
+        let seriesMeta = await readKind("series", imdb: imdb)
+        let movieMeta = await readKind("movie", imdb: imdb)
         let picked = seriesMeta ?? movieMeta
         if let picked {
             lock.lock()

@@ -180,7 +180,7 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
   const stack = useViewStack();
   const playFocusKey = useScopedFocusKey(PLAY_FOCUS_ID);
   const jumping = useRef(false);
-  const [native, setNative] = useState<{ position: number; duration: number } | null>(null);
+  const native = null;
   const [fallbackClock, setFallbackClock] = useState({ position: 0, duration: 0 });
   const [domBlocked, setDomBlocked] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -217,16 +217,6 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
     setNext(null);
     jumping.current = false;
   }, [identity.playId]);
-
-  useEffect(() => {
-    const bridge = window.tvmNativePlayer;
-    if (bridge === undefined) return;
-    return bridge.onEvent((event) => {
-      if (event.type === 'state' && Number.isFinite(event.duration) && event.duration > 0) {
-        setNative({ position: event.position, duration: event.duration });
-      }
-    });
-  }, []);
 
   useEffect(() => {
     const sessionHasBlockers = overlay !== undefined || busy !== undefined || error !== null;
