@@ -1,4 +1,5 @@
 #include <chrono>
+#include <algorithm>
 #include "core/core_client.h"
 #include "core/secrets.h"
 #include "core/util.h"
@@ -72,4 +73,41 @@ TEST(native_core_preserves_playback_failure_reason_without_following_redirects) 
     });
     try { client.Call("/api/playback", "POST", {{"id", "fixture"}}); REQUIRE(false); }
     catch (const coreapi::RequestError& error) { REQUIRE_EQ(error.reason, "needs-auth"); }
+}
+
+TEST(native_signin_saves_a_session_then_refreshes_account_entitlements) {
+    Folder folder;
+    int calls = 0;
+    coreapi::Client client(folder.path, 7345, [&](const std::string& url, const http::Options& options) -> std::optional<http::Response> {
+        ++calls;
+        if (url.ends_with("/signin")) {
+            REQUIRE_EQ(options.method, "POST");
+            const auto body = nlohmann::json::parse(options.body);
+            REQUIRE_EQ(body.at("email"), "viewer@example.test");
+            REQUIRE_EQ(body.at("password"), "fixture password");
+            return http::Response{200, "{\"token\":\"new-session\"}"};
+        }
+        REQUIRE(url.ends_with("/account"));
+        REQUIRE(std::find(options.headers.begin(), options.headers.end(), std::pair<std::string, std::string>{"Authorization", "Bearer new-session"}) != options.headers.end());
+        return http::Response{200, SignedIn().dump()};
+    });
+    const auto account = client.SignIn("viewer@example.test", "fixture password");
+    REQUIRE(account.usable);
+    REQUIRE_EQ(account.tier, "stream");
+    REQUIRE_EQ(calls, 2);
+    REQUIRE_EQ(secrets::ReadSecret(folder.path / L"native-account-session").value_or(""), "new-session");
+}
+
+TEST(native_admin_status_uses_public_core_fields_and_accepts_nullable_mail_username) {
+    const auto account = coreapi::ParseAdminAccount({{"id", "fixture"}, {"rdKey", true}, {"activeSessions", 3}, {"signIns", 7}, {"note", nullptr}, {"emailVerifiedAt", nullptr}});
+    REQUIRE(account.hasRdKey);
+    REQUIRE_EQ(account.sessions, 3);
+    REQUIRE_EQ(account.signIns, 7);
+    REQUIRE(account.note.empty());
+    REQUIRE(account.emailVerifiedAt.empty());
+    const auto mail = coreapi::ParseMailStatus({{"configured", true}, {"host", "smtp.example.test"}, {"port", 587}, {"security", "starttls"}, {"username", nullptr}, {"from", "owner@example.test"}});
+    REQUIRE(mail.has_value());
+    REQUIRE(mail->username.empty());
+    REQUIRE(mail->password.empty());
+    REQUIRE_EQ(mail->host, "smtp.example.test");
 }

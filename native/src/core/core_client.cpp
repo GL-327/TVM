@@ -48,6 +48,31 @@ bool AllowsRoute(const AccountState& state, const std::string& route) {
     return true;
 }
 
+admin::Account ParseAdminAccount(const nlohmann::json& body) {
+    admin::Account account;
+    if (!body.is_object()) return account;
+    account.id = Text(body, "id"); account.email = Text(body, "email"); account.displayName = Text(body, "displayName");
+    account.createdAt = Text(body, "createdAt"); account.activatedAt = Text(body, "activatedAt");
+    account.tier = Text(body, "tier"); account.note = Text(body, "note");
+    account.termsVersion = Text(body, "termsVersion"); account.termsAcceptedAt = Text(body, "termsAcceptedAt");
+    account.emailVerifiedAt = Text(body, "emailVerifiedAt"); account.lastSeenAt = Text(body, "lastSeenAt"); account.lastClient = Text(body, "lastClient");
+    account.activated = Flag(body, "activated"); account.suspended = Flag(body, "suspended");
+    account.hasRdKey = Flag(body, "rdKey"); account.emailCodeSent = Flag(body, "emailCodeSent");
+    if (body.contains("signIns") && body["signIns"].is_number_integer()) account.signIns = body["signIns"].get<int>();
+    if (body.contains("activeSessions") && body["activeSessions"].is_number_integer()) account.sessions = body["activeSessions"].get<int>();
+    return account;
+}
+
+std::optional<admin::MailSettings> ParseMailStatus(const nlohmann::json& body) {
+    if (!body.is_object() || !Flag(body, "configured")) return std::nullopt;
+    admin::MailSettings settings;
+    settings.host = Text(body, "host"); settings.username = Text(body, "username"); settings.from = Text(body, "from");
+    settings.security = Text(body, "security");
+    if (settings.security.empty()) settings.security = "starttls";
+    if (body.contains("port") && body["port"].is_number_integer()) settings.port = body["port"].get<int>();
+    return settings;
+}
+
 Client::Client(paths::fs::path dataDir, unsigned port, http::Transport transport)
     : dataDir_(std::move(dataDir)), port_(port), transport_(std::move(transport)) {
     if (port == 0 || port > 65535) throw std::invalid_argument("Invalid Core port.");
@@ -66,6 +91,7 @@ nlohmann::json Client::Call(const std::string& path, const std::string& method, 
     options.followRedirects = false;
     if (path == "/api/desktop/runtime") options.timeoutMs = 1000;
     if (path == "/api/playback" || path == "/api/downloads/resolve") options.timeoutMs = 90000;
+    if (path == "/api/desktop/mpv") options.timeoutMs = 180000;
     {
         const std::lock_guard lock(mutex_);
         if (!token_.empty() && path != "/api/desktop/runtime") options.headers.emplace_back("Authorization", "Bearer " + token_);

@@ -1322,25 +1322,9 @@ void App::LoadAccounts() {
         return;
     }
     try {
-        const auto body = core_->Call("/api/admin/accounts");
+        const auto body = core_->Call("/api/admin/accounts?search=" + util::FormEncode(util::Trim(fieldValues_["accounts.search"])) + "&state=" + accountsState_);
         accounts_.clear();
-        for (const auto& item : body.at("accounts")) {
-            admin::Account a;
-            const auto text = [&](const char* key) { return item.contains(key) && item[key].is_string() ? item[key].get<std::string>() : std::string(); };
-            a.id = text("id"); a.email = text("email"); a.displayName = text("displayName");
-            a.createdAt = text("createdAt"); a.activatedAt = text("activatedAt"); a.tier = text("tier"); a.note = text("note");
-            a.termsVersion = text("termsVersion"); a.termsAcceptedAt = text("termsAcceptedAt"); a.emailVerifiedAt = text("emailVerifiedAt");
-            a.lastSeenAt = text("lastSeenAt"); a.lastClient = text("lastClient");
-            a.activated = item.value("activated", false); a.suspended = item.value("suspended", false);
-            a.hasRdKey = item.value("hasRdKey", false); a.emailCodeSent = item.value("emailCodeSent", false);
-            a.signIns = item.value("signIns", 0); a.sessions = item.value("sessions", 0);
-            const auto query = util::Trim(fieldValues_["accounts.search"]);
-            if (!query.empty() && (a.email + a.displayName).find(query) == std::string::npos) continue;
-            if (accountsState_ == "waiting" && (a.activated || a.suspended)) continue;
-            if (accountsState_ == "active" && (!a.activated || a.suspended)) continue;
-            if (accountsState_ == "suspended" && !a.suspended) continue;
-            accounts_.push_back(std::move(a));
-        }
+        for (const auto& item : body.at("accounts")) accounts_.push_back(coreapi::ParseAdminAccount(item));
         const auto summary = body.at("summary");
         accountsSummary_ = {summary.value("total", 0), summary.value("waiting", 0), summary.value("active", 0), summary.value("suspended", 0)};
     } catch (const std::exception& error) {

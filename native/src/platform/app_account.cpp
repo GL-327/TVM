@@ -107,13 +107,7 @@ void App::AccountAction(const std::string& verb) {
 }
 
 std::optional<admin::MailSettings> App::CoreMail() const {
-    const auto body = core_->Call("/api/admin/mail");
-    if (!body.value("configured", false)) return std::nullopt;
-    admin::MailSettings settings;
-    settings.host = body.value("host", std::string()); settings.port = body.value("port", 587);
-    settings.username = body.value("username", std::string()); settings.from = body.value("from", std::string());
-    settings.security = body.value("security", std::string("starttls"));
-    return settings;
+    return coreapi::ParseMailStatus(core_->Call("/api/admin/mail"));
 }
 
 realdebrid::Status App::CoreRealDebrid() const {

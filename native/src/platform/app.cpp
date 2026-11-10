@@ -169,6 +169,13 @@ void ShowPlaylist(ui::LivePlaylistView& view, const live::Catalog& catalog) {
     }
 }
 
+void PrepareMpv(coreapi::Client& client) {
+    if (!mpv::FindMpvExecutable(util::ProcessEnvironment())) {
+        try { client.Call("/api/desktop/mpv", "POST", nlohmann::json::object()); }
+        catch (...) { /* FinishResolve retains the manual setup option. */ }
+    }
+}
+
 }  // namespace
 
 App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
@@ -2005,11 +2012,15 @@ void App::StartPlayback() {
             }
         }
         if (resolution.url.empty()) resolution.reason = "unsupported";
-        FinishResolve(generation, resolution);
+        background_->Run([this, generation, resolution] {
+            PrepareMpv(*core_);
+            background_->PostToUi([this, generation, resolution] { FinishResolve(generation, resolution); });
+        });
         return;
     }
 
     background_->Run([this, generation, id = playerId_, title] {
+        PrepareMpv(*core_);
         const playback::Resolution resolution = CorePlayback(id, title);
         background_->PostToUi([this, generation, resolution] { FinishResolve(generation, resolution); });
     });

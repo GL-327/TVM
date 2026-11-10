@@ -2,7 +2,7 @@ name: Native Windows
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main]
     paths: ['native/**', 'apps/core/**', 'apps/ui/**', 'packages/**', 'scripts/launch-tvm*', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/native.yml']
   pull_request:
     paths: ['native/**', 'apps/core/**', 'apps/ui/**', 'packages/**', 'scripts/launch-tvm*', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/native.yml']
@@ -29,6 +29,9 @@ jobs:
         run: cmake --build native/build --config Release --parallel 2
       - name: Test
         run: ctest --test-dir native/build -C Release --output-on-failure
+      - name: Test native update verification
+        shell: pwsh
+        run: ./native/tests/update_native_tests.ps1
       - name: Render desktop and portrait snapshots
         shell: pwsh
         run: |
@@ -67,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $notes = 'Windows C++ client. Extract the whole ZIP and run tvm.exe. Includes the shared Core, responsive web UI and Node runtime. Playback requires mpv. Electron is retired. See native/README.md.'
+          $notes = 'Windows C++ client. Extract the whole ZIP and run tvm.exe. Includes the shared Core, responsive web UI and Node runtime. Playback uses mpv with verified automatic setup when missing. Electron is retired. See native/README.md.'
           gh release view native-windows *> $null
           if ($LASTEXITCODE -ne 0) { gh release create native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
           else { gh release edit native-windows --prerelease --title 'Native Windows (C++)' --notes $notes }
