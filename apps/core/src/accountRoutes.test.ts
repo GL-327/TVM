@@ -281,3 +281,15 @@ describe('who may relay live TV', () => {
     expect(liveRelayRefused('/api/home', '192.168.1.40', () => false)).toBe(false);
   });
 });
+
+it('native playback setup requires a usable local account', async () => {
+  const { call, member } = await boot();
+  expect((await call('/api/desktop/mpv', { body: {} })).status).toBe(403);
+  const waiting = await member();
+  expect((await call('/api/desktop/mpv', { body: {}, token: waiting })).status).toBe(403);
+  const signed = await call('/api/account/dev', { body: { code: 'test-dev-code' } });
+  const ready = await call('/api/desktop/mpv', { body: {}, token: signed.body['token'] });
+  expect(ready.status).toBe(200);
+  // The isolated Core has no installation environment and never downloads a player.
+  expect(ready.body['installed']).toBe(false);
+});

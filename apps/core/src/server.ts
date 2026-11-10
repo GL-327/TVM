@@ -46,6 +46,7 @@ import { createUpdateService, restartAfterApply, type UpdateService } from './up
 import { readPrefs, writePrefs } from './prefs.ts';
 import { validDownloadPreferences } from './providers/downloadPreferences.ts';
 import { desktopRuntime } from './desktopRuntime.ts';
+import { ensureWindowsMpv } from './providers/mpvInstall.ts';
 
 export { CORE_VERSION };
 
@@ -499,6 +500,17 @@ async function handleApi(
   if (path === '/api/desktop/runtime' && request.method === 'GET') {
     if (!isLoopback(request.socket.remoteAddress)) sendJson(response, 403, { error: 'local_only' });
     else sendJson(response, 200, desktopRuntime(dataDir));
+    return true;
+  }
+
+  if (path === '/api/desktop/mpv' && request.method === 'POST') {
+    const account = accounts.resolve(currentSessionToken());
+    if (!isLoopback(request.socket.remoteAddress) || account === null || !accounts.usable(account).ok) {
+      sendJson(response, 403, { error: 'A usable local account is required for playback setup.' });
+      return true;
+    }
+    try { sendJson(response, 200, { installed: await ensureWindowsMpv({ env }) }); }
+    catch (error) { sendJson(response, 400, { error: error instanceof Error ? error.message : 'Playback setup failed.' }); }
     return true;
   }
 

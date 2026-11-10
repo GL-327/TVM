@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/http.h"
+#include "core/admin.h"
 #include "core/paths.h"
 
 namespace tvm::coreapi {
@@ -28,6 +29,8 @@ struct AccountState {
 };
 
 AccountState ParseAccount(const nlohmann::json& body);
+admin::Account ParseAdminAccount(const nlohmann::json& body);
+std::optional<admin::MailSettings> ParseMailStatus(const nlohmann::json& body);
 bool AllowsRoute(const AccountState& state, const std::string& route);
 
 // The native renderer shares the existing account/billing service. Requests

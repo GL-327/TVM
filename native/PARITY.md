@@ -4,7 +4,7 @@ Electron is retired: `apps/shell`, its runtime dependency, download hooks and br
 
 Windows runs the C++20 Win32/Direct2D renderer and mpv. It includes catalogue/search/details, service hubs, profiles, watchlist/progress, Live TV, playback controls, downloads, settings, legal/data tools, diagnostics and recovery. Light/dark themes and native navigation, grids, forms and player controls reflow at narrow sizes.
 
-The C++ desktop uses the shared Core for account registration/sign-in, terms/email verification, developer roles, activation/admin/mail operations, per-account media keys and plan-limited media resolution. Sessions are encrypted locally. Unusable accounts cannot open the library, and role/tier checks also guard navigation.
+The C++ desktop uses the shared Core for account registration/sign-in, terms/email verification, developer roles, activation/admin/mail operations, per-account media keys and plan-limited media resolution. Missing Windows playback engines are installed from the existing mpv distributor with checksum verification. Sessions are encrypted locally. Unusable accounts cannot open the library, and role/tier checks also guard navigation.
 
 Donations use the existing Stripe payment screen in the system browser. Official service websites also open in the browser. The standalone donation route cannot navigate into the private library. Installed native renderer updates verify GitHub's digest/build identity and retain a rollback copy; Core/UI keep their existing verified update mechanism.
 

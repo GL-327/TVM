@@ -28,7 +28,7 @@ ctest --test-dir native/build -C Release --output-on-failure
 
 The executable is native/build/tvm.exe (Ninja) or
 native/build/Release/tvm.exe (Visual Studio). Assets are copied beside it.
-Playback requires mpv.exe in a supported installation or on PATH. Configure
+Playback uses mpv.exe from an existing installation or PATH. When missing, the native client asks Core to install a portable Windows build after verifying its published checksum. Set `TVM_SKIP_MPV_INSTALL=1` to keep setup manual. Configure
 a Real-Debrid account or a Live TV source through Settings.
 
 The Native Windows GitHub workflow builds and tests with MSVC, captures
@@ -39,7 +39,7 @@ The ZIP contains the native renderer, artwork, shared Core, responsive UI and No
 
 - Home and TVM Stream catalogue, rotating hero artwork, search, movie and
   series details, season and episode selection, service catalogue hubs.
-- mpv playback with resume, subtitles and audio tracks, speed
+- mpv playback with resume, subtitles and audio tracks, quality and speed
   selection, seeking and preview thumbnails, next episode, recap/credits
   controls, fullscreen, mute and volume boost.
 - Real-Debrid token/account settings and Live TV login, playlists, channel

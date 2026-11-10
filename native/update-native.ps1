@@ -11,6 +11,8 @@ $infoPath = Join-Path $InstallRoot 'native-build.json'
 if (-not (Test-Path -LiteralPath $infoPath)) { throw 'Source checkouts update with git pull and a native rebuild.' }
 
 if (-not $Apply) {
+    $createdStage = $false
+    try {
     $installed = Get-Content -LiteralPath $infoPath -Raw | ConvertFrom-Json
     $release = Invoke-RestMethod 'https://api.github.com/repos/GL-327/TVM/releases/tags/native-windows' -Headers @{Accept='application/vnd.github+json';'User-Agent'='TVM-Native'}
     $asset = $release.assets | Where-Object { $_.name -ceq 'TVM-native-windows.zip' } | Select-Object -First 1
@@ -19,6 +21,7 @@ if (-not $Apply) {
     if ($asset.browser_download_url -cne 'https://github.com/GL-327/TVM/releases/download/native-windows/TVM-native-windows.zip' -or $asset.size -le 0 -or $asset.size -gt 209715200) { throw 'Unexpected native update asset.' }
     $Stage = Join-Path ([IO.Path]::GetTempPath()) ('tvm-native-update-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $Stage | Out-Null
+    $createdStage = $true
     $zipPath = Join-Path $Stage 'package.zip'
     Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zipPath
     if ((Get-Item -LiteralPath $zipPath).Length -ne $asset.size -or ('sha256:' + (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()) -cne $asset.digest) { throw 'Native update checksum failed.' }
@@ -49,6 +52,16 @@ if (-not $Apply) {
     $helperArgs = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File', ('"' + $helper + '"'), '-InstallRoot', ('"' + $InstallRoot + '"'), '-ParentId', $ParentId, '-Apply', '-Stage', ('"' + $Stage + '"'))
     Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $helperArgs -WindowStyle Hidden
     exit 0
+    } catch {
+        if ($createdStage) {
+            $absoluteStage = [IO.Path]::GetFullPath($Stage)
+            $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+            if ($absoluteStage.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $absoluteStage) -match '^tvm-native-update-[a-f0-9]{32}$') {
+                Remove-Item -LiteralPath $absoluteStage -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        throw
+    }
 }
 
 # Only a freshly staged, verified sibling tree is accepted by the apply phase.

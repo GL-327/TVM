@@ -4,7 +4,7 @@ Electron has been retired. Windows uses the C++20 desktop client; macOS and Linu
 
 ## Windows download
 
-Download **TVM-native-windows.zip** from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows), extract the whole folder, and run `TVM.cmd` or `tvm.exe`. It includes Node, Core, the web UI and artwork. Install mpv or set `TVM_MPV_PATH` for playback. The browser UI is available at `http://127.0.0.1:7345/` while Core runs.
+Download **TVM-native-windows.zip** from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows), extract the whole folder, and run `TVM.cmd` or `tvm.exe`. It includes Node, Core, the web UI and artwork. Playback uses mpv; TVM can install a verified portable Windows build automatically when it is missing. You can also install mpv yourself or set `TVM_MPV_PATH`. The browser UI is available at `http://127.0.0.1:7345/` while Core runs.
 
 Sign in through **Account**. New accounts need the operator to activate them. The account screen supports registration, email codes, accepting terms and developer sign-in. Donations open the shared payment screen in your browser; card details remain in Stripe's fields.
 
