@@ -105,6 +105,7 @@ void SettingsScreen::BuildRows() {
     row(RowKind::Language, "language", "App language");
 
     group("Account");
+    push("account", "Your account", "Sign in, email verification and access", Open("account"));
     push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
     push("plan", "Plan", "Access and pricing", Open("plans"));
     push("profiles", "Profiles", "TVM Stream only", Open("profiles"));

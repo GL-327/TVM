@@ -116,7 +116,6 @@ export const DEPENDENCY_FILES: readonly string[] = [
   'pnpm-workspace.yaml',
   'apps/core/package.json',
   'apps/ui/package.json',
-  'apps/shell/package.json',
   'packages/design/package.json',
   'packages/nav/package.json',
 ];

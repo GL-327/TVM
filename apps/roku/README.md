@@ -1,6 +1,6 @@
 # TVM on Roku
 
-The product UI is `apps/ui` (the same React app as desktop Electron). On this PC,
+The product UI is `apps/ui` (the same React app as desktop browser). On this PC,
 `TVM-roku.cmd` opens **that UI** in a 1920×1080 TV frame.
 
 A Roku box cannot run Chromium or React. The sideloaded `tvm-roku.zip` is a
@@ -8,7 +8,7 @@ SceneGraph client that talks to Core over HTTP. It will not look identical to
 desktop. Use the PC TV preview to judge the living-room look; use the zip only
 to test a real remote and Roku playback.
 
-The Electron app, Debian appliance, and `apps/ui` stay as they are.
+Windows desktop uses the C++ renderer. The shared browser UI remains in `apps/ui`.
 
 ## What this channel does
 
@@ -143,7 +143,7 @@ the Roku even with the correct token. Close that process and start with
 `TVM_CORE_BIND=0.0.0.0`. After a LAN bind you should see `0.0.0.0` (or the NIC
 address) and the `TVM_LAN_TOKEN` reminder.
 
-Leave `pnpm dev` (Electron) as it is for the existing UI. You can run Core with
+Leave `pnpm dev` as it is for the existing UI. You can run Core with
 `TVM_CORE_BIND` and `TVM_LAN_TOKEN` in one terminal and the rest of TVM as usual
 in another.
 

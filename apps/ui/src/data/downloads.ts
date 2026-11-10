@@ -84,7 +84,7 @@ async function browserDownload(job: DownloadJob, item: DownloadRequest['items'][
 }
 
 export function downloadsAvailable(): boolean {
-  return window.tvmDownloads !== undefined || 'showDirectoryPicker' in window;
+  return 'showDirectoryPicker' in window;
 }
 
 const browserBridge: DownloadBridge = {
@@ -112,7 +112,7 @@ const browserBridge: DownloadBridge = {
   onChanged(listener) { subscribers.add(listener); return () => subscribers.delete(listener); },
 };
 
-export const downloadBridge = (): DownloadBridge => window.tvmDownloads ?? browserBridge;
+export const downloadBridge = (): DownloadBridge => browserBridge;
 export function downloadHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'X-TVM-Profile': currentProfileId() };
   const token = readToken(); if (token) headers['Authorization'] = `Bearer ${token}`;

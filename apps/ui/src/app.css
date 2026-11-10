@@ -3508,7 +3508,7 @@ html.tv-preview #root {
   zoom: var(--tv-scale, 1);
 }
 
-/* Laptop / windowed Electron: a pointer is expected. */
+/* Laptop / windowed desktop: a pointer is expected. */
 html.desktop-shell,
 html.desktop-shell body {
   cursor: default;

@@ -338,8 +338,6 @@ export function applyAbsoluteSeek(
     options.video.currentTime = target;
     return target;
   }
-  const native = typeof window !== 'undefined' ? window.tvmNativePlayer : undefined;
-  void native?.seekTo?.(target);
   return target;
 }
 
@@ -366,7 +364,6 @@ export function applyRelativeSeek(
     options.video.currentTime = clampTime(options.video.currentTime + deltaSeconds, options.video.duration);
     return;
   }
-  void window.tvmNativePlayer?.command(deltaSeconds < 0 ? 'seekBack' : 'seekForward');
 }
 
 export function ProgressBar({
@@ -417,18 +414,8 @@ export function ProgressBar({
     };
 
     syncFromVideo();
-    const nativeOff = window.tvmNativePlayer?.onEvent((event) => {
-      if (event.type !== 'state') return;
-      setClock((prev) => ({
-        time: event.position,
-        duration: event.duration,
-        buffered: Math.max(prev.buffered, event.position),
-      }));
-    });
-
     return () => {
       for (const event of events) node?.removeEventListener(event, syncFromVideo);
-      nativeOff?.();
     };
   }, [video, videoRef]);
 

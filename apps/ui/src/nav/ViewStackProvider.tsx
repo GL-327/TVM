@@ -115,15 +115,15 @@ function runVerticalHop(active: HTMLElement, intent: 'up' | 'down'): void {
  * only the bridge to React and to the focus engine, and it is the sole place
  * subscribed to remote input.
  */
-export function ViewStackProvider(): React.JSX.Element {
-  const [root, setRoot] = useState<string | null>(null);
-  const [introDone, setIntroDone] = useState(() => shouldSkipIntro() || introPlayedThisSession());
+export function ViewStackProvider({ initialScreen }: { initialScreen?: 'donate' } = {}): React.JSX.Element {
+  const [root, setRoot] = useState<string | null>(initialScreen ?? null);
+  const [introDone, setIntroDone] = useState(() => initialScreen !== undefined || shouldSkipIntro() || introPlayedThisSession());
 
   useEffect(() => {
     let active = true;
-    void resolveRoot().then((name) => { if (active) setRoot(name); });
+    if (initialScreen === undefined) void resolveRoot().then((name) => { if (active) setRoot(name); });
     return () => { active = false; };
-  }, []);
+  }, [initialScreen]);
 
   useEffect(() => installEasterEggs(), []);
 
@@ -167,7 +167,10 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   }, []);
 
   const navigate = useMemo<Navigate>(
-    () => ({
+    () => root === 'donate' ? {
+      push: () => undefined, pushModal: () => undefined, replace: () => undefined,
+      pop: () => undefined, home: () => undefined, reset: () => undefined,
+    } : ({
       push: (name: string, options?: PushOptions) => rememberThenDispatch(viewStack.push(name, options)),
       pushModal: (name: string, options?: PushOptions) =>
         rememberThenDispatch(viewStack.pushModal(name, options)),
@@ -177,7 +180,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       home: () => dispatch(viewStack.home()),
       reset: (name: string, options?: PushOptions) => dispatch(viewStack.reset(name, options)),
     }),
-    [rememberThenDispatch],
+    [rememberThenDispatch, root],
   );
 
   const active = activeEntry(state);

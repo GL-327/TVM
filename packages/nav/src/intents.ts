@@ -41,7 +41,7 @@ export interface IntentEvent {
 const DIRECTIONAL: ReadonlySet<Intent> = new Set<Intent>(['up', 'down', 'left', 'right']);
 
 /**
- * KeyboardEvent.key values, in the shape browsers, Electron and USB HID
+ * KeyboardEvent.key values, in the shape browsers and USB HID
  * remotes actually emit. Media keys follow the Multimedia Keys spec that
  * cheap remotes and the CEC bridge both target.
  */

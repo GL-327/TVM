@@ -509,11 +509,6 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
       }
     };
 
-    const onNative = (event: TvmNativePlayerEvent): void => {
-      if (event.type !== 'error') return;
-      commit(describePlaybackError(event.message) ?? COPY.native);
-    };
-
     const onCustom = (raw: Event): void => {
       const detail = (raw as CustomEvent<string | { message?: string; reason?: string }>).detail;
       if (typeof detail === 'string') {
@@ -529,7 +524,6 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
     const pulse = window.setInterval(scan, 400);
     const observer = new MutationObserver(scan);
     if (root !== null) observer.observe(root, { subtree: true, childList: true, characterData: true });
-    const offNative = window.tvmNativePlayer?.onEvent(onNative);
     window.addEventListener('tvm:playback-error', onCustom);
 
     return () => {
@@ -537,7 +531,6 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
       detach();
       window.clearInterval(pulse);
       observer?.disconnect();
-      offNative?.();
       window.removeEventListener('tvm:playback-error', onCustom);
     };
   }, [session.video, session.videoRef]);

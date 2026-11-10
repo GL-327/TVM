@@ -8,7 +8,6 @@ import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverla
 import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
 import { TvmMark } from '../brand/TvmMark';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
-import { desktopPlaybackBridge, html5CanAttach } from '../player/desktopEngine';
 import { nativePlaybackBridge } from '../player/iosEngine';
 import { PlayerRoot, type PlayerSession } from '../player';
 import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
@@ -134,12 +133,12 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       season: playbackSeason,
       episode: playbackEpisode,
       startAt: retryAt.current,
-      native: !live && desktopPlaybackBridge() !== undefined,
+      native: !live && nativePlaybackBridge() !== undefined,
     }, request.signal);
 
     const start = (stream: EngineStream): void => {
       if (cancelled) return;
-      const native = nativePlaybackBridge() !== undefined || (desktopPlaybackBridge() !== undefined && (stream.engine === 'native' || !html5CanAttach(stream)));
+      const native = nativePlaybackBridge() !== undefined;
       const video = videoRef.current;
       if (!native && video === null) {
         startFrame = window.requestAnimationFrame(() => start(stream));

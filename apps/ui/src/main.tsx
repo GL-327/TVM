@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import '@tvm/design/tokens.css';
 import './app.css';
 import { App } from './App';
+import { ViewStackProvider } from './nav/ViewStackProvider';
 import { startDesktopShell, startTvStage } from './tvStage';
 import { startPointerInput } from './nav/pointerInput';
 import { startPhoneViewport } from './nav/phoneViewport';
@@ -34,6 +35,6 @@ if (container === null) throw new Error('TVM UI could not find #root');
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    {window.location.pathname === '/donate' ? <ViewStackProvider initialScreen="donate" /> : <App />}
   </StrictMode>,
 );

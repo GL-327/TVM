@@ -100,6 +100,7 @@ public:
     void SetActionHandler(std::function<void(const Command&)> handler);
     // Told the name of each screen or modal as it opens, after it is on the stack.
     void SetOpenHandler(std::function<void(const std::string& name)> handler);
+    void SetNavigationGuard(std::function<bool(const Command&)> guard) { guard_ = std::move(guard); }
 
 private:
     Screen& Top();
@@ -121,6 +122,7 @@ private:
     double height_ = 0.0;
     std::function<void(const Command&)> action_;
     std::function<void(const std::string& name)> opened_;
+    std::function<bool(const Command&)> guard_;
 
     nav::MouseState mouse_;
     nav::ClickTracker clicks_;

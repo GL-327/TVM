@@ -217,6 +217,7 @@ void Shell::SetOpenHandler(std::function<void(const std::string& name)> handler)
 }
 
 void Shell::Open(const Command& command, double nowMs) {
+    if (guard_ && !guard_(command)) return;
     if (command.action) {
         // An action changes data, not the stack, so nothing is opened or remembered.
         if (action_) action_(command);
@@ -291,7 +292,7 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
     // The pages the app fills in from an InfoView.
     static const std::set<std::string> kInfoPages = {
         "legal", "donate", "downloads", "changelog", "diagnostics", "system-info", "setup", "recovery",
-        "live-check", "mail-settings", "accounts", "developer", "apps", "confirm"};
+        "live-check", "mail-settings", "accounts", "developer", "apps", "confirm", "account"};
     if (kInfoPages.contains(entry.name)) return std::make_unique<InfoScreen>();
     if (entry.name == "service") {
         // A service hub is a stream-style scene in the service's colours. The app fills it in.

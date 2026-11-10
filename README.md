@@ -4,7 +4,7 @@ TVM supports Windows desktop, web browsers on phones and computers, iOS,
 Android and Roku. The C++20 Windows client is in [`native/`](native/README.md):
 build it with `native\build.bat` and open `TVM-native.cmd`. The shared web and
 mobile clients remain supported; see [platforms](docs/PLATFORMS.md) and
-[native parity](native/PARITY.md) before removing compatibility components.
+[native migration status](native/PARITY.md). Electron has been retired.
 
 TVM runs on desktop, in a browser served by Core, on iPhone and Android, and
 as a Roku channel. Browse and play your own media and sources you already use
@@ -20,7 +20,7 @@ The five supported apps and their update paths are described in [PLATFORMS.md](d
 | --- | --- |
 | `apps/ui` | React interface, built for a ten-foot viewing distance |
 | `apps/core` | Local service on `127.0.0.1` by default. Owns all business logic, and serves the interface in production |
-| `apps/shell` | Electron kiosk window (Windows, Linux, macOS) |
+| `native` | C++20 Windows desktop renderer; starts the shared Core. macOS/Linux desktop use the browser UI |
 | `apps/roku` | Roku SceneGraph source. Talks to Core over HTTP on the LAN with a bearer token. A developer-mode sideload still needs device testing; see [apps/roku/README.md](apps/roku/README.md) |
 | `apps/ios` | Standalone iPhone app: bundled `apps/ui` + on-device Core. No PC or LAN token required. IPA is CI/Mac only and is not App Store signed. See [apps/ios/README.md](apps/ios/README.md) |
 | `apps/android` | Standalone Kotlin WebView app with an on-device Core; optional home-Core pairing uses a LAN bearer. Debug APK is local/CI only; see [apps/android/README.md](apps/android/README.md) |
@@ -53,7 +53,7 @@ chmod +x TVM.sh TVM-windowed.sh scripts/*.sh
 
 ```bash
 pnpm install
-pnpm dev          # core on 7345, interface on 5173, Electron kiosk
+pnpm dev          # core on 7345, interface on 5173
 pnpm build
 pnpm test
 pnpm typecheck
@@ -70,15 +70,13 @@ Useful environment variables:
 | `TVM_CORE_PORT` | Core's port. Default 7345 |
 | `TVM_CORE_BIND` | Core's listen address. Default `127.0.0.1`. LAN clients require bearer authentication; see the testing guide |
 | `TVM_LAN_TOKEN` | At least 32 characters for authenticated LAN clients; never place it in the UI bundle. Admin, billing and privacy routes stay local |
-| `TVM_UI_URL` | Origin the shell loads |
-| `TVM_WINDOWED=1` | Run the shell in a window instead of fullscreen. `TVM-windowed.cmd` / `TVM-windowed.sh`, `Desktop/TVM.cmd`, and the Desktop copies set this; `TVM.cmd` / `TVM.sh` do not |
-| `TVM_ENV=production` | Shell loads the interface from core. Apply for GitHub app updates is allowed; core hops to the applied bundle on restart |
+| `TVM_ENV=production` | Core serves the built browser interface. Apply for GitHub app updates is allowed; core hops to the applied bundle on restart |
 | `TVM_GITHUB_TOKEN` | Optional private-fork only. The public `GL-327/TVM` feed needs no token and no GitHub login on any device |
 | `TVM_UPDATE_REPO` | Optional. `owner/name` override for the app update channel. Default `GL-327/TVM` |
 | `TVM_ALLOW_APPLY=1` | Allow Apply outside production. Do not set this on a source checkout you care about |
 | `TVM_ROKU_HOST` / `TVM_ROKU_PASSWORD` | Optional. `TVM-roku.cmd` uses these to sideload `apps/roku/tvm-roku.zip` onto a developer-mode Roku |
 
-On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the **desktop interface** in a 1920×1080 TV frame at `http://127.0.0.1:5173/?tv=1`. That is the same React app as `TVM.cmd`, not a separate channel mock. A Roku cannot run that UI.
+On this PC, double-click `TVM-roku.cmd` to start Core and the UI, then open the **desktop interface** in a 1920×1080 TV frame at `http://127.0.0.1:5173/?tv=1`. That is the shared browser UI; the Windows desktop uses its C++ renderer. A Roku cannot run that UI.
 
 The Roku product for this version is the sideloaded `apps/roku/tvm-roku.zip` (not a Channel Store or HTTPS build). For a box on the LAN: set `TVM_CORE_BIND=0.0.0.0` and a random `TVM_LAN_TOKEN` of at least 32 characters; allow Core on the Windows private network; enter `http://<this-pc-lan-ip>:7345` and the same token on the Roku setup screen. The channel sends `Authorization: Bearer <token>` on Core API calls and Core-hosted streams. Loopback clients do not need a token. Admin, billing and privacy routes stay local. Never put the token in `config.json` or the zip. Details: [apps/roku/README.md](apps/roku/README.md).
 
@@ -156,7 +154,7 @@ Linux and macOS setup, package names, and the GitHub desktop tarball: [docs/DESK
   never in the interface bundle. Credentials belong in the operating system's
   credential store, reached only by core.
 - **Core binds `127.0.0.1` by default.** It holds credentials, so the desktop
-  and production Electron SKU never expose it. A Roku, iPhone or Android phone
+  clients keep it local unless configured for LAN access. A Roku, iPhone or Android phone
   on the LAN needs `TVM_CORE_BIND=0.0.0.0` and `TVM_LAN_TOKEN`; laptop
   launchers do not.
 - **No torrent indexing, magnet search or scraping.** Real-Debrid is a client

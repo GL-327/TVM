@@ -1,129 +1,41 @@
-# TVM desktop packages
+# Desktop setup
 
-TVM’s desktop shell is the same Electron app on Windows, Linux and macOS. Core
-still binds `127.0.0.1` by default. A Roku or phone on the LAN is the only
-reason to change that.
+Electron has been retired. Windows uses the C++20 desktop client; macOS and Linux use the responsive browser client. All share the Node Core for accounts, catalogue services and web/Roku access.
 
-## 1. Install
+## Windows download
 
-You need **Node.js 22 or newer** ([nodejs.org](https://nodejs.org)). pnpm 11
-comes with it via corepack.
+Download **TVM-native-windows.zip** from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows), extract the whole folder, and run `TVM.cmd` or `tvm.exe`. It includes Node, Core, the web UI and artwork. Install mpv or set `TVM_MPV_PATH` for playback. The browser UI is available at `http://127.0.0.1:7345/` while Core runs.
+
+Sign in through **Account**. New accounts need the operator to activate them. The account screen supports registration, email codes, accepting terms and developer sign-in. Donations open the shared payment screen in your browser; card details remain in Stripe's fields.
+
+Updates checks the native Windows feed. Installed packages verify GitHub's SHA-256 and build identity before replacing the renderer and restarting; a backup is retained in the temporary update directory. Core/UI use the existing verified update feed. Source checkouts update with Git and rebuild.
+
+## Windows source checkout
+
+Install Node.js 22+, pnpm 11, and either Visual Studio C++ Build Tools with CMake or MSYS2 UCRT64 GCC/CMake/Ninja.
+
+```powershell
+pnpm install
+pnpm build
+native\build.bat
+.\TVM.cmd
+```
+
+Create the complete Windows ZIP with `powershell -File native/package.ps1` after the native build. The executable starts Core hidden and reuses only a matching data directory. If an older Core already occupies the port, close that Core and choose Retry. Core stays running when the desktop window closes so connected browser/Roku clients remain available.
+
+## macOS and Linux
+
+Install Node.js 22+, curl, and ffmpeg for browser transcodes. From a checkout:
 
 ```bash
-git clone https://github.com/GL-327/TVM.git
-cd TVM
-chmod +x TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command scripts/*.sh
 ./scripts/setup-desktop.sh --with-media
-```
-
-`--with-media` installs **ffmpeg** and **mpv** when Homebrew (macOS), apt,
-dnf or pacman is available. Without them, MP4/WebM still play; HEVC and most
-MKV files need ffmpeg, and the native player needs mpv.
-
-### macOS
-
-```bash
-# Node from https://nodejs.org (LTS 22+), then:
-brew install ffmpeg mpv          # if you skipped --with-media
-./scripts/setup-desktop.sh
-open TVM-windowed.command        # or: ./TVM-windowed.sh
-```
-
-Finder: double-click **TVM-windowed.command**. The first run may ask to allow
-Terminal. If macOS says the app is damaged, the launcher already clears the
-quarantine flag on Electron; run `xattr -dr com.apple.quarantine TVM-windowed.command`
-on the shortcut if Finder still blocks it.
-
-Apple Silicon and Intel both work. ffmpeg uses VideoToolbox when the build
-includes `h264_videotoolbox`.
-
-### Linux (Debian / Ubuntu)
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ffmpeg mpv \
-  libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 xdg-utils
-# Ubuntu 24.04+ may want libasound2t64 instead of libasound2:
-sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2
-./scripts/setup-desktop.sh
 ./TVM-windowed.sh
 ```
 
-Fedora: `sudo dnf install ffmpeg mpv gtk3 nss mesa-libgbm alsa-lib`.
-Arch: `sudo pacman -S ffmpeg mpv gtk3 nss`.
+The launcher starts Core and Vite and opens your browser. From the [Desktop browser release](https://github.com/GL-327/TVM/releases/tag/desktop), extract `TVM-desktop.zip` and run `TVM.command` on macOS or `TVM.sh` on Linux. The package serves its built UI directly from Core. The browser client supports phone, tablet and desktop sizes, keyboard/remote navigation, touch and rotation. Browser downloads use a browser with the directory-picker API; Windows native downloads work independently of that API.
 
-The launcher passes `--no-sandbox` only when Electron’s `chrome-sandbox` helper
-is not setuid, which is normal for an npm install. To use the Chromium sandbox
-instead: `sudo chmod 4755 apps/shell/node_modules/electron/dist/chrome-sandbox`.
+## Other clients
 
-Wayland is fine for the UI. Native mpv embedding (`--wid`) expects an X11
-window id; on a pure Wayland session TVM still plays through the HTML player
-and ffmpeg. Use an X11 or XWayland session if you need mpv painted into the
-TVM window.
+Keep `apps/core` and `apps/ui`: the browser, iOS and Android clients require them. Roku has its own SceneGraph/BrightScript UI. For LAN access use the authenticated configuration in [INITIAL_TESTING.md](INITIAL_TESTING.md). Credentials and billing controls stay local by default.
 
-## 2. Start
-
-| What | Command |
-| --- | --- |
-| Laptop window | `./TVM-windowed.sh` |
-| Fullscreen kiosk | `./TVM.sh` |
-| macOS Finder, windowed | double-click `TVM-windowed.command` |
-| macOS Finder, fullscreen | double-click `TVM.command` |
-| Put shortcuts on the Desktop | `./Install-to-Desktop.sh` |
-| Roku preview + zip | `./TVM-roku.sh` |
-
-Core listens on `http://127.0.0.1:7345`. In a git checkout the Vite UI is on
-`http://127.0.0.1:5173` and Electron loads that. Logs:
-
-- macOS: `~/Library/Logs/TVM/`
-- Linux: `~/.local/state/tvm/`
-
-If a start fails, the launcher prints the last lines of those logs.
-
-## 3. GitHub desktop package
-
-The [Desktop release](https://github.com/GL-327/TVM/releases/tag/desktop)
-publishes `TVM-desktop.zip`: built core and interface, with a bundled Node
-runtime for Windows. Extract it and start it the way that system does. GitHub's
-“Source code (zip)” is a source checkout and requires Node.js, pnpm, and a build.
-
-```bash
-unzip TVM-desktop.zip -d TVM
-cd TVM
-chmod +x launch-tvm.sh TVM.sh TVM-windowed.sh TVM.command TVM-windowed.command
-./TVM.sh
-```
-
-On Windows double-click `TVM.cmd`; no separate Node install is needed for the
-release zip. On macOS right-click `TVM.command` and
-choose Open, which macOS requires the first time.
-
-An extracted package is an **install**: Core serves the interface on port
-7345, the launcher opens Electron if this machine has a checkout's copy and
-the browser if not, and it updates itself from GitHub. For the full kiosk
-window, clone the repo (section 1).
-
-## 4. Environment
-
-Same variables as Windows. Useful on a laptop:
-
-| Variable | Effect |
-| --- | --- |
-| `TVM_WINDOWED=1` | Window instead of fullscreen (the windowed scripts set this) |
-| `TVM_CORE_BIND` | Default `127.0.0.1`. LAN clients need `0.0.0.0` plus `TVM_LAN_TOKEN` |
-| `TVM_MPV_PATH` | Absolute path to `mpv` if it is not on PATH |
-| `TVM_FFMPEG` / `TVM_FFPROBE` | Absolute paths if the binaries are not on PATH |
-| `TVM_DATA_DIR` | Override the data directory |
-
-Data directory:
-
-- macOS: `~/Library/Application Support/TVM`
-- Linux: `~/.local/share/tvm` (or `$XDG_DATA_HOME/tvm`)
-
-Credentials use AES-256-GCM with a master key file mode `0600`. That is not
-an OS keychain. Use disk encryption.
-
-## 5. Not this SKU
-
-- The USB appliance has been retired. Linux and macOS use the shared desktop/browser app.
-- **iPhone** builds only on a Mac with Xcode. See [apps/ios/README.md](../apps/ios/README.md).
+The iOS IPA needs Apple signing for installation. Android and iOS native changes require a new package; Roku BrightScript changes require channel installation. Physical playback and accessibility QA remain device checks.

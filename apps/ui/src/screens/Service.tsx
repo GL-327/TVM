@@ -11,52 +11,17 @@ import type { ScreenProps } from '../nav/registry';
 import { ensureHubRootAttrs, resolveServiceSkin } from './service/skins';
 import './service.css';
 
-function ServiceEmbed({ id, url, name }: { id: string; url: string; name: string }): React.JSX.Element {
+function ServiceLink({ url, name }: { url: string; name: string }): React.JSX.Element {
   const navigate = useNavigate();
-  const [message, setMessage] = useState(`Opening ${name} in this window…`);
-
-  useEffect(() => {
-    if (!url.startsWith('https://')) {
-      setMessage('This service is not available as an embedded site.');
-      return;
-    }
-    const bridge = window.tvmServiceBrowser;
-    if (bridge === undefined) {
-      setMessage(
-        `${name} is not an in-window site on this computer. Use Back, then open it from Apps as a TVM catalog, or use the television’s own app.`,
-      );
-      return;
-    }
-    let cancelled = false;
-    void bridge
-      .start({ id: id === '' ? name.toLowerCase() : id, url, title: name })
-      .then(() => {
-        if (!cancelled) setMessage(`${name} stays in this window. Back or Home returns to TVM.`);
-      })
-      .catch(() => {
-        if (!cancelled) setMessage(`${name} could not be opened in this window.`);
-      });
-    const stop = bridge.onEvent((event) => {
-      if (event.type === 'closed') navigate.pop();
-    });
-    return () => {
-      cancelled = true;
-      stop();
-      void bridge.stop();
-    };
-  }, [id, name, navigate, url]);
-
+  const available = url.startsWith('https://');
   return (
     <main className="page page--library service-fallback">
-      <EmptyState
-        eyebrow={name}
-        title={name}
-        body={message}
-        actions={
-          <FocusButton id="close" variant="primary" onSelect={() => navigate.pop()}>
-            Back
-          </FocusButton>
-        }
+      <EmptyState eyebrow={name} title={name}
+        body="Open the provider's website in your browser. Use your own subscription to sign in."
+        actions={<>
+          {available && <a className="btn btn--primary" href={url} target="_blank" rel="noopener noreferrer">Open {name}</a>}
+          <FocusButton id="close" onSelect={() => navigate.pop()}>Back</FocusButton>
+        </>}
       />
     </main>
   );
@@ -78,7 +43,7 @@ export function Service({ params }: ScreenProps): React.JSX.Element {
     return <ServiceHubScreen appId={id === '' ? 'netflix' : id} name={name} />;
   }
 
-  return <ServiceEmbed id={id} url={url} name={name} />;
+  return <ServiceLink url={url} name={name} />;
 }
 
 function ServiceHubFallback({ name }: { name: string }): React.JSX.Element {

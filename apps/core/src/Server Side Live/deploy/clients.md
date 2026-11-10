@@ -92,7 +92,7 @@ two.
 
 Whichever it uses, the UI hands the player an opaque Core path and nothing else.
 
-## Electron shell / appliance — no change needed ✅
+## desktop client / appliance — no change needed ✅
 
 Loopback, no token, no VPN dependency. `accessError()` returns `null` for
 loopback and always has.

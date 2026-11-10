@@ -184,14 +184,6 @@ function emitFlash(deltaSeconds: number): void {
   window.dispatchEvent(new CustomEvent('tvm:seek-skip', { detail: { deltaSeconds } }));
 }
 
-function applyNative(deltaSeconds: number): boolean {
-  if (window.tvmNativePlayer === undefined) return false;
-  const hops = Math.max(1, Math.round(Math.abs(deltaSeconds) / SEEK_TAP_SECONDS));
-  const command = deltaSeconds < 0 ? 'seekBack' : 'seekForward';
-  for (let i = 0; i < hops; i += 1) void window.tvmNativePlayer.command(command);
-  return true;
-}
-
 function applyHtml5(video: HTMLVideoElement, deltaSeconds: number): boolean {
   if (!html5Seekable(video)) return false;
   const duration = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
@@ -204,7 +196,6 @@ function applyFallback(deltaSeconds: number): boolean {
   const video = findPlayerVideo();
   if (engine !== 'native' && video !== null && applyHtml5(video, deltaSeconds)) return true;
   if (engine === 'native' || engine === undefined) {
-    if (applyNative(deltaSeconds)) return true;
   }
   if (video !== null && applyHtml5(video, deltaSeconds)) return true;
   return false;
@@ -339,10 +330,6 @@ function bindSession(props: SeekSkipProps): BoundSeek {
     showControls: props.showControls,
     apply: (deltaSeconds) => {
       if (props.engine === 'loading' || props.error) return false;
-      // Native mpv only hops ±10s; a 30s hold is three commands.
-      if (props.engine === 'native' && Math.abs(deltaSeconds) !== SEEK_TAP_SECONDS) {
-        return applyNative(deltaSeconds);
-      }
       if (typeof props.seek === 'function') {
         props.seek(deltaSeconds);
         return true;

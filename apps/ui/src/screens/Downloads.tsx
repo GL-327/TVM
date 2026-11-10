@@ -137,10 +137,9 @@ export function Downloads({ params }: ScreenProps): React.JSX.Element {
         {[...jobs].reverse().map((job) => <article key={job.id} className="download-job"><div className="download-job__info"><h3>{job.title}</h3><p>{job.state === 'downloading' ? `${size(job.bytes)}${job.total > 0 ? ` of ${size(job.total)}` : ''}` : job.state === 'resolving' ? 'Finding your file…' : job.state.charAt(0).toUpperCase() + job.state.slice(1)}{job.error ? ` · ${job.error}` : ''}</p>{job.path && <small>{job.path}</small>}
           {job.state === 'downloading' && <progress aria-label={`${job.title} download progress`} max={job.total || undefined} value={job.total > 0 ? job.bytes : undefined} />}</div>
           {ACTIVE.has(job.state) && <FocusButton id={`download-cancel-${job.id}`} variant="quiet" onSelect={() => { void bridge.cancel(job.id); }}>Cancel</FocusButton>}
-          {job.state === 'complete' && window.tvmDownloads && <FocusButton id={`download-show-${job.id}`} variant="quiet" onSelect={() => { void bridge.show(job.id); }}>Show file</FocusButton>}
         </article>)}
       </section>
-      <p className="downloads__note">Keep {window.tvmDownloads ? 'TVM open' : 'this tab open'} until downloads finish.</p>
+      <p className="downloads__note">Keep this tab open until downloads finish.</p>
     </div>
   </main>;
 }

@@ -33,13 +33,13 @@ a Real-Debrid account or a Live TV source through Settings.
 
 The Native Windows GitHub workflow builds and tests with MSVC, captures
 screenshots at desktop and portrait sizes, and packages TVM-native-windows.zip.
-The ZIP contains the native client and artwork; extract the entire folder.
+The ZIP contains the native renderer, artwork, shared Core, responsive UI and Node runtime. Extract the entire folder. Build the complete ZIP locally with `powershell -File native/package.ps1`.
 
 ## Available features
 
 - Home and TVM Stream catalogue, rotating hero artwork, search, movie and
   series details, season and episode selection, service catalogue hubs.
-- mpv playback with resume, subtitles and audio tracks, quality and speed
+- mpv playback with resume, subtitles and audio tracks, speed
   selection, seeking and preview thumbnails, next episode, recap/credits
   controls, fullscreen, mute and volume boost.
 - Real-Debrid token/account settings and Live TV login, playlists, channel
@@ -55,26 +55,15 @@ The ZIP contains the native client and artwork; extract the entire folder.
 - Plans information, privacy/data export and reset, diagnostics, recovery,
   developer account administration and mail configuration.
 
-## Compatibility limits
+## Accounts, updates and other platforms
 
-This is a migration, not a claim of full Electron parity. Keep apps/core,
-apps/ui and apps/shell while the remaining features are implemented and
-verified:
+Account registration, sign-in, developer sign-in, terms and email verification use the shared Core. Native sessions are encrypted with the existing Windows secret store. Account usability gates navigation; developer tools require a developer session, and Live TV requires the appropriate tier. Core resolves playback/downloads with the signed-in account's media key and plan limits. Operator account and mail changes use Core APIs.
 
-- Account-holder sign-up/sign-in, account activation/terms/email-verification
-  flows and billing/donation checkout are not complete in the native UI.
-  Developer administration is a separate feature and is already present.
-- Native Updates checks GitHub; automatic native executable replacement is
-  not implemented. The Core/UI update feed cannot update a C++ executable.
-- The native renderer and storage backend currently target Windows. macOS
-  and Linux retain the shared browser/Electron desktop path.
-- Native rendering is not pixel-identical to every web service skin or
-  animation. Device playback and accessibility still require hardware QA.
+Donations open `/donate` in your system browser, using the existing Stripe fields. That page cannot navigate around the account gate. Service websites also use the system browser and the viewer's own subscription.
 
-The iOS Swift/VLC and Android Kotlin/player shells bundle the responsive
-shared UI. Roku uses its SceneGraph/BrightScript client and a connected Core.
-Removing the shared app would remove supported products and the remaining
-account workflows.
+Installed Windows packages check for native updates at launch when automatic updates are enabled. The updater verifies the release asset digest and build identity, stages the renderer/assets, waits for the desktop to exit, applies with rollback on failure, and restarts. Source checkouts require `git pull` and rebuilding. Core/UI retain their independent verified feed.
+
+Electron and `apps/shell` have been removed. macOS/Linux desktop use the browser client. iOS Swift/VLC and Android Kotlin/player hosts bundle the responsive UI; Roku uses SceneGraph/BrightScript. The Windows renderer does not replace these products. Native rendering is not pixel-identical to every browser skin. Signed distribution and hardware playback/accessibility QA remain platform-specific.
 
 ## Validation
 

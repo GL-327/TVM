@@ -173,6 +173,7 @@ export function Donate(_props: ScreenProps): React.JSX.Element {
       <p className="stage__kicker">Optional</p>
       <h1 className="page__heading">{config?.copy.heading ?? 'Donate to the app owner'}</h1>
       <p className="page__lede">{config?.copy.lede ?? 'Entirely optional, and it gives you nothing.'}</p>
+      {window.location.pathname === '/donate' && <p className="tier-donate__detail">When finished, close this tab and return to the TVM window.</p>}
 
       <section className="tier-donate">
         <p className="tier-donate__detail">

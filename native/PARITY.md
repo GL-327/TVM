@@ -1,44 +1,13 @@
-# Native parity status
+# Desktop migration status
 
-The older phase-by-phase notes described an external development copy and
-understated the features now present in native/src. This file describes the
-current repository. Source references are relative to the repository.
+Electron is retired: `apps/shell`, its runtime dependency, download hooks and browser preload bridges have been removed.
 
-## Implemented
+Windows runs the C++20 Win32/Direct2D renderer and mpv. It includes catalogue/search/details, service hubs, profiles, watchlist/progress, Live TV, playback controls, downloads, settings, legal/data tools, diagnostics and recovery. Light/dark themes and native navigation, grids, forms and player controls reflow at narrow sizes.
 
-Catalogue/search/details/service hubs, profiles/watchlist/progress,
-Real-Debrid, Live TV login/playlists/channel selection, mpv playback,
-downloads, diagnostics, recovery, legal/data controls and developer
-administration all have native implementations.
+The C++ desktop uses the shared Core for account registration/sign-in, terms/email verification, developer roles, activation/admin/mail operations, per-account media keys and plan-limited media resolution. Sessions are encrypted locally. Unusable accounts cannot open the library, and role/tier checks also guard navigation.
 
-The native UI now includes the shared app's supported Light and Dark looks.
-Preferences survive motion/performance changes and retain unknown fields.
-Navigation links, profile grids, info-page actions, details and player controls
-reflow for narrow windows instead of relying only on a scaled 1080p layout.
-Download filenames and collision handling follow the Electron downloader's
-rules. An incomplete transfer is a failure and leaves no output reservation.
+Donations use the existing Stripe payment screen in the system browser. Official service websites also open in the browser. The standalone donation route cannot navigate into the private library. Installed native renderer updates verify GitHub's digest/build identity and retain a rollback copy; Core/UI keep their existing verified update mechanism.
 
-The shared browser UI retains responsive portrait/landscape layouts and
-safe-area/keyboard handling used by the iOS and Android shells. Roku retains
-its own TV layout and native video player. None of those clients is replaced
-by the Windows-specific renderer.
+The shared Core and UI remain required products, not legacy leftovers. macOS/Linux desktop use the browser UI; iOS and Android bundle it with their native playback hosts. Roku retains its own TV UI. Mobile/desktop browser tests cover narrow, wide, portrait and landscape viewports. Native snapshots and unit tests cover Windows layout/input; physical device playback and accessibility still require hardware QA.
 
-## Remaining before retiring Electron
-
-- Account-holder registration/login, activation, terms/email-verification
-  and account/billing/donation flows in the C++ UI.
-- Verified automatic native binary installation/restart, distinct from the
-  shared Core/UI update feed.
-- Native macOS/Linux implementations if those desktops are to stop using
-  the shared browser/Electron path.
-- Full visual, accessibility and playback QA on physical target devices.
-  Matching motion constants or compiling a client does not establish parity.
-
-The shared Core, UI and Electron shell remain intentional compatibility
-components. The retired USB appliance and unreachable legacy cosmetic themes
-are separate cleanup candidates; they are not required for any supported
-client.
-
-See README.md for native build/run instructions and ../docs/PLATFORMS.md for
-the supported products. The native Windows workflow checks builds, unit tests,
-snapshots and the install layout on every relevant main/PR change.
+See [native setup](README.md), [desktop setup](../docs/DESKTOP.md) and [platforms](../docs/PLATFORMS.md). Git history retains the retired shell and USB appliance source if needed.
