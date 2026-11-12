@@ -3910,13 +3910,9 @@ html.tvm-android::view-transition-new(root) {
   animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-html.tvm-android .app__screen nav.ribbon--tabs {
-  view-transition-name: tvma-tabbar;
-}
-
-html.tvm-android::view-transition-group(tvma-tabbar) {
-  animation-duration: 210ms;
-}
+/* The bar is not a separate part of the transition: identical in both pages,
+   it simply stays as it is through the crossfade. (Naming it changed how its
+   glass sampled the page behind on some Android WebViews.) */
 
 /* Earlier copy-based crossfade: retired. */
 html.tvm-android .app__screen.tvma-xfade {
@@ -3927,7 +3923,7 @@ html.tvm-android .app__screen.tvma-xfade {
  * The keyboard shrinks the window over several frames; the floating bar rode
  * up through the page with it before fading. It goes when a field is focused.
  */
-html.tvm-android.tvma-typing :is(nav.ribbon.tvma-pill, .app__screen nav.ribbon--tabs) {
+html.tvm-android.tvma-typing.tvma-search-open nav.ribbon.tvma-pill {
   opacity: 0 !important;
   visibility: hidden !important;
   transition: none !important;
