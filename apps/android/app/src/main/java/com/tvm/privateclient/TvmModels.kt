@@ -24,9 +24,12 @@ object StandalonePolicy {
      * What this build's native code provides to the interface. Bump it, and
      * scripts/native-api.json, when the interface starts relying on a new
      * native route; an interface that needs more is never applied here.
-     * Same value as StandalonePolicy.nativeAPI in the iOS app.
+     * Same meaning as StandalonePolicy.nativeAPI in the iOS app; the levels are
+     * per platform in scripts/native-api.json. Android is 3 from the redesign
+     * (native overlay, full-screen player, in-app APK updates), so older APKs
+     * are told a newer app is on GitHub Releases.
      */
-    const val NATIVE_API = 2
+    const val NATIVE_API = 3
 
     enum class Mode { ON_DEVICE, OPTIONAL_HOME_CORE }
 
