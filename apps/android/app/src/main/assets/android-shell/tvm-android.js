@@ -614,6 +614,19 @@
   }
   window.addEventListener('load', function () { setTimeout(preload, 2500); });
 
+  // ---- 10. Placeholders that look alive, cheaply --------------------------------------
+
+  // Only the placeholders actually on screen pulse (a handful, opacity only);
+  // the dozens below the fold stay still, so waiting costs nothing.
+  var skSeen = typeof IntersectionObserver === 'function' ? new IntersectionObserver(function (entries) {
+    for (var i = 0; i < entries.length; i++) entries[i].target.classList.toggle('tvma-sk-on', entries[i].isIntersecting);
+  }) : null;
+  function syncSkeletons() {
+    if (!skSeen) return;
+    var fresh = document.querySelectorAll('.skeleton:not([data-tvma-sk])');
+    for (var i = 0; i < fresh.length; i++) { fresh[i].setAttribute('data-tvma-sk', ''); skSeen.observe(fresh[i]); }
+  }
+
   // ---- Watching the page -------------------------------------------------------------
 
   // Only screen changes matter here, so only child lists are watched, and the
@@ -630,6 +643,7 @@
       syncPill();
       syncSearch();
       syncPlayer();
+      syncSkeletons();
       if (document.querySelector('.settings-row')) syncSettings();
       if (document.querySelector('.details')) syncDetails();
     });
