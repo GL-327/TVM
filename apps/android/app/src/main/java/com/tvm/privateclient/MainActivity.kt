@@ -269,7 +269,12 @@ class MainActivity : AppCompatActivity() {
     private fun attachStandaloneBridge() {
         if (bridgeAttached || standaloneOrigin == null) return
         val player = nativePlayer ?: TvmNativePlayer(this, webView) { playing ->
-            if (playing) cinema.enter() else cinema.exit()
+            if (playing) {
+                cinema.enter()
+                updateSheet.yieldToPlayback()
+            } else {
+                cinema.exit()
+            }
         }.also { nativePlayer = it }
         webView.addJavascriptInterface(player.bridge(), "tvmPlayer")
         bridgeAttached = true
@@ -498,8 +503,10 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 val skipped = getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE).getString("later", null)
                 when (result) {
+                    // The automatic check never interrupts a film; the next launch (or
+                    // Settings → Check for App Update) offers it again.
                     is TvmAppUpdate.Check.Available ->
-                        if (manual || skipped != result.release.build) offerAppUpdate(result.release, known = true)
+                        if (manual || (skipped != result.release.build && !cinema.active)) offerAppUpdate(result.release, known = true)
                         else updateSheet.dismiss()
                     is TvmAppUpdate.Check.Unknown -> if (manual) offerAppUpdate(result.release, known = false)
                     is TvmAppUpdate.Check.Current -> if (manual) updateSheet.current(result.build.take(7))
@@ -526,6 +533,7 @@ class MainActivity : AppCompatActivity() {
     private fun downloadAppUpdate(release: TvmAppUpdate.Release) {
         if (appUpdateBusy) return
         appUpdateBusy = true
+        updateSheet.busy = true
         updateSheet.downloading(0, release.size)
         var shown = 0L
         thread(name = "tvm-app-download") {
@@ -541,6 +549,7 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 appUpdateBusy = false
+                updateSheet.busy = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 outcome.fold(
                     onSuccess = { apk ->
@@ -596,7 +605,12 @@ class MainActivity : AppCompatActivity() {
             if (active == null || isFinishing) return
             webView.evaluateJavascript(HOME_CORE_PLAYER_SCRIPT) { result ->
                 if (active == null) return@evaluateJavascript
-                if (result?.trim('"') == "true") cinema.enter() else cinema.exit()
+                if (result?.trim('"') == "true") {
+                    cinema.enter()
+                    updateSheet.yieldToPlayback()
+                } else {
+                    cinema.exit()
+                }
             }
             main.postDelayed(this, 1_000)
         }
