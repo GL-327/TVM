@@ -29,26 +29,4 @@
     <string name="app_update_downloading">Downloading the update…</string>
     <string name="app_update_allow">Allow TVM to install updates, then come back to finish.</string>
     <string name="app_update_failed">The update could not be installed: %1$s</string>
-    <string name="update_checking_title">Checking for updates</string>
-    <string name="update_checking_body">Looking for a newer TVM for Android.</string>
-    <string name="update_available_title">Update available</string>
-    <string name="update_available_body">A new version of TVM is ready (build %1$s). You have %2$s.\nYour profiles, sign-in and settings are kept.</string>
-    <string name="update_available_unknown">A published version of TVM is ready (build %1$s). This copy was built locally, so it may be older or newer.</string>
-    <string name="update_size">%1$s download</string>
-    <string name="update_now">Update Now</string>
-    <string name="update_later">Not Now</string>
-    <string name="update_downloading_title">Downloading update</string>
-    <string name="update_downloading_body">Keep TVM open. This takes a moment.</string>
-    <string name="update_progress">%1$s of %2$s</string>
-    <string name="update_ready_title">Ready to install</string>
-    <string name="update_ready_body">Android will ask you to confirm the update.</string>
-    <string name="update_install">Install</string>
-    <string name="update_current_title">TVM is up to date</string>
-    <string name="update_current_body">You have the latest version (build %1$s).</string>
-    <string name="update_done">Done</string>
-    <string name="update_failed_title">Couldn\'t update TVM</string>
-    <string name="update_retry">Try Again</string>
-    <string name="update_allow_title">One more step</string>
-    <string name="update_allow_body">Allow TVM to install updates, then come back. The update installs straight away.</string>
-    <string name="update_allow_open">Open Settings</string>
 </resources>
