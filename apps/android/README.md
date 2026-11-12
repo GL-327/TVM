@@ -6,6 +6,27 @@ The app serves its bundled `apps/ui` interface from loopback and checks the veri
 
 This is not a Play Store app. Home-Core pairing needs `TVM_CORE_BIND=0.0.0.0` and a unique `TVM_LAN_TOKEN` of at least 32 characters on the computer.
 
+## Android look (phones only)
+
+The APK restyles the shared interface for Android phones without touching `apps/ui`, so iOS, the website and Android TV are unchanged.
+
+- **Overlay.** `app/src/main/assets/android-shell/tvm-android.css` and `tvm-android.js` are injected by the boot script (`TvmShellScripts.androidOverlay`). The overlay gives:
+  - a floating pill tab bar
+  - a cinematic player layout
+  - a full-screen search with a poster grid
+  - grouped settings with real on/off switches
+  - iOS-style rubber-band overscroll
+
+  Every rule is scoped under `html.tvm-android`, which only this shell sets, and `check-project.mjs` fails on an unscoped rule. The overlay is injected natively, so an interface update from the feed keeps it.
+- **Full-screen playback.** `TvmCinemaMode` turns the phone to landscape, hides the system bars, keeps the screen on and hides the tab bar while a film plays. It restores everything when the player closes. The Media3 picture sits under the WebView and fits the screen at the source's own shape (`RESIZE_MODE_FIT`).
+- **Keyboard.** The window shrinks for the keyboard, so the overlay does not add the keyboard's height again. The shell marks the open keyboard with `html.tvm-ime-open`.
+- **Startup reveal.** `TvmIntroView` builds the TVM logo from the vectors in `TvmLogoGeometry`, which were traced from `apps/brand/tvm-icon.png`:
+  - the letters are traced, then filled
+  - a star sweeps the orbital trail into being and settles in its place
+  - the upper arc streams out of the star
+
+  The last frame matches the PNG. `TvmIntroViewTest` renders it with the real Android canvas (Robolectric) and writes frames to `app/build/intro-frames`. On Android the web intro is marked as already played.
+
 ## Source tree
 
 ```
@@ -28,6 +49,11 @@ apps/android/
   app/src/main/java/com/tvm/privateclient/CredentialStore.kt
   app/src/main/java/com/tvm/privateclient/MainActivity.kt
   app/src/main/java/com/tvm/privateclient/TVMWebViewClient.kt
+  app/src/main/java/com/tvm/privateclient/TvmCinemaMode.kt
+  app/src/main/java/com/tvm/privateclient/TvmIntroView.kt
+  app/src/main/java/com/tvm/privateclient/TvmLogoGeometry.kt
+  app/src/main/assets/android-shell/tvm-android.css
+  app/src/main/assets/android-shell/tvm-android.js
   app/src/main/res/layout/activity_main.xml
   app/src/main/res/values/strings.xml
   app/src/main/res/values/themes.xml

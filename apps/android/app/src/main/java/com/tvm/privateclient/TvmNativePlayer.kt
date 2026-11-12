@@ -16,6 +16,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import org.json.JSONObject
 
@@ -34,6 +35,11 @@ import org.json.JSONObject
 class TvmNativePlayer(
     private val activity: Activity,
     private val webView: WebView,
+    /**
+     * True when a picture starts, false when the last one closes. The shell
+     * uses it for full-screen landscape playback (TvmCinemaMode).
+     */
+    private val onPlaying: (Boolean) -> Unit = {},
 ) {
     private val main = Handler(Looper.getMainLooper())
     private var player: ExoPlayer? = null
@@ -96,7 +102,9 @@ class TvmNativePlayer(
     }
 
     private fun open(id: String, message: JSONObject) {
-        close(sessionId, notify = false)
+        // Switching source (next episode, retry) is not the player closing:
+        // stay full screen rather than rotating back and forth.
+        close(sessionId, notify = false, leaving = false)
         sessionId = id
         val url = Json.string(message.opt("url")) ?: run {
             emit(id, "error", Json.obj("message" to "This source could not be played. Try another source."))
@@ -145,6 +153,7 @@ class TvmNativePlayer(
         // The picture is behind the WebView. An opaque page or WebView paints black over it.
         webView.setBackgroundColor(Color.TRANSPARENT)
         attachView(exo)
+        onPlaying(true)
         if (!live && startAt > 0) exo.seekTo((startAt * 1000).toLong())
         exo.prepare()
         exo.play()
@@ -152,11 +161,18 @@ class TvmNativePlayer(
     }
 
     private fun attachView(exo: ExoPlayer) {
-        val root = activity.findViewById<ViewGroup>(android.R.id.content)
-        val frame = FrameLayout(activity)
+        // The WebView's own parent, so the picture can be put underneath it.
+        // Added to android.R.id.content after that parent, it was drawn over the
+        // interface, and the surface could blank out the player controls.
+        val root = (webView.parent as? ViewGroup) ?: activity.findViewById(android.R.id.content)
+        val frame = FrameLayout(activity).apply { setBackgroundColor(Color.BLACK) }
         val playerView = PlayerView(activity).apply {
             useController = false // the interface draws its own chrome
             setKeepContentOnPlayerReset(true)
+            // As large as the screen allows at the source's own shape: never
+            // stretched or cropped.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            setShutterBackgroundColor(Color.BLACK)
             player = exo
         }
         frame.addView(
@@ -168,15 +184,15 @@ class TvmNativePlayer(
         )
         root.addView(
             frame,
+            0,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
-        // Behind the WebView: the interface's own controls must stay on top and
-        // keep receiving touches.
-        frame.z = 0f
-        webView.z = 1f
+        // Index 0 puts it behind the WebView: the interface's own controls stay
+        // on top and keep receiving touches. No elevation is set, because a
+        // raised WebView would also cover the native menu and error pane.
         container = frame
         view = playerView
     }
@@ -216,7 +232,8 @@ class TvmNativePlayer(
         )
     }
 
-    fun close(id: String?, notify: Boolean) {
+    fun close(id: String?, notify: Boolean, leaving: Boolean = true) {
+        val wasOpen = player != null
         ticking = false
         player?.release()
         player = null
@@ -229,6 +246,7 @@ class TvmNativePlayer(
         webView.setBackgroundColor(Color.BLACK)
         if (notify && id != null) emit(id, "closed", JSONObject())
         sessionId = null
+        if (wasOpen && leaving) onPlaying(false)
     }
 
     fun release() = close(sessionId, notify = false)
