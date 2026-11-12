@@ -253,6 +253,7 @@ class MainActivity : AppCompatActivity() {
             origin = origin,
             onLoading = { loading -> setLoading(loading) },
             onError = { message -> showPageError(message) },
+            onAppAction = ::appAction,
         )
         clearError()
         setLoading(true)
@@ -300,6 +301,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---- Optional home Core ---------------------------------------------------
+
+    /**
+     * The ⋮ menu's actions, now rows in Settings → App & Updates. The menu
+     * itself is shown only with the error screens, where Settings cannot be
+     * reached.
+     */
+    private fun appAction(name: String) {
+        when (name) {
+            "reload" -> reloadPage()
+            "update" -> checkAppUpdate(manual = true)
+            "core" -> if (active == null) showHomeCoreSheet() else backToThisPhone()
+        }
+    }
 
     private fun showMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
@@ -396,6 +410,7 @@ class MainActivity : AppCompatActivity() {
                     connection,
                     onLoading = { loading -> setLoading(loading) },
                     onError = { message -> showPageError(message) },
+                    onAppAction = ::appAction,
                 )
                 webView.loadUrl(connection.origin.toString())
             }
@@ -621,7 +636,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearError() {
         errorPane.visibility = View.GONE
-        chrome.visibility = View.VISIBLE
+        // No floating ⋮ over the interface: its actions are in Settings.
+        chrome.visibility = View.GONE
     }
 
     /** As PlayerShell's error: an icon, the reason, and Reload. */

@@ -25,6 +25,8 @@ class StandaloneWebViewClient(
     private val origin: String,
     private val onLoading: (Boolean) -> Unit,
     private val onError: (String) -> Unit,
+    /** Settings → App & Updates (tvm-android.js): reload, update check, home Core. */
+    private val onAppAction: (String) -> Unit = {},
 ) : WebViewClient() {
 
     private val host: String = runCatching { URI(origin).host }.getOrNull() ?: "127.0.0.1"
@@ -32,6 +34,12 @@ class StandaloneWebViewClient(
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val uri = request.url ?: return true
+        // App actions from the interface's Settings (tvm-android.js), which
+        // used to live in the ⋮ menu. Only a tap can start one; nothing loads.
+        if (uri.scheme == APP_ACTION_SCHEME) {
+            if (request.isForMainFrame && request.hasGesture()) onAppAction(uri.host.orEmpty())
+            return true
+        }
         if (isLoopback(uri) || uri.toString() == "about:blank") return false
         if (request.isForMainFrame && uri.scheme == "https") {
             runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
@@ -64,3 +72,6 @@ class StandaloneWebViewClient(
         return port == -1 || uri.port == port
     }
 }
+
+/** tvm-app://reload | update | core: the shell's own actions, offered in Settings. */
+const val APP_ACTION_SCHEME = "tvm-app"
