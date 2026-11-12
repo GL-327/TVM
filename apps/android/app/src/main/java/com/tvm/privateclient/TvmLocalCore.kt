@@ -37,6 +37,10 @@ class TvmLocalCore(
     val bundledUi = TvmBundledUi(store, app)
     val updater = TvmUpdater(store, bundledUi, http)
 
+    /** Set by the Android shell: run its app-update check when the interface asks for a check. */
+    @Volatile
+    var onUpdateCheck: (() -> Unit)? = null
+
     /**
      * Dev mode belongs to the dev account, so dev-only routes check who is
      * asking. Any app on the phone can reach this server, not just TVM.
@@ -171,7 +175,13 @@ class TvmLocalCore(
             return HttpReply.json(200, prefs.json())
         }
         if (path == "/api/update/status" && method == "GET") return HttpReply.json(200, updater.snapshot())
-        if (path == "/api/update/check" && method == "POST") return HttpReply.json(200, updater.check())
+        if (path == "/api/update/check" && method == "POST") {
+            val result = updater.check()
+            // Settings → Updates → Check now also asks whether a newer app (APK)
+            // is out; the Android shell answers that with its own prompt.
+            runCatching { onUpdateCheck?.invoke() }
+            return HttpReply.json(200, result)
+        }
         if (path == "/api/update/apply" && method == "POST") {
             return try {
                 HttpReply.json(200, updater.apply())
