@@ -132,14 +132,20 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
       const state = await latest(id);
       return state !== null && state.hasFrame === true && state.paused === false && state.position > 1.5;
     });
+    // Several captures over about three seconds: the emulator's software
+    // decoder updates the picture slowly, so one pair of captures can land
+    // between two of its frames. Playing measured 0.4-1.2% here; paused 0%.
     const a = measure(capture());
-    await sleep(1200);
-    const frame = capture();
-    const b = measure(frame);
     if (a.mean < 20 || a.spread < 12) throw new Error(`${label}: the picture is black or blank (brightness ${a.mean.toFixed(1)}, spread ${a.spread.toFixed(1)})`);
-    const moved = difference(a, b);
-    if (moved < 0.5) throw new Error(`${label}: the picture is not moving (${moved.toFixed(2)}% of it changed)`);
-    annotate('notice', `${label}: video renders (brightness ${a.mean.toFixed(0)}, spread ${a.spread.toFixed(0)}, ${moved.toFixed(1)}% changed in 1.2 s) at ${frame.width}x${frame.height}`);
+    let moved = 0;
+    let frame = null;
+    for (let i = 0; i < 4; i++) {
+      await sleep(750);
+      frame = capture();
+      moved = Math.max(moved, difference(a, measure(frame)));
+    }
+    if (moved < 0.25) throw new Error(`${label}: the picture is not moving (at most ${moved.toFixed(2)}% of it changed in 3 s)`);
+    annotate('notice', `${label}: video renders (brightness ${a.mean.toFixed(0)}, spread ${a.spread.toFixed(0)}, up to ${moved.toFixed(1)}% changed in 3 s) at ${frame.width}x${frame.height}`);
     return frame;
   }
 
