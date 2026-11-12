@@ -37,6 +37,10 @@ class TvmLocalCore(
     val bundledUi = TvmBundledUi(store, app)
     val updater = TvmUpdater(store, bundledUi, http)
 
+    /** Set by the Android shell: pictures kept on the phone (see TvmArtCache). */
+    @Volatile
+    var artCache: TvmArtCache? = null
+
     /** Set by the Android shell: run its app-update check when the interface asks for a check. */
     @Volatile
     var onUpdateCheck: (() -> Unit)? = null
@@ -900,6 +904,10 @@ class TvmLocalCore(
         if (host.equals("127.0.0.1", true) || host.equals("localhost", true)) {
             return HttpReply.json(400, Json.obj("error" to "bad_src"))
         }
+        val cache = artCache
+        if (!head) {
+            cache?.get(decoded)?.let { (type, data) -> return cachedArt(type, data) }
+        }
         return runCatching {
             val connection = URL(decoded).openConnection() as HttpURLConnection
             connection.requestMethod = if (head) "HEAD" else "GET"
@@ -910,12 +918,20 @@ class TvmLocalCore(
                 if (connection.responseCode !in 200..299) return HttpReply.json(404, Json.obj("error" to "not_found"))
                 val type = connection.contentType ?: "image/jpeg"
                 if (head) return HttpReply.bytes(200, type, ByteArray(0))
-                HttpReply.bytes(200, type, connection.inputStream.use { it.readBytes() })
+                val data = connection.inputStream.use { it.readBytes() }
+                if (cache != null && type.startsWith("image/")) {
+                    cache.put(decoded, type, data)
+                    return cachedArt(type, data)
+                }
+                HttpReply.bytes(200, type, data)
             } finally {
                 connection.disconnect()
             }
         }.getOrElse { HttpReply.json(404, Json.obj("error" to "not_found")) }
     }
+
+    private fun cachedArt(type: String, data: ByteArray): HttpReply =
+        HttpReply(200, mapOf("Content-Type" to type, "Cache-Control" to TvmArtCache.CACHE_CONTROL), data)
 
     private fun parseQuery(query: String): Map<String, String> {
         if (query.isEmpty()) return emptyMap()

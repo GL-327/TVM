@@ -280,8 +280,17 @@ check('the Android overlay stylesheet and script exist', shellCss.length > 0 && 
 check('the overlay is injected on phones only, never on a television',
   chrome.includes('fun androidOverlay(') && chrome.includes('if (phone && overlay.isNotEmpty())') &&
   main.includes('if (!television)') && main.includes('android-shell/tvm-android.css'));
-check('the overlay never stops the interface\'s own touch handling',
-  !shellJs.includes('stopPropagation') && !shellJs.includes('preventDefault'));
+// Vertical page pans go to the browser (native scrolling); the overlay must
+// never cancel a touch, or nothing would scroll at all.
+check('the overlay never cancels a touch or pointer gesture',
+  !/(touchstart|touchmove|touchend|pointerdown|pointermove|pointerup)'[^;]*?preventDefault/s.test(shellJs.replace(/\n/g, ' ').replace(/click'[\s\S]*?\}\)\(id\)\);/, '')) &&
+  shellJs.includes("event.stopImmediatePropagation();") && shellJs.includes('passive: true'));
+check('native playback is never painted over by the overlay',
+  shellCss.includes("html.tvm-android.tvm-native-playback .player.player--native") &&
+  !/html\.tvm-android \.player \{[^}]*background:\s*#000/.test(shellCss));
+check('the playback smoke test runs on the emulator',
+  existsSync(join(ROOT, 'smoke', 'playback.mjs')) &&
+  (read(join(REPO, 'scripts', 'android-smoke.mjs')) ?? '').includes('playbackSmoke'));
 const cinema = read(join(SRC, 'TvmCinemaMode.kt')) ?? '';
 check('playback goes full screen in landscape and restores afterwards',
   cinema.includes('SCREEN_ORIENTATION_SENSOR_LANDSCAPE') && cinema.includes('hide(WindowInsetsCompat.Type.systemBars())') &&
