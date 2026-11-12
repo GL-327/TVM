@@ -27,6 +27,22 @@ The APK restyles the shared interface for Android phones without touching `apps/
 
   The last frame matches the PNG. `TvmIntroViewTest` renders it with the real Android canvas (Robolectric) and writes frames to `app/build/intro-frames`. On Android the web intro is marked as already played.
 
+## App updates
+
+The interface refreshes itself from the `android-ui` feed. The app around it (native code, the overlay, the player) only changes with a new APK, which CI publishes as `TVM.apk` on the `android` release for every push to main.
+
+`TvmAppUpdate` compares that release's build with this APK's commit (`BuildInfo.json`). When a newer one is out, TVM:
+1. offers to install it;
+2. downloads it and checks it against the sha256 GitHub records for it;
+3. hands it to Android's installer. Android allows it only over the same signing key, and asks once for "install unknown apps".
+
+It checks:
+- when you tap **Settings → Updates → Check now**;
+- from the ⋮ menu (**Check for app update**);
+- on launch, when automatic updates are on. This runs at most every six hours, and never again for a build you said "Later" to.
+
+Android's native level in `scripts/native-api.json` is 3. APKs from before this change (level 2) show "A newer TVM app is on GitHub Releases" under Updates, because they have no updater of their own. They must be updated by hand once, from the release page.
+
 ## Source tree
 
 ```
