@@ -737,9 +737,6 @@ class MainActivity : AppCompatActivity() {
         // interface is never served from cache; artwork is marked cacheable
         // (TvmArtCache). LOAD_NO_CACHE used to refetch every poster each time.
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
-        // Rasterise just outside the viewport too, so a fling does not show
-        // unpainted tiles.
-        webView.settings.offscreenPreRaster = true
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = false
         webView.settings.setSupportZoom(false)
