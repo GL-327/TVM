@@ -6,6 +6,8 @@ import android.content.pm.ApplicationInfo
 import android.content.res.AssetManager
 import android.graphics.Color
 import android.net.Uri
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -16,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -52,6 +55,17 @@ import kotlin.concurrent.thread
  * copy that shipped in the APK.
  */
 class MainActivity : AppCompatActivity() {
+    /**
+     * A profile picture chosen in the interface (<input type="file">): the
+     * system photo picker, which needs no storage permission and shows only
+     * photos. The WebView reads the picked content:// picture itself.
+     */
+    private var pendingPicture: ValueCallback<Array<Uri>>? = null
+    private val pickPicture = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        pendingPicture?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
+        pendingPicture = null
+    }
+
     private lateinit var webView: WebView
     private lateinit var starting: ProgressBar
     private lateinit var errorPane: View
@@ -742,7 +756,26 @@ class MainActivity : AppCompatActivity() {
         webView.settings.setSupportZoom(false)
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
-        webView.webChromeClient = WebChromeClient()
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                view: WebView?,
+                callback: ValueCallback<Array<Uri>>?,
+                params: FileChooserParams?,
+            ): Boolean {
+                if (callback == null) return false
+                // Only pictures are ever asked for (profile pictures).
+                if (params?.acceptTypes?.any { it.startsWith("image/") } != true) return false
+                pendingPicture?.onReceiveValue(null)
+                pendingPicture = callback
+                return try {
+                    pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    true
+                } catch (error: Exception) {
+                    pendingPicture = null
+                    false
+                }
+            }
+        }
     }
 
     private companion object {
@@ -757,6 +790,8 @@ class MainActivity : AppCompatActivity() {
 
         const val BACK_SCRIPT = """
             (function () {
+              // An open sheet or popup (tvm-android.js) closes first.
+              try { if (typeof window.tvmaBack === 'function' && window.tvmaBack()) return 'true'; } catch (e) {}
               var can = document.documentElement.dataset.canGoBack === 'true';
               if (can) window.dispatchEvent(new Event('tvm:navigate-back'));
               return can ? 'true' : 'false';

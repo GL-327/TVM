@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -14,13 +15,18 @@ import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Format
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import org.json.JSONObject
+
+private const val TAG = "TVMPlayer"
 
 /**
  * Native decode for the Android shell, answering the same bridge protocol the
@@ -55,6 +61,8 @@ class TvmNativePlayer(
     private var level = 1f
     /** The player screen is open (shell-enter), whether or not a stream is playing yet. */
     private var shellHeld = false
+    /** The video track being played, for diagnosing a failure. */
+    private var videoFormat: Format? = null
     /** Whether a film was playing when the app left the screen, so it can carry on when it returns. */
     private var resumeOnStart = false
 
@@ -137,7 +145,12 @@ class TvmNativePlayer(
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
 
-        val exo = ExoPlayer.Builder(activity)
+        // When the phone's preferred decoder cannot be created for a stream
+        // (common for 4K / 10-bit HEVC and Dolby Vision), let Media3 try the
+        // phone's other decoders before giving up.
+        val renderers = DefaultRenderersFactory(activity).setEnableDecoderFallback(true)
+        videoFormat = null
+        val exo = ExoPlayer.Builder(activity, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             // Duck or pause for calls and other apps, and stop when headphones are pulled out.
             .setAudioAttributes(
@@ -159,7 +172,17 @@ class TvmNativePlayer(
 
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                // The full story for development logs (adb logcat -s TVMPlayer):
+                // the error code, the stream's format and the decoder's own cause.
+                Log.e(TAG, "playback failed: ${error.errorCodeName} format=${videoFormat?.let(::formatLabel) ?: "unknown"}", error)
                 emit(id, "error", Json.obj("message" to describe(error)))
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                videoFormat = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
+                    ?.let { group -> (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } }
+                    ?: videoFormat
+                videoFormat?.let { Log.i(TAG, "video: ${formatLabel(it)} codecs=${it.codecs}") }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -308,12 +331,47 @@ class TvmNativePlayer(
             "TVM could not reach this source. Check the connection and try again."
         PlaybackException.ERROR_CODE_DECODING_FAILED,
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ->
-            "This phone could not decode the video in this file. Try another source."
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> {
+            // Say what the video is, so it is clear this copy is the problem and
+            // another (usually 1080p) source will play.
+            val what = videoFormat?.let(::formatLabel)
+            if (what != null) "This phone can't play the video in this copy ($what). Press Retry, or choose another source or quality."
+            else "This phone can't play the video in this copy. Press Retry, or choose another source or quality."
+        }
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
         PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
             "This file is damaged or is not the format the source claimed. Try another source."
         else -> "This source could not be played. Try another source."
+    }
+
+    /** "4K · Dolby Vision · HEVC": resolution, dynamic range and codec of a video track. */
+    private fun formatLabel(format: Format): String {
+        val parts = mutableListOf<String>()
+        val lines = minOf(format.width, format.height).takeIf { it > 0 }
+        if (lines != null) parts += when {
+            maxOf(format.width, format.height) >= 3200 -> "4K"
+            lines >= 1000 -> "1080p"
+            lines >= 700 -> "720p"
+            else -> "${lines}p"
+        }
+        val mime = format.sampleMimeType ?: ""
+        val transfer = format.colorInfo?.colorTransfer
+        when {
+            mime == MimeTypes.VIDEO_DOLBY_VISION || (format.codecs ?: "").startsWith("dv") -> parts += "Dolby Vision"
+            transfer == C.COLOR_TRANSFER_ST2084 -> parts += "HDR10"
+            transfer == C.COLOR_TRANSFER_HLG -> parts += "HLG"
+        }
+        parts += when (mime) {
+            MimeTypes.VIDEO_H265, MimeTypes.VIDEO_DOLBY_VISION -> "HEVC"
+            MimeTypes.VIDEO_H264 -> "H.264"
+            MimeTypes.VIDEO_AV1 -> "AV1"
+            MimeTypes.VIDEO_VP9 -> "VP9"
+            "" -> "unknown codec"
+            else -> mime.removePrefix("video/")
+        }
+        return parts.joinToString(" · ")
     }
 
     /** Back to the page as the CustomEvent the shared engine listens for. */
