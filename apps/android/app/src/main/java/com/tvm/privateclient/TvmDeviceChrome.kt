@@ -210,6 +210,52 @@ object TvmShellScripts {
         return "document.documentElement.lang='$safe';document.documentElement.dataset.lang='$safe';"
     }
 
-    fun boot(phone: Boolean, profile: JSONObject, language: String): String =
-        phoneViewport(phone) + "\n" + device(profile) + "\n" + language(language)
+    fun boot(phone: Boolean, profile: JSONObject, language: String, overlay: String = ""): String =
+        phoneViewport(phone) + "\n" + device(profile) + "\n" + language(language) +
+            (if (phone && overlay.isNotEmpty()) "\n" + overlay else "")
+
+    /**
+     * The Android look: assets/android-shell/tvm-android.css and .js, applied over
+     * the shared interface on Android phones only. Everything it styles is scoped
+     * under `html.tvm-android`, so iOS and the website never see it, and it is
+     * injected here rather than shipped in the interface bundle so a newer
+     * interface from the update feed keeps it.
+     *
+     * The native startup reveal replaces the web intro on Android, so the
+     * interface is told its intro has already played this session.
+     */
+    fun androidOverlay(css: String, js: String): String {
+        if (css.isBlank() && js.isBlank()) return ""
+        // JSONObject.quote escapes "</" so the stylesheet cannot close the <script>.
+        val style = JSONObject.quote(css)
+        return """
+            (function () {
+              var root = document.documentElement;
+              root.classList.add('tvm-android');
+              try {
+                sessionStorage.setItem('tvm.intro.session', '1');
+                sessionStorage.setItem('tvm.intro.at', String(Date.now()));
+              } catch (e) {}
+              if (window.__tvmAndroidShell) return;
+              window.__tvmAndroidShell = true;
+              var css = $style;
+              function place() {
+                var el = document.getElementById('tvm-android-shell');
+                if (!el) {
+                  el = document.createElement('style');
+                  el.id = 'tvm-android-shell';
+                  el.textContent = css;
+                }
+                var head = document.head || root;
+                if (head.lastElementChild !== el) head.appendChild(el);
+              }
+              place();
+              if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', place);
+              window.addEventListener('load', place);
+              try {
+        """.trimIndent() + "\n" + js.replace("</script", "<\\/script") + "\n" + """
+              } catch (e) { if (window.console) console.warn('tvm-android', e); }
+            })();
+        """.trimIndent()
+    }
 }

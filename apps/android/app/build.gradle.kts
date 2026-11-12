@@ -58,6 +58,9 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric draws the startup logo with the real Android canvas in a
+        // unit test, so the reveal can be checked without a device.
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -81,5 +84,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.4.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
     testImplementation("org.json:json:20240303")
 }
