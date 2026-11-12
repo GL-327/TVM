@@ -53,6 +53,8 @@ class TvmNativePlayer(
     private var isLive = false
     /** Last level from the slider. Mute must not throw that away and unmute at full. */
     private var level = 1f
+    /** The player screen is open (shell-enter), whether or not a stream is playing yet. */
+    private var shellHeld = false
     /** Whether a film was playing when the app left the screen, so it can carry on when it returns. */
     private var resumeOnStart = false
 
@@ -102,6 +104,14 @@ class TvmNativePlayer(
                 }
             }
             "stop" -> close(id, notify = false)
+            // Android shell only (tvm-android.js): the player screen has opened
+            // or closed. Turning to landscape here, before the stream is ready,
+            // means the film never starts in a portrait loading screen.
+            "shell-enter" -> if (!shellHeld) { shellHeld = true; onPlaying(true) }
+            "shell-leave" -> if (shellHeld) {
+                shellHeld = false
+                if (player == null) onPlaying(false)
+            }
         }
     }
 
@@ -256,10 +266,18 @@ class TvmNativePlayer(
         webView.setBackgroundColor(Color.BLACK)
         if (notify && id != null) emit(id, "closed", JSONObject())
         sessionId = null
-        if (wasOpen && leaving) onPlaying(false)
+        // While the player screen is still open (retry, next episode) the
+        // phone stays in landscape; it turns back when that screen closes.
+        if (wasOpen && leaving && !shellHeld) onPlaying(false)
     }
 
-    fun release() = close(sessionId, notify = false)
+    fun release() {
+        val held = shellHeld
+        shellHeld = false
+        val playing = player != null
+        close(sessionId, notify = false)
+        if (held && !playing) onPlaying(false)
+    }
 
     /**
      * The app left the screen (home button, another app, screen off). The
