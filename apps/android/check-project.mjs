@@ -156,6 +156,19 @@ check('a JavascriptInterface is only attached in standalone (loopback) mode',
   'addJavascriptInterface is called without a standalone/loopback guard nearby');
 check('the LAN WebView client installs no bridge of its own',
   !web.includes('addJavascriptInterface'));
+
+/*
+ * The ⋮ menu's actions (reload, app update, home Core) are rows in Settings.
+ * They reach the shell as tvm-app:// links, which both WebView clients handle
+ * only from a tap, so no JavaScript bridge is needed for them.
+ */
+const standaloneClient = read(join(SRC, 'StandaloneWebViewClient.kt')) ?? '';
+check('Settings app actions are handled by both WebView clients, only from a tap',
+  [standaloneClient, web].every((src) => src.includes('APP_ACTION_SCHEME') && src.includes('request.hasGesture()')),
+  'tvm-app:// links must be handled (gesture-only) in StandaloneWebViewClient and TVMWebViewClient');
+check('the floating ⋮ menu is not shown over the working interface',
+  /private fun clearError\(\) \{[^}]*chrome\.visibility = View\.GONE/.test(main),
+  'clearError() should keep the ⋮ menu hidden; its actions are in Settings');
 check('WebView does not install a touch listener that can swallow DOM clicks',
   !main.includes('setOnTouchListener') && !web.includes('setOnTouchListener'));
 check('WebView disables pinch zoom',

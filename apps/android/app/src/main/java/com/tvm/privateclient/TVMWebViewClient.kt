@@ -15,10 +15,18 @@ class TVMWebViewClient(
     private val connection: Connection,
     private val onLoading: (Boolean) -> Unit,
     private val onError: (String) -> Unit,
+    /** Settings → App & Updates (tvm-android.js): reload, update check, home Core. */
+    private val onAppAction: (String) -> Unit = {},
 ) : WebViewClient() {
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val uri = request.url ?: return true
+        // App actions from the interface's Settings (tvm-android.js), which
+        // used to live in the ⋮ menu. Only a tap can start one; nothing loads.
+        if (uri.scheme == APP_ACTION_SCHEME) {
+            if (request.isForMainFrame && request.hasGesture()) onAppAction(uri.host.orEmpty())
+            return true
+        }
         if (sameOrigin(uri) || uri.toString() == "about:blank") return false
         if (request.isForMainFrame && uri.scheme == "https") {
             view.context.startActivity(Intent(Intent.ACTION_VIEW, uri))
