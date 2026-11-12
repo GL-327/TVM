@@ -21,7 +21,7 @@
   var root = document.documentElement;
   var SCROLLERS = '.page, .home, .details, .search-pill__panel, .gate, .gate-terms, .billing-page';
   var OWNED = '.player, [data-player], input, textarea, select, [role="slider"], .tvm-progress, .ribbon, .ribbon-sheet, .tvma-pill';
-  var SLOP = 8;
+  var SLOP = 6;
 
   function off() {
     var d = root.dataset;
@@ -32,12 +32,114 @@
     return Math.max(0, el.scrollHeight - el.clientHeight);
   }
 
+  // ---- 0. Touch is not a remote ------------------------------------------------------
+
+  // The interface drives a television-style "camera": whenever a control gets
+  // focus it pans the page so that control sits near the top, and centres its
+  // row on it. Every touch tap focused the tapped control, so pressing Add to
+  // My List (or a setting) moved the page, and tapping a poster pulled its row
+  // onto it. With a finger, taps are plain clicks and pages scroll natively;
+  // writes from the camera to page scrollers and rows are ignored. A keyboard
+  // or remote (html.tvma-keys) keeps the camera.
+  var CAMERA_SCROLLERS = '.home, .page, .details, .search-pill__panel, .rail__track, [data-wrap="row"], .season-row, .channel-chips, .home__launcher, .service-nav__tabs';
+  var PLAYER_OWNED = '.player, [data-player], .tvm-progress, [role="slider"]';
+  var TEXT_ENTRY = 'input, textarea, select, [contenteditable="true"]';
+  var ownWrite = false;
+  ['scrollTop', 'scrollLeft'].forEach(function (prop) {
+    var d = Object.getOwnPropertyDescriptor(Element.prototype, prop);
+    if (!d || !d.set || !d.configurable) return;
+    Object.defineProperty(Element.prototype, prop, {
+      configurable: true,
+      enumerable: d.enumerable,
+      get: d.get,
+      set: function (value) {
+        if (!ownWrite && !root.classList.contains('tvma-keys') && this.matches && this.matches(CAMERA_SCROLLERS) && !this.closest(PLAYER_OWNED)) return;
+        d.set.call(this, value);
+      },
+    });
+  });
+  /** The overlay's own scroll positions (restoring a page), past the guard. */
+  function ownScroll(el, top) {
+    if (!el) return;
+    ownWrite = true;
+    try { el.scrollTop = top; } finally { ownWrite = false; }
+  }
+
+  // Returning to a screen (Back, or Home again) shows it where it was left.
+  // Each screen in the interface's stack has its own id (data-focus-scope);
+  // a screen opened afresh has none stored and starts at the top, because
+  // nothing moves it any more. The camera used to do this by re-focusing the
+  // last control, which is what moved pages about.
+  var PAGE_SCROLLERS = '.home, .page, .details';
+  var scrollMemory = {};
+  document.addEventListener('scroll', function (event) {
+    var t = event.target;
+    if (!t || !t.matches || !t.matches(PAGE_SCROLLERS) || t.hasAttribute('data-tvma-placeholder')) return;
+    var layer = t.closest('.screen-layer');
+    if (!layer || layer.closest('.tvma-xfade')) return;
+    var key = layer.getAttribute('data-focus-scope');
+    if (key && restoreState && restoreState.el === t && !restoreState.done) return;
+    if (key) scrollMemory[key] = t.scrollTop;
+  }, { capture: true, passive: true });
+
+  var restoreState = null;
+  /** From the page observer, before the frame is painted. */
+  function syncRestore() {
+    var layer = document.querySelector('.app__screen:not(.tvma-xfade) > .screen-layer');
+    if (!layer) return;
+    var scroller = layer.querySelector(PAGE_SCROLLERS);
+    if (!scroller || scroller.hasAttribute('data-tvma-placeholder') || scroller.classList.contains('mobile-plan-gate')) return;
+    var key = layer.getAttribute('data-focus-scope') || '';
+    if (!restoreState || restoreState.el !== scroller) {
+      var want = scrollMemory[key];
+      var state = { el: scroller, want: want || 0, done: !(want > 0) };
+      restoreState = state;
+      scroller.addEventListener('pointerdown', function () { state.done = true; }, { once: true });
+    }
+    if (restoreState.done) return;
+    // Content can still be arriving: the position is set once the page is
+    // long enough to hold it (on a later change to the page, not a timer).
+    if (restoreState.el.scrollHeight - restoreState.el.clientHeight >= restoreState.want - 1) {
+      ownScroll(restoreState.el, restoreState.want);
+      restoreState.done = true;
+    }
+  }
+
+  // A tap is a click. The interface's pointer handler would focus the control
+  // first (which ran the camera) and click it itself; the browser's own click
+  // reaches the same handler.
+  var tap = null;
+  window.addEventListener('pointerdown', function (event) {
+    tap = null;
+    if (event.pointerType !== 'touch' || !event.isPrimary) return;
+    var t = event.target;
+    if (!t || !t.closest || t.closest(PLAYER_OWNED) || t.closest(TEXT_ENTRY)) return;
+    tap = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }, true);
+  window.addEventListener('pointerup', function (event) {
+    var pending = tap;
+    tap = null;
+    if (!pending || pending.id !== event.pointerId) return;
+    if (Math.abs(event.clientX - pending.x) > SLOP || Math.abs(event.clientY - pending.y) > SLOP) return;
+    event.stopImmediatePropagation();
+  }, true);
+
   // ---- 1 + 2. Native scrolling and the edge bounce ------------------------------
 
+  // One finger leads a gesture; others may join and leave without changing it.
   var touch = null;
 
+  function lead(list) {
+    if (!touch) return null;
+    for (var i = 0; i < list.length; i++) if (list[i].identifier === touch.id) return list[i];
+    return null;
+  }
+
   window.addEventListener('touchstart', function (event) {
-    touch = null;
+    if (touch) {
+      if (lead(event.touches)) return;
+      release();
+    }
     if (event.touches.length !== 1) return;
     var target = event.target;
     if (!target || !target.closest || target.closest(OWNED)) return;
@@ -45,14 +147,15 @@
     if (!el) return;
     var t = event.touches[0];
     stopSpring(el);
-    touch = { el: el, x: t.clientX, y: t.clientY, axis: null, edgeY: null, edge: 0, max: maxScroll(el) };
+    touch = { id: t.identifier, el: el, x: t.clientX, y: t.clientY, axis: null, edgeY: null, edge: 0, max: maxScroll(el) };
     // At an edge a pull may follow: give the page's sections their own layers
     // now, while nothing moves, rather than on the pull's first frame (which
     // drew them blank for a frame: the flicker under the hero).
     if (!off() && (el.scrollTop <= 0.5 || el.scrollTop >= touch.max - 0.5)) el.setAttribute('data-tvma-prime', '');
   }, { capture: true, passive: true });
 
-  function claim(event, x, y) {
+  /** True once the finger has chosen a direction: from then on the browser scrolls. */
+  function claim(x, y) {
     if (!touch) return false;
     if (touch.axis === null) {
       var dx = x - touch.x;
@@ -60,26 +163,27 @@
       if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return false;
       touch.axis = Math.abs(dy) >= Math.abs(dx) ? 'y' : 'x';
     }
-    return touch.axis === 'y';
+    return true;
   }
 
-  // The interface's pointer handler would write scrollTop for this move; for a
-  // vertical page pan the browser does it instead.
+  // The interface's pointer handler would pan rows and pages itself (cancelling
+  // the browser's scroll, and with it a row's natural momentum). For a pan in
+  // either direction the browser scrolls instead.
   window.addEventListener('pointermove', function (event) {
     if (event.pointerType !== 'touch' || !touch) return;
-    if (claim(event, event.clientX, event.clientY)) event.stopImmediatePropagation();
+    if (!event.isPrimary) { event.stopImmediatePropagation(); return; }
+    if (claim(event.clientX, event.clientY)) event.stopImmediatePropagation();
   }, true);
 
-  // The interface cancels touchmove once it claims a pan, which is what stops
-  // the browser scrolling. Not for a vertical page pan.
   window.addEventListener('touchmove', function (event) {
-    if (!touch || event.touches.length !== 1) return;
-    var t = event.touches[0];
-    if (!claim(event, t.clientX, t.clientY)) return;
+    var t = lead(event.touches);
+    if (!t) return;
+    if (!claim(t.clientX, t.clientY)) return;
     event.stopImmediatePropagation();
-    if (off()) return;
+    if (touch.axis !== 'y' || off()) return;
     // Edge bounce: once the page is at its top or bottom, further pull shows
-    // as a small, stiff offset (a third of the iOS stretch).
+    // as a small, stiff offset. Only the leading finger counts, so a second
+    // finger can neither stretch it further nor leave it stuck.
     var el = touch.el;
     var top = el.scrollTop;
     var atTop = top <= 0.5;
@@ -104,7 +208,11 @@
     if (offset !== 0) spring(el, offset, 0);
     else el.removeAttribute('data-tvma-prime');
   }
-  window.addEventListener('touchend', release, true);
+  // The gesture ends when its leading finger lifts (or the system cancels it),
+  // whatever other fingers are still down.
+  window.addEventListener('touchend', function (event) {
+    if (touch && !lead(event.touches)) release();
+  }, true);
   window.addEventListener('touchcancel', release, true);
 
   /* At most about 26px however far the finger goes, and stiff from the start. */
@@ -113,7 +221,32 @@
     return LIMIT * (1 - 1 / (distance / 170 + 1));
   }
 
+  // While the page is pulled past an edge, that edge fades into the page's
+  // background, a little more the further it is pulled. Opacity on two fixed
+  // layers only: nothing else is restyled.
+  var edges = null;
+  function edge(px) {
+    if (!edges) {
+      if (!document.body) return;
+      edges = [el0('tvma-edge tvma-edge--top'), el0('tvma-edge tvma-edge--bottom')];
+      document.body.appendChild(edges[0]);
+      document.body.appendChild(edges[1]);
+    }
+    var p = Math.min(1, Math.abs(px) / LIMIT);
+    var top = px > 0 ? p : 0;
+    var bottom = px < 0 ? p : 0;
+    edges[0].style.opacity = top ? (0.65 * top).toFixed(3) : '0';
+    edges[1].style.opacity = bottom ? (0.65 * bottom).toFixed(3) : '0';
+  }
+  function el0(cls) {
+    var n = document.createElement('div');
+    n.className = cls;
+    n.setAttribute('aria-hidden', 'true');
+    return n;
+  }
+
   function setOffset(el, px) {
+    edge(Math.abs(px) < 0.25 ? 0 : px);
     if (Math.abs(px) < 0.25) {
       if (el.hasAttribute('data-tvm-rubber')) {
         el.removeAttribute('data-tvm-rubber');
@@ -342,11 +475,9 @@
           return function (event) {
             event.preventDefault();
             if (pillMode !== 'search') return;
-            if (tab === 'search') {
-              var field = document.querySelector('.search-pill input');
-              if (field) { fieldTapped = performance.now(); field.focus(); }
-              return;
-            }
+            // Search is already open: stay, without focusing the field (the
+            // keyboard opens only from the field itself).
+            if (tab === 'search') return;
             closeSearchThen(tab);
           };
         })(id));
@@ -381,7 +512,10 @@
     var t = event.target;
     if (!t || !t.matches || !t.matches('.search-pill input')) return;
     var typing = (t.value || '').trim() !== '';
-    if (root.classList.contains('tvma-searching') !== typing) root.classList.toggle('tvma-searching', typing);
+    if (root.classList.contains('tvma-searching') !== typing) {
+      root.classList.toggle('tvma-searching', typing);
+      ownScroll(t.closest('.search-pill__panel'), 0);
+    }
   }, true);
 
   // Discovery: rows from the same catalogue Home shows (its own titles for
@@ -485,7 +619,7 @@
 
   // ---- 7. Settings switches, Details, the player's turn to landscape ---------------------
 
-  var SWITCH_ROWS = { performance: true, 'auto-update': true };
+  var SWITCH_ROWS = { performance: true, 'auto-update': true, 'dev-queue': true, 'dev-mocks': true, 'dev-live': true };
 
   function mark(el, name, value) {
     if (value === null) {
@@ -507,6 +641,7 @@
         mark(row, 'data-tvm-switch', state);
       }
       if (id.indexOf('theme-') === 0) mark(row, 'data-tvm-check', text === 'On' ? 'on' : null);
+      if (/^dev-/.test(id) && (text === 'Selected' || text === 'Set')) mark(row, 'data-tvm-check', text === 'Selected' ? 'on' : null);
     }
   }
 
@@ -529,20 +664,6 @@
         if (first) { first.click(); whenThere('.details .episode-item', function (e) { e.click(); }); }
       });
       series[k].insertBefore(play, series[k].firstChild);
-    }
-    // Details opens at the top, picture and all. (The interface scrolls the
-    // button it focuses into view, which suits a remote, not a finger.)
-    var pages = document.querySelectorAll('.details');
-    for (var m = 0; m < pages.length; m++) {
-      if (pages[m].hasAttribute('data-tvma-top')) continue;
-      pages[m].setAttribute('data-tvma-top', '');
-      (function (d) {
-        var touched = false;
-        d.addEventListener('pointerdown', function () { touched = true; }, { once: true });
-        [0, 60, 200, 450].forEach(function (ms) {
-          setTimeout(function () { if (!touched && !root.classList.contains('tvma-keys') && d.scrollTop > 0) d.scrollTop = 0; }, ms);
-        });
-      })(pages[m]);
     }
     var syn = document.querySelectorAll('.details .stage__synopsis');
     for (var j = 0; j < syn.length; j++) {
@@ -643,22 +764,6 @@
     if (text !== undefined) n.textContent = text;
     return n;
   }
-  /** Keep a scroller at one position while the interface settles (focus reveals, re-renders). */
-  function pin(scroller, value, ms) {
-    if (!scroller) return;
-    var until = performance.now() + ms;
-    var touched = false;
-    var hold = function () {
-      if (touched || performance.now() > until) { scroller.removeEventListener('scroll', hold); return; }
-      if (Math.abs(scroller.scrollTop - value) > 1) scroller.scrollTop = value;
-    };
-    scroller.addEventListener('pointerdown', function () { touched = true; }, { once: true });
-    scroller.addEventListener('scroll', hold);
-    hold();
-    requestAnimationFrame(hold);
-    [60, 160, 320].forEach(function (ms2) { setTimeout(hold, ms2); });
-  }
-
   /** Android Back (MainActivity) asks here first: an open sheet or popup closes. */
   var backHandlers = [];
   window.tvmaBack = function () {
@@ -760,7 +865,6 @@
   function openProfiles() {
     profilesViaPopup = !mainSettings();
     veil(true);
-    settingsFresh = true;
     var sheetSettings = document.querySelector('.ribbon-sheet [data-focus-id="more-settings"]');
     var go = function () {
       pressWhenThere('.app__screen:not([inert]) .page--settings [data-focus-id="profiles"]', function () {
@@ -829,17 +933,14 @@
         b.addEventListener('click', function () {
           close();
           // The interface changes language one step at a time; the steps run
-          // behind the closing sheet, with the page held where it is.
+          // behind the closing sheet (nothing moves the page: see section 0).
           var steps = (i - current + LANGS.length) % LANGS.length;
-          var page = row.closest('.page--settings');
-          var top = page ? page.scrollTop : 0;
           (function step(n) {
-            if (n <= 0) { pin(page, top, 500); return; }
+            if (n <= 0) return;
             var live = document.querySelector('.app__screen:not([inert]) .page--settings [data-focus-id="language"]');
             if (!live) return;
             press(live);
-            if (page) page.scrollTop = top;
-            requestAnimationFrame(function () { requestAnimationFrame(function () { if (page) page.scrollTop = top; step(n - 1); }); });
+            requestAnimationFrame(function () { requestAnimationFrame(function () { step(n - 1); }); });
           })(steps);
         });
         list.appendChild(b);
@@ -848,37 +949,10 @@
     });
   }
 
-  var settingsFresh = false;
-  var settingsMain = null;
-  var settingsMainTop = false;
-  var settingsSaved = 0;
-
   function mainSettings() {
-    var lang = document.querySelector('.page--settings [data-focus-id="language"]');
-    return lang ? lang.closest('.page--settings') : null;
-  }
-
-  /** Runs before paint (from the observer): the page never shows at the wrong place. */
-  function syncSettingsScroll() {
-    var page = mainSettings();
-    if (!page) { settingsMain = null; settingsMainTop = false; return; }
-    var top = !!page.closest('.app__screen:not([inert])');
-    if (page !== settingsMain) {
-      // The interface builds Settings afresh each time it is shown: from the
-      // You popup it starts at the top; back from one of its pages, where it was.
-      settingsMain = page;
-      settingsMainTop = top;
-      if (top) {
-        var at = settingsFresh ? 0 : settingsSaved;
-        if (settingsFresh) settingsSaved = 0;
-        pin(page, at, 700);
-        settingsFresh = false;
-      }
-      return;
-    }
-    if (top && !settingsMainTop) pin(page, settingsFresh ? 0 : settingsSaved, 600);
-    if (top) settingsFresh = false;
-    settingsMainTop = top;
+    var langs = document.querySelectorAll('.page--settings [data-focus-id="language"]');
+    for (var i = 0; i < langs.length; i++) if (!langs[i].closest('.tvma-xfade')) return langs[i].closest('.page--settings');
+    return null;
   }
 
   function settingsRow(cls, title, detail, onTap) {
@@ -897,10 +971,10 @@
     var anchor = page.querySelector('[data-focus-id="profiles"]');
     if (anchor && !page.querySelector('[data-tvma-row="account"]')) {
       var cls = anchor.className.replace(/\s*tvm-button--focused/g, '');
-      var acc = settingsRow(cls, 'Account', 'Sign-in, access and signing out', function () { settingsSaved = page.scrollTop; openViaMore('more-profile'); });
+      var acc = settingsRow(cls, 'Account', 'Sign-in, access and signing out', function () { openViaMore('more-profile'); });
       acc.setAttribute('data-tvma-row', 'account');
       anchor.parentNode.insertBefore(acc, anchor.nextSibling);
-      var apps = settingsRow(cls, 'Apps', 'Studios and services', function () { settingsSaved = page.scrollTop; openViaMore('more-apps'); });
+      var apps = settingsRow(cls, 'Apps', 'Studios and services', function () { openViaMore('more-apps'); });
       apps.setAttribute('data-tvma-row', 'apps');
       acc.parentNode.insertBefore(apps, acc.nextSibling);
     }
@@ -932,16 +1006,14 @@
     } else if (id === 'language' && t.closest('.page--settings')) {
       event.preventDefault(); event.stopImmediatePropagation();
       openLanguages(t);
+    } else if (id === 'watchlist-sort') {
+      event.preventDefault(); event.stopImmediatePropagation();
+      openSort(t);
     } else if (id === 'more-settings') {
-      settingsFresh = true;
-      settingsSaved = 0;
+      // Settings from the popup opens at the top. When it is already the page
+      // on screen, it goes there at once (no animated scroll).
       var already = mainSettings();
-      if (already && already.closest('.app__screen:not([inert])')) {
-        settingsFresh = false;
-        already.scrollTo({ top: 0, behavior: off() ? 'auto' : 'smooth' });
-      }
-    } else if (t.classList.contains('settings-row') && t.closest('.page--settings') === mainSettings()) {
-      settingsSaved = mainSettings().scrollTop;
+      if (already && already.closest('.app__screen:not([inert])')) ownScroll(already, 0);
     }
   }, true);
 
@@ -1315,6 +1387,170 @@
     }
   }
 
+  // ---- 17. Tabs crossfade ----------------------------------------------------------
+
+  // The interface shows one screen at a time: a new tab replaced the old page
+  // at once and faded its contents in over the page colour (through black).
+  // Here the old page stays on top as a still copy and fades out once the new
+  // page is ready underneath: A, then A over B, then B.
+  var MAIN_TABS = { 'home-dock': true, live: true, watchlist: true };
+  var xfade = null;
+  function finishXfade() {
+    if (!xfade) return;
+    var c = xfade.clone;
+    xfade = null;
+    if (c.parentNode) c.parentNode.removeChild(c);
+  }
+  function startXfade() {
+    finishXfade();
+    if (off() || document.querySelector('.modal-layer')) return;
+    var screen = document.querySelector('.app__screen:not(.tvma-xfade)');
+    var layer = screen && screen.querySelector(':scope > .screen-layer');
+    if (!screen || !layer) return;
+    var SCROLLY = '.home, .page, .details, .rail__track, .season-row, .channel-chips, .poster-grid, .live-shelf, .tvma-discover__row';
+    var from = screen.querySelectorAll(SCROLLY);
+    var clone = screen.cloneNode(true);
+    clone.classList.add('tvma-xfade');
+    clone.setAttribute('inert', '');
+    clone.setAttribute('aria-hidden', 'true');
+    var drop = clone.querySelectorAll('.ribbon-sheet, .ribbon-sheet__scrim');
+    for (var i = 0; i < drop.length; i++) drop[i].remove();
+    screen.parentNode.insertBefore(clone, screen.nextSibling);
+    var to = clone.querySelectorAll(SCROLLY);
+    ownWrite = true;
+    try {
+      for (var j = 0; j < from.length && j < to.length; j++) {
+        if (from[j].scrollTop) to[j].scrollTop = from[j].scrollTop;
+        if (from[j].scrollLeft) to[j].scrollLeft = from[j].scrollLeft;
+      }
+    } finally { ownWrite = false; }
+    xfade = { clone: clone, from: layer.getAttribute('data-focus-scope'), t0: performance.now() };
+    var mine = xfade;
+    (function ready() {
+      if (xfade !== mine) return;
+      var now = document.querySelector('.app__screen:not(.tvma-xfade) > .screen-layer');
+      var arrived = now && now.getAttribute('data-focus-scope') !== mine.from &&
+        !now.querySelector('[data-tvma-placeholder], .loading-state--plate');
+      if (!arrived && performance.now() - mine.t0 < 600) { requestAnimationFrame(ready); return; }
+      mine.clone.classList.add('tvma-xfade--out');
+      mine.clone.addEventListener('transitionend', function () { if (xfade === mine) finishXfade(); }, { once: true });
+      // If the transition cannot run (hidden page), the copy still goes.
+      setTimeout(function () { if (xfade === mine) finishXfade(); }, 400);
+    })();
+  }
+  document.addEventListener('click', function (event) {
+    var b = event.target && event.target.closest && event.target.closest('.app__screen:not(.tvma-xfade) nav.ribbon--tabs [data-focus-id]');
+    if (!b) return;
+    var id = b.getAttribute('data-focus-id');
+    if (!MAIN_TABS[id] || b.classList.contains('ribbon__icon--on')) return;
+    startXfade();
+  }, true);
+
+  // ---- 18. Details: Back at the top left -------------------------------------------
+
+  function syncDetailsBack() {
+    var pages = document.querySelectorAll('.app__screen:not(.tvma-xfade) .details');
+    for (var i = 0; i < pages.length; i++) {
+      var page = pages[i];
+      if (page.querySelector(':scope > .tvma-back')) continue;
+      var b = el('button', 'tvma-back');
+      b.type = 'button';
+      b.setAttribute('aria-label', 'Back');
+      b.addEventListener('click', (function (d) {
+        return function () {
+          var real = d.querySelector('.details__actions [data-focus-id="back"]');
+          if (real) press(real);
+          else window.dispatchEvent(new Event('tvm:navigate-back'));
+        };
+      })(page));
+      page.insertBefore(b, page.firstChild);
+    }
+  }
+
+  // ---- 19. Watchlist sort, Developer groups, sub-page Back --------------------------
+
+  var SORTS = ['Recently saved', 'Title A–Z', 'Newest release', 'Highest rated'];
+  function openSort(button) {
+    var detail = button.querySelector('.tvm-button__detail');
+    var current = Math.max(0, SORTS.indexOf(detail ? detail.textContent.trim() : ''));
+    sheet('Sort by', function (panel, close) {
+      var list = el('div', 'tvma-sheet__list');
+      SORTS.forEach(function (label, i) {
+        var b = el('button', 'tvma-choice' + (i === current ? ' tvma-choice--on' : ''));
+        b.type = 'button';
+        b.appendChild(el('span', 'tvma-choice__name', label));
+        b.addEventListener('click', function () {
+          close();
+          var steps = (i - current + SORTS.length) % SORTS.length;
+          (function step(n) {
+            if (n <= 0) return;
+            var live = document.querySelector('.app__screen:not(.tvma-xfade) [data-focus-id="watchlist-sort"]');
+            if (!live) return;
+            press(live);
+            requestAnimationFrame(function () { requestAnimationFrame(function () { step(n - 1); }); });
+          })(steps);
+        });
+        list.appendChild(b);
+      });
+      panel.appendChild(list);
+    });
+  }
+
+  var DEV_GROUPS = [['dev-accounts', 'Accounts'], [null, 'Plan'], ['dev-queue', 'Features'], ['dev-hours', 'Shortcuts'], ['dev-lock', 'Developer Mode']];
+  function syncSubpages() {
+    var dev = document.querySelector('.app__screen:not(.tvma-xfade) [data-focus-id="dev-accounts"]');
+    if (dev && !dev.parentNode.hasAttribute('data-tvma-grouped')) {
+      var list = dev.parentNode;
+      list.setAttribute('data-tvma-grouped', '');
+      var mail = list.querySelector('[data-focus-id="dev-mail"]');
+      DEV_GROUPS.forEach(function (g) {
+        var at = g[0] ? list.querySelector('[data-focus-id="' + g[0] + '"]') : mail && mail.nextElementSibling;
+        if (at) list.insertBefore(el('p', 'tvma-group-label', g[1]), at);
+      });
+    }
+    // A Back button at the foot of a page that already has one at the top.
+    var pages = document.querySelectorAll('.app__screen:not(.tvma-xfade) .page');
+    for (var i = 0; i < pages.length; i++) {
+      if (!pages[i].querySelector('.topbar')) continue;
+      var buttons = pages[i].querySelectorAll('.hero__actions .tvm-button, [data-focus-id="back"]');
+      for (var k = 0; k < buttons.length; k++) {
+        mark(buttons[k], 'data-tvma-dupback', (buttons[k].textContent || '').trim() === 'Back' ? '' : null);
+      }
+    }
+  }
+
+  // ---- 20. Settings → App & Updates (the old ⋮ menu) --------------------------------
+
+  // The shell's own actions. MainActivity handles tvm-app:// links (only from a tap).
+  function appAction(name) {
+    if (typeof window.tvmaAppAction === 'function') { window.tvmaAppAction(name); return; }
+    window.location.href = 'tvm-app://' + name;
+  }
+  function syncAppGroup() {
+    var page = mainSettings();
+    if (!page || page.querySelector('[data-tvma-group="app"]')) return;
+    var anchor = page.querySelector('[data-focus-id="updates"]') || page.querySelector('[data-focus-id="diagnostics"]');
+    var group = anchor && anchor.closest('.settings-group');
+    if (!group) return;
+    var sample = group.querySelector('.settings-row');
+    var cls = sample ? sample.className.replace(/\s*tvm-button--focused/g, '') : 'tvm-button tvm-button--standard settings-row';
+    var onPhone = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+    var box = el('section', group.className);
+    box.setAttribute('data-tvma-group', 'app');
+    box.appendChild(el('h2', 'settings-group__title', 'App & Updates'));
+    var rows = [
+      ['reload', 'Reload TVM', 'Reopen the interface. Nothing is erased'],
+      ['update', 'Check for App Update', 'Look for a newer TVM for Android'],
+      ['core', onPhone ? 'Use a Home Core' : 'Back to This Phone', onPhone ? 'Optional: run TVM from a computer at home' : 'Stop using the home Core'],
+    ];
+    rows.forEach(function (r) {
+      var row = settingsRow(cls, r[1], r[2], function () { appAction(r[0]); });
+      row.setAttribute('data-tvma-row', 'app-' + r[0]);
+      box.appendChild(row);
+    });
+    group.parentNode.insertBefore(box, group.nextSibling);
+  }
+
   // ---- Watching the page -------------------------------------------------------------
 
   // Only screen changes matter here, so only child lists are watched, and the
@@ -1337,6 +1573,9 @@
       syncSettingsExtras();
       syncTopbars();
       syncSearchChrome();
+      syncDetailsBack();
+      syncSubpages();
+      syncAppGroup();
       if (document.querySelector('.home')) syncHomeTitles();
       if (document.querySelector('.settings-row')) syncSettings();
       if (document.querySelector('.details')) syncDetails();
@@ -1347,7 +1586,7 @@
     if (typeof MutationObserver !== 'function') return;
     // Placeholders and the bar are settled in the observer itself (before the
     // frame is painted), so a placeholder is never drawn for even one frame.
-    new MutationObserver(function () { markPlaceholders(); syncPill(); syncSettingsScroll(); queue(); }).observe(document.body || root, { subtree: true, childList: true, characterData: false });
+    new MutationObserver(function () { markPlaceholders(); syncPill(); syncRestore(); queue(); }).observe(document.body || root, { subtree: true, childList: true, characterData: false });
     new MutationObserver(queue).observe(root, { attributes: true, attributeFilter: ['class'] });
     // Rows and headings change their text in place when tapped or loaded.
     document.addEventListener('click', function () { setTimeout(queue, 0); }, true);
