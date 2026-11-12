@@ -17,8 +17,13 @@
 /* ---- 1. Device chrome ------------------------------------------------------ */
 
 html.tvm-android {
-  --tvma-glass: rgba(16, 20, 32, 0.74);
-  --tvma-glass-strong: rgba(14, 17, 27, 0.94);
+  --tvma-glass: rgba(17, 21, 31, 0.93);
+  --tvma-glass-strong: rgba(15, 18, 27, 0.97);
+  --tvma-card: rgba(255, 255, 255, 0.055);
+  --tvma-card-hi: rgba(255, 255, 255, 0.09);
+  --tvma-r-sm: 12px;
+  --tvma-r-md: 16px;
+  --tvma-r-lg: 22px;
   --tvma-hairline: rgba(255, 255, 255, 0.09);
   --tvma-ink: #f4f6fb;
   --tvma-muted: rgba(226, 232, 244, 0.62);
@@ -100,13 +105,12 @@ html.tvm-android[data-theme] .ribbon--tabs .ribbon__frost {
   padding: 6px;
   border-radius: 999px;
   border: 1px solid var(--tvma-hairline);
+  /* Solid rather than blurred: a backdrop blur re-samples everything that
+     scrolls under the bar on every frame. */
   background: var(--tvma-glass);
   box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.5),
-    0 2px 10px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
-  backdrop-filter: blur(22px) saturate(170%);
+    0 14px 34px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 html.tvm-android[data-perf='on'] .ribbon--tabs .ribbon__frost {
@@ -143,8 +147,12 @@ html.tvm-android .ribbon--tabs .tvm-button.ribbon__icon:active {
 html.tvm-android .ribbon--tabs .tvm-button.ribbon__icon.ribbon__icon--on,
 html.tvm-android .ribbon--tabs .tvm-button.ribbon__icon.ribbon__icon--on:is(:hover, :focus, [data-focused='true'], .tvm-button--focused) {
   color: #fff;
-  background: color-mix(in srgb, var(--tvma-accent) 20%, rgba(255, 255, 255, 0.06));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tvma-accent) 26%, transparent);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+html.tvm-android .ribbon--tabs .ribbon__icon--on .ribbon__glyph {
+  color: var(--tvma-accent);
 }
 
 html.tvm-android .ribbon--tabs .ribbon__icon .tvm-button__label {
@@ -212,8 +220,6 @@ html.tvm-android .ribbon--tabs .ribbon-sheet {
   border: 1px solid var(--tvma-hairline);
   background: var(--tvma-glass-strong);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  backdrop-filter: blur(24px) saturate(160%);
 }
 
 html.tvm-android .ribbon-sheet .tvm-button.ribbon-sheet__row {
@@ -265,7 +271,19 @@ html.tvm-android .player {
   --tvma-px: max(20px, calc(var(--tvm-inset-left, 0px) + 12px), calc(var(--tvm-inset-right, 0px) + 12px));
   --tvma-pt: max(14px, calc(var(--tvm-inset-top, 0px) + 6px));
   --tvma-pb: max(14px, calc(var(--tvm-inset-bottom, 0px) + 8px));
-  background: #000;
+}
+
+/*
+ * Never paint over the native picture. This phone's own core draws the film
+ * with Media3 *behind* the WebView, so every layer above it must stay
+ * transparent while it plays. (An opaque .player here was the black screen:
+ * apps/android/smoke/playback.mjs now checks this on an emulator.)
+ */
+html.tvm-android.tvm-native-playback .player.player--native,
+html.tvm-android.tvm-native-playback .player--native .player__stage,
+html.tvm-android.tvm-native-playback .modal-layer[data-screen='player'] {
+  background: transparent !important;
+  background-image: none !important;
 }
 
 /*
@@ -298,7 +316,7 @@ html.tvm-android.phone-shell[data-orientation] .player .player__video {
 }
 
 html.tvm-android .player .cinema-chrome {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.22);
   transition: opacity 260ms var(--tvma-ease), visibility 260ms;
 }
 
@@ -542,25 +560,52 @@ html.tvm-android .player .cinema-chrome .tvm-button:is([data-focus-id='player-se
   min-height: 56px;
 }
 
-html.tvm-android .player .cinema-chrome .tvm-button:is([data-focus-id='player-seek-back'], [data-focus-id='player-seek-fwd']) svg {
-  width: 32px;
-  height: 32px;
+
+/*
+ * Minimal glyphs, drawn here rather than the shared icons: a plain white
+ * triangle, two rounded bars, and symmetrical 10-second skips whose "10" is
+ * drawn with the same rounded stroke as the arrow and centred in the circle.
+ * The buttons and what they do are untouched; only the picture on them.
+ */
+html.tvm-android .player .cinema-chrome .tvm-button:is(.cinema-chrome__play, [data-focus-id='player-seek-back'], [data-focus-id='player-seek-fwd']) {
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html.tvm-android .player .cinema-chrome .tvm-button:is(.cinema-chrome__play, [data-focus-id='player-seek-back'], [data-focus-id='player-seek-fwd']) svg {
+  display: none;
 }
 
 html.tvm-android .player .cinema-chrome .tvm-button.cinema-chrome__play {
-  width: 76px;
-  min-width: 76px;
-  height: 76px;
-  min-height: 76px;
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 10px 30px rgba(0, 0, 0, 0.35);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  width: 80px;
+  min-width: 80px;
+  height: 80px;
+  min-height: 80px;
+  background-size: 64px 64px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='13' y='10' width='7.6' height='28' rx='2.6' fill='white'/%3E%3Crect x='27.4' y='10' width='7.6' height='28' rx='2.6' fill='white'/%3E%3C/svg%3E");
 }
 
-html.tvm-android .player .cinema-chrome .tvm-button.cinema-chrome__play svg {
-  width: 40px;
-  height: 40px;
+html.tvm-android .player .cinema-chrome .tvm-button.cinema-chrome__play[aria-label='Play'] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M16.5 11.2v25.6a2.2 2.2 0 0 0 3.3 1.9l20.6-12.8a2.2 2.2 0 0 0 0-3.8L19.8 9.3a2.2 2.2 0 0 0-3.3 1.9z' fill='white'/%3E%3C/svg%3E");
+}
+
+html.tvm-android .player .cinema-chrome .tvm-button[data-focus-id='player-seek-back'] {
+  background-size: 48px 48px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cg fill='none' stroke='white' stroke-width='3.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M24 10A16 16 0 1 1 10.1 18'/%3E%3Cpath d='M28.6 5.2 23.6 10l5 4.8'/%3E%3C/g%3E%3Cpath d='M17.6 22.2 20.3 20.3V32' fill='none' stroke='white' stroke-width='3.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='24.3' y='20.3' width='6.6' height='11.7' rx='3.3' fill='none' stroke='white' stroke-width='3.1'/%3E%3C/svg%3E");
+}
+
+html.tvm-android .player .cinema-chrome .tvm-button[data-focus-id='player-seek-fwd'] {
+  background-size: 48px 48px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cg fill='none' stroke='white' stroke-width='3.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M24 10A16 16 0 1 0 37.9 18'/%3E%3Cpath d='M19.4 5.2 24.4 10l-5 4.8'/%3E%3C/g%3E%3Cpath d='M17.6 22.2 20.3 20.3V32' fill='none' stroke='white' stroke-width='3.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='24.3' y='20.3' width='6.6' height='11.7' rx='3.3' fill='none' stroke='white' stroke-width='3.1'/%3E%3C/svg%3E");
+}
+
+html.tvm-android .player .cinema-chrome .tvm-button:is(.cinema-chrome__play, [data-focus-id='player-seek-back'], [data-focus-id='player-seek-fwd']):active {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Bottom left: volume, out of the centre cluster. */
@@ -637,6 +682,8 @@ html.tvm-android .player .cinema-chrome__timeline {
 }
 
 html.tvm-android .player .cinema-chrome__timeline .tvm-progress {
+  /* It clipped the time bubble, which sits above the line. */
+  overflow: visible;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
@@ -681,8 +728,10 @@ html.tvm-android .player .cinema-chrome__timeline .tvm-progress__played {
 }
 
 html.tvm-android .player .cinema-chrome__timeline .tvm-progress__knob {
+  top: 50%;
   width: 16px;
   height: 16px;
+  margin: 0;
   background: #fff;
   opacity: 1;
   box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18), 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -693,8 +742,29 @@ html.tvm-android .player .cinema-chrome__timeline .tvm-progress__control[data-sc
   height: 6px;
 }
 
-html.tvm-android .player .cinema-chrome__timeline .tvm-progress__control[data-scrubbing='true'] .tvm-progress__knob {
-  transform: scale(1.35);
+/* The knob keeps its centring translate while it grows: it never leaves the line. */
+html.tvm-android .player .cinema-chrome__timeline .tvm-progress__control:is([data-scrubbing='true'], [data-focused='true']) .tvm-progress__knob {
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
+/* The time while dragging: above the knob, always fully on screen (tvm-android.js clamps it). */
+html.tvm-android .player .cinema-chrome__timeline .tvm-progress__bubble {
+  bottom: calc(100% + 16px);
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(16, 19, 27, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  transform: translateX(calc(-50% + var(--tvma-bubble-shift, 0px)));
+  z-index: 5;
+}
+
+/* While dragging, the time owns the space above the line. */
+html.tvm-android .player:has(.tvm-progress__control[data-scrubbing='true']) :is(.player-volume, .cinema-chrome__actions, .cinema-chrome__recap) {
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
 
 /* Narrow (a small phone, or still portrait while rotating). */
@@ -1167,4 +1237,579 @@ html.tvm-android .settings-summary {
 html.tvm-android :is(.page, .home, .details, .search-pill__panel)[data-tvm-rubber] > :not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
   transform: translate3d(0, var(--tvm-rubber), 0);
   will-change: transform;
+}
+
+/* ---- 7. Native scrolling ---------------------------------------------------------
+ * Pages scroll natively (tvm-android.js). Rails are horizontal scroll boxes
+ * with overscroll-behavior: none, which stopped a vertical drag that started on
+ * a poster from reaching the page. Vertically they hand the scroll on.
+ */
+html.tvm-android.phone-shell :is(.rail__track, [data-wrap='row'], .service-nav__tabs, .home__launcher, .season-row, .max-nav, .max-nav__tabs, .dplus-nav__tabs, .dplus-brands, .channel-chips, .search-recent__items) {
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+}
+
+/* ---- 8. Performance ---------------------------------------------------------------
+ * Measured in a 4x CPU-throttled Chromium on the real interface (see the PR):
+ * these are what a frame was paying for that nobody could see.
+ */
+
+/* Backdrop blur re-samples whatever scrolls beneath it on every frame. The
+   fills above are opaque enough to stand without it. */
+html.tvm-android *,
+html.tvm-android *::before,
+html.tvm-android *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* The drifting app scene sits behind opaque screens once signed in, yet its
+   six full-screen layers animated forever. Held still there. */
+html.tvm-android .tvm-scene:has(~ .app) .tvm-scene__layer,
+html.tvm-android .tvm-scene:has(~ .app) * {
+  animation-play-state: paused !important;
+}
+
+/* A loaded poster no longer needs its shimmer, which kept running underneath. */
+html.tvm-android .art--ready > .skeleton,
+html.tvm-android .art--ready .skeleton--art {
+  display: none !important;
+}
+
+/* Placeholders stay as quiet blocks: the shimmer animated background-position,
+   which repaints every frame, and dozens ran at once for off-screen posters. */
+html.tvm-android .skeleton,
+html.tvm-android .skeleton::before,
+html.tvm-android .skeleton::after {
+  animation: none !important;
+}
+
+/* Every poster was promoted to its own GPU layer (about 200 on Home), which
+   the compositor had to rebuild on each main-thread frame. */
+html.tvm-android :is(.poster, .poster__art, .poster__art img) {
+  will-change: auto;
+}
+
+html.tvm-android .poster__art {
+  transform: none;
+}
+
+/* Rails and pages lay out on their own: changes inside them need not reach the rest. */
+html.tvm-android .rail {
+  contain: layout style;
+}
+
+/* ---- 9. Navigation: one app, not separate pages ---------------------------------- */
+
+/* Tabs swap the page under a pill that stays put: only the page's own
+   content fades in, not the whole screen with the bar inside it. */
+html.tvm-android .screen-layer,
+html.tvm-android .screen-content {
+  animation: none;
+}
+
+html.tvm-android .screen-content > :is(.page, .home, main) > :not(.ribbon):not(.ribbon-zone):not(.home__scene) {
+  animation: tvma-enter 240ms var(--tvma-ease) backwards;
+}
+
+/*
+ * Performance mode pauses every animation in the app (motion.css), which froze
+ * this fade on its first frame: the page stayed invisible. With performance
+ * mode or reduced motion on, there is no fade at all.
+ */
+html.tvm-android:is([data-perf='on'], [data-motion='reduced']) .screen-content > :is(.page, .home, main) > * {
+  animation: none !important;
+  opacity: 1;
+}
+
+/* The same trap catches the interface's own entrance animations (the hero
+   copy, Search, scrims): paused on a first frame of opacity 0. Performance
+   mode already freezes all motion; here it removes it, so everything simply
+   shows in its final state. */
+html.tvm-android[data-perf='on'] *,
+html.tvm-android[data-perf='on'] *::before,
+html.tvm-android[data-perf='on'] *::after {
+  animation: none !important;
+}
+
+@keyframes tvma-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+}
+
+/* The pill over Search (tvm-android.js): above the search layer. */
+html.tvm-android nav.ribbon.tvma-pill {
+  position: fixed;
+  z-index: 46;
+  display: block;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+html.tvm-android.tvma-search-open .search-pill__panel {
+  padding-bottom: calc(var(--tvm-tabbar) + 16px);
+}
+
+html.tvm-android.tvm-cinema nav.ribbon.tvma-pill,
+html.tvm-android.tvm-native-playback nav.ribbon.tvma-pill {
+  display: none !important;
+}
+
+/* Content scrolling up under the status bar fades out rather than being cut. */
+html.tvm-android .app::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 29;
+  height: calc(var(--tvm-chrome-top, 0px) + 18px);
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(5, 9, 15, 0.82), rgba(5, 9, 15, 0));
+}
+
+html.tvm-android:is(.tvm-cinema, .tvm-native-playback, .tvma-search-open) .app::after {
+  display: none;
+}
+
+/* Every page scrolls freely: no locking onto rows or sections. */
+html.tvm-android :is(.page, .page--settings, .details, .search-pill__panel, .home) {
+  scroll-snap-type: none;
+}
+
+/* ---- 10. Home -------------------------------------------------------------------
+ * A full-bleed featured title, a tidy Where to grid, and rows of posters.
+ * The page scrolls freely, with no locking onto rows.
+ */
+
+html.tvm-android .home.home--launcher {
+  background: var(--tvm-bg, #071018);
+}
+
+html.tvm-android .home--launcher :is(.home__shelf, .home__destinations, .rail, .rail__track) {
+  background: transparent;
+}
+
+/* Featured title. */
+html.tvm-android .home--launcher .stage.stage--home,
+html.tvm-android.phone-shell .home--launcher .stage.stage--home {
+  min-height: min(66vh, 36rem);
+  padding: calc(var(--tvm-chrome-top, 0px) + 20px) 20px 22px;
+  justify-content: flex-end;
+  overflow: hidden;
+  background: var(--tvm-bg, #071018);
+}
+
+html.tvm-android.phone-shell[data-orientation='landscape'] .home--launcher .stage.stage--home {
+  min-height: 82vh;
+  padding-inline: max(28px, calc(var(--tvm-chrome-left, 0px) + 16px));
+}
+
+html.tvm-android .stage--home::before {
+  display: none;
+}
+
+/* The picture drifts at half the page's speed and dims as it leaves. */
+html.tvm-android .stage--home .stage__pictures {
+  transform: translate3d(0, calc(var(--tvma-hero-y, 0px) * 0.5), 0) scale(calc(1 + var(--tvma-hero-p, 0) * 0.05));
+  transform-origin: 50% 0;
+  opacity: calc(1 - var(--tvma-hero-p, 0) * 0.55);
+  will-change: transform;
+}
+
+html.tvm-android .stage--home .stage__art {
+  object-position: 62% 22%;
+}
+
+html.tvm-android .stage--home .stage__vignette {
+  opacity: 1;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--tvm-bg, #071018) 55%, transparent) 0%, transparent 24%, transparent 42%, color-mix(in srgb, var(--tvm-bg, #071018) 80%, transparent) 74%, var(--tvm-bg, #071018) 100%),
+    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg, #071018) 55%, transparent) 0%, transparent 60%);
+}
+
+html.tvm-android .stage--home .stage__copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 34rem;
+  opacity: calc(1 - var(--tvma-hero-p, 0) * 1.6);
+  transform: translate3d(0, calc(var(--tvma-hero-y, 0px) * -0.12), 0);
+}
+
+html.tvm-android .stage--home .home__kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+html.tvm-android .stage--home .home__kicker-home {
+  display: none;
+}
+
+html.tvm-android .stage--home .home__kicker-source {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(235, 242, 255, 0.78);
+}
+
+html.tvm-android .stage--home .stage__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  font-size: clamp(32px, 9.4vw, 46px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  text-transform: none;
+  color: #fff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45);
+}
+
+html.tvm-android .stage--home .stage__watchline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 0;
+}
+
+html.tvm-android .stage--home .stage__watchline-rule {
+  display: none;
+}
+
+html.tvm-android .stage--home .tvm-button.stage__watchnow {
+  display: inline-flex;
+  align-items: center;
+  height: 46px;
+  min-height: 46px;
+  padding: 0 24px 0 46px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 5.6v12.8a1.1 1.1 0 0 0 1.7.9l10-6.4a1.1 1.1 0 0 0 0-1.8l-10-6.4A1.1 1.1 0 0 0 8 5.6z' fill='%2305080e'/%3E%3C/svg%3E") 18px 50% / 20px 20px no-repeat;
+  color: #05080e;
+  font-size: 15px;
+  font-weight: 750;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  transform: none;
+}
+
+html.tvm-android .stage--home .tvm-button.tvm-lockup-btn {
+  height: 46px;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+  transform: none;
+}
+
+html.tvm-android .stage--home .tvm-button:active {
+  transform: scale(0.96);
+}
+
+html.tvm-android .stage--home .stage__dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+html.tvm-android .stage--home .stage__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  transition: width 260ms var(--tvma-ease), background 260ms ease;
+}
+
+html.tvm-android .stage--home .stage__dot--on {
+  width: 20px;
+  background: #fff;
+}
+
+/* Where to. */
+html.tvm-android .home--launcher .home__destinations {
+  min-height: 0;
+  padding: 10px 20px 6px;
+  background: none;
+}
+
+html.tvm-android .home__launcher-kicker,
+html.tvm-android .home--launcher .rail__title {
+  margin: 0 0 12px;
+  padding: 0;
+  font-size: 19px;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  color: #f4f7fc;
+}
+
+html.tvm-android .home__launcher,
+html.tvm-android.phone-shell[data-orientation] .home__launcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+html.tvm-android.phone-shell[data-orientation='landscape'] .home__launcher {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html.tvm-android .home__launcher .tvm-button.launch-tile,
+html.tvm-android.phone-shell .home__launcher .tvm-button.launch-tile {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 66px;
+  height: auto;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--tvma-r-md);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.035));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: none;
+  transition: transform 140ms ease, background 160ms ease;
+}
+
+html.tvm-android .home__launcher .tvm-button.launch-tile:active {
+  transform: scale(0.97);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+}
+
+html.tvm-android .home__launcher .launch-tile .tvm-button__label {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 1px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+}
+
+html.tvm-android .home__launcher .launch-tile__mark {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+html.tvm-android .home__launcher .launch-tile__mark svg {
+  width: 19px;
+  height: 19px;
+}
+
+html.tvm-android .home__launcher .launch-tile__mark--stream { background: linear-gradient(135deg, #5b2bff, #2d8bff); }
+html.tvm-android .home__launcher .launch-tile__mark--live { background: linear-gradient(135deg, #ff4f6e, #ff8a3d); }
+html.tvm-android .home__launcher .launch-tile__mark--list { background: linear-gradient(135deg, #f7a531, #f5d04a); }
+html.tvm-android .home__launcher .launch-tile__mark--apps { background: linear-gradient(135deg, #14b8a6, #22d3ee); }
+
+html.tvm-android .home__launcher .launch-tile strong {
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+}
+
+html.tvm-android .home__launcher .launch-tile .tvm-button__label > span:not(.launch-tile__mark) {
+  display: block;
+  overflow: hidden;
+  height: auto;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tvma-muted);
+  opacity: 1;
+}
+
+/* Rows. */
+html.tvm-android .home--launcher .home__shelf {
+  padding: 4px 0 calc(var(--tvm-tabbar) + 20px);
+}
+
+html.tvm-android .home--launcher .home__shelf > .rail {
+  margin: 0;
+  padding: 20px 0 0;
+  min-height: 0;
+}
+
+html.tvm-android .home--launcher .rail__header {
+  margin: 0;
+  padding: 0 20px;
+}
+
+html.tvm-android .home--launcher .rail__track {
+  gap: 10px;
+  padding: 0 20px 4px;
+  min-height: 0;
+  scroll-padding-inline: 20px;
+}
+
+html.tvm-android .home--launcher .rail .poster {
+  --poster-w: min(31vw, 136px);
+}
+
+html.tvm-android.phone-shell[data-orientation='landscape'] .home--launcher .rail .poster {
+  --poster-w: min(17vw, 150px);
+}
+
+/* Posters everywhere: rounded, borderless, quiet text. */
+html.tvm-android .poster .poster__art {
+  border: 0;
+  border-radius: var(--tvma-r-sm);
+  background: #121722;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+html.tvm-android .poster .poster__art img {
+  border-radius: inherit;
+}
+
+html.tvm-android .poster:active .poster__art {
+  transform: scale(0.97);
+}
+
+html.tvm-android .poster .poster__meta {
+  gap: 1px;
+  margin-top: 8px;
+  padding: 0 2px;
+}
+
+html.tvm-android .poster .poster__title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eef2f8;
+}
+
+html.tvm-android .poster .poster__year {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--tvma-faint);
+}
+
+/* Continue watching: the progress sits inside the bottom of the artwork. */
+html.tvm-android .poster .poster__progress {
+  position: relative;
+  z-index: 2;
+  display: block;
+  height: 4px;
+  margin: -14px 9px 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+html.tvm-android .poster .poster__progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tvma-brand);
+}
+
+/* ---- 11. The other screens, in the same language ----------------------------------- */
+
+/* Details: Play is the one white pill; the rest are quiet rounded pills. */
+html.tvm-android .details__actions,
+html.tvm-android .hero__actions.details__actions {
+  width: 100%;
+  max-width: 34rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+html.tvm-android .details__actions .tvm-button {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+  min-height: 46px;
+  height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--tvma-card-hi);
+  color: #fff;
+  font-size: 14.5px;
+  font-weight: 650;
+  box-shadow: none;
+  outline: none;
+  transform: none;
+}
+
+html.tvm-android .details__actions .tvm-button--primary,
+html.tvm-android .details__actions [data-focus-id='play'] {
+  background: #fff;
+  color: #05080e;
+  font-weight: 750;
+}
+
+html.tvm-android .details__actions .tvm-button:active {
+  transform: scale(0.97);
+}
+
+html.tvm-android .details .poster__art,
+html.tvm-android .details :is(.details__poster, .details__art) {
+  border-radius: var(--tvma-r-md);
+}
+
+/* Cards and panels: one radius, one fill, no hard borders. */
+html.tvm-android :is(.panel, .hero--panel, .error-state, .settings-summary, .live-card, .channel-card, .empty-state) {
+  border-color: rgba(255, 255, 255, 0.06);
+  border-radius: var(--tvma-r-lg);
+}
+
+html.tvm-android .page__toolbar .tvm-button,
+html.tvm-android .collection-controls .tvm-button,
+html.tvm-android .hero__actions .tvm-button {
+  border-radius: 999px;
+}
+
+html.tvm-android .page__heading {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* Apps: rounded tiles to match the posters. */
+html.tvm-android .app-card,
+html.tvm-android .app-card :is(.app-card__art, img) {
+  border-radius: var(--tvma-r-md);
+}
+
+/* Touch has no remote focus: no ring left on the last poster touched. */
+html.tvm-android .poster:is([data-focused='true'], .tvm-button--focused) .poster__art {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: none;
 }

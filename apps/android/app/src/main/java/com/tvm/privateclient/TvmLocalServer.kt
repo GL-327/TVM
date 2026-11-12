@@ -234,7 +234,11 @@ class TvmLocalServer(
         header.append("Connection: close\r\n")
         // The interface is served from loopback and is never cached across runs:
         // a stale bundle after an app update is far worse than a re-read.
-        header.append("Cache-Control: no-store\r\n")
+        // Artwork says otherwise (TvmArtCache): it is content-addressed by its
+        // source URL and safe to keep.
+        if (reply.headers.keys.none { it.equals("Cache-Control", ignoreCase = true) }) {
+            header.append("Cache-Control: no-store\r\n")
+        }
         for ((key, value) in reply.headers) header.append(key).append(": ").append(value).append("\r\n")
         header.append("\r\n")
         out.write(header.toString().toByteArray(Charsets.US_ASCII))

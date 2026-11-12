@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.FrameLayout
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -51,6 +53,8 @@ class TvmNativePlayer(
     private var isLive = false
     /** Last level from the slider. Mute must not throw that away and unmute at full. */
     private var level = 1f
+    /** Whether a film was playing when the app left the screen, so it can carry on when it returns. */
+    private var resumeOnStart = false
 
     /** Exposed to the page as `window.tvmPlayer`. JS interfaces only take primitives. */
     inner class Bridge {
@@ -125,6 +129,12 @@ class TvmNativePlayer(
 
         val exo = ExoPlayer.Builder(activity)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            // Duck or pause for calls and other apps, and stop when headphones are pulled out.
+            .setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
+                true,
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
         player = exo
         val initialVolume = message.optDouble("initialVolume", 1.0)
@@ -223,7 +233,7 @@ class TvmNativePlayer(
                 "buffering" to (exo.playbackState == Player.STATE_BUFFERING),
                 "hasFrame" to (exo.currentPosition > 200),
                 // C.TIME_UNSET until the manifest establishes a live window.
-                "liveDrift" to if (isLive && exo.currentLiveOffset != androidx.media3.common.C.TIME_UNSET) {
+                "liveDrift" to if (isLive && exo.currentLiveOffset != C.TIME_UNSET) {
                     (exo.currentLiveOffset / 1000.0).coerceAtLeast(0.0)
                 } else {
                     0.0
@@ -250,6 +260,26 @@ class TvmNativePlayer(
     }
 
     fun release() = close(sessionId, notify = false)
+
+    /**
+     * The app left the screen (home button, another app, screen off). The
+     * picture's surface is destroyed with the window, so pause here rather than
+     * keep decoding into nothing, and tell the page so its controls agree.
+     */
+    fun onHostStop() {
+        val exo = player ?: return
+        resumeOnStart = exo.playWhenReady
+        exo.pause()
+        sessionId?.let { pushState(it) }
+    }
+
+    /** Back on screen: the surface comes back with the window; carry on where it was. */
+    fun onHostStart() {
+        val exo = player ?: return
+        if (resumeOnStart) exo.play()
+        resumeOnStart = false
+        sessionId?.let { pushState(it) }
+    }
 
     private fun describe(error: PlaybackException): String = when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,

@@ -139,6 +139,16 @@ class MainActivity : AppCompatActivity() {
         startStandalone()
     }
 
+    override fun onStart() {
+        super.onStart()
+        nativePlayer?.onHostStart()
+    }
+
+    override fun onStop() {
+        nativePlayer?.onHostStop()
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         val apk = pendingInstall ?: return
@@ -199,6 +209,7 @@ class MainActivity : AppCompatActivity() {
                 server.start()
                 runOnUiThread {
                     core = made
+                    made.artCache = TvmArtCache(java.io.File(cacheDir, "art"))
                     made.onUpdateCheck = { runOnUiThread { checkAppUpdate(manual = true) } }
                     localServer = server
                     standaloneOrigin = server.origin
@@ -722,8 +733,10 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowContentAccess = false
         webView.settings.javaScriptCanOpenWindowsAutomatically = false
         webView.settings.setSupportMultipleWindows(false)
-        // The loopback server marks everything no-store; an updated interface must never be served from cache.
-        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        // The loopback server marks the interface no-store, so an updated
+        // interface is never served from cache; artwork is marked cacheable
+        // (TvmArtCache). LOAD_NO_CACHE used to refetch every poster each time.
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = false
         webView.settings.setSupportZoom(false)
