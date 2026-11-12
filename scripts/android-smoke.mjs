@@ -191,6 +191,11 @@ try {
     return true;
   });
 
+  // Real video on the real Android player: frames on screen, pause, seek,
+  // leaving and returning, switching titles and formats, rotation.
+  const { playbackSmoke } = await import('../apps/android/smoke/playback.mjs');
+  await playbackSmoke({ adb, evaluate, step, annotate, sleep, out, packageName: PACKAGE });
+
   const crashes = adb('logcat', '-d', '-b', 'crash');
   if (crashes.includes(PACKAGE)) throw new Error(`TVM crashed:\n${crashes.slice(-2000)}`);
   if (adb('shell', 'pidof', PACKAGE).trim() === '') throw new Error('TVM is no longer running');
