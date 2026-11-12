@@ -46,6 +46,10 @@
     var t = event.touches[0];
     stopSpring(el);
     touch = { el: el, x: t.clientX, y: t.clientY, axis: null, edgeY: null, edge: 0, max: maxScroll(el) };
+    // At an edge a pull may follow: give the page's sections their own layers
+    // now, while nothing moves, rather than on the pull's first frame (which
+    // drew them blank for a frame: the flicker under the hero).
+    if (!off() && (el.scrollTop <= 0.5 || el.scrollTop >= touch.max - 0.5)) el.setAttribute('data-tvma-prime', '');
   }, { capture: true, passive: true });
 
   function claim(event, x, y) {
@@ -80,6 +84,8 @@
     var top = el.scrollTop;
     var atTop = top <= 0.5;
     var atBottom = top >= touch.max - 0.5;
+    // An ordinary scroll away from the edge: the prepared layers are not needed.
+    if (touch.edgeY === null && !atTop && !atBottom && el.hasAttribute('data-tvma-prime') && !el.hasAttribute('data-tvm-rubber')) el.removeAttribute('data-tvma-prime');
     if (touch.edgeY === null) {
       if (atTop && t.clientY > touch.y) { touch.edgeY = t.clientY; touch.edge = 1; }
       else if (atBottom && t.clientY < touch.y) { touch.edgeY = t.clientY; touch.edge = -1; }
@@ -96,6 +102,7 @@
     touch = null;
     var offset = currentOffset(el);
     if (offset !== 0) spring(el, offset, 0);
+    else el.removeAttribute('data-tvma-prime');
   }
   window.addEventListener('touchend', release, true);
   window.addEventListener('touchcancel', release, true);
@@ -107,21 +114,25 @@
   }
 
   function setOffset(el, px) {
-    // Home's hero stretches into a pull from the top rather than sliding
-    // down and leaving a gap above it.
-    var stage = px > 0 && el.classList.contains('home') ? el.querySelector('.stage--home') : null;
     if (Math.abs(px) < 0.25) {
       if (el.hasAttribute('data-tvm-rubber')) {
         el.removeAttribute('data-tvm-rubber');
+        el.removeAttribute('data-tvma-pull');
         el.style.removeProperty('--tvm-rubber');
-        var s = el.querySelector('.stage--home');
-        if (s) s.style.removeProperty('--tvma-pull-scale');
       }
+      if (!touch || touch.el !== el) el.removeAttribute('data-tvma-prime');
       return;
     }
+    // Whole device pixels: the page's sections move as one, with no hairline
+    // seams between them on fractional offsets.
+    var dpr = window.devicePixelRatio || 1;
+    px = Math.round(px * dpr) / dpr;
     if (!el.hasAttribute('data-tvm-rubber')) el.setAttribute('data-tvm-rubber', '');
-    el.style.setProperty('--tvm-rubber', px.toFixed(1) + 'px');
-    if (stage) stage.style.setProperty('--tvma-pull-scale', (1 + px / Math.max(200, stage.offsetHeight)).toFixed(4));
+    // Pulled down from the top: the hero picture holds still at the top of the
+    // screen (no gap above it, nothing stretched) while the page moves.
+    if (px > 0) { if (!el.hasAttribute('data-tvma-pull')) el.setAttribute('data-tvma-pull', ''); }
+    else if (el.hasAttribute('data-tvma-pull')) el.removeAttribute('data-tvma-pull');
+    el.style.setProperty('--tvm-rubber', px + 'px');
   }
 
   function currentOffset(el) {
@@ -417,12 +428,7 @@
     })();
   }
 
-  var EXPLORE = [
-    { label: 'TVM Stream', sub: 'Films and series', tone: 'stream', go: function () { closeSearchThen('more', 'more-library'); } },
-    { label: 'Live TV', sub: 'Channels and guide', tone: 'live', go: function () { closeSearchThen('live'); } },
-    { label: 'Watchlist', sub: 'Saved for later', tone: 'list', go: function () { closeSearchThen('watchlist'); } },
-    { label: 'Apps', sub: 'Studios and services', tone: 'apps', go: function () { closeSearchThen('more', 'more-apps'); } },
-  ];
+
 
   function buildDiscover() {
     var wrap = document.createElement('section');
@@ -463,20 +469,6 @@
       sec.appendChild(row);
       wrap.appendChild(sec);
     });
-    var ex = document.createElement('div');
-    ex.className = 'tvma-discover__section';
-    ex.innerHTML = '<h2 class="tvma-discover__title">Explore</h2><div class="tvma-explore"></div>';
-    EXPLORE.forEach(function (e) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'tvma-explore__tile tvma-explore__tile--' + e.tone;
-      b.innerHTML = '<strong></strong><span></span>';
-      b.querySelector('strong').textContent = e.label;
-      b.querySelector('span').textContent = e.sub;
-      b.addEventListener('click', e.go);
-      ex.querySelector('.tvma-explore').appendChild(b);
-    });
-    wrap.appendChild(ex);
     return wrap;
   }
 
@@ -627,6 +619,702 @@
     for (var i = 0; i < fresh.length; i++) { fresh[i].setAttribute('data-tvma-sk', ''); skSeen.observe(fresh[i]); }
   }
 
+  // ---- 11. Shared helpers for the sections below -------------------------------------
+
+  /** Press one of the interface's own buttons, without the overlay's interceptions. */
+  var bypass = false;
+  function press(el) {
+    bypass = true;
+    try { el.click(); } finally { bypass = false; }
+  }
+  function pressWhenThere(selector, then) {
+    whenThere(selector, function (el) { press(el); if (then) then(el); });
+  }
+  function authHeaders(json) {
+    var h = {};
+    var t = token();
+    if (t) h.Authorization = 'Bearer ' + t;
+    if (json) h['content-type'] = 'application/json';
+    return h;
+  }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  /** Keep a scroller at one position while the interface settles (focus reveals, re-renders). */
+  function pin(scroller, value, ms) {
+    if (!scroller) return;
+    var until = performance.now() + ms;
+    var touched = false;
+    var hold = function () {
+      if (touched || performance.now() > until) { scroller.removeEventListener('scroll', hold); return; }
+      if (Math.abs(scroller.scrollTop - value) > 1) scroller.scrollTop = value;
+    };
+    scroller.addEventListener('pointerdown', function () { touched = true; }, { once: true });
+    scroller.addEventListener('scroll', hold);
+    hold();
+    requestAnimationFrame(hold);
+    [60, 160, 320].forEach(function (ms2) { setTimeout(hold, ms2); });
+  }
+
+  /** Android Back (MainActivity) asks here first: an open sheet or popup closes. */
+  var backHandlers = [];
+  window.tvmaBack = function () {
+    for (var i = backHandlers.length - 1; i >= 0; i--) if (backHandlers[i]()) return true;
+    var scrim = document.querySelector('.app__screen:not([inert]) .ribbon-sheet__scrim');
+    if (scrim) { press(scrim); return true; }
+    return false;
+  };
+
+  // Programmatic hops through the interface's own routes (Settings → Profiles,
+  // More → Apps) happen under a veil so the screens in between are not seen.
+  function veil(on) {
+    root.classList.toggle('tvma-routing', on);
+    if (on) setTimeout(function () { root.classList.remove('tvma-routing'); }, 2500);
+  }
+
+  // ---- 12. You: the active profile in the bar -------------------------------------------
+
+  var registry = null;
+  var me = null;
+  var meAsked = 0;
+  function avatarOf(id) {
+    try { return localStorage.getItem('tvma.avatar.' + id); } catch (e) { return null; }
+  }
+  function setAvatar(id, data) {
+    try {
+      if (data) localStorage.setItem('tvma.avatar.' + id, data);
+      else localStorage.removeItem('tvma.avatar.' + id);
+    } catch (e) { /* storage full or blocked: the coloured initial stays */ }
+  }
+  function loadProfiles(force, then) {
+    var now = Date.now();
+    if (!force && now - meAsked < 20000) { if (then) then(registry); return; }
+    meAsked = now;
+    fetch('/api/profiles', { headers: authHeaders() }).then(function (r) { return r.ok ? r.json() : null; }).then(function (reg) {
+      if (reg && Array.isArray(reg.profiles)) {
+        registry = reg;
+        me = reg.profiles.filter(function (p) { return p.id === reg.activeId; })[0] || reg.profiles[0] || null;
+        youKey = '';
+        queue();
+      }
+      if (then) then(registry);
+    }).catch(function () { if (then) then(registry); });
+  }
+  /** A profile's picture, or its initial on its own colour. */
+  function paintAvatar(node, profile) {
+    var pic = profile ? avatarOf(profile.id) : null;
+    node.classList.add('tvma-av');
+    node.style.setProperty('--tvma-av-hue', String(profile ? profile.hue : 215));
+    if (pic) {
+      node.style.backgroundImage = 'url("' + pic + '")';
+      node.textContent = '';
+      node.classList.add('tvma-av--pic');
+    } else {
+      node.style.backgroundImage = '';
+      node.classList.remove('tvma-av--pic');
+      node.textContent = profile && profile.name ? profile.name.trim().charAt(0).toUpperCase() : '';
+    }
+  }
+  var youKey = '';
+  function syncYou() {
+    var key = me ? me.id + ':' + me.name + ':' + (avatarOf(me.id) || '').length : '';
+    var buttons = document.querySelectorAll('nav.ribbon--tabs [data-focus-id="more"], nav.tvma-pill [data-tvma-tab="more"]');
+    for (var i = 0; i < buttons.length; i++) {
+      var b = buttons[i];
+      if (b.getAttribute('data-tvma-you') === key) continue;
+      b.setAttribute('data-tvma-you', key);
+      b.setAttribute('aria-label', 'You');
+      var label = b.querySelector('.ribbon__label');
+      if (label && label.textContent !== 'You') label.textContent = 'You';
+      var holder = b.querySelector('.ribbon__avatar');
+      if (!holder) continue;
+      var face = holder.querySelector('.tvma-av');
+      if (!face) { face = el('span'); holder.appendChild(face); }
+      paintAvatar(face, me);
+    }
+    youKey = key;
+    // The popup: Profile and Settings only.
+    var row = document.querySelector('.ribbon-sheet [data-focus-id="more-profile"]');
+    if (row && !row.hasAttribute('data-tvma-row')) {
+      row.setAttribute('data-tvma-row', 'profile');
+      var strong = row.querySelector('strong');
+      var sub = row.querySelector('.ribbon-sheet__text > span');
+      if (strong) strong.textContent = 'Profile';
+      if (sub) sub.textContent = 'Switch, add and edit profiles';
+      var glyph = row.querySelector('.ribbon-sheet__glyph');
+      if (glyph && me) { glyph.innerHTML = ''; var f = el('span'); glyph.appendChild(f); paintAvatar(f, me); }
+    }
+    var set = document.querySelector('.ribbon-sheet [data-focus-id="more-settings"]');
+    if (set && !set.hasAttribute('data-tvma-row')) {
+      set.setAttribute('data-tvma-row', 'settings');
+      var s2 = set.querySelector('.ribbon-sheet__text > span');
+      if (s2) s2.textContent = 'Display, language, account and updates';
+    }
+  }
+
+  /** Profile in the popup: the profile chooser, reached the way Settings reaches it. */
+  var profilesViaPopup = false;
+  function openProfiles() {
+    profilesViaPopup = !mainSettings();
+    veil(true);
+    settingsFresh = true;
+    var sheetSettings = document.querySelector('.ribbon-sheet [data-focus-id="more-settings"]');
+    var go = function () {
+      pressWhenThere('.app__screen:not([inert]) .page--settings [data-focus-id="profiles"]', function () {
+        whenThere('.app__screen:not([inert]) .page--profiles', function () { veil(false); });
+      });
+    };
+    if (sheetSettings) { press(sheetSettings); go(); return; }
+    var settingsRow = document.querySelector('.app__screen:not([inert]) .page--settings [data-focus-id="profiles"]');
+    if (settingsRow) { press(settingsRow); whenThere('.app__screen:not([inert]) .page--profiles', function () { veil(false); }); return; }
+    veil(false);
+  }
+
+  /** Account and Apps live in Settings now; they open through the old More entries. */
+  function openViaMore(entry) {
+    var tab = realTab('more');
+    if (!tab) return;
+    veil(true);
+    press(tab);
+    pressWhenThere('.ribbon-sheet [data-focus-id="' + entry + '"]', function () {
+      whenGone('.ribbon-sheet', function () { requestAnimationFrame(function () { veil(false); }); });
+    });
+  }
+
+  // ---- 13. Settings: language, Account and Apps rows, where the page opens ----------------
+
+  var LANGS = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['pt', 'Português'], ['ja', '日本語'], ['ko', '한국어'], ['zh', '中文']];
+
+  function sheet(title, build) {
+    var wrap = el('div', 'tvma-sheet');
+    var scrim = el('button', 'tvma-sheet__scrim');
+    scrim.type = 'button';
+    scrim.setAttribute('aria-label', 'Close');
+    var panel = el('div', 'tvma-sheet__panel');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', title);
+    panel.appendChild(el('span', 'tvma-sheet__grip'));
+    if (title) panel.appendChild(el('h2', 'tvma-sheet__title', title));
+    var close = function () {
+      if (!wrap.parentNode) return false;
+      wrap.classList.add('tvma-sheet--out');
+      backHandlers = backHandlers.filter(function (h) { return h !== close; });
+      setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 200);
+      return true;
+    };
+    scrim.addEventListener('click', close);
+    build(panel, close);
+    wrap.appendChild(scrim);
+    wrap.appendChild(panel);
+    document.body.appendChild(wrap);
+    backHandlers.push(close);
+    return close;
+  }
+
+  function openLanguages(row) {
+    var detail = row.querySelector('.tvm-button__detail');
+    var currentName = detail ? detail.textContent.trim() : 'English';
+    var current = 0;
+    LANGS.forEach(function (l, i) { if (l[1] === currentName) current = i; });
+    sheet('App language', function (panel, close) {
+      var list = el('div', 'tvma-sheet__list');
+      LANGS.forEach(function (l, i) {
+        var b = el('button', 'tvma-choice' + (i === current ? ' tvma-choice--on' : ''));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', i === current ? 'true' : 'false');
+        b.appendChild(el('span', 'tvma-choice__name', l[1]));
+        b.addEventListener('click', function () {
+          close();
+          // The interface changes language one step at a time; the steps run
+          // behind the closing sheet, with the page held where it is.
+          var steps = (i - current + LANGS.length) % LANGS.length;
+          var page = row.closest('.page--settings');
+          var top = page ? page.scrollTop : 0;
+          (function step(n) {
+            if (n <= 0) { pin(page, top, 500); return; }
+            var live = document.querySelector('.app__screen:not([inert]) .page--settings [data-focus-id="language"]');
+            if (!live) return;
+            press(live);
+            if (page) page.scrollTop = top;
+            requestAnimationFrame(function () { requestAnimationFrame(function () { if (page) page.scrollTop = top; step(n - 1); }); });
+          })(steps);
+        });
+        list.appendChild(b);
+      });
+      panel.appendChild(list);
+    });
+  }
+
+  var settingsFresh = false;
+  var settingsMain = null;
+  var settingsMainTop = false;
+  var settingsSaved = 0;
+
+  function mainSettings() {
+    var lang = document.querySelector('.page--settings [data-focus-id="language"]');
+    return lang ? lang.closest('.page--settings') : null;
+  }
+
+  /** Runs before paint (from the observer): the page never shows at the wrong place. */
+  function syncSettingsScroll() {
+    var page = mainSettings();
+    if (!page) { settingsMain = null; settingsMainTop = false; return; }
+    var top = !!page.closest('.app__screen:not([inert])');
+    if (page !== settingsMain) {
+      // The interface builds Settings afresh each time it is shown: from the
+      // You popup it starts at the top; back from one of its pages, where it was.
+      settingsMain = page;
+      settingsMainTop = top;
+      if (top) {
+        var at = settingsFresh ? 0 : settingsSaved;
+        if (settingsFresh) settingsSaved = 0;
+        pin(page, at, 700);
+        settingsFresh = false;
+      }
+      return;
+    }
+    if (top && !settingsMainTop) pin(page, settingsFresh ? 0 : settingsSaved, 600);
+    if (top) settingsFresh = false;
+    settingsMainTop = top;
+  }
+
+  function settingsRow(cls, title, detail, onTap) {
+    var b = el('button', cls);
+    b.type = 'button';
+    var label = el('span', 'tvm-button__label', title);
+    b.appendChild(label);
+    b.appendChild(el('span', 'tvm-button__detail', detail));
+    b.addEventListener('click', onTap);
+    return b;
+  }
+
+  function syncSettingsExtras() {
+    var page = mainSettings();
+    if (!page) return;
+    var anchor = page.querySelector('[data-focus-id="profiles"]');
+    if (anchor && !page.querySelector('[data-tvma-row="account"]')) {
+      var cls = anchor.className.replace(/\s*tvm-button--focused/g, '');
+      var acc = settingsRow(cls, 'Account', 'Sign-in, access and signing out', function () { settingsSaved = page.scrollTop; openViaMore('more-profile'); });
+      acc.setAttribute('data-tvma-row', 'account');
+      anchor.parentNode.insertBefore(acc, anchor.nextSibling);
+      var apps = settingsRow(cls, 'Apps', 'Studios and services', function () { settingsSaved = page.scrollTop; openViaMore('more-apps'); });
+      apps.setAttribute('data-tvma-row', 'apps');
+      acc.parentNode.insertBefore(apps, acc.nextSibling);
+    }
+    if (!page.querySelector('.tvma-about') && coreLine) {
+      var about = el('p', 'tvma-about', coreLine);
+      page.appendChild(about);
+    }
+  }
+
+  // The core's version moves from every sub-page header to the foot of Settings.
+  var coreLine = '';
+  fetch('/api/health').then(function (r) { return r.ok ? r.json() : null; }).then(function (h) {
+    if (h && h.version) { coreLine = 'TVM Core ' + h.version; queue(); }
+  }).catch(function () {});
+
+  function syncTopbars() {
+    var backs = document.querySelectorAll('.topbar [data-focus-id="top-back"]:not([aria-label])');
+    for (var i = 0; i < backs.length; i++) backs[i].setAttribute('aria-label', 'Back');
+  }
+
+  document.addEventListener('click', function (event) {
+    if (bypass) return;
+    var t = event.target && event.target.closest && event.target.closest('[data-focus-id]');
+    if (!t) return;
+    var id = t.getAttribute('data-focus-id');
+    if (id === 'more-profile' && t.closest('.ribbon-sheet')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      openProfiles();
+    } else if (id === 'language' && t.closest('.page--settings')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      openLanguages(t);
+    } else if (id === 'more-settings') {
+      settingsFresh = true;
+      settingsSaved = 0;
+      var already = mainSettings();
+      if (already && already.closest('.app__screen:not([inert])')) {
+        settingsFresh = false;
+        already.scrollTo({ top: 0, behavior: off() ? 'auto' : 'smooth' });
+      }
+    } else if (t.classList.contains('settings-row') && t.closest('.page--settings') === mainSettings()) {
+      settingsSaved = mainSettings().scrollTop;
+    }
+  }, true);
+
+  // ---- 14. Profiles: choose, add and edit, with pictures ---------------------------------
+
+  var who = null;
+  var whoEditing = false;
+
+  function reactTile(id) {
+    if (!registry) return null;
+    var idx = -1;
+    registry.profiles.forEach(function (p, i) { if (p.id === id) idx = i; });
+    if (idx < 0) return null;
+    return document.querySelector('.page--profiles [data-focus-id="' + (idx === 0 ? 'profile-pick' : 'profile-' + id) + '"]');
+  }
+
+  function renderWho() {
+    if (!who) return;
+    var page = who.parentNode;
+    var canBack = !!page.querySelector('[data-focus-id="profiles-back"]');
+    var canAdd = !!page.querySelector('[data-focus-id="profile-add"]');
+    var profiles = registry ? registry.profiles : [];
+    who.innerHTML = '';
+    var bar = el('div', 'tvma-who__bar');
+    var back = el('button', 'tvma-icon-btn tvma-icon-btn--back');
+    back.type = 'button';
+    back.setAttribute('aria-label', 'Back');
+    back.style.visibility = canBack ? '' : 'hidden';
+    back.addEventListener('click', function () {
+      var b = page.querySelector('[data-focus-id="profiles-back"]');
+      if (b) press(b);
+    });
+    var edit = el('button', 'tvma-text-btn', whoEditing ? 'Done' : 'Edit Profiles');
+    edit.type = 'button';
+    edit.addEventListener('click', function () { whoEditing = !whoEditing; renderWho(); });
+    bar.appendChild(back);
+    bar.appendChild(edit);
+    who.appendChild(bar);
+    who.appendChild(el('h1', 'tvma-who__title', "Who's watching?"));
+    var grid = el('div', 'tvma-who__grid' + (whoEditing ? ' tvma-who__grid--edit' : ''));
+    profiles.forEach(function (p) {
+      var tile = el('button', 'tvma-who__tile' + (registry && p.id === registry.activeId ? ' tvma-who__tile--on' : ''));
+      tile.type = 'button';
+      var face = el('span', 'tvma-who__face');
+      paintAvatar(face, p);
+      if (whoEditing) face.appendChild(el('span', 'tvma-who__pencil'));
+      tile.appendChild(face);
+      tile.appendChild(el('span', 'tvma-who__name', p.name));
+      tile.addEventListener('click', function () {
+        if (whoEditing) { editProfile(p); return; }
+        var btn = reactTile(p.id);
+        if (btn) { press(btn); setTimeout(function () { loadProfiles(true); }, 400); }
+      });
+      grid.appendChild(tile);
+    });
+    if (canAdd && !whoEditing) {
+      var add = el('button', 'tvma-who__tile tvma-who__tile--add');
+      add.type = 'button';
+      add.appendChild(el('span', 'tvma-who__face tvma-who__face--add'));
+      add.appendChild(el('span', 'tvma-who__name', 'Add Profile'));
+      add.addEventListener('click', function () { editProfile(null); });
+      grid.appendChild(add);
+    }
+    who.appendChild(grid);
+  }
+
+  function syncWho() {
+    var page = document.querySelector('.app__screen:not([inert]) .page--profiles');
+    if (!page) {
+      if (who) {
+        who = null;
+        whoEditing = false;
+        loadProfiles(true);
+        // Reached through Settings on the way: step back past it too.
+        if (profilesViaPopup) {
+          profilesViaPopup = false;
+          var settings = mainSettings();
+          if (settings && settings.closest('.app__screen:not([inert])')) {
+            veil(true);
+            window.dispatchEvent(new Event('tvm:navigate-back'));
+            whenGone('.app__screen:not([inert]) .page--settings [data-focus-id="language"]', function () { requestAnimationFrame(function () { veil(false); }); });
+          }
+        }
+      }
+      return;
+    }
+    if (who && who.parentNode === page) return;
+    who = el('section', 'tvma-who');
+    page.appendChild(who);
+    page.classList.add('tvma-who-page');
+    loadProfiles(true, function () { renderWho(); });
+    renderWho();
+  }
+
+  /** Read a chosen picture small (memory), then let the person frame it. */
+  function choosePicture(done) {
+    var input = el('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+      var opts = { resizeWidth: 1200, resizeQuality: 'medium' };
+      createImageBitmap(file).then(function (probe) {
+        // Scale on decode so a 50-megapixel photo never sits in memory full size.
+        var long = Math.max(probe.width, probe.height);
+        var portrait = probe.height > probe.width;
+        probe.close();
+        if (long <= 1200) return createImageBitmap(file);
+        return createImageBitmap(file, portrait ? { resizeHeight: 1200, resizeQuality: 'medium' } : opts);
+      }).then(function (bitmap) { cropPicture(bitmap, done); })
+        .catch(function () { toast('That picture could not be opened. Try another one.'); });
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  function cropPicture(bitmap, done) {
+    var size = 280;
+    var scaleMin = size / Math.min(bitmap.width, bitmap.height);
+    var zoom = 1;
+    var x = 0;
+    var y = 0;
+    sheet('Move and scale', function (panel, close) {
+      var frame = el('div', 'tvma-crop');
+      var canvas = el('canvas', 'tvma-crop__canvas');
+      var dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      var ctx = canvas.getContext('2d');
+      var clamp = function () {
+        var s = scaleMin * zoom;
+        var maxX = Math.max(0, (bitmap.width * s - size) / 2);
+        var maxY = Math.max(0, (bitmap.height * s - size) / 2);
+        x = Math.max(-maxX, Math.min(maxX, x));
+        y = Math.max(-maxY, Math.min(maxY, y));
+      };
+      var draw = function () {
+        clamp();
+        var s = scaleMin * zoom;
+        var w = bitmap.width * s;
+        var h = bitmap.height * s;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(bitmap, (size - w) / 2 + x, (size - h) / 2 + y, w, h);
+      };
+      var last = null;
+      canvas.addEventListener('pointerdown', function (e) { last = [e.clientX, e.clientY]; canvas.setPointerCapture(e.pointerId); });
+      canvas.addEventListener('pointermove', function (e) {
+        if (!last) return;
+        x += e.clientX - last[0];
+        y += e.clientY - last[1];
+        last = [e.clientX, e.clientY];
+        draw();
+      });
+      canvas.addEventListener('pointerup', function () { last = null; });
+      canvas.addEventListener('pointercancel', function () { last = null; });
+      frame.appendChild(canvas);
+      panel.appendChild(frame);
+      var slider = el('input', 'tvma-crop__zoom');
+      slider.type = 'range';
+      slider.min = '1';
+      slider.max = '4';
+      slider.step = '0.01';
+      slider.value = '1';
+      slider.setAttribute('aria-label', 'Zoom');
+      slider.addEventListener('input', function () { zoom = parseFloat(slider.value) || 1; draw(); });
+      panel.appendChild(slider);
+      var actions = el('div', 'tvma-actions');
+      var cancel = el('button', 'tvma-btn', 'Cancel');
+      cancel.type = 'button';
+      cancel.addEventListener('click', function () { bitmap.close(); close(); });
+      var use = el('button', 'tvma-btn tvma-btn--primary', 'Use Picture');
+      use.type = 'button';
+      use.addEventListener('click', function () {
+        // A 320-pixel square JPEG: sharp in every place it is shown, about 30 KB.
+        var out = document.createElement('canvas');
+        out.width = 320;
+        out.height = 320;
+        var o = out.getContext('2d');
+        var s = scaleMin * zoom * (320 / size);
+        var w = bitmap.width * s;
+        var h = bitmap.height * s;
+        o.drawImage(bitmap, (320 - w) / 2 + x * (320 / size), (320 - h) / 2 + y * (320 / size), w, h);
+        bitmap.close();
+        close();
+        done(out.toDataURL('image/jpeg', 0.86));
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(use);
+      panel.appendChild(actions);
+      draw();
+    });
+  }
+
+  function toast(text) {
+    var t = el('div', 'tvma-toast', text);
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('tvma-toast--out'); }, 2600);
+    setTimeout(function () { t.remove(); }, 3000);
+  }
+
+  /** Edit a profile (or, with null, create one): name and picture, Save or Cancel. */
+  function editProfile(profile) {
+    var creating = profile === null;
+    var picture = creating ? null : avatarOf(profile.id);
+    var pictureChanged = false;
+    var hue = creating ? 215 : profile.hue;
+    sheet(creating ? 'New Profile' : 'Edit Profile', function (panel, close) {
+      var head = el('div', 'tvma-edit__head');
+      var face = el('button', 'tvma-edit__face');
+      face.type = 'button';
+      face.setAttribute('aria-label', 'Change picture');
+      var paint = function () { paintAvatar(face, { id: '__preview', hue: hue, name: field.value || (profile ? profile.name : '') }); if (picture) { face.style.backgroundImage = 'url("' + picture + '")'; face.textContent = ''; face.classList.add('tvma-av--pic'); } };
+      var pick = el('button', 'tvma-text-btn', 'Choose Picture');
+      pick.type = 'button';
+      var onPick = function () { choosePicture(function (data) { picture = data; pictureChanged = true; paint(); syncRemove(); }); };
+      face.addEventListener('click', onPick);
+      pick.addEventListener('click', onPick);
+      var remove = el('button', 'tvma-text-btn tvma-text-btn--quiet', 'Remove Picture');
+      remove.type = 'button';
+      var syncRemove = function () { remove.style.display = picture ? '' : 'none'; };
+      remove.addEventListener('click', function () { picture = null; pictureChanged = true; paint(); syncRemove(); });
+      var links = el('div', 'tvma-edit__links');
+      links.appendChild(pick);
+      links.appendChild(remove);
+      head.appendChild(face);
+      head.appendChild(links);
+      panel.appendChild(head);
+      var label = el('label', 'tvma-field');
+      label.appendChild(el('span', 'tvma-field__label', 'Name'));
+      var field = el('input', 'tvma-field__input');
+      field.type = 'text';
+      field.maxLength = 24;
+      field.autocomplete = 'off';
+      field.value = creating ? '' : profile.name;
+      field.placeholder = 'Profile name';
+      field.addEventListener('input', paint);
+      label.appendChild(field);
+      panel.appendChild(label);
+      var error = el('p', 'tvma-edit__error');
+      panel.appendChild(error);
+      var actions = el('div', 'tvma-actions');
+      var cancel = el('button', 'tvma-btn', 'Cancel');
+      cancel.type = 'button';
+      cancel.addEventListener('click', close);
+      var save = el('button', 'tvma-btn tvma-btn--primary', 'Save');
+      save.type = 'button';
+      save.addEventListener('click', function () {
+        var name = field.value.trim();
+        if (name === '') { error.textContent = 'Give the profile a name.'; field.focus(); return; }
+        save.disabled = true;
+        if (creating) { close(); createProfile(name, picture); return; }
+        var work = name !== profile.name
+          ? fetch('/api/profiles', { method: 'PUT', headers: authHeaders(true), body: JSON.stringify({ id: profile.id, name: name }) }).then(function (r) { if (!r.ok) throw new Error(); })
+          : Promise.resolve();
+        work.then(function () {
+          if (pictureChanged) setAvatar(profile.id, picture);
+          close();
+          loadProfiles(true, function () { renderWho(); });
+        }).catch(function () { save.disabled = false; error.textContent = 'The profile could not be saved. Try again.'; });
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(save);
+      panel.appendChild(actions);
+      var removeBtn = !creating && document.querySelector('.page--profiles [data-focus-id="remove-' + profile.id + '"]');
+      if (removeBtn) {
+        var del = el('button', 'tvma-text-btn tvma-text-btn--danger', 'Delete Profile');
+        del.type = 'button';
+        del.addEventListener('click', function () {
+          if (del.getAttribute('data-confirm') !== 'yes') {
+            del.setAttribute('data-confirm', 'yes');
+            del.textContent = 'Delete ' + profile.name + ' and its watch history?';
+            return;
+          }
+          close();
+          press(removeBtn);
+          setAvatar(profile.id, null);
+          setTimeout(function () { loadProfiles(true, function () { renderWho(); }); }, 300);
+        });
+        panel.appendChild(del);
+      }
+      paint();
+      syncRemove();
+    });
+  }
+
+  /** New profiles go through the interface's own form, so its limits and switching apply. */
+  function createProfile(name, picture) {
+    var before = registry ? registry.profiles.map(function (p) { return p.id; }) : [];
+    pressWhenThere('.page--profiles [data-focus-id="profile-add"]', function () {
+      whenThere('.page--profiles input[data-focus-id="profile-name"]', function (input) {
+        var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        setter.call(input, name);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        pressWhenThere('.page--profiles [data-focus-id="profile-save"]', function () {
+          setTimeout(function () {
+            loadProfiles(true, function (reg) {
+              if (!reg) return;
+              var made = reg.profiles.filter(function (p) { return before.indexOf(p.id) < 0; })[0];
+              if (made && picture) { setAvatar(made.id, picture); youKey = ''; queue(); }
+              if (!made) {
+                var msg = document.querySelector('.page--profiles .page__message');
+                if (msg) toast(msg.textContent);
+              }
+              renderWho();
+            });
+          }, 350);
+        });
+      });
+    });
+  }
+
+  // ---- 15. Search: titles only, one each -----------------------------------------------
+
+  // The catalogue search can return single episodes (files in the person's
+  // library). Search shows films and whole series, once each; a series opens
+  // its page, where every season and episode is.
+  if (window.fetch && !window.fetch.tvma) {
+    var baseFetch = window.fetch.bind(window);
+    var tidy = function (input, init) {
+      var url = typeof input === 'string' ? input : input && input.url;
+      var p = baseFetch(input, init);
+      if (!url || url.indexOf('/api/search?') < 0) return p;
+      return p.then(function (res) {
+        if (!res.ok) return res;
+        return res.clone().json().then(function (body) {
+          if (!body || !Array.isArray(body.items)) return res;
+          var seen = {};
+          var items = body.items.filter(function (it) {
+            if (!it) return false;
+            var episode = it.episode !== undefined && it.episode !== null || it.episodeName || /\bS\d{1,2}E\d{1,3}\b/i.test(it.title || '');
+            if (episode) return false;
+            var key = it.id || ((it.title || '').toLowerCase() + '|' + (it.year || ''));
+            var key2 = (it.title || '').toLowerCase().trim() + '|' + (it.year || '') + '|' + (it.kind === 'series' ? 's' : 'm');
+            if (seen[key] || seen[key2]) return false;
+            seen[key] = seen[key2] = true;
+            return true;
+          });
+          return new Response(JSON.stringify(Object.assign({}, body, { items: items })), { status: res.status, statusText: res.statusText, headers: res.headers });
+        }).catch(function () { return res; });
+      });
+    };
+    tidy.tvma = true;
+    window.fetch = tidy;
+  }
+
+  function syncSearchChrome() {
+    var status = document.querySelector('.search-pill__status');
+    if (status) mark(status, 'data-tvma-hint', /paste a hoster link|search films, series/i.test(status.textContent || '') ? '' : null);
+  }
+
+  // ---- 16. Home: plain section names --------------------------------------------------
+
+  function syncHomeTitles() {
+    var titles = document.querySelectorAll('.home .rail__title, .home .shelf__title');
+    for (var i = 0; i < titles.length; i++) {
+      var t = titles[i];
+      if (t.hasAttribute('data-tvma-title')) continue;
+      t.setAttribute('data-tvma-title', '');
+      // "TVM Stream · Continue watching" → "Continue Watching"
+      var walker = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+      var node;
+      while ((node = walker.nextNode())) {
+        var text = node.nodeValue;
+        var cleaned = text.replace(/^\s*TVM(?:\s+Stream)?\s*[·•|:-]\s*/i, '').replace(/^Continue watching$/i, 'Continue Watching');
+        if (cleaned !== text) node.nodeValue = cleaned;
+      }
+    }
+  }
+
   // ---- Watching the page -------------------------------------------------------------
 
   // Only screen changes matter here, so only child lists are watched, and the
@@ -644,6 +1332,12 @@
       syncSearch();
       syncPlayer();
       syncSkeletons();
+      syncYou();
+      syncWho();
+      syncSettingsExtras();
+      syncTopbars();
+      syncSearchChrome();
+      if (document.querySelector('.home')) syncHomeTitles();
       if (document.querySelector('.settings-row')) syncSettings();
       if (document.querySelector('.details')) syncDetails();
     });
@@ -653,13 +1347,14 @@
     if (typeof MutationObserver !== 'function') return;
     // Placeholders and the bar are settled in the observer itself (before the
     // frame is painted), so a placeholder is never drawn for even one frame.
-    new MutationObserver(function () { markPlaceholders(); syncPill(); queue(); }).observe(document.body || root, { subtree: true, childList: true, characterData: false });
+    new MutationObserver(function () { markPlaceholders(); syncPill(); syncSettingsScroll(); queue(); }).observe(document.body || root, { subtree: true, childList: true, characterData: false });
     new MutationObserver(queue).observe(root, { attributes: true, attributeFilter: ['class'] });
     // Rows and headings change their text in place when tapped or loaded.
     document.addEventListener('click', function () { setTimeout(queue, 0); }, true);
     // A reload (an interface update) while the player was open must not leave
     // the phone in landscape.
     shell('shell-leave');
+    loadProfiles(true);
     queue();
   }
 

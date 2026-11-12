@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The translucent circle behind iOS's ellipsis.circle.fill. -->
-<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#33FFFFFF">
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="@color/tvm_menu_bg" />
-        </shape>
-    </item>
-</ripple>
+<!--
+  The ⋮ menu (reload, home core): a quiet, small disc rather than a large dark
+  one over the page. The touch target stays 44dp; the visible disc is inset to
+  32dp. The faint wash keeps the white dots legible on a light page.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="6dp">
+    <ripple android:color="#33FFFFFF">
+        <item>
+            <shape android:shape="oval">
+                <solid android:color="#2E000000" />
+            </shape>
+        </item>
+    </ripple>
+</inset>

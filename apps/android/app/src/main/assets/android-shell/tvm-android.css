@@ -1237,7 +1237,25 @@ html.tvm-android .settings-summary {
 
 html.tvm-android :is(.page, .home, .details, .search-pill__panel)[data-tvm-rubber] > :not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
   transform: translate3d(0, var(--tvm-rubber), 0);
+}
+
+/* Layers are made when a finger lands at an edge (tvm-android.js), before any
+   movement, and dropped when the bounce settles. */
+html.tvm-android :is(.page, .home, .details, .search-pill__panel):is([data-tvma-prime], [data-tvm-rubber]) > :not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
   will-change: transform;
+}
+
+/* Pulled down from the top, the hero picture and its gradient stay where they
+   are (the page moves under them), so nothing above the picture is exposed and
+   the picture is never stretched. Home's featured title and Details alike. */
+html.tvm-android .home[data-tvma-pull] > .stage--home :is(.stage__pictures, .stage__vignette),
+html.tvm-android .details[data-tvma-pull] > .details__stage > * {
+  transform: translate3d(0, calc(-1 * var(--tvm-rubber, 0px)), 0);
+}
+
+html.tvm-android .home[data-tvma-pull] > .stage--home,
+html.tvm-android .details[data-tvma-pull] > .details__stage {
+  overflow: visible;
 }
 
 /* ---- 7. Native scrolling ---------------------------------------------------------
@@ -2051,20 +2069,6 @@ html.tvm-android.phone-shell .home--launcher .stage.stage--home {
   min-height: min(58vh, 32rem);
 }
 
-/* Pulled past the top, the picture grows to fill the space (from its top
-   edge) instead of the page sliding down and leaving a gap above it. */
-html.tvm-android .home[data-tvm-rubber] > .stage--home {
-  overflow: visible;
-}
-
-html.tvm-android .stage--home :is(.stage__pictures, .stage__vignette) {
-  transform-origin: 50% 0;
-}
-
-html.tvm-android .stage--home[style*='--tvma-pull-scale'] :is(.stage__pictures, .stage__vignette) {
-  transform: translate3d(0, calc(-1 * var(--tvm-rubber, 0px)), 0) scale(var(--tvma-pull-scale, 1));
-}
-
 /* The app's drifting scene sits behind opaque screens once signed in. Not
    drawn there at all: six full-screen layers cost tile memory every frame. */
 html.tvm-android .tvm-scene:has(~ .app) {
@@ -2519,43 +2523,11 @@ html.tvm-android .tvma-card:active {
   opacity: 0.75;
 }
 
-html.tvm-android .tvma-explore {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
 
-html.tvm-android .tvma-explore__tile {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
-  min-height: 84px;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: var(--tvma-r-md);
-  color: #fff;
-  text-align: left;
-}
 
-html.tvm-android .tvma-explore__tile strong {
-  font-size: 16px;
-  font-weight: 750;
-}
 
-html.tvm-android .tvma-explore__tile span {
-  font-size: 12px;
-  opacity: 0.8;
-}
 
-html.tvm-android .tvma-explore__tile:active {
-  opacity: 0.75;
-}
 
-html.tvm-android .tvma-explore__tile--stream { background: linear-gradient(135deg, #5714fd, #177ffd); }
-html.tvm-android .tvma-explore__tile--live { background: linear-gradient(135deg, #e0244f, #ff7a45); }
-html.tvm-android .tvma-explore__tile--list { background: linear-gradient(135deg, #0d9488, #22c55e); }
-html.tvm-android .tvma-explore__tile--apps { background: linear-gradient(135deg, #7c3aed, #db2777); }
 
 /* ---- 18. Light ----------------------------------------------------------------------
  * White and soft grey, near-black text, one blue accent: the system-light look.
@@ -2668,4 +2640,772 @@ html.tvm-android[data-theme='light'] .search-pill__field input::placeholder {
 
 html.tvm-android[data-theme='light'] .search-pill [data-focus-id='close'] {
   color: #177ffd;
+}
+
+/* ---- 19. Tab bar: one icon set, TVM blue for the selected tab ------------------------ */
+
+html.tvm-android {
+  --tvma-blue: #3d9bff;
+  --tvma-icon-home: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10.4 12 4l8 6.4V19a1.6 1.6 0 0 1-1.6 1.6H15v-5.2a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5.2H5.6A1.6 1.6 0 0 1 4 19z'/%3E%3C/svg%3E");
+  --tvma-icon-home-on: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10.4 12 4l8 6.4V19a1.6 1.6 0 0 1-1.6 1.6H15v-5.2a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5.2H5.6A1.6 1.6 0 0 1 4 19z' fill='black'/%3E%3C/svg%3E");
+  --tvma-icon-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='10.8' cy='10.8' r='6.3'/%3E%3Cpath d='m15.6 15.6 4.4 4.4'/%3E%3C/svg%3E");
+  --tvma-icon-search-on: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='10.8' cy='10.8' r='6.3'/%3E%3Cpath d='m15.6 15.6 4.4 4.4'/%3E%3C/svg%3E");
+  --tvma-icon-live: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6.5' width='18' height='12.5' rx='3'/%3E%3Cpath d='m9 3 3 3.2L15 3'/%3E%3C/svg%3E");
+  --tvma-icon-live-on: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6.5' width='18' height='12.5' rx='3' fill='black'/%3E%3Cpath d='m9 3 3 3.2L15 3'/%3E%3C/svg%3E");
+  --tvma-icon-list: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 4.5h11a1 1 0 0 1 1 1v14.2a.6.6 0 0 1-.95.5L12 16.4l-5.55 3.8a.6.6 0 0 1-.95-.5V5.5a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
+  --tvma-icon-list-on: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 4.5h11a1 1 0 0 1 1 1v14.2a.6.6 0 0 1-.95.5L12 16.4l-5.55 3.8a.6.6 0 0 1-.95-.5V5.5a1 1 0 0 1 1-1z' fill='black'/%3E%3C/svg%3E");
+}
+
+html.tvm-android[data-theme='light'] {
+  --tvma-blue: #177ffd;
+}
+
+/* Rounded, slightly heavier glyphs drawn here; the interface's thin ones are hidden. */
+html.tvm-android .ribbon--tabs .ribbon__glyph svg {
+  display: none;
+}
+
+html.tvm-android .ribbon--tabs .ribbon__glyph::before {
+  content: '';
+  width: 25px;
+  height: 25px;
+  background: currentColor;
+  -webkit-mask: var(--tvma-tab-icon) center / contain no-repeat;
+  mask: var(--tvma-tab-icon) center / contain no-repeat;
+}
+
+html.tvm-android .ribbon--tabs :is([data-focus-id='home-dock'], [data-tvma-tab='home-dock']) { --tvma-tab-icon: var(--tvma-icon-home); }
+html.tvm-android .ribbon--tabs :is([data-focus-id='search'], [data-tvma-tab='search']) { --tvma-tab-icon: var(--tvma-icon-search); }
+html.tvm-android .ribbon--tabs :is([data-focus-id='live'], [data-tvma-tab='live']) { --tvma-tab-icon: var(--tvma-icon-live); }
+html.tvm-android .ribbon--tabs :is([data-focus-id='watchlist'], [data-tvma-tab='watchlist']) { --tvma-tab-icon: var(--tvma-icon-list); }
+html.tvm-android .ribbon--tabs .ribbon__icon--on:is([data-focus-id='home-dock'], [data-tvma-tab='home-dock']) { --tvma-tab-icon: var(--tvma-icon-home-on); }
+html.tvm-android .ribbon--tabs .ribbon__icon--on:is([data-focus-id='search'], [data-tvma-tab='search']) { --tvma-tab-icon: var(--tvma-icon-search-on); }
+html.tvm-android .ribbon--tabs .ribbon__icon--on:is([data-focus-id='live'], [data-tvma-tab='live']) { --tvma-tab-icon: var(--tvma-icon-live-on); }
+html.tvm-android .ribbon--tabs .ribbon__icon--on:is([data-focus-id='watchlist'], [data-tvma-tab='watchlist']) { --tvma-tab-icon: var(--tvma-icon-list-on); }
+
+html.tvm-android .ribbon--tabs .tvm-button.ribbon__icon {
+  color: var(--tvma-muted);
+}
+
+html.tvm-android .ribbon--tabs .tvm-button.ribbon__icon.ribbon__icon--on,
+html.tvm-android .ribbon--tabs .tvm-button.ribbon__icon.ribbon__icon--on:is(:hover, :focus, [data-focused='true'], .tvm-button--focused),
+html.tvm-android .ribbon--tabs .ribbon__icon--on .ribbon__glyph,
+html.tvm-android[data-theme='light'] .ribbon--tabs .ribbon__icon--on .ribbon__glyph {
+  color: var(--tvma-blue);
+}
+
+html.tvm-android .ribbon--tabs .ribbon__label {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+html.tvm-android .ribbon--tabs .ribbon__icon--on .ribbon__label {
+  font-weight: 700;
+}
+
+/* More open: the tab underneath goes quiet; only You is lit (earlier rule). */
+html.tvm-android .ribbon--tabs.ribbon--more .tvm-button.ribbon__icon.ribbon__icon--on:not(.ribbon__icon--more),
+html.tvm-android .ribbon--tabs.ribbon--more .ribbon__icon--on:not(.ribbon__icon--more) .ribbon__glyph {
+  color: var(--tvma-muted);
+}
+
+html.tvm-android .ribbon--tabs.ribbon--more .ribbon__icon--on:not(.ribbon__icon--more) {
+  --tvma-tab-icon-state: off;
+}
+
+html.tvm-android .ribbon--tabs.ribbon--more .ribbon__icon--on:is([data-focus-id='home-dock']) { --tvma-tab-icon: var(--tvma-icon-home); }
+html.tvm-android .ribbon--tabs.ribbon--more .ribbon__icon--on:is([data-focus-id='search']) { --tvma-tab-icon: var(--tvma-icon-search); }
+html.tvm-android .ribbon--tabs.ribbon--more .ribbon__icon--on:is([data-focus-id='live']) { --tvma-tab-icon: var(--tvma-icon-live); }
+html.tvm-android .ribbon--tabs.ribbon--more .ribbon__icon--on:is([data-focus-id='watchlist']) { --tvma-tab-icon: var(--tvma-icon-list); }
+
+/* You: the profile's picture (or initial) in a small rounded square. */
+html.tvm-android .ribbon--tabs .ribbon__avatar .ribbon__avatar-svg {
+  display: none;
+}
+
+html.tvm-android .tvma-av {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: hsl(var(--tvma-av-hue, 215) 62% 46%) center / cover no-repeat;
+  color: #fff;
+  font-weight: 750;
+  line-height: 1;
+}
+
+html.tvm-android .tvma-av--pic {
+  background-color: transparent;
+}
+
+html.tvm-android .ribbon--tabs .ribbon__avatar .tvma-av {
+  width: 25px;
+  height: 25px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 0 0 1.5px transparent;
+  transition: box-shadow 160ms ease;
+}
+
+html.tvm-android .ribbon--tabs .ribbon__icon--on .ribbon__avatar .tvma-av {
+  box-shadow: 0 0 0 2px var(--tvm-bg, #05090f), 0 0 0 3.5px var(--tvma-blue);
+}
+
+/* ---- 20. The You popup: Profile and Settings, on the same glass as the bar ----------- */
+
+html.tvm-android .ribbon-sheet [data-focus-id='more-library'],
+html.tvm-android .ribbon-sheet [data-focus-id='more-apps'] {
+  display: none !important;
+}
+
+html.tvm-android .ribbon--tabs .ribbon-sheet {
+  padding: 6px;
+  border-radius: 22px;
+  border: 0;
+  background: rgb(var(--tvma-pill-rgb, 22 26 36) / 0.78);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45), inset 0 0 0 0.5px rgb(var(--tvma-tint) / 0.12);
+  -webkit-backdrop-filter: blur(22px) saturate(170%) !important;
+  backdrop-filter: blur(22px) saturate(170%) !important;
+  transform-origin: 85% 100%;
+  animation: tvma-pop 170ms var(--tvma-ease) both;
+}
+
+html.tvm-android[data-perf='on'] .ribbon--tabs .ribbon-sheet {
+  background: var(--tvma-glass-strong);
+}
+
+@keyframes tvma-pop {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.97); }
+}
+
+html.tvm-android .ribbon-sheet .ribbon-sheet__grip {
+  display: none;
+}
+
+html.tvm-android .ribbon-sheet .tvm-button.ribbon-sheet__row {
+  min-height: 58px;
+  border-radius: 16px;
+}
+
+html.tvm-android .ribbon-sheet .tvm-button.ribbon-sheet__row + .tvm-button.ribbon-sheet__row:not([style*='none']) {
+  box-shadow: inset 0 0.5px 0 rgb(var(--tvma-tint) / 0.1);
+}
+
+html.tvm-android .ribbon-sheet .ribbon-sheet__row--on,
+html.tvm-android .ribbon-sheet .tvm-button.ribbon-sheet__row.ribbon-sheet__row--on {
+  background: transparent;
+  box-shadow: none;
+}
+
+html.tvm-android .ribbon-sheet .ribbon-sheet__row--on strong {
+  color: var(--tvma-blue);
+}
+
+html.tvm-android .ribbon-sheet .ribbon-sheet__glyph {
+  border-radius: 11px;
+  background: rgb(var(--tvma-tint) / 0.08);
+}
+
+html.tvm-android .ribbon-sheet .ribbon-sheet__glyph .tvma-av {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  font-size: 17px;
+}
+
+html.tvm-android .ribbon-sheet .ribbon-sheet__scrim,
+html.tvm-android .ribbon-sheet__scrim {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* Hops through the interface's own routes happen out of sight. */
+html.tvm-android.tvma-routing :is(.app__screen, .ribbon-sheet, .ribbon-sheet__scrim, .modal-layer) {
+  visibility: hidden !important;
+}
+
+/* ---- 21. Sheets (language, profile editing, picture framing) ------------------------- */
+
+html.tvm-android .tvma-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+html.tvm-android .tvma-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.42);
+  animation: tvma-fade 180ms ease-out both;
+}
+
+html.tvm-android .tvma-sheet__panel {
+  position: relative;
+  max-height: calc(100% - var(--tvm-chrome-top, 0px) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 8px calc(8px + var(--tvm-chrome-bottom, 0px));
+  padding: 8px 18px 18px;
+  border-radius: 26px;
+  background: rgb(var(--tvma-pill-rgb, 22 26 36) / 0.86);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 0 0 0.5px rgb(var(--tvma-tint) / 0.12);
+  -webkit-backdrop-filter: blur(24px) saturate(170%) !important;
+  backdrop-filter: blur(24px) saturate(170%) !important;
+  color: var(--tvma-ink);
+  animation: tvma-rise 240ms var(--tvma-ease) both;
+}
+
+html.tvm-android[data-perf='on'] .tvma-sheet__panel {
+  background: var(--tvma-glass-strong);
+}
+
+html.tvm-android .tvma-sheet--out .tvma-sheet__panel {
+  animation: tvma-sink 190ms ease-in both;
+}
+
+html.tvm-android .tvma-sheet--out .tvma-sheet__scrim {
+  animation: tvma-fade 190ms ease-in reverse both;
+}
+
+@keyframes tvma-rise {
+  from { opacity: 0.4; transform: translate3d(0, 40px, 0); }
+}
+
+@keyframes tvma-sink {
+  to { opacity: 0; transform: translate3d(0, 40px, 0); }
+}
+
+html.tvm-android:is([data-perf='on'], [data-motion='reduced']) :is(.tvma-sheet__panel, .tvma-sheet__scrim, .ribbon-sheet) {
+  animation: none !important;
+}
+
+html.tvm-android.phone-shell[data-orientation='landscape'] .tvma-sheet__panel {
+  width: min(30rem, 100%);
+  margin-inline: auto;
+}
+
+html.tvm-android .tvma-sheet__grip {
+  display: block;
+  width: 36px;
+  height: 5px;
+  margin: 0 auto 10px;
+  border-radius: 999px;
+  background: rgb(var(--tvma-tint) / 0.22);
+}
+
+html.tvm-android .tvma-sheet__title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: var(--tvma-ink);
+}
+
+html.tvm-android .tvma-sheet__list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgb(var(--tvma-tint) / 0.06);
+}
+
+html.tvm-android .tvma-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 50px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--tvma-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 550;
+  text-align: left;
+}
+
+html.tvm-android .tvma-choice + .tvma-choice {
+  box-shadow: inset 0 0.5px 0 rgb(var(--tvma-tint) / 0.1);
+}
+
+html.tvm-android .tvma-choice:active {
+  background: rgb(var(--tvma-tint) / 0.08);
+}
+
+html.tvm-android .tvma-choice--on {
+  color: var(--tvma-blue);
+  font-weight: 700;
+}
+
+html.tvm-android .tvma-choice--on::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android .tvma-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+html.tvm-android .tvma-btn {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  background: rgb(var(--tvma-tint) / 0.1);
+  color: var(--tvma-ink);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+html.tvm-android .tvma-btn--primary {
+  background: var(--tvma-blue);
+  color: #fff;
+}
+
+html.tvm-android .tvma-btn:disabled {
+  opacity: 0.5;
+}
+
+html.tvm-android :is(.tvma-btn, .tvma-text-btn, .tvma-icon-btn, .tvma-who__tile):active {
+  opacity: 0.7;
+}
+
+html.tvm-android .tvma-text-btn {
+  min-height: 40px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--tvma-blue);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+html.tvm-android .tvma-text-btn--quiet {
+  color: var(--tvma-muted);
+}
+
+html.tvm-android .tvma-text-btn--danger {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  color: #ff5a5f;
+}
+
+html.tvm-android .tvma-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tvma-ink);
+}
+
+html.tvm-android .tvma-icon-btn--back::before {
+  content: '';
+  width: 26px;
+  height: 26px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 5.5 8 12l6.5 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 5.5 8 12l6.5 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android .tvma-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tvm-tabbar, 80px) + 12px);
+  z-index: 95;
+  max-width: calc(100% - 40px);
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(20, 22, 30, 0.94);
+  color: #fff;
+  font-size: 14px;
+  transform: translateX(-50%);
+  transition: opacity 300ms ease;
+}
+
+html.tvm-android .tvma-toast--out {
+  opacity: 0;
+}
+
+/* ---- 22. Who's watching? -------------------------------------------------------------- */
+
+html.tvm-android .page--profiles.tvma-who-page > :not(.tvma-who) {
+  display: none !important;
+}
+
+html.tvm-android .page--profiles.tvma-who-page {
+  padding: 0;
+}
+
+html.tvm-android .tvma-who {
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: calc(var(--tvm-chrome-top, 0px) + 6px) 16px calc(var(--tvm-tabbar, 80px) + 24px);
+}
+
+html.tvm-android .tvma-who__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 34rem;
+  min-height: 48px;
+}
+
+html.tvm-android .tvma-who__title {
+  margin: 12vh 0 28px;
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--tvma-ink);
+}
+
+html.tvm-android.phone-shell[data-orientation='landscape'] .tvma-who__title {
+  margin-top: 2vh;
+  margin-bottom: 18px;
+}
+
+html.tvm-android .tvma-who__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 104px);
+  justify-content: center;
+  gap: 22px 18px;
+  width: 100%;
+  max-width: 34rem;
+}
+
+html.tvm-android .tvma-who__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tvma-muted);
+  font: inherit;
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+html.tvm-android .tvma-who__tile:active {
+  transform: scale(0.96);
+}
+
+html.tvm-android .tvma-who__face {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 26px;
+  font-size: 40px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+
+html.tvm-android .tvma-who__tile--on .tvma-who__face {
+  box-shadow: 0 0 0 3px var(--tvm-bg, #05090f), 0 0 0 5px var(--tvma-blue), 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+
+html.tvm-android .tvma-who__tile--on .tvma-who__name {
+  color: var(--tvma-ink);
+}
+
+html.tvm-android .tvma-who__name {
+  max-width: 112px;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.tvm-android .tvma-who__face--add {
+  background: rgb(var(--tvma-tint) / 0.07);
+  box-shadow: inset 0 0 0 1.5px rgb(var(--tvma-tint) / 0.14);
+  color: var(--tvma-muted);
+}
+
+html.tvm-android .tvma-who__face--add::before {
+  content: '';
+  position: absolute;
+  inset: 34px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5.5v13M5.5 12h13'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5.5v13M5.5 12h13'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android .tvma-who__grid--edit .tvma-who__face {
+  opacity: 0.88;
+}
+
+html.tvm-android .tvma-who__pencil {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--tvma-blue);
+  box-shadow: 0 0 0 3px var(--tvm-bg, #05090f);
+}
+
+html.tvm-android .tvma-who__pencil::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 19.5l1-4L15.8 5.2a2 2 0 0 1 2.9 0l.1.1a2 2 0 0 1 0 2.9L8.5 18.5z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 19.5l1-4L15.8 5.2a2 2 0 0 1 2.9 0l.1.1a2 2 0 0 1 0 2.9L8.5 18.5z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android.phone-shell[data-orientation='landscape'] .tvma-who__face {
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+}
+
+/* Editing a profile. */
+html.tvm-android .tvma-edit__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+html.tvm-android .tvma-edit__face {
+  width: 104px;
+  height: 104px;
+  padding: 0;
+  border: 0;
+  border-radius: 28px;
+  font-size: 42px;
+}
+
+html.tvm-android .tvma-edit__links {
+  display: flex;
+  gap: 12px;
+}
+
+html.tvm-android .tvma-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+html.tvm-android .tvma-field__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tvma-muted);
+}
+
+html.tvm-android .tvma-field__input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 50px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--tvma-tint) / 0.1);
+  border-radius: 14px;
+  background: rgb(var(--tvma-tint) / 0.07);
+  color: var(--tvma-ink);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+html.tvm-android .tvma-field__input:focus {
+  border-color: var(--tvma-blue);
+}
+
+html.tvm-android .tvma-edit__error {
+  min-height: 18px;
+  margin: 6px 2px 0;
+  font-size: 13px;
+  color: #ff6b6b;
+}
+
+html.tvm-android .tvma-crop {
+  display: grid;
+  place-items: center;
+}
+
+html.tvm-android .tvma-crop__canvas {
+  width: 280px;
+  height: 280px;
+  border-radius: 32px;
+  background: #000;
+  touch-action: none;
+}
+
+html.tvm-android .tvma-crop__zoom {
+  display: block;
+  width: 100%;
+  margin: 18px 0 0;
+  accent-color: var(--tvma-blue);
+}
+
+/* ---- 23. Settings: sub-page headers, the foot of the page ----------------------------- */
+
+html.tvm-android .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  margin: 0 calc(-1 * var(--tvm-safe-x, 16px)) 6px;
+  padding: calc(var(--tvm-chrome-top, 0px) + 2px) 8px 4px;
+  background: color-mix(in srgb, var(--tvm-bg, #05090f) 92%, transparent);
+  border: 0;
+  box-shadow: none;
+}
+
+html.tvm-android .topbar [data-focus-id='top-back'],
+html.tvm-android .topbar [data-focus-id='top-back']:is(:hover, :focus, [data-focused='true']) {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tvma-ink);
+  font-size: 0;
+}
+
+html.tvm-android .topbar [data-focus-id='top-back'] .tvm-button__label {
+  display: block;
+  width: 26px;
+  height: 26px;
+  font-size: 0;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 5.5 8 12l6.5 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 5.5 8 12l6.5 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android .topbar .topbar__brand {
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--tvma-ink);
+}
+
+html.tvm-android .topbar .status {
+  display: none;
+}
+
+html.tvm-android .page--settings :is(.page__heading) {
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+html.tvm-android .page--settings .stage__kicker,
+html.tvm-android .page .stage__kicker {
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tvma-muted);
+}
+
+html.tvm-android .tvma-about {
+  margin: 22px 0 8px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--tvma-faint);
+}
+
+/* ---- 24. Search: the field and what you find ------------------------------------------ */
+
+html.tvm-android .search-pill__bar {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'field';
+}
+
+html.tvm-android .search-pill__bar > :is([data-focus-id='open'], [data-focus-id='close']),
+html.tvm-android .search-pill__status[data-tvma-hint] {
+  display: none !important;
+}
+
+html.tvm-android .search-pill__field .token-field__input,
+html.tvm-android .search-pill__field input {
+  height: 46px;
+  border-radius: 14px;
+  border-color: transparent;
+  background: rgb(var(--tvma-tint) / 0.09);
+}
+
+/* Android already resizes the window for the keyboard. The shared sheet also
+   moved and resized Search to the visual viewport as the keyboard animated,
+   which showed the screen underneath for a moment: the flash on tapping the
+   field. Search keeps to the window here. */
+html.tvm-android,
+html.tvm-android.phone-shell {
+  --tvm-visual-height: 100% !important;
+  --tvm-visual-top: 0px !important;
+}
+
+html.tvm-android.keyboard-open :is(html, body, #root, .app) {
+  height: 100%;
+  max-height: none;
+}
+
+html.tvm-android.keyboard-open .search-pill {
+  top: 0;
+  height: 100%;
+  max-height: none;
+}
+
+html.tvm-android .modal-layer[data-screen='search'] {
+  background: var(--tvm-bg, #05090f);
+}
+
+/* Every suggestion reachable: room below the last row for the bar. */
+html.tvm-android .tvma-discover {
+  padding-bottom: calc(var(--tvm-tabbar, 80px) + 24px);
+}
+
+/* ---- 25. Home: calmer section headings ------------------------------------------------ */
+
+html.tvm-android .home .rail__title {
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  text-transform: none;
+}
+
+html.tvm-android .home .rail + .rail,
+html.tvm-android .home .rail {
+  margin-top: 6px;
 }
