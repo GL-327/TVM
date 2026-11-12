@@ -478,9 +478,6 @@
             // Search is already open: stay, without focusing the field (the
             // keyboard opens only from the field itself).
             if (tab === 'search') return;
-            // You opens its popup over Search, which stays where it is until
-            // Profile or Settings is chosen.
-            if (tab === 'more') { youOverSearch(); return; }
             closeSearchThen(tab);
           };
         })(id));
@@ -511,41 +508,6 @@
     if (root.classList.contains('tvma-keys') || performance.now() - fieldTapped < 1500) return;
     t.blur();
   }, true);
-  // The keyboard shrinks the window over a few frames; the bar at the bottom
-  // rode up with it before fading. It goes the moment a field is focused.
-  document.addEventListener('focusin', function (event) {
-    var t = event.target;
-    // Only a field that keeps focus (Search's own automatic focus is undone
-    // straight away, above, and must not hide the bar).
-    if (t && t.matches && t.matches('input, textarea') && document.activeElement === t && !root.classList.contains('tvma-typing')) {
-      root.classList.add('tvma-typing');
-      typingSawKeyboard = false;
-      // No software keyboard came up (a hardware keyboard): the bar returns.
-      clearTimeout(typingTimer);
-      typingTimer = setTimeout(function () { if (!typingSawKeyboard) root.classList.remove('tvma-typing'); }, 600);
-    }
-  }, true);
-  // The bar comes back as soon as the keyboard goes down, even if the field
-  // keeps its focus (Android's Back closes the keyboard, not the field).
-  var typingSawKeyboard = false;
-  var typingTimer = 0;
-  function syncTyping() {
-    if (!root.classList.contains('tvma-typing')) return;
-    // Never left behind: no focused field, or Search closed, and the bar is back.
-    var a = document.activeElement;
-    if (!a || !a.matches || !a.matches('input, textarea') || !document.querySelector('.search-pill')) {
-      root.classList.remove('tvma-typing');
-      return;
-    }
-    var up = root.classList.contains('tvm-ime-open');
-    if (up) typingSawKeyboard = true;
-    else if (typingSawKeyboard) root.classList.remove('tvma-typing');
-  }
-  document.addEventListener('focusout', function (event) {
-    var t = event.target;
-    if (t && t.matches && t.matches('input, textarea')) root.classList.remove('tvma-typing');
-  }, true);
-
   document.addEventListener('input', function (event) {
     var t = event.target;
     if (!t || !t.matches || !t.matches('.search-pill input')) return;
@@ -647,7 +609,6 @@
   function syncSearch() {
     var panel = document.querySelector('.search-pill__panel');
     if (!panel) {
-      closeYou();
       if (root.classList.contains('tvma-searching')) root.classList.remove('tvma-searching');
       return;
     }
@@ -1426,144 +1387,64 @@
     }
   }
 
-  // ---- 17. Tabs: a true crossfade, and a second tap that stays put ------------------
+  // ---- 17. Tabs crossfade ----------------------------------------------------------
 
   // The interface shows one screen at a time: a new tab replaced the old page
-  // and faded its contents in over the page colour (through black). With a
-  // view transition the browser keeps a still picture of the old page on
-  // screen until the new one is ready (no placeholder or half-built page is
-  // ever shown), then crossfades the two on the GPU. The bar is its own part
-  // of the transition, so it stays put while the pages change.
+  // at once and faded its contents in over the page colour (through black).
+  // Here the old page stays on top as a still copy and fades out once the new
+  // page is ready underneath: A, then A over B, then B.
   var MAIN_TABS = { 'home-dock': true, live: true, watchlist: true };
-  var switching = null;
-  function liveLayer() {
-    return document.querySelector('.app__screen > .screen-layer');
+  var xfade = null;
+  function finishXfade() {
+    if (!xfade) return;
+    var c = xfade.clone;
+    xfade = null;
+    if (c.parentNode) c.parentNode.removeChild(c);
   }
-  function tabReady(from) {
-    var layer = liveLayer();
-    return !!layer && layer.getAttribute('data-focus-scope') !== from &&
-      !layer.querySelector('[data-tvma-placeholder], .loading-state--plate');
+  function startXfade() {
+    finishXfade();
+    if (off() || document.querySelector('.modal-layer')) return;
+    var screen = document.querySelector('.app__screen:not(.tvma-xfade)');
+    var layer = screen && screen.querySelector(':scope > .screen-layer');
+    if (!screen || !layer) return;
+    var SCROLLY = '.home, .page, .details, .rail__track, .season-row, .channel-chips, .poster-grid, .live-shelf, .tvma-discover__row';
+    var from = screen.querySelectorAll(SCROLLY);
+    var clone = screen.cloneNode(true);
+    clone.classList.add('tvma-xfade');
+    clone.setAttribute('inert', '');
+    clone.setAttribute('aria-hidden', 'true');
+    var drop = clone.querySelectorAll('.ribbon-sheet, .ribbon-sheet__scrim');
+    for (var i = 0; i < drop.length; i++) drop[i].remove();
+    screen.parentNode.insertBefore(clone, screen.nextSibling);
+    var to = clone.querySelectorAll(SCROLLY);
+    ownWrite = true;
+    try {
+      for (var j = 0; j < from.length && j < to.length; j++) {
+        if (from[j].scrollTop) to[j].scrollTop = from[j].scrollTop;
+        if (from[j].scrollLeft) to[j].scrollLeft = from[j].scrollLeft;
+      }
+    } finally { ownWrite = false; }
+    xfade = { clone: clone, from: layer.getAttribute('data-focus-scope'), t0: performance.now() };
+    var mine = xfade;
+    (function ready() {
+      if (xfade !== mine) return;
+      var now = document.querySelector('.app__screen:not(.tvma-xfade) > .screen-layer');
+      var arrived = now && now.getAttribute('data-focus-scope') !== mine.from &&
+        !now.querySelector('[data-tvma-placeholder], .loading-state--plate');
+      if (!arrived && performance.now() - mine.t0 < 600) { requestAnimationFrame(ready); return; }
+      mine.clone.classList.add('tvma-xfade--out');
+      mine.clone.addEventListener('transitionend', function () { if (xfade === mine) finishXfade(); }, { once: true });
+      // If the transition cannot run (hidden page), the copy still goes.
+      setTimeout(function () { if (xfade === mine) finishXfade(); }, 400);
+    })();
   }
-  function switchTab(button) {
-    var layer = liveLayer();
-    var from = layer ? layer.getAttribute('data-focus-scope') : '';
-    if (switching) { try { switching.skipTransition(); } catch (e) { /* already done */ } }
-    var t = document.startViewTransition(function () {
-      return new Promise(function (resolve) {
-        press(button);
-        var t0 = performance.now();
-        // Timers, not animation frames: frames are held while the old page is
-        // shown. Half a second at most, so a slow screen still appears.
-        (function wait() {
-          if (tabReady(from) || performance.now() - t0 > 500) resolve();
-          else setTimeout(wait, 16);
-        })();
-      });
-    });
-    switching = t;
-    // A transition that stalls (a WebView quirk) is finished rather than left
-    // holding the old picture on screen.
-    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* done */ } switching = null; } }, 1500);
-    t.finished.then(function () { if (switching === t) switching = null; }, function () { if (switching === t) switching = null; });
-  }
-
-  /** The page the bar's tab shows: its scroller. */
-  function tabScroller() {
-    var layer = liveLayer();
-    return layer && layer.querySelector('.home, .page, .details');
-  }
-
   document.addEventListener('click', function (event) {
-    if (bypass) return;
-    var b = event.target && event.target.closest && event.target.closest('.app__screen nav.ribbon--tabs [data-focus-id]');
+    var b = event.target && event.target.closest && event.target.closest('.app__screen:not(.tvma-xfade) nav.ribbon--tabs [data-focus-id]');
     if (!b) return;
     var id = b.getAttribute('data-focus-id');
-    if (!MAIN_TABS[id]) return;
-    if (b.classList.contains('ribbon__icon--on')) {
-      // Already here: a second tap does not rebuild the page (which flashed
-      // a loading state). It goes back to the top, as in iOS apps.
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      var sc = tabScroller();
-      if (sc && sc.scrollTop > 0) sc.scrollTo({ top: 0, behavior: off() ? 'auto' : 'smooth' });
-      return;
-    }
-    if (off() || typeof document.startViewTransition !== 'function' || document.querySelector('.modal-layer')) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    switchTab(b);
+    if (!MAIN_TABS[id] || b.classList.contains('ribbon__icon--on')) return;
+    startXfade();
   }, true);
-
-  // The You popup while Search is open (the interface's own popup belongs to
-  // the screen under Search, so opening it meant closing Search first).
-  var youSheet = null;
-  function setPillYou(on) {
-    if (!pill) return;
-    var tabs = pill.querySelectorAll('[data-tvma-tab]');
-    for (var i = 0; i < tabs.length; i++) {
-      var id = tabs[i].getAttribute('data-tvma-tab');
-      tabs[i].classList.toggle('ribbon__icon--on', on ? id === 'more' : id === 'search');
-    }
-  }
-  function closeYou() {
-    if (!youSheet) return false;
-    var w = youSheet;
-    youSheet = null;
-    w.classList.add('tvma-you--out');
-    setTimeout(function () { w.remove(); }, 160);
-    setPillYou(false);
-    backHandlers = backHandlers.filter(function (h) { return h !== closeYou; });
-    return true;
-  }
-  function youRow(kind, title, sub, face) {
-    var b = el('button', 'tvm-button ribbon-sheet__row');
-    b.type = 'button';
-    b.setAttribute('data-tvma-you', kind);
-    var g = el('span', 'ribbon-sheet__glyph');
-    if (face) g.appendChild(face);
-    var text = el('span', 'ribbon-sheet__text');
-    text.appendChild(el('strong', '', title));
-    text.appendChild(el('span', '', sub));
-    var label = el('span', 'tvm-button__label');
-    label.appendChild(g);
-    label.appendChild(text);
-    b.appendChild(label);
-    return b;
-  }
-  function youOverSearch() {
-    if (closeYou()) return;
-    var wrap = el('div', 'tvma-you');
-    var scrim = el('button', 'tvma-you__scrim');
-    scrim.type = 'button';
-    scrim.setAttribute('aria-label', 'Close');
-    scrim.addEventListener('click', closeYou);
-    var card = el('div', 'tvma-you__sheet');
-    card.setAttribute('role', 'menu');
-    var face = el('span');
-    paintAvatar(face, me);
-    var profile = youRow('profile', 'Profile', 'Switch, add and edit profiles', face);
-    var settings = youRow('settings', 'Settings', 'Display, language, account and updates', null);
-    profile.addEventListener('click', function () {
-      closeYou();
-      veil(true);
-      closeSearchThen('more');
-      whenThere('.app__screen:not([inert]) .ribbon-sheet [data-focus-id="more-settings"]', function () { openProfiles(); });
-    });
-    settings.addEventListener('click', function () {
-      closeYou();
-      veil(true);
-      closeSearchThen('more', 'more-settings');
-      whenThere('.app__screen:not([inert]) .page--settings [data-focus-id="language"]', function () { requestAnimationFrame(function () { veil(false); }); });
-    });
-    card.appendChild(profile);
-    card.appendChild(settings);
-    wrap.appendChild(scrim);
-    wrap.appendChild(card);
-    document.body.appendChild(wrap);
-    youSheet = wrap;
-    setPillYou(true);
-    backHandlers.push(closeYou);
-  }
 
   // ---- 18. Details: Back at the top left -------------------------------------------
 
@@ -1627,19 +1508,6 @@
         if (at) list.insertBefore(el('p', 'tvma-group-label', g[1]), at);
       });
     }
-    // The page's big title repeats the bar's (and its small label above it).
-    var titled = document.querySelectorAll('.app__screen .page > .topbar .topbar__brand');
-    for (var t = 0; t < titled.length; t++) {
-      var pg = titled[t].closest('.page');
-      var name = (titled[t].textContent || '').trim().toLowerCase();
-      var heads = pg.querySelectorAll('.page__heading');
-      for (var h = 0; h < heads.length; h++) {
-        var dup = (heads[h].textContent || '').trim().toLowerCase() === name;
-        mark(heads[h], 'data-tvma-duptitle', dup ? '' : null);
-        var kick = heads[h].previousElementSibling;
-        if (kick && kick.classList.contains('stage__kicker')) mark(kick, 'data-tvma-duptitle', dup ? '' : null);
-      }
-    }
     // A Back button at the foot of a page that already has one at the top.
     var pages = document.querySelectorAll('.app__screen:not(.tvma-xfade) .page');
     for (var i = 0; i < pages.length; i++) {
@@ -1700,7 +1568,6 @@
       syncSearch();
       syncPlayer();
       syncSkeletons();
-      syncTyping();
       syncYou();
       syncWho();
       syncSettingsExtras();
