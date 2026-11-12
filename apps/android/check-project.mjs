@@ -288,6 +288,8 @@ check('the overlay never cancels a touch or pointer gesture',
 check('native playback is never painted over by the overlay',
   shellCss.includes("html.tvm-android.tvm-native-playback .player.player--native") &&
   !/html\.tvm-android \.player \{[^}]*background:\s*#000/.test(shellCss));
+check('TVM runs as one activity (reopening it returns to the film, not a second copy with a second core)',
+  manifest.includes('android:launchMode="singleTask"'));
 check('the playback smoke test runs on the emulator',
   existsSync(join(ROOT, 'smoke', 'playback.mjs')) &&
   (read(join(REPO, 'scripts', 'android-smoke.mjs')) ?? '').includes('playbackSmoke'));
