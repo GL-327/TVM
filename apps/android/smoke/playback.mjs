@@ -15,8 +15,9 @@
 //   - leaving the app and coming back must pause and then carry on;
 //   - MP4, Matroska and MPEG-TS must each render.
 //
-// The clips (apps/android/smoke/media) are 24 s of moving test pattern with a
-// tone, served to the emulator from this machine through `adb reverse`.
+// The clips (apps/android/smoke/media) are 24 s of test pattern with a large
+// white block sweeping across it and a tone, served to the emulator from this
+// machine through `adb reverse`.
 import { execFileSync } from 'node:child_process';
 import { createReadStream, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
@@ -72,11 +73,16 @@ function measure(frame) {
   return { mean, spread, values };
 }
 
+/**
+ * How much of the picture changed: the share of samples whose brightness moved
+ * by more than a clear step. (An average over the frame hides a moving object
+ * on a mostly still picture; the clip's white block covers about a tenth of it.)
+ */
 function difference(a, b) {
   const n = Math.min(a.values.length, b.values.length);
-  let total = 0;
-  for (let i = 0; i < n; i++) total += Math.abs(a.values[i] - b.values[i]);
-  return total / n;
+  let changed = 0;
+  for (let i = 0; i < n; i++) if (Math.abs(a.values[i] - b.values[i]) > 24) changed++;
+  return (changed / n) * 100;
 }
 
 export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out, packageName }) {
@@ -132,8 +138,8 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
     const b = measure(frame);
     if (a.mean < 20 || a.spread < 12) throw new Error(`${label}: the picture is black or blank (brightness ${a.mean.toFixed(1)}, spread ${a.spread.toFixed(1)})`);
     const moved = difference(a, b);
-    if (moved < 1.5) throw new Error(`${label}: the picture is not moving (difference ${moved.toFixed(2)})`);
-    annotate('notice', `${label}: video renders (brightness ${a.mean.toFixed(0)}, spread ${a.spread.toFixed(0)}, motion ${moved.toFixed(1)}) at ${frame.width}x${frame.height}`);
+    if (moved < 0.5) throw new Error(`${label}: the picture is not moving (${moved.toFixed(2)}% of it changed)`);
+    annotate('notice', `${label}: video renders (brightness ${a.mean.toFixed(0)}, spread ${a.spread.toFixed(0)}, ${moved.toFixed(1)}% changed in 1.2 s) at ${frame.width}x${frame.height}`);
     return frame;
   }
 
@@ -154,7 +160,7 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
     await sleep(1500);
     const p2 = measure(capture());
     const t2 = (await latest('smoke-1')).position;
-    if (difference(p1, p2) > 1.0 || Math.abs(t2 - t1) > 0.3) throw new Error(`still moving while paused (picture ${difference(p1, p2).toFixed(2)}, clock ${t1}→${t2})`);
+    if (difference(p1, p2) > 0.1 || Math.abs(t2 - t1) > 0.3) throw new Error(`still moving while paused (${difference(p1, p2).toFixed(2)}% changed, clock ${t1}→${t2})`);
     if (p2.mean < 20) throw new Error('the paused picture is black');
     annotate('notice', 'pause holds the picture');
 
