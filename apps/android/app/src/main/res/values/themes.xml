@@ -46,6 +46,36 @@
     </style>
 
     <style name="Widget.TVM.BottomSheet" parent="Widget.MaterialComponents.BottomSheet.Modal">
-        <item name="backgroundTint">@color/tvm_surface</item>
+        <item name="backgroundTint">@color/tvm_sheet</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.TVM.Sheet</item>
+    </style>
+
+    <style name="ShapeAppearance.TVM.Sheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">26dp</item>
+        <item name="cornerSizeTopRight">26dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <style name="Widget.TVM.Button.Sheet" parent="Widget.MaterialComponents.Button.UnelevatedButton">
+        <item name="backgroundTint">@color/tvm_blue</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">14dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+    </style>
+
+    <style name="Widget.TVM.Button.SheetQuiet" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">@color/tvm_sheet_muted</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="cornerRadius">14dp</item>
+        <item name="rippleColor">#14FFFFFF</item>
     </style>
 </resources>
