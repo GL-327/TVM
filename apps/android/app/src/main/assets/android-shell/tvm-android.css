@@ -1312,6 +1312,26 @@ html.tvm-android .screen-content > :is(.page, .home, main) > :not(.ribbon):not(.
   animation: tvma-enter 240ms var(--tvma-ease) backwards;
 }
 
+/*
+ * Performance mode pauses every animation in the app (motion.css), which froze
+ * this fade on its first frame: the page stayed invisible. With performance
+ * mode or reduced motion on, there is no fade at all.
+ */
+html.tvm-android:is([data-perf='on'], [data-motion='reduced']) .screen-content > :is(.page, .home, main) > * {
+  animation: none !important;
+  opacity: 1;
+}
+
+/* The same trap catches the interface's own entrance animations (the hero
+   copy, Search, scrims): paused on a first frame of opacity 0. Performance
+   mode already freezes all motion; here it removes it, so everything simply
+   shows in its final state. */
+html.tvm-android[data-perf='on'] *,
+html.tvm-android[data-perf='on'] *::before,
+html.tvm-android[data-perf='on'] *::after {
+  animation: none !important;
+}
+
 @keyframes tvma-enter {
   from {
     opacity: 0;
@@ -1355,38 +1375,22 @@ html.tvm-android:is(.tvm-cinema, .tvm-native-playback, .tvma-search-open) .app::
   display: none;
 }
 
-/* Settings and other pages scroll freely. */
-html.tvm-android :is(.page, .page--settings, .details, .search-pill__panel) {
+/* Every page scrolls freely: no locking onto rows or sections. */
+html.tvm-android :is(.page, .page--settings, .details, .search-pill__panel, .home) {
   scroll-snap-type: none;
 }
 
 /* ---- 10. Home -------------------------------------------------------------------
- * A full-bleed featured title, a tidy Where to grid, and rows of posters that
- * the page snaps between (kept from the original: a row is never half-missed).
+ * A full-bleed featured title, a tidy Where to grid, and rows of posters.
+ * The page scrolls freely, with no locking onto rows.
  */
 
 html.tvm-android .home.home--launcher {
-  scroll-snap-type: y mandatory;
   background: var(--tvm-bg, #071018);
 }
 
 html.tvm-android .home--launcher :is(.home__shelf, .home__destinations, .rail, .rail__track) {
   background: transparent;
-}
-
-html.tvm-android .home--launcher > .stage--home,
-html.tvm-android .home--launcher > .home__destinations,
-html.tvm-android .home--launcher .home__shelf > .rail {
-  scroll-snap-align: start;
-}
-
-html.tvm-android .home--launcher .home__shelf > .rail {
-  scroll-margin-top: calc(var(--tvm-chrome-top, 0px) + 8px);
-}
-
-/* The page's true end is a stop too, so the last row is always reachable. */
-html.tvm-android .home--launcher .home__shelf {
-  scroll-snap-align: end;
 }
 
 /* Featured title. */
@@ -1545,6 +1549,7 @@ html.tvm-android .home--launcher .home__destinations {
 html.tvm-android .home__launcher-kicker,
 html.tvm-android .home--launcher .rail__title {
   margin: 0 0 12px;
+  padding: 0;
   font-size: 19px;
   font-weight: 750;
   line-height: 1.2;
@@ -1731,4 +1736,80 @@ html.tvm-android .poster .poster__progress-bar {
   height: 100%;
   border-radius: inherit;
   background: var(--tvma-brand);
+}
+
+/* ---- 11. The other screens, in the same language ----------------------------------- */
+
+/* Details: Play is the one white pill; the rest are quiet rounded pills. */
+html.tvm-android .details__actions,
+html.tvm-android .hero__actions.details__actions {
+  width: 100%;
+  max-width: 34rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+html.tvm-android .details__actions .tvm-button {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+  min-height: 46px;
+  height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--tvma-card-hi);
+  color: #fff;
+  font-size: 14.5px;
+  font-weight: 650;
+  box-shadow: none;
+  outline: none;
+  transform: none;
+}
+
+html.tvm-android .details__actions .tvm-button--primary,
+html.tvm-android .details__actions [data-focus-id='play'] {
+  background: #fff;
+  color: #05080e;
+  font-weight: 750;
+}
+
+html.tvm-android .details__actions .tvm-button:active {
+  transform: scale(0.97);
+}
+
+html.tvm-android .details .poster__art,
+html.tvm-android .details :is(.details__poster, .details__art) {
+  border-radius: var(--tvma-r-md);
+}
+
+/* Cards and panels: one radius, one fill, no hard borders. */
+html.tvm-android :is(.panel, .hero--panel, .error-state, .settings-summary, .live-card, .channel-card, .empty-state) {
+  border-color: rgba(255, 255, 255, 0.06);
+  border-radius: var(--tvma-r-lg);
+}
+
+html.tvm-android .page__toolbar .tvm-button,
+html.tvm-android .collection-controls .tvm-button,
+html.tvm-android .hero__actions .tvm-button {
+  border-radius: 999px;
+}
+
+html.tvm-android .page__heading {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* Apps: rounded tiles to match the posters. */
+html.tvm-android .app-card,
+html.tvm-android .app-card :is(.app-card__art, img) {
+  border-radius: var(--tvma-r-md);
+}
+
+/* Touch has no remote focus: no ring left on the last poster touched. */
+html.tvm-android .poster:is([data-focused='true'], .tvm-button--focused) .poster__art {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: none;
 }
