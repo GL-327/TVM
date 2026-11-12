@@ -205,7 +205,10 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
       annotate('notice', `UI frames during playback: total ${pick('Total frames rendered')}, janky ${pick('Janky frames')}, 50th ${pick('50th percentile')}, 90th ${pick('90th percentile')}`);
     } catch { /* informational */ }
 
-    // Closing the player hands the screen back.
+    // Closing the player hands the screen back: the interface removes the
+    // player screen (which releases the landscape it holds while open) and
+    // stops the stream.
+    await evaluate(`document.querySelector('.modal-layer[data-screen="player"]')?.remove(), 'removed'`);
     await send({ id: 'smoke-3', command: 'stop' });
     await step('closing the player restores portrait', 20, async () => {
       const frame = capture();
