@@ -122,6 +122,14 @@ class TvmUpdateSheet(private val activity: Activity) {
     fun failed(reason: String, onRetry: () -> Unit) = show(activity.getString(R.string.update_failed_title), reason,
         activity.getString(R.string.update_retry), onRetry, activity.getString(R.string.close))
 
+    /** True while a download is under way (the sheet then stays, whatever happens). */
+    var busy = false
+
+    /** Playback has gone full screen: an offer or a result must not sit over the film. */
+    fun yieldToPlayback() {
+        if (!busy) dismiss()
+    }
+
     fun dismiss() {
         runCatching { dialog?.dismiss() }
         dialog = null
