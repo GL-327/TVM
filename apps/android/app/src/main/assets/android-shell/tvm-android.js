@@ -531,6 +531,12 @@
   var typingTimer = 0;
   function syncTyping() {
     if (!root.classList.contains('tvma-typing')) return;
+    // Never left behind: no focused field, or Search closed, and the bar is back.
+    var a = document.activeElement;
+    if (!a || !a.matches || !a.matches('input, textarea') || !document.querySelector('.search-pill')) {
+      root.classList.remove('tvma-typing');
+      return;
+    }
     var up = root.classList.contains('tvm-ime-open');
     if (up) typingSawKeyboard = true;
     else if (typingSawKeyboard) root.classList.remove('tvma-typing');
@@ -1455,6 +1461,9 @@
       });
     });
     switching = t;
+    // A transition that stalls (a WebView quirk) is finished rather than left
+    // holding the old picture on screen.
+    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* done */ } switching = null; } }, 1500);
     t.finished.then(function () { if (switching === t) switching = null; }, function () { if (switching === t) switching = null; });
   }
 
