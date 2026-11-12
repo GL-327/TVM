@@ -269,12 +269,7 @@ class MainActivity : AppCompatActivity() {
     private fun attachStandaloneBridge() {
         if (bridgeAttached || standaloneOrigin == null) return
         val player = nativePlayer ?: TvmNativePlayer(this, webView) { playing ->
-            if (playing) {
-                cinema.enter()
-                updateSheet.yieldToPlayback()
-            } else {
-                cinema.exit()
-            }
+            if (playing) cinema.enter() else cinema.exit()
         }.also { nativePlayer = it }
         webView.addJavascriptInterface(player.bridge(), "tvmPlayer")
         bridgeAttached = true
@@ -490,12 +485,9 @@ class MainActivity : AppCompatActivity() {
         checkAppUpdate(manual = false)
     }
 
-    private val updateSheet by lazy { TvmUpdateSheet(this) }
-
     private fun checkAppUpdate(manual: Boolean) {
         if (appUpdateBusy || isFinishing) return
         appUpdateBusy = true
-        if (manual) updateSheet.checking()
         thread(name = "tvm-app-update") {
             val result = appUpdate.check()
             runOnUiThread {
@@ -503,14 +495,13 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 val skipped = getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE).getString("later", null)
                 when (result) {
-                    // The automatic check never interrupts a film; the next launch (or
-                    // Settings → Check for App Update) offers it again.
                     is TvmAppUpdate.Check.Available ->
-                        if (manual || (skipped != result.release.build && !cinema.active)) offerAppUpdate(result.release, known = true)
-                        else updateSheet.dismiss()
+                        if (manual || skipped != result.release.build) offerAppUpdate(result.release, known = true)
                     is TvmAppUpdate.Check.Unknown -> if (manual) offerAppUpdate(result.release, known = false)
-                    is TvmAppUpdate.Check.Current -> if (manual) updateSheet.current(result.build.take(7))
-                    is TvmAppUpdate.Check.Failed -> if (manual) updateSheet.failed(result.reason) { checkAppUpdate(manual = true) }
+                    is TvmAppUpdate.Check.Current -> if (manual) {
+                        Toast.makeText(this, getString(R.string.app_update_current, result.build.take(7)), Toast.LENGTH_SHORT).show()
+                    }
+                    is TvmAppUpdate.Check.Failed -> if (manual) Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -518,48 +509,43 @@ class MainActivity : AppCompatActivity() {
 
     private fun offerAppUpdate(release: TvmAppUpdate.Release, known: Boolean) {
         val mine = ApkBundle(assets).appBuild().take(7)
-        updateSheet.available(
-            build = release.build.take(7),
-            mine = mine,
-            bytes = release.size,
-            known = known,
-            onUpdate = { downloadAppUpdate(release) },
-            onLater = {
+        val body = if (known) {
+            getString(R.string.app_update_body, release.build.take(7), mine)
+        } else {
+            getString(R.string.app_update_body_unknown, release.build.take(7))
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.app_update_title)
+            .setMessage(body)
+            .setPositiveButton(R.string.app_update_install) { _, _ -> downloadAppUpdate(release) }
+            .setNegativeButton(R.string.app_update_later) { _, _ ->
                 getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE).edit().putString("later", release.build).apply()
-            },
-        )
+            }
+            .show()
     }
 
     private fun downloadAppUpdate(release: TvmAppUpdate.Release) {
         if (appUpdateBusy) return
         appUpdateBusy = true
-        updateSheet.busy = true
-        updateSheet.downloading(0, release.size)
-        var shown = 0L
+        val progress = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.app_update_downloading)
+            .setView(ProgressBar(this).apply { isIndeterminate = true; setPadding(0, 48, 0, 48) })
+            .setCancelable(false)
+            .show()
         thread(name = "tvm-app-download") {
-            val outcome = runCatching {
-                appUpdate.download(release, File(cacheDir, "updates")) { bytes ->
-                    // A few updates a second are plenty for a progress bar.
-                    val now = SystemClock.elapsedRealtime()
-                    if (now - shown >= 120) {
-                        shown = now
-                        runOnUiThread { if (appUpdateBusy) updateSheet.downloading(bytes, release.size) }
-                    }
-                }
-            }
+            val outcome = runCatching { appUpdate.download(release, File(cacheDir, "updates")) }
             runOnUiThread {
                 appUpdateBusy = false
-                updateSheet.busy = false
+                runCatching { progress.dismiss() }
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 outcome.fold(
-                    onSuccess = { apk ->
-                        updateSheet.ready { installApk(apk) }
-                        installApk(apk)
-                    },
+                    onSuccess = { installApk(it) },
                     onFailure = { problem ->
-                        updateSheet.failed(problem.message ?: getString(R.string.app_update_failed, "unknown error")) {
-                            downloadAppUpdate(release)
-                        }
+                        Toast.makeText(
+                            this,
+                            getString(R.string.app_update_failed, problem.message ?: "unknown error"),
+                            Toast.LENGTH_LONG,
+                        ).show()
                     },
                 )
             }
@@ -570,10 +556,9 @@ class MainActivity : AppCompatActivity() {
     private fun installApk(apk: File) {
         if (!packageManager.canRequestPackageInstalls()) {
             pendingInstall = apk
-            updateSheet.allow {
-                runCatching {
-                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
-                }
+            Toast.makeText(this, R.string.app_update_allow, Toast.LENGTH_LONG).show()
+            runCatching {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             }
             return
         }
@@ -582,7 +567,7 @@ class MainActivity : AppCompatActivity() {
             .setDataAndType(uri, "application/vnd.android.package-archive")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { startActivity(intent) }.onFailure {
-            updateSheet.failed(getString(R.string.app_update_failed, it.message ?: "no installer")) { installApk(apk) }
+            Toast.makeText(this, getString(R.string.app_update_failed, it.message ?: "no installer"), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -605,12 +590,7 @@ class MainActivity : AppCompatActivity() {
             if (active == null || isFinishing) return
             webView.evaluateJavascript(HOME_CORE_PLAYER_SCRIPT) { result ->
                 if (active == null) return@evaluateJavascript
-                if (result?.trim('"') == "true") {
-                    cinema.enter()
-                    updateSheet.yieldToPlayback()
-                } else {
-                    cinema.exit()
-                }
+                if (result?.trim('"') == "true") cinema.enter() else cinema.exit()
             }
             main.postDelayed(this, 1_000)
         }

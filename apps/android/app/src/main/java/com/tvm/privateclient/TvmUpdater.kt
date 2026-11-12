@@ -307,9 +307,6 @@ fun interface TvmHttp {
         /** The largest bundle the updater will accept. */
         const val MAX_BYTES = 64 * 1024 * 1024
 
-        /** Bytes read so far, for a download that shows its progress (TvmAppUpdate). */
-        val progress = ThreadLocal<((Long) -> Unit)?>()
-
         val Default = TvmHttp { start, timeoutMs ->
             // Follow redirects ourselves. GitHub's download host 302s onto
             // another hostname, and HttpURLConnection has dropped that hop
@@ -349,7 +346,6 @@ fun interface TvmHttp {
                 if (read < 0) break
                 out.write(buffer, 0, read)
                 if (out.size() > limit) throw IOException("download too large")
-                progress.get()?.invoke(out.size().toLong())
             }
             return out.toByteArray()
         }
