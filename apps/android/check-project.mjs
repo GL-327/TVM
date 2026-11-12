@@ -254,6 +254,48 @@ for (const address of [
   check(`iOS tests still include ${address}`, iosTests.includes(address));
 }
 
+// ---- Android look: overlay, full-screen playback, startup reveal -------------
+const shellDir = join(ROOT, 'app', 'src', 'main', 'assets', 'android-shell');
+const shellCss = read(join(shellDir, 'tvm-android.css')) ?? '';
+const shellJs = read(join(shellDir, 'tvm-android.js')) ?? '';
+const chrome = read(join(SRC, 'TvmDeviceChrome.kt')) ?? '';
+check('the Android overlay stylesheet and script exist', shellCss.length > 0 && shellJs.length > 0);
+{
+  // Every rule must be scoped to html.tvm-android so it cannot reach iOS, the
+  // website or Android TV. Comments and @-rule lines are skipped.
+  const css = shellCss.replace(/\/\*[\s\S]*?\*\//g, '');
+  const unscoped = [];
+  for (const block of css.split('}')) {
+    const head = block.split('{').slice(-2, -1)[0];
+    if (head === undefined) continue;
+    const selector = head.split('{').pop().trim();
+    if (selector === '' || selector.startsWith('@') || /^(from|to|\d+%)$/.test(selector)) continue;
+    for (const part of selector.split(/,(?![^(]*\))/)) {
+      const one = part.trim().replace(/^@media[^{]*/, '').trim();
+      if (one !== '' && !one.startsWith('html.tvm-android')) unscoped.push(one);
+    }
+  }
+  check('every overlay rule is scoped to html.tvm-android', unscoped.length === 0, unscoped.slice(0, 3).join(' | '));
+}
+check('the overlay is injected on phones only, never on a television',
+  chrome.includes('fun androidOverlay(') && chrome.includes('if (phone && overlay.isNotEmpty())') &&
+  main.includes('if (!television)') && main.includes('android-shell/tvm-android.css'));
+check('the overlay never stops the interface\'s own touch handling',
+  !shellJs.includes('stopPropagation') && !shellJs.includes('preventDefault'));
+const cinema = read(join(SRC, 'TvmCinemaMode.kt')) ?? '';
+check('playback goes full screen in landscape and restores afterwards',
+  cinema.includes('SCREEN_ORIENTATION_SENSOR_LANDSCAPE') && cinema.includes('hide(WindowInsetsCompat.Type.systemBars())') &&
+  cinema.includes('show(WindowInsetsCompat.Type.systemBars())') && cinema.includes('savedOrientation') &&
+  main.includes('cinema.enter()') && main.includes('cinema.exit()'));
+const player = read(join(SRC, 'TvmNativePlayer.kt')) ?? '';
+check('the native picture sits under the WebView and keeps its shape',
+  player.includes('root.addView(\n            frame,\n            0,') && player.includes('RESIZE_MODE_FIT') && !player.includes('webView.z ='));
+const layout = read(join(ROOT, 'app', 'src', 'main', 'res', 'layout', 'activity_main.xml')) ?? '';
+check('the startup reveal builds the logo from vectors',
+  layout.includes('com.tvm.privateclient.TvmIntroView') && existsSync(join(SRC, 'TvmLogoGeometry.kt')) &&
+  (read(join(SRC, 'TvmIntroView.kt')) ?? '').includes('PathMeasure'));
+check('the native reveal replaces the web intro on Android', chrome.includes("sessionStorage.setItem('tvm.intro.session', '1')"));
+
 const readme = read(join(ROOT, 'README.md')) ?? '';
 check('README states that no APK was produced without the SDK',
   /ANDROID_HOME|not installed|No APK/i.test(readme));

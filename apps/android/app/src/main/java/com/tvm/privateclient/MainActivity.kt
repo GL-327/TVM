@@ -1,12 +1,17 @@
 package com.tvm.privateclient
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.res.AssetManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -26,9 +31,12 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -54,6 +62,23 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chrome: View
     private lateinit var pageLoading: ProgressBar
     private lateinit var menuButton: ImageButton
+    private lateinit var intro: TvmIntroView
+    private lateinit var cinema: TvmCinemaMode
+
+    /** The startup reveal leaves once it has finished AND the page is ready. */
+    private var introRevealed = false
+    private var pageReady = false
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Android-only look (assets/android-shell), injected into every page on a phone. */
+    private var overlayScript: String = ""
+
+    /** Updates of the APK itself (TvmAppUpdate); the interface has its own updater. */
+    private val appUpdate by lazy { TvmAppUpdate { ApkBundle(assets).appBuild() } }
+    private var appUpdateBusy = false
+    private var autoAppCheckDone = false
+    /** A downloaded update waiting for "install unknown apps" to be allowed. */
+    private var pendingInstall: File? = null
 
     private var core: TvmLocalCore? = null
     private var localServer: TvmLocalServer? = null
@@ -85,6 +110,20 @@ class MainActivity : AppCompatActivity() {
         chrome = findViewById(R.id.chrome)
         pageLoading = findViewById(R.id.page_loading)
         menuButton = findViewById(R.id.menu)
+        intro = findViewById(R.id.intro)
+        cinema = TvmCinemaMode(this, webView, listOf(chrome))
+        intro.onRevealed = {
+            introRevealed = true
+            dismissIntroWhenReady()
+            // Still starting well after the logo settled: show that work is going on.
+            main.postDelayed({ if (intro.visibility == View.VISIBLE && !pageReady) starting.visibility = View.VISIBLE }, 4_000)
+        }
+        if (!television) {
+            overlayScript = TvmShellScripts.androidOverlay(
+                readAsset("android-shell/tvm-android.css").orEmpty(),
+                readAsset("android-shell/tvm-android.js").orEmpty(),
+            )
+        }
 
         errorReload.setOnClickListener { reloadPage() }
         menuButton.setOnClickListener { showMenu(it) }
@@ -100,7 +139,24 @@ class MainActivity : AppCompatActivity() {
         startStandalone()
     }
 
+    override fun onResume() {
+        super.onResume()
+        val apk = pendingInstall ?: return
+        if (packageManager.canRequestPackageInstalls()) {
+            pendingInstall = null
+            installApk(apk)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        cinema.onWindowFocusChanged(hasFocus)
+    }
+
     override fun onDestroy() {
+        main.removeCallbacksAndMessages(null)
+        intro.stop()
+        cinema.exit()
         nativePlayer?.release()
         nativePlayer = null
         localServer?.stop()
@@ -143,6 +199,7 @@ class MainActivity : AppCompatActivity() {
                 server.start()
                 runOnUiThread {
                     core = made
+                    made.onUpdateCheck = { runOnUiThread { checkAppUpdate(manual = true) } }
                     localServer = server
                     standaloneOrigin = server.origin
                     refreshBootScript()
@@ -185,7 +242,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun attachStandaloneBridge() {
         if (bridgeAttached || standaloneOrigin == null) return
-        val player = nativePlayer ?: TvmNativePlayer(this, webView).also { nativePlayer = it }
+        val player = nativePlayer ?: TvmNativePlayer(this, webView) { playing ->
+            if (playing) cinema.enter() else cinema.exit()
+        }.also { nativePlayer = it }
         webView.addJavascriptInterface(player.bridge(), "tvmPlayer")
         bridgeAttached = true
     }
@@ -220,6 +279,7 @@ class MainActivity : AppCompatActivity() {
     private fun showMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         menu.menu.add(0, MENU_RELOAD, 0, getString(R.string.reload))
+        menu.menu.add(0, MENU_APP_UPDATE, 2, getString(R.string.check_app_update))
         if (active == null) {
             menu.menu.add(0, MENU_HOME_CORE, 1, getString(R.string.use_home_core))
         } else {
@@ -230,6 +290,7 @@ class MainActivity : AppCompatActivity() {
                 MENU_RELOAD -> reloadPage()
                 MENU_HOME_CORE -> showHomeCoreSheet()
                 MENU_BACK_TO_PHONE -> backToThisPhone()
+                MENU_APP_UPDATE -> checkAppUpdate(manual = true)
             }
             true
         }
@@ -295,6 +356,7 @@ class MainActivity : AppCompatActivity() {
     private fun useHomeCore(connection: Connection, cookie: SessionCookie) {
         detachBridge()
         active = connection to cookie
+        watchHomeCorePlayer()
         clearError()
         setLoading(true)
         val cookies = CookieManager.getInstance()
@@ -318,6 +380,8 @@ class MainActivity : AppCompatActivity() {
     private fun backToThisPhone() {
         val previous = active ?: return
         active = null
+        main.removeCallbacks(homeCorePlayerCheck)
+        cinema.exit()
         runCatching { CredentialStore.clear(this) }
         CookieManager.getInstance().removeAllCookies(null)
         thread(name = "tvm-home-core-close") { runCatching { SessionClient.disconnect(previous.first, previous.second) } }
@@ -341,9 +405,160 @@ class MainActivity : AppCompatActivity() {
         if (!loading) {
             starting.visibility = View.GONE
             if (errorPane.visibility != View.VISIBLE) webView.visibility = View.VISIBLE
+            // A home Core's page is not served by this phone, so it gets the
+            // Android look here rather than in the boot script.
+            if (active != null && overlayScript.isNotEmpty()) webView.evaluateJavascript(overlayScript, null)
             // As TVMWebView's didFinish: the page now has its real surroundings.
             publishChrome()
+            cinema.republish()
+            pageReady = true
+            dismissIntroWhenReady()
         }
+    }
+
+    // ---- Startup reveal -------------------------------------------------------
+
+    private fun dismissIntroWhenReady() {
+        if (!introRevealed || !pageReady || intro.visibility != View.VISIBLE) return
+        starting.visibility = View.GONE
+        intro.animate().alpha(0f).setDuration(350).withEndAction {
+            hideIntro()
+            autoCheckAppUpdate()
+        }.start()
+    }
+
+    // ---- App (APK) updates ------------------------------------------------------
+
+    /**
+     * Once per launch, when automatic updates are on, at most every six hours,
+     * and never again for a build the user already said "Later" to.
+     */
+    private fun autoCheckAppUpdate() {
+        if (autoAppCheckDone) return
+        autoAppCheckDone = true
+        val store = core?.store ?: return
+        if (!TvmPrefs.load(store).autoUpdate) return
+        val prefs = getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (now - prefs.getLong("lastAutoCheck", 0L) < 6 * 60 * 60 * 1000L) return
+        prefs.edit().putLong("lastAutoCheck", now).apply()
+        checkAppUpdate(manual = false)
+    }
+
+    private fun checkAppUpdate(manual: Boolean) {
+        if (appUpdateBusy || isFinishing) return
+        appUpdateBusy = true
+        thread(name = "tvm-app-update") {
+            val result = appUpdate.check()
+            runOnUiThread {
+                appUpdateBusy = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val skipped = getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE).getString("later", null)
+                when (result) {
+                    is TvmAppUpdate.Check.Available ->
+                        if (manual || skipped != result.release.build) offerAppUpdate(result.release, known = true)
+                    is TvmAppUpdate.Check.Unknown -> if (manual) offerAppUpdate(result.release, known = false)
+                    is TvmAppUpdate.Check.Current -> if (manual) {
+                        Toast.makeText(this, getString(R.string.app_update_current, result.build.take(7)), Toast.LENGTH_SHORT).show()
+                    }
+                    is TvmAppUpdate.Check.Failed -> if (manual) Toast.makeText(this, result.reason, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun offerAppUpdate(release: TvmAppUpdate.Release, known: Boolean) {
+        val mine = ApkBundle(assets).appBuild().take(7)
+        val body = if (known) {
+            getString(R.string.app_update_body, release.build.take(7), mine)
+        } else {
+            getString(R.string.app_update_body_unknown, release.build.take(7))
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.app_update_title)
+            .setMessage(body)
+            .setPositiveButton(R.string.app_update_install) { _, _ -> downloadAppUpdate(release) }
+            .setNegativeButton(R.string.app_update_later) { _, _ ->
+                getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE).edit().putString("later", release.build).apply()
+            }
+            .show()
+    }
+
+    private fun downloadAppUpdate(release: TvmAppUpdate.Release) {
+        if (appUpdateBusy) return
+        appUpdateBusy = true
+        val progress = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.app_update_downloading)
+            .setView(ProgressBar(this).apply { isIndeterminate = true; setPadding(0, 48, 0, 48) })
+            .setCancelable(false)
+            .show()
+        thread(name = "tvm-app-download") {
+            val outcome = runCatching { appUpdate.download(release, File(cacheDir, "updates")) }
+            runOnUiThread {
+                appUpdateBusy = false
+                runCatching { progress.dismiss() }
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                outcome.fold(
+                    onSuccess = { installApk(it) },
+                    onFailure = { problem ->
+                        Toast.makeText(
+                            this,
+                            getString(R.string.app_update_failed, problem.message ?: "unknown error"),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    },
+                )
+            }
+        }
+    }
+
+    /** Hands the verified APK to Android's installer, which asks the user to confirm. */
+    private fun installApk(apk: File) {
+        if (!packageManager.canRequestPackageInstalls()) {
+            pendingInstall = apk
+            Toast.makeText(this, R.string.app_update_allow, Toast.LENGTH_LONG).show()
+            runCatching {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            }
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.updates", apk)
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { startActivity(intent) }.onFailure {
+            Toast.makeText(this, getString(R.string.app_update_failed, it.message ?: "no installer"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun hideIntro() {
+        intro.animate().cancel()
+        intro.stop()
+        intro.visibility = View.GONE
+        starting.visibility = View.GONE
+    }
+
+    // ---- Full-screen playback for a home Core ----------------------------------
+
+    /**
+     * A home Core plays in the page's own <video> and has no native bridge (on
+     * purpose: see attachStandaloneBridge), so the shell looks for the player
+     * screen instead of being told about it.
+     */
+    private val homeCorePlayerCheck: Runnable = object : Runnable {
+        override fun run() {
+            if (active == null || isFinishing) return
+            webView.evaluateJavascript(HOME_CORE_PLAYER_SCRIPT) { result ->
+                if (active == null) return@evaluateJavascript
+                if (result?.trim('"') == "true") cinema.enter() else cinema.exit()
+            }
+            main.postDelayed(this, 1_000)
+        }
+    }
+
+    private fun watchHomeCorePlayer() {
+        main.removeCallbacks(homeCorePlayerCheck)
+        main.postDelayed(homeCorePlayerCheck, 1_000)
     }
 
     /** Insets, but only where the page actually draws under the bars. */
@@ -357,10 +572,23 @@ class MainActivity : AppCompatActivity() {
             "window.__tvmKeyboardInset && window.__tvmKeyboardInset(${TvmDeviceChrome.keyboardInset(this, current)});",
             null,
         )
+        // The window already shrinks for the keyboard (the root is padded by it),
+        // so the Android look tracks the keyboard with its own class instead of
+        // adding the keyboard's height a second time.
+        val imeOpen = insets?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        webView.evaluateJavascript("document.documentElement.classList.toggle('tvm-ime-open', $imeOpen);", null)
     }
 
     private fun showStarting() {
-        starting.visibility = View.VISIBLE
+        starting.visibility = View.GONE
+        pageReady = false
+        if (intro.visibility != View.VISIBLE || !introRevealed) {
+            intro.animate().cancel()
+            intro.alpha = 1f
+            intro.visibility = View.VISIBLE
+            introRevealed = false
+            intro.start()
+        }
         chrome.visibility = View.GONE
         errorPane.visibility = View.GONE
         webView.visibility = View.INVISIBLE
@@ -373,6 +601,7 @@ class MainActivity : AppCompatActivity() {
 
     /** As PlayerShell's error: an icon, the reason, and Reload. */
     private fun showPageError(message: String) {
+        hideIntro()
         starting.visibility = View.GONE
         pageLoading.visibility = View.GONE
         webView.visibility = View.INVISIBLE
@@ -387,6 +616,7 @@ class MainActivity : AppCompatActivity() {
 
     /** As StandaloneRoot's error: the name and the reason, nothing to press. */
     private fun showStartupError(message: String) {
+        hideIntro()
         starting.visibility = View.GONE
         chrome.visibility = View.GONE
         webView.visibility = View.INVISIBLE
@@ -464,7 +694,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshBootScript() {
         val language = core?.store?.let { TvmDeviceChrome.language(it) } ?: TvmPrefs.DEFAULT_LANGUAGE
-        bootScript = TvmShellScripts.boot(!television, TvmDeviceChrome.profile(this, edgeInsets()), language)
+        bootScript = TvmShellScripts.boot(!television, TvmDeviceChrome.profile(this, edgeInsets()), language, overlayScript)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -506,6 +736,11 @@ class MainActivity : AppCompatActivity() {
         const val MENU_RELOAD = 1
         const val MENU_HOME_CORE = 2
         const val MENU_BACK_TO_PHONE = 3
+        const val MENU_APP_UPDATE = 4
+        const val APP_UPDATE_PREFS = "tvm-app-update"
+
+        const val HOME_CORE_PLAYER_SCRIPT =
+            "(function(){return !!document.querySelector('.modal-layer[data-screen=player]');})();"
 
         const val BACK_SCRIPT = """
             (function () {
