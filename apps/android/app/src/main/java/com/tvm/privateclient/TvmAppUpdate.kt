@@ -48,8 +48,13 @@ class TvmAppUpdate(
     }
 
     /** Downloads the APK into [dir] and checks it. Returns the file, ready to install. */
-    fun download(release: Release, dir: File): File {
-        val (status, data) = http.get(release.url, 180_000)
+    fun download(release: Release, dir: File, onProgress: (Long) -> Unit = {}): File {
+        TvmHttp.progress.set(onProgress)
+        val (status, data) = try {
+            http.get(release.url, 180_000)
+        } finally {
+            TvmHttp.progress.remove()
+        }
         if (status !in 200..299 || data.size < 1024) throw ClientException("GitHub did not return the TVM app.")
         if (release.size > 0 && data.size.toLong() != release.size) {
             throw ClientException("The download was incomplete. Try again.")
