@@ -12,4 +12,9 @@
     <color name="tvm_warning">#FFFFB454</color>
     <color name="tvm_icon_bg">#FF2F6BFF</color>
     <color name="tvm_menu_bg">#73000000</color>
+    <!-- The app's own sheets (updates, home Core), matching the interface's glass. -->
+    <color name="tvm_sheet">#FF14171F</color>
+    <color name="tvm_sheet_muted">#FFA3ABBA</color>
+    <color name="tvm_sheet_track">#26FFFFFF</color>
+    <color name="tvm_blue">#FF3D9BFF</color>
 </resources>
