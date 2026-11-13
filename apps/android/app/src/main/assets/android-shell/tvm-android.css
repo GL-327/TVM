@@ -3654,6 +3654,14 @@ html.tvm-android .app__screen.tvma-xfade.tvma-xfade--out {
   opacity: 0;
 }
 
+/* The tab crossfade (tvm-android.js section 17): the old page's still picture
+   and the new page fade across each other. */
+html.tvm-android::view-transition-old(root),
+html.tvm-android::view-transition-new(root) {
+  animation-duration: 210ms;
+  animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
 /* ---- 33. Watchlist: a library, not a row of big pills ------------------------------------ */
 
 html.tvm-android .page--library:has([data-focus-id='watchlist-sort']) .page__toolbar .stage__kicker {
