@@ -1390,60 +1390,55 @@
   // ---- 17. Tabs crossfade ----------------------------------------------------------
 
   // The interface shows one screen at a time: a new tab replaced the old page
-  // at once and faded its contents in over the page colour (through black).
-  // Here the old page stays on top as a still copy and fades out once the new
-  // page is ready underneath: A, then A over B, then B.
+  // at once. The browser's view transition keeps a still picture of the old
+  // page on screen until the new page is ready (never a half-built or loading
+  // page), then crossfades the two on the GPU: A, then A over B, then B.
+  // (An earlier version faded out a copied page; a copy re-decodes its
+  // pictures and replays its animations, so it briefly looked like another
+  // page.) Without view transitions, or with reduced motion, tabs switch at
+  // once as the interface does by itself.
   var MAIN_TABS = { 'home-dock': true, live: true, watchlist: true };
-  var xfade = null;
-  function finishXfade() {
-    if (!xfade) return;
-    var c = xfade.clone;
-    xfade = null;
-    if (c.parentNode) c.parentNode.removeChild(c);
+  var switching = null;
+  function tabLayer() {
+    return document.querySelector('.app__screen > .screen-layer');
   }
-  function startXfade() {
-    finishXfade();
-    if (off() || document.querySelector('.modal-layer')) return;
-    var screen = document.querySelector('.app__screen:not(.tvma-xfade)');
-    var layer = screen && screen.querySelector(':scope > .screen-layer');
-    if (!screen || !layer) return;
-    var SCROLLY = '.home, .page, .details, .rail__track, .season-row, .channel-chips, .poster-grid, .live-shelf, .tvma-discover__row';
-    var from = screen.querySelectorAll(SCROLLY);
-    var clone = screen.cloneNode(true);
-    clone.classList.add('tvma-xfade');
-    clone.setAttribute('inert', '');
-    clone.setAttribute('aria-hidden', 'true');
-    var drop = clone.querySelectorAll('.ribbon-sheet, .ribbon-sheet__scrim');
-    for (var i = 0; i < drop.length; i++) drop[i].remove();
-    screen.parentNode.insertBefore(clone, screen.nextSibling);
-    var to = clone.querySelectorAll(SCROLLY);
-    ownWrite = true;
-    try {
-      for (var j = 0; j < from.length && j < to.length; j++) {
-        if (from[j].scrollTop) to[j].scrollTop = from[j].scrollTop;
-        if (from[j].scrollLeft) to[j].scrollLeft = from[j].scrollLeft;
-      }
-    } finally { ownWrite = false; }
-    xfade = { clone: clone, from: layer.getAttribute('data-focus-scope'), t0: performance.now() };
-    var mine = xfade;
-    (function ready() {
-      if (xfade !== mine) return;
-      var now = document.querySelector('.app__screen:not(.tvma-xfade) > .screen-layer');
-      var arrived = now && now.getAttribute('data-focus-scope') !== mine.from &&
-        !now.querySelector('[data-tvma-placeholder], .loading-state--plate');
-      if (!arrived && performance.now() - mine.t0 < 600) { requestAnimationFrame(ready); return; }
-      mine.clone.classList.add('tvma-xfade--out');
-      mine.clone.addEventListener('transitionend', function () { if (xfade === mine) finishXfade(); }, { once: true });
-      // If the transition cannot run (hidden page), the copy still goes.
-      setTimeout(function () { if (xfade === mine) finishXfade(); }, 400);
-    })();
+  function tabReady(from) {
+    var layer = tabLayer();
+    return !!layer && layer.getAttribute('data-focus-scope') !== from &&
+      !layer.querySelector('[data-tvma-placeholder], .loading-state--plate, .loading-state');
+  }
+  function switchTab(button) {
+    var layer = tabLayer();
+    var from = layer ? layer.getAttribute('data-focus-scope') : '';
+    if (switching) { try { switching.skipTransition(); } catch (e) { /* already over */ } }
+    var t = document.startViewTransition(function () {
+      return new Promise(function (resolve) {
+        press(button);
+        var t0 = performance.now();
+        // Timers, not animation frames: frames are held while the old page is
+        // shown. Half a second at most, so a slow screen still appears.
+        (function wait() {
+          if (tabReady(from) || performance.now() - t0 > 500) resolve();
+          else setTimeout(wait, 16);
+        })();
+      });
+    });
+    switching = t;
+    var done = function () { if (switching === t) switching = null; };
+    t.finished.then(done, done);
+    // A transition that stalls is ended rather than left on the old picture.
+    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* over */ } switching = null; } }, 1500);
   }
   document.addEventListener('click', function (event) {
-    var b = event.target && event.target.closest && event.target.closest('.app__screen:not(.tvma-xfade) nav.ribbon--tabs [data-focus-id]');
+    if (bypass) return;
+    var b = event.target && event.target.closest && event.target.closest('.app__screen nav.ribbon--tabs [data-focus-id]');
     if (!b) return;
     var id = b.getAttribute('data-focus-id');
     if (!MAIN_TABS[id] || b.classList.contains('ribbon__icon--on')) return;
-    startXfade();
+    if (off() || typeof document.startViewTransition !== 'function' || document.querySelector('.modal-layer')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    switchTab(b);
   }, true);
 
   // ---- 18. Details: Back at the top left -------------------------------------------
