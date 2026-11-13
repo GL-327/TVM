@@ -3662,6 +3662,12 @@ html.tvm-android::view-transition-new(root) {
   animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
+/* During the crossfade the incoming page is whole from its first frame: its
+   own fade-in would otherwise leave it blank under the fading old page. */
+html.tvm-android.tvma-vt .screen-content > :is(.page, .home, main) > :not(.ribbon):not(.ribbon-zone):not(.home__scene) {
+  animation: none;
+}
+
 /* ---- 33. Watchlist: a library, not a row of big pills ------------------------------------ */
 
 html.tvm-android .page--library:has([data-focus-id='watchlist-sort']) .page__toolbar .stage__kicker {
@@ -3826,6 +3832,7 @@ html.tvm-android .page [data-tvma-dupback] {
 }
 
 html.tvm-android .page--settings:has(> .topbar) .hero__actions {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -3901,4 +3908,31 @@ html.tvm-android .settings-list[data-tvma-grouped] > .settings-row:has(+ .tvma-g
 html.tvm-android .settings-list[data-tvma-grouped] > .settings-row:last-child {
   border-bottom-left-radius: var(--tvma-r-md);
   border-bottom-right-radius: var(--tvma-r-md);
+}
+
+/* ---- App & Updates rows: a small leading icon each (section 20) ------------------- */
+
+html.tvm-android .tvm-button.settings-row[data-tvma-row^='app-'] {
+  padding-left: 52px;
+}
+
+html.tvm-android .tvm-button.settings-row .tvma-row-icon {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  background: var(--tvma-accent, #4c8dff);
+  -webkit-mask: var(--tvma-row-icon) center / contain no-repeat;
+  mask: var(--tvma-row-icon) center / contain no-repeat;
+  pointer-events: none;
+}
+
+html.tvm-android .tvma-row-icon--reload { --tvma-row-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.34-5.66'/%3E%3Cpath d='M20 4v5h-5'/%3E%3C/svg%3E"); }
+html.tvm-android .tvma-row-icon--update { --tvma-row-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v8M8.5 12l3.5 3.5 3.5-3.5'/%3E%3C/svg%3E"); }
+html.tvm-android .tvma-row-icon--core { --tvma-row-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 11 12 4l8 7'/%3E%3Cpath d='M6 9.5V20h12V9.5'/%3E%3Cpath d='M10 20v-5h4v5'/%3E%3C/svg%3E"); }
+
+html.tvm-android .tvm-button.settings-row[data-tvma-busy] .tvm-button__detail {
+  color: var(--tvma-accent, #4c8dff);
 }
