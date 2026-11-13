@@ -423,6 +423,9 @@
 
   /** Leave Search, then press a real tab (and, for More's entries, the entry). */
   function closeSearchThen(id, moreEntry) {
+    // Search to a main tab: one crossfade from Search straight to the tab
+    // (section 17), never showing the page under Search on the way.
+    if (!moreEntry && MAIN_TABS[id] && canCrossfade()) { switchTab(null, id); return; }
     var close = document.querySelector('.search-pill [data-focus-id="close"]');
     if (close) close.click();
     whenGone('.modal-layer[data-screen="search"]', function () {
@@ -1398,36 +1401,61 @@
   // page.) Without view transitions, or with reduced motion, tabs switch at
   // once as the interface does by itself.
   var MAIN_TABS = { 'home-dock': true, live: true, watchlist: true };
+  var TAB_SCREEN = { 'home-dock': 'home', live: 'live', watchlist: 'watchlist' };
   var switching = null;
+  function canCrossfade() {
+    return !off() && typeof document.startViewTransition === 'function';
+  }
   function tabLayer() {
     return document.querySelector('.app__screen > .screen-layer');
   }
-  function tabReady(from) {
+  /** The destination page itself is on screen: not Search, not the page under it, not a loading page. */
+  function tabReady(id) {
     var layer = tabLayer();
-    return !!layer && layer.getAttribute('data-focus-scope') !== from &&
+    return !!layer && layer.getAttribute('data-screen') === TAB_SCREEN[id] &&
+      !document.querySelector('.modal-layer') &&
       !layer.querySelector('[data-tvma-placeholder], .loading-state--plate, .loading-state');
   }
-  function switchTab(button) {
-    var layer = tabLayer();
-    var from = layer ? layer.getAttribute('data-focus-scope') : '';
+  function endSwitch(t) {
+    if (switching !== t) return;
+    switching = null;
+    root.classList.remove('tvma-vt');
+  }
+  /** Crossfade to a main tab. From Search, Search closes inside the same transition. */
+  function switchTab(button, id) {
     if (switching) { try { switching.skipTransition(); } catch (e) { /* already over */ } }
+    // The incoming page appears whole; its own fade-in would leave it blank
+    // while the crossfade runs.
+    root.classList.add('tvma-vt');
     var t = document.startViewTransition(function () {
       return new Promise(function (resolve) {
-        press(button);
         var t0 = performance.now();
+        var pressed = false;
         // Timers, not animation frames: frames are held while the old page is
-        // shown. Half a second at most, so a slow screen still appears.
+        // shown, so nothing in between (such as the page under Search) is
+        // ever painted. Half a second at most, so a slow screen still appears.
         (function wait() {
-          if (tabReady(from) || performance.now() - t0 > 500) resolve();
+          // A newer tap took over: it presses its own tab.
+          if (switching !== t) { resolve(); return; }
+          if (!pressed) {
+            var search = document.querySelector('.modal-layer[data-screen="search"]');
+            if (search) {
+              var close = document.querySelector('.search-pill [data-focus-id="close"]');
+              if (close && !search.hasAttribute('data-tvma-closing')) { search.setAttribute('data-tvma-closing', ''); press(close); }
+            } else {
+              var b = button || realTab(id);
+              if (b) { pressed = true; if (!b.classList.contains('ribbon__icon--on') || !tabReady(id)) press(b); }
+            }
+          }
+          if ((pressed && tabReady(id)) || performance.now() - t0 > 500) resolve();
           else setTimeout(wait, 16);
         })();
       });
     });
     switching = t;
-    var done = function () { if (switching === t) switching = null; };
-    t.finished.then(done, done);
+    t.finished.then(function () { endSwitch(t); }, function () { endSwitch(t); });
     // A transition that stalls is ended rather than left on the old picture.
-    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* over */ } switching = null; } }, 1500);
+    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* over */ } endSwitch(t); } }, 1500);
   }
   document.addEventListener('click', function (event) {
     if (bypass) return;
@@ -1435,10 +1463,35 @@
     if (!b) return;
     var id = b.getAttribute('data-focus-id');
     if (!MAIN_TABS[id] || b.classList.contains('ribbon__icon--on')) return;
-    if (off() || typeof document.startViewTransition !== 'function' || document.querySelector('.modal-layer')) return;
+    if (!canCrossfade() || document.querySelector('.modal-layer')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    switchTab(b);
+    switchTab(b, id);
+  }, true);
+
+  // While a crossfade runs, the browser's picture of the pages covers the page,
+  // so a tap lands on the document instead of a tab. Find the tab under the
+  // finger, so quick taps still switch.
+  function tabAt(x, y) {
+    var buttons = document.querySelectorAll('.app__screen nav.ribbon--tabs [data-focus-id], nav.tvma-pill.tvma-pill--on [data-tvma-tab]');
+    for (var i = 0; i < buttons.length; i++) {
+      var r = buttons[i].getBoundingClientRect();
+      if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return buttons[i];
+    }
+    return null;
+  }
+  document.addEventListener('click', function (event) {
+    if (!switching || bypass || (event.target !== root && event.target !== document.body)) return;
+    var hit = tabAt(event.clientX, event.clientY);
+    if (!hit) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    var id = hit.getAttribute('data-focus-id') || hit.getAttribute('data-tvma-tab');
+    if (MAIN_TABS[id]) { switchTab(null, id); return; }
+    var t = switching;
+    try { t.skipTransition(); } catch (e) { /* over */ }
+    endSwitch(t);
+    whenThere('.app__screen:not([inert]) nav.ribbon--tabs [data-focus-id="' + id + '"]', function (b) { b.click(); });
   }, true);
 
   // ---- 18. Details: Back at the top left -------------------------------------------
@@ -1521,6 +1574,27 @@
     if (typeof window.tvmaAppAction === 'function') { window.tvmaAppAction(name); return; }
     window.location.href = 'tvm-app://' + name;
   }
+  // How the last check the user started went, reported by MainActivity.
+  var appUpdate = null;
+  var UPDATE_IDLE = 'Look for a newer TVM for Android';
+  function updateDetail() {
+    var u = appUpdate;
+    if (!u) return UPDATE_IDLE;
+    if (u.state === 'checking') return 'Checking…';
+    if (u.state === 'current') return 'Up to date' + (u.build ? ' · build ' + u.build : '');
+    if (u.state === 'available') return 'Update available' + (u.build ? ' · build ' + u.build : '');
+    if (u.state === 'unknown') return 'Latest published build' + (u.build ? ' · ' + u.build : '');
+    if (u.state === 'failed') return 'Couldn\u2019t check' + (u.reason ? ': ' + u.reason : '');
+    return UPDATE_IDLE;
+  }
+  window.addEventListener('tvm:app-update', function (event) {
+    appUpdate = event.detail || null;
+    var row = document.querySelector('[data-tvma-row="app-update"]');
+    if (!row) return;
+    var detail = row.querySelector('.tvm-button__detail');
+    if (detail) detail.textContent = updateDetail();
+    mark(row, 'data-tvma-busy', appUpdate && appUpdate.state === 'checking' ? '' : null);
+  });
   function syncAppGroup() {
     var page = mainSettings();
     if (!page || page.querySelector('[data-tvma-group="app"]')) return;
@@ -1535,12 +1609,13 @@
     box.appendChild(el('h2', 'settings-group__title', 'App & Updates'));
     var rows = [
       ['reload', 'Reload TVM', 'Reopen the interface. Nothing is erased'],
-      ['update', 'Check for App Update', 'Look for a newer TVM for Android'],
+      ['update', 'Check for Updates', updateDetail()],
       ['core', onPhone ? 'Use a Home Core' : 'Back to This Phone', onPhone ? 'Optional: run TVM from a computer at home' : 'Stop using the home Core'],
     ];
     rows.forEach(function (r) {
       var row = settingsRow(cls, r[1], r[2], function () { appAction(r[0]); });
       row.setAttribute('data-tvma-row', 'app-' + r[0]);
+      row.insertBefore(el('span', 'tvma-row-icon tvma-row-icon--' + r[0]), row.firstChild);
       box.appendChild(row);
     });
     group.parentNode.insertBefore(box, group.nextSibling);

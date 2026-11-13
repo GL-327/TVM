@@ -25,6 +25,7 @@
     <string name="app_update_body_unknown">Build %1$s is the latest TVM app. This copy was built locally, so TVM cannot tell whether it is newer. Install the published build?</string>
     <string name="app_update_install">Install</string>
     <string name="app_update_later">Later</string>
+    <string name="app_update_checking">Checking for updates…</string>
     <string name="app_update_current">TVM is up to date (build %1$s).</string>
     <string name="app_update_downloading">Downloading the update…</string>
     <string name="app_update_allow">Allow TVM to install updates, then come back to finish.</string>
