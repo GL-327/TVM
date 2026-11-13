@@ -43,6 +43,7 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import org.json.JSONObject
 
 /**
  * The Android shell, built to behave as the iPhone app does (apps/ios/TVM/TVMApp.swift).
@@ -486,13 +487,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAppUpdate(manual: Boolean) {
-        if (appUpdateBusy || isFinishing) return
+        if (isFinishing) return
+        if (appUpdateBusy) {
+            if (manual) Toast.makeText(this, R.string.app_update_checking, Toast.LENGTH_SHORT).show()
+            return
+        }
         appUpdateBusy = true
+        if (manual) {
+            Toast.makeText(this, R.string.app_update_checking, Toast.LENGTH_SHORT).show()
+            reportAppUpdate("checking")
+        }
         thread(name = "tvm-app-update") {
             val result = appUpdate.check()
             runOnUiThread {
                 appUpdateBusy = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                if (manual) {
+                    when (result) {
+                        is TvmAppUpdate.Check.Available -> reportAppUpdate("available", result.release.build)
+                        is TvmAppUpdate.Check.Unknown -> reportAppUpdate("unknown", result.release.build)
+                        is TvmAppUpdate.Check.Current -> reportAppUpdate("current", result.build)
+                        is TvmAppUpdate.Check.Failed -> reportAppUpdate("failed", reason = result.reason)
+                    }
+                }
                 val skipped = getSharedPreferences(APP_UPDATE_PREFS, MODE_PRIVATE).getString("later", null)
                 when (result) {
                     is TvmAppUpdate.Check.Available ->
@@ -505,6 +522,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /** Tells Settings → App & Updates how a check the user started is going. */
+    private fun reportAppUpdate(state: String, build: String = "", reason: String = "") {
+        if (!::webView.isInitialized) return
+        val detail = JSONObject().put("state", state).put("build", build.take(7)).put("reason", reason)
+        webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('tvm:app-update',{detail:$detail}));",
+            null,
+        )
     }
 
     private fun offerAppUpdate(release: TvmAppUpdate.Release, known: Boolean) {
