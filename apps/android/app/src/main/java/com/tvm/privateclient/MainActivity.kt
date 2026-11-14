@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.res.AssetManager
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import androidx.activity.result.PickVisualMediaRequest
@@ -800,6 +801,15 @@ class MainActivity : AppCompatActivity() {
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
         webView.webChromeClient = object : WebChromeClient() {
+            // The player screen keeps a <video> element even while the native
+            // player draws the film underneath it. With no poster of its own,
+            // the WebView painted its built-in one there: a low-resolution
+            // white card with a black play button that flashed on every open
+            // and retry. A transparent poster leaves the picture (or the black
+            // loading surface) visible instead.
+            override fun getDefaultVideoPoster(): Bitmap =
+                Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.TRANSPARENT) }
+
             override fun onShowFileChooser(
                 view: WebView?,
                 callback: ValueCallback<Array<Uri>>?,

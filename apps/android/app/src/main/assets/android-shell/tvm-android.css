@@ -316,6 +316,13 @@ html.tvm-android.phone-shell[data-orientation] .player .player__video {
   object-position: center;
 }
 
+/* The native player draws the film under the page; the page's own <video> is
+   then unused (it plays only on a home Core, data-engine='html5'). Hidden
+   rather than left to paint a poster over the loading surface. */
+html.tvm-android .player:not([data-engine='html5']) .player__video {
+  visibility: hidden;
+}
+
 html.tvm-android .player .cinema-chrome {
   background: rgba(0, 0, 0, 0.22);
   transition: opacity 260ms var(--tvma-ease), visibility 260ms;
