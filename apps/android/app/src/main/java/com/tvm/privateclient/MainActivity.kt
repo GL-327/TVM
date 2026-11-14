@@ -69,6 +69,26 @@ class MainActivity : AppCompatActivity() {
         pendingPicture = null
     }
 
+    /**
+     * The download folder (TvmDownloads): Android's own folder picker, so files
+     * go where the person chooses and no storage permission is needed.
+     */
+    private var pendingFolder: kotlinx.coroutines.CompletableDeferred<Uri?>? = null
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        pendingFolder?.complete(uri)
+        pendingFolder = null
+    }
+
+    private suspend fun chooseDownloadFolder(): Uri? {
+        val answer = kotlinx.coroutines.CompletableDeferred<Uri?>()
+        runOnUiThread {
+            pendingFolder?.complete(null)
+            pendingFolder = answer
+            runCatching { pickFolder.launch(null) }.onFailure { answer.complete(null) }
+        }
+        return answer.await()
+    }
+
     private lateinit var webView: WebView
     private lateinit var starting: ProgressBar
     private lateinit var errorPane: View
@@ -240,6 +260,10 @@ class MainActivity : AppCompatActivity() {
                 // An interface staged on the last run goes live now; one left
                 // over from a different app build is dropped.
                 made.bundledUi.prepare()
+                // Downloads are ready before the server answers its first request.
+                made.downloads = TvmDownloads(contentResolver, made.store) { id, language, height ->
+                    made.media.download(id, language, height)
+                }.also { it.pickFolder = { chooseDownloadFolder() } }
                 val swapped = AtomicBoolean(false)
                 val apply = thread(name = "tvm-update-launch") {
                     swapped.set(runCatching { made.updater.applyIfNeeded() }.getOrDefault(false))
