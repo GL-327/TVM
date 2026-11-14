@@ -45,6 +45,7 @@ class TvmCatalog(
     private var memory: CatalogBundle? = null
     private val genreMem: MutableMap<String, Pair<Long, List<MediaItem>>> = mutableMapOf()
     private val metaMem: MutableMap<String, Pair<Long, TitleMeta>> = mutableMapOf()
+    private val popularityMem: MutableMap<String, Pair<Long, Double>> = mutableMapOf()
     private val fallback: List<MediaItem>
 
     init {
@@ -114,14 +115,20 @@ class TvmCatalog(
         val needle = query.trim()
         if (needle.length < 2) return emptyList()
         val encoded = Json.formEncode(needle)
-        val fetched: List<List<MediaItem>> = runParallel(
+        val fetched: List<List<TvmSearchRank.Hit>> = runParallel(
             listOf(
-                { fetchCatalog("/catalog/movie/top/search=$encoded.json", "movie") },
-                { fetchCatalog("/catalog/series/top/search=$encoded.json", "series") },
+                { fetchHits("/catalog/movie/top/search=$encoded.json", "movie") },
+                { fetchHits("/catalog/series/top/search=$encoded.json", "series") },
             ),
             emptyList(),
         )
-        val live = dedupe(fetched[0] + fetched[1])
+        // Exact matches of both kinds ("Dexter" the series and a film of the
+        // same name) are told apart by each record's own popularity.
+        val contenders = TvmSearchRank.contenders(needle, fetched[0], fetched[1])
+        val standing: Map<String, Double> = contenders.zip(
+            runParallel(contenders.map { hit -> { popularityOf(hit.item.kind, hit.item.id) } }, null),
+        ).mapNotNull { (hit, value) -> value?.let { hit.item.id to it } }.toMap()
+        val live = TvmSearchRank.rank(needle, fetched[0], fetched[1], standing)
         if (live.isNotEmpty()) return live
         val lower = needle.lowercase(Locale.US)
         return fallback.filter {
@@ -168,6 +175,25 @@ class TvmCatalog(
         return picked
     }
 
+    /** A title's Stremio popularity (or Trakt watchers when that is all there is), kept for a day. */
+    private fun popularityOf(kind: String, id: String): Double? {
+        val key = "$kind:$id"
+        synchronized(lock) {
+            val hit = popularityMem[key]
+            if (hit != null && System.currentTimeMillis() - hit.first < 24 * 60 * 60 * 1000L) return hit.second
+        }
+        val body = getObject("https://v3-cinemeta.strem.io/meta/$kind/$id.json", RANK_TIMEOUT_MS) ?: return null
+        val meta = body.optJSONObject("meta") ?: return null
+        val value = (meta.opt("popularity") as? Number)?.toDouble()
+            ?: ((meta.optJSONObject("popularities")?.opt("trakt") as? Number)?.toDouble()?.let { it / 1000.0 })
+            ?: 0.0
+        synchronized(lock) {
+            if (popularityMem.size > 500) popularityMem.clear()
+            popularityMem[key] = System.currentTimeMillis() to value
+        }
+        return value
+    }
+
     private fun readKind(kind: String, imdb: String): TitleMeta? {
         val body = getObject("https://v3-cinemeta.strem.io/meta/$kind/$imdb.json", SESSION_TIMEOUT_MS) ?: return null
         val raw = body.opt("meta") as? JSONObject ?: return null
@@ -176,10 +202,20 @@ class TvmCatalog(
         return TitleMeta(item, children)
     }
 
-    private fun fetchCatalog(path: String, kind: String): List<MediaItem> {
+    private fun fetchCatalog(path: String, kind: String): List<MediaItem> =
+        fetchHits(path, kind).map { it.item }
+
+    /** One catalog answer, with the popularity Cinemeta gives each title (0 when none). */
+    private fun fetchHits(path: String, kind: String): List<TvmSearchRank.Hit> {
         val body = getObject("https://v3-cinemeta.strem.io$path", CATALOG_TIMEOUT_MS) ?: return emptyList()
         val metas = objectList(body.opt("metas")) ?: return emptyList()
-        return metas.mapNotNull { mapMeta(it, kind) }
+        // Titles filed under another title's record keep their name but not its artwork.
+        TvmArtTrust.distrust(TvmArtTrust.crossLinked(metas))
+        return metas.mapIndexedNotNull { index, raw ->
+            if (TvmArtTrust.markedDuplicate((raw.opt("name") as? String) ?: "")) return@mapIndexedNotNull null
+            val item = mapMeta(raw, kind) ?: return@mapIndexedNotNull null
+            TvmSearchRank.Hit(item, (raw.opt("popularity") as? Number)?.toDouble() ?: 0.0, index)
+        }
     }
 
     private fun mapMeta(raw: JSONObject, kind: String): MediaItem? {
@@ -413,6 +449,8 @@ class TvmCatalog(
     private companion object {
         const val CATALOG_TIMEOUT_MS = 12_000
         const val SESSION_TIMEOUT_MS = 20_000
+        /** Ranking extras are worth a short wait only; without them the order still holds. */
+        const val RANK_TIMEOUT_MS = 4_000
         val IMDB_ID = Regex("""^tt\d+$""")
         val YEAR = Regex("""\b(19|20)\d{2}\b""")
     }

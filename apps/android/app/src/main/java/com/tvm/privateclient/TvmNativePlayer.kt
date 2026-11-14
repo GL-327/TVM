@@ -18,6 +18,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -193,7 +194,8 @@ class TvmNativePlayer(
         }
         videoFormat = null
         val exo = ExoPlayer.Builder(activity, renderers)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            // http(s) streams, and content:// files downloaded to the phone (TvmDownloads).
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(activity, http)))
             // Duck or pause for calls and other apps, and stop when headphones are pulled out.
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),

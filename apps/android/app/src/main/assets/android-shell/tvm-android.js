@@ -23,6 +23,10 @@
   var OWNED = '.player, [data-player], input, textarea, select, [role="slider"], .tvm-progress, .ribbon, .ribbon-sheet, .tvma-pill';
   var SLOP = 6;
 
+  // Downloads are made by this phone's own core (TvmDownloads): the
+  // interface's downloads screen uses it when the page comes from that core.
+  if (/^(127\.0\.0\.1|localhost)$/.test(location.hostname)) window.tvmNativeDownloads = true;
+
   function off() {
     var d = root.dataset;
     return d.motion === 'reduced' || d.perf === 'on';
@@ -73,6 +77,13 @@
       var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       var path = url.replace(/^https?:\/\/[^/]+/, '');
+      // Requests a screen's Refresh waits for are announced when they finish.
+      if (/^\/api\/admin\/accounts(\?|$)/.test(path)) {
+        var done = function () { window.dispatchEvent(new CustomEvent('tvma:fetched', { detail: path })); };
+        var pending = nativeFetch(input, init);
+        pending.then(done, done);
+        return pending;
+      }
       if (method !== 'GET' && method !== 'HEAD') { store = {}; return nativeFetch(input, init); }
       if (!CACHED.test(path) || typeof input !== 'string') return nativeFetch(input, init);
       var key = path + '|' + header(init, 'Authorization') + '|' + header(init, 'X-TVM-Profile');
@@ -246,6 +257,7 @@
   }, true);
 
   window.addEventListener('touchmove', function (event) {
+    heroMove(event);
     var t = lead(event.touches);
     if (!t) return;
     if (!claim(t.clientX, t.clientY)) return;
@@ -534,16 +546,41 @@
   // The interface focuses the field when Search opens and again after a
   // recent search is chosen, which pops the keyboard up unasked. The keyboard
   // now appears only when the field itself is tapped.
+  // The same holds for every text field: a screen that opens on one (the
+  // developer Accounts search) or a tap elsewhere that hands it focus (the
+  // empty list's card) brought the keyboard up unasked.
   var fieldTapped = 0;
+  var tappedField = null;
+  var TEXT_ENTRY = 'textarea, input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="url"], input[type="tel"], input[type="number"]';
   document.addEventListener('pointerdown', function (event) {
     var t = event.target;
-    if (t && t.closest && t.closest('.search-pill__field')) fieldTapped = performance.now();
+    if (!t || !t.closest) return;
+    var field = t.closest(TEXT_ENTRY) || (t.closest('label') && t.closest('label').querySelector(TEXT_ENTRY)) ||
+      (t.closest('.search-pill__field') && t.closest('.search-pill__field').querySelector('input'));
+    tappedField = field || null;
+    fieldTapped = field ? performance.now() : 0;
+    // A field held without a keyboard (below) gets it back on a real tap:
+    // let go of it here, and the tap focuses it again the normal way.
+    if (field && field.hasAttribute('data-tvma-nokeys')) {
+      var mode = field.getAttribute('data-tvma-nokeys');
+      field.removeAttribute('data-tvma-nokeys');
+      if (mode) field.setAttribute('inputmode', mode); else field.removeAttribute('inputmode');
+      if (document.activeElement === field) field.blur();
+    }
   }, true);
   document.addEventListener('focusin', function (event) {
     var t = event.target;
-    if (!t || !t.matches || !t.matches('.search-pill input')) return;
-    if (root.classList.contains('tvma-keys') || performance.now() - fieldTapped < 1500) return;
-    t.blur();
+    if (!t || !t.matches || !t.matches(TEXT_ENTRY)) return;
+    // The overlay's own sheets focus their fields when opened on purpose.
+    if (t.closest('.tvma-sheet, .tvma-who, .player, [data-player]')) return;
+    if (root.classList.contains('tvma-keys') || (tappedField === t && performance.now() - fieldTapped < 1500)) return;
+    if (t.matches('.search-pill input')) { t.blur(); return; }
+    // Elsewhere the interface puts focus straight back when it is taken away,
+    // so the field keeps focus but asks for no keyboard until it is tapped.
+    if (!t.hasAttribute('data-tvma-nokeys')) {
+      t.setAttribute('data-tvma-nokeys', t.getAttribute('inputmode') || '');
+      t.setAttribute('inputmode', 'none');
+    }
   }, true);
   document.addEventListener('input', function (event) {
     var t = event.target;
@@ -1877,16 +1914,28 @@
    * when there are many seasons. A tap outside, or Back, closes it.
    */
   function openSeasonMenu(details, anchor) {
-    if (document.querySelector('.tvma-season-menu')) return;
-    var seasons = anchor.__tvmaSeasons || [];
     var current = anchor.__tvmaCurrent || '';
+    openListMenu(anchor, (anchor.__tvmaSeasons || []).map(function (id) {
+      return { value: seasonNumber(id), label: 'Season ' + seasonNumber(id), id: id };
+    }), current, function (option) {
+      if (option.value !== current) chooseSeason(details, option.id);
+    });
+  }
+
+  /**
+   * A small menu next to its control: the seasons, the download options. Kept
+   * on screen (opening upwards when there is no room below), scrolling inside
+   * itself when long. A tap outside, or Back, closes it.
+   */
+  function openListMenu(anchor, options, current, onPick, title) {
+    if (document.querySelector('.tvma-season-menu')) return;
     var wrap = el('div', 'tvma-season-menu');
     var scrim = el('button', 'tvma-season-menu__scrim');
     scrim.type = 'button';
     scrim.setAttribute('aria-label', 'Close');
     var panel = el('div', 'tvma-season-menu__panel');
     panel.setAttribute('role', 'listbox');
-    panel.setAttribute('aria-label', 'Seasons');
+    if (title) { panel.setAttribute('aria-label', title); panel.appendChild(el('p', 'tvma-season-menu__title', title)); }
     var close = function () {
       if (!wrap.parentNode) return false;
       backHandlers = backHandlers.filter(function (h) { return h !== close; });
@@ -1895,17 +1944,13 @@
       setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 120);
       return true;
     };
-    seasons.forEach(function (id) {
-      var n = seasonNumber(id);
+    options.forEach(function (option) {
       var row = el('button', 'tvma-season-menu__row');
       row.type = 'button';
       row.setAttribute('role', 'option');
-      row.appendChild(el('span', 'tvma-season-menu__name', 'Season ' + n));
-      if (n === current) { row.setAttribute('aria-selected', 'true'); row.classList.add('tvma-season-menu__row--on'); }
-      row.addEventListener('click', function () {
-        close();
-        if (n !== current) chooseSeason(details, id);
-      });
+      row.appendChild(el('span', 'tvma-season-menu__name', option.label));
+      if (option.value === current) { row.setAttribute('aria-selected', 'true'); row.classList.add('tvma-season-menu__row--on'); }
+      row.addEventListener('click', function () { close(); onPick(option); });
       panel.appendChild(row);
     });
     scrim.addEventListener('click', close);
@@ -1916,8 +1961,8 @@
     var r = anchor.getBoundingClientRect();
     var vw = window.innerWidth, vh = window.innerHeight;
     var topLimit = (parseFloat(getComputedStyle(root).getPropertyValue('--tvm-chrome-top')) || 0) + 8;
-    var bottomLimit = vh - 12;
-    var width = Math.min(260, vw - 32);
+    var bottomLimit = vh - 12 - (parseFloat(getComputedStyle(root).getPropertyValue('--tvm-chrome-bottom')) || 0);
+    var width = Math.min(Math.max(260, r.width), vw - 32);
     panel.style.width = width + 'px';
     panel.style.left = Math.max(16, Math.min(r.left, vw - width - 16)) + 'px';
     var natural = panel.scrollHeight;
@@ -1934,10 +1979,171 @@
     }
     anchor.setAttribute('aria-expanded', 'true');
     backHandlers.push(close);
-    // The chosen season in view when the list is long.
+    // The chosen option in view when the list is long.
     var on = panel.querySelector('.tvma-season-menu__row--on');
     if (on && on.offsetTop + on.offsetHeight > panel.clientHeight) panel.scrollTop = on.offsetTop - panel.clientHeight / 2;
   }
+
+  // ---- 18c. Downloads: compact options with TVM's menus -------------------------------
+
+  // Each download option is a <select>, which Android shows as a large grey
+  // system dialog. Over each one sits a compact row with its value; tapping it
+  // opens TVM's own menu, and the choice is set on the <select> itself, so the
+  // interface's own logic (seasons, episodes, preferences) runs as before.
+  var selectValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  function syncDownloads() {
+    var page = document.querySelector('.modal-layer .page.downloads');
+    if (!page) return;
+    var selects = page.querySelectorAll('.download-choice select');
+    for (var i = 0; i < selects.length; i++) {
+      var select = selects[i];
+      var button = select.__tvmaButton;
+      if (!button || !button.isConnected) {
+        button = el('button', 'tvma-choice-btn');
+        button.type = 'button';
+        button.appendChild(el('span', 'tvma-choice-btn__value'));
+        button.addEventListener('click', (function (sel, btn) {
+          return function (event) {
+            // Inside a <label>: a tap would otherwise open the system dialog.
+            event.preventDefault();
+            event.stopPropagation();
+            var label = sel.closest('.download-choice');
+            var heading = label && label.querySelector(':scope > span');
+            openListMenu(btn, [].map.call(sel.options, function (o) { return { value: o.value, label: o.textContent }; }), sel.value, function (option) {
+              if (option.value === sel.value) return;
+              selectValue.set.call(sel, option.value);
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              queue();
+            }, heading ? heading.textContent : '');
+          };
+        })(select, button));
+        select.insertAdjacentElement('afterend', button);
+        select.__tvmaButton = button;
+        select.setAttribute('tabindex', '-1');
+        select.setAttribute('aria-hidden', 'true');
+      }
+      var text = select.selectedOptions && select.selectedOptions[0] ? select.selectedOptions[0].textContent : '';
+      if (button.firstChild.textContent !== text) button.firstChild.textContent = text;
+    }
+    // The long note about languages: two lines, the rest on a tap.
+    var note = page.querySelector('.downloads__card > .downloads__note');
+    if (note && !note.__tvmaNote) {
+      note.__tvmaNote = true;
+      note.setAttribute('data-tvma-clamp', '');
+      note.addEventListener('click', function () {
+        if (note.hasAttribute('data-tvma-clamp')) note.removeAttribute('data-tvma-clamp');
+        else note.setAttribute('data-tvma-clamp', '');
+      });
+    }
+  }
+
+  // ---- 18e. Episode stills that do not exist -------------------------------------------
+
+  // Episode pictures are plain images. One the host does not have (an episode
+  // that has not aired yet has no still: Dexter: Resurrection S02E07-09 answer
+  // 404) showed the browser's broken-picture icon. A failed still is hidden
+  // and its frame shows TVM's dark placeholder instead. Passing failures were
+  // already retried by the app before the image errored (TvmImages), and a
+  // failure is never cached, so the next visit asks again.
+  var STILL = '.episode-item__still img, .tvma-card img';
+  document.addEventListener('error', function (event) {
+    var img = event.target;
+    if (!img || img.tagName !== 'IMG' || !img.matches(STILL)) return;
+    img.setAttribute('data-tvma-broken', '');
+    if (img.parentElement) img.parentElement.setAttribute('data-tvma-nostill', '');
+  }, true);
+  document.addEventListener('load', function (event) {
+    var img = event.target;
+    if (!img || img.tagName !== 'IMG' || !img.hasAttribute('data-tvma-broken')) return;
+    img.removeAttribute('data-tvma-broken');
+    if (img.parentElement) img.parentElement.removeAttribute('data-tvma-nostill');
+  }, true);
+
+  // ---- 18d. Home hero: swipe between the featured titles ------------------------------
+
+  // The featured banner rotated on its own but could not be swiped. A sideways
+  // swipe now steps it (Home listens for tvm:hero-step), and every swipe
+  // restarts its rotation timer, so it never changes under a finger. Only a
+  // clearly sideways movement counts; anything else is left to the page's
+  // vertical scroll. While the finger moves, the title and buttons follow it a
+  // little; on release the picture crossfades as it does when rotating and the
+  // new title slides in from the side it was pushed towards.
+  var HERO_SLOP = 10;
+  var hero = null;
+  var heroSwipedAt = 0;
+  function heroCopy(stage) { return stage && stage.querySelector('.stage__copy'); }
+  function heroCount(stage) { return stage ? stage.querySelectorAll('.stage__dot').length : 0; }
+  document.addEventListener('touchstart', function (event) {
+    if (event.touches.length !== 1) { hero = null; return; }
+    var t = event.target;
+    var stage = t && t.closest && t.closest('.home .stage--home');
+    if (!stage || heroCount(stage) < 2 || t.closest('.player')) { hero = null; return; }
+    var p = event.touches[0];
+    hero = { stage: stage, id: p.identifier, x: p.clientX, y: p.clientY, at: performance.now(), axis: null, dx: 0 };
+  }, { capture: true, passive: true });
+  // Called from the page's own touchmove listener (section 1), which stops
+  // the event before any later listener would see it.
+  function heroMove(event) {
+    if (!hero) return;
+    var p = null;
+    for (var i = 0; i < event.touches.length; i++) if (event.touches[i].identifier === hero.id) p = event.touches[i];
+    if (!p) return;
+    var dx = p.clientX - hero.x;
+    var dy = p.clientY - hero.y;
+    if (!hero.axis) {
+      if (Math.abs(dx) < HERO_SLOP && Math.abs(dy) < HERO_SLOP) return;
+      hero.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+      if (hero.axis === 'y') { hero = null; return; }
+      window.dispatchEvent(new CustomEvent('tvm:hero-step', { detail: 0 }));
+      hero.stage.setAttribute('data-tvma-swiping', '');
+    }
+    hero.dx = dx;
+    var copy = heroCopy(hero.stage);
+    if (copy) {
+      var follow = dx * 0.45;
+      copy.style.transform = 'translate3d(' + follow.toFixed(1) + 'px,0,0)';
+      copy.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 360));
+    }
+  }
+  function heroEnd(event) {
+    if (!hero) return;
+    var gone = true;
+    for (var i = 0; event.touches && i < event.touches.length; i++) if (event.touches[i].identifier === hero.id) gone = false;
+    if (!gone) return;
+    var h = hero;
+    hero = null;
+    if (h.axis !== 'x') return;
+    heroSwipedAt = performance.now();
+    var copy = heroCopy(h.stage);
+    var fast = Math.abs(h.dx) / Math.max(1, performance.now() - h.at) > 0.35;
+    var step = (Math.abs(h.dx) > 56 || (fast && Math.abs(h.dx) > 24)) ? (h.dx < 0 ? 1 : -1) : 0;
+    h.stage.removeAttribute('data-tvma-swiping');
+    if (!copy) { if (step) window.dispatchEvent(new CustomEvent('tvm:hero-step', { detail: step })); return; }
+    copy.style.transform = '';
+    copy.style.opacity = '';
+    if (!step) { copy.setAttribute('data-tvma-hero', 'back'); copy.getAnimations && restartAnim(copy); return; }
+    copy.setAttribute('data-tvma-hero', step > 0 ? 'next' : 'prev');
+    restartAnim(copy);
+    window.dispatchEvent(new CustomEvent('tvm:hero-step', { detail: step }));
+  }
+  function restartAnim(copy) {
+    copy.style.animationName = 'none';
+    void copy.offsetWidth;
+    copy.style.animationName = '';
+    var clear = function () { copy.removeAttribute('data-tvma-hero'); copy.removeEventListener('animationend', clear); };
+    copy.addEventListener('animationend', clear);
+    setTimeout(clear, 600);
+  }
+  document.addEventListener('touchend', heroEnd, true);
+  document.addEventListener('touchcancel', heroEnd, true);
+  // A swipe that ends over Watch or Browse is not a tap on it.
+  document.addEventListener('click', function (event) {
+    if (performance.now() - heroSwipedAt > 400) return;
+    if (event.target && event.target.closest && event.target.closest('.home .stage--home')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
 
   // ---- 19. Watchlist sort, Developer groups, sub-page Back --------------------------
 
@@ -1990,6 +2196,31 @@
       }
     }
   }
+
+  // ---- 19b. Developer Accounts: Refresh shows it is working -----------------------
+
+  // Refresh asked the server again but showed nothing while it did, so it
+  // looked like it did nothing, and each further tap started another request.
+  // Now it shows a small spinner until the answer arrives, and taps in the
+  // meantime are ignored. The interface's own error message reports a failure.
+  var refreshing = null;
+  document.addEventListener('click', function (event) {
+    var b = event.target && event.target.closest && event.target.closest('[data-focus-id="accounts-refresh"]');
+    if (!b || bypass) return;
+    if (refreshing) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+    var started = performance.now();
+    b.setAttribute('data-tvma-loading', '');
+    var finish = function () {
+      if (refreshing !== finish) return;
+      refreshing = null;
+      window.removeEventListener('tvma:fetched', finish);
+      // Long enough to be seen.
+      setTimeout(function () { b.removeAttribute('data-tvma-loading'); }, Math.max(0, 350 - (performance.now() - started)));
+    };
+    refreshing = finish;
+    window.addEventListener('tvma:fetched', finish);
+    setTimeout(finish, 15000);
+  }, true);
 
   // ---- 20. Settings → App & Updates (the old ⋮ menu) --------------------------------
 
@@ -2072,6 +2303,7 @@
       syncSearchChrome();
       syncDetailsBack();
       syncSeasons();
+      syncDownloads();
       syncFresh();
       maybeWarm();
       syncSubpages();

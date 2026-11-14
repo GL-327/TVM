@@ -65,6 +65,8 @@ data class RdStream(
     val quality: Int,
     val cached: Boolean,
     val phoneHint: Boolean,
+    /** The rest of the description (languages as flags, size), for downloads' language rule. */
+    val details: String = "",
 )
 
 /** Mirrors RdClientError; callers distinguish the first two from everything else. */
@@ -388,6 +390,7 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
             quality = qualityScore(label),
             cached = cached,
             phoneHint = phoneHint,
+            details = titleSource,
         )
     }
 

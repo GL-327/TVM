@@ -32,6 +32,10 @@ class TvmImages(
     private val perHost = ConcurrentHashMap<String, Semaphore>()
 
     fun load(url: String): Picture {
+        // Another title's artwork filed under this one (TvmArtTrust): the
+        // interface shows the title's own card instead. Checked before the
+        // cache, which may hold the wrong picture from before.
+        if (!TvmArtTrust.trusted(url)) return Picture(404, "text/plain", ByteArray(0))
         cache?.get(url)?.let { (type, data) -> return Picture(200, type, data) }
         var last = Fetched(404, null, null)
         for (candidate in variants(url)) {
