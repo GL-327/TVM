@@ -28,6 +28,76 @@
     return d.motion === 'reduced' || d.perf === 'on';
   }
 
+  // ---- 0b. Tabs answer at once: the last answer while a fresh one is fetched -----
+
+  // Every tab switch waited for its data from the phone's own server (the
+  // plan check, then Home's rows, the channel list or the watchlist) before
+  // its page could appear. These few read-only answers are kept: a repeat
+  // request gets the last answer at once while a fresh one is fetched for next
+  // time. Anything that changes data (adding to My List, switching profile,
+  // saving progress: any request that is not a GET) empties the store, so a
+  // page never shows something the person has just changed.
+  (function () {
+    var nativeFetch = window.fetch && window.fetch.bind(window);
+    if (!nativeFetch || typeof Response !== 'function') return;
+    var CACHED = /^\/api\/(plan|home|live|watchlist)(\?|$)/;
+    var KEEP_MS = 5 * 60 * 1000;
+    var store = {};
+    // The headers each path was last asked with, to ask again for another profile.
+    var lastHeaders = {};
+    function header(init, name) {
+      var h = init && init.headers;
+      if (!h) return '';
+      if (typeof h.get === 'function') return h.get(name) || '';
+      for (var k in h) if (k.toLowerCase() === name.toLowerCase()) return h[k];
+      return '';
+    }
+    function refresh(key, input, init) {
+      var entry = store[key];
+      if (entry && entry.pending) return entry.pending;
+      var p = nativeFetch(input, init && init.signal ? Object.assign({}, init, { signal: undefined }) : init).then(function (res) {
+        if (res.status !== 200) { delete store[key]; return res; }
+        return res.clone().text().then(function (body) {
+          store[key] = { at: Date.now(), body: body, type: res.headers.get('content-type') || 'application/json' };
+          return res;
+        });
+      }, function (error) {
+        if (store[key]) store[key].pending = null;
+        throw error;
+      });
+      store[key] = { at: entry ? entry.at : 0, body: entry ? entry.body : null, type: entry ? entry.type : '', pending: p };
+      p.then(function () { if (store[key]) store[key].pending = null; }, function () {});
+      return p;
+    }
+    window.fetch = function (input, init) {
+      var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      var path = url.replace(/^https?:\/\/[^/]+/, '');
+      if (method !== 'GET' && method !== 'HEAD') { store = {}; return nativeFetch(input, init); }
+      if (!CACHED.test(path) || typeof input !== 'string') return nativeFetch(input, init);
+      var key = path + '|' + header(init, 'Authorization') + '|' + header(init, 'X-TVM-Profile');
+      lastHeaders[path] = { auth: header(init, 'Authorization'), profile: header(init, 'X-TVM-Profile') };
+      var entry = store[key];
+      if (entry && entry.body !== null && Date.now() - entry.at < KEEP_MS) {
+        refresh(key, input, init).catch(function () {});
+        return Promise.resolve(new Response(entry.body, { status: 200, headers: { 'content-type': entry.type } }));
+      }
+      return refresh(key, input, init).then(function (res) { return res.clone(); });
+    };
+    // After a profile is chosen (which empties the store), the tabs' answers
+    // for that profile are fetched once in the background, so the first tap
+    // on each is as quick as the rest.
+    window.tvmaPrefetchTabs = function (profileId) {
+      Object.keys(lastHeaders).forEach(function (path) {
+        var h = {};
+        var last = lastHeaders[path];
+        if (last.auth) h.Authorization = last.auth;
+        if (last.profile || profileId) h['X-TVM-Profile'] = profileId || last.profile;
+        window.fetch(path, { headers: h }).catch(function () {});
+      });
+    };
+  })();
+
   function maxScroll(el) {
     return Math.max(0, el.scrollHeight - el.clientHeight);
   }
@@ -282,60 +352,33 @@
     requestAnimationFrame(frame);
   }
 
-  // A fling that reaches an edge gets a small kick, scaled to its speed.
-  var flings = typeof WeakMap === 'function' ? new WeakMap() : null;
-  document.addEventListener('scroll', function (event) {
-    var el = event.target;
-    if (!flings || !el || el.nodeType !== 1 || touch || off()) return;
-    if (!el.matches || !el.matches(SCROLLERS)) return;
-    var now = performance.now();
-    var top = el.scrollTop;
-    var last = flings.get(el);
-    flings.set(el, { top: top, at: now });
-    if (!last || now - last.at > 60) return;
-    var v = (top - last.top) / (now - last.at); // px per ms
-    // A fast fling heading for an edge: give the page's sections their layers
-    // now, before the bounce's first frame (which otherwise drew them blank: a
-    // dark bar at the edge and a jolt). Dropped again when the bounce settles.
-    if (Math.abs(v) >= 0.8 && !el.hasAttribute('data-tvma-prime')) {
-      var room = el.clientHeight * 1.5;
-      if ((v < 0 && top < room) || (v > 0 && top > maxScroll(el) - room)) el.setAttribute('data-tvma-prime', '');
-    }
-    if (Math.abs(v) < 1.2) return;
-    // Height is only read for a fast fling going down, never per scroll event.
-    if ((v < 0 && top <= EDGE) || (v > 0 && top >= maxScroll(el) - EDGE)) {
-      spring(el, 0, Math.max(-420, Math.min(420, -v * 160)));
-    }
-  }, { capture: true, passive: true });
+  // A fling that reaches an edge simply stops there, as the browser scrolls it.
+  // (A small bounce used to be added from a scroll handler: it ran a frame or
+  // more behind the compositor's own scrolling, so fast flings ended in a jolt
+  // at the top and bottom, and preparing its layers mid-fling cost frames.)
+  // The elastic edge stays for a pull with the finger.
 
   // ---- 3. Home hero ------------------------------------------------------------------
 
-  // The picture drifts up at half the page's speed and fades as it goes, so it
-  // leaves the screen gradually instead of being cut by the screen edge.
-  var heroQueued = false;
-  var heroHeight = new WeakMap();
-  var heroLast = new WeakMap();
-  window.addEventListener('resize', function () { heroHeight = new WeakMap(); }, { passive: true });
-  document.addEventListener('scroll', function (event) {
-    var el = event.target;
-    if (!el || el.nodeType !== 1 || !el.classList || !el.classList.contains('home')) return;
-    if (heroQueued) return;
-    heroQueued = true;
-    requestAnimationFrame(function () {
-      heroQueued = false;
-      var stage = el.querySelector('.stage--home');
-      if (!stage) return;
-      // The stage's height only changes with the layout; read it once per size.
-      var h = heroHeight.get(stage);
-      if (!h) { h = stage.offsetHeight || 1; heroHeight.set(stage, h); }
-      var y = Math.max(0, Math.min(el.scrollTop, h));
-      // Once the hero is gone, further scrolling changes nothing here.
-      if (y === heroLast.get(stage)) return;
-      heroLast.set(stage, y);
-      stage.style.setProperty('--tvma-hero-y', y.toFixed(1) + 'px');
-      stage.style.setProperty('--tvma-hero-p', (y / h).toFixed(3));
-    });
-  }, { capture: true, passive: true });
+  // The hero's drift and fade follow the page's scroll in CSS (a scroll-driven
+  // animation, tvm-android.css section 10), on the compositor with the scroll
+  // itself. They used to be set from a scroll handler a frame later, which
+  // lagged behind a fast fling (jitter) and fought the edge bounce's own
+  // transform at the top (a jump, and the picture cut off). Only the hero's
+  // height is given to the CSS, when it changes.
+  var heroSized = typeof WeakSet === 'function' ? new WeakSet() : null;
+  var heroResize = typeof ResizeObserver === 'function' ? new ResizeObserver(function (entries) {
+    for (var i = 0; i < entries.length; i++) {
+      var stage = entries[i].target;
+      var home = stage.closest('.home');
+      if (home) home.style.setProperty('--tvma-hero-h', Math.max(1, stage.offsetHeight) + 'px');
+    }
+  }) : null;
+  function syncHero() {
+    if (!heroResize || !heroSized) return;
+    var stage = document.querySelector('.home > .stage--home, .home .stage--home');
+    if (stage && !heroSized.has(stage)) { heroSized.add(stage); heroResize.observe(stage); }
+  }
 
   // ---- 4. Timeline time bubble --------------------------------------------------------
 
@@ -1084,7 +1127,9 @@
         who = null;
         whoEditing = false;
         root.classList.remove('tvma-who-launch');
-        loadProfiles(true);
+        loadProfiles(true, function (reg) {
+          if (reg && window.tvmaPrefetchTabs) window.tvmaPrefetchTabs(reg.activeId || '');
+        });
         // Reached through Settings on the way: step back past it too.
         if (profilesViaPopup) {
           profilesViaPopup = false;
@@ -1541,7 +1586,7 @@
   function maybeWarm() {
     var layer = tabLayer();
     var onHome = !!layer && tabReady('home-dock') && !switching && !touch && !document.querySelector('.ribbon-sheet, .tvma-sheet, .tvma-who') &&
-      document.visibilityState === 'visible' && !root.classList.contains('tvm-cinema') && fresh !== 'waiting' && fresh !== 'opening';
+      document.visibilityState === 'visible' && !root.classList.contains('tvm-cinema') && fresh !== 'waiting' && fresh !== 'warming' && fresh !== 'opening';
     if (!onHome) { homeSince = 0; return; }
     var now = performance.now();
     if (!homeSince) { homeSince = now; setTimeout(queue, 1000); return; }
@@ -1582,34 +1627,106 @@
     });
   }
 
-  // ---- 17c. "Who's watching?" when the app starts ---------------------------------
+  // ---- 17c. "Who's watching?" when a session starts -------------------------------
 
-  // MainActivity calls this once when the app is genuinely started (not on a
-  // return from the background, a rotation or a reload), before its logo
-  // gives way to the page, and waits until the chooser is up.
+  // MainActivity calls this when a session starts:
+  // - 'start': the app was genuinely started (not a rotation or a reload).
+  //   Its logo still covers the page, so the main tabs are first opened once
+  //   behind it (17b: their first visit is then as quick as the rest), and
+  //   the logo stays until the chooser is up.
+  // - 'resume': the person comes back after ending the session (Back twice)
+  //   or after a long while away. The chooser opens over where they were.
+  // Not on a tab change, a return from the player or Settings, or a quick
+  // trip to another app.
   var fresh = null;
+  var freshMode = '';
+  var freshBacks = 0;
+  var freshStable = 0;
   var freshAt = 0;
-  window.tvmaFreshLaunch = function () {
+  window.tvmaFreshLaunch = function (mode) {
+    if (fresh === 'waiting' || fresh === 'warming' || fresh === 'opening') return 'started';
+    if (document.querySelector('.tvma-who')) { fresh = 'done'; return 'started'; }
     fresh = 'waiting';
+    freshBacks = 0;
+    freshStable = 0;
+    freshMode = mode === 'resume' ? 'resume' : 'start';
     freshAt = performance.now();
     queue();
     return 'started';
   };
   window.tvmaFreshState = function () {
-    return fresh === 'waiting' || fresh === 'opening' ? 'pending' : 'done';
+    return fresh === 'waiting' || fresh === 'warming' || fresh === 'opening' ? 'pending' : 'done';
   };
+
+  /** Opens each main tab not yet visited once, then Home again (no crossfade: the logo covers it). */
+  function warmBehindLogo(done) {
+    var plan = WARM.filter(function (id) { return !warmed[id] && (id === 'search' || realTab(id)); });
+    plan.forEach(function (id) { warmed[id] = true; });
+    var i = 0;
+    var waiting = false;
+    var t0 = performance.now();
+    (function step() {
+      var late = performance.now() - t0 > 4000;
+      if (i < plan.length && !late) {
+        var id = plan[i];
+        if (!waiting) {
+          var b = realTab(id);
+          if (b) { press(b); waiting = true; } else i++;
+        } else if (id === 'search' ? !!document.querySelector('.search-pill__panel') : tabReady(id)) {
+          waiting = false;
+          i++;
+        }
+        setTimeout(step, 16);
+        return;
+      }
+      if (searchLayer()) { closeSearch(); setTimeout(step, 16); return; }
+      if (!tabReady('home-dock')) {
+        var home = realTab('home-dock');
+        if (home && !home.classList.contains('ribbon__icon--on')) press(home);
+        if (performance.now() - t0 < 6000) { setTimeout(step, 16); return; }
+      }
+      done();
+    })();
+  }
+
   function syncFresh() {
     if (fresh === 'opening') {
       if (document.querySelector('.tvma-who')) { fresh = 'done'; root.classList.add('tvma-who-launch'); }
-      else if (performance.now() - freshAt > 6000) fresh = 'done';
+      else if (performance.now() - freshAt > 20000) fresh = 'done';
       return;
     }
     if (fresh !== 'waiting') return;
     var layer = tabLayer();
     var screen = layer ? layer.getAttribute('data-screen') : '';
-    // Not signed in, setting up, or already choosing: nothing to do.
-    if (screen === 'profiles' || performance.now() - freshAt > 6000) { fresh = 'done'; return; }
-    if (screen !== 'home' || !tabReady('home-dock')) { setTimeout(queue, 100); return; }
+    // Already choosing, playing, or not signed in for long enough to give up.
+    if (screen === 'profiles' || document.querySelector('.tvma-who, .modal-layer[data-screen="player"]') ||
+        root.classList.contains('tvm-cinema') || performance.now() - freshAt > 20000) { fresh = 'done'; return; }
+    // A screen with the tab bar, settled (not a sign-in or set-up screen, not a placeholder).
+    // Coming back to a page with no tab bar (Details, a Settings page): step
+    // back, under the veil, to the nearest screen that has one.
+    if (freshMode === 'resume' && layer && !realTab('more') && !document.querySelector('.modal-layer, .ribbon-sheet') &&
+        document.documentElement.dataset.canGoBack === 'true' && freshBacks < 8) {
+      freshBacks++;
+      veil(true);
+      window.dispatchEvent(new Event('tvm:navigate-back'));
+      setTimeout(queue, 120);
+      return;
+    }
+    var settled = !!layer && !!realTab('more') && !layer.querySelector('[data-tvma-placeholder], .loading-state--plate') &&
+      !document.querySelector('.modal-layer, .ribbon-sheet');
+    if (!settled || (freshMode === 'start' && !tabReady('home-dock'))) { freshStable = 0; setTimeout(queue, 100); return; }
+    // Settled for a moment (a screen that has just appeared may not yet take a tap).
+    var now = performance.now();
+    if (!freshStable) freshStable = now;
+    if (now - freshStable < 300) { setTimeout(queue, 100); return; }
+    if (freshMode === 'start' && canCrossfade()) {
+      fresh = 'warming';
+      warmBehindLogo(function () { fresh = 'open'; openChooser(); });
+      return;
+    }
+    openChooser();
+  }
+  function openChooser() {
     fresh = 'opening';
     var more = realTab('more');
     if (!more) { fresh = 'done'; return; }
@@ -1662,8 +1779,31 @@
         };
       })(page));
       page.insertBefore(b, page.firstChild);
+      // Under the arrow, a compact bar with the title appears once the title
+      // has scrolled up to it, so rows pass under a bar, not under a bare arrow.
+      var bar = el('div', 'tvma-detailsbar');
+      bar.setAttribute('aria-hidden', 'true');
+      bar.appendChild(el('span', 'tvma-detailsbar__title'));
+      page.insertBefore(bar, b);
     }
   }
+  function detailsBar(page) {
+    var bar = page.querySelector(':scope > .tvma-detailsbar');
+    if (!bar) return;
+    var title = page.querySelector('.details__copy .stage__title');
+    // Where the title starts, measured once: the bar shows when it reaches the arrow.
+    if (!page.__tvmaBarAt) {
+      if (!title) return;
+      var top = title.getBoundingClientRect().top + page.scrollTop;
+      page.__tvmaBarAt = Math.max(40, top - bar.offsetHeight);
+      bar.firstChild.textContent = (title.textContent || '').trim();
+    }
+    mark(page, 'data-tvma-bar', page.scrollTop > page.__tvmaBarAt ? '' : null);
+  }
+  document.addEventListener('scroll', function (event) {
+    var page = event.target;
+    if (page && page.nodeType === 1 && page.classList.contains('details')) detailsBar(page);
+  }, { capture: true, passive: true });
 
   // ---- 18b. Series: a season dropdown instead of "All seasons" --------------------
 
@@ -1700,39 +1840,103 @@
     var seasons = details.__tvmaSeasons || (current ? ['season-' + current] : []);
     var box = nav.querySelector('.tvma-season');
     if (!box) {
-      box = el('label', 'tvma-season');
-      var select = document.createElement('select');
-      select.setAttribute('aria-label', 'Season');
-      select.addEventListener('change', function () {
-        var id = 'season-' + select.value;
-        var top = details.scrollTop;
-        details.__tvmaWant = id;
-        var back = details.querySelector('.episode-list__nav [data-focus-id="seasons-back"]');
-        if (!back) return;
-        press(back);
-        // The interface shows the seasons again; the chosen one is picked at
-        // once, before anything is drawn, and the page stays where it was.
-        if (!pickSeason(details, id)) whenThere('.app__screen:not([inert]) .details .season-list [data-focus-id="' + id + '"]', function () { pickSeason(details, id); });
-        requestAnimationFrame(function () { if (Math.abs(details.scrollTop - top) > 1) ownScroll(details, top); });
+      box = el('button', 'tvma-season');
+      box.type = 'button';
+      box.setAttribute('aria-haspopup', 'listbox');
+      box.appendChild(el('span', 'tvma-season__label'));
+      box.addEventListener('click', function () {
+        if (box.hasAttribute('data-single')) return;
+        openSeasonMenu(details, box);
       });
-      box.appendChild(select);
       nav.insertBefore(box, nav.firstChild);
     }
-    var sel = box.firstChild;
-    var key = seasons.join(',');
-    if (sel.getAttribute('data-seasons') !== key) {
-      sel.setAttribute('data-seasons', key);
-      sel.innerHTML = '';
-      seasons.forEach(function (id) {
-        var o = document.createElement('option');
-        o.value = seasonNumber(id);
-        o.textContent = 'Season ' + seasonNumber(id);
-        sel.appendChild(o);
-      });
-    }
-    if (current && sel.value !== current) sel.value = current;
+    box.__tvmaSeasons = seasons;
+    box.__tvmaCurrent = current;
+    var label = current ? 'Season ' + current : 'Season';
+    if (box.firstChild.textContent !== label) box.firstChild.textContent = label;
+    box.setAttribute('aria-label', label + (seasons.length > 1 ? ', choose a season' : ''));
     mark(box, 'data-single', seasons.length <= 1 ? '' : null);
-    sel.disabled = seasons.length <= 1;
+  }
+
+  /** Show season [id]: the interface's own season buttons do the work. */
+  function chooseSeason(details, id) {
+    var top = details.scrollTop;
+    details.__tvmaWant = id;
+    var back = details.querySelector('.episode-list__nav [data-focus-id="seasons-back"]');
+    if (!back) return;
+    press(back);
+    // The interface shows the seasons again; the chosen one is picked at
+    // once, before anything is drawn, and the page stays where it was.
+    if (!pickSeason(details, id)) whenThere('.app__screen:not([inert]) .details .season-list [data-focus-id="' + id + '"]', function () { pickSeason(details, id); });
+    requestAnimationFrame(function () { if (Math.abs(details.scrollTop - top) > 1) ownScroll(details, top); });
+  }
+
+  /**
+   * The season menu: a small panel next to the control, kept on screen
+   * (opening upwards when there is no room below), scrolling inside itself
+   * when there are many seasons. A tap outside, or Back, closes it.
+   */
+  function openSeasonMenu(details, anchor) {
+    if (document.querySelector('.tvma-season-menu')) return;
+    var seasons = anchor.__tvmaSeasons || [];
+    var current = anchor.__tvmaCurrent || '';
+    var wrap = el('div', 'tvma-season-menu');
+    var scrim = el('button', 'tvma-season-menu__scrim');
+    scrim.type = 'button';
+    scrim.setAttribute('aria-label', 'Close');
+    var panel = el('div', 'tvma-season-menu__panel');
+    panel.setAttribute('role', 'listbox');
+    panel.setAttribute('aria-label', 'Seasons');
+    var close = function () {
+      if (!wrap.parentNode) return false;
+      backHandlers = backHandlers.filter(function (h) { return h !== close; });
+      anchor.removeAttribute('aria-expanded');
+      wrap.classList.add('tvma-season-menu--out');
+      setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 120);
+      return true;
+    };
+    seasons.forEach(function (id) {
+      var n = seasonNumber(id);
+      var row = el('button', 'tvma-season-menu__row');
+      row.type = 'button';
+      row.setAttribute('role', 'option');
+      row.appendChild(el('span', 'tvma-season-menu__name', 'Season ' + n));
+      if (n === current) { row.setAttribute('aria-selected', 'true'); row.classList.add('tvma-season-menu__row--on'); }
+      row.addEventListener('click', function () {
+        close();
+        if (n !== current) chooseSeason(details, id);
+      });
+      panel.appendChild(row);
+    });
+    scrim.addEventListener('click', close);
+    wrap.appendChild(scrim);
+    wrap.appendChild(panel);
+    document.body.appendChild(wrap);
+    // Placement: below the control, or above it when there is no room below.
+    var r = anchor.getBoundingClientRect();
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var topLimit = (parseFloat(getComputedStyle(root).getPropertyValue('--tvm-chrome-top')) || 0) + 8;
+    var bottomLimit = vh - 12;
+    var width = Math.min(260, vw - 32);
+    panel.style.width = width + 'px';
+    panel.style.left = Math.max(16, Math.min(r.left, vw - width - 16)) + 'px';
+    var natural = panel.scrollHeight;
+    var below = bottomLimit - (r.bottom + 6);
+    var above = (r.top - 6) - topLimit;
+    if (below >= Math.min(natural, 220) || below >= above) {
+      panel.style.top = (r.bottom + 6) + 'px';
+      panel.style.maxHeight = Math.max(120, below) + 'px';
+      panel.style.transformOrigin = 'top left';
+    } else {
+      panel.style.bottom = (vh - r.top + 6) + 'px';
+      panel.style.maxHeight = Math.max(120, above) + 'px';
+      panel.style.transformOrigin = 'bottom left';
+    }
+    anchor.setAttribute('aria-expanded', 'true');
+    backHandlers.push(close);
+    // The chosen season in view when the list is long.
+    var on = panel.querySelector('.tvma-season-menu__row--on');
+    if (on && on.offsetTop + on.offsetHeight > panel.clientHeight) panel.scrollTop = on.offsetTop - panel.clientHeight / 2;
   }
 
   // ---- 19. Watchlist sort, Developer groups, sub-page Back --------------------------
@@ -1872,7 +2076,7 @@
       maybeWarm();
       syncSubpages();
       syncAppGroup();
-      if (document.querySelector('.home')) syncHomeTitles();
+      if (document.querySelector('.home')) { syncHomeTitles(); syncHero(); }
       if (document.querySelector('.settings-row')) syncSettings();
       if (document.querySelector('.details')) syncDetails();
   }
