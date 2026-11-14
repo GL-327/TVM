@@ -36,6 +36,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -101,6 +102,9 @@ class MainActivity : AppCompatActivity() {
     private var overlayScript: String = ""
 
     /** Updates of the APK itself (TvmAppUpdate); the interface has its own updater. */
+    /** Pictures kept on the phone, shared by the core's /api/art and the WebView's own requests. */
+    private val artCache by lazy { TvmArtCache(java.io.File(cacheDir, "art")) }
+    private val images by lazy { TvmImages(artCache) }
     private val appUpdate by lazy { TvmAppUpdate { ApkBundle(assets).appBuild() } }
     private var appUpdateBusy = false
     private var autoAppCheckDone = false
@@ -246,7 +250,7 @@ class MainActivity : AppCompatActivity() {
                 server.start()
                 runOnUiThread {
                     core = made
-                    made.artCache = TvmArtCache(java.io.File(cacheDir, "art"))
+                    made.artCache = artCache
                     made.onUpdateCheck = { runOnUiThread { checkAppUpdate(manual = true) } }
                     localServer = server
                     standaloneOrigin = server.origin
@@ -277,6 +281,7 @@ class MainActivity : AppCompatActivity() {
             onLoading = { loading -> setLoading(loading) },
             onError = { message -> showPageError(message) },
             onAppAction = ::appAction,
+            images = images,
         )
         clearError()
         setLoading(true)
@@ -816,7 +821,15 @@ class MainActivity : AppCompatActivity() {
             }
             refreshBootScript()
             if (webView.visibility == View.VISIBLE) publishChrome()
-            latest
+            // The keyboard is accounted for once, here, by the padding above.
+            // Passed on as well, the WebView took it off its visible area a
+            // second time and then corrected itself: the double jolt as the
+            // Search keyboard opened.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowInsetsCompat.Builder(latest).setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE).build()
+            } else {
+                latest
+            }
         }
     }
 
