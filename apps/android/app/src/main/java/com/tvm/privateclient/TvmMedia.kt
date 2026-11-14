@@ -368,24 +368,38 @@ class TvmMedia(
             return 409 to Json.obj("kind" to "unavailable", "reason" to "not-in-library")
         }
         val wanted = title?.trim() ?: ""
+        // A copy in the person's own library is used first, unless it already
+        // failed on this phone or is larger than this screen can show (4K on a
+        // phone), in which case a fitting copy is looked for first and the
+        // library copy is kept as the last resort.
+        var libraryCopy: Pair<Int, JSONObject>? = null
         if (wanted.isNotEmpty()) {
             val matched = findLibraryPlayback(wanted, season, episode)
             if (matched != null) {
                 val owned = resolveOwnedLink(matched)
-                if (owned != null) return playFromLink(owned, id ?: matched)
+                if (owned != null && !TvmPlaybackMemory.hasFailed(owned)) {
+                    val result = playFromLink(owned, id ?: matched)
+                    if (result.first == 200) {
+                        TvmPlaybackMemory.served(result.second.text("url", ""), owned)
+                        if (fitsScreen(result)) return result
+                        libraryCopy = result
+                    }
+                }
             }
         }
         val imdb = resolveImdb(id, title)
         if (imdb != null) {
             val parsed = if (id == null) null else TvmTitle.parsePlayId(id)
             val extra = if (id == null) null else TvmTitle.seasonEpisode(id)
-            return playFromTorrentio(
+            val found = playFromTorrentio(
                 imdb,
                 season ?: parsed?.season ?: extra?.season,
                 episode ?: parsed?.episode ?: extra?.episode,
                 id ?: imdb,
             )
+            if (found.first == 200 || libraryCopy == null) return found
         }
+        if (libraryCopy != null) return libraryCopy
         return 409 to Json.obj("kind" to "unavailable", "reason" to "not-in-library")
     }
 
@@ -559,11 +573,18 @@ class TvmMedia(
         val ranked: List<RdStream> = TvmPlaybackChoice.order(fresh, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
         Log.i(TAG, "sources: ${streams.size} found, height cap $height, ${fresh.size} not failed here, trying ${ranked.size}")
         var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to if (fresh.isEmpty()) "unsupported" else "empty")
+        // A copy whose real file turns out larger than the screen (its search
+        // name did not say 4K) is kept only in case nothing else plays.
+        var oversized: Pair<Int, JSONObject>? = null
         for (stream in ranked) {
             if (stream.url.isNotEmpty()) {
                 val resolved: String? = rd.resolveRedirect(stream.url)
                 if (resolved != null && !rd.isTorrentioHost(resolved)) {
                     val result = playFromLink(resolved, mediaId ?: imdb)
+                    if (result.first == 200 && !fitsScreen(result)) {
+                        if (oversized == null) oversized = chosen(result, stream, label(stream))
+                        continue
+                    }
                     if (result.first == 200) return chosen(result, stream, label(stream))
                     last = result.second
                     if (last.text("reason", "") == "needs-auth") return result
@@ -572,11 +593,16 @@ class TvmMedia(
             val hash: String? = stream.infoHash
             if (hash != null && hash.isNotEmpty()) {
                 val magnet = playFromMagnet(hash, mediaId ?: imdb)
+                if (magnet.first == 200 && !fitsScreen(magnet)) {
+                    if (oversized == null) oversized = chosen(magnet, stream, label(stream))
+                    continue
+                }
                 if (magnet.first == 200) return chosen(magnet, stream, label(stream))
                 last = magnet.second
                 if (last.text("reason", "") == "needs-auth") return magnet
             }
         }
+        oversized?.let { return it }
         if (last.text("reason", "") == "empty" && catalogTitle != null) {
             val matched = findLibraryPlayback(catalogTitle, seasonNo, episodeNo)
             if (matched != null) {
@@ -585,6 +611,12 @@ class TvmMedia(
             }
         }
         return 409 to last
+    }
+
+    /** The copy's own file name says it is no taller than this screen needs. */
+    private fun fitsScreen(result: Pair<Int, JSONObject>): Boolean {
+        val name = result.second.text("filename", "")
+        return name.isEmpty() || rd.streamHeight(name) <= TvmDeviceChrome.playbackHeight(plans.maxHeight())
     }
 
     /** One copy of a title, the same across searches. */
