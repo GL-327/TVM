@@ -177,6 +177,21 @@ check('TvmLiveReflector.kt exists', existsSync(join(SRC, 'TvmLiveReflector.kt'))
 check('TvmDevUnlock.kt exists', existsSync(join(SRC, 'TvmDevUnlock.kt')));
 check('launcher foreground is the orbital PNG',
   existsSync(join(ROOT, 'app', 'src', 'main', 'res', 'drawable', 'ic_launcher_foreground.png')));
+{
+  // The launcher icon is an adaptive icon whose logo layer is transparent, so
+  // launcher masks (One UI, circle, squircle) never crop the artwork.
+  const res = join(ROOT, 'app', 'src', 'main', 'res');
+  const manifest = read(join(ROOT, 'app', 'src', 'main', 'AndroidManifest.xml')) ?? '';
+  const adaptive = read(join(res, 'mipmap-anydpi-v26', 'ic_tvm_launcher.xml')) ?? '';
+  const pngType = (file) => { try { return readFileSync(file)[25]; } catch { return -1; } };
+  check('the manifest uses the adaptive TVM launcher icon',
+    manifest.includes('android:icon="@mipmap/ic_tvm_launcher"') && manifest.includes('android:roundIcon="@mipmap/ic_tvm_launcher_round"') &&
+    adaptive.includes('@drawable/ic_launcher_background') && adaptive.includes('@drawable/ic_launcher_foreground'));
+  check('the launcher logo layer is transparent (RGBA)', pngType(join(res, 'drawable', 'ic_launcher_foreground.png')) === 6);
+  check('the Good Lock icons are transparent PNGs at 512 and 1024',
+    ['TVM_Glass_512.png', 'TVM_Glass_1024.png'].every((f) => pngType(join(ROOT, 'branding', f)) === 6));
+  check('CI builds get a rising versionCode', /versionCode = 4 \+ \(System\.getenv\("GITHUB_RUN_NUMBER"\)/.test(read(join(ROOT, 'app', 'build.gradle.kts')) ?? ''));
+}
 check('live playback is a local proxy',
   (read(join(SRC, 'TvmLocalCore.kt')) ?? '').includes('/api/live/proxy/'));
 check('the Android app applies a GitHub UI bundle on open unless auto-update is off',
