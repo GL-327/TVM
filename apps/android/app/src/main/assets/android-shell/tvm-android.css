@@ -1272,9 +1272,11 @@ html.tvm-android .details[data-tvma-pull] > .details__stage {
 /* The shared Details page tilts its seasons and episodes in 3D (a TV
    "shelf": perspective and rotateX). On a phone's long episode list the tilt
    made every row further down wider than the last, until stills ran off the
-   left edge. The section lies flat here; the elastic pull still moves it. */
-html.tvm-android .details:not([data-tvm-rubber]) .details__shelf {
-  transform: none;
+   left edge. The section lies flat here, always: it is not one of the page
+   parts the elastic pull moves (its parent is), so an exception for the pull
+   brought the tilt back during every bounce until it settled. */
+html.tvm-android .details .details__shelf {
+  transform: none !important;
 }
 
 /* ---- 7. Native scrolling ---------------------------------------------------------
@@ -1450,12 +1452,52 @@ html.tvm-android .stage--home::before {
   display: none;
 }
 
-/* The picture drifts at half the page's speed and dims as it leaves. */
+/* The picture drifts at half the page's speed and dims as it leaves, driven
+   by the scroll itself (a scroll-driven animation runs on the compositor, in
+   step with the scroll). It animates translate, scale and opacity, so the edge
+   bounce, which holds the picture still with transform, adds to it rather
+   than replacing it. Without scroll-driven animations the hero simply stays. */
 html.tvm-android .stage--home .stage__pictures {
-  transform: translate3d(0, calc(var(--tvma-hero-y, 0px) * 0.5), 0) scale(calc(1 + var(--tvma-hero-p, 0) * 0.05));
   transform-origin: 50% 0;
-  opacity: calc(1 - var(--tvma-hero-p, 0) * 0.55);
+  opacity: 1;
   will-change: transform;
+}
+
+@supports (animation-timeline: scroll()) {
+  /* The page's own scroll is the timeline; the range is the hero's height,
+     measured once per size (--tvma-hero-h, tvm-android.js section 3). */
+  html.tvm-android .home {
+    scroll-timeline: --tvma-home block;
+  }
+
+  html.tvm-android .stage--home .stage__pictures {
+    animation: tvma-hero-drift linear both;
+    animation-timeline: --tvma-home;
+    animation-range: 0px var(--tvma-hero-h, 70vh);
+  }
+
+  html.tvm-android .stage--home .stage__copy {
+    animation: tvma-hero-copy linear both;
+    animation-timeline: --tvma-home;
+    animation-range: 0px calc(var(--tvma-hero-h, 70vh) * 0.62);
+  }
+}
+
+/* Over the hero's height the picture drifts by half of it (its own height is
+   the stage's). */
+@keyframes tvma-hero-drift {
+  to {
+    translate: 0 50%;
+    scale: 1.05;
+    opacity: 0.45;
+  }
+}
+
+@keyframes tvma-hero-copy {
+  to {
+    translate: 0 -12%;
+    opacity: 0;
+  }
 }
 
 html.tvm-android .stage--home .stage__art {
@@ -1477,8 +1519,6 @@ html.tvm-android .stage--home .stage__copy {
   align-items: flex-start;
   gap: 10px;
   max-width: 34rem;
-  opacity: calc(1 - var(--tvma-hero-p, 0) * 1.6);
-  transform: translate3d(0, calc(var(--tvma-hero-y, 0px) * -0.12), 0);
 }
 
 html.tvm-android .stage--home .home__kicker {
@@ -2444,62 +2484,155 @@ html.tvm-android .details .episode-list__nav {
   margin: 0 0 4px;
 }
 
+/* The season control: a compact pill with the season and a chevron. */
 html.tvm-android .details .tvma-season {
   position: relative;
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   max-width: 100%;
-}
-
-html.tvm-android .details .tvma-season select {
-  appearance: none;
-  -webkit-appearance: none;
-  max-width: 100%;
-  height: 38px;
+  height: 36px;
   margin: 0;
-  padding: 0 38px 0 14px;
-  border: 0;
+  padding: 0 12px 0 14px;
+  border: 0.5px solid rgb(var(--tvma-tint) / 0.1);
   border-radius: 10px;
   background: var(--tvma-card-hi);
   color: var(--tvma-ink);
   font: inherit;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
   outline: none;
   -webkit-tap-highlight-color: transparent;
+  transition: background 140ms ease;
 }
 
 html.tvm-android .details .tvma-season::after {
   content: '';
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  width: 18px;
-  height: 18px;
-  margin-top: -9px;
-  background: var(--tvma-accent, #4c8dff);
+  width: 16px;
+  height: 16px;
+  background: #5170ff;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5 12 15l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5 12 15l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat;
-  pointer-events: none;
+  transition: transform 160ms ease;
 }
 
-html.tvm-android .details .tvma-season select:active {
-  opacity: 0.75;
+html.tvm-android .details .tvma-season[aria-expanded='true']::after {
+  transform: rotate(180deg);
 }
 
-html.tvm-android.tvma-keys .details .tvma-season select:focus-visible {
-  outline: 2px solid var(--tvma-blue);
+html.tvm-android .details .tvma-season:active {
+  background: rgb(var(--tvma-tint) / 0.14);
+}
+
+html.tvm-android.tvma-keys .details .tvma-season:focus-visible {
+  outline: 2px solid #5170ff;
 }
 
 /* One season: the name alone, nothing to open. */
-html.tvm-android .details .tvma-season[data-single] select {
-  padding-right: 14px;
-  opacity: 1;
-}
-
 html.tvm-android .details .tvma-season[data-single]::after {
   display: none;
+}
+
+/* The menu (tvm-android.js 18b): placed by script next to the control. */
+html.tvm-android .tvma-season-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+html.tvm-android .tvma-season-menu__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.tvm-android .tvma-season-menu__panel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #111a2c;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: tvma-season-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+html.tvm-android .tvma-season-menu--out .tvma-season-menu__panel {
+  animation: tvma-season-out 110ms ease-in both;
+}
+
+@keyframes tvma-season-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes tvma-season-out {
+  to { opacity: 0; transform: scale(0.97); }
+}
+
+html.tvm-android .tvma-season-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #e9eefb;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.tvm-android .tvma-season-menu__row:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html.tvm-android .tvma-season-menu__row--on {
+  background: rgba(81, 112, 255, 0.16);
+  color: #fff;
+}
+
+html.tvm-android .tvma-season-menu__row--on::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  background: #5170ff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android[data-theme='light'] .tvma-season-menu__panel {
+  border-color: rgba(10, 20, 40, 0.08);
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(10, 20, 40, 0.18), 0 2px 8px rgba(10, 20, 40, 0.08);
+}
+
+html.tvm-android[data-theme='light'] .tvma-season-menu__row {
+  color: #1a2233;
+}
+
+html.tvm-android[data-theme='light'] .tvma-season-menu__row:active {
+  background: rgba(10, 20, 40, 0.05);
+}
+
+html.tvm-android[data-theme='light'] .tvma-season-menu__row--on {
+  background: rgba(81, 112, 255, 0.12);
+  color: #0d1424;
+}
+
+html.tvm-android[data-perf='on'] .tvma-season-menu__panel {
+  animation: none;
 }
 
 html.tvm-android .details .episode-download-row {
@@ -3734,6 +3867,61 @@ html.tvm-android .tvma-back {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The bar under the Back arrow (tvm-android.js 18): hidden at the top of the
+   page, shown with the title once the page has scrolled past it. */
+html.tvm-android .tvma-detailsbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--tvm-chrome-top, 0px) + 56px);
+  padding: var(--tvm-chrome-top, 0px) 64px 0;
+  background: var(--tvm-bg, #05090f);
+  box-shadow: 0 0.5px 0 rgb(var(--tvma-tint) / 0.12);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms ease, visibility 0s linear 160ms;
+}
+
+html.tvm-android .details[data-tvma-bar] > .tvma-detailsbar {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 160ms ease, visibility 0s;
+}
+
+html.tvm-android .tvma-detailsbar__title {
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tvma-ink);
+}
+
+/* On the bar, the arrow needs no dark disc and takes the text colour. */
+html.tvm-android .details[data-tvma-bar] > .tvma-back {
+  color: var(--tvma-ink);
+}
+
+html.tvm-android .details[data-tvma-bar] > .tvma-back::before {
+  background: transparent;
+}
+
+html.tvm-android .details:is([data-tvma-prime], [data-tvm-rubber]) > .tvma-detailsbar {
+  transform: none !important;
+  will-change: auto !important;
+}
+
+html.tvm-android:is(.tvm-cinema, .tvm-native-playback) .tvma-detailsbar {
+  display: none;
+}
+
 html.tvm-android .tvma-back::before {
   content: '';
   position: absolute;
@@ -4089,4 +4277,9 @@ html.tvm-android .tvm-button.settings-row[data-tvma-busy] .tvm-button__detail {
    chosen to go on, so the chooser has no Back arrow then. */
 html.tvm-android.tvma-who-launch .tvma-who .tvma-icon-btn--back {
   visibility: hidden !important;
+}
+
+/* Reduced motion: the hero stays still. */
+html.tvm-android[data-motion='reduced'] .stage--home :is(.stage__pictures, .stage__copy) {
+  animation: none !important;
 }
