@@ -145,6 +145,14 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
       moved = Math.max(moved, difference(a, measure(frame)));
     }
     if (moved < 0.25) throw new Error(`${label}: the picture is not moving (at most ${moved.toFixed(2)}% of it changed in 3 s)`);
+    // Sound: an audio decoder was chosen and keeps handing decoded sound to
+    // the phone's audio output while the film plays.
+    const s1 = await latest(id);
+    await sleep(1500);
+    const s2 = await latest(id);
+    if (!s2 || !s2.audio) throw new Error(`${label}: no sound track is being played (audio=${s2 && s2.audio})`);
+    if (!(s2.audioBuffers > s1.audioBuffers)) throw new Error(`${label}: sound is not being played (${s1.audioBuffers} → ${s2.audioBuffers} audio buffers in 1.5 s)`);
+    annotate('notice', `${label}: sound plays (${s2.audio}, ${s2.audioBuffers - s1.audioBuffers} audio buffers in 1.5 s)`);
     annotate('notice', `${label}: video renders (brightness ${a.mean.toFixed(0)}, spread ${a.spread.toFixed(0)}, up to ${moved.toFixed(1)}% changed in 3 s) at ${frame.width}x${frame.height}`);
     return frame;
   }
@@ -152,6 +160,15 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
   try {
     adb('shell', 'dumpsys', 'gfxinfo', packageName, 'reset');
     await send({ id: 'smoke-1', command: 'open', url: `http://127.0.0.1:${PORT}/clip.mp4`, title: 'Smoke MP4', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
+    // While the player loads, the screen stays dark: no white poster card
+    // (the WebView's built-in <video> poster) flashes over the loading surface.
+    for (let i = 0; i < 3; i++) {
+      const loading = measure(capture());
+      const state = await latest('smoke-1');
+      if (state && state.hasFrame) break;
+      if (loading.mean > 150) throw new Error(`a bright placeholder covers the screen while the player loads (brightness ${loading.mean.toFixed(1)})`);
+    }
+    annotate('notice', 'the loading screen stays dark until the first frame');
     const first = await playing('smoke-1', 'MP4 (H.264/AAC)');
     save('playback-mp4.png');
     if (first.width <= first.height) throw new Error(`playback did not turn the screen to landscape (${first.width}x${first.height})`);
@@ -195,6 +212,14 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
     // Another film, then another format.
     await send({ id: 'smoke-2', command: 'open', url: `http://127.0.0.1:${PORT}/clip.mkv`, title: 'Smoke MKV', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
     await playing('smoke-2', 'Matroska (switching titles)');
+    // A source that cannot be played reports one error and stops: no retry loop.
+    await send({ id: 'smoke-bad', command: 'open', url: `http://127.0.0.1:${PORT}/missing.mp4`, title: 'Smoke missing', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
+    await step('a broken source reports an error', 30, async () => (await errors('smoke-bad')).length > 0);
+    await sleep(3000);
+    const badErrors = await errors('smoke-bad');
+    if (badErrors.length !== 1) throw new Error(`a broken source reported ${badErrors.length} errors (expected exactly one)`);
+    annotate('notice', `a broken source reports one error and stops: "${badErrors[0].message}"`);
+
     await send({ id: 'smoke-3', command: 'open', url: `http://127.0.0.1:${PORT}/clip.ts`, title: 'Smoke TS', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
     await playing('smoke-3', 'MPEG-TS');
     save('playback-ts.png');

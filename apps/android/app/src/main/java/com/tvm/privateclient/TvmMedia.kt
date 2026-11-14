@@ -1,5 +1,6 @@
 package com.tvm.privateclient
 
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -16,6 +17,8 @@ import java.util.UUID
  * served by both clients, so every JSON key, default and ordering decision here
  * has to match the Swift exactly.
  */
+private const val TAG = "TVMPlayer"
+
 class TvmMedia(
     private val store: TvmStore,
     private val catalog: TvmCatalog,
@@ -545,16 +548,23 @@ class TvmMedia(
             }
             return 409 to Json.obj("kind" to "unavailable", "reason" to "empty")
         }
+        // The plan's limit and this screen's (TvmDeviceChrome.playbackHeight),
+        // then this device's decoders: copies it can play fully come first.
         val height: Int = TvmDeviceChrome.playbackHeight(plans.maxHeight())
-        val capped: List<RdStream> = streams.filter { rd.streamHeight("${it.name} ${it.title}") <= height }
-        val ranked: List<RdStream> = (if (capped.isEmpty()) streams else capped).take(8)
-        var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to "empty")
+        val label = { it: RdStream -> "${it.name} ${it.title}" }
+        val capped: List<RdStream> = streams.filter { rd.streamHeight(label(it)) <= height }
+        // A copy that already failed here (decoder, no sound, never started)
+        // is not offered again, so a retry moves on to another one.
+        val fresh: List<RdStream> = (if (capped.isEmpty()) streams else capped).filter { !TvmPlaybackMemory.hasFailed(sourceKey(it)) }
+        val ranked: List<RdStream> = TvmPlaybackChoice.order(fresh, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
+        Log.i(TAG, "sources: ${streams.size} found, height cap $height, ${fresh.size} not failed here, trying ${ranked.size}")
+        var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to if (fresh.isEmpty()) "unsupported" else "empty")
         for (stream in ranked) {
             if (stream.url.isNotEmpty()) {
                 val resolved: String? = rd.resolveRedirect(stream.url)
                 if (resolved != null && !rd.isTorrentioHost(resolved)) {
                     val result = playFromLink(resolved, mediaId ?: imdb)
-                    if (result.first == 200) return result
+                    if (result.first == 200) return chosen(result, stream, label(stream))
                     last = result.second
                     if (last.text("reason", "") == "needs-auth") return result
                 }
@@ -562,7 +572,7 @@ class TvmMedia(
             val hash: String? = stream.infoHash
             if (hash != null && hash.isNotEmpty()) {
                 val magnet = playFromMagnet(hash, mediaId ?: imdb)
-                if (magnet.first == 200) return magnet
+                if (magnet.first == 200) return chosen(magnet, stream, label(stream))
                 last = magnet.second
                 if (last.text("reason", "") == "needs-auth") return magnet
             }
@@ -575,6 +585,18 @@ class TvmMedia(
             }
         }
         return 409 to last
+    }
+
+    /** One copy of a title, the same across searches. */
+    private fun sourceKey(stream: RdStream): String =
+        stream.infoHash?.takeIf { it.isNotEmpty() }?.let { "$it:${stream.fileIdx ?: 0}" } ?: stream.url
+
+    /** Remembers which copy a stream URL came from, for TvmPlaybackMemory. */
+    private fun chosen(result: Pair<Int, JSONObject>, stream: RdStream, label: String): Pair<Int, JSONObject> {
+        val url = result.second.text("url", "")
+        if (url.isNotEmpty()) TvmPlaybackMemory.served(url, sourceKey(stream))
+        Log.i(TAG, "playing: ${label.replace('\n', ' ').take(160)}")
+        return result
     }
 
     private suspend fun playFromMagnet(hash: String, mediaId: String?): Pair<Int, JSONObject> {

@@ -65,6 +65,13 @@ class TvmNativePlayer(
     private var videoFormat: Format? = null
     /** Whether a film was playing when the app left the screen, so it can carry on when it returns. */
     private var resumeOnStart = false
+    /** The stream being played, so a copy that fails here is not offered again (TvmPlaybackMemory). */
+    private var currentUrl: String? = null
+    /** A real frame has reached the screen (not just a moving clock). */
+    private var firstFrame = false
+    /** Only the first failure of a session is reported; the page retries once per report. */
+    private var failedOnce = false
+    private var stallCheck: Runnable? = null
 
     /** Exposed to the page as `window.tvmPlayer`. JS interfaces only take primitives. */
     inner class Bridge {
@@ -134,6 +141,9 @@ class TvmNativePlayer(
         }
         val live = message.optBoolean("live", false)
         isLive = live
+        currentUrl = url
+        firstFrame = false
+        failedOnce = false
         val startAt = message.optDouble("startAt", 0.0)
 
         // The stream comes from our own loopback core, which proxies the real
@@ -175,7 +185,10 @@ class TvmNativePlayer(
                 // The full story for development logs (adb logcat -s TVMPlayer):
                 // the error code, the stream's format and the decoder's own cause.
                 Log.e(TAG, "playback failed: ${error.errorCodeName} format=${videoFormat?.let(::formatLabel) ?: "unknown"}", error)
-                emit(id, "error", Json.obj("message" to describe(error)))
+                // A copy this phone cannot decode, or a link the source refuses,
+                // is not offered again; a dropped connection is not the copy's fault.
+                if (copyAtFault(error)) markFailed(error.errorCodeName)
+                fail(id, describe(error))
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -183,6 +196,28 @@ class TvmNativePlayer(
                     ?.let { group -> (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } }
                     ?: videoFormat
                 videoFormat?.let { Log.i(TAG, "video: ${formatLabel(it)} codecs=${it.codecs}") }
+                val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                audio.forEach { group ->
+                    (0 until group.length).forEach { i ->
+                        val f = group.getTrackFormat(i)
+                        Log.i(TAG, "audio: ${f.sampleMimeType} ${f.channelCount}ch ${f.language ?: ""} supported=${group.isTrackSupported(i)} selected=${group.isTrackSelected(i)}")
+                    }
+                }
+                // Sound tracks exist but this phone can decode none of them (often
+                // TrueHD or DTS in a remux): the film would play silently.
+                if (audio.isNotEmpty() && audio.none { it.isSupported }) {
+                    val kinds = audio.mapNotNull { it.getTrackFormat(0).sampleMimeType?.removePrefix("audio/") }.distinct().joinToString(", ")
+                    markFailed("no playable sound ($kinds)")
+                    fail(id, "This phone can't play the sound in this copy ($kinds). Press Retry to try another copy.")
+                }
+            }
+
+            override fun onRenderedFirstFrame() {
+                if (firstFrame) return
+                firstFrame = true
+                stallCheck?.let(main::removeCallbacks)
+                Log.i(TAG, "first frame on screen")
+                pushState(id)
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -201,6 +236,48 @@ class TvmNativePlayer(
         exo.prepare()
         exo.play()
         startTicking(id)
+        watchForStall(id, exo)
+    }
+
+    /**
+     * A copy that never shows a picture (too large for the connection, or a
+     * server that stalls) left a black screen with no sound and no message.
+     * After 30 seconds of trying without a frame, it is reported as failed and
+     * not offered again, so the page's retry picks another copy.
+     */
+    private fun watchForStall(id: String, exo: ExoPlayer) {
+        val check = Runnable {
+            if (sessionId != id || player !== exo || firstFrame) return@Runnable
+            // Paused by the person (or the app is in the background): not a stall.
+            if (!exo.playWhenReady) { watchForStall(id, exo); return@Runnable }
+            Log.w(TAG, "no picture after ${STALL_MS / 1000} s: state=${exo.playbackState} buffered=${exo.bufferedPosition} ms")
+            markFailed("no picture after ${STALL_MS / 1000} s")
+            fail(id, "This copy didn't start. Press Retry to try another copy.")
+        }
+        stallCheck?.let(main::removeCallbacks)
+        stallCheck = check
+        main.postDelayed(check, STALL_MS)
+    }
+
+    private fun markFailed(why: String) {
+        currentUrl?.let { TvmPlaybackMemory.failed(it, why) }
+    }
+
+    private fun fail(id: String, message: String) {
+        if (failedOnce) return
+        failedOnce = true
+        stallCheck?.let(main::removeCallbacks)
+        player?.pause()
+        emit(id, "error", Json.obj("message" to message))
+    }
+
+    private fun copyAtFault(error: PlaybackException): Boolean = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_TIMEOUT,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED -> false
+        else -> true
     }
 
     private fun attachView(exo: ExoPlayer) {
@@ -264,7 +341,12 @@ class TvmNativePlayer(
                 "duration" to if (duration > 0) duration / 1000.0 else 0.0,
                 "paused" to !exo.isPlaying,
                 "buffering" to (exo.playbackState == Player.STATE_BUFFERING),
-                "hasFrame" to (exo.currentPosition > 200),
+                "hasFrame" to firstFrame,
+                // The sound actually being decoded and handed to the audio
+                // output, for diagnostics and the emulator test: the codec, and
+                // a count that grows while sound plays.
+                "audio" to (exo.audioFormat?.sampleMimeType ?: ""),
+                "audioBuffers" to (exo.audioDecoderCounters?.renderedOutputBufferCount ?: 0),
                 // C.TIME_UNSET until the manifest establishes a live window.
                 "liveDrift" to if (isLive && exo.currentLiveOffset != C.TIME_UNSET) {
                     (exo.currentLiveOffset / 1000.0).coerceAtLeast(0.0)
@@ -278,6 +360,8 @@ class TvmNativePlayer(
     fun close(id: String?, notify: Boolean, leaving: Boolean = true) {
         val wasOpen = player != null
         ticking = false
+        stallCheck?.let(main::removeCallbacks)
+        stallCheck = null
         player?.release()
         player = null
         view?.player = null
@@ -337,8 +421,8 @@ class TvmNativePlayer(
             // Say what the video is, so it is clear this copy is the problem and
             // another (usually 1080p) source will play.
             val what = videoFormat?.let(::formatLabel)
-            if (what != null) "This phone can't play the video in this copy ($what). Press Retry, or choose another source or quality."
-            else "This phone can't play the video in this copy. Press Retry, or choose another source or quality."
+            if (what != null) "This phone can't play the video in this copy ($what). Press Retry to try another copy."
+            else "This phone can't play the video in this copy. Press Retry to try another copy."
         }
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
         PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
@@ -380,5 +464,9 @@ class TvmNativePlayer(
         payload.put("command", command)
         val script = "window.dispatchEvent(new CustomEvent('tvm:native-player',{detail:$payload}))"
         main.post { runCatching { webView.evaluateJavascript(script, null) } }
+    }
+
+    private companion object {
+        const val STALL_MS = 30_000L
     }
 }
