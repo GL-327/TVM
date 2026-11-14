@@ -14,4 +14,7 @@ The white logo is separated from its gradient by linear unmixing, so the letteri
 - `drawable/ic_launcher_background.png`: the full-bleed gradient layer.
 - `drawable/ic_launcher_foreground.png`: the transparent logo layer, kept inside the adaptive-icon safe circle (66 of 108 dp), so circle, squircle and One UI masks never crop it.
 - `drawable/ic_launcher_monochrome.png`: the same logo, for Android 13+ themed icons.
-- `mipmap-*/ic_launcher.png`: legacy sizes taken from the 1024 master.
+- `mipmap-anydpi-v26/ic_tvm_launcher.xml` (and `_round`): the adaptive icon the manifest uses.
+- `mipmap-*/ic_tvm_launcher.png`: legacy sizes taken from the 1024 master.
+
+CI builds get a rising `versionCode` (4 + the workflow run number), so an installed update is a new version to Android and its launcher refreshes the cached icon.

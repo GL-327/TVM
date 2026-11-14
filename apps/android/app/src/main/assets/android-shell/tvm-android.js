@@ -1409,6 +1409,9 @@
   function tabLayer() {
     return document.querySelector('.app__screen > .screen-layer');
   }
+  function searchLayer() {
+    return document.querySelector('.modal-layer[data-screen="search"]');
+  }
   /** The destination page itself is on screen: not Search, not the page under it, not a loading page. */
   function tabReady(id) {
     var layer = tabLayer();
@@ -1421,34 +1424,33 @@
     switching = null;
     root.classList.remove('tvma-vt');
   }
-  /** Crossfade to a main tab. From Search, Search closes inside the same transition. */
-  function switchTab(button, id) {
+  /**
+   * The one crossfade every main tab and Search use. step() makes the change
+   * (it is called again until it returns true); ready() says the destination
+   * is fully on screen.
+   */
+  function crossfade(step, ready) {
     if (switching) { try { switching.skipTransition(); } catch (e) { /* already over */ } }
-    // The incoming page appears whole; its own fade-in would leave it blank
-    // while the crossfade runs.
+    // The incoming screen appears whole; its own entrance animation (the
+    // page fade, Search's slide) would fight the crossfade.
     root.classList.add('tvma-vt');
     var t = document.startViewTransition(function () {
       return new Promise(function (resolve) {
         var t0 = performance.now();
-        var pressed = false;
-        // Timers, not animation frames: frames are held while the old page is
-        // shown, so nothing in between (such as the page under Search) is
+        var done = false;
+        // Timers, not animation frames: frames are held while the old screen
+        // is shown, so nothing in between (such as the page under Search) is
         // ever painted. Half a second at most, so a slow screen still appears.
         (function wait() {
-          // A newer tap took over: it presses its own tab.
+          // A newer tap took over: it makes its own change.
           if (switching !== t) { resolve(); return; }
-          if (!pressed) {
-            var search = document.querySelector('.modal-layer[data-screen="search"]');
-            if (search) {
-              var close = document.querySelector('.search-pill [data-focus-id="close"]');
-              if (close && !search.hasAttribute('data-tvma-closing')) { search.setAttribute('data-tvma-closing', ''); press(close); }
-            } else {
-              var b = button || realTab(id);
-              if (b) { pressed = true; if (!b.classList.contains('ribbon__icon--on') || !tabReady(id)) press(b); }
-            }
-          }
-          if ((pressed && tabReady(id)) || performance.now() - t0 > 500) resolve();
-          else setTimeout(wait, 16);
+          if (!done) done = step();
+          if ((done && ready()) || performance.now() - t0 > 500) {
+            // The overlay's own additions (the bar over Search, its rows)
+            // are in place before the new screen is pictured.
+            try { syncAll(); } catch (e) { /* the picture is still taken */ }
+            resolve();
+          } else setTimeout(wait, 16);
         })();
       });
     });
@@ -1457,17 +1459,66 @@
     // A transition that stalls is ended rather than left on the old picture.
     setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* over */ } endSwitch(t); } }, 1500);
   }
+  /** Leave Search for what is under it (Close, Back). */
+  function closeSearch() {
+    var search = searchLayer();
+    var close = document.querySelector('.search-pill [data-focus-id="close"]');
+    if (search && close && !search.hasAttribute('data-tvma-closing')) { search.setAttribute('data-tvma-closing', ''); press(close); }
+  }
+  /** Crossfade to a main tab, or to Search. From Search, Search closes inside the same crossfade. */
+  function switchTab(button, id) {
+    if (id === 'search') {
+      crossfade(function () {
+        if (searchLayer()) return true;
+        var b = button || realTab('search');
+        if (b) press(b);
+        return false;
+      }, function () {
+        // Search with its suggestion rows, so nothing appears after the fade
+        // (the rows' list comes from Home's catalogue the first time).
+        if (!document.querySelector('.search-pill__panel')) return false;
+        syncSearch();
+        return !!homeRails || !homeAsked;
+      });
+      return;
+    }
+    crossfade(function () {
+      if (searchLayer()) { closeSearch(); return false; }
+      var b = button || realTab(id);
+      if (!b) return false;
+      if (!b.classList.contains('ribbon__icon--on') || !tabReady(id)) press(b);
+      return true;
+    }, function () { return tabReady(id); });
+  }
+  function leaveSearch() {
+    crossfade(function () { closeSearch(); return !searchLayer(); }, function () { return !searchLayer(); });
+  }
   document.addEventListener('click', function (event) {
     if (bypass) return;
     var b = event.target && event.target.closest && event.target.closest('.app__screen nav.ribbon--tabs [data-focus-id]');
     if (!b) return;
     var id = b.getAttribute('data-focus-id');
-    if (!MAIN_TABS[id] || b.classList.contains('ribbon__icon--on')) return;
+    if (!(MAIN_TABS[id] || id === 'search') || b.classList.contains('ribbon__icon--on')) return;
     if (!canCrossfade() || document.querySelector('.modal-layer')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     switchTab(b, id);
   }, true);
+  // Search's Close leaves through the same crossfade.
+  document.addEventListener('click', function (event) {
+    if (bypass || !canCrossfade()) return;
+    var c = event.target && event.target.closest && event.target.closest('.search-pill [data-focus-id="close"]');
+    if (!c || !searchLayer()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    leaveSearch();
+  }, true);
+  // So does Back while Search is the top screen (it runs after any open sheet's own Back).
+  backHandlers.unshift(function () {
+    if (!searchLayer() || !canCrossfade() || document.querySelector('.tvma-sheet')) return false;
+    leaveSearch();
+    return true;
+  });
 
   // While a crossfade runs, the browser's picture of the pages covers the page,
   // so a tap lands on the document instead of a tab. Find the tab under the
@@ -1487,7 +1538,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     var id = hit.getAttribute('data-focus-id') || hit.getAttribute('data-tvma-tab');
-    if (MAIN_TABS[id]) { switchTab(null, id); return; }
+    if (MAIN_TABS[id] || id === 'search') { switchTab(null, id); return; }
     var t = switching;
     try { t.skipTransition(); } catch (e) { /* over */ }
     endSwitch(t);
@@ -1630,7 +1681,10 @@
   function queue() {
     if (queued) return;
     queued = true;
-    requestAnimationFrame(function () {
+    requestAnimationFrame(syncAll);
+  }
+  /** One pass over everything the overlay adds to the page. */
+  function syncAll() {
       queued = false;
       if (!root.classList.contains('tvm-android')) root.classList.add('tvm-android');
       markPlaceholders();
@@ -1649,7 +1703,6 @@
       if (document.querySelector('.home')) syncHomeTitles();
       if (document.querySelector('.settings-row')) syncSettings();
       if (document.querySelector('.details')) syncDetails();
-    });
   }
 
   function watch() {
