@@ -151,7 +151,7 @@
     // At an edge a pull may follow: give the page's sections their own layers
     // now, while nothing moves, rather than on the pull's first frame (which
     // drew them blank for a frame: the flicker under the hero).
-    if (!off() && (el.scrollTop <= 0.5 || el.scrollTop >= touch.max - 0.5)) el.setAttribute('data-tvma-prime', '');
+    if (!off() && (el.scrollTop <= EDGE || el.scrollTop >= touch.max - EDGE)) el.setAttribute('data-tvma-prime', '');
   }, { capture: true, passive: true });
 
   /** True once the finger has chosen a direction: from then on the browser scrolls. */
@@ -186,13 +186,20 @@
     // finger can neither stretch it further nor leave it stuck.
     var el = touch.el;
     var top = el.scrollTop;
-    var atTop = top <= 0.5;
-    var atBottom = top >= touch.max - 0.5;
+    // The bottom is measured again near it: rows that load while the finger is
+    // down move it, and a fractional scroll position never quite reaches it.
+    // (The top needed neither, which is why the two edges felt different.)
+    if (touch.edgeY === null && top >= touch.max - 80) touch.max = maxScroll(el);
+    var atTop = top <= EDGE;
+    var atBottom = top >= touch.max - EDGE;
     // An ordinary scroll away from the edge: the prepared layers are not needed.
     if (touch.edgeY === null && !atTop && !atBottom && el.hasAttribute('data-tvma-prime') && !el.hasAttribute('data-tvm-rubber')) el.removeAttribute('data-tvma-prime');
     if (touch.edgeY === null) {
       if (atTop && t.clientY > touch.y) { touch.edgeY = t.clientY; touch.edge = 1; }
       else if (atBottom && t.clientY < touch.y) { touch.edgeY = t.clientY; touch.edge = -1; }
+      // A swipe that reached the edge mid-gesture: the layers are made now,
+      // a move before the pull starts, not on the pull's first frame.
+      if (touch.edgeY !== null && !el.hasAttribute('data-tvma-prime')) el.setAttribute('data-tvma-prime', '');
       return;
     }
     var pull = (t.clientY - touch.edgeY) * touch.edge;
@@ -217,36 +224,13 @@
 
   /* At most about 26px however far the finger goes, and stiff from the start. */
   var LIMIT = 26;
+  /* Within a device pixel and a half of an edge counts as at it, at either end. */
+  var EDGE = 1.5;
   function rubber(distance) {
     return LIMIT * (1 - 1 / (distance / 170 + 1));
   }
 
-  // While the page is pulled past an edge, that edge fades into the page's
-  // background, a little more the further it is pulled. Opacity on two fixed
-  // layers only: nothing else is restyled.
-  var edges = null;
-  function edge(px) {
-    if (!edges) {
-      if (!document.body) return;
-      edges = [el0('tvma-edge tvma-edge--top'), el0('tvma-edge tvma-edge--bottom')];
-      document.body.appendChild(edges[0]);
-      document.body.appendChild(edges[1]);
-    }
-    var p = Math.min(1, Math.abs(px) / LIMIT);
-    var top = px > 0 ? p : 0;
-    var bottom = px < 0 ? p : 0;
-    edges[0].style.opacity = top ? (0.65 * top).toFixed(3) : '0';
-    edges[1].style.opacity = bottom ? (0.65 * bottom).toFixed(3) : '0';
-  }
-  function el0(cls) {
-    var n = document.createElement('div');
-    n.className = cls;
-    n.setAttribute('aria-hidden', 'true');
-    return n;
-  }
-
   function setOffset(el, px) {
-    edge(Math.abs(px) < 0.25 ? 0 : px);
     if (Math.abs(px) < 0.25) {
       if (el.hasAttribute('data-tvm-rubber')) {
         el.removeAttribute('data-tvm-rubber');
@@ -310,9 +294,16 @@
     flings.set(el, { top: top, at: now });
     if (!last || now - last.at > 60) return;
     var v = (top - last.top) / (now - last.at); // px per ms
+    // A fast fling heading for an edge: give the page's sections their layers
+    // now, before the bounce's first frame (which otherwise drew them blank: a
+    // dark bar at the edge and a jolt). Dropped again when the bounce settles.
+    if (Math.abs(v) >= 0.8 && !el.hasAttribute('data-tvma-prime')) {
+      var room = el.clientHeight * 1.5;
+      if ((v < 0 && top < room) || (v > 0 && top > maxScroll(el) - room)) el.setAttribute('data-tvma-prime', '');
+    }
     if (Math.abs(v) < 1.2) return;
     // Height is only read for a fast fling going down, never per scroll event.
-    if ((v < 0 && top <= 0.5) || (v > 0 && top >= maxScroll(el) - 0.5)) {
+    if ((v < 0 && top <= EDGE) || (v > 0 && top >= maxScroll(el) - EDGE)) {
       spring(el, 0, Math.max(-420, Math.min(420, -v * 160)));
     }
   }, { capture: true, passive: true });
@@ -1068,6 +1059,9 @@
       tile.addEventListener('click', function () {
         if (whoEditing) { editProfile(p); return; }
         var btn = reactTile(p.id);
+        // Reached through Settings: the way back passes Settings, which is not
+        // to be seen (syncWho lifts the veil once Home is back).
+        if (btn && profilesViaPopup) veil(true);
         if (btn) { press(btn); setTimeout(function () { loadProfiles(true); }, 400); }
       });
       grid.appendChild(tile);
@@ -1089,6 +1083,7 @@
       if (who) {
         who = null;
         whoEditing = false;
+        root.classList.remove('tvma-who-launch');
         loadProfiles(true);
         // Reached through Settings on the way: step back past it too.
         if (profilesViaPopup) {
@@ -1429,7 +1424,8 @@
    * (it is called again until it returns true); ready() says the destination
    * is fully on screen.
    */
-  function crossfade(step, ready) {
+  function crossfade(step, ready, cap, rescue) {
+    var limit = cap || 500;
     if (switching) { try { switching.skipTransition(); } catch (e) { /* already over */ } }
     // The incoming screen appears whole; its own entrance animation (the
     // page fade, Search's slide) would fight the crossfade.
@@ -1445,7 +1441,10 @@
           // A newer tap took over: it makes its own change.
           if (switching !== t) { resolve(); return; }
           if (!done) done = step();
-          if ((done && ready()) || performance.now() - t0 > 500) {
+          var late = performance.now() - t0 > limit;
+          if ((done && ready()) || late) {
+            // Out of time: put the screen where it must end up first.
+            if (late && rescue && !(done && ready())) { try { rescue(); } catch (e) { /* shown as it is */ } }
             // The overlay's own additions (the bar over Search, its rows)
             // are in place before the new screen is pictured.
             try { syncAll(); } catch (e) { /* the picture is still taken */ }
@@ -1457,7 +1456,7 @@
     switching = t;
     t.finished.then(function () { endSwitch(t); }, function () { endSwitch(t); });
     // A transition that stalls is ended rather than left on the old picture.
-    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* over */ } endSwitch(t); } }, 1500);
+    setTimeout(function () { if (switching === t) { try { t.skipTransition(); } catch (e) { /* over */ } endSwitch(t); } }, limit + 1000);
   }
   /** Leave Search for what is under it (Close, Back). */
   function closeSearch() {
@@ -1520,6 +1519,106 @@
     return true;
   });
 
+  // ---- 17b. First visits without React's wait -------------------------------------
+
+  // The first time Live TV, Watchlist or Search opened, React waited 300 ms
+  // after its code arrived before showing the screen (its rule for a screen
+  // whose code loads on demand), so the first tap on each felt slow and later
+  // ones did not. Once Home has been on screen, untouched, for a moment, each
+  // of those not yet visited is opened once and Home is shown again, all inside
+  // one crossfade that holds Home's picture still: nothing visible changes,
+  // and the first real tap is as quick as the rest. Skipped with reduced
+  // motion or performance mode (nothing would hide it).
+  var warmed = {};
+  var WARM = ['live', 'watchlist', 'search'];
+  var lastTouch = 0;
+  window.addEventListener('touchstart', function () { lastTouch = performance.now(); }, { capture: true, passive: true });
+  document.addEventListener('click', function (event) {
+    var b = event.target && event.target.closest && event.target.closest('nav.ribbon--tabs [data-focus-id], nav.tvma-pill [data-tvma-tab]');
+    if (b) warmed[b.getAttribute('data-focus-id') || b.getAttribute('data-tvma-tab')] = true;
+  }, true);
+  var homeSince = 0;
+  function maybeWarm() {
+    var layer = tabLayer();
+    var onHome = !!layer && tabReady('home-dock') && !switching && !touch && !document.querySelector('.ribbon-sheet, .tvma-sheet, .tvma-who') &&
+      document.visibilityState === 'visible' && !root.classList.contains('tvm-cinema') && fresh !== 'waiting' && fresh !== 'opening';
+    if (!onHome) { homeSince = 0; return; }
+    var now = performance.now();
+    if (!homeSince) { homeSince = now; setTimeout(queue, 1000); return; }
+    if (now - homeSince < 900 || now - lastTouch < 900) { setTimeout(queue, 400); return; }
+    var plan = WARM.filter(function (id) { return !warmed[id] && (id === 'search' || realTab(id)); });
+    if (plan.length === 0 || !canCrossfade()) return;
+    homeSince = 0;
+    // One attempt each: a screen too slow to finish is not tried again.
+    plan.forEach(function (id) { warmed[id] = true; });
+    var i = 0;
+    var waiting = false;
+    crossfade(function () {
+      if (i < plan.length) {
+        var id = plan[i];
+        if (!waiting) {
+          var b = realTab(id);
+          if (!b) { warmed[id] = true; i++; return false; }
+          press(b);
+          waiting = true;
+          return false;
+        }
+        var there = id === 'search' ? !!document.querySelector('.search-pill__panel') : tabReady(id);
+        if (!there) return false;
+        warmed[id] = true;
+        waiting = false;
+        i++;
+        return false;
+      }
+      if (searchLayer()) { closeSearch(); return false; }
+      var home = realTab('home-dock');
+      if (home && !tabReady('home-dock')) press(home);
+      return true;
+    }, function () { return tabReady('home-dock'); }, 2500, function () {
+      // Never left on a screen nobody asked for.
+      if (searchLayer()) closeSearch();
+      var home = realTab('home-dock');
+      if (home && !tabReady('home-dock')) press(home);
+    });
+  }
+
+  // ---- 17c. "Who's watching?" when the app starts ---------------------------------
+
+  // MainActivity calls this once when the app is genuinely started (not on a
+  // return from the background, a rotation or a reload), before its logo
+  // gives way to the page, and waits until the chooser is up.
+  var fresh = null;
+  var freshAt = 0;
+  window.tvmaFreshLaunch = function () {
+    fresh = 'waiting';
+    freshAt = performance.now();
+    queue();
+    return 'started';
+  };
+  window.tvmaFreshState = function () {
+    return fresh === 'waiting' || fresh === 'opening' ? 'pending' : 'done';
+  };
+  function syncFresh() {
+    if (fresh === 'opening') {
+      if (document.querySelector('.tvma-who')) { fresh = 'done'; root.classList.add('tvma-who-launch'); }
+      else if (performance.now() - freshAt > 6000) fresh = 'done';
+      return;
+    }
+    if (fresh !== 'waiting') return;
+    var layer = tabLayer();
+    var screen = layer ? layer.getAttribute('data-screen') : '';
+    // Not signed in, setting up, or already choosing: nothing to do.
+    if (screen === 'profiles' || performance.now() - freshAt > 6000) { fresh = 'done'; return; }
+    if (screen !== 'home' || !tabReady('home-dock')) { setTimeout(queue, 100); return; }
+    fresh = 'opening';
+    var more = realTab('more');
+    if (!more) { fresh = 'done'; return; }
+    veil(true);
+    press(more);
+    whenThere('.ribbon-sheet [data-focus-id="more-settings"]', function () { openProfiles(); });
+    setTimeout(queue, 100);
+  }
+
   // While a crossfade runs, the browser's picture of the pages covers the page,
   // so a tap lands on the document instead of a tab. Find the tab under the
   // finger, so quick taps still switch.
@@ -1564,6 +1663,76 @@
       })(page));
       page.insertBefore(b, page.firstChild);
     }
+  }
+
+  // ---- 18b. Series: a season dropdown instead of "All seasons" --------------------
+
+  // The interface lists seasons as large buttons, then shows one season's
+  // episodes under an "All seasons" button. Here a season is always shown (the
+  // first, to begin with) and a compact "Season 1 ⌄" control picks another.
+  // The control is a <select>: Android shows its list in a system dialog,
+  // which is never clipped by the page, scrolls when there are many seasons,
+  // and always fits the screen.
+  function seasonNumber(id) { return (id || '').replace(/^season-/, ''); }
+  function pickSeason(details, id) {
+    var list = details.querySelector('.season-list');
+    var b = list && list.querySelector('[data-focus-id="' + id + '"]');
+    if (b) press(b);
+    return !!b;
+  }
+  function syncSeasons() {
+    var details = document.querySelector('.app__screen:not([inert]) .details');
+    if (!details) return;
+    var list = details.querySelector('.season-list');
+    if (list) {
+      var buttons = list.querySelectorAll('[data-focus-id^="season-"]');
+      if (buttons.length === 0) return;
+      details.__tvmaSeasons = [].map.call(buttons, function (b) { return b.getAttribute('data-focus-id'); });
+      var want = details.__tvmaWant;
+      if (!want || !list.querySelector('[data-focus-id="' + want + '"]')) want = details.__tvmaSeasons[0];
+      pickSeason(details, want);
+      return;
+    }
+    var nav = details.querySelector('.episode-list__nav');
+    if (!nav) return;
+    var heading = nav.querySelector('.rail__title');
+    var current = heading ? (heading.textContent || '').replace(/[^0-9]/g, '') : '';
+    var seasons = details.__tvmaSeasons || (current ? ['season-' + current] : []);
+    var box = nav.querySelector('.tvma-season');
+    if (!box) {
+      box = el('label', 'tvma-season');
+      var select = document.createElement('select');
+      select.setAttribute('aria-label', 'Season');
+      select.addEventListener('change', function () {
+        var id = 'season-' + select.value;
+        var top = details.scrollTop;
+        details.__tvmaWant = id;
+        var back = details.querySelector('.episode-list__nav [data-focus-id="seasons-back"]');
+        if (!back) return;
+        press(back);
+        // The interface shows the seasons again; the chosen one is picked at
+        // once, before anything is drawn, and the page stays where it was.
+        if (!pickSeason(details, id)) whenThere('.app__screen:not([inert]) .details .season-list [data-focus-id="' + id + '"]', function () { pickSeason(details, id); });
+        requestAnimationFrame(function () { if (Math.abs(details.scrollTop - top) > 1) ownScroll(details, top); });
+      });
+      box.appendChild(select);
+      nav.insertBefore(box, nav.firstChild);
+    }
+    var sel = box.firstChild;
+    var key = seasons.join(',');
+    if (sel.getAttribute('data-seasons') !== key) {
+      sel.setAttribute('data-seasons', key);
+      sel.innerHTML = '';
+      seasons.forEach(function (id) {
+        var o = document.createElement('option');
+        o.value = seasonNumber(id);
+        o.textContent = 'Season ' + seasonNumber(id);
+        sel.appendChild(o);
+      });
+    }
+    if (current && sel.value !== current) sel.value = current;
+    mark(box, 'data-single', seasons.length <= 1 ? '' : null);
+    sel.disabled = seasons.length <= 1;
   }
 
   // ---- 19. Watchlist sort, Developer groups, sub-page Back --------------------------
@@ -1698,6 +1867,9 @@
       syncTopbars();
       syncSearchChrome();
       syncDetailsBack();
+      syncSeasons();
+      syncFresh();
+      maybeWarm();
       syncSubpages();
       syncAppGroup();
       if (document.querySelector('.home')) syncHomeTitles();
@@ -1711,6 +1883,16 @@
     // frame is painted), so a placeholder is never drawn for even one frame.
     new MutationObserver(function () { markPlaceholders(); syncPill(); syncRestore(); queue(); }).observe(document.body || root, { subtree: true, childList: true, characterData: false });
     new MutationObserver(queue).observe(root, { attributes: true, attributeFilter: ['class'] });
+    // A settings row can change its "On"/"Off" text in place once the server
+    // answers, which no child-list change reports; the switch drawn from that
+    // text then showed the old state. Only rows' text is acted on (the
+    // player's clock changes text four times a second).
+    new MutationObserver(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        var host = list[i].target.parentElement;
+        if (host && host.closest && host.closest('.settings-row')) { queue(); return; }
+      }
+    }).observe(document.body || root, { subtree: true, characterData: true });
     // Rows and headings change their text in place when tapped or loaded.
     document.addEventListener('click', function () { setTimeout(queue, 0); }, true);
     // A reload (an interface update) while the player was open must not leave
