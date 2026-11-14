@@ -4307,3 +4307,393 @@ html.tvm-android.tvma-who-launch .tvma-who .tvma-icon-btn--back {
 html.tvm-android[data-motion='reduced'] .stage--home :is(.stage__pictures, .stage__copy) {
   animation: none !important;
 }
+
+/* ---- 36. Downloads: inside the system bars, compact, TVM's menus ------------------------ */
+
+html.tvm-android .modal-layer .page.downloads {
+  padding: calc(var(--tvm-chrome-top, 0px) + 10px) 16px calc(var(--tvm-chrome-bottom, 0px) + 28px);
+  background: radial-gradient(120% 50% at 90% -10%, rgba(81, 112, 255, 0.14), transparent 60%), var(--tvm-bg, #05090f);
+}
+
+html.tvm-android .downloads__header {
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+html.tvm-android .downloads__eyebrow {
+  margin: 0;
+  color: #5170ff;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+}
+
+html.tvm-android .downloads h1 {
+  margin: 4px 0 2px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+html.tvm-android .downloads__header p:last-child {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+/* Close: a round control at the top right. */
+html.tvm-android .downloads .tvm-button[data-focus-id='downloads-close'] {
+  display: grid;
+  place-items: center;
+  align-self: flex-start;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(var(--tvma-tint) / 0.08);
+  color: var(--tvma-ink);
+  font-size: 0;
+}
+
+html.tvm-android .downloads .tvm-button[data-focus-id='downloads-close'] .tvm-button__label::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6.5 6.5l11 11M17.5 6.5l-11 11'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6.5 6.5l11 11M17.5 6.5l-11 11'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android .downloads__card {
+  padding: 6px 14px 14px;
+  border: 0.5px solid rgb(var(--tvma-tint) / 0.08);
+  border-radius: 18px;
+  background: rgb(var(--tvma-tint) / 0.045);
+}
+
+/* Each option: its name on the left, the choice on the right. */
+html.tvm-android .downloads__form {
+  display: block;
+}
+
+html.tvm-android .download-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  border-bottom: 0.5px solid rgb(var(--tvma-tint) / 0.08);
+  color: var(--tvma-muted);
+  font-size: 13.5px;
+}
+
+html.tvm-android .download-choice > span {
+  flex: none;
+}
+
+/* The <select> stays (it holds the value); TVM's control is shown instead. */
+html.tvm-android .download-choice select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.tvm-android .tvma-choice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 62%;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: rgb(var(--tvma-tint) / 0.07);
+  color: var(--tvma-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.tvm-android .tvma-choice-btn:active {
+  background: rgb(var(--tvma-tint) / 0.13);
+}
+
+html.tvm-android .tvma-choice-btn__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.tvm-android .tvma-choice-btn::after {
+  content: '';
+  flex: none;
+  width: 15px;
+  height: 15px;
+  background: #5170ff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5 12 15l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5 12 15l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* The language note: two lines, the rest on a tap. */
+html.tvm-android .downloads__card > .downloads__note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+html.tvm-android .downloads__card > .downloads__note[data-tvma-clamp] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+html.tvm-android .downloads__card > .downloads__note[data-tvma-clamp]::before {
+  content: 'Details';
+  float: right;
+  margin-left: 8px;
+  color: #5170ff;
+  font-weight: 650;
+}
+
+/* Where files go: the folder, plainly, and a way to change it. */
+html.tvm-android .downloads__destination {
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgb(var(--tvma-tint) / 0.05);
+  flex-wrap: nowrap;
+}
+
+html.tvm-android .downloads__destination > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+html.tvm-android .downloads__destination > div::before {
+  content: '';
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: #5170ff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+html.tvm-android .downloads__destination span {
+  display: block;
+  font-size: 11px;
+}
+
+html.tvm-android .downloads__destination p {
+  margin: 1px 0 0;
+  color: var(--tvma-ink);
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+html.tvm-android .downloads .tvm-button[data-focus-id='download-folder'] {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(81, 112, 255, 0.16);
+  color: #8fa3ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+html.tvm-android[data-theme='light'] .downloads .tvm-button[data-focus-id='download-folder'] {
+  color: #2d4bdc;
+}
+
+/* The download itself: easy to find. */
+html.tvm-android .downloads .tvm-button[data-focus-id='download-start'] {
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-radius: 12px;
+  background: #5170ff;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+html.tvm-android .downloads .tvm-button[data-focus-id='download-start']:disabled {
+  background: rgb(var(--tvma-tint) / 0.1);
+  color: var(--tvma-faint);
+}
+
+html.tvm-android .downloads__message {
+  margin: 12px 0 0;
+  border-left-color: #5170ff;
+  font-size: 13px;
+}
+
+html.tvm-android .downloads__queue {
+  margin-top: 20px;
+}
+
+html.tvm-android .downloads h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+html.tvm-android .download-job {
+  padding: 12px 0;
+  border-bottom: 0.5px solid rgb(var(--tvma-tint) / 0.08);
+}
+
+html.tvm-android .download-job progress {
+  height: 4px;
+  border-radius: 2px;
+  accent-color: #5170ff;
+}
+
+/* A title over a menu (the download options name theirs). */
+html.tvm-android .tvma-season-menu__title {
+  margin: 4px 10px 6px;
+  color: #8a94ad;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The page starts under the status bar, not centred down the screen. */
+html.tvm-android .downloads__content {
+  margin: 0 auto;
+}
+
+/* The folder: its icon beside "Save to" over the folder's name. */
+html.tvm-android .downloads__destination > div {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+}
+
+html.tvm-android .downloads__destination > div::before {
+  grid-row: 1 / span 2;
+}
+
+/* The phone keeps downloading while you browse: the browser's "keep this tab
+   open" does not apply. */
+html.tvm-android .downloads__content > .downloads__note {
+  display: none;
+}
+
+/* Developer Accounts: Refresh at work (tvm-android.js 19b). */
+html.tvm-android .tvm-button[data-focus-id='accounts-refresh'][data-tvma-loading] {
+  position: relative;
+  pointer-events: none;
+}
+
+html.tvm-android .tvm-button[data-focus-id='accounts-refresh'][data-tvma-loading] .tvm-button__label {
+  opacity: 0;
+}
+
+html.tvm-android .tvm-button[data-focus-id='accounts-refresh'][data-tvma-loading]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: tvma-spin 700ms linear infinite;
+}
+
+@keyframes tvma-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Home hero swipe (tvm-android.js 18d). The page keeps vertical scrolling;
+   the title and buttons follow a sideways finger and slide in afterwards. */
+html.tvm-android .home .stage--home {
+  touch-action: pan-y;
+}
+
+html.tvm-android .stage--home[data-tvma-swiping] .stage__copy {
+  transition: none;
+  will-change: transform, opacity;
+}
+
+html.tvm-android .stage--home .stage__copy[data-tvma-hero] {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+  animation-timeline: auto;
+  animation-range: normal;
+}
+
+html.tvm-android .stage--home .stage__copy[data-tvma-hero='next'] {
+  animation-name: tvma-hero-from-right;
+}
+
+html.tvm-android .stage--home .stage__copy[data-tvma-hero='prev'] {
+  animation-name: tvma-hero-from-left;
+}
+
+html.tvm-android .stage--home .stage__copy[data-tvma-hero='back'] {
+  animation-name: tvma-hero-settle;
+  animation-duration: 220ms;
+}
+
+@keyframes tvma-hero-from-right {
+  from { transform: translate3d(28px, 0, 0); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes tvma-hero-from-left {
+  from { transform: translate3d(-28px, 0, 0); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes tvma-hero-settle {
+  from { opacity: 0.7; }
+  to { opacity: 1; }
+}
+
+html.tvm-android[data-motion='reduced'] .stage--home .stage__copy[data-tvma-hero] {
+  animation: none !important;
+}
+
+/* Episode stills that do not exist (tvm-android.js 18e): no broken-picture
+   icon, TVM's dark placeholder in the same 16:9 frame. */
+html.tvm-android img[data-tvma-broken] {
+  visibility: hidden !important;
+}
+
+html.tvm-android .details .episode-item__still[data-tvma-nostill] {
+  position: relative;
+  background:
+    radial-gradient(120% 90% at 30% 20%, rgba(81, 112, 255, 0.16), transparent 60%),
+    linear-gradient(160deg, #18213d 0%, #0d1428 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+html.tvm-android .details .episode-item__still[data-tvma-nostill]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 22px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.28);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2.5'/%3E%3Cpath d='M10 9.5v5l4.2-2.5z' fill='black'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2.5'/%3E%3Cpath d='M10 9.5v5l4.2-2.5z' fill='black'/%3E%3C/svg%3E") center / contain no-repeat;
+}
