@@ -40,6 +40,8 @@ class TvmLocalCore(
     /** Set by the Android shell: pictures kept on the phone (see TvmArtCache). */
     @Volatile
     var artCache: TvmArtCache? = null
+    /** Downloads to a folder on the phone (TvmDownloads), set by MainActivity. */
+    var downloads: TvmDownloads? = null
 
     /** Set by the Android shell: run its app-update check when the interface asks for a check. */
     @Volatile
@@ -281,11 +283,52 @@ class TvmLocalCore(
             return HttpReply.json(200, Json.obj("items" to Json.array(media.search(q).map { it.json() })))
         }
 
+        // ---- Downloads to the phone (TvmDownloads) ----
+        val dl = downloads
+        if (dl != null && path == "/api/downloads" && method == "GET") return HttpReply.json(200, dl.list())
+        if (dl != null && path == "/api/downloads/folder" && method == "GET") {
+            return HttpReply.json(200, Json.obj("name" to (dl.folderName() ?: JSONObject.NULL)))
+        }
+        if (dl != null && path == "/api/downloads/folder" && method == "POST") {
+            // Waits while the person picks a folder in Android's picker.
+            val name = dl.chooseFolder()
+            return HttpReply.json(200, if (name == null) Json.obj("cancelled" to true) else Json.obj("name" to name))
+        }
+        if (dl != null && path == "/api/downloads" && method == "POST") {
+            val prefs = json.optJSONObject("preferences") ?: JSONObject()
+            val language = prefs.optString("language", "en")
+            val maxHeight = prefs.optInt("maxHeight", 1080)
+            val list = json.optJSONArray("items") ?: JSONArray()
+            val items = (0 until list.length()).mapNotNull { i ->
+                val o = list.optJSONObject(i) ?: return@mapNotNull null
+                val itemId = o.optString("id")
+                if (itemId.isEmpty() || itemId.length > 512 || itemId.startsWith("live:")) null else itemId to o.optString("title", "TVM video")
+            }
+            if (items.isEmpty() || language.length > 16 || maxHeight !in 240..4320) {
+                return HttpReply.json(400, Json.obj("error" to "Choose a film or episode and valid download options."))
+            }
+            return HttpReply.json(200, dl.enqueue(items, language, maxHeight))
+        }
+        if (dl != null && path.startsWith("/api/downloads/") && path.endsWith("/cancel") && method == "POST") {
+            dl.cancel(path.removePrefix("/api/downloads/").removeSuffix("/cancel"))
+            return HttpReply.json(200, dl.list())
+        }
+
         if (path == "/api/playback" && method == "POST") {
             if (!plans.mobileAllowed()) {
                 return HttpReply.json(403, Json.obj("kind" to "unavailable", "reason" to "mobile-plan-required"))
             }
             val id = Json.string(json.opt("id"))
+            // A title downloaded to this phone plays from the file, offline.
+            val offline = if (id != null && !id.startsWith("live:")) dl?.offlineCopy(id) else null
+            if (offline != null) {
+                val reply = Json.obj(
+                    "kind" to "stream", "url" to offline.first, "title" to (Json.string(json.opt("title")) ?: offline.second),
+                    "filename" to offline.second, "mimeType" to "application/octet-stream", "engine" to "native", "transport" to "file",
+                )
+                media.resumePosition(id!!)?.let { reply.put("startAt", it) }
+                return HttpReply.json(200, reply)
+            }
             if (id != null && id.startsWith("live:")) return playLive(id)
             val (status, payload) = media.play(
                 id,
@@ -904,6 +947,7 @@ class TvmLocalCore(
         if (host.equals("127.0.0.1", true) || host.equals("localhost", true)) {
             return HttpReply.json(400, Json.obj("error" to "bad_src"))
         }
+        if (!TvmArtTrust.trusted(decoded)) return HttpReply.json(404, Json.obj("error" to "not_found"))
         val cache = artCache
         if (!head) {
             cache?.get(decoded)?.let { (type, data) -> return cachedArt(type, data) }

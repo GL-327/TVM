@@ -11,6 +11,8 @@ export interface DownloadRequest {
 }
 export interface DownloadBridge {
   chooseFolder(): Promise<string | null>;
+  /** The folder already chosen (kept across visits), when the bridge remembers one. */
+  currentFolder?(): Promise<string | null>;
   list(): Promise<DownloadJob[]>;
   enqueue(input: DownloadRequest): Promise<DownloadJob[]>;
   cancel(id: string): Promise<void>;
@@ -83,9 +85,54 @@ async function browserDownload(job: DownloadJob, item: DownloadRequest['items'][
   } finally { aborts.delete(job.id); changed(); }
 }
 
-export function downloadsAvailable(): boolean {
-  return 'showDirectoryPicker' in window;
+/**
+ * The Android app downloads natively: its own core picks the folder with the
+ * system picker and writes the files (it has no showDirectoryPicker). The
+ * Android shell sets this flag; nothing else does.
+ */
+function nativeDownloads(): boolean {
+  return (window as Window & { tvmNativeDownloads?: boolean }).tvmNativeDownloads === true;
 }
+
+export function downloadsAvailable(): boolean {
+  return nativeDownloads() || 'showDirectoryPicker' in window;
+}
+
+async function coreJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await apiFetch(path, { ...init, headers: { ...downloadHeaders(), 'content-type': 'application/json' } });
+  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? 'Downloads are unavailable right now.');
+  return body;
+}
+
+/** The Android app's own downloads: folder, queue and files are kept by its core. */
+const coreBridge: DownloadBridge = {
+  async chooseFolder() {
+    const body = await coreJson<{ name?: string; cancelled?: boolean }>('/api/downloads/folder', { method: 'POST', signal: AbortSignal.timeout(10 * 60_000) });
+    return body.cancelled ? null : body.name ?? null;
+  },
+  async currentFolder() {
+    return (await coreJson<{ name?: string | null }>('/api/downloads/folder')).name ?? null;
+  },
+  async list() { return (await coreJson<{ jobs?: DownloadJob[] }>('/api/downloads')).jobs ?? []; },
+  async enqueue(input) {
+    return (await coreJson<{ jobs?: DownloadJob[] }>('/api/downloads', { method: 'POST', body: JSON.stringify({ items: input.items, preferences: input.preferences }) })).jobs ?? [];
+  },
+  async cancel(id) { await coreJson(`/api/downloads/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); coreChanged(); },
+  async show() {},
+  onChanged(listener) {
+    // The core does the work; while anyone is watching, it is asked how it is going.
+    coreSubscribers.add(listener);
+    if (corePoll === null) corePoll = setInterval(coreChanged, 1000);
+    return () => {
+      coreSubscribers.delete(listener);
+      if (coreSubscribers.size === 0 && corePoll !== null) { clearInterval(corePoll); corePoll = null; }
+    };
+  },
+};
+const coreSubscribers = new Set<() => void>();
+let corePoll: ReturnType<typeof setInterval> | null = null;
+const coreChanged = (): void => { coreSubscribers.forEach((listener) => listener()); };
 
 const browserBridge: DownloadBridge = {
   async chooseFolder() {
@@ -112,7 +159,7 @@ const browserBridge: DownloadBridge = {
   onChanged(listener) { subscribers.add(listener); return () => subscribers.delete(listener); },
 };
 
-export const downloadBridge = (): DownloadBridge => browserBridge;
+export const downloadBridge = (): DownloadBridge => (nativeDownloads() ? coreBridge : browserBridge);
 export function downloadHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'X-TVM-Profile': currentProfileId() };
   const token = readToken(); if (token) headers['Authorization'] = `Bearer ${token}`;

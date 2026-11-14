@@ -340,12 +340,40 @@ class TvmMedia(
         return pickContinue(applyProgress(store.recentMedia(activeProfile()) + items, progress), progress)
     }
 
+    /** What a download asks for: its audio language and the tallest picture wanted. */
+    data class DownloadPrefs(val language: String, val maxHeight: Int)
+
+    /** The copy to download for [id] (TvmDownloads): its URL and file name. */
+    suspend fun download(id: String, language: String, maxHeight: Int): Result<Pair<String, String>> {
+        val (status, body) = play(id, null, null, null, null, DownloadPrefs(language, maxHeight))
+        if (status == 200 && body.text("url", "").isNotEmpty()) {
+            val url = body.text("url", "")
+            if (HLS_SUFFIX.containsMatchIn(url) || body.text("transport", "") == "hls") {
+                return Result.failure(IllegalStateException("This title is only available as a stream, not as a file to download."))
+            }
+            return Result.success(url to body.text("filename", "video.mkv"))
+        }
+        val reason = body.text("reason", "")
+        return Result.failure(IllegalStateException(when (reason) {
+            "not-configured", "needs-auth" -> "Connect your media account in Settings to download this title."
+            "hours-cap" -> "Your viewing allowance has been reached."
+            else -> "No downloadable file matches these options. Try another language or quality."
+        }))
+    }
+
+    /** Where to start [id] again (seconds), for a download played on the phone. */
+    fun resumePosition(id: String): Double? {
+        val entry: ProgressEntry? = store.progress(activeProfile())[id]
+        return if (TvmTitle.progressRatio(entry) != null) entry?.position else null
+    }
+
     suspend fun play(
         id: String?,
         link: String?,
         title: String?,
         season: Int?,
         episode: Int?,
+        download: DownloadPrefs? = null,
     ): Pair<Int, JSONObject> {
         if (!plans.mobileAllowed()) {
             return 403 to Json.obj("kind" to "unavailable", "reason" to "mobile-plan-required")
@@ -379,9 +407,9 @@ class TvmMedia(
                 val owned = resolveOwnedLink(matched)
                 if (owned != null && !TvmPlaybackMemory.hasFailed(owned)) {
                     val result = playFromLink(owned, id ?: matched)
-                    if (result.first == 200) {
+                    if (result.first == 200 && (download == null || downloadable(result, download))) {
                         TvmPlaybackMemory.served(result.second.text("url", ""), owned)
-                        if (fitsScreen(result)) return result
+                        if (fitsScreen(result, download)) return result
                         libraryCopy = result
                     }
                 }
@@ -396,6 +424,7 @@ class TvmMedia(
                 season ?: parsed?.season ?: extra?.season,
                 episode ?: parsed?.episode ?: extra?.episode,
                 id ?: imdb,
+                download,
             )
             if (found.first == 200 || libraryCopy == null) return found
         }
@@ -532,6 +561,7 @@ class TvmMedia(
         season: Int?,
         episode: Int?,
         mediaId: String?,
+        download: DownloadPrefs? = null,
     ): Pair<Int, JSONObject> {
         val token: String = rd.tokenValue()
             ?: return 409 to Json.obj("kind" to "unavailable", "reason" to "not-configured")
@@ -564,12 +594,18 @@ class TvmMedia(
         }
         // The plan's limit and this screen's (TvmDeviceChrome.playbackHeight),
         // then this device's decoders: copies it can play fully come first.
-        val height: Int = TvmDeviceChrome.playbackHeight(plans.maxHeight())
+        // A download takes the quality asked for (within the plan); playing takes this screen's.
+        val height: Int = capFor(download)
         val label = { it: RdStream -> "${it.name} ${it.title}" }
-        val capped: List<RdStream> = streams.filter { rd.streamHeight(label(it)) <= height }
+        // A download's audio language is a must: a copy marked as another
+        // language, or as MULTi, is never taken instead.
+        val spoken: List<RdStream> = if (download == null) streams else streams.filter { TvmPlaybackChoice.languageOk("${label(it)} ${it.details}", download.language) }
+        if (spoken.isEmpty()) return 409 to Json.obj("kind" to "unavailable", "reason" to "empty")
+        val capped: List<RdStream> = spoken.filter { rd.streamHeight(label(it)) <= height }
         // A copy that already failed here (decoder, no sound, never started)
         // is not offered again, so a retry moves on to another one.
-        val fresh: List<RdStream> = (if (capped.isEmpty()) streams else capped).filter { !TvmPlaybackMemory.hasFailed(sourceKey(it)) }
+        // A download never takes a taller copy than asked for.
+        val fresh: List<RdStream> = (if (capped.isEmpty() && download == null) spoken else capped).filter { !TvmPlaybackMemory.hasFailed(sourceKey(it)) }
         val ranked: List<RdStream> = TvmPlaybackChoice.order(fresh, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
         Log.i(TAG, "sources: ${streams.size} found, height cap $height, ${fresh.size} not failed here, trying ${ranked.size}")
         var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to if (fresh.isEmpty()) "unsupported" else "empty")
@@ -581,7 +617,7 @@ class TvmMedia(
                 val resolved: String? = rd.resolveRedirect(stream.url)
                 if (resolved != null && !rd.isTorrentioHost(resolved)) {
                     val result = playFromLink(resolved, mediaId ?: imdb)
-                    if (result.first == 200 && !fitsScreen(result)) {
+                    if (result.first == 200 && !fitsScreen(result, download)) {
                         if (oversized == null) oversized = chosen(result, stream, label(stream))
                         continue
                     }
@@ -593,7 +629,7 @@ class TvmMedia(
             val hash: String? = stream.infoHash
             if (hash != null && hash.isNotEmpty()) {
                 val magnet = playFromMagnet(hash, mediaId ?: imdb)
-                if (magnet.first == 200 && !fitsScreen(magnet)) {
+                if (magnet.first == 200 && !fitsScreen(magnet, download)) {
                     if (oversized == null) oversized = chosen(magnet, stream, label(stream))
                     continue
                 }
@@ -602,8 +638,8 @@ class TvmMedia(
                 if (last.text("reason", "") == "needs-auth") return magnet
             }
         }
-        oversized?.let { return it }
-        if (last.text("reason", "") == "empty" && catalogTitle != null) {
+        if (download == null) oversized?.let { return it }
+        if (download == null && last.text("reason", "") == "empty" && catalogTitle != null) {
             val matched = findLibraryPlayback(catalogTitle, seasonNo, episodeNo)
             if (matched != null) {
                 val owned = resolveOwnedLink(matched)
@@ -613,10 +649,19 @@ class TvmMedia(
         return 409 to last
     }
 
-    /** The copy's own file name says it is no taller than this screen needs. */
-    private fun fitsScreen(result: Pair<Int, JSONObject>): Boolean {
+    /** The copy's own file name says it is no taller than this screen (or the download) needs. */
+    private fun fitsScreen(result: Pair<Int, JSONObject>, download: DownloadPrefs? = null): Boolean {
         val name = result.second.text("filename", "")
-        return name.isEmpty() || rd.streamHeight(name) <= TvmDeviceChrome.playbackHeight(plans.maxHeight())
+        return name.isEmpty() || rd.streamHeight(name) <= capFor(download)
+    }
+
+    private fun capFor(download: DownloadPrefs?): Int =
+        if (download == null) TvmDeviceChrome.playbackHeight(plans.maxHeight()) else minOf(download.maxHeight, plans.maxHeight())
+
+    /** A library copy may be downloaded: its language and size fit what was asked. */
+    private fun downloadable(result: Pair<Int, JSONObject>, download: DownloadPrefs): Boolean {
+        val name = result.second.text("filename", "")
+        return TvmPlaybackChoice.languageOk(name, download.language) && rd.streamHeight(name) <= capFor(download)
     }
 
     /** One copy of a title, the same across searches. */

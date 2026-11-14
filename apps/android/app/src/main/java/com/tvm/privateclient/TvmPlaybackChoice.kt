@@ -92,6 +92,33 @@ object TvmPlaybackChoice {
         )
     }
 
+    private val LANGUAGES: Map<String, Regex> = mapOf(
+        "en" to Regex("""\b(eng|english)\b|🇬🇧|🇺🇸""", RegexOption.IGNORE_CASE),
+        "ja" to Regex("""\b(jpn|jap|japanese)\b|🇯🇵""", RegexOption.IGNORE_CASE),
+        "fr" to Regex("""\b(fre|fra|french|vff|vfq|truefrench)\b|🇫🇷""", RegexOption.IGNORE_CASE),
+        "de" to Regex("""\b(ger|deu|german)\b|🇩🇪""", RegexOption.IGNORE_CASE),
+        "es" to Regex("""\b(spa|esp|spanish|castellano|latino)\b|🇪🇸|🇲🇽""", RegexOption.IGNORE_CASE),
+        "it" to Regex("""\b(ita|italian)\b|🇮🇹""", RegexOption.IGNORE_CASE),
+        "pt" to Regex("""\b(por|portuguese|dublado)\b|🇵🇹|🇧🇷""", RegexOption.IGNORE_CASE),
+        "ko" to Regex("""\b(kor|korean)\b|🇰🇷""", RegexOption.IGNORE_CASE),
+        "hi" to Regex("""\b(hin|hindi)\b|🇮🇳""", RegexOption.IGNORE_CASE),
+    )
+    private val MULTI = Regex("""\b(multi|dual[ .-]?audio)\b""", RegexOption.IGNORE_CASE)
+
+    /**
+     * A download's audio language is a must. "original" takes any copy. Any
+     * other language takes a copy marked as that language, and refuses one
+     * marked as another language or as MULTi; an unmarked copy counts as
+     * English, as release names leave English unsaid.
+     */
+    fun languageOk(label: String, language: String): Boolean {
+        if (language == "original") return true
+        if (MULTI.containsMatchIn(label)) return false
+        val marked = LANGUAGES.filterValues { it.containsMatchIn(label) }.keys
+        if (marked.isEmpty()) return language == "en"
+        return marked == setOf(language)
+    }
+
     /** False when this device's decoders cannot show the picture. */
     fun videoPlayable(needs: SourceNeeds, caps: DecoderCaps): Boolean {
         if (needs.dolbyVisionOnly && !caps.dolbyVision) return false

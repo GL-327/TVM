@@ -70,6 +70,7 @@ export function Downloads({ params }: ScreenProps): React.JSX.Element {
     let cancelled = false;
     const sync = (): void => { void bridge.list().then((next) => { if (!cancelled) setJobs(next); }).catch(() => undefined); };
     sync(); const stop = bridge.onChanged(sync);
+    void bridge.currentFolder?.().then((name) => { if (!cancelled && name) setDirectory((current) => current || name); }).catch(() => undefined);
     void fetchPlan().then((plan) => { if (!cancelled) { setMaxHeight(plan.maxHeight); setQuality((current) => String(Math.min(plan.maxHeight, Number(current)))); } }).catch(() => undefined);
     return () => { cancelled = true; stop(); };
   }, [bridge]);

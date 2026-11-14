@@ -180,6 +180,25 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     return () => window.clearTimeout(timer);
   }, [heroes]);
 
+  /*
+   * Manual stepping. The Android app's touch layer turns a sideways swipe on
+   * the hero into a `tvm:hero-step` event (detail +1 / -1; 0 when a swipe
+   * starts). Each one restarts the rotation timer below, so the banner never
+   * changes under a finger and waits a full interval after a swipe. Nothing
+   * else sends it.
+   */
+  const [heroNudge, setHeroNudge] = useState(0);
+  useEffect(() => {
+    if (heroes.length < 2) return;
+    const step = (event: Event): void => {
+      const by = Number((event as CustomEvent<number>).detail) || 0;
+      if (by !== 0) setSlide((value) => (((value + by) % heroes.length) + heroes.length) % heroes.length);
+      setHeroNudge((value) => value + 1);
+    };
+    window.addEventListener('tvm:hero-step', step);
+    return () => window.removeEventListener('tvm:hero-step', step);
+  }, [heroes.length]);
+
   useEffect(() => {
     if (heroes.length < 2) return;
     const timer = window.setInterval(() => {
@@ -191,7 +210,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       setSlide((value) => (value + 1) % heroes.length);
     }, 8_000);
     return () => window.clearInterval(timer);
-  }, [heroes.length]);
+  }, [heroes.length, heroNudge]);
 
   useEffect(() => {
     const page = pageRef.current;
