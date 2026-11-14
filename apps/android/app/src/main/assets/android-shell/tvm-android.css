@@ -3662,6 +3662,13 @@ html.tvm-android::view-transition-new(root) {
   animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
+/* Search opens and closes through the same crossfade as the tabs
+   (tvm-android.js section 17), so its own slide-and-fade entrance is
+   removed: it would play on top of the crossfade. */
+html.tvm-android .modal-layer[data-screen='search'] :is(.panel-scrim, .search-pill, .search-pill__panel) {
+  animation: none;
+}
+
 /* During the crossfade the incoming page is whole from its first frame: its
    own fade-in would otherwise leave it blank under the fading old page. */
 html.tvm-android.tvma-vt .screen-content > :is(.page, .home, main) > :not(.ribbon):not(.ribbon-zone):not(.home__scene) {

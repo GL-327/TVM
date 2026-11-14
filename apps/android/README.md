@@ -78,10 +78,11 @@ apps/android/
   app/src/main/res/xml/backup_rules.xml
   app/src/main/res/xml/data_extraction_rules.xml
   app/src/main/res/drawable/ic_launcher.xml
-  app/src/main/res/drawable/ic_launcher_foreground.xml
+  app/src/main/res/drawable/ic_launcher_background.png
+  app/src/main/res/drawable/ic_launcher_foreground.png
   app/src/main/res/drawable/field.xml
-  app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-  app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+  app/src/main/res/mipmap-anydpi-v26/ic_tvm_launcher.xml
+  app/src/main/res/mipmap-anydpi-v26/ic_tvm_launcher_round.xml
   app/src/test/java/com/tvm/privateclient/ConnectionTest.kt
   app/src/test/java/com/tvm/privateclient/SessionClientTest.kt
 ```
