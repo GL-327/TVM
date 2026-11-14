@@ -88,6 +88,13 @@ class MainActivity : AppCompatActivity() {
     private var freshLaunch = false
     /** The logo waits for the chooser to be up (openChooserThenReveal). */
     private var chooserHold = false
+    /**
+     * The person ended the session (Back twice, which only sends the app to
+     * the background) or left it in the background for a long while: the
+     * next return starts a new session, on "Who's watching?".
+     */
+    private var sessionEnded = false
+    private var stoppedAt = 0L
     private val main = Handler(Looper.getMainLooper())
 
     /** Android-only look (assets/android-shell), injected into every page on a phone. */
@@ -165,10 +172,17 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         nativePlayer?.onHostStart()
+        val away = if (stoppedAt > 0) SystemClock.elapsedRealtime() - stoppedAt else 0L
+        if (pageReady && !freshLaunch && !cinema.active && (sessionEnded || away >= NEW_SESSION_AFTER_MS)) {
+            sessionEnded = false
+            webView.evaluateJavascript(RESUME_SESSION_SCRIPT, null)
+        }
+        stoppedAt = 0L
     }
 
     override fun onStop() {
         nativePlayer?.onHostStop()
+        stoppedAt = SystemClock.elapsedRealtime()
         super.onStop()
     }
 
@@ -489,7 +503,9 @@ class MainActivity : AppCompatActivity() {
             val poll = object : Runnable {
                 override fun run() {
                     if (!chooserHold || isDestroyed) return
-                    if (SystemClock.elapsedRealtime() - started > 3_000) { release(); return }
+                    // The tabs are prepared and the chooser opened behind the
+                    // logo; eight seconds at most, then the page is shown as it is.
+                    if (SystemClock.elapsedRealtime() - started > 8_000) { release(); return }
                     webView.evaluateJavascript(FRESH_STATE_SCRIPT) { state ->
                         if (state?.trim('"') == "pending") webView.postDelayed(this, 80) else release()
                     }
@@ -757,6 +773,8 @@ class MainActivity : AppCompatActivity() {
         val now = SystemClock.elapsedRealtime()
         if (now - lastBack < 2_000) {
             lastBack = 0
+            // Leaving with Back ends the session; the app itself stays loaded.
+            sessionEnded = true
             moveTaskToBack(true)
             return
         }
@@ -883,7 +901,11 @@ class MainActivity : AppCompatActivity() {
             "(function(){return !!document.querySelector('.modal-layer[data-screen=player]');})();"
 
         const val FRESH_LAUNCH_SCRIPT =
-            "(function(){try{return window.tvmaFreshLaunch?String(window.tvmaFreshLaunch()):'none'}catch(e){return 'none'}})()"
+            "(function(){try{return window.tvmaFreshLaunch?String(window.tvmaFreshLaunch('start')):'none'}catch(e){return 'none'}})()"
+        const val RESUME_SESSION_SCRIPT =
+            "(function(){try{if(window.tvmaFreshLaunch)window.tvmaFreshLaunch('resume')}catch(e){}})()"
+        /** Back in the app after this long away is a new session. */
+        const val NEW_SESSION_AFTER_MS = 30 * 60 * 1000L
         const val FRESH_STATE_SCRIPT =
             "(function(){try{return window.tvmaFreshState?window.tvmaFreshState():'done'}catch(e){return 'done'}})()"
         const val BACK_SCRIPT = """
