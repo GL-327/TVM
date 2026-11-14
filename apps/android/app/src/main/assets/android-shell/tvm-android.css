@@ -1269,6 +1269,14 @@ html.tvm-android .details[data-tvma-pull] > .details__stage {
   overflow: visible !important;
 }
 
+/* The shared Details page tilts its seasons and episodes in 3D (a TV
+   "shelf": perspective and rotateX). On a phone's long episode list the tilt
+   made every row further down wider than the last, until stills ran off the
+   left edge. The section lies flat here; the elastic pull still moves it. */
+html.tvm-android .details:not([data-tvm-rubber]) .details__shelf {
+  transform: none;
+}
+
 /* ---- 7. Native scrolling ---------------------------------------------------------
  * Pages scroll natively (tvm-android.js). Rails are horizontal scroll boxes
  * with overscroll-behavior: none, which stopped a vertical drag that started on
@@ -1677,6 +1685,53 @@ html.tvm-android .home__launcher .launch-tile .tvm-button__label > span:not(.lau
   white-space: nowrap;
   color: var(--tvma-muted);
   opacity: 1;
+}
+
+/* Three shortcuts: Live TV, Watchlist and Apps. The TVM Stream shortcut
+   opened another browse page with the same films and series as Home, so it
+   is left out on Android. The three share one row equally, each tile centred,
+   with the same marks, colours and type as before. */
+html.tvm-android .home__launcher [data-focus-id='launch-stream'] {
+  display: none !important;
+}
+
+html.tvm-android .home__launcher,
+html.tvm-android.phone-shell[data-orientation] .home__launcher,
+html.tvm-android.phone-shell[data-orientation='landscape'] .home__launcher {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+html.tvm-android .home__launcher .tvm-button.launch-tile,
+html.tvm-android.phone-shell .home__launcher .tvm-button.launch-tile {
+  justify-content: center;
+  padding: 14px 8px 12px;
+}
+
+html.tvm-android .home__launcher .launch-tile .tvm-button__label {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  row-gap: 2px;
+  text-align: center;
+}
+
+html.tvm-android .home__launcher .launch-tile__mark {
+  grid-row: auto;
+  margin-bottom: 6px;
+}
+
+html.tvm-android .home__launcher .launch-tile strong,
+html.tvm-android .home__launcher .launch-tile .tvm-button__label > span:not(.launch-tile__mark) {
+  max-width: 100%;
+}
+
+/* The line under each name wraps to a second line rather than being cut. */
+html.tvm-android .home__launcher .launch-tile .tvm-button__label > span:not(.launch-tile__mark) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  text-overflow: clip;
 }
 
 /* Rows. */
@@ -2197,18 +2252,30 @@ html.tvm-android .details .stage__meta .details__imdb {
 }
 
 /* Play across the width; everything else a small icon with its name under it. */
+/* The actions under Play share the row equally, each icon centred over its
+   name, so the group sits centred under Play whatever their number. (A grid
+   of auto-fit columns kept its empty columns, because Play spans them all,
+   which pushed the actions to the left.) */
 html.tvm-android .details .details__actions,
 html.tvm-android .details .hero__actions.details__actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
   gap: 6px;
   width: 100%;
   max-width: 30rem;
-  margin: 18px 0 0;
+  margin: 18px auto 0;
+}
+
+html.tvm-android .details .details__actions > .tvm-button:not([data-focus-id='play']):not(.tvma-play) {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 7.5rem;
 }
 
 html.tvm-android .details .details__actions > :is([data-focus-id='play'], .tvma-play) {
-  grid-column: 1 / -1;
+  flex: 1 0 100%;
   height: 50px;
   min-height: 50px;
   margin-bottom: 8px;
@@ -2357,6 +2424,82 @@ html.tvm-android .details .episode-list__nav .tvm-button {
   background: var(--tvma-card-hi);
   color: var(--tvma-ink);
   font-size: 13px;
+}
+
+/* Seasons: one compact dropdown (tvm-android.js section 18b). The season
+   buttons are replaced at once by the first season's episodes, and "All
+   seasons" and the separate season title give way to the dropdown. */
+html.tvm-android .details .season-list:has(.season-row-btn) {
+  display: none;
+}
+
+html.tvm-android .details .episode-list__nav:has(.tvma-season) > :is([data-focus-id='seasons-back'], .rail__title) {
+  display: none;
+}
+
+html.tvm-android .details .episode-list__nav {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  margin: 0 0 4px;
+}
+
+html.tvm-android .details .tvma-season {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+html.tvm-android .details .tvma-season select {
+  appearance: none;
+  -webkit-appearance: none;
+  max-width: 100%;
+  height: 38px;
+  margin: 0;
+  padding: 0 38px 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--tvma-card-hi);
+  color: var(--tvma-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.tvm-android .details .tvma-season::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  background: var(--tvma-accent, #4c8dff);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5 12 15l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5 12 15l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
+html.tvm-android .details .tvma-season select:active {
+  opacity: 0.75;
+}
+
+html.tvm-android.tvma-keys .details .tvma-season select:focus-visible {
+  outline: 2px solid var(--tvma-blue);
+}
+
+/* One season: the name alone, nothing to open. */
+html.tvm-android .details .tvma-season[data-single] select {
+  padding-right: 14px;
+  opacity: 1;
+}
+
+html.tvm-android .details .tvma-season[data-single]::after {
+  display: none;
 }
 
 html.tvm-android .details .episode-download-row {
@@ -3280,6 +3423,9 @@ html.tvm-android .topbar {
   position: sticky;
   top: 0;
   z-index: 5;
+  /* The page is a flex column: without this the header was squeezed to its
+     minimum height and its button and title hung out below its background. */
+  flex: none;
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: center;
@@ -3287,9 +3433,17 @@ html.tvm-android .topbar {
   min-height: 52px;
   margin: 0 calc(-1 * var(--tvm-safe-x, 16px)) 6px;
   padding: calc(var(--tvm-chrome-top, 0px) + 2px) 8px 4px;
-  background: color-mix(in srgb, var(--tvm-bg, #05090f) 92%, transparent);
+  background: var(--tvm-bg, #05090f);
   border: 0;
   box-shadow: none;
+}
+
+/* The header is the top of its page. The page's own top padding (room for the
+   status bar) made Chrome hold the sticky header that far down, so the list
+   scrolled past in the strip above it, and through the header itself, which
+   was see-through. The header already makes room for the status bar. */
+html.tvm-android .page:has(> .topbar) {
+  padding-top: 0;
 }
 
 html.tvm-android .topbar [data-focus-id='top-back'],
@@ -3537,13 +3691,15 @@ html.tvm-android .ribbon-sheet [data-focus-id='more-settings'] .ribbon-sheet__gl
   color: var(--tvma-ink);
 }
 
+/* A gear built from geometry: eight identical teeth around the same centre
+   as its hole (the hand-drawn one sat crooked around its circle). */
 html.tvm-android .ribbon-sheet [data-focus-id='more-settings'] .ribbon-sheet__glyph::before {
   content: '';
   width: 26px;
   height: 26px;
   background: currentColor;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z'/%3E%3Cpath d='M10.3 3.2h3.4l.5 2.4c.6.2 1.2.6 1.7 1l2.3-.8 1.7 2.9-1.8 1.6a6.4 6.4 0 0 1 0 2l1.8 1.6-1.7 2.9-2.3-.8c-.5.4-1.1.8-1.7 1l-.5 2.4h-3.4l-.5-2.4c-.6-.2-1.2-.6-1.7-1l-2.3.8-1.7-2.9 1.8-1.6a6.4 6.4 0 0 1 0-2L3.9 8.7l1.7-2.9 2.3.8c.5-.4 1.1-.8 1.7-1z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z'/%3E%3Cpath d='M10.3 3.2h3.4l.5 2.4c.6.2 1.2.6 1.7 1l2.3-.8 1.7 2.9-1.8 1.6a6.4 6.4 0 0 1 0 2l1.8 1.6-1.7 2.9-2.3-.8c-.5.4-1.1.8-1.7 1l-.5 2.4h-3.4l-.5-2.4c-.6-.2-1.2-.6-1.7-1l-2.3.8-1.7-2.9 1.8-1.6a6.4 6.4 0 0 1 0-2L3.9 8.7l1.7-2.9 2.3.8c.5-.4 1.1-.8 1.7-1z'/%3E%3C/svg%3E") center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z M10.43 5.69 L10.82 3.58 L13.18 3.58 L13.57 5.69 L15.35 6.43 L17.12 5.21 L18.79 6.88 L17.57 8.65 L18.31 10.43 L20.42 10.82 L20.42 13.18 L18.31 13.57 L17.57 15.35 L18.79 17.12 L17.12 18.79 L15.35 17.57 L13.57 18.31 L13.18 20.42 L10.82 20.42 L10.43 18.31 L8.65 17.57 L6.88 18.79 L5.21 17.12 L6.43 15.35 L5.69 13.57 L3.58 13.18 L3.58 10.82 L5.69 10.43 L6.43 8.65 L5.21 6.88 L6.88 5.21 L8.65 6.43Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z M10.43 5.69 L10.82 3.58 L13.18 3.58 L13.57 5.69 L15.35 6.43 L17.12 5.21 L18.79 6.88 L17.57 8.65 L18.31 10.43 L20.42 10.82 L20.42 13.18 L18.31 13.57 L17.57 15.35 L18.79 17.12 L17.12 18.79 L15.35 17.57 L13.57 18.31 L13.18 20.42 L10.82 20.42 L10.43 18.31 L8.65 17.57 L6.88 18.79 L5.21 17.12 L6.43 15.35 L5.69 13.57 L3.58 13.18 L3.58 10.82 L5.69 10.43 L6.43 8.65 L5.21 6.88 L6.88 5.21 L8.65 6.43Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 html.tvm-android .ribbon-sheet .ribbon-sheet__row strong {
@@ -3611,32 +3767,10 @@ html.tvm-android .details:is([data-tvma-prime], [data-tvm-rubber]) > .tvma-back 
   will-change: auto !important;
 }
 
-/* ---- 31. Overscroll: the pulled edge fades into the page --------------------------------- */
-
-html.tvm-android .tvma-edge {
-  position: fixed;
-  left: 0;
-  right: 0;
-  z-index: 30;
-  height: 110px;
-  pointer-events: none;
-  opacity: 0;
-  will-change: opacity;
-}
-
-html.tvm-android .tvma-edge--top {
-  top: 0;
-  background: linear-gradient(180deg, var(--tvm-bg, #05090f), color-mix(in srgb, var(--tvm-bg, #05090f) 0%, transparent));
-}
-
-html.tvm-android .tvma-edge--bottom {
-  bottom: 0;
-  background: linear-gradient(0deg, var(--tvm-bg, #05090f), color-mix(in srgb, var(--tvm-bg, #05090f) 0%, transparent));
-}
-
-html.tvm-android:is(.tvm-cinema, .tvm-native-playback) .tvma-edge {
-  display: none;
-}
+/* ---- 31. Overscroll ----------------------------------------------------------------------
+   The edge is not darkened while pulled: the hero picture stays as it is, and
+   the page simply moves. (A gradient used to fade the pulled edge into the
+   background, which darkened the hero during a pull at the top.) */
 
 /* ---- 32. Tabs crossfade ----------------------------------------------------------------- */
 
@@ -3949,4 +4083,10 @@ html.tvm-android .tvma-row-icon--core { --tvma-row-icon: url("data:image/svg+xml
 
 html.tvm-android .tvm-button.settings-row[data-tvma-busy] .tvm-button__detail {
   color: var(--tvma-accent, #4c8dff);
+}
+
+/* "Who's watching?" as the app starts (tvm-android.js 17c): a profile is
+   chosen to go on, so the chooser has no Back arrow then. */
+html.tvm-android.tvma-who-launch .tvma-who .tvma-icon-btn--back {
+  visibility: hidden !important;
 }

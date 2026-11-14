@@ -84,6 +84,10 @@ class MainActivity : AppCompatActivity() {
     /** The startup reveal leaves once it has finished AND the page is ready. */
     private var introRevealed = false
     private var pageReady = false
+    /** A genuine start (not a recreation): the page opens on "Who's watching?". */
+    private var freshLaunch = false
+    /** The logo waits for the chooser to be up (openChooserThenReveal). */
+    private var chooserHold = false
     private val main = Handler(Looper.getMainLooper())
 
     /** Android-only look (assets/android-shell), injected into every page on a phone. */
@@ -115,6 +119,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A genuine start, not Android recreating the screen: the page opens on
+        // "Who's watching?" (tvm-android.js 17c).
+        freshLaunch = savedInstanceState == null
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.webview)
         starting = findViewById(R.id.starting)
@@ -454,14 +461,48 @@ class MainActivity : AppCompatActivity() {
             publishChrome()
             cinema.republish()
             pageReady = true
-            dismissIntroWhenReady()
+            if (freshLaunch) {
+                freshLaunch = false
+                openChooserThenReveal()
+            } else {
+                dismissIntroWhenReady()
+            }
+        }
+    }
+
+    /**
+     * On a genuine start, the page is asked to open "Who's watching?", and the
+     * logo stays until it is up, so Home is never seen first. Three seconds at
+     * most; a page without the Android overlay (a television) answers at once.
+     */
+    private fun openChooserThenReveal() {
+        chooserHold = true
+        val release = {
+            if (chooserHold) {
+                chooserHold = false
+                dismissIntroWhenReady()
+            }
+        }
+        webView.evaluateJavascript(FRESH_LAUNCH_SCRIPT) { result ->
+            if (result?.trim('"') != "started") { release(); return@evaluateJavascript }
+            val started = SystemClock.elapsedRealtime()
+            val poll = object : Runnable {
+                override fun run() {
+                    if (!chooserHold || isDestroyed) return
+                    if (SystemClock.elapsedRealtime() - started > 3_000) { release(); return }
+                    webView.evaluateJavascript(FRESH_STATE_SCRIPT) { state ->
+                        if (state?.trim('"') == "pending") webView.postDelayed(this, 80) else release()
+                    }
+                }
+            }
+            webView.postDelayed(poll, 80)
         }
     }
 
     // ---- Startup reveal -------------------------------------------------------
 
     private fun dismissIntroWhenReady() {
-        if (!introRevealed || !pageReady || intro.visibility != View.VISIBLE) return
+        if (chooserHold || !introRevealed || !pageReady || intro.visibility != View.VISIBLE) return
         starting.visibility = View.GONE
         intro.animate().alpha(0f).setDuration(350).withEndAction {
             hideIntro()
@@ -841,6 +882,10 @@ class MainActivity : AppCompatActivity() {
         const val HOME_CORE_PLAYER_SCRIPT =
             "(function(){return !!document.querySelector('.modal-layer[data-screen=player]');})();"
 
+        const val FRESH_LAUNCH_SCRIPT =
+            "(function(){try{return window.tvmaFreshLaunch?String(window.tvmaFreshLaunch()):'none'}catch(e){return 'none'}})()"
+        const val FRESH_STATE_SCRIPT =
+            "(function(){try{return window.tvmaFreshState?window.tvmaFreshState():'done'}catch(e){return 'done'}})()"
         const val BACK_SCRIPT = """
             (function () {
               // An open sheet or popup (tvm-android.js) closes first.
