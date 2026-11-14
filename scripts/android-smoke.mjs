@@ -146,6 +146,48 @@ try {
   await step('it has the "I\'m a dev" button', 30, async () =>
     (await evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === \"I'm a dev\")")) === true);
 
+  // The keyboard: opening it resizes the page once. Taken off the visible
+  // area a second time as well (the WebView applying the keyboard's inset
+  // after the window had already made room) it jolted twice.
+  const field = await evaluate(`(() => {
+    const input = document.querySelector('.gate input');
+    if (!input) return null;
+    window.__kb = [];
+    let last = '';
+    const sample = () => {
+      const vv = window.visualViewport;
+      const top = Math.round(input.getBoundingClientRect().top);
+      const key = [window.innerHeight, vv ? Math.round(vv.height) : 0, top].join(',');
+      if (key !== last) { window.__kb.push(key); last = key; }
+      if (window.__kb.length < 60) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+    const r = input.getBoundingClientRect();
+    return JSON.stringify({ x: (r.left + r.width / 2) * devicePixelRatio, y: (r.top + r.height / 2) * devicePixelRatio });
+  })()`);
+  if (field) {
+    const at = JSON.parse(field);
+    adb('shell', 'input', 'tap', String(Math.round(at.x)), String(Math.round(at.y)));
+    await sleep(2500);
+    const seen = JSON.parse(await evaluate('JSON.stringify(window.__kb || [])')).map((k) => k.split(',').map(Number));
+    const first = seen[0];
+    const last = seen[seen.length - 1];
+    if (!first || !last || last[0] >= first[0]) {
+      annotate('notice', `keyboard: it did not resize the page on this emulator (${JSON.stringify(seen)})`);
+    } else {
+      if (Math.abs(last[1] - last[0]) > 2) throw new Error(`keyboard: the visible area is ${last[0] - last[1]}px smaller than the page after it resized (the keyboard counted twice): ${JSON.stringify(seen)}`);
+      // How often the field moved is reported, not judged: on this screen the
+      // field is centred, so the resize moves it once, and the emulator's own
+      // keyboard has been seen to nudge the page a few pixels as it starts.
+      const tops = new Set(seen.map((k) => k[2]));
+      const resizes = new Set(seen.map((k) => k[0])).size - 1;
+      if (resizes > 1) throw new Error(`keyboard: the page was resized ${resizes} times while it opened: ${JSON.stringify(seen)}`);
+      annotate('notice', `keyboard: one resize, ${first[0]}→${last[0]}px, visible area matches; field positions ${JSON.stringify([...tops])}`);
+    }
+    await evaluate('document.activeElement && document.activeElement.blur(), true');
+    await sleep(800);
+  }
+
   // One real round trip through the phone's account code.
   const signUp = { email: 'smoke@example.com', password: 'a good long password' };
   await step('an account can be created', 90, async () => {
