@@ -36,7 +36,11 @@ MASTER=0.40 # full-bleed square master: generous inner spacing, still large
 res={}
 # Adaptive layers (108dp; 432 px = xxxhdpi).
 fg,_=placed(432,SAFE); white=np.full((432,432,3),255.0)
-res['fg']=rgba(white,fg); res['bg']=Image.fromarray(grad(432).astype(np.uint8)); res['mono']=rgba(white,fg)
+# White only where the logo is: transparent pixels are black too, so a tool that
+# reads colour without transparency (icon themes such as Theme Park's glass
+# effect) still sees the logo, not a white square.
+logo=np.where(np.asarray(fg)[...,None]>0,white,0.0)
+res['fg']=rgba(logo,fg); res['bg']=Image.fromarray(grad(432).astype(np.uint8)); res['mono']=rgba(logo,fg)
 # Square masters: original gradient, logo re-centred with spacing.
 for n in (1024,512):
     al,_=placed(n,MASTER); g=grad(n); al3=np.asarray(al)[...,None]/255.0
