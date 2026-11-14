@@ -6,6 +6,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.net.URI
@@ -27,6 +28,8 @@ class StandaloneWebViewClient(
     private val onError: (String) -> Unit,
     /** Settings → App & Updates (tvm-android.js): reload, update check, home Core. */
     private val onAppAction: (String) -> Unit = {},
+    /** Posters and backdrops, fetched by the app with retries and kept (TvmImages). */
+    private val images: TvmImages? = null,
 ) : WebViewClient() {
 
     private val host: String = runCatching { URI(origin).host }.getOrNull() ?: "127.0.0.1"
@@ -48,6 +51,20 @@ class StandaloneWebViewClient(
     }
 
     override fun onPageFinished(view: WebView, url: String) = onLoading(false)
+
+    /** Runs on a WebView worker thread, so waiting for a host here blocks nothing on screen. */
+    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        val fetcher = images ?: return null
+        val url = request.url?.toString() ?: return null
+        if (!TvmImages.handles(request.method ?: "GET", url, request.requestHeaders?.entries?.firstOrNull { it.key.equals("Accept", true) }?.value)) return null
+        val picture = fetcher.load(url)
+        val headers = mapOf(
+            "Cache-Control" to if (picture.status == 200) TvmArtCache.CACHE_CONTROL else "no-store",
+            "Access-Control-Allow-Origin" to "*",
+        )
+        val reason = if (picture.status == 200) "OK" else if (picture.status == 404) "Not Found" else "Unavailable"
+        return WebResourceResponse(picture.type, null, picture.status, reason, headers, picture.data.inputStream())
+    }
 
     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
         if (!request.isForMainFrame) return
