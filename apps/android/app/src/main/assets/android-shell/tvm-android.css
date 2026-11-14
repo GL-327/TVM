@@ -1007,6 +1007,21 @@ html.tvm-android .search-results .app-card {
   flex: none;
 }
 
+/* While searching, the placeholders take the result cells' shape: one per
+   cell, the posters' width and 2:3 shape. They kept the width a poster has in
+   a Home row (fixed, wider than a cell here), so they overlapped one another
+   and ran off the screen. */
+html.tvm-android .search-results .skeleton.skeleton--poster {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  margin: 0;
+  border-radius: 10px;
+}
+
 html.tvm-android .search-results .poster__art {
   border-radius: 10px;
   border-color: rgb(var(--tvma-tint) / 0.06);
@@ -1413,6 +1428,15 @@ html.tvm-android .app::after {
 
 html.tvm-android:is(.tvm-cinema, .tvm-native-playback, .tvma-search-open) .app::after {
   display: none;
+}
+
+/* A page is a scrolling column: its sections keep their own height and the
+   page scrolls. As flex items they could be squeezed instead, and a section
+   that scrolls sideways (the channel groups on Live TV's Choose channels)
+   could shrink to a sliver whenever the page was taller than the screen, and
+   most visibly when the keyboard took half of it. */
+html.tvm-android .page > * {
+  flex-shrink: 0;
 }
 
 /* Every page scrolls freely: no locking onto rows or sections. */
