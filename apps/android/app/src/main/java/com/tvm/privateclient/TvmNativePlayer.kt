@@ -20,7 +20,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -72,6 +75,14 @@ class TvmNativePlayer(
     /** Only the first failure of a session is reported; the page retries once per report. */
     private var failedOnce = false
     private var stallCheck: Runnable? = null
+    /** This session already fell back to the phone's software video decoder. */
+    private var softwareVideo = false
+    /** Position (ms) the current attempt started from, for the sound-without-picture check. */
+    private var startedAtMs = 0L
+    /** The current attempt has a video track (a sound-only stream needs no picture). */
+    private var hasVideoTrack = false
+    /** What the page sent with `open`, to start the same copy again with another decoder. */
+    private var openMessage: JSONObject? = null
 
     /** Exposed to the page as `window.tvmPlayer`. JS interfaces only take primitives. */
     inner class Bridge {
@@ -141,10 +152,24 @@ class TvmNativePlayer(
         }
         val live = message.optBoolean("live", false)
         isLive = live
-        currentUrl = url
-        firstFrame = false
-        failedOnce = false
         val startAt = message.optDouble("startAt", 0.0)
+        currentUrl = url
+        failedOnce = false
+        softwareVideo = false
+        openMessage = message
+        start(id, url, message, ((if (!live && startAt > 0) startAt else 0.0) * 1000).toLong(), software = false)
+    }
+
+    /**
+     * One attempt at playing [url]. [software] prefers the phone's software
+     * video decoder: the fallback when its hardware decoder cannot show this
+     * copy's picture.
+     */
+    private fun start(id: String, url: String, message: JSONObject, startAtMs: Long, software: Boolean) {
+        val live = message.optBoolean("live", false)
+        firstFrame = false
+        hasVideoTrack = false
+        startedAtMs = startAtMs
 
         // The stream comes from our own loopback core, which proxies the real
         // provider; it still needs a player-shaped identity for the hops that
@@ -159,6 +184,13 @@ class TvmNativePlayer(
         // (common for 4K / 10-bit HEVC and Dolby Vision), let Media3 try the
         // phone's other decoders before giving up.
         val renderers = DefaultRenderersFactory(activity).setEnableDecoderFallback(true)
+        if (software) {
+            // Software decoders first for video; everything else as Media3 chooses.
+            renderers.setMediaCodecSelector { mime, secure, tunneling ->
+                val all = MediaCodecUtil.getDecoderInfos(mime, secure, tunneling)
+                if (mime.startsWith("video/")) all.sortedBy { if (it.softwareOnly) 0 else 1 } else all
+            }
+        }
         videoFormat = null
         val exo = ExoPlayer.Builder(activity, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
@@ -184,7 +216,15 @@ class TvmNativePlayer(
             override fun onPlayerError(error: PlaybackException) {
                 // The full story for development logs (adb logcat -s TVMPlayer):
                 // the error code, the stream's format and the decoder's own cause.
-                Log.e(TAG, "playback failed: ${error.errorCodeName} format=${videoFormat?.let(::formatLabel) ?: "unknown"}", error)
+                Log.e(TAG, "playback failed: ${error.errorCodeName} format=${videoFormat?.let(::formatLabel) ?: "unknown"} software=$software", error)
+                // The picture's decoder failed: the same copy may still play
+                // through the phone's software decoder.
+                val renderer = (error as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }
+                val mime = renderer?.rendererFormat?.sampleMimeType ?: ""
+                if (mime.startsWith("video/") && decoderError(error)) {
+                    videoProblem(id, error.errorCodeName, mime, describe(error))
+                    return
+                }
                 // A copy this phone cannot decode, or a link the source refuses,
                 // is not offered again; a dropped connection is not the copy's fault.
                 if (copyAtFault(error)) markFailed(error.errorCodeName)
@@ -195,7 +235,24 @@ class TvmNativePlayer(
                 videoFormat = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
                     ?.let { group -> (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } }
                     ?: videoFormat
-                videoFormat?.let { Log.i(TAG, "video: ${formatLabel(it)} codecs=${it.codecs}") }
+                videoFormat?.let { Log.i(TAG, "video: ${formatLabel(it)} codecs=${it.codecs} ${it.width}x${it.height} software=$software") }
+                val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                hasVideoTrack = video.isNotEmpty()
+                video.forEach { group ->
+                    (0 until group.length).forEach { i ->
+                        val f = group.getTrackFormat(i)
+                        Log.i(TAG, "video track: ${f.sampleMimeType} ${f.codecs} ${f.width}x${f.height} supported=${group.isTrackSupported(i)} selected=${group.isTrackSelected(i)}")
+                    }
+                }
+                // The copy has a picture, but no decoder on this phone was
+                // chosen for it: Media3 then plays the sound alone over a black
+                // screen, without an error. That is a failure, not playback.
+                if (video.isNotEmpty() && video.none { it.isSelected }) {
+                    val f = video.first().getTrackFormat(0)
+                    val mime = f.sampleMimeType ?: ""
+                    videoProblem(id, "no video decoder chosen", mime, "This phone can't show the picture in this copy (${formatLabel(f)}). Press Retry to try another copy.")
+                    return
+                }
                 val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
                 audio.forEach { group ->
                     (0 until group.length).forEach { i ->
@@ -232,7 +289,7 @@ class TvmNativePlayer(
         webView.setBackgroundColor(Color.TRANSPARENT)
         attachView(exo)
         onPlaying(true)
-        if (!live && startAt > 0) exo.seekTo((startAt * 1000).toLong())
+        if (startAtMs > 0) exo.seekTo(startAtMs)
         exo.prepare()
         exo.play()
         startTicking(id)
@@ -257,6 +314,54 @@ class TvmNativePlayer(
         stallCheck?.let(main::removeCallbacks)
         stallCheck = check
         main.postDelayed(check, STALL_MS)
+    }
+
+    /**
+     * The picture cannot be shown. Once per session the same copy is started
+     * again from where it was with the phone's software video decoder (slower,
+     * but it accepts profiles and levels the hardware one refuses). If that was
+     * already tried, or the phone has no software decoder for this format, the
+     * copy is marked as failed and the page's retry moves to another.
+     */
+    private fun videoProblem(id: String, why: String, mime: String, message: String) {
+        if (sessionId != id || failedOnce) return
+        val url = currentUrl
+        val sent = openMessage
+        val hasSoftware = mime.isNotEmpty() &&
+            runCatching { MediaCodecUtil.getDecoderInfos(mime, false, false).any { it.softwareOnly } }.getOrDefault(false)
+        Log.w(TAG, "no picture ($why, $mime): software tried=$softwareVideo, software available=$hasSoftware")
+        if (!softwareVideo && hasSoftware && url != null && sent != null) {
+            softwareVideo = true
+            val at = player?.currentPosition?.coerceAtLeast(0L) ?: startedAtMs
+            main.post {
+                if (sessionId != id) return@post
+                releasePlayer()
+                start(id, url, sent, at, software = true)
+            }
+            return
+        }
+        markFailed(why)
+        fail(id, message)
+    }
+
+    private fun decoderError(error: PlaybackException): Boolean = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> true
+        else -> false
+    }
+
+    /** The player and its view only; the session (id, landscape, page) stays. */
+    private fun releasePlayer() {
+        stallCheck?.let(main::removeCallbacks)
+        player?.release()
+        player = null
+        view?.player = null
+        view = null
+        container?.let { frame -> (frame.parent as? ViewGroup)?.removeView(frame) }
+        container = null
     }
 
     private fun markFailed(why: String) {
@@ -324,6 +429,14 @@ class TvmNativePlayer(
             override fun run() {
                 if (!ticking || sessionId != id) return
                 pushState(id)
+                // Sound for six seconds and still no picture: the video is not
+                // reaching the screen (Media3 may play the sound on its own).
+                player?.let { exo ->
+                    if (!firstFrame && hasVideoTrack && exo.isPlaying && exo.currentPosition - startedAtMs > SOUND_ONLY_MS) {
+                        videoProblem(id, "sound without picture", videoFormat?.sampleMimeType ?: "",
+                            "This phone can't show the picture in this copy. Press Retry to try another copy.")
+                    }
+                }
                 main.postDelayed(this, 250)
             }
         }
@@ -468,5 +581,6 @@ class TvmNativePlayer(
 
     private companion object {
         const val STALL_MS = 30_000L
+        const val SOUND_ONLY_MS = 6_000L
     }
 }

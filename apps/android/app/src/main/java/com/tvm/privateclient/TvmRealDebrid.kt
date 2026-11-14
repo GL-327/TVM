@@ -411,7 +411,9 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
     }
 
     fun streamHeight(label: String): Int {
-        if (UHD.containsMatchIn(label)) return 2160
+        // Any spelling of 4K counts here (a name written "4K" or "UHD" is still
+        // a 4K picture), unlike the quality score, which follows the Swift.
+        if (UHD.containsMatchIn(label) || UHD_ANY_CASE.containsMatchIn(label)) return 2160
         if (HD1080.containsMatchIn(label)) return 1080
         if (HD720.containsMatchIn(label)) return 720
         if (SD480.containsMatchIn(label)) return 480
@@ -534,6 +536,7 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
         // Quality matching is deliberately case-sensitive, as in the Swift: "4K" scores
         // as the 10-point default, not as UHD.
         val UHD = Regex("""\b2160p|4k|uhd\b""")
+        val UHD_ANY_CASE = Regex("""\b(2160p|4k|uhd)\b""", RegexOption.IGNORE_CASE)
         val HD1080 = Regex("""\b1080p\b""")
         val HD720 = Regex("""\b720p\b""")
         val SD480 = Regex("""\b480p\b""")

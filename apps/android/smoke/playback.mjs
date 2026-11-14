@@ -31,7 +31,7 @@ const TYPES = { mp4: 'video/mp4', mkv: 'video/x-matroska', ts: 'video/mp2t' };
 function serveMedia() {
   const server = http.createServer((req, res) => {
     const name = (req.url ?? '/').split('?')[0].replace(/^\/+/, '');
-    if (!/^clip\.(mp4|mkv|ts)$/.test(name)) { res.writeHead(404).end(); return; }
+    if (!/^clip(-mpeg2)?\.(mp4|mkv|ts)$/.test(name)) { res.writeHead(404).end(); return; }
     const file = join(MEDIA, name);
     const size = statSync(file).size;
     const type = TYPES[name.split('.').pop()];
@@ -212,6 +212,25 @@ export async function playbackSmoke({ adb, evaluate, step, annotate, sleep, out,
     // Another film, then another format.
     await send({ id: 'smoke-2', command: 'open', url: `http://127.0.0.1:${PORT}/clip.mkv`, title: 'Smoke MKV', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
     await playing('smoke-2', 'Matroska (switching titles)');
+    // A copy whose picture this phone may have no decoder for (MPEG-2): either
+    // the picture plays, or the player says so once. Sound over a black screen
+    // with no word (Media3 drops a video track it cannot decode and plays the
+    // sound alone) is the failure this guards against.
+    await send({ id: 'smoke-m2', command: 'open', url: `http://127.0.0.1:${PORT}/clip-mpeg2.mkv`, title: 'Smoke MPEG-2', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
+    await step('MPEG-2: a picture or one clear error, never sound alone', 45, async () => {
+      if ((await errors('smoke-m2')).length > 0) return true;
+      const state = await latest('smoke-m2');
+      return state !== null && state.hasFrame === true && state.position > 1.5;
+    });
+    if ((await errors('smoke-m2')).length > 0) {
+      await sleep(3000);
+      const m2 = await errors('smoke-m2');
+      if (m2.length !== 1) throw new Error(`MPEG-2: ${m2.length} errors reported (expected one)`);
+      annotate('notice', `MPEG-2: this emulator cannot show it, and the player says so once: "${m2[0].message}"`);
+    } else {
+      await playing('smoke-m2', 'MPEG-2 (Matroska)');
+    }
+
     // A source that cannot be played reports one error and stops: no retry loop.
     await send({ id: 'smoke-bad', command: 'open', url: `http://127.0.0.1:${PORT}/missing.mp4`, title: 'Smoke missing', startAt: 0, live: false, initialVolume: 1, initialMuted: false });
     await step('a broken source reports an error', 30, async () => (await errors('smoke-bad')).length > 0);
