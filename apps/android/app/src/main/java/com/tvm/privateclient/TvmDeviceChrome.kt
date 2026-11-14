@@ -97,8 +97,11 @@ object TvmDeviceChrome {
 
     fun language(store: TvmStore): String = TvmPrefs.load(store).language.lowercase(Locale.US)
 
-    /** Same cap as TVMDeviceChrome.playbackHeight: plan limit, then the screen. */
-    fun playbackHeight(planMax: Int): Int = planMax
+    /**
+     * The plan's limit, then the screen's: a phone gets at most 1080p, which
+     * already fills its screen (TvmDeviceCodecs.screenHeight).
+     */
+    fun playbackHeight(planMax: Int): Int = minOf(planMax, TvmDeviceCodecs.screenHeight)
 }
 
 /**
