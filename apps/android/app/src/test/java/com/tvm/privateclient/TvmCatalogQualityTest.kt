@@ -72,6 +72,26 @@ class TvmCatalogQualityTest {
     }
 
     @Test
+    fun theListSurvivesARestartAndTellsThePageOnce() {
+        val file = java.io.File.createTempFile("art-distrust", ".json")
+        file.delete()
+        TvmArtTrust.attach(file)
+        val told = mutableListOf<Set<String>>()
+        TvmArtTrust.onDistrusted = { told += it }
+        TvmArtTrust.distrust(listOf("tt0118933"))
+        TvmArtTrust.distrust(listOf("tt0118933"))
+        assertEquals(listOf(setOf("tt0118933")), told)
+        TvmArtTrust.onDistrusted = null
+        // A new launch reads it back before any picture is asked for.
+        TvmArtTrust.clear()
+        assertFalse(TvmArtTrust.isDistrusted("tt0118933"))
+        TvmArtTrust.attach(file)
+        assertTrue(TvmArtTrust.isDistrusted("tt0118933"))
+        assertFalse(TvmArtTrust.trusted("https://images.metahub.space/poster/large/tt0118933/img"))
+        file.delete()
+    }
+
+    @Test
     fun distrustedArtworkIsNeverServedEvenFromTheCache() {
         TvmArtTrust.distrust(listOf("tt0118933"))
         val images = TvmImages(null, fetch = { TvmImages.Fetched(200, "image/jpeg", byteArrayOf(1)) }, sleep = {})
