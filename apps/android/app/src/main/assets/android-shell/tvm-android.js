@@ -2244,7 +2244,9 @@
     if (!ids || !ids.length) return;
     var imgs = document.querySelectorAll('img[src*="metahub.space"]');
     for (var i = 0; i < imgs.length; i++) {
+      // On iOS pictures come through the app (/api/art?src=…, encoded).
       var src = imgs[i].getAttribute('src') || '';
+      try { src = decodeURIComponent(src); } catch (e) { /* as it is */ }
       for (var j = 0; j < ids.length; j++) {
         if (src.indexOf('/' + ids[j] + '/') < 0) continue;
         imgs[i].dispatchEvent(new Event('error'));
@@ -2425,7 +2427,7 @@
   }
   // How the last check the user started went, reported by MainActivity.
   var appUpdate = null;
-  var UPDATE_IDLE = 'Look for a newer TVM for Android';
+  var UPDATE_IDLE = root.classList.contains('tvm-ios') ? 'Look for a newer TVM for iPhone' : 'Look for a newer TVM for Android';
   function updateDetail() {
     var u = appUpdate;
     if (!u) return UPDATE_IDLE;
