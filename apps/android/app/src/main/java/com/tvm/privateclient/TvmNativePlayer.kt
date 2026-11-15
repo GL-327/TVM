@@ -17,6 +17,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Format
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -204,6 +205,10 @@ class TvmNativePlayer(
             .setHandleAudioBecomingNoisy(true)
             .build()
         player = exo
+        // The main sound track before a commentary or description track.
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
+            .build()
         val initialVolume = message.optDouble("initialVolume", 1.0)
         level = if (initialVolume.isFinite()) initialVolume.coerceIn(0.0, 1.0).toFloat() else 1f
         exo.volume = if (message.optBoolean("initialMuted", false)) 0f else level
@@ -259,9 +264,10 @@ class TvmNativePlayer(
                 audio.forEach { group ->
                     (0 until group.length).forEach { i ->
                         val f = group.getTrackFormat(i)
-                        Log.i(TAG, "audio: ${f.sampleMimeType} ${f.channelCount}ch ${f.language ?: ""} supported=${group.isTrackSupported(i)} selected=${group.isTrackSelected(i)}")
+                        Log.i(TAG, "audio: ${f.sampleMimeType} ${f.channelCount}ch ${f.language ?: ""} '${f.label ?: ""}' roles=${f.roleFlags} supported=${group.isTrackSupported(i)} selected=${group.isTrackSelected(i)}")
                     }
                 }
+                preferMainAudio(exo, audio)
                 // Sound tracks exist but this phone can decode none of them (often
                 // TrueHD or DTS in a remux): the film would play silently.
                 if (audio.isNotEmpty() && audio.none { it.isSupported }) {
@@ -269,6 +275,30 @@ class TvmNativePlayer(
                     markFailed("no playable sound ($kinds)")
                     fail(id, "This phone can't play the sound in this copy ($kinds). Press Retry to try another copy.")
                 }
+            }
+
+            /**
+             * A copy can carry the creators' commentary as one of its sound
+             * tracks; when that is the one chosen (a file can mark it as its
+             * default), the episode's own sound is chosen instead, in the same
+             * language when there is one. Done once per copy, so a track the
+             * viewer picks afterwards is kept.
+             */
+            private var audioChecked = false
+            private fun preferMainAudio(exo: ExoPlayer, audio: List<Tracks.Group>) {
+                if (audioChecked || audio.isEmpty()) return
+                audioChecked = true
+                fun extra(f: Format) = (f.roleFlags and (C.ROLE_FLAG_COMMENTARY or C.ROLE_FLAG_DESCRIBES_VIDEO)) != 0 ||
+                    Regex("""commentary|director|descri""", RegexOption.IGNORE_CASE).containsMatchIn(f.label ?: "")
+                val chosen = audio.firstNotNullOfOrNull { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it) } } ?: return
+                if (!extra(chosen)) return
+                val options = audio.flatMap { g -> (0 until g.length).map { g to it } }
+                    .filter { (g, i) -> g.isTrackSupported(i) && !extra(g.getTrackFormat(i)) }
+                val main = options.firstOrNull { (g, i) -> g.getTrackFormat(i).language == chosen.language } ?: options.firstOrNull() ?: return
+                Log.i(TAG, "commentary track was chosen ('${chosen.label ?: ""}'); playing the main sound track instead")
+                exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                    .setOverrideForType(TrackSelectionOverride(main.first.mediaTrackGroup, main.second))
+                    .build()
             }
 
             override fun onRenderedFirstFrame() {

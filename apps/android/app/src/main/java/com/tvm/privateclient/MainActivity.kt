@@ -260,6 +260,12 @@ class MainActivity : AppCompatActivity() {
                 // An interface staged on the last run goes live now; one left
                 // over from a different app build is dropped.
                 made.bundledUi.prepare()
+                // Titles known to carry another title's artwork, before any picture is asked for.
+                TvmArtTrust.attach(java.io.File(filesDir, "art-distrust.json"))
+                TvmArtTrust.onDistrusted = { ids ->
+                    val list = org.json.JSONArray(ids.toList()).toString()
+                    runOnUiThread { if (::webView.isInitialized) webView.evaluateJavascript("window.__tvmaDropArt&&window.__tvmaDropArt($list);", null) }
+                }
                 // Downloads are ready before the server answers its first request.
                 made.downloads = TvmDownloads(contentResolver, made.store) { id, language, height ->
                     made.media.download(id, language, height)
@@ -722,15 +728,23 @@ class MainActivity : AppCompatActivity() {
     private fun publishChrome() {
         val current = edgeInsets()
         TvmDeviceChrome.publish(webView, TvmDeviceChrome.profile(this, current))
+        // The keyboard has one owner: the page is not resized for it (it slides
+        // over the page, as on iOS) and is told its height once, in a single
+        // script, so nothing reacts to it in separate frames. The Android
+        // overlay (tvm-android.js, 6b) makes room under the page and lifts a
+        // field only when the keyboard would cover it. Resizing the WebView
+        // as well made the page relayout, the shared viewport code scroll the
+        // field to the centre (which pushed the Accounts header under the
+        // status bar) and the bottom inset change, each in its own frame: the
+        // jumps on Search and Accounts.
+        val imeOpen = insets?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        val keyboard = TvmDeviceChrome.keyboardHeight(this, current)
         webView.evaluateJavascript(
-            "window.__tvmKeyboardInset && window.__tvmKeyboardInset(${TvmDeviceChrome.keyboardInset(this, current)});",
+            "(function(){var r=document.documentElement;r.classList.toggle('tvm-ime-open',$imeOpen);" +
+                "window.__tvmKeyboardInset&&window.__tvmKeyboardInset(0);" +
+                "window.__tvmaKeyboard&&window.__tvmaKeyboard(${if (imeOpen) keyboard else 0});})();",
             null,
         )
-        // The window already shrinks for the keyboard (the root is padded by it),
-        // so the Android look tracks the keyboard with its own class instead of
-        // adding the keyboard's height a second time.
-        val imeOpen = insets?.isVisible(WindowInsetsCompat.Type.ime()) == true
-        webView.evaluateJavascript("document.documentElement.classList.toggle('tvm-ime-open', $imeOpen);", null)
     }
 
     private fun showStarting() {
@@ -831,10 +845,8 @@ class MainActivity : AppCompatActivity() {
         val root = findViewById<View>(R.id.root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, latest ->
             insets = latest
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val ime = latest.getInsets(WindowInsetsCompat.Type.ime())
-                root.setPadding(0, 0, 0, ime.bottom)
-            }
+            // Not resized for the keyboard (publishChrome): it slides over the page.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) root.setPadding(0, 0, 0, 0)
             val edge = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
             val bars = latest.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             (chrome.layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
@@ -845,10 +857,9 @@ class MainActivity : AppCompatActivity() {
             }
             refreshBootScript()
             if (webView.visibility == View.VISIBLE) publishChrome()
-            // The keyboard is accounted for once, here, by the padding above.
-            // Passed on as well, the WebView took it off its visible area a
-            // second time and then corrected itself: the double jolt as the
-            // Search keyboard opened.
+            // The keyboard is accounted for once, by the page (publishChrome).
+            // Passed on to the WebView, it took it off its visible area as
+            // well and moved the page itself.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 WindowInsetsCompat.Builder(latest).setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE).build()
             } else {
