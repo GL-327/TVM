@@ -4,6 +4,7 @@ import SwiftUI
 // It does not need a PC, LAN token, or Core on another computer.
 @main
 struct TVMApp: App {
+    @UIApplicationDelegateAdaptor(TVMAppDelegate.self) private var appDelegate
     var body: some Scene {
         WindowGroup { StandaloneRoot().preferredColorScheme(.dark) }
     }
@@ -154,6 +155,7 @@ struct PlayerShell: View {
     @State private var error: String?
     @State private var loading = true
     @State private var showHomeCore = false
+    @StateObject private var shell = TVMShellModel()
 
     var body: some View {
         ZStack {
@@ -166,7 +168,14 @@ struct PlayerShell: View {
                 }
                 .padding(28)
             } else {
-                TVMWebView(session: currentSession, loading: $loading, error: $error)
+                TVMWebView(session: currentSession, loading: $loading, error: $error, shell: shell) { action in
+                    // Settings → App & Updates (tvm-app:): the ⋮ menu's actions now live there, as on Android.
+                    if action == "core" {
+                        if session.isStandalone && lan.active == nil { showHomeCore = true } else {
+                            lan.disconnect(); onUseLocal(); reloadPage()
+                        }
+                    }
+                }
                     .id(reload)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(.container)
@@ -174,7 +183,19 @@ struct PlayerShell: View {
             }
         }
         .ignoresSafeArea(.keyboard)
+        // The tab bar and the You popup, in Liquid Glass (TVMGlassBar).
+        .overlay {
+            if error == nil {
+                TVMGlassBar(model: shell)
+                    .ignoresSafeArea(.keyboard)
+            }
+        }
+        .statusBarHidden(shell.playing)
+        .persistentSystemOverlays(shell.playing ? .hidden : .automatic)
         .overlay(alignment: .topTrailing) {
+            // The app's own menu only where the page cannot be reached (an
+            // error); otherwise these actions are in Settings → App & Updates.
+            if error != nil {
             HStack(spacing: 10) {
                 if loading { ProgressView().controlSize(.small).tint(.white) }
                 Menu {
@@ -201,6 +222,7 @@ struct PlayerShell: View {
             // has to sit in the same band the page uses, not in the island.
             .padding(.top, TVMDeviceChrome.current.fallbackTop)
             .padding(.trailing, 10)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tvmInterfaceDidApply)) { _ in
             reloadPage()

@@ -1,0 +1,37 @@
+/*
+ * The iPhone's additions to the shared phone look (tvm-android.css runs first,
+ * under html.tvm-android and html.tvm-ios). Only what differs on iOS.
+ */
+
+/* The app draws the tab bar and the You popup itself, in Liquid Glass
+   (TVMGlassBar.swift, tvm-ios.js 4). The page's own bar and popup keep their
+   place (pages still leave room for the bar) but are not drawn, and the
+   popup's dimmed layer does not take taps: the app's popup closes itself. */
+html.tvm-ios.tvm-ios-glass nav.ribbon.ribbon--tabs .ribbon__frost,
+html.tvm-ios.tvm-ios-glass nav.ribbon.tvma-pill {
+  visibility: hidden !important;
+}
+
+html.tvm-ios.tvm-ios-glass .ribbon-sheet,
+html.tvm-ios.tvm-ios-glass .ribbon-sheet__scrim {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  animation: none !important;
+}
+
+/* WebKit gives a tapped link or button a grey flash; the shared look has its own feedback. */
+html.tvm-ios * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Long-pressing a poster or a button selects text or opens a preview on iOS. */
+html.tvm-ios :is(img, button, a, .poster, .tvma-card, .ribbon) {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Fields keep iOS's own size so focusing one never zooms the page. */
+html.tvm-ios :is(input, textarea, select) {
+  font-size: max(16px, 1em);
+}

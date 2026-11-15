@@ -63,47 +63,66 @@ final class StandaloneTests: XCTestCase {
         }
     }
 
-    @MainActor func testNativePlayerCentersControlsInBothOrientations() {
-        let controller = TVMPlayerController(id: "test", url: URL(string: "https://cdn.example/movie.mkv")!, title: "Test film", startAt: 0, live: false)
-        controller.loadViewIfNeeded()
-        func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
-        for size in [CGSize(width: 375, height: 667), CGSize(width: 844, height: 390), CGSize(width: 1024, height: 768)] {
-            controller.view.frame = CGRect(origin: .zero, size: size)
-            controller.view.setNeedsLayout()
-            controller.view.layoutIfNeeded()
-            let controls = descendants(controller.view).compactMap { $0 as? UIButton }
-            guard let play = controls.first(where: { $0.accessibilityLabel == "Pause" }) else { return XCTFail("Play control missing") }
-            let frame = play.convert(play.bounds, to: controller.view)
-            XCTAssertEqual(frame.midX, size.width / 2, accuracy: 1)
-            XCTAssertEqual(frame.midY, size.height / 2, accuracy: 1)
-            for button in controls {
-                XCTAssertGreaterThanOrEqual(button.bounds.height, 44)
-                XCTAssertGreaterThanOrEqual(button.bounds.width, 44)
-            }
-        }
-        controller.shutdown()
+    /// The page draws the player's controls (as on Android); the engine only draws the picture.
+    @MainActor func testVideoEngineDrawsOnlyThePictureUnderThePage() {
+        let engine = TVMVideoEngine(id: "test", url: URL(string: "https://cdn.example/movie.mkv")!, startAt: 0, live: false)
+        engine.view.frame = CGRect(origin: .zero, size: CGSize(width: 844, height: 390))
+        XCTAssertFalse(engine.view.isUserInteractionEnabled, "taps go to the page's controls above the picture")
+        XCTAssertTrue(engine.view.subviews.isEmpty)
+        XCTAssertTrue((engine.view.gestureRecognizers ?? []).isEmpty)
+        var events: [[String: Any]] = []
+        engine.onEvent = { events.append($0) }
+        var finished = false
+        engine.onFinish = { finished = true }
+        engine.command("stop", data: [:])
+        XCTAssertTrue(finished)
+        XCTAssertTrue(events.isEmpty)
     }
 
-    @MainActor func testNativePlayerTapsPassThroughVLCAndEmptyChrome() {
-        let controller = TVMPlayerController(id: "tap", url: URL(string: "https://cdn.example/movie.mkv")!, title: "Tap film", startAt: 0, live: false)
-        controller.loadViewIfNeeded()
-        controller.view.frame = CGRect(origin: .zero, size: CGSize(width: 390, height: 844))
-        controller.view.layoutIfNeeded()
-        XCTAssertFalse(controller.view.subviews[0].isUserInteractionEnabled)
-        func all(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap { all($0) } }
-        let taps = all(controller.view).flatMap { $0.gestureRecognizers ?? [] }.compactMap { $0 as? UITapGestureRecognizer }
-        XCTAssertTrue(taps.contains { $0.numberOfTapsRequired == 1 })
-        XCTAssertTrue(taps.contains { $0.numberOfTapsRequired == 2 })
-        let empty = controller.view.hitTest(CGPoint(x: 24, y: 420), with: nil)
-        XCTAssertNotNil(empty)
-        XCTAssertEqual(empty?.accessibilityLabel, "Show or hide playback controls")
-        XCTAssertFalse(empty is UIControl)
-        let chrome = TVMChromeView()
-        chrome.frame = CGRect(origin: .zero, size: CGSize(width: 200, height: 200))
-        let stack = UIStackView(frame: chrome.bounds)
-        chrome.addSubview(stack)
-        XCTAssertNil(chrome.hitTest(CGPoint(x: 100, y: 100), with: nil))
-        controller.shutdown()
+    /// A commentary or description sound track is not the episode's own sound.
+    func testCommentaryTracksAreNotTheMainSound() {
+        XCTAssertTrue(tvmIsCommentaryTrack("Commentary with Trey Parker and Matt Stone - [English]"))
+        XCTAssertTrue(tvmIsCommentaryTrack("Director's commentary"))
+        XCTAssertTrue(tvmIsCommentaryTrack("Audio Description"))
+        XCTAssertFalse(tvmIsCommentaryTrack("English 5.1 - [English]"))
+        XCTAssertFalse(tvmIsCommentaryTrack("Track 1"))
+    }
+
+    /// The shared phone look runs on iOS exactly as on Android, with the iOS layer after it.
+    func testShellBootRunsTheSharedOverlayThenTheIOSLayer() {
+        let boot = TVMShellScripts.compose(css: "html.tvm-android .x{color:red}</style>", overlay: "window.__o=1;", ios: "window.__i=1;", glassBar: true)
+        XCTAssertTrue(boot.contains("root.classList.add('tvm-android')"))
+        XCTAssertTrue(boot.contains("root.classList.add('tvm-ios')"))
+        XCTAssertTrue(boot.contains("window.__tvmIosGlassBar = true"))
+        let overlay = boot.range(of: "window.__o=1;")!, ios = boot.range(of: "window.__i=1;")!
+        XCTAssertLessThan(overlay.lowerBound, ios.lowerBound)
+        XCTAssertFalse(boot.contains("</style>"), "the stylesheet cannot end the script")
+    }
+
+    /// The keyboard is reported once, and the page is never inset for it.
+    func testKeyboardIsOneMessage() {
+        let open = TVMShellScripts.keyboard(height: 336)
+        XCTAssertTrue(open.contains("toggle('tvm-ime-open',true)"))
+        XCTAssertTrue(open.contains("__tvmKeyboardInset(0)"))
+        XCTAssertTrue(open.contains("__tvmaKeyboard(336)"))
+        let closed = TVMShellScripts.keyboard(height: 0)
+        XCTAssertTrue(closed.contains("toggle('tvm-ime-open',false)"))
+        XCTAssertTrue(closed.contains("__tvmaKeyboard(0)"))
+    }
+
+    /// The app's tab bar shows what the page reports.
+    func testGlassBarReadsThePagesState() {
+        var bar = TVMBarState()
+        bar.read(["visible": true, "active": "live", "entrance": true,
+                  "you": ["name": "P", "hue": 215, "picture": ""],
+                  "popup": [["id": "more-profile", "title": "Profile 1", "detail": "Switch profile", "on": false],
+                            ["id": "more-settings", "title": "Settings", "detail": "", "on": true]]])
+        XCTAssertTrue(bar.visible)
+        XCTAssertEqual(bar.active, "live")
+        XCTAssertEqual(bar.youName, "P")
+        XCTAssertEqual(bar.popup.map(\.id), ["more-profile", "more-settings"])
+        XCTAssertTrue(bar.popup[1].on)
+        XCTAssertNil(bar.youPicture)
     }
 
     func testNativePlayerIgnoresVLCBufferingFlickerAndTransientErrors() {
