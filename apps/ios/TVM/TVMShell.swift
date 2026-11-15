@@ -34,6 +34,11 @@ enum TVMShellScripts {
           var root = document.documentElement;
           root.classList.add('tvm-android');
           root.classList.add('tvm-ios');
+          // The app's own constructed-logo reveal (TVMIntro) replaces the web intro, as on Android.
+          try {
+            sessionStorage.setItem('tvm.intro.session', '1');
+            sessionStorage.setItem('tvm.intro.at', String(Date.now()));
+          } catch (e) {}
           if (window.__tvmAndroidShell) return;
           window.__tvmAndroidShell = true;
           window.__tvmIosGlassBar = \(glassBar ? "true" : "false");
