@@ -606,8 +606,11 @@ class TvmMedia(
         // is not offered again, so a retry moves on to another one.
         // A download never takes a taller copy than asked for.
         val fresh: List<RdStream> = (if (capped.isEmpty() && download == null) spoken else capped).filter { !TvmPlaybackMemory.hasFailed(sourceKey(it)) }
-        val ranked: List<RdStream> = TvmPlaybackChoice.order(fresh, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
-        Log.i(TAG, "sources: ${streams.size} found, height cap $height, ${fresh.size} not failed here, trying ${ranked.size}")
+        // A source whose file is named as another episode, or as a commentary
+        // edition or other extra, is not this episode (TvmEpisodeMatch).
+        val proper: List<RdStream> = fresh.filter { TvmEpisodeMatch.fit(TvmEpisodeMatch.sourceFile(it.details.ifEmpty { it.title }), seasonNo, episodeNo) != TvmEpisodeMatch.Fit.WRONG }
+        val ranked: List<RdStream> = TvmPlaybackChoice.order(proper, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
+        Log.i(TAG, "sources for $imdb S${seasonNo}E${episodeNo}: ${streams.size} found, height cap $height, ${fresh.size} not failed here, ${proper.size} this episode, trying ${ranked.size}")
         var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to if (fresh.isEmpty()) "unsupported" else "empty")
         // A copy whose real file turns out larger than the screen (its search
         // name did not say 4K) is kept only in case nothing else plays.
@@ -617,6 +620,7 @@ class TvmMedia(
                 val resolved: String? = rd.resolveRedirect(stream.url)
                 if (resolved != null && !rd.isTorrentioHost(resolved)) {
                     val result = playFromLink(resolved, mediaId ?: imdb)
+                    if (result.first == 200 && !rightFile(result, seasonNo, episodeNo)) continue
                     if (result.first == 200 && !fitsScreen(result, download)) {
                         if (oversized == null) oversized = chosen(result, stream, label(stream))
                         continue
@@ -628,7 +632,7 @@ class TvmMedia(
             }
             val hash: String? = stream.infoHash
             if (hash != null && hash.isNotEmpty()) {
-                val magnet = playFromMagnet(hash, mediaId ?: imdb)
+                val magnet = playFromMagnet(hash, mediaId ?: imdb, seasonNo, episodeNo, stream.fileIdx)
                 if (magnet.first == 200 && !fitsScreen(magnet, download)) {
                     if (oversized == null) oversized = chosen(magnet, stream, label(stream))
                     continue
@@ -676,28 +680,71 @@ class TvmMedia(
         return result
     }
 
-    private suspend fun playFromMagnet(hash: String, mediaId: String?): Pair<Int, JSONObject> {
+    /**
+     * One file of a torrent: the episode (or film) asked for, never the whole
+     * torrent. A pack used to be added with every file selected and its first
+     * file played, which for a series is S01E01 whatever was asked for
+     * (TvmEpisodeMatch). A torrent with no file that fits is removed again,
+     * so it does not linger in the person's library.
+     */
+    private suspend fun playFromMagnet(
+        hash: String,
+        mediaId: String?,
+        season: Int?,
+        episode: Int?,
+        fileIdx: Int?,
+    ): Pair<Int, JSONObject> {
         val links: List<String>
+        var torrentId: String? = null
         try {
-            val torrentId: String = rd.addMagnet(hash)
-            try {
-                rd.selectTorrentFiles(torrentId)
-            } catch (_: Throwable) {
-                // Already-selected packs answer 400; the links poll below decides.
+            val added: String = rd.addMagnet(hash)
+            torrentId = added
+            var info: RdTorrentInfo = rd.torrentInfo(added)
+            // A new magnet lists its files once Real-Debrid has read it.
+            for (step in 0 until 6) {
+                if (info.files.isNotEmpty()) break
+                Thread.sleep(500)
+                info = rd.torrentInfo(added)
             }
-            links = rd.waitForTorrentLinks(torrentId)
+            val picked = TvmEpisodeMatch.pickFile(
+                info.files.map { TvmEpisodeMatch.File(it.id, it.path, it.bytes) },
+                season, episode, fileIdx,
+            )
+            if (picked == null) {
+                Log.i(TAG, "no file in this torrent is S${season}E${episode}; skipping it")
+                runCatching { rd.deleteTorrent(added) }
+                return 409 to Json.obj("kind" to "unavailable", "reason" to "empty")
+            }
+            try {
+                rd.selectTorrentFiles(added, picked.id.toString())
+            } catch (_: Throwable) {
+                // Already-selected torrents answer 400; the links poll below decides.
+            }
+            links = rd.waitForTorrentLinks(added, files = picked.id.toString())
         } catch (error: Throwable) {
             if (isAuthFailure(error)) return 409 to Json.obj("kind" to "unavailable", "reason" to "needs-auth")
+            torrentId?.let { id -> runCatching { rd.deleteTorrent(id) } }
             return 409 to Json.obj("kind" to "unavailable", "reason" to "empty")
         }
         var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to "empty")
+        // Only the chosen file is selected, so its link is the only one; any
+        // other link (a torrent selected before) is checked by name below.
         for (link in links.take(6)) {
             val result = playFromLink(link, mediaId)
+            if (result.first == 200 && !rightFile(result, season, episode)) continue
             if (result.first == 200) return result
             last = result.second
             if (last.text("reason", "") == "needs-auth") return result
         }
         return 409 to last
+    }
+
+    /** The file found is not another episode or an extra (TvmEpisodeMatch). */
+    private fun rightFile(result: Pair<Int, JSONObject>, season: Int?, episode: Int?): Boolean {
+        val name = result.second.text("filename", "")
+        val fit = TvmEpisodeMatch.fit(name, season, episode)
+        if (fit == TvmEpisodeMatch.Fit.WRONG) Log.w(TAG, "skipped $name: not S${season}E${episode}")
+        return fit != TvmEpisodeMatch.Fit.WRONG
     }
 
     private fun streamReply(
@@ -837,6 +884,12 @@ class TvmMedia(
         return 0
     }
 
+    /**
+     * A copy of this title already in the person's library: for an episode,
+     * only a file numbered as that very episode; for a film, one that is not
+     * an episode or an extra. Any title match used to do, and a pack fell back
+     * to its first file, so every episode played S01E01 (TvmEpisodeMatch).
+     */
     private suspend fun findLibraryPlayback(title: String, season: Int?, episode: Int?): String? {
         val library: List<MediaItem> = libraryOrEmpty()
         val matches: List<MediaItem> = library.filter { item ->
@@ -844,18 +897,27 @@ class TvmMedia(
                 TvmTitle.titlesMatch(item.showTitle ?: "", title) ||
                 TvmTitle.titlesMatch(item.filename ?: "", title)
         }
-        val direct = matches.firstOrNull { !TvmTitle.looksLikePack(it.title, it.filename ?: "") }
+        fun fits(item: MediaItem): Boolean {
+            val name = item.filename?.takeIf { it.isNotEmpty() } ?: item.title
+            if (season != null && episode != null && item.season != null && item.episode != null) {
+                return item.season == season && item.episode == episode && !TvmEpisodeMatch.isExtra(name)
+            }
+            val fit = TvmEpisodeMatch.fit(name, season, episode)
+            return if (season != null && episode != null) fit == TvmEpisodeMatch.Fit.MATCH else fit != TvmEpisodeMatch.Fit.WRONG
+        }
+        val direct = matches.firstOrNull { !TvmTitle.looksLikePack(it.title, it.filename ?: "") && fits(it) }
         if (direct != null) return direct.id
+        if (season == null || episode == null) return null
         for (pack in matches.filter { it.id.startsWith("rd:t:") }.take(8)) {
             val kids: List<MediaItem> = try {
                 loadChildren(pack.id)
             } catch (_: Throwable) {
                 continue
             }
-            val picked = kids.firstOrNull { it.season == season && it.episode == episode } ?: kids.firstOrNull()
+            val picked = kids.firstOrNull { fits(it) }
             if (picked != null) return picked.id
         }
-        return matches.firstOrNull()?.id
+        return null
     }
 
     private fun applyProgress(items: List<MediaItem>, progress: Map<String, ProgressEntry>): List<MediaItem> =

@@ -20,10 +20,36 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object TvmArtTrust {
     private val distrusted: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    @Volatile private var file: java.io.File? = null
+
+    /**
+     * Called when titles are newly found to carry another title's artwork, so
+     * pictures already on screen (Home shows its last copy, and the phone's
+     * picture cache, before the catalog is fetched) are replaced as well.
+     */
+    @Volatile var onDistrusted: ((Set<String>) -> Unit)? = null
+
+    /**
+     * Kept on the phone, so the next launch knows before its first picture is
+     * asked for. Without this, Home drew its saved copy, with SVU's poster on
+     * David, before the catalog was read again.
+     */
+    fun attach(store: java.io.File) {
+        file = store
+        runCatching {
+            if (store.isFile) {
+                val ids = org.json.JSONArray(store.readText())
+                for (i in 0 until ids.length()) distrusted.add(ids.getString(i).lowercase(Locale.US))
+            }
+        }
+    }
     private val METAHUB = Regex("""^https?://(?:images|episodes|live)\.metahub\.space/.*?\b(tt\d+)\b""", RegexOption.IGNORE_CASE)
 
     fun distrust(ids: Collection<String>) {
-        ids.forEach { distrusted.add(it.lowercase(Locale.US)) }
+        val added = ids.map { it.lowercase(Locale.US) }.filter { distrusted.add(it) }.toSet()
+        if (added.isEmpty()) return
+        file?.let { target -> runCatching { target.writeText(org.json.JSONArray(distrusted.sorted()).toString()) } }
+        onDistrusted?.invoke(added)
     }
 
     fun isDistrusted(id: String): Boolean = distrusted.contains(id.lowercase(Locale.US))

@@ -146,9 +146,10 @@ try {
   await step('it has the "I\'m a dev" button', 30, async () =>
     (await evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === \"I'm a dev\")")) === true);
 
-  // The keyboard: opening it resizes the page once. Taken off the visible
-  // area a second time as well (the WebView applying the keyboard's inset
-  // after the window had already made room) it jolted twice.
+  // The keyboard slides over the page: the page is not resized for it and
+  // nothing on it moves (one owner, tvm-android.js 6b). The app tells the page
+  // the keyboard's height once instead. Resizing it as well made the page
+  // relayout and scroll in several steps: the jolts on Search and Accounts.
   const field = await evaluate(`(() => {
     const input = document.querySelector('.gate input');
     if (!input) return null;
@@ -170,19 +171,17 @@ try {
     adb('shell', 'input', 'tap', String(Math.round(at.x)), String(Math.round(at.y)));
     await sleep(2500);
     const seen = JSON.parse(await evaluate('JSON.stringify(window.__kb || [])')).map((k) => k.split(',').map(Number));
-    const first = seen[0];
-    const last = seen[seen.length - 1];
-    if (!first || !last || last[0] >= first[0]) {
-      annotate('notice', `keyboard: it did not resize the page on this emulator (${JSON.stringify(seen)})`);
+    const told = JSON.parse(await evaluate(`JSON.stringify({ open: document.documentElement.classList.contains('tvm-ime-open'), px: parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tvma-kb')) || 0 })`));
+    if (!told.open) {
+      annotate('notice', `keyboard: the emulator showed no keyboard (${JSON.stringify(seen)})`);
     } else {
-      if (Math.abs(last[1] - last[0]) > 2) throw new Error(`keyboard: the visible area is ${last[0] - last[1]}px smaller than the page after it resized (the keyboard counted twice): ${JSON.stringify(seen)}`);
-      // How often the field moved is reported, not judged: on this screen the
-      // field is centred, so the resize moves it once, and the emulator's own
-      // keyboard has been seen to nudge the page a few pixels as it starts.
-      const tops = new Set(seen.map((k) => k[2]));
-      const resizes = new Set(seen.map((k) => k[0])).size - 1;
-      if (resizes > 1) throw new Error(`keyboard: the page was resized ${resizes} times while it opened: ${JSON.stringify(seen)}`);
-      annotate('notice', `keyboard: one resize, ${first[0]}→${last[0]}px, visible area matches; field positions ${JSON.stringify([...tops])}`);
+      const heights = new Set(seen.map((k) => k[0]));
+      const visible = new Set(seen.map((k) => k[1]));
+      const tops = seen.map((k) => k[2]);
+      if (heights.size > 1 || visible.size > 1) throw new Error(`keyboard: the page was resized for it (${JSON.stringify(seen)})`);
+      if (Math.max(...tops) - Math.min(...tops) > 2) throw new Error(`keyboard: the field moved as it opened (${JSON.stringify(seen)})`);
+      if (told.px < 100) throw new Error(`keyboard: the page was not told its height (${JSON.stringify(told)})`);
+      annotate('notice', `keyboard: ${told.px}px over the page, page ${seen[0][0]}px unchanged, field still at ${tops[0]}px`);
     }
     await evaluate('document.activeElement && document.activeElement.blur(), true');
     await sleep(800);
