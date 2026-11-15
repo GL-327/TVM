@@ -19,6 +19,7 @@ struct RdTorrentFile {
     var id: Int
     var path: String
     var selected: Int
+    var bytes: Int64 = 0
 }
 
 struct RdTorrentInfo {
@@ -46,6 +47,8 @@ struct RdStream {
     var quality: Int
     var cached: Bool
     var phoneHint: Bool
+    /// The whole description (torrent name, the file in a pack, size), for TVMEpisodeMatch.
+    var details: String = ""
 }
 
 final class NoFollowRedirects: NSObject, URLSessionTaskDelegate {
@@ -189,7 +192,8 @@ final class TVMRealDebrid {
         }
         let files = (raw["files"] as? [[String: Any]] ?? []).compactMap { file -> RdTorrentFile? in
             guard let fileId = JSONValue.int(file["id"]), let path = file["path"] as? String else { return nil }
-            return RdTorrentFile(id: fileId, path: path, selected: JSONValue.int(file["selected"]) ?? 0)
+            return RdTorrentFile(id: fileId, path: path, selected: JSONValue.int(file["selected"]) ?? 0,
+                                 bytes: (file["bytes"] as? NSNumber)?.int64Value ?? 0)
         }
         let progress = (raw["progress"] as? Double)
             ?? (raw["progress"] as? NSNumber)?.doubleValue
@@ -220,11 +224,16 @@ final class TVMRealDebrid {
         _ = try await requestJSON("/torrents/selectFiles/\(id)", method: "POST", form: "files=\(JSONValue.formEncode(files))")
     }
 
-    func waitForTorrentLinks(_ id: String, attempts: Int = 10) async throws -> [String] {
+    /// Removes a torrent this app added and did not use, so it does not linger in the library.
+    func deleteTorrent(_ id: String) async throws {
+        _ = try await requestJSON("/torrents/delete/\(id)", method: "DELETE")
+    }
+
+    func waitForTorrentLinks(_ id: String, attempts: Int = 10, files: String = "all") async throws -> [String] {
         for step in 0..<attempts {
             let info = try await torrentInfo(id)
             if info.status == "waiting_files_selection" || (info.links.isEmpty && info.status == "downloaded") {
-                try? await selectTorrentFiles(id)
+                try? await selectTorrentFiles(id, files: files)
             }
             if !info.links.isEmpty, info.status == "downloaded" || info.progress >= 99 {
                 return info.links.filter { !$0.isEmpty }
@@ -372,7 +381,8 @@ final class TVMRealDebrid {
             fileIdx: JSONValue.int(raw["fileIdx"]) ?? JSONValue.int(raw["fileidx"]),
             quality: qualityScore(label),
             cached: cached,
-            phoneHint: phoneHint
+            phoneHint: phoneHint,
+            details: JSONValue.string(raw["title"]) ?? name
         )
     }
 

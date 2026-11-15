@@ -23,6 +23,7 @@ final class TVMCatalog {
     private var metaMem: [String: (at: Date, data: TitleMeta)] = [:]
     private let fallback: [MediaItem]
     private let lock = NSLock()
+    private var popularityMem: [String: (at: Date, value: Double)] = [:]
 
     init(store: TVMStore, session: URLSession) {
         self.store = store
@@ -103,9 +104,19 @@ final class TVMCatalog {
         if needle.count < 2 { return [] }
         let pathValue = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
         let encoded = needle.addingPercentEncoding(withAllowedCharacters: pathValue) ?? needle
-        let movies = await fetchCatalog("/catalog/movie/top/search=\(encoded).json", kind: "movie")
-        let series = await fetchCatalog("/catalog/series/top/search=\(encoded).json", kind: "series")
-        let live = dedupe(movies + series)
+        async let movieHits = fetchHits("/catalog/movie/top/search=\(encoded).json", kind: "movie")
+        async let seriesHits = fetchHits("/catalog/series/top/search=\(encoded).json", kind: "series")
+        let movies = await movieHits, series = await seriesHits
+        // Exact matches of both kinds ("Dexter" the series and a film of the
+        // same name) are told apart by each record's own popularity.
+        var standing: [String: Double] = [:]
+        await withTaskGroup(of: (String, Double?).self) { group in
+            for hit in TVMSearchRank.contenders(needle, movies: movies, series: series) {
+                group.addTask { (hit.item.id, await self.popularity(kind: hit.item.kind, id: hit.item.id)) }
+            }
+            for await (id, value) in group { if let value { standing[id] = value } }
+        }
+        let live = TVMSearchRank.rank(needle, movies: movies, series: series, standing: standing)
         if !live.isEmpty { return live }
         let lower = needle.lowercased()
         return fallback.filter {
@@ -169,7 +180,37 @@ final class TVMCatalog {
         }
     }
 
+    /// A title's Stremio popularity (or Trakt watchers when that is all there is), kept for a day.
+    private func popularity(kind: String, id: String) async -> Double? {
+        let key = "\(kind):\(id)"
+        lock.lock()
+        if let hit = popularityMem[key], Date().timeIntervalSince(hit.at) < 86_400 { lock.unlock(); return hit.value }
+        lock.unlock()
+        guard let url = URL(string: "https://v3-cinemeta.strem.io/meta/\(kind)/\(id).json") else { return nil }
+        var request = URLRequest(url: url)
+        // Ranking extras are worth a short wait only; without them the order still holds.
+        request.timeoutInterval = 4
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let meta = body["meta"] as? [String: Any] else { return nil }
+        let value = (meta["popularity"] as? NSNumber)?.doubleValue
+            ?? ((meta["popularities"] as? [String: Any])?["trakt"] as? NSNumber).map { $0.doubleValue / 1000 }
+            ?? 0
+        lock.lock()
+        if popularityMem.count > 500 { popularityMem.removeAll() }
+        popularityMem[key] = (Date(), value)
+        lock.unlock()
+        return value
+    }
+
     private func fetchCatalog(_ path: String, kind: String) async -> [MediaItem] {
+        await fetchHits(path, kind: kind).map(\.item)
+    }
+
+    /// One catalog answer in Cinemeta's order. Titles filed under another
+    /// title's record keep their name but not its artwork (TVMArtTrust).
+    private func fetchHits(_ path: String, kind: String) async -> [TVMSearchRank.Hit] {
         guard let url = URL(string: "https://v3-cinemeta.strem.io\(path)") else { return [] }
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
@@ -179,7 +220,11 @@ final class TVMCatalog {
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                   let body = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let metas = body["metas"] as? [[String: Any]] else { return [] }
-            return metas.compactMap { mapMeta($0, kind: kind) }
+            TVMArtTrust.distrust(TVMArtTrust.crossLinked(metas))
+            return metas.enumerated().compactMap { index, raw in
+                if TVMArtTrust.markedDuplicate(raw["name"] as? String ?? "") { return nil }
+                return mapMeta(raw, kind: kind).map { TVMSearchRank.Hit(item: $0, index: index) }
+            }
         } catch {
             return []
         }
