@@ -1189,8 +1189,10 @@
         var btn = reactTile(p.id);
         // Reached through Settings: the way back passes Settings, which is not
         // to be seen (syncWho lifts the veil once Home is back).
-        if (btn && profilesViaPopup) veil(true);
-        if (btn) { press(btn); setTimeout(function () { loadProfiles(true); }, 400); }
+        if (!btn) return;
+        tile.classList.add('tvma-who__tile--picked');
+        intoHome(function () { press(btn); });
+        setTimeout(function () { loadProfiles(true); }, 400);
       });
       grid.appendChild(tile);
     });
@@ -1846,6 +1848,130 @@
     whenThere('.app__screen:not([inert]) nav.ribbon--tabs [data-focus-id="' + id + '"]', function (b) { b.click(); });
   }, true);
 
+  // ---- 17d. The pill's entrance, the You popup closing, "Who's watching?" → Home ---------
+
+  // Three moments that used to cut: the bar appeared whole in one frame, the
+  // You popup vanished the instant it closed, and choosing a profile swapped
+  // the chooser for Home with everything arriving separately. None of this
+  // touches the tab and page crossfade (section 17): the bar's entrance plays
+  // once per session start (never on a tab change), and the profile → Home
+  // move has its own transition, marked by its own class while it runs.
+
+  // The bar: frame first, then its tabs one after another, then the lit tab.
+  var pillEntered = false;
+  function pillEntrance() {
+    pillEntered = true;
+    if (off()) return;
+    root.classList.remove('tvma-pill-enter');
+    void root.offsetWidth;
+    root.classList.add('tvma-pill-enter');
+    setTimeout(function () { root.classList.remove('tvma-pill-enter'); }, 1100);
+  }
+  function syncPillEntrance() {
+    if (pillEntered) return;
+    // Not behind the starting logo or the chooser: there, it plays as Home appears.
+    if (window.tvmaFreshState && window.tvmaFreshState() !== 'done') return;
+    if (document.querySelector('.tvma-who, .modal-layer[data-screen="player"]') || root.classList.contains('tvm-cinema')) return;
+    var layer = tabLayer();
+    if (!layer || layer.querySelector('[data-tvma-placeholder], .loading-state--plate') || !realTab('home-dock')) return;
+    pillEntrance();
+  }
+
+  // The You popup closes the way it opened, briefly, before the interface
+  // removes it. Its rows are never held back: only closing without choosing
+  // (the dimmed area, You again, Back) waits for the short fade.
+  var sheetClosing = false;
+  function closeSheetGently(then) {
+    var sheet = document.querySelector('.app__screen:not([inert]) .ribbon-sheet');
+    if (!sheet || off()) { then(); return; }
+    sheetClosing = true;
+    root.classList.add('tvma-sheet-closing');
+    var finished = false;
+    var finish = function () {
+      if (finished) return;
+      finished = true;
+      sheetClosing = false;
+      then();
+      whenGone('.app__screen:not([inert]) .ribbon-sheet', function () { root.classList.remove('tvma-sheet-closing'); });
+    };
+    sheet.addEventListener('animationend', finish, { once: true });
+    setTimeout(finish, 190);
+  }
+  document.addEventListener('click', function (event) {
+    if (bypass) return;
+    var t = event.target;
+    if (!t || !t.closest) return;
+    var open = document.querySelector('.app__screen:not([inert]) .ribbon-sheet');
+    if (!open) return;
+    var target = t.closest('.ribbon-sheet__scrim') || t.closest('.app__screen:not([inert]) nav.ribbon--tabs [data-focus-id="more"]');
+    if (!target) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (sheetClosing) return;
+    closeSheetGently(function () { press(target); });
+  }, true);
+  backHandlers.push(function () {
+    var scrim = document.querySelector('.app__screen:not([inert]) .ribbon-sheet__scrim');
+    if (!scrim || sheetClosing) return !!scrim;
+    closeSheetGently(function () { press(scrim); });
+    return true;
+  });
+
+  // "Who's watching?" → Home: the chosen face answers the tap, the chooser
+  // fades into Home, the featured title and the first rows rise into place,
+  // and the bar makes its entrance. It waits for Home to be really there (half
+  // a second at most) and adds no screen of its own.
+  var intoHomeRun = null;
+  function intoHome(pick) {
+    if (off() || typeof document.startViewTransition !== 'function') { pick(); pillEntered = false; return; }
+    root.classList.add('tvma-who-exit');
+    // Opened through Settings (as at launch): the way back passes Settings.
+    var viaSettings = profilesViaPopup;
+    var cleanup = function () {
+      if (intoHomeRun !== t) return;
+      intoHomeRun = null;
+      root.classList.remove('tvma-who-exit');
+    };
+    var t = document.startViewTransition(function () {
+      return new Promise(function (resolve) {
+        // The face's own answer to the tap is seen before the picture is taken.
+        setTimeout(function () {
+          pick();
+          var t0 = performance.now();
+          var stepped = false;
+          (function wait() {
+            var layer = tabLayer();
+            // Reached through Settings: step back past it here, while the
+            // chooser's picture still covers the screen (the browser holds
+            // frames during the transition, so the usual hop, which waits
+            // for frames, would only happen after it).
+            if (viaSettings && !stepped && layer && layer.getAttribute('data-screen') === 'settings' &&
+                !document.querySelector('.app__screen:not([inert]) .page--profiles')) {
+              stepped = true;
+              profilesViaPopup = false;
+              window.dispatchEvent(new Event('tvm:navigate-back'));
+            }
+            var there = !document.querySelector('.app__screen:not([inert]) .page--profiles') && !!layer && !!realTab('more') &&
+              !(viaSettings && layer.getAttribute('data-screen') === 'settings') &&
+              !layer.querySelector('[data-tvma-placeholder], .loading-state--plate');
+            if (!there && performance.now() - t0 < 1200) { setTimeout(wait, 16); return; }
+            try { syncAll(); } catch (e) { /* pictured as it is */ }
+            root.classList.remove('tvma-routing');
+            if (layer && layer.getAttribute('data-screen') === 'home') {
+              root.classList.add('tvma-home-reveal');
+              setTimeout(function () { root.classList.remove('tvma-home-reveal'); }, 1200);
+            }
+            setTimeout(pillEntrance, 260);
+            resolve();
+          })();
+        }, 110);
+      });
+    });
+    intoHomeRun = t;
+    t.finished.then(cleanup, cleanup);
+    setTimeout(function () { if (intoHomeRun === t) { try { t.skipTransition(); } catch (e) { /* over */ } cleanup(); } }, 2500);
+  }
+
   // ---- 18. Details: Back at the top left -------------------------------------------
 
   function syncDetailsBack() {
@@ -2360,6 +2486,7 @@
       queued = false;
       if (!root.classList.contains('tvm-android')) root.classList.add('tvm-android');
       markPlaceholders();
+      syncPillEntrance();
       syncPill();
       syncSearch();
       syncPlayer();
