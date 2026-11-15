@@ -22,7 +22,7 @@ xcrun simctl bootstatus "$UDID" -b
 xcrun simctl ui "$UDID" appearance dark || true
 xcrun simctl install "$UDID" "$APP"
 xcrun simctl launch "$UDID" com.tvm.privateclient -TVMSmokeTour
-for i in $(seq -w 1 24); do
+for i in $(seq -w 1 40); do
   sleep 3
   xcrun simctl io "$UDID" screenshot "$OUT/tour-$i.png" >/dev/null 2>&1 || true
 done

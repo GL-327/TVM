@@ -234,6 +234,11 @@ struct TVMWebView: UIViewControllerRepresentable {
         configuration.userContentController.addUserScript(viewport)
         configuration.userContentController.addUserScript(device)
         configuration.userContentController.addUserScript(lang)
+        if let token = TVMShellScripts.tourToken {
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: "try{if(!localStorage.getItem('tvm.account.token'))localStorage.setItem('tvm.account.token',\(TVMShellScripts.jsString(token)));}catch(e){}",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         // The phone look shared with Android, with the iOS layer (TVMShell.swift).
         let overlay = TVMShellScripts.overlay(glassBar: true)
         if !overlay.isEmpty {

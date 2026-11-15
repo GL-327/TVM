@@ -11,6 +11,9 @@ import WebKit
 /// a small iOS layer (`apps/ios/shell/tvm-ios.{js,css}`). They ship inside
 /// the app, not in the interface feed, so a newer interface keeps them.
 enum TVMShellScripts {
+    /// CI's simulator tour signs in with a test account (debug builds only).
+    static var tourToken: String?
+
     static func file(_ name: String, _ ext: String) -> String {
         guard let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "BundledUI/shell"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
