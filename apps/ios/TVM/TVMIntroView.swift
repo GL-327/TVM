@@ -113,7 +113,10 @@ final class TVMIntroUIView: UIView {
             while i < lengths.count - 1 && lengths[i] < at { i += 1 }
             let span = max(0.0001, lengths[i] - lengths[i - 1])
             let f = (at - lengths[i - 1]) / span
-            return CGPoint(x: points[i - 1].x + (points[i].x - points[i - 1].x) * f, y: points[i - 1].y + (points[i].y - points[i - 1].y) * f)
+            let from: CGPoint = points[i - 1], to: CGPoint = points[i]
+            let x: CGFloat = from.x + (to.x - from.x) * f
+            let y: CGFloat = from.y + (to.y - from.y) * f
+            return CGPoint(x: x, y: y)
         }
 
         func segment(_ from: CGFloat, _ to: CGFloat) -> CGPath {
@@ -127,7 +130,9 @@ final class TVMIntroUIView: UIView {
     }
 
     private func toView(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-        CGPoint(x: (x - Self.contentCX) * unit + bounds.width / 2, y: (y - Self.contentCY) * unit + bounds.height / 2)
+        let vx: CGFloat = (x - Self.contentCX) * unit + bounds.width / 2
+        let vy: CGFloat = (y - Self.contentCY) * unit + bounds.height / 2
+        return CGPoint(x: vx, y: vy)
     }
 
     private func polygonPoints(_ flat: [CGFloat]) -> [CGPoint] {
@@ -157,9 +162,13 @@ final class TVMIntroUIView: UIView {
     }
 
     private func quad(from a: CGPoint, control c: CGPoint, to b: CGPoint, steps: Int = 8) -> [CGPoint] {
-        (1...steps).map { s in
-            let t = CGFloat(s) / CGFloat(steps), u = 1 - t
-            return CGPoint(x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y)
+        (1...steps).map { (s: Int) -> CGPoint in
+            let t: CGFloat = CGFloat(s) / CGFloat(steps)
+            let u: CGFloat = 1 - t
+            let wa: CGFloat = u * u, wc: CGFloat = 2 * u * t, wb: CGFloat = t * t
+            let x: CGFloat = wa * a.x + wc * c.x + wb * b.x
+            let y: CGFloat = wa * a.y + wc * c.y + wb * b.y
+            return CGPoint(x: x, y: y)
         }
     }
 
