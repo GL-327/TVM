@@ -400,6 +400,22 @@ final class TVMAccounts {
         resolve(token: token)?.rdToken
     }
 
+    #if DEBUG
+    /// CI's simulator screenshot tour only (debug builds, -TVMSmokeTour): a
+    /// switched-on test account, so the tour can reach Home. Not compiled
+    /// into the app people install.
+    func smokeTourToken() -> String? {
+        let email = "tour@tvm.test", password = "simulator-tour-only"
+        _ = register(email: email, password: password, displayName: "Tour", client: "ci-tour")
+        guard case .success(let first) = signIn(email: email, password: password, client: "ci-tour"),
+              let id = (first["account"] as? [String: Any])?["id"] as? String else { return nil }
+        _ = activate(id: id, tier: "stream", note: "CI simulator tour")
+        _ = acceptTerms(id: id)
+        guard case .success(let session) = signIn(email: email, password: password, client: "ci-tour") else { return nil }
+        return session["token"] as? String
+    }
+    #endif
+
     func acceptTerms(id: String) -> [String: Any]? {
         var (accounts, sessions) = load()
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return nil }

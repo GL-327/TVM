@@ -42,6 +42,9 @@ final class StandaloneRuntime: ObservableObject {
         // already current. If the network is slow we still open, and reload
         // when the download finishes.
         TVMBundledUI.prepare(store: core.store)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { TVMShellScripts.tourToken = core.accounts.smokeTourToken() }
+        #endif
         await TVMUpdater.waitForLaunchApply(store: core.store, session: TVMUpdater.downloadSession())
         do {
             let server = TVMLocalServer(core: core)
