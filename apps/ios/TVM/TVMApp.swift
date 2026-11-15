@@ -111,8 +111,14 @@ struct ActiveConnection: Identifiable {
 
 struct StandaloneRoot: View {
     @StateObject private var runtime = StandaloneRuntime()
+    // The constructed-logo reveal (TVMIntro, as on Android), until the logo is
+    // complete and the page (with "Who's watching?") is ready under it.
+    @State private var revealed = false
+    @State private var pageReady = false
+    @State private var introGone = false
 
     var body: some View {
+        ZStack {
         Group {
             if let session = runtime.session {
                 PlayerShell(session: session, onUseLocal: runtime.useLocal)
@@ -130,6 +136,32 @@ struct StandaloneRoot: View {
             }
         }
         .task { await runtime.start() }
+            if !introGone {
+                TVMIntro { revealed = true; dismissIntroIfReady() }
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tvmPageReady)) { _ in
+            pageReady = true
+            dismissIntroIfReady()
+        }
+        .onChange(of: runtime.error) { error in
+            if error != nil { pageReady = true; dismissIntroIfReady() }
+        }
+    }
+
+    private func dismissIntroIfReady() {
+        guard revealed, !introGone else { return }
+        if pageReady {
+            withAnimation(.easeOut(duration: 0.35)) { introGone = true }
+        } else {
+            // A slow start: the finished logo holds (breathing) for a while, then the app shows anyway.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                if !introGone { withAnimation(.easeOut(duration: 0.35)) { introGone = true } }
+            }
+        }
     }
 }
 

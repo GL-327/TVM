@@ -567,6 +567,23 @@ struct TVMWebView: UIViewControllerRepresentable {
                 freshLaunch = false
                 webView.evaluateJavaScript("(function(){try{return window.tvmaFreshLaunch?String(window.tvmaFreshLaunch('start')):'none'}catch(e){return 'none'}})()")
                 if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { smokeTour(webView) }
+                // The logo stays until "Who's watching?" is up (three seconds at most), as on Android.
+                announceReadyWhenChooserIsUp(webView, tries: 0)
+            } else {
+                NotificationCenter.default.post(name: .tvmPageReady, object: nil)
+            }
+        }
+
+        private func announceReadyWhenChooserIsUp(_ webView: WKWebView, tries: Int) {
+            webView.evaluateJavaScript("(function(){try{return window.tvmaFreshState?window.tvmaFreshState():'done'}catch(e){return 'done'}})()") { result, _ in
+                if (result as? String) != "pending" || tries >= 20 {
+                    NotificationCenter.default.post(name: .tvmPageReady, object: nil)
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak webView] in
+                        guard let self, let webView else { return }
+                        self.announceReadyWhenChooserIsUp(webView, tries: tries + 1)
+                    }
+                }
             }
         }
         /// CI's screenshot tour (apps/ios/smoke/tour.sh): the main screens in turn,
