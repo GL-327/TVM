@@ -177,7 +177,10 @@ final class DroppingServer: URLProtocol {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if from == 0 {
             client?.urlProtocol(self, didLoad: Self.body.prefix(Self.cut))
-            client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+            // The connection drops after part of the file has arrived.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { [self] in
+                client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+            }
         } else {
             client?.urlProtocol(self, didLoad: Self.body.suffix(from: from))
             client?.urlProtocolDidFinishLoading(self)
