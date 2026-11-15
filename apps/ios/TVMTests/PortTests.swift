@@ -176,11 +176,9 @@ final class DroppingServer: URLProtocol {
         let response = HTTPURLResponse(url: request.url!, statusCode: from > 0 ? 206 : 200, httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if from == 0 {
+            // The connection ends after part of the file: fewer bytes than its length said.
             client?.urlProtocol(self, didLoad: Self.body.prefix(Self.cut))
-            // The connection drops after part of the file has arrived.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { [self] in
-                client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
-            }
+            client?.urlProtocolDidFinishLoading(self)
         } else {
             client?.urlProtocol(self, didLoad: Self.body.suffix(from: from))
             client?.urlProtocolDidFinishLoading(self)
