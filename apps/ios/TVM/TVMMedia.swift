@@ -293,7 +293,34 @@ final class TVMMedia {
         return pickContinue(applyProgress(store.recentMedia(for: activeProfile()) + items, progress), progress)
     }
 
-    func play(id: String?, link: String?, title: String?, season: Int?, episode: Int?) async -> (Int, [String: Any]) {
+    /// The copy to download for `id`: its address and file name. A download
+    /// takes a whole file (never a stream), in the asked-for audio language
+    /// and no taller than asked (within the plan).
+    func download(id: String, language: String, maxHeight: Int) async -> Result<(url: String, filename: String), Error> {
+        let parsed = TVMTitle.parsePlayId(id)
+        let result = await play(id: id, link: nil, title: nil, season: parsed?.season, episode: parsed?.episode,
+                                download: TVMDownloadPrefs(language: language, maxHeight: maxHeight))
+        if result.0 == 200, let url = result.1["url"] as? String, result.1["transport"] as? String != "hls" {
+            return .success((url, result.1["filename"] as? String ?? "TVM video.mkv"))
+        }
+        let reason = result.1["reason"] as? String ?? ""
+        let message: String
+        switch reason {
+        case "not-configured", "needs-auth": message = "Connect Real-Debrid in Settings to download."
+        case "mobile-plan-required": message = "Your plan does not include this phone."
+        case "hours-cap": message = "This month's viewing hours are used up."
+        default: message = language == "original" ? "No downloadable copy was found." : "No copy in that language was found."
+        }
+        return .failure(NSError(domain: "TVMDownloads", code: 2, userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+
+    /// Where playback of `id` stopped, for an offline copy to carry on from.
+    func resumePosition(_ id: String) -> Double? {
+        let progress = store.progress(for: activeProfile())[id]
+        return TVMTitle.progressRatio(progress).flatMap { _ in progress?.position }
+    }
+
+    func play(id: String?, link: String?, title: String?, season: Int?, episode: Int?, download: TVMDownloadPrefs? = nil) async -> (Int, [String: Any]) {
         guard plans.mobileAllowed() else { return (403, ["kind": "unavailable", "reason": "mobile-plan-required"]) }
         if plans.hoursBlocked(), let id, !id.hasPrefix("live:") {
             return (409, ["kind": "unavailable", "reason": "hours-cap"])
@@ -314,7 +341,8 @@ final class TVMMedia {
         if !wanted.isEmpty,
            let matched = await findLibraryPlayback(wanted, season: season, episode: episode),
            let owned = await resolveOwnedLink(matched) {
-            return await playFromLink(owned, mediaId: id ?? matched)
+            let result = await playFromLink(owned, mediaId: id ?? matched)
+            if download == nil || downloadable(result, download!) { return result }
         }
         if let imdb = await resolveImdb(id: id, title: title) {
             let parsed = id.flatMap { TVMTitle.parsePlayId($0) }
@@ -323,7 +351,8 @@ final class TVMMedia {
                 imdb,
                 season: season ?? parsed?.season ?? extra?.season,
                 episode: episode ?? parsed?.episode ?? extra?.episode,
-                mediaId: id ?? imdb
+                mediaId: id ?? imdb,
+                download: download
             )
         }
         return (409, ["kind": "unavailable", "reason": "not-in-library"])
@@ -468,7 +497,14 @@ final class TVMMedia {
         return nil
     }
 
-    private func playFromTorrentio(_ imdb: String, season: Int?, episode: Int?, mediaId: String?) async -> (Int, [String: Any]) {
+    /// A library copy may be downloaded: its language and size fit what was asked.
+    private func downloadable(_ result: (Int, [String: Any]), _ download: TVMDownloadPrefs) -> Bool {
+        guard result.0 == 200, result.1["transport"] as? String != "hls" else { return false }
+        let name = result.1["filename"] as? String ?? ""
+        return TVMLanguage.ok(name, language: download.language) && rd.streamHeight(name) <= min(download.maxHeight, plans.maxHeight())
+    }
+
+    private func playFromTorrentio(_ imdb: String, season: Int?, episode: Int?, mediaId: String?, download: TVMDownloadPrefs? = nil) async -> (Int, [String: Any]) {
         guard let token = rd.tokenValue() else {
             return (409, ["kind": "unavailable", "reason": "not-configured"])
         }
@@ -487,35 +523,47 @@ final class TVMMedia {
         }
         let streams = await rd.torrentioStreams(token: token, imdb: imdb, season: seasonNo, episode: episodeNo)
         if streams.isEmpty {
-            if let catalogTitle,
+            if download == nil, let catalogTitle,
                let matched = await findLibraryPlayback(catalogTitle, season: seasonNo, episode: episodeNo),
                let owned = await resolveOwnedLink(matched) {
                 return await playFromLink(owned, mediaId: matched)
             }
             return (409, ["kind": "unavailable", "reason": "empty"])
         }
-        let height = TVMDeviceChrome.playbackHeight(planMax: plans.maxHeight())
-        let capped = streams.filter { rd.streamHeight("\($0.name) \($0.title)") <= height }
-        let ranked = Array((capped.isEmpty ? streams : capped).prefix(8))
+        // A download takes the quality asked for (within the plan); playing takes this screen's.
+        let height = download.map { min($0.maxHeight, plans.maxHeight()) } ?? TVMDeviceChrome.playbackHeight(planMax: plans.maxHeight())
+        // A source whose file is named as another episode, or as a commentary
+        // edition or other extra, is not this episode (TVMEpisodeMatch). A
+        // download's audio language is a must.
+        let proper = streams.filter {
+            TVMEpisodeMatch.fit(TVMEpisodeMatch.sourceFile($0.details.isEmpty ? $0.title : $0.details), season: seasonNo, episode: episodeNo) != .wrong &&
+                (download == nil || TVMLanguage.ok("\($0.name) \($0.title) \($0.details)", language: download!.language))
+        }
+        if proper.isEmpty { return (409, ["kind": "unavailable", "reason": "empty"]) }
+        let capped = proper.filter { rd.streamHeight("\($0.name) \($0.title)") <= height }
+        // A download never takes a taller copy than asked for.
+        let ranked = Array((capped.isEmpty && download == nil ? proper : capped).prefix(8))
         var last = ["kind": "unavailable", "reason": "empty"] as [String: Any]
         for stream in ranked {
             if !stream.url.isEmpty {
                 let resolved = await rd.resolveRedirect(stream.url)
                 if let resolved, !rd.isTorrentioHost(resolved) {
                     let result = await playFromLink(resolved, mediaId: mediaId ?? imdb)
+                    if result.0 == 200 && !rightFile(result, season: seasonNo, episode: episodeNo) { continue }
+                    if result.0 == 200, download != nil, result.1["transport"] as? String == "hls" { continue }
                     if result.0 == 200 { return result }
                     last = result.1
                     if last["reason"] as? String == "needs-auth" { return result }
                 }
             }
             if let hash = stream.infoHash, !hash.isEmpty {
-                let magnet = await playFromMagnet(hash, mediaId: mediaId ?? imdb)
+                let magnet = await playFromMagnet(hash, mediaId: mediaId ?? imdb, season: seasonNo, episode: episodeNo, fileIdx: stream.fileIdx)
                 if magnet.0 == 200 { return magnet }
                 last = magnet.1
                 if last["reason"] as? String == "needs-auth" { return magnet }
             }
         }
-        if last["reason"] as? String == "empty",
+        if download == nil, last["reason"] as? String == "empty",
            let catalogTitle,
            let matched = await findLibraryPlayback(catalogTitle, season: seasonNo, episode: episodeNo),
            let owned = await resolveOwnedLink(matched) {
@@ -524,14 +572,31 @@ final class TVMMedia {
         return (409, last)
     }
 
-    private func playFromMagnet(_ hash: String, mediaId: String?) async -> (Int, [String: Any]) {
+    /// One file of a torrent: the episode (or film) asked for, never the whole
+    /// torrent and its first file (TVMEpisodeMatch). A torrent with no file
+    /// that fits is removed again, so it does not linger in the library.
+    private func playFromMagnet(_ hash: String, mediaId: String?, season: Int?, episode: Int?, fileIdx: Int?) async -> (Int, [String: Any]) {
+        var added: String?
         do {
             let torrentId = try await rd.addMagnet(hash)
-            try? await rd.selectTorrentFiles(torrentId)
-            let links = try await rd.waitForTorrentLinks(torrentId)
+            added = torrentId
+            var info = try await rd.torrentInfo(torrentId)
+            // A new magnet lists its files once Real-Debrid has read it.
+            for _ in 0..<6 where info.files.isEmpty {
+                try await Task.sleep(nanoseconds: 500_000_000)
+                info = try await rd.torrentInfo(torrentId)
+            }
+            guard let picked = TVMEpisodeMatch.pickFile(info.files.map { TVMEpisodeMatch.File(id: $0.id, path: $0.path, bytes: $0.bytes) },
+                                                       season: season, episode: episode, fileIdx: fileIdx) else {
+                try? await rd.deleteTorrent(torrentId)
+                return (409, ["kind": "unavailable", "reason": "empty"])
+            }
+            try? await rd.selectTorrentFiles(torrentId, files: String(picked.id))
+            let links = try await rd.waitForTorrentLinks(torrentId, files: String(picked.id))
             var last = ["kind": "unavailable", "reason": "empty"] as [String: Any]
             for link in links.prefix(6) {
                 let result = await playFromLink(link, mediaId: mediaId)
+                if result.0 == 200 && !rightFile(result, season: season, episode: episode) { continue }
                 if result.0 == 200 { return result }
                 last = result.1
                 if last["reason"] as? String == "needs-auth" { return result }
@@ -540,8 +605,15 @@ final class TVMMedia {
         } catch let error as RdClientError where error == .needsAuth || error == .notConfigured {
             return (409, ["kind": "unavailable", "reason": "needs-auth"])
         } catch {
+            if let added { try? await rd.deleteTorrent(added) }
             return (409, ["kind": "unavailable", "reason": "empty"])
         }
+    }
+
+    /// The file found is not another episode or an extra (TVMEpisodeMatch).
+    private func rightFile(_ result: (Int, [String: Any]), season: Int?, episode: Int?) -> Bool {
+        let name = result.1["filename"] as? String ?? ""
+        return TVMEpisodeMatch.fit(name, season: season, episode: episode) != .wrong
     }
 
     private func streamReply(url: String, title: String, filename: String, mime: String, transport: String, startAt: Double?) -> (Int, [String: Any]) {
@@ -668,21 +740,33 @@ final class TVMMedia {
         return 0
     }
 
+    /// A copy of this title already in the person's library: for an episode,
+    /// only a file numbered as that very episode; for a film, one that is not
+    /// an episode or an extra. Any title match used to do, and a pack fell
+    /// back to its first file, so every episode played S01E01 (TVMEpisodeMatch).
     private func findLibraryPlayback(_ title: String, season: Int?, episode: Int?) async -> String? {
         let library = (try? await loadLibrary()) ?? []
         let matches = library.filter {
             TVMTitle.titlesMatch($0.title, title) || TVMTitle.titlesMatch($0.showTitle ?? "", title) || TVMTitle.titlesMatch($0.filename ?? "", title)
         }
-        if let direct = matches.first(where: { !TVMTitle.looksLikePack(title: $0.title, filename: $0.filename ?? "") }) {
+        func fits(_ item: MediaItem) -> Bool {
+            let name = (item.filename?.isEmpty == false ? item.filename : nil) ?? item.title
+            if let season, let episode, let s = item.season, let e = item.episode {
+                return s == season && e == episode && !TVMEpisodeMatch.isExtra(name)
+            }
+            let fit = TVMEpisodeMatch.fit(name, season: season, episode: episode)
+            return (season != nil && episode != nil) ? fit == .match : fit != .wrong
+        }
+        if let direct = matches.first(where: { !TVMTitle.looksLikePack(title: $0.title, filename: $0.filename ?? "") && fits($0) }) {
             return direct.id
         }
+        guard season != nil, episode != nil else { return nil }
         for pack in matches.filter({ $0.id.hasPrefix("rd:t:") }).prefix(8) {
-            if let kids = try? await loadChildren(pack.id),
-               let picked = kids.first(where: { $0.season == season && $0.episode == episode }) ?? kids.first {
+            if let kids = try? await loadChildren(pack.id), let picked = kids.first(where: fits) {
                 return picked.id
             }
         }
-        return matches.first?.id
+        return nil
     }
 
     private func applyProgress(_ items: [MediaItem], _ progress: [String: ProgressEntry]) -> [MediaItem] {
