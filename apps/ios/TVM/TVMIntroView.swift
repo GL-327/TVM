@@ -185,15 +185,21 @@ final class TVMIntroUIView: UIView {
         trailUpper = polygon(g.trailUpper)
 
         // Star: cubic edges pulled towards the centre along each spoke.
-        let cx = g.starX, cy = g.starY
-        let tips = [(cx, cy - g.starUp), (cx + g.starSide, cy), (cx, cy + g.starDown), (cx - g.starSide, cy)]
+        let cx: CGFloat = g.starX, cy: CGFloat = g.starY
+        let top: (CGFloat, CGFloat) = (cx, cy - g.starUp)
+        let rightTip: (CGFloat, CGFloat) = (cx + g.starSide, cy)
+        let bottom: (CGFloat, CGFloat) = (cx, cy + g.starDown)
+        let leftTip: (CGFloat, CGFloat) = (cx - g.starSide, cy)
+        let tips: [(CGFloat, CGFloat)] = [top, rightTip, bottom, leftTip]
         starShape = CGMutablePath()
         starShape.move(to: toView(tips[0].0, tips[0].1))
         for i in 0..<4 {
-            let a = tips[i], b = tips[(i + 1) % 4], p = g.starPinch
-            starShape.addCurve(to: toView(b.0, b.1),
-                               control1: toView(a.0 + (cx - a.0) * p, a.1 + (cy - a.1) * p),
-                               control2: toView(b.0 + (cx - b.0) * p, b.1 + (cy - b.1) * p))
+            let a: (CGFloat, CGFloat) = tips[i]
+            let b: (CGFloat, CGFloat) = tips[(i + 1) % 4]
+            let p: CGFloat = g.starPinch
+            let c1x: CGFloat = a.0 + (cx - a.0) * p, c1y: CGFloat = a.1 + (cy - a.1) * p
+            let c2x: CGFloat = b.0 + (cx - b.0) * p, c2y: CGFloat = b.1 + (cy - b.1) * p
+            starShape.addCurve(to: toView(b.0, b.1), control1: toView(c1x, c1y), control2: toView(c2x, c2y))
         }
         starShape.closeSubpath()
         starCentre = toView(cx, cy)
