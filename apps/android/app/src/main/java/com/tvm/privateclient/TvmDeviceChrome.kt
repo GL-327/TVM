@@ -40,7 +40,6 @@ object TvmDeviceChrome {
 
         val bars = insets?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
         val cutout = insets?.displayCutout
-        val imeOpen = insets?.isVisible(WindowInsetsCompat.Type.ime()) == true
         val family = when {
             television -> "unknown"
             tablet -> "ipad"
@@ -71,7 +70,8 @@ object TvmDeviceChrome {
             "insetRight" to css(bars?.right),
             // With the keyboard up the navigation bar is behind it; the keyboard
             // inset already accounts for that space.
-            "insetBottom" to if (imeOpen) 0.0 else css(bars?.bottom),
+            // The keyboard slides over the page, which keeps its own bottom inset.
+            "insetBottom" to css(bars?.bottom),
             "insetLeft" to css(bars?.left),
             "extraTop" to extraTop,
             "extraBottom" to extraBottom,
@@ -84,6 +84,13 @@ object TvmDeviceChrome {
             "window.__tvmDevice=$profile;window.__tvmApplyDevice&&window.__tvmApplyDevice();",
             null,
         )
+    }
+
+    /** How far up the screen the keyboard reaches, in CSS pixels (0 when closed). */
+    fun keyboardHeight(activity: Activity, insets: WindowInsetsCompat?): Int {
+        if (insets == null || !insets.isVisible(WindowInsetsCompat.Type.ime())) return 0
+        val density = activity.resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+        return (insets.getInsets(WindowInsetsCompat.Type.ime()).bottom / density).roundToInt()
     }
 
     /** The on-screen keyboard's height over the page, in CSS pixels. */

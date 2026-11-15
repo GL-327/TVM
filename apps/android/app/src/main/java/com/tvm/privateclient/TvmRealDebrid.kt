@@ -38,6 +38,7 @@ data class RdTorrentFile(
     val id: Int,
     val path: String,
     val selected: Int,
+    val bytes: Long = 0,
 )
 
 data class RdTorrentInfo(
@@ -201,7 +202,7 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
         for (file in objectList(raw.opt("files"))) {
             val fileId = Json.int(file.opt("id")) ?: continue
             val path = file.opt("path") as? String ?: continue
-            files.add(RdTorrentFile(id = fileId, path = path, selected = Json.int(file.opt("selected")) ?: 0))
+            files.add(RdTorrentFile(id = fileId, path = path, selected = Json.int(file.opt("selected")) ?: 0, bytes = (file.opt("bytes") as? Number)?.toLong() ?: 0))
         }
         val progress = (raw.opt("progress") as? Number)?.toDouble()
             ?: (Json.int(raw.opt("progress")) ?: 0).toDouble()
@@ -231,12 +232,17 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
         requestJson("/torrents/selectFiles/$id", method = "POST", form = "files=" + Json.formEncode(files))
     }
 
-    suspend fun waitForTorrentLinks(id: String, attempts: Int = 10): List<String> {
+    /** Removes a torrent this app added and did not use, so it does not linger in the library. */
+    suspend fun deleteTorrent(id: String) {
+        requestJson("/torrents/delete/$id", method = "DELETE")
+    }
+
+    suspend fun waitForTorrentLinks(id: String, attempts: Int = 10, files: String = "all"): List<String> {
         for (step in 0 until attempts) {
             val info = torrentInfo(id)
             if (info.status == "waiting_files_selection" || (info.links.isEmpty() && info.status == "downloaded")) {
                 try {
-                    selectTorrentFiles(id)
+                    selectTorrentFiles(id, files)
                 } catch (_: Exception) {
                 }
             }

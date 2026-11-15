@@ -551,11 +551,11 @@
   // empty list's card) brought the keyboard up unasked.
   var fieldTapped = 0;
   var tappedField = null;
-  var TEXT_ENTRY = 'textarea, input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="url"], input[type="tel"], input[type="number"]';
+  var TEXT_FIELD = 'textarea, input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="url"], input[type="tel"], input[type="number"]';
   document.addEventListener('pointerdown', function (event) {
     var t = event.target;
     if (!t || !t.closest) return;
-    var field = t.closest(TEXT_ENTRY) || (t.closest('label') && t.closest('label').querySelector(TEXT_ENTRY)) ||
+    var field = t.closest(TEXT_FIELD) || (t.closest('label') && t.closest('label').querySelector(TEXT_FIELD)) ||
       (t.closest('.search-pill__field') && t.closest('.search-pill__field').querySelector('input'));
     tappedField = field || null;
     fieldTapped = field ? performance.now() : 0;
@@ -570,7 +570,7 @@
   }, true);
   document.addEventListener('focusin', function (event) {
     var t = event.target;
-    if (!t || !t.matches || !t.matches(TEXT_ENTRY)) return;
+    if (!t || !t.matches || !t.matches(TEXT_FIELD)) return;
     // The overlay's own sheets focus their fields when opened on purpose.
     if (t.closest('.tvma-sheet, .tvma-who, .player, [data-player]')) return;
     if (root.classList.contains('tvma-keys') || (tappedField === t && performance.now() - fieldTapped < 1500)) return;
@@ -690,6 +690,54 @@
     if (!discover) discover = buildDiscover();
     if (discover.parentNode !== panel) panel.appendChild(discover);
   }
+
+  // ---- 6b. The keyboard: one owner, no jumps ------------------------------------------------
+
+  // The app no longer resizes the page for the keyboard: it slides over the
+  // page, and the app reports its height here once (MainActivity.publishChrome).
+  // The page gets that much room at the bottom of its scroll, so everything
+  // can still be scrolled into view, and a field is lifted only when the
+  // keyboard would actually cover it, by scrolling its own list, never the
+  // page's header. Search and Developer Accounts, whose fields sit near the
+  // top, do not move at all.
+  var keyboardPx = 0;
+  function scrollerOf(el) {
+    for (var n = el && el.parentElement; n && n !== document.body; n = n.parentElement) {
+      var oy = getComputedStyle(n).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 1) return n;
+    }
+    return null;
+  }
+  var lifting = 0;
+  function liftAboveKeyboard() {
+    var field = document.activeElement;
+    if (!keyboardPx || !field || !field.matches || !field.matches(TEXT_FIELD)) return;
+    var limit = window.innerHeight - keyboardPx - 16;
+    var box = field.getBoundingClientRect();
+    if (box.bottom <= limit) return;
+    var scroller = scrollerOf(field);
+    if (!scroller) return;
+    var from = scroller.scrollTop;
+    var to = Math.min(scroller.scrollHeight - scroller.clientHeight, from + (box.bottom - limit));
+    var started = performance.now();
+    var run = ++lifting;
+    (function step(now) {
+      if (run !== lifting) return;
+      var t = Math.min(1, (now - started) / 220);
+      ownScroll(scroller, from + (to - from) * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(step);
+    })(started);
+  }
+  window.__tvmaKeyboard = function (px) {
+    var next = Math.max(0, Math.round(Number(px) || 0));
+    if (next === keyboardPx) return;
+    keyboardPx = next;
+    root.style.setProperty('--tvma-kb', next + 'px');
+    if (next) liftAboveKeyboard(); else lifting++;
+  };
+  document.addEventListener('focusin', function (event) {
+    if (keyboardPx && event.target && event.target.matches && event.target.matches(TEXT_FIELD)) requestAnimationFrame(liftAboveKeyboard);
+  });
 
   // ---- 7. Settings switches, Details, the player's turn to landscape ---------------------
 
@@ -2058,6 +2106,26 @@
     img.removeAttribute('data-tvma-broken');
     if (img.parentElement) img.parentElement.removeAttribute('data-tvma-nostill');
   }, true);
+
+  // ---- 18f. Artwork that turned out to be another title's -----------------------------
+
+  // The app tells the page when a title is found to carry another title's
+  // artwork (TvmArtTrust): David (1997) is filed under Law & Order: SVU's
+  // record upstream. A picture of it already on screen is dropped: the
+  // picture's own error handling then shows the title's card (posters) or the
+  // dark placeholder (episode stills).
+  window.__tvmaDropArt = function (ids) {
+    if (!ids || !ids.length) return;
+    var imgs = document.querySelectorAll('img[src*="metahub.space"]');
+    for (var i = 0; i < imgs.length; i++) {
+      var src = imgs[i].getAttribute('src') || '';
+      for (var j = 0; j < ids.length; j++) {
+        if (src.indexOf('/' + ids[j] + '/') < 0) continue;
+        imgs[i].dispatchEvent(new Event('error'));
+        break;
+      }
+    }
+  };
 
   // ---- 18d. Home hero: swipe between the featured titles ------------------------------
 
