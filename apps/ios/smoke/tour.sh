@@ -29,3 +29,9 @@ done
 # The last screen (Settings, reached from the You popup).
 xcrun simctl io "$UDID" screenshot "$OUT/tour-end.png" >/dev/null 2>&1 || true
 ls -la "$OUT"
+# Small copies in the log as well, for reviewers who cannot download artifacts.
+for f in "$OUT"/tour-*.png; do
+  name=$(basename "$f" .png)
+  sips -s format jpeg -s formatOptions 55 --resampleWidth 390 "$f" --out "$OUT/$name.jpg" >/dev/null 2>&1 || continue
+  echo "TOURIMG $name $(base64 < "$OUT/$name.jpg" | tr -d '\n')"
+done
