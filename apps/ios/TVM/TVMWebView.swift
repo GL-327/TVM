@@ -566,6 +566,27 @@ struct TVMWebView: UIViewControllerRepresentable {
             if freshLaunch {
                 freshLaunch = false
                 webView.evaluateJavaScript("(function(){try{return window.tvmaFreshLaunch?String(window.tvmaFreshLaunch('start')):'none'}catch(e){return 'none'}})()")
+                if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { smokeTour(webView) }
+            }
+        }
+        /// CI's screenshot tour (apps/ios/smoke/tour.sh): the main screens in turn,
+        /// driven as a person would, while the simulator is photographed.
+        private func smokeTour(_ webView: WKWebView) {
+            let steps: [(Double, String)] = [
+                (9, "var t=document.querySelector('.tvma-who__tile:not(.tvma-who__tile--add)'); if(t) t.click();"),
+                (16, "window.__tvmIosBarTap&&window.__tvmIosBarTap('search');"),
+                (21, "var f=document.querySelector('.search-pill input'); if(f){var set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; set.call(f,'Dexter'); f.dispatchEvent(new Event('input',{bubbles:true}));}"),
+                (30, "var p=document.querySelector('.search-pill__panel .poster, .search-pill__panel button.tvma-card, .search-pill__panel [data-focus-id^=\"search-result\"]'); if(p) p.click();"),
+                (38, "window.dispatchEvent(new Event('tvm:navigate-back')); setTimeout(function(){window.__tvmIosBarTap&&window.__tvmIosBarTap('live');},1200);"),
+                (45, "window.__tvmIosBarTap&&window.__tvmIosBarTap('watchlist');"),
+                (51, "window.__tvmIosBarTap&&window.__tvmIosBarTap('home-dock');"),
+                (56, "window.__tvmIosBarTap&&window.__tvmIosBarTap('more');"),
+                (61, "window.__tvmIosPopupRow&&window.__tvmIosPopupRow('more-settings');"),
+            ]
+            for (at, script) in steps {
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak webView] in
+                    webView?.evaluateJavaScript("(function(){try{\(script)}catch(e){}})()")
+                }
             }
         }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
