@@ -4704,3 +4704,112 @@ html.tvm-android .details .episode-item__still[data-tvma-nostill]::after {
 html.tvm-android.tvm-ime-open :is(.page, .details, .search-pill__panel, .tvma-sheet__body) {
   padding-bottom: calc(var(--tvma-kb, 0px) + 24px) !important;
 }
+
+/* ---- 37. The bar's entrance, the You popup closing, "Who's watching?" → Home ----------
+   (tvm-android.js 17d). Opacity and transform only, and nothing is left set
+   once they finish: the bar, the popup and Home rest exactly as before. The
+   tab and page crossfade (section 32 above) is not touched. */
+
+@keyframes tvma-pill-frame {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.965); }
+}
+
+@keyframes tvma-pill-tab {
+  from { opacity: 0; transform: translate3d(0, 5px, 0); }
+}
+
+@keyframes tvma-pill-lit {
+  from { color: var(--tvma-muted); }
+}
+
+/* Stage 1: the frame. */
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__frost {
+  animation: tvma-pill-frame 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Stage 2: the tabs, a few hundredths of a second apart. */
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__list--tabs > * {
+  animation: tvma-pill-tab 340ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: 140ms;
+}
+
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__list--tabs > :nth-child(2) { animation-delay: 175ms; }
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__list--tabs > :nth-child(3) { animation-delay: 210ms; }
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__list--tabs > :nth-child(4) { animation-delay: 245ms; }
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__list--tabs > :nth-child(5) { animation-delay: 280ms; }
+
+/* Stage 3: the lit tab takes its colour last. */
+html.tvm-android.tvma-pill-enter :is(.app__screen:not([inert]) nav.ribbon--tabs, nav.tvma-pill.tvma-pill--on) .ribbon__icon--on :is(.ribbon__glyph, .ribbon__label) {
+  animation: tvma-pill-lit 280ms ease 460ms both;
+}
+
+/* The You popup closing: the way it opened, backwards and a little quicker. */
+@keyframes tvma-pop-out {
+  to { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.97); }
+}
+
+@keyframes tvma-scrim-out {
+  to { opacity: 0; }
+}
+
+html.tvm-android.tvma-sheet-closing .ribbon--tabs .ribbon-sheet {
+  animation: tvma-pop-out 150ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+html.tvm-android.tvma-sheet-closing .ribbon-sheet__scrim {
+  animation: tvma-scrim-out 150ms ease-in both;
+  pointer-events: none;
+}
+
+/* Its rows settle just after the card itself. */
+@keyframes tvma-pop-row {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+}
+
+html.tvm-android .ribbon--tabs .ribbon-sheet .tvm-button.ribbon-sheet__row {
+  animation: tvma-pop-row 200ms cubic-bezier(0.2, 0.8, 0.2, 1) 40ms both;
+}
+
+/* "Who's watching?" → Home. The chosen face answers the tap. */
+@keyframes tvma-picked {
+  50% { transform: scale(0.94); }
+}
+
+html.tvm-android .tvma-who__tile--picked .tvma-who__face {
+  animation: tvma-picked 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* The chooser fades into Home a little more slowly than a tab change. */
+html.tvm-android.tvma-who-exit::view-transition-old(root) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.tvm-android.tvma-who-exit::view-transition-new(root) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Home's featured title, then its first rows, rise into place. */
+@keyframes tvma-rise {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+}
+
+html.tvm-android.tvma-home-reveal .home .stage--home .stage__copy > * {
+  animation: tvma-rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) 120ms both;
+}
+
+html.tvm-android.tvma-home-reveal .home .stage--home .stage__copy > :nth-child(2) { animation-delay: 165ms; }
+html.tvm-android.tvma-home-reveal .home .stage--home .stage__copy > :nth-child(3) { animation-delay: 210ms; }
+html.tvm-android.tvma-home-reveal .home .stage--home .stage__copy > :nth-child(n + 4) { animation-delay: 255ms; }
+
+html.tvm-android.tvma-home-reveal .home .rail:nth-of-type(-n + 3) {
+  animation: tvma-rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) 280ms both;
+}
+
+/* Reduced motion and performance mode: everything appears at once, as before. */
+html.tvm-android:is([data-perf='on'], [data-motion='reduced']) :is(.ribbon__frost, .ribbon__list--tabs > *, .ribbon__glyph, .ribbon__label, .ribbon-sheet__row, .tvma-who__face, .stage__copy > *, .rail) {
+  animation-name: none !important;
+}
+
