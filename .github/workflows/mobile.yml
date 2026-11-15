@@ -251,6 +251,13 @@ jobs:
           test -f apps/ios/TVM/BundledUI/index.html
           test -f apps/ios/TVM/BundledUI/changelog.json
           test -d apps/ios/TVM/BundledUI/assets
+      - name: Use the newest installed Xcode
+        # Liquid Glass (the tab bar and You popup) needs the iOS 26 SDK; with an
+        # older Xcode the app builds with its translucent-material fallback.
+        run: |
+          latest=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest/Contents/Developer"; fi
+          xcodebuild -version
       - name: Validate Xcode project (standalone app + bundled UI)
         run: node apps/ios/check-project.mjs
       - name: Install native playback framework
