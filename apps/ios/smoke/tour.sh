@@ -2,6 +2,7 @@
 # CI: launch the simulator build with a scripted tour of the main screens
 # (TVMWebView.smokeTour) and photograph the screen every 3 seconds.
 set -uo pipefail
+command -v timeout >/dev/null 2>&1 || timeout() { shift; "$@"; }
 cd "$(dirname "$0")/.."
 OUT=build/tour
 mkdir -p "$OUT"
@@ -18,16 +19,16 @@ for preferred in ("iPhone 17 Pro", "iPhone 16 Pro", "iPhone 16", "iPhone 15"):
 print(names[0][1] if names else "")')
 [ -n "$UDID" ] || { echo "no iPhone simulator"; exit 1; }
 xcrun simctl boot "$UDID" 2>/dev/null || true
-xcrun simctl bootstatus "$UDID" -b
+timeout 180 xcrun simctl bootstatus "$UDID" -b || true
 xcrun simctl ui "$UDID" appearance dark || true
-xcrun simctl install "$UDID" "$APP"
-xcrun simctl launch "$UDID" com.tvm.privateclient -TVMSmokeTour
+timeout 120 xcrun simctl install "$UDID" "$APP"
+timeout 60 xcrun simctl launch "$UDID" com.tvm.privateclient -TVMSmokeTour
 for i in $(seq -w 1 40); do
   sleep 3
-  xcrun simctl io "$UDID" screenshot "$OUT/tour-$i.png" >/dev/null 2>&1 || true
+  timeout 20 xcrun simctl io "$UDID" screenshot "$OUT/tour-$i.png" >/dev/null 2>&1 || true
 done
 # The last screen (Settings, reached from the You popup).
-xcrun simctl io "$UDID" screenshot "$OUT/tour-end.png" >/dev/null 2>&1 || true
+timeout 20 xcrun simctl io "$UDID" screenshot "$OUT/tour-end.png" >/dev/null 2>&1 || true
 ls -la "$OUT"
 # Small copies in the log as well, for reviewers who cannot download artifacts.
 for f in "$OUT"/tour-*.png; do
