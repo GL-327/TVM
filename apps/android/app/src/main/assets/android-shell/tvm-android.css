@@ -1277,11 +1277,14 @@ html.tvm-android .details[data-tvma-pull] > .details__stage > * {
 
 /* The hero clips its picture to itself (overflow hidden, from the Home
    rules above, which are more specific). During a pull the picture sits
-   above the hero's moved top edge, so the clip would cut its top off. */
+   above the hero's moved top edge, so the clip would cut its top off. Only
+   the top is let out: the bottom stays clipped, so a picture that has
+   drifted down with the scroll never shows below the hero. */
 html.tvm-android .home[data-tvma-pull] > .stage.stage--home,
 html.tvm-android.phone-shell .home--launcher[data-tvma-pull] > .stage.stage--home,
 html.tvm-android .details[data-tvma-pull] > .details__stage {
   overflow: visible !important;
+  clip-path: inset(-100vh 0 0 0);
 }
 
 /* The shared Details page tilts its seasons and episodes in 3D (a TV

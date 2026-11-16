@@ -284,6 +284,10 @@
       if (touch.edgeY !== null && !el.hasAttribute('data-tvma-prime')) el.setAttribute('data-tvma-prime', '');
       return;
     }
+    // The same finger pushed the other way and the page itself began to
+    // scroll: the pull is over at once. Held on, the hero picture (which
+    // drifts with the scroll) hung unclipped below the hero as a block.
+    if (touch.edge === 1 ? !atTop : !atBottom) { touch.edgeY = null; setOffset(el, 0); return; }
     var pull = (t.clientY - touch.edgeY) * touch.edge;
     if (pull <= 0) { touch.edgeY = null; setOffset(el, 0); return; }
     setOffset(el, touch.edge * rubber(pull));
