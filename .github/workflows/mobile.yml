@@ -325,7 +325,7 @@ jobs:
         # (TVMWebView.smokeTour). Reviewed by eye; it does not fail the build.
         if: always()
         continue-on-error: true
-        timeout-minutes: 8
+        timeout-minutes: 12
         working-directory: apps/ios
         run: bash smoke/tour.sh
       - uses: actions/upload-artifact@v4
