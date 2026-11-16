@@ -606,8 +606,8 @@ struct TVMWebView: UIViewControllerRepresentable {
                 (38, tab("live")),
                 (46, tab("watchlist")),
                 (52, tab("home-dock")),
+                // Last: the You popup, left open so the remaining photos show it.
                 (58, tab("more")),
-                (63, "window.__tvmIosPopupRow&&window.__tvmIosPopupRow('more-settings');"),
             ]
             for (at, script) in steps {
                 DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak webView] in
