@@ -512,11 +512,12 @@ check('native VLC playback is wired for iPhone',
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('minimumZoomScale') &&
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('bouncesZoom') &&
   (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('user-scalable=no') &&
-  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('VLCMediaPlayer') &&
-  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('TVMChromeView') &&
-  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('tapShield') &&
-  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('muteVideoHits') &&
-  (read(join(ROOT, 'TVM', 'TVMPlayerController.swift')) ?? '').includes('tvmNativeShouldFail') &&
+  (read(join(ROOT, 'TVM', 'TVMVideoEngine.swift')) ?? '').includes('VLCMediaPlayer') &&
+  (read(join(ROOT, 'TVM', 'TVMVideoEngine.swift')) ?? '').includes('tvmNativeShouldFail') &&
+  (read(join(ROOT, 'TVM', 'TVMVideoEngine.swift')) ?? '').includes('preferMainAudio') &&
+  // The picture is drawn under the transparent page, whose own controls show (as on Android).
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('showVideo(') &&
+  (read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '').includes('videoContainer') &&
   // The engine routes through nativePlaybackBridge() now that Android has a
   // native player too, so assert both halves: the engine defers to whichever
   // shell is present, AND iosEngine still recognises the WKWebView handler.
@@ -526,6 +527,32 @@ check('native VLC playback is wired for iPhone',
   (read(join(REPO, 'apps', 'ui', 'src', 'player', 'iosEngine.ts')) ?? '').includes('iosPlaybackBridge') &&
   (read(join(REPO, 'apps', 'ui', 'index.html')) ?? '').includes('user-scalable=no'),
   'iPhone must decode in VLC, lock pinch-zoom, and never fall HTML5 MKV into <video>');
+
+// The phone look shared with Android, on iOS (TVMShell.swift, bundle-ui.mjs, shell/).
+const shellSwift = read(join(ROOT, 'TVM', 'TVMShell.swift')) ?? '';
+const webViewSwift = read(join(ROOT, 'TVM', 'TVMWebView.swift')) ?? '';
+const bundler = read(join(ROOT, 'bundle-ui.mjs')) ?? '';
+check('iOS runs the Android phone look (one overlay, injected from the app bundle)',
+  bundler.includes("'tvm-android.js'") && bundler.includes("'tvm-android.css'") &&
+  bundler.includes("'tvm-ios.js'") && bundler.includes("'tvm-ios.css'") &&
+  shellSwift.includes('subdirectory: "BundledUI/shell"') &&
+  shellSwift.includes("root.classList.add('tvm-android')") && shellSwift.includes("root.classList.add('tvm-ios')") &&
+  webViewSwift.includes('TVMShellScripts.overlay(') &&
+  existsSync(join(ROOT, 'shell', 'tvm-ios.js')) && existsSync(join(ROOT, 'shell', 'tvm-ios.css')),
+  'the overlay must ship in the app, not the interface feed, and run before the iOS layer');
+check('the keyboard has one owner on iOS (no resize, no document scroll)',
+  shellSwift.includes('__tvmaKeyboard') && webViewSwift.includes('TVMShellScripts.keyboard(') &&
+  webViewSwift.includes('contentOffset != .zero'));
+check('the page crossfade has a native fallback before iOS 18',
+  (read(join(ROOT, 'shell', 'tvm-ios.js')) ?? '').includes("command: 'snapshot'") &&
+  shellSwift.includes('snapshotView(afterScreenUpdates: false)') && webViewSwift.includes('"tvmShell"'));
+const glassSwift = read(join(ROOT, 'TVM', 'TVMGlassBar.swift')) ?? '';
+check('the tab bar and You popup are Liquid Glass where iOS has it, a material otherwise',
+  glassSwift.includes('.glassEffect(') && glassSwift.includes('#if compiler(>=6.2)') &&
+  glassSwift.includes('if #available(iOS 26.0, *)') && glassSwift.includes('.ultraThinMaterial'));
+check('the tab bar uses the shared look\'s icons',
+  ['TabHome', 'TabHomeOn', 'TabSearch', 'TabSearchOn', 'TabLive', 'TabLiveOn', 'TabList', 'TabListOn']
+    .every((name) => existsSync(join(ROOT, 'TVM', 'Assets.xcassets', `${name}.imageset`, `${name}.svg`))));
 
 // The secrets that must never be committed.
 for (const file of swiftFiles) {

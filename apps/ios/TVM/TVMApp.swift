@@ -4,6 +4,7 @@ import SwiftUI
 // It does not need a PC, LAN token, or Core on another computer.
 @main
 struct TVMApp: App {
+    @UIApplicationDelegateAdaptor(TVMAppDelegate.self) private var appDelegate
     var body: some Scene {
         WindowGroup { StandaloneRoot().preferredColorScheme(.dark) }
     }
@@ -41,6 +42,9 @@ final class StandaloneRuntime: ObservableObject {
         // already current. If the network is slow we still open, and reload
         // when the download finishes.
         TVMBundledUI.prepare(store: core.store)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { TVMShellScripts.tourToken = core.accounts.smokeTourToken() }
+        #endif
         await TVMUpdater.waitForLaunchApply(store: core.store, session: TVMUpdater.downloadSession())
         do {
             let server = TVMLocalServer(core: core)
@@ -110,8 +114,14 @@ struct ActiveConnection: Identifiable {
 
 struct StandaloneRoot: View {
     @StateObject private var runtime = StandaloneRuntime()
+    // The constructed-logo reveal (TVMIntro, as on Android), until the logo is
+    // complete and the page (with "Who's watching?") is ready under it.
+    @State private var revealed = false
+    @State private var pageReady = false
+    @State private var introGone = false
 
     var body: some View {
+        ZStack {
         Group {
             if let session = runtime.session {
                 PlayerShell(session: session, onUseLocal: runtime.useLocal)
@@ -129,6 +139,32 @@ struct StandaloneRoot: View {
             }
         }
         .task { await runtime.start() }
+            if !introGone {
+                TVMIntro { revealed = true; dismissIntroIfReady() }
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tvmPageReady)) { _ in
+            pageReady = true
+            dismissIntroIfReady()
+        }
+        .onChange(of: runtime.error) { error in
+            if error != nil { pageReady = true; dismissIntroIfReady() }
+        }
+    }
+
+    private func dismissIntroIfReady() {
+        guard revealed, !introGone else { return }
+        if pageReady {
+            withAnimation(.easeOut(duration: 0.35)) { introGone = true }
+        } else {
+            // A slow start: the finished logo holds (breathing) for a while, then the app shows anyway.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                if !introGone { withAnimation(.easeOut(duration: 0.35)) { introGone = true } }
+            }
+        }
     }
 }
 
@@ -154,6 +190,7 @@ struct PlayerShell: View {
     @State private var error: String?
     @State private var loading = true
     @State private var showHomeCore = false
+    @StateObject private var shell = TVMShellModel()
 
     var body: some View {
         ZStack {
@@ -166,7 +203,14 @@ struct PlayerShell: View {
                 }
                 .padding(28)
             } else {
-                TVMWebView(session: currentSession, loading: $loading, error: $error)
+                TVMWebView(session: currentSession, loading: $loading, error: $error, shell: shell) { action in
+                    // Settings → App & Updates (tvm-app:): the ⋮ menu's actions now live there, as on Android.
+                    if action == "core" {
+                        if session.isStandalone && lan.active == nil { showHomeCore = true } else {
+                            lan.disconnect(); onUseLocal(); reloadPage()
+                        }
+                    }
+                }
                     .id(reload)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea(.container)
@@ -174,7 +218,19 @@ struct PlayerShell: View {
             }
         }
         .ignoresSafeArea(.keyboard)
+        // The tab bar and the You popup, in Liquid Glass (TVMGlassBar).
+        .overlay {
+            if error == nil {
+                TVMGlassBar(model: shell)
+                    .ignoresSafeArea(.keyboard)
+            }
+        }
+        .statusBarHidden(shell.playing)
+        .persistentSystemOverlays(shell.playing ? .hidden : .automatic)
         .overlay(alignment: .topTrailing) {
+            // The app's own menu only where the page cannot be reached (an
+            // error); otherwise these actions are in Settings → App & Updates.
+            if error != nil {
             HStack(spacing: 10) {
                 if loading { ProgressView().controlSize(.small).tint(.white) }
                 Menu {
@@ -201,6 +257,7 @@ struct PlayerShell: View {
             // has to sit in the same band the page uses, not in the island.
             .padding(.top, TVMDeviceChrome.current.fallbackTop)
             .padding(.trailing, 10)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tvmInterfaceDidApply)) { _ in
             reloadPage()

@@ -7,6 +7,8 @@ final class TVMLocalCore {
     let plans: TVMPlans
     let media: TVMMedia
     let accounts: TVMAccounts
+    /// Films and episodes saved on the iPhone (TVMDownloads).
+    let downloads: TVMDownloads
     private let startedAt = Date()
     private let session: URLSession
     /// GitHub downloads get their own patient, cookie-free session.
@@ -21,6 +23,8 @@ final class TVMLocalCore {
 
     init(session: URLSession? = nil, store: TVMStore = TVMStore()) {
         self.store = store
+        // Titles known to carry another title's artwork, before any picture is asked for.
+        TVMArtTrust.attach(store.url("art-distrust.json"))
         if let session {
             self.session = session
         } else {
@@ -35,6 +39,10 @@ final class TVMLocalCore {
         plans = TVMPlans(store: store)
         media = TVMMedia(store: store, catalog: catalog, rd: rd, plans: plans)
         accounts = TVMAccounts(store: store)
+        let player = media
+        downloads = TVMDownloads(store: store) { id, language, height in
+            await player.download(id: id, language: language, maxHeight: height)
+        }
         liveReflector = TVMLiveReflector(session: self.session)
         if let saved = store.readJSON("live.json") as? [String: Any] {
             liveURL = saved["url"] as? String
@@ -188,9 +196,42 @@ final class TVMLocalCore {
         if path == "/api/search" && method == "GET" {
             return .json(200, ["items": (await media.search(query["q"] ?? "")).map { $0.json() }])
         }
+        // Downloads, for the shared Downloads screen (as Android's core answers it).
+        if path == "/api/downloads" && method == "GET" { return .json(200, downloads.list()) }
+        if path == "/api/downloads/folder" && (method == "GET" || method == "POST") {
+            // iOS keeps downloads in the app's own folder (shown in Files); there is nothing to pick.
+            return .json(200, ["name": downloads.folderDisplayName()])
+        }
+        if path == "/api/downloads" && method == "POST" {
+            let prefs = json["preferences"] as? [String: Any] ?? [:]
+            let language = prefs["language"] as? String ?? "en"
+            let maxHeight = JSONValue.int(prefs["maxHeight"]) ?? 1080
+            let items: [(id: String, title: String)] = (json["items"] as? [[String: Any]] ?? []).compactMap { raw in
+                guard let id = raw["id"] as? String, !id.isEmpty, id.count <= 512, !id.hasPrefix("live:") else { return nil }
+                return (id, raw["title"] as? String ?? "TVM video")
+            }
+            guard !items.isEmpty, language.count <= 16, (240...4320).contains(maxHeight) else {
+                return .json(400, ["error": "Choose a film or episode and valid download options."])
+            }
+            do { return .json(200, try downloads.enqueue(items, language: language, maxHeight: maxHeight)) }
+            catch { return .json(400, ["error": error.localizedDescription]) }
+        }
+        if path.hasPrefix("/api/downloads/") && path.hasSuffix("/cancel") && method == "POST" {
+            downloads.cancel(String(path.dropFirst("/api/downloads/".count).dropLast("/cancel".count)))
+            return .json(200, downloads.list())
+        }
+
         if path == "/api/playback" && method == "POST" {
             guard plans.mobileAllowed() else { return .json(403, ["kind": "unavailable", "reason": "mobile-plan-required"]) }
             if let id = json["id"] as? String, id.hasPrefix("live:") { return await playLive(id) }
+            // A title downloaded to this phone plays from the file, offline.
+            if let id = JSONValue.string(json["id"]), let copy = downloads.offlineCopy(id) {
+                var reply: [String: Any] = ["kind": "stream", "url": copy.url.absoluteString,
+                                            "title": JSONValue.string(json["title"]) ?? copy.name, "filename": copy.name,
+                                            "mimeType": "application/octet-stream", "engine": "native", "transport": "file"]
+                if let startAt = media.resumePosition(id) { reply["startAt"] = startAt }
+                return .json(200, reply)
+            }
             let result = await media.play(
                 id: JSONValue.string(json["id"]),
                 link: JSONValue.string(json["link"]),
@@ -530,26 +571,21 @@ final class TVMLocalCore {
         return .json(404, ["error": "not_found"])
     }
 
+    /// Pictures for the page, through TVMImages: retried, kept on the phone,
+    /// and refused when they belong to another title (TVMArtTrust).
     private func art(_ src: String, head: Bool) async -> HTTPReply {
         guard let url = allowedArt(src) else { return .json(400, ["error": "art host not allowed"]) }
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return .json(502, ["error": "art fetch failed"])
-            }
-            let type = http.value(forHTTPHeaderField: "Content-Type") ?? "image/jpeg"
-            if head { return HTTPReply(status: 200, headers: ["Content-Type": type], body: Data()) }
-            return .bytes(200, type: type, data: data)
-        } catch {
-            return .json(502, ["error": "art fetch failed"])
-        }
+        let picture = await TVMImages.shared.load(url)
+        guard picture.status == 200 else { return HTTPReply(status: picture.status, headers: ["Content-Type": "text/plain", "Cache-Control": "no-store"], body: Data()) }
+        let headers = ["Content-Type": picture.type, "Cache-Control": TVMImages.cacheControl]
+        return HTTPReply(status: 200, headers: headers, body: head ? Data() : picture.data)
     }
 
     private func allowedArt(_ raw: String) -> URL? {
         guard let url = URL(string: raw), url.user == nil, url.password == nil,
               url.scheme == "https" || url.scheme == "http" else { return nil }
         let host = url.host?.lowercased() ?? ""
-        let allowed = ["image.tmdb.org", "images.metahub.space", "live.metahub.space", "mzstatic.com", "tvmaze.com", "kitsu.io", "fanart.tv"]
+        let allowed = ["image.tmdb.org", "metahub.space", "mzstatic.com", "tvmaze.com", "kitsu.io", "fanart.tv", "media-amazon.com"]
         if allowed.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) { return url }
         return nil
     }
