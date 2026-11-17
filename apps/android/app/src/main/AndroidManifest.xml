@@ -8,6 +8,7 @@
 
     <application
         android:allowBackup="false"
+        android:largeHeap="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_tvm_launcher"
