@@ -216,7 +216,9 @@ class TvmNativePlayer(
             }
         }
         videoFormat = null
-        val exo = ExoPlayer.Builder(activity, renderers)
+        val playerBuilder = ExoPlayer.Builder(activity, renderers)
+        if (!live) playerBuilder.setLoadControl(TvmPlaybackBuffer.forFilm())
+        val exo = playerBuilder
             // http(s) streams, and content:// files downloaded to the phone (TvmDownloads).
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(activity, http)))
             // Duck or pause for calls and other apps, and stop when headphones are pulled out.
@@ -332,8 +334,17 @@ class TvmNativePlayer(
                 pushState(id)
             }
 
+            private var stalledAt = 0L
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) emit(id, "ended", JSONObject())
+                // Each stall after the start, for telling the Wi-Fi from the source (adb logcat -s TVMPlayer).
+                if (state == Player.STATE_BUFFERING && firstFrame) {
+                    stalledAt = android.os.SystemClock.elapsedRealtime()
+                    Log.i(TAG, "stalled at ${exo.currentPosition / 1000}s: ${(exo.totalBufferedDuration / 1000)}s in hand, ${videoFormat?.bitrate?.takeIf { it > 0 }?.let { "${it / 1000} kbit/s copy" } ?: "bitrate unknown"}")
+                } else if (state == Player.STATE_READY && stalledAt > 0) {
+                    Log.i(TAG, "resumed after ${android.os.SystemClock.elapsedRealtime() - stalledAt} ms")
+                    stalledAt = 0L
+                }
                 pushState(id)
             }
 
@@ -514,7 +525,10 @@ class TvmNativePlayer(
             Json.obj(
                 "position" to exo.currentPosition / 1000.0,
                 "duration" to if (duration > 0) duration / 1000.0 else 0.0,
-                "paused" to !exo.isPlaying,
+                // Paused only when the viewer (or the app) paused it. While it
+                // waits for more of the stream it is loading, not paused: the
+                // page showed a play button that did nothing during a stall.
+                "paused" to !exo.playWhenReady,
                 "buffering" to (exo.playbackState == Player.STATE_BUFFERING),
                 "hasFrame" to firstFrame,
                 // The sound actually being decoded and handed to the audio
