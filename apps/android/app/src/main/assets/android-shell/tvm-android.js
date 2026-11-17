@@ -2638,6 +2638,41 @@
   }, true);
   document.addEventListener('visibilitychange', function () { if (document.hidden) endHold(); });
 
+  // ---- 21b. "Up next" as on Disney+: a small Next episode button that fills as it counts down ----
+
+  // The shared card (NextUp.tsx) was made for television: a large still, the
+  // show and two big buttons over the middle of the picture. Here it is a
+  // small control in the corner (tvm-android.css 39). The Next episode button
+  // fills as the episode runs out, and when it has, the next one plays, unless
+  // Watch credits put the card away.
+  var nextTimer = null;
+  var nextPressed = null;
+  function remainSeconds(card) {
+    var t = card.querySelector('.next-up__remain');
+    var m = t && /(\d+):(\d+)/.exec(t.textContent || '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  }
+  function tickNextUp() {
+    var card = document.querySelector('.player .next-up');
+    if (!card) { clearInterval(nextTimer); nextTimer = null; return; }
+    var play = card.querySelector('.next-up__play');
+    var drain = card.querySelector('.next-up__drain');
+    var m = drain && /scaleX\(([\d.]+)\)/.exec(drain.style.transform || '');
+    var left = m ? Math.max(0, Math.min(1, Number(m[1]))) : 1;
+    if (play) play.style.setProperty('--tvma-next-fill', ((1 - left) * 100).toFixed(1) + '%');
+    var paused = document.querySelector('.player-root[data-paused="true"]');
+    var secs = remainSeconds(card);
+    if (play && !paused && secs !== null && secs <= 1 && nextPressed !== card) {
+      nextPressed = card;
+      press(play);
+    }
+  }
+  function syncNextUp() {
+    if (nextTimer || !document.querySelector('.player .next-up')) return;
+    nextTimer = setInterval(tickNextUp, 250);
+    tickNextUp();
+  }
+
   // ---- Watching the page -------------------------------------------------------------
 
   // Only screen changes matter here, so only child lists are watched, and the
@@ -2659,6 +2694,7 @@
       syncSearch();
       syncPlayer();
       syncCaptions();
+      syncNextUp();
       if (hold && !document.querySelector('.player')) endHold();
       syncSkeletons();
       syncYou();
