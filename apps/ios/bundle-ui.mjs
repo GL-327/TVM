@@ -35,6 +35,22 @@ rmSync(DEST, { recursive: true, force: true });
 mkdirSync(DEST, { recursive: true });
 cpSync(DIST, DEST, { recursive: true });
 writeFileSync(join(DEST, '.standalone'), 'tvm-ios-bundled-ui\n');
+
+// The phone look shared with Android (one source: the Android app's overlay)
+// and the iPhone's own layer. TVMShell.swift injects them from the app bundle,
+// so a newer interface from the update feed keeps them.
+const SHELL = join(DEST, 'shell');
+mkdirSync(SHELL, { recursive: true });
+const ANDROID_SHELL = join(REPO, 'apps', 'android', 'app', 'src', 'main', 'assets', 'android-shell');
+for (const [from, name] of [
+  [join(ANDROID_SHELL, 'tvm-android.js'), 'tvm-android.js'],
+  [join(ANDROID_SHELL, 'tvm-android.css'), 'tvm-android.css'],
+  [join(ROOT, 'shell', 'tvm-ios.js'), 'tvm-ios.js'],
+  [join(ROOT, 'shell', 'tvm-ios.css'), 'tvm-ios.css'],
+]) {
+  if (!existsSync(from)) { console.error(`missing ${from}`); process.exit(1); }
+  cpSync(from, join(SHELL, name));
+}
 writeFileSync(
   join(DEST, 'README.txt'),
   'Production build of apps/ui, served by the on-device TVM core. Not a web clip.\n',

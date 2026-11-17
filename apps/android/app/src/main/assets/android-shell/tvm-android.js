@@ -284,6 +284,10 @@
       if (touch.edgeY !== null && !el.hasAttribute('data-tvma-prime')) el.setAttribute('data-tvma-prime', '');
       return;
     }
+    // The same finger pushed the other way and the page itself began to
+    // scroll: the pull is over at once. Held on, the hero picture (which
+    // drifts with the scroll) hung unclipped below the hero as a block.
+    if (touch.edge === 1 ? !atTop : !atBottom) { touch.edgeY = null; setOffset(el, 0); return; }
     var pull = (t.clientY - touch.edgeY) * touch.edge;
     if (pull <= 0) { touch.edgeY = null; setOffset(el, 0); return; }
     setOffset(el, touch.edge * rubber(pull));
@@ -2244,7 +2248,9 @@
     if (!ids || !ids.length) return;
     var imgs = document.querySelectorAll('img[src*="metahub.space"]');
     for (var i = 0; i < imgs.length; i++) {
+      // On iOS pictures come through the app (/api/art?src=…, encoded).
       var src = imgs[i].getAttribute('src') || '';
+      try { src = decodeURIComponent(src); } catch (e) { /* as it is */ }
       for (var j = 0; j < ids.length; j++) {
         if (src.indexOf('/' + ids[j] + '/') < 0) continue;
         imgs[i].dispatchEvent(new Event('error'));
@@ -2425,7 +2431,7 @@
   }
   // How the last check the user started went, reported by MainActivity.
   var appUpdate = null;
-  var UPDATE_IDLE = 'Look for a newer TVM for Android';
+  var UPDATE_IDLE = root.classList.contains('tvm-ios') ? 'Look for a newer TVM for iPhone' : 'Look for a newer TVM for Android';
   function updateDetail() {
     var u = appUpdate;
     if (!u) return UPDATE_IDLE;
@@ -2470,6 +2476,211 @@
     group.parentNode.insertBefore(box, group.nextSibling);
   }
 
+  // ---- 21. Player: subtitles from the file, and press and hold for 2x ----------------------
+
+  // The native player (TvmNativePlayer) lists the subtitle tracks inside the
+  // file being played; the interface's own CC button only knows a browser
+  // <video>, so the native player gets this one. The choice is kept, so the
+  // next episode starts with the same language (or with subtitles off).
+  var subs = { id: null, tracks: [], applied: null };
+  var SUBS_KEY = 'tvma.subtitles';
+  function subsPref() { try { return localStorage.getItem(SUBS_KEY) || ''; } catch (e) { return ''; } }
+  function setSubsPref(v) { try { localStorage.setItem(SUBS_KEY, v); } catch (e) {} }
+  function playerCommand(command, extra) {
+    try {
+      if (!window.tvmPlayer || typeof window.tvmPlayer.send !== 'function') return false;
+      var m = { id: 'shell', command: command };
+      for (var k in extra) m[k] = extra[k];
+      window.tvmPlayer.send(JSON.stringify(m));
+      return true;
+    } catch (e) { return false; }
+  }
+  function nativePlayer() { return document.querySelector('.player-root[data-engine="native"]'); }
+
+  window.addEventListener('tvm:native-player', function (event) {
+    var d = event.detail || {};
+    if (d.command === 'closed') { subs = { id: null, tracks: [], applied: null }; syncCaptions(); return; }
+    if (d.command !== 'subtitles') return;
+    if (subs.id !== d.id) subs = { id: d.id, tracks: [], applied: null };
+    subs.tracks = Array.isArray(d.tracks) ? d.tracks : [];
+    applySubsPref();
+    syncCaptions();
+  });
+
+  // Once per film: the kept language, or off.
+  function applySubsPref() {
+    if (subs.applied === subs.id || !subs.tracks.length) return;
+    subs.applied = subs.id;
+    var pref = subsPref();
+    if (!pref) return;
+    var shown = subs.tracks.filter(function (t) { return t.selected && !t.forced; })[0];
+    if (pref === 'off') { if (shown) playerCommand('subtitle', { track: '' }); return; }
+    if (shown && shown.language === pref) return;
+    var match = subs.tracks.filter(function (t) { return t.language === pref && !t.forced; })[0] ||
+      subs.tracks.filter(function (t) { return t.language === pref; })[0];
+    if (match) playerCommand('subtitle', { track: match.id });
+  }
+
+  function chooseSubtitle(track) {
+    subs.tracks.forEach(function (t) { t.selected = !!track && t.id === track.id; });
+    playerCommand('subtitle', { track: track ? track.id : '' });
+    setSubsPref(track ? (track.language || '') : 'off');
+    syncCaptions();
+  }
+
+  function openSubtitles() {
+    sheet('Subtitles', function (panel, close) {
+      var list = el('div', 'tvma-sheet__list');
+      var on = subs.tracks.filter(function (t) { return t.selected; })[0] || null;
+      [null].concat(subs.tracks).forEach(function (t) {
+        var picked = t ? on && on.id === t.id : !on;
+        var b = el('button', 'tvma-choice' + (picked ? ' tvma-choice--on' : ''));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', picked ? 'true' : 'false');
+        b.appendChild(el('span', 'tvma-choice__name', t ? t.label : 'Off'));
+        b.addEventListener('click', function () { close(); chooseSubtitle(t); });
+        list.appendChild(b);
+      });
+      panel.appendChild(list);
+    });
+  }
+
+  var CC_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10.3 10.2a2.2 2.2 0 1 0 0 3.6M16.8 10.2a2.2 2.2 0 1 0 0 3.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  function syncCaptions() {
+    var tools = document.querySelector('.player .cinema-chrome__tools');
+    var btn = document.querySelector('.tvma-cc');
+    var want = !!tools && !!nativePlayer() && subs.tracks.length > 0;
+    if (!want) { if (btn && btn.parentNode) btn.parentNode.removeChild(btn); return; }
+    if (!btn || btn.parentNode !== tools) {
+      if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+      btn = el('button', 'tvma-cc');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Subtitles');
+      btn.innerHTML = CC_GLYPH;
+      btn.addEventListener('click', function (e) { e.stopPropagation(); openSubtitles(); });
+      tools.appendChild(btn);
+    }
+    var showing = subs.tracks.some(function (t) { return t.selected; });
+    btn.classList.toggle('tvma-cc--on', showing);
+    btn.setAttribute('aria-pressed', showing ? 'true' : 'false');
+  }
+
+  // Press and hold on the left or right of the picture: double speed until
+  // the finger lifts, as on TikTok. The middle (play and pause) and every
+  // control keep their own touch.
+  var HOLD_MS = 380;
+  var hold = null;
+  var holdBadge = null;
+  var holdSwallowClick = false;
+  var HOLD_SKIP = 'button, a, input, [role="slider"], [data-player-menu], .cinema-chrome__timeline, .cinema-chrome__recap, .cinema-chrome__transport, .tvma-sheet';
+  function holdVideo() { return document.querySelector('.player video'); }
+  function startHold() {
+    if (!hold || hold.on) return;
+    hold.on = true;
+    if (nativePlayer()) playerCommand('hold-speed', { on: true });
+    else { var v = holdVideo(); if (v) { hold.rate = v.playbackRate; v.playbackRate = 2; } }
+    if (!holdBadge) {
+      holdBadge = el('div', 'tvma-hold2x');
+      holdBadge.innerHTML = '<span>2×</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6l8 6-8 6zM12 6l8 6-8 6z" fill="currentColor"/></svg>';
+    }
+    document.body.appendChild(holdBadge);
+    requestAnimationFrame(function () { if (holdBadge) holdBadge.classList.add('tvma-hold2x--in'); });
+  }
+  function endHold() {
+    var h = hold;
+    hold = null;
+    if (!h) return false;
+    clearTimeout(h.timer);
+    if (!h.on) return false;
+    if (nativePlayer()) playerCommand('hold-speed', { on: false });
+    else { var v = holdVideo(); if (v && h.rate) v.playbackRate = h.rate; }
+    if (holdBadge) {
+      var b = holdBadge;
+      b.classList.remove('tvma-hold2x--in');
+      setTimeout(function () { if (!b.classList.contains('tvma-hold2x--in') && b.parentNode) b.parentNode.removeChild(b); }, 180);
+    }
+    return true;
+  }
+  window.addEventListener('pointerdown', function (event) {
+    if (event.pointerType !== 'touch') return;
+    if (hold) { endHold(); return; }
+    if (!event.isPrimary) return;
+    var player = event.target && event.target.closest && event.target.closest('.player');
+    if (!player || event.target.closest(HOLD_SKIP)) return;
+    var rootEl = document.querySelector('.player-root');
+    if (!rootEl || rootEl.getAttribute('data-paused') === 'true') return;
+    // Only where the speed can actually change: Android's native player, or a <video>.
+    if (nativePlayer() ? !(window.tvmPlayer && typeof window.tvmPlayer.send === 'function') : !holdVideo()) return;
+    var x = event.clientX / Math.max(1, window.innerWidth);
+    if (x > 0.38 && x < 0.62) return;
+    hold = { id: event.pointerId, x: event.clientX, y: event.clientY, on: false, rate: 0 };
+    hold.timer = setTimeout(startHold, HOLD_MS);
+  }, true);
+  window.addEventListener('pointermove', function (event) {
+    if (!hold || hold.on || event.pointerId !== hold.id) return;
+    if (Math.abs(event.clientX - hold.x) > 12 || Math.abs(event.clientY - hold.y) > 12) endHold();
+  }, true);
+  window.addEventListener('pointerup', function (event) {
+    if (!hold || event.pointerId !== hold.id) return;
+    // A hold is not a tap: the controls do not toggle when it ends.
+    if (endHold()) { event.stopImmediatePropagation(); holdSwallowClick = true; setTimeout(function () { holdSwallowClick = false; }, 400); }
+  }, true);
+  window.addEventListener('pointercancel', function (event) { if (hold && event.pointerId === hold.id) endHold(); }, true);
+  window.addEventListener('touchend', function () { if (hold && hold.on) { endHold(); holdSwallowClick = true; setTimeout(function () { holdSwallowClick = false; }, 400); } }, true);
+  window.addEventListener('click', function (event) {
+    if (!holdSwallowClick) return;
+    holdSwallowClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('contextmenu', function (event) {
+    if (event.target && event.target.closest && event.target.closest('.player')) event.preventDefault();
+  }, true);
+  document.addEventListener('visibilitychange', function () { if (document.hidden) endHold(); });
+
+  // ---- 21b. "Up next" as on Disney+: a small card whose play button counts down --------------
+
+  // The shared card (NextUp.tsx) was made for television: a large still, the
+  // show and two big buttons over the middle of the picture. Here it is a
+  // small card in the corner (tvm-android.css 39): the next episode's picture
+  // is its play button, ringed by the countdown, and when the ring is full the
+  // next episode plays, unless Watch credits put the card away.
+  var nextTimer = null;
+  var nextPressed = null;
+  function remainSeconds(card) {
+    var t = card.querySelector('.next-up__remain');
+    var m = t && /(\d+):(\d+)/.exec(t.textContent || '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  }
+  function tickNextUp() {
+    var card = document.querySelector('.player .next-up');
+    if (!card) { clearInterval(nextTimer); nextTimer = null; return; }
+    var play = card.querySelector('.next-up__play');
+    var drain = card.querySelector('.next-up__drain');
+    var m = drain && /scaleX\(([\d.]+)\)/.exec(drain.style.transform || '');
+    var left = m ? Math.max(0, Math.min(1, Number(m[1]))) : 1;
+    card.style.setProperty('--tvma-next-fill', ((1 - left) * 100).toFixed(1) + '%');
+    // The picture is the play button, as on Disney+.
+    var still = card.querySelector('.next-up__still');
+    if (still && play && !still.hasAttribute('data-tvma-play')) {
+      still.setAttribute('data-tvma-play', '');
+      still.setAttribute('role', 'button');
+      still.setAttribute('aria-label', 'Play next episode');
+      still.addEventListener('click', function (e) { e.stopPropagation(); var p = card.querySelector('.next-up__play'); if (p) { nextPressed = card; press(p); } });
+    }
+    var paused = document.querySelector('.player-root[data-paused="true"]');
+    var secs = remainSeconds(card);
+    if (play && !paused && secs !== null && secs <= 1 && nextPressed !== card) {
+      nextPressed = card;
+      press(play);
+    }
+  }
+  function syncNextUp() {
+    if (nextTimer || !document.querySelector('.player .next-up')) return;
+    nextTimer = setInterval(tickNextUp, 250);
+    tickNextUp();
+  }
+
   // ---- Watching the page -------------------------------------------------------------
 
   // Only screen changes matter here, so only child lists are watched, and the
@@ -2490,6 +2701,9 @@
       syncPill();
       syncSearch();
       syncPlayer();
+      syncCaptions();
+      syncNextUp();
+      if (hold && !document.querySelector('.player')) endHold();
       syncSkeletons();
       syncYou();
       syncWho();
