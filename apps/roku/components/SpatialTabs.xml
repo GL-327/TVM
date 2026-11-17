@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SpatialTabs" extends="Group">
+  <interface>
+    <field id="ids" type="array" onChange="rebuild" />
+    <field id="labels" type="array" onChange="rebuild" />
+    <field id="activeIndex" type="integer" value="0" onChange="paint" />
+    <field id="previewIndex" type="integer" value="0" onChange="paint" />
+    <field id="hasFocus" type="boolean" value="false" onChange="paint" />
+    <function name="handleIntent" />
+    <function name="rememberFocus" />
+    <function name="recallFocus" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="SpatialTabs.brs" />
+  <children>
+    <GlassPanel id="pillGlass" shape="pill" width="1200" height="144" />
+    <GlassPanel id="activePill" width="360" height="112" shape="tab" active="true" translation="[24, 16]" />
+    <GlassPanel id="hl" width="360" height="112" shape="tab" active="true" translation="[24, 16]" />
+    <Poster id="hlRing" uri="pkg:/images/glass/focus-ring.9.png" width="392" height="144" translation="[8, 0]" visible="false" />
+    <Group id="tabLabels" />
+    <Animation id="hlAnim" duration="0.18" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="hlMove" key="[0.0, 1.0]" keyValue="[[24.0, 16.0], [24.0, 16.0]]" fieldToInterp="hl.translation" />
+      <Vector2DFieldInterpolator id="hlRingMove" key="[0.0, 1.0]" keyValue="[[8.0, 0.0], [8.0, 0.0]]" fieldToInterp="hlRing.translation" />
+    </Animation>
+  </children>
+</component>

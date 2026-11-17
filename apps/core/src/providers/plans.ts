@@ -33,12 +33,12 @@ import {
   LIVE_TV_EXTRA,
   liveTvExpiryIso,
   liveTvIsActive,
-  liveTvServiceOnline,
   liveTvSpec,
   parseLiveTvTerm,
   resolveCheckoutLiveTvTerm,
   type LiveTvTerm,
 } from './liveTv.ts';
+import { createFeatureFlags } from './featureFlags.ts';
 
 export {
   LIVE_TV_ADDON_PENCE,
@@ -133,6 +133,7 @@ function priced(
   };
 }
 
+/** Legacy capability/checkout catalogue. New purchases use /api/pricing exclusively. */
 export const PLAN_CATALOG: readonly PlanDefinition[] = [
   priced({
     id: 'free',
@@ -357,6 +358,7 @@ export interface PlanStatus {
   synthwaveAddonPence: number;
   mocks: boolean;
   liveTv: boolean;
+  liveTvHealthy: boolean;
   liveTvTerm: LiveTvTerm | null;
   liveTvExpiresAt: string | null;
   liveTvTerms: typeof LIVE_TV_CATALOG;
@@ -525,6 +527,7 @@ function publicReceipt(receipt: BillingReceipt): BillingReceipt {
 
 export function createPlanService(options: { dataDir: string; developer?: () => boolean; env?: NodeJS.ProcessEnv }) {
   const dataDir = options.dataDir;
+  const flags = createFeatureFlags(options);
 
   const readLedger = (): BillingLedger => {
     const stored = readSealed<BillingLedger>(dataDir, billingPath(dataDir));
@@ -637,7 +640,6 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       liveTvAddon: entitlement.liveTvAddon,
       liveTvTerm: entitlement.liveTvTerm,
       liveTvExpiresAt: entitlement.liveTvExpiresAt,
-      serviceOnline: liveTvServiceOnline(options.env ?? process.env),
     });
     const bundleOwned = entitlement.themeBundle === true;
     const animeOwned = bundleOwned || entitlement.animeAddon === true;
@@ -669,9 +671,10 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       synthwaveAddonPence: SYNTHWAVE_ADDON_PENCE,
       mocks,
       liveTv,
+      liveTvHealthy: flags.get()['liveTv.healthy'],
       liveTvTerm: liveTv ? entitlement.liveTvTerm ?? null : null,
       liveTvExpiresAt: liveTv ? entitlement.liveTvExpiresAt ?? null : null,
-      liveTvTerms: LIVE_TV_CATALOG,
+      liveTvTerms: [],
       ads,
       stream: base.stream,
       maxHeight,
@@ -688,13 +691,13 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
       styleIds,
       styleId,
       developer,
-      catalog: [...PLAN_CATALOG],
+      catalog: [],
       styles: [...STYLE_CATALOG],
     };
   };
 
   /**
-   * Prices an order.
+   * Legacy loopback checkout only. Prices an order for existing billing adapters.
    *
    * The single place a total is worked out, so the amount a card is charged
    * cannot drift from the amount the sandbox records or the interface quoted.
@@ -781,6 +784,20 @@ export function createPlanService(options: { dataDir: string; developer?: () => 
         styleId: clampStyle(id, current.styleId),
         liveTvAddon: undefined,
       });
+      return compose();
+    },
+    /** Account refresh must preserve existing terms, including expired or ambiguous grants. */
+    syncAccountTier(id: PlanId, liveTv: boolean): PlanStatus {
+      const current = readEntitlement();
+      const hasGrantHistory = current.liveTvAddon === true || current.liveTvTerm !== undefined || current.liveTvExpiresAt != null;
+      const next: Entitlement = {
+        ...current, id, source: 'checkout', styleId: clampStyle(id, current.styleId),
+        ...(liveTv
+          ? hasGrantHistory ? {} : { liveTvAddon: true, liveTvTerm: 'lifetime', liveTvExpiresAt: null }
+          : { liveTvAddon: false, liveTvTerm: undefined, liveTvExpiresAt: undefined }),
+        themeBundle: true, animeAddon: true, synthwaveAddon: true,
+      };
+      if (JSON.stringify(next) !== JSON.stringify(current)) writeEntitlement(next);
       return compose();
     },
     /**

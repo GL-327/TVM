@@ -106,3 +106,51 @@ function joinCorePath(base as String, path as String) as String
   if Left(p, 1) <> "/" then p = "/" + p
   return b + p
 end function
+
+' Accessibility flags. Stored as "1"/"0" in the same registry section and
+' mirrored on m.global by TVMScene so every component can observe them.
+function loadFlag(key as String) as Boolean
+  section = registrySection()
+  if section.Exists(key) then return section.Read(key) = "1"
+  return false
+end function
+
+function saveFlag(key as String, value as Boolean) as Boolean
+  section = registrySection()
+  if value
+    section.Write(key, "1")
+  else
+    section.Write(key, "0")
+  end if
+  return section.Flush()
+end function
+
+function loadReduceMotion() as Boolean
+  return loadFlag("reduceMotion")
+end function
+
+function saveReduceMotion(value as Boolean) as Boolean
+  return saveFlag("reduceMotion", value)
+end function
+
+function loadReduceTransparency() as Boolean
+  return loadFlag("reduceTransparency")
+end function
+
+function loadBackground() as String
+  section = registrySection()
+  if section.Exists("background")
+    if section.Read("background") = "lighthouse" then return "lighthouse"
+  end if
+  return "trending"
+end function
+
+function saveBackground(value as String) as Boolean
+  section = registrySection()
+  section.Write("background", value)
+  return section.Flush()
+end function
+
+function saveReduceTransparency(value as Boolean) as Boolean
+  return saveFlag("reduceTransparency", value)
+end function

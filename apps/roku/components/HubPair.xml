@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubPair" extends="Group">
+  <interface>
+    <field id="phase" type="string" value="entry" onChange="paint" />
+    <field id="message" type="string" onChange="paint" />
+    <field id="request" type="assocarray" onChange="paint" />
+    <field id="serverTime" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubPair.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000B3" />
+    <GlassPanel id="glass" shape="panel" width="2320" height="1500" translation="[760, 330]" />
+    <Label id="title" translation="[840, 380]" width="2160" height="90" />
+    <Label id="lede" translation="[840, 480]" width="2160" height="140" wrap="true" maxLines="2" color="0xC4C4C4FF" />
+    <Group id="entry">
+      <Group id="slots" translation="[1000, 650]" />
+      <Group id="grid" translation="[1000, 820]" />
+      <Poster id="cellRing" uri="pkg:/images/glass/focus-ring.9.png" width="200" height="136" visible="false" />
+      <FocusButton id="btnDelete" variant="glassPill" label="Delete" translation="[1000, 1360]" pillWidth="420" />
+      <FocusButton id="btnClear" variant="glassPill" label="Clear" translation="[1460, 1360]" pillWidth="420" />
+      <FocusButton id="btnCheck" variant="glassPill" label="Check code" translation="[1920, 1360]" pillWidth="520" />
+    </Group>
+    <Group id="confirm" visible="false">
+      <Label id="reqName" translation="[1000, 680]" width="1800" height="90" />
+      <Label id="reqPlatform" translation="[1000, 790]" width="1800" height="70" color="0xC4C4C4FF" />
+      <Label id="reqWhen" translation="[1000, 870]" width="1800" height="70" color="0xC4C4C4FF" />
+      <Label id="reqWarn" translation="[1000, 980]" width="1800" height="140" wrap="true" maxLines="2" color="0xC4C4C4FF" />
+      <FocusButton id="btnApprove" variant="glassPill" label="Approve" translation="[1000, 1260]" pillWidth="520" />
+      <FocusButton id="btnDeny" variant="glassPill" label="Deny" translation="[1560, 1260]" pillWidth="520" />
+    </Group>
+    <Label id="msg" translation="[840, 1540]" width="2160" height="110" wrap="true" maxLines="2" color="0xFFBF69FF" />
+  </children>
+</component>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AmbientBackdrop" extends="Group">
+  <script type="text/brightscript" uri="AmbientBackdrop.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x0B1620FF" />
+    <Poster id="wash" width="3840" height="2160" loadWidth="96" loadHeight="54" loadDisplayMode="scaleToZoom" />
+    <Rectangle width="3840" height="2160" color="0x07121BCC" />
+    <Timer id="bindTimer" duration="0.05" repeat="false" />
+  </children>
+</component>

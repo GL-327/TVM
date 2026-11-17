@@ -25,6 +25,7 @@ function startApiRequest(url as String, method as String, body as String, callba
     if isCoreToken(token) then task.authToken = token.Trim()
     account = m.accountToken
     if isAccountToken(account) then task.accountToken = account.Trim()
+    if m.deviceCredential <> invalid and m.deviceCredential <> "" and Instr(1, url, "/api/hub/") > 0 then task.deviceCredential = m.deviceCredential
   end if
   ' Hoster resolution can take longer than an ordinary catalog request.
   if Right(url, 13) = "/api/playback" then task.timeoutMs = 65000

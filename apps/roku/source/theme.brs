@@ -205,11 +205,4 @@ sub paintSceneWash(scene as Object, palette as Object)
   if near <> invalid then near.color = palette.sceneNear
   sun = scene.findNode("sceneSun")
   if sun <> invalid then sun.color = palette.sceneSun
-  ids = ["sceneFarAnim", "sceneMidAnim", "sceneNearAnim", "sceneSunAnim"]
-  i = 0
-  while i < ids.Count()
-    anim = scene.findNode(ids[i])
-    if anim <> invalid then anim.control = "start"
-    i = i + 1
-  end while
 end sub

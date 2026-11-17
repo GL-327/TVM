@@ -28,12 +28,12 @@ describe('live TV terms', () => {
     expect(resolveCheckoutLiveTvTerm({ liveTvTerm: 'year' })).toBe('year');
   });
 
-  it('expires prepaid terms and keeps lifetime while the service is online', () => {
+  it('expires prepaid terms and keeps lifetime entitlement through service outages', () => {
     const now = new Date('2026-09-15T12:00:00Z');
     expect(liveTvExpiryIso('lifetime', now)).toBeNull();
     expect(liveTvExpiryIso('quarter', now)).toBe('2026-12-15T12:00:00.000Z');
     expect(liveTvIsActive({ liveTvAddon: true, liveTvTerm: 'lifetime', serviceOnline: true })).toBe(true);
-    expect(liveTvIsActive({ liveTvAddon: true, liveTvTerm: 'lifetime', serviceOnline: false })).toBe(false);
+    expect(liveTvIsActive({ liveTvAddon: true, liveTvTerm: 'lifetime', serviceOnline: false })).toBe(true);
     expect(liveTvIsActive({
       liveTvAddon: true,
       liveTvTerm: 'year',

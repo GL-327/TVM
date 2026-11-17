@@ -1,0 +1,1015 @@
+{
+  "parseFocusKey": [
+    {
+      "name": "empty key",
+      "key": "",
+      "expected": {
+        "zone": "",
+        "a": "",
+        "b": ""
+      }
+    },
+    {
+      "name": "hero column",
+      "key": "hero:1",
+      "expected": {
+        "zone": "hero",
+        "a": "1",
+        "b": ""
+      }
+    },
+    {
+      "name": "nav column",
+      "key": "nav:6",
+      "expected": {
+        "zone": "nav",
+        "a": "6",
+        "b": ""
+      }
+    },
+    {
+      "name": "zone without colon",
+      "key": "hero",
+      "expected": {
+        "zone": "hero",
+        "a": "",
+        "b": ""
+      }
+    },
+    {
+      "name": "plain rails item",
+      "key": "rails:continue:itemA",
+      "expected": {
+        "zone": "rails",
+        "a": "continue",
+        "b": "itemA"
+      }
+    },
+    {
+      "name": "live item id keeps colons",
+      "key": "rails:continue:live:abc:1",
+      "expected": {
+        "zone": "rails",
+        "a": "continue",
+        "b": "live:abc:1"
+      }
+    },
+    {
+      "name": "rd item id keeps colon",
+      "key": "rails:continue:rd:tt123",
+      "expected": {
+        "zone": "rails",
+        "a": "continue",
+        "b": "rd:tt123"
+      }
+    },
+    {
+      "name": "rails key with no item",
+      "key": "rails:continue",
+      "expected": {
+        "zone": "rails",
+        "a": "continue",
+        "b": ""
+      }
+    },
+    {
+      "name": "rails key with trailing colon",
+      "key": "rails:continue:",
+      "expected": {
+        "zone": "rails",
+        "a": "continue",
+        "b": ""
+      }
+    }
+  ],
+  "sanitizeRailId": [
+    {
+      "name": "plain id",
+      "railId": "continue",
+      "expected": "continue"
+    },
+    {
+      "name": "colon becomes underscore",
+      "railId": "live:tv",
+      "expected": "live_tv"
+    },
+    {
+      "name": "several colons",
+      "railId": "a:b:c",
+      "expected": "a_b_c"
+    },
+    {
+      "name": "empty",
+      "railId": "",
+      "expected": ""
+    }
+  ],
+  "railFocusKey": [
+    {
+      "name": "plain",
+      "railId": "continue",
+      "itemId": "itemA",
+      "expected": "rails:continue:itemA"
+    },
+    {
+      "name": "rail id sanitised, item id keeps colons",
+      "railId": "live:tv",
+      "itemId": "live:abc:1",
+      "expected": "rails:live_tv:live:abc:1"
+    },
+    {
+      "name": "rd item id",
+      "railId": "continue",
+      "itemId": "rd:tt123",
+      "expected": "rails:continue:rd:tt123"
+    }
+  ],
+  "resolveRailFocus": [
+    {
+      "name": "item found in same rail",
+      "rails": [
+        {
+          "id": "continue",
+          "items": [
+            {
+              "id": "itemA"
+            },
+            {
+              "id": "itemB"
+            },
+            {
+              "id": "itemC"
+            }
+          ]
+        },
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemC",
+      "fallbackRow": 0,
+      "fallbackCol": 0,
+      "expected": {
+        "row": 0,
+        "col": 2,
+        "found": true
+      }
+    },
+    {
+      "name": "continue reordered after playback, played item now index 0",
+      "rails": [
+        {
+          "id": "continue",
+          "items": [
+            {
+              "id": "itemB"
+            },
+            {
+              "id": "itemA"
+            },
+            {
+              "id": "itemC"
+            }
+          ]
+        },
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemB",
+      "fallbackRow": 0,
+      "fallbackCol": 1,
+      "expected": {
+        "row": 0,
+        "col": 0,
+        "found": true
+      }
+    },
+    {
+      "name": "item vanished from rail, clamped fallback col in same rail",
+      "rails": [
+        {
+          "id": "continue",
+          "items": [
+            {
+              "id": "itemA"
+            },
+            {
+              "id": "itemC"
+            }
+          ]
+        },
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemB",
+      "fallbackRow": 0,
+      "fallbackCol": 2,
+      "expected": {
+        "row": 0,
+        "col": 1,
+        "found": false
+      }
+    },
+    {
+      "name": "rail vanished, fallback row clamped to last rail",
+      "rails": [
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        },
+        {
+          "id": "new",
+          "items": [
+            {
+              "id": "n1"
+            },
+            {
+              "id": "n2"
+            },
+            {
+              "id": "n3"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemA",
+      "fallbackRow": 9,
+      "fallbackCol": 2,
+      "expected": {
+        "row": 1,
+        "col": 2,
+        "found": false
+      }
+    },
+    {
+      "name": "rail vanished, negative fallback row clamped to 0",
+      "rails": [
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        },
+        {
+          "id": "new",
+          "items": [
+            {
+              "id": "n1"
+            },
+            {
+              "id": "n2"
+            },
+            {
+              "id": "n3"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemA",
+      "fallbackRow": -3,
+      "fallbackCol": 1,
+      "expected": {
+        "row": 0,
+        "col": 1,
+        "found": false
+      }
+    },
+    {
+      "name": "rail vanished, fallback col clamped to new rail size",
+      "rails": [
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        },
+        {
+          "id": "new",
+          "items": [
+            {
+              "id": "n1"
+            },
+            {
+              "id": "n2"
+            },
+            {
+              "id": "n3"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemA",
+      "fallbackRow": 1,
+      "fallbackCol": 7,
+      "expected": {
+        "row": 1,
+        "col": 2,
+        "found": false
+      }
+    },
+    {
+      "name": "empty rails list",
+      "rails": [],
+      "railId": "continue",
+      "itemId": "itemA",
+      "fallbackRow": 2,
+      "fallbackCol": 3,
+      "expected": {
+        "row": 0,
+        "col": 0,
+        "found": false
+      }
+    },
+    {
+      "name": "found rail with no items clamps col to 0",
+      "rails": [
+        {
+          "id": "continue",
+          "items": []
+        }
+      ],
+      "railId": "continue",
+      "itemId": "itemA",
+      "fallbackRow": 0,
+      "fallbackCol": 3,
+      "expected": {
+        "row": 0,
+        "col": 0,
+        "found": false
+      }
+    },
+    {
+      "name": "empty itemId keeps rail and uses fallback col",
+      "rails": [
+        {
+          "id": "continue",
+          "items": [
+            {
+              "id": "itemA"
+            },
+            {
+              "id": "itemB"
+            },
+            {
+              "id": "itemC"
+            }
+          ]
+        },
+        {
+          "id": "trending",
+          "items": [
+            {
+              "id": "t1"
+            },
+            {
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "",
+      "fallbackRow": 0,
+      "fallbackCol": 2,
+      "expected": {
+        "row": 0,
+        "col": 2,
+        "found": false
+      }
+    },
+    {
+      "name": "rail id with colon matches sanitised id, item id with colon found",
+      "rails": [
+        {
+          "id": "live:tv",
+          "items": [
+            {
+              "id": "live:abc:1"
+            },
+            {
+              "id": "rd:tt123"
+            }
+          ]
+        }
+      ],
+      "railId": "live:tv",
+      "itemId": "rd:tt123",
+      "fallbackRow": 0,
+      "fallbackCol": 0,
+      "expected": {
+        "row": 0,
+        "col": 1,
+        "found": true
+      }
+    },
+    {
+      "name": "numeric item id matched via asText",
+      "rails": [
+        {
+          "id": "continue",
+          "items": [
+            {
+              "id": 7
+            },
+            {
+              "id": 8
+            }
+          ]
+        }
+      ],
+      "railId": "continue",
+      "itemId": "8",
+      "fallbackRow": 0,
+      "fallbackCol": 0,
+      "expected": {
+        "row": 0,
+        "col": 1,
+        "found": true
+      }
+    }
+  ],
+  "railViewFirst": [
+    {
+      "name": "scroll right past visible span",
+      "count": 16,
+      "focus": 11,
+      "prevFirst": 0,
+      "visible": 11,
+      "expected": 1
+    },
+    {
+      "name": "scroll right to last item",
+      "count": 16,
+      "focus": 15,
+      "prevFirst": 0,
+      "visible": 11,
+      "expected": 5
+    },
+    {
+      "name": "scroll left to focus",
+      "count": 16,
+      "focus": 3,
+      "prevFirst": 5,
+      "visible": 11,
+      "expected": 3
+    },
+    {
+      "name": "focus already visible, no scroll",
+      "count": 16,
+      "focus": 6,
+      "prevFirst": 2,
+      "visible": 11,
+      "expected": 2
+    },
+    {
+      "name": "clamp at end when no focus",
+      "count": 16,
+      "focus": -1,
+      "prevFirst": 9,
+      "visible": 11,
+      "expected": 5
+    },
+    {
+      "name": "count less than visible stays at 0",
+      "count": 5,
+      "focus": 3,
+      "prevFirst": 2,
+      "visible": 11,
+      "expected": 0
+    },
+    {
+      "name": "negative prevFirst clamps to 0",
+      "count": 16,
+      "focus": -1,
+      "prevFirst": -4,
+      "visible": 11,
+      "expected": 0
+    }
+  ],
+  "railWindow": [
+    {
+      "name": "start of rail",
+      "count": 16,
+      "viewFirst": 0,
+      "visible": 11,
+      "buffer": 2,
+      "expected": {
+        "first": 0,
+        "last": 12
+      }
+    },
+    {
+      "name": "middle of rail",
+      "count": 40,
+      "viewFirst": 5,
+      "visible": 11,
+      "buffer": 2,
+      "expected": {
+        "first": 3,
+        "last": 17
+      }
+    },
+    {
+      "name": "end of rail clipped to count",
+      "count": 16,
+      "viewFirst": 5,
+      "visible": 11,
+      "buffer": 2,
+      "expected": {
+        "first": 3,
+        "last": 15
+      }
+    },
+    {
+      "name": "buffer clipped at start",
+      "count": 40,
+      "viewFirst": 1,
+      "visible": 11,
+      "buffer": 3,
+      "expected": {
+        "first": 0,
+        "last": 14
+      }
+    },
+    {
+      "name": "buffer clipped at end",
+      "count": 16,
+      "viewFirst": 5,
+      "visible": 11,
+      "buffer": 4,
+      "expected": {
+        "first": 1,
+        "last": 15
+      }
+    },
+    {
+      "name": "zero buffer in middle",
+      "count": 40,
+      "viewFirst": 5,
+      "visible": 11,
+      "buffer": 0,
+      "expected": {
+        "first": 5,
+        "last": 15
+      }
+    },
+    {
+      "name": "count shorter than visible",
+      "count": 5,
+      "viewFirst": 0,
+      "visible": 11,
+      "buffer": 2,
+      "expected": {
+        "first": 0,
+        "last": 4
+      }
+    },
+    {
+      "name": "empty rail",
+      "count": 0,
+      "viewFirst": 0,
+      "visible": 11,
+      "buffer": 2,
+      "expected": {
+        "first": 0,
+        "last": -1
+      }
+    }
+  ],
+  "railRowLive": [
+    {
+      "name": "focusRow -1 anchors at 0, row 0 live",
+      "row": 0,
+      "focusRow": -1,
+      "expected": true
+    },
+    {
+      "name": "focusRow -1 anchors at 0, row 2 live",
+      "row": 2,
+      "focusRow": -1,
+      "expected": true
+    },
+    {
+      "name": "focusRow -1 anchors at 0, row 3 not live",
+      "row": 3,
+      "focusRow": -1,
+      "expected": false
+    },
+    {
+      "name": "focusRow 0, row 2 live",
+      "row": 2,
+      "focusRow": 0,
+      "expected": true
+    },
+    {
+      "name": "focusRow 0, row 3 not live",
+      "row": 3,
+      "focusRow": 0,
+      "expected": false
+    },
+    {
+      "name": "focusRow 5, row 3 (anchor-2) not live",
+      "row": 3,
+      "focusRow": 5,
+      "expected": false
+    },
+    {
+      "name": "focusRow 5, row 4 (anchor-1) live",
+      "row": 4,
+      "focusRow": 5,
+      "expected": true
+    },
+    {
+      "name": "focusRow 5, row 7 (anchor+2) live",
+      "row": 7,
+      "focusRow": 5,
+      "expected": true
+    },
+    {
+      "name": "focusRow 5, row 8 not live",
+      "row": 8,
+      "focusRow": 5,
+      "expected": false
+    }
+  ],
+  "railVisibleCount": [
+    {
+      "name": "portrait pitch 302 width 275",
+      "pitch": 302,
+      "cardWidth": 275,
+      "expected": 11
+    },
+    {
+      "name": "landscape pitch 424 width 396",
+      "pitch": 424,
+      "cardWidth": 396,
+      "expected": 8
+    },
+    {
+      "name": "card wider than safe width clamps to 1",
+      "pitch": 100,
+      "cardWidth": 5000,
+      "expected": 1
+    }
+  ],
+  "railLiveNodeEstimate": [
+    {
+      "name": "live landscape 8 visible, buffer 2",
+      "count": 16,
+      "visible": 8,
+      "buffer": 2,
+      "live": true,
+      "expected": 197
+    },
+    {
+      "name": "not live is base cost",
+      "count": 16,
+      "visible": 8,
+      "buffer": 2,
+      "live": false,
+      "expected": 5
+    },
+    {
+      "name": "cards clamped to item count",
+      "count": 5,
+      "visible": 8,
+      "buffer": 2,
+      "live": true,
+      "expected": 85
+    },
+    {
+      "name": "live portrait 11 visible, buffer 2",
+      "count": 16,
+      "visible": 11,
+      "buffer": 2,
+      "live": true,
+      "expected": 245
+    }
+  ],
+  "railRowHeight": [
+    {
+      "name": "landscape",
+      "layout": "landscape",
+      "expected": 640
+    },
+    {
+      "name": "portrait",
+      "layout": "portrait",
+      "expected": 1040
+    }
+  ],
+  "navStep": [
+    {
+      "name": "left at 0 is a hard stop",
+      "col": 0,
+      "intent": "left",
+      "count": 7,
+      "expected": 0
+    },
+    {
+      "name": "right at last is a hard stop",
+      "col": 6,
+      "intent": "right",
+      "count": 7,
+      "expected": 6
+    },
+    {
+      "name": "right moves one",
+      "col": 3,
+      "intent": "right",
+      "count": 7,
+      "expected": 4
+    },
+    {
+      "name": "left moves one",
+      "col": 3,
+      "intent": "left",
+      "count": 7,
+      "expected": 2
+    },
+    {
+      "name": "unknown intent unchanged",
+      "col": 3,
+      "intent": "up",
+      "count": 7,
+      "expected": 3
+    }
+  ],
+  "heroStep": [
+    {
+      "name": "left at Play is a hard stop",
+      "col": 0,
+      "intent": "left",
+      "expected": 0
+    },
+    {
+      "name": "right at Details is a hard stop",
+      "col": 1,
+      "intent": "right",
+      "expected": 1
+    },
+    {
+      "name": "right from Play moves to Details",
+      "col": 0,
+      "intent": "right",
+      "expected": 1
+    },
+    {
+      "name": "left from Details moves to Play",
+      "col": 1,
+      "intent": "left",
+      "expected": 0
+    }
+  ],
+  "railsSignature": {
+    "cases": [
+      {
+        "name": "ids and progress",
+        "rails": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.5
+              },
+              {
+                "id": "itemB"
+              }
+            ]
+          }
+        ],
+        "expectedSignature": "|continue#itemA@50,itemB,"
+      },
+      {
+        "name": "two rails",
+        "rails": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.5
+              }
+            ]
+          },
+          {
+            "id": "trending",
+            "items": [
+              {
+                "id": "t1"
+              }
+            ]
+          }
+        ],
+        "expectedSignature": "|continue#itemA@50,|trending#t1,"
+      },
+      {
+        "name": "progress 0 is kept, 1 is 100",
+        "rails": [
+          {
+            "id": "x",
+            "items": [
+              {
+                "id": "a",
+                "progress": 1
+              },
+              {
+                "id": "b",
+                "progress": 0
+              }
+            ]
+          }
+        ],
+        "expectedSignature": "|x#a@100,b@0,"
+      }
+    ],
+    "pairs": [
+      {
+        "name": "same ids and progress give same string",
+        "a": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.5
+              },
+              {
+                "id": "itemB"
+              }
+            ]
+          }
+        ],
+        "b": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.5
+              },
+              {
+                "id": "itemB"
+              }
+            ]
+          }
+        ],
+        "same": true
+      },
+      {
+        "name": "reorder changes string",
+        "a": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.5
+              },
+              {
+                "id": "itemB"
+              }
+            ]
+          }
+        ],
+        "b": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemB"
+              },
+              {
+                "id": "itemA",
+                "progress": 0.5
+              }
+            ]
+          }
+        ],
+        "same": false
+      },
+      {
+        "name": "progress change changes string",
+        "a": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.5
+              },
+              {
+                "id": "itemB"
+              }
+            ]
+          }
+        ],
+        "b": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA",
+                "progress": 0.75
+              },
+              {
+                "id": "itemB"
+              }
+            ]
+          }
+        ],
+        "same": false
+      },
+      {
+        "name": "rail order change changes string",
+        "a": [
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA"
+              }
+            ]
+          },
+          {
+            "id": "trending",
+            "items": [
+              {
+                "id": "t1"
+              }
+            ]
+          }
+        ],
+        "b": [
+          {
+            "id": "trending",
+            "items": [
+              {
+                "id": "t1"
+              }
+            ]
+          },
+          {
+            "id": "continue",
+            "items": [
+              {
+                "id": "itemA"
+              }
+            ]
+          }
+        ],
+        "same": false
+      }
+    ]
+  }
+}

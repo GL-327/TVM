@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubNetwork" extends="Group">
+  <interface>
+    <field id="devices" type="array" onChange="onDevices" />
+    <field id="accountName" type="string" onChange="onAccount" />
+    <field id="hasFocus" type="boolean" value="false" onChange="paintFocus" />
+    <field id="selectedId" type="string" onChange="paintFocus" />
+    <field id="focusId" type="string" value="account" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
+    <function name="handleIntent" />
+    <function name="focusFirst" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/spatial.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubNetwork.brs" />
+  <children>
+    <Poster id="plane" uri="pkg:/images/glass/ellipse.png" translation="[160, 640]" width="2360" height="1240" opacity="0.8" />
+    <Group id="spokes" />
+    <Group id="backNodes" />
+    <HubNode id="orbNode" kind="account" diameter="420" />
+    <Group id="frontNodes" />
+    <Label id="hint" translation="[220, 1700]" width="2200" height="120" horizAlign="center" vertAlign="center" color="0xC4C4C4FF" />
+  </children>
+</component>

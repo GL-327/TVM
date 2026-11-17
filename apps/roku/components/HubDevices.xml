@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubDevices" extends="Group">
+  <interface>
+    <field id="devices" type="array" onChange="onDevices" />
+    <field id="serverTime" type="string" onChange="onDevices" />
+    <field id="sortKey" type="string" value="name" onChange="onDevices" />
+    <field id="selectedId" type="string" onChange="paintFocus" />
+    <field id="hasFocus" type="boolean" value="false" onChange="paintFocus" />
+    <field id="focusId" type="string" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
+    <function name="handleIntent" />
+    <function name="focusFirst" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubDevices.brs" />
+  <children>
+    <FocusButton id="ctlSort" variant="glassPill" translation="[160, 470]" pillWidth="640" />
+    <FocusButton id="ctlGraph" variant="glassPill" translation="[1760, 470]" pillWidth="340" label="Graph" />
+    <FocusButton id="ctlList" variant="glassPill" translation="[2140, 470]" pillWidth="340" label="List" />
+    <Group id="rows" translation="[160, 660]" />
+    <Label id="empty" translation="[160, 900]" width="2320" height="160" horizAlign="center" vertAlign="center" color="0xC4C4C4FF" text="No devices are linked yet." visible="false" />
+  </children>
+</component>

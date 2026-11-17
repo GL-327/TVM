@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubRemote" extends="Group">
+  <interface>
+    <field id="device" type="assocarray" onChange="paint" />
+    <field id="status" type="string" onChange="onStatus" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubRemote.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000A6" />
+    <GlassPanel id="glass" shape="panel" width="1500" height="1300" translation="[1170, 430]" />
+    <Label id="title" translation="[1260, 480]" width="1320" height="80" />
+    <Label id="subtitle" translation="[1260, 566]" width="1320" height="60" color="0xC4C4C4FF" />
+    <Group id="dpad" translation="[1500, 700]">
+      <Rectangle id="keyUp" translation="[220, 0]" width="260" height="130" cornerRadius="65" color="0xFFFFFF2E" />
+      <Label id="lblUp" translation="[220, 0]" width="260" height="130" horizAlign="center" vertAlign="center" text="Up" />
+      <Rectangle id="keyLeft" translation="[0, 160]" width="260" height="130" cornerRadius="65" color="0xFFFFFF2E" />
+      <Label id="lblLeft" translation="[0, 160]" width="260" height="130" horizAlign="center" vertAlign="center" text="Left" />
+      <Rectangle id="keySelect" translation="[220, 160]" width="260" height="130" cornerRadius="65" color="0xFFFFFF4D" />
+      <Label id="lblSelect" translation="[220, 160]" width="260" height="130" horizAlign="center" vertAlign="center" text="OK" />
+      <Rectangle id="keyRight" translation="[440, 160]" width="260" height="130" cornerRadius="65" color="0xFFFFFF2E" />
+      <Label id="lblRight" translation="[440, 160]" width="260" height="130" horizAlign="center" vertAlign="center" text="Right" />
+      <Rectangle id="keyDown" translation="[220, 320]" width="260" height="130" cornerRadius="65" color="0xFFFFFF2E" />
+      <Label id="lblDown" translation="[220, 320]" width="260" height="130" horizAlign="center" vertAlign="center" text="Down" />
+    </Group>
+    <Label id="hints" translation="[1260, 1190]" width="1320" height="300" wrap="true" maxLines="5" color="0xC4C4C4FF" />
+    <Label id="statusLabel" translation="[1260, 1560]" width="1320" height="80" color="0xF5F5F5FF" />
+    <Timer id="flash" duration="0.18" repeat="false" />
+  </children>
+</component>

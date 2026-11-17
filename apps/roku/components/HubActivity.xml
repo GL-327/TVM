@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubActivity" extends="Group">
+  <interface>
+    <field id="events" type="array" onChange="onEvents" />
+    <field id="serverTime" type="string" onChange="onEvents" />
+    <field id="hasFocus" type="boolean" value="false" onChange="paintFocus" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
+    <function name="handleIntent" />
+    <function name="focusFirst" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubActivity.brs" />
+  <children>
+    <Group id="rows" translation="[160, 500]" />
+    <Label id="empty" translation="[160, 900]" width="3040" height="160" horizAlign="center" vertAlign="center" color="0xC4C4C4FF" text="No activity yet." visible="false" />
+  </children>
+</component>

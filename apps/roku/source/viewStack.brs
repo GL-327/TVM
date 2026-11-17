@@ -112,23 +112,31 @@ function viewStackReset(state as Object, name as String) as Object
   return nextState
 end function
 
+' Focus belongs to the screen the user is looking at, which is the last
+' "screen" entry even when a modal (player, You menu) sits on top of it.
 function viewStackRememberFocus(state as Object, focusKey as String) as Object
+  target = state.entries.Count() - 1
+  while target > 0 and state.entries[target].kind <> "screen"
+    target = target - 1
+  end while
   entries = []
-  last = state.entries.Count() - 1
   i = 0
-  while i < last
-    entries.Push(state.entries[i])
+  while i < state.entries.Count()
+    if i = target
+      src = state.entries[i]
+      copy = {}
+      copy.key = src.key
+      copy.name = src.name
+      copy.params = src.params
+      copy.kind = src.kind
+      copy.transient = src.transient
+      copy.focusKey = focusKey
+      entries.Push(copy)
+    else
+      entries.Push(state.entries[i])
+    end if
     i = i + 1
   end while
-  src = state.entries[last]
-  top = {}
-  top.key = src.key
-  top.name = src.name
-  top.params = src.params
-  top.kind = src.kind
-  top.transient = src.transient
-  top.focusKey = focusKey
-  entries.Push(top)
   nextState = {}
   nextState.nextKey = state.nextKey
   nextState.entries = entries

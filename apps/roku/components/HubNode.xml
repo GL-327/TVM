@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubNode" extends="Group">
+  <interface>
+    <field id="kind" type="string" value="device" onChange="paintContent" />
+    <field id="deviceId" type="string" />
+    <field id="name" type="string" onChange="paintContent" />
+    <field id="platform" type="string" onChange="paintContent" />
+    <field id="state" type="string" value="unknown" onChange="paintContent" />
+    <field id="count" type="integer" value="0" onChange="paintContent" />
+    <field id="diameter" type="integer" value="392" onChange="layoutNode" />
+    <field id="depth" type="float" value="1.0" onChange="paintFocus" />
+    <field id="focused" type="boolean" value="false" onChange="paintFocus" />
+    <field id="selected" type="boolean" value="false" onChange="paintFocus" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/spatial.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubNode.brs" />
+  <children>
+    <Group id="body">
+      <Poster id="halo" uri="pkg:/images/glass/orb-halo.png" visible="false" />
+      <Poster id="tint" uri="pkg:/images/glass/mask-avatar.png" blendColor="0xFFFFFF1F" />
+      <Poster id="orb" uri="pkg:/images/glass/orb.png" />
+      <Poster id="glyph" loadDisplayMode="scaleToFit" />
+      <Label id="label" horizAlign="center" vertAlign="top" wrap="true" maxLines="2" color="0xF5F5F5FF" />
+      <Poster id="dot" uri="pkg:/images/glass/dot.png" width="28" height="28" blendColor="0x8A8F9CFF" />
+    </Group>
+    <Animation id="anim" duration="0.15" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="animScale" key="[0.0, 1.0]" keyValue="[[1.0, 1.0], [1.0, 1.0]]" fieldToInterp="body.scale" />
+      <Vector2DFieldInterpolator id="animLift" key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [0.0, 0.0]]" fieldToInterp="body.translation" />
+    </Animation>
+  </children>
+</component>

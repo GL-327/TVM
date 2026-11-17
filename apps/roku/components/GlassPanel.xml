@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="GlassPanel" extends="Group">
+  <interface>
+    <field id="width" type="float" value="800" onChange="layout" />
+    <field id="height" type="float" value="400" onChange="layout" />
+    <field id="shape" type="string" value="panel" onChange="layout" />
+    <field id="focused" type="boolean" value="false" onChange="paint" />
+    <field id="selected" type="boolean" value="false" onChange="paint" />
+    <field id="active" type="boolean" value="false" onChange="paint" />
+    <field id="tintColor" type="string" value="" onChange="paint" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="GlassPanel.brs" />
+  <children>
+    <Poster id="shadow" />
+    <Poster id="glow" visible="false" />
+    <Poster id="tint" />
+    <Poster id="bodyGradient" />
+    <Poster id="sheen" />
+    <Poster id="rim" uri="pkg:/images/glass/panel.9.png" />
+  </children>
+</component>

@@ -12,10 +12,13 @@ import { createBillingProbe, type BillingProbe } from './providers/billingProbe.
 import { createAccountsService, isAccountTier, accountSessionToken, publicAccount, type AccountsService } from './providers/accounts.ts';
 import { createMailService, type MailService } from './providers/mail.ts';
 import { currentSessionToken, runForSession } from './requestContext.ts';
-import { entitlementForTier, ACCESS_TIERS, ACCESS_ROUTE, STREAM_MONTHLY_PENCE } from './providers/accessTiers.ts';
+import { entitlementForTier, accessTiers, ACCESS_TIERS, ACCESS_ROUTE } from './providers/accessTiers.ts';
+import { createFeatureFlags } from './providers/featureFlags.ts';
+import { requireCapability } from './providers/entitlementGate.ts';
+import { createPricingContext, handlePricingApi } from './pricingRoutes.ts';
 import { TERMS, TERMS_SUMMARY, TERMS_VERSION } from './providers/terms.ts';
 import { createDonationService, DONATION_COPY, type DonationService } from './providers/donations.ts';
-import { accessError, createUnlockLimiter, isLoopback, setSecurityHeaders } from './security.ts';
+import { accessError, createUnlockLimiter, createSignInLimiter, isLoopback, setSecurityHeaders } from './security.ts';
 import { mobilePlaybackBlocked } from './mobileAccess.ts';
 import { createLanSessions, serveLanPairing } from './lanSessions.ts';
 import { exportPersonalData } from './privacy.ts';
@@ -47,6 +50,7 @@ import { readPrefs, writePrefs } from './prefs.ts';
 import { validDownloadPreferences } from './providers/downloadPreferences.ts';
 import { desktopRuntime } from './desktopRuntime.ts';
 import { ensureWindowsMpv } from './providers/mpvInstall.ts';
+import { createHubContext, handleHubApi } from './hub/routes.ts';
 
 export { CORE_VERSION };
 
@@ -116,16 +120,6 @@ function relaysLive(path: string): boolean {
     || path.startsWith('/api/live/stream/')
     || path.startsWith('/api/live/hop/')
     || path === '/api/live/sources';
-}
-
-/**
- * Relaying live TV to other devices is what makes this Core a server, and
- * only the dev account can make it one. This machine's own player is never
- * refused.
- */
-export function liveRelayRefused(path: string, remoteAddress: string | undefined, devSignedIn: () => boolean): boolean {
-  if (!relaysLive(path) || isLoopback(remoteAddress)) return false;
-  return !devSignedIn();
 }
 
 function proxyRequestHeaders(request: IncomingMessage): Record<string, string> {
@@ -475,6 +469,7 @@ async function handleApi(
   accounts: AccountsService,
   donations: DonationService,
   mail: MailService,
+  allowSignIn: ReturnType<typeof createSignInLimiter>,
 ): Promise<boolean> {
   // Dev mode belongs to the dev account, so dev-only routes check who is
   // asking rather than a switch for the whole machine. Otherwise anyone on
@@ -487,6 +482,27 @@ async function handleApi(
     }
     return devAsking;
   };
+
+  const liveAllowed = (): boolean => {
+    // Interim machine-wide entitlement. Replace with account-scoped grants when migrated;
+    // every proxy/segment request rechecks access rather than trusting the URL token.
+    const decision = requireCapability('liveTv', {
+      liveTv: plans.status().liveTv,
+      liveTvHealthy: createFeatureFlags({ dataDir, env }).get()['liveTv.healthy'],
+      dev: accounts.resolve(currentSessionToken())?.role === 'dev',
+    });
+    if (!decision.ok) sendJson(response, decision.status, { error: decision.error, message: decision.message });
+    return decision.ok;
+  };
+  const liveContent = path === '/api/live/catalog' || (relaysLive(path) && (path !== '/api/live/sources' || request.method === 'GET'));
+  if (liveContent && !liveAllowed()) return true;
+  const liveConfigWrite = (path === '/api/live' && request.method === 'PUT')
+    || (path === '/api/live/xtream' && (request.method === 'PUT' || request.method === 'DELETE'))
+    || (path === '/api/live/check' && request.method === 'POST');
+  if (liveConfigWrite && !isLoopback(request.socket.remoteAddress) && !devRequest()) {
+    sendJson(response, 403, { error: 'dev_account_required' });
+    return true;
+  }
 
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
@@ -964,13 +980,9 @@ async function handleApi(
       native?: unknown;
     };
     const id = typeof body.id === 'string' ? body.id : undefined;
+    if (id?.startsWith('live:') && !liveAllowed()) return true;
     if (id !== undefined && !id.startsWith('live:') && plans.hoursBlocked()) {
       sendJson(response, 409, { kind: 'unavailable', reason: 'hours-cap' });
-      return true;
-    }
-    // Say so before handing out a proxy address the relay would then refuse.
-    if (id !== undefined && id.startsWith('live:') && !isLoopback(request.socket.remoteAddress) && !accounts.devSignedIn()) {
-      sendJson(response, 409, { kind: 'unavailable', reason: 'live-server-offline' });
       return true;
     }
     const result =
@@ -1224,7 +1236,8 @@ async function handleApi(
   }
 
   if (path === '/api/tiers' && request.method === 'GET') {
-    sendJson(response, 200, { tiers: ACCESS_TIERS, route: ACCESS_ROUTE, streamMonthlyPence: STREAM_MONTHLY_PENCE });
+    const tiers = accessTiers(createFeatureFlags({ dataDir, env }).get());
+    sendJson(response, 200, { tiers, route: ACCESS_ROUTE, streamMonthlyPence: tiers[0]!.monthlyPence });
     return true;
   }
 
@@ -1282,6 +1295,11 @@ async function handleApi(
   if (path === '/api/account/signin' && request.method === 'POST') {
     try {
       const body = (await readJson(request)) as Record<string, unknown>;
+      if (!allowSignIn(body?.email, request.socket.remoteAddress)) {
+        response.setHeader('retry-after', '900');
+        sendJson(response, 429, { error: 'rate_limited' });
+        return true;
+      }
       sendJson(response, 200, accounts.signIn({ ...body, client: clientLabel() }));
     } catch (error) {
       sendJson(response, 401, { error: error instanceof Error ? error.message : 'Sign in failed.' });
@@ -1317,10 +1335,7 @@ async function handleApi(
       return;
     }
     const wanted = entitlementForTier(record.tier);
-    const current = plans.status();
-    if (current.id !== wanted.planId) plans.set(wanted.planId, 'checkout');
-    if (current.liveTv !== wanted.liveTv) plans.grantLiveTv(wanted.liveTv);
-    if (current.bundle !== true) plans.grantCosmetics(true);
+    plans.syncAccountTier(wanted.planId, wanted.liveTv);
   };
   /** Who am I, and may I use TVM? The interface asks this on every launch. */
   if (path === '/api/account' && request.method === 'GET') {
@@ -1847,8 +1862,11 @@ export function createCoreServer(options: CoreOptions = {}): Server {
     });
 
   const allowUnlock = createUnlockLimiter();
+  const allowSignIn = createSignInLimiter();
   const lanSessions = createLanSessions(env);
   const allowPairing = createUnlockLimiter();
+  const hub = createHubContext({ dataDir, accounts, env });
+  const pricing = createPricingContext({ dataDir, accounts, env });
 
   const server: Server = createServer((request, response) => {
     void (async () => {
@@ -1883,10 +1901,6 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         sendJson(response, 429, { error: 'Too many unlock attempts. Try again in one minute.' });
         return;
       }
-      if (liveRelayRefused(path, request.socket.remoteAddress, () => accounts.devSignedIn())) {
-        sendJson(response, 403, { error: 'dev_account_required' });
-        return;
-      }
       const addr = server.address();
       const listenPort = addr !== null && typeof addr === 'object' ? addr.port : resolvePort(env);
 
@@ -1895,6 +1909,8 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         return;
       }
       if (await handleStreamApi(path, request, response, streamer)) return;
+      if (await handleHubApi(request, response, path, hub)) return;
+      if (await handlePricingApi(request, response, path, pricing)) return;
       const sessionToken = accountSessionToken(
         incomingHeader(request.headers.authorization) || undefined,
         incomingHeader(request.headers['x-tvm-account']) || undefined,
@@ -1902,7 +1918,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       );
       const handled = await runForSession(sessionToken, () => handleApi(
         path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork,
-        dataDir, streamer, env, payments, subscriptions, billingProbe, accounts, donations, mail,
+        dataDir, streamer, env, payments, subscriptions, billingProbe, accounts, donations, mail, allowSignIn,
       ));
       if (handled) return;
 

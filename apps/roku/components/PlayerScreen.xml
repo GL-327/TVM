@@ -15,6 +15,11 @@
     <field id="startAt" type="float" value="0" />
     <field id="message" type="string" onChange="onMessage" />
     <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="playState" type="string" value="idle" />
+    <field id="playPosition" type="float" value="0" />
+    <field id="playDuration" type="float" value="0" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+    <function name="applyRemote" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />

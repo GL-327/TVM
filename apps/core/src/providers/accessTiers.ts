@@ -1,4 +1,6 @@
-import { LIVE_TV_CATALOG, type LiveTvTermSpec } from './liveTv.ts';
+import type { LiveTvTermSpec } from './liveTv.ts';
+import { orderOffers, priceBookAt, type PriceBook } from './priceBook.ts';
+import { resolveFlags, type FeatureFlags } from './featureFlags.ts';
 import type { AccountTier } from './accounts.ts';
 import type { PlanId } from './plans.ts';
 
@@ -26,24 +28,35 @@ export interface AccessTierSpec {
   /** The internal plan whose capabilities this tier grants. */
   planId: PlanId;
   liveTv: boolean;
-  /** Indicative monthly cost in pence, or null where Live TV is priced by term. */
+  /** Base TVM cost; the Live TV add-on is shown separately. */
   monthlyPence: number | null;
-  /** Live TV is priced by the upstream panel's terms, not monthly. */
+  yearlyPence: number;
+  liveTvMonthlyPence: number;
+  liveTvYearlyPence: number;
+  orderable: boolean;
+  availability: 'available' | 'Coming soon';
+  /** Compatibility field: legacy term offers are no longer advertised. */
   liveTvTerms: readonly LiveTvTermSpec[];
   includes: readonly string[];
 }
 
-/** Sterling, per month, for the software itself. Live TV is on top and by term. */
-export const STREAM_MONTHLY_PENCE = 999;
+/** Compatibility export; live routes resolve the current book on every request. */
+export const STREAM_MONTHLY_PENCE = orderOffers(priceBookAt(), 'month', false)[0]!.unitPence;
 
-export const ACCESS_TIERS: readonly AccessTierSpec[] = [
+export function accessTiers(flags: FeatureFlags = resolveFlags(), book: PriceBook = priceBookAt()): readonly AccessTierSpec[] {
+  const month = orderOffers(book, 'month', true);
+  const year = orderOffers(book, 'year', true);
+  const prices = { monthlyPence: month[0]!.unitPence, yearlyPence: year[0]!.unitPence };
+  const tiers: AccessTierSpec[] = [
   {
     id: 'stream',
     name: 'Movies and TV shows',
     summary: 'Films and series from your own sources, with the best available picture.',
     planId: 'max',
     liveTv: false,
-    monthlyPence: STREAM_MONTHLY_PENCE,
+    ...prices,
+    liveTvMonthlyPence: 0, liveTvYearlyPence: 0,
+    orderable: true, availability: 'available',
     liveTvTerms: [],
     includes: [
       'Films and series through your own sources',
@@ -56,11 +69,13 @@ export const ACCESS_TIERS: readonly AccessTierSpec[] = [
   {
     id: 'stream-live',
     name: 'Movies and TV shows + Live TV',
-    summary: 'Everything above, plus live channels through your own IPTV subscription.',
+    summary: flags['liveTv.orderable'] ? 'Everything above, plus Live TV through your own IPTV subscription.' : 'Live TV: Coming soon.',
     planId: 'max',
     liveTv: true,
-    monthlyPence: STREAM_MONTHLY_PENCE,
-    liveTvTerms: LIVE_TV_CATALOG,
+    ...prices,
+    liveTvMonthlyPence: month[1]!.unitPence, liveTvYearlyPence: year[1]!.unitPence,
+    orderable: flags['liveTv.orderable'], availability: flags['liveTv.orderable'] ? 'available' : 'Coming soon',
+    liveTvTerms: [],
     includes: [
       'Everything in Movies and TV shows',
       'Live TV, using an IPTV subscription you supply',
@@ -69,6 +84,10 @@ export const ACCESS_TIERS: readonly AccessTierSpec[] = [
     ],
   },
 ];
+  return flags['liveTv.visible'] ? tiers : tiers.filter(tier => !tier.liveTv);
+}
+
+export const ACCESS_TIERS = accessTiers();
 
 export function accessTier(id: AccountTier): AccessTierSpec {
   return ACCESS_TIERS.find((tier) => tier.id === id) ?? ACCESS_TIERS[0]!;
@@ -76,8 +95,8 @@ export function accessTier(id: AccountTier): AccessTierSpec {
 
 /** What an activated account is entitled to, as the plan engine understands it. */
 export function entitlementForTier(id: AccountTier): { planId: PlanId; liveTv: boolean } {
-  const tier = accessTier(id);
-  return { planId: tier.planId, liveTv: tier.liveTv };
+  // Stored grant vocabulary is independent of purchase visibility/orderability.
+  return { planId: 'max', liveTv: id === 'stream-live' };
 }
 
 /**

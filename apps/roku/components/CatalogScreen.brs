@@ -1,20 +1,32 @@
+' Catalogue list for Movies, Series, Library views, Watchlist, Search results
+' and episode lists. Uses the shared NavStrip; the title list is one windowed,
+' non-looping rail. focusKey is id-based ("items:<itemId>", "nav:<col>").
 sub init()
   m.top.focusable = true
-  m.ribbon = m.top.findNode("ribbon")
-  m.kicker = m.top.findNode("kicker")
+  m.nav = m.top.findNode("nav")
   m.title = m.top.findNode("title")
   m.rail = m.top.findNode("rail")
   m.error = m.top.findNode("error")
   m.empty = m.top.findNode("empty")
   m.loading = m.top.findNode("loading")
-  m.title.font = tvmFontTitle()
-  m.loading.font = tvmFontBody()
-  m.ribbon.activeId = "watchlist"
-  m.ribbon.focusCol = 5
-  m.ribbon.hasBarFocus = false
+  m.title.font = tvmFontScreenTitle()
+  m.loading.font = tvmFontSecondary()
+  m.nav.activeId = "library"
   m.zone = "rail"
+  m.navCol = 4
   m.col = 0
   m.seq = 0
+  m.pendingKey = ""
+end sub
+
+sub onNavId()
+  if m.nav = invalid then return
+  m.nav.activeId = m.top.navId
+  m.navCol = tvmNavIndex(m.top.navId)
+end sub
+
+sub onProfileName()
+  if m.nav <> invalid then m.nav.profileName = m.top.profileName
 end sub
 
 sub onHeading()
@@ -25,16 +37,19 @@ end sub
 sub onItems()
   if m.rail = invalid then return
   kind = m.top.kind
-  if kind = "watchlist"
+  if kind = "watchlist" or kind = "children"
     m.rail.layout = "landscape"
-    m.ribbon.activeId = "watchlist"
   else
     m.rail.layout = "portrait"
-    m.ribbon.activeId = "library"
   end if
   m.rail.title = ""
   m.rail.items = m.top.items
   m.col = 0
+  if m.pendingKey <> ""
+    key = m.pendingKey
+    m.pendingKey = ""
+    applyKey(key)
+  end if
   paintFocus()
 end sub
 
@@ -56,17 +71,54 @@ sub onMode()
   paintFocus()
 end sub
 
+sub onRestoreKey()
+  key = m.top.restoreKey
+  if key = invalid or key = "" then return
+  items = m.top.items
+  if Left(key, 6) = "items:" and (items = invalid or items.Count() = 0)
+    m.pendingKey = key
+    return
+  end if
+  applyKey(key)
+  paintFocus()
+end sub
+
+sub applyKey(key as String)
+  parsed = parseFocusKey(key)
+  if parsed.zone = "nav"
+    m.zone = "nav"
+    m.navCol = Int(Val(parsed.a))
+  else if parsed.zone = "items"
+    items = m.top.items
+    if items = invalid then return
+    i = 0
+    while i < items.Count()
+      if asText(aaGet(items[i], "id", "")) = parsed.a
+        m.col = i
+        m.zone = "rail"
+      end if
+      i = i + 1
+    end while
+  end if
+end sub
+
 sub paintFocus()
   mode = m.top.mode
-  m.ribbon.hasBarFocus = (m.zone = "ribbon")
-  if m.zone = "ribbon"
+  m.nav.hasBarFocus = (m.zone = "nav")
+  m.nav.focusCol = m.navCol
+  if m.zone = "nav"
     m.rail.focusCol = -1
     m.error.hasFocusStyle = false
+    m.top.focusKey = "nav:" + StrI(m.navCol).Trim()
     return
   end if
   if mode = "ready"
     m.rail.focusCol = m.col
     m.error.hasFocusStyle = false
+    items = m.top.items
+    if items <> invalid and m.col < items.Count()
+      m.top.focusKey = "items:" + asText(aaGet(items[m.col], "id", ""))
+    end if
   else if mode = "error"
     m.rail.focusCol = -1
     m.error.hasFocusStyle = true
@@ -96,16 +148,22 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     emit("home", invalid)
     return true
   end if
-  if m.zone = "ribbon"
-    if intent = "left" and m.ribbon.focusCol > 0 then m.ribbon.focusCol = m.ribbon.focusCol - 1
-    if intent = "right" and m.ribbon.focusCol < tvmRibbonLast() then m.ribbon.focusCol = m.ribbon.focusCol + 1
+  if m.zone = "nav"
+    count = tvmNavSpec().Count() + 1
+    if intent = "left" or intent = "right" then m.navCol = navStep(m.navCol, intent, count)
     if intent = "down" then m.zone = "rail"
-    if intent = "select" then emit(tvmRibbonSpec()[m.ribbon.focusCol].action, invalid)
+    if intent = "select"
+      if m.navCol >= tvmNavSpec().Count()
+        emit("you", invalid)
+      else
+        emit("nav", { id: tvmNavSpec()[m.navCol].id })
+      end if
+    end if
     paintFocus()
     return true
   end if
   if intent = "up"
-    m.zone = "ribbon"
+    m.zone = "nav"
     paintFocus()
     return true
   end if
@@ -117,13 +175,13 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   items = m.top.items
   count = 0
   if items <> invalid then count = items.Count()
-  if intent = "left" and count > 0
-    if m.col > 0 then m.col = m.col - 1 else m.col = count - 1
+  if intent = "left" and m.col > 0
+    m.col = m.col - 1
     paintFocus()
     return true
   end if
-  if intent = "right" and count > 0
-    if m.col < count - 1 then m.col = m.col + 1 else m.col = 0
+  if intent = "right" and m.col < count - 1
+    m.col = m.col + 1
     paintFocus()
     return true
   end if
@@ -133,3 +191,11 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   end if
   return true
 end function
+
+' TVM Hub nav command: the same key a physical remote would send.
+sub onRemoteIntent()
+  intent = m.top.remoteIntent
+  if intent = invalid or intent = "" then return
+  keyName = keyFromIntent(intent)
+  if keyName <> "" then onKeyEvent(keyName, true)
+end sub

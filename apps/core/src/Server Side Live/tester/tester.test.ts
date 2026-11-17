@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CORE_HOST } from '../../config.ts';
 import { startCoreServer, type RunningCore } from '../../server.ts';
+import { createPlanService } from '../../providers/plans.ts';
 import { resetServerSideLive } from '../routes.ts';
 import {
   startTesterPanel,
@@ -136,7 +137,10 @@ describe('Server Side Live against the tester', () => {
     resetServerSideLive();
     panel = await startTesterPanel({ tsSeconds: 20 });
     dataDir = await mkdtemp(join(tmpdir(), 'tvm-tester-ssl-'));
-    core = await startCoreServer(0, { dataDir, env: {} });
+    // The Live TV paths are entitlement-gated; a legacy lifetime grant stands in for a paying viewer.
+    const plans = createPlanService({ dataDir, env: {} });
+    plans.grantLiveTv(true);
+    core = await startCoreServer(0, { dataDir, env: {}, plans });
     base = `http://${CORE_HOST}:${core.port}`;
     const loaded = await fetch(`${base}/api/live/sources`, {
       method: 'PUT',
@@ -251,7 +255,10 @@ describe('the Live TV screen path against the tester', () => {
     resetServerSideLive();
     panel = await startTesterPanel({ tsSeconds: 20 });
     dataDir = await mkdtemp(join(tmpdir(), 'tvm-tester-live-'));
-    core = await startCoreServer(0, { dataDir, env: {} });
+    // The Live TV paths are entitlement-gated; a legacy lifetime grant stands in for a paying viewer.
+    const plans = createPlanService({ dataDir, env: {} });
+    plans.grantLiveTv(true);
+    core = await startCoreServer(0, { dataDir, env: {}, plans });
     base = `http://${CORE_HOST}:${core.port}`;
   });
 

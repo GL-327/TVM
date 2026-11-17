@@ -30,3 +30,110 @@ is not an encrypted secret vault. Never embed it in `config.json`, distribute it
 with the package, or expose a development Core to the internet. This version is
 a sideloaded zip talking HTTP on a trusted private LAN. It is not a Channel
 Store or HTTPS product.
+
+
+## Manual remote script: Home, Details, Play, Back (redesign R1)
+
+Run on a real Roku, ideally one HD (720p) and one FHD (1080p) box. Record the
+model, firmware, resolution and pass/fail for each step.
+
+1. Cold start into Home. The hero is full-bleed, the title is left aligned, and
+   Play is focused. Nothing is clipped at the screen edges. Text is readable
+   from the sofa at 720p.
+2. Up to the strip. Left / Right slide one highlight; at Home and at the
+   profile orb the highlight stops (no wrap). The active tab is a filled pill
+   without a ring; the focused one has the ring.
+3. OK on Movies, then Series: the Library is filtered by kind and the strip
+   shows the matching tab. Live TV opens the live screen. Library opens the
+   library. Search opens the keyboard.
+4. OK on the profile orb: the You side panel opens. Walk every row. TVM Hub
+   opens the Hub screen (see the TVM Hub script below). Sources lists studio hubs,
+   Real-Debrid, Live picks, Live TV playlist and Inputs; each one opens.
+5. Back to Home. Down from the hero: Continue Watching is the first rail, wide
+   cards with progress. Play something, press Back out of the player, then
+   Back again. Focus returns to the same Continue Watching title even though it
+   has moved to the front of the rail.
+6. Press Right along a long rail: it scrolls without stutter and stops at the
+   last card. Wait more than 90 seconds on a card: focus must not jump.
+7. OK on Play in the hero. Playback starts without a details stop. Back from the
+   player goes to Home on the Play pill.
+8. OK on Details. Play (or Resume), My List (toggles to In My List) and Back
+   all respond. For a series, Down reaches seasons, OK opens episodes, OK on an
+   episode plays it. Back from the player returns to the same episode; Back
+   again returns to Seasons; Back again to Home on the tile you came from.
+9. Settings: turn Reduce Motion on. Focus changes no longer scale or slide, but
+   the ring still moves and order is unchanged. Turn Reduce Transparency on:
+   pills, strip and You menu become opaque ink with a clear edge. Restart the
+   channel: both settings persist.
+10. Open the developer console (telnet ROKU-IP 8085) and run `r2d2_bitmaps`
+    on Home (idle hero: one hero texture), on Details, and after scrolling a
+    rail. Poster bitmaps should be about 400x225 (landscape) and 300x450
+    (portrait), not 1280x720 or 780x1170. Note the memory total.
+11. Leave Home idle for five minutes: no animation should be running in the
+    background (there are none by design) and the box should stay cool.
+
+## Manual remote script: TVM Hub, Network and remote control (redesign R2/R3)
+
+Needs Core with the Hub routes (`/api/hub/v1`) and at least two installations on
+one account: this Roku plus a second Roku, the web app or the Windows app.
+Without Core, do steps 1 to 4 with demo data (Settings > TVM Hub demo data).
+
+1. Demo data first. Settings: turn TVM Hub demo data on. Open You > TVM Hub.
+   The title reads TVM Hub, a "Demo data" chip sits by the tabs, and the
+   Network tab shows the account orb with six device nodes and a "+1 more"
+   node. Labels stay upright; nodes toward the back are slightly smaller.
+2. D-pad on the graph: Left, Right, Up and Down always land on a neighbouring
+   node in the direction pressed (no jumps across the plane). Up from a top
+   node reaches the tab strip. Right from the right edge enters the inspector.
+   Down from a bottom node reaches Add device. Left from the left-most node
+   stays put. Focus lifts a node and lights its spoke. OK on "+1 more" opens
+   the Devices tab.
+3. Tabs: Left and Right on the strip only move the highlight; nothing loads
+   until OK. Down enters the content; Back returns to the tab strip; Back on
+   the strip leaves TVM Hub. Open Devices: sort (Name, Last seen, Room) cycles
+   with OK; Graph returns to Network. Move into the inspector: the selected
+   row or node stays dimly marked. Every action reads "Demo data" and does
+   nothing. Activity lists readable sentences.
+4. Turn Reduce Motion on and reopen the Hub: nodes sit at full size, no slide
+   or lift, focus order unchanged. Turn demo data off again.
+5. Real data, this Roku. Open TVM Hub. This Roku is a node marked "This device"
+   with a remote-attached chip. Its inspector offers Rename, Set room and Sign
+   out only. Rename to a new name: the row shows Sending, then Done, and the
+   node label changes in place without moving. Wait 30 seconds: nothing
+   reshuffles when the heartbeat lands.
+6. Second device. Start playback on the second device. Within 15 seconds its
+   node turns green (Playing) and its inspector shows the title and a bar.
+   Switch to another profile on the viewer: the card must disappear and the
+   state must still read Playing (restricted scope).
+7. Remote, Pause: select the second device, choose Pause. The row shows
+   Sending, Received, then Done and the device pauses. Resume does the
+   reverse. Take the device offline: Pause and Open remote read "Offline".
+8. Open remote: arrows, OK, Options (*) and Play/Pause control the other
+   device. Each press flashes the key and shows Sending then Done. Rewind and
+   Fast forward skip 10 seconds if the device has playback.skip. Back closes
+   the remote. A device without nav.dpad has no Open remote row.
+9. This Roku as the target. From the second device (or the web Hub) send
+   Pause, Resume, a seek, Left, Right, OK and Back to this Roku while it plays
+   and while it sits on Home. Commands arrive within about 3 seconds. With no
+   player open, Pause is rejected with "Nothing is ready to control there".
+   play.title starts the title here.
+10. Add device (approving another device). OK on Add device. Enter the 8
+    character code from the other device with the arrows and OK; Delete and
+    Clear work. A wrong code says "That code was not found". Five wrong codes
+    in a row say to wait 15 minutes. A real code shows the requesting device's
+    name and platform; Approve signs it in and it appears in the Hub within
+    15 seconds; Deny removes the request. An old code says it has expired.
+11. Sign in with a code (this Roku). Sign out in Settings, then on the account
+    screen choose Sign in with a code. A code and address appear. Approve it
+    from a signed-in device. The Roku lands on Home signed in with no typing
+    and the Hub lists it once, not twice. Cancel with Back also works.
+12. Remove device. Select another device, choose Remove device and confirm.
+    The node leaves the graph, focus moves to the closest remaining neighbour
+    (or the account orb when none is left), and the removed device's next call
+    fails with device_revoked. Remove this Roku from another device: within a
+    heartbeat this Roku returns to sign-in with a notice.
+13. Hub unavailable. Point Core at a build without the Hub routes (or stop the
+    Hub): TVM Hub shows "TVM Hub is not available" with Retry; Retry works
+    once Core has the routes.
+14. Memory. With the Hub open and six devices, run `r2d2_bitmaps`: the orb
+    texture appears once, not once per node.

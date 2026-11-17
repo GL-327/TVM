@@ -21,10 +21,9 @@ Windows desktop uses the C++ renderer. The shared browser UI remains in `apps/ui
    when Core returned more than one featured title. Both WATCH NOW and Learn
    More open details, as on desktop.
 5. Opens Library, Watchlist, Search, Live TV, Household, Profiles, Apps, and
-   Settings against the same Core APIs the React app uses.   The Home ribbon
-   matches the desktop order: Profile, Inputs, Search, Home, Live TV,
-   Watchlist, TVM Stream, Netflix, Prime Video, Freevee, YouTube, Disney+, Hulu,
-   Apps, Settings.
+   Settings against the same Core APIs the React app uses.   Home uses a navigation strip
+   (Home, Movies, Series, Live TV, Library, Search) and a profile orb that opens
+   the You menu; other screens keep the older ribbon for now.
 6. Plays a stream Core returns from `POST /api/playback` on the Roku `Video`
    node, with custom overlay chrome (±10s, auto-hide). Progress is posted to
    `POST /api/progress`. Without Real-Debrid, Core still answers `unavailable`
@@ -190,18 +189,28 @@ After sideload:
 1. The splash and then either Setup or Home should appear. Setup asks for the
    Core LAN URL, then the same `TVM_LAN_TOKEN` running on the PC. A wrong token
    is rejected; a matching token loads Home and is remembered across restarts.
-2. Move between ribbon items with Left / Right. The focused item has a white
-   ring and a visible label. The ribbon matches the desktop: Profile, Inputs,
-   Search, Home, Live TV, Watchlist, TVM, Apps, Settings.
-3. Down from Home's ribbon reaches poster rails when Core returned titles.
-   Left / Right wrap on a rail. Up returns to the ribbon, then Learn More, then
-   WATCH NOW.
-4. OK on WATCH NOW or Learn More opens details (Play, My List, Back), matching
-   desktop. OK on a poster also opens details.
-5. Ribbon Search opens an on-screen keyboard. Live TV / Watchlist / Profile /
-   Settings / Apps open those screens. Apps tiles open TVM originals hubs.
-6. Back closes overlays. Back on Home stays on Home.
-7. Settings can sign out of the TVM account (with a confirm step), edit the Core
+2. Home opens on the Play pill over a full-bleed hero. Up reaches the top
+   navigation strip: Home, Movies, Series, Live TV, Library, Search, and the
+   profile orb on the right. Left / Right move one highlight along the pill
+   (hard stops at both ends, no wrap). OK on a tab opens that screen.
+3. Down from the hero reaches the rails. Continue Watching is first and
+   landscape, with a progress bar. Left / Right stop at the ends; rails do
+   not loop. Up returns to the hero, then the strip.
+4. OK on Play starts playback straight away (series open their episode list).
+   OK on Details or on a poster opens the details screen (Play or Resume,
+   IMDb, My List, Back).
+5. The orb opens the You menu: TVM Hub (devices on the account: Network, Devices and Activity tabs,
+   an inspector, a remote for other devices and Add device; Settings has a
+   demo-data switch for use without Core),
+   Switch profile, Settings, Account & Plan and Sources. Sources holds studio
+   hubs and apps, Real-Debrid, Live picks, the Live TV playlist and Inputs.
+   Movies and Series are the library filtered by kind. Search opens the
+   keyboard. Back closes the menu (Back inside Sources returns to You).
+6. Back order: overlay, then screen. From the player, Back returns to
+   details with the same button focused; a second Back returns to Home on
+   the same tile, even if Continue Watching reordered in the meantime.
+7. Settings has Reduce Motion and Reduce Transparency rows (stored on the
+   device, applied everywhere). Settings can sign out of the TVM account (with a confirm step), edit the Core
    URL and device access token, open the Real-Debrid
    screen, set a live playlist, open Profiles, and show network status. Display
    reports the 4K canvas scale. Billing, updates, cache wipe and factory reset

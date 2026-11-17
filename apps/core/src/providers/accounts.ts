@@ -494,6 +494,15 @@ export function createAccountsService(options: AccountsServiceOptions) {
       return { token: opened.token, account: publicAccount(opened.record, now()), usable: accountUsable(opened.record, termsVersion) };
     },
 
+    /** Hub pairing may delegate a session only from an already authenticated account. */
+    openPairedSession(approverToken: string, client: string | null = null): string {
+      const found = lookup(approverToken);
+      if (found === null || found.record.suspended) throw new Error('A signed-in account is required.');
+      const opened = openSession(found.ledger, found.record, clientText(client));
+      write(opened.ledger);
+      return opened.token;
+    },
+
     signOut(token: string): void {
       const ledger = prune(read());
       const key = hashToken(token);

@@ -21,6 +21,17 @@ function intentFromKey(key as String) as String
   return ""
 end function
 
+' The inverse of intentFromKey for the intents a remote controller can send.
+function keyFromIntent(intent as String) as String
+  if intent = "up" then return "up"
+  if intent = "down" then return "down"
+  if intent = "left" then return "left"
+  if intent = "right" then return "right"
+  if intent = "select" then return "OK"
+  if intent = "back" then return "back"
+  return ""
+end function
+
 function isDirectional(intent as String) as Boolean
   return intent = "up" or intent = "down" or intent = "left" or intent = "right"
 end function

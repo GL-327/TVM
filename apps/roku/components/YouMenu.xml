@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="YouMenu" extends="Group">
+  <interface>
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="YouMenu.brs" />
+  <children>
+    <AmbientBackdrop />
+    <Rectangle id="scrim" width="3840" height="2160" color="0x000000A6" />
+    <Group id="panel" translation="[2520, 120]">
+      <GlassPanel id="glass" shape="panel" width="1160" height="1240" />
+      <Label id="title" translation="[80, 60]" width="1000" height="130" />
+      <Label id="subtitle" translation="[80, 170]" width="1000" height="70" color="0xC4C4C4FF" />
+      <Group id="rows" translation="[60, 280]" />
+    </Group>
+    <Animation id="enter" duration="0.22" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="enterMove" key="[0.0, 1.0]" keyValue="[[2600.0, 120.0], [2520.0, 120.0]]" fieldToInterp="panel.translation" />
+      <FloatFieldInterpolator id="enterFade" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="panel.opacity" />
+    </Animation>
+  </children>
+</component>

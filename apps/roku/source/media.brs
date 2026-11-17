@@ -61,7 +61,7 @@ function homeContentRails(payload as Object) as Object
 
   watching = aaGet(payload, "continueWatching", [])
   if watching <> invalid and watching.Count() > 0
-    rails.Push({ id: "continue", title: "Continue watching", items: clipItems(watching, 16) })
+    rails.Push({ id: "continue", title: "Continue Watching", items: clipItems(watching, 16) })
   end if
 
   watchlist = aaGet(payload, "watchlist", [])
@@ -96,6 +96,25 @@ function homeHeroes(payload as Object) as Object
   out = []
   if payload = invalid then return out
   candidates = []
+  trending = aaGet(payload, "trending", [])
+  if Type(trending) = "roArray"
+    for each item in trending
+      if isMediaItem(item)
+        if asText(aaGet(item, "kind", "")) = "movie" and asText(aaGet(item, "backdrop", "")) <> "" then candidates.Push(item)
+      end if
+    end for
+  end if
+  ' Older Core responses still expose the popular-films rail.
+  if candidates.Count() = 0
+    for each rail in aaGet(payload, "rails", [])
+      if asText(aaGet(rail, "id", "")) = "films"
+        for each item in aaGet(rail, "items", [])
+          if asText(aaGet(item, "backdrop", "")) <> "" then candidates.Push(item)
+        end for
+      end if
+    end for
+  end if
+  if candidates.Count() > 0 then return clipItems(candidates, 4)
   featured = aaGet(payload, "featured", invalid)
   if isMediaItem(featured) then candidates.Push(featured)
   watching = aaGet(payload, "continueWatching", [])
@@ -351,6 +370,10 @@ function upgradeArtUrl(url as String, kind as String) as String
   end if
   nextUrl = nextUrl.Replace("100x100bb", "600x600bb")
   nextUrl = nextUrl.Replace("200x200bb", "600x600bb")
+  ' Request a Roku-decodable JPEG from the catalogue CDN.
+  if Instr(1, LCase(nextUrl), "images.metahub.space/") > 0 and Instr(1, nextUrl, "?") = 0
+    nextUrl = nextUrl + "?format=jpg"
+  end if
   return nextUrl
 end function
 
@@ -499,4 +522,113 @@ function playbackNotice(reason as String) as String
   if reason = "internal" or reason = "internal_error" then return "Playback failed inside TVM. Retry, or check that core is running."
   if reason <> "" then return reason
   return "Playback failed inside TVM. Retry, or check that core is running."
+end function
+
+' Landscape cards want backdrop-first art; portrait cards keep the poster.
+function preferCardUri(item as Object, landscape as Boolean) as String
+  if not landscape then return preferPosterUri(item)
+  uri = upgradeArtUrl(asText(aaGet(item, "backdrop", "")), "backdrop")
+  if uri <> "" then return uri
+  return preferPosterUri(item)
+end function
+
+' Main navigation strip. Home, Movies, Series, Live TV, Library, Search.
+function tvmNavSpec() as Object
+  return [
+    { id: "home", label: "Home" }
+    { id: "movies", label: "Movies" }
+    { id: "series", label: "Series" }
+    { id: "live", label: "Live TV" }
+    { id: "library", label: "Library" }
+    { id: "search", label: "Search" }
+  ]
+end function
+
+function tvmNavIndex(id as String) as Integer
+  spec = tvmNavSpec()
+  i = 0
+  while i < spec.Count()
+    if spec[i].id = id then return i
+    i = i + 1
+  end while
+  return 0
+end function
+
+' The "You" menu opened from the profile orb. Studio hubs, Real-Debrid, Live
+' picks, Live playlist and Inputs live under Sources so nothing the old
+' ribbon reached is lost.
+function tvmYouMenuSpec() as Object
+  return [
+    { id: "hub", label: "TVM Hub", detail: "Your devices" }
+    { id: "profiles", label: "Switch profile", detail: "Who is watching" }
+    { id: "settings", label: "Settings", detail: "Display, network and access" }
+    { id: "account", label: "Account & Plan", detail: "Profile and Real-Debrid" }
+    { id: "sources", label: "Sources", detail: "Hubs, apps and Live TV" }
+  ]
+end function
+
+function tvmSourcesMenuSpec() as Object
+  return [
+    { id: "apps", label: "Studio hubs and apps", detail: "Netflix, Prime Video, Disney+ and more" }
+    { id: "realdebrid", label: "Real-Debrid", detail: "Link or replace your token" }
+    { id: "live-picks", label: "Live picks", detail: "Choose which channels show" }
+    { id: "live-playlist", label: "Live TV playlist", detail: "M3U / M3U8 address" }
+    { id: "inputs", label: "Inputs", detail: "Switch the television to this device" }
+  ]
+end function
+
+' Client-side Movies / Series filter. kind is "movie" or "series".
+function filterItemsByKind(items as Object, kind as String) as Object
+  out = []
+  if items = invalid then return out
+  if kind = "" then return items
+  for each item in items
+    itemKind = LCase(asText(aaGet(item, "kind", "movie")))
+    if itemKind = "" then itemKind = "movie"
+    if kind = "series"
+      if itemKind = "series" or itemKind = "show" or itemKind = "tv" then out.Push(item)
+    else
+      if itemKind <> "series" and itemKind <> "show" and itemKind <> "tv" and itemKind <> "live" and itemKind <> "channel" then out.Push(item)
+    end if
+  end for
+  return out
+end function
+
+' Hero meta line: "Movie · 2023 · Sci-Fi · 2h 13m · PG-13".
+function homeHeroMeta(item as Object) as String
+  if not isMediaItem(item) then return ""
+  bits = []
+  kind = LCase(asText(aaGet(item, "kind", "")))
+  if kind = "series" or kind = "show" or kind = "tv"
+    bits.Push("Series")
+  else if kind = "movie" or kind = ""
+    bits.Push("Movie")
+  end if
+  year = asText(aaGet(item, "year", ""))
+  if year <> "" and year <> "0" then bits.Push(year)
+  genres = aaGet(item, "genres", invalid)
+  genre = ""
+  if genres <> invalid
+    if Type(genres) = "roArray"
+      if genres.Count() > 0 then genre = asText(genres[0])
+    else
+      genre = asText(genres)
+    end if
+  end if
+  if genre = "" then genre = asText(aaGet(item, "genre", ""))
+  if genre <> "" then bits.Push(genre)
+  runtime = asText(aaGet(item, "runtime", ""))
+  if runtime <> "" then bits.Push(runtime)
+  cert = certificateText(asText(aaGet(item, "rating", "")))
+  if cert <> "" then bits.Push(cert)
+  quality = LCase(asText(aaGet(item, "quality", "")))
+  if Instr(1, quality, "2160") > 0 or Instr(1, quality, "4k") > 0 then bits.Push("4K")
+  text = ""
+  i = 0
+  while i < bits.Count()
+    if i > 0 then text = text + "  ·  "
+    text = text + bits[i]
+    i = i + 1
+  end while
+  return text
 end function
