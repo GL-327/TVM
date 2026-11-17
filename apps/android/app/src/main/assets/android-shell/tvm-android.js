@@ -2638,13 +2638,13 @@
   }, true);
   document.addEventListener('visibilitychange', function () { if (document.hidden) endHold(); });
 
-  // ---- 21b. "Up next" as on Disney+: a small Next episode button that fills as it counts down ----
+  // ---- 21b. "Up next" as on Disney+: a small card whose play button counts down --------------
 
   // The shared card (NextUp.tsx) was made for television: a large still, the
   // show and two big buttons over the middle of the picture. Here it is a
-  // small control in the corner (tvm-android.css 39). The Next episode button
-  // fills as the episode runs out, and when it has, the next one plays, unless
-  // Watch credits put the card away.
+  // small card in the corner (tvm-android.css 39): the next episode's picture
+  // is its play button, ringed by the countdown, and when the ring is full the
+  // next episode plays, unless Watch credits put the card away.
   var nextTimer = null;
   var nextPressed = null;
   function remainSeconds(card) {
@@ -2659,7 +2659,15 @@
     var drain = card.querySelector('.next-up__drain');
     var m = drain && /scaleX\(([\d.]+)\)/.exec(drain.style.transform || '');
     var left = m ? Math.max(0, Math.min(1, Number(m[1]))) : 1;
-    if (play) play.style.setProperty('--tvma-next-fill', ((1 - left) * 100).toFixed(1) + '%');
+    card.style.setProperty('--tvma-next-fill', ((1 - left) * 100).toFixed(1) + '%');
+    // The picture is the play button, as on Disney+.
+    var still = card.querySelector('.next-up__still');
+    if (still && play && !still.hasAttribute('data-tvma-play')) {
+      still.setAttribute('data-tvma-play', '');
+      still.setAttribute('role', 'button');
+      still.setAttribute('aria-label', 'Play next episode');
+      still.addEventListener('click', function (e) { e.stopPropagation(); var p = card.querySelector('.next-up__play'); if (p) { nextPressed = card; press(p); } });
+    }
     var paused = document.querySelector('.player-root[data-paused="true"]');
     var secs = remainSeconds(card);
     if (play && !paused && secs !== null && secs <= 1 && nextPressed !== card) {
