@@ -77,6 +77,10 @@ class TvmNativePlayer(
     /** Only the first failure of a session is reported; the page retries once per report. */
     private var failedOnce = false
     private var stallCheck: Runnable? = null
+    /** Speed to return to when a press-and-hold at 2x ends (null while not held). */
+    private var heldFrom: PlaybackParameters? = null
+    /** The subtitle list last sent to the page, so it is only sent when it changes. */
+    private var sentSubtitles: List<TvmSubtitles.Row>? = null
     /** This session already fell back to the phone's software video decoder. */
     private var softwareVideo = false
     /** Position (ms) the current attempt started from, for the sound-without-picture check. */
@@ -120,9 +124,27 @@ class TvmNativePlayer(
             "rate" -> {
                 val rate = message.optDouble("rate", 1.0)
                 if (rate.isFinite()) {
-                    player?.playbackParameters = PlaybackParameters(rate.coerceIn(0.25, 2.0).toFloat())
+                    val chosen = PlaybackParameters(rate.coerceIn(0.25, 2.0).toFloat())
+                    // Chosen during a hold: it applies when the hold ends.
+                    if (heldFrom != null) heldFrom = chosen else player?.playbackParameters = chosen
                 }
             }
+            // Android shell only (tvm-android.js 21): press and hold on either
+            // side of the picture plays at double speed until the finger lifts.
+            "hold-speed" -> player?.let { exo ->
+                if (message.optBoolean("on", false)) {
+                    if (heldFrom == null) {
+                        heldFrom = exo.playbackParameters
+                        exo.playbackParameters = PlaybackParameters(2f)
+                    }
+                } else {
+                    heldFrom?.let { exo.playbackParameters = it }
+                    heldFrom = null
+                }
+            }
+            // Android shell only (tvm-android.js 21): a subtitle track from the
+            // file, by "group:track", or none for off.
+            "subtitle" -> player?.let { exo -> chooseSubtitle(exo, message.text("track", "")) }
             // Media3 knows where the live edge is, so returning to it is a
             // genuine seek rather than a reconnect: the buffer is kept.
             "goLive" -> player?.let { exo ->
@@ -268,6 +290,7 @@ class TvmNativePlayer(
                     }
                 }
                 preferMainAudio(exo, audio)
+                sendSubtitles(id, tracks)
                 // Sound tracks exist but this phone can decode none of them (often
                 // TrueHD or DTS in a remux): the film would play silently.
                 if (audio.isNotEmpty() && audio.none { it.isSupported }) {
@@ -430,6 +453,13 @@ class TvmNativePlayer(
             // stretched or cropped.
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShutterBackgroundColor(Color.BLACK)
+            // Subtitles in the viewer's own caption style (Android's Caption
+            // preferences), a little above the bottom edge.
+            subtitleView?.apply {
+                setUserDefaultStyle()
+                setUserDefaultTextSize()
+                setBottomPaddingFraction(0.1f)
+            }
             player = exo
         }
         frame.addView(
@@ -516,6 +546,8 @@ class TvmNativePlayer(
         }
         container = null
         webView.setBackgroundColor(Color.BLACK)
+        heldFrom = null
+        sentSubtitles = null
         if (notify && id != null) emit(id, "closed", JSONObject())
         sessionId = null
         // While the player screen is still open (retry, next episode) the
@@ -604,6 +636,32 @@ class TvmNativePlayer(
     }
 
     /** Back to the page as the CustomEvent the shared engine listens for. */
+    /** The file's subtitle tracks, to the page's CC menu, whenever they change. */
+    private fun sendSubtitles(id: String, tracks: Tracks) {
+        val rows = TvmSubtitles.rows(tracks)
+        if (rows == sentSubtitles) return
+        sentSubtitles = rows
+        val list = org.json.JSONArray()
+        rows.forEach { r ->
+            list.put(Json.obj("id" to r.id, "label" to r.label, "language" to r.language, "selected" to r.selected, "forced" to r.forced))
+        }
+        emit(id, "subtitles", Json.obj("tracks" to list))
+    }
+
+    private fun chooseSubtitle(exo: ExoPlayer, id: String) {
+        val builder = exo.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        val pick = TvmSubtitles.parse(id)?.let { (g, i) ->
+            exo.currentTracks.groups.getOrNull(g)?.takeIf { it.type == C.TRACK_TYPE_TEXT && i < it.length && it.isTrackSupported(i) }?.let { it to i }
+        }
+        exo.trackSelectionParameters = if (pick == null) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+        } else {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(pick.first.mediaTrackGroup, pick.second))
+                .build()
+        }
+    }
+
     private fun emit(id: String, command: String, payload: JSONObject) {
         payload.put("id", id)
         payload.put("command", command)

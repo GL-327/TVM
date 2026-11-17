@@ -4816,3 +4816,86 @@ html.tvm-android:is([data-perf='on'], [data-motion='reduced']) :is(.ribbon__fros
   animation-name: none !important;
 }
 
+
+/* ---- 38. Player: subtitles button, press-and-hold 2x (tvm-android.js 21) ----------------- */
+
+html.tvm-android .player .tvma-cc {
+  order: -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
+  transition: background 160ms ease, transform 140ms ease, color 160ms ease;
+}
+
+html.tvm-android .player .tvma-cc svg {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.5));
+}
+
+html.tvm-android .player .tvma-cc--on {
+  color: #fff;
+}
+
+/* On: the box is filled, as players mark subtitles that are showing. */
+html.tvm-android .player .tvma-cc--on svg rect {
+  fill: rgba(255, 255, 255, 0.22);
+}
+
+html.tvm-android .player .tvma-cc:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* A long press on the picture is the 2x gesture, never text selection or a menu. */
+html.tvm-android .player {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.tvm-android .tvma-hold2x {
+  position: fixed;
+  top: calc(var(--tvm-inset-top, 0px) + 18px);
+  left: 50%;
+  z-index: 2147483000;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px 7px 16px;
+  border-radius: 999px;
+  background: rgba(10, 12, 18, 0.62);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition: opacity 160ms ease, transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html.tvm-android .tvma-hold2x--in {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+html.tvm-android .tvma-hold2x svg {
+  width: 16px;
+  height: 16px;
+}
+
+html.tvm-android:is([data-perf='on'], [data-motion='reduced']) .tvma-hold2x {
+  transition: none;
+}
