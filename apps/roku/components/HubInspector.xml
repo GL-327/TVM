@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubInspector" extends="Group">
+  <interface>
+    <field id="mode" type="string" value="empty" onChange="render" />
+    <field id="device" type="assocarray" onChange="render" />
+    <field id="serverTime" type="string" onChange="render" />
+    <field id="accountName" type="string" onChange="render" />
+    <field id="deviceCount" type="integer" value="0" onChange="render" />
+    <field id="moreCount" type="integer" value="0" onChange="render" />
+    <field id="fixture" type="boolean" value="false" onChange="render" />
+    <field id="hasFocus" type="boolean" value="false" onChange="paintActions" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
+    <function name="handleIntent" />
+    <function name="setFeedback" />
+    <function name="actionCount" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="HubInspector.brs" />
+  <children>
+    <GlassPanel id="glass" shape="panel" width="1080" height="1740" />
+    <Poster id="glyph" loadDisplayMode="scaleToFit" translation="[56, 52]" width="96" height="96" />
+    <Label id="title" translation="[184, 40]" width="840" height="76" />
+    <Label id="subtitle" translation="[184, 116]" width="840" height="60" color="0xC4C4C4FF" />
+    <Group id="chips" translation="[56, 200]" />
+    <Group id="info" translation="[56, 290]" />
+    <Group id="nowPlaying" translation="[56, 310]" visible="false">
+      <Poster width="968" height="544" uri="pkg:/images/glass/card-fill.9.png" blendColor="0x0B1827FF" />
+      <MaskGroup id="npMask" maskUri="pkg:/images/glass/mask-wide.png">
+        <Poster id="npArt" width="968" height="544" loadWidth="800" loadHeight="450" loadDisplayMode="scaleToZoom" />
+      </MaskGroup>
+      <Label id="npTitle" translation="[0, 570]" width="968" height="80" maxLines="1" color="0xF5F5F5FF" />
+      <Poster id="npTrack" translation="[156, 690]" width="656" height="12" uri="pkg:/images/glass/progress.9.png" blendColor="0xFFFFFF3D" />
+      <Poster id="npFill" translation="[156, 690]" width="8" height="12" uri="pkg:/images/glass/progress.9.png" blendColor="0xF5F5F5FF" />
+      <Label id="npPos" translation="[0, 664]" width="150" height="64" color="0xC4C4C4FF" />
+      <Label id="npDur" translation="[788, 664]" width="180" height="64" horizAlign="right" color="0xC4C4C4FF" />
+    </Group>
+    <Group id="actions" translation="[56, 600]" />
+    <Timer id="fbTimer" duration="5" repeat="false" />
+  </children>
+</component>

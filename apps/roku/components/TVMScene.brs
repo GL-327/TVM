@@ -1,5 +1,13 @@
 sub init()
   applyCanvasScale()
+  m.global.addFields({
+    reduceMotion: loadReduceMotion()
+    reduceTransparency: loadReduceTransparency()
+    background: loadBackground()
+    trendingHeroUri: ""
+    hubFixture: loadFlag("hubFixture")
+    uiScale: m.uiMetrics.scale
+  })
   applyCurrentTheme()
   m.screenHost = m.top.findNode("screenHost")
   m.overlayHost = m.top.findNode("overlayHost")
@@ -8,6 +16,9 @@ sub init()
   m.coreUrl = loadCoreBaseUrl()
   m.coreToken = loadCoreToken()
   m.accountToken = loadAccountToken()
+  m.profileName = ""
+  m.catalogFilter = ""
+  m.youNode = invalid
   m.accountEmail = ""
   m.accountPassword = ""
   m.accountName = ""
@@ -50,6 +61,9 @@ sub init()
   m.libraryNode = invalid
   m.serviceNode = invalid
   m.rdNode = invalid
+  m.hubNode = invalid
+  m.deviceCredential = ""
+  m.hubPlayCmd = ""
   m.health = {}
   m.rd = {}
   m.detailsSaved = false
@@ -62,6 +76,7 @@ sub init()
   m.livePicksGroup = ""
   m.livePicksOffset = 0
   m.top.setFocus(true)
+  initHubAgent()
 
   timer = CreateObject("roSGNode", "Timer")
   timer.duration = 0.2
@@ -124,14 +139,44 @@ sub onBoot()
   loadAccount(true)
 end sub
 
+' Screen name -> node. Every screen that exposes a focusKey field is remembered
+' on the view stack and, if it also has a restoreKey field, restored on return.
+function screenNode(name as String) as Object
+  if name = "home" then return m.homeNode
+  if name = "settings" then return m.settingsNode
+  if name = "setup" then return m.setupNode
+  if name = "account" then return m.accountNode
+  if name = "catalog" then return m.catalogNode
+  if name = "live" then return m.liveNode
+  if name = "live-picks" then return m.livePicksNode
+  if name = "profiles" then return m.profilesNode
+  if name = "profile" then return m.profileNode
+  if name = "apps" then return m.appsNode
+  if name = "info" then return m.infoNode
+  if name = "details" then return m.detailsNode
+  if name = "library" then return m.libraryNode
+  if name = "service" then return m.serviceNode
+  if name = "realdebrid" then return m.rdNode
+  if name = "hub" then return m.hubNode
+  return invalid
+end function
+
 sub rememberActiveFocus()
   screen = visibleScreen(m.stack)
-  key = ""
-  if screen.name = "home" and m.homeNode <> invalid then key = m.homeNode.focusKey
-  if screen.name = "settings" and m.settingsNode <> invalid then key = m.settingsNode.focusKey
-  if screen.name = "setup" and m.setupNode <> invalid then key = m.setupNode.focusKey
-  if screen.name = "account" and m.accountNode <> invalid then key = m.accountNode.focusKey
-  if key <> invalid then m.stack = viewStackRememberFocus(m.stack, key)
+  node = screenNode(screen.name)
+  if node = invalid then return
+  if not node.hasField("focusKey") then return
+  key = node.focusKey
+  if key = invalid or key = "" then return
+  m.stack = viewStackRememberFocus(m.stack, key)
+end sub
+
+sub applyRestoreKey(screen as Object)
+  node = screenNode(screen.name)
+  if node = invalid then return
+  if not node.hasField("restoreKey") then return
+  if screen.focusKey = invalid or screen.focusKey = "" then return
+  node.restoreKey = screen.focusKey
 end sub
 
 sub navigate(kind as String, name as String, params as Object)
@@ -166,6 +211,7 @@ sub navigate(kind as String, name as String, params as Object)
     if name = "realdebrid" then loadRdStatus()
     if name = "service" then loadService(params)
     if name = "details" then loadDetails(params)
+    if name = "hub" then m.hubNode.reset = true
   end if
 end sub
 
@@ -178,12 +224,8 @@ sub renderStack()
   if screen.name = "home"
     ensureHome()
     m.homeNode.visible = true
-    if top.kind <> "modal"
-      m.homeNode.setFocus(true)
-      if screen.focusKey <> invalid and screen.focusKey <> ""
-        m.homeNode.restoreKey = screen.focusKey
-      end if
-    end if
+    m.homeNode.profileName = m.profileName
+    if top.kind <> "modal" then m.homeNode.setFocus(true)
   else if screen.name = "settings"
     ensureSettings()
     m.settingsNode.visible = true
@@ -203,6 +245,7 @@ sub renderStack()
   else if screen.name = "catalog"
     ensureCatalog()
     applyCatalogCopy(screen.params)
+    m.catalogNode.profileName = m.profileName
     m.catalogNode.visible = true
     if top.kind <> "modal" then m.catalogNode.setFocus(true)
   else if screen.name = "live"
@@ -251,13 +294,22 @@ sub renderStack()
     m.rdNode.status = m.rd
     m.rdNode.visible = true
     if top.kind <> "modal" then m.rdNode.setFocus(true)
+  else if screen.name = "hub"
+    ensureHub()
+    syncHubNode()
+    m.hubNode.visible = true
+    if top.kind <> "modal" then m.hubNode.setFocus(true)
   end if
+
+  if top.kind <> "modal" then applyRestoreKey(screen)
 
   clearOverlays()
   if top.kind = "modal"
+    if top.name = "you" then showYouMenu()
     if top.name = "notice" then showNotice(top.params)
     if top.name = "player" then showPlayer(top.params)
     if top.name = "confirm" then showConfirm(top.params)
+    if top.name = "codesignin" then showCodePanel()
     if top.name = "search" then showSearch()
   end if
   if currentThemeId() = "light"
@@ -281,12 +333,15 @@ sub hideScreens()
   if m.libraryNode <> invalid then m.libraryNode.visible = false
   if m.serviceNode <> invalid then m.serviceNode.visible = false
   if m.rdNode <> invalid then m.rdNode.visible = false
+  if m.hubNode <> invalid then m.hubNode.visible = false
 end sub
 
 sub clearOverlays()
+  hadPlayer = playerOverlayOpen()
   while m.overlayHost.getChildCount() > 0
     m.overlayHost.removeChildIndex(0)
   end while
+  if hadPlayer then hubPlayerClosed()
 end sub
 
 sub ensureHome()
@@ -410,6 +465,46 @@ sub ensureRealDebrid()
   m.rdNode = node
 end sub
 
+sub ensureHub()
+  if m.hubNode <> invalid then return
+  node = CreateObject("roSGNode", "HubScreen")
+  node.observeField("action", "onHubAction")
+  m.screenHost.appendChild(node)
+  m.hubNode = node
+end sub
+
+sub syncHubNode()
+  m.hubNode.coreUrl = m.coreUrl
+  m.hubNode.coreToken = m.coreToken
+  m.hubNode.accountToken = m.accountToken
+  m.hubNode.profileId = m.profileId
+  m.hubNode.accountName = m.profileName
+  m.hubNode.deviceCredential = m.deviceCredential
+  m.hubNode.installationId = m.hubAgent.installationId
+  m.hubNode.fixture = hubFixtureEnabled()
+end sub
+
+' Actions from the Hub screen: back, notice, signedOut, revoked.
+sub onHubAction()
+  action = m.hubNode.action
+  if action = invalid then return
+  kind = aaGet(action, "type", "")
+  if kind = "back"
+    navigate("pop", "", {})
+  else if kind = "notice"
+    navigate("modal", "notice", { title: aaGet(action, "title", "TVM Hub"), body: aaGet(action, "body", "") })
+  else if kind = "signedOut"
+    signOutAccount()
+  else if kind = "revoked"
+    hubForgetThisRoku()
+    m.accountToken = ""
+    saveAccountToken("")
+    body = {}
+    body.signedIn = false
+    showAccountGate(body)
+  end if
+end sub
+
 sub applyCatalogCopy(params as Object)
   kind = aaGet(params, "kind", "library")
   m.catalogNode.kind = kind
@@ -429,6 +524,16 @@ sub applyCatalogCopy(params as Object)
     m.catalogNode.heading = "Library"
     m.catalogNode.emptyTitle = "Library is empty"
     m.catalogNode.emptyBody = "Add files on the computer, then open Library again."
+  end if
+  navId = "library"
+  if kind = "search" then navId = "search"
+  navId = aaGet(params, "navId", navId)
+  m.catalogNode.navId = navId
+  heading = aaGet(params, "heading", "")
+  if heading <> ""
+    m.catalogNode.heading = heading
+    m.catalogNode.emptyTitle = "No " + LCase(heading) + " yet"
+    m.catalogNode.emptyBody = "Nothing in your library matches this view."
   end if
 end sub
 
@@ -452,7 +557,9 @@ end sub
 sub showPlayer(params as Object)
   panel = CreateObject("roSGNode", "PlayerScreen")
   panel.observeField("action", "onPlayerAction")
+  panel.observeField("playState", "onHubPlayerState")
   m.overlayHost.appendChild(panel)
+  m.hubAgent.player = panel
   panel.streamTitle = aaGet(params, "title", "")
   panel.streamFormat = aaGet(params, "format", "mp4")
   panel.mediaId = aaGet(params, "mediaId", "")
@@ -539,9 +646,76 @@ function handleRibbonKind(action as Object) as Boolean
   return false
 end function
 
+' NavStrip actions: a tab id, or the profile orb ("you" menu).
+function handleNavAction(action as Object) as Boolean
+  kind = aaGet(action, "type", "")
+  if kind = "you"
+    navigate("modal", "you", {})
+    return true
+  end if
+  if kind = "nav"
+    openTab(asText(aaGet(action, "id", "")))
+    return true
+  end if
+  return false
+end function
+
+' Tabs replace each other instead of stacking: go back to Home, then push.
+sub openTab(id as String)
+  if id = "search"
+    navigate("modal", "search", {})
+    return
+  end if
+  if id = "home"
+    if m.stack.entries.Count() > 0 then m.stack.entries[0].focusKey = "hero:0"
+    navigate("home", "home", {})
+    return
+  end if
+  if visibleScreen(m.stack).name <> "home" then navigate("home", "home", {})
+  if id = "movies" then navigate("push", "catalog", { kind: "library", filter: "movie", navId: "movies", heading: "Movies" })
+  if id = "series" then navigate("push", "catalog", { kind: "library", filter: "series", navId: "series", heading: "Series" })
+  if id = "live" then navigate("push", "live", {})
+  if id = "library" then navigate("push", "library", {})
+end sub
+
+sub showYouMenu()
+  panel = CreateObject("roSGNode", "YouMenu")
+  panel.observeField("action", "onYouAction")
+  m.overlayHost.appendChild(panel)
+  panel.setFocus(true)
+end sub
+
+sub onYouAction()
+  if m.overlayHost.getChildCount() = 0 then return
+  action = m.overlayHost.getChild(0).action
+  if action = invalid then return
+  id = asText(aaGet(action, "id", ""))
+  navigate("pop", "", {})
+  if id = "hub"
+    navigate("push", "hub", {})
+  else if id = "profiles"
+    navigate("push", "profiles", {})
+  else if id = "settings"
+    navigate("push", "settings", {})
+  else if id = "account"
+    navigate("push", "profile", {})
+  else if id = "apps"
+    navigate("push", "apps", {})
+  else if id = "realdebrid"
+    navigate("push", "realdebrid", {})
+  else if id = "live-picks"
+    navigate("push", "live-picks", {})
+  else if id = "live-playlist"
+    showLiveKeyboard()
+  else if id = "inputs"
+    navigate("modal", "notice", { title: "Inputs", body: "This computer outputs over HDMI. Switch the television input to this device to watch TVM." })
+  end if
+end sub
+
 sub handleScreenAction(action as Object)
   kind = aaGet(action, "type", "")
   if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
+  if handleNavAction(action) then return
   if handleRibbonKind(action) then return
   if kind = "retry" then loadHome()
   if kind = "details" then navigate("push", "details", { item: aaGet(action, "item", {}) })
@@ -560,6 +734,12 @@ sub onSettingsAction()
     applyAndSaveTheme(nextThemeId(currentThemeId(), delta))
   end if
   if kind = "setTheme" then applyAndSaveTheme(aaGet(action, "themeId", tvmThemeDefault()))
+  if kind = "toggleBackground"
+    background = "trending"
+    if m.global.background = "trending" then background = "lighthouse"
+    saveBackground(background)
+    m.global.background = background
+  end if
   if kind = "editUrl" then showUrlKeyboard()
   if kind = "editToken" then showTokenKeyboard()
   ' The account screen offers Sign out only while it is showing, which it
@@ -581,6 +761,23 @@ sub onSettingsAction()
   if kind = "livePlaylist" then showLiveKeyboard()
   if kind = "profiles" then navigate("push", "profiles", {})
   if kind = "updates" then loadUpdates()
+  if kind = "toggleMotion"
+    enabled = not tvmReduceMotion()
+    saveReduceMotion(enabled)
+    m.global.reduceMotion = enabled
+  end if
+  if kind = "toggleTransparency"
+    enabled = not tvmReduceTransparency()
+    saveReduceTransparency(enabled)
+    m.global.reduceTransparency = enabled
+  end if
+  if kind = "toggleHubDemo"
+    enabled = not loadFlag("hubFixture")
+    saveFlag("hubFixture", enabled)
+    m.global.hubFixture = enabled
+    m.hubAgent.fixture = enabled
+    startHubAgent()
+  end if
   if kind = "network" then showNetworkInfo()
   if kind = "display" then showDisplayInfo()
   if kind = "diagnostics" then showDiagnostics()
@@ -622,6 +819,7 @@ sub onAccountAction()
   if kind = "editEmail" then showKeyboard("accountEmail", "Email", m.accountEmail, "Next")
   if kind = "editPassword" then showKeyboard("accountPassword", "Password", "", "Next")
   if kind = "editName" then showKeyboard("accountName", "Your name", m.accountName, "Next")
+  if kind = "codeSignIn" then startCodeSignIn()
   if kind = "switchMode"
     if m.accountMode = "register" then m.accountMode = "signin" else m.accountMode = "register"
     paintAccountGate(m.accountState)
@@ -640,6 +838,7 @@ sub onCatalogAction()
   action = m.catalogNode.action
   if action = invalid then return
   kind = aaGet(action, "type", "")
+  if handleNavAction(action) then return
   if handleRibbonKind(action) then return
   if kind = "home" then navigate("home", "home", {})
   if kind = "retry" then loadCatalog(visibleScreen(m.stack).params)
@@ -945,21 +1144,8 @@ sub restoreScreenFocus()
   top = activeEntry(m.stack)
   screen = visibleScreen(m.stack)
   if top.kind = "modal" then return
-  if screen.name = "home" and m.homeNode <> invalid then m.homeNode.setFocus(true)
-  if screen.name = "settings" and m.settingsNode <> invalid then m.settingsNode.setFocus(true)
-  if screen.name = "setup" and m.setupNode <> invalid then m.setupNode.setFocus(true)
-  if screen.name = "account" and m.accountNode <> invalid then m.accountNode.setFocus(true)
-  if screen.name = "catalog" and m.catalogNode <> invalid then m.catalogNode.setFocus(true)
-  if screen.name = "live" and m.liveNode <> invalid then m.liveNode.setFocus(true)
-  if screen.name = "live-picks" and m.livePicksNode <> invalid then m.livePicksNode.setFocus(true)
-  if screen.name = "profiles" and m.profilesNode <> invalid then m.profilesNode.setFocus(true)
-  if screen.name = "profile" and m.profileNode <> invalid then m.profileNode.setFocus(true)
-  if screen.name = "apps" and m.appsNode <> invalid then m.appsNode.setFocus(true)
-  if screen.name = "info" and m.infoNode <> invalid then m.infoNode.setFocus(true)
-  if screen.name = "details" and m.detailsNode <> invalid then m.detailsNode.setFocus(true)
-  if screen.name = "library" and m.libraryNode <> invalid then m.libraryNode.setFocus(true)
-  if screen.name = "service" and m.serviceNode <> invalid then m.serviceNode.setFocus(true)
-  if screen.name = "realdebrid" and m.rdNode <> invalid then m.rdNode.setFocus(true)
+  node = screenNode(screen.name)
+  if node <> invalid then node.setFocus(true)
 end sub
 
 sub loadHealth(thenHome as Boolean)
@@ -1040,6 +1226,7 @@ end sub
 sub enterHome()
   m.stack = createViewStack("home")
   renderStack()
+  startHubAgent()
   loadHealth(false)
   loadHome()
   loadProfiles(false)
@@ -1244,6 +1431,7 @@ sub onAccountSignInDone()
 end sub
 
 sub signOutAccount()
+  hubSignOutQuiet()
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signout"), "POST", "{}", "onAccountSignOutDone")
 end sub
 
@@ -1399,6 +1587,7 @@ sub loadCatalog(params as Object)
   kind = aaGet(params, "kind", "library")
   m.catalogKind = kind
   m.catalogQuery = aaGet(params, "query", "")
+  m.catalogFilter = aaGet(params, "filter", "")
   path = "/api/library"
   if kind = "watchlist" then path = "/api/watchlist"
   if kind = "search" then path = "/api/search?q=" + encodeQuery(m.catalogQuery)
@@ -1417,6 +1606,7 @@ sub onCatalogDone()
     return
   end if
   items = itemsFromJson(task.json)
+  if m.catalogFilter <> "" then items = filterItemsByKind(items, m.catalogFilter)
   m.catalogNode.items = items
   if items.Count() = 0
     m.catalogNode.mode = "empty"
@@ -1552,14 +1742,17 @@ sub onProfilesDone()
   json = task.json
   m.profileId = asText(aaGet(json, "activeId", ""))
   if m.profilesNode <> invalid then m.profilesNode.registry = json
-  if m.libraryNode <> invalid
-    profiles = aaArray(json, "profiles")
-    i = 0
-    while i < profiles.Count()
-      if asText(aaGet(profiles[i], "id", "")) = m.profileId then m.libraryNode.profile = profiles[i]
-      i = i + 1
-    end while
-  end if
+  profiles = aaArray(json, "profiles")
+  i = 0
+  while i < profiles.Count()
+    if asText(aaGet(profiles[i], "id", "")) = m.profileId
+      m.profileName = asText(aaGet(profiles[i], "name", ""))
+      if m.libraryNode <> invalid then m.libraryNode.profile = profiles[i]
+    end if
+    i = i + 1
+  end while
+  if m.homeNode <> invalid then m.homeNode.profileName = m.profileName
+  if m.catalogNode <> invalid then m.catalogNode.profileName = m.profileName
   if m.profilesShow = true then restoreScreenFocus()
 end sub
 
@@ -1870,6 +2063,7 @@ sub onPlayDone()
   json = {}
   if task <> invalid then json = task.json
   kind = asText(aaGet(json, "kind", ""))
+  hubFinishPlayCommand(kind = "stream")
   if kind = "stream"
     url = absoluteCoreUrl(m.coreUrl, asText(aaGet(json, "url", "")))
     if url = ""
@@ -2197,4 +2391,269 @@ sub onRemoveProfileDone()
   if m.profilesNode <> invalid then m.profilesNode.registry = task.json
   m.profileId = asText(aaGet(task.json, "activeId", ""))
   restoreScreenFocus()
+end sub
+
+' ---- TVM Hub: this Roku as an installation and a command target ----
+
+sub initHubAgent()
+  m.hubAgent = CreateObject("roSGNode", "HubAgent")
+  m.hubAgent.observeField("deviceCredential", "onHubCredential")
+  m.hubAgent.observeField("status", "onHubStatus")
+  m.hubAgent.observeField("effect", "onHubEffect")
+  m.top.appendChild(m.hubAgent)
+end sub
+
+' After a usable sign-in: register (or resume) and start heartbeats. Demo data
+' never registers.
+sub startHubAgent()
+  m.hubAgent.coreUrl = m.coreUrl
+  m.hubAgent.coreToken = m.coreToken
+  m.hubAgent.accountToken = m.accountToken
+  m.hubAgent.profileId = m.profileId
+  m.hubAgent.fixture = hubFixtureEnabled()
+  m.hubAgent.mayNavigate = true
+  m.hubAgent.active = false
+  m.hubAgent.active = true
+end sub
+
+sub onHubCredential()
+  m.deviceCredential = m.hubAgent.deviceCredential
+  if m.hubNode <> invalid then m.hubNode.deviceCredential = m.deviceCredential
+end sub
+
+sub onHubStatus()
+  if m.hubAgent.status = "revoked"
+    m.accountToken = ""
+    saveAccountToken("")
+    body = {}
+    body.signedIn = false
+    showAccountGate(body)
+    navigate("modal", "notice", { title: "This Roku was removed", body: "It was removed from your TVM devices. Sign in again to link it." })
+  end if
+end sub
+
+' Play state changed: tell the Hub now instead of waiting for the next beat.
+sub onHubPlayerState()
+  m.hubAgent.callFunc("heartbeatNow", invalid)
+end sub
+
+sub hubPlayerClosed()
+  m.hubAgent.player = invalid
+  m.hubAgent.callFunc("heartbeatNow", invalid)
+end sub
+
+' Sign out of this Roku's installation (fire and forget), then forget it.
+sub hubSignOutQuiet()
+  if hubFixtureEnabled() then return
+  if m.deviceCredential <> ""
+    m.hubSignOutTask = startApiRequest(hubUrl(m.coreUrl, "/session/signout"), "POST", "{}", "onHubSignOutDone")
+  end if
+  hubForgetThisRoku()
+end sub
+
+sub onHubSignOutDone()
+end sub
+
+sub hubForgetThisRoku()
+  m.hubAgent.active = false
+  m.hubAgent.callFunc("forget", invalid)
+  m.deviceCredential = ""
+end sub
+
+' A command another device sent (already decided by hubDecide and acked by
+' the agent). effect.kind: pause, resume, seek, skip, intent, play.
+sub onHubEffect()
+  effect = m.hubAgent.effect
+  if effect = invalid then return
+  kind = asText(aaGet(effect, "kind", ""))
+  if kind = "pause" or kind = "resume" or kind = "seek" or kind = "skip"
+    if playerOverlayOpen() then m.overlayHost.getChild(0).callFunc("applyRemote", effect)
+  else if kind = "intent"
+    hubInjectIntent(asText(aaGet(effect, "intent", "")))
+  else if kind = "play"
+    hubPlayTitle(effect)
+  end if
+end sub
+
+' nav.* becomes the key a physical remote would send: the top overlay gets
+' it, otherwise the visible screen. Back falls through to the view stack.
+sub hubInjectIntent(intent as String)
+  if intent = "" then return
+  target = invalid
+  if m.overlayHost.getChildCount() > 0
+    target = m.overlayHost.getChild(0)
+  else if m.stack <> invalid
+    target = screenNode(visibleScreen(m.stack).name)
+  end if
+  if target <> invalid
+    if target.hasField("remoteIntent")
+      target.remoteIntent = intent
+      return
+    end if
+  end if
+  if intent = "back" and m.stack <> invalid
+    if canGoBack(m.stack) then navigate("pop", "", {})
+  end if
+end sub
+
+' play.title: close any open player, then start the title the usual way. The
+' command is acked applied once the stream is ready, rejected if not.
+sub hubPlayTitle(effect as Object)
+  id = asText(aaGet(effect, "mediaId", ""))
+  if id = "" then return
+  m.hubPlayCmd = asText(aaGet(effect, "commandId", ""))
+  if playerOverlayOpen() then navigate("pop", "", {})
+  startPlayback({ id: id, title: id, kind: "movie" })
+end sub
+
+sub hubFinishPlayCommand(ok as Boolean)
+  if m.hubPlayCmd = "" then return
+  id = m.hubPlayCmd
+  m.hubPlayCmd = ""
+  if ok
+    m.hubAgent.callFunc("report", { id: id, status: "applied" })
+  else
+    m.hubAgent.callFunc("report", { id: id, status: "rejected", reason: "not_ready" })
+  end if
+end sub
+
+' ---- Sign in with a code (RFC 8628 device flow against the Hub) ----
+' pair/start gives a short code; the user approves it on a signed-in device;
+' pair/token is polled at the server interval (slow_down adds 5 s). The result
+' is an account token and this Roku's device credential.
+
+sub startCodeSignIn()
+  stopCodeSignIn()
+  m.pair = { userCode: "", uri: "", message: "Getting a code...", deviceCode: "", interval: 5, expiresIn: 600 }
+  navigate("modal", "codesignin", {})
+  info = CreateObject("roDeviceInfo")
+  app = CreateObject("roAppInfo")
+  name = info.GetFriendlyName()
+  if name = invalid or name = "" then name = "Roku"
+  version = app.GetVersion()
+  if version = invalid or version = "" then version = "1.0.0"
+  body = { clientId: hubClientId(), platform: "roku", name: name, appVersion: version }
+  model = info.GetModelDisplayName()
+  if model <> invalid and model <> "" then body.model = model
+  m.pairStartTask = startApiRequest(hubUrl(m.coreUrl, "/pair/start"), "POST", FormatJson(body), "onPairStartDone")
+end sub
+
+sub onPairStartDone()
+  task = m.pairStartTask
+  if task = invalid or m.pair = invalid then return
+  if not task.ok
+    kind = hubErrorKind(task.statusCode, task.error)
+    m.pair.message = "Could not get a code. " + hubErrorText(kind)
+    paintCodePanel()
+    return
+  end if
+  json = task.json
+  m.pair.userCode = asText(aaGet(json, "userCode", ""))
+  m.pair.deviceCode = asText(aaGet(json, "deviceCode", ""))
+  uri = asText(aaGet(json, "verificationUri", ""))
+  if uri = "" then uri = asText(aaGet(json, "verificationUriComplete", ""))
+  m.pair.uri = uri
+  interval = hubNum(aaGet(json, "interval", 5))
+  if interval < 1 then interval = 5
+  m.pair.interval = Int(interval)
+  expires = hubNum(aaGet(json, "expiresIn", 600))
+  if expires < 30 then expires = 600
+  m.pair.expiresIn = Int(expires)
+  m.pair.message = "Waiting for approval..."
+  paintCodePanel()
+  if m.pair.deviceCode = "" then return
+  m.pairClock = CreateObject("roTimespan")
+  m.pairClock.Mark()
+  if m.pairTimer = invalid
+    m.pairTimer = CreateObject("roSGNode", "Timer")
+    m.pairTimer.repeat = true
+    m.pairTimer.observeField("fire", "onPairTick")
+  end if
+  m.pairTimer.duration = m.pair.interval
+  m.pairTimer.control = "start"
+end sub
+
+sub onPairTick()
+  if m.pair = invalid then return
+  if m.pairClock.TotalSeconds() > m.pair.expiresIn
+    stopPairPolling()
+    m.pair.message = hubPairStopText("expired")
+    paintCodePanel()
+    return
+  end if
+  if m.pairTokenTask <> invalid
+    if not m.pairTokenTask.done then return
+  end if
+  m.pairTokenTask = startApiRequest(hubUrl(m.coreUrl, "/pair/token"), "POST", FormatJson({ deviceCode: m.pair.deviceCode }), "onPairTokenDone")
+end sub
+
+sub onPairTokenDone()
+  task = m.pairTokenTask
+  if task = invalid or m.pair = invalid then return
+  if task.ok
+    finishCodeSignIn(task.json)
+    return
+  end if
+  pollNext = hubPairPollNext(m.pair.interval, task.error)
+  if pollNext.action = "wait"
+    if pollNext.interval <> m.pair.interval
+      m.pair.interval = pollNext.interval
+      m.pairTimer.duration = pollNext.interval
+    end if
+    return
+  end if
+  stopPairPolling()
+  m.pair.message = hubPairStopText(pollNext.reason)
+  paintCodePanel()
+end sub
+
+sub finishCodeSignIn(json as Object)
+  token = asText(aaGet(json, "accountToken", ""))
+  installation = aaGet(json, "installation", {})
+  id = asText(aaGet(installation, "id", ""))
+  secret = asText(aaGet(json, "deviceSecret", ""))
+  if not isAccountToken(token) or id = "" or secret = ""
+    stopPairPolling()
+    m.pair.message = hubPairStopText("error")
+    paintCodePanel()
+    return
+  end if
+  saveAccountToken(token)
+  m.accountToken = token
+  saveHubInstallation(id, secret)
+  stopCodeSignIn()
+  navigate("pop", "", {})
+  loadAccount(true)
+end sub
+
+sub stopPairPolling()
+  if m.pairTimer <> invalid then m.pairTimer.control = "stop"
+end sub
+
+sub stopCodeSignIn()
+  stopPairPolling()
+  m.pair = invalid
+end sub
+
+sub showCodePanel()
+  panel = CreateObject("roSGNode", "CodeSignInPanel")
+  panel.observeField("action", "onCodeSignInAction")
+  m.overlayHost.appendChild(panel)
+  panel.setFocus(true)
+  paintCodePanel()
+end sub
+
+sub paintCodePanel()
+  if m.pair = invalid then return
+  if m.overlayHost.getChildCount() = 0 then return
+  panel = m.overlayHost.getChild(0)
+  if panel.subtype() <> "CodeSignInPanel" then return
+  panel.userCode = m.pair.userCode
+  panel.uri = m.pair.uri
+  panel.message = m.pair.message
+end sub
+
+sub onCodeSignInAction()
+  stopCodeSignIn()
+  navigate("pop", "", {})
 end sub

@@ -3,53 +3,54 @@
   <interface>
     <field id="mode" type="string" value="loading" onChange="onMode" />
     <field id="payload" type="assocarray" onChange="onPayload" />
+    <field id="profileName" type="string" onChange="onProfileName" />
     <field id="errorTitle" type="string" />
     <field id="errorBody" type="string" />
     <field id="focusKey" type="string" />
-    <field id="restoreKey" type="string" onChange="onRestoreKey" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
     <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
   <script type="text/brightscript" uri="HomeScreen.brs" />
   <children>
-    <Poster id="heroArt" width="3840" height="1440" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
-    <Poster id="heroArtB" width="3840" height="1440" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" opacity="0" />
-    <Rectangle id="heroFallback" width="3840" height="1440" color="0x14183AFF" visible="false" />
-    <Poster id="heroVignetteLeft" width="1960" height="1440" uri="pkg:/images/chrome/hero-vignette-left.png" />
-    <Poster id="heroVignetteBottom" width="3840" height="640" translation="[0, 800]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
-    <Group id="heroCopy" translation="[160, 400]">
-      <Label id="heroTitle" width="2200" height="280" wrap="true" maxLines="2" color="0xF5F5F5FF" />
-      <Group id="watchline" translation="[0, 300]">
-        <FocusButton id="watchNow" translation="[0, 0]" />
-        <Label id="heroRule" text="|" translation="[428, 20]" color="0xFFFFFFB3" />
-        <BrandLockup id="heroBrand" translation="[472, 12]" />
-        <Label id="heroSource" translation="[472, 20]" width="840" color="0x00A8E1FF" visible="false" />
-      </Group>
-      <FocusButton id="learnMore" translation="[0, 420]" />
-      <Group id="dots" translation="[0, 620]">
-        <Rectangle id="dot0" width="16" height="16" cornerRadius="8" color="0xFFFFFFFF" />
-        <Rectangle id="dot1" width="16" height="16" cornerRadius="8" translation="[32, 0]" color="0xFFFFFF59" />
-        <Rectangle id="dot2" width="16" height="16" cornerRadius="8" translation="[64, 0]" color="0xFFFFFF59" />
-        <Rectangle id="dot3" width="16" height="16" cornerRadius="8" translation="[96, 0]" color="0xFFFFFF59" />
+    <Poster id="heroFallback" width="3840" height="2160" loadWidth="1280" loadHeight="720" loadDisplayMode="scaleToZoom" />
+    <Poster id="heroArt" width="3840" height="2160" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
+    <Poster id="heroArtB" width="3840" height="2160" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" opacity="0" />
+    <Poster id="heroVignetteLeft" width="2200" height="2160" uri="pkg:/images/chrome/hero-vignette-left.png" />
+    <Poster id="heroVignetteBottom" width="3840" height="1100" translation="[0, 1060]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
+    <Rectangle id="railScrim" width="3840" height="2160" color="0x000000B8" visible="false" />
+    <Group id="heroCopy" translation="[160, 320]">
+      <Label id="heroTitle" width="2500" height="320" wrap="true" maxLines="2" vertAlign="bottom" color="0xF5F5F5FF" />
+      <Label id="heroMeta" translation="[0, 344]" width="2400" height="64" color="0xD8D9E8FF" />
+      <FocusButton id="playBtn" translation="[0, 456]" />
+      <FocusButton id="detailsBtn" translation="[460, 456]" />
+      <Group id="dots" translation="[0, 654]">
+        <Poster id="dot0" uri="pkg:/images/glass/dot.png" width="16" height="16" blendColor="0xFFFFFFFF" />
+        <Poster id="dot1" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[32, 0]" blendColor="0xFFFFFF59" />
+        <Poster id="dot2" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[64, 0]" blendColor="0xFFFFFF59" />
+        <Poster id="dot3" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[96, 0]" blendColor="0xFFFFFF59" />
       </Group>
     </Group>
-    <RibbonBar id="ribbon" translation="[0, 1236]" />
-    <Group id="rails" translation="[0, 1504]" />
-    <Group id="status" translation="[0, 1504]" visible="false">
+    <Group id="rails" translation="[0, 1160]" />
+    <NavStrip id="nav" translation="[0, 0]" />
+    <Group id="status" translation="[0, 700]" visible="false">
       <ErrorState id="error" />
       <EmptyState id="empty" translation="[0, 0]" />
       <Label id="loading" text="Loading..." color="0xC4C4C4FF" translation="[160, 80]" />
     </Group>
+    <Timer id="heroDebounce" duration="0.3" repeat="false" />
     <Timer id="heroTimer" duration="8" repeat="true" />
     <Animation id="heroFade" duration="0.55" easeFunction="inOutQuad" optional="true">
       <FloatFieldInterpolator id="heroFadeA" key="[0.0, 1.0]" keyValue="[1.0, 0.0]" fieldToInterp="heroArt.opacity" />
       <FloatFieldInterpolator id="heroFadeB" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroArtB.opacity" />
     </Animation>
     <Animation id="railsAnim" duration="0.22" easeFunction="outCubic" optional="true">
-      <Vector2DFieldInterpolator id="railsInterp" key="[0.0, 1.0]" keyValue="[[0.0, 1504.0], [0.0, 1504.0]]" fieldToInterp="rails.translation" />
+      <Vector2DFieldInterpolator id="railsInterp" key="[0.0, 1.0]" keyValue="[[0.0, 1160.0], [0.0, 1160.0]]" fieldToInterp="rails.translation" />
     </Animation>
   </children>
 </component>

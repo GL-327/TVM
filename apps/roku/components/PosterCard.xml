@@ -12,20 +12,22 @@
   <script type="text/brightscript" uri="PosterCard.brs" />
   <children>
     <Group id="body">
-      <Rectangle id="glow" color="0x00000000" cornerRadius="28" />
-      <Rectangle id="ring" color="0x00000000" cornerRadius="24" />
-      <Rectangle id="fill" color="0x161616FF" cornerRadius="20" />
+      <Poster id="glow" uri="pkg:/images/glass/focus-glow.9.png" visible="false" />
+      <Poster id="ring" uri="pkg:/images/glass/focus-ring.9.png" visible="false" />
+      <Poster id="fill" uri="pkg:/images/glass/card-fill.9.png" blendColor="0x161D24FF" />
       <MaskGroup id="mask">
         <Poster id="art" loadDisplayMode="scaleToZoom" />
       </MaskGroup>
-      <Rectangle id="progressTrack" color="0x00000099" visible="false" />
-      <Rectangle id="progressFill" color="0xE50914FF" visible="false" />
-      <Label id="caption" color="0xF5F5F5FF" horizAlign="left" maxLines="1" />
-      <Label id="yearLabel" color="0x8A8A8AFF" horizAlign="left" maxLines="1" />
+      <Poster id="progressTrack" uri="pkg:/images/glass/progress.9.png" blendColor="0xFFFFFF55" visible="false" />
+      <Poster id="progressFill" uri="pkg:/images/glass/progress.9.png" blendColor="0xF5F5F5FF" visible="false" />
+      <Label id="caption" color="0xF5F5F5FF" horizAlign="left" maxLines="1" visible="false" />
+      <Label id="fallbackTitle" color="0xC4CCD5FF" horizAlign="center" vertAlign="center" wrap="true" maxLines="3" />
     </Group>
-    <Animation id="focusAnim" duration="0.2" easeFunction="outCubic" optional="true">
+    <Animation id="focusAnim" duration="0.15" easeFunction="outCubic" optional="true">
       <Vector2DFieldInterpolator id="scaleInterp" key="[0.0, 1.0]" keyValue="[[1.0, 1.0], [1.04, 1.04]]" fieldToInterp="body.scale" />
+      <Vector2DFieldInterpolator id="liftInterp" key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [0.0, -12.0]]" fieldToInterp="body.translation" />
       <FloatFieldInterpolator id="opacityInterp" key="[0.0, 1.0]" keyValue="[1.0, 1.0]" fieldToInterp="body.opacity" />
+      <Vector2DFieldInterpolator id="maskInterp" key="[0.0, 1.0]" fieldToInterp="mask.maskSize" />
     </Animation>
   </children>
 </component>

@@ -36,6 +36,10 @@ sub exec()
   if account <> invalid and Len(account.Trim()) >= 32
     transfer.AddHeader("X-TVM-Account", account.Trim())
   end if
+  device = m.top.deviceCredential
+  if device <> invalid and Len(device.Trim()) >= 16
+    transfer.AddHeader("X-TVM-Device", device.Trim())
+  end if
   if m.top.profileId <> invalid and m.top.profileId <> ""
     transfer.AddHeader("X-TVM-Profile", m.top.profileId)
   end if

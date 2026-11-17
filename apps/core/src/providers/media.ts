@@ -40,7 +40,7 @@ export interface MediaService {
   configured(): boolean;
   status(): Promise<RdStatus>;
   setToken(token: string): Promise<RdStatus>;
-  home(): Promise<HomePayload>;
+  home(): Promise<HomePayload & { trending?: MediaItem[] }>;
   library(): Promise<MediaItem[]>;
   item(id: string): Promise<MediaItem | null>;
   children(id: string): Promise<MediaItem[]>;
@@ -621,7 +621,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       return rd.setToken(token);
     },
 
-    async home(): Promise<HomePayload> {
+    async home(): Promise<HomePayload & { trending: MediaItem[] }> {
       const profileScope = scope();
       const status = await cachedStatus();
       let library: MediaItem[] = [];
@@ -635,8 +635,13 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const progress = readProgress(profileScope);
       library = applyProgress(library, progress);
       let catalogItems: MediaItem[] = [];
+      let trending: MediaItem[] = [];
       try {
-        catalogItems = applyProgress((await catalog.bundle()).catalog, progress);
+        const bundle = await catalog.bundle();
+        catalogItems = applyProgress(bundle.catalog, progress);
+        trending = applyProgress(dedupeItems(bundle.moviesTop)
+          .filter(item => item.kind === 'movie' && isHttpUrl(item.backdrop))
+          .slice(0, 8), progress);
       } catch {
         catalogItems = [];
       }
@@ -668,6 +673,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       return {
         rd: { ...status, error },
         featured,
+        trending,
         library: library.slice(0, 400),
         continueWatching,
         watchlist,

@@ -1,0 +1,1529 @@
+{
+  "age": [
+    {
+      "name": "10 seconds",
+      "then": "2026-11-17T19:59:50.000Z",
+      "now": "2026-11-17T20:00:00.000Z",
+      "expected": 10
+    },
+    {
+      "name": "across midnight",
+      "then": "2026-11-16T23:59:50Z",
+      "now": "2026-11-17T00:00:10Z",
+      "expected": 20
+    },
+    {
+      "name": "across a month",
+      "then": "2026-10-31T23:59:50Z",
+      "now": "2026-11-01T00:00:10Z",
+      "expected": 20
+    },
+    {
+      "name": "leap day",
+      "then": "2024-02-28T12:00:00Z",
+      "now": "2024-03-01T12:00:00Z",
+      "expected": 172800
+    },
+    {
+      "name": "yesterday morning",
+      "then": "2026-11-16T09:12:00.000Z",
+      "now": "2026-11-17T20:00:00.000Z",
+      "expected": 125280
+    },
+    {
+      "name": "clock skew never goes negative",
+      "then": "2026-11-17T20:00:05Z",
+      "now": "2026-11-17T20:00:00Z",
+      "expected": 0
+    },
+    {
+      "name": "garbage",
+      "then": "yesterday",
+      "now": "2026-11-17T20:00:00Z",
+      "expected": -1
+    }
+  ],
+  "ageText": [
+    {
+      "sec": -1,
+      "expected": ""
+    },
+    {
+      "sec": 0,
+      "expected": "just now"
+    },
+    {
+      "sec": 9,
+      "expected": "just now"
+    },
+    {
+      "sec": 10,
+      "expected": "10 s ago"
+    },
+    {
+      "sec": 59,
+      "expected": "59 s ago"
+    },
+    {
+      "sec": 60,
+      "expected": "1 min ago"
+    },
+    {
+      "sec": 3599,
+      "expected": "59 min ago"
+    },
+    {
+      "sec": 3600,
+      "expected": "1 h ago"
+    },
+    {
+      "sec": 86399,
+      "expected": "23 h ago"
+    },
+    {
+      "sec": 86400,
+      "expected": "1 d ago"
+    },
+    {
+      "sec": 259200,
+      "expected": "3 d ago"
+    }
+  ],
+  "clock": [
+    {
+      "sec": -5,
+      "expected": "0:00"
+    },
+    {
+      "sec": 0,
+      "expected": "0:00"
+    },
+    {
+      "sec": 59,
+      "expected": "0:59"
+    },
+    {
+      "sec": 1457,
+      "expected": "24:17"
+    },
+    {
+      "sec": 5528,
+      "expected": "1:32:08"
+    }
+  ],
+  "lastSeen": [
+    {
+      "name": "never",
+      "device": {
+        "lastSeenAt": null
+      },
+      "serverTime": "2026-11-17T20:00:00Z",
+      "expected": "Never seen"
+    },
+    {
+      "name": "computed against server time",
+      "device": {
+        "lastSeenAt": "2026-11-17T19:55:00Z",
+        "lastSeenAgeSec": 5
+      },
+      "serverTime": "2026-11-17T20:00:00Z",
+      "expected": "5 min ago"
+    },
+    {
+      "name": "falls back to the server age",
+      "device": {
+        "lastSeenAt": "nonsense",
+        "lastSeenAgeSec": 7200
+      },
+      "serverTime": "2026-11-17T20:00:00Z",
+      "expected": "2 h ago"
+    },
+    {
+      "name": "no usable time",
+      "device": {
+        "lastSeenAt": "nonsense"
+      },
+      "serverTime": "",
+      "expected": "Seen earlier"
+    }
+  ],
+  "state": [
+    {
+      "state": "idle",
+      "label": "Idle"
+    },
+    {
+      "state": "playing",
+      "label": "Playing"
+    },
+    {
+      "state": "paused",
+      "label": "Paused"
+    },
+    {
+      "state": "offline",
+      "label": "Offline"
+    },
+    {
+      "state": "unknown",
+      "label": "Unknown"
+    },
+    {
+      "state": "revoked",
+      "label": "Removed"
+    },
+    {
+      "state": "weird",
+      "label": "Unknown"
+    }
+  ],
+  "platform": [
+    {
+      "platform": "roku",
+      "glyph": "tv",
+      "name": "Roku"
+    },
+    {
+      "platform": "android-tv",
+      "glyph": "tv",
+      "name": "Android TV"
+    },
+    {
+      "platform": "windows",
+      "glyph": "laptop",
+      "name": "Windows"
+    },
+    {
+      "platform": "web",
+      "glyph": "web",
+      "name": "Web"
+    },
+    {
+      "platform": "ios",
+      "glyph": "phone",
+      "name": "iPhone or iPad"
+    },
+    {
+      "platform": "android",
+      "glyph": "phone",
+      "name": "Android"
+    }
+  ],
+  "actions": [
+    {
+      "name": "this Roku: rename, room, sign out; no remote, no remove",
+      "device": {
+        "state": "playing",
+        "presence": "online",
+        "isCurrent": true,
+        "capabilities": [
+          "playback.pause_resume",
+          "nav.dpad"
+        ]
+      },
+      "fixture": false,
+      "expected": [
+        {
+          "id": "rename",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "room",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "signout",
+          "enabled": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "name": "another Roku playing",
+      "device": {
+        "state": "playing",
+        "presence": "online",
+        "isCurrent": false,
+        "capabilities": [
+          "playback.pause_resume",
+          "nav.dpad"
+        ]
+      },
+      "fixture": false,
+      "expected": [
+        {
+          "id": "pause",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "remote",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "rename",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "room",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "remove",
+          "enabled": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "name": "paused shows Resume",
+      "device": {
+        "state": "paused",
+        "presence": "online",
+        "isCurrent": false,
+        "capabilities": [
+          "playback.pause_resume"
+        ]
+      },
+      "fixture": false,
+      "expected": [
+        {
+          "id": "resume",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "rename",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "room",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "remove",
+          "enabled": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "name": "idle online: pause is not available yet",
+      "device": {
+        "state": "idle",
+        "presence": "online",
+        "isCurrent": false,
+        "capabilities": [
+          "playback.pause_resume"
+        ]
+      },
+      "fixture": false,
+      "expected": [
+        {
+          "id": "pause",
+          "enabled": false,
+          "reason": "Not playing"
+        },
+        {
+          "id": "rename",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "room",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "remove",
+          "enabled": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "name": "offline device with remote capability",
+      "device": {
+        "state": "offline",
+        "presence": "offline",
+        "isCurrent": false,
+        "capabilities": [
+          "playback.pause_resume",
+          "nav.dpad"
+        ]
+      },
+      "fixture": false,
+      "expected": [
+        {
+          "id": "pause",
+          "enabled": false,
+          "reason": "Offline"
+        },
+        {
+          "id": "remote",
+          "enabled": false,
+          "reason": "Offline"
+        },
+        {
+          "id": "rename",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "room",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "remove",
+          "enabled": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "name": "no control capabilities: control rows are filtered out",
+      "device": {
+        "state": "idle",
+        "presence": "online",
+        "isCurrent": false,
+        "capabilities": [
+          "handoff.receive"
+        ]
+      },
+      "fixture": false,
+      "expected": [
+        {
+          "id": "rename",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "room",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "remove",
+          "enabled": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "name": "revoked has no actions",
+      "device": {
+        "state": "revoked",
+        "presence": "offline",
+        "isCurrent": false,
+        "capabilities": [
+          "nav.dpad"
+        ]
+      },
+      "fixture": false,
+      "expected": []
+    },
+    {
+      "name": "demo data disables everything",
+      "device": {
+        "state": "playing",
+        "presence": "online",
+        "isCurrent": false,
+        "capabilities": [
+          "playback.pause_resume",
+          "nav.dpad"
+        ]
+      },
+      "fixture": true,
+      "expected": [
+        {
+          "id": "pause",
+          "enabled": false,
+          "reason": "Demo data"
+        },
+        {
+          "id": "remote",
+          "enabled": false,
+          "reason": "Demo data"
+        },
+        {
+          "id": "rename",
+          "enabled": false,
+          "reason": "Demo data"
+        },
+        {
+          "id": "room",
+          "enabled": false,
+          "reason": "Demo data"
+        },
+        {
+          "id": "remove",
+          "enabled": false,
+          "reason": "Demo data"
+        }
+      ]
+    }
+  ],
+  "nowPlaying": [
+    {
+      "name": "restricted is hidden",
+      "np": {
+        "restricted": true
+      },
+      "expected": null
+    },
+    {
+      "name": "none",
+      "np": null,
+      "expected": null
+    },
+    {
+      "name": "no title",
+      "np": {
+        "mediaId": "x",
+        "positionSec": 5
+      },
+      "expected": null
+    },
+    {
+      "name": "full card",
+      "np": {
+        "title": "The Last Light",
+        "positionSec": 1457,
+        "durationSec": 5528
+      },
+      "expected": {
+        "title": "The Last Light",
+        "posText": "24:17",
+        "durText": "1:32:08",
+        "progressPct": 26
+      }
+    },
+    {
+      "name": "live with no duration",
+      "np": {
+        "title": "News",
+        "positionSec": 90,
+        "durationSec": null
+      },
+      "expected": {
+        "title": "News",
+        "posText": "1:30",
+        "durText": "",
+        "progressPct": 0
+      }
+    },
+    {
+      "name": "position past the end clamps the bar",
+      "np": {
+        "title": "Over",
+        "positionSec": 200,
+        "durationSec": 100
+      },
+      "expected": {
+        "title": "Over",
+        "posText": "3:20",
+        "durText": "1:40",
+        "progressPct": 100
+      }
+    }
+  ],
+  "sort": [
+    {
+      "name": "by name, case-insensitive, id breaks ties",
+      "key": "name",
+      "devices": [
+        {
+          "id": "3",
+          "name": "zed"
+        },
+        {
+          "id": "2",
+          "name": "Alpha"
+        },
+        {
+          "id": "1",
+          "name": "alpha"
+        },
+        {
+          "id": "4",
+          "name": "Beta"
+        }
+      ],
+      "expected": [
+        "1",
+        "2",
+        "4",
+        "3"
+      ]
+    },
+    {
+      "name": "by last seen, newest first, never last",
+      "key": "seen",
+      "devices": [
+        {
+          "id": "a",
+          "name": "A",
+          "lastSeenAt": "2026-11-17T10:00:00Z"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "lastSeenAt": null
+        },
+        {
+          "id": "c",
+          "name": "C",
+          "lastSeenAt": "2026-11-17T12:00:00Z"
+        }
+      ],
+      "expected": [
+        "c",
+        "a",
+        "b"
+      ]
+    },
+    {
+      "name": "by room, no room last, then name",
+      "key": "room",
+      "devices": [
+        {
+          "id": "a",
+          "name": "A",
+          "room": null
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "room": "Office"
+        },
+        {
+          "id": "c",
+          "name": "C",
+          "room": "Kitchen"
+        },
+        {
+          "id": "d",
+          "name": "A2",
+          "room": "Kitchen"
+        }
+      ],
+      "expected": [
+        "d",
+        "c",
+        "b",
+        "a"
+      ]
+    }
+  ],
+  "decide": [
+    {
+      "name": "pause with a player",
+      "cmd": {
+        "action": "playback.pause",
+        "payload": {}
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "pause"
+        }
+      }
+    },
+    {
+      "name": "pause without a player is not_ready",
+      "cmd": {
+        "action": "playback.pause",
+        "payload": {}
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "not_ready",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "resume",
+      "cmd": {
+        "action": "playback.resume"
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "resume"
+        }
+      }
+    },
+    {
+      "name": "seek",
+      "cmd": {
+        "action": "playback.seek",
+        "payload": {
+          "positionSec": 120.5
+        }
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "seek",
+          "positionSec": 120.5
+        }
+      }
+    },
+    {
+      "name": "seek needs a position",
+      "cmd": {
+        "action": "playback.seek",
+        "payload": {}
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "invalid_payload",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "seek rejects negatives",
+      "cmd": {
+        "action": "playback.seek",
+        "payload": {
+          "positionSec": -4
+        }
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "invalid_payload",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "seek without a player",
+      "cmd": {
+        "action": "playback.seek",
+        "payload": {
+          "positionSec": 5
+        }
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "not_ready",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "skip clamps to an hour",
+      "cmd": {
+        "action": "playback.skip",
+        "payload": {
+          "deltaSec": -99999
+        }
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "skip",
+          "deltaSec": -3600
+        }
+      }
+    },
+    {
+      "name": "skip forward",
+      "cmd": {
+        "action": "playback.skip",
+        "payload": {
+          "deltaSec": 30
+        }
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "skip",
+          "deltaSec": 30
+        }
+      }
+    },
+    {
+      "name": "dpad",
+      "cmd": {
+        "action": "nav.dpad",
+        "payload": {
+          "direction": "left"
+        }
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "intent",
+          "intent": "left"
+        }
+      }
+    },
+    {
+      "name": "dpad with a bad direction",
+      "cmd": {
+        "action": "nav.dpad",
+        "payload": {
+          "direction": "diagonal"
+        }
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "invalid_payload",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "select",
+      "cmd": {
+        "action": "nav.select"
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "intent",
+          "intent": "select"
+        }
+      }
+    },
+    {
+      "name": "back",
+      "cmd": {
+        "action": "nav.back"
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "intent",
+          "intent": "back"
+        }
+      }
+    },
+    {
+      "name": "play a title",
+      "cmd": {
+        "action": "play.title",
+        "payload": {
+          "mediaId": "tt1",
+          "positionSec": 30
+        }
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "applied",
+        "reason": "",
+        "effect": {
+          "kind": "play",
+          "mediaId": "tt1",
+          "positionSec": 30
+        }
+      }
+    },
+    {
+      "name": "play a title before sign-in is not_ready",
+      "cmd": {
+        "action": "play.title",
+        "payload": {
+          "mediaId": "tt1"
+        }
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": false
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "not_ready",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "play a title needs an id",
+      "cmd": {
+        "action": "play.title",
+        "payload": {}
+      },
+      "ctx": {
+        "playerOpen": false,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "invalid_payload",
+        "effect": {
+          "kind": ""
+        }
+      }
+    },
+    {
+      "name": "unknown action is unsupported",
+      "cmd": {
+        "action": "power.off"
+      },
+      "ctx": {
+        "playerOpen": true,
+        "mayNavigate": true
+      },
+      "expected": {
+        "status": "rejected",
+        "reason": "unsupported",
+        "effect": {
+          "kind": ""
+        }
+      }
+    }
+  ],
+  "commandText": [
+    {
+      "status": "pending",
+      "reason": "",
+      "expected": "Sending..."
+    },
+    {
+      "status": "accepted",
+      "reason": "",
+      "expected": "Received"
+    },
+    {
+      "status": "applied",
+      "reason": "",
+      "expected": "Done"
+    },
+    {
+      "status": "timed_out",
+      "reason": "",
+      "expected": "No response in time"
+    },
+    {
+      "status": "rejected",
+      "reason": "not_ready",
+      "expected": "Nothing is ready to control there"
+    },
+    {
+      "status": "rejected",
+      "reason": "whatever",
+      "expected": "The device said no"
+    }
+  ],
+  "sendError": [
+    {
+      "status": 409,
+      "code": "target_offline",
+      "expected": "The device is offline"
+    },
+    {
+      "status": 409,
+      "code": "unsupported",
+      "expected": "That device cannot do this"
+    },
+    {
+      "status": 404,
+      "code": "not_found",
+      "expected": "That device is gone"
+    },
+    {
+      "status": 0,
+      "code": "timeout",
+      "expected": "Could not reach Core"
+    },
+    {
+      "status": 500,
+      "code": "boom",
+      "expected": "Could not send"
+    }
+  ],
+  "errorKind": [
+    {
+      "status": 404,
+      "code": "not_found",
+      "expected": "unavailable"
+    },
+    {
+      "status": 503,
+      "code": "hub_unavailable",
+      "expected": "unavailable"
+    },
+    {
+      "status": 401,
+      "code": "auth_required",
+      "expected": "auth"
+    },
+    {
+      "status": 0,
+      "code": "timeout",
+      "expected": "offline"
+    },
+    {
+      "status": 429,
+      "code": "rate_limited",
+      "expected": "limited"
+    },
+    {
+      "status": 500,
+      "code": "boom",
+      "expected": "error"
+    }
+  ],
+  "activity": [
+    {
+      "type": "device.linked",
+      "actor": {
+        "name": "Arthur"
+      },
+      "target": {
+        "name": "Basement TV"
+      },
+      "expected": "Basement TV was linked"
+    },
+    {
+      "type": "device.renamed",
+      "actor": {
+        "name": "Arthur"
+      },
+      "target": {
+        "name": "Bedroom TV"
+      },
+      "expected": "Bedroom TV was renamed"
+    },
+    {
+      "type": "pair.approved",
+      "actor": {
+        "name": "Living Room Roku"
+      },
+      "target": {
+        "name": "Basement TV"
+      },
+      "expected": "Living Room Roku approved Basement TV"
+    },
+    {
+      "type": "command.sent",
+      "actor": {
+        "name": "Windows PC"
+      },
+      "target": {
+        "name": "Living Room Roku"
+      },
+      "expected": "Windows PC sent a command to Living Room Roku"
+    },
+    {
+      "type": "command.timed_out",
+      "actor": {
+        "name": "Windows PC"
+      },
+      "target": {
+        "name": "Galaxy Tab"
+      },
+      "expected": "Galaxy Tab did not answer a command"
+    },
+    {
+      "type": "device.revoked",
+      "actor": {},
+      "target": {},
+      "expected": "A device was removed"
+    },
+    {
+      "type": "future.thing",
+      "actor": {},
+      "target": {
+        "name": "Den"
+      },
+      "expected": "Activity on Den"
+    }
+  ],
+  "pairNormalize": [
+    {
+      "text": "abcd-efgh",
+      "expected": "ABCDEFGH"
+    },
+    {
+      "text": " ab cd ",
+      "expected": "ABCD"
+    },
+    {
+      "text": "ABCD-EFGH-JKLM",
+      "expected": "ABCDEFGH"
+    },
+    {
+      "text": "0O1I",
+      "expected": ""
+    },
+    {
+      "text": "A2B3",
+      "expected": "A2B3"
+    },
+    {
+      "text": "",
+      "expected": ""
+    }
+  ],
+  "pairFormat": [
+    {
+      "text": "",
+      "expected": ""
+    },
+    {
+      "text": "ABC",
+      "expected": "ABC"
+    },
+    {
+      "text": "ABCD",
+      "expected": "ABCD"
+    },
+    {
+      "text": "abcde",
+      "expected": "ABCD-E"
+    },
+    {
+      "text": "abcdefgh",
+      "expected": "ABCD-EFGH"
+    }
+  ],
+  "pairComplete": [
+    {
+      "text": "ABCD-EFGH",
+      "expected": true
+    },
+    {
+      "text": "ABCDEFG",
+      "expected": false
+    },
+    {
+      "text": "ABCD-EFG0",
+      "expected": false
+    }
+  ],
+  "pairError": [
+    {
+      "status": 404,
+      "code": "not_found",
+      "expected": "That code was not found. Check it and try again."
+    },
+    {
+      "status": 429,
+      "code": "rate_limited",
+      "expected": "Too many wrong codes. Wait 15 minutes and try again."
+    },
+    {
+      "status": 410,
+      "code": "expired",
+      "expected": "That code has expired. Ask the other device for a new one."
+    },
+    {
+      "status": 401,
+      "code": "auth_required",
+      "expected": "Sign in again to approve a device."
+    },
+    {
+      "status": 0,
+      "code": "timeout",
+      "expected": "Could not reach Core."
+    },
+    {
+      "status": 500,
+      "code": "boom",
+      "expected": "Could not check that code."
+    }
+  ],
+  "pairPoll": [
+    {
+      "interval": 5,
+      "code": "authorization_pending",
+      "expected": {
+        "action": "wait",
+        "interval": 5,
+        "reason": ""
+      }
+    },
+    {
+      "interval": 5,
+      "code": "slow_down",
+      "expected": {
+        "action": "wait",
+        "interval": 10,
+        "reason": ""
+      }
+    },
+    {
+      "interval": 10,
+      "code": "slow_down",
+      "expected": {
+        "action": "wait",
+        "interval": 15,
+        "reason": ""
+      }
+    },
+    {
+      "interval": 5,
+      "code": "access_denied",
+      "expected": {
+        "action": "stop",
+        "interval": 5,
+        "reason": "denied"
+      }
+    },
+    {
+      "interval": 5,
+      "code": "expired_token",
+      "expected": {
+        "action": "stop",
+        "interval": 5,
+        "reason": "expired"
+      }
+    },
+    {
+      "interval": 0,
+      "code": "authorization_pending",
+      "expected": {
+        "action": "wait",
+        "interval": 5,
+        "reason": ""
+      }
+    },
+    {
+      "interval": 5,
+      "code": "boom",
+      "expected": {
+        "action": "stop",
+        "interval": 5,
+        "reason": "error"
+      }
+    }
+  ],
+  "actionCap": [
+    {
+      "action": "playback.pause",
+      "expected": "playback.pause_resume"
+    },
+    {
+      "action": "playback.resume",
+      "expected": "playback.pause_resume"
+    },
+    {
+      "action": "playback.seek",
+      "expected": "playback.seek"
+    },
+    {
+      "action": "playback.skip",
+      "expected": "playback.skip"
+    },
+    {
+      "action": "nav.dpad",
+      "expected": "nav.dpad"
+    },
+    {
+      "action": "nav.select",
+      "expected": "nav.select"
+    },
+    {
+      "action": "nav.back",
+      "expected": "nav.back"
+    },
+    {
+      "action": "play.title",
+      "expected": "play.title"
+    },
+    {
+      "action": "play.live_channel",
+      "expected": "play.live_channel"
+    },
+    {
+      "action": "power.off",
+      "expected": ""
+    }
+  ],
+  "remote": [
+    {
+      "name": "up is a dpad command",
+      "intent": "up",
+      "device": {
+        "state": "idle",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "nav.dpad",
+        "payload": {
+          "direction": "up"
+        },
+        "label": "up",
+        "reason": ""
+      }
+    },
+    {
+      "name": "OK selects",
+      "intent": "select",
+      "device": {
+        "state": "idle",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "nav.select",
+        "payload": {},
+        "label": "OK",
+        "reason": ""
+      }
+    },
+    {
+      "name": "Options goes back on the target",
+      "intent": "info",
+      "device": {
+        "state": "idle",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "nav.back",
+        "payload": {},
+        "label": "Back",
+        "reason": ""
+      }
+    },
+    {
+      "name": "Play pauses a playing target",
+      "intent": "play",
+      "device": {
+        "state": "playing",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "playback.pause",
+        "payload": {},
+        "label": "Pause",
+        "reason": ""
+      }
+    },
+    {
+      "name": "Play resumes a paused target",
+      "intent": "play",
+      "device": {
+        "state": "paused",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "playback.resume",
+        "payload": {},
+        "label": "Resume",
+        "reason": ""
+      }
+    },
+    {
+      "name": "rewind skips back 10 s",
+      "intent": "rewind",
+      "device": {
+        "state": "playing",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "playback.skip",
+        "payload": {
+          "deltaSec": -10
+        },
+        "label": "Back 10 s",
+        "reason": ""
+      }
+    },
+    {
+      "name": "fast forward skips ahead 10 s",
+      "intent": "fastForward",
+      "device": {
+        "state": "playing",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "action": "playback.skip",
+        "payload": {
+          "deltaSec": 10
+        },
+        "label": "Forward 10 s",
+        "reason": ""
+      }
+    },
+    {
+      "name": "target without nav.dpad is unsupported",
+      "intent": "left",
+      "device": {
+        "state": "idle",
+        "capabilities": [
+          "playback.pause_resume"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "action": "nav.dpad",
+        "payload": {
+          "direction": "left"
+        },
+        "label": "left",
+        "reason": "unsupported"
+      }
+    },
+    {
+      "name": "target without skip is unsupported",
+      "intent": "rewind",
+      "device": {
+        "state": "playing",
+        "capabilities": [
+          "nav.dpad"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "action": "playback.skip",
+        "payload": {
+          "deltaSec": -10
+        },
+        "label": "Back 10 s",
+        "reason": "unsupported"
+      }
+    },
+    {
+      "name": "other keys are ignored",
+      "intent": "stop",
+      "device": {
+        "state": "idle",
+        "capabilities": [
+          "playback.pause_resume",
+          "playback.skip",
+          "nav.dpad",
+          "nav.select",
+          "nav.back"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "action": "",
+        "payload": {},
+        "label": "",
+        "reason": "ignored"
+      }
+    }
+  ]
+}

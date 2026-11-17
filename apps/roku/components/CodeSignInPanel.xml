@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="CodeSignInPanel" extends="Group">
+  <interface>
+    <field id="userCode" type="string" onChange="paint" />
+    <field id="uri" type="string" onChange="paint" />
+    <field id="message" type="string" onChange="paint" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="CodeSignInPanel.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x000000CC" />
+    <GlassPanel id="glass" shape="panel" width="2400" height="1300" translation="[720, 430]" />
+    <Label id="title" text="Sign in with a code" translation="[800, 490]" width="2240" height="100" />
+    <Label id="step" translation="[800, 620]" width="2240" height="140" wrap="true" maxLines="2" color="0xC4C4C4FF" />
+    <Label id="code" translation="[800, 800]" width="2240" height="220" horizAlign="center" vertAlign="center" />
+    <Label id="uriLabel" translation="[800, 1060]" width="2240" height="80" horizAlign="center" color="0xC4C4C4FF" />
+    <Label id="status" translation="[800, 1200]" width="2240" height="110" horizAlign="center" wrap="true" maxLines="2" color="0xFFBF69FF" />
+    <Label id="hint" text="Press Back to cancel." translation="[800, 1500]" width="2240" height="70" horizAlign="center" color="0x8A8A8AFF" />
+  </children>
+</component>

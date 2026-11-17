@@ -1,9 +1,12 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { ACCESS_TIERS, accessTier, entitlementForTier, ACCESS_ROUTE } from './accessTiers.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ACCESS_TIERS, accessTier, accessTiers, entitlementForTier, ACCESS_ROUTE } from './accessTiers.ts';
+import { resolveFlags } from './featureFlags.ts';
 import { createPlanService } from './plans.ts';
+
+vi.mock('./secureFile.ts', async original => ({ ...await original<typeof import('./secureFile.ts')>(), windowsProtect: (value: string) => value }));
 
 const dirs: string[] = [];
 async function plans() {
@@ -31,9 +34,11 @@ describe('what TVM offers', () => {
     expect(JSON.stringify(ACCESS_TIERS)).not.toMatch(/\bads?\b/i);
   });
 
-  it('carries the Live TV terms on the tier that includes it', () => {
+  it('shows price-book prices and Coming soon without advertising legacy offers', () => {
     expect(accessTier('stream').liveTvTerms).toHaveLength(0);
-    expect(accessTier('stream-live').liveTvTerms.map((term) => term.id)).toEqual(['quarter', 'year', 'lifetime']);
+    expect(accessTier('stream-live')).toMatchObject({ monthlyPence: 1000, yearlyPence: 9000, liveTvMonthlyPence: 700, liveTvYearlyPence: 6000, liveTvTerms: [], orderable: false, availability: 'Coming soon' });
+    expect(accessTiers(resolveFlags({}, { 'liveTv.visible': false })).map(tier => tier.id)).toEqual(['stream']);
+    expect(entitlementForTier('stream-live').liveTv).toBe(true);
   });
 
   it('points at the owner rather than a checkout', () => {

@@ -1,13 +1,15 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CORE_HOST } from './config.ts';
 import { createAccountsService } from './providers/accounts.ts';
 import type { DevUnlockService } from './providers/devUnlock.ts';
 import { createMailService, type MailMessage } from './providers/mail.ts';
 import { TERMS_VERSION } from './providers/terms.ts';
-import { liveRelayRefused, startCoreServer, type RunningCore } from './server.ts';
+import { startCoreServer, type RunningCore } from './server.ts';
+
+vi.mock('./providers/secureFile.ts', async original => ({ ...await original<typeof import('./providers/secureFile.ts')>(), windowsProtect: (value: string) => value }));
 
 /** The real developer code is not in the repository, so tests use a stand-in. */
 function fakeDeveloper(): DevUnlockService & { on: () => boolean } {
@@ -261,24 +263,6 @@ describe('what the dev sets per account', () => {
     expect(JSON.stringify(status.body)).not.toContain('secret-pass');
     const test = await call('/api/admin/mail/test', { token: dev, body: { to: 'me@example.com' } });
     expect(test.status).toBe(200);
-  });
-});
-
-describe('who may relay live TV', () => {
-  it('serves other devices only while the dev account is signed in', () => {
-    const lan = '192.168.1.40';
-    expect(liveRelayRefused('/api/live/proxy/0123456789abcdef0123456789abcdef', lan, () => false)).toBe(true);
-    expect(liveRelayRefused('/api/live/stream/live%3A1', lan, () => false)).toBe(true);
-    expect(liveRelayRefused('/api/live/hop/abc', lan, () => false)).toBe(true);
-    expect(liveRelayRefused('/api/live/sources', lan, () => false)).toBe(true);
-    expect(liveRelayRefused('/api/live/proxy/0123456789abcdef0123456789abcdef', lan, () => true)).toBe(false);
-  });
-
-  it('never refuses this machine, or routes that do not relay', () => {
-    expect(liveRelayRefused('/api/live/proxy/0123456789abcdef0123456789abcdef', '127.0.0.1', () => false)).toBe(false);
-    expect(liveRelayRefused('/api/live/proxy/0123456789abcdef0123456789abcdef', '::ffff:127.0.0.1', () => false)).toBe(false);
-    expect(liveRelayRefused('/api/live/catalog', '192.168.1.40', () => false)).toBe(false);
-    expect(liveRelayRefused('/api/home', '192.168.1.40', () => false)).toBe(false);
   });
 });
 

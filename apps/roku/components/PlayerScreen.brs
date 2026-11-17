@@ -170,6 +170,7 @@ end sub
 
 sub onState()
   state = m.video.state
+  publishPlayState(state)
   if state = "error"
     m.bufferTimer.control = "stop"
     m.top.message = "This stream could not play on this Roku. Press Back to choose another title."
@@ -209,12 +210,14 @@ end sub
 
 sub onDuration()
   m.duration = m.video.duration
+  m.top.playDuration = m.duration
   paintBar()
   updateSkipRecap()
 end sub
 
 sub onPosition()
   m.position = m.video.position
+  m.top.playPosition = m.position
   paintBar()
   updateSkipRecap()
   if Abs(m.position - m.lastSaved) >= 10 then saveProgress(false)
@@ -596,6 +599,7 @@ end sub
 
 sub closePlayer()
   m.closing = true
+  m.top.playState = "idle"
   m.bufferTimer.control = "stop"
   m.hideTimer.control = "stop"
   stopFocusWatch()
@@ -606,6 +610,7 @@ end sub
 
 sub doNext()
   m.closing = true
+  m.top.playState = "idle"
   m.bufferTimer.control = "stop"
   m.hideTimer.control = "stop"
   stopFocusWatch()
@@ -767,3 +772,46 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   end if
   return true
 end function
+
+' Hub presence: the scene observes playState and sends a heartbeat when it
+' changes. Buffering keeps the last state (it is still "playing").
+sub publishPlayState(state as String)
+  if state = "playing" or state = "paused"
+    if m.top.playState <> state then m.top.playState = state
+  else if state = "error" or state = "finished" or state = "stopped" or state = "none"
+    if m.top.playState <> "idle" then m.top.playState = "idle"
+  end if
+end sub
+
+' Commands from another device through the Hub (already decided by
+' hubDecide): effect is { kind: pause|resume|seek|skip, ... }.
+function applyRemote(effect as Object) as Boolean
+  if m.video = invalid or m.closing = true then return false
+  kind = asText(aaGet(effect, "kind", ""))
+  if kind = "pause"
+    m.video.control = "pause"
+  else if kind = "resume"
+    m.video.control = "resume"
+  else if kind = "seek"
+    target = aaGet(effect, "positionSec", 0)
+    if m.duration > 0 and target > m.duration then target = m.duration
+    m.position = target
+    m.video.seek = target
+    paintBar()
+  else if kind = "skip"
+    seekBy(Int(aaGet(effect, "deltaSec", 0)))
+  else
+    return false
+  end if
+  showChrome()
+  return true
+end function
+
+' Generic remote-intent hook: a Hub nav command becomes the same key a
+' physical remote would send.
+sub onRemoteIntent()
+  intent = m.top.remoteIntent
+  if intent = invalid or intent = "" then return
+  keyName = keyFromIntent(intent)
+  if keyName <> "" then onKeyEvent(keyName, true)
+end sub

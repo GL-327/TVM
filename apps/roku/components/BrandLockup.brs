@@ -8,17 +8,19 @@ sub layout()
   if m.mark = invalid then return
   kind = m.top.kind
   if kind = "wordmark"
+    m.mark.visible = false
     m.mark.width = 28
     m.mark.height = 28
     m.mark.translation = [0, 10]
     m.word.text = "TVM"
     m.word.color = tvmText()
-    m.word.font = tvmFont("bold", 48)
-    m.word.translation = [44, 0]
+    m.word.font = tvmFont("bold", 80)
+    m.word.translation = [0, 0]
     m.word.width = 280
     m.top.width = 324
     m.top.height = 56
   else
+    m.mark.visible = true
     m.mark.width = 22
     m.mark.height = 22
     m.mark.translation = [0, 14]

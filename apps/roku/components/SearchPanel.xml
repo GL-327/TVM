@@ -5,6 +5,7 @@
     <field id="message" type="string" onChange="onMessage" />
     <field id="query" type="string" onChange="onExternalQuery" />
     <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />

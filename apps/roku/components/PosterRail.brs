@@ -1,18 +1,21 @@
+' Windowed, non-looping rail. Only the visible cards plus a small buffer exist
+' as nodes; cards that scroll out of the window go to a pool and are reused.
+' Left and Right stop at the ends (rails do not wrap). Setting live = false
+' drops every card, so rows far from focus cost almost nothing.
 sub init()
-  m.top.findNode("heading").color = tvmText()
   m.heading = m.top.findNode("heading")
   m.track = m.top.findNode("track")
   m.slideAnim = m.top.findNode("slideAnim")
   m.slideInterp = m.top.findNode("slideInterp")
-  m.heading.font = tvmFontBodyLg()
-  m.cards = []
+  m.heading.font = tvmFontLabel()
+  m.heading.color = tvmText()
+  m.liveCards = {}
+  m.pool = []
   m.count = 0
-  m.copies = 1
-  m.cursor = 0
-  m.lastLogical = -1
+  m.viewFirst = 0
+  m.buffer = 2
   m.top.width = 3840
-  m.top.height = 620
-  if m.slideAnim <> invalid then m.slideAnim.observeField("state", "onSlideState")
+  m.top.height = railRowHeight("portrait")
 end sub
 
 sub onTitle()
@@ -20,141 +23,134 @@ sub onTitle()
 end sub
 
 function cardPitch() as Integer
-  if m.top.layout = "landscape" then return 424
-  return 302
+  if m.top.layout = "landscape" then return 840
+  return 600
 end function
 
-function looping() as Boolean
-  return m.count >= 2
+function cardWidth() as Integer
+  if m.top.layout = "landscape" then return 800
+  return 560
 end function
+
+function visibleCount() as Integer
+  return railVisibleCount(cardPitch(), cardWidth())
+end function
+
+function trackX(first as Integer) as Float
+  return tvmSafeLeft() - (first * cardPitch())
+end function
+
+sub clearCards()
+  for each key in m.liveCards
+    m.track.removeChild(m.liveCards[key])
+  end for
+  m.liveCards = {}
+  m.pool = []
+end sub
 
 sub onItems()
   if m.track = invalid then return
-  while m.track.getChildCount() > 0
-    m.track.removeChildIndex(0)
-  end while
-  m.cards = []
-  m.lastLogical = -1
-  m.cursor = 0
-
+  clearCards()
+  m.viewFirst = 0
   items = m.top.items
-  if items = invalid then return
-  m.count = items.Count()
-  m.copies = 1
-  if looping() then m.copies = 3
-
-  pitch = cardPitch()
-  if m.top.layout = "landscape"
-    m.top.height = 430
-  else
-    m.top.height = 620
-  end if
-
-  copy = 0
-  while copy < m.copies
-    i = 0
-    while i < m.count
-      card = CreateObject("roSGNode", "PosterCard")
-      card.layout = m.top.layout
-      card.item = items[i]
-      card.translation = [(copy * m.count + i) * pitch, 0]
-      m.track.appendChild(card)
-      m.cards.Push(card)
-      i = i + 1
-    end while
-    copy = copy + 1
-  end while
-  if looping() then m.cursor = m.count
-  m.track.translation = [trackX(m.cursor), 88]
+  m.count = 0
+  if items <> invalid then m.count = items.Count()
+  m.top.height = railRowHeight(m.top.layout)
+  m.track.translation = [trackX(0), 100]
+  if m.top.live then syncWindow()
   onFocusCol()
 end sub
 
-function trackX(visualIndex as Integer) as Float
-  pitch = cardPitch()
-  artW = 275
-  if m.top.layout = "landscape" then artW = 396
-  return 160 + ((3840 - 160 - artW) / 2) - (visualIndex * pitch)
-end function
-
-sub slideTo(x as Float)
+sub onLive()
   if m.track = invalid then return
-  current = m.track.translation
-  startX = 160
-  if current <> invalid then startX = current[0]
-  if Abs(startX - x) < 2
-    m.track.translation = [x, 88]
-    normalizeCursor()
-    return
+  if m.top.live
+    syncWindow()
+    paintCards()
+  else
+    clearCards()
   end if
-  if m.slideAnim = invalid or m.slideInterp = invalid
-    m.track.translation = [x, 88]
-    normalizeCursor()
-    return
-  end if
-  m.slideAnim.control = "stop"
-  m.pendingX = x
-  m.slideInterp.keyValue = [[startX, 88], [x, 88]]
-  m.slideAnim.control = "start"
 end sub
 
-sub onSlideState()
-  if m.slideAnim = invalid then return
-  if m.slideAnim.state <> "stopped" then return
-  normalizeCursor()
-end sub
+sub syncWindow()
+  items = m.top.items
+  if items = invalid then return
+  win = railWindow(m.count, m.viewFirst, visibleCount(), m.buffer)
 
-sub normalizeCursor()
-  if not looping() then return
-  shifted = false
-  while m.cursor >= m.count * 2
-    m.cursor = m.cursor - m.count
-    shifted = true
-  end while
-  while m.cursor < m.count
-    m.cursor = m.cursor + m.count
-    shifted = true
-  end while
-  if shifted
-    m.track.translation = [trackX(m.cursor), 88]
-  end if
-  paintCards()
-end sub
+  stale = []
+  for each key in m.liveCards
+    idx = Val(key)
+    if idx < win.first or idx > win.last then stale.Push(key)
+  end for
+  for each key in stale
+    card = m.liveCards[key]
+    m.track.removeChild(card)
+    m.pool.Push(card)
+    m.liveCards.Delete(key)
+  end for
 
-sub paintCards()
-  col = m.top.focusCol
-  i = 0
-  while i < m.cards.Count()
-    focused = (col >= 0 and i = m.cursor)
-    m.cards[i].hasFocusStyle = focused
-    m.cards[i].dimmed = (col >= 0 and i <> m.cursor)
+  pitch = cardPitch()
+  i = win.first
+  while i <= win.last
+    key = StrI(i).Trim()
+    if not m.liveCards.DoesExist(key)
+      card = invalid
+      if m.pool.Count() > 0
+        card = m.pool.Pop()
+      else
+        card = CreateObject("roSGNode", "PosterCard")
+        card.layout = m.top.layout
+      end if
+      card.hasFocusStyle = false
+      card.dimmed = false
+      card.item = items[i]
+      card.translation = [i * pitch, 0]
+      m.track.appendChild(card)
+      m.liveCards[key] = card
+    end if
     i = i + 1
   end while
 end sub
 
-sub onFocusCol()
-  if m.cards = invalid then return
+sub paintCards()
   col = m.top.focusCol
-  if col < 0
-    paintCards()
-    m.lastLogical = -1
+  for each key in m.liveCards
+    idx = Val(key)
+    card = m.liveCards[key]
+    card.hasFocusStyle = (col >= 0 and idx = col)
+    card.dimmed = (col >= 0 and idx <> col)
+  end for
+end sub
+
+sub onFocusCol()
+  if m.track = invalid then return
+  col = m.top.focusCol
+  if col >= 0 and m.count > 0
+    if col > m.count - 1 then col = m.count - 1
+    first = railViewFirst(m.count, col, m.viewFirst, visibleCount())
+    if first <> m.viewFirst
+      m.viewFirst = first
+      if m.top.live then syncWindow()
+      slideTo(trackX(first))
+    end if
+  end if
+  if m.top.live then paintCards()
+end sub
+
+sub slideTo(x as Float)
+  current = m.track.translation
+  startX = tvmSafeLeft()
+  if current <> invalid then startX = current[0]
+  if m.slideAnim = invalid or m.slideInterp = invalid
+    m.track.translation = [x, 100]
     return
   end if
-
-  prev = m.lastLogical
-  wrapRight = (prev = m.count - 1 and col = 0)
-  wrapLeft = (prev = 0 and col = m.count - 1)
-  if wrapRight
-    m.cursor = m.cursor + 1
-  else if wrapLeft
-    m.cursor = m.cursor - 1
-  else if prev >= 0
-    m.cursor = m.cursor + (col - prev)
-  else if looping()
-    m.cursor = m.count + col
-  else
-    m.cursor = col
+  if tvmReduceMotion() or Abs(startX - x) < 2
+    m.slideAnim.control = "stop"
+    m.track.translation = [x, 100]
+    return
   end if
-  m.lastLogical = col
-  paintCards()
-  slideTo(trackX(m.cursor))
+  m.slideAnim.control = "stop"
+  m.slideAnim.duration = tvmMotionPanel()
+  m.slideInterp.keyValue = [[startX, 100], [x, 100]]
+  m.slideAnim.control = "start"
 end sub

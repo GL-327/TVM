@@ -53,6 +53,8 @@ export function accessError(request: IncomingMessage, path: string, env: NodeJS.
       return 'lan_authentication_required';
     }
     const ownerUnlock = path === '/api/dev/unlock' && request.method === 'POST';
+    // /api/hub (including unauthenticated pair/start) inherits this LAN gate,
+    // and is intentionally available beyond loopback after LAN authentication.
     if (
       !ownerUnlock &&
       (/^\/api\/(dev|billing|maintenance|update|system|privacy|admin\/mail)(\/|$)/.test(path) ||
@@ -103,6 +105,29 @@ export function createUnlockLimiter(now = Date.now): () => boolean {
     attempts = attempts.filter((at) => time - at < 60_000);
     if (attempts.length >= 5) return false;
     attempts.push(time);
+    return true;
+  };
+}
+
+/** Sliding windows use socket IPs, never caller-controlled forwarding headers. */
+export function createSignInLimiter(options: { now?: () => number; windowMs?: number; emailLimit?: number; ipLimit?: number } = {}) {
+  const now = options.now ?? Date.now;
+  const windowMs = options.windowMs ?? 15 * 60_000;
+  const attempts = new Map<string, number[]>();
+  return (email: unknown, ip: string | undefined): boolean => {
+    const time = now();
+    for (const [key, times] of attempts) {
+      const recent = times.filter(at => time - at < windowMs);
+      if (recent.length) attempts.set(key, recent);
+      else attempts.delete(key);
+    }
+    const emailKey = `email:${typeof email === 'string' ? email.trim().toLowerCase() : ''}`;
+    const ipKey = `ip:${(ip ?? 'unknown').replace(/^::ffff:/, '')}`;
+    const emails = attempts.get(emailKey) ?? [];
+    const ips = attempts.get(ipKey) ?? [];
+    if (emails.length >= (options.emailLimit ?? 5) || ips.length >= (options.ipLimit ?? 30)) return false;
+    attempts.set(emailKey, [...emails, time]);
+    attempts.set(ipKey, [...ips, time]);
     return true;
   };
 }

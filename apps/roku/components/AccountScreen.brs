@@ -4,6 +4,7 @@ sub init()
   m.ledeLabel = m.top.findNode("ledeLabel")
   m.statusLabel = m.top.findNode("statusLabel")
   m.name = m.top.findNode("name")
+  m.codeSignIn = m.top.findNode("codeSignIn")
   m.email = m.top.findNode("email")
   m.password = m.top.findNode("password")
   m.submit = m.top.findNode("submit")
@@ -16,6 +17,10 @@ sub init()
   m.resendCode = m.top.findNode("resendCode")
   m.seq = 0
   m.col = 0
+  m.codeSignIn.variant = "row"
+  m.codeSignIn.label = "Sign in with a code"
+  m.codeSignIn.detail = "Use your phone or computer. No typing here."
+  m.codeSignIn.itemId = "codeSignIn"
   m.name.variant = "row"
   m.name.label = "Your name"
   m.name.itemId = "name"
@@ -81,6 +86,7 @@ function formButtons() as Object
   phase = m.top.phase
   buttons = []
   if phase = "register" then buttons.Push(m.name)
+  if phase = "signin" then buttons.Push(m.codeSignIn)
   if phase = "signin" or phase = "register"
     buttons.Push(m.email)
     buttons.Push(m.password)
@@ -105,6 +111,7 @@ sub paint()
   phase = m.top.phase
   signin = (phase = "signin" or phase = "register")
   m.name.visible = (phase = "register")
+  m.codeSignIn.visible = (phase = "signin")
   m.email.visible = signin
   m.password.visible = signin
   m.submit.visible = signin
@@ -129,6 +136,7 @@ sub paint()
   if m.col < 0 then m.col = 0
   if buttons.Count() > 0 and m.col > buttons.Count() - 1 then m.col = buttons.Count() - 1
   m.name.hasFocusStyle = false
+  m.codeSignIn.hasFocusStyle = false
   m.email.hasFocusStyle = false
   m.password.hasFocusStyle = false
   m.submit.hasFocusStyle = false
@@ -182,6 +190,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   if intent = "select" or intent = "left" or intent = "right"
     if intent = "select"
       id = buttons[m.col].itemId
+      if id = "codeSignIn" then emit("codeSignIn")
       if id = "name" then emit("editName")
       if id = "email" then emit("editEmail")
       if id = "password" then emit("editPassword")
@@ -198,3 +207,11 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   end if
   return true
 end function
+
+' TVM Hub nav command: the same key a physical remote would send.
+sub onRemoteIntent()
+  intent = m.top.remoteIntent
+  if intent = invalid or intent = "" then return
+  keyName = keyFromIntent(intent)
+  if keyName <> "" then onKeyEvent(keyName, true)
+end sub

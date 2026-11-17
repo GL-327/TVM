@@ -91,7 +91,7 @@ function tvmEmber() as String
 end function
 
 function tvmFocusScale() as Float
-  return 1.08
+  return 1.06
 end function
 
 function tvmPosterFocusScale() as Float
@@ -224,4 +224,145 @@ end function
 
 function tvmGlassInk() as String
   return "0xF7FBFFFF"
+end function
+
+' ---------------------------------------------------------------------------
+' 10-foot design tokens (docs/redesign/DECISIONS.md). The canvas is 3840x2160,
+' so every size below is the 1080p reference px x 2, in canvas units.
+' ---------------------------------------------------------------------------
+
+' Safe insets: 80 px left/right and 60 px top/bottom at 1080p.
+function tvmSafeLeft() as Integer
+  return 160
+end function
+
+function tvmSafeRight() as Integer
+  return 3680
+end function
+
+function tvmSafeTop() as Integer
+  return 120
+end function
+
+function tvmSafeBottom() as Integer
+  return 2040
+end function
+
+' Type scale in canvas units: hero 72 / screen title 48 / primary 30 /
+' secondary 24 / caption 22 (1080p px) x 2.
+function tvmTypeHero() as Integer
+  return 144
+end function
+
+function tvmTypeScreen() as Integer
+  return 96
+end function
+
+function tvmTypePrimary() as Integer
+  return 60
+end function
+
+function tvmTypeSecondary() as Integer
+  return 48
+end function
+
+function tvmTypeCaption() as Integer
+  return 44
+end function
+
+' Smallest legible device px. 20 px at 1080p, never under 18 device px at 720p.
+function tvmMinDevicePx() as Integer
+  return 18
+end function
+
+' Canvas-to-device scale published by TVMScene (0.5 at FHD, 0.333 at HD).
+function tvmUiScale() as Float
+  scale = 0.5
+  if m <> invalid and m.global <> invalid
+    if m.global.hasField("uiScale")
+      if m.global.uiScale <> invalid
+        if m.global.uiScale > 0 then scale = m.global.uiScale
+      end if
+    end if
+  end if
+  return scale
+end function
+
+' Applies the HD bump: x1.15 on small panels, and always enough canvas units
+' to land on at least 18 device px (44 units is 14.7 px at HD, so it becomes 54).
+function tvmTypeSize(base as Integer) as Integer
+  scale = tvmUiScale()
+  size = base
+  if scale < 0.45 then size = Int((base * 1.15) + 0.5)
+  floorSize = Int((tvmMinDevicePx() / scale) + 0.999)
+  if size < floorSize then size = floorSize
+  return size
+end function
+
+' Motion durations in seconds. Panel moves 220 ms, tab slides 180 ms, focus
+' 150 ms ease-out, press 80 ms. Every animation can be interrupted.
+function tvmMotionPanel() as Float
+  return 0.22
+end function
+
+function tvmMotionTab() as Float
+  return 0.18
+end function
+
+function tvmMotionFocus() as Float
+  return 0.15
+end function
+
+function tvmMotionPress() as Float
+  return 0.08
+end function
+
+' Focus geometry: posters scale 1.04, pills and nodes 1.06, lift 6 px (12 units).
+function tvmPillFocusScale() as Float
+  return 1.06
+end function
+
+function tvmFocusLift() as Integer
+  return 12
+end function
+
+function tvmPressScale() as Float
+  return 0.98
+end function
+
+' App-wide accessibility flags, stored in the registry and mirrored on m.global.
+function tvmReduceMotion() as Boolean
+  if m = invalid then return false
+  if m.global = invalid then return false
+  if not m.global.hasField("reduceMotion") then return false
+  return m.global.reduceMotion = true
+end function
+
+function tvmReduceTransparency() as Boolean
+  if m = invalid then return false
+  if m.global = invalid then return false
+  if not m.global.hasField("reduceTransparency") then return false
+  return m.global.reduceTransparency = true
+end function
+
+' Glass fills. Normal: ~18% white over dark scenes. Reduce Transparency: opaque ink.
+function tvmGlassTint() as String
+  if tvmReduceTransparency() then return "0x12151CFF"
+  return "0xFFFFFF1F"
+end function
+
+function tvmGlassTintFocused() as String
+  if tvmReduceTransparency() then return "0x232833FF"
+  return "0xFFFFFF30"
+end function
+
+function tvmGlassTintPressed() as String
+  if tvmReduceTransparency() then return "0x0B0D12FF"
+  return "0xFFFFFF1A"
+end function
+
+' Reduce Transparency uses a solid, contrast-safe rim instead of a faint specular.
+function tvmGlassRimOpacity() as Float
+  if tvmReduceTransparency() then return 1.0
+  return 0.9
 end function

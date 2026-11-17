@@ -3,12 +3,27 @@ sub init()
   m.list = m.top.findNode("list")
   m.kicker = m.top.findNode("kicker")
   m.heading = m.top.findNode("heading")
+  m.heading.font = tvmFontScreenTitle()
+  m.heading.translation = [160, 120]
+  m.kicker.visible = false
+  appearance = CreateObject("roSGNode", "Label")
+  appearance.text = "Appearance"
+  appearance.font = tvmFontMeta()
+  appearance.color = tvmMuted()
+  appearance.translation = [0, -80]
+  m.list.appendChild(appearance)
+  services = CreateObject("roSGNode", "Label")
+  services.text = "Device and services"
+  services.font = tvmFontMeta()
+  services.color = tvmMuted()
+  services.translation = [0, 380]
+  m.list.appendChild(services)
   m.rows = []
   m.col = 0
   m.seq = 0
-  m.ids = ["theme", "account", "url", "token", "profiles", "realdebrid", "network", "display", "livetv", "computer", "restart", "channel"]
-  m.kinds = ["cycleTheme", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "livePlaylist", "computerSettings", "restart", "channelInfo"]
-  labels = ["Theme", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Live TV playlist", "Manage on computer", "Reload Home", "This channel"]
+  m.ids = ["theme", "background", "account", "url", "token", "profiles", "realdebrid", "network", "display", "motion", "transparency", "hubdemo", "livetv", "computer", "restart", "channel"]
+  m.kinds = ["cycleTheme", "toggleBackground", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "toggleMotion", "toggleTransparency", "toggleHubDemo", "livePlaylist", "computerSettings", "restart", "channelInfo"]
+  labels = ["Theme", "Background", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Reduce Motion", "Reduce Transparency", "TVM Hub demo data", "Live TV playlist", "Manage on computer", "Reload Home", "This channel"]
   i = 0
   while i < labels.Count()
     btn = CreateObject("roSGNode", "FocusButton")
@@ -16,13 +31,43 @@ sub init()
     btn.label = labels[i]
     btn.itemId = m.ids[i]
     btn.translation = [0, i * 184]
+    if i >= 2 then btn.translation = [0, (i * 184) + 100]
     m.list.appendChild(btn)
     m.rows.Push(btn)
     i = i + 1
   end while
   paintThemeRow()
   paintChannelRow()
+  paintFlagRows()
+  if m.global <> invalid
+    if m.global.hasField("reduceMotion") then m.global.observeField("reduceMotion", "paintFlagRows")
+    if m.global.hasField("reduceTransparency") then m.global.observeField("reduceTransparency", "paintFlagRows")
+    if m.global.hasField("background") then m.global.observeField("background", "paintFlagRows")
+    if m.global.hasField("hubFixture") then m.global.observeField("hubFixture", "paintFlagRows")
+  end if
   paintFocus()
+end sub
+
+' Accessibility rows mirror the registry flags kept on m.global.
+sub paintFlagRows()
+  background = "Trending"
+  if loadBackground() = "lighthouse" then background = "Lighthouse"
+  setRowDetail("background", background)
+  if loadFlag("hubFixture")
+    setRowDetail("hubdemo", "On. TVM Hub shows sample devices and sends nothing")
+  else
+    setRowDetail("hubdemo", "Off")
+  end if
+  if tvmReduceMotion()
+    setRowDetail("motion", "On. No scale, tilt or slide animations")
+  else
+    setRowDetail("motion", "Off")
+  end if
+  if tvmReduceTransparency()
+    setRowDetail("transparency", "On. Solid panels with a clear edge")
+  else
+    setRowDetail("transparency", "Off")
+  end if
 end sub
 
 ' A sideloaded channel is uploaded by hand, so it can sit years behind the
@@ -106,9 +151,9 @@ sub paintFocus()
     i = i + 1
   end while
   if m.col > 5
-    m.list.translation = [160, 440 - ((m.col - 5) * 184)]
+    m.list.translation = [160, 80 - ((m.col - 5) * 184)]
   else
-    m.list.translation = [160, 440]
+    m.list.translation = [160, 80]
   end if
   m.top.focusKey = "row:" + StrI(m.col).Trim()
 end sub
@@ -175,3 +220,11 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   end if
   return true
 end function
+
+' TVM Hub nav command: the same key a physical remote would send.
+sub onRemoteIntent()
+  intent = m.top.remoteIntent
+  if intent = invalid or intent = "" then return
+  keyName = keyFromIntent(intent)
+  if keyName <> "" then onKeyEvent(keyName, true)
+end sub

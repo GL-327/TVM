@@ -1,0 +1,299 @@
+{
+  "v": 1,
+  "rev": 42,
+  "serverTime": "2026-11-17T20:00:00.000Z",
+  "heartbeatSec": 30,
+  "account": {
+    "id": "acc_demo",
+    "name": "Arthur",
+    "role": "dev"
+  },
+  "currentInstallationId": "inst_living",
+  "visibleSpokes": 6,
+  "devices": [
+    {
+      "id": "inst_living",
+      "name": "Living Room Roku",
+      "room": "Living room",
+      "platform": "roku",
+      "model": "Ultra",
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 0,
+      "createdAt": "2026-10-01T10:00:00.000Z",
+      "lastSeenAt": "2026-11-17T19:59:50.000Z",
+      "lastSeenAgeSec": 10,
+      "presence": "online",
+      "state": "playing",
+      "isCurrent": true,
+      "capabilities": [
+        "playback.pause_resume",
+        "playback.seek",
+        "playback.skip",
+        "nav.dpad",
+        "nav.select",
+        "nav.back",
+        "play.title",
+        "input.physical"
+      ],
+      "physicalInput": true,
+      "nowPlaying": {
+        "mediaId": "tt23289160",
+        "title": "Godzilla Minus One",
+        "artworkUrl": "https://images.metahub.space/background/large/tt23289160/img",
+        "positionSec": 1457,
+        "durationSec": 7500,
+        "profileId": "p_demo"
+      }
+    },
+    {
+      "id": "inst_bed",
+      "name": "Bedroom TV",
+      "room": "Bedroom",
+      "platform": "roku",
+      "model": "Streaming Stick",
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 1,
+      "createdAt": "2026-10-02T10:00:00.000Z",
+      "lastSeenAt": "2026-11-17T19:59:40.000Z",
+      "lastSeenAgeSec": 20,
+      "presence": "online",
+      "state": "playing",
+      "isCurrent": false,
+      "capabilities": [
+        "playback.pause_resume",
+        "playback.seek",
+        "playback.skip",
+        "nav.dpad",
+        "nav.select",
+        "nav.back",
+        "play.title",
+        "input.physical"
+      ],
+      "physicalInput": true,
+      "nowPlaying": {
+        "mediaId": "tt23289160",
+        "title": "Godzilla Minus One",
+        "artworkUrl": "https://images.metahub.space/background/large/tt23289160/img",
+        "positionSec": 1457,
+        "durationSec": 7500,
+        "profileId": "p_demo"
+      }
+    },
+    {
+      "id": "inst_iphone",
+      "name": "Arthur's iPhone",
+      "room": null,
+      "platform": "ios",
+      "model": "iPhone",
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 2,
+      "createdAt": "2026-10-03T10:00:00.000Z",
+      "lastSeenAt": "2026-11-16T09:12:00.000Z",
+      "lastSeenAgeSec": 125280,
+      "presence": "offline",
+      "state": "offline",
+      "isCurrent": false,
+      "capabilities": [
+        "handoff.send",
+        "handoff.receive"
+      ],
+      "physicalInput": false,
+      "nowPlaying": null
+    },
+    {
+      "id": "inst_pc",
+      "name": "Windows PC",
+      "room": "Office",
+      "platform": "windows",
+      "model": null,
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 3,
+      "createdAt": "2026-10-04T10:00:00.000Z",
+      "lastSeenAt": "2026-11-17T19:59:30.000Z",
+      "lastSeenAgeSec": 30,
+      "presence": "online",
+      "state": "idle",
+      "isCurrent": false,
+      "capabilities": [
+        "playback.pause_resume",
+        "nav.dpad",
+        "nav.select",
+        "nav.back",
+        "input.physical"
+      ],
+      "physicalInput": true,
+      "nowPlaying": null
+    },
+    {
+      "id": "inst_web",
+      "name": "Kitchen browser",
+      "room": "Kitchen",
+      "platform": "web",
+      "model": null,
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 4,
+      "createdAt": "2026-10-05T10:00:00.000Z",
+      "lastSeenAt": "2026-11-17T19:59:55.000Z",
+      "lastSeenAgeSec": 5,
+      "presence": "online",
+      "state": "paused",
+      "isCurrent": false,
+      "capabilities": [
+        "playback.pause_resume",
+        "playback.seek"
+      ],
+      "physicalInput": true,
+      "nowPlaying": {
+        "restricted": true
+      }
+    },
+    {
+      "id": "inst_tab",
+      "name": "Arthur's very long named Galaxy Tab in the study",
+      "room": null,
+      "platform": "android",
+      "model": "Tab",
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 5,
+      "createdAt": "2026-10-06T10:00:00.000Z",
+      "lastSeenAt": "2026-11-17T19:30:00.000Z",
+      "lastSeenAgeSec": 1800,
+      "presence": "offline",
+      "state": "offline",
+      "isCurrent": false,
+      "capabilities": [
+        "handoff.receive"
+      ],
+      "physicalInput": false,
+      "nowPlaying": null
+    },
+    {
+      "id": "inst_att",
+      "name": "Basement TV",
+      "room": "Basement",
+      "platform": "android-tv",
+      "model": null,
+      "appVersion": "1.0.0",
+      "build": "demo",
+      "slot": 6,
+      "createdAt": "2026-10-07T10:00:00.000Z",
+      "lastSeenAt": null,
+      "lastSeenAgeSec": null,
+      "presence": "offline",
+      "state": "unknown",
+      "isCurrent": false,
+      "capabilities": [],
+      "physicalInput": false,
+      "nowPlaying": null
+    }
+  ],
+  "activity": {
+    "serverTime": "2026-11-17T20:00:00.000Z",
+    "events": [
+      {
+        "id": "evt_1",
+        "at": "2026-11-17T19:58:00.000Z",
+        "type": "command.applied",
+        "actor": {
+          "installationId": "inst_pc",
+          "name": "Windows PC"
+        },
+        "target": {
+          "installationId": "inst_living",
+          "name": "Living Room Roku"
+        },
+        "detail": null
+      },
+      {
+        "id": "evt_2",
+        "at": "2026-11-17T19:57:30.000Z",
+        "type": "command.sent",
+        "actor": {
+          "installationId": "inst_pc",
+          "name": "Windows PC"
+        },
+        "target": {
+          "installationId": "inst_living",
+          "name": "Living Room Roku"
+        },
+        "detail": null
+      },
+      {
+        "id": "evt_3",
+        "at": "2026-11-17T18:00:00.000Z",
+        "type": "device.renamed",
+        "actor": {
+          "installationId": null,
+          "name": "Arthur"
+        },
+        "target": {
+          "installationId": "inst_bed",
+          "name": "Bedroom TV"
+        },
+        "detail": null
+      },
+      {
+        "id": "evt_4",
+        "at": "2026-11-17T12:00:00.000Z",
+        "type": "pair.approved",
+        "actor": {
+          "installationId": "inst_living",
+          "name": "Living Room Roku"
+        },
+        "target": {
+          "installationId": "inst_att",
+          "name": "Basement TV"
+        },
+        "detail": null
+      },
+      {
+        "id": "evt_5",
+        "at": "2026-11-16T09:12:00.000Z",
+        "type": "device.signed_out",
+        "actor": {
+          "installationId": null,
+          "name": "Arthur"
+        },
+        "target": {
+          "installationId": "inst_iphone",
+          "name": "Arthur's iPhone"
+        },
+        "detail": null
+      },
+      {
+        "id": "evt_6",
+        "at": "2026-11-15T08:00:00.000Z",
+        "type": "command.timed_out",
+        "actor": {
+          "installationId": "inst_pc",
+          "name": "Windows PC"
+        },
+        "target": {
+          "installationId": "inst_tab",
+          "name": "Arthur's very long named Galaxy Tab in the study"
+        },
+        "detail": null
+      },
+      {
+        "id": "evt_7",
+        "at": "2026-10-07T10:00:00.000Z",
+        "type": "device.linked",
+        "actor": {
+          "installationId": null,
+          "name": "Arthur"
+        },
+        "target": {
+          "installationId": "inst_att",
+          "name": "Basement TV"
+        },
+        "detail": null
+      }
+    ]
+  }
+}

@@ -5,15 +5,18 @@
     <field id="items" type="array" onChange="onItems" />
     <field id="focusCol" type="integer" value="-1" onChange="onFocusCol" />
     <field id="layout" type="string" value="portrait" onChange="onItems" />
+    <field id="live" type="boolean" value="true" onChange="onLive" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
   <script type="text/brightscript" uri="PosterRail.brs" />
   <children>
-    <Label id="heading" translation="[160, 0]" color="0xF5F5F5FF" />
-    <Group id="track" translation="[160, 88]" />
-    <Animation id="slideAnim" duration="0.2" easeFunction="outCubic" optional="true">
-      <Vector2DFieldInterpolator id="slideInterp" key="[0.0, 1.0]" keyValue="[[160.0, 88.0], [160.0, 88.0]]" fieldToInterp="track.translation" />
+    <Label id="heading" translation="[160, 0]" width="3200" color="0xF5F5F5FF" />
+    <Group id="track" translation="[160, 100]" />
+    <Animation id="slideAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="slideInterp" key="[0.0, 1.0]" keyValue="[[160.0, 100.0], [160.0, 100.0]]" fieldToInterp="track.translation" />
     </Animation>
   </children>
 </component>

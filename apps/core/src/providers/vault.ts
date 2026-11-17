@@ -48,6 +48,14 @@ export function sealJson(dataDir: string, value: unknown): string {
 export function openJson<T>(dataDir: string, blob: string): T | null {
   try {
     const key = loadOrCreateKey(dataDir);
+    return decryptJson<T>(key, blob);
+  } catch {
+    return null;
+  }
+}
+
+function decryptJson<T>(key: Buffer, blob: string): T | null {
+  try {
     const packed = Buffer.from(blob, 'base64');
     if (packed.length < IV_BYTES + AUTH_TAG_BYTES + 1) return null;
     const iv = packed.subarray(0, IV_BYTES);
@@ -57,6 +65,19 @@ export function openJson<T>(dataDir: string, blob: string): T | null {
     decipher.setAuthTag(tag);
     const plain = Buffer.concat([decipher.update(encrypted), decipher.final()]);
     return JSON.parse(plain.toString('utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Audit/migration reader: never creates, upgrades, caches or replaces a master key. */
+export function readSealedReadOnly<T>(dataDir: string, path: string): T | null {
+  try {
+    const raw = readFileSync(masterKeyPath(dataDir), 'utf8').replace(/^\uFEFF/, '').trim();
+    const encoded = raw.startsWith(KEY_PREFIX) ? windowsProtect(raw.slice(KEY_PREFIX.length), true) : raw;
+    const key = Buffer.from(encoded, 'base64');
+    if (key.length !== KEY_BYTES) return null;
+    return decryptJson<T>(key, readFileSync(path, 'utf8').trim());
   } catch {
     return null;
   }

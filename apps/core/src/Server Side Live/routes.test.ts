@@ -2,11 +2,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CORE_HOST } from '../config.ts';
 import { accessError } from '../security.ts';
 import { startCoreServer, type RunningCore } from '../server.ts';
 import { resetServerSideLive } from './routes.ts';
+import { createPlanService } from '../providers/plans.ts';
+
+vi.mock('../providers/secureFile.ts', async original => ({ ...await original<typeof import('../providers/secureFile.ts')>(), windowsProtect: (value: string) => value }));
 
 const LAN_TOKEN = 'a'.repeat(40);
 
@@ -78,7 +81,9 @@ describe('the live proxy on a running Core', () => {
   beforeAll(async () => {
     resetServerSideLive();
     dataDir = await mkdtemp(join(tmpdir(), 'tvm-live-proxy-'));
-    core = await startCoreServer(0, { dataDir, env: {} });
+    const plans = createPlanService({ dataDir, env: {} });
+    plans.grantLiveTv(true);
+    core = await startCoreServer(0, { dataDir, env: {}, plans });
     baseUrl = `http://${CORE_HOST}:${core.port}`;
   });
 
@@ -88,7 +93,7 @@ describe('the live proxy on a running Core', () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it('lists channels over loopback with no token, and names no provider', async () => {
+  it('lists channels for an entitled loopback viewer, and names no provider', async () => {
     const response = await fetch(`${baseUrl}/api/live/sources`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { channels: unknown[]; stats: { channels: number } };

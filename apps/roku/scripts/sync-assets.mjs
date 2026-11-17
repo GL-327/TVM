@@ -8,10 +8,23 @@ import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { createHash } from "node:crypto";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const images = join(root, "images");
 const fontsDir = join(root, "fonts");
+
+// Official Inter 3.19 release tag, SIL Open Font License 1.1.
+const semiBoldSource = "https://raw.githubusercontent.com/rsms/inter/v3.19/docs/font-files/Inter-SemiBold.otf";
+const semiBoldSha256 = "8c1990b6012254ea2b487161697d107357dd0ee55811cfd91c8c11227bbef457";
+async function syncSemiBold() {
+  const response = await fetch(semiBoldSource, { signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error(`Inter SemiBold HTTP ${response.status}`);
+  const data = Buffer.from(await response.arrayBuffer());
+  if (createHash("sha256").update(data).digest("hex") !== semiBoldSha256) throw new Error("Inter SemiBold checksum mismatch");
+  mkdirSync(fontsDir, { recursive: true });
+  writeFileSync(join(fontsDir, "Inter-SemiBold.otf"), data);
+}
 
 function crc32(buf) {
   let crc = 0xffffffff;
@@ -474,4 +487,5 @@ if (boldOk && !existsSync(bold)) {
 }
 
 console.log("Wrote Roku chrome assets.");
+await syncSemiBold();
 if (!regularOk || !boldOk) console.log("Inter download skipped or failed; channel will use system fonts.");

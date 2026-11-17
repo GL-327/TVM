@@ -1,0 +1,2232 @@
+{
+ "layout": [
+  {
+   "name": "0 devices: orb only",
+   "devices": [],
+   "flat": false,
+   "expected": {
+    "state": "zero",
+    "nodes": [],
+    "more": null,
+    "overflow": [],
+    "behind": [],
+    "front": []
+   }
+  },
+  {
+   "name": "1 device",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "one",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d0"
+    ],
+    "front": []
+   }
+  },
+  {
+   "name": "3 devices",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d2",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d0",
+     "d1"
+    ],
+    "front": [
+     "d2"
+    ]
+   }
+  },
+  {
+   "name": "6 devices fill every anchor",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d2",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d3",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d4",
+      "anchor": 4,
+      "x": 1340,
+      "y": 692,
+      "scaleCenti": 84
+     },
+     {
+      "id": "d5",
+      "anchor": 5,
+      "x": 360,
+      "y": 1260,
+      "scaleCenti": 92
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d4",
+     "d0",
+     "d1"
+    ],
+    "front": [
+     "d5",
+     "d2",
+     "d3"
+    ]
+   }
+  },
+  {
+   "name": "9 devices: 6 spokes plus More(3)",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d2",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d3",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d4",
+      "anchor": 4,
+      "x": 1340,
+      "y": 692,
+      "scaleCenti": 84
+     },
+     {
+      "id": "d5",
+      "anchor": 5,
+      "x": 360,
+      "y": 1260,
+      "scaleCenti": 92
+     }
+    ],
+    "more": {
+     "count": 3,
+     "x": 2320,
+     "y": 1260
+    },
+    "overflow": [
+     "d6",
+     "d7",
+     "d8"
+    ],
+    "behind": [
+     "d4",
+     "d0",
+     "d1"
+    ],
+    "front": [
+     "d5",
+     "d2",
+     "d3"
+    ]
+   }
+  },
+  {
+   "name": "slots persist with a hole (slot 1 removed)",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 2
+    },
+    {
+     "id": "d2",
+     "slot": 3
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d1",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d2",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 97
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d0"
+    ],
+    "front": [
+     "d1",
+     "d2"
+    ]
+   }
+  },
+  {
+   "name": "order of the input array does not matter",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 3
+    },
+    {
+     "id": "d1",
+     "slot": 0
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d1",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d2",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d0",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 97
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d1"
+    ],
+    "front": [
+     "d2",
+     "d0"
+    ]
+   }
+  },
+  {
+   "name": "overflow slot fills a vacant anchor",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 3
+    },
+    {
+     "id": "d3",
+     "slot": 4
+    },
+    {
+     "id": "d4",
+     "slot": 5
+    },
+    {
+     "id": "d5",
+     "slot": 6
+    },
+    {
+     "id": "d6",
+     "slot": 7
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d5",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d2",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 97
+     },
+     {
+      "id": "d3",
+      "anchor": 4,
+      "x": 1340,
+      "y": 692,
+      "scaleCenti": 84
+     },
+     {
+      "id": "d4",
+      "anchor": 5,
+      "x": 360,
+      "y": 1260,
+      "scaleCenti": 92
+     }
+    ],
+    "more": {
+     "count": 1,
+     "x": 2320,
+     "y": 1260
+    },
+    "overflow": [
+     "d6"
+    ],
+    "behind": [
+     "d3",
+     "d0",
+     "d1"
+    ],
+    "front": [
+     "d4",
+     "d5",
+     "d2"
+    ]
+   }
+  },
+  {
+   "name": "high slots only",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 7
+    },
+    {
+     "id": "d1",
+     "slot": 9
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 87
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d0",
+     "d1"
+    ],
+    "front": []
+   }
+  },
+  {
+   "name": "Reduce Motion, 6 devices (flat)",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "flat": true,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d2",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d3",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d4",
+      "anchor": 4,
+      "x": 1340,
+      "y": 692,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d5",
+      "anchor": 5,
+      "x": 360,
+      "y": 1260,
+      "scaleCenti": 100
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "d4",
+     "d0",
+     "d1"
+    ],
+    "front": [
+     "d5",
+     "d2",
+     "d3"
+    ]
+   }
+  },
+  {
+   "name": "Reduce Motion, 9 devices (flat)",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "flat": true,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "d0",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d1",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d2",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d3",
+      "anchor": 3,
+      "x": 2091,
+      "y": 1625,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d4",
+      "anchor": 4,
+      "x": 1340,
+      "y": 692,
+      "scaleCenti": 100
+     },
+     {
+      "id": "d5",
+      "anchor": 5,
+      "x": 360,
+      "y": 1260,
+      "scaleCenti": 100
+     }
+    ],
+    "more": {
+     "count": 3,
+     "x": 2320,
+     "y": 1260
+    },
+    "overflow": [
+     "d6",
+     "d7",
+     "d8"
+    ],
+    "behind": [
+     "d4",
+     "d0",
+     "d1"
+    ],
+    "front": [
+     "d5",
+     "d2",
+     "d3"
+    ]
+   }
+  },
+  {
+   "name": "long device ids do not change geometry",
+   "devices": [
+    {
+     "id": "inst_aVeryLongDeviceIdentifier000000001",
+     "slot": 0
+    },
+    {
+     "id": "inst_aVeryLongDeviceIdentifier000000002",
+     "slot": 1
+    },
+    {
+     "id": "inst_aVeryLongDeviceIdentifier000000003",
+     "slot": 2
+    }
+   ],
+   "flat": false,
+   "expected": {
+    "state": "many",
+    "nodes": [
+     {
+      "id": "inst_aVeryLongDeviceIdentifier000000001",
+      "anchor": 0,
+      "x": 589,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "inst_aVeryLongDeviceIdentifier000000002",
+      "anchor": 1,
+      "x": 2091,
+      "y": 895,
+      "scaleCenti": 87
+     },
+     {
+      "id": "inst_aVeryLongDeviceIdentifier000000003",
+      "anchor": 2,
+      "x": 589,
+      "y": 1625,
+      "scaleCenti": 97
+     }
+    ],
+    "more": null,
+    "overflow": [],
+    "behind": [
+     "inst_aVeryLongDeviceIdentifier000000001",
+     "inst_aVeryLongDeviceIdentifier000000002"
+    ],
+    "front": [
+     "inst_aVeryLongDeviceIdentifier000000003"
+    ]
+   }
+  }
+ ],
+ "move": [
+  {
+   "name": "orb up, 6 devices",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "account",
+   "dir": "up",
+   "expected": {
+    "kind": "focus",
+    "id": "d4",
+    "edge": ""
+   }
+  },
+  {
+   "name": "orb down, 6 devices",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "account",
+   "dir": "down",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "add"
+   }
+  },
+  {
+   "name": "orb left, 6 devices",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "account",
+   "dir": "left",
+   "expected": {
+    "kind": "focus",
+    "id": "d5",
+    "edge": ""
+   }
+  },
+  {
+   "name": "orb right, 6 devices",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "account",
+   "dir": "right",
+   "expected": {
+    "kind": "focus",
+    "id": "d1",
+    "edge": ""
+   }
+  },
+  {
+   "name": "upper-left right",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d0",
+   "dir": "right",
+   "expected": {
+    "kind": "focus",
+    "id": "d4",
+    "edge": ""
+   }
+  },
+  {
+   "name": "upper-left down",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d0",
+   "dir": "down",
+   "expected": {
+    "kind": "focus",
+    "id": "d5",
+    "edge": ""
+   }
+  },
+  {
+   "name": "upper-left up: edge to tabs",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d0",
+   "dir": "up",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "tabs"
+   }
+  },
+  {
+   "name": "upper-left left: hard stop",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d0",
+   "dir": "left",
+   "expected": {
+    "kind": "none",
+    "id": "",
+    "edge": ""
+   }
+  },
+  {
+   "name": "top node up: edge to tabs",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d4",
+   "dir": "up",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "tabs"
+   }
+  },
+  {
+   "name": "upper-right right: edge to inspector",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d1",
+   "dir": "right",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "inspector"
+   }
+  },
+  {
+   "name": "lower-left down: edge to Add device",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d2",
+   "dir": "down",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "add"
+   }
+  },
+  {
+   "name": "lower-right down: edge to Add device",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d3",
+   "dir": "down",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "add"
+   }
+  },
+  {
+   "name": "lower-right right: edge to inspector",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "d3",
+   "dir": "right",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "inspector"
+   }
+  },
+  {
+   "name": "lower-right up with More shown",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "from": "d3",
+   "dir": "up",
+   "expected": {
+    "kind": "focus",
+    "id": "more",
+    "edge": ""
+   }
+  },
+  {
+   "name": "upper-right down with More shown",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "from": "d1",
+   "dir": "down",
+   "expected": {
+    "kind": "focus",
+    "id": "more",
+    "edge": ""
+   }
+  },
+  {
+   "name": "More right: edge to inspector",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "from": "more",
+   "dir": "right",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "inspector"
+   }
+  },
+  {
+   "name": "More left reaches the orb",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "from": "more",
+   "dir": "left",
+   "expected": {
+    "kind": "focus",
+    "id": "account",
+    "edge": ""
+   }
+  },
+  {
+   "name": "one device, orb left",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    }
+   ],
+   "from": "account",
+   "dir": "left",
+   "expected": {
+    "kind": "focus",
+    "id": "d0",
+    "edge": ""
+   }
+  },
+  {
+   "name": "one device in slot 2, orb up: edge to tabs",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 2
+    }
+   ],
+   "from": "account",
+   "dir": "up",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "tabs"
+   }
+  },
+  {
+   "name": "zero devices, orb down: edge to Add device",
+   "devices": [],
+   "from": "account",
+   "dir": "down",
+   "expected": {
+    "kind": "edge",
+    "id": "",
+    "edge": "add"
+   }
+  },
+  {
+   "name": "unknown source id",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "from": "nope",
+   "dir": "left",
+   "expected": {
+    "kind": "none",
+    "id": "",
+    "edge": ""
+   }
+  }
+ ],
+ "reconcile": [
+  {
+   "name": "focus still present",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "after": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "focus": "d3",
+   "expected": "d3"
+  },
+  {
+   "name": "remove upper-left: nearest stable neighbour",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "after": [
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "focus": "d0",
+   "expected": "d5"
+  },
+  {
+   "name": "remove lower-right",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "after": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "focus": "d3",
+   "expected": "d1"
+  },
+  {
+   "name": "remove the only device: account orb",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    }
+   ],
+   "after": [],
+   "focus": "d0",
+   "expected": "account"
+  },
+  {
+   "name": "remove one of two",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    }
+   ],
+   "after": [
+    {
+     "id": "d0",
+     "slot": 0
+    }
+   ],
+   "focus": "d1",
+   "expected": "d0"
+  },
+  {
+   "name": "removal while More is shown",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "after": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    },
+    {
+     "id": "d7",
+     "slot": 7
+    },
+    {
+     "id": "d8",
+     "slot": 8
+    }
+   ],
+   "focus": "d2",
+   "expected": "d6"
+  },
+  {
+   "name": "More disappears",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    },
+    {
+     "id": "d6",
+     "slot": 6
+    }
+   ],
+   "after": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "focus": "more",
+   "expected": "d1"
+  },
+  {
+   "name": "account orb stays",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "after": [],
+   "focus": "account",
+   "expected": "account"
+  },
+  {
+   "name": "unknown focus falls back to the orb",
+   "before": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "after": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "focus": "ghost",
+   "expected": "account"
+  }
+ ],
+ "spoke": [
+  {
+   "name": "spoke to upper-left",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "id": "d0",
+   "expected": {
+    "x": 1151,
+    "y": 1168,
+    "length": 454,
+    "milliRad": -2689
+   }
+  },
+  {
+   "name": "spoke to lower-right",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "id": "d3",
+   "expected": {
+    "x": 1529,
+    "y": 1352,
+    "length": 435,
+    "milliRad": 452
+   }
+  },
+  {
+   "name": "spoke to top node",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "id": "d4",
+   "expected": {
+    "x": 1340,
+    "y": 1050,
+    "length": 193,
+    "milliRad": -1571
+   }
+  },
+  {
+   "name": "spoke to left node",
+   "devices": [
+    {
+     "id": "d0",
+     "slot": 0
+    },
+    {
+     "id": "d1",
+     "slot": 1
+    },
+    {
+     "id": "d2",
+     "slot": 2
+    },
+    {
+     "id": "d3",
+     "slot": 3
+    },
+    {
+     "id": "d4",
+     "slot": 4
+    },
+    {
+     "id": "d5",
+     "slot": 5
+    }
+   ],
+   "id": "d5",
+   "expected": {
+    "x": 1130,
+    "y": 1260,
+    "length": 590,
+    "milliRad": 3142
+   }
+  }
+ ],
+ "label": [
+  {
+   "name": "short name",
+   "text": "Bedroom TV",
+   "perLine": 11,
+   "expected": {
+    "l1": "Bedroom TV",
+    "l2": "",
+    "cut": false
+   }
+  },
+  {
+   "name": "exact fit",
+   "text": "Living Room",
+   "perLine": 11,
+   "expected": {
+    "l1": "Living Room",
+    "l2": "",
+    "cut": false
+   }
+  },
+  {
+   "name": "two words wrap",
+   "text": "Living Room Roku",
+   "perLine": 11,
+   "expected": {
+    "l1": "Living Room",
+    "l2": "Roku",
+    "cut": false
+   }
+  },
+  {
+   "name": "long name truncates",
+   "text": "Arthur's very long living room television",
+   "perLine": 11,
+   "expected": {
+    "l1": "Arthur's",
+    "l2": "very lon...",
+    "cut": true
+   }
+  },
+  {
+   "name": "one huge word",
+   "text": "Supercalifragilisticexpialidocious",
+   "perLine": 11,
+   "expected": {
+    "l1": "Supercalifr",
+    "l2": "agilisti...",
+    "cut": true
+   }
+  },
+  {
+   "name": "trims spaces",
+   "text": "  Den  ",
+   "perLine": 11,
+   "expected": {
+    "l1": "Den",
+    "l2": "",
+    "cut": false
+   }
+  },
+  {
+   "name": "empty",
+   "text": "",
+   "perLine": 11,
+   "expected": {
+    "l1": "",
+    "l2": "",
+    "cut": false
+   }
+  }
+ ],
+ "atan2": [
+  {
+   "name": "east",
+   "y": 0,
+   "x": 1,
+   "expectedMilli": 0
+  },
+  {
+   "name": "south",
+   "y": 1,
+   "x": 0,
+   "expectedMilli": 1571
+  },
+  {
+   "name": "west",
+   "y": 0,
+   "x": -1,
+   "expectedMilli": 3142
+  },
+  {
+   "name": "north",
+   "y": -1,
+   "x": 0,
+   "expectedMilli": -1571
+  },
+  {
+   "name": "south-east",
+   "y": 1,
+   "x": 1,
+   "expectedMilli": 785
+  },
+  {
+   "name": "south-west",
+   "y": 1,
+   "x": -1,
+   "expectedMilli": 2356
+  },
+  {
+   "name": "north-west",
+   "y": -1,
+   "x": -1,
+   "expectedMilli": -2356
+  },
+  {
+   "name": "north-east",
+   "y": -1,
+   "x": 1,
+   "expectedMilli": -785
+  },
+  {
+   "name": "origin",
+   "y": 0,
+   "x": 0,
+   "expectedMilli": 0
+  }
+ ]
+}

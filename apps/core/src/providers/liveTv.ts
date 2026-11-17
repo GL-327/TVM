@@ -13,6 +13,7 @@ export interface LiveTvTermSpec {
   blurb: string;
 }
 
+/** Legacy offer vocabulary retained for existing grants, receipts and loopback billing only. */
 export const LIVE_TV_CATALOG: readonly LiveTvTermSpec[] = [
   {
     id: 'quarter',
@@ -82,7 +83,7 @@ export function liveTvIsActive(input: {
   now?: Date;
   serviceOnline?: boolean;
 }): boolean {
-  if (input.serviceOnline === false) return false;
+  // serviceOnline is accepted for source compatibility; health never changes entitlement.
   if (input.liveTvAddon !== true) return false;
   if (input.liveTvTerm === 'lifetime') return true;
   const expires = input.liveTvExpiresAt;

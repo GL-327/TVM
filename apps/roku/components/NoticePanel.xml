@@ -4,6 +4,7 @@
     <field id="title" type="string" onChange="onTitle" />
     <field id="body" type="string" onChange="onBody" />
     <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
   <script type="text/brightscript" uri="NoticePanel.brs" />

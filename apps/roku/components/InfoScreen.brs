@@ -42,3 +42,11 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   end if
   return true
 end function
+
+' TVM Hub nav command: the same key a physical remote would send.
+sub onRemoteIntent()
+  intent = m.top.remoteIntent
+  if intent = invalid or intent = "" then return
+  keyName = keyFromIntent(intent)
+  if keyName <> "" then onKeyEvent(keyName, true)
+end sub

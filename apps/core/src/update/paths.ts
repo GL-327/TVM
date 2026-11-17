@@ -225,6 +225,10 @@ export function accountsPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'accounts.enc');
 }
 
+export function hubPath(dataDir: string): string {
+  return join(secretsDir(dataDir), 'hub.enc');
+}
+
 export function mailPath(dataDir: string): string {
   return join(secretsDir(dataDir), 'mail.enc');
 }

@@ -8,15 +8,28 @@
     <field id="variant" type="string" value="glass" onChange="layout" />
     <field id="hasFocusStyle" type="boolean" onChange="onFocusStyle" />
     <field id="active" type="boolean" onChange="onFocusStyle" />
+    <field id="accent" type="boolean" onChange="onFocusStyle" />
+    <field id="disabled" type="boolean" onChange="onFocusStyle" />
+    <field id="pressed" type="boolean" onChange="onPressed" />
+    <field id="pillWidth" type="integer" value="0" onChange="layout" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="FocusButton.brs" />
   <children>
-    <Rectangle id="ring" color="0x00000000" cornerRadius="32" />
-    <Rectangle id="bg" color="0x1D1D1DFF" cornerRadius="24" />
+    <Poster id="ring" uri="pkg:/images/glass/focus-ring.9.png" blendColor="0x00000000" />
+    <GlassPanel id="bg" shape="card" tintColor="0x1D1D1DFF" />
     <Poster id="glyph" loadDisplayMode="scaleToFit" visible="false" />
     <Label id="text" color="0xF5F5F5FF" font="font:MediumBoldSystemFont" />
     <Label id="sub" color="0xC4C4C4FF" font="font:SmallSystemFont" />
+    <Group id="pill" visible="false">
+      <GlassPanel id="pillGlass" shape="pill" />
+      <Poster id="pillGlyph" loadDisplayMode="scaleToFit" visible="false" />
+      <Label id="pillText" color="0xF5F5F5FF" horizAlign="center" vertAlign="center" />
+    </Group>
+    <Animation id="pillAnim" duration="0.15" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="pillScale" key="[0.0, 1.0]" keyValue="[[1.0, 1.0], [1.0, 1.0]]" fieldToInterp="pill.scale" />
+      <Vector2DFieldInterpolator id="pillLift" key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [0.0, 0.0]]" fieldToInterp="pill.translation" />
+    </Animation>
   </children>
 </component>

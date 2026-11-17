@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HubScreen" extends="Group">
+  <interface>
+    <field id="coreUrl" type="string" />
+    <field id="coreToken" type="string" />
+    <field id="accountToken" type="string" />
+    <field id="profileId" type="string" />
+    <field id="accountName" type="string" />
+    <field id="deviceCredential" type="string" />
+    <field id="installationId" type="string" />
+    <field id="fixture" type="boolean" value="false" onChange="onFixture" />
+    <field id="reset" type="boolean" value="false" alwaysNotify="true" onChange="onReset" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="onRestoreKey" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/config.brs" />
+  <script type="text/brightscript" uri="pkg:/source/api.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="pkg:/source/spatial.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
+  <script type="text/brightscript" uri="HubScreen.brs" />
+  <children>
+    <Label id="title" text="TVM Hub" translation="[160, 110]" width="1600" height="170" />
+    <SpatialTabs id="tabs" translation="[160, 300]" />
+    <Group id="demoChip" translation="[1440, 336]" visible="false">
+      <GlassPanel id="demoBox" shape="chip" width="400" height="72" tintColor="0xFFFFFF18" />
+      <Label id="demoText" width="400" height="72" horizAlign="center" vertAlign="center" text="Demo data" color="0xFBBF24FF" />
+    </Group>
+    <Label id="notice" translation="[1900, 336]" width="1780" height="72" horizAlign="right" vertAlign="center" color="0xC4C4C4FF" visible="false" />
+    <Group id="hosts">
+      <HubNetwork id="network" />
+      <HubDevices id="devicesList" visible="false" />
+      <HubActivity id="activity" visible="false" />
+    </Group>
+    <HubInspector id="inspector" translation="[2600, 300]" />
+    <FocusButton id="addBtn" variant="glassPill" label="Add device" translation="[160, 1900]" pillWidth="520" />
+    <Group id="stateHost" visible="false">
+      <Label id="stateTitle" translation="[160, 700]" width="3520" height="140" horizAlign="center" color="0xF5F5F5FF" />
+      <Label id="stateBody" translation="[760, 860]" width="2320" height="200" horizAlign="center" wrap="true" maxLines="3" color="0xC4C4C4FF" />
+      <FocusButton id="retryBtn" variant="glassPill" label="Retry" translation="[1660, 1120]" pillWidth="520" />
+    </Group>
+    <Group id="modalHost" />
+    <Timer id="poll" duration="15" repeat="true" />
+    <Timer id="commandPoll" duration="1" repeat="true" />
+  </children>
+</component>

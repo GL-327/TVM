@@ -13,30 +13,20 @@
   <script type="text/brightscript" uri="pkg:/source/theme.brs" />
   <script type="text/brightscript" uri="pkg:/source/themeGlass.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
   <script type="text/brightscript" uri="TVMScene.brs" />
   <children>
     <Rectangle id="letterbox" width="1920" height="1080" color="0x000000FF" />
     <Group id="uiRoot">
       <Rectangle id="bg" width="3840" height="2160" color="0x071033FF" />
       <Group id="sceneWash">
-        <Rectangle id="sceneFar" width="3840" height="2160" color="0x1D4ED888" />
-        <Rectangle id="sceneMid" width="4300" height="2400" color="0x2F6BFF59" translation="-180,-140" />
-        <Rectangle id="sceneNear" width="3840" height="1500" color="0x07103370" translation="0,720" />
-        <Rectangle id="sceneSun" width="1280" height="980" color="0x7DD3FC4D" translation="2480,-120" />
-        <Animation id="sceneFarAnim" duration="29" repeat="true" easeFunction="inOutQuad" optional="true">
-          <FloatFieldInterpolator id="sceneFarOp" key="[0.0, 0.5, 1.0]" keyValue="[0.2, 0.34, 0.2]" fieldToInterp="sceneFar.opacity" />
-        </Animation>
-        <Animation id="sceneMidAnim" duration="41" repeat="true" easeFunction="inOutQuad" optional="true">
-          <FloatFieldInterpolator id="sceneMidOp" key="[0.0, 0.5, 1.0]" keyValue="[0.14, 0.28, 0.14]" fieldToInterp="sceneMid.opacity" />
-          <Vector2DFieldInterpolator id="sceneMidMove" key="[0.0, 0.5, 1.0]" keyValue="[[-180.0, -140.0], [-40.0, 70.0], [-180.0, -140.0]]" fieldToInterp="sceneMid.translation" />
-        </Animation>
-        <Animation id="sceneNearAnim" duration="53" repeat="true" easeFunction="inOutQuad" optional="true">
-          <FloatFieldInterpolator id="sceneNearOp" key="[0.0, 0.5, 1.0]" keyValue="[0.18, 0.32, 0.18]" fieldToInterp="sceneNear.opacity" />
-        </Animation>
-        <Animation id="sceneSunAnim" duration="67" repeat="true" easeFunction="inOutQuad" optional="true">
-          <FloatFieldInterpolator id="sceneSunOp" key="[0.0, 0.5, 1.0]" keyValue="[0.16, 0.3, 0.16]" fieldToInterp="sceneSun.opacity" />
-        </Animation>
+        <Rectangle id="sceneFar" width="3840" height="2160" color="0x1D4ED888" opacity="0.27" />
+        <Rectangle id="sceneMid" width="4300" height="2400" color="0x2F6BFF59" translation="[-110, -35]" opacity="0.21" />
+        <Rectangle id="sceneNear" width="3840" height="1500" color="0x07103370" translation="[0, 720]" opacity="0.25" />
+        <Rectangle id="sceneSun" width="1280" height="980" color="0x7DD3FC4D" translation="[2480, -120]" opacity="0.23" visible="false" />
       </Group>
+      <AmbientBackdrop id="ambient" />
       <Group id="screenHost" />
       <Group id="overlayHost" />
       <Label
