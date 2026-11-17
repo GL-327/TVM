@@ -293,6 +293,16 @@
     setOffset(el, touch.edge * rubber(pull));
   }, { capture: true, passive: true });
 
+  // The page scrolled away from the edge it was pulled at (the same finger
+  // pushed back): the pull ends here, before that frame is drawn, rather than
+  // on the next touchmove, so the page is never both scrolled and pulled.
+  window.addEventListener('scroll', function (event) {
+    if (!touch || touch.edgeY === null || event.target !== touch.el) return;
+    var el = touch.el;
+    var top = el.scrollTop;
+    if (touch.edge === 1 ? top > EDGE : top < touch.max - EDGE) { touch.edgeY = null; setOffset(el, 0); }
+  }, { capture: true, passive: true });
+
   function release() {
     if (!touch) return;
     var el = touch.el;
