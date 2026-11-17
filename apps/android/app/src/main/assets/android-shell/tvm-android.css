@@ -5053,3 +5053,21 @@ html.tvm-android:is([data-perf='on'], [data-motion='reduced']) .player-root .nex
   animation: none;
   transition: none;
 }
+
+/* ---- 40. The hero picture's bottom edge never shows during the pull ------------------------
+ * During the edge pull (section 6) the picture and its dark fade are held
+ * still as separate layers while the page moves. On a phone's GPU they can
+ * land a device pixel apart, and the picture's last rows then showed below
+ * the fade as a hard-edged strip under the hero. The picture now fades itself
+ * out at its foot (as the fade above it does, so at rest nothing changes), and
+ * the fade reaches a few pixels past it. Home's featured title and Details. */
+html.tvm-android .stage--home .stage__pictures,
+html.tvm-android .details .details__stage > :not(.details__vignette) {
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+}
+
+html.tvm-android .stage--home .stage__vignette,
+html.tvm-android .details .details__vignette {
+  bottom: -4px;
+}
