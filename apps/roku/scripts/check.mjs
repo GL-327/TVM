@@ -155,6 +155,11 @@ const requiredFiles = [
   "components/HubPair.brs",
   "components/CodeSignInPanel.xml",
   "components/CodeSignInPanel.brs",
+  "components/ControlCentre.xml",
+  "components/ControlCentre.brs",
+  "source/controlCentre.brs",
+  "scripts/controlCentre.test.mjs",
+  "scripts/fixtures/controlCentre-cases.json",
 ];
 
 for (const file of requiredFiles) {

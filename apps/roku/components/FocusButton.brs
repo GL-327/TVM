@@ -123,7 +123,7 @@ sub layout()
   else if variant = "transportPlay"
     setBox(208, 208, 192, 192)
     m.bg.visible = true
-    m.bg.tintColor = tvmEmber()
+    m.bg.tintColor = "0xFFFFFF2E"
     m.bg.shape = "card"
     m.glyph.visible = true
     m.glyph.width = 80
@@ -290,9 +290,9 @@ sub onFocusStyle()
     end if
   else if variant = "transportPlay"
     if focused
-      m.bg.tintColor = tvmEmber()
+      m.bg.tintColor = "0xFFFFFF59"
     else
-      m.bg.tintColor = "0xFF8A2BCC"
+      m.bg.tintColor = "0xFFFFFF2E"
     end if
   end if
 end sub

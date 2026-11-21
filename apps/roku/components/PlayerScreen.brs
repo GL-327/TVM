@@ -13,7 +13,11 @@
 ' 4. "video" and "skip" zones keep Left/Right seek. OK on Skip Recap
 '    activates it. hideChrome must not move SceneGraph focus onto Video.
 ' 5. Zones: video → progress → chrome row (back, rewind, pause, forward,
-'    skip recap, next). Skip Recap auto-focuses when it first appears.
+'    skip recap, next) plus the "cc" zone, the Control Centre pill left of
+'    rewind (Left from rewind reaches it, Left again reaches back).
+'    Skip Recap auto-focuses when it first appears.
+'    While the Control Centre panel is open every directional/OK/Back key
+'    goes to it; Back closes the panel and focus returns to the pill.
 ' 6. TVMScene also reclaims PlayerScreen if a key reaches the Scene.
 '
 sub init()
@@ -39,23 +43,26 @@ sub init()
   m.skipRecap = m.top.findNode("skipRecap")
   if m.skipRecap = invalid then m.skipRecap = m.top.findNode("recap")
   m.nextUp = m.top.findNode("nextUp")
+  m.ccBtn = m.top.findNode("ccBtn")
+  m.cc = m.top.findNode("cc")
   m.chromeFade = m.top.findNode("chromeFade")
   m.chromeFadeInterp = m.top.findNode("chromeFadeInterp")
   m.heading.font = tvmFontTitle()
   m.heading.color = tvmText()
   if m.kicker <> invalid
     m.kicker.font = tvmFont("bold", 28)
-    m.kicker.color = tvmEmber()
+    m.kicker.color = "0xFFFFFFB3"
   end if
-  if m.titleRule <> invalid then m.titleRule.color = tvmEmber()
+  if m.titleRule <> invalid then m.titleRule.color = "0xFFFFFF99"
   if m.lockup <> invalid then m.lockup.kind = "wordmark"
   m.time.font = tvmFontBody()
   m.time.color = tvmText()
   m.status.font = tvmFontBody()
-  if m.barFill <> invalid then m.barFill.color = tvmEmber()
-  if m.barGlow <> invalid then m.barGlow.color = "0xFF8A2B66"
-  if m.barThumb <> invalid then m.barThumb.color = tvmFocus()
-  if m.buffer <> invalid then m.buffer.color = tvmEmber()
+  if m.barTrack <> invalid then m.barTrack.blendColor = "0xFFFFFF3D"
+  if m.barFill <> invalid then m.barFill.blendColor = "0xFFFFFFFF"
+  if m.barGlow <> invalid then m.barGlow.blendColor = "0xFFFFFF40"
+  if m.barThumb <> invalid then m.barThumb.blendColor = "0xFFFFFFFF"
+  if m.buffer <> invalid then m.buffer.color = "0xFFFFFFCC"
   m.back.variant = "icon"
   m.back.iconUri = "pkg:/images/icons/back.png"
   m.rewind.variant = "transport"
@@ -67,6 +74,18 @@ sub init()
   if m.barFill <> invalid then m.barFill.observeField("width", "paintThumb")
   if m.chrome <> invalid then m.chrome.opacity = 1
   paintThumb()
+  if m.ccBtn <> invalid
+    m.ccBtn.variant = "glassPill"
+    m.ccBtn.pillWidth = 560
+    m.ccBtn.label = "Control Centre"
+    m.ccBtn.itemId = "player-control-centre"
+  end if
+  if m.cc <> invalid then m.cc.observeField("action", "onCCAction")
+  m.ccOpen = false
+  m.msgTimer = CreateObject("roSGNode", "Timer")
+  m.msgTimer.duration = 6
+  m.msgTimer.repeat = false
+  m.msgTimer.observeField("fire", "onMsgClear")
   if m.skipRecap <> invalid
     m.skipRecap.variant = "pill"
     m.skipRecap.label = "Skip Recap"
@@ -171,6 +190,7 @@ end sub
 sub onState()
   state = m.video.state
   publishPlayState(state)
+  if m.ccOpen = true then pushCCState()
   if state = "error"
     m.bufferTimer.control = "stop"
     m.top.message = "This stream could not play on this Roku. Press Back to choose another title."
@@ -218,6 +238,7 @@ end sub
 sub onPosition()
   m.position = m.video.position
   m.top.playPosition = m.position
+  if m.ccOpen = true and m.cc <> invalid then m.cc.position = m.position
   paintBar()
   updateSkipRecap()
   if Abs(m.position - m.lastSaved) >= 10 then saveProgress(false)
@@ -385,10 +406,11 @@ sub showChrome()
   if m.fadeOutTimer <> invalid then m.fadeOutTimer.control = "stop"
   fadeChrome(1.0)
   m.hideTimer.control = "stop"
-  m.hideTimer.control = "start"
+  if m.ccOpen <> true then m.hideTimer.control = "start"
 end sub
 
 sub hideChrome()
+  if m.ccOpen = true then return
   if m.video.state = "paused" then return
   fadeChrome(0.0)
   if m.fadeOutTimer <> invalid
@@ -460,7 +482,7 @@ function seekKeysActive() as Boolean
 end function
 
 sub lockOverlayChildFocus()
-  nodes = [m.back, m.rewind, m.pause, m.forward, m.skipRecap, m.nextUp]
+  nodes = [m.back, m.rewind, m.pause, m.forward, m.skipRecap, m.nextUp, m.ccBtn]
   for each node in nodes
     if node <> invalid then node.focusable = false
   end for
@@ -529,6 +551,13 @@ sub focusNext()
   holdFocus()
 end sub
 
+sub focusCC()
+  m.zone = "cc"
+  showChrome()
+  paintFocus()
+  holdFocus()
+end sub
+
 sub focusChrome()
   m.zone = "chrome"
   lastCol = chromeLastCol()
@@ -544,7 +573,9 @@ sub paintFocus()
   onNext = nextFocused()
   onProgress = progressFocused()
   onVideo = isVideoFocused()
-  onChrome = (onVideo = false and onSkip = false and onNext = false and onProgress = false)
+  onCC = (m.zone = "cc")
+  onChrome = (onVideo = false and onSkip = false and onNext = false and onProgress = false and onCC = false)
+  if m.ccBtn <> invalid then m.ccBtn.hasFocusStyle = onCC
   if m.back <> invalid then m.back.hasFocusStyle = (onChrome and m.col = 0)
   if m.rewind <> invalid then m.rewind.hasFocusStyle = (onChrome and m.col = 1)
   if m.pause <> invalid then m.pause.hasFocusStyle = (onChrome and m.col = 2)
@@ -572,6 +603,7 @@ sub paintFocus()
   if onSkip then key = "recap"
   if onNext then key = "next"
   if onProgress then key = "progress"
+  if onCC then key = "cc"
   m.top.overlayFocus = key
 end sub
 
@@ -598,6 +630,7 @@ sub seekBy(delta as Integer)
 end sub
 
 sub closePlayer()
+  teardownCC()
   m.closing = true
   m.top.playState = "idle"
   m.bufferTimer.control = "stop"
@@ -609,6 +642,7 @@ sub closePlayer()
 end sub
 
 sub doNext()
+  teardownCC()
   m.closing = true
   m.top.playState = "idle"
   m.bufferTimer.control = "stop"
@@ -633,11 +667,37 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
   holdFocus()
+  if m.ccOpen = true and (isDirectional(intent) or intent = "select" or intent = "back" or intent = "info")
+    m.cc.callFunc("handleIntent", intent)
+    return true
+  end if
   if intent = "back" or intent = "stop"
     closePlayer()
     return true
   end if
   showChrome()
+  if intent = "info"
+    openCC()
+    return true
+  end if
+  if m.zone = "cc"
+    if intent = "select"
+      openCC()
+    else if intent = "right"
+      m.col = 1
+      focusChrome()
+    else if intent = "left"
+      m.col = 0
+      focusChrome()
+    else if intent = "up"
+      focusProgress()
+    end if
+    return true
+  end if
+  if intent = "left" and m.zone = "chrome" and m.col = 1
+    focusCC()
+    return true
+  end if
   if intent = "select" and skipRecapFocused()
     doSkipRecap()
     return true
@@ -814,4 +874,139 @@ sub onRemoteIntent()
   if intent = invalid or intent = "" then return
   keyName = keyFromIntent(intent)
   if keyName <> "" then onKeyEvent(keyName, true)
+end sub
+
+' ---- Control Centre ----
+
+sub openCC()
+  if m.cc = invalid or m.ccOpen = true then return
+  m.ccOpen = true
+  m.hideTimer.control = "stop"
+  showChrome()
+  dimForCC(true)
+  m.cc.coreUrl = m.top.coreUrl
+  m.cc.coreToken = m.top.coreToken
+  m.cc.accountToken = m.top.accountToken
+  m.cc.profileId = m.top.profileId
+  m.cc.deviceCredential = m.top.deviceCredential
+  m.cc.mediaId = asText(m.top.mediaId)
+  m.cc.mediaKind = asText(m.top.mediaKind)
+  pushCCState()
+  m.cc.callFunc("openPanel", invalid)
+end sub
+
+' Player state the panel shows. Track lists come straight from the Video node.
+sub pushCCState()
+  if m.cc = invalid then return
+  m.cc.hasNext = nextIsOffered()
+  m.cc.nextTitle = asText(m.top.nextTitle)
+  m.cc.playing = (m.video.state = "playing" or m.video.state = "buffering")
+  m.cc.position = m.position
+  if m.ccOpen <> true then return
+  if m.video.hasField("availableAudioTracks") then m.cc.audioTracks = m.video.availableAudioTracks
+  if m.video.hasField("currentAudioTrack") then m.cc.audioCurrent = asText(m.video.currentAudioTrack)
+  if m.video.hasField("availableSubtitleTracks") then m.cc.subtitleTracks = m.video.availableSubtitleTracks
+  if m.video.hasField("currentSubtitleTrack") then m.cc.subtitleCurrent = asText(m.video.currentSubtitleTrack)
+  if m.video.hasField("globalCaptionMode") then m.cc.captionMode = asText(m.video.globalCaptionMode)
+end sub
+
+' While the panel is open the chrome fades out so the video and the panel are the
+' only things on screen; the pill comes back with the chrome on close.
+sub dimForCC(open as Boolean)
+  if open
+    fadeChrome(0.0)
+    if m.skipRecap <> invalid then m.skipRecap.opacity = 0.0
+  else
+    if m.skipRecap <> invalid then m.skipRecap.opacity = 1.0
+  end if
+end sub
+
+' Back, idle auto-close and Info all end here: the pill gets focus back and
+' the chrome auto-hide timer runs again.
+sub closeCCState()
+  if m.ccOpen <> true then return
+  m.ccOpen = false
+  dimForCC(false)
+  focusCC()
+  showChrome()
+end sub
+
+' Leaving the player: stop the panel's timers (and with them its polling).
+sub teardownCC()
+  if m.cc = invalid then return
+  m.ccOpen = false
+  dimForCC(false)
+  m.cc.callFunc("closePanel", "teardown")
+end sub
+
+sub onCCAction()
+  action = m.cc.action
+  if action = invalid then return
+  kind = asText(aaGet(action, "type", ""))
+  if kind = "closed"
+    if asText(aaGet(action, "reason", "")) <> "teardown" then closeCCState()
+  else if kind = "playback"
+    id = asText(aaGet(action, "id", ""))
+    if id = "toggle"
+      togglePlayback()
+    else if id = "back"
+      seekBy(-10)
+    else if id = "forward"
+      seekBy(10)
+    else if id = "restart"
+      seekBy(-100000)
+      if m.video.state <> "playing" then m.video.control = "resume"
+    else if id = "next"
+      if nextIsOffered() then doNext()
+    end if
+  else if kind = "audio"
+    id = asText(aaGet(action, "trackId", ""))
+    if id <> "" and m.video.hasField("audioTrack") then m.video.audioTrack = id
+  else if kind = "subtitle"
+    applySubtitle(asText(aaGet(action, "trackId", "")), aaGet(action, "off", false) = true)
+  else if kind = "openHub"
+    leaveToHub()
+  else if kind = "handoffApplied"
+    ' The other device now plays the title: keep our position, pause here.
+    saveProgress(true)
+    if m.video.state = "playing" or m.video.state = "buffering" then m.video.control = "pause"
+    showTransient("Playing on " + asText(aaGet(action, "name", "another device")))
+  else if kind = "handoffFailed"
+    if m.ccOpen <> true then showTransient(asText(aaGet(action, "text", "Could not continue on another device")))
+  end if
+end sub
+
+' Open TVM Hub: save progress, close the player, let the scene route.
+sub leaveToHub()
+  teardownCC()
+  m.closing = true
+  m.top.playState = "idle"
+  m.bufferTimer.control = "stop"
+  m.hideTimer.control = "stop"
+  stopFocusWatch()
+  saveProgress(true)
+  if m.video <> invalid then m.video.control = "stop"
+  emit("openHub", invalid)
+end sub
+
+' Off hides captions; a track turns captions on for that track. The caption
+' mode is what the Roku Video node needs to render a subtitle track.
+sub applySubtitle(trackId as String, off as Boolean)
+  if off or trackId = ""
+    if m.video.hasField("globalCaptionMode") then m.video.globalCaptionMode = "Off"
+    if m.video.hasField("subtitleTrack") then m.video.subtitleTrack = ""
+    return
+  end if
+  if m.video.hasField("globalCaptionMode") then m.video.globalCaptionMode = "On"
+  if m.video.hasField("subtitleTrack") then m.video.subtitleTrack = trackId
+end sub
+
+sub showTransient(text as String)
+  m.top.message = text
+  m.msgTimer.control = "stop"
+  m.msgTimer.control = "start"
+end sub
+
+sub onMsgClear()
+  if m.video.state = "playing" then m.top.message = ""
 end sub

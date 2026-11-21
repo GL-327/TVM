@@ -123,6 +123,8 @@ bool RealDebridScreen::Animating() const {
 void RealDebridScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
+    const Box viewport{0.0, 0.0, width_, height_};
+    painter.SetBackdrop(viewport, "asset:lighthouse.jpg", 0.5, 0.2);
 
     const double x = metrics.Rem(kSafeXRem);
     const double kickerY = metrics.Rem(kSafeYRem);
@@ -138,7 +140,11 @@ void RealDebridScreen::Paint(Painter& painter) const {
     double top = kickerY + metrics.Rem(kRowsTopRem);
     for (const auto& [label, value] : Facts()) {
         const Box row{x, top, contentWidth, metrics.Rem(kRowHeightRem)};
-        painter.FillRoundRect(row, metrics.Rem(0.5), tokens::kSurface);
+        GlassStyle rowGlass;
+        rowGlass.kind = GlassKind::Panel;
+        rowGlass.reduceTransparency = tokens::reduceTransparency;
+        rowGlass.tint = tokens::kSurface;
+        painter.Glass(row, metrics.Rem(0.5), rowGlass);
         painter.Text(Box{row.x + metrics.Rem(1.0), row.y, metrics.Rem(kRowLabelWidthRem), row.height}, label,
                      TextStyle{metrics.Rem(1.0625), false}, tokens::kTextMuted);
         painter.Text(Box{row.x + metrics.Rem(kRowLabelWidthRem), row.y,

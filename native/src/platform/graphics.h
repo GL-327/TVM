@@ -33,6 +33,8 @@ public:
     IDWriteTextFormat* TextFormat(double sizePx, int weight);
     // Wrapped text, top aligned, for paragraphs.
     IDWriteTextFormat* ParagraphFormat(double sizePx, int weight);
+    // Cached single-line text width measurement in pixels.
+    double MeasureText(std::string_view text, double sizePx, int weight);
 
     ID2D1Factory* d2d() const { return d2d_.Get(); }
     IDWriteFactory* dwrite() const { return dwrite_.Get(); }
@@ -41,9 +43,11 @@ public:
 private:
     ComPtr<ID2D1Factory> d2d_;
     ComPtr<IDWriteFactory> dwrite_;
+    ComPtr<IDWriteFontCollection> fontCollection_;
     ComPtr<IWICImagingFactory> wic_;
     std::wstring family_;
     std::map<std::tuple<long, int, bool>, ComPtr<IDWriteTextFormat>> formats_;
+    std::map<std::tuple<std::string, long, int>, double> measuredText_;
     IDWriteTextFormat* CachedFormat(double sizePx, int weight, bool wrap);
 };
 

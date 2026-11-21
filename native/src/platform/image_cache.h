@@ -16,15 +16,19 @@
 
 namespace tvm::platform {
 
-// A picture as WIC reads it: premultiplied BGRA pixels, ready for a bitmap.
+// A picture as WIC reads it: premultiplied BGRA pixels, ready for a bitmap, plus a pre-computed
+// downsampled Liquid Glass blurred & saturation-boosted buffer computed on the worker thread.
 struct DecodedPicture {
     bool ok = false;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::vector<std::uint8_t> pixels;
+    std::uint32_t blurredWidth = 0;
+    std::uint32_t blurredHeight = 0;
+    std::vector<std::uint8_t> blurredPixels;
 };
 
-// Reads the picture in `file`. Any thread may call it: WIC's factory is free-threaded.
+// Reads the picture in `file` and pre-computes its Liquid Glass blurred buffer. Any thread may call it.
 DecodedPicture DecodePicture(Graphics& graphics, const std::wstring& file);
 
 class ImageCache {
@@ -39,19 +43,22 @@ public:
     void BeginFrame();
     // The bitmap for `file`, once it is ready. Until then this returns nothing and asks for the picture to be read.
     ID2D1Bitmap* Get(ID2D1RenderTarget* target, const std::wstring& file);
+    // A Gaussian-blurred & saturation-boosted Liquid Glass version of the bitmap for `file`, cached per backdrop.
+    ID2D1Bitmap* GetBlurred(ID2D1RenderTarget* target, const std::wstring& file, float standardDeviation = 24.0f);
     // Called on the window thread with what a worker read.
     void Deliver(const std::wstring& file, DecodedPicture picture);
-    // Whether pictures are still being read or made, so the window should keep drawing.
+    // Whether decoded pictures are waiting on the UI thread to be uploaded to GPU bitmaps.
     bool Busy() const;
     void Clear();
 
 private:
-    static constexpr int kUploadsPerFrame = 4;
+    static constexpr int kUploadsPerFrame = 8;
 
     Graphics& graphics_;
     Request request_;
     int uploadsThisFrame_ = 0;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> bitmaps_;
+    std::map<std::wstring, ComPtr<ID2D1Bitmap>> blurredBitmaps_;
     std::map<std::wstring, bool> failed_;
     // Pictures asked for and not yet delivered.
     std::set<std::wstring> requested_;

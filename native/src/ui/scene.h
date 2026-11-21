@@ -60,10 +60,12 @@ enum class CardAction {
 struct TopButton {
     std::string label;
     Command command;
-    // A lane that is chosen, such as Shows on TVM Stream. Its label is drawn at full strength.
+    // A lane that is chosen, such as Home, Movies or Series. Its pill is frosted white with dark ink.
     bool on = false;
-    // The TVM wordmark lockup: the mark, then the label spaced out in capitals.
+    // The TVM wordmark lockup at the top left.
     bool lockup = false;
+    // The circular profile orb at the top right.
+    bool orb = false;
 };
 
 // How a scene is dressed. Home has its buttons at the top right and the launcher's hero. TVM Stream
@@ -85,6 +87,8 @@ struct HeroData {
     std::string title;
     std::string backdropUrl;
     int hue = 0;
+    // The metadata line under the 72px hero title, e.g. "Movie · Drama · 2h 6m · 4K".
+    std::string meta;
     // A paragraph under the title. When there is one the hero is a notice, such as TVM Stream's
     // "Connect Real-Debrid to watch", and its first button is a primary pill.
     std::string body;
@@ -183,6 +187,7 @@ private:
         Box pill;
         Box source;
         Box title;
+        Box meta;
         Box watch;
         Box learn;
         Box dots;
@@ -211,6 +216,7 @@ private:
     HeroBoxes HeroLayout() const;
     // Starts the crossfade to the pending picture, once the picture is there.
     void StartHeroArt(double nowMs);
+    void PaintHeroBackdrop(Painter& painter) const;
     void PaintHero(Painter& painter) const;
     // The top button at an index, and the index of a top button's key.
     Box TopBoxScreen(std::size_t index) const;

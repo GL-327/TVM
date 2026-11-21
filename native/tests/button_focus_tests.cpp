@@ -85,10 +85,10 @@ TEST(button_focus_sets_the_first_focus_at_once_and_eases_the_next) {
     REQUIRE(gained > 0.0 && gained < 1.0);
     REQUIRE_NEAR(focus.Amount("play", 1070.0) + gained, 1.0, 1e-9);
 
-    // The fast token is 140 ms.
-    REQUIRE_NEAR(focus.Amount("list", 1140.0), 1.0, 1e-9);
-    REQUIRE_NEAR(focus.Amount("play", 1140.0), 0.0, 1e-9);
-    REQUIRE(!focus.Animating(1140.0));
+    // The fast token is 150 ms.
+    REQUIRE_NEAR(focus.Amount("list", 1150.0), 1.0, 1e-9);
+    REQUIRE_NEAR(focus.Amount("play", 1150.0), 0.0, 1e-9);
+    REQUIRE(!focus.Animating(1150.0));
 }
 
 TEST(button_focus_refocused_midway_eases_from_where_the_button_is) {
@@ -99,7 +99,7 @@ TEST(button_focus_refocused_midway_eases_from_where_the_button_is) {
     focus.Track("play", 1070.0, Auto());
     REQUIRE_NEAR(focus.Amount("play", 1070.0), before, 1e-9);
     REQUIRE(focus.Animating(1100.0));
-    REQUIRE_NEAR(focus.Amount("play", 1210.0), 1.0, 1e-9);
+    REQUIRE_NEAR(focus.Amount("play", 1220.0), 1.0, 1e-9);
 }
 
 TEST(button_focus_reduced_motion_lands_at_once) {
@@ -146,13 +146,13 @@ TEST(focused_button_scales_about_its_centre_and_rings_the_scaled_shape) {
     DrawButton(painter, metrics, Box{100.0, 100.0, 200.0, 50.0}, "Play", ButtonLook{false, true, 1.0});
     REQUIRE_EQ(painter.shapes.size(), std::size_t(3));
 
-    // 1.08 times the box, with the centre kept at (200, 125).
+    // 1.06 times the box, with the centre kept at (200, 125).
     const ShapePainter::Shape& fill = painter.shapes[0];
-    REQUIRE_NEAR(fill.box.width, 216.0, 1e-9);
-    REQUIRE_NEAR(fill.box.height, 54.0, 1e-9);
+    REQUIRE_NEAR(fill.box.width, 212.0, 1e-9);
+    REQUIRE_NEAR(fill.box.height, 53.0, 1e-9);
     REQUIRE_NEAR(fill.box.CenterX(), 200.0, 1e-9);
     REQUIRE_NEAR(fill.box.CenterY(), 125.0, 1e-9);
-    REQUIRE_NEAR(fill.radius, 27.0, 1e-9);
+    REQUIRE_NEAR(fill.radius, 26.5, 1e-9);
     REQUIRE(SameColor(fill.color, tvm::ui::tokens::kSurfaceHover));
 
     // The ring is the focus outline: 0.14 rem beyond the edge, plus half its own 0.18 rem width.
@@ -168,8 +168,8 @@ TEST(a_button_part_way_through_its_ease_is_part_way_scaled) {
     ShapePainter painter;
     const Metrics metrics{};
     DrawButton(painter, metrics, Box{100.0, 100.0, 200.0, 50.0}, "Play", ButtonLook{false, true, 0.5});
-    REQUIRE_NEAR(painter.shapes[0].box.width, 208.0, 1e-9);
-    REQUIRE_NEAR(painter.shapes[0].box.height, 52.0, 1e-9);
+    REQUIRE_NEAR(painter.shapes[0].box.width, 206.0, 1e-9);
+    REQUIRE_NEAR(painter.shapes[0].box.height, 51.5, 1e-9);
 }
 
 TEST(primary_button_is_white_with_dark_ink_and_stays_white_when_focused) {

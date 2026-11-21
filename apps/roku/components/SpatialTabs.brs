@@ -29,6 +29,11 @@ sub rebuild()
   m.labelNodes = []
   labels = m.top.labels
   if labels = invalid then return
+  m.pitch = m.top.pitch
+  if m.pitch < 200 then m.pitch = 380
+  pillW = m.pitch - 20
+  m.activePill.width = pillW
+  m.hl.width = pillW
   size = tvmTypeSize(tvmTypeSecondary())
   i = 0
   while i < labels.Count()
@@ -64,7 +69,7 @@ sub paint()
   m.activePill.visible = (shown <> m.top.activeIndex)
   m.activePill.translation = [24 + (m.top.activeIndex * m.pitch), 16]
   m.hl.active = (shown = m.top.activeIndex)
-  m.hl.scaleRotateCenter = [180, 56]
+  m.hl.scaleRotateCenter = [(m.pitch - 20) / 2, 56]
   m.hl.scale = [1.0, 1.0]
   if focused and not tvmReduceMotion() then m.hl.scale = [tvmPillFocusScale(), tvmPillFocusScale()]
   m.hl.focused = focused

@@ -554,11 +554,17 @@ void PlayerScreen::Paint(Painter& painter) const {
 }
 
 void PlayerScreen::PaintGoLive(Painter& painter, double opacity) const {
-    // `.player__go-live`: a dark pill with a pulsing red dot, "Back to live", and how far behind.
+    // `.player__go-live`: an optical glass pill with a pulsing red dot, "Back to live", and how far behind.
     const Box box = *BoxOf(kGoLiveKey);
     const bool focused = focused_ == kGoLiveKey;
-    painter.FillRoundRect(box, box.height / 2.0, WithAlpha(focused ? Rgb(0x181820, 0.92) : Rgb(0x0C0C10, 0.72), opacity));
-    painter.StrokeRoundRect(box, box.height / 2.0, 1.0, WithAlpha(Rgb(0xFFFFFF, focused ? 0.45 : 0.22), opacity));
+    GlassStyle glass;
+    glass.kind = GlassKind::Pill;
+    glass.focused = focused;
+    glass.focusAmount = focused ? 1.0 : 0.0;
+    glass.opacity = opacity;
+    glass.reduceTransparency = tokens::reduceTransparency;
+    glass.tint = focused ? Rgb(0x181820, 0.82) : Rgb(0x0C0C10, 0.62);
+    painter.Glass(box, box.height / 2.0, glass);
     const double dot = Rem(0.55);
     const double dotX = box.x + Rem(1.0);
     const double pulse = motion::PrefersReducedMotion(motion_) ? 0.0 : std::fmod(clockMs_ / 2000.0, 1.0);
@@ -579,7 +585,7 @@ void PlayerScreen::PaintGoLive(Painter& painter, double opacity) const {
 void PlayerScreen::PaintHints(Painter& painter) const {
     const double opacity = HintsOpacity(clockMs_);
     if (opacity <= 0.0) return;
-    // `.player-remote-hints__phrase`: a dark pill of lessons, each its keys then its action, centred over the dock.
+    // `.player-remote-hints__phrase`: a glass pill of lessons, each its keys then its action, centred over the dock.
     struct Lesson {
         std::vector<std::string> keys;
         std::string action;
@@ -607,11 +613,12 @@ void PlayerScreen::PaintHints(Painter& painter) const {
     const double rise = Rem(0.45) * (1.0 - opacity);
     const double height = Rem(1.45) + Rem(0.96);
     const Box pill{width_ / 2.0 - width / 2.0, height_ - Rem(1.5) - Rem(10.4) - height + rise, width, height};
-    painter.FillRoundRect(pill, height / 2.0, Rgb(0x000000, 0.76 * opacity));
-    painter.FillLinearGradient(Box{pill.x + height / 2.0, pill.y + 1.0, pill.width - height, pill.height * 0.46}, 0.0,
-                               pill.y, 0.0, pill.y + pill.height * 0.46,
-                               {GradientStop{0.0, Rgb(0xFFFFFF, 0.08 * opacity)}, GradientStop{1.0, Rgb(0xFFFFFF, 0.0)}});
-    painter.StrokeRoundRect(pill, height / 2.0, 1.0, Rgb(0x6EC8FF, 0.18 * opacity));
+    GlassStyle pillGlass;
+    pillGlass.kind = GlassKind::Pill;
+    pillGlass.opacity = opacity;
+    pillGlass.reduceTransparency = tokens::reduceTransparency;
+    pillGlass.tint = Rgb(0x0A121C, 0.72);
+    painter.Glass(pill, height / 2.0, pillGlass);
 
     double x = pill.x + Rem(0.7);
     const double keyHeight = Rem(1.45);
@@ -714,26 +721,36 @@ void PlayerScreen::PaintPreview(Painter& painter, double opacity) const {
         const double thumbHeight = thumbWidth * 9.0 / 16.0;
         const double thumbX = std::clamp(centerX - thumbWidth / 2.0, Rem(kPadXRem), width_ - Rem(kPadXRem) - thumbWidth);
         const Box thumb{thumbX, bubble.y - Rem(0.4) - thumbHeight, thumbWidth, thumbHeight};
-        painter.FillRoundRect(Box{thumb.x - 2.0, thumb.y - 2.0, thumb.width + 4.0, thumb.height + 4.0}, Rem(0.45),
-                              WithAlpha(kMenuFill, opacity));
-        painter.ImageFaded(thumb, "file:" + view_.thumbnail, Rem(0.4), opacity, 0.5, 0.5);
-        painter.StrokeRoundRect(thumb, Rem(0.4), 1.0, WithAlpha(kMenuBorder, opacity));
+        GlassStyle thumbGlass;
+        thumbGlass.kind = GlassKind::Card;
+        thumbGlass.opacity = opacity;
+        thumbGlass.reduceTransparency = tokens::reduceTransparency;
+        thumbGlass.tint = kMenuFill;
+        painter.Glass(Box{thumb.x - 2.0, thumb.y - 2.0, thumb.width + 4.0, thumb.height + 4.0}, Rem(0.65), thumbGlass);
+        painter.ImageFaded(thumb, "file:" + view_.thumbnail, Rem(0.55), opacity, 0.5, 0.5);
     }
-    painter.FillRoundRect(bubble, Rem(0.3), WithAlpha(kMenuFill, opacity));
+    GlassStyle bubbleGlass;
+    bubbleGlass.kind = GlassKind::Pill;
+    bubbleGlass.opacity = opacity;
+    bubbleGlass.reduceTransparency = tokens::reduceTransparency;
+    bubbleGlass.tint = kMenuFill;
+    painter.Glass(bubble, bubble.height / 2.0, bubbleGlass);
     CenteredText(painter, bubble, at, bubbleStyle, WithAlpha(kInk, opacity));
 }
 
 void PlayerScreen::PaintEndActions(Painter& painter) const {
-    // `.cinema-chrome__recap .tvm-button`: a light button with dark words.
+    // `.cinema-chrome__recap .tvm-button`: frosted glass pills for Skip recap, Skip credits, and Watch credits.
     const auto light = [&](const char* key, const std::string& label) {
         const Box box = *BoxOf(key);
         const bool focused = focused_ == key;
-        painter.FillRoundRect(box, Rem(0.3), focused ? Rgb(0xFFFFFF) : Rgb(0xF5F5F5, 0.94));
-        if (focused) {
-            const double ring = Rem(0.2);
-            painter.StrokeRoundRect(Box{box.x - ring, box.y - ring, box.width + 2.0 * ring, box.height + 2.0 * ring},
-                                    Rem(0.45), 2.0, Rgb(0xFFFFFF));
-        }
+        GlassStyle glass;
+        glass.kind = GlassKind::Pill;
+        glass.focused = focused;
+        glass.activeTab = true;
+        glass.focusAmount = focused ? 1.0 : 0.0;
+        glass.reduceTransparency = tokens::reduceTransparency;
+        glass.tint = focused ? Rgb(0xFFFFFF) : Rgb(0xF5F5F5, 0.92);
+        painter.Glass(box, box.height / 2.0, glass);
         CenteredText(painter, box, label, TextStyle{Rem(0.85), true, 700}, Rgb(0x14171C));
     };
     if (view_.recap) light(kRecapKey, "Skip recap");
@@ -743,8 +760,14 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
         std::snprintf(remain, sizeof(remain), "%ld:%02ld", total / 60, total % 60);
         light(kCreditsSkipKey, std::string("Skip credits  ") + remain);
         const Box watch = *BoxOf(kCreditsWatchKey);
-        painter.FillRoundRect(watch, Rem(0.3), focused_ == kCreditsWatchKey ? Rgb(0x171A20, 0.95) : Rgb(0x171A20, 0.75));
-        painter.StrokeRoundRect(watch, Rem(0.3), 1.0, kMenuBorder);
+        const bool watchFocused = focused_ == kCreditsWatchKey;
+        GlassStyle watchGlass;
+        watchGlass.kind = GlassKind::Pill;
+        watchGlass.focused = watchFocused;
+        watchGlass.focusAmount = watchFocused ? 1.0 : 0.0;
+        watchGlass.reduceTransparency = tokens::reduceTransparency;
+        watchGlass.tint = watchFocused ? Rgb(0x1E2631, 0.88) : Rgb(0x141A22, 0.72);
+        painter.Glass(watch, watch.height / 2.0, watchGlass);
         CenteredText(painter, watch, "Watch credits", TextStyle{Rem(0.85), true, 600}, kInk);
     }
 }
@@ -752,16 +775,29 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
 void PlayerScreen::PaintMenu(Painter& painter) const {
     const std::optional<Box> panel = MenuBox();
     if (!panel.has_value()) return;
-    painter.FillRoundRect(*panel, Rem(0.6), kMenuFill);
-    painter.StrokeRoundRect(*panel, Rem(0.6), 1.0, kMenuBorder);
+    // Study 02 Control Centre spatial glass: a receding ghost glass surface behind the near live panel.
+    if (!tokens::reduceTransparency && panel->x > Rem(2.0)) {
+        GlassStyle ghostGlass;
+        ghostGlass.kind = GlassKind::Panel;
+        ghostGlass.opacity = 0.38;
+        ghostGlass.tint = Rgb(0x101824, 0.45);
+        painter.Glass(Box{panel->x - Rem(0.85), panel->y + Rem(0.55), panel->width, panel->height - Rem(1.1)},
+                      Rem(1.25), ghostGlass);
+    }
+    GlassStyle panelGlass;
+    panelGlass.kind = GlassKind::Panel;
+    panelGlass.reduceTransparency = tokens::reduceTransparency;
+    panelGlass.tint = kMenuFill;
+    painter.Glass(*panel, Rem(1.35), panelGlass);
+
     const std::string heading = menu_ == kSubtitlesKey ? "Subtitles"
                                 : menu_ == kAudioKey   ? "Audio"
                                 : menu_ == kQualityKey ? "Quality"
                                                        : "Playback speed";
     const double x = panel->x + Rem(kMenuPadRem);
     const double width = panel->width - 2.0 * Rem(kMenuPadRem);
-    painter.Text(Box{x + Rem(0.25), panel->y + Rem(kMenuPadRem), width, Rem(kMenuHeadingRem)}, heading,
-                 TextStyle{Rem(0.68), true, 600}, Rgb(0xFFFFFF, 0.6));
+    painter.Text(Box{x + Rem(0.4), panel->y + Rem(kMenuPadRem), width, Rem(kMenuHeadingRem)}, heading,
+                 TextStyle{Rem(0.75), true, 650}, Rgb(0xFFFFFF, 0.72));
 
     // The rows scroll so the focused one is in the panel.
     const std::vector<PlayerOption> options = MenuOptions(menu_);
@@ -770,8 +806,16 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
         const PlayerOption& option = options[i];
         const Box row{x, panel->y + Rem(kMenuPadRem) + Rem(kMenuHeadingRem) + static_cast<double>(i - first) * Rem(kMenuRowRem),
                       width, Rem(kMenuRowRem)};
-        if (i == menuIndex_) painter.FillRoundRect(row, Rem(0.35), kHover);
-        const TextStyle labelStyle{Rem(0.8), true, option.selected ? 700 : 550};
+        if (i == menuIndex_) {
+            GlassStyle rowGlass;
+            rowGlass.kind = GlassKind::Pill;
+            rowGlass.focused = true;
+            rowGlass.focusAmount = 1.0;
+            rowGlass.reduceTransparency = tokens::reduceTransparency;
+            rowGlass.tint = kHover;
+            painter.Glass(row, row.height / 2.0, rowGlass);
+        }
+        const TextStyle labelStyle{Rem(0.85), true, option.selected ? 700 : 550};
         const double labelWidth = painter.MeasureText(option.label, labelStyle);
         painter.Text(Box{row.x + Rem(0.8), row.y, labelWidth + 2.0, row.height}, option.label, labelStyle,
                      option.selected ? kFill : kInk);
@@ -790,8 +834,11 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
 
 void PlayerScreen::PaintNextUp(Painter& painter) const {
     const Box card = *BoxOf("next-card");
-    painter.FillRoundRect(card, Rem(0.8), kMenuFill);
-    painter.StrokeRoundRect(card, Rem(0.8), 1.0, kMenuBorder);
+    GlassStyle cardGlass;
+    cardGlass.kind = GlassKind::Panel;
+    cardGlass.reduceTransparency = tokens::reduceTransparency;
+    cardGlass.tint = kMenuFill;
+    painter.Glass(card, Rem(1.25), cardGlass);
     // The drain along the top empties as the episode runs out.
     const double drain = view_.nextWindow > 0.0 ? std::clamp(view_.nextRemaining / view_.nextWindow, 0.0, 1.0) : 0.0;
     painter.FillRoundRect(Box{card.x + Rem(0.8), card.y, (card.width - Rem(1.6)) * drain, Rem(0.18)}, Rem(0.09), kFill);
@@ -814,7 +861,15 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
     DrawButton(painter, metrics, *BoxOf(kNextPlayKey), "Play next",
                ButtonLook{true, focused_ == kNextPlayKey, focused_ == kNextPlayKey ? 1.0 : 0.0});
     const Box dismiss = *BoxOf(kNextDismissKey);
-    if (focused_ == kNextDismissKey) painter.FillRoundRect(dismiss, dismiss.height / 2.0, kHover);
+    if (focused_ == kNextDismissKey) {
+        GlassStyle dismissGlass;
+        dismissGlass.kind = GlassKind::Pill;
+        dismissGlass.focused = true;
+        dismissGlass.focusAmount = 1.0;
+        dismissGlass.reduceTransparency = tokens::reduceTransparency;
+        dismissGlass.tint = kHover;
+        painter.Glass(dismiss, dismiss.height / 2.0, dismissGlass);
+    }
     CenteredText(painter, dismiss, "Watch credits", TextStyle{Rem(0.8), true, 600}, kInkMuted);
 }
 
@@ -858,8 +913,13 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const Color ink = WithAlpha(kInk, opacity);
     const auto button = [&](const char* key) {
         const Box box = *BoxOf(key);
-        // Focus and hover share the desktop shell's look: a faint fill, with no ring and no scale.
-        if (focused_ == key) painter.FillRoundRect(box, Rem(kButtonRadiusRem), WithAlpha(kHover, opacity));
+        if (focused_ == key) {
+            GlassStyle gs;
+            gs.kind = GlassKind::Pill;
+            gs.focused = true;
+            gs.opacity = opacity;
+            painter.Glass(box, Rem(kButtonRadiusRem), gs);
+        }
         return box;
     };
     const PathStyle line{Color{0, 0, 0, 0}, ink, kGlyphStroke, false};

@@ -1,0 +1,3402 @@
+{
+  "constants": {
+    "tabIds": [
+      "playback",
+      "audio",
+      "devices"
+    ],
+    "tabLabels": [
+      "Playback",
+      "Audio & Subtitles",
+      "Devices"
+    ]
+  },
+  "playbackRows": [
+    {
+      "name": "paused movie",
+      "state": {
+        "playing": false,
+        "hasNext": false,
+        "nextTitle": "",
+        "live": false
+      },
+      "expected": [
+        "row|toggle|Play||play|none|true|false|false",
+        "row|back|Back 10 seconds||rewind|none|true|false|false",
+        "row|forward|Forward 10 seconds||forward|none|true|false|false",
+        "row|restart|Start over||restart|none|true|false|false"
+      ]
+    },
+    {
+      "name": "playing movie",
+      "state": {
+        "playing": true,
+        "hasNext": false,
+        "nextTitle": "",
+        "live": false
+      },
+      "expected": [
+        "row|toggle|Pause||pause|none|true|false|false",
+        "row|back|Back 10 seconds||rewind|none|true|false|false",
+        "row|forward|Forward 10 seconds||forward|none|true|false|false",
+        "row|restart|Start over||restart|none|true|false|false"
+      ]
+    },
+    {
+      "name": "playing episode with next",
+      "state": {
+        "playing": true,
+        "hasNext": true,
+        "nextTitle": "S1 E2 The Rift",
+        "live": false
+      },
+      "expected": [
+        "row|toggle|Pause||pause|none|true|false|false",
+        "row|back|Back 10 seconds||rewind|none|true|false|false",
+        "row|forward|Forward 10 seconds||forward|none|true|false|false",
+        "row|restart|Start over||restart|none|true|false|false",
+        "row|next|Next episode|S1 E2 The Rift|forward|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "live disables seeking",
+      "state": {
+        "playing": true,
+        "hasNext": false,
+        "nextTitle": "",
+        "live": true
+      },
+      "expected": [
+        "row|toggle|Pause||pause|none|true|false|false",
+        "row|back|Back 10 seconds|Live TV|rewind|none|false|false|false",
+        "row|forward|Forward 10 seconds|Live TV|forward|none|false|false|false",
+        "row|restart|Start over|Live TV|restart|none|false|false|false"
+      ]
+    },
+    {
+      "name": "empty state defaults",
+      "state": {},
+      "expected": [
+        "row|toggle|Play||play|none|true|false|false",
+        "row|back|Back 10 seconds||rewind|none|true|false|false",
+        "row|forward|Forward 10 seconds||forward|none|true|false|false",
+        "row|restart|Start over||restart|none|true|false|false"
+      ]
+    }
+  ],
+  "trackLabel": [
+    {
+      "name": "language code only",
+      "track": {
+        "id": "a1",
+        "name": "",
+        "language": "eng"
+      },
+      "index": 0,
+      "expected": "English"
+    },
+    {
+      "name": "name equal to code",
+      "track": {
+        "id": "a1",
+        "name": "eng",
+        "language": "eng"
+      },
+      "index": 0,
+      "expected": "English"
+    },
+    {
+      "name": "name already holds the language",
+      "track": {
+        "id": "a1",
+        "name": "English - Dolby Digital",
+        "language": "eng"
+      },
+      "index": 0,
+      "expected": "English - Dolby Digital"
+    },
+    {
+      "name": "descriptive extra name",
+      "track": {
+        "id": "a2",
+        "name": "Commentary",
+        "language": "eng"
+      },
+      "index": 1,
+      "expected": "English (Commentary)"
+    },
+    {
+      "name": "two letter code",
+      "track": {
+        "id": "a3",
+        "name": "",
+        "language": "ES"
+      },
+      "index": 2,
+      "expected": "Spanish"
+    },
+    {
+      "name": "unknown language text",
+      "track": {
+        "id": "a3",
+        "name": "",
+        "language": "Klingon"
+      },
+      "index": 2,
+      "expected": "Klingon"
+    },
+    {
+      "name": "name without language",
+      "track": {
+        "id": "a4",
+        "name": "Director",
+        "language": ""
+      },
+      "index": 3,
+      "expected": "Director"
+    },
+    {
+      "name": "und and nothing else",
+      "track": {
+        "id": "a5",
+        "name": "und",
+        "language": "und"
+      },
+      "index": 4,
+      "expected": "Track 5"
+    },
+    {
+      "name": "nothing at all",
+      "track": {
+        "id": "a6"
+      },
+      "index": 5,
+      "expected": "Track 6"
+    }
+  ],
+  "normalize": [
+    {
+      "name": "roku field names are case-insensitive and ids are required",
+      "audio": [
+        {
+          "Track": "1",
+          "Name": "English",
+          "Language": "eng"
+        },
+        {
+          "track": "2",
+          "name": "",
+          "language": "spa"
+        },
+        {
+          "Name": "no id"
+        }
+      ],
+      "subs": [
+        {
+          "TrackName": "eng-1",
+          "Description": "English CC",
+          "Language": "eng"
+        },
+        {
+          "Description": "no id"
+        }
+      ],
+      "expectedAudio": [
+        {
+          "id": "1",
+          "name": "English",
+          "language": "eng"
+        },
+        {
+          "id": "2",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "expectedSubs": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        }
+      ]
+    },
+    {
+      "name": "invalid input",
+      "audio": null,
+      "subs": null,
+      "expectedAudio": [],
+      "expectedSubs": []
+    }
+  ],
+  "subtitleCurrent": [
+    {
+      "name": "device captions off",
+      "mode": "Off",
+      "current": "eng-1",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "expected": {
+        "off": true,
+        "id": ""
+      }
+    },
+    {
+      "name": "device captions on keeps current track",
+      "mode": "On",
+      "current": "spa-1",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "expected": {
+        "off": false,
+        "id": "spa-1"
+      }
+    },
+    {
+      "name": "on without a current track picks the first",
+      "mode": "On",
+      "current": "",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "expected": {
+        "off": false,
+        "id": "eng-1"
+      }
+    },
+    {
+      "name": "on with no tracks is off",
+      "mode": "On",
+      "current": "",
+      "tracks": [],
+      "expected": {
+        "off": true,
+        "id": ""
+      }
+    },
+    {
+      "name": "instant replay is off",
+      "mode": "Instant replay",
+      "current": "eng-1",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "expected": {
+        "off": true,
+        "id": ""
+      }
+    },
+    {
+      "name": "when mute is off",
+      "mode": "When mute",
+      "current": "eng-1",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "expected": {
+        "off": true,
+        "id": ""
+      }
+    }
+  ],
+  "audioRows": [
+    {
+      "name": "no tracks",
+      "tracks": [],
+      "current": "",
+      "expected": [
+        "header|audio-head|Audio|||none|false|false|false",
+        "row|audio-none|No other audio tracks|||none|false|false|false"
+      ]
+    },
+    {
+      "name": "three tracks, second current",
+      "tracks": [
+        {
+          "id": "1",
+          "name": "English - Dolby Digital",
+          "language": "eng"
+        },
+        {
+          "id": "2",
+          "name": "Commentary",
+          "language": "eng"
+        },
+        {
+          "id": "3",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "current": "2",
+      "expected": [
+        "header|audio-head|Audio|||none|false|false|false",
+        "row|audio:1|English - Dolby Digital|||none|true|false|false",
+        "row|audio:2|English (Commentary)|||check|true|true|false",
+        "row|audio:3|Spanish|||none|true|false|false"
+      ]
+    },
+    {
+      "name": "unknown current marks the first",
+      "tracks": [
+        {
+          "id": "1",
+          "name": "English - Dolby Digital",
+          "language": "eng"
+        },
+        {
+          "id": "2",
+          "name": "Commentary",
+          "language": "eng"
+        },
+        {
+          "id": "3",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "current": "",
+      "expected": [
+        "header|audio-head|Audio|||none|false|false|false",
+        "row|audio:1|English - Dolby Digital|||check|true|true|false",
+        "row|audio:2|English (Commentary)|||none|true|false|false",
+        "row|audio:3|Spanish|||none|true|false|false"
+      ]
+    },
+    {
+      "name": "single track",
+      "tracks": [
+        {
+          "id": "1",
+          "name": "English - Dolby Digital",
+          "language": "eng"
+        }
+      ],
+      "current": "1",
+      "expected": [
+        "header|audio-head|Audio|||none|false|false|false",
+        "row|audio:1|English - Dolby Digital|||check|true|true|false"
+      ]
+    }
+  ],
+  "subtitleRows": [
+    {
+      "name": "no tracks",
+      "tracks": [],
+      "sub": {
+        "off": true,
+        "id": ""
+      },
+      "expected": [
+        "header|subs-head|Subtitles|||none|false|false|false",
+        "row|subs-none|No subtitles for this title|||none|false|false|false"
+      ]
+    },
+    {
+      "name": "off selected",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "sub": {
+        "off": true,
+        "id": ""
+      },
+      "expected": [
+        "header|subs-head|Subtitles|||none|false|false|false",
+        "row|sub:off|Off|||check|true|true|false",
+        "row|sub:eng-1|English CC|||none|true|false|false",
+        "row|sub:spa-1|Spanish|||none|true|false|false"
+      ]
+    },
+    {
+      "name": "second selected",
+      "tracks": [
+        {
+          "id": "eng-1",
+          "name": "English CC",
+          "language": "eng"
+        },
+        {
+          "id": "spa-1",
+          "name": "",
+          "language": "spa"
+        }
+      ],
+      "sub": {
+        "off": false,
+        "id": "spa-1"
+      },
+      "expected": [
+        "header|subs-head|Subtitles|||none|false|false|false",
+        "row|sub:off|Off|||none|true|false|false",
+        "row|sub:eng-1|English CC|||none|true|false|false",
+        "row|sub:spa-1|Spanish|||check|true|true|false"
+      ]
+    }
+  ],
+  "captionInfo": [
+    "info|caption-style|Caption style: Roku Settings › Accessibility|||none|false|false|true"
+  ],
+  "isVod": [
+    {
+      "kind": "movie",
+      "id": "tt1",
+      "expected": true
+    },
+    {
+      "kind": "series",
+      "id": "tt2:1:2",
+      "expected": true
+    },
+    {
+      "kind": "live",
+      "id": "ch1",
+      "expected": false
+    },
+    {
+      "kind": "LIVE",
+      "id": "x",
+      "expected": false
+    },
+    {
+      "kind": "",
+      "id": "live:ch9",
+      "expected": false
+    },
+    {
+      "kind": "",
+      "id": "",
+      "expected": true
+    }
+  ],
+  "visibleDevices": [
+    {
+      "name": "this device and revoked are removed",
+      "devices": [
+        {
+          "id": "inst_living",
+          "name": "Living Room Roku",
+          "platform": "roku",
+          "state": "playing",
+          "presence": "online",
+          "isCurrent": true,
+          "capabilities": [
+            "play.title",
+            "playback.pause_resume"
+          ]
+        },
+        {
+          "id": "inst_phone",
+          "name": "Arthur's iPhone",
+          "platform": "ios",
+          "state": "offline",
+          "presence": "offline",
+          "isCurrent": false,
+          "capabilities": [
+            "play.title",
+            "playback.pause_resume"
+          ]
+        },
+        {
+          "id": "inst_pc",
+          "name": "Windows PC",
+          "platform": "windows",
+          "state": "idle",
+          "presence": "online",
+          "isCurrent": false,
+          "capabilities": [
+            "nav.dpad"
+          ]
+        },
+        {
+          "id": "inst_bed",
+          "name": "Bedroom TV",
+          "platform": "roku",
+          "state": "idle",
+          "presence": "online",
+          "isCurrent": false,
+          "capabilities": [
+            "play.title",
+            "playback.pause_resume"
+          ]
+        },
+        {
+          "id": "inst_gone",
+          "name": "Old Roku",
+          "platform": "roku",
+          "state": "revoked",
+          "presence": "online",
+          "isCurrent": false,
+          "capabilities": [
+            "play.title",
+            "playback.pause_resume"
+          ]
+        },
+        {
+          "id": "inst_web",
+          "name": "Kitchen browser",
+          "platform": "web",
+          "state": "paused",
+          "presence": "online",
+          "isCurrent": false,
+          "capabilities": [
+            "play.title",
+            "playback.pause_resume"
+          ]
+        }
+      ],
+      "currentId": "",
+      "expected": [
+        "inst_phone",
+        "inst_pc",
+        "inst_bed",
+        "inst_web"
+      ]
+    },
+    {
+      "name": "currentId removes a device that lost isCurrent",
+      "devices": [
+        {
+          "id": "inst_bed",
+          "name": "Bedroom TV",
+          "platform": "roku",
+          "state": "idle",
+          "presence": "online",
+          "isCurrent": false,
+          "capabilities": [
+            "play.title",
+            "playback.pause_resume"
+          ]
+        },
+        {
+          "id": "inst_pc",
+          "name": "Windows PC",
+          "platform": "windows",
+          "state": "idle",
+          "presence": "online",
+          "isCurrent": false,
+          "capabilities": [
+            "nav.dpad"
+          ]
+        }
+      ],
+      "currentId": "inst_bed",
+      "expected": [
+        "inst_pc"
+      ]
+    },
+    {
+      "name": "missing list",
+      "devices": null,
+      "currentId": "",
+      "expected": []
+    }
+  ],
+  "deviceRows": [
+    {
+      "name": "live tv",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": true,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_phone",
+            "name": "Arthur's iPhone",
+            "platform": "ios",
+            "state": "offline",
+            "presence": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "platform": "windows",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "nav.dpad"
+            ]
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "platform": "roku",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_gone",
+            "name": "Old Roku",
+            "platform": "roku",
+            "state": "revoked",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "platform": "web",
+            "state": "paused",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|live-na|Continue on another device isn't available for Live TV yet|||none|false|false|true",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "not signed in",
+      "ctx": {
+        "signedIn": false,
+        "fixture": false,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_phone",
+            "name": "Arthur's iPhone",
+            "platform": "ios",
+            "state": "offline",
+            "presence": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "platform": "windows",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "nav.dpad"
+            ]
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "platform": "roku",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_gone",
+            "name": "Old Roku",
+            "platform": "roku",
+            "state": "revoked",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "platform": "web",
+            "state": "paused",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|signin|Sign in to TVM to continue on another device.|||none|false|false|true",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "loading",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "loading",
+        "errorText": "",
+        "devices": [],
+        "currentId": "",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|loading|Looking for your devices...|||none|false|false|false",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "error",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "error",
+        "errorText": "Could not reach Core. Check the connection and retry.",
+        "devices": [],
+        "currentId": "",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|error|Could not reach Core. Check the connection and retry.|||none|false|false|true",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "online first, disabled last, no self or revoked",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_phone",
+            "name": "Arthur's iPhone",
+            "platform": "ios",
+            "state": "offline",
+            "presence": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "platform": "windows",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "nav.dpad"
+            ]
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "platform": "roku",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_gone",
+            "name": "Old Roku",
+            "platform": "roku",
+            "state": "revoked",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "platform": "web",
+            "state": "paused",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|dev:inst_bed|Bedroom TV||tv|chevron|true|false|false",
+        "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
+        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "only this device linked",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|none|No other devices are linked yet.|||none|false|false|true",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "sending shows state on the row",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_phone",
+            "name": "Arthur's iPhone",
+            "platform": "ios",
+            "state": "offline",
+            "presence": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "platform": "windows",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "nav.dpad"
+            ]
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "platform": "roku",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_gone",
+            "name": "Old Roku",
+            "platform": "roku",
+            "state": "revoked",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "platform": "web",
+            "state": "paused",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "sending",
+          "deviceId": "inst_bed",
+          "text": "Sending..."
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|dev:inst_bed|Bedroom TV|Sending...|tv|none|true|false|false",
+        "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
+        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "applied",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_phone",
+            "name": "Arthur's iPhone",
+            "platform": "ios",
+            "state": "offline",
+            "presence": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "platform": "windows",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "nav.dpad"
+            ]
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "platform": "roku",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_gone",
+            "name": "Old Roku",
+            "platform": "roku",
+            "state": "revoked",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "platform": "web",
+            "state": "paused",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "applied",
+          "deviceId": "inst_bed",
+          "text": "Playing on Bedroom TV"
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|dev:inst_bed|Bedroom TV|Playing on Bedroom TV|tv|none|true|false|false",
+        "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
+        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "failed keeps the row actionable",
+      "ctx": {
+        "signedIn": true,
+        "fixture": false,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "platform": "roku",
+            "state": "playing",
+            "presence": "online",
+            "isCurrent": true,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_phone",
+            "name": "Arthur's iPhone",
+            "platform": "ios",
+            "state": "offline",
+            "presence": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "platform": "windows",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "nav.dpad"
+            ]
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "platform": "roku",
+            "state": "idle",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_gone",
+            "name": "Old Roku",
+            "platform": "roku",
+            "state": "revoked",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "platform": "web",
+            "state": "paused",
+            "presence": "online",
+            "isCurrent": false,
+            "capabilities": [
+              "play.title",
+              "playback.pause_resume"
+            ]
+          }
+        ],
+        "currentId": "",
+        "handoff": {
+          "phase": "failed",
+          "deviceId": "inst_bed",
+          "text": "The device is offline"
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|||none|false|false|false",
+        "row|dev:inst_bed|Bedroom TV|The device is offline|tv|chevron|true|false|false",
+        "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
+        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    },
+    {
+      "name": "demo data labels rows",
+      "ctx": {
+        "signedIn": true,
+        "fixture": true,
+        "live": false,
+        "status": "ok",
+        "errorText": "",
+        "devices": [
+          {
+            "id": "inst_living",
+            "name": "Living Room Roku",
+            "room": "Living room",
+            "platform": "roku",
+            "model": "Ultra",
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 0,
+            "createdAt": "2026-10-01T10:00:00.000Z",
+            "lastSeenAt": "2026-11-17T19:59:50.000Z",
+            "lastSeenAgeSec": 10,
+            "presence": "online",
+            "state": "playing",
+            "isCurrent": true,
+            "capabilities": [
+              "playback.pause_resume",
+              "playback.seek",
+              "playback.skip",
+              "nav.dpad",
+              "nav.select",
+              "nav.back",
+              "play.title",
+              "handoff.send",
+              "input.physical"
+            ],
+            "physicalInput": true,
+            "nowPlaying": {
+              "mediaId": "tt23289160",
+              "title": "Godzilla Minus One",
+              "artworkUrl": "https://images.metahub.space/background/large/tt23289160/img",
+              "positionSec": 1457,
+              "durationSec": 7500,
+              "profileId": "p_demo"
+            }
+          },
+          {
+            "id": "inst_bed",
+            "name": "Bedroom TV",
+            "room": "Bedroom",
+            "platform": "roku",
+            "model": "Streaming Stick",
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 1,
+            "createdAt": "2026-10-02T10:00:00.000Z",
+            "lastSeenAt": "2026-11-17T19:59:40.000Z",
+            "lastSeenAgeSec": 20,
+            "presence": "online",
+            "state": "playing",
+            "isCurrent": false,
+            "capabilities": [
+              "playback.pause_resume",
+              "playback.seek",
+              "playback.skip",
+              "nav.dpad",
+              "nav.select",
+              "nav.back",
+              "play.title",
+              "input.physical"
+            ],
+            "physicalInput": true,
+            "nowPlaying": {
+              "mediaId": "tt23289160",
+              "title": "Godzilla Minus One",
+              "artworkUrl": "https://images.metahub.space/background/large/tt23289160/img",
+              "positionSec": 1457,
+              "durationSec": 7500,
+              "profileId": "p_demo"
+            }
+          },
+          {
+            "id": "inst_iphone",
+            "name": "Arthur's iPhone",
+            "room": null,
+            "platform": "ios",
+            "model": "iPhone",
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 2,
+            "createdAt": "2026-10-03T10:00:00.000Z",
+            "lastSeenAt": "2026-11-16T09:12:00.000Z",
+            "lastSeenAgeSec": 125280,
+            "presence": "offline",
+            "state": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "handoff.send",
+              "handoff.receive"
+            ],
+            "physicalInput": false,
+            "nowPlaying": null
+          },
+          {
+            "id": "inst_pc",
+            "name": "Windows PC",
+            "room": "Office",
+            "platform": "windows",
+            "model": null,
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 3,
+            "createdAt": "2026-10-04T10:00:00.000Z",
+            "lastSeenAt": "2026-11-17T19:59:30.000Z",
+            "lastSeenAgeSec": 30,
+            "presence": "online",
+            "state": "idle",
+            "isCurrent": false,
+            "capabilities": [
+              "playback.pause_resume",
+              "nav.dpad",
+              "nav.select",
+              "nav.back",
+              "input.physical"
+            ],
+            "physicalInput": true,
+            "nowPlaying": null
+          },
+          {
+            "id": "inst_web",
+            "name": "Kitchen browser",
+            "room": "Kitchen",
+            "platform": "web",
+            "model": null,
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 4,
+            "createdAt": "2026-10-05T10:00:00.000Z",
+            "lastSeenAt": "2026-11-17T19:59:55.000Z",
+            "lastSeenAgeSec": 5,
+            "presence": "online",
+            "state": "paused",
+            "isCurrent": false,
+            "capabilities": [
+              "playback.pause_resume",
+              "playback.seek"
+            ],
+            "physicalInput": true,
+            "nowPlaying": {
+              "restricted": true
+            }
+          },
+          {
+            "id": "inst_tab",
+            "name": "Arthur's very long named Galaxy Tab in the study",
+            "room": null,
+            "platform": "android",
+            "model": "Tab",
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 5,
+            "createdAt": "2026-10-06T10:00:00.000Z",
+            "lastSeenAt": "2026-11-17T19:30:00.000Z",
+            "lastSeenAgeSec": 1800,
+            "presence": "offline",
+            "state": "offline",
+            "isCurrent": false,
+            "capabilities": [
+              "handoff.receive"
+            ],
+            "physicalInput": false,
+            "nowPlaying": null
+          },
+          {
+            "id": "inst_att",
+            "name": "Basement TV",
+            "room": "Basement",
+            "platform": "android-tv",
+            "model": null,
+            "appVersion": "1.0.0",
+            "build": "demo",
+            "slot": 6,
+            "createdAt": "2026-10-07T10:00:00.000Z",
+            "lastSeenAt": null,
+            "lastSeenAgeSec": null,
+            "presence": "offline",
+            "state": "unknown",
+            "isCurrent": false,
+            "capabilities": [],
+            "physicalInput": false,
+            "nowPlaying": null
+          }
+        ],
+        "currentId": "inst_living",
+        "handoff": {
+          "phase": "idle",
+          "deviceId": "",
+          "text": ""
+        }
+      },
+      "expected": [
+        "header|devices-head|Continue on|Demo data||none|false|false|false",
+        "row|dev:inst_bed|Bedroom TV|Demo|tv|chevron|true|false|false",
+        "row|dev:inst_iphone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
+        "row|dev:inst_web|Kitchen browser|Can't play titles|web|none|false|false|false",
+        "row|dev:inst_tab|Arthur's very long named Galaxy Tab in the study|Offline|phone|none|false|false|false",
+        "row|dev:inst_att|Basement TV|Offline|tv|none|false|false|false",
+        "row|hub|Open TVM Hub||dots|chevron|true|false|false"
+      ]
+    }
+  ],
+  "handoff": [
+    {
+      "name": "happy path",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "pending"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "Received",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "applied"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "Playing on Bedroom TV",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "statuses are monotonic",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "Received",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "pending"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "applied"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "Playing on Bedroom TV",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "applied is terminal",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "applied"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "Playing on Bedroom TV",
+            "final": true,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "rejected",
+            "reason": "not_ready"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "timeout"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "rejected after accepted",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "Received",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "rejected",
+            "reason": "not_ready"
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "Nothing is ready to control there",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "timed out by Core",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "timed_out"
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "No response in time",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "client timeout",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "Received",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "timeout"
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "No response in time",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "send error offline",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "sendError",
+            "statusCode": 409,
+            "error": "target_offline"
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "The device is offline",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "send error no network",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "sendError",
+            "statusCode": 0,
+            "error": "timeout"
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "Could not reach Core",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "poll 404 fails, other poll errors keep polling",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "pollError",
+            "statusCode": 500
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "pollError",
+            "statusCode": 0
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "pollError",
+            "statusCode": 404
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "The device said no",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "a second start while in flight is ignored",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "Received",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "retry after failure",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "rejected",
+            "reason": "unsupported"
+          },
+          "expected": {
+            "phase": "failed",
+            "text": "That device cannot do this",
+            "final": true,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "applied"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "Playing on Bedroom TV",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "events without a start are ignored",
+      "fixture": false,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "status",
+            "status": "applied"
+          },
+          "expected": {
+            "phase": "idle",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        },
+        {
+          "event": {
+            "kind": "timeout"
+          },
+          "expected": {
+            "phase": "idle",
+            "text": "",
+            "final": false,
+            "changed": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "demo wording",
+      "fixture": true,
+      "deviceName": "Bedroom TV",
+      "steps": [
+        {
+          "event": {
+            "kind": "start"
+          },
+          "expected": {
+            "phase": "sending",
+            "text": "Sending...",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "accepted"
+          },
+          "expected": {
+            "phase": "accepted",
+            "text": "Received",
+            "final": false,
+            "changed": true
+          }
+        },
+        {
+          "event": {
+            "kind": "status",
+            "status": "applied"
+          },
+          "expected": {
+            "phase": "applied",
+            "text": "Demo: playing on Bedroom TV",
+            "final": true,
+            "changed": true
+          }
+        }
+      ]
+    }
+  ],
+  "fixtureStatus": [
+    {
+      "ms": 0,
+      "expected": "pending"
+    },
+    {
+      "ms": 100,
+      "expected": "pending"
+    },
+    {
+      "ms": 499,
+      "expected": "pending"
+    },
+    {
+      "ms": 500,
+      "expected": "accepted"
+    },
+    {
+      "ms": 1499,
+      "expected": "accepted"
+    },
+    {
+      "ms": 1500,
+      "expected": "applied"
+    },
+    {
+      "ms": 9000,
+      "expected": "applied"
+    }
+  ],
+  "handoffBody": [
+    {
+      "name": "floors the position",
+      "key": "roku-1-1",
+      "target": "inst_bed",
+      "mediaId": "tt0111161",
+      "position": 1457.9,
+      "expected": {
+        "v": 1,
+        "idempotencyKey": "roku-1-1",
+        "target": "inst_bed",
+        "action": "play.title",
+        "ttlSec": 30,
+        "payload": {
+          "mediaId": "tt0111161",
+          "positionSec": 1457
+        }
+      }
+    },
+    {
+      "name": "episode id and zero",
+      "key": "roku-2-2",
+      "target": "inst_bed",
+      "mediaId": "tt0944947:1:2",
+      "position": 0,
+      "expected": {
+        "v": 1,
+        "idempotencyKey": "roku-2-2",
+        "target": "inst_bed",
+        "action": "play.title",
+        "ttlSec": 30,
+        "payload": {
+          "mediaId": "tt0944947:1:2",
+          "positionSec": 0
+        }
+      }
+    },
+    {
+      "name": "negative clamps to zero",
+      "key": "roku-3-3",
+      "target": "inst_x",
+      "mediaId": "tt1",
+      "position": -4,
+      "expected": {
+        "v": 1,
+        "idempotencyKey": "roku-3-3",
+        "target": "inst_x",
+        "action": "play.title",
+        "ttlSec": 30,
+        "payload": {
+          "mediaId": "tt1",
+          "positionSec": 0
+        }
+      }
+    }
+  ],
+  "moveFocus": [
+    {
+      "name": "down skips nothing between rows",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "index": 1,
+      "intent": "down",
+      "expected": {
+        "index": 2,
+        "edge": ""
+      }
+    },
+    {
+      "name": "down skips the next header",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "index": 3,
+      "intent": "down",
+      "expected": {
+        "index": 5,
+        "edge": ""
+      }
+    },
+    {
+      "name": "down stops at the last focusable row (info is skipped)",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "index": 7,
+      "intent": "down",
+      "expected": {
+        "index": 7,
+        "edge": ""
+      }
+    },
+    {
+      "name": "up skips headers",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "index": 5,
+      "intent": "up",
+      "expected": {
+        "index": 3,
+        "edge": ""
+      }
+    },
+    {
+      "name": "up from the first focusable row leaves to the tabs",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "index": 1,
+      "intent": "up",
+      "expected": {
+        "index": 1,
+        "edge": "top"
+      }
+    },
+    {
+      "name": "left and right never move",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "index": 2,
+      "intent": "left",
+      "expected": {
+        "index": 2,
+        "edge": ""
+      }
+    },
+    {
+      "name": "devices list down",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "devices-head",
+          "label": "Continue on",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "dev:inst_bed",
+          "label": "Bedroom TV",
+          "detail": "",
+          "glyph": "tv",
+          "trailing": "chevron",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "dev:inst_web",
+          "label": "Kitchen browser",
+          "detail": "",
+          "glyph": "web",
+          "trailing": "chevron",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "dev:inst_phone",
+          "label": "Arthur's iPhone",
+          "detail": "Offline",
+          "glyph": "phone",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "dev:inst_pc",
+          "label": "Windows PC",
+          "detail": "Can't play titles",
+          "glyph": "laptop",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "hub",
+          "label": "Open TVM Hub",
+          "detail": "",
+          "glyph": "dots",
+          "trailing": "chevron",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        }
+      ],
+      "index": 1,
+      "intent": "down",
+      "expected": {
+        "index": 2,
+        "edge": ""
+      }
+    }
+  ],
+  "indexOfId": [
+    {
+      "name": "found",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "id": "audio:2",
+      "expected": 2
+    },
+    {
+      "name": "missing falls back to the first focusable",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "id": "audio:99",
+      "expected": 1
+    },
+    {
+      "name": "a header id is not focusable",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "id": "subs-head",
+      "expected": 1
+    },
+    {
+      "name": "empty id",
+      "rows": [
+        {
+          "kind": "header",
+          "id": "audio-head",
+          "label": "Audio",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:1",
+          "label": "English - Dolby Digital",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:2",
+          "label": "English (Commentary)",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "audio:3",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "header",
+          "id": "subs-head",
+          "label": "Subtitles",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:off",
+          "label": "Off",
+          "detail": "",
+          "glyph": "",
+          "trailing": "check",
+          "enabled": true,
+          "checked": true,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:eng-1",
+          "label": "English CC",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "row",
+          "id": "sub:spa-1",
+          "label": "Spanish",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": true,
+          "checked": false,
+          "small": false
+        },
+        {
+          "kind": "info",
+          "id": "caption-style",
+          "label": "Caption style: Roku Settings › Accessibility",
+          "detail": "",
+          "glyph": "",
+          "trailing": "none",
+          "enabled": false,
+          "checked": false,
+          "small": true
+        }
+      ],
+      "id": "",
+      "expected": 1
+    }
+  ],
+  "autoClose": [
+    {
+      "idleMs": 0,
+      "phase": "idle",
+      "expected": false
+    },
+    {
+      "idleMs": 9999,
+      "phase": "idle",
+      "expected": false
+    },
+    {
+      "idleMs": 10000,
+      "phase": "idle",
+      "expected": true
+    },
+    {
+      "idleMs": 30000,
+      "phase": "applied",
+      "expected": true
+    },
+    {
+      "idleMs": 30000,
+      "phase": "failed",
+      "expected": true
+    },
+    {
+      "idleMs": 30000,
+      "phase": "sending",
+      "expected": false
+    },
+    {
+      "idleMs": 30000,
+      "phase": "accepted",
+      "expected": false
+    }
+  ]
+}

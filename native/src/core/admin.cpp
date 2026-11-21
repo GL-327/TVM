@@ -16,8 +16,8 @@ namespace tvm::admin {
 namespace {
 
 // devUnlock.ts: the salt and digest are public by design; the code itself is in no repository.
-constexpr char kPbkdf2Salt[] = "7318f8167254137fe74ca4b6682c1aaa";
-constexpr char kPbkdf2Hash[] = "8e144ed529289b3b617e50ee6c4f0ffb3e9890a1bbd224fb2a339cac7aaabca2";
+constexpr char kPbkdf2Salt[] = "27d2bd86ac0ed42eaf21ac5744bcb4e3";
+constexpr char kPbkdf2Hash[] = "45d072775474c40a8c97c4329cdf0ad65ea2884a9b8a512fe215b853bee7cfac";
 constexpr unsigned long kPbkdf2Iterations = 600000;
 constexpr char kDevAccountId[] = "acc_dev";
 

@@ -95,6 +95,16 @@ double PageScreen::MaxScroll() const {
 void PageScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
+    const Box viewport{0.0, 0.0, width_, height_};
+    painter.SetBackdrop(viewport, "asset:lighthouse.jpg", 0.5, 0.2);
+    const bool isLight = (tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b) > 1.5;
+    if (!isLight && !tokens::reduceTransparency) {
+        painter.ImageFaded(viewport, "asset:lighthouse.jpg", 0.0, 0.14, 0.5, 0.2);
+        painter.FillLinearGradient(viewport, 0.0, 0.0, 0.0, height_,
+                                   {GradientStop{0.0, Rgb(0x071018, 0.86)},
+                                    GradientStop{0.5, Rgb(0x071018, 0.91)},
+                                    GradientStop{1.0, Rgb(0x071018, 0.95)}});
+    }
     PaintContent(painter, scroll_);
     for (const PageButton& button : Buttons()) {
         const Box box = Shifted(button.box, scroll_);
@@ -104,7 +114,12 @@ void PageScreen::Paint(Painter& painter) const {
             PaintCustom(painter, button, box, focused);
         } else if (button.disabled) {
             // A disabled button is drawn quiet, and the focus passes it by.
-            painter.FillRoundRect(box, box.height / 2.0, WithAlphaOf(tokens::kSurface, 0.6));
+            GlassStyle disabledGlass;
+            disabledGlass.kind = GlassKind::Pill;
+            disabledGlass.disabled = true;
+            disabledGlass.reduceTransparency = tokens::reduceTransparency;
+            disabledGlass.tint = tokens::kSurface;
+            painter.Glass(box, box.height / 2.0, disabledGlass);
             const TextStyle style{Rem(kButtonLabelRem), true};
             const double width = painter.MeasureText(button.label, style);
             painter.Text(Box{box.CenterX() - width / 2.0, box.y, width + 2.0, box.height}, button.label, style,
@@ -703,7 +718,11 @@ void UpdatesScreen::PaintContent(Painter& painter, double scroll) const {
     double top = Rem(kRowsTopRem) - scroll;
     for (const auto& [label, value] : rows) {
         const Box row{x, top, width, Rem(kRowHeightRem)};
-        painter.FillRoundRect(row, Rem(0.5), tokens::kSurface);
+        GlassStyle rowGlass;
+        rowGlass.kind = GlassKind::Panel;
+        rowGlass.reduceTransparency = tokens::reduceTransparency;
+        rowGlass.tint = tokens::kSurface;
+        painter.Glass(row, Rem(0.65), rowGlass);
         painter.Text(Box{row.x + Rem(1.0), row.y, Rem(16.0), row.height}, label, TextStyle{Rem(1.0625), false},
                      tokens::kTextMuted);
         painter.Text(Box{row.x + Rem(16.0), row.y, row.width - Rem(17.0), row.height}, value, TextStyle{Rem(1.0625), false},
@@ -892,8 +911,15 @@ void InfoScreen::PaintContent(Painter& painter, double scroll) const {
         const double top = fieldTop_ - scroll;
         painter.Text(Box{x, top, widthPx, Rem(1.4)}, view_.fieldLabel, TextStyle{Rem(0.9), true, 600}, tokens::kTextMuted);
         const Box box{x, top + Rem(1.6), std::min(widthPx, Rem(36.0)), Rem(3.0)};
-        painter.FillRoundRect(box, Rem(0.6), tokens::kSurface);
-        painter.StrokeRoundRect(box, Rem(0.6), Rem(kFocusRingWidthRem), tokens::kFocusRing);
+        GlassStyle fieldGlass;
+        fieldGlass.kind = GlassKind::Panel;
+        fieldGlass.focused = true;
+        fieldGlass.focusAmount = 1.0;
+        fieldGlass.reduceTransparency = tokens::reduceTransparency;
+        fieldGlass.tint = tokens::kSurface;
+        fieldGlass.ringWidth = Rem(kFocusRingWidthRem);
+        fieldGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(box, Rem(0.75), fieldGlass);
         const TextStyle style{Rem(1.15), false, 500};
         // A secret is shown as dots, as a password field is.
         std::string shown = fieldText_;
@@ -942,13 +968,18 @@ void InfoScreen::PaintContent(Painter& painter, double scroll) const {
             }
             break;
         }
-        case InfoBlock::Kind::Row:
-            painter.FillRoundRect(box, Rem(0.5), tokens::kSurface);
+        case InfoBlock::Kind::Row: {
+            GlassStyle rowGlass;
+            rowGlass.kind = GlassKind::Panel;
+            rowGlass.reduceTransparency = tokens::reduceTransparency;
+            rowGlass.tint = tokens::kSurface;
+            painter.Glass(box, Rem(0.65), rowGlass);
             painter.Text(Box{box.x + Rem(1.0), box.y, Rem(16.0), box.height}, block.text, TextStyle{Rem(1.0), false},
                          tokens::kTextMuted);
             painter.Text(Box{box.x + Rem(17.0), box.y, box.width - Rem(18.0), box.height}, block.value,
                          TextStyle{Rem(1.0), false}, block.bad || block.good ? tone : tokens::kText);
             break;
+        }
         case InfoBlock::Kind::Rule:
             painter.FillRoundRect(Box{box.x, box.CenterY(), box.width, 1.0}, 0.0, tokens::kBorderSoft);
             break;

@@ -157,6 +157,7 @@ std::string XtreamScreen::LabelOf(const std::string& key) const {
 void XtreamScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
+    painter.SetBackdrop(Box{0.0, 0.0, width_, height_}, "asset:lighthouse.jpg", 0.5, 0.2);
 
     const double x = metrics.Rem(kSafeXRem);
     const double kickerY = metrics.Rem(kSafeYRem);
@@ -178,13 +179,17 @@ void XtreamScreen::Paint(Painter& painter) const {
         const Box row = field ? *BoxOf(key)
                               : Box{x, kickerY + metrics.Rem(RowTopRem(key)), contentWidth, metrics.Rem(kRowHeightRem)};
         const bool focused = field && focused_ == key;
-        painter.FillRoundRect(row, metrics.Rem(kRowRadiusRem), focused ? tokens::kSurfaceHover : tokens::kSurface);
-        if (focused) {
-            const double ringWidth = metrics.Rem(kFocusRingWidthRem);
-            const double outset = metrics.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-            const Box ring{row.x - outset, row.y - outset, row.width + 2.0 * outset, row.height + 2.0 * outset};
-            painter.StrokeRoundRect(ring, metrics.Rem(kRowRadiusRem) + outset, ringWidth, tokens::kFocusRing);
-        }
+        const double ringWidth = metrics.Rem(kFocusRingWidthRem);
+        GlassStyle rowGlass;
+        rowGlass.kind = GlassKind::Panel;
+        rowGlass.focused = focused;
+        rowGlass.focusAmount = focused ? 1.0 : 0.0;
+        rowGlass.reduceTransparency = tokens::reduceTransparency;
+        rowGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
+        rowGlass.ringWidth = ringWidth;
+        rowGlass.ringOutset = metrics.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
+        rowGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(row, metrics.Rem(kRowRadiusRem), rowGlass);
 
         painter.Text(Box{row.x + metrics.Rem(1.0), row.y, metrics.Rem(kRowLabelWidthRem), row.height}, facts[i].first,
                      TextStyle{metrics.Rem(1.0625), false}, focused ? tokens::kText : tokens::kTextMuted);

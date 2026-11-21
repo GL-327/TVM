@@ -26,7 +26,7 @@ bool PrefersReducedMotion(const MotionSettings& settings) {
 
 MotionTokens ResolveMotionTokens(const MotionSettings& settings) {
     if (PrefersReducedMotion(settings)) return {1.0, 1.0, 1.0};
-    return {140.0, 200.0, 260.0};
+    return {150.0, 220.0, 260.0};
 }
 
 double GlassSweepMs(const MotionSettings& settings) {

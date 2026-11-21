@@ -388,49 +388,77 @@ void SettingsScreen::AnimateScroll(const ScrollSurface& surface, double target, 
 void SettingsScreen::Paint(Painter& painter) const {
     painter.Clear(tokens::kBackground);
 
+    const Box viewport{0.0, 0.0, width_, height_};
+    painter.SetBackdrop(viewport, "asset:lighthouse.jpg", 0.5, 0.2);
+    const bool isLight = (tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b) > 1.5;
+    if (!isLight && !tokens::reduceTransparency) {
+        painter.ImageFaded(viewport, "asset:lighthouse.jpg", 0.0, 0.14, 0.5, 0.2);
+        painter.FillLinearGradient(viewport, 0.0, 0.0, 0.0, height_,
+                                   {GradientStop{0.0, Rgb(0x071018, 0.86)},
+                                    GradientStop{0.5, Rgb(0x071018, 0.91)},
+                                    GradientStop{1.0, Rgb(0x071018, 0.95)}});
+    }
+
     const double x = metrics_.Rem(kSafeXRem);
     const double headerY = metrics_.Rem(kSafeYRem) - pageScroll_;
-    painter.Text(Box{x, headerY, width_ - 2.0 * x, metrics_.Rem(1.0)}, "Device and services",
-                 TextStyle{metrics_.Rem(0.8125), false}, tokens::kTextFaint);
-    // Tall enough for the descenders, which the text clip would otherwise cut.
-    painter.Text(Box{x, headerY + metrics_.Rem(1.0), width_ - 2.0 * x, metrics_.Rem(3.25)}, "Settings",
-                 TextStyle{metrics_.Rem(2.75), true}, tokens::kText);
+    painter.Text(Box{x, headerY, width_ - 2.0 * x, metrics_.Rem(1.1)}, "Device and services",
+                 TextStyle{metrics_.Rem(0.875), true, 600}, tokens::kTextFaint);
+    // 48px Bold Screen Title at 1080p (3.0rem).
+    painter.Text(Box{x, headerY + metrics_.Rem(1.1), width_ - 2.0 * x, metrics_.Rem(3.5)}, "Settings",
+                 TextStyle{metrics_.Rem(3.0), true, 700}, tokens::kText);
 
     const double ringWidth = metrics_.Rem(kFocusRingWidthRem);
-    const double radius = metrics_.Rem(0.5);
+    const double radius = metrics_.Rem(0.875);
     for (std::size_t i = 0; i < rows_.size(); ++i) {
         const Row& row = rows_[i];
         if (row.kind == RowKind::Group) {
             const double groupY = row.top - pageScroll_;
+            if (groupY + row.height < 0.0 || groupY > height_) continue;
             painter.Text(Box{x, groupY, width_ - 2.0 * x, row.height}, row.label,
-                         TextStyle{metrics_.Rem(kGroupTitleRem), true}, tokens::kTextFaint);
+                         TextStyle{metrics_.Rem(kGroupTitleRem), true, 650}, tokens::kTextMuted);
             continue;
         }
 
         const Box box = ScreenBox(row);
+        if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
         const bool focused = focus_ == std::optional<std::size_t>(i);
-        painter.FillRoundRect(box, radius, focused ? tokens::kSurfaceHover : tokens::kSurface);
-        if (focused) {
-            const double outset = metrics_.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-            const Box ring{box.x - outset, box.y - outset, box.width + 2.0 * outset, box.height + 2.0 * outset};
-            painter.StrokeRoundRect(ring, radius + outset, ringWidth, tokens::kFocusRing);
-        }
+        const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.15) : 0.0;
+        const Box drawnBox{box.x, box.y - lift, box.width, box.height};
 
-        // Info rows are not choices, so they read as quieter text.
-        const Color labelColor = focused ? tokens::kText : tokens::kTextMuted;
+        GlassStyle rowGlass;
+        rowGlass.kind = GlassKind::Panel;
+        rowGlass.focused = focused;
+        rowGlass.focusAmount = focused ? 1.0 : 0.0;
+        rowGlass.reduceTransparency = tokens::reduceTransparency;
+        rowGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
+        rowGlass.ringWidth = ringWidth;
+        rowGlass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
+        rowGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(drawnBox, radius, rowGlass);
+
+        // High-contrast label and value colours so every setting reads clearly over the dark glass rows.
+        const Color labelColor = focused ? tokens::kText : Mix(tokens::kTextMuted, tokens::kText, 0.55);
+        const Color detailColor = focused ? tokens::kText : tokens::kTextMuted;
         if (CompactViewport(width_, height_)) {
-            const double inset = metrics_.Rem(1.0);
-            painter.Text(Box{box.x + inset, box.y, box.width - 2.0 * inset, box.height * 0.5}, row.label,
-                         TextStyle{metrics_.Rem(1.0625), false}, labelColor);
-            painter.Text(Box{box.x + inset, box.y + box.height * 0.5, box.width - 2.0 * inset, box.height * 0.5}, row.detail,
-                         TextStyle{metrics_.Rem(0.9375), false}, tokens::kTextFaint);
+            const double inset = metrics_.Rem(1.1);
+            painter.Text(Box{drawnBox.x + inset, drawnBox.y, drawnBox.width - 2.0 * inset, drawnBox.height * 0.5},
+                         row.label, TextStyle{metrics_.Rem(1.125), focused, focused ? 600 : 450}, labelColor);
+            painter.Text(Box{drawnBox.x + inset, drawnBox.y + drawnBox.height * 0.5,
+                             drawnBox.width - 2.0 * inset, drawnBox.height * 0.5},
+                         row.detail, TextStyle{metrics_.Rem(0.95), false}, detailColor);
             continue;
         }
-        const double labelWidth = box.width * 0.55;
-        painter.Text(Box{box.x + metrics_.Rem(1.0), box.y, labelWidth, box.height}, row.label,
-                     TextStyle{metrics_.Rem(1.0625), false}, labelColor);
-        painter.Text(Box{box.x + labelWidth, box.y, box.width - labelWidth - metrics_.Rem(1.0), box.height},
-                     row.detail, TextStyle{metrics_.Rem(0.9375), false}, tokens::kTextFaint);
+        const double labelWidth = drawnBox.width * 0.52;
+        painter.Text(Box{drawnBox.x + metrics_.Rem(1.25), drawnBox.y, labelWidth, drawnBox.height}, row.label,
+                     TextStyle{metrics_.Rem(1.1875), focused, focused ? 600 : 450}, labelColor);
+        painter.Text(Box{drawnBox.x + labelWidth, drawnBox.y,
+                         drawnBox.width - labelWidth - metrics_.Rem(2.5), drawnBox.height},
+                     row.detail, TextStyle{metrics_.Rem(1.0), false}, detailColor);
+        if (row.kind == RowKind::Push) {
+            const double chev = metrics_.Rem(0.95);
+            painter.Path(Box{drawnBox.Right() - metrics_.Rem(1.8), drawnBox.CenterY() - chev / 2.0, chev, chev}, 32.0,
+                         "m12 7 9 9-9 9", PathStyle{Color{0, 0, 0, 0}, detailColor, 2.6, false});
+        }
     }
 }
 

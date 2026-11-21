@@ -19,6 +19,8 @@ public:
                ImageCache* images = nullptr);
 
     void Clear(ui::Color color) override;
+    void SetBackdrop(const ui::Box& box, const std::string& url, double focusX = 0.7, double focusY = 0.2) override;
+    void Glass(const ui::Box& box, double radius, const ui::GlassStyle& style = {}) override;
     void FillRoundRect(const ui::Box& box, double radius, ui::Color color) override;
     void StrokeRoundRect(const ui::Box& box, double radius, double width, ui::Color color) override;
     bool Image(const ui::Box& box, const std::string& url, double radius) override;
@@ -39,16 +41,27 @@ public:
     void PopClip() override;
 
 private:
-    ComPtr<ID2D1SolidColorBrush> Brush(ui::Color color);
+    ID2D1SolidColorBrush* Brush(ui::Color color);
     ComPtr<ID2D1GradientStopCollection> Stops(const std::vector<ui::GradientStop>& stops);
     // The closed outline through `points`, or nothing when there are fewer than three points.
     ComPtr<ID2D1PathGeometry> Polygon(const std::vector<ui::Point>& points);
+    std::optional<paths::fs::path> ResolveFile(const std::string& url) const;
 
     ID2D1RenderTarget* target_;
     Graphics& graphics_;
     ArtworkStore* artwork_;
     ImageCache* images_;
+    ComPtr<ID2D1SolidColorBrush> solidBrush_;
     int clipDepth_ = 0;
+    ui::Box backdropBox_{};
+    std::string backdropUrl_;
+    double backdropFocusX_ = 0.7;
+    double backdropFocusY_ = 0.2;
+    ID2D1Bitmap* backdropBitmap_ = nullptr;
+    ComPtr<ID2D1BitmapBrush> backdropBrush_;
+    double backdropScale_ = 1.0;
+    double backdropOffsetX_ = 0.0;
+    double backdropOffsetY_ = 0.0;
 };
 
 }  // namespace tvm::platform

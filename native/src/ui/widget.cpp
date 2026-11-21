@@ -9,11 +9,13 @@ namespace {
 // Line height of headings, as a multiple of the font size.
 constexpr double kHeadingLineHeight = 1.4;
 constexpr double kCardTitleRem = 1.0625;
-constexpr double kPosterRadiusRem = 0.875;
-constexpr double kRailClipPaddingRem = 0.875;
-// The bar showing how much of a title is watched, along the foot of the poster.
+constexpr double kPosterRadiusRem = 1.125;  // 18px at 1080p (36 Roku canvas units)
+constexpr double kRailClipPaddingRem = 1.25;
+// The bar showing how much of a title is watched, inset inside the foot of the card.
 constexpr double kProgressBarRem = 0.25;
-constexpr Color kProgressTrack = Rgb(0x000000, 0.6);
+constexpr double kProgressInsetXRem = 1.0;
+constexpr double kProgressInsetBottomRem = 0.85;
+constexpr Color kProgressTrack = Rgb(0xFFFFFF, 0.26);
 
 }  // namespace
 
@@ -46,7 +48,14 @@ void Stack::Arrange(const Box& box, const Metrics& metrics) {
 }
 
 void Stack::Paint(Painter& painter, const Metrics& metrics) const {
-    for (const auto& child : children_) child->Paint(painter, metrics);
+    // Viewport frustum culling: window height is 67.5rem, so skip sections completely above or below the viewport.
+    const double minVisibleY = -metrics.Rem(6.0);
+    const double maxVisibleY = metrics.Rem(74.0);
+    for (const auto& child : children_) {
+        const Box& cb = child->box();
+        if (cb.Bottom() < minVisibleY || cb.y > maxVisibleY) continue;
+        child->Paint(painter, metrics);
+    }
 }
 
 // ------------------------------------------------------------------- Rail
@@ -93,7 +102,11 @@ void Rail::Paint(Painter& painter, const Metrics& metrics) const {
     // its ring sits just outside it, and neither may be cut off.
     const double pad = metrics.Rem(kRailClipPaddingRem);
     painter.PushClip(Box{box_.x, box_.y - pad, box_.width, box_.height + 2.0 * pad});
-    for (const auto& child : children_) child->Paint(painter, metrics);
+    for (const auto& child : children_) {
+        const Box& cb = child->box();
+        if (cb.Right() < box_.x - pad || cb.x > box_.Right() + pad) continue;
+        child->Paint(painter, metrics);
+    }
     painter.PopClip();
 }
 
@@ -108,12 +121,15 @@ void Heading::Arrange(const Box& box, const Metrics& /*metrics*/) {
 }
 
 void Heading::Paint(Painter& painter, const Metrics& metrics) const {
-    painter.Text(box_, text_, TextStyle{metrics.Rem(sizeRem_), true}, tokens::kText);
+    painter.Text(box_, text_, TextStyle{metrics.Rem(sizeRem_), true, 650}, tokens::kText);
 }
 
 // ------------------------------------------------------------------- Card
 
 Size Card::Measure(double /*availableWidth*/, const Metrics& metrics) {
+    if (progress_.has_value()) {
+        return Size{metrics.Rem(kLandscapeWidthRem), metrics.Rem(kLandscapeHeightRem)};
+    }
     return Size{metrics.Rem(kPosterWidthRem),
                 metrics.Rem(kPosterHeightRem) + metrics.Rem(kCardLabelGapRem) + metrics.Rem(kCardLabelHeightRem)};
 }
@@ -124,48 +140,85 @@ void Card::Arrange(const Box& box, const Metrics& /*metrics*/) {
 
 void Card::Paint(Painter& painter, const Metrics& metrics) const {
     const double focus = std::clamp(focusAmount_, 0.0, 1.0);
-    const double posterHeight = metrics.Rem(kPosterHeightRem);
+    const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
+    const bool landscape = progress_.has_value();
+    const double artHeight = landscape ? box_.height : metrics.Rem(kPosterHeightRem);
     const double radius = metrics.Rem(kPosterRadiusRem);
 
-    // Focus grows the poster from its bottom edge and lifts it, as the web poster's transform does.
-    const double scale = 1.0 + (kPosterFocusScale - 1.0) * focus;
+    // Focus grows the card by 1.04 from its bottom edge and lifts it 6px (0.375rem at 1080p).
+    const double scale = 1.0 + (kPosterFocusScale - 1.0) * motionFocus;
     const double width = box_.width * scale;
-    const double height = posterHeight * scale;
-    const double bottom = box_.y + posterHeight - metrics.Rem(kPosterLiftRem) * focus;
+    const double height = artHeight * scale;
+    const double bottom = box_.y + artHeight - metrics.Rem(kPosterLiftRem) * motionFocus;
     const Box poster{box_.CenterX() - width / 2.0, bottom - height, width, height};
 
-    // The artwork covers the poster when it is loaded. Until then the poster is a placeholder.
-    if (posterUrl_.empty() || !painter.Image(poster, posterUrl_, radius)) {
-        painter.FillRoundRect(poster, radius, Mix(tokens::kSurface, tokens::kSurfaceHover, focus));
+    const bool hasArt = !posterUrl_.empty() && painter.Image(poster, posterUrl_, radius);
+
+    std::uint32_t hash = 2166136261u;
+    for (unsigned char c : (title_.empty() ? itemId_ : title_)) {
+        hash = (hash ^ c) * 16777619u;
     }
-    painter.StrokeRoundRect(poster, radius, 1.0, tokens::kBorderSoft);
+    static constexpr int kCinemaHues[] = {208, 186, 224, 34, 260, 196, 338, 172, 236, 20};
+
+    GlassStyle glass;
+    glass.kind = GlassKind::Card;
+    glass.focused = focused_;
+    glass.focusAmount = focus;
+    glass.reduceTransparency = tokens::reduceTransparency;
+    glass.rimOnly = hasArt;
+    glass.hue = hasArt ? -1 : kCinemaHues[hash % 10];
+    glass.tint = Mix(tokens::kSurface, tokens::kSurfaceHover, focus);
+    glass.border = tokens::kBorderSoft;
+    glass.ringColor = kPosterRing;
+    glass.ringWidth = metrics.Rem(kPosterRingWidthRem);
+    glass.ringOutset = metrics.Rem(kPosterRingOffsetRem) + glass.ringWidth / 2.0;
+    painter.Glass(poster, radius, glass);
 
     if (progress_.has_value()) {
+        // Continue Watching landscape card: title centred on placeholder or over bottom scrim, plus inset progress bar.
+        const TextStyle titleStyle{metrics.Rem(1.375), false, 500};
+        const double titleWidth = painter.MeasureText(title_, titleStyle);
+        if (!hasArt) {
+            const double tx = std::max(poster.x + metrics.Rem(1.0), poster.CenterX() - titleWidth / 2.0);
+            painter.Text(Box{tx, poster.y, std::max(0.0, poster.Right() - tx - metrics.Rem(1.0)), poster.height * 0.88},
+                         title_, titleStyle, Mix(tokens::kTextMuted, tokens::kText, focus));
+        } else {
+            // Subtle bottom scrim so the progress bar and title remain legible over bright frames.
+            const Box scrim{poster.x + 2.0, poster.Bottom() - poster.height * 0.36, poster.width - 4.0,
+                            poster.height * 0.36 - 2.0};
+            painter.FillLinearGradient(scrim, scrim.x, scrim.y, scrim.x, scrim.Bottom(),
+                                       {GradientStop{0.0, Rgb(0x000000, 0.0)},
+                                        GradientStop{1.0, Rgb(0x04080E, 0.68)}});
+            painter.Text(Box{poster.x + metrics.Rem(kProgressInsetXRem),
+                             poster.Bottom() - metrics.Rem(kProgressInsetBottomRem + 2.1),
+                             poster.width - 2.0 * metrics.Rem(kProgressInsetXRem), metrics.Rem(1.6)},
+                         title_, TextStyle{metrics.Rem(1.125), true, 600}, Rgb(0xF5F7FA, 0.92));
+        }
         const double barHeight = metrics.Rem(kProgressBarRem);
-        const Box track{poster.x, poster.Bottom() - barHeight, poster.width, barHeight};
-        painter.FillRoundRect(track, 0.0, kProgressTrack);
+        const double insetX = metrics.Rem(kProgressInsetXRem);
+        const double insetBottom = metrics.Rem(kProgressInsetBottomRem);
+        const Box track{poster.x + insetX, poster.Bottom() - insetBottom - barHeight,
+                        std::max(0.0, poster.width - 2.0 * insetX), barHeight};
+        painter.FillRoundRect(track, barHeight / 2.0, kProgressTrack);
         const double watched = std::clamp(*progress_, 0.0, 1.0);
-        painter.FillRoundRect(Box{track.x, track.y, track.width * watched, track.height}, 0.0, tokens::kText);
+        if (watched > 0.0) {
+            painter.FillRoundRect(Box{track.x, track.y, track.width * watched, track.height}, barHeight / 2.0,
+                                  Rgb(0xF5F7FA, 0.96));
+        }
+        return;
     }
 
-    // The outline is not eased: it is there as soon as the card has focus.
-    if (focused_) {
-        const double ringWidth = metrics.Rem(kPosterRingWidthRem);
-        const double outset = metrics.Rem(kPosterRingOffsetRem) + ringWidth / 2.0;
-        const Box ring{poster.x - outset, poster.y - outset, poster.width + 2.0 * outset, poster.height + 2.0 * outset};
-        painter.StrokeRoundRect(ring, radius + outset, ringWidth, kPosterRing);
-    }
-
-    const Box label{box_.x, box_.y + posterHeight + metrics.Rem(kCardLabelGapRem), box_.width,
+    const Box label{box_.x, box_.y + artHeight + metrics.Rem(kCardLabelGapRem), box_.width,
                     metrics.Rem(kCardLabelHeightRem)};
-    painter.Text(label, title_, TextStyle{metrics.Rem(kCardTitleRem), false}, Mix(tokens::kTextMuted, tokens::kText, focus));
+    painter.Text(label, title_, TextStyle{metrics.Rem(kCardTitleRem), false},
+                 Mix(tokens::kTextMuted, tokens::kText, focus));
 }
 
 void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const std::string& label, const ButtonLook& look) {
-    // The button scales about its centre, and its ring goes round the scaled shape, as the
-    // web outline does, since the outline is part of the element the transform moves.
+    // The button scales about its centre (1.06 on focus), and its glass rim and outer glow wrap the scaled shape.
     const double focus = std::clamp(look.focusAmount, 0.0, 1.0);
-    const double scale = 1.0 + (kFocusScale - 1.0) * focus;
+    const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
+    const double scale = 1.0 + (kFocusScale - 1.0) * motionFocus;
     const double width = box.width * scale;
     const double height = box.height * scale;
     const Box shape{box.CenterX() - width / 2.0, box.CenterY() - height / 2.0, width, height};
@@ -177,14 +230,18 @@ void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const 
     } else if (look.focused) {
         fill = tokens::kSurfaceHover;
     }
-    painter.FillRoundRect(shape, radius, fill);
 
-    if (look.focused) {
-        const double ringWidth = metrics.Rem(kFocusRingWidthRem);
-        const double outset = metrics.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-        const Box ring{shape.x - outset, shape.y - outset, shape.width + 2.0 * outset, shape.height + 2.0 * outset};
-        painter.StrokeRoundRect(ring, radius + outset, ringWidth, tokens::kFocusRing);
-    }
+    GlassStyle glass;
+    glass.kind = GlassKind::Pill;
+    glass.focused = look.focused;
+    glass.activeTab = look.primary;
+    glass.focusAmount = focus;
+    glass.reduceTransparency = tokens::reduceTransparency;
+    glass.tint = fill;
+    glass.ringWidth = metrics.Rem(kFocusRingWidthRem);
+    glass.ringOutset = metrics.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
+    glass.ringColor = tokens::kFocusRing;
+    painter.Glass(shape, radius, glass);
 
     const double pad = metrics.Rem(kButtonPadRem);
     painter.Text(Box{shape.x + pad, shape.y, shape.width - 2.0 * pad, shape.height}, label,

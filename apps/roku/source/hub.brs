@@ -27,7 +27,7 @@ function hubErrorText(kind as String) as String
 end function
 
 function hubCapabilities() as Object
-  return ["playback.pause_resume", "playback.seek", "playback.skip", "nav.dpad", "nav.select", "nav.back", "play.title", "input.physical"]
+  return ["playback.pause_resume", "playback.seek", "playback.skip", "nav.dpad", "nav.select", "nav.back", "play.title", "handoff.send", "input.physical"]
 end function
 
 function hubRegisterBody(clientId as String, name as String, model as String, appVersion as String, build as String) as String

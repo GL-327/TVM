@@ -178,10 +178,12 @@ TEST(right_and_left_wrap_along_a_rail) {
     REQUIRE(scene.Navigate(Direction::Right, 0.0));
     REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 1)));
     REQUIRE(scene.Navigate(Direction::Left, 0.0));
-    REQUIRE(scene.Navigate(Direction::Left, 0.0));  // 0 -> 4, wrapping at the start
-    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 4)));
-    REQUIRE(scene.Navigate(Direction::Right, 0.0));  // 4 -> 0, wrapping at the end
+    REQUIRE(!scene.Navigate(Direction::Left, 0.0));  // Hard stop at rail start (no wrapping)
     REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 0)));
+    for (int i = 0; i < 4; ++i) REQUIRE(scene.Navigate(Direction::Right, 0.0));
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 4)));
+    REQUIRE(!scene.Navigate(Direction::Right, 0.0));  // Hard stop at rail end (no wrapping)
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 4)));
 }
 
 TEST(down_moves_to_the_closest_card_in_the_next_rail) {
@@ -206,8 +208,8 @@ TEST(focus_fades_between_cards_on_the_timeline) {
     Scene scene = MakeScene(SmallRails());
     REQUIRE(scene.Navigate(Direction::Right, 0.0));
 
-    // A 200ms base token, as `.poster__art` uses: halfway through, the eased value is 0.9614 on the way in.
-    scene.Tick(100.0);
+    // A 150ms fast focus token: halfway through (75ms), the eased value is 0.9614 on the way in.
+    scene.Tick(75.0);
     REQUIRE_NEAR(scene.CardFocus(0, 0), 1.0 - 0.9613825478, 1e-4);
     REQUIRE_NEAR(scene.CardFocus(0, 1), 0.9613825478, 1e-4);
 
@@ -297,8 +299,82 @@ TEST(the_focused_poster_is_drawn_at_the_focus_scale) {
 
     // Posters are filled in paint order: card 0 of rail 0 first, then card 1.
     REQUIRE(painter.fills.size() >= 2);
-    REQUIRE_NEAR(painter.fills[0].width, 168.0 * 1.015, 1e-6);  // Focused.
+    REQUIRE_NEAR(painter.fills[0].width, 168.0 * 1.04, 1e-6);  // Focused.
     REQUIRE_NEAR(painter.fills[1].width, 168.0, 1e-6);         // Not focused.
+}
+
+TEST(optical_glass_material_is_applied_to_cards_hero_pills_and_nav_capsule) {
+    class GlassRecordingPainter final : public tvm::ui::Painter {
+    public:
+        struct GlassCall {
+            Box box;
+            double radius;
+            tvm::ui::GlassStyle style;
+        };
+        void Clear(Color) override {}
+        void FillRoundRect(const Box&, double, Color) override {}
+        void StrokeRoundRect(const Box&, double, double, Color) override {}
+        void Text(const Box&, std::string_view, const tvm::ui::TextStyle&, Color) override {}
+        bool Image(const Box&, const std::string&, double) override { return false; }
+        void Paragraph(const Box&, std::string_view, const tvm::ui::TextStyle&, Color) override {}
+        void PushClip(const Box&) override {}
+        void PopClip() override {}
+        void SetBackdrop(const Box& box, const std::string& url, double, double) override {
+            backdropBox = box;
+            backdropUrl = url;
+        }
+        void Glass(const Box& box, double radius, const tvm::ui::GlassStyle& style) override {
+            calls.push_back(GlassCall{box, radius, style});
+        }
+        Box backdropBox{};
+        std::string backdropUrl;
+        std::vector<GlassCall> calls;
+    };
+
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    tvm::ui::HeroData hero;
+    hero.itemId = "featured-1";
+    hero.title = "The Last Light";
+    hero.meta = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
+    hero.backdropUrl = "asset:lighthouse.jpg";
+    scene.SetHeroes({hero}, 0.0);
+
+    tvm::ui::SceneView view;
+    view.style = tvm::ui::SceneStyle::Stream;
+    tvm::ui::Command cmd;
+    cmd.name = "stream-home";
+    view.topButtons = {
+        tvm::ui::TopButton{"Home", cmd, true},
+        tvm::ui::TopButton{"Movies", cmd, false},
+        tvm::ui::TopButton{"Profile", cmd, false, false, true},
+    };
+    tvm::ui::RailData cw;
+    cw.id = "continue-watching";
+    cw.title = "Continue Watching";
+    cw.cards = {
+        tvm::ui::CardData{"cw-1", "The Last Light", "asset:lighthouse.jpg", 0.42},
+        tvm::ui::CardData{"cw-2", "Northward", "", 0.72},
+    };
+    view.rails = {cw};
+    scene.SetView(view, 0.0);
+
+    GlassRecordingPainter painter;
+    scene.Paint(painter);
+
+    REQUIRE_EQ(painter.backdropUrl, std::string("asset:lighthouse.jpg"));
+    REQUIRE(painter.calls.size() >= 6);
+    int pills = 0, tabs = 0, orbs = 0, cards = 0;
+    for (const auto& call : painter.calls) {
+        if (call.style.kind == tvm::ui::GlassKind::Pill) ++pills;
+        if (call.style.kind == tvm::ui::GlassKind::Tab) ++tabs;
+        if (call.style.kind == tvm::ui::GlassKind::Orb) ++orbs;
+        if (call.style.kind == tvm::ui::GlassKind::Card) ++cards;
+    }
+    REQUIRE(pills >= 3);  // Play pill, Details pill, nav capsule pill
+    REQUIRE_EQ(tabs, 1);  // Active Home tab
+    REQUIRE_EQ(orbs, 1);  // Profile orb
+    REQUIRE_EQ(cards, 2); // 2 Continue Watching cards
 }
 
 }  // namespace

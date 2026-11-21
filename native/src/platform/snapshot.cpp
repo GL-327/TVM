@@ -25,9 +25,10 @@ void SaveSnapshot(const ui::Shell& shell, Graphics& graphics, unsigned width, un
           "snapshot bitmap");
 
     {
+        ImageCache images(graphics);
         const ComPtr<ID2D1RenderTarget> target = graphics.CreateBitmapTarget(bitmap.Get());
         target->BeginDraw();
-        D2dPainter painter(target.Get(), graphics);
+        D2dPainter painter(target.Get(), graphics, nullptr, &images);
         shell.Paint(painter);
         Check(target->EndDraw(), "snapshot drawing");
     }

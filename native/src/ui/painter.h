@@ -5,6 +5,7 @@
 // Direct2D on screen or into a PNG.
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -71,9 +72,59 @@ struct PathStyle {
     bool mirror = false;
 };
 
+enum class GlassKind {
+    Panel,
+    Pill,
+    Tab,
+    Card,
+    Orb,
+};
+
+// Parameters for an Apple TV (tvOS 26) optical glass surface.
+struct GlassStyle {
+    GlassKind kind = GlassKind::Pill;
+    bool focused = false;
+    bool activeTab = false;
+    bool selected = false;
+    bool pressed = false;
+    bool disabled = false;
+    bool reduceTransparency = false;
+    bool warm = false;
+    bool rimOnly = false;
+    double focusAmount = 0.0;
+    double opacity = 1.0;
+    int hue = -1;
+    std::optional<Color> tint;
+    std::optional<Color> border;
+    std::optional<Color> ringColor;
+    double ringWidth = 0.0;
+    double ringOutset = 0.0;
+};
+
 class Painter {
 public:
     virtual ~Painter() = default;
+
+    // Sets the current full-bleed hero/backdrop image and its screen box so Glass() surfaces
+    // can sample and Gaussian-blur the region beneath them.
+    virtual void SetBackdrop(const Box& /*box*/, const std::string& /*url*/, double /*focusX*/ = 0.7,
+                             double /*focusY*/ = 0.2) {}
+
+    // Draws a layered optical glass surface in `box` with corner `radius`.
+    // Test painters that do not override Glass receive the equivalent fill and focus/border strokes.
+    virtual void Glass(const Box& box, double radius, const GlassStyle& style = {}) {
+        const Color fill = style.tint.value_or(Color{0.10, 0.16, 0.24, style.focused ? 0.45 : 0.28});
+        if (!style.rimOnly) FillRoundRect(box, radius, fill);
+        if (style.kind == GlassKind::Card && !style.focused) {
+            StrokeRoundRect(box, radius, 1.0, style.border.value_or(Color{1.0, 1.0, 1.0, 0.16}));
+        }
+        if (style.focused) {
+            const double width = style.ringWidth > 0.0 ? style.ringWidth : 2.56;
+            const double outset = style.ringOutset;
+            const Box ring{box.x - outset, box.y - outset, box.width + 2.0 * outset, box.height + 2.0 * outset};
+            StrokeRoundRect(ring, radius + outset, width, style.ringColor.value_or(Color{0.96, 0.97, 0.99, 0.95}));
+        }
+    }
 
     // SVG path data (M, L, H, V, A and Z, absolute or relative) in a square of `viewBox` units, drawn
     // scaled into `box`. The old app's icons are drawn from their own path data this way.

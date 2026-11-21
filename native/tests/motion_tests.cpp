@@ -144,8 +144,8 @@ TEST(only_settings_reduce_motion_not_the_os) {
 
 TEST(reduced_motion_snaps_tokens_and_the_glass_sweep) {
     const auto normal = tvm::motion::ResolveMotionTokens(MotionSettings{});
-    REQUIRE_NEAR(normal.fastMs, 140.0, 1e-9);
-    REQUIRE_NEAR(normal.baseMs, 200.0, 1e-9);
+    REQUIRE_NEAR(normal.fastMs, 150.0, 1e-9);
+    REQUIRE_NEAR(normal.baseMs, 220.0, 1e-9);
     REQUIRE_NEAR(normal.slowMs, 260.0, 1e-9);
     REQUIRE_NEAR(tvm::motion::GlassSweepMs(MotionSettings{}), 520.0, 1e-9);
 

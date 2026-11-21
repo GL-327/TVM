@@ -154,20 +154,19 @@ private:
 };
 
 // Layout and motion values shared by the widgets.
-inline constexpr double kFocusScale = 1.08;
+inline constexpr double kFocusScale = 1.06;
 inline constexpr double kFocusRingWidthRem = 0.18;
 inline constexpr double kFocusRingOffsetRem = 0.14;
 inline constexpr double kPosterWidthRem = 10.5;
 inline constexpr double kPosterHeightRem = 15.75;
+inline constexpr double kLandscapeWidthRem = 26.25;
+inline constexpr double kLandscapeHeightRem = 14.75;
 inline constexpr double kCardLabelGapRem = 0.75;
 inline constexpr double kCardLabelHeightRem = 1.75;
-// The button label is the body size, and it sits in the button's inline padding, as
-// `.tvm-button` does (padding 0.55rem 1.2rem, font-size body, weight 680).
-// A poster's own focus, from `.poster[data-focused='true'] .poster__art` in apps/ui/src/app.css:
-// it grows 1.015 times from its bottom edge, lifts 0.12 rem, and has a white outline 0.16 rem
-// wide, set 0.18 rem from the edge.
-inline constexpr double kPosterFocusScale = 1.015;
-inline constexpr double kPosterLiftRem = 0.12;
+// Poster and card focus tokens from DECISIONS.md and WINDOWS-VISUAL-SPEC.md:
+// scale 1.04, lift 6px (0.375rem at 1080p), directional glass rim and outer focus glow.
+inline constexpr double kPosterFocusScale = 1.04;
+inline constexpr double kPosterLiftRem = 0.375;
 inline constexpr double kPosterRingWidthRem = 0.16;
 inline constexpr double kPosterRingOffsetRem = 0.18;
 inline constexpr Color kPosterRing = Rgb(0xFFFFFF);

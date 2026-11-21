@@ -461,9 +461,8 @@ TEST(tvm_stream_opens_on_watch_now_under_its_chrome) {
     REQUIRE_EQ(scene->FocusedKey(), std::optional<std::string>("hero-play"));
     TextPainter painter;
     scene->Paint(painter);
-    REQUIRE(painter.Has("WATCH NOW"));
-    REQUIRE(painter.Has("tvm stream"));
-    REQUIRE(painter.Has("Learn More"));
+    REQUIRE(painter.Has("Play"));
+    REQUIRE(painter.Has("Details"));
     REQUIRE(painter.Has("Search"));
     REQUIRE(painter.Has("TVM"));
     // The launcher's kicker belongs to Home, not to TVM Stream.

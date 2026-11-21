@@ -1,8 +1,13 @@
 #include "platform/graphics.h"
 
+#include <dwrite_3.h>
+
 #include <cmath>
 #include <stdexcept>
 #include <string>
+
+#include "core/util.h"
+#include "platform/assets.h"
 
 namespace tvm::platform {
 
@@ -14,8 +19,39 @@ void Check(HRESULT result, const char* what) {
     }
 }
 
-// The design tokens name Segoe UI Variable first. Older Windows installs do
-// not have it, so fall back to Segoe UI, which every supported Windows has.
+// Loads Inter privately from packaged assets when available.
+ComPtr<IDWriteFontCollection> LoadPrivateInter(IDWriteFactory* factory) {
+    ComPtr<IDWriteFactory5> factory5;
+    if (FAILED(factory->QueryInterface(IID_PPV_ARGS(&factory5)))) return nullptr;
+
+    ComPtr<IDWriteFontSetBuilder1> builder;
+    if (FAILED(factory5->CreateFontSetBuilder(&builder))) return nullptr;
+
+    int added = 0;
+    for (const char* file : {"fonts/Inter-Regular.otf", "fonts/Inter-SemiBold.otf", "fonts/Inter-Bold.otf"}) {
+        const auto path = AssetFile(file);
+        if (!path.has_value()) continue;
+        ComPtr<IDWriteFontFile> fontFile;
+        if (SUCCEEDED(factory5->CreateFontFileReference(path->c_str(), nullptr, &fontFile)) &&
+            SUCCEEDED(builder->AddFontFile(fontFile.Get()))) {
+            ++added;
+        }
+    }
+    if (added == 0) return nullptr;
+
+    ComPtr<IDWriteFontSet> fontSet;
+    if (FAILED(builder->CreateFontSet(&fontSet))) return nullptr;
+
+    ComPtr<IDWriteFontCollection1> collection1;
+    if (FAILED(factory5->CreateFontCollectionFromFontSet(fontSet.Get(), &collection1))) return nullptr;
+
+    UINT32 index = 0;
+    BOOL exists = FALSE;
+    if (FAILED(collection1->FindFamilyName(L"Inter", &index, &exists)) || !exists) return nullptr;
+    return collection1;
+}
+
+// The design tokens name Inter first (privately loaded), then Segoe UI Variable Display, then Segoe UI.
 std::wstring ChooseFamily(IDWriteFactory* factory) {
     ComPtr<IDWriteFontCollection> collection;
     if (FAILED(factory->GetSystemFontCollection(&collection, FALSE))) return L"Segoe UI";
@@ -36,7 +72,8 @@ Graphics::Graphics() {
           "DirectWrite");
     Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic_)),
           "Windows Imaging Component");
-    family_ = ChooseFamily(dwrite_.Get());
+    fontCollection_ = LoadPrivateInter(dwrite_.Get());
+    family_ = fontCollection_ ? L"Inter" : ChooseFamily(dwrite_.Get());
 }
 
 ComPtr<ID2D1HwndRenderTarget> Graphics::CreateHwndTarget(HWND window, UINT width, UINT height) {
@@ -74,6 +111,28 @@ IDWriteTextFormat* Graphics::ParagraphFormat(double sizePx, int weight) {
     return CachedFormat(sizePx, weight, true);
 }
 
+double Graphics::MeasureText(std::string_view text, double sizePx, int weight) {
+    if (text.empty()) return 0.0;
+    const long sizeKey = std::lround(sizePx * 10.0);
+    const auto key = std::make_tuple(std::string(text), sizeKey, weight);
+    const auto found = measuredText_.find(key);
+    if (found != measuredText_.end()) return found->second;
+
+    const std::wstring wide = util::ToWide(std::string(text));
+    IDWriteTextFormat* format = TextFormat(sizePx, weight);
+    ComPtr<IDWriteTextLayout> layout;
+    DWRITE_TEXT_METRICS metrics{};
+    double width = static_cast<double>(text.size()) * 0.56 * sizePx;
+    if (SUCCEEDED(dwrite_->CreateTextLayout(wide.c_str(), static_cast<UINT32>(wide.size()), format, 100000.0f, 1000.0f,
+                                            &layout)) &&
+        SUCCEEDED(layout->GetMetrics(&metrics))) {
+        width = metrics.widthIncludingTrailingWhitespace;
+    }
+    if (measuredText_.size() > 4096) measuredText_.clear();
+    measuredText_.emplace(key, width);
+    return width;
+}
+
 IDWriteTextFormat* Graphics::CachedFormat(double sizePx, int weight, bool wrap) {
     // Whole pixels for the key: sizes that differ only past a tenth of a pixel
     // look identical on screen.
@@ -82,7 +141,7 @@ IDWriteTextFormat* Graphics::CachedFormat(double sizePx, int weight, bool wrap) 
     if (found != formats_.end()) return found->second.Get();
 
     ComPtr<IDWriteTextFormat> format;
-    Check(dwrite_->CreateTextFormat(family_.c_str(), nullptr, static_cast<DWRITE_FONT_WEIGHT>(weight),
+    Check(dwrite_->CreateTextFormat(family_.c_str(), fontCollection_.Get(), static_cast<DWRITE_FONT_WEIGHT>(weight),
                                     DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
                                     static_cast<FLOAT>(sizePx), L"en-us", &format),
           "DirectWrite text format");

@@ -53,18 +53,32 @@ inline const Color& kGlassBorder = palette.glassBorder;
 inline const Color& kGlassFocus = palette.glassFocus;
 inline const Color& kPrimary = palette.primary;
 inline const Color& kOnPrimary = palette.onPrimary;
+inline bool reduceTransparency = false;
+inline bool reduceMotion = false;
 }  // namespace tokens
 
 class ThemeScope {
 public:
-    explicit ThemeScope(Theme theme) : previous_(tokens::palette) {
+    explicit ThemeScope(Theme theme, bool reducedTransparency = tokens::reduceTransparency,
+                        bool reducedMotion = tokens::reduceMotion)
+        : previous_(tokens::palette),
+          prevReduceTransparency_(tokens::reduceTransparency),
+          prevReduceMotion_(tokens::reduceMotion) {
         tokens::palette = theme == Theme::Light ? kLightPalette : kDarkPalette;
+        tokens::reduceTransparency = reducedTransparency;
+        tokens::reduceMotion = reducedMotion;
     }
-    ~ThemeScope() { tokens::palette = previous_; }
+    ~ThemeScope() {
+        tokens::palette = previous_;
+        tokens::reduceTransparency = prevReduceTransparency_;
+        tokens::reduceMotion = prevReduceMotion_;
+    }
     ThemeScope(const ThemeScope&) = delete;
     ThemeScope& operator=(const ThemeScope&) = delete;
 private:
     Palette previous_;
+    bool prevReduceTransparency_ = false;
+    bool prevReduceMotion_ = false;
 };
 
 }  // namespace tvm::ui

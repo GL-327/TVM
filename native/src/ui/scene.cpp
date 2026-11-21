@@ -31,34 +31,30 @@ constexpr double kTopButtonWidthRem = 10.0;
 constexpr double kTopButtonHeightRem = 2.0;
 constexpr double kTopButtonGapRem = 1.0;
 
-// The hero, from `.stage` and `.home--launcher .stage--home` in apps/ui/src/app.css, and from the
-// Home screen. Sizes are in rems, as the rest of the layout is.
+// The hero, matching Study 03 (Roku Home) and docs/redesign/WINDOWS-VISUAL-SPEC.md at 1080p (1rem = 16px).
 constexpr double kPi = 3.14159265358979323846;
-constexpr double kHeroHeightFraction = 0.48;  // min-height: 48vh on the launcher
-constexpr double kHeroRailGapRem = 0.85;      // the padding above the rails, `.home__shelf`
-constexpr double kHeroPadBottomRem = 1.25;    // `.home--launcher .stage--home` padding-bottom
-constexpr double kHeroCopyWidthRem = 34.0;    // `.stage__copy` max-width
-constexpr double kHeroKickerFontRem = 0.8125;  // `--tvm-font-size-caption`
-constexpr double kHeroKickerHeightRem = 1.14;  // the caption size at its line height
-constexpr double kHeroKickerMarginRem = 0.5;   // `--tvm-space-1`, under the kicker
-constexpr double kHeroPillFontRem = 0.66;      // `.home__kicker-home`
-constexpr double kHeroPillPadRem = 0.55;
-constexpr double kHeroPillHeightRem = 1.28;
-constexpr double kHeroPillGapRem = 0.7;  // the gap between the pill and the source line
-constexpr double kHeroTitleFontRem = 4.4;  // clamp(2.4rem, 6vw, 4.4rem), which is 4.4rem at these sizes
-constexpr double kHeroTitleLineRem = 0.95;
-constexpr double kHeroWatchMarginTopRem = 0.85;     // `.stage__watchline` margin
-constexpr double kHeroWatchMarginBottomRem = 0.9;   // `.stage__watchline` margin
-constexpr double kHeroWatchHeightRem = 1.4;         // the watch line at its line height
-constexpr double kHeroWatchFontRem = 0.95;          // `.stage__watchnow`
-constexpr double kHeroWatchGlowRem = 0.08;          // a stand-in for the focus glow of the watch text
-constexpr double kHeroLearnHeightRem = 2.85;        // `.tvm-button` min-height
-constexpr double kHeroLearnMinWidthRem = 8.4;       // `.stage__learn` min-width
-constexpr double kHeroButtonPadRem = 1.2;           // `.tvm-button` padding
-constexpr double kHeroButtonFontRem = 1.0625;       // `--tvm-font-size-body`
-constexpr double kHeroDotsMarginRem = 1.15;         // `.stage__dots` margin-top
-constexpr double kHeroDotRem = 0.42;
-constexpr double kHeroDotGapRem = 0.4;
+constexpr double kHeroHeightFraction = 0.48;  // logical stage height before the first rail heading
+constexpr double kHeroRailGapRem = 0.85;      // padding above the first rail
+constexpr double kHeroPadBottomRem = 1.25;    // bottom padding inside the hero stage
+constexpr double kHeroCopyWidthRem = 44.0;    // max-width for hero headline & metadata
+constexpr double kHeroKickerFontRem = 0.8125;
+constexpr double kHeroKickerHeightRem = 1.14;
+constexpr double kHeroKickerMarginRem = 0.5;
+constexpr double kHeroTitleFontRem = 4.5;     // 72px Bold at 1080p
+constexpr double kHeroTitleLineRem = 1.15;
+constexpr double kHeroMetaFontRem = 1.375;    // 22px Regular at 1080p
+constexpr double kHeroMetaHeightRem = 1.85;
+constexpr double kHeroMetaMarginTopRem = 0.55;
+constexpr double kHeroMetaMarginBottomRem = 1.25;
+constexpr double kHeroLearnHeightRem = 3.5;   // 56px tall glass pills at 1080p
+constexpr double kHeroPlayMinWidthRem = 11.5; // 184px wide Play pill at 1080p
+constexpr double kHeroLearnMinWidthRem = 9.75;// 156px wide Details pill at 1080p
+constexpr double kHeroButtonPadRem = 1.5;
+constexpr double kHeroButtonFontRem = 1.5;    // 24px SemiBold at 1080p
+constexpr double kHeroPillGapRem = 1.125;     // 18px gap between Play and Details pills
+constexpr double kHeroDotsMarginRem = 1.15;
+constexpr double kHeroDotRem = 0.375;         // 6px carousel dots
+constexpr double kHeroDotGapRem = 0.45;
 // The dissolves of the picture and the title: `hero-art-dissolve` and `hero-copy-in`, 480 ms.
 constexpr double kHeroDissolveMs = 480.0;
 constexpr motion::CubicBezier kHeroEase{0.2, 0.65, 0.3, 1.0};
@@ -66,41 +62,34 @@ constexpr motion::CubicBezier kHeroEase{0.2, 0.65, 0.3, 1.0};
 constexpr double kHeroFadeSpan = 0.92;
 constexpr char kHeroPlayKey[] = "hero-play";
 constexpr char kHeroInfoKey[] = "hero-info";
-constexpr std::string_view kWatchLabel = "Watch";
-constexpr std::string_view kLearnLabel = "Browse TVM Stream";
-constexpr std::string_view kHomeLabel = "HOME";
-constexpr std::string_view kSourceLabel = "Featured on TVM Stream";
+constexpr std::string_view kWatchLabel = "Play";
+constexpr std::string_view kLearnLabel = "Details";
+constexpr std::string_view kDefaultMetaLabel = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
+constexpr char kPlayTrianglePath[] = "m10 6 16 10-16 10z";
 
-// The stream chrome, `.stream-chrome` in apps/ui/src/player/features/player-chrome.css, and the
-// billboard of apps/ui/src/screens/Library.tsx.
-constexpr double kChromePadTopRem = 0.7;
+// The top navigation capsule and brand bar, matching Study 03 (Roku Home).
+constexpr double kChromePadTopRem = 2.0;      // 32px top inset at 1080p
 constexpr double kChromePadBottomRem = 0.85;
-constexpr double kChromeLinkHeightRem = 2.25;
-constexpr double kChromeLinkPadRem = 0.78;
-constexpr double kChromeGapRem = 0.4;
-constexpr double kChromeFontRem = 1.0625;
+constexpr double kChromeLinkHeightRem = 2.75; // 44px inner tab height inside 56px capsule
+constexpr double kChromeLinkPadRem = 1.35;    // 21.6px horizontal tab padding
+constexpr double kChromeGapRem = 0.35;        // gap between tabs in the capsule
+constexpr double kChromeFontRem = 1.375;      // 22px nav tab label
+constexpr double kCapsulePadRem = 0.375;      // 6px padding around tabs inside the outer glass capsule
+constexpr double kOrbSizeRem = 3.25;          // 52px circular profile orb at 1080p
 constexpr int kChromeWeight = 560;
-// `.tvm-lockup--wordmark`: the mark, then TVM spaced out in capitals.
+// TVM wordmark on top-left: clean 30px Bold white letters.
 constexpr double kWordmarkMarkRem = 1.35;
-constexpr double kWordmarkFontRem = 1.15;
+constexpr double kWordmarkFontRem = 1.875;    // 30px Bold wordmark
 constexpr double kLockupGapRem = 0.45;
-// `.tvm-lockup--stream`: the smaller mark, then "tvm stream" in the mark colour.
-constexpr double kLockupMarkRem = 1.15;
-constexpr double kLockupFontRem = 0.78;
-constexpr double kWatchLineGapRem = 0.7;
-// Four lines of the lede at its line height, so the last line is not clipped.
+// Notice layout for Real-Debrid connect screen.
 constexpr double kNoticeBodyRem = 6.0;
-constexpr double kNoticeTitleRem = 2.75;
-constexpr double kNoticeButtonGapRem = 0.75;
-constexpr Color kChromeFocus = Rgb(0x6EC8FF, 0.24);  // the dark theme's --tvm-accent at 24%
-constexpr Color kPlayerInk = Rgb(0xF6F7F8);          // --player-ink
-constexpr Color kPlayerInkMuted = Rgb(0xF6F7F8, 0.76);
-constexpr Color kMarkColor = Rgb(0x4AA0E0);          // --tvm-mark
+constexpr double kNoticeTitleRem = 3.0;       // 48px Bold screen title
+constexpr double kNoticeButtonGapRem = 0.85;
+constexpr Color kMarkColor = Rgb(0x4AA0E0);
 constexpr Color kMarkPlate = Rgb(0x2F6BFF);
 constexpr char kMarkImage[] = "asset:tvm-icon.png";
-constexpr std::string_view kStreamWatchLabel = "WATCH NOW";
-constexpr std::string_view kStreamLearnLabel = "Learn More";
-constexpr std::string_view kStreamLockupWord = "tvm stream";
+constexpr std::string_view kStreamWatchLabel = "Play";
+constexpr std::string_view kStreamLearnLabel = "Details";
 constexpr double kSearchFieldRem = 3.2;
 // The page style's row of buttons, from `.collection-controls`, under the heading.
 constexpr double kPageRowTopRem = 4.7;
@@ -182,9 +171,9 @@ std::string ToUpperAscii(std::string text) {
 
 // The width of a stream chrome link, in rems.
 double ChromeLinkWidthRem(const TopButton& button) {
+    if (button.orb) return kOrbSizeRem;
     if (button.lockup) {
-        return 2.0 * kChromeLinkPadRem + kWordmarkMarkRem + kLockupGapRem +
-               EstimateRem(button.label, kWordmarkFontRem, 0.22);
+        return EstimateRem(button.label, kWordmarkFontRem, 0.14) + 1.2;
     }
     return 2.0 * kChromeLinkPadRem + EstimateRem(button.label, kChromeFontRem);
 }
@@ -192,12 +181,6 @@ double ChromeLinkWidthRem(const TopButton& button) {
 // The width of a page-style button, in rems: its label and the button's padding.
 double PageButtonWidthRem(const TopButton& button) {
     return EstimateRem(button.label, kButtonLabelRem) + 2.0 * kButtonPadRem + 0.6;
-}
-
-// The TVM mark on its blue plate, as TvmMark draws it.
-void PaintMark(Painter& painter, const Box& box) {
-    painter.FillRoundRect(box, box.width * 0.22, kMarkPlate);
-    painter.ImageFaded(box, kMarkImage, box.width * 0.22, 1.0, 0.5, 0.5);
 }
 
 std::string CardKey(std::size_t rail, std::size_t index) {
@@ -400,12 +383,11 @@ double Scene::HeroFade() const {
 
 Scene::HeroBoxes Scene::HeroLayout() const {
     const Box hero = HeroBox();
-    const double x = metrics_.Rem(kSafeXRem);
+    const double x = metrics_.Rem(kSafeXRem + kRailInsetRem);
     const double copyWidth = std::min(metrics_.Rem(kHeroCopyWidthRem), viewportWidth_ - 2.0 * x);
     HeroBoxes boxes;
 
-    // The copy sits at the foot of the hero and stacks upwards, as `.stage` lays it out with flex-end.
-    // The dots are there only when there is more than one title.
+    // The copy sits in the lower-left safe zone of the hero stage, matching Study 03 (Roku Home).
     const bool hasDots = heroes_.size() > 1;
     const double dot = metrics_.Rem(kHeroDotRem);
     const std::size_t dotCount = hasDots ? heroes_.size() : 0;
@@ -416,23 +398,25 @@ Scene::HeroBoxes Scene::HeroLayout() const {
     if (hasDots) bottom -= dot + metrics_.Rem(kHeroDotsMarginRem);
 
     const bool compact = CompactViewport(viewportWidth_, viewportHeight_);
-    const double learnHeight = compact ? std::max(44.0, metrics_.Rem(kHeroLearnHeightRem)) : metrics_.Rem(kHeroLearnHeightRem);
-    const double learnWidthRem = std::max(
-        kHeroLearnMinWidthRem, EstimateRem(InfoLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem);
+    const double pillHeight =
+        compact ? std::max(44.0, metrics_.Rem(kHeroLearnHeightRem)) : metrics_.Rem(kHeroLearnHeightRem);
+    const double learnWidthRem =
+        std::max(kHeroLearnMinWidthRem, EstimateRem(InfoLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem);
 
     if (!heroes_[heroIndex_].body.empty()) {
-        // A notice: its two buttons side by side, `.hero__actions`, under a paragraph and a smaller heading.
-        const double playWidthRem = std::max(
-            kHeroLearnMinWidthRem, EstimateRem(PlayLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem);
-        boxes.watch = Box{x, bottom - learnHeight, std::min(copyWidth, metrics_.Rem(playWidthRem)), learnHeight};
+        // A notice: its two buttons side by side under a paragraph and a smaller heading.
+        const double playWidthRem =
+            std::max(kHeroLearnMinWidthRem, EstimateRem(PlayLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem);
+        boxes.watch = Box{x, bottom - pillHeight, std::min(copyWidth, metrics_.Rem(playWidthRem)), pillHeight};
         boxes.learn = Box{boxes.watch.Right() + metrics_.Rem(kNoticeButtonGapRem), boxes.watch.y,
-                          std::min(copyWidth, metrics_.Rem(learnWidthRem)), learnHeight};
+                          std::min(copyWidth, metrics_.Rem(learnWidthRem)), pillHeight};
         if (boxes.learn.Right() > viewportWidth_ - x) {
             boxes.learn.x = x;
-            boxes.watch.y -= learnHeight + metrics_.Rem(kNoticeButtonGapRem);
+            boxes.watch.y -= pillHeight + metrics_.Rem(kNoticeButtonGapRem);
         }
-        bottom = boxes.watch.y - metrics_.Rem(kHeroWatchMarginTopRem);
-        boxes.body = Box{x, bottom - metrics_.Rem(kNoticeBodyRem), std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), metrics_.Rem(kNoticeBodyRem)};
+        bottom = boxes.watch.y - metrics_.Rem(kHeroMetaMarginTopRem);
+        boxes.body = Box{x, bottom - metrics_.Rem(kNoticeBodyRem),
+                         std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), metrics_.Rem(kNoticeBodyRem)};
         bottom = boxes.body.y - metrics_.Rem(kHeroKickerMarginRem);
         const double noticeTitle = metrics_.Rem(kNoticeTitleRem * 1.2);
         boxes.title = Box{x, bottom - noticeTitle, std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), noticeTitle};
@@ -441,76 +425,83 @@ Scene::HeroBoxes Scene::HeroLayout() const {
         return boxes;
     }
 
-    boxes.learn = Box{x, bottom - learnHeight, std::min(copyWidth, metrics_.Rem(learnWidthRem)), learnHeight};
-    bottom = boxes.learn.y - metrics_.Rem(kHeroWatchMarginBottomRem);
+    // Study 03 Hero: side-by-side glass Play and Details pills below the metadata line and 72px Bold title.
+    const double playWidthRem =
+        std::max(kHeroPlayMinWidthRem, EstimateRem(PlayLabel(), kHeroButtonFontRem) + 2.0 * kHeroButtonPadRem + 1.4);
+    boxes.watch = Box{x, bottom - pillHeight, std::min(copyWidth, metrics_.Rem(playWidthRem)), pillHeight};
+    boxes.learn = Box{boxes.watch.Right() + metrics_.Rem(kHeroPillGapRem), boxes.watch.y,
+                      std::min(copyWidth, metrics_.Rem(learnWidthRem)), pillHeight};
+    if (boxes.learn.Right() > viewportWidth_ - x) {
+        boxes.learn.x = x;
+        boxes.watch.y -= pillHeight + metrics_.Rem(0.75);
+    }
+    bottom = boxes.watch.y - metrics_.Rem(kHeroMetaMarginBottomRem);
 
-    const double watchHeight = compact ? std::max(44.0, metrics_.Rem(kHeroWatchHeightRem)) : metrics_.Rem(kHeroWatchHeightRem);
-    boxes.watch = Box{x, bottom - watchHeight, metrics_.Rem(EstimateRem(PlayLabel(), kHeroWatchFontRem, 0.08)),
-                      watchHeight};
-    bottom = boxes.watch.y - metrics_.Rem(kHeroWatchMarginTopRem);
+    const double metaHeight = metrics_.Rem(kHeroMetaHeightRem);
+    boxes.meta = Box{x, bottom - metaHeight, copyWidth, metaHeight};
+    bottom = boxes.meta.y - metrics_.Rem(kHeroMetaMarginTopRem);
 
     const double titleHeight = metrics_.Rem(kHeroTitleFontRem * kHeroTitleLineRem);
     boxes.title = Box{x, bottom - titleHeight, copyWidth, titleHeight};
     bottom = boxes.title.y - metrics_.Rem(kHeroKickerMarginRem);
 
     const double kickerHeight = metrics_.Rem(kHeroKickerHeightRem);
-    const double kickerY = bottom - kickerHeight;
-    const double pillHeight = metrics_.Rem(kHeroPillHeightRem);
-    const double pillWidth = metrics_.Rem(EstimateRem(kHomeLabel, kHeroPillFontRem, 0.2) + 2.0 * kHeroPillPadRem);
-    boxes.kicker = Box{x, kickerY, copyWidth, kickerHeight};
-    boxes.pill = Box{x, kickerY + (kickerHeight - pillHeight) / 2.0, pillWidth, pillHeight};
-    const double sourceX = x + pillWidth + metrics_.Rem(kHeroPillGapRem);
-    boxes.source = Box{sourceX, kickerY, copyWidth - (sourceX - x), kickerHeight};
+    boxes.kicker = Box{x, bottom - kickerHeight, copyWidth, kickerHeight};
     return boxes;
 }
 
-void Scene::PaintHero(Painter& painter) const {
+void Scene::PaintHeroBackdrop(Painter& painter) const {
     const Box hero = HeroBox();
+    // The full-bleed hero artwork extends behind the Continue Watching shelf and fades smoothly into the ink ground.
+    const Box backdrop{hero.x, hero.y, hero.width, std::max(hero.height * 1.62, viewportHeight_ * 0.78)};
     const double fade = HeroFade();
     const HeroData& data = heroes_[heroIndex_];
     const double dissolve = artFade_.has_value() ? std::clamp(artFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
 
-    // The fallback, under any picture: a gradient from the elevated background to the deep one, with the
-    // title's hue lit from the upper right, as `.stage__art--fallback` paints it.
-    const LineEnds slant = CssLine(hero, 160.0);
-    painter.FillLinearGradient(hero, slant.x0, slant.y0, slant.x1, slant.y1,
+    painter.SetBackdrop(backdrop, !artCurrent_.empty() ? artCurrent_ : "asset:lighthouse.jpg", 0.7, 0.2);
+
+    // Fallback stage gradient under the artwork.
+    const LineEnds slant = CssLine(backdrop, 160.0);
+    painter.FillLinearGradient(backdrop, slant.x0, slant.y0, slant.x1, slant.y1,
                                {GradientStop{0.0, WithAlpha(tokens::kBackgroundElevated, fade)},
                                 GradientStop{0.7, WithAlpha(tokens::kBackgroundDeep, fade)},
                                 GradientStop{1.0, WithAlpha(tokens::kBackgroundDeep, fade)}});
     const Color hue = HslColor(static_cast<double>(data.hue), 0.55, 0.38);
-    painter.FillRadialGradient(hero, hero.x + 0.7 * hero.width, hero.y + 0.2 * hero.height, 0.7 * hero.width,
-                               0.8 * hero.height,
-                               {GradientStop{0.0, WithAlpha(hue, fade)}, GradientStop{0.62, WithAlpha(hue, 0.0)},
+    painter.FillRadialGradient(backdrop, backdrop.x + 0.7 * backdrop.width, backdrop.y + 0.2 * backdrop.height,
+                               0.7 * backdrop.width, 0.8 * backdrop.height,
+                               {GradientStop{0.0, WithAlpha(hue, fade * 0.75)},
+                                GradientStop{0.62, WithAlpha(hue, 0.0)},
                                 GradientStop{1.0, WithAlpha(hue, 0.0)}});
 
-    // The picture is cropped with its focal point at 70% across and 20% down, as `object-position` gives it.
-    // The previous picture stays under the new one until the dissolve ends.
+    // The picture is cover-fitted with focal point (0.7, 0.2).
     if (!artPrevious_.empty() && artFade_.has_value() && !artFade_->Done(clockMs_)) {
-        painter.ImageFaded(hero, artPrevious_, 0.0, fade, 0.7, 0.2);
+        painter.ImageFaded(backdrop, artPrevious_, 0.0, fade, 0.7, 0.2);
     }
-    if (!artCurrent_.empty()) painter.ImageFaded(hero, artCurrent_, 0.0, fade * dissolve, 0.7, 0.2);
+    if (!artCurrent_.empty()) {
+        painter.ImageFaded(backdrop, artCurrent_, 0.0, fade * dissolve, 0.7, 0.2);
+    }
 
-    // The vignette: a fade up from the bottom, then a fade in from the left, both in the background colour.
+    // Left and bottom readable scrims (Study 03: dark behind left headline & rails, clear over right lighthouse).
     const Color background = tokens::kBackground;
-    const LineEnds up = CssLine(hero, 180.0);
-    painter.FillLinearGradient(hero, up.x0, up.y0, up.x1, up.y1,
-                               {GradientStop{0.0, WithAlpha(background, 0.0)},
-                                GradientStop{0.28, WithAlpha(background, 0.0)},
-                                GradientStop{0.52, WithAlpha(background, fade * 0.28)},
-                                GradientStop{0.78, WithAlpha(background, fade * 0.72)},
-                                GradientStop{0.92, WithAlpha(background, fade)},
-                                GradientStop{1.0, WithAlpha(background, fade)}});
-    const LineEnds across = CssLine(hero, 90.0);
-    painter.FillLinearGradient(hero, across.x0, across.y0, across.x1, across.y1,
-                               {GradientStop{0.0, WithAlpha(background, fade * 0.86)},
-                                GradientStop{0.28, WithAlpha(background, fade * 0.32)},
-                                GradientStop{0.56, WithAlpha(background, 0.0)},
+    const LineEnds across = CssLine(backdrop, 90.0);
+    painter.FillLinearGradient(backdrop, across.x0, across.y0, across.x1, across.y1,
+                               {GradientStop{0.0, WithAlpha(background, fade * 0.84)},
+                                GradientStop{0.28, WithAlpha(background, fade * 0.52)},
+                                GradientStop{0.54, WithAlpha(background, fade * 0.12)},
+                                GradientStop{0.72, WithAlpha(background, 0.0)},
                                 GradientStop{1.0, WithAlpha(background, 0.0)}});
-    // The hero's bottom edge can fall inside a pixel row. The picture would show through that row, so the
-    // background is laid over the edge, which the rails below are painted in anyway.
-    painter.FillRoundRect(Box{hero.x, hero.Bottom() - 1.0, hero.width, 2.0}, 0.0, background);
+    const LineEnds up = CssLine(backdrop, 180.0);
+    painter.FillLinearGradient(backdrop, up.x0, up.y0, up.x1, up.y1,
+                               {GradientStop{0.0, WithAlpha(background, 0.0)},
+                                GradientStop{0.34, WithAlpha(background, 0.0)},
+                                GradientStop{0.58, WithAlpha(background, fade * 0.36)},
+                                GradientStop{0.82, WithAlpha(background, fade * 0.84)},
+                                GradientStop{0.96, WithAlpha(background, fade)},
+                                GradientStop{1.0, WithAlpha(background, fade)}});
+}
 
-    // The copy is not faded with the page, as on the web.
+void Scene::PaintHero(Painter& painter) const {
+    const HeroData& data = heroes_[heroIndex_];
     const HeroBoxes boxes = HeroLayout();
     const TextStyle kickerStyle{metrics_.Rem(kHeroKickerFontRem), true};
     const bool notice = !data.body.empty();
@@ -520,85 +511,80 @@ void Scene::PaintHero(Painter& painter) const {
     const double titleAlpha = titleFade_.has_value() ? std::clamp(titleFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
 
     if (notice) {
-        // `.stream-connect`: the kicker, the heading, the lede, then the primary button and the glass one.
         painter.Text(boxes.kicker, "TVM STREAM", kickerStyle, tokens::kTextMuted);
-        painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kNoticeTitleRem), true, 750},
+        painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kNoticeTitleRem), true, 700},
                      WithAlpha(tokens::kText, titleAlpha));
-        painter.Paragraph(boxes.body, data.body, TextStyle{metrics_.Rem(1.0625), false}, tokens::kTextMuted);
-        DrawButton(painter, metrics_, boxes.watch, PlayLabel(), ButtonLook{true, watchFocused, watchFocused ? 1.0 : 0.0});
+        painter.Paragraph(boxes.body, data.body, TextStyle{metrics_.Rem(1.125), false}, tokens::kTextMuted);
+        DrawButton(painter, metrics_, boxes.watch, PlayLabel(),
+                   ButtonLook{true, watchFocused, watchFocused ? 1.0 : 0.0});
+        DrawButton(painter, metrics_, boxes.learn, InfoLabel(),
+                   ButtonLook{false, learnFocused, learnFocused ? 1.0 : 0.0});
+        return;
     }
-    if (Streamy() && !notice && !kicker_.empty()) {
-        // A service hub's line over its billboard: that it is not the licensed app.
+
+    if (Streamy() && !kicker_.empty()) {
         painter.Text(Box{boxes.kicker.x, boxes.kicker.y, viewportWidth_ - 2.0 * boxes.kicker.x, boxes.kicker.height},
-                     kicker_, TextStyle{metrics_.Rem(0.85), false, 500}, tokens::kTextMuted);
-    }
-    if (!Streamy()) {
-        painter.FillRoundRect(boxes.pill, boxes.pill.height / 2.0, tokens::kAccentStrong);
-        painter.Text(Box{boxes.pill.x + metrics_.Rem(kHeroPillPadRem), boxes.pill.y, boxes.pill.width, boxes.pill.height},
-                     kHomeLabel, TextStyle{metrics_.Rem(kHeroPillFontRem), true}, tokens::kAccentInk);
-        painter.Text(boxes.source, ToUpperAscii(std::string(kSourceLabel)), kickerStyle, tokens::kTextMuted);
+                     kicker_, TextStyle{metrics_.Rem(0.95), false, 500}, tokens::kTextMuted);
     }
 
-    // The title dissolves in when it changes, on the same curve as the picture.
-    if (!notice) {
-        painter.Text(boxes.title, ToUpperAscii(data.title), TextStyle{metrics_.Rem(kHeroTitleFontRem), true},
-                     WithAlpha(tokens::kText, titleAlpha));
+    // 1. 72px Bold mixed-case hero title.
+    painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kHeroTitleFontRem), true, 700},
+                 WithAlpha(tokens::kText, titleAlpha));
+
+    // 2. 22px Regular metadata line ("Movie · Drama · 2h 6m · 4K").
+    const std::string metaText = !data.meta.empty() ? data.meta : std::string(kDefaultMetaLabel);
+    const TextStyle metaStyle{metrics_.Rem(kHeroMetaFontRem), false, 400};
+    painter.Text(boxes.meta, metaText, metaStyle, WithAlpha(tokens::kTextMuted, titleAlpha));
+    if (!brandWord_.empty()) {
+        const double metaW = painter.MeasureText(metaText, metaStyle);
+        const Color brand = brandColor_.value_or(kMarkColor);
+        const Color shown = brand.r + brand.g + brand.b < 0.25 ? Rgb(0xFFFFFF) : brand;
+        painter.Text(Box{boxes.meta.x + metaW + metrics_.Rem(1.0), boxes.meta.y, metrics_.Rem(14.0), boxes.meta.height},
+                     brandWord_, TextStyle{metrics_.Rem(1.25), true, 750}, shown);
     }
 
-    // The watch text. Its focus is a glow on the text, with no outline, as the web button has.
-    const std::string watchLabel = PlayLabel();
-    const TextStyle watchStyle{metrics_.Rem(kHeroWatchFontRem), true, Streamy() ? 800 : 0};
-    if (notice) {
-        // The notice's first button is drawn above, as a pill.
-    } else if (watchFocused) {
-        const double glow = metrics_.Rem(kHeroWatchGlowRem);
-        for (const auto [dx, dy] : {std::pair{-1.0, 0.0}, std::pair{1.0, 0.0}, std::pair{0.0, -1.0},
-                                    std::pair{0.0, 1.0}, std::pair{-0.7, -0.7}, std::pair{0.7, 0.7},
-                                    std::pair{-0.7, 0.7}, std::pair{0.7, -0.7}}) {
-            const Box shifted{boxes.watch.x + dx * glow, boxes.watch.y + dy * glow, boxes.watch.width, boxes.watch.height};
-            painter.Text(shifted, watchLabel, watchStyle, WithAlpha(white, 0.10));
-        }
-    }
-    if (!notice) {
-        painter.Text(Box{boxes.watch.x, boxes.watch.y, boxes.watch.width + metrics_.Rem(1.0), boxes.watch.height},
-                     watchLabel, watchStyle, white);
-    }
-    if (!notice && Streamy()) {
-        // `.stage__watchline`: WATCH NOW, a faint rule, then the "tvm stream" lockup.
-        const double gap = metrics_.Rem(kWatchLineGapRem);
-        const double ruleX = boxes.watch.Right() + gap;
-        painter.Text(Box{ruleX, boxes.watch.y, metrics_.Rem(1.0), boxes.watch.height}, "|",
-                     TextStyle{metrics_.Rem(kHeroWatchFontRem), true, 700}, WithAlpha(white, 0.7));
-        if (!brandWord_.empty()) {
-            // A service hub signs its billboard with its own wordmark, in its own colour.
-            const double wordX = ruleX + metrics_.Rem(0.3) + gap;
-            const Color brand = brandColor_.value_or(kMarkColor);
-            // A near-black brand reads as white on the dark stage.
-            const Color shown = brand.r + brand.g + brand.b < 0.25 ? Rgb(0xFFFFFF) : brand;
-            painter.Text(Box{wordX, boxes.watch.y - metrics_.Rem(0.15), metrics_.Rem(14.0), boxes.watch.height + metrics_.Rem(0.3)},
-                         brandWord_, TextStyle{metrics_.Rem(1.15), true, 850}, shown);
+    // 3. Glass Play pill (with play triangle glyph) and Details pill.
+    const auto paintHeroPill = [&](const Box& rawBox, const std::string& label, bool focused, bool withPlayGlyph) {
+        const double scale = (focused && !tokens::reduceMotion) ? kFocusScale : 1.0;
+        const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.375) : 0.0;
+        const double w = rawBox.width * scale;
+        const double h = rawBox.height * scale;
+        const Box shape{rawBox.CenterX() - w / 2.0, rawBox.CenterY() - h / 2.0 - lift, w, h};
+        const double radius = shape.height / 2.0;
+
+        GlassStyle glass;
+        glass.kind = GlassKind::Pill;
+        glass.focused = focused;
+        glass.focusAmount = focused ? 1.0 : 0.0;
+        glass.reduceTransparency = tokens::reduceTransparency;
+        glass.tint = focused ? tokens::kGlassFocus : tokens::kGlassFill;
+        glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+        glass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
+        glass.ringColor = tokens::kFocusRing;
+        painter.Glass(shape, radius, glass);
+
+        const TextStyle labelStyle{metrics_.Rem(kHeroButtonFontRem), true, 600};
+        const double textWidth = painter.MeasureText(label, labelStyle);
+        if (withPlayGlyph) {
+            const double glyphSize = metrics_.Rem(1.25);
+            const double gap = metrics_.Rem(0.55);
+            const double totalWidth = glyphSize + gap + textWidth;
+            const double startX = shape.CenterX() - totalWidth / 2.0;
+            const Box glyphBox{startX, shape.CenterY() - glyphSize / 2.0, glyphSize, glyphSize};
+            painter.Path(glyphBox, 32.0, kPlayTrianglePath, PathStyle{tokens::kText, Color{0, 0, 0, 0}, 0.0, false});
+            painter.Text(Box{glyphBox.Right() + gap, shape.y, textWidth + metrics_.Rem(1.0), shape.height}, label,
+                         labelStyle, tokens::kText);
         } else {
-            const double mark = metrics_.Rem(kLockupMarkRem);
-            const double markX = ruleX + metrics_.Rem(0.3) + gap;
-            PaintMark(painter, Box{markX, boxes.watch.CenterY() - mark / 2.0, mark, mark});
-            const double wordX = markX + mark + metrics_.Rem(kLockupGapRem);
-            painter.Text(Box{wordX, boxes.watch.y, metrics_.Rem(EstimateRem(kStreamLockupWord, kLockupFontRem, 0.16) + 2.0),
-                             boxes.watch.height},
-                         kStreamLockupWord, TextStyle{metrics_.Rem(kLockupFontRem), true, 800}, kMarkColor);
+            const double textX = shape.CenterX() - textWidth / 2.0;
+            painter.Text(Box{textX, shape.y, textWidth + metrics_.Rem(1.0), shape.height}, label, labelStyle,
+                         tokens::kText);
         }
-    }
+    };
 
-    // The browse button is the glass pill: its fill turns lighter on focus, with no ring and no scale.
-    const std::string learnLabel = InfoLabel();
-    const double learnRadius = boxes.learn.height / 2.0;
-    painter.FillRoundRect(boxes.learn, learnRadius, learnFocused ? tokens::kGlassFocus : tokens::kGlassFill);
-    painter.StrokeRoundRect(boxes.learn, learnRadius, 1.0, tokens::kGlassBorder);
-    const double learnTextWidth = metrics_.Rem(EstimateRem(learnLabel, kHeroButtonFontRem));
-    const double learnTextX = boxes.learn.CenterX() - learnTextWidth / 2.0;
-    painter.Text(Box{learnTextX, boxes.learn.y, learnTextWidth + metrics_.Rem(1.0), boxes.learn.height}, learnLabel,
-                 TextStyle{metrics_.Rem(kHeroButtonFontRem), true}, tokens::kText);
+    paintHeroPill(boxes.watch, PlayLabel(), watchFocused, true);
+    paintHeroPill(boxes.learn, InfoLabel(), learnFocused, false);
 
-    // One dot per title, the shown one white.
+    // 4. Carousel indicator dots when there is more than one hero title.
     if (heroes_.size() > 1) {
         const double dot = metrics_.Rem(kHeroDotRem);
         const double step = dot + metrics_.Rem(kHeroDotGapRem);
@@ -651,12 +637,20 @@ double Scene::HeaderTop() const {
 }
 
 void Scene::PaintSearchField(Painter& painter) const {
-    // `.search-pill__bar`: the magnifier, then the query, or the placeholder while it is empty.
+    // `.search-pill__bar`: glass search bar with magnifier and query/placeholder.
     const double x = metrics_.Rem(kSafeXRem);
     const Box field{x, metrics_.Rem(kSafeYRem), std::min(viewportWidth_ - 2.0 * x, metrics_.Rem(48.0)),
                     metrics_.Rem(kSearchFieldRem)};
-    painter.FillRoundRect(field, field.height / 2.0, tokens::kSurface);
-    painter.StrokeRoundRect(field, field.height / 2.0, metrics_.Rem(kFocusRingWidthRem), tokens::kFocusRing);
+    GlassStyle glass;
+    glass.kind = GlassKind::Pill;
+    glass.focused = true;
+    glass.focusAmount = 1.0;
+    glass.reduceTransparency = tokens::reduceTransparency;
+    glass.tint = tokens::kSurface;
+    glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+    glass.ringColor = tokens::kFocusRing;
+    painter.Glass(field, field.height / 2.0, glass);
+
     const double glyph = metrics_.Rem(1.4);
     painter.Path(Box{field.x + metrics_.Rem(1.0), field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0, kSearchGlyph,
                  PathStyle{Color{0, 0, 0, 0}, tokens::kTextMuted, 2.4, false});
@@ -687,8 +681,8 @@ void Scene::PaintPageHeader(Painter& painter) const {
     const double top = metrics_.Rem(kSafeYRem);
     painter.Text(Box{x, top, viewportWidth_ - 2.0 * x, metrics_.Rem(1.2)}, ToUpperAscii(kicker_),
                  TextStyle{metrics_.Rem(0.8125), true, 700}, tokens::kTextFaint);
-    painter.Text(Box{x, top + metrics_.Rem(1.1), viewportWidth_ - 2.0 * x, metrics_.Rem(3.25)}, heading_,
-                 TextStyle{metrics_.Rem(2.75), true, 750}, tokens::kText);
+    painter.Text(Box{x, top + metrics_.Rem(1.1), viewportWidth_ - 2.0 * x, metrics_.Rem(3.4)}, heading_,
+                 TextStyle{metrics_.Rem(3.0), true, 700}, tokens::kText);
     for (std::size_t i = 0; i < tops_.size(); ++i) {
         const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
         // A chosen filter is the primary button, as the web marks it with variant=primary.
@@ -698,34 +692,152 @@ void Scene::PaintPageHeader(Painter& painter) const {
 }
 
 double Scene::ChromeHeight() const {
-    return tops_.empty() ? metrics_.Rem(kChromePadTopRem + kChromeLinkHeightRem + kChromePadBottomRem)
-                         : TopBoxScreen(tops_.size() - 1).Bottom() + metrics_.Rem(kChromePadBottomRem);
+    if (tops_.empty()) return metrics_.Rem(kChromePadTopRem + kChromeLinkHeightRem + kChromePadBottomRem);
+    double maxBottom = 0.0;
+    for (std::size_t i = 0; i < tops_.size(); ++i) {
+        maxBottom = std::max(maxBottom, TopBoxScreen(i).Bottom());
+    }
+    return maxBottom + metrics_.Rem(kChromePadBottomRem);
 }
 
 void Scene::PaintStreamChrome(Painter& painter) const {
-    // The band fades from the background at 82% to nothing, so the page shows through under it.
-    const double height = ChromeHeight();
+    // Subtle top scrim so the glass capsule and wordmark float cleanly over full-bleed hero photography,
+    // deepening when the page scrolls down.
+    const double height = ChromeHeight() + metrics_.Rem(2.5);
+    const double scrollAlpha = std::clamp(pageScroll_ / std::max(1.0, metrics_.Rem(8.0)), 0.0, 1.0);
+    const double topAlpha = 0.36 + 0.62 * scrollAlpha;
+    const double midAlpha = 0.16 + 0.76 * scrollAlpha;
     painter.FillLinearGradient(Box{0.0, 0.0, viewportWidth_, height}, 0.0, 0.0, 0.0, height,
-                               {GradientStop{0.0, WithAlpha(tokens::kBackground, 0.82)},
-                                GradientStop{0.72, WithAlpha(tokens::kBackground, 0.82)},
+                               {GradientStop{0.0, WithAlpha(tokens::kBackground, topAlpha)},
+                                GradientStop{0.66, WithAlpha(tokens::kBackground, midAlpha)},
                                 GradientStop{1.0, WithAlpha(tokens::kBackground, 0.0)}});
+
+    const bool compact = CompactViewport(viewportWidth_, viewportHeight_);
+    const double safeX = metrics_.Rem(kSafeXRem + (compact ? 0.0 : kRailInsetRem));
+    const double topY = metrics_.Rem(kChromePadTopRem);
+    const double tabHeight = metrics_.Rem(kChromeLinkHeightRem);
+
+    // 1. Outer centred glass capsule enclosing all navigation tabs (!lockup && !orb).
+    bool hasCapsuleTabs = false;
+    bool hasLockup = false;
+    bool hasOrb = false;
+    double minX = 1e18, minY = 1e18, maxR = -1e18, maxB = -1e18;
+    for (std::size_t i = 0; i < tops_.size(); ++i) {
+        if (tops_[i].lockup) {
+            hasLockup = true;
+            continue;
+        }
+        if (tops_[i].orb) {
+            hasOrb = true;
+            continue;
+        }
+        const Box b = TopBoxScreen(i);
+        minX = std::min(minX, b.x);
+        minY = std::min(minY, b.y);
+        maxR = std::max(maxR, b.Right());
+        maxB = std::max(maxB, b.Bottom());
+        hasCapsuleTabs = true;
+    }
+    if (hasCapsuleTabs) {
+        const double pad = metrics_.Rem(kCapsulePadRem);
+        const Box capsule{minX - pad, minY - pad, (maxR - minX) + 2.0 * pad, (maxB - minY) + 2.0 * pad};
+        GlassStyle capsuleGlass;
+        capsuleGlass.kind = GlassKind::Pill;
+        capsuleGlass.reduceTransparency = tokens::reduceTransparency;
+        capsuleGlass.tint = tokens::kGlassFill;
+        painter.Glass(capsule, capsule.height / 2.0, capsuleGlass);
+    }
+
+    // 2. Top-left TVM wordmark (drawn as static brand mark when no lockup button is in tops_).
+    if (!hasLockup && !compact) {
+        painter.Text(Box{safeX, topY - metrics_.Rem(0.25), metrics_.Rem(7.5), tabHeight + metrics_.Rem(0.5)}, "TVM",
+                     TextStyle{metrics_.Rem(kWordmarkFontRem), true, 800}, tokens::kText);
+    }
+
+    // 3. Top-right profile orb (drawn as ambient profile orb when no orb button is in tops_).
+    if (!hasOrb && !compact) {
+        const double orbSize = metrics_.Rem(kOrbSizeRem);
+        const Box orbBox{viewportWidth_ - safeX - orbSize, topY + (tabHeight - orbSize) / 2.0, orbSize, orbSize};
+        GlassStyle orbGlass;
+        orbGlass.kind = GlassKind::Orb;
+        orbGlass.warm = true;
+        orbGlass.reduceTransparency = tokens::reduceTransparency;
+        orbGlass.tint = tokens::kSurface;
+        painter.Glass(orbBox, orbSize / 2.0, orbGlass);
+        const TextStyle orbText{metrics_.Rem(1.35), true, 700};
+        const double w = painter.MeasureText("P", orbText);
+        painter.Text(Box{orbBox.CenterX() - w / 2.0, orbBox.y, w + 4.0, orbBox.height}, "P", orbText, tokens::kText);
+    }
+
+    // 4. Individual buttons: lockup wordmark, capsule tabs, and profile orb.
     for (std::size_t i = 0; i < tops_.size(); ++i) {
         const Box box = TopBoxScreen(i);
         const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
-        // Focus is a soft accent pill, with no ring, as the default look's stream chrome has.
-        if (focused) painter.FillRoundRect(box, box.height / 2.0, kChromeFocus);
-        const double x = box.x + metrics_.Rem(kChromeLinkPadRem);
         if (tops_[i].lockup) {
-            const double mark = metrics_.Rem(kWordmarkMarkRem);
-            PaintMark(painter, Box{x, box.CenterY() - mark / 2.0, mark, mark});
-            painter.Text(Box{x + mark + metrics_.Rem(kLockupGapRem), box.y, box.width, box.height},
+            if (focused) {
+                GlassStyle lockupGlass;
+                lockupGlass.kind = GlassKind::Tab;
+                lockupGlass.focused = true;
+                lockupGlass.focusAmount = 1.0;
+                lockupGlass.reduceTransparency = tokens::reduceTransparency;
+                painter.Glass(box, box.height / 2.0, lockupGlass);
+            }
+            painter.Text(Box{box.x + (focused ? metrics_.Rem(0.6) : 0.0), box.y, box.width, box.height},
                          ToUpperAscii(tops_[i].label), TextStyle{metrics_.Rem(kWordmarkFontRem), true, 800},
                          tokens::kText);
             continue;
         }
-        painter.Text(Box{x, box.y, box.width, box.height}, tops_[i].label,
-                     TextStyle{metrics_.Rem(kChromeFontRem), false, kChromeWeight},
-                     focused || tops_[i].on ? tokens::kText : tokens::kTextMuted);
+        if (tops_[i].orb) {
+            const double scale = (focused && !tokens::reduceMotion) ? kFocusScale : 1.0;
+            const double w = box.width * scale;
+            const double h = box.height * scale;
+            const Box orbShape{box.CenterX() - w / 2.0, box.CenterY() - h / 2.0, w, h};
+            GlassStyle orbGlass;
+            orbGlass.kind = GlassKind::Orb;
+            orbGlass.focused = focused;
+            orbGlass.focusAmount = focused ? 1.0 : 0.0;
+            orbGlass.warm = true;
+            orbGlass.reduceTransparency = tokens::reduceTransparency;
+            orbGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
+            orbGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+            orbGlass.ringOutset = metrics_.Rem(kFocusRingOffsetRem);
+            orbGlass.ringColor = tokens::kFocusRing;
+            painter.Glass(orbShape, orbShape.height / 2.0, orbGlass);
+
+            std::string initial = tops_[i].label.empty() ? "P" : tops_[i].label.substr(0, 1);
+            if (initial[0] >= 'a' && initial[0] <= 'z') initial[0] = static_cast<char>(initial[0] - 'a' + 'A');
+            const TextStyle orbText{metrics_.Rem(1.35), true, 700};
+            const double tw = painter.MeasureText(initial, orbText);
+            painter.Text(Box{orbShape.CenterX() - tw / 2.0, orbShape.y, tw + 4.0, orbShape.height}, initial, orbText,
+                         tokens::kText);
+            continue;
+        }
+
+        // Capsule navigation tab (Home · Movies · Series · Live TV · Library · Search).
+        if (tops_[i].on || focused) {
+            const double scale = (focused && !tokens::reduceMotion) ? 1.04 : 1.0;
+            const double w = box.width * scale;
+            const double h = box.height * scale;
+            const Box tabShape{box.CenterX() - w / 2.0, box.CenterY() - h / 2.0, w, h};
+            GlassStyle tabGlass;
+            tabGlass.kind = GlassKind::Tab;
+            tabGlass.focused = focused;
+            tabGlass.activeTab = tops_[i].on;
+            tabGlass.focusAmount = focused ? 1.0 : 0.0;
+            tabGlass.reduceTransparency = tokens::reduceTransparency;
+            tabGlass.tint = tops_[i].on ? tokens::kPrimary : tokens::kSurfaceHover;
+            tabGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+            tabGlass.ringOutset = metrics_.Rem(0.08);
+            tabGlass.ringColor = tokens::kFocusRing;
+            painter.Glass(tabShape, tabShape.height / 2.0, tabGlass);
+        }
+
+        const TextStyle tabStyle{metrics_.Rem(kChromeFontRem), tops_[i].on || focused,
+                                 (tops_[i].on || focused) ? 650 : kChromeWeight};
+        const double textWidth = painter.MeasureText(tops_[i].label, tabStyle);
+        const double textX = std::max(box.x + metrics_.Rem(0.5), box.CenterX() - textWidth / 2.0);
+        const Color textColor = tops_[i].on ? tokens::kOnPrimary : (focused ? tokens::kText : tokens::kTextMuted);
+        painter.Text(Box{textX, box.y, textWidth + metrics_.Rem(0.8), box.height}, tops_[i].label, tabStyle, textColor);
     }
 }
 
@@ -741,14 +853,43 @@ Box Scene::TopBoxScreen(std::size_t index) const {
         return box;
     }
     if (Streamy()) {
-        // The stream chrome runs left to right across the top, and stays there while the page scrolls.
-        const double x = metrics_.Rem(kSafeXRem);
-        FlowLayout flow(x, metrics_.Rem(kChromePadTopRem), viewportWidth_ - 2.0 * x, metrics_.Rem(kChromeGapRem));
-        Box box;
-        const double height = CompactViewport(viewportWidth_, viewportHeight_) ? std::max(44.0, metrics_.Rem(kChromeLinkHeightRem))
-                                                                             : metrics_.Rem(kChromeLinkHeightRem);
-        for (std::size_t i = 0; i <= index && i < tops_.size(); ++i)
-            box = flow.Place(metrics_.Rem(ChromeLinkWidthRem(tops_[i])), height);
+        const bool compact = CompactViewport(viewportWidth_, viewportHeight_);
+        const double safeX = metrics_.Rem(kSafeXRem + (compact ? 0.0 : kRailInsetRem));
+        const double topY = metrics_.Rem(kChromePadTopRem);
+        const double height = compact ? std::max(44.0, metrics_.Rem(kChromeLinkHeightRem))
+                                      : metrics_.Rem(kChromeLinkHeightRem);
+        if (compact) {
+            FlowLayout flow(safeX, topY, viewportWidth_ - 2.0 * safeX, metrics_.Rem(kChromeGapRem));
+            Box box;
+            for (std::size_t i = 0; i <= index && i < tops_.size(); ++i)
+                box = flow.Place(metrics_.Rem(ChromeLinkWidthRem(tops_[i])), height);
+            return box;
+        }
+        if (index < tops_.size() && tops_[index].lockup) {
+            return Box{safeX, topY, metrics_.Rem(ChromeLinkWidthRem(tops_[index])), height};
+        }
+        if (index < tops_.size() && tops_[index].orb) {
+            const double orbSize = metrics_.Rem(kOrbSizeRem);
+            return Box{viewportWidth_ - safeX - orbSize, topY + (height - orbSize) / 2.0, orbSize, orbSize};
+        }
+        // Centred glass capsule tabs.
+        const double gap = metrics_.Rem(kChromeGapRem);
+        double totalWidth = 0.0;
+        std::size_t tabCount = 0;
+        for (const TopButton& b : tops_) {
+            if (b.lockup || b.orb) continue;
+            totalWidth += metrics_.Rem(ChromeLinkWidthRem(b));
+            ++tabCount;
+        }
+        if (tabCount > 1) totalWidth += gap * static_cast<double>(tabCount - 1);
+        double cursorX = std::max(safeX + metrics_.Rem(5.5), (viewportWidth_ - totalWidth) / 2.0);
+        Box box{cursorX, topY, 0.0, height};
+        for (std::size_t i = 0; i <= index && i < tops_.size(); ++i) {
+            if (tops_[i].lockup || tops_[i].orb) continue;
+            const double w = metrics_.Rem(ChromeLinkWidthRem(tops_[i]));
+            box = Box{cursorX, topY, w, height};
+            cursorX += w + gap;
+        }
         return box;
     }
     // The buttons sit in the header row, at the top right, and go leftwards in order. They scroll with the page.
@@ -767,9 +908,11 @@ void Scene::Layout(double width, double height) {
     metrics_.rem = ViewportRem(width, height);
 
     // The hero takes the top of the window, and the rails start below it.
-    heroHeight_ = HeroActive() ? std::max(kHeroHeightFraction * height,
+    const double heroFraction = Streamy() ? 0.425 : kHeroHeightFraction;
+    const double heroGapRem = Streamy() ? 0.5 : kHeroRailGapRem;
+    heroHeight_ = HeroActive() ? std::max(heroFraction * height,
         (CompactViewport(width, height) ? HeaderTop() + metrics_.Rem(24.0) : 0.0)) : 0.0;
-    pageTopOffset_ = HeroActive() ? heroHeight_ + metrics_.Rem(kHeroRailGapRem)
+    pageTopOffset_ = HeroActive() ? heroHeight_ + metrics_.Rem(heroGapRem)
                                  : std::max(0.0, HeaderTop() - metrics_.Rem(kSafeYRem));
 
     const double contentWidth = width - 2.0 * metrics_.Rem(kSafeXRem);
@@ -898,53 +1041,54 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
     const auto topAbove = [&](const Box& from) {
         if (!RowTops()) return TopKey(0);
         std::vector<double> centers;
-        for (std::size_t i = 0; i < tops_.size(); ++i) centers.push_back(TopBoxScreen(i).CenterX());
+        std::vector<std::size_t> indices;
+        for (std::size_t i = 0; i < tops_.size(); ++i) {
+            if (Streamy() && (tops_[i].lockup || tops_[i].orb)) continue;
+            centers.push_back(TopBoxScreen(i).CenterX());
+            indices.push_back(i);
+        }
+        if (centers.empty()) {
+            for (std::size_t i = 0; i < tops_.size(); ++i) {
+                centers.push_back(TopBoxScreen(i).CenterX());
+                indices.push_back(i);
+            }
+        }
         const int closest = nav::PickClosestIndex(centers, from.CenterX());
-        return TopKey(closest < 0 ? 0 : static_cast<std::size_t>(closest));
+        return TopKey(closest < 0 ? 0 : indices[static_cast<std::size_t>(closest)]);
     };
 
-    // A notice's two buttons sit side by side.
-    if (HeroActive() && !heroes_[heroIndex_].body.empty() && IsHeroKey(*focused)) {
+    // The hero's two glass pills (Play and Details) sit side by side, both for regular titles and notices.
+    if (HeroActive() && IsHeroKey(*focused)) {
         const bool onPlay = *focused == kHeroPlayKey;
-        if (direction == nav::Direction::Right && onPlay) {
-            FocusKey(kHeroInfoKey, nowMs, true);
-            return true;
-        }
-        if (direction == nav::Direction::Left && !onPlay) {
-            FocusKey(kHeroPlayKey, nowMs, true);
-            return true;
+        const HeroBoxes boxes = HeroLayout();
+        const bool stacked = std::abs(boxes.watch.CenterY() - boxes.learn.CenterY()) > 4.0;
+        if (!stacked) {
+            if (direction == nav::Direction::Right && onPlay) {
+                FocusKey(kHeroInfoKey, nowMs, true);
+                return true;
+            }
+            if (direction == nav::Direction::Left && !onPlay) {
+                FocusKey(kHeroPlayKey, nowMs, true);
+                return true;
+            }
+        } else {
+            if (direction == nav::Direction::Down && onPlay) {
+                FocusKey(kHeroInfoKey, nowMs, true);
+                return true;
+            }
+            if (direction == nav::Direction::Up && !onPlay) {
+                FocusKey(kHeroPlayKey, nowMs, true);
+                return true;
+            }
         }
         if (direction == nav::Direction::Up && !tops_.empty()) {
-            const HeroBoxes boxes = HeroLayout();
             FocusKey(topAbove(onPlay ? boxes.watch : boxes.learn), nowMs, true);
-            return true;
-        }
-        if (direction != nav::Direction::Down || rails_.empty()) return false;
-        FocusKey(cards_[GlobalIndex(0, 0)].key, nowMs, true);
-        return true;
-    }
-
-    // The hero's two buttons stack: Up from Watch reaches the top buttons, and Down from Browse reaches the rails.
-    if (*focused == kHeroPlayKey) {
-        if (direction == nav::Direction::Up && !tops_.empty()) {
-            FocusKey(topAbove(HeroLayout().watch), nowMs, true);
-            return true;
-        }
-        if (direction == nav::Direction::Down) {
-            FocusKey(kHeroInfoKey, nowMs, true);
-            return true;
-        }
-        return false;
-    }
-    if (*focused == kHeroInfoKey) {
-        if (direction == nav::Direction::Up) {
-            FocusKey(kHeroPlayKey, nowMs, true);
             return true;
         }
         if (direction != nav::Direction::Down || rails_.empty()) return false;
         std::vector<double> centers;
         for (const auto& child : rails_[0]->children()) centers.push_back(child->box().CenterX());
-        const int closest = nav::PickClosestIndex(centers, HeroLayout().learn.CenterX());
+        const int closest = nav::PickClosestIndex(centers, (onPlay ? boxes.watch : boxes.learn).CenterX());
         if (closest < 0) return false;
         FocusKey(cards_[GlobalIndex(0, static_cast<std::size_t>(closest))].key, nowMs, true);
         return true;
@@ -959,14 +1103,13 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
             for (std::size_t i = 0; i < tops_.size(); ++i) {
                 const Box box = TopBoxScreen(i);
                 const double dy = box.CenterY() - fromBox.CenterY();
-                if (std::abs(dy) < 1.0 || (dy > 0.0) != (direction == nav::Direction::Down)) continue;
+                if (std::abs(dy) < 12.0 || (dy > 0.0) != (direction == nav::Direction::Down)) continue;
                 const double distance = std::abs(dy) * 1000.0 + std::abs(box.CenterX() - fromBox.CenterX());
                 if (distance < score) { best = i; score = distance; }
             }
             if (best) { FocusKey(TopKey(*best), nowMs, true); return true; }
         }
-        // Right and left move along the top buttons, as the header lays them out: leftwards from the first
-        // on Home, rightwards from the first in the stream chrome.
+        // Right and left move along the top buttons, with hard stops at both ends (no wrapping).
         const nav::Direction toNext = RowTops() ? nav::Direction::Right : nav::Direction::Left;
         const nav::Direction toPrevious = RowTops() ? nav::Direction::Left : nav::Direction::Right;
         if (direction == toPrevious && *top > 0) {
@@ -978,7 +1121,7 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
             return true;
         }
         // Down from the stream chrome goes to the hero, which sits under it.
-        if (direction == nav::Direction::Down && Streamy() && HeroActive()) {
+        if (direction == nav::Direction::Down && HeroActive()) {
             FocusKey(kHeroPlayKey, nowMs, true);
             return true;
         }
@@ -995,10 +1138,10 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
     const std::size_t from = cardByKey_.at(*focused);
     const CardRef& current = cards_[from];
 
-    // Up from the top rail reaches the browse button of the hero, or else the first top button.
+    // Up from the top rail reaches the hero Play button, or else the first top button.
     if (direction == nav::Direction::Up && current.rail == 0) {
         if (HeroActive()) {
-            FocusKey(kHeroInfoKey, nowMs, true);
+            FocusKey(kHeroPlayKey, nowMs, true);
             return true;
         }
         if (tops_.empty()) return false;
@@ -1008,9 +1151,13 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
 
     std::optional<std::size_t> target;
     if (direction == nav::Direction::Left || direction == nav::Direction::Right) {
+        // Hard stops at rail ends (no wrapping, per DECISIONS.md and WINDOWS-VISUAL-SPEC.md).
         const std::size_t count = CardCount(current.rail);
-        const auto next = nav::RowWrapIndex(static_cast<int>(current.index), direction, static_cast<int>(count));
-        if (next.has_value()) target = GlobalIndex(current.rail, static_cast<std::size_t>(*next));
+        if (direction == nav::Direction::Right && current.index + 1 < count) {
+            target = GlobalIndex(current.rail, current.index + 1);
+        } else if (direction == nav::Direction::Left && current.index > 0) {
+            target = GlobalIndex(current.rail, current.index - 1);
+        }
     } else {
         const auto row = nav::NeighborRowIndex(static_cast<int>(current.rail), direction,
                                                static_cast<int>(rails_.size()));
@@ -1198,8 +1345,11 @@ void Scene::FocusKey(const std::string& key, double nowMs, bool withCamera) {
         StartRailCamera(next.rail, goal, moved);
 
         const double rowTop = rail.box().y;
-        const double pad = metrics_.Rem(kRowCameraPadRem);
-        const double pageTarget = nav::PagePanTarget(pageScroll_, rowTop, 0.0, pad);
+        const double pad = Streamy() ? std::max(metrics_.Rem(kRowCameraPadRem), HeaderTop() + metrics_.Rem(3.25))
+                                     : metrics_.Rem(kRowCameraPadRem);
+        const double pageTarget = (HeroActive() && next.rail == 0)
+                                      ? 0.0
+                                      : nav::PagePanTarget(pageScroll_, rowTop, 0.0, pad);
         if (nav::ShouldNudgePageY(pageScroll_, pageTarget)) StartPageCamera(pageTarget, moved);
     }
 
@@ -1237,8 +1387,8 @@ void Scene::AnimateFocus(std::size_t cardIndex, double to, double nowMs) {
     const double from = ref.card->focusAmount();
     if (from == to) return;
 
-    // A poster's transform eases over the base token, 200 ms, as `.poster__art` does.
-    const double duration = motion::ResolveMotionTokens(motion_).baseMs;
+    // Focus transitions ease over 150 ms (fastMs token, per DECISIONS.md and WINDOWS-VISUAL-SPEC.md).
+    const double duration = motion::ResolveMotionTokens(motion_).fastMs;
     Card* card = ref.card;
     const motion::Tween tween(from, to, timeline_.Clock(nowMs), duration);
     ref.focusAnimation = timeline_.Add([card, tween](double clockMs) {
@@ -1249,9 +1399,8 @@ void Scene::AnimateFocus(std::size_t cardIndex, double to, double nowMs) {
 
 void Scene::Paint(Painter& painter) const {
     painter.Clear(tokens::kBackground);
+    if (HeroActive()) PaintHeroBackdrop(painter);
     page_->Paint(painter, metrics_);
-
-    // The hero is painted over the rails it scrolls above, as the web stage is layered over the shelves.
     if (HeroActive()) PaintHero(painter);
 
     // The status line sits in the header. While it is shown, the page scrolls beneath a band
@@ -1286,17 +1435,20 @@ void Scene::Paint(Painter& painter) const {
         const Box button = TopBoxScreen(i);
         if (button.Bottom() < 0.0 || button.y >= viewportHeight_) continue;
         const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
-        const double radius = metrics_.Rem(0.5);
-        painter.FillRoundRect(button, radius, focused ? tokens::kSurfaceHover : tokens::kSurface);
-        painter.StrokeRoundRect(button, radius, 1.0, tokens::kBorderSoft);
-        if (focused) {
-            const double ringWidth = metrics_.Rem(kFocusRingWidthRem);
-            const double outset = metrics_.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-            const Box ring{button.x - outset, button.y - outset, button.width + 2.0 * outset, button.height + 2.0 * outset};
-            painter.StrokeRoundRect(ring, radius + outset, ringWidth, tokens::kFocusRing);
-        }
+        const double radius = button.height / 2.0;
+        GlassStyle glass;
+        glass.kind = GlassKind::Pill;
+        glass.focused = focused;
+        glass.focusAmount = focused ? 1.0 : 0.0;
+        glass.reduceTransparency = tokens::reduceTransparency;
+        glass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
+        glass.border = tokens::kBorderSoft;
+        glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+        glass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
+        glass.ringColor = tokens::kFocusRing;
+        painter.Glass(button, radius, glass);
         painter.Text(Box{button.x + metrics_.Rem(1.0), button.y, button.width - metrics_.Rem(2.0), button.height},
-                     tops_[i].label, TextStyle{metrics_.Rem(0.9375), false},
+                     tops_[i].label, TextStyle{metrics_.Rem(0.9375), focused},
                      focused ? tokens::kText : tokens::kTextMuted);
     }
 }

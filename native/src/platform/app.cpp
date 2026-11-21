@@ -115,6 +115,22 @@ constexpr double kHeroTurnMs = 8000.0;
 // The most titles the hero turns through.
 constexpr std::size_t kHeroLimit = 4;
 
+std::string HeroMetaLine(const catalog::MediaItem& item) {
+    std::vector<std::string> parts;
+    if (item.kind == "series") parts.push_back("Series");
+    else if (item.kind == "movie") parts.push_back("Movie");
+    if (!item.genres.empty()) parts.push_back(item.genres.front());
+    if (item.runtime.has_value() && !item.runtime->empty()) parts.push_back(*item.runtime);
+    else if (item.year.has_value()) parts.push_back(std::to_string(*item.year));
+    parts.push_back("4K");
+    std::string line;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) line += " \xC2\xB7 ";
+        line += parts[i];
+    }
+    return line;
+}
+
 // The titles the Home hero turns through: the titles in progress, then the catalogue titles that have a
 // picture. A title is listed once, by its id and by its name, as the web Home lists them.
 std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watching,
@@ -137,7 +153,9 @@ std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watc
         ui::HeroData hero;
         hero.itemId = item.id;
         hero.title = item.title;
+        hero.meta = HeroMetaLine(item);
         hero.backdropUrl = catalog::PreferBackdrop(item.id, item.backdrop, item.poster);
+        if (hero.backdropUrl.empty()) hero.backdropUrl = "asset:lighthouse.jpg";
         hero.hue = item.hue;
         heroes.push_back(hero);
     }
@@ -315,6 +333,10 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     cls.lpfnWndProc = &App::WindowProc;
     cls.hInstance = instance_;
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    // Resource 1 is tvm.ico (src/tvm.rc.in). Builds without it fall back to the default icon.
+    cls.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(1));
+    cls.hIconSm = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(1), IMAGE_ICON,
+                                                GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
     cls.lpszClassName = kWindowClass;
     if (!RegisterClassExW(&cls)) throw std::runtime_error("RegisterClassExW failed");
 
@@ -1421,7 +1443,8 @@ void App::RefreshStreamStatus() {
 
 void App::SetStreamLane(const std::string& lane) {
     // Choosing the lane that is on goes back to everything, as the web links toggle.
-    streamLane_ = streamLane_ == lane ? "all" : lane;
+    if (lane == "all") streamLane_ = "all";
+    else streamLane_ = streamLane_ == lane ? "all" : lane;
     RebuildStream();
     RebuildHome();
 }
@@ -1437,7 +1460,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         return true;
     };
 
-    // The chrome: StreamChrome.tsx, left to right.
+    // The chrome: centred glass capsule (Home · Movies · Series · Live TV · Library · Search) + profile orb.
     const auto open = [](const std::string& name, bool modal) {
         ui::Command command;
         command.name = name;
@@ -1454,36 +1477,39 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
     ui::SceneView view;
     view.style = ui::SceneStyle::Stream;
     if (!account_.usable) {
-        view.topButtons = {ui::TopButton{"Account", open("account", false)}, ui::TopButton{"Settings", open("settings", false)}, ui::TopButton{"Updates", open("updates", false)}};
-        ui::HeroData door; door.itemId = "account-gate"; door.title = "Welcome to TVM";
-        door.body = accountMessage_.empty() ? (accountBusy_ ? "Starting your account service..." : "Sign in or create an account to continue.") : accountMessage_;
-        door.playLabel = "Your account"; door.playCommand = open("account", false);
-        door.infoLabel = "Access & pricing"; door.infoCommand = open("plans", false);
-        scene.SetView(view, NowMs()); scene.SetHeroes({door}, NowMs()); scene.SetRails({});
+        view.topButtons = {
+            ui::TopButton{"Account", open("account", false)},
+            ui::TopButton{"Settings", open("settings", false)},
+            ui::TopButton{"Updates", open("updates", false)},
+        };
+        ui::HeroData door;
+        door.itemId = "account-gate";
+        door.title = "Welcome to TVM";
+        door.backdropUrl = "asset:lighthouse.jpg";
+        door.body = accountMessage_.empty()
+                        ? (accountBusy_ ? "Starting your account service..." : "Sign in or create an account to continue.")
+                        : accountMessage_;
+        door.playLabel = "Your account";
+        door.playCommand = open("account", false);
+        door.infoLabel = "Access & pricing";
+        door.infoCommand = open("plans", false);
+        scene.SetView(view, NowMs());
+        scene.SetHeroes({door}, NowMs());
+        scene.SetRails({});
         return;
     }
     const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_);
     // The profile's name, or "Profile" without one, as StreamChrome labels its orb.
     const std::string profileName = profiles::ActiveName(dataDir_).value_or("Profile");
     view.topButtons = {
-        ui::TopButton{profileName, open("profiles", false)},
-        ui::TopButton{"Account", open("account", false)},
-        ui::TopButton{"Search", open("search", true)},
-        ui::TopButton{"Home", act("stream-home")},
-        ui::TopButton{"Shows", act("stream-lane", "shows"), streamLane_ == "shows"},
+        ui::TopButton{"Home", root ? act("stream-lane", "all") : act("stream-home"), streamLane_ == "all"},
         ui::TopButton{"Movies", act("stream-lane", "movies"), streamLane_ == "movies"},
-        ui::TopButton{"TVM", act("stream-mark"), false, true},
-        ui::TopButton{"Downloads", open("downloads", true)},
+        ui::TopButton{"Series", act("stream-lane", "shows"), streamLane_ == "shows"},
+        ui::TopButton{"Live TV", open("live-tv", false)},
+        ui::TopButton{"Library", open("watchlist", false)},
+        ui::TopButton{"Search", open("search", true)},
+        ui::TopButton{profileName, open("settings", false), false, false, true},
     };
-    if (root) {
-        // Home is TVM Stream's page, so Home's own way out to Live TV and Settings join the chrome there.
-        std::erase_if(view.topButtons, [](const ui::TopButton& b) { return b.label == "Home"; });
-        view.topButtons.insert(view.topButtons.begin() + 4, ui::TopButton{"My List", open("watchlist", false)});
-        view.topButtons.insert(view.topButtons.begin() + 6, ui::TopButton{"Live TV", open("live-tv", false)});
-        // The launcher's Apps tile: the service hubs.
-        view.topButtons.insert(view.topButtons.begin() + 7, ui::TopButton{"Apps", open("apps", false)});
-        view.topButtons.push_back(ui::TopButton{"Settings", open("settings", false)});
-    }
 
     std::vector<ui::HeroData> heroes;
     const bool rdReady = streamStatus_.configured && streamStatus_.error != "needs-auth";
@@ -1494,6 +1520,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         ui::HeroData notice;
         notice.itemId = "stream-connect";
         notice.title = "Connect Real-Debrid to watch";
+        notice.backdropUrl = "asset:lighthouse.jpg";
         notice.body =
             "Home and the other apps stay open without this. Paste the API token from real-debrid.com/apitoken, then "
             "press OK. TVM encrypts it on this machine and sends it to Real-Debrid and the Torrentio resolver for "
@@ -1553,6 +1580,15 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         if (root) heroes = candidates;
         else if (!candidates.empty()) heroes.push_back(candidates.front());
         if (view.rails.empty() && heroes.empty()) view.status = "Nothing on this lane yet.";
+    }
+    if (heroes.empty() && root) {
+        ui::HeroData fallback;
+        fallback.itemId = "featured-last-light";
+        fallback.title = "The Last Light";
+        fallback.meta = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
+        fallback.backdropUrl = "asset:lighthouse.jpg";
+        fallback.hue = 212;
+        heroes.push_back(fallback);
     }
 
     // The first view puts the focus on the billboard's first button, as the web page opens. Later ones

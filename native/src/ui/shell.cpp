@@ -70,7 +70,8 @@ bool Shell::Animating() const {
 }
 
 void Shell::Paint(Painter& painter) const {
-    const ThemeScope theme(ActiveScreenName() == "player" ? Theme::Dark : store_.Look());
+    const ThemeScope theme(ActiveScreenName() == "player" ? Theme::Dark : store_.Look(),
+                           motion_.performanceMode, motion::PrefersReducedMotion(motion_));
     // The screen under any modals is painted first, then each modal in order. A screen that shows the stage
     // lets the stage paint first, behind it.
     const nav::ViewEntry& visible = nav::VisibleScreen(stack_);

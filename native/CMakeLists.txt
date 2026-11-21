@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TVMNative LANGUAGES CXX)
+project(TVMNative LANGUAGES CXX RC)
 
 if(NOT WIN32)
   message(FATAL_ERROR "TVM native currently targets Windows. Use the shared web app on macOS/Linux.")
@@ -186,7 +186,10 @@ add_library(tvm_platform STATIC
 )
 target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dwrite windowscodecs ole32 shell32 user32 gdi32)
 
-add_executable(tvm WIN32 src/main.cpp)
+# Resource id 1 is the TVM icon; App registers its window class with it.
+set(TVM_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/tvm.ico")
+configure_file(src/tvm.rc.in "${CMAKE_CURRENT_BINARY_DIR}/tvm.rc" @ONLY)
+add_executable(tvm WIN32 src/main.cpp "${CMAKE_CURRENT_BINARY_DIR}/tvm.rc")
 target_link_libraries(tvm PRIVATE tvm_platform)
 if(MINGW)
   target_link_options(tvm PRIVATE -municode -static)

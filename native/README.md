@@ -35,6 +35,53 @@ The Native Windows GitHub workflow builds and tests with MSVC, captures
 screenshots at desktop and portrait sizes, and packages TVM-native-windows.zip.
 The ZIP contains the native renderer, artwork, shared Core, responsive UI and Node runtime. Extract the entire folder. Build the complete ZIP locally with `powershell -File native/package.ps1`.
 
+## Single-file installer (TVM.exe)
+
+`powershell -File native/installer/build-setup.ps1` packages the build above
+and compiles `native/dist/TVM.exe` (about 27 MiB) with the C# compiler that
+ships with Windows. Double-clicking it the first time installs TVM for the
+current user into `%LOCALAPPDATA%\Programs\TVM`, without administrator rights.
+It also adds Start menu and Desktop shortcuts and an Apps & features entry,
+then opens TVM. Later runs just open TVM, or update the installed copy when
+the file carries a newer build. An update closes the TVM window (asking first)
+and stops the installed Core. Uninstalling from Apps & features removes the
+program but keeps account data and mpv in `%LOCALAPPDATA%\TVM`. Flags:
+`--reinstall`, `--install-only`. The file is unsigned, so SmartScreen may ask
+for confirmation on first run.
+
+The installer builds its own pruned payload from `native/package/`; the
+GitHub release ZIP and its layout are unchanged. It omits source maps and
+manual-extraction launchers/readme, strips only a positively identified MinGW
+renderer copy, and checks that copy with a 1280x720 snapshot. All three PNG
+paths remain: the UI references `tvm-icon.png` and `apps/tvm.png`. The payload
+uses Windows 8+ `cabinet.dll` LZMS in solid 32 MiB blocks, with bounded buffers,
+block checksums, validated relative paths and extraction progress. Its file
+container and framing are documented in `installer/Payload.cs`.
+
+Measured on 2026-11-18 using the existing staged package (`-SkipPackage`):
+
+- Installer: **42,314,240 to 28,038,656 bytes** (40.35 to 26.74 MiB; **33.7% smaller**).
+- Staged/installed payload: **331 to 245 files**, **112,404,418 to 103,167,611 bytes**
+  (107.20 to 98.39 MiB). Normal installation also generates `uninstall.ps1`.
+- Payload renderer: **8,961,710 to 5,552,128 bytes**; source/package copies unchanged.
+- Isolated fresh install: **4.59 seconds**; update over an older stamp: **4.19 seconds**.
+  These are local test timings, excluding Windows shortcut/registry integration.
+- Rolldown was already available, but Core bundling was skipped: the unbundled
+  baseline failed Windows DPAPI protection in the sandbox user context
+  (Windows reported a possibly unloaded profile), so health/pricing/Hub HTTP
+  parity could not be established.
+  Core remains the original multi-file ESM output; no packages were installed.
+
+Rebuild only the installer payload with
+`powershell -File native/installer/build-setup.ps1 -SkipPackage`. Run
+`powershell -File native/installer/test-setup.ps1` for C# 5 format tests and
+fresh install/update/reinstall/version/corruption checks, including SHA-256
+verification of every installed file. Scratch manifests and metrics are in
+`build/installer/`. Tests use the hidden, **test-only** `--root <absolute-dir>`
+switch and install into `build/installer-test/`. This mode skips running-copy
+handling and all Windows integration/launching, keeps the progress window,
+and writes an adjacent `.setup.log`; it never operates on the real install.
+
 ## Available features
 
 - Home and TVM Stream catalogue, rotating hero artwork, search, movie and

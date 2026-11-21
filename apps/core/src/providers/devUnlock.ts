@@ -13,8 +13,8 @@ import { readSealed, writeSealed } from './vault.ts';
  * 600,000 iterations is the OWASP floor. The salt is public by design. The
  * code itself is not in this repository.
  */
-export const PBKDF2_SALT = Buffer.from('ff00d19a49bac718676167cc32599b88', 'hex');
-export const PBKDF2_HASH = Buffer.from('520f9e3aad671dec8b28798877f2966eb197fd7df5e1c0a492db2dcb428eb4ff', 'hex');
+export const PBKDF2_SALT = Buffer.from('27d2bd86ac0ed42eaf21ac5744bcb4e3', 'hex');
+export const PBKDF2_HASH = Buffer.from('45d072775474c40a8c97c4329cdf0ad65ea2884a9b8a512fe215b853bee7cfac', 'hex');
 export const PBKDF2_ITERATIONS = 600_000;
 
 /**

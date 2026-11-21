@@ -564,6 +564,11 @@ sub showPlayer(params as Object)
   panel.streamFormat = aaGet(params, "format", "mp4")
   panel.mediaId = aaGet(params, "mediaId", "")
   panel.mediaKind = aaGet(params, "mediaKind", "")
+  panel.coreUrl = m.coreUrl
+  panel.coreToken = m.coreToken
+  panel.accountToken = m.accountToken
+  panel.profileId = m.profileId
+  panel.deviceCredential = m.deviceCredential
   recapEnd = aaGet(params, "recapEnd", 0)
   if recapEnd <> invalid then panel.recapEnd = recapEnd
   startAt = aaGet(params, "startAt", 0)
@@ -936,6 +941,11 @@ sub onPlayerAction()
     return
   end if
   if kind = "skipRecap" then return
+  if kind = "openHub"
+    navigate("pop", "", {})
+    navigate("push", "hub", {})
+    return
+  end if
   if kind = "next"
     playNextFromPlayer()
     return

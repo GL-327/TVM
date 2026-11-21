@@ -5,6 +5,7 @@
     <field id="labels" type="array" onChange="rebuild" />
     <field id="activeIndex" type="integer" value="0" onChange="paint" />
     <field id="previewIndex" type="integer" value="0" onChange="paint" />
+    <field id="pitch" type="integer" value="380" onChange="rebuild" />
     <field id="hasFocus" type="boolean" value="false" onChange="paint" />
     <function name="handleIntent" />
     <function name="rememberFocus" />

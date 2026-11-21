@@ -133,23 +133,22 @@ TEST(home_starts_on_watch_and_the_arrows_walk_the_hero_and_the_rails) {
     Scene scene = HomeWith({Hero("a", "Alpha", ""), Hero("b", "Beta", "")});
     REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("hero-play"));
 
-    REQUIRE(scene.Navigate(Direction::Down, 0.0));
+    // Play and Details sit side by side in the hero.
+    REQUIRE(scene.Navigate(Direction::Right, 0.0));
     REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("hero-info"));
+    REQUIRE(!scene.Navigate(Direction::Right, 0.0));
+    REQUIRE(scene.Navigate(Direction::Left, 0.0));
+    REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("hero-play"));
+    REQUIRE(!scene.Navigate(Direction::Left, 0.0));
+
     REQUIRE(scene.Navigate(Direction::Down, 0.0));
     REQUIRE(scene.FocusedKey()->rfind("card:0:", 0) == 0);
 
-    // Up from the top rail reaches Browse, then Watch, then the first top button.
-    REQUIRE(scene.Navigate(Direction::Up, 0.0));
-    REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("hero-info"));
+    // Up from the top rail reaches Play, then the first top button.
     REQUIRE(scene.Navigate(Direction::Up, 0.0));
     REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("hero-play"));
     REQUIRE(scene.Navigate(Direction::Up, 0.0));
     REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("settings"));
-
-    // Left and right do nothing on the hero's buttons.
-    REQUIRE(scene.FocusItem("hero-play", 0.0, true));
-    REQUIRE(!scene.Navigate(Direction::Right, 0.0));
-    REQUIRE(!scene.Navigate(Direction::Left, 0.0));
 }
 
 TEST(watch_opens_the_hero_title_and_browse_opens_the_tvm_stream) {
@@ -170,11 +169,11 @@ TEST(the_buttons_of_the_hero_are_where_they_are_drawn) {
     Scene scene = HomeWith({Hero("a", "Alpha", "")});
     HeroPainter painter;
     scene.Paint(painter);
-    const HeroPainter::TextDraw* watch = painter.FindLast("Watch");
+    const HeroPainter::TextDraw* watch = painter.FindLast("Play");
     REQUIRE(watch != nullptr);
     REQUIRE_EQ(scene.ItemAt(watch->box.x + 2.0, watch->box.y + watch->box.height / 2.0),
                std::optional<std::string>("hero-play"));
-    const HeroPainter::TextDraw* learn = painter.Find("Browse TVM Stream");
+    const HeroPainter::TextDraw* learn = painter.Find("Details");
     REQUIRE(learn != nullptr);
     REQUIRE_EQ(scene.ItemAt(learn->box.x + 2.0, learn->box.y + learn->box.height / 2.0),
                std::optional<std::string>("hero-info"));
@@ -187,18 +186,18 @@ TEST(the_title_dissolves_in_over_480_milliseconds) {
     scene.Tick(0.0);
     HeroPainter start;
     scene.Paint(start);
-    REQUIRE_NEAR(start.Find("ALPHA")->color.a, 0.0, 1e-9);
+    REQUIRE_NEAR(start.Find("Alpha")->color.a, 0.0, 1e-9);
 
     scene.Tick(240.0);
     HeroPainter middle;
     scene.Paint(middle);
-    const double halfway = middle.Find("ALPHA")->color.a;
+    const double halfway = middle.Find("Alpha")->color.a;
     REQUIRE(halfway > 0.0 && halfway < 1.0);
 
     scene.Tick(480.0);
     HeroPainter end;
     scene.Paint(end);
-    REQUIRE_NEAR(end.Find("ALPHA")->color.a, 1.0, 1e-9);
+    REQUIRE_NEAR(end.Find("Alpha")->color.a, 1.0, 1e-9);
     REQUIRE(!scene.Animating());
 }
 
@@ -264,8 +263,8 @@ TEST(the_title_changes_with_the_turn_and_the_dots_follow_it) {
     scene.Tick(1000.0);
     HeroPainter painter;
     scene.Paint(painter);
-    REQUIRE(painter.Find("BETA") != nullptr);
-    REQUIRE(painter.Find("ALPHA") == nullptr);
+    REQUIRE(painter.Find("Beta") != nullptr);
+    REQUIRE(painter.Find("Alpha") == nullptr);
 }
 
 // ------------------------------------------------------------- the page scroll
@@ -295,7 +294,7 @@ TEST(the_copy_is_not_faded_with_the_page) {
     HeroPainter painter;
     scene.Paint(painter);
     // The title keeps its full colour: only the pictures and the vignette fade.
-    REQUIRE_NEAR(painter.Find("ALPHA")->color.a, 1.0, 1e-9);
+    REQUIRE_NEAR(painter.Find("Alpha")->color.a, 1.0, 1e-9);
 }
 
 }  // namespace

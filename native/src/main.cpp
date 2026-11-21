@@ -41,15 +41,90 @@ namespace {
 using tvm::nav::Direction;
 using tvm::ui::RailSpec;
 
-// Placeholder rails for the demo home screen. Titles are generic labels, not
-// catalogue content.
-std::vector<RailSpec> DemoRails() {
-    return {
-        {"Recently added", 12},
-        {"Top picks", 12},
-        {"Continue watching", 9},
-        {"Live channels", 12},
+// Configures the snapshot Home screen to match Study 03 (Roku Home) and the live Stream Home layout.
+std::unique_ptr<tvm::ui::Scene> SnapshotHomeScene(tvm::motion::MotionSettings motion) {
+    auto scene = std::make_unique<tvm::ui::Scene>(std::vector<RailSpec>{}, motion);
+    scene->SetImageReady([](const std::string& url) { return !url.empty(); });
+
+    const auto open = [](const std::string& name, bool modal = false) {
+        tvm::ui::Command command;
+        command.name = name;
+        command.modal = modal;
+        return command;
     };
+    const auto act = [](const std::string& name, const std::string& lane = "") {
+        tvm::ui::Command command;
+        command.name = name;
+        command.action = true;
+        if (!lane.empty()) command.params["lane"] = lane;
+        return command;
+    };
+
+    tvm::ui::HeroData hero;
+    hero.itemId = "featured-last-light";
+    hero.title = "The Last Light";
+    hero.meta = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
+    hero.backdropUrl = "asset:lighthouse.jpg";
+    hero.hue = 212;
+
+    tvm::ui::SceneView view;
+    view.style = tvm::ui::SceneStyle::Stream;
+    view.topButtons = {
+        tvm::ui::TopButton{"Home", act("stream-lane", "all"), true},
+        tvm::ui::TopButton{"Movies", act("stream-lane", "movies"), false},
+        tvm::ui::TopButton{"Series", act("stream-lane", "shows"), false},
+        tvm::ui::TopButton{"Live TV", open("live-tv"), false},
+        tvm::ui::TopButton{"Library", open("watchlist"), false},
+        tvm::ui::TopButton{"Search", open("search", true), false},
+        tvm::ui::TopButton{"Profile", open("settings"), false, false, true},
+    };
+
+    tvm::ui::RailData continueWatching;
+    continueWatching.id = "continue-watching";
+    continueWatching.title = "Continue Watching";
+    continueWatching.cards = {
+        tvm::ui::CardData{"cw-1", "The Last Light", "asset:lighthouse.jpg", 0.38},
+        tvm::ui::CardData{"cw-2", "The Winter Road", "", 0.72},
+        tvm::ui::CardData{"cw-3", "Northward", "", 0.24},
+        tvm::ui::CardData{"cw-4", "Quiet Harbor", "", 0.56},
+        tvm::ui::CardData{"cw-5", "Distant Shore", "", 0.18},
+    };
+    view.rails.push_back(std::move(continueWatching));
+
+    tvm::ui::RailData trending;
+    trending.id = "trending-movies";
+    trending.title = "Trending Movies";
+    const char* trendingTitles[] = {
+        "Cold Meridian", "Vesper", "The Glass Coast", "Solstice", "Low Tide",
+        "High Water", "Ambergris", "Night Watch", "Far Sound", "Pale Signal"
+    };
+    for (std::size_t i = 0; i < 10; ++i) {
+        trending.cards.push_back(tvm::ui::CardData{
+            "tm-" + std::to_string(i + 1),
+            trendingTitles[i],
+            i == 0 ? "asset:lighthouse.jpg" : "",
+            std::nullopt,
+        });
+    }
+    view.rails.push_back(std::move(trending));
+
+    tvm::ui::RailData picks;
+    picks.id = "you-might-like";
+    picks.title = "You might like";
+    for (std::size_t i = 0; i < 10; ++i) {
+        picks.cards.push_back(tvm::ui::CardData{
+            "pick-" + std::to_string(i + 1),
+            "Title " + std::to_string(i + 1),
+            "",
+            std::nullopt,
+        });
+    }
+    view.rails.push_back(std::move(picks));
+
+    scene->SetHeroes({hero}, 0.0);
+    scene->SetView(view, 0.0);
+    scene->FocusItem("hero-play", 0.0, false);
+    return scene;
 }
 
 std::optional<Direction> ParseDirection(const std::wstring& name) {
@@ -108,7 +183,7 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
     store.SaveLook(theme);
     std::unique_ptr<tvm::ui::Screen> root;
     if (settings) root = std::make_unique<tvm::ui::SettingsScreen>(store, store.Motion());
-    else root = std::make_unique<tvm::ui::Scene>(DemoRails(), store.Motion());
+    else root = SnapshotHomeScene(store.Motion());
     tvm::ui::Shell shell(std::move(root), store);
     shell.Layout(width, height);
 

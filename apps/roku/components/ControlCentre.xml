@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ControlCentre" extends="Group">
+  <interface>
+    <field id="coreUrl" type="string" />
+    <field id="coreToken" type="string" />
+    <field id="accountToken" type="string" />
+    <field id="profileId" type="string" />
+    <field id="deviceCredential" type="string" />
+    <field id="mediaId" type="string" />
+    <field id="mediaKind" type="string" />
+    <field id="playing" type="boolean" value="false" onChange="onPlayerState" />
+    <field id="position" type="float" value="0" />
+    <field id="hasNext" type="boolean" value="false" onChange="onPlayerState" />
+    <field id="nextTitle" type="string" onChange="onPlayerState" />
+    <field id="audioTracks" type="array" />
+    <field id="audioCurrent" type="string" />
+    <field id="subtitleTracks" type="array" />
+    <field id="subtitleCurrent" type="string" />
+    <field id="captionMode" type="string" />
+    <field id="isOpen" type="boolean" value="false" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <function name="openPanel" />
+    <function name="closePanel" />
+    <function name="handleIntent" />
+    <function name="handoffInFlight" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/config.brs" />
+  <script type="text/brightscript" uri="pkg:/source/api.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hub.brs" />
+  <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/controlCentre.brs" />
+  <script type="text/brightscript" uri="ControlCentre.brs" />
+  <children>
+    <Group id="scrim">
+      <Poster uri="pkg:/images/chrome/details-vignette-left.png" width="2200" height="2160" translation="[3840, 2160]" rotation="3.14159" opacity="0.9" />
+    </Group>
+    <GlassPanel id="ghostFar" shape="panel" width="1512" height="1656" translation="[1816, 212]" opacity="0.3" />
+    <GlassPanel id="ghostNear" shape="panel" width="1596" height="1748" translation="[1904, 166]" opacity="0.55" />
+    <Group id="panel" translation="[2000, 120]">
+      <Poster id="backing" uri="pkg:/images/glass/panel-fill.9.png" width="1680" height="1840" blendColor="0x0A0D12A6" />
+      <GlassPanel id="glass" shape="panel" width="1680" height="1840" />
+      <SpatialTabs id="tabs" translation="[72, 56]" />
+      <Group id="content" translation="[72, 236]">
+        <GlassPanel id="plate" shape="tab" width="1536" height="128" focused="true" visible="false" />
+        <Group id="rows" />
+      </Group>
+      <Label id="status" translation="[72, 1700]" width="1536" height="100" vertAlign="center" wrap="true" maxLines="2" />
+    </Group>
+    <Timer id="idleTimer" duration="1" repeat="true" />
+    <Timer id="pollTimer" duration="1" repeat="true" />
+    <Timer id="simTimer" duration="0.25" repeat="true" />
+    <Timer id="pressTimer" duration="0.08" repeat="false" />
+    <Animation id="openAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator id="openFade" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="panel.opacity" />
+      <FloatFieldInterpolator id="openScrim" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="scrim.opacity" />
+      <FloatFieldInterpolator id="openNear" key="[0.0, 1.0]" keyValue="[0.0, 0.55]" fieldToInterp="ghostNear.opacity" />
+      <FloatFieldInterpolator id="openFar" key="[0.0, 1.0]" keyValue="[0.0, 0.3]" fieldToInterp="ghostFar.opacity" />
+      <Vector2DFieldInterpolator id="openSlide" key="[0.0, 1.0]" keyValue="[[2080.0, 120.0], [2000.0, 120.0]]" fieldToInterp="panel.translation" />
+    </Animation>
+    <Animation id="tabAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator id="tabFade" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="content.opacity" />
+      <Vector2DFieldInterpolator id="tabSlide" key="[0.0, 1.0]" keyValue="[[132.0, 236.0], [72.0, 236.0]]" fieldToInterp="content.translation" />
+    </Animation>
+    <Animation id="plateAnim" duration="0.15" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="plateMove" key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [0.0, 0.0]]" fieldToInterp="plate.translation" />
+      <Vector2DFieldInterpolator id="plateScale" key="[0.0, 1.0]" keyValue="[[1.0, 1.0], [1.0, 1.0]]" fieldToInterp="plate.scale" />
+    </Animation>
+  </children>
+</component>

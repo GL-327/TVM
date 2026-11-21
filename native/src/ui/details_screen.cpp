@@ -225,6 +225,8 @@ void DetailsScreen::Paint(Painter& painter) const {
     // The backdrop fills the top of the page, under the vignette: dark at the left behind the copy, and
     // fading into the page at the foot, as `.details__vignette` paints it.
     const Box hero{0.0, -scroll_, width_, HeroHeight()};
+    const std::string& backdropUrl = info_.backdropUrl.empty() ? "asset:lighthouse.jpg" : info_.backdropUrl;
+    painter.SetBackdrop(hero, backdropUrl, 0.5, 0.25);
     if (!info_.backdropUrl.empty()) painter.ImageFaded(hero, info_.backdropUrl, 0.0, 1.0, 0.5, 0.25);
     painter.FillLinearGradient(hero, hero.x, hero.y, hero.Right(), hero.y,
                                {GradientStop{0.0, WithAlpha(background, 0.88)},
@@ -238,13 +240,19 @@ void DetailsScreen::Paint(Painter& painter) const {
                                 GradientStop{0.94, background},
                                 GradientStop{1.0, background}});
 
-    // The poster: artwork when it is on disk, a placeholder until then.
+    // The poster: artwork when it is on disk, a glass card placeholder until then.
     const double x = Rem(kSafeXRem);
     const bool compact = CompactViewport(width_, height_);
     const double posterY = compact ? Rem(3.0) - scroll_ : HeroHeight() - scroll_ - Rem(kHeroPadBottomRem) - Rem(kDetailsPosterHeightRem);
     const Box poster{x, posterY, Rem(kDetailsPosterWidthRem), Rem(kDetailsPosterHeightRem)};
-    if (!compact && (info_.posterUrl.empty() || !painter.Image(poster, info_.posterUrl, Rem(kPosterRadiusRem)))) {
-        painter.FillRoundRect(poster, Rem(kPosterRadiusRem), tokens::kSurface);
+    if (!compact) {
+        const bool hasPoster = !info_.posterUrl.empty() && painter.Image(poster, info_.posterUrl, Rem(kPosterRadiusRem));
+        GlassStyle posterGlass;
+        posterGlass.kind = GlassKind::Card;
+        posterGlass.rimOnly = hasPoster;
+        posterGlass.reduceTransparency = tokens::reduceTransparency;
+        posterGlass.tint = tokens::kSurface;
+        painter.Glass(poster, Rem(kPosterRadiusRem), posterGlass);
     }
 
     // The copy: the kicker pill, the title, the metadata, the buttons, then the synopsis.
@@ -254,11 +262,15 @@ void DetailsScreen::Paint(Painter& painter) const {
     const TextStyle kickerStyle{Rem(0.72), true, 750};
     const double kickerWidth = painter.MeasureText(kicker, kickerStyle) + Rem(1.16);
     const Box pill{copyX, posterY, kickerWidth, Rem(1.4)};
-    painter.FillRoundRect(pill, pill.height / 2.0, WithAlpha(tokens::kAccentStrong, 0.18));
+    GlassStyle pillGlass;
+    pillGlass.kind = GlassKind::Tab;
+    pillGlass.reduceTransparency = tokens::reduceTransparency;
+    pillGlass.tint = WithAlpha(tokens::kAccentStrong, 0.18);
+    painter.Glass(pill, pill.height / 2.0, pillGlass);
     painter.Text(Box{pill.x + Rem(0.58), pill.y, pill.width, pill.height}, kicker, kickerStyle, tokens::kAccentStrong);
-    painter.Text(Box{copyX, posterY + Rem(1.9), copyWidth, Rem(3.6)}, info_.title, TextStyle{Rem(2.9), true, 800},
+    painter.Text(Box{copyX, posterY + Rem(1.9), copyWidth, Rem(3.8)}, info_.title, TextStyle{Rem(3.0), true, 700},
                  tokens::kText);
-    painter.Text(Box{copyX, posterY + Rem(5.7), copyWidth, Rem(1.5)}, MetaLine(), TextStyle{Rem(1.0), false, 500},
+    painter.Text(Box{copyX, posterY + Rem(5.8), copyWidth, Rem(1.5)}, MetaLine(), TextStyle{Rem(1.125), false, 450},
                  tokens::kTextMuted);
     for (const std::string& key : ActionKeys()) {
         const std::string label = key == kPlayKey   ? "Play"
@@ -287,13 +299,18 @@ void DetailsScreen::Paint(Painter& painter) const {
         if (tab.Bottom() < 0.0 || tab.y > height_) continue;
         const bool shown = season == season_;
         const bool focused = focused_ == key;
-        painter.FillRoundRect(tab, tab.height / 2.0,
-                              shown ? tokens::kPrimary : focused ? tokens::kSurfaceHover : tokens::kSurface);
-        if (focused) {
-            const double ring = Rem(kFocusRingOffsetRem) + Rem(kFocusRingWidthRem) / 2.0;
-            painter.StrokeRoundRect(Box{tab.x - ring, tab.y - ring, tab.width + 2.0 * ring, tab.height + 2.0 * ring},
-                                    tab.height / 2.0 + ring, Rem(kFocusRingWidthRem), tokens::kFocusRing);
-        }
+        GlassStyle tabGlass;
+        tabGlass.kind = GlassKind::Tab;
+        tabGlass.focused = focused;
+        tabGlass.activeTab = shown;
+        tabGlass.focusAmount = focused ? 1.0 : 0.0;
+        tabGlass.reduceTransparency = tokens::reduceTransparency;
+        tabGlass.tint = shown ? tokens::kPrimary : (focused ? tokens::kSurfaceHover : tokens::kSurface);
+        tabGlass.ringWidth = Rem(kFocusRingWidthRem);
+        tabGlass.ringOutset = Rem(kFocusRingOffsetRem) + tabGlass.ringWidth / 2.0;
+        tabGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(tab, tab.height / 2.0, tabGlass);
+
         const std::string label = season == 0 ? "Specials" : "Season " + std::to_string(season);
         const TextStyle style{Rem(1.0), true, 650};
         const double width = painter.MeasureText(label, style);
@@ -313,8 +330,16 @@ void DetailsScreen::Paint(Painter& painter) const {
         if (row.Bottom() < 0.0 || row.y > height_) continue;
         const catalog::MediaItem& episode = *episodes[i];
         const bool focused = focused_ == key;
-        painter.FillRoundRect(row, Rem(0.7), focused ? tokens::kSurfaceHover : WithAlpha(tokens::kSurface, 0.7));
-        if (focused) painter.StrokeRoundRect(row, Rem(0.7), Rem(kFocusRingWidthRem), tokens::kFocusRing);
+        GlassStyle rowGlass;
+        rowGlass.kind = GlassKind::Card;
+        rowGlass.focused = focused;
+        rowGlass.focusAmount = focused ? 1.0 : 0.0;
+        rowGlass.reduceTransparency = tokens::reduceTransparency;
+        rowGlass.tint = focused ? tokens::kSurfaceHover : WithAlpha(tokens::kSurface, 0.7);
+        rowGlass.ringWidth = Rem(kFocusRingWidthRem);
+        rowGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(row, Rem(0.875), rowGlass);
+
         const Box still{row.x + Rem(0.5), row.y + Rem(0.5), Rem(kStillWidthRem), Rem(kStillHeightRem)};
         if (episode.poster.empty() || !painter.Image(still, episode.poster, Rem(0.4))) {
             painter.FillLinearGradient(still, still.x, still.y, still.Right(), still.Bottom(),
