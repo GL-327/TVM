@@ -340,7 +340,7 @@ std::optional<Box> Scene::TabIndicatorBox() const {
 double Scene::EmphasisOf(const std::string& key) const {
     const auto found = emphasis_.find(key);
     if (found != emphasis_.end()) return std::clamp(found->second.Value(clockMs_), 0.0, 1.0);
-    return focus_.Focused() == std::optional<std::string>(key) ? 1.0 : 0.0;
+    return ShowsFocus(key) ? 1.0 : 0.0;
 }
 
 double Scene::PressOf(const std::string& key) const {
@@ -354,13 +354,38 @@ void Scene::AnimateEmphasis(const std::optional<std::string>& from, const std::s
         emphasis_[*from] = motion::Tween(EmphasisOf(*from), 0.0, nowMs, reduced ? 0.0 : kEmphasisOutMs, kGlassEase);
     }
     if (!cardByKey_.contains(to)) {
-        emphasis_[to] = motion::Tween(EmphasisOf(to), 1.0, nowMs, reduced ? 0.0 : kEmphasisInMs, kGlassEase);
+        emphasis_[to] = motion::Tween(EmphasisOf(to), focusHidden_ ? 0.0 : 1.0, nowMs, reduced ? 0.0 : kEmphasisInMs,
+                                      kGlassEase);
         if (!reduced && (!from.has_value() || *from != to)) focusStart_[to] = nowMs;
     }
 }
 
+void Scene::EaseFocusedLook(bool shown, double nowMs) {
+    const std::optional<std::string> key = focus_.Focused();
+    if (!key.has_value()) return;
+    if (const auto card = cardByKey_.find(*key); card != cardByKey_.end()) {
+        AnimateFocus(card->second, shown ? 1.0 : 0.0, nowMs);
+        return;
+    }
+    const bool reduced = motion::PrefersReducedMotion(motion_);
+    emphasis_[*key] = motion::Tween(EmphasisOf(*key), shown ? 1.0 : 0.0, nowMs,
+                                    reduced ? 0.0 : (shown ? kEmphasisInMs : kEmphasisOutMs), kGlassEase);
+}
+
+void Scene::PointerLeft(double nowMs) {
+    if (focusHidden_) return;
+    focusHidden_ = true;
+    EaseFocusedLook(false, nowMs);
+}
+
+void Scene::ShowFocus(double nowMs) {
+    if (!focusHidden_) return;
+    focusHidden_ = false;
+    EaseFocusedLook(true, nowMs);
+}
+
 double Scene::SweepOf(const std::string& key) const {
-    if (tokens::reduceMotion || focus_.Focused() != std::optional<std::string>(key)) return -1.0;
+    if (tokens::reduceMotion || !ShowsFocus(key)) return -1.0;
     const auto start = focusStart_.find(key);
     if (start == focusStart_.end()) return -1.0;
     const double t = (clockMs_ - start->second - kSweepDelayMs) / kSweepMs;
@@ -633,8 +658,8 @@ void Scene::PaintHero(Painter& painter) const {
     const HeroBoxes boxes = HeroLayout();
     const TextStyle kickerStyle{metrics_.Rem(kHeroKickerFontRem), true};
     const bool notice = !data.body.empty();
-    const bool watchFocused = focus_.Focused() == std::optional<std::string>(kHeroPlayKey);
-    const bool learnFocused = focus_.Focused() == std::optional<std::string>(kHeroInfoKey);
+    const bool watchFocused = ShowsFocus(kHeroPlayKey);
+    const bool learnFocused = ShowsFocus(kHeroInfoKey);
     const Color white = Rgb(0xFFFFFF);
     const double titleAlpha = titleFade_.has_value() ? std::clamp(titleFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
 
@@ -819,7 +844,7 @@ void Scene::PaintPageHeader(Painter& painter) const {
     painter.Text(Box{x, top + metrics_.Rem(1.1), viewportWidth_ - 2.0 * x, metrics_.Rem(3.4)}, heading_,
                  TextStyle{metrics_.Rem(3.0), true, 700}, tokens::kText);
     for (std::size_t i = 0; i < tops_.size(); ++i) {
-        const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
+        const bool focused = ShowsFocus(TopKey(i));
         // A chosen filter is the primary button, as the web marks it with variant=primary.
         const double emphasis = EmphasisOf(TopKey(i));
         DrawButton(painter, metrics_, TopBoxScreen(i), tops_[i].label,
@@ -922,7 +947,7 @@ void Scene::PaintStreamChrome(Painter& painter) const {
     const std::optional<Box> indicator = TabIndicatorBox();
     if (indicator.has_value() && indicatorStage > 0.0) {
         const std::string key = TopKey(*activeTab_);
-        const bool focused = focus_.Focused() == std::optional<std::string>(key);
+        const bool focused = ShowsFocus(key);
         const double emphasis = EmphasisOf(key);
         const double press = PressOf(key);
         const double scale = tokens::reduceMotion
@@ -949,7 +974,7 @@ void Scene::PaintStreamChrome(Painter& painter) const {
     for (std::size_t i = 0; i < tops_.size(); ++i) {
         const Box box = TopBoxScreen(i);
         const std::string key = TopKey(i);
-        const bool focused = focus_.Focused() == std::optional<std::string>(key);
+        const bool focused = ShowsFocus(key);
         const double emphasis = EmphasisOf(key);
         const double press = PressOf(key);
         if (tops_[i].lockup) {
@@ -1543,7 +1568,8 @@ void Scene::FocusKey(const std::string& key, double nowMs, bool withCamera) {
     focus_.SetFocus(key);
 
     const auto card = cardByKey_.find(key);
-    if (card != cardByKey_.end()) AnimateFocus(card->second, 1.0, nowMs);
+    // A rebuild that keeps the focus while the pointer rests elsewhere keeps it unlit.
+    if (card != cardByKey_.end()) AnimateFocus(card->second, focusHidden_ ? 0.0 : 1.0, nowMs);
     if (!withCamera) return;
 
     bool moved = false;
@@ -1651,7 +1677,7 @@ void Scene::Paint(Painter& painter) const {
     for (std::size_t i = 0; i < tops_.size(); ++i) {
         const Box button = TopBoxScreen(i);
         if (button.Bottom() < 0.0 || button.y >= viewportHeight_) continue;
-        const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
+        const bool focused = ShowsFocus(TopKey(i));
         const double emphasis = EmphasisOf(TopKey(i));
         const double radius = button.height / 2.0;
         GlassStyle glass;

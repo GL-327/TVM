@@ -164,6 +164,10 @@ public:
     void AnimateScroll(const ScrollSurface& surface, double target, double nowMs) override;
     void SetMotion(const motion::MotionSettings& settings) override { motion_ = settings; }
     void SetPressed(const std::optional<std::string>& key, double nowMs) override;
+    void PointerLeft(double nowMs) override;
+    void ShowFocus(double nowMs) override;
+    // Whether the focused item is drawn focused: false while the pointer rests on empty space.
+    bool FocusShown() const { return !focusHidden_; }
 
     // Plays the stream chrome's entrance (the glass bar, then its labels, then the selected tab) the first time
     // the chrome is drawn after this call. It plays once: switching tabs never replays it. Reduced motion skips it.
@@ -294,6 +298,13 @@ private:
     std::optional<std::size_t> ActiveTabIndex() const;
 
     std::map<std::string, motion::Tween> emphasis_;
+    // Set while the pointer is over nothing: the focus keeps its place for the remote, but is not drawn.
+    bool focusHidden_ = false;
+    bool ShowsFocus(const std::string& key) const {
+        return !focusHidden_ && focus_.Focused() == std::optional<std::string>(key);
+    }
+    // Eases the focused item's look in or out without moving the focus.
+    void EaseFocusedLook(bool shown, double nowMs);
     // When each button last took focus, for its highlight sweep.
     std::map<std::string, double> focusStart_;
     std::string pressKey_;

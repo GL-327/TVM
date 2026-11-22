@@ -1,5 +1,7 @@
 #include "platform/background.h"
 
+#include <objbase.h>
+
 #include <memory>
 #include <utility>
 
@@ -32,6 +34,15 @@ void Background::Run(std::function<void()> task) {
 }
 
 void Background::WorkerLoop() {
+    // Pictures are decoded on these threads. WIC's built-in JPEG and PNG decoders work without COM, but add-on
+    // codecs such as WebP and HEIF are COM objects and fail on a thread that never joined an apartment.
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    struct ComScope {
+        bool joined;
+        ~ComScope() {
+            if (joined) CoUninitialize();
+        }
+    } scope{SUCCEEDED(com)};
     for (;;) {
         std::function<void()> task;
         {

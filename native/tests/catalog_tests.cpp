@@ -72,7 +72,9 @@ TEST(artwork_promotes_metahub_and_tmdb_stills_used_on_the_hero) {
     REQUIRE_EQ(tvm::catalog::UpgradeImageUrl("https://images.metahub.space/background/medium/tt0111161/img", true),
                std::string("https://images.metahub.space/background/large/tt0111161/img"));
     REQUIRE_EQ(tvm::catalog::UpgradeImageUrl("https://image.tmdb.org/t/p/w1280/abc.jpg", true),
-               std::string("https://image.tmdb.org/t/p/original/abc.jpg"));
+               std::string("https://image.tmdb.org/t/p/w1280/abc.jpg"));
+    REQUIRE_EQ(tvm::catalog::UpgradeImageUrl("https://image.tmdb.org/t/p/w185/abc.jpg", false),
+               std::string("https://image.tmdb.org/t/p/w500/abc.jpg"));
 }
 
 TEST(artwork_fills_a_missing_backdrop_from_metahub_instead_of_stretching_a_poster) {
@@ -89,11 +91,11 @@ TEST(artwork_turns_protocol_relative_cdn_urls_into_https) {
 
 TEST(artwork_upgrades_itunes_thumbnails_to_the_largest_size) {
     REQUIRE_EQ(tvm::catalog::UpgradeImageUrl("https://is1.mzstatic.com/image/100x100bb.jpg", false),
-               std::string("https://is1.mzstatic.com/image/2000x2000bb.jpg"));
+               std::string("https://is1.mzstatic.com/image/780x780bb.jpg"));
 }
 
 TEST(artwork_reads_a_bare_tmdb_file_name_as_a_tmdb_path) {
-    REQUIRE_EQ(tvm::catalog::NormalizeArtUrl("/abc123.jpg"), std::string("https://image.tmdb.org/t/p/original/abc123.jpg"));
+    REQUIRE_EQ(tvm::catalog::NormalizeArtUrl("/abc123.jpg"), std::string("https://image.tmdb.org/t/p/w780/abc123.jpg"));
     REQUIRE_EQ(tvm::catalog::NormalizeArtUrl("/abc123.gif"), std::string("/abc123.gif"));
 }
 

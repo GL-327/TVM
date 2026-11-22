@@ -2,6 +2,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <iterator>
 #include <cmath>
 #include <cstddef>
 #include <optional>
@@ -217,9 +218,16 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     // A picture is read on a worker, and its pixels come back to the window thread, which makes the bitmap.
     images_->SetRequest([this](const std::wstring& file) {
         background_->Run([this, file] {
-            auto picture = std::make_shared<DecodedPicture>(DecodePicture(graphics_, file));
+            auto picture = std::make_shared<DecodedPicture>();
+            try {
+                *picture = DecodePicture(graphics_, file);
+            } catch (...) {
+                // Delivered as a failure below, so the request is never left waiting.
+            }
             background_->PostToUi([this, file, picture] {
+                const bool decoded = picture->ok;
                 images_->Deliver(file, std::move(*picture));
+                if (!decoded) HandleUndecodable(file);
                 dirty_ = true;
             });
         });
@@ -464,6 +472,7 @@ int App::Run(int showCommand) {
             });
         }
         TurnHero(now);
+        SyncArtwork(now);
         if (const std::optional<nav::Direction> hop = hops_.Tick()) {
             shell_->Navigate(*hop, now);
             dirty_ = true;
@@ -480,12 +489,12 @@ int App::Run(int showCommand) {
         if (animating) {
             // Sleep one frame, waking early for input.
             MsgWaitForMultipleObjects(0, nullptr, FALSE, kFrameMs, QS_ALLINPUT);
-        } else if (home_->HeroCount() > 1) {
-            // Nothing is moving, but the hero turns on a timer, so the wait ends when the next turn is due.
-            const double due = std::max(0.0, lastHeroTurnMs_ + kHeroTurnMs - now);
-            MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::ceil(due)), QS_ALLINPUT);
         } else {
-            MsgWaitForMultipleObjects(0, nullptr, FALSE, 1000, QS_ALLINPUT);
+            // Nothing is moving. The wait ends early for whatever is due next: the hero's turn, or a picture retry.
+            double due = 1000.0;
+            if (home_->HeroCount() > 1) due = std::max(0.0, lastHeroTurnMs_ + kHeroTurnMs - now);
+            if (artworkRetryDueMs_ > 0.0) due = std::min(due, std::max(0.0, artworkRetryDueMs_ - now));
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::ceil(due)), QS_ALLINPUT);
         }
     }
     return 0;
@@ -515,6 +524,20 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         dirty_ = true;
         return 0;
     }
+    case WM_MOUSELEAVE:
+        trackingLeave_ = false;
+        // The next move is a real one, whatever point it lands on.
+        lastMouse_ = POINT{-1, -1};
+        if (shell_) shell_->MouseLeave(NowMs());
+        dirty_ = true;
+        return 0;
+    case WM_ACTIVATE:
+        // Switching to another window ends any hover: the pointer is no longer ours to track.
+        if (LOWORD(wParam) == WA_INACTIVE && shell_) {
+            shell_->MouseLeave(NowMs());
+            dirty_ = true;
+        }
+        break;
     case WM_SIZE:
         Resize();
         if (mpv_) mpv_->Resize();
@@ -661,6 +684,14 @@ bool App::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam) {
         // every frame. Only a real move counts, or the player's chrome would never fade.
         if (point.x == lastMouse_.x && point.y == lastMouse_.y) return true;
         lastMouse_ = point;
+        if (!trackingLeave_) {
+            // Ask Windows to say when the pointer leaves the window, so a hovered control does not stay lit.
+            TRACKMOUSEEVENT track{};
+            track.cbSize = sizeof(track);
+            track.dwFlags = TME_LEAVE;
+            track.hwndTrack = window_;
+            trackingLeave_ = TrackMouseEvent(&track) != FALSE;
+        }
         if (player != nullptr) player->ShowChrome(now);
         if (HandleScrub(message, point)) return true;
         const bool buttonDown = (wParam & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON)) != 0;
@@ -850,21 +881,108 @@ void App::LoadCatalog() {
     });
 }
 
-void App::QueueArtwork(const std::string& url) {
-    if (url.empty() || artwork_->Lookup(url).has_value()) return;
-    if (!queuedArtwork_.insert(url).second) return;
+namespace {
+// Pictures downloading at once. The rest wait their turn, so catalogue calls on the shared workers are not starved.
+constexpr int kArtworkConcurrency = 4;
+// A failed picture is tried again after these waits; after the last it keeps its placeholder for the session.
+constexpr double kArtworkBackoffMs[] = {2000.0, 8000.0, 30000.0, 120000.0};
+}  // namespace
 
-    background_->Run([this, url] {
-        const bool fetched = artwork_->Fetch(url);
-        background_->PostToUi([this, url, fetched] {
-            if (fetched) {
-                dirty_ = true;
-            } else {
-                // A later screen may ask for this picture again.
-                queuedArtwork_.erase(url);
+void App::QueueArtwork(const std::string& url, bool onScreen) {
+    if (url.empty() || artwork_->Lookup(url).has_value()) return;
+    const auto tried = artworkTries_.find(url);
+    if (tried != artworkTries_.end() && (tried->second.givenUp || NowMs() < tried->second.retryAtMs)) return;
+    if (!queuedArtwork_.insert(url).second) {
+        // Already waiting: a picture now on screen moves to the front of the queue.
+        if (onScreen) {
+            const auto waiting = std::find(artworkQueue_.begin(), artworkQueue_.end(), url);
+            if (waiting != artworkQueue_.end() && waiting != artworkQueue_.begin()) {
+                artworkQueue_.erase(waiting);
+                artworkQueue_.push_front(url);
             }
+        }
+        return;
+    }
+    if (onScreen) {
+        artworkQueue_.push_front(url);
+    } else {
+        artworkQueue_.push_back(url);
+    }
+    PumpArtwork();
+}
+
+void App::PumpArtwork() {
+    while (artworkInFlight_ < kArtworkConcurrency && !artworkQueue_.empty()) {
+        const std::string url = artworkQueue_.front();
+        artworkQueue_.pop_front();
+        // A picture that arrived while it waited needs no download.
+        if (artwork_->Lookup(url).has_value()) {
+            queuedArtwork_.erase(url);
+            continue;
+        }
+        ++artworkInFlight_;
+        background_->Run([this, url] {
+            FetchResult result = FetchResult::Failed;
+            try {
+                result = artwork_->Fetch(url);
+            } catch (...) {
+                // Counted as a failure below, so the picture is retried rather than left queued for ever.
+            }
+            background_->PostToUi([this, url, result] {
+                --artworkInFlight_;
+                queuedArtwork_.erase(url);
+                if (result == FetchResult::Stored) {
+                    dirty_ = true;
+                } else {
+                    ArtworkTry& tried = artworkTries_[url];
+                    if (result == FetchResult::Missing) {
+                        tried.givenUp = true;
+                    } else {
+                        ++tried.failures;
+                        constexpr int kTries = static_cast<int>(std::size(kArtworkBackoffMs));
+                        if (tried.failures > kTries) {
+                            tried.givenUp = true;
+                        } else {
+                            tried.retryAtMs = NowMs() + kArtworkBackoffMs[tried.failures - 1];
+                            if (artworkRetryDueMs_ <= 0.0 || tried.retryAtMs < artworkRetryDueMs_) {
+                                artworkRetryDueMs_ = tried.retryAtMs;
+                            }
+                        }
+                    }
+                }
+                PumpArtwork();
+            });
         });
-    });
+    }
+}
+
+void App::SyncArtwork(double nowMs) {
+    // Whatever was painted without its picture last frame is fetched, on-screen pictures first.
+    for (const std::string& url : artwork_->TakeWanted()) QueueArtwork(url, true);
+    // A retry has fallen due: draw a frame, so the cards still waiting ask for their pictures again.
+    if (artworkRetryDueMs_ > 0.0 && nowMs >= artworkRetryDueMs_) {
+        artworkRetryDueMs_ = 0.0;
+        for (const auto& [url, tried] : artworkTries_) {
+            if (!tried.givenUp && tried.retryAtMs > nowMs &&
+                (artworkRetryDueMs_ <= 0.0 || tried.retryAtMs < artworkRetryDueMs_)) {
+                artworkRetryDueMs_ = tried.retryAtMs;
+            }
+        }
+        dirty_ = true;
+    }
+}
+
+void App::HandleUndecodable(const std::wstring& file) {
+    const std::optional<std::string> url = artwork_->Forget(file);
+    if (!url.has_value()) return;  // A bundled asset or a local file: nothing to download again.
+    ArtworkTry& tried = artworkTries_[*url];
+    if (tried.refetches >= 1) {
+        tried.givenUp = true;
+        return;
+    }
+    ++tried.refetches;
+    images_->ForgetFailure(file);
+    QueueArtwork(*url, true);
 }
 
 void App::QueueRailArtwork(const std::vector<ui::RailData>& rails) {
@@ -1266,7 +1384,10 @@ void App::ApplyLiveTv() {
     state.catalog = liveCatalog_;
     state.picks = livePicks_;
     state.message = liveMessage_;
-    shell_->SetLiveTvView(ui::LiveTvView(state), NowMs());
+    const ui::SceneView view = ui::LiveTvView(state);
+    // Channel logos are pictures like posters: fetch them, or every channel stays a plain tile.
+    QueueRailArtwork(view.rails);
+    shell_->SetLiveTvView(view, NowMs());
     // The channel check lists the same channels' groups.
     if (pageName_ == "live-check") ShowInfoPage();
     dirty_ = true;
@@ -1701,7 +1822,9 @@ void App::BuildWatchlistPage() {
         ui::RailData rail;
         rail.id = "saved-" + std::to_string(i / 8);
         for (std::size_t j = i; j < std::min(i + 8, items.size()); ++j) {
-            rail.cards.push_back(ui::CardData{items[j].id, items[j].title, items[j].poster, std::nullopt});
+            rail.cards.push_back(ui::CardData{items[j].id, items[j].title,
+                                              catalog::PreferPoster(items[j].id, items[j].poster, items[j].backdrop),
+                                              std::nullopt});
         }
         view.rails.push_back(std::move(rail));
     }

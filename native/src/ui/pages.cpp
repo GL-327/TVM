@@ -76,7 +76,7 @@ void PageScreen::Layout(double width, double height) {
 
 bool PageScreen::Tick(double nowMs) {
     clockMs_ = nowMs;
-    buttonFocus_.Track(focused_, nowMs, motion_);
+    buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
     if (scrollTween_.has_value()) {
         scroll_ = scrollTween_->Value(nowMs);
         if (scrollTween_->Done(nowMs)) scrollTween_.reset();
@@ -109,7 +109,7 @@ void PageScreen::Paint(Painter& painter) const {
     for (const PageButton& button : Buttons()) {
         const Box box = Shifted(button.box, scroll_);
         if (box.Bottom() < 0.0 || box.y > height_) continue;
-        const bool focused = focused_ == button.key;
+        const bool focused = ShowsFocus(focused_, button.key);
         if (button.custom) {
             PaintCustom(painter, button, box, focused);
         } else if (button.disabled) {

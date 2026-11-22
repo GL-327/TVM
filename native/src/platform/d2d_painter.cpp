@@ -83,7 +83,11 @@ std::optional<paths::fs::path> D2dPainter::ResolveFile(const std::string& url) c
         return paths::fs::path(util::ToWide(url.substr(5)));
     }
     if (artwork_ != nullptr) {
-        return artwork_->Lookup(url);
+        std::optional<paths::fs::path> file = artwork_->Lookup(url);
+        // A picture on screen with no file yet is asked for, so it is fetched first, and fetched again after a
+        // failure, rather than staying blank until its page happens to be rebuilt.
+        if (!file.has_value()) artwork_->Want(url);
+        return file;
     }
     return std::nullopt;
 }

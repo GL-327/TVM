@@ -24,6 +24,22 @@ void ButtonFocusSet::Track(const std::string& focused, double nowMs, const motio
     tracked_ = focused;
 }
 
+void ButtonFocusSet::Track(const std::string& focused, bool hidden, double nowMs,
+                           const motion::MotionSettings& settings) {
+    const double durationMs = motion::ResolveMotionTokens(settings).fastMs;
+    if (focused != tracked_) {
+        const bool first = tracked_.empty();
+        if (!first) buttons_[tracked_].Ease(false, nowMs, durationMs);
+        buttons_[focused].Ease(!hidden, nowMs, first ? 0.0 : durationMs);
+        tracked_ = focused;
+        hidden_ = hidden;
+        return;
+    }
+    if (hidden == hidden_) return;
+    hidden_ = hidden;
+    if (!tracked_.empty()) buttons_[tracked_].Ease(!hidden, nowMs, durationMs);
+}
+
 double ButtonFocusSet::Amount(const std::string& key, double nowMs) const {
     const auto found = buttons_.find(key);
     return found == buttons_.end() ? 0.0 : found->second.Amount(nowMs);

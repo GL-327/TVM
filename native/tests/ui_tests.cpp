@@ -554,4 +554,43 @@ TEST(focus_highlight_does_not_sweep_under_reduced_motion) {
     REQUIRE(scene.SweepOf("top:1") < 0.0);
 }
 
+
+TEST(hover_look_eases_away_when_the_pointer_leaves_and_returns_on_a_key) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.FocusItem("top:1", 0.0, false);
+    scene.Tick(400.0);
+    REQUIRE_NEAR(scene.EmphasisOf("top:1"), 1.0, 1e-6);
+
+    // The pointer moves onto empty space: the tab keeps the focus for the remote, but stops looking hovered.
+    scene.PointerLeft(400.0);
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("top:1"));
+    REQUIRE(!scene.FocusShown());
+    scene.Tick(450.0);
+    const double easing = scene.EmphasisOf("top:1");
+    REQUIRE(easing > 0.0);
+    REQUIRE(easing < 1.0);
+    scene.Tick(1000.0);
+    REQUIRE_NEAR(scene.EmphasisOf("top:1"), 0.0, 1e-6);
+    REQUIRE(scene.SweepOf("top:1") < 0.0);
+
+    // A key brings it back.
+    scene.ShowFocus(1000.0);
+    scene.Tick(1400.0);
+    REQUIRE_NEAR(scene.EmphasisOf("top:1"), 1.0, 1e-6);
+}
+
+TEST(a_card_unfocuses_its_look_when_the_pointer_leaves) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.Tick(1000.0);
+    REQUIRE_NEAR(scene.CardFocus(0, 0), 1.0, 1e-6);
+    scene.PointerLeft(1000.0);
+    scene.Tick(2000.0);
+    REQUIRE_NEAR(scene.CardFocus(0, 0), 0.0, 1e-6);
+    scene.ShowFocus(2000.0);
+    scene.Tick(3000.0);
+    REQUIRE_NEAR(scene.CardFocus(0, 0), 1.0, 1e-6);
+}
 }  // namespace

@@ -430,7 +430,7 @@ void SettingsScreen::Paint(Painter& painter) const {
 
         const Box box = ScreenBox(row);
         if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
-        const bool focused = focus_ == std::optional<std::size_t>(i);
+        const bool focused = !focusHidden_ && focus_ == std::optional<std::size_t>(i);
         const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.15) : 0.0;
         const Box drawnBox{box.x, box.y - lift, box.width, box.height};
 

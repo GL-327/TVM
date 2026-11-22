@@ -1,5 +1,7 @@
 #include "ui/catalog_view.h"
 
+#include "catalog/artwork.h"
+
 namespace tvm::ui {
 
 std::vector<RailData> RailsFromCatalog(const std::vector<catalog::HomeRail>& rails) {
@@ -53,7 +55,7 @@ RailData ContinueWatchingRail(const std::vector<catalog::ProgressItem>& items) {
         CardData card;
         card.itemId = entry.item.id;
         card.title = entry.item.title;
-        card.posterUrl = entry.item.poster;
+        card.posterUrl = catalog::PreferPoster(entry.item.id, entry.item.poster, entry.item.backdrop);
         card.progress = entry.progress;
         rail.cards.push_back(card);
     }
@@ -68,7 +70,9 @@ RailData WatchlistRail(const std::vector<catalog::WatchlistEntry>& entries) {
         CardData card;
         card.itemId = entry.item.id;
         card.title = entry.item.title;
-        card.posterUrl = entry.item.poster;
+        // Saved titles keep whatever address they were saved with, so they are normalised and given the metahub
+        // fallback here, as every other poster is.
+        card.posterUrl = catalog::PreferPoster(entry.item.id, entry.item.poster, entry.item.backdrop);
         rail.cards.push_back(card);
     }
     return rail;

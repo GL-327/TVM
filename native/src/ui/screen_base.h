@@ -3,6 +3,8 @@
 // Default behaviour for a screen that does not use every input: nothing to
 // focus, nothing to scroll, nothing animating. A screen overrides what it needs.
 
+#include <string>
+
 #include "ui/screen.h"
 
 namespace tvm::ui {
@@ -27,9 +29,16 @@ public:
     void SetScroll(const ScrollSurface& /*surface*/, double /*value*/, double /*nowMs*/) override {}
     void AnimateScroll(const ScrollSurface& /*surface*/, double /*target*/, double /*nowMs*/) override {}
     void SetMotion(const motion::MotionSettings& settings) override { motion_ = settings; }
+    void PointerLeft(double /*nowMs*/) override { focusHidden_ = true; }
+    void ShowFocus(double /*nowMs*/) override { focusHidden_ = false; }
 
 protected:
+    // Whether `key` should look focused: it has the focus, and the pointer has not wandered off every item.
+    bool ShowsFocus(const std::string& focused, const std::string& key) const { return !focusHidden_ && focused == key; }
+
     motion::MotionSettings motion_;
+    // Set while the pointer is over nothing, so the focused button's hover look eases away.
+    bool focusHidden_ = false;
 };
 
 }  // namespace tvm::ui

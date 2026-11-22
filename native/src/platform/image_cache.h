@@ -5,6 +5,7 @@
 // each bitmap as it is drawn, a few per frame. A bitmap belongs to the render target it was made for, so the cache is
 // cleared when the target is rebuilt.
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -47,17 +48,31 @@ public:
     ID2D1Bitmap* GetBlurred(ID2D1RenderTarget* target, const std::wstring& file, float standardDeviation = 24.0f);
     // Called on the window thread with what a worker read.
     void Deliver(const std::wstring& file, DecodedPicture picture);
-    // Whether decoded pictures are waiting on the UI thread to be uploaded to GPU bitmaps.
+    // Whether a picture that was drawn this frame or the last is still waiting for its GPU upload. Pictures for
+    // cards no longer on screen wait quietly, so they never keep the frames coming on their own.
     bool Busy() const;
     void Clear();
+    // Lets a picture that failed to decode be read again, once its file has been downloaded afresh.
+    void ForgetFailure(const std::wstring& file);
 
 private:
     static constexpr int kUploadsPerFrame = 8;
+    // Bitmaps not drawn for this many frames may be released once the cache is over its budget.
+    static constexpr std::uint64_t kIdleFrames = 600;
+    static constexpr std::size_t kBitmapBudgetBytes = 384u * 1024u * 1024u;
+    void Evict();
 
     Graphics& graphics_;
     Request request_;
     int uploadsThisFrame_ = 0;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> bitmaps_;
+    // When each bitmap was last drawn, and how many bytes it and its blurred copy hold.
+    std::map<std::wstring, std::uint64_t> lastUsed_;
+    std::map<std::wstring, std::size_t> bytes_;
+    std::size_t totalBytes_ = 0;
+    std::uint64_t frame_ = 0;
+    bool deferredThisFrame_ = false;
+    bool deferredLastFrame_ = false;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> blurredBitmaps_;
     std::map<std::wstring, bool> failed_;
     // Pictures asked for and not yet delivered.

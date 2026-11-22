@@ -66,7 +66,7 @@ void XtreamScreen::Layout(double width, double height) {
 
 bool XtreamScreen::Tick(double nowMs) {
     clockMs_ = nowMs;
-    buttonFocus_.Track(focused_, nowMs, motion_);
+    buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
     return Animating();
 }
 
@@ -212,7 +212,7 @@ void XtreamScreen::Paint(Painter& painter) const {
         for (const std::string& key : row) {
             if (key != kSaveKey && key != kDisconnectKey) continue;
             const std::optional<Box> box = BoxOf(key);
-            const ButtonLook look{key == kSaveKey, focused_ == key, buttonFocus_.Amount(key, clockMs_)};
+            const ButtonLook look{key == kSaveKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)};
             if (box.has_value()) DrawButton(painter, metrics, *box, LabelOf(key), look);
         }
     }

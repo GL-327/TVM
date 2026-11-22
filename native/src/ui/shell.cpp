@@ -185,6 +185,8 @@ void Shell::SetLivePlaylistView(const LivePlaylistView& view) {
 
 void Shell::KeyPressed() {
     mouse_.OnKeyPress();
+    // A key brings the focus back into view, so the remote and the keyboard always see where they are.
+    Top().ShowFocus(clock_);
 }
 
 void Shell::Navigate(nav::Direction direction, double nowMs) {
@@ -350,9 +352,19 @@ void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
     if (!result.counted) return;
 
     // Hover moves focus without moving the camera, so content does not slide
-    // out from under the pointer.
+    // out from under the pointer. Over empty space the focus stays put for the remote, but its hover look eases
+    // away, so nothing stays lit after the pointer has left it.
     const std::optional<std::string> item = Top().ItemAt(x, y);
-    if (item.has_value() && Top().FocusedKey() != item) Top().FocusItem(*item, nowMs, false);
+    if (!item.has_value()) {
+        Top().PointerLeft(nowMs);
+        return;
+    }
+    Top().ShowFocus(nowMs);
+    if (Top().FocusedKey() != item) Top().FocusItem(*item, nowMs, false);
+}
+
+void Shell::MouseLeave(double nowMs) {
+    Top().PointerLeft(nowMs);
 }
 
 void Shell::MouseDown(double x, double y, double nowMs) {

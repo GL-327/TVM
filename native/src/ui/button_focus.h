@@ -31,11 +31,15 @@ public:
     // one that gained it eases in, over the fast motion token. The first focus is set at once, as
     // a button focused on entry does not animate.
     void Track(const std::string& focused, double nowMs, const motion::MotionSettings& settings);
+    // The same, and while `hidden` the focused button eases out as if nothing had the focus. It eases back in when
+    // `hidden` clears, and a button focused while hidden stays out.
+    void Track(const std::string& focused, bool hidden, double nowMs, const motion::MotionSettings& settings);
     double Amount(const std::string& key, double nowMs) const;
     bool Animating(double nowMs) const;
 
 private:
     std::string tracked_;
+    bool hidden_ = false;
     std::map<std::string, ButtonFocus> buttons_;
 };
 

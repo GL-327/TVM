@@ -112,7 +112,7 @@ std::string RealDebridScreen::LabelOf(const std::string& key) const {
 
 bool RealDebridScreen::Tick(double nowMs) {
     clockMs_ = nowMs;
-    buttonFocus_.Track(focused_, nowMs, motion_);
+    buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
     return Animating();
 }
 
@@ -161,7 +161,7 @@ void RealDebridScreen::Paint(Painter& painter) const {
     for (const std::string& key : Items()) {
         const std::optional<Box> box = BoxOf(key);
         // Paste and save is the primary button: it saves the token on the clipboard.
-        const ButtonLook look{key == kPasteKey, focused_ == key, buttonFocus_.Amount(key, clockMs_)};
+        const ButtonLook look{key == kPasteKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)};
         if (box.has_value()) DrawButton(painter, metrics, *box, LabelOf(key), look);
     }
 }

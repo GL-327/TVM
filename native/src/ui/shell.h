@@ -50,6 +50,8 @@ public:
     void MouseMove(double x, double y, bool buttonDown, double nowMs);
     void MouseDown(double x, double y, double nowMs);
     void MouseUp(double x, double y, double nowMs);
+    // The pointer left the window, or the window lost the foreground.
+    void MouseLeave(double nowMs);
     void Wheel(double x, double y, double deltaX, double deltaY, bool shift, nav::WheelMode mode, double nowMs);
     // Any remote or keyboard press hides the cursor.
     void KeyPressed();

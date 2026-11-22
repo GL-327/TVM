@@ -359,7 +359,7 @@ bool PlayerScreen::Tick(double nowMs) {
     if (hintsFromMs_ > 0.0 && nowMs >= hintsFromMs_ && hintsLeaveMs_ <= 0.0 && ChromeOpacity(nowMs) < 1.0) {
         hintsLeaveMs_ = nowMs;
     }
-    buttonFocus_.Track(focused_, nowMs, motion_);
+    buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
     return Animating();
 }
 
@@ -576,7 +576,7 @@ void PlayerScreen::Paint(Painter& painter) const {
 void PlayerScreen::PaintGoLive(Painter& painter, double opacity) const {
     // `.player__go-live`: an optical glass pill with a pulsing red dot, "Back to live", and how far behind.
     const Box box = *BoxOf(kGoLiveKey);
-    const bool focused = focused_ == kGoLiveKey;
+    const bool focused = ShowsFocus(focused_, kGoLiveKey);
     GlassStyle glass;
     glass.kind = GlassKind::Pill;
     glass.focused = focused;
@@ -762,7 +762,7 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
     // `.cinema-chrome__recap .tvm-button`: frosted glass pills for Skip recap, Skip credits, and Watch credits.
     const auto light = [&](const char* key, const std::string& label) {
         const Box box = *BoxOf(key);
-        const bool focused = focused_ == key;
+        const bool focused = ShowsFocus(focused_, key);
         GlassStyle glass;
         glass.kind = GlassKind::Pill;
         glass.focused = focused;
@@ -780,7 +780,7 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
         std::snprintf(remain, sizeof(remain), "%ld:%02ld", total / 60, total % 60);
         light(kCreditsSkipKey, std::string("Skip credits  ") + remain);
         const Box watch = *BoxOf(kCreditsWatchKey);
-        const bool watchFocused = focused_ == kCreditsWatchKey;
+        const bool watchFocused = ShowsFocus(focused_, kCreditsWatchKey);
         GlassStyle watchGlass;
         watchGlass.kind = GlassKind::Pill;
         watchGlass.focused = watchFocused;
@@ -891,9 +891,9 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
 
     const Metrics metrics{ViewportRem(width_, height_)};
     DrawButton(painter, metrics, *BoxOf(kNextPlayKey), "Play next",
-               ButtonLook{true, focused_ == kNextPlayKey, focused_ == kNextPlayKey ? 1.0 : 0.0});
+               ButtonLook{true, ShowsFocus(focused_, kNextPlayKey), ShowsFocus(focused_, kNextPlayKey) ? 1.0 : 0.0});
     const Box dismiss = *BoxOf(kNextDismissKey);
-    if (focused_ == kNextDismissKey) {
+    if (ShowsFocus(focused_, kNextDismissKey)) {
         GlassStyle dismissGlass;
         dismissGlass.kind = GlassKind::Pill;
         dismissGlass.focused = true;
@@ -945,7 +945,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const Color ink = WithAlpha(kInk, opacity);
     const auto button = [&](const char* key) {
         const Box box = *BoxOf(key);
-        if (focused_ == key) {
+        if (ShowsFocus(focused_, key)) {
             GlassStyle gs;
             gs.kind = GlassKind::Pill;
             gs.focused = true;
@@ -1009,7 +1009,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         painter.FillRoundRect(Box{bar.x, bar.y, bar.width * share, bar.height}, barHeight / 2.0, WithAlpha(kFill, opacity));
     }
     const std::optional<double> preview = scrub_.has_value() ? scrub_ : hover_;
-    if (preview.has_value() || focused_ == "timeline") {
+    if (preview.has_value() || ShowsFocus(focused_, "timeline")) {
         const double knob = Rem(kKnobRem);
         painter.FillRoundRect(Box{bar.x + bar.width * share - knob / 2.0, bar.CenterY() - knob / 2.0, knob, knob},
                               knob / 2.0, WithAlpha(kFill, opacity));
@@ -1119,7 +1119,7 @@ void PlayerScreen::PaintError(Painter& painter) const {
     painter.Paragraph(Box{x, top + Rem(5.2), width, Rem(4.2)}, view_.errorBody, TextStyle{Rem(1.0625), false},
                       kInkMuted);
     for (const char* key : {kRetryKey, kErrorBackKey}) {
-        const ButtonLook look{std::string_view(key) == kRetryKey, focused_ == key, buttonFocus_.Amount(key, clockMs_)};
+        const ButtonLook look{std::string_view(key) == kRetryKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)};
         DrawButton(painter, metrics, *BoxOf(key), std::string_view(key) == kRetryKey ? "Retry" : "Back", look);
     }
 }

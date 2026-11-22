@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -96,7 +97,13 @@ private:
     void RebuildHome();
     // Turns the Home hero to its next title every eight seconds, while Home is on screen and not reduced.
     void TurnHero(double now);
-    void QueueArtwork(const std::string& url);
+    // Queues a download. `onScreen` puts it ahead of pictures fetched in advance.
+    void QueueArtwork(const std::string& url, bool onScreen = false);
+    void PumpArtwork();
+    // Takes the pictures painting asked for and queues them, and wakes a frame when a retry falls due.
+    void SyncArtwork(double nowMs);
+    // A cached picture that would not decode is downloaded once more before its placeholder is accepted.
+    void HandleUndecodable(const std::wstring& file);
     void QueueRailArtwork(const std::vector<ui::RailData>& rails);
     // Keeps the details for the title on top in step with the shell.
     void SyncDetails();
@@ -298,6 +305,22 @@ private:
 
     // Window-thread state. Workers never touch these.
     std::set<std::string> queuedArtwork_;
+    // Whether Windows has been asked for WM_MOUSELEAVE since the last one arrived.
+    bool trackingLeave_ = false;
+    // Downloads waiting for a worker, on-screen pictures at the front. Only a few run at once, so pictures never
+    // crowd out catalogue calls on the shared workers.
+    std::deque<std::string> artworkQueue_;
+    int artworkInFlight_ = 0;
+    struct ArtworkTry {
+        int failures = 0;
+        double retryAtMs = 0.0;
+        // The server has no such picture, or every retry failed: its placeholder stays for this session.
+        bool givenUp = false;
+        int refetches = 0;
+    };
+    std::map<std::string, ArtworkTry> artworkTries_;
+    // The earliest moment a failed picture may be tried again, or 0.
+    double artworkRetryDueMs_ = 0.0;
     std::map<std::string, ui::TitleInfo> titles_;
     std::set<std::string> titlesInFlight_;
     std::optional<std::string> shownTitle_;

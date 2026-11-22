@@ -40,7 +40,7 @@ std::string ReplaceFirstThumbnailSize(const std::string& text) {
         const std::size_t secondDigits = j;
         while (j < text.size() && std::isdigit(static_cast<unsigned char>(text[j]))) ++j;
         if (j == secondDigits || text.compare(j, 2, "bb") != 0) continue;
-        return text.substr(0, i) + "/2000x2000bb" + text.substr(j + 2);
+        return text.substr(0, i) + "/780x780bb" + text.substr(j + 2);
     }
     return text;
 }
@@ -120,7 +120,7 @@ std::string NormalizeArtUrl(const std::string& url) {
             for (std::size_t i = 1; i < dot; ++i) {
                 if (!std::isalnum(static_cast<unsigned char>(raw[i]))) alphanumeric = false;
             }
-            if (knownExtension && alphanumeric) return "https://image.tmdb.org/t/p/original" + raw;
+            if (knownExtension && alphanumeric) return "https://image.tmdb.org/t/p/w780" + raw;
         }
     }
     return raw;
@@ -136,18 +136,19 @@ std::string UpgradeImageUrl(const std::string& url, bool backdrop) {
     next = ReplaceFirst(next, "/background/medium/", "/background/large/");
 
     if (backdrop) {
-        for (const char* size : {"300", "500", "780", "1280"}) {
-            const std::string from = std::string("/t/p/w") + size + "/";
-            if (next.find(from) != std::string::npos) {
-                next = ReplaceFirst(next, from, "/t/p/original/");
+        // The hero spans the window, so backdrops are fetched at 1280 wide: sharp at 1080p, and a fraction of the
+        // original's size, so they arrive well inside the download limits.
+        for (const char* size : {"/t/p/w300/", "/t/p/w500/", "/t/p/w780/", "/t/p/original/"}) {
+            if (next.find(size) != std::string::npos) {
+                next = ReplaceFirst(next, size, "/t/p/w1280/");
                 break;
             }
         }
     } else {
-        for (const char* size : {"154", "185", "342", "500"}) {
-            const std::string from = std::string("/t/p/w") + size + "/";
-            if (next.find(from) != std::string::npos) {
-                next = ReplaceFirst(next, from, "/t/p/w780/");
+        // A poster card is at most a few hundred pixels wide, so 500 is plenty, and much quicker than 780.
+        for (const char* size : {"/t/p/w154/", "/t/p/w185/", "/t/p/w342/", "/t/p/w780/", "/t/p/original/"}) {
+            if (next.find(size) != std::string::npos) {
+                next = ReplaceFirst(next, size, "/t/p/w500/");
                 break;
             }
         }

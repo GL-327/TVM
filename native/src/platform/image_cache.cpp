@@ -1,6 +1,9 @@
 #include "platform/image_cache.h"
 
 #include <algorithm>
+#include <vector>
+
+#include <algorithm>
 #include <cmath>
 
 namespace tvm::platform {
@@ -197,11 +200,40 @@ void ImageCache::SetRequest(Request request) {
 
 void ImageCache::BeginFrame() {
     uploadsThisFrame_ = 0;
+    ++frame_;
+    deferredLastFrame_ = deferredThisFrame_;
+    deferredThisFrame_ = false;
+    if (totalBytes_ > kBitmapBudgetBytes) Evict();
+}
+
+void ImageCache::Evict() {
+    // The least recently drawn pictures go first; anything drawn recently stays, even over budget.
+    std::vector<std::pair<std::uint64_t, std::wstring>> idle;
+    for (const auto& [file, used] : lastUsed_) {
+        if (frame_ - used > kIdleFrames) idle.emplace_back(used, file);
+    }
+    std::sort(idle.begin(), idle.end());
+    for (const auto& [used, file] : idle) {
+        if (totalBytes_ <= kBitmapBudgetBytes * 3 / 4) break;
+        totalBytes_ -= std::min(totalBytes_, bytes_[file]);
+        bitmaps_.erase(file);
+        blurredBitmaps_.erase(file);
+        bytes_.erase(file);
+        lastUsed_.erase(file);
+    }
+}
+
+void ImageCache::ForgetFailure(const std::wstring& file) {
+    failed_.erase(file);
+    requested_.erase(file);
 }
 
 ID2D1Bitmap* ImageCache::Get(ID2D1RenderTarget* target, const std::wstring& file) {
     const auto found = bitmaps_.find(file);
-    if (found != bitmaps_.end()) return found->second.Get();
+    if (found != bitmaps_.end()) {
+        lastUsed_[file] = frame_;
+        return found->second.Get();
+    }
     if (failed_.count(file) != 0) return nullptr;
 
     auto ready = ready_.find(file);
@@ -218,7 +250,10 @@ ID2D1Bitmap* ImageCache::Get(ID2D1RenderTarget* target, const std::wstring& file
             return nullptr;
         }
     }
-    if (request_ && uploadsThisFrame_ >= kUploadsPerFrame) return nullptr;
+    if (request_ && uploadsThisFrame_ >= kUploadsPerFrame) {
+        deferredThisFrame_ = true;
+        return nullptr;
+    }
     ++uploadsThisFrame_;
 
     const DecodedPicture& picture = ready->second;
@@ -241,6 +276,15 @@ ID2D1Bitmap* ImageCache::Get(ID2D1RenderTarget* target, const std::wstring& file
         return nullptr;
     }
     ID2D1Bitmap* raw = bitmap.Get();
+    const D2D1_SIZE_U pixels = raw->GetPixelSize();
+    std::size_t bytes = static_cast<std::size_t>(pixels.width) * pixels.height * 4;
+    if (const auto blurred = blurredBitmaps_.find(file); blurred != blurredBitmaps_.end()) {
+        const D2D1_SIZE_U small = blurred->second->GetPixelSize();
+        bytes += static_cast<std::size_t>(small.width) * small.height * 4;
+    }
+    totalBytes_ += bytes;
+    bytes_[file] = bytes;
+    lastUsed_[file] = frame_;
     bitmaps_[file] = std::move(bitmap);
     return raw;
 }
@@ -265,12 +309,16 @@ void ImageCache::Deliver(const std::wstring& file, DecodedPicture picture) {
 }
 
 bool ImageCache::Busy() const {
-    return !ready_.empty();
+    return deferredThisFrame_ || deferredLastFrame_;
 }
 
 void ImageCache::Clear() {
     bitmaps_.clear();
     blurredBitmaps_.clear();
+    lastUsed_.clear();
+    bytes_.clear();
+    totalBytes_ = 0;
+    ready_.clear();
     failed_.clear();
     requested_.clear();
 }

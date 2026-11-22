@@ -205,7 +205,7 @@ std::string DetailsScreen::MetaLine() const {
 
 bool DetailsScreen::Tick(double nowMs) {
     clockMs_ = nowMs;
-    buttonFocus_.Track(focused_, nowMs, motion_);
+    buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
     if (scrollTween_.has_value()) {
         scroll_ = scrollTween_->Value(nowMs);
         if (scrollTween_->Done(nowMs)) scrollTween_.reset();
@@ -278,7 +278,7 @@ void DetailsScreen::Paint(Painter& painter) const {
                                   : key == kDownloadKey ? "Download"
                                                     : "Back";
         DrawButton(painter, metrics, *BoxOf(key), label,
-                   ButtonLook{key == kPlayKey, focused_ == key, buttonFocus_.Amount(key, clockMs_)});
+                   ButtonLook{key == kPlayKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)});
     }
     const auto lastAction = BoxOf(ActionKeys().back());
     const Box synopsis{copyX, compact && lastAction ? lastAction->Bottom() + Rem(1.0) : posterY + Rem(11.6), copyWidth, Rem(4.4)};
@@ -298,7 +298,7 @@ void DetailsScreen::Paint(Painter& painter) const {
         const Box tab = *BoxOf(key);
         if (tab.Bottom() < 0.0 || tab.y > height_) continue;
         const bool shown = season == season_;
-        const bool focused = focused_ == key;
+        const bool focused = ShowsFocus(focused_, key);
         GlassStyle tabGlass;
         tabGlass.kind = GlassKind::Tab;
         tabGlass.focused = focused;
@@ -329,7 +329,7 @@ void DetailsScreen::Paint(Painter& painter) const {
         const Box row = *BoxOf(key);
         if (row.Bottom() < 0.0 || row.y > height_) continue;
         const catalog::MediaItem& episode = *episodes[i];
-        const bool focused = focused_ == key;
+        const bool focused = ShowsFocus(focused_, key);
         GlassStyle rowGlass;
         rowGlass.kind = GlassKind::Card;
         rowGlass.focused = focused;
