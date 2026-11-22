@@ -41,6 +41,7 @@
 #include "platform/app.h"
 #include "platform/graphics.h"
 #include "platform/snapshot.h"
+#include "ui/details_screen.h"
 #include "ui/player_screen.h"
 #include "ui/preferences_store.h"
 #include "ui/scene.h"
@@ -254,9 +255,25 @@ std::unique_ptr<tvm::ui::PlayerScreen> SnapshotPlayer(unsigned width, unsigned h
     view.episodeTitle = "The Long Road";
     view.position = 1520.0;
     view.duration = 3480.0;
-    view.subtitles = {tvm::ui::PlayerOption{"off", "Off", "", false}, tvm::ui::PlayerOption{"en", "English", "", true}};
-    view.audios = {tvm::ui::PlayerOption{"a1", "English", "5.1", true}, tvm::ui::PlayerOption{"a2", "Espa\xC3\xB1ol", "", false}};
-    view.qualities = {tvm::ui::PlayerOption{"1080", "1080p", "", true}};
+    // Labels as the app now makes them from mpv's tracks and Torrentio's releases.
+    view.subtitles = {tvm::ui::PlayerOption{"no", "Off", "", false},
+                      tvm::ui::PlayerOption{"1", "English", "", true},
+                      tvm::ui::PlayerOption{"2", "English \xC2\xB7 SDH", "", false},
+                      tvm::ui::PlayerOption{"3", "Spanish", "", false},
+                      tvm::ui::PlayerOption{"4", "Spanish (Forced)", "", false},
+                      tvm::ui::PlayerOption{"5", "French", "", false},
+                      tvm::ui::PlayerOption{"6", "German", "", false},
+                      tvm::ui::PlayerOption{"7", "Italian", "", false},
+                      tvm::ui::PlayerOption{"8", "Portuguese", "", false},
+                      tvm::ui::PlayerOption{"9", "Japanese", "", false},
+                      tvm::ui::PlayerOption{"10", "Korean", "", false}};
+    view.audios = {tvm::ui::PlayerOption{"1", "English", "Dolby Digital+ \xC2\xB7 5.1", true},
+                   tvm::ui::PlayerOption{"2", "English \xC2\xB7 Commentary", "Stereo", false},
+                   tvm::ui::PlayerOption{"3", "Spanish", "Dolby Digital \xC2\xB7 5.1", false}};
+    view.qualities = {tvm::ui::PlayerOption{"0", "4K", "Remux \xC2\xB7 Dolby Vision \xC2\xB7 58.3 GB", false},
+                      tvm::ui::PlayerOption{"1", "1080p", "BluRay \xC2\xB7 12.4 GB", true},
+                      tvm::ui::PlayerOption{"2", "1080p", "WEB-DL \xC2\xB7 4.2 GB", false},
+                      tvm::ui::PlayerOption{"3", "720p", "WEB \xC2\xB7 1.6 GB \xC2\xB7 Not cached", false}};
     view.qualityLabel = "1080p";
     player->SetView(view, 0.0);
     player->ShowChrome(0.0);
@@ -312,11 +329,46 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
                 tvm::ui::Theme theme, const std::wstring& screen, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
     const bool settings = screen == L"settings";
-    if (screen == L"player") {
-        // The player's chrome over a still of the picture, as it sits over mpv's video.
+    if (screen == L"details") {
+        // A title's page with its backdrop, and the bare Back arrow at the top left.
+        tvm::platform::SnapshotWriter writer(graphics, width, height);
+        tvm::ui::DetailsScreen details("tt0000001", "The Last Light");
+        details.Layout(width, height);
+        tvm::ui::TitleInfo info;
+        info.state = tvm::ui::TitleInfo::State::Ready;
+        info.id = info.media.id = "tt0000001";
+        info.title = "The Last Light";
+        info.kind = "movie";
+        info.year = 2024;
+        info.rating = "7.8";
+        info.runtime = "2h 6m";
+        info.genres = {"Drama", "Mystery"};
+        info.synopsis = "A lighthouse keeper on a remote island finds the lamp burning on its own one winter night.";
+        info.backdropUrl = art;
+        details.SetInfo(info);
+        // `--keys Up` shows the arrow focused, as the remote reaches it.
+        for (const std::wstring& token : SplitCommas(keys)) {
+            if (const auto direction = ParseDirection(token)) details.Navigate(*direction, 0.0);
+        }
+        for (double now = 0.0; now <= 1000.0; now += 16.0) details.Tick(now);
+        writer.Save([&](tvm::ui::Painter& painter) {
+            const tvm::ui::ThemeScope look(theme);
+            details.Paint(painter);
+        }, path);
+        std::printf("wrote %ls\n", path.c_str());
+        return 0;
+    }
+    if (screen.rfind(L"player", 0) == 0) {
+        // The player's chrome over a still of the picture, as it sits over mpv's video. "player-cc", "player-audio",
+        // "player-quality" and "player-speed" show that menu open.
         tvm::platform::SnapshotWriter writer(graphics, width, height);
         auto player = SnapshotPlayer(width, height);
         player->Tick(100.0);
+        if (screen.size() > 7) {
+            const std::wstring menu = screen.substr(7);
+            player->ActivateItem(std::string(menu.begin(), menu.end()), 100.0);
+            for (double now = 100.0; now <= 900.0; now += 16.0) player->Tick(now);
+        }
         writer.Save([&](tvm::ui::Painter& painter) {
             const tvm::ui::ThemeScope look(tvm::ui::Theme::Dark);
             painter.Clear(tvm::ui::Rgb(0x000000));
@@ -423,30 +475,33 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
             raw->Paint(painter);
         };
     } else if (scenario == L"menu") {
-        tvm::ui::ThemeScope look(theme);
-        player = std::make_unique<tvm::ui::PlayerScreen>();
-        player->Layout(width, height);
-        tvm::ui::PlayerView view;
-        view.phase = tvm::ui::PlayerView::Phase::Playing;
-        view.started = true;
-        view.title = "The Last Light";
-        view.position = 1520.0;
-        view.duration = 7560.0;
-        view.subtitles = {tvm::ui::PlayerOption{"off", "Off", "", false},
-                          tvm::ui::PlayerOption{"en", "English", "", true},
-                          tvm::ui::PlayerOption{"en-sdh", "English", "SDH", false},
-                          tvm::ui::PlayerOption{"es", "Espa\xC3\xB1ol", "", false},
-                          tvm::ui::PlayerOption{"fr", "Fran\xC3\xA7" "ais", "", false}};
-        view.audios = {tvm::ui::PlayerOption{"a1", "English", "5.1", true}};
-        player->SetView(view, 0.0);
-        player->ShowChrome(0.0);
+        // Open the subtitles: the hover slides down the rows, the wheel scrolls the list, the pointer leaves and the
+        // highlight fades; then a pick from the quality menu.
+        player = SnapshotPlayer(width, height);
         tvm::ui::PlayerScreen* raw = player.get();
+        const auto hover = [raw](int row) {
+            return [raw, row](double now) {
+                raw->ShowChrome(now);
+                raw->ShowFocus(now);
+                raw->FocusItem("menu:" + std::to_string(row), now, false);
+            };
+        };
         events.push_back({200.0, [raw](double now) { raw->ShowChrome(now); raw->ActivateItem("cc", now); }});
-        events.push_back({1100.0, [raw](double now) { raw->ShowChrome(now); raw->ActivateItem("cc", now); }});
-        endMs = 1600.0;
+        events.push_back({600.0, hover(2)});
+        events.push_back({800.0, hover(3)});
+        events.push_back({1000.0, hover(4)});
+        events.push_back({1300.0, [raw](double now) { raw->ShowChrome(now); raw->ScrollMenu(1); }});
+        events.push_back({1450.0, [raw](double now) { raw->ShowChrome(now); raw->ScrollMenu(1); }});
+        events.push_back({1600.0, [raw](double now) { raw->ShowChrome(now); raw->ScrollMenu(1); }});
+        events.push_back({1900.0, [raw](double now) { raw->ShowChrome(now); raw->PointerLeft(now); }});
+        events.push_back({2400.0, [raw](double now) { raw->ShowChrome(now); raw->ActivateItem("cc", now); }});
+        events.push_back({2700.0, [raw](double now) { raw->ShowChrome(now); raw->ShowFocus(now); raw->ActivateItem("quality", now); }});
+        events.push_back({3100.0, hover(2)});
+        events.push_back({3400.0, [raw](double now) { raw->ShowChrome(now); raw->ActivateItem("quality", now); }});
+        endMs = 3800.0;
         tick = [raw](double now) { return raw->Tick(now); };
-        paint = [raw, art, width, height, theme](tvm::ui::Painter& painter) {
-            tvm::ui::ThemeScope look(theme);
+        paint = [raw, art, width, height](tvm::ui::Painter& painter) {
+            const tvm::ui::ThemeScope look(tvm::ui::Theme::Dark);
             // A still of the picture stands in for mpv's video under the player's chrome.
             painter.Clear(tvm::ui::Rgb(0x000000));
             painter.ImageFaded(tvm::ui::Box{0.0, 0.0, static_cast<double>(width), static_cast<double>(height)}, art,
