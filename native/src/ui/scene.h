@@ -137,6 +137,9 @@ public:
     void SetRails(const std::vector<RailData>& rails);
     // A line shown in the header while the catalogue loads, or when it is unavailable.
     void SetStatus(std::string status);
+    // Only the search field's text changes: the rails, header and focus stay as they are, so typing does not rebuild
+    // the page.
+    void SetQuery(std::string query) { query_ = std::move(query); }
     // The catalogue title of the focused card, or nothing when no card has focus.
     std::optional<std::string> FocusedItemId() const;
     // Focuses the first card for a catalogue title, moving the cameras to it. False when no card shows it.

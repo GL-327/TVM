@@ -2449,6 +2449,9 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
 }
 
 void App::TypeSearch(const std::string& text) {
+    const bool wasIdle = util::Trim(searchQuery_).empty();
+    const bool wasRunning = searchRunning_;
+    const bool wasFailed = searchFailed_;
     searchQuery_ += text;
     searchTypedMs_ = NowMs();
     searchPending_ = true;
@@ -2456,6 +2459,13 @@ void App::TypeSearch(const std::string& text) {
     // Any answer still on its way is for an older query, so it must not land over what is typed now.
     ++searchGeneration_;
     searchRunning_ = false;
+    if (!wasIdle && !wasRunning && !wasFailed) {
+        // Only the field's text changed: the page keeps its rails and is not rebuilt on every key.
+        home_->SetQuery(searchQuery_);
+        if (ui::Scene* scene = shell_->SceneNamed("search")) scene->SetQuery(searchQuery_);
+        dirty_ = true;
+        return;
+    }
     ApplySearch();
 }
 
