@@ -6,6 +6,7 @@
 //     --keys Right,Down,Select       remote presses to apply before the snapshot
 //                                    (Up, Down, Left, Right, Select, Back)
 //     --theme light --screen settings  capture the light Settings page
+//     --screen live|library|search|player  a page lane under the chrome, or the player over the picture
 //     --art file.jpg                 the Home hero's picture (default: the bundled lighthouse)
 //     --glass frosted                Settings > Look > Liquid Glass (default: clear)
 //   tvm.exe --frames out-dir --scenario tab-switch
@@ -73,9 +74,9 @@ tvm::ui::SceneView SnapshotHomeView(int lane) {
         tvm::ui::TopButton{"Home", act("stream-lane", "all"), lane == 0},
         tvm::ui::TopButton{"Movies", act("stream-lane", "movies"), lane == 1},
         tvm::ui::TopButton{"Series", act("stream-lane", "shows"), lane == 2},
-        tvm::ui::TopButton{"Live TV", open("live-tv"), false},
-        tvm::ui::TopButton{"Library", open("watchlist"), false},
-        tvm::ui::TopButton{"Search", open("search", true), false},
+        tvm::ui::TopButton{"Live TV", open("live-tv"), lane == 3},
+        tvm::ui::TopButton{"Library", open("watchlist"), lane == 4},
+        tvm::ui::TopButton{"Search", open("search", true), lane == 5},
         tvm::ui::TopButton{"Profile", open("settings"), false, false, true},
     };
 
@@ -141,6 +142,125 @@ std::unique_ptr<tvm::ui::Scene> SnapshotHomeScene(tvm::motion::MotionSettings mo
     return scene;
 }
 
+// The hero the snapshot Home shows on its browse lanes.
+tvm::ui::HeroData SnapshotHero(const std::string& art) {
+    tvm::ui::HeroData hero;
+    hero.itemId = "featured-last-light";
+    hero.title = "The Last Light";
+    hero.meta = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
+    hero.backdropUrl = art;
+    hero.hue = 212;
+    return hero;
+}
+
+// A page lane as the app builds it (App::ShowPageLane): Stream style, the six-tab chrome with this lane on, and the
+// page's own controls under it. Fixture data stands in for the real sources: channels, saved titles and results.
+tvm::ui::SceneView SnapshotPageLane(int lane, const std::string& art) {
+    tvm::ui::SceneView view = SnapshotHomeView(lane);
+    view.rails.clear();
+    const auto act = [](const std::string& name) {
+        tvm::ui::Command command;
+        command.name = name;
+        command.action = true;
+        return command;
+    };
+    const auto rows = [](std::vector<tvm::ui::CardData> cards, const std::string& id, const std::string& title) {
+        std::vector<tvm::ui::RailData> rails;
+        for (std::size_t i = 0; i < cards.size(); i += 8) {
+            tvm::ui::RailData rail;
+            rail.id = id + "-" + std::to_string(i / 8);
+            rail.title = i == 0 ? title : "";
+            for (std::size_t j = i; j < std::min(i + 8, cards.size()); ++j) rail.cards.push_back(cards[j]);
+            rails.push_back(std::move(rail));
+        }
+        return rails;
+    };
+    if (lane == 3) {
+        view.kicker = "Channels";
+        view.heading = "Live TV";
+        view.status = "12 channels.";
+        view.cardAction = tvm::ui::CardAction::Play;
+        view.pageButtons = {tvm::ui::TopButton{"Choose channels", act("live-choose")},
+                            tvm::ui::TopButton{"Login", act("live-xtream")},
+                            tvm::ui::TopButton{"Playlist", act("live-playlist")}};
+        const char* groups[] = {"News", "Sports", "Movies"};
+        const char* names[] = {"TVM News", "World Report", "City 24", "Arena One", "Match Day", "Goal Line",
+                               "Cinema Classics", "Late Show", "Premiere", "Studio Nine", "Night Owl", "Replay"};
+        for (int g = 0; g < 3; ++g) {
+            std::vector<tvm::ui::CardData> cards;
+            for (int i = 0; i < 4; ++i) {
+                tvm::ui::CardData card;
+                card.itemId = "live:fixture:" + std::to_string(g * 4 + i);
+                card.title = names[g * 4 + i];
+                card.posterUrl = i % 2 == 0 ? "asset:tvm-icon.png" : "";
+                card.logo = true;
+                cards.push_back(card);
+            }
+            for (auto& rail : rows(cards, std::string("live-") + groups[g], groups[g])) view.rails.push_back(rail);
+        }
+    } else if (lane == 4) {
+        view.kicker = "10 saved \xC2\xB7 6 films \xC2\xB7 4 series";
+        view.heading = "Library";
+        view.pageButtons = {tvm::ui::TopButton{"All", act("watchlist-filter"), true},
+                            tvm::ui::TopButton{"Movies", act("watchlist-filter")},
+                            tvm::ui::TopButton{"Series", act("watchlist-filter")},
+                            tvm::ui::TopButton{"Sort: Recently saved", act("watchlist-sort")}};
+        std::vector<tvm::ui::CardData> movies, series;
+        const char* films[] = {"The Last Light", "Cold Meridian", "Vesper", "The Glass Coast", "Solstice", "Low Tide"};
+        const char* shows[] = {"Northward", "Quiet Harbor", "Pale Signal", "Far Sound"};
+        for (int i = 0; i < 6; ++i) movies.push_back({"tt-m" + std::to_string(i), films[i], i == 0 ? "asset:lighthouse.jpg" : i == 1 ? art : "", std::nullopt});
+        for (int i = 0; i < 4; ++i) series.push_back({"tt-s" + std::to_string(i), shows[i], i == 0 ? art : "", std::nullopt});
+        for (auto& rail : rows(movies, "movies", "Movies")) view.rails.push_back(rail);
+        for (auto& rail : rows(series, "series", "Series")) view.rails.push_back(rail);
+    } else if (lane == 5) {
+        view.heading = "Search";
+        view.searchField = true;
+        view.query = "light";
+        view.status = "9 matches";
+        std::vector<tvm::ui::CardData> movies, series;
+        const char* films[] = {"The Last Light", "Lighthouse", "Northern Lights", "Light Years", "Pale Light"};
+        const char* shows[] = {"Lights Out", "Light & Shadow", "Lightkeepers", "First Light"};
+        for (int i = 0; i < 5; ++i) movies.push_back({"tt-q" + std::to_string(i), films[i], i == 0 ? "asset:lighthouse.jpg" : i == 2 ? art : "", std::nullopt});
+        for (int i = 0; i < 4; ++i) series.push_back({"tt-r" + std::to_string(i), shows[i], i == 1 ? art : "", std::nullopt});
+        for (auto& rail : rows(movies, "movies", "Movies")) view.rails.push_back(rail);
+        for (auto& rail : rows(series, "series", "Series")) view.rails.push_back(rail);
+    }
+    return view;
+}
+
+// Switches the snapshot Home to a lane as App::SetStreamLane does, fading page lanes in from the ground.
+void ShowSnapshotLane(tvm::ui::Scene& scene, int lane, int previous, const std::string& art, double nowMs) {
+    if (lane >= 3) {
+        scene.SetHeroes({}, nowMs);
+        scene.SetView(SnapshotPageLane(lane, art), nowMs);
+    } else {
+        scene.SetHeroes({SnapshotHero(art)}, nowMs);
+        scene.SetView(SnapshotHomeView(lane), nowMs);
+    }
+    if (lane != previous && (lane >= 3 || previous >= 3)) scene.FadeContentIn(nowMs);
+}
+
+// The player over a still of the picture, as the overlay draws it over mpv's video.
+std::unique_ptr<tvm::ui::PlayerScreen> SnapshotPlayer(unsigned width, unsigned height) {
+    auto player = std::make_unique<tvm::ui::PlayerScreen>();
+    player->Layout(width, height);
+    tvm::ui::PlayerView view;
+    view.phase = tvm::ui::PlayerView::Phase::Playing;
+    view.started = true;
+    view.title = "Northward";
+    view.episode = "S1 \xC2\xB7 E2";
+    view.episodeTitle = "The Long Road";
+    view.position = 1520.0;
+    view.duration = 3480.0;
+    view.subtitles = {tvm::ui::PlayerOption{"off", "Off", "", false}, tvm::ui::PlayerOption{"en", "English", "", true}};
+    view.audios = {tvm::ui::PlayerOption{"a1", "English", "5.1", true}, tvm::ui::PlayerOption{"a2", "Espa\xC3\xB1ol", "", false}};
+    view.qualities = {tvm::ui::PlayerOption{"1080", "1080p", "", true}};
+    view.qualityLabel = "1080p";
+    player->SetView(view, 0.0);
+    player->ShowChrome(0.0);
+    return player;
+}
+
 std::optional<Direction> ParseDirection(const std::wstring& name) {
     if (name == L"Up") return Direction::Up;
     if (name == L"Down") return Direction::Down;
@@ -187,8 +307,24 @@ void SettleMotion(tvm::ui::Shell& shell, double& nowMs) {
 }
 
 int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys,
-                tvm::ui::Theme theme, bool settings, const std::string& art, tvm::ui::GlassClarity glass) {
+                tvm::ui::Theme theme, const std::wstring& screen, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
+    const bool settings = screen == L"settings";
+    if (screen == L"player") {
+        // The player's chrome over a still of the picture, as it sits over mpv's video.
+        tvm::platform::SnapshotWriter writer(graphics, width, height);
+        auto player = SnapshotPlayer(width, height);
+        player->Tick(100.0);
+        writer.Save([&](tvm::ui::Painter& painter) {
+            const tvm::ui::ThemeScope look(tvm::ui::Theme::Dark);
+            painter.Clear(tvm::ui::Rgb(0x000000));
+            painter.ImageFaded(tvm::ui::Box{0.0, 0.0, static_cast<double>(width), static_cast<double>(height)}, art, 0.0,
+                               1.0, 0.5, 0.5);
+            player->Paint(painter);
+        }, path, false);
+        std::printf("wrote %ls\n", path.c_str());
+        return 0;
+    }
 
     // A throwaway data folder, so a Settings press here cannot change the viewer's files.
     const std::filesystem::path tempData =
@@ -197,10 +333,19 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
     store.SaveLook(theme);
     store.SaveGlass(glass);
     std::unique_ptr<tvm::ui::Screen> root;
-    if (settings) root = std::make_unique<tvm::ui::SettingsScreen>(store, store.Motion());
-    else root = SnapshotHomeScene(store.Motion(), art);
+    tvm::ui::Scene* home = nullptr;
+    if (settings) {
+        root = std::make_unique<tvm::ui::SettingsScreen>(store, store.Motion());
+    } else {
+        auto scene = SnapshotHomeScene(store.Motion(), art);
+        home = scene.get();
+        root = std::move(scene);
+    }
     tvm::ui::Shell shell(std::move(root), store);
     shell.Layout(width, height);
+    // Live TV, Library and Search are lanes of Home under the same chrome.
+    const int lane = screen == L"live" ? 3 : screen == L"library" ? 4 : screen == L"search" ? 5 : 0;
+    if (home != nullptr && lane > 0) ShowSnapshotLane(*home, lane, lane, art, 0.0);
 
     double nowMs = 0.0;
     for (const std::wstring& token : SplitCommas(keys)) {
@@ -254,7 +399,28 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
     std::unique_ptr<tvm::ui::Shell> shell;
     std::unique_ptr<tvm::ui::PlayerScreen> player;
 
-    if (scenario == L"menu") {
+    if (scenario == L"player-controls") {
+        // Hover the transport, then drag along the timeline and let go.
+        player = SnapshotPlayer(width, height);
+        tvm::ui::PlayerScreen* raw = player.get();
+        events.push_back({200.0, [raw](double now) { raw->ShowChrome(now); raw->FocusItem("rewind", now, false); }});
+        events.push_back({600.0, [raw](double now) { raw->ShowChrome(now); raw->FocusItem("play", now, false); }});
+        events.push_back({1000.0, [raw](double now) { raw->ShowChrome(now); raw->FocusItem("forward", now, false); }});
+        events.push_back({1400.0, [raw](double now) { raw->ShowChrome(now); raw->Hover(0.6); }});
+        for (int step = 0; step <= 8; ++step) {
+            events.push_back({1700.0 + step * 50.0, [raw, step](double now) { raw->ShowChrome(now); raw->Scrub(0.6 - 0.04 * step); }});
+        }
+        events.push_back({2250.0, [raw](double now) { raw->EndScrub(); raw->Hover(std::nullopt); raw->ShowChrome(now); }});
+        endMs = 2700.0;
+        tick = [raw](double now) { return raw->Tick(now); };
+        paint = [raw, art, width, height](tvm::ui::Painter& painter) {
+            const tvm::ui::ThemeScope look(tvm::ui::Theme::Dark);
+            painter.Clear(tvm::ui::Rgb(0x000000));
+            painter.ImageFaded(tvm::ui::Box{0.0, 0.0, static_cast<double>(width), static_cast<double>(height)}, art,
+                               0.0, 1.0, 0.5, 0.5);
+            raw->Paint(painter);
+        };
+    } else if (scenario == L"menu") {
         tvm::ui::ThemeScope look(theme);
         player = std::make_unique<tvm::ui::PlayerScreen>();
         player->Layout(width, height);
@@ -301,7 +467,24 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
         const auto lane = [scene](int which) {
             return [scene, which](double now) { scene->SetView(SnapshotHomeView(which), now); };
         };
-        if (scenario == L"nav-intro") {
+        if (scenario == L"nav-all-tabs") {
+            // Every tab in turn, by clicking it: Home, Movies, Live TV, Library, Search and back Home.
+            const auto go = [scene, art](int lane, int previous) {
+                return [scene, art, lane, previous](double now) {
+                    scene->FocusItem(lane == 0 ? "settings" : "top:" + std::to_string(lane), now, false);
+                    ShowSnapshotLane(*scene, lane, previous, art, now);
+                };
+            };
+            events = {{200.0, go(1, 0)}, {1000.0, go(3, 1)}, {1900.0, go(4, 3)}, {2800.0, go(5, 4)}, {3700.0, go(0, 5)}};
+            endMs = 4500.0;
+        } else if (scenario == L"hover-leave") {
+            // The pointer rests on Play, then moves to empty space: the highlight eases away. Then onto a tab and off.
+            const auto leave = [scene](double now) { scene->PointerLeft(now); };
+            const auto back = [scene](double now) { scene->ShowFocus(now); };
+            events = {{0.0, hover("settings")}, {0.0, leave},          {150.0, back},        {150.0, hover("hero-play")},
+                      {900.0, leave},           {1500.0, back},       {1500.0, hover("top:2")}, {2200.0, leave}};
+            endMs = 2900.0;
+        } else if (scenario == L"nav-intro") {
             scene->PlayChromeEntrance();
             endMs = 1000.0;
         } else if (scenario == L"tab-switch") {
@@ -338,7 +521,8 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
         wchar_t name[64];
         swprintf(name, 64, L"%ls-%04d.png", scenario.c_str(), index);
         // The player's chrome sits in an overlay over mpv's video, where glass has nothing to refract.
-        writer.Save(paint, (std::filesystem::path(dir) / name).wstring(), scenario != L"menu");
+        writer.Save(paint, (std::filesystem::path(dir) / name).wstring(),
+                    scenario != L"menu" && scenario != L"player-controls");
     }
     std::error_code ignored;
     std::filesystem::remove_all(tempData, ignored);
@@ -365,7 +549,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
         tvm::ui::GlassClarity glass = tvm::ui::GlassClarity::Clear;
         std::wstring keys;
         tvm::ui::Theme theme = tvm::ui::Theme::Dark;
-        bool settings = false;
+        std::wstring screen;
         unsigned width = 1920;
         unsigned height = 1080;
         for (std::size_t i = 1; i < args.size(); ++i) {
@@ -384,7 +568,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
             } else if (args[i] == L"--theme" && i + 1 < args.size()) {
                 theme = tvm::ui::ParseTheme(tvm::util::ToUtf8(args[++i]));
             } else if (args[i] == L"--screen" && i + 1 < args.size()) {
-                settings = args[++i] == L"settings";
+                screen = args[++i];
             } else if (args[i] == L"--size" && i + 1 < args.size()) {
                 const auto size = ParseSize(args[++i]);
                 if (!size.has_value()) {
@@ -397,7 +581,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
         }
 
         if (frames.has_value()) return RunFrames(*frames, scenario, width, height, theme, art, glass);
-        if (snapshot.has_value()) return RunSnapshot(*snapshot, width, height, keys, theme, settings, art, glass);
+        if (snapshot.has_value()) return RunSnapshot(*snapshot, width, height, keys, theme, screen, art, glass);
 
         tvm::platform::AppOptions options;
         options.dataDir = tvm::paths::ResolveDataDir(tvm::util::ProcessEnvironment()).wstring();
