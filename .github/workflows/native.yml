@@ -55,6 +55,14 @@ jobs:
               if ($process.ExitCode -ne 0) { throw "Glass still failed: $name $theme" }
             }
           }
+          foreach ($name in @('bright', 'dark')) {
+            foreach ($theme in @('dark', 'light')) {
+              $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--snapshot', "$out/home-$name-$theme-frosted.png", '--size', '1920x1080', '--theme', $theme, '--glass', 'frosted', '--art', $art[$name] -Wait -PassThru -WindowStyle Hidden
+              if ($process.ExitCode -ne 0) { throw "Frosted still failed: $name $theme" }
+            }
+          }
+          $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--frames', "$out/frames-buttons-frosted", '--scenario', 'buttons', '--size', '1280x720', '--glass', 'frosted', '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw 'Frosted animation frames failed' }
           foreach ($scenario in @('nav-intro', 'tab-switch', 'buttons', 'orb', 'menu')) {
             $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--frames', "$out/frames-$scenario", '--scenario', $scenario, '--size', '1280x720', '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
             if ($process.ExitCode -ne 0) { throw "Animation frames failed: $scenario" }

@@ -96,6 +96,12 @@ struct GlassStyle {
     double focusAmount = 0.0;
     double pressAmount = 0.0;
     double opacity = 1.0;
+    // Apple TV's focus: as `focusAmount` rises the surface becomes a near-white plate, so its label should turn
+    // dark by the same amount. Off for glass whose labels stay light, such as menu rows.
+    bool focusPlate = false;
+    // A soft highlight sweeping once across a newly focused surface, from 0 (entering at the left) to 1 (gone
+    // at the right). Negative for none.
+    double sweep = -1.0;
     int hue = -1;
     std::optional<Color> tint;
     std::optional<Color> border;

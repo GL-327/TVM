@@ -7,6 +7,7 @@
 //                                    (Up, Down, Left, Right, Select, Back)
 //     --theme light --screen settings  capture the light Settings page
 //     --art file.jpg                 the Home hero's picture (default: the bundled lighthouse)
+//     --glass frosted                Settings > Look > Liquid Glass (default: clear)
 //   tvm.exe --frames out-dir --scenario tab-switch
 //                                    write an animation as numbered PNG frames, 30 per second:
 //                                    nav-intro, tab-switch, buttons, orb or menu
@@ -186,7 +187,7 @@ void SettleMotion(tvm::ui::Shell& shell, double& nowMs) {
 }
 
 int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys,
-                tvm::ui::Theme theme, bool settings, const std::string& art) {
+                tvm::ui::Theme theme, bool settings, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
 
     // A throwaway data folder, so a Settings press here cannot change the viewer's files.
@@ -194,6 +195,7 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         std::filesystem::temp_directory_path() / (L"tvm-snapshot-" + std::to_wstring(GetCurrentProcessId()));
     tvm::ui::FilePreferenceStore store(tempData);
     store.SaveLook(theme);
+    store.SaveGlass(glass);
     std::unique_ptr<tvm::ui::Screen> root;
     if (settings) root = std::make_unique<tvm::ui::SettingsScreen>(store, store.Motion());
     else root = SnapshotHomeScene(store.Motion(), art);
@@ -235,12 +237,13 @@ struct FrameEvent {
 // Writes an animation as numbered PNG frames at 30 per second, so the motion can be checked frame by frame
 // and turned into a GIF. Every frame is drawn by the same Direct2D painter the window uses.
 int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned width, unsigned height,
-              tvm::ui::Theme theme, const std::string& art) {
+              tvm::ui::Theme theme, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
     const std::filesystem::path tempData =
         std::filesystem::temp_directory_path() / (L"tvm-frames-" + std::to_wstring(GetCurrentProcessId()));
     tvm::ui::FilePreferenceStore store(tempData);
     store.SaveLook(theme);
+    store.SaveGlass(glass);
     std::filesystem::create_directories(dir);
     tvm::platform::SnapshotWriter writer(graphics, width, height);
 
@@ -359,6 +362,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
         std::optional<std::wstring> frames;
         std::wstring scenario = L"tab-switch";
         std::string art = "asset:lighthouse.jpg";
+        tvm::ui::GlassClarity glass = tvm::ui::GlassClarity::Clear;
         std::wstring keys;
         tvm::ui::Theme theme = tvm::ui::Theme::Dark;
         bool settings = false;
@@ -371,6 +375,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
                 frames = args[++i];
             } else if (args[i] == L"--scenario" && i + 1 < args.size()) {
                 scenario = args[++i];
+            } else if (args[i] == L"--glass" && i + 1 < args.size()) {
+                glass = tvm::ui::ParseGlassClarity(tvm::util::ToUtf8(args[++i]));
             } else if (args[i] == L"--art" && i + 1 < args.size()) {
                 art = "file:" + tvm::util::ToUtf8(std::filesystem::absolute(args[++i]).wstring());
             } else if (args[i] == L"--keys" && i + 1 < args.size()) {
@@ -390,8 +396,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
             }
         }
 
-        if (frames.has_value()) return RunFrames(*frames, scenario, width, height, theme, art);
-        if (snapshot.has_value()) return RunSnapshot(*snapshot, width, height, keys, theme, settings, art);
+        if (frames.has_value()) return RunFrames(*frames, scenario, width, height, theme, art, glass);
+        if (snapshot.has_value()) return RunSnapshot(*snapshot, width, height, keys, theme, settings, art, glass);
 
         tvm::platform::AppOptions options;
         options.dataDir = tvm::paths::ResolveDataDir(tvm::util::ProcessEnvironment()).wstring();

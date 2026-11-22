@@ -15,6 +15,8 @@ namespace tvm::platform {
 
 namespace {
 
+constexpr double kSweepPi = 3.14159265358979323846;
+
 D2D1_RECT_F ToRect(const ui::Box& box) {
     return D2D1::RectF(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y), static_cast<FLOAT>(box.Right()),
                        static_cast<FLOAT>(box.Bottom()));
@@ -57,6 +59,7 @@ D2dPainter::D2dPainter(ID2D1RenderTarget* target, Graphics& graphics, ArtworkSto
                        GlassLens* lens)
     : target_(target), graphics_(graphics), artwork_(artwork), images_(images),
       lens_(lens != nullptr && lens->ok() ? lens : nullptr) {
+    if (lens_ != nullptr) lens_->BeginFrame();
     if (FAILED(target_->CreateSolidColorBrush(D2D1::ColorF(0, 1.0f), &solidBrush_))) {
         throw std::runtime_error("could not create a brush");
     }
@@ -205,8 +208,9 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
     // 3. A soft contact shadow, drawn only outside the shape so it never shows through the glass: almost nothing
     // above, a little more below, as a surface floating just off the picture.
     const double shadowScale = (isLight ? 0.55 : 1.0) * alpha * (1.0 - 0.35 * press);
-    outerRing(0.0, 2.0, black(0.02 * shadowScale), black((0.16 + 0.04 * emphasis) * shadowScale));
-    outerRing(2.0, 5.0, black(0.0), black((0.07 + 0.03 * emphasis) * shadowScale));
+    // A raised (focused) surface casts a little more shadow, as it lifts toward the viewer.
+    outerRing(0.0, 2.0, black(0.02 * shadowScale), black((0.16 + 0.10 * emphasis) * shadowScale));
+    outerRing(2.0, 5.0, black(0.0), black((0.07 + 0.08 * emphasis) * shadowScale));
 
     // 4. Hover and focus light the surface from within and add a restrained outer glow, not a thick ring.
     if (emphasis > 0.0) {
@@ -218,32 +222,72 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
     }
 
     // 5. Clear glass: the pixels already drawn beneath are seen 1:1 through the flat interior and bent at the rim.
-    // Only a whisper of veil keeps labels legible over bright pictures; the rim's reflection goes on top of it.
+    // The veil adapts to what is behind: almost nothing over a dark picture, more over a bright one, so labels stay
+    // legible without the glass going grey. Frosted glass (Settings > Look) scatters the picture first.
     const bool lensKind = style.kind != ui::GlassKind::Card;
-    if (!style.rimOnly && lensKind && lens_ != nullptr && lens_->DrawRefraction(box, clampedRadius, alpha)) {
+    const bool frosted = ui::tokens::frostedGlass;
+    double behind = -1.0;
+    if (!style.rimOnly && lensKind && lens_ != nullptr &&
+        lens_->DrawRefraction(box, clampedRadius, alpha, frosted, &behind)) {
+        // 0 over a dark picture, 1 over a bright one.
+        const double bright = behind < 0.0 ? 0.5 : std::clamp((behind - 0.30) / 0.45, 0.0, 1.0);
+        const double plate = style.focusPlate ? emphasis : 0.0;
         if (style.activeTab) {
             FillRoundRect(box, clampedRadius, white((isLight ? 0.86 : 0.74) - 0.05 * press));
         } else if (isLight) {
-            FillRoundRect(box, clampedRadius, white((cardOrPanel ? 0.55 : 0.14) + 0.10 * emphasis - 0.05 * press));
+            // Light glass lifts toward white over dark pictures so dark labels keep their contrast.
+            const double lift = cardOrPanel ? 0.55 : 0.12 + 0.26 * (1.0 - bright);
+            FillRoundRect(box, clampedRadius, white(lift + (frosted ? 0.22 : 0.0) + 0.08 * emphasis - 0.05 * press));
         } else {
+            const double shade = cardOrPanel ? 0.40 : 0.06 + 0.30 * bright;
             FillRoundRect(box, clampedRadius,
-                          ui::Rgb(0x05070B, std::clamp((cardOrPanel ? 0.40 : 0.17) + 0.06 * press, 0.0, 1.0) * alpha));
-            FillRoundRect(box, clampedRadius, white(0.02 + 0.06 * emphasis - 0.02 * press));
+                          ui::Rgb(0x05070B, std::clamp(shade + (frosted ? 0.10 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
+            // Frosted glass carries a milky veil from light scattered inside it.
+            FillRoundRect(box, clampedRadius, white((frosted ? 0.09 : 0.02) + 0.06 * emphasis - 0.02 * press));
         }
         if (style.tint.has_value() && !style.activeTab) {
             ui::Color tint = *style.tint;
             tint.a = std::min(0.04, tint.a) * alpha;
             FillRoundRect(box, clampedRadius, tint);
         }
-        lens_->DrawRim(box, clampedRadius, alpha * (1.0 + 0.3 * emphasis) * (1.0 - 0.3 * press) * (style.activeTab ? 0.6 : 1.0));
+        lens_->DrawRim(box, clampedRadius,
+                       alpha * (1.0 + 0.3 * emphasis) * (1.0 - 0.3 * press) * (style.activeTab ? 0.6 : 1.0) *
+                           (1.0 - 0.7 * plate));
+        // Focus as on Apple TV: the glass fills with a bright plate, a touch brighter at the top.
+        if (plate > 0.0) {
+            const double top = (isLight ? 0.97 : 0.94) - 0.08 * press;
+            fillVertical(box, clampedRadius,
+                         {ui::GradientStop{0.0, white(top * plate)}, ui::GradientStop{1.0, white((top - 0.12) * plate)}});
+        }
         // A soft sheen over the upper half, as PyGlass's GlassStyle draws it.
-        const double sheen = (style.activeTab ? 0.10 : 0.06) + 0.05 * emphasis - 0.03 * press;
-        fillVertical(box, clampedRadius,
-                     {ui::GradientStop{0.0, white(sheen)}, ui::GradientStop{0.55, white(0.0)},
-                      ui::GradientStop{1.0, white(0.0)}});
+        const double sheen = ((style.activeTab ? 0.10 : 0.06) + 0.05 * emphasis - 0.03 * press) * (1.0 - plate);
+        if (sheen > 0.0) {
+            fillVertical(box, clampedRadius,
+                         {ui::GradientStop{0.0, white(sheen)}, ui::GradientStop{0.55, white(0.0)},
+                          ui::GradientStop{1.0, white(0.0)}});
+        }
+        // The focus highlight sweeps across once, a slanted band of light.
+        if (style.sweep >= 0.0 && style.sweep <= 1.0 && !ui::tokens::reduceMotion) {
+            const double band = std::max(box.height * 1.2, box.width * 0.35);
+            const double centre = box.x - band + (box.width + 2.0 * band) * style.sweep;
+            const double strength = 0.55 * std::sin(kSweepPi * style.sweep) * (plate > 0.0 ? 1.0 : 0.45);
+            const ComPtr<ID2D1GradientStopCollection> stops = Stops({
+                ui::GradientStop{0.0, white(0.0)},
+                ui::GradientStop{0.5, isLight || plate > 0.0 ? ui::Rgb(0xFFFFFF, strength * alpha) : white(strength * 0.6)},
+                ui::GradientStop{1.0, white(0.0)},
+            });
+            const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(static_cast<FLOAT>(centre - band / 2.0), static_cast<FLOAT>(box.y)),
+                D2D1::Point2F(static_cast<FLOAT>(centre + band / 2.0), static_cast<FLOAT>(box.y + box.height * 0.35)));
+            ComPtr<ID2D1LinearGradientBrush> brush;
+            if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
+                target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
+            }
+        }
         if (style.kind == ui::GlassKind::Orb || style.activeTab) {
             const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
-            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0, white(style.activeTab ? 0.30 : 0.05));
+            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0,
+                            white(style.activeTab || plate > 0.5 ? 0.30 : 0.05));
         }
         if (isLight && !style.activeTab) {
             const ui::Box rimBox{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
@@ -333,6 +377,14 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
             ui::Color tint = *style.tint;
             tint.a = std::min(0.06, tint.a) * alpha;
             FillRoundRect(box, clampedRadius, tint);
+        }
+
+        // Apple TV focus on the frosted path too, so a darkened label always sits on a bright plate.
+        if (style.focusPlate && emphasis > 0.0 && !style.activeTab) {
+            const double top = (isLight ? 0.97 : 0.94) - 0.08 * press;
+            fillVertical(box, clampedRadius,
+                         {ui::GradientStop{0.0, white(top * emphasis)},
+                          ui::GradientStop{1.0, white((top - 0.12) * emphasis)}});
         }
 
         // 7. A soft sheen across the upper half, where light enters the curved top of the glass.

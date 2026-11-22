@@ -44,6 +44,7 @@ private:
         Motion,
         Performance,
         Theme,
+        Glass,
         Language,
         AutoUpdate,
         Push,

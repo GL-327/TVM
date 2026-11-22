@@ -18,6 +18,11 @@ constexpr double kEmphasisOutMs = 220.0;
 constexpr double kPressInMs = 70.0;
 constexpr double kPressOutMs = 240.0;
 constexpr double kIndicatorMs = 380.0;
+// The focus highlight starts just after the plate brightens and crosses in under a second.
+constexpr double kSweepDelayMs = 90.0;
+constexpr double kSweepMs = 850.0;
+// A focused button's label turns dark on its bright plate.
+constexpr Color kPlateInk = Rgb(0x111318);
 // The whole chrome entrance, from the first frame it is seen.
 constexpr double kChromeEntranceMs = 720.0;
 
@@ -350,7 +355,16 @@ void Scene::AnimateEmphasis(const std::optional<std::string>& from, const std::s
     }
     if (!cardByKey_.contains(to)) {
         emphasis_[to] = motion::Tween(EmphasisOf(to), 1.0, nowMs, reduced ? 0.0 : kEmphasisInMs, kGlassEase);
+        if (!reduced && (!from.has_value() || *from != to)) focusStart_[to] = nowMs;
     }
+}
+
+double Scene::SweepOf(const std::string& key) const {
+    if (tokens::reduceMotion || focus_.Focused() != std::optional<std::string>(key)) return -1.0;
+    const auto start = focusStart_.find(key);
+    if (start == focusStart_.end()) return -1.0;
+    const double t = (clockMs_ - start->second - kSweepDelayMs) / kSweepMs;
+    return t >= 0.0 && t <= 1.0 ? t : -1.0;
 }
 
 void Scene::SetPressed(const std::optional<std::string>& key, double nowMs) {
@@ -374,6 +388,10 @@ bool Scene::ControlsAnimating() const {
     if (!press_.Done(clockMs_)) return true;
     if (indicatorMove_.has_value() && !indicatorMove_->Done(clockMs_)) return true;
     if (chromeEntranceStart_.has_value() && clockMs_ - *chromeEntranceStart_ < kChromeEntranceMs) return true;
+    if (const std::optional<std::string> focused = focus_.Focused()) {
+        const auto start = focusStart_.find(*focused);
+        if (start != focusStart_.end() && clockMs_ - start->second < kSweepDelayMs + kSweepMs) return true;
+    }
     return std::any_of(emphasis_.begin(), emphasis_.end(),
                        [this](const auto& entry) { return !entry.second.Done(clockMs_); });
 }
@@ -660,8 +678,8 @@ void Scene::PaintHero(Painter& painter) const {
         const double emphasis = EmphasisOf(key);
         const double press = PressOf(key);
         const bool still = tokens::reduceMotion;
-        const double scale = still ? 1.0 : 1.0 + 0.035 * emphasis - 0.04 * press;
-        const double lift = still ? 0.0 : metrics_.Rem(0.25) * emphasis * (1.0 - press);
+        const double scale = still ? 1.0 : 1.0 + 0.06 * emphasis - 0.06 * press;
+        const double lift = still ? 0.0 : metrics_.Rem(0.375) * emphasis * (1.0 - press);
         Box shape = ScaledAbout(rawBox, scale);
         shape.y -= lift;
         const double radius = shape.height / 2.0;
@@ -671,12 +689,16 @@ void Scene::PaintHero(Painter& painter) const {
         glass.focused = focused;
         glass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
         glass.pressAmount = press;
+        glass.focusPlate = true;
+        glass.sweep = SweepOf(key);
         glass.reduceTransparency = tokens::reduceTransparency;
         glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
         glass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
         glass.ringColor = tokens::kFocusRing;
         painter.Glass(shape, radius, glass);
 
+        // The label darkens as the plate brightens behind it.
+        const Color ink = tokens::reduceTransparency ? tokens::kText : Mix(tokens::kText, kPlateInk, emphasis);
         const TextStyle labelStyle{metrics_.Rem(kHeroButtonFontRem), true, 600};
         const double textWidth = painter.MeasureText(label, labelStyle);
         if (withPlayGlyph) {
@@ -685,13 +707,12 @@ void Scene::PaintHero(Painter& painter) const {
             const double totalWidth = glyphSize + gap + textWidth;
             const double startX = shape.CenterX() - totalWidth / 2.0;
             const Box glyphBox{startX, shape.CenterY() - glyphSize / 2.0, glyphSize, glyphSize};
-            painter.Path(glyphBox, 32.0, kPlayTrianglePath, PathStyle{tokens::kText, Color{0, 0, 0, 0}, 0.0, false});
+            painter.Path(glyphBox, 32.0, kPlayTrianglePath, PathStyle{ink, Color{0, 0, 0, 0}, 0.0, false});
             painter.Text(Box{glyphBox.Right() + gap, shape.y, textWidth + metrics_.Rem(1.0), shape.height}, label,
-                         labelStyle, tokens::kText);
+                         labelStyle, ink);
         } else {
             const double textX = shape.CenterX() - textWidth / 2.0;
-            painter.Text(Box{textX, shape.y, textWidth + metrics_.Rem(1.0), shape.height}, label, labelStyle,
-                         tokens::kText);
+            painter.Text(Box{textX, shape.y, textWidth + metrics_.Rem(1.0), shape.height}, label, labelStyle, ink);
         }
     };
 
@@ -957,6 +978,8 @@ void Scene::PaintStreamChrome(Painter& painter) const {
             orbGlass.focused = focused;
             orbGlass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
             orbGlass.pressAmount = press;
+            orbGlass.focusPlate = true;
+            orbGlass.sweep = SweepOf(key);
             orbGlass.opacity = orbStage;
             orbGlass.reduceTransparency = tokens::reduceTransparency;
             orbGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
@@ -968,8 +991,9 @@ void Scene::PaintStreamChrome(Painter& painter) const {
             if (initial[0] >= 'a' && initial[0] <= 'z') initial[0] = static_cast<char>(initial[0] - 'a' + 'A');
             const TextStyle orbText{metrics_.Rem(1.35), true, 700};
             const double tw = painter.MeasureText(initial, orbText);
+            const Color orbInk = tokens::reduceTransparency ? tokens::kText : Mix(tokens::kText, kPlateInk, emphasis);
             painter.Text(Box{orbShape.CenterX() - tw / 2.0, orbShape.y, tw + 4.0, orbShape.height}, initial, orbText,
-                         Faded(tokens::kText, orbStage));
+                         Faded(orbInk, orbStage));
             continue;
         }
 
@@ -984,13 +1008,15 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         // A tab that is not selected shows hover as a faint glass of its own, fading in and out.
         const double hover = emphasis * (1.0 - under);
         if (hover > 0.01 && (!activeTab_.has_value() || *activeTab_ != i)) {
-            Box tabShape = ScaledAbout(box, tokens::reduceMotion ? 1.0 : 1.0 + 0.02 * emphasis - 0.035 * press);
+            Box tabShape = ScaledAbout(box, tokens::reduceMotion ? 1.0 : 1.0 + 0.04 * emphasis - 0.05 * press);
             tabShape.y -= barRise;
             GlassStyle tabGlass;
             tabGlass.kind = GlassKind::Tab;
             tabGlass.focused = focused;
             tabGlass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
             tabGlass.pressAmount = press;
+            tabGlass.focusPlate = true;
+            tabGlass.sweep = SweepOf(key);
             tabGlass.opacity = hover * barStage;
             tabGlass.reduceTransparency = tokens::reduceTransparency;
             tabGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
@@ -1006,12 +1032,14 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         // Clear glass lets bright artwork through, so resting labels sit closer to full white than muted grey,
         // and in the dark theme a soft shadow keeps them legible over a white sky or a light branch.
         const Color resting = Mix(Mix(tokens::kTextMuted, tokens::kText, 0.55), tokens::kText, emphasis);
-        const Color textColor = Faded(Mix(resting, tokens::kOnPrimary, under), labelStage);
+        // On the selected glass, or on a hovered tab's bright plate, the label is dark.
+        const double plated = tokens::reduceTransparency ? under : std::max(under, hover);
+        const Color textColor = Faded(Mix(resting, tokens::kOnPrimary, plated), labelStage);
         const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
         const Box labelBox{textX, box.y - textRise, textWidth + metrics_.Rem(0.8), box.height};
         const bool lightTheme = tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b > 1.5;
-        if (!lightTheme && under < 0.99) {
-            const Color shade = Rgb(0x000000, 0.42 * (1.0 - under) * labelStage);
+        if (!lightTheme && plated < 0.99) {
+            const Color shade = Rgb(0x000000, 0.42 * (1.0 - plated) * labelStage);
             painter.Text(Box{labelBox.x, labelBox.y + 1.0, labelBox.width, labelBox.height}, tops_[i].label, tabStyle,
                          shade);
             painter.Text(Box{labelBox.x + 0.6, labelBox.y + 1.6, labelBox.width, labelBox.height}, tops_[i].label,

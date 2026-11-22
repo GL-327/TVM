@@ -519,7 +519,39 @@ TEST(hover_and_press_ease_in_and_out) {
     REQUIRE(scene.EmphasisOf("top:1") < 1.0);
     scene.Tick(1600.0);
     REQUIRE_NEAR(scene.EmphasisOf("top:1"), 0.0, 1e-6);
+    // The focus highlight is still crossing the newly focused tab.
+    REQUIRE(scene.Animating());
+    scene.Tick(2200.0);
     REQUIRE(!scene.Animating());
+}
+
+TEST(focus_highlight_sweeps_once_across_a_newly_focused_button) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.Tick(10.0);
+    scene.FocusItem("top:1", 10.0, false);
+    scene.Tick(50.0);
+    REQUIRE(scene.SweepOf("top:1") < 0.0);  // Waits for the plate to brighten first.
+    scene.Tick(400.0);
+    const double early = scene.SweepOf("top:1");
+    scene.Tick(800.0);
+    const double later = scene.SweepOf("top:1");
+    REQUIRE(early > 0.0);
+    REQUIRE(later > early);
+    REQUIRE(later < 1.0);
+    REQUIRE(scene.SweepOf("top:2") < 0.0);
+    scene.Tick(1200.0);
+    REQUIRE(scene.SweepOf("top:1") < 0.0);  // Once, not looping.
+}
+
+TEST(focus_highlight_does_not_sweep_under_reduced_motion) {
+    Scene scene(SmallRails(), MotionSettings{MotionPreference::Reduced, false});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.FocusItem("top:1", 0.0, false);
+    scene.Tick(400.0);
+    REQUIRE(scene.SweepOf("top:1") < 0.0);
 }
 
 }  // namespace

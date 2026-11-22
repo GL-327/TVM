@@ -32,9 +32,14 @@ public:
 
     bool ok() const { return dc_ != nullptr; }
 
+    // Starts a frame: only a few surfaces measure their brightness each frame.
+    void BeginFrame();
     // Draws the refracted pixels already under `box`, clipped to the rounded shape. False when it could not, so
-    // the caller can draw its fallback.
-    bool DrawRefraction(const ui::Box& box, double radius, double opacity);
+    // the caller can draw its fallback. `frosted` scatters the light through a rough surface first (a blur). When
+    // `brightness` is given it receives how bright the pixels under the surface are, from 0 to 1, smoothed over
+    // frames, or -1 before the first measurement.
+    bool DrawRefraction(const ui::Box& box, double radius, double opacity, bool frosted = false,
+                        double* brightness = nullptr);
     // Draws the rim's Fresnel reflection and spectral line over the surface. Call after any veil.
     void DrawRim(const ui::Box& box, double radius, double opacity);
 
@@ -43,6 +48,8 @@ private:
         ComPtr<ID2D1Bitmap1> displacement;
         ComPtr<ID2D1Bitmap1> rim;
         ComPtr<ID2D1Bitmap1> capture;
+        // A CPU-readable copy of the capture, for measuring brightness.
+        ComPtr<ID2D1Bitmap1> readback;
         double maxShift = 0.0;
         std::uint64_t used = 0;
     };
@@ -57,6 +64,17 @@ private:
     // The whole-pixel rectangle covering `box`. False when it is empty, too large, or wholly off the target.
     bool Place(const ui::Box& box, Placement& placement) const;
     Kernel* KernelFor(const Placement& placement, double radius);
+    // The mean luminance of the capture's interior, read back from the GPU. -1 when it cannot be read.
+    double Measure(Kernel& kernel);
+    // Brightness by where a surface sits, so it adapts smoothly as the picture under it changes.
+    struct Reading {
+        double value = -1.0;
+        std::uint64_t frame = 0;
+    };
+    using Spot = std::tuple<std::int32_t, std::int32_t, std::uint32_t, std::uint32_t>;
+    std::map<Spot, Reading> readings_;
+    std::uint64_t frame_ = 0;
+    int measuresLeft_ = 0;
     void PushShape(const ui::Box& box, double radius, double opacity);
 
     ID2D1RenderTarget* target_;
@@ -64,6 +82,7 @@ private:
     ComPtr<ID2D1Effect> shift_[3];
     ComPtr<ID2D1Effect> channel_[3];
     ComPtr<ID2D1Effect> sum_;
+    ComPtr<ID2D1Effect> frost_;
     std::map<Key, Kernel> kernels_;
     std::uint64_t clock_ = 0;
 };

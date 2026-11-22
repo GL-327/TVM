@@ -67,4 +67,17 @@ void FilePreferenceStore::SaveLook(Theme theme) {
     util::WriteFileAtomically(paths::UiPrefsPath(dataDir_), json.dump());
 }
 
+GlassClarity FilePreferenceStore::Glass() const {
+    const auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    const auto value = json.find("glass");
+    return value != json.end() && value->is_string() ? ParseGlassClarity(value->get<std::string>())
+                                                     : GlassClarity::Clear;
+}
+
+void FilePreferenceStore::SaveGlass(GlassClarity clarity) {
+    auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    json["glass"] = GlassClarityId(clarity);
+    util::WriteFileAtomically(paths::UiPrefsPath(dataDir_), json.dump());
+}
+
 }  // namespace tvm::ui

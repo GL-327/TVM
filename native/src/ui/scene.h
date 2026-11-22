@@ -171,6 +171,8 @@ public:
     // How lit a top or hero button is by hover or focus, eased from 0 to 1, and how far it is held down.
     double EmphasisOf(const std::string& key) const;
     double PressOf(const std::string& key) const;
+    // The focus highlight's sweep across a focused button, 0 to 1, or -1 when none is running.
+    double SweepOf(const std::string& key) const;
     // Where the selected tab's glass is drawn now: on the selected tab, or between two tabs while it slides.
     std::optional<Box> TabIndicatorBox() const;
 
@@ -292,6 +294,8 @@ private:
     std::optional<std::size_t> ActiveTabIndex() const;
 
     std::map<std::string, motion::Tween> emphasis_;
+    // When each button last took focus, for its highlight sweep.
+    std::map<std::string, double> focusStart_;
     std::string pressKey_;
     motion::Tween press_;
     // The selected tab's glass slides from `indicatorFrom_` to the selected tab while `indicatorMove_` runs.

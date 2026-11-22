@@ -24,6 +24,9 @@ public:
 
     virtual Theme Look() const { return Theme::Dark; }
     virtual void SaveLook(Theme /*theme*/) {}
+
+    virtual GlassClarity Glass() const { return GlassClarity::Clear; }
+    virtual void SaveGlass(GlassClarity /*clarity*/) {}
 };
 
 // The real store. UI preferences live in ui-prefs.json. Core preferences use
@@ -40,6 +43,9 @@ public:
 
     Theme Look() const override;
     void SaveLook(Theme theme) override;
+
+    GlassClarity Glass() const override;
+    void SaveGlass(GlassClarity clarity) override;
 
 private:
     paths::fs::path dataDir_;

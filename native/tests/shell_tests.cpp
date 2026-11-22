@@ -51,6 +51,8 @@ public:
     }
     tvm::ui::Theme Look() const override { return theme_; }
     void SaveLook(tvm::ui::Theme theme) override { theme_ = theme; ++themeSaves; }
+    tvm::ui::GlassClarity Glass() const override { return glass_; }
+    void SaveGlass(tvm::ui::GlassClarity clarity) override { glass_ = clarity; ++glassSaves; }
 
     MotionSettings motion_;
     tvm::prefs::CorePrefs core_;
@@ -58,6 +60,8 @@ public:
     int coreSaves = 0;
     tvm::ui::Theme theme_ = tvm::ui::Theme::Dark;
     int themeSaves = 0;
+    tvm::ui::GlassClarity glass_ = tvm::ui::GlassClarity::Clear;
+    int glassSaves = 0;
 };
 
 // A root screen whose OK opens Settings. It records the motion it is given, so
@@ -123,7 +127,7 @@ TEST(settings_lists_the_web_rows_in_order) {
     settings.Layout(1920.0, 1080.0);
     const std::vector<std::string> expected = {
         "Picture", "Motion", "Performance mode",
-        "Look", "Theme",
+        "Look", "Theme", "Liquid Glass",
         "Language", "App language",
         "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Real-Debrid",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
@@ -176,7 +180,11 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
     REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Skips the Look heading.
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
     REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("glass"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("language"));
+    REQUIRE(settings.Navigate(Direction::Up, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("glass"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
@@ -209,6 +217,22 @@ TEST(settings_automatic_updates_toggle_and_save) {
     (void)settings.Select(0.0);
     REQUIRE(!store.core_.autoUpdate);
     REQUIRE(settings.DetailOf("auto-update") == "Off · check from Updates");
+}
+
+TEST(settings_switches_liquid_glass_between_clear_and_frosted) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(1920.0, 1080.0);
+    REQUIRE(settings.FocusItem("glass", 0.0, false));
+    REQUIRE(settings.DetailOf("glass").rfind("Clear", 0) == 0);
+    (void)settings.Select(0.0);
+    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Frosted);
+    REQUIRE_EQ(store.glassSaves, 1);
+    REQUIRE(settings.DetailOf("glass").rfind("Frosted", 0) == 0);
+    SettingsScreen reopened(store, MotionSettings{});
+    REQUIRE(reopened.DetailOf("glass").rfind("Frosted", 0) == 0);
+    (void)settings.Select(0.0);
+    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Clear);
 }
 
 TEST(settings_switches_the_saved_theme_and_keeps_it_on_reopen) {

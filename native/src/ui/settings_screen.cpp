@@ -100,6 +100,7 @@ void SettingsScreen::BuildRows() {
 
     group("Look");
     row(RowKind::Theme, "themes", "Theme");
+    row(RowKind::Glass, "glass", "Liquid Glass");
 
     group("Language");
     row(RowKind::Language, "language", "App language");
@@ -161,6 +162,9 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
         return motion_.performanceMode ? "On · simpler effects and motion" : "Off · full UI motion";
     case RowKind::Theme:
         return store_.Look() == Theme::Light ? "Light" : "Dark";
+    case RowKind::Glass:
+        return store_.Glass() == GlassClarity::Frosted ? "Frosted \xC2\xB7 softer, easier to read over busy pictures"
+                                                       : "Clear \xC2\xB7 see the picture through the glass";
     case RowKind::Language:
         return LanguageName(core_.language);
     case RowKind::AutoUpdate:
@@ -310,6 +314,11 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
 
     case RowKind::Theme:
         store_.SaveLook(store_.Look() == Theme::Dark ? Theme::Light : Theme::Dark);
+        RefreshDetails();
+        return std::nullopt;
+
+    case RowKind::Glass:
+        store_.SaveGlass(store_.Glass() == GlassClarity::Clear ? GlassClarity::Frosted : GlassClarity::Clear);
         RefreshDetails();
         return std::nullopt;
 

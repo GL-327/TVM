@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <vector>
 
 namespace tvm::platform {
@@ -54,6 +55,12 @@ constexpr double kF0 = 0.035;
 constexpr double kGlow = 0.34;
 constexpr double kGlowWidth = 1.8;
 constexpr double kGlowSaturation = 0.55;
+// Frosted glass: a rough face scatters light into a cone, seen as a blur of the picture behind (PyGlass's frost).
+constexpr float kFrostSigma = 9.0f;
+// How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
+// for the first time always measures, so a still frame adapts at once.
+constexpr int kMeasuresPerFrame = 3;
+constexpr std::uint64_t kReadingFrames = 12;
 
 struct Vec3 {
     double x, y, z;
@@ -108,7 +115,8 @@ GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
         channel_[c]->SetInputEffect(0, shift_[c].Get());
         channel_[c]->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, KeepChannel(c));
     }
-    made = made && SUCCEEDED(dc_->CreateEffect(CLSID_D2D1Composite, &sum_));
+    made = made && SUCCEEDED(dc_->CreateEffect(CLSID_D2D1Composite, &sum_)) &&
+           SUCCEEDED(dc_->CreateEffect(CLSID_D2D1GaussianBlur, &frost_));
     if (!made) {
         dc_.Reset();
         return;
@@ -116,6 +124,51 @@ GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
     sum_->SetInputCount(3);
     for (int c = 0; c < 3; ++c) sum_->SetInputEffect(static_cast<UINT32>(c), channel_[c].Get());
     sum_->SetValue(D2D1_COMPOSITE_PROP_MODE, D2D1_COMPOSITE_MODE_PLUS);
+    frost_->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, kFrostSigma);
+    // Hard edges: the blur never pulls in transparent black from outside the copied pixels.
+    frost_->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_HARD);
+}
+
+void GlassLens::BeginFrame() {
+    ++frame_;
+    measuresLeft_ = kMeasuresPerFrame;
+    // Forget places no surface has been seen at for a while, so the map stays small.
+    if (readings_.size() > 256) {
+        for (auto it = readings_.begin(); it != readings_.end();) {
+            it = frame_ - it->second.frame > 600 ? readings_.erase(it) : std::next(it);
+        }
+    }
+}
+
+double GlassLens::Measure(Kernel& kernel) {
+    const D2D1_SIZE_U size = kernel.capture->GetPixelSize();
+    if (!kernel.readback) {
+        const D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, kernel.capture->GetPixelFormat());
+        if (FAILED(dc_->CreateBitmap(size, nullptr, 0, props, &kernel.readback))) return -1.0;
+    }
+    const D2D1_POINT_2U origin = D2D1::Point2U(0, 0);
+    const D2D1_RECT_U all = D2D1::RectU(0, 0, size.width, size.height);
+    if (FAILED(kernel.readback->CopyFromBitmap(&origin, kernel.capture.Get(), &all))) return -1.0;
+    D2D1_MAPPED_RECT mapped{};
+    if (FAILED(kernel.readback->Map(D2D1_MAP_OPTIONS_READ, &mapped))) return -1.0;
+    // Every third pixel of the middle, where labels sit, in perceptual luma.
+    double sum = 0.0;
+    std::size_t count = 0;
+    const std::uint32_t x0 = size.width / 6;
+    const std::uint32_t x1 = size.width - x0;
+    const std::uint32_t y0 = size.height / 5;
+    const std::uint32_t y1 = size.height - y0;
+    for (std::uint32_t y = y0; y < y1; y += 3) {
+        const BYTE* row = mapped.bits + static_cast<std::size_t>(y) * mapped.pitch;
+        for (std::uint32_t x = x0; x < x1; x += 3) {
+            const BYTE* p = row + static_cast<std::size_t>(x) * 4;
+            sum += (0.0722 * p[0] + 0.7152 * p[1] + 0.2126 * p[2]) / 255.0;
+            ++count;
+        }
+    }
+    kernel.readback->Unmap();
+    return count > 0 ? sum / static_cast<double>(count) : -1.0;
 }
 
 bool GlassLens::Place(const ui::Box& box, Placement& placement) const {
@@ -274,7 +327,9 @@ void GlassLens::PushShape(const ui::Box& box, double radius, double opacity) {
                    nullptr);
 }
 
-bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity) {
+bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity, bool frosted,
+                               double* brightness) {
+    if (brightness != nullptr) *brightness = -1.0;
     if (!ok() || opacity <= 0.0) return false;
     Placement placement{};
     if (!Place(box, placement)) return false;
@@ -296,11 +351,32 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
                                          static_cast<UINT32>(right), static_cast<UINT32>(bottom));
     if (FAILED(kernel->capture->CopyFromRenderTarget(&at, target_, &from))) return false;
 
+    if (brightness != nullptr) {
+        // Surfaces that move a few pixels (a hover lift) keep their reading.
+        const Spot spot{placement.x / 8, placement.y / 8, placement.width / 8, placement.height / 8};
+        Reading& reading = readings_[spot];
+        const bool fresh = reading.value < 0.0;
+        if (fresh || (frame_ - reading.frame >= kReadingFrames && measuresLeft_ > 0)) {
+            if (!fresh) --measuresLeft_;
+            const double measured = Measure(*kernel);
+            if (measured >= 0.0) {
+                reading.value = fresh ? measured : 0.6 * reading.value + 0.4 * measured;
+                reading.frame = frame_;
+            }
+        }
+        *brightness = reading.value;
+    }
+
     const float scale = static_cast<float>(2.0 * kernel->maxShift);
     const float channelScale[3] = {scale * static_cast<float>(1.0 - kChroma), scale,
                                    scale * static_cast<float>(1.0 + kChroma)};
+    if (frosted) frost_->SetInput(0, kernel->capture.Get());
     for (int c = 0; c < 3; ++c) {
-        shift_[c]->SetInput(0, kernel->capture.Get());
+        if (frosted) {
+            shift_[c]->SetInputEffect(0, frost_.Get());
+        } else {
+            shift_[c]->SetInput(0, kernel->capture.Get());
+        }
         shift_[c]->SetInput(1, kernel->displacement.Get());
         shift_[c]->SetValue(D2D1_DISPLACEMENTMAP_PROP_SCALE, channelScale[c]);
     }

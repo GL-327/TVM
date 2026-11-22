@@ -8,6 +8,16 @@ namespace tvm::ui {
 
 enum class Theme { Dark, Light };
 
+// How see-through the Liquid Glass is: clear shows the picture behind 1:1, frosted scatters it into a soft blur.
+enum class GlassClarity { Clear, Frosted };
+
+constexpr GlassClarity ParseGlassClarity(std::string_view id) {
+    return id == "frosted" ? GlassClarity::Frosted : GlassClarity::Clear;
+}
+constexpr std::string_view GlassClarityId(GlassClarity clarity) {
+    return clarity == GlassClarity::Frosted ? "frosted" : "clear";
+}
+
 constexpr Theme ParseTheme(std::string_view id) { return id == "light" ? Theme::Light : Theme::Dark; }
 constexpr std::string_view ThemeId(Theme theme) { return theme == Theme::Light ? "light" : "dark"; }
 
@@ -55,7 +65,22 @@ inline const Color& kPrimary = palette.primary;
 inline const Color& kOnPrimary = palette.onPrimary;
 inline bool reduceTransparency = false;
 inline bool reduceMotion = false;
+// Settings > Look > Liquid Glass.
+inline bool frostedGlass = false;
 }  // namespace tokens
+
+// Applies the viewer's glass clarity while a frame is painted.
+class GlassScope {
+public:
+    explicit GlassScope(GlassClarity clarity) : previous_(tokens::frostedGlass) {
+        tokens::frostedGlass = clarity == GlassClarity::Frosted;
+    }
+    ~GlassScope() { tokens::frostedGlass = previous_; }
+    GlassScope(const GlassScope&) = delete;
+    GlassScope& operator=(const GlassScope&) = delete;
+private:
+    bool previous_;
+};
 
 class ThemeScope {
 public:
