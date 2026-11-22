@@ -34,6 +34,7 @@
 #include "nav/hop_queue.h"
 #include "platform/artwork_store.h"
 #include "platform/background.h"
+#include "platform/glass_lens.h"
 #include "platform/graphics.h"
 #include "platform/image_cache.h"
 #include "platform/mpv_player.h"
@@ -271,6 +272,8 @@ private:
     std::unique_ptr<xtream::Client> xtream_;
     std::unique_ptr<ArtworkStore> artwork_;
     std::unique_ptr<ImageCache> images_;
+    // Clear refracting glass for the window target; rebuilt with it.
+    std::unique_ptr<GlassLens> lens_;
     std::unique_ptr<ui::Shell> shell_;
     // The open sting, drawn over the shell until it has played or been skipped.
     std::unique_ptr<ui::Intro> intro_;

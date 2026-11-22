@@ -8,6 +8,7 @@
 
 #include "platform/graphics.h"
 #include "platform/artwork_store.h"
+#include "platform/glass_lens.h"
 #include "platform/image_cache.h"
 #include "ui/painter.h"
 
@@ -16,8 +17,9 @@ namespace tvm::platform {
 class D2dPainter final : public ui::Painter {
 public:
     // `artwork` and `images` may be null, in which case images are never drawn.
+    // `lens` makes glass clear and refracting over whatever is drawn beneath it; without one, glass is frosted.
     D2dPainter(ID2D1RenderTarget* target, Graphics& graphics, ArtworkStore* artwork = nullptr,
-               ImageCache* images = nullptr);
+               ImageCache* images = nullptr, GlassLens* lens = nullptr);
 
     void Clear(ui::Color color) override;
     void SetBackdrop(const ui::Box& box, const std::string& url, double focusX = 0.7, double focusY = 0.2) override;
@@ -52,6 +54,7 @@ private:
     Graphics& graphics_;
     ArtworkStore* artwork_;
     ImageCache* images_;
+    GlassLens* lens_;
     ComPtr<ID2D1SolidColorBrush> solidBrush_;
     // Gradient stops made this frame, by their positions and colours: the glass surfaces of a frame share most
     // of theirs, so each set is made once.

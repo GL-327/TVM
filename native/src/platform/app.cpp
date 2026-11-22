@@ -801,7 +801,8 @@ void App::Render() {
 
     images_->BeginFrame();
     target_->BeginDraw();
-    D2dPainter painter(target_.Get(), graphics_, artwork_.get(), images_.get());
+    if (!lens_) lens_ = std::make_unique<GlassLens>(target_.Get());
+    D2dPainter painter(target_.Get(), graphics_, artwork_.get(), images_.get(), lens_.get());
     // A sting that covers the window hides the screen under it, so that screen is not drawn while it lasts.
     if (!intro_->Covers() && !streamIntro_->Covers()) shell_->Paint(painter);
     intro_->Paint(painter, static_cast<double>(width), static_cast<double>(height));
@@ -810,6 +811,7 @@ void App::Render() {
     if (result == D2DERR_RECREATE_TARGET) {
         // The device was lost. Rebuild the target and draw again next frame. The
         // bitmaps belong to the old target, so they are decoded again.
+        lens_.reset();
         target_.Reset();
         images_->Clear();
         dirty_ = true;

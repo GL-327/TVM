@@ -53,8 +53,10 @@ ui::Color CinemaHsl(double hue, double s, double l, double a = 1.0) {
 
 }  // namespace
 
-D2dPainter::D2dPainter(ID2D1RenderTarget* target, Graphics& graphics, ArtworkStore* artwork, ImageCache* images)
-    : target_(target), graphics_(graphics), artwork_(artwork), images_(images) {
+D2dPainter::D2dPainter(ID2D1RenderTarget* target, Graphics& graphics, ArtworkStore* artwork, ImageCache* images,
+                       GlassLens* lens)
+    : target_(target), graphics_(graphics), artwork_(artwork), images_(images),
+      lens_(lens != nullptr && lens->ok() ? lens : nullptr) {
     if (FAILED(target_->CreateSolidColorBrush(D2D1::ColorF(0, 1.0f), &solidBrush_))) {
         throw std::runtime_error("could not create a brush");
     }
@@ -213,6 +215,42 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                   ui::Color{glow.r, glow.g, glow.b, 0.14 * emphasis * alpha});
         outerRing(3.0, 4.0, ui::Color{glow.r, glow.g, glow.b, 0.06 * emphasis * alpha},
                   ui::Color{glow.r, glow.g, glow.b, 0.04 * emphasis * alpha});
+    }
+
+    // 5. Clear glass: the pixels already drawn beneath are seen 1:1 through the flat interior and bent at the rim.
+    // Only a whisper of veil keeps labels legible over bright pictures; the rim's reflection goes on top of it.
+    const bool lensKind = style.kind != ui::GlassKind::Card;
+    if (!style.rimOnly && lensKind && lens_ != nullptr && lens_->DrawRefraction(box, clampedRadius, alpha)) {
+        if (style.activeTab) {
+            FillRoundRect(box, clampedRadius, white((isLight ? 0.86 : 0.74) - 0.05 * press));
+        } else if (isLight) {
+            FillRoundRect(box, clampedRadius, white((cardOrPanel ? 0.55 : 0.14) + 0.10 * emphasis - 0.05 * press));
+        } else {
+            FillRoundRect(box, clampedRadius,
+                          ui::Rgb(0x05070B, std::clamp((cardOrPanel ? 0.40 : 0.10) + 0.06 * press, 0.0, 1.0) * alpha));
+            FillRoundRect(box, clampedRadius, white(0.02 + 0.06 * emphasis - 0.02 * press));
+        }
+        if (style.tint.has_value() && !style.activeTab) {
+            ui::Color tint = *style.tint;
+            tint.a = std::min(0.04, tint.a) * alpha;
+            FillRoundRect(box, clampedRadius, tint);
+        }
+        lens_->DrawRim(box, clampedRadius, alpha * (1.0 + 0.3 * emphasis) * (1.0 - 0.3 * press) * (style.activeTab ? 0.6 : 1.0));
+        // A soft sheen over the upper half, as PyGlass's GlassStyle draws it.
+        const double sheen = (style.activeTab ? 0.10 : 0.06) + 0.05 * emphasis - 0.03 * press;
+        fillVertical(box, clampedRadius,
+                     {ui::GradientStop{0.0, white(sheen)}, ui::GradientStop{0.55, white(0.0)},
+                      ui::GradientStop{1.0, white(0.0)}});
+        if (style.kind == ui::GlassKind::Orb || style.activeTab) {
+            const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
+            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0, white(style.activeTab ? 0.30 : 0.05));
+        }
+        if (isLight && !style.activeTab) {
+            const ui::Box rimBox{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
+            StrokeRoundRect(rimBox, clampedRadius + 0.5, 1.0, black(0.08));
+        }
+        edge(style.activeTab ? 1.0 : 0.9);
+        return;
     }
 
     if (!style.rimOnly) {

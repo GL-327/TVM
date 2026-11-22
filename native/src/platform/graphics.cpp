@@ -90,7 +90,10 @@ ComPtr<ID2D1HwndRenderTarget> Graphics::CreateHwndTarget(HWND window, UINT width
 
 ComPtr<ID2D1RenderTarget> Graphics::CreateBitmapTarget(IWICBitmap* bitmap) {
     ComPtr<ID2D1RenderTarget> target;
-    Check(d2d_->CreateWicBitmapRenderTarget(bitmap, D2D1::RenderTargetProperties(), &target),
+    // Pixels, as the window target uses, so snapshots match the window and glass copies line up.
+    Check(d2d_->CreateWicBitmapRenderTarget(
+              bitmap, D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(), 96.0f, 96.0f),
+              &target),
           "Direct2D bitmap target");
     return target;
 }

@@ -52,10 +52,12 @@ SnapshotWriter::SnapshotWriter(Graphics& graphics, unsigned width, unsigned heig
           "snapshot bitmap");
     target_ = graphics.CreateBitmapTarget(bitmap_.Get());
     images_ = std::make_unique<ImageCache>(graphics);
+    lens_ = std::make_unique<GlassLens>(target_.Get());
 }
 
 // The image cache's bitmaps belong to the target, so they go first.
 SnapshotWriter::~SnapshotWriter() {
+    lens_.reset();
     images_.reset();
     target_.Reset();
 }
@@ -64,11 +66,12 @@ void SnapshotWriter::Save(const ui::Shell& shell, const std::wstring& path) {
     Save([&shell](ui::Painter& painter) { shell.Paint(painter); }, path);
 }
 
-void SnapshotWriter::Save(const std::function<void(ui::Painter&)>& paint, const std::wstring& path) {
+void SnapshotWriter::Save(const std::function<void(ui::Painter&)>& paint, const std::wstring& path,
+                          bool clearGlass) {
     images_->BeginFrame();
     target_->BeginDraw();
     {
-        D2dPainter painter(target_.Get(), graphics_, nullptr, images_.get());
+        D2dPainter painter(target_.Get(), graphics_, nullptr, images_.get(), clearGlass ? lens_.get() : nullptr);
         paint(painter);
     }
     Check(target_->EndDraw(), "snapshot drawing");

@@ -334,7 +334,8 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
         tick(now);
         wchar_t name[64];
         swprintf(name, 64, L"%ls-%04d.png", scenario.c_str(), index);
-        writer.Save(paint, (std::filesystem::path(dir) / name).wstring());
+        // The player's chrome sits in an overlay over mpv's video, where glass has nothing to refract.
+        writer.Save(paint, (std::filesystem::path(dir) / name).wstring(), scenario != L"menu");
     }
     std::error_code ignored;
     std::filesystem::remove_all(tempData, ignored);

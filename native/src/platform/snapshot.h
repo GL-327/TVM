@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "platform/glass_lens.h"
 #include "platform/graphics.h"
 #include "platform/image_cache.h"
 #include "ui/shell.h"
@@ -30,7 +31,8 @@ public:
 
     void Save(const ui::Shell& shell, const std::wstring& path);
     // Draws whatever `paint` draws, such as a stand-in picture under a player screen.
-    void Save(const std::function<void(ui::Painter&)>& paint, const std::wstring& path);
+    // Without `clearGlass` the glass is frosted, as it is over the player's video in the app.
+    void Save(const std::function<void(ui::Painter&)>& paint, const std::wstring& path, bool clearGlass = true);
 
 private:
     Graphics& graphics_;
@@ -39,6 +41,7 @@ private:
     ComPtr<IWICBitmap> bitmap_;
     ComPtr<ID2D1RenderTarget> target_;
     std::unique_ptr<ImageCache> images_;
+    std::unique_ptr<GlassLens> lens_;
 };
 
 }  // namespace tvm::platform
