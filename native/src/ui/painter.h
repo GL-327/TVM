@@ -161,6 +161,10 @@ public:
         return Image(box, url, radius);
     }
 
+    // The whole picture, scaled to fit inside `box` and centred, as a logo is shown. A painter that cannot fit a
+    // picture draws it as Image does.
+    virtual bool ImageContain(const Box& box, const std::string& url) { return Image(box, url, 0.0); }
+
     // Fills the box with a gradient along the line from (x0, y0) to (x1, y1), in window pixels.
     virtual void FillLinearGradient(const Box& /*box*/, double /*x0*/, double /*y0*/, double /*x1*/, double /*y1*/,
                                     const std::vector<GradientStop>& /*stops*/) {}

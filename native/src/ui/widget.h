@@ -126,6 +126,13 @@ public:
         : title_(std::move(title)), focusKey_(std::move(focusKey)), itemId_(std::move(itemId)),
           posterUrl_(std::move(posterUrl)), progress_(progress) {}
 
+    // A channel tile: 16:9, the logo fitted whole on a dark plate, the name and `subtitle` under it.
+    void SetLogo(std::string subtitle) {
+        logo_ = true;
+        subtitle_ = std::move(subtitle);
+    }
+    bool logo() const { return logo_; }
+
     const std::string& itemId() const { return itemId_; }
     const std::string& posterUrl() const { return posterUrl_; }
     std::optional<double> progress() const { return progress_; }
@@ -144,6 +151,8 @@ public:
     void Paint(Painter& painter, const Metrics& metrics) const override;
 
 private:
+    bool logo_ = false;
+    std::string subtitle_;
     std::string title_;
     std::string focusKey_;
     std::string itemId_;
@@ -161,6 +170,9 @@ inline constexpr double kPosterWidthRem = 10.5;
 inline constexpr double kPosterHeightRem = 15.75;
 inline constexpr double kLandscapeWidthRem = 26.25;
 inline constexpr double kLandscapeHeightRem = 14.75;
+// A Live TV channel tile, 16:9.
+inline constexpr double kChannelWidthRem = 15.0;
+inline constexpr double kChannelHeightRem = 8.4375;
 inline constexpr double kCardLabelGapRem = 0.75;
 inline constexpr double kCardLabelHeightRem = 1.75;
 // Poster and card focus tokens from DECISIONS.md and WINDOWS-VISUAL-SPEC.md:

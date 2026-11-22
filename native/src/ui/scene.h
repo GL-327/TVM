@@ -40,6 +40,9 @@ struct CardData {
     std::string posterUrl;
     // The share watched, for a title in progress. Nothing when there is no progress to show.
     std::optional<double> progress;
+    // A channel: a 16:9 tile with its logo fitted whole on a dark plate, its name under it, and `subtitle`.
+    bool logo = false;
+    std::string subtitle;
 };
 
 struct RailData {

@@ -1,6 +1,7 @@
 #include "ui/widget.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace tvm::ui {
 
@@ -127,6 +128,10 @@ void Heading::Paint(Painter& painter, const Metrics& metrics) const {
 // ------------------------------------------------------------------- Card
 
 Size Card::Measure(double /*availableWidth*/, const Metrics& metrics) {
+    if (logo_) {
+        return Size{metrics.Rem(kChannelWidthRem), metrics.Rem(kChannelHeightRem) + metrics.Rem(kCardLabelGapRem) +
+                                                       metrics.Rem(kCardLabelHeightRem) * (subtitle_.empty() ? 1.0 : 1.8)};
+    }
     if (progress_.has_value()) {
         return Size{metrics.Rem(kLandscapeWidthRem), metrics.Rem(kLandscapeHeightRem)};
     }
@@ -140,6 +145,57 @@ void Card::Arrange(const Box& box, const Metrics& /*metrics*/) {
 
 void Card::Paint(Painter& painter, const Metrics& metrics) const {
     const double focus = std::clamp(focusAmount_, 0.0, 1.0);
+    if (logo_) {
+        // The channel tile grows from its foot and lifts as a poster does, over a dark plate that keeps any logo
+        // (white, black or coloured) readable, with the existing card glass for its rim and focus.
+        const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
+        const double artHeight = metrics.Rem(kChannelHeightRem);
+        const double scale = 1.0 + (kPosterFocusScale - 1.0) * motionFocus;
+        const double width = box_.width * scale;
+        const double height = artHeight * scale;
+        const double bottom = box_.y + artHeight - metrics.Rem(kPosterLiftRem) * motionFocus;
+        const Box tile{box_.CenterX() - width / 2.0, bottom - height, width, height};
+        const double radius = metrics.Rem(kPosterRadiusRem);
+        painter.FillLinearGradient(tile, tile.x, tile.y, tile.x, tile.Bottom(),
+                                   {GradientStop{0.0, Rgb(0x1A2130)}, GradientStop{1.0, Rgb(0x0D121B)}});
+        const Box logoBox{tile.x + tile.width * 0.18, tile.y + tile.height * 0.2, tile.width * 0.64, tile.height * 0.6};
+        const bool hasLogo = !posterUrl_.empty() && painter.ImageContain(logoBox, posterUrl_);
+        if (!hasLogo) {
+            // No logo: the channel's initials, large and quiet.
+            std::string initials;
+            bool start = true;
+            for (char c : title_) {
+                if (std::isalnum(static_cast<unsigned char>(c)) && start && initials.size() < 3) {
+                    initials.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+                }
+                start = c == ' ' || c == '-';
+            }
+            const TextStyle style{metrics.Rem(2.0), true, 800};
+            const double textWidth = painter.MeasureText(initials, style);
+            painter.Text(Box{tile.CenterX() - textWidth / 2.0, tile.y, textWidth + 4.0, tile.height}, initials, style,
+                         Rgb(0xFFFFFF, 0.55));
+        }
+        GlassStyle glass;
+        glass.kind = GlassKind::Card;
+        glass.focused = focused_;
+        glass.focusAmount = focus;
+        glass.reduceTransparency = tokens::reduceTransparency;
+        glass.rimOnly = true;
+        glass.border = tokens::kBorderSoft;
+        glass.ringColor = kPosterRing;
+        glass.ringWidth = metrics.Rem(kPosterRingWidthRem);
+        glass.ringOutset = metrics.Rem(kPosterRingOffsetRem) + glass.ringWidth / 2.0;
+        painter.Glass(tile, radius, glass);
+        const Box label{box_.x, box_.y + artHeight + metrics.Rem(kCardLabelGapRem), box_.width,
+                        metrics.Rem(kCardLabelHeightRem)};
+        painter.Text(label, title_, TextStyle{metrics.Rem(kCardTitleRem), true, 600},
+                     Mix(tokens::kTextMuted, tokens::kText, focus));
+        if (!subtitle_.empty()) {
+            painter.Text(Box{label.x, label.Bottom() - metrics.Rem(0.15), label.width, metrics.Rem(kCardLabelHeightRem) * 0.8},
+                         subtitle_, TextStyle{metrics.Rem(kCardTitleRem * 0.82), false, 450}, tokens::kTextFaint);
+        }
+        return;
+    }
     const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
     const bool landscape = progress_.has_value();
     const double artHeight = landscape ? box_.height : metrics.Rem(kPosterHeightRem);

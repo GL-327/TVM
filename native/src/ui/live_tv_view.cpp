@@ -57,6 +57,7 @@ std::vector<RailData> GroupedRails(const std::vector<catalog::LiveChannel>& chan
         card.itemId = channel.id;
         card.title = marks && picked.contains(channel.id) ? kPickedMark + channel.name : channel.name;
         card.posterUrl = channel.logo.value_or("");
+        card.logo = true;
         rails[group].cards.push_back(card);
     }
 

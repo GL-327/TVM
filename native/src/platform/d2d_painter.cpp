@@ -467,6 +467,25 @@ bool D2dPainter::ImageFaded(const ui::Box& box, const std::string& url, double r
     return true;
 }
 
+bool D2dPainter::ImageContain(const ui::Box& box, const std::string& url) {
+    if (images_ == nullptr) return false;
+    const std::optional<paths::fs::path> file = ResolveFile(url);
+    if (!file.has_value()) return false;
+    ID2D1Bitmap* bitmap = images_->Get(target_, file->wstring());
+    if (bitmap == nullptr) return false;
+    const D2D1_SIZE_F size = bitmap->GetSize();
+    if (size.width <= 0.0f || size.height <= 0.0f || box.width <= 0.0 || box.height <= 0.0) return false;
+    // Contain-fit: the whole picture, as large as fits, centred; nothing of a logo is cropped.
+    const double scale = std::min(box.width / size.width, box.height / size.height);
+    const double width = size.width * scale;
+    const double height = size.height * scale;
+    const D2D1_RECT_F destination = D2D1::RectF(
+        static_cast<FLOAT>(box.CenterX() - width / 2.0), static_cast<FLOAT>(box.CenterY() - height / 2.0),
+        static_cast<FLOAT>(box.CenterX() + width / 2.0), static_cast<FLOAT>(box.CenterY() + height / 2.0));
+    target_->DrawBitmap(bitmap, destination, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    return true;
+}
+
 ComPtr<ID2D1GradientStopCollection> D2dPainter::Stops(const std::vector<ui::GradientStop>& stops) {
     std::vector<D2D1_GRADIENT_STOP> raw;
     raw.reserve(stops.size());

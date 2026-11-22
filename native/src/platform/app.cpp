@@ -1940,15 +1940,14 @@ void App::BuildWatchlistPage() {
     } else {
         view.status = std::to_string(items.size()) + (items.size() == 1 ? " title" : " titles");
     }
+    const auto card = [](const catalog::MediaItem& item) {
+        return ui::CardData{item.id, item.title, catalog::PreferPoster(item.id, item.poster, item.backdrop), std::nullopt};
+    };
     // Eight posters a row, as the web grid wraps them.
     for (std::size_t i = 0; i < items.size(); i += 8) {
         ui::RailData rail;
         rail.id = "saved-" + std::to_string(i / 8);
-        for (std::size_t j = i; j < std::min(i + 8, items.size()); ++j) {
-            rail.cards.push_back(ui::CardData{items[j].id, items[j].title,
-                                              catalog::PreferPoster(items[j].id, items[j].poster, items[j].backdrop),
-                                              std::nullopt});
-        }
+        for (std::size_t j = i; j < std::min(i + 8, items.size()); ++j) rail.cards.push_back(card(items[j]));
         view.rails.push_back(std::move(rail));
     }
     if (scene != nullptr) {
@@ -1956,9 +1955,47 @@ void App::BuildWatchlistPage() {
         QueueRailArtwork(view.rails);
     }
     if (streamLane_ == "library") {
-        ui::SceneView lane = view;
-        lane.kicker = "Saved for later";
+        // The Library tab: a heading with the count, the filters and the order always to hand, then films and series
+        // in their own titled grids, or a plain way back to browsing when nothing is saved yet.
+        ui::SceneView lane;
         lane.heading = "Library";
+        const std::size_t movies = static_cast<std::size_t>(std::count_if(
+            saved.begin(), saved.end(), [](const catalog::WatchlistEntry& entry) { return entry.item.kind != "series"; }));
+        lane.kicker = saved.empty() ? "Saved for later"
+                                    : std::to_string(saved.size()) + " saved \xC2\xB7 " + std::to_string(movies) +
+                                          (movies == 1 ? " film" : " films") + " \xC2\xB7 " +
+                                          std::to_string(saved.size() - movies) +
+                                          (saved.size() - movies == 1 ? " series" : " series");
+        lane.topButtons = {
+            ui::TopButton{"All", act("watchlist-filter", "all"), watchlistFilter_ == "all"},
+            ui::TopButton{"Movies", act("watchlist-filter", "movie"), watchlistFilter_ == "movie"},
+            ui::TopButton{"Series", act("watchlist-filter", "series"), watchlistFilter_ == "series"},
+            ui::TopButton{"Sort: " + sortLabel, act("watchlist-sort")},
+        };
+        if (saved.empty()) {
+            lane.status = "Nothing saved yet. Open any film or series and choose Add to My List \xE2\x80\x94 it appears "
+                          "here, on this device.";
+            ui::Command home;
+            home.name = "stream-tab";
+            home.action = true;
+            home.params["lane"] = "all";
+            lane.topButtons = {ui::TopButton{"Browse Home", home, true}};
+        } else if (items.empty()) {
+            lane.status = view.status;
+        }
+        for (const bool series : {false, true}) {
+            std::vector<const catalog::MediaItem*> group;
+            for (const catalog::MediaItem& item : items) {
+                if ((item.kind == "series") == series) group.push_back(&item);
+            }
+            for (std::size_t i = 0; i < group.size(); i += 8) {
+                ui::RailData rail;
+                rail.id = std::string(series ? "series-" : "movies-") + std::to_string(i / 8);
+                rail.title = i == 0 ? (series ? "Series" : "Movies") : "";
+                for (std::size_t j = i; j < std::min(i + 8, group.size()); ++j) rail.cards.push_back(card(*group[j]));
+                lane.rails.push_back(std::move(rail));
+            }
+        }
         ShowPageLane(std::move(lane));
     }
     dirty_ = true;

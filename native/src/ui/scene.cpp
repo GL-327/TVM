@@ -448,7 +448,8 @@ void Scene::Build(const std::vector<RailData>& rails) {
     for (std::size_t r = 0; r < rails.size(); ++r) {
         const RailData& spec = rails[r];
         auto section = std::make_unique<Stack>(kHeadingGapRem);
-        section->Add(std::make_unique<Heading>(spec.title, kHeadingSizeRem));
+        // A row that continues the grid above it has no heading, and takes no room for one.
+        if (!spec.title.empty()) section->Add(std::make_unique<Heading>(spec.title, kHeadingSizeRem));
 
         auto rail = std::make_unique<Rail>(kRailSpacingRem, kRailInsetRem);
         railOffset_.push_back(cards_.size());
@@ -456,6 +457,7 @@ void Scene::Build(const std::vector<RailData>& rails) {
             const CardData& data = spec.cards[i];
             const std::string key = CardKey(r, i);
             auto card = std::make_unique<Card>(data.title, key, data.itemId, data.posterUrl, data.progress);
+            if (data.logo) card->SetLogo(data.subtitle);
             cards_.push_back(CardRef{card.get(), r, i, key});
             cardByKey_[key] = cards_.size() - 1;
             rail->Add(std::move(card));

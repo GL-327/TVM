@@ -29,6 +29,7 @@ public:
     bool Image(const ui::Box& box, const std::string& url, double radius) override;
     bool ImageFaded(const ui::Box& box, const std::string& url, double radius, double opacity, double focusX,
                     double focusY) override;
+    bool ImageContain(const ui::Box& box, const std::string& url) override;
     void FillPolygon(const std::vector<ui::Point>& points, ui::Color color) override;
     void FillPolygonLinear(const std::vector<ui::Point>& points, double x0, double y0, double x1, double y1,
                            const std::vector<ui::GradientStop>& stops) override;
