@@ -132,6 +132,8 @@ public:
         subtitle_ = std::move(subtitle);
     }
     bool logo() const { return logo_; }
+    // A second line under a poster's title, such as a search result's year.
+    void SetSubtitle(std::string subtitle) { subtitle_ = std::move(subtitle); }
 
     const std::string& itemId() const { return itemId_; }
     const std::string& posterUrl() const { return posterUrl_; }

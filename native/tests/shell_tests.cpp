@@ -129,7 +129,7 @@ TEST(settings_lists_the_web_rows_in_order) {
         "Picture", "Motion", "Performance mode",
         "Look", "Theme", "Liquid Glass",
         "Language", "App language",
-        "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Real-Debrid",
+        "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Choose profile on launch", "Real-Debrid",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
         "Device", "Network", "Display", "Live TV login", "Live TV playlist", "Updates", "Check for updates on launch",
         "What's new", "Diagnostics", "Developer",

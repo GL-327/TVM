@@ -136,7 +136,8 @@ Size Card::Measure(double /*availableWidth*/, const Metrics& metrics) {
         return Size{metrics.Rem(kLandscapeWidthRem), metrics.Rem(kLandscapeHeightRem)};
     }
     return Size{metrics.Rem(kPosterWidthRem),
-                metrics.Rem(kPosterHeightRem) + metrics.Rem(kCardLabelGapRem) + metrics.Rem(kCardLabelHeightRem)};
+                metrics.Rem(kPosterHeightRem) + metrics.Rem(kCardLabelGapRem) +
+                    metrics.Rem(kCardLabelHeightRem) * (subtitle_.empty() ? 1.0 : 1.8)};
 }
 
 void Card::Arrange(const Box& box, const Metrics& /*metrics*/) {
@@ -268,6 +269,10 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
                     metrics.Rem(kCardLabelHeightRem)};
     painter.Text(label, title_, TextStyle{metrics.Rem(kCardTitleRem), false},
                  Mix(tokens::kTextMuted, tokens::kText, focus));
+    if (!subtitle_.empty()) {
+        painter.Text(Box{label.x, label.Bottom() - metrics.Rem(0.15), label.width, metrics.Rem(kCardLabelHeightRem) * 0.8},
+                     subtitle_, TextStyle{metrics.Rem(kCardTitleRem * 0.82), false, 450}, tokens::kTextFaint);
+    }
 }
 
 void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const std::string& label, const ButtonLook& look) {

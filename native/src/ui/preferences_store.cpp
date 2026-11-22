@@ -98,4 +98,16 @@ void FilePreferenceStore::SaveGlass(GlassClarity clarity) {
     SaveUiJson(std::move(json));
 }
 
+bool FilePreferenceStore::ChooseProfileOnLaunch() const {
+    const nlohmann::ordered_json& json = UiJson();
+    const auto value = json.find("chooseProfileOnLaunch");
+    return value == json.end() || !value->is_boolean() || value->get<bool>();
+}
+
+void FilePreferenceStore::SaveChooseProfileOnLaunch(bool on) {
+    auto json = UiJson();
+    json["chooseProfileOnLaunch"] = on;
+    SaveUiJson(std::move(json));
+}
+
 }  // namespace tvm::ui

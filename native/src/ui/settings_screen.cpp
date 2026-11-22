@@ -1,8 +1,9 @@
 #include "ui/settings_screen.h"
 
 #include <algorithm>
-#include <cmath>
 #include <array>
+#include <cctype>
+#include <cmath>
 #include <utility>
 
 #include "motion/camera.h"
@@ -15,12 +16,65 @@ namespace {
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
 
-constexpr double kRowWidthRem = 64.0;
-constexpr double kRowHeightRem = 3.25;
-constexpr double kRowGapRem = 0.5;
-constexpr double kGroupGapRem = 1.5;
-constexpr double kGroupTitleRem = 1.25;
+// Each setting is its own floating row, with an icon, its name over a short description, and its value or a
+// chevron at the right. Sections flow into two columns on a wide window.
+constexpr double kRowWidthRem = 60.0;
+constexpr double kTwoColumnWidthRem = 116.0;
+constexpr double kColumnGapRem = 2.5;
+constexpr double kTwoColumnMinPx = 1600.0;
+constexpr double kRowHeightRem = 4.0;
+constexpr double kRowGapRem = 0.6;
+constexpr double kGroupGapRem = 1.75;
+constexpr double kGroupTitleRem = 0.95;
+constexpr double kHeaderRem = 8.0;
 constexpr double kEnsureVisiblePadRem = 4.0;
+constexpr Color kDanger = Rgb(0xFF5A52);
+
+Color WithAlpha(Color color, double alpha) {
+    color.a = alpha;
+    return color;
+}
+
+// A 24-unit line icon for each row.
+const char* IconFor(const std::string& key) {
+    if (key == "motion") return "M3 12h4l2.5-6 5 12 2.5-6h4";
+    if (key == "performance") return "M13 3 5 13.5h6L10 21l8-10.5h-6z";
+    if (key == "themes") return "M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z";
+    if (key == "glass") return "M12 3.5s6 6.4 6 10.8a6 6 0 0 1-12 0c0-4.4 6-10.8 6-10.8z";
+    if (key == "language") {
+        return "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3.5 12h17M12 3c2.4 2.6 3.5 5.6 3.5 9s-1.1 6.4-3.5 9"
+               "M12 3c-2.4 2.6-3.5 5.6-3.5 9s1.1 6.4 3.5 9";
+    }
+    if (key == "account") return "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.6-3.6 3.6-5.5 7.5-5.5s6.9 1.9 7.5 5.5";
+    if (key == "privacy") return "M12 3 5 6v5.5c0 4.4 2.9 7.8 7 9.5 4.1-1.7 7-5.1 7-9.5V6z";
+    if (key == "plan") return "M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2zM3.5 10.5h17";
+    if (key == "profiles" || key == "choose-profile") {
+        return "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.5-3.3 3.1-5.3 6.5-5.3s6 2 6.5 5.3"
+               "M15.5 4.3a3.5 3.5 0 0 1 0 6.4M18 14.9c1.9.7 3.2 2.4 3.5 5.1";
+    }
+    if (key == "realdebrid") return "M8 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h9M18 12v3M21 12v2";
+    if (key == "network") return "M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.01";
+    if (key == "display") return "M3.5 5h17v11h-17zM8 20h8M12 16v4";
+    if (key == "livetv") return "M3.5 8h17v12h-17zM8 3.5l4 4.5 4-4.5";
+    if (key == "live-playlist") return "M4 6.5h16M4 12h16M4 17.5h10";
+    if (key == "updates") return "M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5";
+    if (key == "auto-update") return "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3 2";
+    if (key == "changelog") return "M12 3.5l2 5 5 2-5 2-2 5-2-5-5-2 5-2z";
+    if (key == "diagnostics") return "M3 12h4l2-5 4 10 2-5h6";
+    if (key == "developer") return "M8.5 7 3.5 12l5 5M15.5 7l5 5-5 5";
+    if (key == "clear-cache") return "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3";
+    if (key == "factory-reset") return "M4 12a8 8 0 1 0 2.4-5.7M4 4v5h5";
+    if (key == "restart") return "M12 3v8M6.5 6.5a8 8 0 1 0 11 0";
+    return "M12 12h.01";
+}
+
+// A toggle row's value ("On", "Dark") and the words after it, split at the first " · ".
+std::pair<std::string, std::string> SplitDetail(const std::string& detail) {
+    const std::string dot = " \xC2\xB7 ";
+    const std::size_t at = detail.find(dot);
+    if (at == std::string::npos) return {detail, ""};
+    return {detail.substr(0, at), detail.substr(at + dot.size())};
+}
 
 struct LanguageOption {
     const char* id;
@@ -110,6 +164,7 @@ void SettingsScreen::BuildRows() {
     push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
     push("plan", "Plan", "Access and pricing", Open("plans"));
     push("profiles", "Profiles", "TVM Stream only", Open("profiles"));
+    row(RowKind::ChooseProfile, "choose-profile", "Choose profile on launch");
     push("realdebrid", "Real-Debrid", "Your token", Open("realdebrid"));
 
     group("Device");
@@ -169,6 +224,9 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
         return LanguageName(core_.language);
     case RowKind::AutoUpdate:
         return core_.autoUpdate ? "On · check when this app opens" : "Off · check from Updates";
+    case RowKind::ChooseProfile:
+        return store_.ChooseProfileOnLaunch() ? "On \xC2\xB7 ask who's watching when TVM opens"
+                                              : "Off \xC2\xB7 open the last profile";
     case RowKind::Push:
     case RowKind::Info:
         return row.detail;
@@ -203,25 +261,76 @@ void SettingsScreen::Layout(double width, double height) {
     pageScroll_ = std::clamp(pageScroll_, 0.0, MaxPageScroll());
 }
 
+bool SettingsScreen::TwoColumns() const {
+    return width_ >= kTwoColumnMinPx && !CompactViewport(width_, height_);
+}
+
 void SettingsScreen::Arrange() {
-    // The header sits above the list. Positions are in page coordinates.
-    // The header takes the kicker, the title and a gap before the first group.
-    double y = metrics_.Rem(kSafeYRem) + metrics_.Rem(6.0);
-    bool first = true;
-    for (Row& row : rows_) {
-        if (row.kind == RowKind::Group) {
-            if (!first) y += metrics_.Rem(kGroupGapRem);
-            row.top = y;
-            row.height = metrics_.Rem(kGroupTitleRem) * 1.4;
-            y += row.height + metrics_.Rem(0.5);
-        } else {
-            row.top = y;
-            row.height = CompactViewport(width_, height_) ? std::max(64.0, metrics_.Rem(kRowHeightRem)) : metrics_.Rem(kRowHeightRem);
-            y += row.height + metrics_.Rem(kRowGapRem);
-        }
-        first = false;
+    // The content is centred: one column of rows, or two on a wide window. Positions are in page coordinates.
+    const bool two = TwoColumns();
+    const double safe = metrics_.Rem(kSafeXRem);
+    const double content = std::min(width_ - 2.0 * safe, metrics_.Rem(two ? kTwoColumnWidthRem : kRowWidthRem));
+    const double left = std::max(safe, (width_ - content) / 2.0);
+    const double gap = metrics_.Rem(kColumnGapRem);
+    const double columnWidth = two ? (content - gap) / 2.0 : content;
+    const double rowHeight = CompactViewport(width_, height_) ? std::max(64.0, metrics_.Rem(kRowHeightRem))
+                                                              : metrics_.Rem(kRowHeightRem);
+    const double titleHeight = metrics_.Rem(kGroupTitleRem) * 1.6;
+
+    // Each section's height, so the sections can be shared between the columns in their order: the first column
+    // takes sections until it holds about half.
+    std::vector<std::size_t> starts;
+    for (std::size_t i = 0; i < rows_.size(); ++i) {
+        if (rows_[i].kind == RowKind::Group) starts.push_back(i);
     }
-    contentBottom_ = y - metrics_.Rem(kRowGapRem);
+    std::vector<double> heights;
+    double total = 0.0;
+    for (std::size_t g = 0; g < starts.size(); ++g) {
+        const std::size_t end = g + 1 < starts.size() ? starts[g + 1] : rows_.size();
+        const double count = static_cast<double>(end - starts[g] - 1);
+        const double height = titleHeight + metrics_.Rem(0.5) + count * rowHeight + std::max(0.0, count - 1.0) * metrics_.Rem(kRowGapRem);
+        heights.push_back(height);
+        total += height;
+    }
+    std::size_t split = starts.size();
+    if (two) {
+        double running = 0.0;
+        for (std::size_t g = 0; g < heights.size(); ++g) {
+            // A section goes to the second column once the first already holds half, or would overshoot by more.
+            if (running >= total / 2.0 || running + heights[g] / 2.0 > total / 2.0) {
+                split = std::max<std::size_t>(g, 1);
+                break;
+            }
+            running += heights[g];
+        }
+    }
+
+    const double top = metrics_.Rem(kSafeYRem) + metrics_.Rem(kHeaderRem);
+    double y[2] = {top, top};
+    bool firstInColumn[2] = {true, true};
+    contentBottom_ = top;
+    std::size_t group = 0;
+    int column = 0;
+    for (std::size_t i = 0; i < rows_.size(); ++i) {
+        Row& row = rows_[i];
+        if (row.kind == RowKind::Group) {
+            column = two && group >= split ? 1 : 0;
+            ++group;
+            if (!firstInColumn[column]) y[column] += metrics_.Rem(kGroupGapRem);
+            firstInColumn[column] = false;
+            row.top = y[column];
+            row.height = titleHeight;
+            y[column] += row.height + metrics_.Rem(0.5);
+        } else {
+            row.top = y[column];
+            row.height = rowHeight;
+            y[column] += row.height + metrics_.Rem(kRowGapRem);
+        }
+        row.column = column;
+        row.left = left + (column == 1 ? columnWidth + gap : 0.0);
+        row.width = columnWidth;
+        contentBottom_ = std::max(contentBottom_, row.top + row.height);
+    }
 }
 
 double SettingsScreen::MaxPageScroll() const {
@@ -229,8 +338,7 @@ double SettingsScreen::MaxPageScroll() const {
 }
 
 Box SettingsScreen::ScreenBox(const Row& row) const {
-    const double rowWidth = std::min(width_ - 2.0 * metrics_.Rem(kSafeXRem), metrics_.Rem(kRowWidthRem));
-    return Box{metrics_.Rem(kSafeXRem), row.top - pageScroll_, rowWidth, row.height};
+    return Box{row.left, row.top - pageScroll_, row.width, row.height};
 }
 
 std::optional<std::size_t> SettingsScreen::FocusedIndex() const {
@@ -262,18 +370,33 @@ void SettingsScreen::EnsureVisible(const Row& row, double nowMs) {
 }
 
 bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
-    if (direction != nav::Direction::Up && direction != nav::Direction::Down) return false;
     if (!focus_.has_value()) return false;
-
-    // The nearest focusable row in that direction. Groups and info rows are skipped.
+    const Row& current = rows_[*focus_];
     std::optional<std::size_t> next;
-    if (direction == nav::Direction::Down) {
-        for (std::size_t i = *focus_ + 1; i < rows_.size() && !next.has_value(); ++i) {
-            if (Focusable(rows_[i])) next = i;
+    if (direction == nav::Direction::Up || direction == nav::Direction::Down) {
+        // The nearest focusable row above or below in the same column. Headings and info rows are skipped.
+        if (direction == nav::Direction::Down) {
+            for (std::size_t i = *focus_ + 1; i < rows_.size() && !next.has_value(); ++i) {
+                if (Focusable(rows_[i]) && rows_[i].column == current.column) next = i;
+            }
+        } else {
+            for (std::size_t i = *focus_; i > 0 && !next.has_value(); --i) {
+                if (Focusable(rows_[i - 1]) && rows_[i - 1].column == current.column) next = i - 1;
+            }
         }
-    } else {
-        for (std::size_t i = *focus_; i > 0 && !next.has_value(); --i) {
-            if (Focusable(rows_[i - 1])) next = i - 1;
+    } else if (TwoColumns()) {
+        // Left and right cross to the row level with this one in the other column.
+        const int other = direction == nav::Direction::Right ? 1 : 0;
+        if (current.column == other) return false;
+        const double middle = current.top + current.height / 2.0;
+        double best = 0.0;
+        for (std::size_t i = 0; i < rows_.size(); ++i) {
+            if (!Focusable(rows_[i]) || rows_[i].column != other) continue;
+            const double distance = std::abs(rows_[i].top + rows_[i].height / 2.0 - middle);
+            if (!next.has_value() || distance < best) {
+                next = i;
+                best = distance;
+            }
         }
     }
     if (!next.has_value()) return false;
@@ -325,6 +448,11 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
     case RowKind::AutoUpdate:
         core_.autoUpdate = !core_.autoUpdate;
         store_.SaveCorePrefs(prefs::CorePrefsPatch{std::nullopt, core_.autoUpdate});
+        RefreshDetails();
+        return std::nullopt;
+
+    case RowKind::ChooseProfile:
+        store_.SaveChooseProfileOnLaunch(!store_.ChooseProfileOnLaunch());
         RefreshDetails();
         return std::nullopt;
 
@@ -396,79 +524,112 @@ void SettingsScreen::AnimateScroll(const ScrollSurface& surface, double target, 
 
 void SettingsScreen::Paint(Painter& painter) const {
     painter.Clear(tokens::kBackground);
+    // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
+    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
 
-    const Box viewport{0.0, 0.0, width_, height_};
-    painter.SetBackdrop(viewport, "asset:lighthouse.jpg", 0.5, 0.2);
-    const bool isLight = (tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b) > 1.5;
-    if (!isLight && !tokens::reduceTransparency) {
-        painter.ImageFaded(viewport, "asset:lighthouse.jpg", 0.0, 0.14, 0.5, 0.2);
-        painter.FillLinearGradient(viewport, 0.0, 0.0, 0.0, height_,
-                                   {GradientStop{0.0, Rgb(0x071018, 0.86)},
-                                    GradientStop{0.5, Rgb(0x071018, 0.91)},
-                                    GradientStop{1.0, Rgb(0x071018, 0.95)}});
+    const double left = rows_.empty() ? metrics_.Rem(kSafeXRem) : rows_.front().left;
+    const double textWidth = width_ - left - metrics_.Rem(kSafeXRem);
+    const double headerY = metrics_.Rem(kSafeYRem) - pageScroll_;
+    if (headerY + metrics_.Rem(kHeaderRem) > 0.0) {
+        painter.Text(Box{left, headerY, textWidth, metrics_.Rem(1.1)}, "Device and services",
+                     TextStyle{metrics_.Rem(0.875), true, 600}, tokens::kTextFaint);
+        // 48px Bold Screen Title at 1080p (3.0rem).
+        painter.Text(Box{left, headerY + metrics_.Rem(1.1), textWidth, metrics_.Rem(3.5)}, "Settings",
+                     TextStyle{metrics_.Rem(3.0), true, 700}, tokens::kText);
+        painter.Text(Box{left, headerY + metrics_.Rem(4.7), textWidth, metrics_.Rem(1.5)},
+                     "Picture, appearance, account and this device", TextStyle{metrics_.Rem(1.05), false, 450},
+                     tokens::kTextMuted);
     }
 
-    const double x = metrics_.Rem(kSafeXRem);
-    const double headerY = metrics_.Rem(kSafeYRem) - pageScroll_;
-    painter.Text(Box{x, headerY, width_ - 2.0 * x, metrics_.Rem(1.1)}, "Device and services",
-                 TextStyle{metrics_.Rem(0.875), true, 600}, tokens::kTextFaint);
-    // 48px Bold Screen Title at 1080p (3.0rem).
-    painter.Text(Box{x, headerY + metrics_.Rem(1.1), width_ - 2.0 * x, metrics_.Rem(3.5)}, "Settings",
-                 TextStyle{metrics_.Rem(3.0), true, 700}, tokens::kText);
-
-    const double ringWidth = metrics_.Rem(kFocusRingWidthRem);
-    const double radius = metrics_.Rem(0.875);
     for (std::size_t i = 0; i < rows_.size(); ++i) {
         const Row& row = rows_[i];
-        if (row.kind == RowKind::Group) {
-            const double groupY = row.top - pageScroll_;
-            if (groupY + row.height < 0.0 || groupY > height_) continue;
-            painter.Text(Box{x, groupY, width_ - 2.0 * x, row.height}, row.label,
-                         TextStyle{metrics_.Rem(kGroupTitleRem), true, 650}, tokens::kTextMuted);
-            continue;
-        }
-
         const Box box = ScreenBox(row);
+        // Rows off the page are not drawn.
         if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
-        const bool focused = !focusHidden_ && focus_ == std::optional<std::size_t>(i);
-        const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.15) : 0.0;
-        const Box drawnBox{box.x, box.y - lift, box.width, box.height};
-
-        GlassStyle rowGlass;
-        rowGlass.kind = GlassKind::Panel;
-        rowGlass.focused = focused;
-        rowGlass.focusAmount = focused ? 1.0 : 0.0;
-        rowGlass.reduceTransparency = tokens::reduceTransparency;
-        rowGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
-        rowGlass.ringWidth = ringWidth;
-        rowGlass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-        rowGlass.ringColor = tokens::kFocusRing;
-        painter.Glass(drawnBox, radius, rowGlass);
-
-        // High-contrast label and value colours so every setting reads clearly over the dark glass rows.
-        const Color labelColor = focused ? tokens::kText : Mix(tokens::kTextMuted, tokens::kText, 0.55);
-        const Color detailColor = focused ? tokens::kText : tokens::kTextMuted;
-        if (CompactViewport(width_, height_)) {
-            const double inset = metrics_.Rem(1.1);
-            painter.Text(Box{drawnBox.x + inset, drawnBox.y, drawnBox.width - 2.0 * inset, drawnBox.height * 0.5},
-                         row.label, TextStyle{metrics_.Rem(1.125), focused, focused ? 600 : 450}, labelColor);
-            painter.Text(Box{drawnBox.x + inset, drawnBox.y + drawnBox.height * 0.5,
-                             drawnBox.width - 2.0 * inset, drawnBox.height * 0.5},
-                         row.detail, TextStyle{metrics_.Rem(0.95), false}, detailColor);
+        if (row.kind == RowKind::Group) {
+            std::string title = row.label;
+            for (char& c : title) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            painter.Text(Box{box.x + metrics_.Rem(1.2), box.y, box.width, box.height}, title,
+                         TextStyle{metrics_.Rem(kGroupTitleRem) * 0.82, true, 750}, tokens::kTextFaint);
             continue;
         }
-        const double labelWidth = drawnBox.width * 0.52;
-        painter.Text(Box{drawnBox.x + metrics_.Rem(1.25), drawnBox.y, labelWidth, drawnBox.height}, row.label,
-                     TextStyle{metrics_.Rem(1.1875), focused, focused ? 600 : 450}, labelColor);
-        painter.Text(Box{drawnBox.x + labelWidth, drawnBox.y,
-                         drawnBox.width - labelWidth - metrics_.Rem(2.5), drawnBox.height},
-                     row.detail, TextStyle{metrics_.Rem(1.0), false}, detailColor);
-        if (row.kind == RowKind::Push) {
-            const double chev = metrics_.Rem(0.95);
-            painter.Path(Box{drawnBox.Right() - metrics_.Rem(1.8), drawnBox.CenterY() - chev / 2.0, chev, chev}, 32.0,
-                         "m12 7 9 9-9 9", PathStyle{Color{0, 0, 0, 0}, detailColor, 2.6, false});
-        }
+        PaintRow(painter, row, !focusHidden_ && focus_ == std::optional<std::size_t>(i));
     }
+}
+
+void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) const {
+    const Box box = ScreenBox(row);
+    const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.12) : 0.0;
+    const Box drawn{box.x, box.y - lift, box.width, box.height};
+    const double ringWidth = metrics_.Rem(kFocusRingWidthRem);
+
+    // Its own floating glass row, rounded as a pill.
+    GlassStyle rowGlass;
+    rowGlass.kind = GlassKind::Panel;
+    rowGlass.focused = focused;
+    rowGlass.focusAmount = focused ? 1.0 : 0.0;
+    rowGlass.reduceTransparency = tokens::reduceTransparency;
+    rowGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
+    rowGlass.ringWidth = ringWidth;
+    rowGlass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
+    rowGlass.ringColor = tokens::kFocusRing;
+    painter.Glass(drawn, drawn.height / 2.0, rowGlass);
+
+    // The icon on a tinted disc; the reset and cache rows read red.
+    const bool danger = row.key == "factory-reset" || row.key == "clear-cache";
+    const Color accent = danger ? kDanger : tokens::kAccentStrong;
+    const double disc = metrics_.Rem(2.4);
+    const Box discBox{drawn.x + metrics_.Rem(0.8), drawn.CenterY() - disc / 2.0, disc, disc};
+    painter.FillRoundRect(discBox, disc / 2.0, WithAlpha(accent, focused ? 0.24 : 0.16));
+    const double icon = metrics_.Rem(1.3);
+    painter.Path(Box{discBox.CenterX() - icon / 2.0, discBox.CenterY() - icon / 2.0, icon, icon}, 24.0, IconFor(row.key),
+                 PathStyle{Color{0, 0, 0, 0}, accent, 2.0, false});
+
+    // The value or the way in, at the right.
+    const bool toggle = row.kind != RowKind::Push && row.kind != RowKind::Info;
+    const auto [value, words] = toggle ? SplitDetail(row.detail) : std::pair<std::string, std::string>{"", row.detail};
+    double right = drawn.Right() - metrics_.Rem(1.3);
+    const Color muted = tokens::kTextMuted;
+    if (row.kind == RowKind::Push) {
+        const double chev = metrics_.Rem(0.95);
+        painter.Path(Box{right - chev, drawn.CenterY() - chev / 2.0, chev, chev}, 32.0, "m12 7 9 9-9 9",
+                     PathStyle{Color{0, 0, 0, 0}, focused ? tokens::kText : muted, 2.8, false});
+        right -= chev + metrics_.Rem(0.6);
+    } else if (toggle && (value == "On" || value == "Off")) {
+        // A switch for the rows that are on or off.
+        const bool on = value == "On";
+        const double trackWidth = metrics_.Rem(2.75);
+        const double trackHeight = metrics_.Rem(1.6);
+        const Box track{right - trackWidth, drawn.CenterY() - trackHeight / 2.0, trackWidth, trackHeight};
+        painter.FillRoundRect(track, trackHeight / 2.0, on ? tokens::kAccentStrong : WithAlpha(tokens::kText, 0.18));
+        const double knob = trackHeight - metrics_.Rem(0.3);
+        const double knobX = on ? track.Right() - metrics_.Rem(0.15) - knob : track.x + metrics_.Rem(0.15);
+        painter.FillRoundRect(Box{knobX, track.CenterY() - knob / 2.0, knob, knob}, knob / 2.0, Rgb(0xFFFFFF));
+        right = track.x - metrics_.Rem(0.8);
+    } else if (toggle && !value.empty()) {
+        // A value chip for the rows that cycle: Theme, Liquid Glass, Motion, App language.
+        const TextStyle chipStyle{metrics_.Rem(0.88), true, 650};
+        const double chipWidth = painter.MeasureText(value, chipStyle) + metrics_.Rem(1.6);
+        const double chipHeight = metrics_.Rem(1.9);
+        const Box chip{right - chipWidth, drawn.CenterY() - chipHeight / 2.0, chipWidth, chipHeight};
+        painter.FillRoundRect(chip, chipHeight / 2.0, WithAlpha(tokens::kText, focused ? 0.16 : 0.10));
+        painter.Text(Box{chip.x + metrics_.Rem(0.8), chip.y, chipWidth, chip.height}, value, chipStyle, tokens::kText);
+        right = chip.x - metrics_.Rem(0.8);
+    }
+
+    // The name over a short description.
+    const double textX = discBox.Right() + metrics_.Rem(0.9);
+    const double textWidth = std::max(0.0, right - textX);
+    const Color labelColor = focused ? tokens::kText : Mix(tokens::kTextMuted, tokens::kText, 0.7);
+    if (words.empty()) {
+        painter.Text(Box{textX, drawn.y, textWidth, drawn.height}, row.label,
+                     TextStyle{metrics_.Rem(1.05), true, focused ? 650 : 550}, labelColor);
+        return;
+    }
+    painter.Text(Box{textX, drawn.y + drawn.height * 0.16, textWidth, drawn.height * 0.4}, row.label,
+                 TextStyle{metrics_.Rem(1.05), true, focused ? 650 : 550}, labelColor);
+    painter.Text(Box{textX, drawn.y + drawn.height * 0.52, textWidth, drawn.height * 0.32}, words,
+                 TextStyle{metrics_.Rem(0.85), false, 450}, muted);
 }
 
 }  // namespace tvm::ui

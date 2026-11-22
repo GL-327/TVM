@@ -32,6 +32,10 @@ public:
 
     virtual GlassClarity Glass() const { return GlassClarity::Clear; }
     virtual void SaveGlass(GlassClarity /*clarity*/) {}
+
+    // Whether "Who's watching?" shows each time TVM opens. On unless the viewer turns it off.
+    virtual bool ChooseProfileOnLaunch() const { return true; }
+    virtual void SaveChooseProfileOnLaunch(bool /*on*/) {}
 };
 
 // The real store. UI preferences live in ui-prefs.json. Core preferences use
@@ -51,6 +55,9 @@ public:
 
     GlassClarity Glass() const override;
     void SaveGlass(GlassClarity clarity) override;
+
+    bool ChooseProfileOnLaunch() const override;
+    void SaveChooseProfileOnLaunch(bool on) override;
 
 private:
     // ui-prefs.json, read once and kept in memory. The shell asks for the look and the motion every frame, so the

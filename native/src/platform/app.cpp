@@ -315,6 +315,12 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             if (lane != command.params.end()) OpenStreamTab(lane->second);
         } else if (command.name == "search-submit") {
             if (searchPending_ || !searchQuery_.empty()) RunSearch();
+        } else if (command.name == "search-recent") {
+            const auto query = command.params.find("query");
+            if (query != command.params.end()) {
+                searchQuery_ = query->second;
+                RunSearch();
+            }
         } else if (command.name == "search-clear") {
             ++searchGeneration_;
             searchQuery_.clear();
@@ -2384,6 +2390,12 @@ void App::RunSearch() {
             searchRunning_ = false;
             searchFailed_ = failed;
             searchResults_ = results;
+            if (!failed && !results.empty()) {
+                // Remembered for this session, newest first, without repeats.
+                std::erase_if(recentSearches_, [&](const std::string& old) { return lower(old) == wanted; });
+                recentSearches_.insert(recentSearches_.begin(), query);
+                if (recentSearches_.size() > 6) recentSearches_.resize(6);
+            }
             std::stable_sort(searchResults_.begin(), searchResults_.end(),
                              [&](const catalog::MediaItem& a, const catalog::MediaItem& b) { return rank(a) < rank(b); });
             if (failed) {
@@ -2406,25 +2418,80 @@ void App::ApplySearch() {
         lane.searchField = true;
         lane.query = searchQuery_;
         lane.status = searchStatus_.empty() ? "Find films and series by title." : searchStatus_;
+        lane.loading = searchRunning_;
         if (searchFailed_) {
             ui::Command retry;
             retry.name = "search-submit";
             retry.action = true;
             lane.topButtons = {ui::TopButton{"Try again", retry, true}};
         }
-        constexpr std::size_t kPerRow = 8;
+        // As many posters a row as the window fits, so the grid fills the width.
+        RECT client{};
+        GetClientRect(window_, &client);
+        const double windowWidth = std::max<LONG>(1, client.right - client.left);
+        const double rem = ui::ViewportRem(windowWidth, std::max<LONG>(1, client.bottom - client.top));
+        const double usable = windowWidth - 2.0 * rem * (2.5 + 1.0);
+        const std::size_t perRow =
+            std::clamp<std::size_t>(static_cast<std::size_t>((usable + rem) / (rem * (10.5 + 1.0))), 3, 12);
+        const auto card = [](const catalog::MediaItem& item) {
+            ui::CardData data{item.id, item.title, item.poster, std::nullopt};
+            if (item.year.has_value()) data.subtitle = std::to_string(*item.year);
+            return data;
+        };
+        const bool idle = util::Trim(searchQuery_).empty() && searchResults_.empty() && !searchRunning_;
+        if (idle) {
+            // An empty Search: what was searched before, as chips, and what is popular now from the catalogue that
+            // is already loaded. Nothing here is made up.
+            lane.status = recentSearches_.empty() ? "Find films and series by title."
+                                                  : "Type a title, or pick up a recent search above.";
+            for (const std::string& recent : recentSearches_) {
+                ui::Command again;
+                again.name = "search-recent";
+                again.action = true;
+                again.params["query"] = recent;
+                lane.topButtons.push_back(ui::TopButton{recent, again, false});
+            }
+            const std::vector<catalog::HomeRail> rails =
+                catalog::BuildHomeRails(bundle_, shelves_, {}, {}, CurrentYear());
+            const catalog::HomeRail* popular = nullptr;
+            for (const catalog::HomeRail& rail : rails) {
+                std::string title = rail.title;
+                for (char& c : title) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (!rail.items.empty() && (title.find("popular") != std::string::npos ||
+                                            title.find("trending") != std::string::npos)) {
+                    popular = &rail;
+                    break;
+                }
+            }
+            if (popular == nullptr) {
+                for (const catalog::HomeRail& rail : rails) {
+                    if (!rail.items.empty()) {
+                        popular = &rail;
+                        break;
+                    }
+                }
+            }
+            if (popular != nullptr) {
+                ui::RailData rail;
+                rail.id = "search-popular";
+                rail.title = "Popular now";
+                for (std::size_t i = 0; i < popular->items.size() && i < perRow * 2; ++i) {
+                    rail.cards.push_back(card(popular->items[i]));
+                }
+                lane.rails.push_back(std::move(rail));
+            }
+        }
         for (const bool series : {false, true}) {
             std::vector<const catalog::MediaItem*> group;
             for (const catalog::MediaItem& item : searchResults_) {
                 if ((item.kind == "series") == series) group.push_back(&item);
             }
-            for (std::size_t i = 0; i < group.size(); i += kPerRow) {
+            for (std::size_t i = 0; i < group.size(); i += perRow) {
                 ui::RailData rail;
-                rail.id = std::string(series ? "series-" : "movies-") + std::to_string(i / kPerRow);
-                rail.title = i == 0 ? (series ? "Series" : "Movies") : "";
-                for (std::size_t j = i; j < std::min(i + kPerRow, group.size()); ++j) {
-                    rail.cards.push_back(ui::CardData{group[j]->id, group[j]->title, group[j]->poster, std::nullopt});
-                }
+                rail.id = std::string(series ? "series-" : "movies-") + std::to_string(i / perRow);
+                // Each section says how many it holds.
+                if (i == 0) rail.title = std::string(series ? "Series" : "Movies") + " \xC2\xB7 " + std::to_string(group.size());
+                for (std::size_t j = i; j < std::min(i + perRow, group.size()); ++j) rail.cards.push_back(card(*group[j]));
                 lane.rails.push_back(std::move(rail));
             }
         }

@@ -444,6 +444,8 @@ private:
     bool searchFailed_ = false;
     // A search on its way, for the page's loading state.
     bool searchRunning_ = false;
+    // What was searched this session, newest first, offered as chips on an empty Search page.
+    std::vector<std::string> recentSearches_;
     double searchTypedMs_ = 0.0;
     int searchGeneration_ = 0;
 

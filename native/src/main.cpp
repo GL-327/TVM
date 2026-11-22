@@ -366,7 +366,9 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         player->Tick(100.0);
         if (screen.size() > 7) {
             const std::wstring menu = screen.substr(7);
-            player->ActivateItem(std::string(menu.begin(), menu.end()), 100.0);
+            std::string key;
+            for (const wchar_t c : menu) key.push_back(static_cast<char>(c & 0x7F));
+            player->ActivateItem(key, 100.0);
             for (double now = 100.0; now <= 900.0; now += 16.0) player->Tick(now);
         }
         writer.Save([&](tvm::ui::Painter& painter) {

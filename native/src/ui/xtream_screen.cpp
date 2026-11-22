@@ -157,7 +157,8 @@ std::string XtreamScreen::LabelOf(const std::string& key) const {
 void XtreamScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
-    painter.SetBackdrop(Box{0.0, 0.0, width_, height_}, "asset:lighthouse.jpg", 0.5, 0.2);
+    // A plain page: the glass is told there is no picture behind it.
+    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
 
     const double x = metrics.Rem(kSafeXRem);
     const double kickerY = metrics.Rem(kSafeYRem);

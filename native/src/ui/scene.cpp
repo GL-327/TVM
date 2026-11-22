@@ -231,6 +231,10 @@ constexpr const char* kPageButtonPrefix = "page:";
 constexpr double kLaneKickerRem = 0.8125;
 constexpr double kLaneHeadingRem = 2.25;
 constexpr double kLaneFieldRem = 3.4;
+// The search page's field: a large pill centred under its heading, about half the window wide.
+constexpr double kSearchHeroRem = 4.0;
+constexpr double kSearchHeroMinRem = 34.0;
+constexpr double kSearchHeroMaxRem = 52.0;
 constexpr double kLaneButtonRem = 2.6;
 constexpr double kLaneGapRem = 0.85;
 // The first top button keeps the key Home has always used. The others are numbered.
@@ -299,6 +303,7 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     brandColor_ = view.brandColor;
     pageButtons_ = view.pageButtons;
     searchField_ = view.searchField;
+    loading_ = view.loading;
 
     // The page itself changes at once; only the selected tab's glass catches up.
     activeTab_ = ActiveTabIndex();
@@ -458,6 +463,7 @@ void Scene::Build(const std::vector<RailData>& rails) {
             const std::string key = CardKey(r, i);
             auto card = std::make_unique<Card>(data.title, key, data.itemId, data.posterUrl, data.progress);
             if (data.logo) card->SetLogo(data.subtitle);
+            else if (!data.subtitle.empty()) card->SetSubtitle(data.subtitle);
             cards_.push_back(CardRef{card.get(), r, i, key});
             cardByKey_[key] = cards_.size() - 1;
             rail->Add(std::move(card));
@@ -834,14 +840,32 @@ std::vector<Scene::HeaderItem> Scene::HeaderItems() const {
     double y = ChromeHeight() + metrics_.Rem(0.35);
     if (const std::optional<Box> heading = LaneHeadingBox()) y = heading->Bottom() + metrics_.Rem(0.5);
     if (searchField_) {
-        items.push_back(HeaderItem{kSearchFieldKey, Box{x, y, std::min(width, metrics_.Rem(46.0)), metrics_.Rem(kLaneFieldRem)}, -1});
-        y += metrics_.Rem(kLaneFieldRem + kLaneGapRem);
+        // Search: the field is the page's centrepiece, centred and about half the window wide.
+        const double fieldWidth = std::min(width, std::clamp(viewportWidth_ * 0.56, metrics_.Rem(kSearchHeroMinRem),
+                                                             metrics_.Rem(kSearchHeroMaxRem)));
+        items.push_back(HeaderItem{kSearchFieldKey,
+                                   Box{viewportWidth_ / 2.0 - fieldWidth / 2.0, y, fieldWidth, metrics_.Rem(kSearchHeroRem)},
+                                   -1});
+        y += metrics_.Rem(kSearchHeroRem + kLaneGapRem);
     }
     FlowLayout flow(x, y, width, metrics_.Rem(0.75));
+    const std::size_t firstButton = items.size();
     for (std::size_t i = 0; i < pageButtons_.size(); ++i) {
         items.push_back(HeaderItem{kPageButtonPrefix + std::to_string(i),
                                    flow.Place(metrics_.Rem(PageButtonWidthRem(pageButtons_[i])), metrics_.Rem(kLaneButtonRem)),
                                    static_cast<int>(i)});
+    }
+    if (searchField_ && items.size() > firstButton) {
+        // On Search the chips (recent searches, Try again) are centred under the field, row by row.
+        std::size_t start = firstButton;
+        while (start < items.size()) {
+            std::size_t end = start;
+            while (end < items.size() && std::abs(items[end].box.y - items[start].box.y) < 0.5) ++end;
+            const double rowWidth = items[end - 1].box.Right() - items[start].box.x;
+            const double shift = (viewportWidth_ - rowWidth) / 2.0 - items[start].box.x;
+            for (std::size_t i = start; i < end; ++i) items[i].box.x += shift;
+            start = end;
+        }
     }
     return items;
 }
@@ -880,8 +904,13 @@ void Scene::PaintLaneHeader(Painter& painter) const {
                          TextStyle{metrics_.Rem(kLaneKickerRem), true, 700}, tokens::kTextFaint);
             y += metrics_.Rem(kLaneKickerRem * 1.6);
         }
-        painter.Text(Box{heading->x, y, heading->width, metrics_.Rem(kLaneHeadingRem * 1.2)}, heading_,
-                     TextStyle{metrics_.Rem(kLaneHeadingRem), true, 750}, tokens::kText);
+        const TextStyle headingStyle{metrics_.Rem(kLaneHeadingRem), true, 750};
+        // On Search the heading is centred over the field.
+        const double headingX = searchField_
+                                    ? viewportWidth_ / 2.0 - painter.MeasureText(heading_, headingStyle) / 2.0
+                                    : heading->x;
+        painter.Text(Box{headingX, y, heading->width, metrics_.Rem(kLaneHeadingRem * 1.2)}, heading_, headingStyle,
+                     tokens::kText);
     }
 
     for (const HeaderItem& item : HeaderItems()) {
@@ -894,6 +923,34 @@ void Scene::PaintLaneHeader(Painter& painter) const {
         const TopButton& button = pageButtons_[static_cast<std::size_t>(item.button)];
         DrawButton(painter, metrics_, item.box, button.label,
                    ButtonLook{button.on, focused, focused ? std::max(emphasis, 1e-3) : emphasis});
+    }
+}
+
+void Scene::PaintSearchExtras(Painter& painter) const {
+    if (!rails_.empty()) return;
+    const double top = HeaderTop() + metrics_.Rem(kStatusRowRem) + metrics_.Rem(1.0);
+    const double x = metrics_.Rem(kSafeXRem + (CompactViewport(viewportWidth_, viewportHeight_) ? 0.0 : kRailInsetRem));
+    if (loading_) {
+        // Placeholder posters, breathing gently, where the results will land.
+        const double width = metrics_.Rem(kPosterWidthRem);
+        const double height = metrics_.Rem(kPosterHeightRem);
+        const double gap = metrics_.Rem(kRailSpacingRem);
+        const double breath = motion::PrefersReducedMotion(motion_) ? 0.5 : 0.5 + 0.5 * std::sin(clockMs_ / 520.0);
+        const auto count = static_cast<int>(std::max(1.0, std::floor((viewportWidth_ - 2.0 * x + gap) / (width + gap))));
+        for (int i = 0; i < count; ++i) {
+            const Box poster{x + static_cast<double>(i) * (width + gap), top, width, height};
+            if (poster.y > viewportHeight_) break;
+            painter.FillRoundRect(poster, metrics_.Rem(0.7), WithAlpha(tokens::kText, 0.05 + 0.04 * breath));
+            painter.FillRoundRect(Box{poster.x, poster.Bottom() + metrics_.Rem(0.6), width * 0.7, metrics_.Rem(0.8)},
+                                  metrics_.Rem(0.4), WithAlpha(tokens::kText, 0.05 + 0.03 * breath));
+        }
+        return;
+    }
+    if (!query_.empty() && !status_.empty()) {
+        // Nothing matched (or the search failed): a large, quiet lens under the message.
+        const double mark = metrics_.Rem(4.0);
+        painter.Path(Box{viewportWidth_ / 2.0 - mark / 2.0, top + metrics_.Rem(1.0), mark, mark}, 32.0, kSearchGlyph,
+                     PathStyle{Color{0, 0, 0, 0}, WithAlpha(tokens::kText, 0.18), 1.8, false});
     }
 }
 
@@ -916,11 +973,13 @@ void Scene::PaintSearchField(Painter& painter, const Box& field, bool active, do
     glass.ringColor = tokens::kFocusRing;
     painter.Glass(field, field.height / 2.0, glass);
 
-    const double glyph = metrics_.Rem(1.4);
-    painter.Path(Box{field.x + metrics_.Rem(1.0), field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0, kSearchGlyph,
-                 PathStyle{Color{0, 0, 0, 0}, active ? tokens::kText : tokens::kTextMuted, 2.4, false});
-    const double textX = field.x + metrics_.Rem(3.0);
-    const TextStyle style{metrics_.Rem(1.25), false, 500};
+    // The search page's hero field reads larger than the field on other pages.
+    const bool hero = searchField_ && Streamy();
+    const double glyph = metrics_.Rem(hero ? 1.6 : 1.4);
+    painter.Path(Box{field.x + metrics_.Rem(hero ? 1.4 : 1.0), field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0,
+                 kSearchGlyph, PathStyle{Color{0, 0, 0, 0}, active ? tokens::kText : tokens::kTextMuted, 2.4, false});
+    const double textX = field.x + metrics_.Rem(hero ? 3.8 : 3.0);
+    const TextStyle style{metrics_.Rem(hero ? 1.4 : 1.25), false, 500};
     if (query_.empty()) {
         painter.Text(Box{textX, field.y, field.Right() - textX, field.height},
                      searchField_ ? "Search films and series" : "Title or https://\xE2\x80\xA6", style,
@@ -1393,8 +1452,10 @@ bool Scene::Animating() const {
     const bool titleMoving = titleFade_.has_value() && !titleFade_->Done(clockMs_);
     const bool pictureMoving = artFade_.has_value() && !artFade_->Done(clockMs_);
     const bool contentFading = contentFade_.has_value() && !contentFade_->Done(clockMs_);
+    // The search placeholders breathe while a search runs.
+    const bool searching = loading_ && searchField_ && rails_.empty() && !motion::PrefersReducedMotion(motion_);
     return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving || contentFading ||
-           ControlsAnimating();
+           ControlsAnimating() || searching;
 }
 
 bool Scene::CameraActive() const {
@@ -1914,9 +1975,15 @@ void Scene::Paint(Painter& painter) const {
         PaintLaneHeader(painter);
         if (!status_.empty()) {
             const double x = metrics_.Rem(kSafeXRem + (CompactViewport(viewportWidth_, viewportHeight_) ? 0.0 : kRailInsetRem));
-            painter.Text(Box{x, headerTop, viewportWidth_ - 2.0 * x, metrics_.Rem(kTopButtonHeightRem)}, status_,
-                         TextStyle{metrics_.Rem(1.0), false}, tokens::kTextMuted);
+            const TextStyle statusStyle{metrics_.Rem(1.0), false};
+            // On Search the line is centred under the field.
+            const double statusX = searchField_
+                                       ? std::max(x, viewportWidth_ / 2.0 - painter.MeasureText(status_, statusStyle) / 2.0)
+                                       : x;
+            painter.Text(Box{statusX, headerTop, viewportWidth_ - statusX - x, metrics_.Rem(kTopButtonHeightRem)},
+                         status_, statusStyle, tokens::kTextMuted);
         }
+        if (searchField_) PaintSearchExtras(painter);
         PaintStreamChrome(painter);
         return;
     }

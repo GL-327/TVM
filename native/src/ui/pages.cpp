@@ -95,16 +95,8 @@ double PageScreen::MaxScroll() const {
 void PageScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
     painter.Clear(tokens::kBackground);
-    const Box viewport{0.0, 0.0, width_, height_};
-    painter.SetBackdrop(viewport, "asset:lighthouse.jpg", 0.5, 0.2);
-    const bool isLight = (tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b) > 1.5;
-    if (!isLight && !tokens::reduceTransparency) {
-        painter.ImageFaded(viewport, "asset:lighthouse.jpg", 0.0, 0.14, 0.5, 0.2);
-        painter.FillLinearGradient(viewport, 0.0, 0.0, 0.0, height_,
-                                   {GradientStop{0.0, Rgb(0x071018, 0.86)},
-                                    GradientStop{0.5, Rgb(0x071018, 0.91)},
-                                    GradientStop{1.0, Rgb(0x071018, 0.95)}});
-    }
+    // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
+    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
     PaintContent(painter, scroll_);
     for (const PageButton& button : Buttons()) {
         const Box box = Shifted(button.box, scroll_);

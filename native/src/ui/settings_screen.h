@@ -47,6 +47,7 @@ private:
         Glass,
         Language,
         AutoUpdate,
+        ChooseProfile,
         Push,
         Info,
     };
@@ -57,9 +58,12 @@ private:
         std::string label;
         std::string detail;
         Command command;
-        // Position in the page, before scrolling.
+        // Position in the page, before scrolling: its column (0 or 1 on a wide window), left edge and width.
         double top = 0.0;
         double height = 0.0;
+        int column = 0;
+        double left = 0.0;
+        double width = 0.0;
     };
 
     void BuildRows();
@@ -72,6 +76,8 @@ private:
     bool Focusable(const Row& row) const;
     std::optional<Command> ApplyRow(std::size_t index);
     Box ScreenBox(const Row& row) const;
+    bool TwoColumns() const;
+    void PaintRow(Painter& painter, const Row& row, bool focused) const;
 
     PreferenceStore& store_;
     prefs::CorePrefs core_;

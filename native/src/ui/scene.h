@@ -42,6 +42,7 @@ struct CardData {
     std::optional<double> progress;
     // A channel: a 16:9 tile with its logo fitted whole on a dark plate, its name under it, and `subtitle`.
     bool logo = false;
+    // Under a channel's name, or under a poster's title (a search result's year).
     std::string subtitle;
 };
 
@@ -123,6 +124,8 @@ struct SceneView {
     std::vector<TopButton> pageButtons;
     bool searchField = false;
     std::optional<Color> brandColor;
+    // A search is on its way: the results area shows placeholder posters until it answers.
+    bool loading = false;
 };
 
 class Scene final : public Screen {
@@ -317,6 +320,9 @@ private:
 
     std::vector<TopButton> pageButtons_;
     bool searchField_ = false;
+    bool loading_ = false;
+    // The search page's placeholders while a search runs, and its empty-result mark.
+    void PaintSearchExtras(Painter& painter) const;
     std::optional<motion::Tween> contentFade_;
 
     // Hover and focus emphasis of the top and hero buttons, by key, and the one press in flight.
