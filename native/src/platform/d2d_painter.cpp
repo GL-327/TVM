@@ -227,7 +227,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
             FillRoundRect(box, clampedRadius, white((cardOrPanel ? 0.55 : 0.14) + 0.10 * emphasis - 0.05 * press));
         } else {
             FillRoundRect(box, clampedRadius,
-                          ui::Rgb(0x05070B, std::clamp((cardOrPanel ? 0.40 : 0.10) + 0.06 * press, 0.0, 1.0) * alpha));
+                          ui::Rgb(0x05070B, std::clamp((cardOrPanel ? 0.40 : 0.17) + 0.06 * press, 0.0, 1.0) * alpha));
             FillRoundRect(box, clampedRadius, white(0.02 + 0.06 * emphasis - 0.02 * press));
         }
         if (style.tint.has_value() && !style.activeTab) {

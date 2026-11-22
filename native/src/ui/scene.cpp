@@ -1003,11 +1003,21 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         const TextStyle tabStyle{metrics_.Rem(kChromeFontRem), strong, strong ? 650 : kChromeWeight};
         const double textWidth = painter.MeasureText(tops_[i].label, tabStyle);
         const double textX = std::max(box.x + metrics_.Rem(0.5), box.CenterX() - textWidth / 2.0);
-        const Color resting = Mix(tokens::kTextMuted, tokens::kText, emphasis);
+        // Clear glass lets bright artwork through, so resting labels sit closer to full white than muted grey,
+        // and in the dark theme a soft shadow keeps them legible over a white sky or a light branch.
+        const Color resting = Mix(Mix(tokens::kTextMuted, tokens::kText, 0.55), tokens::kText, emphasis);
         const Color textColor = Faded(Mix(resting, tokens::kOnPrimary, under), labelStage);
         const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
-        painter.Text(Box{textX, box.y - textRise, textWidth + metrics_.Rem(0.8), box.height}, tops_[i].label, tabStyle,
-                     textColor);
+        const Box labelBox{textX, box.y - textRise, textWidth + metrics_.Rem(0.8), box.height};
+        const bool lightTheme = tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b > 1.5;
+        if (!lightTheme && under < 0.99) {
+            const Color shade = Rgb(0x000000, 0.42 * (1.0 - under) * labelStage);
+            painter.Text(Box{labelBox.x, labelBox.y + 1.0, labelBox.width, labelBox.height}, tops_[i].label, tabStyle,
+                         shade);
+            painter.Text(Box{labelBox.x + 0.6, labelBox.y + 1.6, labelBox.width, labelBox.height}, tops_[i].label,
+                         tabStyle, Faded(shade, 0.5));
+        }
+        painter.Text(labelBox, tops_[i].label, tabStyle, textColor);
     }
 }
 
