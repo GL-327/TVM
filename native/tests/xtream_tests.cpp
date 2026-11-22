@@ -121,6 +121,16 @@ TEST(xtream_stream_addresses_are_mpeg_ts_unless_hls_is_asked_for) {
                std::string("http://panel.example/live/alice/secret/42.ts"));
 }
 
+TEST(xtream_channel_ids_give_the_panel_its_bare_stream_id) {
+    REQUIRE_EQ(tvm::xtream::StreamIdOf("live:xtream:42"), std::string("42"));
+    REQUIRE_EQ(tvm::xtream::StreamIdOf("42"), std::string("42"));
+    TempFolder dir;
+    FakeNetwork network([](const std::string&) { return std::optional<tvm::http::Response>(Answer(500)); });
+    const Account account{"http://panel.example", "alice", "secret"};
+    REQUIRE_EQ(MakeClient(dir.path(), network).StreamUrl(account, tvm::xtream::StreamIdOf("live:xtream:42")),
+               std::string("http://panel.example/live/alice/secret/42.ts"));
+}
+
 TEST(xtream_logo_addresses_follow_the_node_rules) {
     using tvm::catalog::title::HttpAssetUrl;
     using tvm::catalog::title::IsHttpUrl;

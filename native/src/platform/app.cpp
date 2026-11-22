@@ -113,6 +113,8 @@ constexpr char kNotStoredMessage[] = "The token was not stored.";
 
 // The Home hero turns to its next title this often, as the web Home does.
 constexpr double kHeroTurnMs = 8000.0;
+// A search starts once typing pauses for this long, or at once on Enter.
+constexpr double kSearchDebounceMs = 220.0;
 // The most titles the hero turns through.
 constexpr std::size_t kHeroLimit = 4;
 
@@ -305,6 +307,19 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         } else if (command.name == "stream-lane") {
             const auto lane = command.params.find("lane");
             if (lane != command.params.end()) SetStreamLane(lane->second);
+        } else if (command.name == "stream-tab") {
+            const auto lane = command.params.find("lane");
+            if (lane != command.params.end()) OpenStreamTab(lane->second);
+        } else if (command.name == "search-submit") {
+            if (searchPending_ || !searchQuery_.empty()) RunSearch();
+        } else if (command.name == "search-clear") {
+            ++searchGeneration_;
+            searchQuery_.clear();
+            searchResults_.clear();
+            searchPending_ = false;
+            searchFailed_ = false;
+            searchStatus_.clear();
+            ApplySearch();
         } else if (command.name == "stream-home") {
             shell_->PopToRoot(NowMs());
         } else if (command.name == "back") {
@@ -494,6 +509,8 @@ int App::Run(int showCommand) {
             double due = 1000.0;
             if (home_->HeroCount() > 1) due = std::max(0.0, lastHeroTurnMs_ + kHeroTurnMs - now);
             if (artworkRetryDueMs_ > 0.0) due = std::min(due, std::max(0.0, artworkRetryDueMs_ - now));
+            // A search waits for a short pause in typing; the loop wakes when the pause is over.
+            if (searchPending_) due = std::min(due, std::max(0.0, searchTypedMs_ + kSearchDebounceMs - now));
             MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::ceil(due)), QS_ALLINPUT);
         }
     }
@@ -561,7 +578,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         break;
     case WM_CHAR:
         // Letters typed on the search page go into the query. Control characters are keys, handled above.
-        if (shell_->ActiveScreenName() == "search" && wParam >= 0x20 && wParam != 0x7F &&
+        if (SearchTyping() && wParam >= 0x20 && wParam != 0x7F &&
             (wParam < 0xD800 || wParam > 0xDFFF)) {
             TypeSearch(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
             return 0;
@@ -1067,6 +1084,12 @@ void App::QueueTitleArtwork(const ui::TitleInfo& info) {
 }
 
 void App::RebuildHome() {
+    // A page lane needs no catalogue: Live TV, Library and Search have their own sources.
+    if (account_.usable && IsPageLane(streamLane_)) {
+        homeStale_ = false;
+        BuildPageLane();
+        return;
+    }
     if (!catalogReady_) return;
     homeStale_ = false;
     // Home is the TVM Stream page: the stream chrome, the turning billboard, and the rails by lane.
@@ -1349,10 +1372,17 @@ void App::FinishXtream(const ui::XtreamView& view) {
 }
 
 void App::SyncLiveTv() {
-    if (shell_->ActiveScreenName() != "live-tv") {
+    // The Live TV screen (opened from the playlist screen) or the Live TV lane. A channel playing over it is part of
+    // the same visit, so coming back from the player keeps the channels, the focus and the choosing mode.
+    const auto& entries = shell_->stack().entries;
+    const bool inStack = std::any_of(entries.begin(), entries.end(), [](const nav::ViewEntry& entry) {
+        return entry.name == "live-tv";
+    });
+    if (!inStack && streamLane_ != "live") {
         liveOpened_ = false;
         return;
     }
+    if (shell_->ActiveScreenName() != "live-tv") return;
     if (liveOpened_) return;
     liveOpened_ = true;
     // Each visit starts by watching, and reads the catalogue again, so a login saved in between shows.
@@ -1384,10 +1414,24 @@ void App::ApplyLiveTv() {
     state.catalog = liveCatalog_;
     state.picks = livePicks_;
     state.message = liveMessage_;
-    const ui::SceneView view = ui::LiveTvView(state);
+    ui::SceneView view = ui::LiveTvView(state);
+    // "Check channels" is a developer tool; other accounts would only be turned back at the door.
+    if (!coreapi::AllowsRoute(account_, "live-check")) {
+        std::erase_if(view.topButtons, [](const ui::TopButton& button) { return button.command.name == "live-check"; });
+    }
+    // A saved login the panel refused reads as such, not as "nothing connected".
+    if (state.loaded && liveCatalog_.error == "needs-auth") {
+        view.status = "The Live TV panel refused the saved login. Choose Login to check the username and password.";
+    }
     // Channel logos are pictures like posters: fetch them, or every channel stays a plain tile.
     QueueRailArtwork(view.rails);
     shell_->SetLiveTvView(view, NowMs());
+    if (streamLane_ == "live") {
+        ui::SceneView lane = view;
+        lane.kicker = "Channels";
+        lane.heading = "Live TV";
+        ShowPageLane(std::move(lane));
+    }
     // The channel check lists the same channels' groups.
     if (pageName_ == "live-check") ShowInfoPage();
     dirty_ = true;
@@ -1567,11 +1611,88 @@ void App::RefreshStreamStatus() {
 }
 
 void App::SetStreamLane(const std::string& lane) {
-    // Choosing the lane that is on goes back to everything, as the web links toggle.
-    if (lane == "all") streamLane_ = "all";
-    else streamLane_ = streamLane_ == lane ? "all" : lane;
-    RebuildStream();
+    const std::string previous = streamLane_;
+    streamLane_ = lane == "movies" || lane == "shows" || IsPageLane(lane) ? lane : "all";
+    // Live TV reads its source again on each visit, so a login saved in between shows; the player opening over it
+    // is not a new visit.
+    if (previous == "live" && streamLane_ != "live") liveOpened_ = false;
+    if (!IsPageLane(streamLane_)) RebuildStream();
     RebuildHome();
+    // Home, Movies and Series keep their own transition: the hero dissolve and the sliding tab glass. A page with no
+    // hero fades its content in from the ground behind the chrome, with the same timing and easing.
+    if (previous != streamLane_ && (IsPageLane(previous) || IsPageLane(streamLane_))) home_->FadeContentIn(NowMs());
+}
+
+void App::OpenStreamTab(const std::string& lane) {
+    if (lane == "live" && !coreapi::AllowsRoute(account_, "live-tv")) {
+        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or developer role."
+                                          : "Sign in with an active account to continue.";
+        ui::Command door;
+        door.name = "account";
+        shell_->Execute(door, NowMs());
+        return;
+    }
+    // A tab chosen on another screen comes back to Home first, so there is one chrome and one stack.
+    if (shell_->ActiveScreenName() != "home") shell_->PopToRoot(NowMs());
+    SetStreamLane(lane);
+}
+
+std::vector<ui::TopButton> App::StreamNav(bool root) const {
+    const auto tab = [](const std::string& lane) {
+        ui::Command command;
+        command.name = "stream-tab";
+        command.action = true;
+        command.params["lane"] = lane;
+        return command;
+    };
+    ui::Command settings;
+    settings.name = "settings";
+    // The profile's name, or "Profile" without one, as StreamChrome labels its orb.
+    const std::string profileName = profiles::ActiveName(dataDir_).value_or("Profile");
+    const auto on = [&](const std::string& lane) { return root && streamLane_ == lane; };
+    return {
+        ui::TopButton{"Home", tab("all"), on("all")},
+        ui::TopButton{"Movies", tab("movies"), on("movies")},
+        ui::TopButton{"Series", tab("shows"), on("shows")},
+        ui::TopButton{"Live TV", tab("live"), on("live")},
+        ui::TopButton{"Library", tab("library"), on("library")},
+        ui::TopButton{"Search", tab("search"), on("search")},
+        ui::TopButton{profileName, settings, false, false, true},
+    };
+}
+
+void App::BuildPageLane() {
+    if (streamLane_ == "live") {
+        if (!liveOpened_) {
+            liveOpened_ = true;
+            liveChoosing_ = false;
+            RefreshLiveTv();
+        } else {
+            ApplyLiveTv();
+        }
+    } else if (streamLane_ == "library") {
+        BuildWatchlistPage();
+    } else if (streamLane_ == "search") {
+        ApplySearch();
+    }
+}
+
+void App::ShowPageLane(ui::SceneView view) {
+    const double now = NowMs();
+    view.style = ui::SceneStyle::Stream;
+    view.pageButtons = std::move(view.topButtons);
+    view.topButtons = StreamNav(true);
+    home_->SetHeroes({}, now);
+    home_->SetView(view, now);
+    QueueRailArtwork(view.rails);
+    dirty_ = true;
+}
+
+bool App::SearchTyping() const {
+    const std::string active = shell_->ActiveScreenName();
+    if (active == "search") return true;
+    return active == "home" && streamLane_ == "search" &&
+           home_->FocusedKey() == std::optional<std::string>("search-field");
 }
 
 void App::RebuildStream() {
@@ -1623,18 +1744,20 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         scene.SetRails({});
         return;
     }
+    // Live TV, Library and Search are pages under the same chrome, on the same scene.
+    if (root && IsPageLane(streamLane_)) {
+        BuildPageLane();
+        return;
+    }
     const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_);
-    // The profile's name, or "Profile" without one, as StreamChrome labels its orb.
-    const std::string profileName = profiles::ActiveName(dataDir_).value_or("Profile");
-    view.topButtons = {
-        ui::TopButton{"Home", root ? act("stream-lane", "all") : act("stream-home"), streamLane_ == "all"},
-        ui::TopButton{"Movies", act("stream-lane", "movies"), streamLane_ == "movies"},
-        ui::TopButton{"Series", act("stream-lane", "shows"), streamLane_ == "shows"},
-        ui::TopButton{"Live TV", open("live-tv", false)},
-        ui::TopButton{"Library", open("watchlist", false)},
-        ui::TopButton{"Search", open("search", true)},
-        ui::TopButton{profileName, open("settings", false), false, false, true},
-    };
+    view.topButtons = StreamNav(root);
+    if (!root) {
+        // A TVM Stream page pushed over Home marks its own lane.
+        for (ui::TopButton& button : view.topButtons) {
+            const auto lane = button.command.params.find("lane");
+            if (lane != button.command.params.end()) button.on = lane->second == streamLane_;
+        }
+    }
 
     std::vector<ui::HeroData> heroes;
     const bool rdReady = streamStatus_.configured && streamStatus_.error != "needs-auth";
@@ -1754,7 +1877,7 @@ void App::SyncPages() {
 
 void App::BuildWatchlistPage() {
     ui::Scene* scene = shell_->SceneNamed("watchlist");
-    if (scene == nullptr) return;
+    if (scene == nullptr && streamLane_ != "library") return;
     const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_);
     const std::vector<catalog::WatchlistEntry> saved =
         folder.has_value() ? catalog::ReadWatchlist(*folder) : std::vector<catalog::WatchlistEntry>{};
@@ -1828,8 +1951,16 @@ void App::BuildWatchlistPage() {
         }
         view.rails.push_back(std::move(rail));
     }
-    scene->SetView(view, NowMs());
-    QueueRailArtwork(view.rails);
+    if (scene != nullptr) {
+        scene->SetView(view, NowMs());
+        QueueRailArtwork(view.rails);
+    }
+    if (streamLane_ == "library") {
+        ui::SceneView lane = view;
+        lane.kicker = "Saved for later";
+        lane.heading = "Library";
+        ShowPageLane(std::move(lane));
+    }
     dirty_ = true;
 }
 
@@ -1960,8 +2091,12 @@ void App::CheckForUpdates() {
 }
 
 void App::SyncSearch() {
-    if (shell_->ActiveScreenName() != "search") {
+    const std::string active = shell_->ActiveScreenName();
+    // The Search lane keeps its query and results while a title is opened from them and closed again.
+    const bool lane = active == "home" && streamLane_ == "search";
+    if (active != "search") {
         searchOpened_ = false;
+        if (lane && searchPending_ && NowMs() - searchTypedMs_ >= kSearchDebounceMs) RunSearch();
         return;
     }
     if (!searchOpened_) {
@@ -1974,7 +2109,7 @@ void App::SyncSearch() {
         searchStatus_ = "Search films and series.";
         ApplySearch();
     }
-    if (searchPending_ && NowMs() - searchTypedMs_ >= 180.0) RunSearch();
+    if (searchPending_ && NowMs() - searchTypedMs_ >= kSearchDebounceMs) RunSearch();
 }
 
 bool App::HandleSearchKey(WPARAM virtualKey) {
@@ -2002,7 +2137,28 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
         }
         return virtualKey == VK_SPACE || (virtualKey >= '0' && virtualKey <= 'Z');
     }
-    if (shell_->ActiveScreenName() != "search") return false;
+    if (!SearchTyping()) return false;
+    const bool lane = shell_->ActiveScreenName() == "home";
+    if (virtualKey == VK_RETURN) {
+        // Enter searches at once, without waiting for the pause after typing.
+        if (searchPending_ || (searchResults_.empty() && util::Trim(searchQuery_).size() >= 2)) {
+            RunSearch();
+            return true;
+        }
+        // With the results already showing, Enter steps down into them.
+        if (lane && !searchResults_.empty()) {
+            home_->FocusItem("card:0:0", NowMs(), true);
+            dirty_ = true;
+            return true;
+        }
+        return false;
+    }
+    if (lane && virtualKey == VK_ESCAPE) {
+        // Esc leaves the field and goes back up to the Search tab; typing stops going into the field.
+        home_->FocusItem("top:5", NowMs(), false);
+        dirty_ = true;
+        return true;
+    }
     if (virtualKey == VK_BACK) {
         // Backspace removes the last letter, and leaves search once the field is empty.
         if (searchQuery_.empty()) return false;
@@ -2025,20 +2181,27 @@ void App::TypeSearch(const std::string& text) {
     searchQuery_ += text;
     searchTypedMs_ = NowMs();
     searchPending_ = true;
+    searchFailed_ = false;
+    // Any answer still on its way is for an older query, so it must not land over what is typed now.
+    ++searchGeneration_;
+    searchRunning_ = false;
     ApplySearch();
 }
 
 void App::RunSearch() {
     searchPending_ = false;
+    searchFailed_ = false;
     const int generation = ++searchGeneration_;
     const std::string query = util::Trim(searchQuery_);
     if (query.size() < 2) {
         searchResults_.clear();
-        searchStatus_ = "Search films and series.";
+        searchRunning_ = false;
+        searchStatus_ = query.empty() ? "Search films and series." : "Type at least two letters to search.";
         ApplySearch();
         return;
     }
-    searchStatus_ = "Searching\xE2\x80\xA6";
+    searchRunning_ = true;
+    searchStatus_ = "Searching for \xE2\x80\x9C" + query + "\xE2\x80\x9D\xE2\x80\xA6";
     ApplySearch();
     background_->Run([this, generation, query] {
         std::vector<catalog::MediaItem> results;
@@ -2063,13 +2226,15 @@ void App::RunSearch() {
                 if (title.rfind(wanted, 0) == 0) return 1;
                 return title.find(wanted) != std::string::npos ? 2 : 3;
             };
+            searchRunning_ = false;
+            searchFailed_ = failed;
             searchResults_ = results;
             std::stable_sort(searchResults_.begin(), searchResults_.end(),
                              [&](const catalog::MediaItem& a, const catalog::MediaItem& b) { return rank(a) < rank(b); });
             if (failed) {
                 searchStatus_ = "Search is unavailable. Check your connection and try again.";
             } else if (results.empty()) {
-                searchStatus_ = "Nothing matched that search.";
+                searchStatus_ = "Nothing matched \xE2\x80\x9C" + query + "\xE2\x80\x9D. Try another title.";
             } else {
                 searchStatus_ = std::to_string(results.size()) + (results.size() == 1 ? " match" : " matches");
             }
@@ -2079,6 +2244,37 @@ void App::RunSearch() {
 }
 
 void App::ApplySearch() {
+    if (streamLane_ == "search" && account_.usable) {
+        // The Search lane: the field under the chrome, then films and series in their own grids.
+        ui::SceneView lane;
+        lane.heading = "Search";
+        lane.searchField = true;
+        lane.query = searchQuery_;
+        lane.status = searchStatus_.empty() ? "Find films and series by title." : searchStatus_;
+        if (searchFailed_) {
+            ui::Command retry;
+            retry.name = "search-submit";
+            retry.action = true;
+            lane.topButtons = {ui::TopButton{"Try again", retry, true}};
+        }
+        constexpr std::size_t kPerRow = 8;
+        for (const bool series : {false, true}) {
+            std::vector<const catalog::MediaItem*> group;
+            for (const catalog::MediaItem& item : searchResults_) {
+                if ((item.kind == "series") == series) group.push_back(&item);
+            }
+            for (std::size_t i = 0; i < group.size(); i += kPerRow) {
+                ui::RailData rail;
+                rail.id = std::string(series ? "series-" : "movies-") + std::to_string(i / kPerRow);
+                rail.title = i == 0 ? (series ? "Series" : "Movies") : "";
+                for (std::size_t j = i; j < std::min(i + kPerRow, group.size()); ++j) {
+                    rail.cards.push_back(ui::CardData{group[j]->id, group[j]->title, group[j]->poster, std::nullopt});
+                }
+                lane.rails.push_back(std::move(rail));
+            }
+        }
+        ShowPageLane(std::move(lane));
+    }
     ui::Scene* scene = shell_->SceneNamed("search");
     if (scene == nullptr) return;
     ui::SceneView view;
@@ -2171,7 +2367,8 @@ void App::StartPlayback() {
         resolution.url = channel->url;
         if (resolution.url.empty()) {
             if (const std::optional<xtream::Account> account = xtream_->Saved()) {
-                resolution.url = xtream_->StreamUrl(*account, channel->id);
+                // The channel id carries the "live:xtream:" prefix; the panel's address wants only its stream id.
+                resolution.url = xtream_->StreamUrl(*account, xtream::StreamIdOf(channel->id));
             }
         }
         if (resolution.url.empty()) resolution.reason = "unsupported";

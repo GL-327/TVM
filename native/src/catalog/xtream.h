@@ -22,6 +22,13 @@ namespace tvm::xtream {
 // The prefix every Xtream channel id carries, as the Node core writes it.
 inline constexpr char kChannelPrefix[] = "live:xtream:";
 
+// The panel's own stream id inside a channel id: "live:xtream:42" is stream 42. An id without the prefix is
+// returned as it is.
+inline std::string StreamIdOf(const std::string& channelId) {
+    const std::string prefix = kChannelPrefix;
+    return channelId.rfind(prefix, 0) == 0 ? channelId.substr(prefix.size()) : channelId;
+}
+
 struct Account {
     // The server as http(s)://host[:port][/path], as NormalizeHost returns it.
     std::string host;

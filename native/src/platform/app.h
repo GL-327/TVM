@@ -163,6 +163,18 @@ private:
     // through its titles and keeps its catalogue without Real-Debrid; the stream page asks for a token.
     void BuildBrowse(ui::Scene& scene, bool root);
     void SetStreamLane(const std::string& lane);
+    // The six tabs of the stream chrome. Home, Movies and Series are browse lanes; Live TV, Library and Search
+    // are page lanes, shown on the same root scene so the chrome never leaves the screen.
+    std::vector<ui::TopButton> StreamNav(bool root) const;
+    static bool IsPageLane(const std::string& lane) { return lane == "live" || lane == "library" || lane == "search"; }
+    // Builds the page lane that is on into Home.
+    void BuildPageLane();
+    // Shows a page's view on Home under the stream chrome: its own buttons move under the chrome.
+    void ShowPageLane(ui::SceneView view);
+    // Opens a tab from anywhere: back to Home, then that lane.
+    void OpenStreamTab(const std::string& lane);
+    // Whether typing goes into a search field: the Search modal, or the Search lane with its field focused.
+    bool SearchTyping() const;
 
     // Watchlist, Profiles and Updates, each filled in as it comes on top.
     void SyncPages();
@@ -419,6 +431,10 @@ private:
     std::string searchStatus_;
     std::vector<catalog::MediaItem> searchResults_;
     bool searchPending_ = false;
+    // The last search failed (network or server), so the page offers Retry rather than "nothing matched".
+    bool searchFailed_ = false;
+    // A search on its way, for the page's loading state.
+    bool searchRunning_ = false;
     double searchTypedMs_ = 0.0;
     int searchGeneration_ = 0;
 

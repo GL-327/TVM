@@ -3,6 +3,7 @@
 // scene is drawn into a recording painter, so no window is needed.
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <optional>
 #include <stdexcept>
@@ -415,8 +416,8 @@ tvm::ui::SceneView StreamView(int lane) {
     command.action = true;
     view.topButtons = {
         tvm::ui::TopButton{"Home", command, lane == 0},     tvm::ui::TopButton{"Movies", command, lane == 1},
-        tvm::ui::TopButton{"Series", command, lane == 2},   tvm::ui::TopButton{"Live TV", command, false},
-        tvm::ui::TopButton{"Library", command, false},      tvm::ui::TopButton{"Search", command, false},
+        tvm::ui::TopButton{"Series", command, lane == 2},   tvm::ui::TopButton{"Live TV", command, lane == 3},
+        tvm::ui::TopButton{"Library", command, lane == 4},  tvm::ui::TopButton{"Search", command, lane == 5},
         tvm::ui::TopButton{"Profile", command, false, false, true},
     };
     return view;
@@ -592,5 +593,73 @@ TEST(a_card_unfocuses_its_look_when_the_pointer_leaves) {
     scene.ShowFocus(2000.0);
     scene.Tick(3000.0);
     REQUIRE_NEAR(scene.CardFocus(0, 0), 1.0, 1e-6);
+}
+
+TEST(a_page_under_the_stream_chrome_keeps_the_chrome_and_adds_its_own_row) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    tvm::ui::SceneView view = StreamView(4);  // Library on
+    view.heading = "Library";
+    tvm::ui::Command filter;
+    filter.name = "watchlist-filter";
+    filter.action = true;
+    view.pageButtons = {tvm::ui::TopButton{"All titles", filter, true}, tvm::ui::TopButton{"Movies", filter, false}};
+    tvm::ui::RailData saved;
+    saved.id = "saved-0";
+    saved.cards = {tvm::ui::CardData{"tt1", "One", "", std::nullopt}, tvm::ui::CardData{"tt2", "Two", "", std::nullopt}};
+    view.rails = {saved};
+    scene.SetHeroes({}, 0.0);
+    scene.SetView(view, 0.0);
+
+    // The chrome is still painted, with Library selected.
+    GlassOnlyPainter painter;
+    scene.Paint(painter);
+    REQUIRE(painter.Capsule().has_value());
+    int tabs = 0;
+    for (const auto& call : painter.calls) {
+        if (call.style.kind == tvm::ui::GlassKind::Tab && call.style.activeTab) ++tabs;
+    }
+    REQUIRE_EQ(tabs, 1);
+
+    // Down from the Library tab reaches the page's first button; Up returns to the chrome.
+    REQUIRE(scene.FocusItem("top:4", 0.0, false));
+    REQUIRE(scene.Navigate(Direction::Down, 0.0));
+    // The nearest button of the row under the tab.
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("page:1"));
+    REQUIRE(scene.Navigate(Direction::Left, 0.0));
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("page:0"));
+    REQUIRE(scene.Navigate(Direction::Right, 0.0));
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("page:1"));
+    const auto command = scene.Select(0.0);
+    REQUIRE(command.has_value());
+    REQUIRE_EQ(command->name, std::string("watchlist-filter"));
+    REQUIRE(scene.Navigate(Direction::Up, 0.0));
+    REQUIRE(scene.FocusedKey().has_value());
+    // The first tab keeps Home's historical key, "settings"; the others are "top:N".
+    REQUIRE(*scene.FocusedKey() == "settings" || scene.FocusedKey()->rfind("top:", 0) == 0);
+
+    // The rails start below the header, and a card is reached going down.
+    REQUIRE(scene.FocusItem("page:0", 0.0, false));
+    REQUIRE(scene.Navigate(Direction::Down, 0.0));
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("card:0:0"));
+    REQUIRE(scene.CardBox(0, 0).y > scene.metrics().Rem(9.0));
+}
+
+TEST(the_search_lane_field_is_a_focusable_item_and_not_focused_on_entry) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    tvm::ui::SceneView view = StreamView(5);
+    view.heading = "Search";
+    view.searchField = true;
+    scene.SetHeroes({}, 0.0);
+    scene.SetView(view, 0.0);
+    REQUIRE(scene.FocusItem("top:5", 0.0, false));
+    // Opening Search leaves the focus where it was; the field takes it only when chosen.
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("top:5"));
+    REQUIRE(scene.Navigate(Direction::Down, 0.0));
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("search-field"));
+    const auto command = scene.Select(0.0);
+    REQUIRE(command.has_value());
+    REQUIRE_EQ(command->name, std::string("search-submit"));
 }
 }  // namespace

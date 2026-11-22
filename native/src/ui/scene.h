@@ -115,6 +115,10 @@ struct SceneView {
     std::string heading;
     // A service hub's wordmark and colour, which take the "tvm stream" lockup's place on the billboard.
     std::string brandWord;
+    // A page under the stream chrome (Live TV, Library, Search): its own controls in a row under the chrome, kept
+    // apart from the chrome's tabs, and a search field above them. They stay put while the rails scroll.
+    std::vector<TopButton> pageButtons;
+    bool searchField = false;
     std::optional<Color> brandColor;
 };
 
@@ -164,6 +168,9 @@ public:
     void AnimateScroll(const ScrollSurface& surface, double target, double nowMs) override;
     void SetMotion(const motion::MotionSettings& settings) override { motion_ = settings; }
     void SetPressed(const std::optional<std::string>& key, double nowMs) override;
+    // Fades the page's content in from the background behind the chrome, with the hero dissolve's timing and
+    // easing. Used when switching to or from Live TV, Library or Search, which have no hero to dissolve.
+    void FadeContentIn(double nowMs);
     void PointerLeft(double nowMs) override;
     void ShowFocus(double nowMs) override;
     // Whether the focused item is drawn focused: false while the pointer rests on empty space.
@@ -212,6 +219,19 @@ private:
     };
 
     bool Streamy() const { return style_ == SceneStyle::Stream; }
+    // The page header under the stream chrome: its heading, search field and control row, in window pixels.
+    struct HeaderItem {
+        std::string key;
+        Box box;
+        // The page button's index, or -1 for the search field.
+        int button = -1;
+    };
+    std::vector<HeaderItem> HeaderItems() const;
+    // Where the heading sits, when the page has one and no hero.
+    std::optional<Box> LaneHeadingBox() const;
+    bool HasLaneHeader() const;
+    std::optional<std::size_t> HeaderIndexOf(const std::string& key) const;
+    void PaintLaneHeader(Painter& painter) const;
     // The top buttons run left to right in a row, as the stream chrome and a page's controls do.
     bool RowTops() const { return style_ == SceneStyle::Stream || style_ == SceneStyle::Page; }
     void PaintPageHeader(Painter& painter) const;
@@ -223,6 +243,8 @@ private:
     // Where the page's header ends: under the stream chrome, under the search field, or at the safe area.
     double HeaderTop() const;
     void PaintSearchField(Painter& painter) const;
+    // The field at `field`. `active` is whether typing goes into it; `emphasis` its hover.
+    void PaintSearchField(Painter& painter, const Box& field, bool active, double emphasis) const;
 
     void Build(const std::vector<RailData>& rails);
     std::size_t GlobalIndex(std::size_t rail, std::size_t index) const { return railOffset_.at(rail) + index; }
@@ -289,6 +311,10 @@ private:
     std::function<bool(const std::string&)> imageReady_;
     // The clock of the last tick. The hero's fades read it while painting.
     double clockMs_ = 0.0;
+
+    std::vector<TopButton> pageButtons_;
+    bool searchField_ = false;
+    std::optional<motion::Tween> contentFade_;
 
     // Hover and focus emphasis of the top and hero buttons, by key, and the one press in flight.
     void AnimateEmphasis(const std::optional<std::string>& from, const std::string& to, double nowMs);

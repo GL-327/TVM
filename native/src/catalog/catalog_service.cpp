@@ -289,10 +289,39 @@ std::vector<MediaItem> CatalogService::Search(const std::string& query) {
     const std::string needle = util::Trim(query);
     if (needle.size() < 2) return {};
     const std::string encoded = js::EncodeUriComponent(needle);
-    std::vector<MediaItem> movies = FetchCatalog("/catalog/movie/top/search=" + encoded + ".json", "movie", kFetchMs);
-    std::vector<MediaItem> series = FetchCatalog("/catalog/series/top/search=" + encoded + ".json", "series", kFetchMs);
-    movies.insert(movies.end(), series.begin(), series.end());
-    return DedupeItems(movies);
+    // Films and series are asked for at the same time, so a search waits for the slower of the two, not both.
+    // A half that fails is left out; only when both fail is search reported unavailable, rather than "nothing
+    // matched".
+    struct Half {
+        std::vector<MediaItem> items;
+        bool failed = false;
+    };
+    const auto fetchHalf = [this, &encoded](const std::string& type) {
+        Half half;
+        const std::optional<http::Response> response =
+            fetch_(std::string(kCinemetaBase) + "/catalog/" + type + "/top/search=" + encoded + ".json", kFetchMs);
+        if (!response.has_value() || !response->ok()) {
+            half.failed = true;
+            return half;
+        }
+        const nlohmann::json body = nlohmann::json::parse(response->body, nullptr, false);
+        const auto metas = body.is_object() ? body.find("metas") : body.end();
+        if (!body.is_object()) {
+            half.failed = true;
+            return half;
+        }
+        if (metas == body.end() || !metas->is_array()) return half;
+        for (const auto& meta : *metas) {
+            if (auto item = MapMeta(meta, type); item.has_value()) half.items.push_back(*item);
+        }
+        return half;
+    };
+    std::future<Half> seriesHalf = std::async(std::launch::async, fetchHalf, std::string("series"));
+    Half movies = fetchHalf("movie");
+    Half series = seriesHalf.get();
+    if (movies.failed && series.failed) throw CatalogUnavailable();
+    movies.items.insert(movies.items.end(), series.items.begin(), series.items.end());
+    return DedupeItems(movies.items);
 }
 
 void CatalogService::Clear() {
