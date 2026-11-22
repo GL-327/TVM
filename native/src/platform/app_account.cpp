@@ -132,7 +132,11 @@ playback::Resolution App::CorePlayback(const std::string& id, const std::string&
             ? core_->Call("/api/downloads/resolve", "POST", {{"id", id}, {"preferences", {{"language", "original"}, {"maxHeight", std::min(cap, maxHeight)}}}})
             : core_->Call("/api/playback", "POST", {{"id", id}, {"title", title}, {"native", true}});
         result.url = body.value("url", std::string());
-        result.title = body.value("filename", title);
+        // The core sends a clean "title" beside the raw, URL-encoded "filename"; a file name is only a last resort,
+        // made readable first.
+        const std::string clean = util::Trim(body.value("title", std::string()));
+        result.title = !clean.empty() ? clean
+                                      : playback::TitleFromFilename(body.value("filename", std::string()), title);
         if (result.url.empty()) result.reason = "unsupported";
         else {
             for (int height : {480, 720, 1080, 2160}) {

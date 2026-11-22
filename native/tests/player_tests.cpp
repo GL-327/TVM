@@ -337,9 +337,12 @@ TEST(an_episode_shows_its_season_and_number_beside_the_title) {
 TEST(the_chrome_fades_after_three_seconds_without_input) {
     PlayerScreen player = Player(Playing());
     REQUIRE_NEAR(player.ChromeOpacity(3000.0), 1.0, 1e-9);
-    // cinema-controls.css fades the chrome over 180 ms.
-    REQUIRE_NEAR(player.ChromeOpacity(3090.0), 0.5, 1e-9);
-    REQUIRE_NEAR(player.ChromeOpacity(3180.0), 0.0, 1e-9);
+    // The chrome fades over 260 ms on the Android player's curve, quickly at first and gently at the end.
+    const double partway = player.ChromeOpacity(3065.0);
+    REQUIRE(partway > 0.0);
+    REQUIRE(partway < 0.7);
+    REQUIRE(player.ChromeOpacity(3200.0) < partway);
+    REQUIRE_NEAR(player.ChromeOpacity(3260.0), 0.0, 1e-9);
     player.ShowChrome(5000.0);
     REQUIRE_NEAR(player.ChromeOpacity(5100.0), 1.0, 1e-9);
 }
@@ -524,4 +527,39 @@ TEST(without_real_debrid_the_page_asks_for_a_token) {
     REQUIRE_EQ(shell.ActiveScreenName(), std::string("realdebrid"));
 }
 
+
+TEST(the_transport_is_centred_on_the_window_under_the_timeline) {
+    for (const auto [width, height] : {std::pair{1920.0, 1080.0}, std::pair{1280.0, 720.0}, std::pair{2560.0, 1440.0}}) {
+        PlayerScreen player;
+        player.Layout(width, height);
+        player.SetView(Playing(), 0.0);
+        const Box play = *player.BoxOf("play");
+        const Box rewind = *player.BoxOf("rewind");
+        const Box forward = *player.BoxOf("forward");
+        // Play or pause sits at the exact middle of the window, not the middle of the space between groups.
+        REQUIRE_NEAR(play.CenterX(), width / 2.0, 0.5);
+        // Back and forward are evenly spaced around it, on the same line.
+        REQUIRE_NEAR(play.x - rewind.Right(), forward.x - play.Right(), 0.5);
+        REQUIRE_NEAR(rewind.CenterY(), play.CenterY(), 0.5);
+        REQUIRE_NEAR(forward.CenterY(), play.CenterY(), 0.5);
+        // The timeline is above the control row.
+        REQUIRE(player.TrackBox().Bottom() <= play.y);
+        // The sound is at the left, full screen at the right, neither under the transport.
+        REQUIRE(player.BoxOf("mute")->Right() < rewind.x);
+        REQUIRE(player.BoxOf("fullscreen")->x > forward.Right());
+    }
+}
+
+TEST(an_episode_shows_its_name_after_season_and_number) {
+    PlayerView view = Playing();
+    view.title = "The Bear";
+    view.episode = "S1 \xC2\xB7 E2";
+    view.episodeTitle = "Hands";
+    PlayerScreen player = Player(view);
+    TextPainter painter;
+    player.Paint(painter);
+    REQUIRE(painter.Has("The Bear"));
+    REQUIRE(painter.Has("S1 \xC2\xB7 E2"));
+    REQUIRE(painter.Has("Hands"));
+}
 }  // namespace

@@ -62,6 +62,29 @@ std::string StreamTitle(const std::string& filename, const std::string& fallback
 
 }  // namespace
 
+std::string TitleFromFilename(const std::string& filename, const std::string& fallback) {
+    // Percent escapes become their bytes, so a URL-encoded name reads as words before it is parsed.
+    std::string decoded;
+    decoded.reserve(filename.size());
+    const auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    for (std::size_t i = 0; i < filename.size(); ++i) {
+        if (filename[i] == '%' && i + 2 < filename.size() && hex(filename[i + 1]) >= 0 && hex(filename[i + 2]) >= 0) {
+            decoded.push_back(static_cast<char>(hex(filename[i + 1]) * 16 + hex(filename[i + 2])));
+            i += 2;
+        } else {
+            decoded.push_back(filename[i]);
+        }
+    }
+    const catalog::title::ParsedName parsed = catalog::title::ParseFilename(decoded);
+    const std::string title = util::Trim(parsed.title);
+    return title.empty() ? fallback : title;
+}
+
 std::optional<PlayId> ParsePlayId(const std::string& id) {
     static const std::regex kPattern(R"(^(tt\d+)(?::(\d+):(\d+))?$)", std::regex::ECMAScript | std::regex::icase);
     std::smatch match;

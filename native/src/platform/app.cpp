@@ -2309,6 +2309,9 @@ void App::SyncPlayer() {
     const nav::ViewEntry& entry = nav::ActiveEntry(shell_->stack());
     const auto id = entry.params.find("id");
     playerId_ = id == entry.params.end() ? "" : id->second;
+    // The title Details sent along with the play command, a catalogue title.
+    const auto titleParam = entry.params.find("title");
+    playerTitleHint_ = titleParam == entry.params.end() ? "" : titleParam->second;
     playerRetryAt_.reset();
     playerRecoveries_ = 0;
     streamChoices_.clear();
@@ -2332,7 +2335,15 @@ void App::StartPlayback() {
     playerLive_ = channel != liveCatalog_.channels.end();
     if (playerLive_ && !account_.liveTv) { ShowPlayerError("Live TV access", "Live TV requires the appropriate account tier."); return; }
     std::string title = playerLive_ ? channel->name : "";
+    // The catalogue's own title, never a file name: the title's details if they were opened, the series for an
+    // episode, the title Details passed along, or the show found for a previous episode.
     if (const auto known = titles_.find(playerId_); known != titles_.end() && title.empty()) title = known->second.title;
+    const std::optional<playback::PlayId> playId = playback::ParsePlayId(playerId_);
+    if (title.empty() && playId.has_value()) {
+        if (const auto series = titles_.find(playId->imdb); series != titles_.end()) title = series->second.title;
+    }
+    if (title.empty() && !playerLive_) title = playerTitleHint_;
+    if (title.empty() && playId.has_value() && playId->season.has_value()) title = showTitle_;
 
     playerView_ = ui::PlayerView{};
     playerView_.title = title.empty() ? "Loading" : title;
@@ -2428,8 +2439,8 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
         streamChosen_ = resolution.chosen;
     }
     ShowStreamChoices();
+    // The stream's title only fills in when the catalogue had none; it never replaces a catalogue title.
     if (!resolution.title.empty() && playerView_.title == "Loading") playerView_.title = resolution.title;
-    if (!resolution.title.empty() && !playerLive_) playerView_.title = resolution.title;
     playerView_.phase = ui::PlayerView::Phase::Playing;
     playerView_.position = startAt.value_or(0.0);
     // The remote hints show the first time anything plays, and never again.
@@ -2807,21 +2818,36 @@ void App::LookUpNextEpisode() {
             return;
         }
         if (!meta.has_value()) return;
-        // The next episode in Cinemeta's order, which runs by season then number, specials last.
+        // The next episode in Cinemeta's order, which runs by season then number, specials last, and this one's name.
         std::optional<catalog::MediaItem> next;
-        for (std::size_t i = 0; i + 1 < meta->children.size(); ++i) {
+        std::string episodeName;
+        for (std::size_t i = 0; i < meta->children.size(); ++i) {
             const catalog::MediaItem& item = meta->children[i];
             if (item.season == play.season && item.episode == play.episode) {
-                const catalog::MediaItem& after = meta->children[i + 1];
-                if (after.season.value_or(0) > 0) next = after;
+                episodeName = item.episodeName.value_or("");
+                if (i + 1 < meta->children.size()) {
+                    const catalog::MediaItem& after = meta->children[i + 1];
+                    if (after.season.value_or(0) > 0) next = after;
+                }
                 break;
             }
         }
         const std::string show = meta->item.title;
-        background_->PostToUi([this, current, next, show] {
+        background_->PostToUi([this, current, next, show, episodeName] {
             if (playerId_ != current) return;
             nextEpisode_ = next;
             showTitle_ = show;
+            // An episode reads as its show, with "S1 · E2 · Episode name" under it.
+            bool changed = false;
+            if (!show.empty() && playerView_.title != show) {
+                playerView_.title = show;
+                changed = true;
+            }
+            if (!episodeName.empty() && playerView_.episodeTitle != episodeName) {
+                playerView_.episodeTitle = episodeName;
+                changed = true;
+            }
+            if (changed && !next.has_value()) shell_->SetPlayerView(playerView_, NowMs());
             if (next.has_value()) {
                 playerView_.nextShow = show;
                 playerView_.nextEpisode = "S" + std::to_string(next->season.value_or(0)) + " E" +
@@ -2909,6 +2935,13 @@ bool App::HandlePlayerKey(WPARAM virtualKey, LPARAM flags) {
             return true;
         }
         return false;
+    }
+    // Esc leaves full screen first, as a desktop player does; a second Esc closes the player.
+    if (virtualKey == VK_ESCAPE && fullscreen_) {
+        ToggleFullscreen();
+        player->ShowChrome(now);
+        dirty_ = true;
+        return true;
     }
     ui::Command command;
     command.action = true;

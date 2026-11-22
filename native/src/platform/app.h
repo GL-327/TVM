@@ -460,6 +460,8 @@ private:
     // The episode after the one playing, its show's name, and whether the viewer chose to watch the credits.
     std::optional<catalog::MediaItem> nextEpisode_;
     std::string showTitle_;
+    // The catalogue title sent with the play command, used before the stream or its details answer.
+    std::string playerTitleHint_;
     bool nextDismissed_ = false;
     bool scrubbing_ = false;
     // Skip recap was used, or the viewer chose to watch the credits, for this title.

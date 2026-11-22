@@ -23,22 +23,33 @@ constexpr double kToolGapRem = 0.9;        // the transport's and the tools' gap
 constexpr double kButtonRem = 2.8;         // .tvm-button
 constexpr double kPlayWidthRem = 3.0;      // .cinema-chrome__play
 constexpr double kGlyphRem = 1.65;
-constexpr double kPlayGlyphRem = 2.1;
 constexpr double kButtonRadiusRem = 0.3;
 constexpr double kBackHeightRem = 3.0;
 constexpr double kBackFontRem = 0.8;
 constexpr double kTimelineRem = 1.6;       // .tvm-progress__control min-height
-constexpr double kTimelineGapRem = 0.45;   // the timeline's margin under it
+constexpr double kTimelineGapRem = 0.9;    // the timeline's margin over the transport
 constexpr double kTimeWidthRem = 3.4;
 constexpr double kTimeGapRem = 0.8;
-constexpr double kTrackRem = 0.2;
-constexpr double kKnobRem = 0.65;
 constexpr double kVolumeGapRem = 0.3;
 constexpr double kVolumeMeterRem = 5.5;
 constexpr double kVolumeTrackRem = 5.0;
 constexpr double kVolumeTrackHeightRem = 0.18;
-constexpr double kTopScrimRem = 10.0;
-constexpr double kBottomScrimRem = 19.0;
+constexpr double kTopScrimRem = 9.0;
+constexpr double kBottomScrimRem = 13.0;
+// The transport, centred on the window under the timeline, as the TVM Stream Android player lays it out: a larger
+// play/pause between round ten-second skips.
+constexpr double kTransportPlayRem = 3.6;
+constexpr double kTransportSkipRem = 3.0;
+constexpr double kTransportGapRem = 2.2;
+constexpr double kTransportPlayGlyphRem = 2.9;
+constexpr double kTransportSkipGlyphRem = 2.55;
+// The Android seek bar: a 4 px track (6 px while dragged), a brand gradient for the played part, a 16 px white thumb.
+constexpr double kSeekTrackRem = 0.25;
+constexpr double kSeekTrackDragRem = 0.375;
+constexpr double kSeekThumbRem = 1.0;
+constexpr Color kBrandStart = Rgb(0x5714FD);
+constexpr Color kBrandMid = Rgb(0x177FFD);
+constexpr Color kBrandEnd = Rgb(0x00DFFD);
 
 constexpr Color kInk = Rgb(0xF6F7FA);
 constexpr Color kInkMuted = Rgb(0xFFFFFF, 0.67);       // #fffa
@@ -54,19 +65,30 @@ constexpr char kMarkImage[] = "asset:tvm-icon.png";
 
 // The glyphs, from PlayerGlyph in CinemaControls.tsx and IconVolume in Icons.tsx, in a 32 unit square.
 constexpr char kBackPath[] = "m17 6-10 10 10 10M8 16h20";
-constexpr char kPlayPath[] = "m10 5 18 11-18 11z";
-constexpr char kPausePath[] = "M8 5h6v22H8zm10 0h6v22h-6z";
-constexpr char kSeekPath[] = "M8 8a11 11 0 1 1-3 10M8 2v7H1";
 constexpr char kFullscreenPath[] = "M4 12V4h8m8 0h8v8M4 20v8h8m8 0h8v-8";
 constexpr char kExitFullscreenPath[] = "M12 4v8H4m16-8v8h8M12 28v-8H4m16 8v-8h8";
 constexpr char kSpeakerPath[] = "M6 13h4l6-5v16l-6-5H6z";
 constexpr char kWavesPath[] = "M20 12.5a5 5 0 0 1 0 7M23 10a8.5 8.5 0 0 1 0 12";
 constexpr char kMutedPath[] = "m20 12 7 8M27 12l-7 8";
 constexpr double kGlyphStroke = 1.8;
+// The Android player's transport icons, in a 48 unit square: a rounded play triangle, rounded pause bars, and the
+// ten-second skips as an open arc with its arrowhead and the "10" drawn inside.
+constexpr char kAndroidPlayPath[] =
+    "M16.5 11.2v25.6a2.2 2.2 0 0 0 3.3 1.9l20.6-12.8a2.2 2.2 0 0 0 0-3.8L19.8 9.3a2.2 2.2 0 0 0-3.3 1.9z";
+constexpr char kAndroidPausePath[] =
+    "M15.6 10h2.4a2.6 2.6 0 0 1 2.6 2.6v22.8a2.6 2.6 0 0 1-2.6 2.6h-2.4a2.6 2.6 0 0 1-2.6-2.6V12.6a2.6 2.6 0 0 1 2.6-2.6z"
+    "M30 10h2.4a2.6 2.6 0 0 1 2.6 2.6v22.8a2.6 2.6 0 0 1-2.6 2.6H30a2.6 2.6 0 0 1-2.6-2.6V12.6A2.6 2.6 0 0 1 30 10z";
+constexpr char kAndroidBackArcPath[] = "M24 10A16 16 0 1 1 10.1 18M28.6 5.2L23.6 10l5 4.8";
+constexpr char kAndroidForwardArcPath[] = "M24 10A16 16 0 1 0 37.9 18M19.4 5.2L24.4 10l-5 4.8";
+constexpr char kAndroidTenPath[] =
+    "M17.6 22.2L20.3 20.3V32M27.6 20.3a3.3 3.3 0 0 1 3.3 3.3v5.1a3.3 3.3 0 0 1-3.3 3.3a3.3 3.3 0 0 1-3.3-3.3v-5.1"
+    "a3.3 3.3 0 0 1 3.3-3.3z";
+constexpr double kAndroidStroke = 3.1;
 
-// useIdleChrome: the chrome hides after three seconds, and the cinema chrome fades over 180 ms.
+// useIdleChrome: the chrome hides after three seconds. It fades over 260 ms on the Android player's curve.
 constexpr double kIdleHideMs = 3000.0;
-constexpr double kIdleFadeMs = 180.0;
+constexpr double kIdleFadeMs = 260.0;
+constexpr motion::CubicBezier kChromeEase{0.22, 1.0, 0.36, 1.0};
 constexpr double kSpinnerPeriodMs = 900.0;
 
 constexpr char kBackKey[] = "back";
@@ -350,7 +372,7 @@ double PlayerScreen::ChromeOpacity(double nowMs) const {
     const double idle = nowMs - lastActivityMs_ - kIdleHideMs;
     if (idle <= 0.0) return 1.0;
     if (motion::PrefersReducedMotion(motion_)) return 0.0;
-    return std::clamp(1.0 - idle / kIdleFadeMs, 0.0, 1.0);
+    return std::clamp(1.0 - kChromeEase.Ease(std::clamp(idle / kIdleFadeMs, 0.0, 1.0)), 0.0, 1.0);
 }
 
 bool PlayerScreen::Tick(double nowMs) {
@@ -486,25 +508,20 @@ std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
         return Box{width_ - x - width, Rem(kHeaderTopRem) + Rem(kBackHeightRem) + Rem(0.6), width, Rem(2.5)};
     }
 
-    // The toolbar, left to right: play, back ten, forward ten, the sound. Full screen sits at the right.
+    // The control row under the timeline. The transport sits in the exact middle of the window: back ten,
+    // play or pause, forward ten, evenly spaced. The sound is at the left; the tools and full screen at the right.
     const double center = height_ - Rem(kFooterBottomRem) - Rem(kToolbarRem) / 2.0;
     const double button = Rem(kButtonRem);
     const double top = center - button / 2.0;
-    double left = x;
-    const auto next = [&](double width) {
-        const Box box{left, top, width, button};
-        left += width + Rem(kToolGapRem);
-        return box;
-    };
-    const Box play = next(Rem(kPlayWidthRem));
+    const double playSize = Rem(kTransportPlayRem);
+    const double skipSize = Rem(kTransportSkipRem);
+    const Box play{width_ / 2.0 - playSize / 2.0, center - playSize / 2.0, playSize, playSize};
     if (key == kPlayKey) return play;
     if (!view_.live) {
-        const Box rewind = next(button);
-        if (key == kRewindKey) return rewind;
-        const Box forward = next(button);
-        if (key == kForwardKey) return forward;
+        if (key == kRewindKey) return Box{play.x - Rem(kTransportGapRem) - skipSize, center - skipSize / 2.0, skipSize, skipSize};
+        if (key == kForwardKey) return Box{play.Right() + Rem(kTransportGapRem), center - skipSize / 2.0, skipSize, skipSize};
     }
-    if (key == kMuteKey) return Box{left, top, button, button};
+    if (key == kMuteKey) return Box{x, top, button, button};
     const Box fullscreen{width_ - x - button, top, button, button};
     if (key == kFullscreenKey) return fullscreen;
 
@@ -672,53 +689,69 @@ void PlayerScreen::PaintHints(Painter& painter) const {
 }
 
 void PlayerScreen::PaintTitleOverlay(Painter& painter, double opacity) const {
-    // TitleOverlay.tsx: the kicker, the title with its short accent rule, then the episode and the time left.
-    const double x = Rem(kPadXRem);
-    const double top = Rem(kHeaderTopRem) + Rem(kBackHeightRem) + Rem(1.4);
+    // As on the Android player: a small kicker, the title, and a fainter line under it, centred at the top. For an
+    // episode the title is the show and the line reads "S1 · E2 · Episode title · 42:10 left".
+    const bool compact = CompactViewport(width_, height_);
+    const double top = compact ? Rem(kHeaderTopRem) + 44.0 + Rem(0.8) : Rem(kHeaderTopRem) - Rem(0.1);
+    const double room = compact ? width_ - 2.0 * Rem(kPadXRem) : std::min(width_ * 0.52, Rem(34.0));
+    const double left = width_ / 2.0 - room / 2.0;
     const Color ink = WithAlpha(kInk, opacity);
+    const Color muted = WithAlpha(Rgb(0xFFFFFF, 0.72), opacity);
+    const auto centred = [&](const std::string& text, const TextStyle& style, double y, double height, Color color,
+                             bool shadow) {
+        const double width = std::min(room, painter.MeasureText(text, style));
+        const Box box{width_ / 2.0 - width / 2.0, y, width + 2.0, height};
+        if (shadow) painter.Text(Box{box.x, box.y + 1.5, box.width, box.height}, text, style, Rgb(0x000000, 0.55 * opacity));
+        painter.Text(box, text, style, color);
+    };
+
+    const TextStyle kickerStyle{Rem(0.62), true, 800};
     if (view_.live) {
-        const TextStyle liveStyle{Rem(0.72), true, 800};
-        const Box pill{x, top, painter.MeasureText("LIVE", liveStyle) + Rem(1.6), Rem(1.35)};
+        const double pillWidth = painter.MeasureText("LIVE", kickerStyle) + Rem(1.6);
+        const Box pill{width_ / 2.0 - pillWidth / 2.0, top, pillWidth, Rem(1.15)};
         painter.FillRoundRect(pill, pill.height / 2.0, WithAlpha(Rgb(0xFF6B6B), opacity));
         const double pulse = motion::PrefersReducedMotion(motion_) ? 1.0 : 0.65 + 0.35 * std::cos(clockMs_ / 1400.0 * 2.0 * kPi);
-        painter.FillRoundRect(Box{pill.x + Rem(0.45), pill.CenterY() - Rem(0.22), Rem(0.44), Rem(0.44)}, Rem(0.22),
+        painter.FillRoundRect(Box{pill.x + Rem(0.45), pill.CenterY() - Rem(0.2), Rem(0.4), Rem(0.4)}, Rem(0.2),
                               Rgb(0xFFFFFF, opacity * pulse));
-        painter.Text(Box{pill.x + Rem(1.05), pill.y, pill.width, pill.height}, "LIVE", liveStyle, ink);
+        painter.Text(Box{pill.x + Rem(1.0), pill.y, pill.width, pill.height}, "LIVE", kickerStyle, ink);
     } else {
-        painter.Text(Box{x, top, Rem(20.0), Rem(1.3)}, "NOW PLAYING", TextStyle{Rem(0.8), true, 800},
-                     WithAlpha(kFill, opacity));
+        centred("NOW PLAYING", kickerStyle, top, Rem(1.15), WithAlpha(kFill, opacity), false);
     }
     const std::string title = view_.title == "Loading" ? "" : view_.title;
     if (title.empty()) return;
-    const double size = std::clamp(width_ * 0.052, Rem(2.25), Rem(3.85));
-    const double titleY = top + Rem(1.72);
-    const Box titleBox{x, titleY, std::min(width_ * 0.76, Rem(56.0)), size * 1.15};
-    // --player-shadow: a soft dark halo, so the title reads over a bright frame.
-    for (const auto [dx, dy, alpha] : {std::tuple{0.0, 2.0, 0.55}, std::tuple{1.5, 3.5, 0.3}, std::tuple{-1.5, 3.5, 0.3}}) {
-        painter.Text(Box{titleBox.x + dx, titleBox.y + dy, titleBox.width, titleBox.height}, title,
-                     TextStyle{size, true, 800}, Rgb(0x000000, alpha * opacity));
-    }
-    painter.Text(titleBox, title, TextStyle{size, true, 800}, ink);
-    const double ruleY = titleY + size * 1.1 + Rem(0.4);
-    painter.FillRoundRect(Box{x, ruleY, Rem(3.4), Rem(0.18)}, Rem(0.09), WithAlpha(kFill, opacity));
+    const TextStyle titleStyle{Rem(1.15), true, 700};
+    const double titleY = top + Rem(1.2);
+    centred(title, titleStyle, titleY, Rem(1.6), ink, true);
 
-    // The meta line: the episode, a dot, and the time left.
+    // The line under it: the episode, its name, and the time left, each its own piece so none is cut short.
+    std::vector<std::string> parts;
+    if (!view_.episode.empty() && !view_.live) parts.push_back(view_.episode);
+    if (!view_.episodeTitle.empty() && !view_.live) parts.push_back(view_.episodeTitle);
     const std::string remaining = view_.live ? "" : RemainingLabel(view_.duration - view_.position);
-    if (view_.episode.empty() && remaining.empty()) return;
-    const TextStyle metaStyle{Rem(1.25), true, 600};
-    const double metaY = ruleY + Rem(0.75);
-    double left = x;
-    if (!view_.episode.empty() && !view_.live) {
-        const double width = painter.MeasureText(view_.episode, metaStyle);
-        painter.Text(Box{left, metaY, width + 2.0, Rem(1.8)}, view_.episode, metaStyle, WithAlpha(kInkMuted, opacity));
-        left += width + Rem(0.6);
-        if (!remaining.empty()) {
-            painter.FillRoundRect(Box{left, metaY + Rem(0.75), Rem(0.3), Rem(0.3)}, Rem(0.15), WithAlpha(kFill, 0.7 * opacity));
-            left += Rem(0.9);
-        }
+    if (!remaining.empty()) parts.push_back(remaining);
+    if (parts.empty()) return;
+    const TextStyle metaStyle{Rem(0.78), false, 500};
+    const double dot = Rem(0.22);
+    const double gap = Rem(0.5);
+    double total = 0.0;
+    std::vector<double> widths;
+    for (const std::string& part : parts) {
+        widths.push_back(painter.MeasureText(part, metaStyle));
+        total += widths.back();
     }
-    if (!remaining.empty()) {
-        painter.Text(Box{left, metaY, Rem(14.0), Rem(1.8)}, remaining, metaStyle, WithAlpha(kInkMuted, opacity));
+    total += static_cast<double>(parts.size() - 1) * (2.0 * gap + dot);
+    double x = std::max(left, width_ / 2.0 - total / 2.0);
+    const double metaY = titleY + Rem(1.55);
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        const double width = std::min(widths[i], left + room - x);
+        if (width <= 0.0) break;
+        painter.Text(Box{x, metaY, width + 2.0, Rem(1.2)}, parts[i], metaStyle, muted);
+        x += width;
+        if (i + 1 < parts.size()) {
+            x += gap;
+            painter.FillRoundRect(Box{x, metaY + Rem(0.6) - dot / 2.0, dot, dot}, dot / 2.0, muted);
+            x += dot + gap;
+        }
     }
 }
 
@@ -931,26 +964,32 @@ void PlayerScreen::PaintQueue(Painter& painter) const {
 }
 
 void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
-    // The two scrims: #000b fading down from the top, and #000e through #0007 fading up from the foot.
+    // The Android player's scrims: dark at the top behind the title, darker at the foot behind the controls.
     const double topHeight = Rem(kTopScrimRem);
     painter.FillLinearGradient(Box{0.0, 0.0, width_, topHeight}, 0.0, 0.0, 0.0, topHeight,
-                               {GradientStop{0.0, Rgb(0x000000, 0.733 * opacity)}, GradientStop{1.0, Rgb(0x000000, 0.0)}});
-    const double bottomHeight = std::min(height_ * 0.42, Rem(kBottomScrimRem));
+                               {GradientStop{0.0, Rgb(0x000000, 0.72 * opacity)},
+                                GradientStop{0.55, Rgb(0x000000, 0.32 * opacity)},
+                                GradientStop{1.0, Rgb(0x000000, 0.0)}});
+    const double bottomHeight = std::min(height_ * 0.45, Rem(kBottomScrimRem));
     painter.FillLinearGradient(Box{0.0, height_ - bottomHeight, width_, bottomHeight}, 0.0, height_, 0.0,
                                height_ - bottomHeight,
-                               {GradientStop{0.0, Rgb(0x000000, 0.933 * opacity)},
-                                GradientStop{0.4, Rgb(0x000000, 0.467 * opacity)},
+                               {GradientStop{0.0, Rgb(0x000000, 0.82 * opacity)},
+                                GradientStop{0.55, Rgb(0x000000, 0.38 * opacity)},
                                 GradientStop{1.0, Rgb(0x000000, 0.0)}});
 
     const Color ink = WithAlpha(kInk, opacity);
+    // Plain white controls, as on Android. Hover or focus lifts a soft light disc behind the control, eased by the
+    // screen's button focus, so it comes and goes smoothly.
+    const auto lit = [&](const char* key) { return buttonFocus_.Amount(key, clockMs_); };
     const auto button = [&](const char* key) {
         const Box box = *BoxOf(key);
-        if (ShowsFocus(focused_, key)) {
-            GlassStyle gs;
-            gs.kind = GlassKind::Pill;
-            gs.focused = true;
-            gs.opacity = opacity;
-            painter.Glass(box, Rem(kButtonRadiusRem), gs);
+        const double amount = lit(key);
+        if (amount > 0.01) {
+            const bool round = std::string_view(key) == kPlayKey || std::string_view(key) == kRewindKey ||
+                               std::string_view(key) == kForwardKey || std::string_view(key) == kMuteKey ||
+                               std::string_view(key) == kFullscreenKey || std::string_view(key) == kDownloadKey;
+            const double radius = round ? std::min(box.width, box.height) / 2.0 : Rem(0.8);
+            painter.FillRoundRect(box, radius, Rgb(0xFFFFFF, 0.14 * amount * opacity));
         }
         return box;
     };
@@ -990,45 +1029,73 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     }
     if (view_.live && view_.liveBehind >= kLiveDriftThreshold) PaintGoLive(painter, opacity);
 
-    // The timeline: the position, the bar, and the length. The knob shows while the bar has the mouse.
+    // The timeline: the position, the bar, and the length, above the control row.
     const Box track = TrackBox();
-    const TextStyle timeStyle{Rem(0.72), false, 450};
+    const TextStyle timeStyle{Rem(0.78), true, 600};
     const std::string now = FormatClock(view_.position);
     painter.Text(Box{Rem(kPadXRem), track.y, Rem(kTimeWidthRem), track.height}, view_.live ? "Live" : now, timeStyle, ink);
     const std::string length = view_.live ? "" : view_.duration > 0.0 ? FormatClock(view_.duration) : "\xE2\x80\x94:\xE2\x80\x94";
     const double lengthWidth = painter.MeasureText(length, timeStyle);
     painter.Text(Box{width_ - Rem(kPadXRem) - lengthWidth, track.y, lengthWidth + 2.0, track.height}, length, timeStyle,
                  ink);
-    const double barHeight = Rem(kTrackRem);
+    // The Android bar: a thin track that thickens while dragged, the played part in the brand gradient, and a white
+    // thumb centred exactly on the position.
+    const std::optional<double> preview = scrub_.has_value() ? scrub_ : hover_;
+    const bool dragging = scrub_.has_value();
+    const double barHeight = Rem(dragging ? kSeekTrackDragRem : kSeekTrackRem);
     const Box bar{track.x, track.CenterY() - barHeight / 2.0, track.width, barHeight};
-    painter.FillRoundRect(bar, barHeight / 2.0, WithAlpha(kTrack, opacity));
+    painter.FillRoundRect(bar, barHeight / 2.0, Rgb(0xFFFFFF, 0.24 * opacity));
     // While a drag is held the bar follows it, so the viewer sees where the seek will land.
     const double played = view_.duration > 0.0 ? std::clamp(view_.position / view_.duration, 0.0, 1.0) : 0.0;
-    const double share = scrub_.value_or(played);
+    const double share = view_.live ? 1.0 : scrub_.value_or(played);
     if (share > 0.0) {
-        painter.FillRoundRect(Box{bar.x, bar.y, bar.width * share, bar.height}, barHeight / 2.0, WithAlpha(kFill, opacity));
+        const Box fill{bar.x, bar.y, bar.width * share, bar.height};
+        painter.FillRoundRect(Box{fill.x, fill.y, std::min(fill.width, barHeight), fill.height}, barHeight / 2.0,
+                              WithAlpha(kBrandStart, opacity));
+        painter.FillLinearGradient(Box{fill.x + barHeight / 2.0, fill.y, std::max(0.0, fill.width - barHeight / 2.0), fill.height},
+                                   bar.x, 0.0, bar.Right(), 0.0,
+                                   {GradientStop{0.0, WithAlpha(kBrandStart, opacity)},
+                                    GradientStop{0.5, WithAlpha(kBrandMid, opacity)},
+                                    GradientStop{1.0, WithAlpha(kBrandEnd, opacity)}});
     }
-    const std::optional<double> preview = scrub_.has_value() ? scrub_ : hover_;
-    if (preview.has_value() || ShowsFocus(focused_, "timeline")) {
-        const double knob = Rem(kKnobRem);
-        painter.FillRoundRect(Box{bar.x + bar.width * share - knob / 2.0, bar.CenterY() - knob / 2.0, knob, knob},
-                              knob / 2.0, WithAlpha(kFill, opacity));
+    if (!view_.live) {
+        const bool big = dragging || preview.has_value() || ShowsFocus(focused_, "timeline");
+        const double thumb = Rem(kSeekThumbRem) * (big ? 1.3 : 1.0);
+        const double cx = bar.x + bar.width * share;
+        const double halo = thumb + Rem(0.5);
+        painter.FillRoundRect(Box{cx - halo / 2.0, bar.CenterY() - halo / 2.0, halo, halo}, halo / 2.0,
+                              Rgb(0xFFFFFF, 0.18 * opacity));
+        painter.FillRoundRect(Box{cx - thumb / 2.0, bar.CenterY() - thumb / 2.0 + 1.5, thumb, thumb}, thumb / 2.0,
+                              Rgb(0x000000, 0.35 * opacity));
+        painter.FillRoundRect(Box{cx - thumb / 2.0, bar.CenterY() - thumb / 2.0, thumb, thumb}, thumb / 2.0,
+                              Rgb(0xFFFFFF, opacity));
     }
 
-    // The transport: play or pause, then back and forward ten seconds.
+    // The transport, centred on the window: back ten, play or pause, forward ten. White icons with a soft shadow,
+    // as on Android; hover or focus grows the icon a touch.
+    const PathStyle shade{Rgb(0x000000, 0.35 * opacity), Color{0, 0, 0, 0}, 0.0, false};
     const Box play = button(kPlayKey);
-    painter.Path(GlyphBox(play, Rem(kPlayGlyphRem)), 32.0, view_.paused ? kPlayPath : kPausePath,
-                 PathStyle{ink, Color{0, 0, 0, 0}, 0.0, false});
+    {
+        const double grow = 1.0 + 0.06 * lit(kPlayKey);
+        const Box glyph = GlyphBox(play, Rem(kTransportPlayGlyphRem) * grow);
+        const char* path = view_.paused ? kAndroidPlayPath : kAndroidPausePath;
+        painter.Path(Box{glyph.x, glyph.y + 1.5, glyph.width, glyph.height}, 48.0, path, shade);
+        painter.Path(glyph, 48.0, path, PathStyle{ink, Color{0, 0, 0, 0}, 0.0, false});
+    }
     if (!view_.live) {
         for (const char* key : {kRewindKey, kForwardKey}) {
             const Box box = button(key);
-            const Box glyph = GlyphBox(box, Rem(kGlyphRem));
+            const double grow = 1.0 + 0.06 * lit(key);
+            const Box glyph = GlyphBox(box, Rem(kTransportSkipGlyphRem) * grow);
             const bool forward = std::string_view(key) == kForwardKey;
-            painter.Path(glyph, 32.0, kSeekPath, PathStyle{Color{0, 0, 0, 0}, ink, kGlyphStroke, forward});
-            // The "10" sits at (16, 22) of the glyph, 12 units tall, as the web's <text> does.
-            const double unit = glyph.width / 32.0;
-            CenteredText(painter, Box{glyph.x, glyph.y + 14.0 * unit, glyph.width, 10.0 * unit}, "10",
-                         TextStyle{12.0 * unit, true, 600}, ink);
+            const char* arc = forward ? kAndroidForwardArcPath : kAndroidBackArcPath;
+            const PathStyle shadowLine{Color{0, 0, 0, 0}, Rgb(0x000000, 0.35 * opacity), kAndroidStroke, false};
+            const PathStyle whiteLine{Color{0, 0, 0, 0}, ink, kAndroidStroke, false};
+            const Box shadowBox{glyph.x, glyph.y + 1.5, glyph.width, glyph.height};
+            painter.Path(shadowBox, 48.0, arc, shadowLine);
+            painter.Path(shadowBox, 48.0, kAndroidTenPath, shadowLine);
+            painter.Path(glyph, 48.0, arc, whiteLine);
+            painter.Path(glyph, 48.0, kAndroidTenPath, whiteLine);
         }
     }
 
@@ -1071,24 +1138,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const Box full = button(kFullscreenKey);
     painter.Path(GlyphBox(full, Rem(kGlyphRem)), 32.0, view_.fullscreen ? kExitFullscreenPath : kFullscreenPath, line);
 
-    // The title in the middle, with the episode beside it in a smaller, fainter line.
-    const TextStyle titleStyle{Rem(1.05), false, 550};
-    const TextStyle episodeStyle{Rem(0.75), false, 500};
-    const double gap = Rem(0.7);
-    const double episodeWidth = view_.episode.empty() ? 0.0 : painter.MeasureText(view_.episode, episodeStyle) + gap;
-    const double spaceLeft = volumeTrack.Right() + Rem(4.5);
-    const std::vector<std::string> tools = ToolKeys();
-    const double spaceRight = (tools.empty() ? full.x : BoxOf(tools.front())->x) - Rem(1.6);
-    const double room = std::max(0.0, spaceRight - spaceLeft);
-    const std::string title = view_.title == "Loading" ? "Preparing your film" : view_.title;
-    const double titleWidth = std::min(painter.MeasureText(title, titleStyle), std::max(0.0, room - episodeWidth));
-    const double total = titleWidth + episodeWidth;
-    const double startX = std::clamp(width_ / 2.0 - total / 2.0, spaceLeft, std::max(spaceLeft, spaceRight - total));
-    if (!CompactViewport(width_, height_)) painter.Text(Box{startX, play.y, titleWidth + 2.0, play.height}, title, titleStyle, ink);
-    if (!CompactViewport(width_, height_) && !view_.episode.empty()) {
-        painter.Text(Box{startX + titleWidth + gap, play.y + Rem(0.08), episodeWidth, play.height}, view_.episode,
-                     episodeStyle, WithAlpha(kInkMuted, opacity));
-    }
+    // The title sits at the top centre (PaintTitleOverlay), so the middle of the control row is the transport's.
 }
 
 void PlayerScreen::PaintSpinner(Painter& painter) const {

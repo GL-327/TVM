@@ -51,6 +51,8 @@ struct PlayerView {
     std::string title;
     // "S1 · E2" under the title for an episode, as CinemaControls shows it. Empty for a film.
     std::string episode;
+    // The episode's own name, such as "Pilot", shown after "S1 · E2". Empty for a film or when not known.
+    std::string episodeTitle;
     double position = 0.0;
     double duration = 0.0;
     bool paused = false;

@@ -38,6 +38,11 @@ struct PlayId {
 
 std::optional<PlayId> ParsePlayId(const std::string& id);
 
+// A readable title from a stream's file name, for when the catalogue has none: the name is URL-decoded
+// ("The%20Boys" is "The Boys") and the release tags, quality and extension are dropped. `fallback` when nothing
+// readable is left.
+std::string TitleFromFilename(const std::string& filename, const std::string& fallback);
+
 // The Torrentio paths to try for a title, the first that has streams wins.
 std::vector<std::string> TorrentioStreamPaths(const std::string& imdb, std::optional<int> season,
                                               std::optional<int> episode);

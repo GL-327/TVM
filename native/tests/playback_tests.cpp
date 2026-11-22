@@ -59,6 +59,13 @@ TEST(a_play_id_reads_a_film_and_an_episode) {
     REQUIRE(!tvm::playback::ParsePlayId("rd:d:abc").has_value());
 }
 
+TEST(a_url_encoded_file_name_reads_as_a_title) {
+    REQUIRE_EQ(tvm::playback::TitleFromFilename("The%20Boys%20S01E01%202160p%20WEB-DL.mkv", "x"), std::string("The Boys"));
+    REQUIRE_EQ(tvm::playback::TitleFromFilename("Dune.Part.Two.2024.1080p.BluRay.x264.mkv", "x"),
+               std::string("Dune Part Two"));
+    REQUIRE_EQ(tvm::playback::TitleFromFilename("", "Fallback"), std::string("Fallback"));
+}
+
 TEST(torrentio_paths_try_the_padded_episode_second) {
     const std::vector<std::string> episode = tvm::playback::TorrentioStreamPaths("tt1", 1, 2);
     REQUIRE_EQ(episode.size(), std::size_t{2});
