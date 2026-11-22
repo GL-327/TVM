@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "motion/tween.h"
 #include "ui/button_focus.h"
 #include "ui/layout.h"
 #include "ui/screen_base.h"
@@ -206,6 +207,11 @@ private:
     PlayerView view_;
     std::string menu_;
     std::size_t menuIndex_ = 0;
+    // The menu on screen, which stays drawn while it fades out after closing, and its open amount from 0 to 1.
+    std::string menuShown_;
+    motion::Tween menuFade_;
+    std::optional<Box> MenuBoxFor(const std::string& menu) const;
+    double MenuFade() const;
     std::optional<double> hover_;
     std::optional<double> scrub_;
     double holdSeconds_ = 0.0;

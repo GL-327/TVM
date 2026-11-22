@@ -237,6 +237,8 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     // Home starts empty and fills in when the catalogue answers.
     auto home = std::make_unique<ui::Scene>(std::vector<ui::RailSpec>{}, store_->Motion());
     home_ = home.get();
+    // The glass navigation bar settles in once, the first time Home is seen after the opening sting.
+    home_->PlayChromeEntrance();
     // The hero's picture crossfades in once its file has been fetched.
     home_->SetImageReady([this](const std::string& url) { return artwork_->Lookup(url).has_value(); });
     shell_ = std::make_unique<ui::Shell>(std::move(home), *store_);

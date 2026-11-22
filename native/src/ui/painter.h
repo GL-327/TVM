@@ -91,7 +91,10 @@ struct GlassStyle {
     bool reduceTransparency = false;
     bool warm = false;
     bool rimOnly = false;
+    // Hover or focus emphasis and press depth, each eased from 0 to 1 by callers that animate them. A bool
+    // `focused` or `pressed` with a zero amount counts as fully on.
     double focusAmount = 0.0;
+    double pressAmount = 0.0;
     double opacity = 1.0;
     int hue = -1;
     std::optional<Color> tint;

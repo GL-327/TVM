@@ -3,6 +3,7 @@
 // Direct2D implementation of the widget tree's Painter. It draws onto any
 // ID2D1RenderTarget: the window, or a bitmap for snapshots.
 
+#include <map>
 #include <vector>
 
 #include "platform/graphics.h"
@@ -52,6 +53,9 @@ private:
     ArtworkStore* artwork_;
     ImageCache* images_;
     ComPtr<ID2D1SolidColorBrush> solidBrush_;
+    // Gradient stops made this frame, by their positions and colours: the glass surfaces of a frame share most
+    // of theirs, so each set is made once.
+    std::map<std::vector<float>, ComPtr<ID2D1GradientStopCollection>> stopCache_;
     int clipDepth_ = 0;
     ui::Box backdropBox_{};
     std::string backdropUrl_;

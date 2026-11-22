@@ -299,6 +299,7 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
             return [scene, which](double now) { scene->SetView(SnapshotHomeView(which), now); };
         };
         if (scenario == L"nav-intro") {
+            scene->PlayChromeEntrance();
             endMs = 1000.0;
         } else if (scenario == L"tab-switch") {
             // Hover Movies, click it, then hover and click Series, then come back Home with the keyboard.

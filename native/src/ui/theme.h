@@ -22,13 +22,13 @@ inline constexpr Palette kDarkPalette{
     Rgb(0x071018), Rgb(0x102238), Rgb(0x163048), Rgb(0x8CB4DC, 0.16),
     Rgb(0xE8F0F8), Rgb(0x9BB0C8), Rgb(0x6A8298), Rgb(0x9EDCFF),
     Rgb(0x000000), Rgb(0x0C1A2C), Rgb(0x9EDCFF), Rgb(0x000000),
-    Rgb(0x282828, 0.72), Rgb(0xFFFFFF, 0.16), Rgb(0xFFFFFF, 0.18),
+    Rgb(0xFFFFFF, 0.06), Rgb(0xFFFFFF, 0.22), Rgb(0xFFFFFF, 0.10),
     Rgb(0xFFFFFF), Rgb(0x111111)};
 inline constexpr Palette kLightPalette{
     Rgb(0xF4F1E4), Rgb(0xFFFDF6), Rgb(0xE7FFF6), Rgb(0x124856, 0.16),
     Rgb(0x12324A), Rgb(0x2A5A68), Rgb(0x4A7A82), Rgb(0x0EA884),
     Rgb(0xEFE8D4), Rgb(0xFFFAF0), Rgb(0x0EA884), Rgb(0xF4F1E4),
-    Rgb(0xFFFDF6, 0.86), Rgb(0x124856, 0.16), Rgb(0x1EC9A0, 0.22),
+    Rgb(0xFFFFFF, 0.50), Rgb(0x124856, 0.16), Rgb(0xFFFFFF, 0.62),
     Rgb(0xFFFFFF), Rgb(0x111111)};
 
 namespace tokens {

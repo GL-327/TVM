@@ -11,6 +11,16 @@ namespace tvm::ui {
 
 namespace {
 
+// Glass motion: a quick start and a long, gentle settle with no overshoot, so controls feel responsive but calm.
+constexpr motion::CubicBezier kGlassEase{0.32, 0.72, 0.0, 1.0};
+constexpr double kEmphasisInMs = 150.0;
+constexpr double kEmphasisOutMs = 220.0;
+constexpr double kPressInMs = 70.0;
+constexpr double kPressOutMs = 240.0;
+constexpr double kIndicatorMs = 380.0;
+// The whole chrome entrance, from the first frame it is seen.
+constexpr double kChromeEntranceMs = 720.0;
+
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
 constexpr double kSectionSpacingRem = 2.0;
@@ -100,6 +110,24 @@ constexpr char kSearchGlyph[] = "M14 5a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM21 21l6 6"
 
 bool IsHeroKey(const std::string& key) {
     return key == kHeroPlayKey || key == kHeroInfoKey;
+}
+
+// The colour at a fraction of its own opacity.
+Color Faded(Color color, double amount) {
+    color.a *= std::clamp(amount, 0.0, 1.0);
+    return color;
+}
+
+Box LerpBox(const Box& from, const Box& to, double t) {
+    return Box{from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, from.width + (to.width - from.width) * t,
+               from.height + (to.height - from.height) * t};
+}
+
+// The box grown or shrunk by `scale` about its centre.
+Box ScaledAbout(const Box& box, double scale) {
+    const double w = box.width * scale;
+    const double h = box.height * scale;
+    return Box{box.CenterX() - w / 2.0, box.CenterY() - h / 2.0, w, h};
 }
 
 Color WithAlpha(Color color, double alpha) {
@@ -243,6 +271,9 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     const std::optional<std::string> focused = focus_.Focused();
     const std::optional<std::string> itemId = FocusedItemId();
     const std::optional<std::size_t> top = focused.has_value() ? TopIndexOf(*focused) : std::nullopt;
+    // Where the selected tab's glass is now, so it can slide from there to the newly selected tab.
+    const std::optional<Box> indicatorWas = TabIndicatorBox();
+    const std::optional<std::size_t> activeWas = activeTab_;
 
     status_ = view.status;
     tops_ = view.topButtons;
@@ -253,6 +284,17 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     heading_ = view.heading;
     brandWord_ = view.brandWord;
     brandColor_ = view.brandColor;
+
+    // The page itself changes at once; only the selected tab's glass catches up.
+    activeTab_ = ActiveTabIndex();
+    if (activeTab_ != activeWas) {
+        indicatorMove_.reset();
+        if (activeTab_.has_value() && activeWas.has_value() && indicatorWas.has_value() && viewportWidth_ > 0.0 &&
+            !motion::PrefersReducedMotion(motion_)) {
+            indicatorFrom_ = *indicatorWas;
+            indicatorMove_ = motion::Tween(0.0, 1.0, nowMs, kIndicatorMs, kGlassEase);
+        }
+    }
     SetRails(view.rails);
 
     if (itemId.has_value() && FocusTitle(*itemId, nowMs)) return;
@@ -266,6 +308,74 @@ std::optional<std::size_t> Scene::TopIndexOf(const std::string& key) const {
         if (key == TopKey(i)) return i;
     }
     return std::nullopt;
+}
+
+std::optional<std::size_t> Scene::ActiveTabIndex() const {
+    if (!Streamy()) return std::nullopt;
+    for (std::size_t i = 0; i < tops_.size(); ++i) {
+        if (tops_[i].on && !tops_[i].lockup && !tops_[i].orb) return i;
+    }
+    return std::nullopt;
+}
+
+std::optional<Box> Scene::TabIndicatorBox() const {
+    if (!activeTab_.has_value() || *activeTab_ >= tops_.size() || !Streamy()) return std::nullopt;
+    const Box to = TopBoxScreen(*activeTab_);
+    if (!indicatorMove_.has_value() || indicatorMove_->Done(clockMs_)) return to;
+    const double t = std::clamp(indicatorMove_->Value(clockMs_), 0.0, 1.0);
+    Box box = LerpBox(indicatorFrom_, to, t);
+    // The glass stretches a little along its path, like a drop of liquid, and settles back as it arrives.
+    const double travel = std::fabs(to.CenterX() - indicatorFrom_.CenterX());
+    const double stretch = std::min(to.height * 0.45, travel * 0.10) * std::sin(kPi * t);
+    box.x -= stretch / 2.0;
+    box.width += stretch;
+    return box;
+}
+
+double Scene::EmphasisOf(const std::string& key) const {
+    const auto found = emphasis_.find(key);
+    if (found != emphasis_.end()) return std::clamp(found->second.Value(clockMs_), 0.0, 1.0);
+    return focus_.Focused() == std::optional<std::string>(key) ? 1.0 : 0.0;
+}
+
+double Scene::PressOf(const std::string& key) const {
+    if (pressKey_.empty() || key != pressKey_) return 0.0;
+    return std::clamp(press_.Value(clockMs_), 0.0, 1.0);
+}
+
+void Scene::AnimateEmphasis(const std::optional<std::string>& from, const std::string& to, double nowMs) {
+    const bool reduced = motion::PrefersReducedMotion(motion_);
+    if (from.has_value() && *from != to && !cardByKey_.contains(*from)) {
+        emphasis_[*from] = motion::Tween(EmphasisOf(*from), 0.0, nowMs, reduced ? 0.0 : kEmphasisOutMs, kGlassEase);
+    }
+    if (!cardByKey_.contains(to)) {
+        emphasis_[to] = motion::Tween(EmphasisOf(to), 1.0, nowMs, reduced ? 0.0 : kEmphasisInMs, kGlassEase);
+    }
+}
+
+void Scene::SetPressed(const std::optional<std::string>& key, double nowMs) {
+    const bool reduced = motion::PrefersReducedMotion(motion_);
+    if (key.has_value()) {
+        const double from = PressOf(*key);
+        pressKey_ = *key;
+        press_ = motion::Tween(from, 1.0, nowMs, reduced ? 0.0 : kPressInMs, motion::kEaseOut);
+    } else if (!pressKey_.empty()) {
+        press_ = motion::Tween(PressOf(pressKey_), 0.0, nowMs, reduced ? 0.0 : kPressOutMs, kGlassEase);
+    }
+}
+
+double Scene::EntranceStage(double delayMs, double durationMs) const {
+    if (!chromeEntranceStart_.has_value()) return 1.0;
+    const double elapsed = clockMs_ - *chromeEntranceStart_ - delayMs;
+    return kGlassEase.Ease(std::clamp(elapsed / durationMs, 0.0, 1.0));
+}
+
+bool Scene::ControlsAnimating() const {
+    if (!press_.Done(clockMs_)) return true;
+    if (indicatorMove_.has_value() && !indicatorMove_->Done(clockMs_)) return true;
+    if (chromeEntranceStart_.has_value() && clockMs_ - *chromeEntranceStart_ < kChromeEntranceMs) return true;
+    return std::any_of(emphasis_.begin(), emphasis_.end(),
+                       [this](const auto& entry) { return !entry.second.Done(clockMs_); });
 }
 
 void Scene::Build(const std::vector<RailData>& rails) {
@@ -544,20 +654,24 @@ void Scene::PaintHero(Painter& painter) const {
     }
 
     // 3. Glass Play pill (with play triangle glyph) and Details pill.
-    const auto paintHeroPill = [&](const Box& rawBox, const std::string& label, bool focused, bool withPlayGlyph) {
-        const double scale = (focused && !tokens::reduceMotion) ? kFocusScale : 1.0;
-        const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.375) : 0.0;
-        const double w = rawBox.width * scale;
-        const double h = rawBox.height * scale;
-        const Box shape{rawBox.CenterX() - w / 2.0, rawBox.CenterY() - h / 2.0 - lift, w, h};
+    const auto paintHeroPill = [&](const Box& rawBox, const std::string& label, const char* key, bool focused,
+                                   bool withPlayGlyph) {
+        // Hover and focus raise the pill a touch and light it; a press sinks it. Both ease, neither is dramatic.
+        const double emphasis = EmphasisOf(key);
+        const double press = PressOf(key);
+        const bool still = tokens::reduceMotion;
+        const double scale = still ? 1.0 : 1.0 + 0.035 * emphasis - 0.04 * press;
+        const double lift = still ? 0.0 : metrics_.Rem(0.25) * emphasis * (1.0 - press);
+        Box shape = ScaledAbout(rawBox, scale);
+        shape.y -= lift;
         const double radius = shape.height / 2.0;
 
         GlassStyle glass;
         glass.kind = GlassKind::Pill;
         glass.focused = focused;
-        glass.focusAmount = focused ? 1.0 : 0.0;
+        glass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
+        glass.pressAmount = press;
         glass.reduceTransparency = tokens::reduceTransparency;
-        glass.tint = focused ? tokens::kGlassFocus : tokens::kGlassFill;
         glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
         glass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
         glass.ringColor = tokens::kFocusRing;
@@ -581,8 +695,8 @@ void Scene::PaintHero(Painter& painter) const {
         }
     };
 
-    paintHeroPill(boxes.watch, PlayLabel(), watchFocused, true);
-    paintHeroPill(boxes.learn, InfoLabel(), learnFocused, false);
+    paintHeroPill(boxes.watch, PlayLabel(), kHeroPlayKey, watchFocused, true);
+    paintHeroPill(boxes.learn, InfoLabel(), kHeroInfoKey, learnFocused, false);
 
     // 4. Carousel indicator dots when there is more than one hero title.
     if (heroes_.size() > 1) {
@@ -686,8 +800,9 @@ void Scene::PaintPageHeader(Painter& painter) const {
     for (std::size_t i = 0; i < tops_.size(); ++i) {
         const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
         // A chosen filter is the primary button, as the web marks it with variant=primary.
+        const double emphasis = EmphasisOf(TopKey(i));
         DrawButton(painter, metrics_, TopBoxScreen(i), tops_[i].label,
-                   ButtonLook{tops_[i].on, focused, focused ? 1.0 : 0.0});
+                   ButtonLook{tops_[i].on, focused, focused ? std::max(emphasis, 1e-3) : emphasis});
     }
 }
 
@@ -717,6 +832,17 @@ void Scene::PaintStreamChrome(Painter& painter) const {
     const double topY = metrics_.Rem(kChromePadTopRem);
     const double tabHeight = metrics_.Rem(kChromeLinkHeightRem);
 
+    // The entrance plays once, from the first frame the chrome is seen: the glass bar settles in, its labels
+    // follow one by one, and the selected tab's glass arrives last. Without an entrance every stage is 1.
+    if (chromeEntrancePending_ && !chromeEntranceStart_.has_value() && !motion::PrefersReducedMotion(motion_) &&
+        !tokens::reduceMotion) {
+        chromeEntranceStart_ = clockMs_;
+    }
+    const double barStage = EntranceStage(0.0, 340.0);
+    const double orbStage = EntranceStage(70.0, 340.0);
+    const double indicatorStage = EntranceStage(330.0, 330.0);
+    const double barRise = metrics_.Rem(0.5) * (1.0 - barStage);
+
     // 1. Outer centred glass capsule enclosing all navigation tabs (!lockup && !orb).
     bool hasCapsuleTabs = false;
     bool hasLockup = false;
@@ -738,67 +864,101 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         maxB = std::max(maxB, b.Bottom());
         hasCapsuleTabs = true;
     }
-    if (hasCapsuleTabs) {
+    if (hasCapsuleTabs && barStage > 0.0) {
         const double pad = metrics_.Rem(kCapsulePadRem);
-        const Box capsule{minX - pad, minY - pad, (maxR - minX) + 2.0 * pad, (maxB - minY) + 2.0 * pad};
+        Box capsule = ScaledAbout(Box{minX - pad, minY - pad, (maxR - minX) + 2.0 * pad, (maxB - minY) + 2.0 * pad},
+                                  0.96 + 0.04 * barStage);
+        capsule.y -= barRise;
         GlassStyle capsuleGlass;
         capsuleGlass.kind = GlassKind::Pill;
         capsuleGlass.reduceTransparency = tokens::reduceTransparency;
-        capsuleGlass.tint = tokens::kGlassFill;
+        capsuleGlass.opacity = barStage;
         painter.Glass(capsule, capsule.height / 2.0, capsuleGlass);
     }
 
     // 2. Top-left TVM wordmark (drawn as static brand mark when no lockup button is in tops_).
     if (!hasLockup && !compact) {
         painter.Text(Box{safeX, topY - metrics_.Rem(0.25), metrics_.Rem(7.5), tabHeight + metrics_.Rem(0.5)}, "TVM",
-                     TextStyle{metrics_.Rem(kWordmarkFontRem), true, 800}, tokens::kText);
+                     TextStyle{metrics_.Rem(kWordmarkFontRem), true, 800}, Faded(tokens::kText, barStage));
     }
 
     // 3. Top-right profile orb (drawn as ambient profile orb when no orb button is in tops_).
-    if (!hasOrb && !compact) {
+    if (!hasOrb && !compact && orbStage > 0.0) {
         const double orbSize = metrics_.Rem(kOrbSizeRem);
         const Box orbBox{viewportWidth_ - safeX - orbSize, topY + (tabHeight - orbSize) / 2.0, orbSize, orbSize};
         GlassStyle orbGlass;
         orbGlass.kind = GlassKind::Orb;
-        orbGlass.warm = true;
         orbGlass.reduceTransparency = tokens::reduceTransparency;
-        orbGlass.tint = tokens::kSurface;
+        orbGlass.opacity = orbStage;
         painter.Glass(orbBox, orbSize / 2.0, orbGlass);
         const TextStyle orbText{metrics_.Rem(1.35), true, 700};
         const double w = painter.MeasureText("P", orbText);
-        painter.Text(Box{orbBox.CenterX() - w / 2.0, orbBox.y, w + 4.0, orbBox.height}, "P", orbText, tokens::kText);
+        painter.Text(Box{orbBox.CenterX() - w / 2.0, orbBox.y, w + 4.0, orbBox.height}, "P", orbText,
+                     Faded(tokens::kText, orbStage));
     }
 
-    // 4. Individual buttons: lockup wordmark, capsule tabs, and profile orb.
+    // 4. The selected tab: its own lighter piece of glass, sliding between tabs when the selection changes.
+    const std::optional<Box> indicator = TabIndicatorBox();
+    if (indicator.has_value() && indicatorStage > 0.0) {
+        const std::string key = TopKey(*activeTab_);
+        const bool focused = focus_.Focused() == std::optional<std::string>(key);
+        const double emphasis = EmphasisOf(key);
+        const double press = PressOf(key);
+        const double scale = tokens::reduceMotion
+                                 ? 1.0
+                                 : (0.9 + 0.1 * indicatorStage) * (1.0 + 0.02 * emphasis - 0.035 * press);
+        Box shape = ScaledAbout(*indicator, scale);
+        shape.y -= barRise;
+        GlassStyle tabGlass;
+        tabGlass.kind = GlassKind::Tab;
+        tabGlass.activeTab = true;
+        tabGlass.focused = focused;
+        tabGlass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
+        tabGlass.pressAmount = press;
+        tabGlass.opacity = indicatorStage;
+        tabGlass.reduceTransparency = tokens::reduceTransparency;
+        tabGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+        tabGlass.ringOutset = metrics_.Rem(0.08);
+        tabGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(shape, shape.height / 2.0, tabGlass);
+    }
+
+    // 5. Individual buttons: lockup wordmark, hover glass and labels of the capsule tabs, and the profile orb.
+    std::size_t labelOrder = 0;
     for (std::size_t i = 0; i < tops_.size(); ++i) {
         const Box box = TopBoxScreen(i);
-        const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
+        const std::string key = TopKey(i);
+        const bool focused = focus_.Focused() == std::optional<std::string>(key);
+        const double emphasis = EmphasisOf(key);
+        const double press = PressOf(key);
         if (tops_[i].lockup) {
             if (focused) {
                 GlassStyle lockupGlass;
                 lockupGlass.kind = GlassKind::Tab;
                 lockupGlass.focused = true;
-                lockupGlass.focusAmount = 1.0;
+                lockupGlass.focusAmount = std::max(emphasis, 1e-3);
                 lockupGlass.reduceTransparency = tokens::reduceTransparency;
                 painter.Glass(box, box.height / 2.0, lockupGlass);
             }
             painter.Text(Box{box.x + (focused ? metrics_.Rem(0.6) : 0.0), box.y, box.width, box.height},
                          ToUpperAscii(tops_[i].label), TextStyle{metrics_.Rem(kWordmarkFontRem), true, 800},
-                         tokens::kText);
+                         Faded(tokens::kText, barStage));
             continue;
         }
         if (tops_[i].orb) {
-            const double scale = (focused && !tokens::reduceMotion) ? kFocusScale : 1.0;
-            const double w = box.width * scale;
-            const double h = box.height * scale;
-            const Box orbShape{box.CenterX() - w / 2.0, box.CenterY() - h / 2.0, w, h};
+            if (orbStage <= 0.0) continue;
+            // The orb answers hover and press as the other glass does, and never grows past the bar's weight.
+            const double scale =
+                tokens::reduceMotion ? 1.0 : (0.94 + 0.06 * orbStage) * (1.0 + 0.05 * emphasis - 0.06 * press);
+            Box orbShape = ScaledAbout(box, scale);
+            orbShape.y -= barRise;
             GlassStyle orbGlass;
             orbGlass.kind = GlassKind::Orb;
             orbGlass.focused = focused;
-            orbGlass.focusAmount = focused ? 1.0 : 0.0;
-            orbGlass.warm = true;
+            orbGlass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
+            orbGlass.pressAmount = press;
+            orbGlass.opacity = orbStage;
             orbGlass.reduceTransparency = tokens::reduceTransparency;
-            orbGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
             orbGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
             orbGlass.ringOutset = metrics_.Rem(kFocusRingOffsetRem);
             orbGlass.ringColor = tokens::kFocusRing;
@@ -809,35 +969,45 @@ void Scene::PaintStreamChrome(Painter& painter) const {
             const TextStyle orbText{metrics_.Rem(1.35), true, 700};
             const double tw = painter.MeasureText(initial, orbText);
             painter.Text(Box{orbShape.CenterX() - tw / 2.0, orbShape.y, tw + 4.0, orbShape.height}, initial, orbText,
-                         tokens::kText);
+                         Faded(tokens::kText, orbStage));
             continue;
         }
 
         // Capsule navigation tab (Home · Movies · Series · Live TV · Library · Search).
-        if (tops_[i].on || focused) {
-            const double scale = (focused && !tokens::reduceMotion) ? 1.04 : 1.0;
-            const double w = box.width * scale;
-            const double h = box.height * scale;
-            const Box tabShape{box.CenterX() - w / 2.0, box.CenterY() - h / 2.0, w, h};
+        const double labelStage = EntranceStage(110.0 + 30.0 * static_cast<double>(labelOrder++), 280.0);
+        // How much of the selected glass sits under this label, so its colour follows the glass as it slides.
+        double under = 0.0;
+        if (indicator.has_value()) {
+            under = std::clamp(1.0 - std::fabs(indicator->CenterX() - box.CenterX()) / (box.width * 0.8), 0.0, 1.0) *
+                    indicatorStage;
+        }
+        // A tab that is not selected shows hover as a faint glass of its own, fading in and out.
+        const double hover = emphasis * (1.0 - under);
+        if (hover > 0.01 && (!activeTab_.has_value() || *activeTab_ != i)) {
+            Box tabShape = ScaledAbout(box, tokens::reduceMotion ? 1.0 : 1.0 + 0.02 * emphasis - 0.035 * press);
+            tabShape.y -= barRise;
             GlassStyle tabGlass;
             tabGlass.kind = GlassKind::Tab;
             tabGlass.focused = focused;
-            tabGlass.activeTab = tops_[i].on;
-            tabGlass.focusAmount = focused ? 1.0 : 0.0;
+            tabGlass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
+            tabGlass.pressAmount = press;
+            tabGlass.opacity = hover * barStage;
             tabGlass.reduceTransparency = tokens::reduceTransparency;
-            tabGlass.tint = tops_[i].on ? tokens::kPrimary : tokens::kSurfaceHover;
             tabGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
             tabGlass.ringOutset = metrics_.Rem(0.08);
             tabGlass.ringColor = tokens::kFocusRing;
             painter.Glass(tabShape, tabShape.height / 2.0, tabGlass);
         }
 
-        const TextStyle tabStyle{metrics_.Rem(kChromeFontRem), tops_[i].on || focused,
-                                 (tops_[i].on || focused) ? 650 : kChromeWeight};
+        const bool strong = tops_[i].on || focused;
+        const TextStyle tabStyle{metrics_.Rem(kChromeFontRem), strong, strong ? 650 : kChromeWeight};
         const double textWidth = painter.MeasureText(tops_[i].label, tabStyle);
         const double textX = std::max(box.x + metrics_.Rem(0.5), box.CenterX() - textWidth / 2.0);
-        const Color textColor = tops_[i].on ? tokens::kOnPrimary : (focused ? tokens::kText : tokens::kTextMuted);
-        painter.Text(Box{textX, box.y, textWidth + metrics_.Rem(0.8), box.height}, tops_[i].label, tabStyle, textColor);
+        const Color resting = Mix(tokens::kTextMuted, tokens::kText, emphasis);
+        const Color textColor = Faded(Mix(resting, tokens::kOnPrimary, under), labelStage);
+        const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
+        painter.Text(Box{textX, box.y - textRise, textWidth + metrics_.Rem(0.8), box.height}, tops_[i].label, tabStyle,
+                     textColor);
     }
 }
 
@@ -1024,7 +1194,7 @@ bool Scene::Tick(double nowMs) {
 bool Scene::Animating() const {
     const bool titleMoving = titleFade_.has_value() && !titleFade_->Done(clockMs_);
     const bool pictureMoving = artFade_.has_value() && !artFade_->Done(clockMs_);
-    return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving;
+    return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving || ControlsAnimating();
 }
 
 bool Scene::CameraActive() const {
@@ -1175,9 +1345,15 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
     return true;
 }
 
-std::optional<Command> Scene::Select(double /*nowMs*/) {
+std::optional<Command> Scene::Select(double nowMs) {
     const std::optional<std::string> focused = focus_.Focused();
     if (!focused.has_value()) return std::nullopt;
+    // OK on a button gives the same press as a click: the glass dips at once and eases back, while the
+    // command goes out now.
+    if (!cardByKey_.contains(*focused) && !motion::PrefersReducedMotion(motion_)) {
+        pressKey_ = *focused;
+        press_ = motion::Tween(1.0, 0.0, nowMs, kPressOutMs, kGlassEase);
+    }
 
     if (const std::optional<std::size_t> top = TopIndexOf(*focused)) return tops_[*top].command;
 
@@ -1323,6 +1499,7 @@ void Scene::FocusKey(const std::string& key, double nowMs, bool withCamera) {
     if (previous.has_value() && cardByKey_.contains(*previous)) {
         AnimateFocus(cardByKey_.at(*previous), 0.0, nowMs);
     }
+    AnimateEmphasis(previous, key, nowMs);
     focus_.SetFocus(key);
 
     const auto card = cardByKey_.find(key);
@@ -1435,11 +1612,13 @@ void Scene::Paint(Painter& painter) const {
         const Box button = TopBoxScreen(i);
         if (button.Bottom() < 0.0 || button.y >= viewportHeight_) continue;
         const bool focused = focus_.Focused() == std::optional<std::string>(TopKey(i));
+        const double emphasis = EmphasisOf(TopKey(i));
         const double radius = button.height / 2.0;
         GlassStyle glass;
         glass.kind = GlassKind::Pill;
         glass.focused = focused;
-        glass.focusAmount = focused ? 1.0 : 0.0;
+        glass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
+        glass.pressAmount = PressOf(TopKey(i));
         glass.reduceTransparency = tokens::reduceTransparency;
         glass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
         glass.border = tokens::kBorderSoft;

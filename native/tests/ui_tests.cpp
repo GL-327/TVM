@@ -377,4 +377,149 @@ TEST(optical_glass_material_is_applied_to_cards_hero_pills_and_nav_capsule) {
     REQUIRE_EQ(cards, 2); // 2 Continue Watching cards
 }
 
+
+// Records glass surfaces with their styles, and nothing else.
+class GlassOnlyPainter final : public tvm::ui::Painter {
+public:
+    struct Call {
+        Box box;
+        tvm::ui::GlassStyle style;
+    };
+    void Clear(Color) override {}
+    void FillRoundRect(const Box&, double, Color) override {}
+    void StrokeRoundRect(const Box&, double, double, Color) override {}
+    void Text(const Box&, std::string_view, const tvm::ui::TextStyle&, Color) override {}
+    bool Image(const Box&, const std::string&, double) override { return false; }
+    void Paragraph(const Box&, std::string_view, const tvm::ui::TextStyle&, Color) override {}
+    void PushClip(const Box&) override {}
+    void PopClip() override {}
+    void Glass(const Box& box, double, const tvm::ui::GlassStyle& style) override { calls.push_back(Call{box, style}); }
+    // The nav capsule: the widest pill in the chrome band.
+    std::optional<Call> Capsule() const {
+        std::optional<Call> widest;
+        for (const Call& call : calls) {
+            if (call.style.kind != tvm::ui::GlassKind::Pill || call.box.y > 120.0) continue;
+            if (!widest.has_value() || call.box.width > widest->box.width) widest = call;
+        }
+        return widest;
+    }
+    std::vector<Call> calls;
+};
+
+// TVM Stream's chrome with `lane` selected: 0 Home, 1 Movies, 2 Series.
+tvm::ui::SceneView StreamView(int lane) {
+    tvm::ui::SceneView view;
+    view.style = tvm::ui::SceneStyle::Stream;
+    tvm::ui::Command command;
+    command.name = "stream-lane";
+    command.action = true;
+    view.topButtons = {
+        tvm::ui::TopButton{"Home", command, lane == 0},     tvm::ui::TopButton{"Movies", command, lane == 1},
+        tvm::ui::TopButton{"Series", command, lane == 2},   tvm::ui::TopButton{"Live TV", command, false},
+        tvm::ui::TopButton{"Library", command, false},      tvm::ui::TopButton{"Search", command, false},
+        tvm::ui::TopButton{"Profile", command, false, false, true},
+    };
+    return view;
+}
+
+TEST(selected_tab_glass_slides_to_the_new_tab_without_delaying_the_page) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.Tick(1000.0);
+    const Box home = *scene.TabIndicatorBox();
+
+    scene.SetView(StreamView(2), 1000.0);
+    REQUIRE(scene.Animating());
+    // Straight after the switch the glass is still on Home; the page underneath has already changed.
+    REQUIRE_NEAR(scene.TabIndicatorBox()->CenterX(), home.CenterX(), 1e-6);
+
+    scene.Tick(1150.0);
+    const Box midway = *scene.TabIndicatorBox();
+    scene.Tick(2000.0);
+    const Box series = *scene.TabIndicatorBox();
+    REQUIRE(series.CenterX() > home.CenterX());
+    REQUIRE(midway.CenterX() > home.CenterX());
+    REQUIRE(midway.CenterX() < series.CenterX());
+    // It stretches a little while it travels, then settles to the tab's own width.
+    REQUIRE(midway.width > std::min(home.width, series.width));
+    REQUIRE(!scene.Animating());
+}
+
+TEST(selected_tab_glass_jumps_under_reduced_motion) {
+    Scene scene(SmallRails(), MotionSettings{MotionPreference::Reduced, false});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.Tick(10.0);
+    scene.SetView(StreamView(1), 10.0);
+    const Box now = *scene.TabIndicatorBox();
+    scene.Tick(2000.0);
+    REQUIRE_NEAR(scene.TabIndicatorBox()->CenterX(), now.CenterX(), 1e-6);
+}
+
+TEST(chrome_entrance_plays_once_and_not_on_tab_switches) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.PlayChromeEntrance();
+    scene.Tick(0.0);
+
+    GlassOnlyPainter first;
+    scene.Paint(first);  // The entrance starts with the first frame that shows the chrome.
+    REQUIRE(scene.Animating());
+    REQUIRE(!first.Capsule().has_value() || first.Capsule()->style.opacity < 0.05);
+
+    scene.Tick(170.0);
+    GlassOnlyPainter partway;
+    scene.Paint(partway);
+    REQUIRE(partway.Capsule().has_value());
+    REQUIRE(partway.Capsule()->style.opacity > 0.05);
+    REQUIRE(partway.Capsule()->style.opacity < 1.0);
+
+    scene.Tick(1500.0);
+    REQUIRE(!scene.Animating());
+    scene.SetView(StreamView(1), 1500.0);
+    scene.Tick(1501.0);
+    GlassOnlyPainter after;
+    scene.Paint(after);
+    REQUIRE_NEAR(after.Capsule()->style.opacity, 1.0, 1e-9);
+}
+
+TEST(scene_without_an_entrance_draws_the_chrome_at_once) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    GlassOnlyPainter painter;
+    scene.Paint(painter);
+    REQUIRE_NEAR(painter.Capsule()->style.opacity, 1.0, 1e-9);
+}
+
+TEST(hover_and_press_ease_in_and_out) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetView(StreamView(0), 0.0);
+    scene.FocusItem("top:1", 0.0, false);
+    REQUIRE(scene.EmphasisOf("top:1") < 0.5);
+    scene.Tick(400.0);
+    REQUIRE_NEAR(scene.EmphasisOf("top:1"), 1.0, 1e-6);
+
+    scene.SetPressed(std::string("top:1"), 400.0);
+    scene.Tick(500.0);
+    REQUIRE_NEAR(scene.PressOf("top:1"), 1.0, 1e-6);
+    REQUIRE_NEAR(scene.PressOf("top:2"), 0.0, 1e-9);
+    scene.SetPressed(std::nullopt, 500.0);
+    scene.Tick(560.0);
+    REQUIRE(scene.PressOf("top:1") > 0.0);
+    scene.Tick(1000.0);
+    REQUIRE_NEAR(scene.PressOf("top:1"), 0.0, 1e-6);
+
+    scene.FocusItem("top:2", 1000.0, false);
+    scene.Tick(1050.0);
+    REQUIRE(scene.EmphasisOf("top:1") > 0.0);
+    REQUIRE(scene.EmphasisOf("top:1") < 1.0);
+    scene.Tick(1600.0);
+    REQUIRE_NEAR(scene.EmphasisOf("top:1"), 0.0, 1e-6);
+    REQUIRE(!scene.Animating());
+}
+
 }  // namespace

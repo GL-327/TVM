@@ -117,8 +117,9 @@ void BuildLiquidGlassBuffer(DecodedPicture& pic) {
         }
     }
 
-    // 3. Apple Liquid Glass vibrant saturation boost (saturate(178%)) in premultiplied BGRA space.
-    constexpr float kSaturation = 1.78f;
+    // 3. A gentle saturation lift (saturate(115%)) in premultiplied BGRA space, so the glass carries the picture's
+    // colour without one strong hue, such as a green coat, flooding the whole surface.
+    constexpr float kSaturation = 1.15f;
     for (std::size_t i = 0; i < pic.blurredPixels.size(); i += 4) {
         const float b = static_cast<float>(pic.blurredPixels[i + 0]);
         const float g = static_cast<float>(pic.blurredPixels[i + 1]);

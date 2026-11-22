@@ -45,6 +45,10 @@ constexpr Color kInkMuted = Rgb(0xFFFFFF, 0.67);       // #fffa
 constexpr Color kFill = Rgb(0x67BAFF);                 // the cinema chrome's --player-fill
 constexpr Color kTrack = Rgb(0xFFFFFF, 0x45 / 255.0);  // #ffffff45
 constexpr Color kHover = Rgb(0xFFFFFF, 0x15 / 255.0);  // #ffffff15
+// The menus open with a short fade and rise, and close a little faster, on the glass easing curve.
+constexpr double kMenuOpenMs = 190.0;
+constexpr double kMenuCloseMs = 150.0;
+constexpr motion::CubicBezier kMenuEase{0.32, 0.72, 0.0, 1.0};
 constexpr Color kMarkPlate = Rgb(0x2F6BFF);
 constexpr char kMarkImage[] = "asset:tvm-icon.png";
 
@@ -247,8 +251,18 @@ void PlayerScreen::SetView(const PlayerView& view, double nowMs) {
 }
 
 void PlayerScreen::CloseMenu() {
-    if (!menu_.empty()) focused_ = menu_;
+    if (!menu_.empty()) {
+        focused_ = menu_;
+        // The panel eases out a little faster than it came in.
+        const bool reduced = motion::PrefersReducedMotion(motion_) || tokens::reduceMotion;
+        menuFade_ = motion::Tween(MenuFade(), 0.0, clockMs_, reduced ? 0.0 : kMenuCloseMs, kMenuEase);
+    }
     menu_.clear();
+}
+
+double PlayerScreen::MenuFade() const {
+    if (menuShown_.empty()) return 0.0;
+    return std::clamp(menuFade_.Value(clockMs_), 0.0, 1.0);
 }
 
 std::vector<std::string> PlayerScreen::ToolKeys() const {
@@ -285,11 +299,16 @@ std::vector<PlayerOption> PlayerScreen::MenuOptions(const std::string& menu) con
 
 std::optional<Box> PlayerScreen::MenuBox() const {
     if (!MenuOpen()) return std::nullopt;
-    const std::optional<Box> button = BoxOf(menu_);
+    return MenuBoxFor(menu_);
+}
+
+std::optional<Box> PlayerScreen::MenuBoxFor(const std::string& menu) const {
+    if (menu.empty()) return std::nullopt;
+    const std::optional<Box> button = BoxOf(menu);
     if (!button.has_value()) return std::nullopt;
-    const std::size_t rows = std::min(MenuOptions(menu_).size(), kMenuRowsShown);
+    const std::size_t rows = std::min(MenuOptions(menu).size(), kMenuRowsShown);
     const double height = Rem(kMenuPadRem) * 2.0 + Rem(kMenuHeadingRem) + static_cast<double>(rows) * Rem(kMenuRowRem);
-    const double width = std::min(Rem(menu_ == kQualityKey ? kMenuWidthRem * 1.6 : kMenuWidthRem),
+    const double width = std::min(Rem(menu == kQualityKey ? kMenuWidthRem * 1.6 : kMenuWidthRem),
                                   std::max(1.0, width_ - 2.0 * Rem(kPadXRem)));
     const double x = std::clamp(button->Right() - width, Rem(kPadXRem), width_ - Rem(kPadXRem) - width);
     return Box{x, std::max(0.0, button->y - Rem(1.0) - height), width, height};
@@ -346,6 +365,7 @@ bool PlayerScreen::Tick(double nowMs) {
 
 bool PlayerScreen::Animating() const {
     if (buttonFocus_.Animating(clockMs_)) return true;
+    if (!menuShown_.empty() && !menuFade_.Done(clockMs_)) return true;
     // The spinner turns, and the chrome's timer runs, only while they are on screen.
     if (view_.phase == PlayerView::Phase::Resolving) return true;
     if (view_.phase != PlayerView::Phase::Playing) return false;
@@ -545,7 +565,7 @@ void PlayerScreen::Paint(Painter& painter) const {
         PaintTitleOverlay(painter, opacity);
         PaintPreview(painter, opacity);
     }
-    if (opacity > 0.0 && MenuOpen()) PaintMenu(painter);
+    if (opacity > 0.0 && MenuFade() > 0.0) PaintMenu(painter);
     if (view_.buffering) PaintSpinner(painter);
     // Next Up, Skip recap and Skip credits are their own layer, shown whether or not the chrome is.
     if (view_.nextUp) PaintNextUp(painter);
@@ -773,34 +793,46 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
 }
 
 void PlayerScreen::PaintMenu(Painter& painter) const {
-    const std::optional<Box> panel = MenuBox();
-    if (!panel.has_value()) return;
+    const std::string& menu = menuShown_;
+    const std::optional<Box> resting = MenuBoxFor(menu);
+    if (!resting.has_value()) return;
+    // Opening and closing: a short fade with a restrained rise and scale toward the toolbar, never a bounce.
+    const double fade = MenuFade();
+    const auto faded = [fade](Color color) {
+        color.a *= fade;
+        return color;
+    };
+    const double scale = 0.96 + 0.04 * fade;
+    const double panelWidth = resting->width * scale;
+    const double panelHeight = resting->height * scale;
+    const std::optional<Box> panel = Box{resting->Right() - panelWidth - (resting->width - panelWidth) / 2.0,
+                                         resting->Bottom() - panelHeight + Rem(0.5) * (1.0 - fade), panelWidth,
+                                         panelHeight};
     // Study 02 Control Centre spatial glass: a receding ghost glass surface behind the near live panel.
     if (!tokens::reduceTransparency && panel->x > Rem(2.0)) {
         GlassStyle ghostGlass;
         ghostGlass.kind = GlassKind::Panel;
-        ghostGlass.opacity = 0.38;
-        ghostGlass.tint = Rgb(0x101824, 0.45);
+        ghostGlass.opacity = 0.30 * fade;
         painter.Glass(Box{panel->x - Rem(0.85), panel->y + Rem(0.55), panel->width, panel->height - Rem(1.1)},
                       Rem(1.25), ghostGlass);
     }
     GlassStyle panelGlass;
     panelGlass.kind = GlassKind::Panel;
+    panelGlass.opacity = fade;
     panelGlass.reduceTransparency = tokens::reduceTransparency;
-    panelGlass.tint = kMenuFill;
     painter.Glass(*panel, Rem(1.35), panelGlass);
 
-    const std::string heading = menu_ == kSubtitlesKey ? "Subtitles"
-                                : menu_ == kAudioKey   ? "Audio"
-                                : menu_ == kQualityKey ? "Quality"
-                                                       : "Playback speed";
+    const std::string heading = menu == kSubtitlesKey ? "Subtitles"
+                                : menu == kAudioKey   ? "Audio"
+                                : menu == kQualityKey ? "Quality"
+                                                      : "Playback speed";
     const double x = panel->x + Rem(kMenuPadRem);
     const double width = panel->width - 2.0 * Rem(kMenuPadRem);
     painter.Text(Box{x + Rem(0.4), panel->y + Rem(kMenuPadRem), width, Rem(kMenuHeadingRem)}, heading,
-                 TextStyle{Rem(0.75), true, 650}, Rgb(0xFFFFFF, 0.72));
+                 TextStyle{Rem(0.75), true, 650}, faded(Rgb(0xFFFFFF, 0.72)));
 
     // The rows scroll so the focused one is in the panel.
-    const std::vector<PlayerOption> options = MenuOptions(menu_);
+    const std::vector<PlayerOption> options = MenuOptions(menu);
     const std::size_t first = menuIndex_ >= kMenuRowsShown ? menuIndex_ - kMenuRowsShown + 1 : 0;
     for (std::size_t i = first; i < options.size() && i < first + kMenuRowsShown; ++i) {
         const PlayerOption& option = options[i];
@@ -811,23 +843,23 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
             rowGlass.kind = GlassKind::Pill;
             rowGlass.focused = true;
             rowGlass.focusAmount = 1.0;
+            rowGlass.opacity = fade;
             rowGlass.reduceTransparency = tokens::reduceTransparency;
-            rowGlass.tint = kHover;
             painter.Glass(row, row.height / 2.0, rowGlass);
         }
         const TextStyle labelStyle{Rem(0.85), true, option.selected ? 700 : 550};
         const double labelWidth = painter.MeasureText(option.label, labelStyle);
         painter.Text(Box{row.x + Rem(0.8), row.y, labelWidth + 2.0, row.height}, option.label, labelStyle,
-                     option.selected ? kFill : kInk);
+                     faded(option.selected ? kFill : kInk));
         if (!option.detail.empty()) {
             painter.Text(Box{row.x + Rem(1.4) + labelWidth, row.y, row.width - labelWidth - Rem(4.0), row.height},
-                         option.detail, TextStyle{Rem(0.72), false, 450}, kInkMuted);
+                         option.detail, TextStyle{Rem(0.72), false, 450}, faded(kInkMuted));
         }
         // The chosen row carries a tick at its end.
         if (option.selected) {
             const double tick = Rem(1.0);
             painter.Path(Box{row.Right() - Rem(0.8) - tick, row.CenterY() - tick / 2.0, tick, tick}, 32.0,
-                         "M6 17l7 7 13-15", PathStyle{Color{0, 0, 0, 0}, kFill, 3.0, false});
+                         "M6 17l7 7 13-15", PathStyle{Color{0, 0, 0, 0}, faded(kFill), 3.0, false});
         }
     }
 }
@@ -1229,6 +1261,13 @@ std::optional<Command> PlayerScreen::Activate(const std::string& key) {
             return std::nullopt;
         }
         menu_ = key;
+        {
+            // The panel fades in and rises into place from the button that opened it.
+            const bool reduced = motion::PrefersReducedMotion(motion_) || tokens::reduceMotion;
+            const double from = menuShown_ == key ? MenuFade() : 0.0;
+            menuShown_ = key;
+            menuFade_ = motion::Tween(from, 1.0, clockMs_, reduced ? 0.0 : kMenuOpenMs, kMenuEase);
+        }
         const std::vector<PlayerOption> options = MenuOptions(key);
         const auto chosen = std::find_if(options.begin(), options.end(), [](const PlayerOption& o) { return o.selected; });
         menuIndex_ = chosen == options.end() ? 0 : static_cast<std::size_t>(chosen - options.begin());

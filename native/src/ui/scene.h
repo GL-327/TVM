@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -162,6 +163,16 @@ public:
     void SetScroll(const ScrollSurface& surface, double value, double nowMs) override;
     void AnimateScroll(const ScrollSurface& surface, double target, double nowMs) override;
     void SetMotion(const motion::MotionSettings& settings) override { motion_ = settings; }
+    void SetPressed(const std::optional<std::string>& key, double nowMs) override;
+
+    // Plays the stream chrome's entrance (the glass bar, then its labels, then the selected tab) the first time
+    // the chrome is drawn after this call. It plays once: switching tabs never replays it. Reduced motion skips it.
+    void PlayChromeEntrance() { chromeEntrancePending_ = true; }
+    // How lit a top or hero button is by hover or focus, eased from 0 to 1, and how far it is held down.
+    double EmphasisOf(const std::string& key) const;
+    double PressOf(const std::string& key) const;
+    // Where the selected tab's glass is drawn now: on the selected tab, or between two tabs while it slides.
+    std::optional<Box> TabIndicatorBox() const;
 
     double RailScroll(std::size_t rail) const { return rails_.at(rail)->scroll(); }
     double PageScroll() const { return pageScroll_; }
@@ -272,6 +283,24 @@ private:
     std::function<bool(const std::string&)> imageReady_;
     // The clock of the last tick. The hero's fades read it while painting.
     double clockMs_ = 0.0;
+
+    // Hover and focus emphasis of the top and hero buttons, by key, and the one press in flight.
+    void AnimateEmphasis(const std::optional<std::string>& from, const std::string& to, double nowMs);
+    bool ControlsAnimating() const;
+    // 0 to 1 through a stage of the chrome entrance that starts `delayMs` in and lasts `durationMs`.
+    double EntranceStage(double delayMs, double durationMs) const;
+    std::optional<std::size_t> ActiveTabIndex() const;
+
+    std::map<std::string, motion::Tween> emphasis_;
+    std::string pressKey_;
+    motion::Tween press_;
+    // The selected tab's glass slides from `indicatorFrom_` to the selected tab while `indicatorMove_` runs.
+    std::optional<std::size_t> activeTab_;
+    Box indicatorFrom_{};
+    std::optional<motion::Tween> indicatorMove_;
+    bool chromeEntrancePending_ = false;
+    // Set the first time the chrome is painted after PlayChromeEntrance, so the entrance starts when it is seen.
+    mutable std::optional<double> chromeEntranceStart_;
 
     motion::Timeline timeline_;
     nav::FocusTree focus_;
