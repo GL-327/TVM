@@ -228,20 +228,16 @@ void DetailsScreen::Paint(Painter& painter) const {
 
 void DetailsScreen::PaintBack(Painter& painter) const {
     // A minimal arrow: no pill and no word, a thick rounded stroke on a soft shadow so it reads over any backdrop.
-    // The pointer or the remote brightens it a touch; the remote also shows the focus ring around it.
+    // The pointer or the remote brightens it and grows it a touch; there is no outline around it.
     const Box box = *BoxOf(kBackKey);
     const double amount = buttonFocus_.Amount(kBackKey, clockMs_);
-    const double glyph = Rem(1.75) * (1.0 + 0.06 * amount);
+    const double glyph = Rem(1.75) * (1.0 + 0.12 * amount);
     const Box arrow{box.CenterX() - glyph / 2.0, box.CenterY() - glyph / 2.0, glyph, glyph};
     painter.Path(Box{arrow.x, arrow.y + 1.5, arrow.width, arrow.height}, 24.0, "M15 5l-7 7 7 7",
                  PathStyle{Color{0, 0, 0, 0}, Rgb(0x000000, 0.45), 2.4, false});
     Color ink = tokens::kText;
-    ink.a = 0.86 + 0.14 * amount;
+    ink.a = 0.78 + 0.22 * amount;
     painter.Path(arrow, 24.0, "M15 5l-7 7 7 7", PathStyle{Color{0, 0, 0, 0}, ink, 2.4, false});
-    if (ShowsFocus(focused_, kBackKey)) {
-        const double ring = Rem(kFocusRingWidthRem);
-        painter.StrokeRoundRect(box, box.width / 2.0, ring, tokens::kFocusRing);
-    }
 }
 
 void DetailsScreen::PaintPage(Painter& painter) const {

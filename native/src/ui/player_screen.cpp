@@ -1252,7 +1252,8 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     // The tools: subtitles, audio, quality and speed, each a word that opens its menu.
     for (const std::string& tool : ToolKeys()) {
         const Box box = button(tool.c_str());
-        // The existing glass pill comes up under the pointer or the remote, and stays while its menu is open.
+        // The existing glass comes up under the pointer or the remote, as a rounded square, and stays while its menu
+        // is open.
         const double amount = std::max(lit(tool.c_str()), menu_ == tool ? 1.0 : 0.0);
         if (amount > 0.01) {
             GlassStyle toolGlass;
@@ -1261,7 +1262,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
             toolGlass.focusAmount = amount;
             toolGlass.opacity = amount * opacity;
             toolGlass.reduceTransparency = tokens::reduceTransparency;
-            painter.Glass(box, box.height / 2.0, toolGlass);
+            painter.Glass(box, Rem(0.6), toolGlass);
         }
         // Subtitles read faint while they are off.
         const bool off = tool == kSubtitlesKey &&
