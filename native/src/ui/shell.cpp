@@ -354,12 +354,16 @@ void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
     if (item.has_value() && Top().FocusedKey() != item) Top().FocusItem(*item, nowMs, false);
 }
 
-void Shell::MouseDown(double x, double y, double /*nowMs*/) {
+void Shell::MouseDown(double x, double y, double nowMs) {
     mouse_.ShowCursor();
-    clicks_.Press(0, x, y, Top().ItemAt(x, y));
+    const std::optional<std::string> item = Top().ItemAt(x, y);
+    clicks_.Press(0, x, y, item);
+    // The pressed look shows at once; the action still waits for the release, as before.
+    Top().SetPressed(item, nowMs);
 }
 
 void Shell::MouseUp(double x, double y, double nowMs) {
+    Top().SetPressed(std::nullopt, nowMs);
     const std::optional<std::string> item = clicks_.Release(0, x, y);
     if (!item.has_value()) return;
     const std::optional<Command> command = Top().ActivateItem(*item, nowMs);

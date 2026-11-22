@@ -14,25 +14,7 @@ void Check(HRESULT result, const char* what) {
     }
 }
 
-}  // namespace
-
-void SaveSnapshot(const ui::Shell& shell, Graphics& graphics, unsigned width, unsigned height,
-                  const std::wstring& path) {
-    // Render into a premultiplied BGRA bitmap. The background is opaque, so
-    // premultiplied and straight alpha are the same.
-    ComPtr<IWICBitmap> bitmap;
-    Check(graphics.wic()->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bitmap),
-          "snapshot bitmap");
-
-    {
-        ImageCache images(graphics);
-        const ComPtr<ID2D1RenderTarget> target = graphics.CreateBitmapTarget(bitmap.Get());
-        target->BeginDraw();
-        D2dPainter painter(target.Get(), graphics, nullptr, &images);
-        shell.Paint(painter);
-        Check(target->EndDraw(), "snapshot drawing");
-    }
-
+void WritePng(Graphics& graphics, IWICBitmap* bitmap, unsigned width, unsigned height, const std::wstring& path) {
     ComPtr<IWICStream> stream;
     Check(graphics.wic()->CreateStream(&stream), "snapshot file");
     Check(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE), "opening the snapshot file");
@@ -49,9 +31,48 @@ void SaveSnapshot(const ui::Shell& shell, Graphics& graphics, unsigned width, un
     WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
     Check(frame->SetPixelFormat(&format), "PNG pixel format");
     // WriteSource converts the premultiplied source to the encoder's format.
-    Check(frame->WriteSource(bitmap.Get(), nullptr), "PNG pixels");
+    Check(frame->WriteSource(bitmap, nullptr), "PNG pixels");
     Check(frame->Commit(), "PNG frame commit");
     Check(encoder->Commit(), "PNG commit");
+}
+
+}  // namespace
+
+void SaveSnapshot(const ui::Shell& shell, Graphics& graphics, unsigned width, unsigned height,
+                  const std::wstring& path) {
+    SnapshotWriter writer(graphics, width, height);
+    writer.Save(shell, path);
+}
+
+SnapshotWriter::SnapshotWriter(Graphics& graphics, unsigned width, unsigned height)
+    : graphics_(graphics), width_(width), height_(height) {
+    // Render into a premultiplied BGRA bitmap. The background is opaque, so
+    // premultiplied and straight alpha are the same.
+    Check(graphics.wic()->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &bitmap_),
+          "snapshot bitmap");
+    target_ = graphics.CreateBitmapTarget(bitmap_.Get());
+    images_ = std::make_unique<ImageCache>(graphics);
+}
+
+// The image cache's bitmaps belong to the target, so they go first.
+SnapshotWriter::~SnapshotWriter() {
+    images_.reset();
+    target_.Reset();
+}
+
+void SnapshotWriter::Save(const ui::Shell& shell, const std::wstring& path) {
+    Save([&shell](ui::Painter& painter) { shell.Paint(painter); }, path);
+}
+
+void SnapshotWriter::Save(const std::function<void(ui::Painter&)>& paint, const std::wstring& path) {
+    images_->BeginFrame();
+    target_->BeginDraw();
+    {
+        D2dPainter painter(target_.Get(), graphics_, nullptr, images_.get());
+        paint(painter);
+    }
+    Check(target_->EndDraw(), "snapshot drawing");
+    WritePng(graphics_, bitmap_.Get(), width_, height_, path);
 }
 
 }  // namespace tvm::platform

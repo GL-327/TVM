@@ -41,6 +41,29 @@ jobs:
           }
           $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--snapshot', 'native/build/settings-light.png', '--size', '390x844', '--theme', 'light', '--screen', 'settings' -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0) { throw 'Light theme snapshot failed' }
+      - name: Render glass stills and animation frames
+        shell: pwsh
+        run: |
+          $out = 'native/build/glass'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $art = @{ lighthouse = $null; bright = 'native/tools/snapshot-art/bright.jpg'; dark = 'native/tools/snapshot-art/dark.jpg' }
+          foreach ($name in $art.Keys) {
+            foreach ($theme in @('dark', 'light')) {
+              $arguments = @('--snapshot', "$out/home-$name-$theme.png", '--size', '1920x1080', '--theme', $theme)
+              if ($art[$name]) { $arguments += @('--art', $art[$name]) }
+              $process = Start-Process native/build/Release/tvm.exe -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+              if ($process.ExitCode -ne 0) { throw "Glass still failed: $name $theme" }
+            }
+          }
+          foreach ($scenario in @('nav-intro', 'tab-switch', 'buttons', 'orb', 'menu')) {
+            $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--frames', "$out/frames-$scenario", '--scenario', $scenario, '--size', '1280x720', '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
+            if ($process.ExitCode -ne 0) { throw "Animation frames failed: $scenario" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvm-native-glass-snapshots
+          path: native/build/glass
+          if-no-files-found: error
       - name: Package
         shell: pwsh
         run: |

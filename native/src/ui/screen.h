@@ -74,6 +74,9 @@ public:
     virtual std::optional<std::string> ItemAt(double x, double y) const = 0;
     // Pointer: focuses an item with its camera, then selects it, as a click does.
     virtual std::optional<Command> ActivateItem(const std::string& key, double nowMs) = 0;
+    // Pointer: the item a button is held down on, or nothing once it is let go. Only the look changes:
+    // the press still activates on release, through ActivateItem.
+    virtual void SetPressed(const std::optional<std::string>& /*key*/, double /*nowMs*/) {}
     // Pointer: the scroll surface under a point for a given axis.
     virtual std::optional<ScrollSurface> SurfaceAt(double x, double y, nav::Axis axis) const = 0;
     // Moves a surface at once, as a drag does.
