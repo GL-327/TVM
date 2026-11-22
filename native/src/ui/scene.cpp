@@ -1006,8 +1006,10 @@ void Scene::PaintStreamChrome(Painter& painter) const {
                     indicatorStage;
         }
         // A tab that is not selected shows hover as a faint glass of its own, fading in and out.
-        const double hover = emphasis * (1.0 - under);
-        if (hover > 0.01 && (!activeTab_.has_value() || *activeTab_ != i)) {
+        // The selected tab's hover plate gives way to the sliding glass, so its label follows the glass alone.
+        const bool selectedTab = activeTab_.has_value() && *activeTab_ == i;
+        const double hover = selectedTab ? 0.0 : emphasis * (1.0 - under);
+        if (hover > 0.01) {
             Box tabShape = ScaledAbout(box, tokens::reduceMotion ? 1.0 : 1.0 + 0.04 * emphasis - 0.05 * press);
             tabShape.y -= barRise;
             GlassStyle tabGlass;

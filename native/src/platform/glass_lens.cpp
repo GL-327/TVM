@@ -56,7 +56,7 @@ constexpr double kGlow = 0.34;
 constexpr double kGlowWidth = 1.8;
 constexpr double kGlowSaturation = 0.55;
 // Frosted glass: a rough face scatters light into a cone, seen as a blur of the picture behind (PyGlass's frost).
-constexpr float kFrostSigma = 9.0f;
+constexpr float kFrostSigma = 16.0f;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
 // for the first time always measures, so a still frame adapts at once.
 constexpr int kMeasuresPerFrame = 3;

@@ -237,13 +237,13 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         } else if (isLight) {
             // Light glass lifts toward white over dark pictures so dark labels keep their contrast.
             const double lift = cardOrPanel ? 0.55 : 0.12 + 0.26 * (1.0 - bright);
-            FillRoundRect(box, clampedRadius, white(lift + (frosted ? 0.22 : 0.0) + 0.08 * emphasis - 0.05 * press));
+            FillRoundRect(box, clampedRadius, white(lift + (frosted ? 0.30 : 0.0) + 0.08 * emphasis - 0.05 * press));
         } else {
             const double shade = cardOrPanel ? 0.40 : 0.06 + 0.30 * bright;
             FillRoundRect(box, clampedRadius,
                           ui::Rgb(0x05070B, std::clamp(shade + (frosted ? 0.10 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
             // Frosted glass carries a milky veil from light scattered inside it.
-            FillRoundRect(box, clampedRadius, white((frosted ? 0.09 : 0.02) + 0.06 * emphasis - 0.02 * press));
+            FillRoundRect(box, clampedRadius, white((frosted ? 0.15 : 0.02) + 0.06 * emphasis - 0.02 * press));
         }
         if (style.tint.has_value() && !style.activeTab) {
             ui::Color tint = *style.tint;
