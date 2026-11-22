@@ -106,6 +106,8 @@ private:
     void HandleUndecodable(const std::wstring& file);
     // Esc or the remote's Back at Home: ask before closing TVM.
     void ConfirmQuit();
+    // Opens TVM again, then closes this window (Settings > Restart).
+    void RestartApp();
     // Appends frame-time statistics to frame-times.log (TVM_FRAME_LOG=1).
     void WriteFrameLog(std::vector<double> gaps) const;
     void QueueRailArtwork(const std::vector<ui::RailData>& rails);

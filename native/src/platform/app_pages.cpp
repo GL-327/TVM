@@ -538,6 +538,8 @@ void App::ApplyInfoAction(const ui::Command& command) {
             core_->Call("/api/maintenance/clear-cache", "POST");
         } else if (action == "shutdown") {
             PostMessageW(window_, WM_CLOSE, 0, 0);
+        } else if (action == "restart") {
+            RestartApp();
         }
         return;
     }
@@ -637,7 +639,8 @@ void App::EraseLocalData() {
             if (!error.empty()) { pageMessage_ = error; pageMessageBad_ = true; ShowInfoPage(); return; }
             MarkCleanExit();
             wchar_t exe[32768]{}; GetModuleFileNameW(nullptr, exe, 32768);
-            std::wstring commandLine = GetCommandLineW();
+            // The new copy waits for this one to close before it takes over (main.cpp's single-instance lock).
+            std::wstring commandLine = std::wstring(GetCommandLineW()) + L" --restarting";
             STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
             if (CreateProcessW(exe, commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
                 CloseHandle(process.hThread); CloseHandle(process.hProcess);
@@ -1574,6 +1577,21 @@ void App::ShowServiceHub(const hubs::Hub& hub) {
     for (const ui::HeroData& hero : heroes) QueueArtwork(hero.backdropUrl);
     QueueRailArtwork(view.rails);
     dirty_ = true;
+}
+
+void App::RestartApp() {
+    // The same program opens again once this window has closed; it waits for this copy's single-instance lock.
+    wchar_t exe[32768]{};
+    GetModuleFileNameW(nullptr, exe, 32768);
+    std::wstring commandLine = L"\"" + std::wstring(exe) + L"\" --restarting";
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (CreateProcessW(exe, commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+    }
+    PostMessageW(window_, WM_CLOSE, 0, 0);
 }
 
 }  // namespace tvm::platform

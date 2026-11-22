@@ -21,7 +21,9 @@
 #include <objbase.h>
 #include <shellapi.h>
 
+#include <algorithm>
 #include <cstdio>
+#include <cwctype>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -585,6 +587,35 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
 
         tvm::platform::AppOptions options;
         options.dataDir = tvm::paths::ResolveDataDir(tvm::util::ProcessEnvironment()).wstring();
+
+        // One TVM per data folder. Two windows over the same profiles, My List and Core fight over the same files, and
+        // a second launch (a second shortcut, a double click) only brings the open window forward. A restart (Settings,
+        // or after an update) waits for the closing copy to let go instead.
+        const bool restarting = std::find(args.begin(), args.end(), L"--restarting") != args.end();
+        std::wstring lockName = L"Local\\TVM.Native.";
+        for (wchar_t c : options.dataDir) lockName.push_back(c == L'\\' || c == L':' || c == L'/' ? L'_' : static_cast<wchar_t>(towlower(c)));
+        if (lockName.size() > 250) lockName.resize(250);
+        HANDLE instanceLock = CreateMutexW(nullptr, FALSE, lockName.c_str());
+        if (instanceLock != nullptr) {
+            const DWORD waited = WaitForSingleObject(instanceLock, restarting ? 10000 : 0);
+            if (waited == WAIT_TIMEOUT) {
+                if (HWND open = FindWindowW(L"TVM.Native.Window", nullptr)) {
+                    if (IsIconic(open)) ShowWindow(open, SW_RESTORE);
+                    SetForegroundWindow(open);
+                }
+                CloseHandle(instanceLock);
+                return 0;
+            }
+        }
+        struct InstanceLock {
+            HANDLE handle;
+            ~InstanceLock() {
+                if (handle != nullptr) {
+                    ReleaseMutex(handle);
+                    CloseHandle(handle);
+                }
+            }
+        } lock{instanceLock};
         tvm::platform::App app(instance, options);
         return app.Run(showCommand);
     } catch (const std::exception& error) {

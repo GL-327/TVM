@@ -9,7 +9,7 @@ $installed = Join-Path $root 'installed'
 $payload = Join-Path $root 'payload'
 $zipPath = Join-Path $root 'fixture.zip'
 New-Item -ItemType Directory -Path $installed,$payload,(Join-Path $payload 'core') | Out-Null
-'{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' | Set-Content (Join-Path $installed 'native-build.json')
+'{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","builtAt":"2026-01-01T00:00:00.0000000Z"}' | Set-Content (Join-Path $installed 'native-build.json')
 'old executable' | Set-Content (Join-Path $installed 'tvm.exe')
 '{"commit":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}' | Set-Content (Join-Path $payload 'native-build.json')
 'new executable' | Set-Content (Join-Path $payload 'tvm.exe')
@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Path $installed,$payload,(Join-Path $payload 'core
 [IO.Compression.ZipFile]::CreateFromDirectory($payload, $zipPath)
 $global:TvmUpdaterFixtureZip = $zipPath
 $global:TvmUpdaterFixtureAsset = [pscustomobject]@{
-    name='TVM-native-windows.zip'; label=('b' * 40)
+    name='TVM-native-windows.zip'; label=('b' * 40); updated_at='2026-06-01T00:00:00Z'
     digest=('sha256:' + (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant())
     size=(Get-Item $zipPath).Length
     browser_download_url='https://github.com/GL-327/TVM/releases/download/native-windows/TVM-native-windows.zip'
@@ -53,7 +53,13 @@ try {
     $global:TvmUpdaterFixtureAsset.digest = 'sha256:' + (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Expect-Rejection 'Unsafe native update entry'
     Require (-not (Test-Path -LiteralPath (Join-Path $root 'escape.txt'))) 'Archive escaped its stage'
-    Write-Host 'Native updater staging, checksum, URL and traversal checks passed.'
+    # A published build older than this copy is never installed over it (exit 11, nothing staged).
+    $global:TvmUpdaterHelperArgs = $null
+    $global:TvmUpdaterFixtureAsset.updated_at = '2025-12-01T00:00:00Z'
+    & $updater -InstallRoot $installed -ParentId $PID
+    Require ($LASTEXITCODE -eq 11) 'An older published build must not replace a newer copy'
+    Require ($null -eq $global:TvmUpdaterHelperArgs) 'An older build was staged'
+    Write-Host 'Native updater staging, checksum, URL, traversal and no-downgrade checks passed.'
 } finally {
     # All targets are freshly created test directories beneath the temp root.
     $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

@@ -18,6 +18,9 @@ if (-not $Apply) {
     $asset = $release.assets | Where-Object { $_.name -ceq 'TVM-native-windows.zip' } | Select-Object -First 1
     if (-not $asset -or $asset.label -notmatch '^[a-f0-9]{40}$' -or $asset.digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'No verifiable native update is published yet.' }
     if ($installed.commit -ceq $asset.label) { exit 10 }
+    # Only a newer build replaces this copy: a local or unpublished build is never "updated" to an older release.
+    if (-not $installed.builtAt -or -not $asset.updated_at) { exit 11 }
+    if (([DateTime]$asset.updated_at).ToUniversalTime() -le ([DateTime]$installed.builtAt).ToUniversalTime()) { exit 11 }
     if ($asset.browser_download_url -cne 'https://github.com/GL-327/TVM/releases/download/native-windows/TVM-native-windows.zip' -or $asset.size -le 0 -or $asset.size -gt 209715200) { throw 'Unexpected native update asset.' }
     $Stage = Join-Path ([IO.Path]::GetTempPath()) ('tvm-native-update-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $Stage | Out-Null
@@ -89,7 +92,13 @@ try {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
     }
-    Start-Process -FilePath (Join-Path $InstallRoot 'tvm.exe') -WorkingDirectory $InstallRoot
+    # TVM is reopened only when it closed itself for this update (it leaves a marker). If the viewer closed TVM while
+    # the update downloaded, it stays closed and opens updated next time.
+    $relaunch = Join-Path $InstallRoot 'native-update-relaunch'
+    if (Test-Path -LiteralPath $relaunch) {
+        Remove-Item -LiteralPath $relaunch -Force -ErrorAction SilentlyContinue
+        Start-Process -FilePath (Join-Path $InstallRoot 'tvm.exe') -WorkingDirectory $InstallRoot
+    }
 } catch {
     foreach ($relative in $changed) {
         $old = Join-Path $backup $relative
@@ -98,7 +107,12 @@ try {
         elseif (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Force }
     }
     $_ | Out-String | Set-Content -LiteralPath (Join-Path $InstallRoot 'native-update-error.log')
-    Start-Process -FilePath (Join-Path $InstallRoot 'tvm.exe') -WorkingDirectory $InstallRoot
+    # The previous copy is back in place; it is reopened only if TVM closed itself for this update.
+    $relaunch = Join-Path $InstallRoot 'native-update-relaunch'
+    if (Test-Path -LiteralPath $relaunch) {
+        Remove-Item -LiteralPath $relaunch -Force -ErrorAction SilentlyContinue
+        Start-Process -FilePath (Join-Path $InstallRoot 'tvm.exe') -WorkingDirectory $InstallRoot
+    }
     exit 1
 }
 # Retain the backup until the next release in case manual recovery is needed.

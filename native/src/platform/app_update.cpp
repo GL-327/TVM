@@ -31,11 +31,23 @@ void App::InstallNativeUpdate() {
             GetExitCodeProcess(process.hProcess, &result);
             CloseHandle(process.hProcess);
         }
-        background_->PostToUi([this, result] {
+        background_->PostToUi([this, result, root] {
             updatesView_.busy = false;
-            updatesView_.message = result == 0 ? "Update verified. Restarting TVM..." : result == 10 ? "This native build is current." : "Update failed verification or download. This copy is unchanged; try again later.";
+            updatesView_.message = result == 0    ? "Update verified. Restarting TVM..."
+                                   : result == 10 ? "This native build is current."
+                                   : result == 11 ? "This copy is newer than the published build, so it is kept."
+                                                  : "Update failed verification or download. This copy is unchanged; try again later.";
             ShowUpdates();
-            if (result == 0) PostMessageW(window_, WM_CLOSE, 0, 0);
+            if (result == 0) {
+                // TVM closes for the update, so the update opens it again. The marker is the only thing that lets the
+                // installer relaunch TVM: an update that finishes after the viewer closed TVM leaves it closed.
+                try {
+                    util::WriteFileAtomically(root / L"native-update-relaunch", "1");
+                } catch (...) {
+                    // Without the marker TVM is not reopened; it opens updated next time.
+                }
+                PostMessageW(window_, WM_CLOSE, 0, 0);
+            }
         });
     });
 }

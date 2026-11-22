@@ -27,6 +27,7 @@ add_library(tvm_core STATIC
   src/core/core_client.h
   src/core/downloads.cpp
   src/core/downloads.h
+  src/core/update_policy.h
   src/core/util.cpp
   src/core/util.h
   src/core/crypto.cpp

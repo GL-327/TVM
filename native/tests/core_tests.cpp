@@ -20,6 +20,7 @@
 #include "core/paths.h"
 #include "core/prefs.h"
 #include "core/secrets.h"
+#include "core/update_policy.h"
 #include "core/util.h"
 #include "core/vault.h"
 
@@ -171,6 +172,19 @@ TEST(base64_round_trips_every_byte) {
     Bytes all(256);
     for (std::size_t i = 0; i < all.size(); ++i) all[i] = static_cast<std::uint8_t>(i);
     REQUIRE(tvm::util::Base64Decode(tvm::util::Base64Encode(all)) == all);
+}
+
+TEST(an_update_only_ever_replaces_an_older_build) {
+    const std::string a(40, 'a');
+    const std::string b(40, 'b');
+    // A newer published build replaces the installed one.
+    REQUIRE(tvm::update::ShouldInstall(a, "2026-11-22T10:00:00.1234567Z", b, "2026-11-22T14:42:19Z"));
+    // A copy built after the release (a local build, or an unpublished commit) is never replaced by it.
+    REQUIRE(!tvm::update::ShouldInstall(a, "2026-11-22T15:00:00.0000000Z", b, "2026-11-22T14:42:19Z"));
+    // The same build is current, and unknown times or a dev checkout never update.
+    REQUIRE(!tvm::update::ShouldInstall(a, "2026-11-22T10:00:00Z", a, "2026-11-22T14:42:19Z"));
+    REQUIRE(!tvm::update::ShouldInstall(a, "", b, "2026-11-22T14:42:19Z"));
+    REQUIRE(!tvm::update::ShouldInstall("", "2026-11-22T10:00:00Z", b, "2026-11-22T14:42:19Z"));
 }
 
 TEST(ctrl_backspace_erases_the_previous_word) {

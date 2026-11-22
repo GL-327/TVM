@@ -19,6 +19,7 @@
 #include "core/prefs.h"
 #include "core/paths.h"
 #include "core/profiles.h"
+#include "core/update_policy.h"
 #include "core/util.h"
 #include "motion/preferences.h"
 #include "nav/intents.h"
@@ -2155,15 +2156,24 @@ void App::CheckForUpdates() {
         const auto installedPath = std::filesystem::path(executable).parent_path() / L"native-build.json";
         const auto installed = nlohmann::json::parse(util::StripBom(util::ReadTextFile(installedPath).value_or("{}")), nullptr, false);
         const std::string installedCommit = installed.is_object() ? installed.value("commit", std::string()) : std::string();
+        const std::string installedBuiltAt = installed.is_object() ? installed.value("builtAt", std::string()) : std::string();
+        bool olderPublished = false;
         if (release.has_value() && release->ok()) {
             const nlohmann::json body = nlohmann::json::parse(release->body, nullptr, false);
             if (body.is_object() && body.contains("assets") && body["assets"].is_array()) {
                 for (const auto& asset : body["assets"]) {
                     if (asset.value("name", std::string()) != "TVM-native-windows.zip" || !asset.contains("label") || !asset["label"].is_string()) continue;
                     const auto commit = asset["label"].get<std::string>();
+                    const std::string publishedAt = asset.value("updated_at", std::string());
                     if (commit.size() == 40 && commit != installedCommit) {
-                        available = "Build " + commit.substr(0, 7);
-                        updateNeeded = !installedCommit.empty();
+                        // Only a newer build replaces this copy. A copy built here, or from a commit not yet published,
+                        // is never "updated" back to an older release (which closed TVM and reopened an older one).
+                        if (update::ShouldInstall(installedCommit, installedBuiltAt, commit, publishedAt)) {
+                            available = "Build " + commit.substr(0, 7);
+                            updateNeeded = true;
+                        } else {
+                            olderPublished = !installedCommit.empty();
+                        }
                     }
                 }
             }
@@ -2181,7 +2191,7 @@ void App::CheckForUpdates() {
                 changes.push_back(title);
             }
         }
-        background_->PostToUi([this, available, changes, reached, updateNeeded] {
+        background_->PostToUi([this, available, changes, reached, updateNeeded, olderPublished] {
             updatesView_.busy = false;
             SYSTEMTIME now{};
             GetLocalTime(&now);
@@ -2192,6 +2202,7 @@ void App::CheckForUpdates() {
             updatesView_.available = available;
             if (reached) updatesView_.changes = changes;
             updatesView_.message = !reached            ? "Check failed. Confirm this PC can reach GitHub."
+                                   : olderPublished    ? "This copy is newer than the published build, so it is kept."
                                    : available.empty() ? "No newer native package is published. The changes below are the latest."
                                                        : available + " is published. Install it to update this copy.";
             ShowUpdates();
