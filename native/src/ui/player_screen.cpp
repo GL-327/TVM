@@ -23,7 +23,6 @@ constexpr double kToolGapRem = 0.9;        // the transport's and the tools' gap
 constexpr double kButtonRem = 2.8;         // .tvm-button
 constexpr double kPlayWidthRem = 3.0;      // .cinema-chrome__play
 constexpr double kGlyphRem = 1.65;
-constexpr double kButtonRadiusRem = 0.3;
 constexpr double kBackHeightRem = 3.0;
 constexpr double kBackFontRem = 0.8;
 constexpr double kTimelineRem = 1.6;       // .tvm-progress__control min-height
@@ -41,8 +40,14 @@ constexpr double kBottomScrimRem = 13.0;
 constexpr double kTransportPlayRem = 3.6;
 constexpr double kTransportSkipRem = 3.0;
 constexpr double kTransportGapRem = 2.2;
-constexpr double kTransportPlayGlyphRem = 2.9;
-constexpr double kTransportSkipGlyphRem = 2.55;
+constexpr double kTransportPlayGlyphRem = 2.9 * 1.08;
+constexpr double kTransportSkipGlyphRem = 2.55 * 1.08;
+// The transport icons rest a soft white and brighten to full white under the pointer or the remote.
+constexpr Color kTransportInk = Rgb(0xECEEF3, 0.92);
+// The tool pills (subtitles, audio, quality, speed): slim, borderless, a glass pill only under the pointer.
+constexpr double kToolHeightRem = 2.4;
+constexpr double kToolPadRem = 0.9;
+constexpr double kToolFontRem = 0.8;
 // The Android seek bar: a 4 px track (6 px while dragged), a brand gradient for the played part, a 16 px white thumb.
 constexpr double kSeekTrackRem = 0.25;
 constexpr double kSeekTrackDragRem = 0.375;
@@ -70,7 +75,8 @@ constexpr char kExitFullscreenPath[] = "M12 4v8H4m16-8v8h8M12 28v-8H4m16 8v-8h8"
 constexpr char kSpeakerPath[] = "M6 13h4l6-5v16l-6-5H6z";
 constexpr char kWavesPath[] = "M20 12.5a5 5 0 0 1 0 7M23 10a8.5 8.5 0 0 1 0 12";
 constexpr char kMutedPath[] = "m20 12 7 8M27 12l-7 8";
-constexpr double kGlyphStroke = 1.8;
+// Thick, rounded strokes, so the header's and the toolbar's line icons read at a glance.
+constexpr double kGlyphStroke = 2.4;
 // The Android player's transport icons, in a 48 unit square: a rounded play triangle, rounded pause bars, and the
 // ten-second skips as an open arc with its arrowhead and the "10" drawn inside.
 constexpr char kAndroidPlayPath[] =
@@ -124,14 +130,22 @@ constexpr double kHoldPreviewMs = 1200.0;
 // The trickplay thumbnail, 16:9, over the time bubble.
 constexpr double kThumbWidthRem = 11.0;
 
-// The menus, from the cinema chrome's `.player-*__menu`: a dark panel over its button.
-constexpr double kMenuWidthRem = 17.0;
-constexpr double kMenuRowRem = 2.6;
-constexpr double kMenuPadRem = 0.55;
-constexpr double kMenuHeadingRem = 1.6;
-constexpr std::size_t kMenuRowsShown = 9;
+// The menus: a compact dark panel over its button, as wide as its longest row, with a short heading. Long lists
+// scroll inside it.
+constexpr double kMenuMinWidthRem = 13.0;
+constexpr double kMenuMaxWidthRem = 22.0;
+constexpr double kMenuRowRem = 2.25;
+constexpr double kMenuPadRem = 0.4;
+constexpr double kMenuHeadingRem = 1.85;
+constexpr double kMenuRadiusRem = 1.0;
+constexpr std::size_t kMenuRowsMost = 8;
+constexpr std::size_t kMenuRowsLeast = 3;
+constexpr double kMenuSlideMs = 170.0;
+constexpr double kMenuGlowMs = 160.0;
 constexpr Color kMenuFill = Rgb(0x171A20, 0.98);
-constexpr Color kMenuBorder = Rgb(0xFFFFFF, 0x1C / 255.0);
+constexpr Color kMenuSurface = Rgb(0x141720, 0.97);
+constexpr Color kMenuCheck = Rgb(0x3B9CFF);
+constexpr char kCheckPath[] = "M6 16.5l6.5 6.5L26 9.5";
 
 // Next Up, from NextUp.tsx: its card at the right, over the dock.
 constexpr double kNextWidthRem = 26.0;
@@ -319,6 +333,41 @@ std::vector<PlayerOption> PlayerScreen::MenuOptions(const std::string& menu) con
     return {};
 }
 
+std::size_t PlayerScreen::MenuRowsShown(const std::string& menu) const {
+    const std::size_t count = MenuOptions(menu).size();
+    const std::optional<Box> button = BoxOf(menu);
+    std::size_t fits = kMenuRowsMost;
+    if (button.has_value()) {
+        // As many rows as fit between the top of the window and the button, never fewer than three.
+        const double room = button->y - Rem(1.0) - Rem(1.0) - Rem(kMenuHeadingRem) - 2.0 * Rem(kMenuPadRem);
+        fits = static_cast<std::size_t>(std::max(0.0, std::floor(room / Rem(kMenuRowRem))));
+        fits = std::clamp(fits, kMenuRowsLeast, kMenuRowsMost);
+    }
+    return std::min(count, fits);
+}
+
+bool PlayerScreen::ScrollMenu(int rows) {
+    if (!MenuOpen()) return false;
+    const std::size_t count = MenuOptions(menu_).size();
+    const std::size_t shown = MenuRowsShown(menu_);
+    const std::size_t most = count > shown ? count - shown : 0;
+    const long long wanted = std::clamp(static_cast<long long>(menuFirst_) + rows, 0LL, static_cast<long long>(most));
+    if (static_cast<std::size_t>(wanted) == menuFirst_) return false;
+    menuFirst_ = static_cast<std::size_t>(wanted);
+    return true;
+}
+
+void PlayerScreen::MoveMenuHighlight(std::size_t index, bool instant) {
+    const bool reduced = motion::PrefersReducedMotion(motion_) || tokens::reduceMotion;
+    const double from = instant ? static_cast<double>(index) : menuRow_.Value(clockMs_);
+    menuRow_ = motion::Tween(from, static_cast<double>(index), clockMs_, instant || reduced ? 0.0 : kMenuSlideMs,
+                             kMenuEase);
+}
+
+double PlayerScreen::MenuRowTop(const Box& panel) const {
+    return panel.y + Rem(kMenuPadRem) + Rem(kMenuHeadingRem);
+}
+
 std::optional<Box> PlayerScreen::MenuBox() const {
     if (!MenuOpen()) return std::nullopt;
     return MenuBoxFor(menu_);
@@ -328,9 +377,19 @@ std::optional<Box> PlayerScreen::MenuBoxFor(const std::string& menu) const {
     if (menu.empty()) return std::nullopt;
     const std::optional<Box> button = BoxOf(menu);
     if (!button.has_value()) return std::nullopt;
-    const std::size_t rows = std::min(MenuOptions(menu).size(), kMenuRowsShown);
+    const std::vector<PlayerOption> options = MenuOptions(menu);
+    const std::size_t rows = MenuRowsShown(menu);
     const double height = Rem(kMenuPadRem) * 2.0 + Rem(kMenuHeadingRem) + static_cast<double>(rows) * Rem(kMenuRowRem);
-    const double width = std::min(Rem(menu == kQualityKey ? kMenuWidthRem * 1.6 : kMenuWidthRem),
+    // As wide as the longest row (its label, its detail and the tick), from 13 to 22rem. Text is estimated from
+    // its length, so the panel's size does not wait on a painter.
+    double longest = 0.0;
+    for (const PlayerOption& option : options) {
+        double row = static_cast<double>(option.label.size()) * 0.56 * Rem(0.86);
+        if (!option.detail.empty()) row += Rem(1.0) + static_cast<double>(option.detail.size()) * 0.5 * Rem(0.72);
+        longest = std::max(longest, row);
+    }
+    const double fit = longest + Rem(0.85) + Rem(2.4) + 2.0 * Rem(kMenuPadRem);
+    const double width = std::min(std::clamp(fit, Rem(kMenuMinWidthRem), Rem(kMenuMaxWidthRem)),
                                   std::max(1.0, width_ - 2.0 * Rem(kPadXRem)));
     const double x = std::clamp(button->Right() - width, Rem(kPadXRem), width_ - Rem(kPadXRem) - width);
     return Box{x, std::max(0.0, button->y - Rem(1.0) - height), width, height};
@@ -382,12 +441,20 @@ bool PlayerScreen::Tick(double nowMs) {
         hintsLeaveMs_ = nowMs;
     }
     buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
+    // The menu's highlight fades away when the pointer leaves its rows, and back when it or a key returns.
+    const double glow = focusHidden_ ? 0.0 : 1.0;
+    if (glow != menuGlowTarget_) {
+        menuGlowTarget_ = glow;
+        const bool reduced = motion::PrefersReducedMotion(motion_) || tokens::reduceMotion;
+        menuGlow_ = motion::Tween(menuGlow_.Value(nowMs), glow, nowMs, reduced ? 0.0 : kMenuGlowMs, kMenuEase);
+    }
     return Animating();
 }
 
 bool PlayerScreen::Animating() const {
     if (buttonFocus_.Animating(clockMs_)) return true;
     if (!menuShown_.empty() && !menuFade_.Done(clockMs_)) return true;
+    if (MenuOpen() && (!menuRow_.Done(clockMs_) || !menuGlow_.Done(clockMs_))) return true;
     // The spinner turns, and the chrome's timer runs, only while they are on screen.
     if (view_.phase == PlayerView::Phase::Resolving) return true;
     if (view_.phase != PlayerView::Phase::Playing) return false;
@@ -464,6 +531,19 @@ Box PlayerScreen::TrackBox() const {
     return Box{x, y, std::max(0.0, width), Rem(kTimelineRem)};
 }
 
+std::optional<double> PlayerScreen::VolumeAt(double x, double y) const {
+    if (view_.phase != PlayerView::Phase::Playing) return std::nullopt;
+    const Box volume = VolumeTrackBox();
+    // Half a thumb past either end still counts, so silence and full are easy to reach.
+    if (!Contains(Box{volume.x - Rem(0.5), volume.y, volume.width + Rem(1.0), volume.height}, x, y)) return std::nullopt;
+    return VolumeAtX(x);
+}
+
+double PlayerScreen::VolumeAtX(double x) const {
+    const Box volume = VolumeTrackBox();
+    return std::clamp((x - volume.x) / std::max(1.0, volume.width), 0.0, 1.0) * kSliderVolume;
+}
+
 Box PlayerScreen::VolumeTrackBox() const {
     if (CompactViewport(width_, height_)) {
         Box box = CompactControls().at("volume-track");
@@ -533,9 +613,12 @@ std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
     const std::vector<std::string> tools = ToolKeys();
     double right = fullscreen.x - Rem(kToolGapRem);
     for (auto tool = tools.rbegin(); tool != tools.rend(); ++tool) {
-        const double width =
-            std::max(button, static_cast<double>(ToolLabel(*tool).size()) * 0.55 * Rem(0.85) + Rem(1.4));
-        if (key == *tool) return Box{right - width, top, width, button};
+        const double width = std::max(Rem(kToolHeightRem),
+                                      static_cast<double>(ToolLabel(*tool).size()) * 0.55 * Rem(kToolFontRem) +
+                                          2.0 * Rem(kToolPadRem));
+        if (key == *tool) {
+            return Box{right - width, top + (button - Rem(kToolHeightRem)) / 2.0, width, Rem(kToolHeightRem)};
+        }
         right -= width + Rem(kToolGapRem);
     }
 
@@ -842,62 +925,82 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
     const double scale = 0.96 + 0.04 * fade;
     const double panelWidth = resting->width * scale;
     const double panelHeight = resting->height * scale;
-    const std::optional<Box> panel = Box{resting->Right() - panelWidth - (resting->width - panelWidth) / 2.0,
-                                         resting->Bottom() - panelHeight + Rem(0.5) * (1.0 - fade), panelWidth,
-                                         panelHeight};
-    // Study 02 Control Centre spatial glass: a receding ghost glass surface behind the near live panel.
-    if (!tokens::reduceTransparency && panel->x > Rem(2.0)) {
-        GlassStyle ghostGlass;
-        ghostGlass.kind = GlassKind::Panel;
-        ghostGlass.opacity = 0.30 * fade;
-        painter.Glass(Box{panel->x - Rem(0.85), panel->y + Rem(0.55), panel->width, panel->height - Rem(1.1)},
-                      Rem(1.25), ghostGlass);
+    const Box panel{resting->Right() - panelWidth - (resting->width - panelWidth) / 2.0,
+                    resting->Bottom() - panelHeight + Rem(0.5) * (1.0 - fade), panelWidth, panelHeight};
+    const double radius = Rem(kMenuRadiusRem);
+    // A compact dark panel on a soft shadow, with a hairline edge so it reads over a dark picture.
+    for (int layer = 3; layer >= 1; --layer) {
+        const double spread = Rem(0.22) * layer;
+        painter.FillRoundRect(Box{panel.x - spread, panel.y - spread + Rem(0.35), panel.width + 2.0 * spread,
+                                  panel.height + 2.0 * spread},
+                              radius + spread, Rgb(0x000000, 0.10 * fade));
     }
-    GlassStyle panelGlass;
-    panelGlass.kind = GlassKind::Panel;
-    panelGlass.opacity = fade;
-    panelGlass.reduceTransparency = tokens::reduceTransparency;
-    painter.Glass(*panel, Rem(1.35), panelGlass);
+    painter.FillRoundRect(panel, radius, faded(kMenuSurface));
+    painter.StrokeRoundRect(panel, radius, 1.0, faded(Rgb(0xFFFFFF, 0.08)));
 
     const std::string heading = menu == kSubtitlesKey ? "Subtitles"
                                 : menu == kAudioKey   ? "Audio"
                                 : menu == kQualityKey ? "Quality"
                                                       : "Playback speed";
-    const double x = panel->x + Rem(kMenuPadRem);
-    const double width = panel->width - 2.0 * Rem(kMenuPadRem);
-    painter.Text(Box{x + Rem(0.4), panel->y + Rem(kMenuPadRem), width, Rem(kMenuHeadingRem)}, heading,
-                 TextStyle{Rem(0.75), true, 650}, faded(Rgb(0xFFFFFF, 0.72)));
+    const double x = panel.x + Rem(kMenuPadRem);
+    const double width = panel.width - 2.0 * Rem(kMenuPadRem);
+    painter.Text(Box{x + Rem(0.85), panel.y + Rem(kMenuPadRem), width, Rem(kMenuHeadingRem)}, heading,
+                 TextStyle{Rem(0.72), true, 700}, faded(Rgb(0xFFFFFF, 0.55)));
 
-    // The rows scroll so the focused one is in the panel.
     const std::vector<PlayerOption> options = MenuOptions(menu);
-    const std::size_t first = menuIndex_ >= kMenuRowsShown ? menuIndex_ - kMenuRowsShown + 1 : 0;
-    for (std::size_t i = first; i < options.size() && i < first + kMenuRowsShown; ++i) {
+    const std::size_t shown = std::min(MenuRowsShown(menu), options.size());
+    const double top = MenuRowTop(panel);
+    const double rowHeight = Rem(kMenuRowRem);
+    const Box rows{x, top, width, static_cast<double>(shown) * rowHeight};
+    painter.PushClip(rows);
+    // The highlight: the glass pill, sliding between rows and fading when the pointer leaves them.
+    const double glow = std::clamp(menuGlow_.Value(clockMs_), 0.0, 1.0);
+    if (glow > 0.01 && menu == menu_) {
+        const double at = menuRow_.Value(clockMs_) - static_cast<double>(menuFirst_);
+        const Box pill{x, top + at * rowHeight + Rem(0.08), width, rowHeight - Rem(0.16)};
+        GlassStyle rowGlass;
+        rowGlass.kind = GlassKind::Pill;
+        rowGlass.focused = true;
+        rowGlass.focusAmount = glow;
+        rowGlass.opacity = fade * glow;
+        rowGlass.reduceTransparency = tokens::reduceTransparency;
+        painter.Glass(pill, pill.height / 2.0, rowGlass);
+    }
+    const double tick = Rem(1.05);
+    for (std::size_t i = menuFirst_; i < options.size() && i < menuFirst_ + shown; ++i) {
         const PlayerOption& option = options[i];
-        const Box row{x, panel->y + Rem(kMenuPadRem) + Rem(kMenuHeadingRem) + static_cast<double>(i - first) * Rem(kMenuRowRem),
-                      width, Rem(kMenuRowRem)};
-        if (i == menuIndex_) {
-            GlassStyle rowGlass;
-            rowGlass.kind = GlassKind::Pill;
-            rowGlass.focused = true;
-            rowGlass.focusAmount = 1.0;
-            rowGlass.opacity = fade;
-            rowGlass.reduceTransparency = tokens::reduceTransparency;
-            painter.Glass(row, row.height / 2.0, rowGlass);
-        }
-        const TextStyle labelStyle{Rem(0.85), true, option.selected ? 700 : 550};
-        const double labelWidth = painter.MeasureText(option.label, labelStyle);
-        painter.Text(Box{row.x + Rem(0.8), row.y, labelWidth + 2.0, row.height}, option.label, labelStyle,
-                     faded(option.selected ? kFill : kInk));
+        const Box row{x, top + static_cast<double>(i - menuFirst_) * rowHeight, width, rowHeight};
+        const TextStyle labelStyle{Rem(0.86), true, option.selected ? 650 : 500};
+        const double labelLeft = row.x + Rem(0.85);
+        const double textRight = row.Right() - Rem(0.7) - tick - Rem(0.5);
+        const double labelWidth = std::min(painter.MeasureText(option.label, labelStyle), textRight - labelLeft);
+        painter.Text(Box{labelLeft, row.y, labelWidth + 2.0, row.height}, option.label, labelStyle,
+                     faded(option.selected ? Rgb(0xFFFFFF) : Rgb(0xFFFFFF, 0.86)));
         if (!option.detail.empty()) {
-            painter.Text(Box{row.x + Rem(1.4) + labelWidth, row.y, row.width - labelWidth - Rem(4.0), row.height},
-                         option.detail, TextStyle{Rem(0.72), false, 450}, faded(kInkMuted));
+            // The detail sits after the label, muted, and gives way to it when space is short.
+            const TextStyle detailStyle{Rem(0.72), false, 450};
+            const double detailLeft = labelLeft + labelWidth + Rem(0.7);
+            if (textRight - detailLeft > Rem(1.5)) {
+                painter.Text(Box{detailLeft, row.y, textRight - detailLeft, row.height}, option.detail, detailStyle,
+                             faded(Rgb(0xFFFFFF, 0.5)));
+            }
         }
-        // The chosen row carries a tick at its end.
+        // The chosen row carries a blue tick at its end.
         if (option.selected) {
-            const double tick = Rem(1.0);
-            painter.Path(Box{row.Right() - Rem(0.8) - tick, row.CenterY() - tick / 2.0, tick, tick}, 32.0,
-                         "M6 17l7 7 13-15", PathStyle{Color{0, 0, 0, 0}, faded(kFill), 3.0, false});
+            painter.Path(Box{row.Right() - Rem(0.7) - tick, row.CenterY() - tick / 2.0, tick, tick}, 32.0, kCheckPath,
+                         PathStyle{Color{0, 0, 0, 0}, faded(kMenuCheck), 3.2, false});
         }
+    }
+    painter.PopClip();
+    // A long list shows a slim scroll bar at its right edge.
+    if (options.size() > shown && shown > 0) {
+        const double trackHeight = rows.height - Rem(0.4);
+        const double thumbHeight = std::max(Rem(1.2), trackHeight * static_cast<double>(shown) /
+                                                           static_cast<double>(options.size()));
+        const double share = static_cast<double>(menuFirst_) / static_cast<double>(options.size() - shown);
+        const Box thumb{panel.Right() - Rem(0.32), rows.y + Rem(0.2) + (trackHeight - thumbHeight) * share, Rem(0.16),
+                        thumbHeight};
+        painter.FillRoundRect(thumb, thumb.width / 2.0, faded(Rgb(0xFFFFFF, 0.28)));
     }
 }
 
@@ -988,10 +1091,14 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const auto button = [&](const char* key) {
         const Box box = *BoxOf(key);
         const double amount = lit(key);
-        if (amount > 0.01) {
-            const bool round = std::string_view(key) == kPlayKey || std::string_view(key) == kRewindKey ||
-                               std::string_view(key) == kForwardKey || std::string_view(key) == kMuteKey ||
-                               std::string_view(key) == kFullscreenKey || std::string_view(key) == kDownloadKey;
+        const std::string_view name(key);
+        // The transport is icon only: its hover brightens and grows the icon, with no disc behind it. The tools draw
+        // their own glass pill.
+        const bool iconOnly = name == kPlayKey || name == kRewindKey || name == kForwardKey;
+        const std::vector<std::string> tools = ToolKeys();
+        const bool tool = std::find(tools.begin(), tools.end(), std::string(name)) != tools.end();
+        if (amount > 0.01 && !iconOnly && !tool) {
+            const bool round = name == kMuteKey || name == kFullscreenKey || name == kDownloadKey;
             const double radius = round ? std::min(box.width, box.height) / 2.0 : Rem(0.8);
             painter.FillRoundRect(box, radius, Rgb(0xFFFFFF, 0.14 * amount * opacity));
         }
@@ -1027,7 +1134,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         const double mark = Rem(1.0);
         const Box glyph{save.x + Rem(0.6), save.CenterY() - mark / 2.0, mark, mark};
         painter.Path(glyph, 32.0, kBookmarkPath,
-                     PathStyle{view_.saved ? ink : Color{0, 0, 0, 0}, ink, 2.0, false});
+                     PathStyle{view_.saved ? ink : Color{0, 0, 0, 0}, ink, kGlyphStroke, false});
         painter.Text(Box{glyph.Right() + Rem(0.45), save.y, save.width, save.height}, view_.saved ? "Remove" : "Add",
                      TextStyle{Rem(0.75), true, 650}, ink);
     }
@@ -1078,23 +1185,31 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     // The transport, centred on the window: back ten, play or pause, forward ten. White icons with a soft shadow,
     // as on Android; hover or focus grows the icon a touch.
     const PathStyle shade{Rgb(0x000000, 0.35 * opacity), Color{0, 0, 0, 0}, 0.0, false};
+    const auto transportInk = [&](double amount) {
+        const double t = std::clamp(amount, 0.0, 1.0);
+        Color color{kTransportInk.r + (1.0 - kTransportInk.r) * t, kTransportInk.g + (1.0 - kTransportInk.g) * t,
+                    kTransportInk.b + (1.0 - kTransportInk.b) * t, kTransportInk.a + (1.0 - kTransportInk.a) * t};
+        return WithAlpha(color, color.a * opacity);
+    };
     const Box play = button(kPlayKey);
     {
-        const double grow = 1.0 + 0.06 * lit(kPlayKey);
+        const double amount = lit(kPlayKey);
+        const double grow = 1.0 + 0.04 * amount;
         const Box glyph = GlyphBox(play, Rem(kTransportPlayGlyphRem) * grow);
         const char* path = view_.paused ? kAndroidPlayPath : kAndroidPausePath;
         painter.Path(Box{glyph.x, glyph.y + 1.5, glyph.width, glyph.height}, 48.0, path, shade);
-        painter.Path(glyph, 48.0, path, PathStyle{ink, Color{0, 0, 0, 0}, 0.0, false});
+        painter.Path(glyph, 48.0, path, PathStyle{transportInk(amount), Color{0, 0, 0, 0}, 0.0, false});
     }
     if (!view_.live) {
         for (const char* key : {kRewindKey, kForwardKey}) {
             const Box box = button(key);
-            const double grow = 1.0 + 0.06 * lit(key);
+            const double amount = lit(key);
+            const double grow = 1.0 + 0.04 * amount;
             const Box glyph = GlyphBox(box, Rem(kTransportSkipGlyphRem) * grow);
             const bool forward = std::string_view(key) == kForwardKey;
             const char* arc = forward ? kAndroidForwardArcPath : kAndroidBackArcPath;
             const PathStyle shadowLine{Color{0, 0, 0, 0}, Rgb(0x000000, 0.35 * opacity), kAndroidStroke, false};
-            const PathStyle whiteLine{Color{0, 0, 0, 0}, ink, kAndroidStroke, false};
+            const PathStyle whiteLine{Color{0, 0, 0, 0}, transportInk(amount), kAndroidStroke, false};
             const Box shadowBox{glyph.x, glyph.y + 1.5, glyph.width, glyph.height};
             painter.Path(shadowBox, 48.0, arc, shadowLine);
             painter.Path(shadowBox, 48.0, kAndroidTenPath, shadowLine);
@@ -1103,25 +1218,27 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         }
     }
 
-    // The sound: the speaker, which mutes, then its bar and its level, which runs to 400%.
+    // The sound: the speaker, which mutes, then its bar from silence to 100% with a thumb on the level. A boost past
+    // 100% shows the bar full and its percentage in blue.
     const Box mute = button(kMuteKey);
     const Box speaker = GlyphBox(mute, Rem(kGlyphRem));
     const bool silent = view_.muted || view_.volume <= 0.0;
     painter.Path(speaker, 32.0, kSpeakerPath, line);
     painter.Path(speaker, 32.0, silent ? kMutedPath : kWavesPath, line);
     const Box volumeTrack = VolumeTrackBox();
-    const double volumeHeight = Rem(kVolumeTrackHeightRem);
+    const double volumeHeight = Rem(volumeDragging_ ? 0.3 : 0.22);
     const Box volumeBar{volumeTrack.x, volumeTrack.CenterY() - volumeHeight / 2.0, volumeTrack.width, volumeHeight};
-    painter.FillRoundRect(volumeBar, volumeHeight / 2.0, WithAlpha(kTrack, opacity));
-    const double level = silent ? 0.0 : std::clamp(view_.volume / kMaxVolume, 0.0, 1.0);
+    painter.FillRoundRect(volumeBar, volumeHeight / 2.0, Rgb(0xFFFFFF, 0.24 * opacity));
+    const double level = silent ? 0.0 : std::clamp(view_.volume / kSliderVolume, 0.0, 1.0);
     if (level > 0.0) {
         painter.FillRoundRect(Box{volumeBar.x, volumeBar.y, volumeBar.width * level, volumeBar.height},
                               volumeHeight / 2.0, ink);
     }
-    // The mark at 100%, so the boost past it reads at a glance.
-    painter.FillRoundRect(Box{volumeBar.x + volumeBar.width / kMaxVolume - 0.5, volumeBar.y - Rem(0.12), 1.0,
-                              volumeBar.height + Rem(0.24)},
-                          0.0, WithAlpha(kInkMuted, opacity));
+    const double knob = Rem(volumeDragging_ ? 0.95 : 0.75);
+    const double knobX = volumeBar.x + volumeBar.width * level;
+    painter.FillRoundRect(Box{knobX - knob / 2.0, volumeBar.CenterY() - knob / 2.0 + 1.0, knob, knob}, knob / 2.0,
+                          Rgb(0x000000, 0.3 * opacity));
+    painter.FillRoundRect(Box{knobX - knob / 2.0, volumeBar.CenterY() - knob / 2.0, knob, knob}, knob / 2.0, ink);
     const std::string percent = silent ? "Muted" : Fixed(std::round(view_.volume * 100.0), "%.0f%%");
     painter.Text(Box{volumeTrack.Right() + Rem(0.55), volumeTrack.y, Rem(4.0), volumeTrack.height}, percent,
                  TextStyle{Rem(0.72), true, 600}, view_.volume > 1.0 && !silent ? WithAlpha(kFill, opacity) : ink);
@@ -1129,12 +1246,22 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     // The tools: subtitles, audio, quality and speed, each a word that opens its menu.
     for (const std::string& tool : ToolKeys()) {
         const Box box = button(tool.c_str());
-        if (menu_ == tool) painter.FillRoundRect(box, Rem(kButtonRadiusRem), WithAlpha(kHover, opacity));
+        // The existing glass pill comes up under the pointer or the remote, and stays while its menu is open.
+        const double amount = std::max(lit(tool.c_str()), menu_ == tool ? 1.0 : 0.0);
+        if (amount > 0.01) {
+            GlassStyle toolGlass;
+            toolGlass.kind = GlassKind::Pill;
+            toolGlass.focused = true;
+            toolGlass.focusAmount = amount;
+            toolGlass.opacity = amount * opacity;
+            toolGlass.reduceTransparency = tokens::reduceTransparency;
+            painter.Glass(box, box.height / 2.0, toolGlass);
+        }
         // Subtitles read faint while they are off.
         const bool off = tool == kSubtitlesKey &&
                          std::none_of(view_.subtitles.begin(), view_.subtitles.end(),
                                       [](const PlayerOption& option) { return option.selected && option.id != "no"; });
-        CenteredText(painter, box, ToolLabel(tool), TextStyle{Rem(0.85), true, 700},
+        CenteredText(painter, box, ToolLabel(tool), TextStyle{Rem(kToolFontRem), true, 650},
                      off ? WithAlpha(kInkMuted, opacity) : ink);
     }
 
@@ -1183,8 +1310,14 @@ bool PlayerScreen::Navigate(nav::Direction direction, double nowMs) {
     if (MenuOpen()) {
         // An open menu holds the remote: up and down move along its rows.
         const std::size_t count = MenuOptions(menu_).size();
+        const std::size_t before = menuIndex_;
         if (direction == nav::Direction::Up && menuIndex_ > 0) --menuIndex_;
         if (direction == nav::Direction::Down && menuIndex_ + 1 < count) ++menuIndex_;
+        // The list scrolls only as far as keeps the row in view.
+        const std::size_t shown = std::max<std::size_t>(1, MenuRowsShown(menu_));
+        if (menuIndex_ < menuFirst_) menuFirst_ = menuIndex_;
+        if (menuIndex_ >= menuFirst_ + shown) menuFirst_ = menuIndex_ + 1 - shown;
+        if (menuIndex_ != before) MoveMenuHighlight(menuIndex_, false);
         return true;
     }
     const std::vector<std::string> items = Items();
@@ -1225,6 +1358,7 @@ bool PlayerScreen::FocusItem(const std::string& key, double nowMs, bool withCame
         const std::size_t index = std::stoul(key.substr(sizeof(kMenuPrefix) - 1));
         if (index == menuIndex_) return false;
         menuIndex_ = index;
+        MoveMenuHighlight(menuIndex_, false);
         ShowChrome(nowMs);
         return true;
     }
@@ -1247,11 +1381,11 @@ std::optional<std::string> PlayerScreen::ItemAt(double x, double y) const {
     if (const std::optional<Box> panel = MenuBox()) {
         // The open menu's rows come first, as the panel sits over everything else.
         const std::size_t count = MenuOptions(menu_).size();
-        const std::size_t first = menuIndex_ >= kMenuRowsShown ? menuIndex_ - kMenuRowsShown + 1 : 0;
-        const double top = panel->y + Rem(kMenuPadRem) + Rem(kMenuHeadingRem);
+        const std::size_t shown = MenuRowsShown(menu_);
+        const double top = MenuRowTop(*panel);
         if (Contains(*panel, x, y)) {
-            if (y < top) return std::nullopt;
-            const auto row = first + static_cast<std::size_t>((y - top) / Rem(kMenuRowRem));
+            if (y < top || y >= top + static_cast<double>(shown) * Rem(kMenuRowRem)) return std::nullopt;
+            const auto row = menuFirst_ + static_cast<std::size_t>((y - top) / Rem(kMenuRowRem));
             if (row < count) return kMenuPrefix + std::to_string(row);
             return std::nullopt;
         }
@@ -1262,10 +1396,7 @@ std::optional<std::string> PlayerScreen::ItemAt(double x, double y) const {
     }
     if (view_.phase != PlayerView::Phase::Playing) return std::nullopt;
     // A click along a bar sets it. The key carries the share clicked.
-    const Box volume = VolumeTrackBox();
-    if (Contains(Box{volume.x - Rem(0.2), volume.y, volume.width + Rem(0.4), volume.height}, x, y)) {
-        return "volume:" + Fixed(std::clamp((x - volume.x) / volume.width, 0.0, 1.0), "%.4f");
-    }
+    if (const std::optional<double> level = VolumeAt(x, y)) return "volume:" + Fixed(*level, "%.4f");
     const Box track = TrackBox();
     if (!view_.live && Contains(track, x, y)) {
         return "seek:" + Fixed(std::clamp((x - track.x) / std::max(1.0, track.width), 0.0, 1.0), "%.4f");
@@ -1286,7 +1417,7 @@ std::optional<Command> PlayerScreen::ActivateItem(const std::string& key, double
     }
     if (key.rfind("volume:", 0) == 0) {
         Command command = Action("player-volume");
-        command.params["level"] = Fixed(std::stod(key.substr(7)) * kMaxVolume, "%.3f");
+        command.params["level"] = Fixed(std::stod(key.substr(7)), "%.3f");
         return command;
     }
     const std::vector<std::string> items = Items();
@@ -1325,6 +1456,11 @@ std::optional<Command> PlayerScreen::Activate(const std::string& key) {
         const std::vector<PlayerOption> options = MenuOptions(key);
         const auto chosen = std::find_if(options.begin(), options.end(), [](const PlayerOption& o) { return o.selected; });
         menuIndex_ = chosen == options.end() ? 0 : static_cast<std::size_t>(chosen - options.begin());
+        // The list opens with the chosen row in view, near its middle when the list is long.
+        const std::size_t shown = MenuRowsShown(key);
+        const std::size_t most = options.size() > shown ? options.size() - shown : 0;
+        menuFirst_ = std::min(menuIndex_ > shown / 2 ? menuIndex_ - shown / 2 : 0, most);
+        MoveMenuHighlight(menuIndex_, true);
         return std::nullopt;
     }
     if (key == kDownloadKey) {

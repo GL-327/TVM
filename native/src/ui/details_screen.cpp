@@ -120,7 +120,6 @@ std::vector<std::string> DetailsScreen::ActionKeys() const {
     if (HasListButton()) keys.push_back(kListKey);
     // Downloads takes the catalogue's id, so it also waits for the record, as the list button does.
     if (HasListButton()) keys.push_back(kDownloadKey);
-    keys.push_back(kBackKey);
     return keys;
 }
 
@@ -142,6 +141,11 @@ double DetailsScreen::MaxScroll() const {
 }
 
 std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
+    // Back is a bare arrow fixed at the top left, over the backdrop, with a hit area of at least 44 px.
+    if (key == kBackKey) {
+        const double side = std::max(44.0, Rem(3.0));
+        return Box{Rem(1.4), Rem(1.4), side, side};
+    }
     const double x = Rem(kSafeXRem);
     const double heroBottom = HeroHeight() - scroll_ - Rem(kHeroPadBottomRem);
     const bool compact = CompactViewport(width_, height_);
@@ -218,6 +222,29 @@ bool DetailsScreen::Animating() const {
 }
 
 void DetailsScreen::Paint(Painter& painter) const {
+    PaintPage(painter);
+    PaintBack(painter);
+}
+
+void DetailsScreen::PaintBack(Painter& painter) const {
+    // A minimal arrow: no pill and no word, a thick rounded stroke on a soft shadow so it reads over any backdrop.
+    // The pointer or the remote brightens it a touch; the remote also shows the focus ring around it.
+    const Box box = *BoxOf(kBackKey);
+    const double amount = buttonFocus_.Amount(kBackKey, clockMs_);
+    const double glyph = Rem(1.75) * (1.0 + 0.06 * amount);
+    const Box arrow{box.CenterX() - glyph / 2.0, box.CenterY() - glyph / 2.0, glyph, glyph};
+    painter.Path(Box{arrow.x, arrow.y + 1.5, arrow.width, arrow.height}, 24.0, "M15 5l-7 7 7 7",
+                 PathStyle{Color{0, 0, 0, 0}, Rgb(0x000000, 0.45), 2.4, false});
+    Color ink = tokens::kText;
+    ink.a = 0.86 + 0.14 * amount;
+    painter.Path(arrow, 24.0, "M15 5l-7 7 7 7", PathStyle{Color{0, 0, 0, 0}, ink, 2.4, false});
+    if (ShowsFocus(focused_, kBackKey)) {
+        const double ring = Rem(kFocusRingWidthRem);
+        painter.StrokeRoundRect(box, box.width / 2.0, ring, tokens::kFocusRing);
+    }
+}
+
+void DetailsScreen::PaintPage(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
     const Color background = tokens::kBackground;
     painter.Clear(background);
@@ -275,8 +302,7 @@ void DetailsScreen::Paint(Painter& painter) const {
     for (const std::string& key : ActionKeys()) {
         const std::string label = key == kPlayKey   ? "Play"
                                   : key == kListKey ? (info_.saved ? "Remove from My List" : "Add to My List")
-                                  : key == kDownloadKey ? "Download"
-                                                    : "Back";
+                                                    : "Download";
         DrawButton(painter, metrics, *BoxOf(key), label,
                    ButtonLook{key == kPlayKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)});
     }
@@ -405,7 +431,13 @@ bool DetailsScreen::Navigate(nav::Direction direction, double nowMs) {
         return false;
     };
 
+    if (focused_ == kBackKey) {
+        // From the arrow, Down or Right returns to the buttons.
+        if (direction == nav::Direction::Down || direction == nav::Direction::Right) return move(actions.front());
+        return false;
+    }
     if (std::find(actions.begin(), actions.end(), focused_) != actions.end()) {
+        if (direction == nav::Direction::Up) return move(kBackKey);
         if (direction == nav::Direction::Down && !seasons.empty()) return move(kSeasonPrefix + std::to_string(season_));
         return along(actions);
     }
@@ -442,7 +474,9 @@ bool DetailsScreen::FocusItem(const std::string& key, double /*nowMs*/, bool /*w
 }
 
 std::optional<std::string> DetailsScreen::ItemAt(double x, double y) const {
-    std::vector<std::string> keys = ActionKeys();
+    // The arrow sits over the page, so it is found first.
+    std::vector<std::string> keys = {kBackKey};
+    for (const std::string& key : ActionKeys()) keys.push_back(key);
     for (const std::string& key : SeasonKeys()) keys.push_back(key);
     for (std::size_t i = 0; i < Episodes().size(); ++i) keys.push_back(kEpisodePrefix + std::to_string(i));
     for (const std::string& key : keys) {

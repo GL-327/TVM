@@ -144,6 +144,31 @@ int StreamHeight(const std::string& label) {
     return 1080;
 }
 
+std::string StreamTags(const std::string& text) {
+    std::vector<std::string> tags;
+    if (Matches(text, R"(\bremux\b)")) tags.push_back("Remux");
+    else if (Matches(text, R"(\bblu-?ray\b|\bbdrip\b|\bbrrip\b)")) tags.push_back("BluRay");
+    else if (Matches(text, R"(\bweb-?dl\b)")) tags.push_back("WEB-DL");
+    else if (Matches(text, R"(\bweb-?rip\b|\bweb\b)")) tags.push_back("WEB");
+    else if (Matches(text, R"(\bhdtv\b)")) tags.push_back("HDTV");
+    else if (Matches(text, R"(\bdvd(rip)?\b)")) tags.push_back("DVD");
+    if (Matches(text, R"(\bdolby.?vision\b|\bdv\b|\bdovi\b)")) tags.push_back("Dolby Vision");
+    else if (Matches(text, R"(\bhdr10\+|\bhdr10plus\b)")) tags.push_back("HDR10+");
+    else if (Matches(text, R"(\bhdr(10)?\b)")) tags.push_back("HDR");
+    std::smatch size;
+    static const std::regex kSize(R"((\d+(?:[.,]\d+)?)\s*(GB|MB|TB)\b)", std::regex::ECMAScript | std::regex::icase);
+    if (std::regex_search(text, size, kSize)) {
+        std::string unit = size[2].str();
+        for (char& c : unit) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        std::string number = size[1].str();
+        std::replace(number.begin(), number.end(), ',', '.');
+        tags.push_back(number + " " + unit);
+    }
+    std::string joined;
+    for (const std::string& tag : tags) joined += (joined.empty() ? "" : " \xC2\xB7 ") + tag;
+    return joined;
+}
+
 std::vector<DebridStream> RankDebridStreams(std::vector<DebridStream> streams) {
     // A cached low resolution file should not win over a 4K source the viewer chose, so
     // the cache only breaks ties at one resolution. The sort is stable, as JavaScript's is.
@@ -436,8 +461,10 @@ Resolution Resolver::PlayFromTorrentio(PlayId id, const ResolveInput& input) con
         StreamChoice choice;
         choice.height = height;
         choice.cached = stream.cached;
-        choice.label = (height >= 2160 ? std::string("4K") : std::to_string(height) + "p") + (stream.cached ? "" : " \xC2\xB7 not cached");
-        choice.detail = stream.title;
+        // The menu reads "1080p" then a few words on the release, never Torrentio's raw name.
+        choice.label = height >= 2160 ? std::string("4K") : std::to_string(height) + "p";
+        choice.detail = StreamTags(stream.description.empty() ? stream.title : stream.description);
+        if (!stream.cached) choice.detail += (choice.detail.empty() ? "" : " \xC2\xB7 ") + std::string("Not cached");
         choice.url = stream.url;
         choiceOf[i] = choices.size();
         choices.push_back(std::move(choice));

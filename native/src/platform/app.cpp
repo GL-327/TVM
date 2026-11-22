@@ -635,6 +635,15 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_MOUSEHWHEEL:
         if (!FromTouchOrPen() && HandleMouse(message, wParam, lParam)) return 0;
         break;
+    case WM_CAPTURECHANGED:
+        // Another window took the mouse mid-drag (Alt+Tab, a dialog): the volume drag ends where it was.
+        if (volumeDragging_ && reinterpret_cast<HWND>(lParam) != window_) {
+            volumeDragging_ = false;
+            if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->SetVolumeDragging(false);
+            SaveAudio();
+            dirty_ = true;
+        }
+        break;
     case WM_POINTERDOWN:
     case WM_POINTERUPDATE:
     case WM_POINTERUP:
@@ -788,6 +797,15 @@ bool App::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam) {
         if (player != nullptr && player->view().phase == ui::PlayerView::Phase::Playing) {
             player->ShowChrome(now);
             const double notches = static_cast<double>(GET_WHEEL_DELTA_WPARAM(wParam)) / kWheelUnitsPerNotch;
+            // Over an open menu the wheel scrolls its rows instead of setting the sound.
+            POINT over{SignedLow(lParam), SignedHigh(lParam)};
+            ScreenToClient(window_, &over);
+            if (const std::optional<ui::Box> menu = player->MenuBox();
+                menu.has_value() && message == WM_MOUSEWHEEL && over.x >= menu->x && over.x <= menu->Right() &&
+                over.y >= menu->y && over.y <= menu->Bottom()) {
+                if (player->ScrollMenu(notches > 0.0 ? -1 : 1)) dirty_ = true;
+                return true;
+            }
             ChangeVolume(0.05 * notches);
             return true;
         }
@@ -2625,13 +2643,11 @@ void App::OnPlayerState(const mpv::State& state) {
     for (const mpv::Track& track : state.tracks) {
         if (track.type == "sub") {
             playerView_.subtitles.push_back(
-                ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), track.codec, track.selected});
+                ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), "", track.selected});
             subtitleOn = subtitleOn || track.selected;
         } else if (track.type == "audio") {
-            std::string detail = track.codec;
-            if (track.channels > 0) detail += (detail.empty() ? "" : " \xC2\xB7 ") + std::to_string(track.channels) + "ch";
             playerView_.audios.push_back(
-                ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), detail, track.selected});
+                ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), mpv::AudioDetail(track), track.selected});
         } else if (track.type == "video" && track.selected && track.height > 0) {
             playerView_.qualityLabel = track.height >= 2000 ? "4K" : std::to_string(track.height) + "p";
         }
@@ -2722,7 +2738,7 @@ void App::ChangeVolume(double delta) {
     SetVolume(playerVolume_ + delta);
 }
 
-void App::SetVolume(double level) {
+void App::SetVolume(double level, bool save) {
     // Steps land on whole percents, so ten presses up from 100% read 200%, not 199.99%.
     playerVolume_ = std::clamp(std::round(level * 100.0) / 100.0, 0.0, ui::kMaxVolume);
     if (playerVolume_ > 0.0) playerMuted_ = false;
@@ -2730,7 +2746,7 @@ void App::SetVolume(double level) {
     playerView_.volume = playerVolume_;
     playerView_.muted = playerMuted_;
     shell_->SetPlayerView(playerView_, NowMs());
-    SaveAudio();
+    if (save) SaveAudio();
     dirty_ = true;
 }
 
@@ -2804,6 +2820,12 @@ void App::ApplyPlayerAction(const ui::Command& command) {
             mpv_->SeekTo(playerView_.position);
         }
     } else if (command.name == "player-mute") {
+        // Unmuting a silent player brings the sound back at half volume rather than to silence.
+        if (playerMuted_ && playerVolume_ <= 0.0) {
+            playerMuted_ = false;
+            SetVolume(0.5);
+            return;
+        }
         playerMuted_ = !playerMuted_;
         mpv_->SetAudio(playerVolume_, playerMuted_);
         playerView_.muted = playerMuted_;
@@ -3020,7 +3042,40 @@ void App::PlayNextEpisode() {
 
 bool App::HandleScrub(UINT message, POINT point) {
     ui::PlayerScreen* player = shell_->ActivePlayer();
-    if (player == nullptr || player->view().phase != ui::PlayerView::Phase::Playing || player->view().live) return false;
+    if (player == nullptr || player->view().phase != ui::PlayerView::Phase::Playing) return false;
+    // The volume bar: a press sets the level at once, a drag holds the mouse and follows it, and the release lets go.
+    // Every step reaches mpv straight away.
+    switch (message) {
+    case WM_LBUTTONDOWN:
+        if (!player->MenuOpen()) {
+            if (const std::optional<double> level = player->VolumeAt(point.x, point.y)) {
+                volumeDragging_ = true;
+                SetCapture(window_);
+                player->SetVolumeDragging(true);
+                SetVolume(*level, false);
+                return true;
+            }
+        }
+        break;
+    case WM_MOUSEMOVE:
+        if (volumeDragging_) {
+            SetVolume(player->VolumeAtX(point.x), false);
+            return true;
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (volumeDragging_) {
+            volumeDragging_ = false;
+            player->SetVolumeDragging(false);
+            ReleaseCapture();
+            SetVolume(player->VolumeAtX(point.x));
+            return true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (player->view().live) return false;
     const ui::Box track = player->TrackBox();
     const bool onTrack = point.x >= track.x && point.x < track.Right() && point.y >= track.y && point.y < track.Bottom();
     switch (message) {

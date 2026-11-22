@@ -54,6 +54,8 @@ public:
     double Scroll() const { return scroll_; }
 
 private:
+    void PaintPage(Painter& painter) const;
+    void PaintBack(Painter& painter) const;
     bool HasListButton() const;
     std::vector<std::string> ActionKeys() const;
     std::vector<std::string> SeasonKeys() const;

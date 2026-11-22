@@ -27,6 +27,9 @@ namespace tvm::ui {
 
 // The loudest the sound goes: 1000%, the most mpv's --volume-max allows.
 inline constexpr double kMaxVolume = 10.0;
+// The volume bar runs from silence to 100%. Louder (up to kMaxVolume) is reached with the wheel or the Up arrow, and
+// then the bar shows full with its percentage in blue.
+inline constexpr double kSliderVolume = 1.0;
 
 // One row of a player menu: subtitles, audio, quality or speed.
 struct PlayerOption {
@@ -170,6 +173,11 @@ public:
     // The timeline's bar and the sound's bar: a click along either sets it.
     Box TrackBox() const;
     Box VolumeTrackBox() const;
+    // The volume a press at (x, y) sets, when it lands on the volume bar (with a forgiving margin). While the bar is
+    // being dragged, VolumeAtX follows the pointer anywhere along the bar, clamped at its ends.
+    std::optional<double> VolumeAt(double x, double y) const;
+    double VolumeAtX(double x) const;
+    void SetVolumeDragging(bool dragging) { volumeDragging_ = dragging; }
 
     // The menus. Only one is open at a time; its rows take the remote until it closes.
     bool MenuOpen() const { return !menu_.empty(); }
@@ -177,6 +185,11 @@ public:
     void CloseMenu();
     std::vector<PlayerOption> MenuOptions(const std::string& menu) const;
     std::optional<Box> MenuBox() const;
+    // The wheel over an open menu scrolls its rows, `rows` at a time (negative goes up). False when nothing moved.
+    bool ScrollMenu(int rows);
+    // The first row the open menu shows, and how many it shows at once.
+    std::size_t MenuFirstRow() const { return menuFirst_; }
+    std::size_t MenuRowsShown(const std::string& menu) const;
 
     // Dragging along the timeline: the share of the bar under the pointer, the preview while the button
     // is held, and the seconds to seek to when it is let go. A hover shows the time under the pointer.
@@ -207,6 +220,7 @@ private:
     std::map<std::string, Box> CompactControls() const;
 
     PlayerView view_;
+    bool volumeDragging_ = false;
     std::string menu_;
     std::size_t menuIndex_ = 0;
     // The menu on screen, which stays drawn while it fades out after closing, and its open amount from 0 to 1.
@@ -214,6 +228,15 @@ private:
     motion::Tween menuFade_;
     std::optional<Box> MenuBoxFor(const std::string& menu) const;
     double MenuFade() const;
+    // The first row in view: the wheel moves it, and the remote moves it only to keep its row in view, so a hover
+    // never makes the list jump.
+    std::size_t menuFirst_ = 0;
+    // The highlight slides from row to row (in rows), and fades when the pointer leaves the rows.
+    motion::Tween menuRow_;
+    motion::Tween menuGlow_;
+    double menuGlowTarget_ = 1.0;
+    void MoveMenuHighlight(std::size_t index, bool instant);
+    double MenuRowTop(const Box& panel) const;
     std::optional<double> hover_;
     std::optional<double> scrub_;
     double holdSeconds_ = 0.0;

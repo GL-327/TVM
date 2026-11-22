@@ -144,7 +144,7 @@ TEST(the_chrome_shows_the_title_and_the_clock) {
     REQUIRE(painter.Has("100%"));
 }
 
-TEST(the_sound_runs_to_1000_percent_along_its_bar) {
+TEST(the_volume_bar_runs_from_silence_to_full) {
     PlayerScreen player = Player(Playing());
     const Box bar = player.VolumeTrackBox();
     // Just past the bar's end still counts, so the top is easy to reach.
@@ -152,7 +152,12 @@ TEST(the_sound_runs_to_1000_percent_along_its_bar) {
     REQUIRE(key.has_value());
     const std::optional<Command> command = player.ActivateItem(*key, 0.0);
     REQUIRE_EQ(command->name, std::string("player-volume"));
-    REQUIRE_NEAR(std::stod(command->params.at("level")), 10.0, 0.01);
+    REQUIRE_NEAR(std::stod(command->params.at("level")), 1.0, 0.01);
+    // The middle of the bar is half volume, and a drag follows the pointer, clamped at the ends.
+    REQUIRE_NEAR(*player.VolumeAt(bar.CenterX(), bar.CenterY()), 0.5, 0.01);
+    REQUIRE_NEAR(player.VolumeAtX(bar.x - 50.0), 0.0, 1e-9);
+    REQUIRE_NEAR(player.VolumeAtX(bar.Right() + 50.0), 1.0, 1e-9);
+    REQUIRE(!player.VolumeAt(bar.CenterX(), bar.y - 40.0).has_value());
 }
 
 TEST(the_speed_menu_opens_on_normal_and_picks_a_speed) {

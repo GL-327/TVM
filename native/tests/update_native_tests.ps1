@@ -70,3 +70,6 @@ try {
     }
     Remove-Variable TvmUpdaterFixtureZip,TvmUpdaterFixtureAsset,TvmUpdaterHelperArgs -Scope Global -ErrorAction SilentlyContinue
 }
+
+# The last check leaves the updater's own exit code (11) behind; every check above passed.
+exit 0

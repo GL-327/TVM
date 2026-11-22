@@ -1,6 +1,7 @@
 #include "core/mpv.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <locale>
@@ -166,17 +167,123 @@ State ApplyProperty(State state, const std::string& name, const nlohmann::json& 
             track.selected = raw.value("selected", false);
             track.height = raw.value("demux-h", 0);
             track.channels = raw.value("demux-channel-count", 0);
+            track.forced = raw.contains("forced") && raw["forced"].is_boolean() && raw["forced"].get<bool>();
             state.tracks.push_back(std::move(track));
         }
     }
     return state;
 }
 
+namespace {
+
+std::string Lower(std::string text) {
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+std::string Trimmed(const std::string& text) {
+    const std::size_t first = text.find_first_not_of(" \t-_.()[]");
+    if (first == std::string::npos) return "";
+    const std::size_t last = text.find_last_not_of(" \t-_.()[]");
+    return text.substr(first, last - first + 1);
+}
+
+}  // namespace
+
+std::string LanguageName(const std::string& code) {
+    struct Language {
+        const char* twoLetter;
+        const char* threeLetter;
+        const char* other;  // ISO 639-2/B where it differs from 639-2/T
+        const char* name;
+    };
+    static constexpr Language kLanguages[] = {
+        {"en", "eng", "", "English"},     {"es", "spa", "", "Spanish"},      {"fr", "fra", "fre", "French"},
+        {"de", "deu", "ger", "German"},   {"it", "ita", "", "Italian"},      {"pt", "por", "", "Portuguese"},
+        {"nl", "nld", "dut", "Dutch"},    {"sv", "swe", "", "Swedish"},      {"no", "nor", "nob", "Norwegian"},
+        {"da", "dan", "", "Danish"},      {"fi", "fin", "", "Finnish"},      {"is", "isl", "ice", "Icelandic"},
+        {"pl", "pol", "", "Polish"},      {"cs", "ces", "cze", "Czech"},     {"sk", "slk", "slo", "Slovak"},
+        {"hu", "hun", "", "Hungarian"},   {"ro", "ron", "rum", "Romanian"},  {"bg", "bul", "", "Bulgarian"},
+        {"el", "ell", "gre", "Greek"},    {"ru", "rus", "", "Russian"},      {"uk", "ukr", "", "Ukrainian"},
+        {"tr", "tur", "", "Turkish"},     {"ar", "ara", "", "Arabic"},       {"he", "heb", "", "Hebrew"},
+        {"fa", "fas", "per", "Persian"},  {"hi", "hin", "", "Hindi"},        {"bn", "ben", "", "Bengali"},
+        {"ta", "tam", "", "Tamil"},       {"te", "tel", "", "Telugu"},       {"ur", "urd", "", "Urdu"},
+        {"zh", "zho", "chi", "Chinese"},  {"ja", "jpn", "", "Japanese"},     {"ko", "kor", "", "Korean"},
+        {"th", "tha", "", "Thai"},        {"vi", "vie", "", "Vietnamese"},   {"id", "ind", "", "Indonesian"},
+        {"ms", "msa", "may", "Malay"},    {"tl", "tgl", "fil", "Filipino"},  {"hr", "hrv", "", "Croatian"},
+        {"sr", "srp", "", "Serbian"},     {"sl", "slv", "", "Slovenian"},    {"et", "est", "", "Estonian"},
+        {"lv", "lav", "", "Latvian"},     {"lt", "lit", "", "Lithuanian"},   {"ca", "cat", "", "Catalan"},
+        {"eu", "eus", "baq", "Basque"},   {"gl", "glg", "", "Galician"},     {"ga", "gle", "", "Irish"},
+        {"cy", "cym", "wel", "Welsh"},    {"sq", "sqi", "alb", "Albanian"},  {"mk", "mkd", "mac", "Macedonian"},
+        {"bs", "bos", "", "Bosnian"},     {"af", "afr", "", "Afrikaans"},    {"sw", "swa", "", "Swahili"},
+        {"la", "lat", "", "Latin"},
+    };
+    std::string key = Lower(Trimmed(code));
+    // "pt-BR", "en_US": the region is left out.
+    if (const std::size_t cut = key.find_first_of("-_"); cut != std::string::npos) key = key.substr(0, cut);
+    if (key.empty()) return "";
+    if (key == "und" || key == "unk" || key == "mul" || key == "zxx") return "";
+    for (const Language& language : kLanguages) {
+        if (key == language.twoLetter || key == language.threeLetter || key == language.other) return language.name;
+    }
+    return "";
+}
+
 std::string TrackLabel(const Track& track) {
-    std::string label = track.title;
-    if (label.empty()) label = track.lang.empty() ? "Track " + std::to_string(track.id) : track.lang;
-    else if (!track.lang.empty() && label.find(track.lang) == std::string::npos) label += " (" + track.lang + ")";
+    const std::string language = LanguageName(track.lang);
+    std::string title = Trimmed(track.title);
+    std::string label;
+    if (!language.empty()) {
+        label = language;
+        // The title adds to the language only when it says something more, such as "SDH" or "Commentary".
+        const std::string lowerTitle = Lower(title);
+        const std::string lowerLanguage = Lower(language);
+        if (!title.empty() && lowerTitle != lowerLanguage && lowerTitle != Lower(Trimmed(track.lang))) {
+            std::string extra = title;
+            if (lowerTitle.rfind(lowerLanguage, 0) == 0) extra = Trimmed(title.substr(language.size()));
+            if (Lower(extra) == "forced" && track.forced) extra.clear();
+            if (!extra.empty()) label += " \xC2\xB7 " + extra;
+        }
+    } else if (!title.empty()) {
+        label = title;
+    } else if (!Trimmed(track.lang).empty()) {
+        label = Trimmed(track.lang);
+        for (char& c : label) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    } else {
+        label = "Track " + std::to_string(track.id);
+    }
+    // A long release title is cut, so the menu stays compact.
+    constexpr std::size_t kLongest = 34;
+    if (label.size() > kLongest) {
+        std::size_t cut = kLongest;
+        while (cut > 0 && (static_cast<unsigned char>(label[cut]) & 0xC0) == 0x80) --cut;
+        label = label.substr(0, cut) + "\xE2\x80\xA6";
+    }
+    if (track.forced && Lower(label).find("forced") == std::string::npos) label += " (Forced)";
     return label;
+}
+
+std::string AudioDetail(const Track& track) {
+    const std::string codec = Lower(track.codec);
+    std::string format;
+    if (codec == "eac3" || codec == "e-ac-3") format = "Dolby Digital+";
+    else if (codec == "ac3" || codec == "ac-3") format = "Dolby Digital";
+    else if (codec == "truehd" || codec == "mlp") format = "Dolby TrueHD";
+    else if (codec.rfind("dts", 0) == 0 || codec == "dca") format = "DTS";
+    else if (codec == "flac" || codec.rfind("pcm", 0) == 0) format = "Lossless";
+    std::string layout;
+    switch (track.channels) {
+    case 1: layout = "Mono"; break;
+    case 2: layout = "Stereo"; break;
+    case 6: layout = "5.1"; break;
+    case 8: layout = "7.1"; break;
+    default:
+        if (track.channels > 2) layout = std::to_string(track.channels) + " channels";
+        break;
+    }
+    if (format.empty()) return layout;
+    if (layout.empty()) return format;
+    return format + " \xC2\xB7 " + layout;
 }
 
 std::string CommandLine(const nlohmann::json& command) {

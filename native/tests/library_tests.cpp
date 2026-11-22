@@ -428,10 +428,13 @@ TEST(continue_and_watchlist_shelves_show_their_titles_and_shares) {
 TEST(details_watchlist_button_waits_until_the_title_has_loaded) {
     DetailsScreen details("tt1", "One");
     details.Layout(1920.0, 1080.0);
-    // Before the title loads, Right passes the missing list button and reaches Back.
-    REQUIRE(details.Navigate(Direction::Right, 0.0));
+    // Before the title loads, Play is the only button: Right goes nowhere, and Up reaches the Back arrow at the
+    // top left, which Down leaves again.
+    REQUIRE(!details.Navigate(Direction::Right, 0.0));
+    REQUIRE(details.Navigate(Direction::Up, 0.0));
     REQUIRE(details.FocusedKey() == std::optional<std::string>("back"));
-    REQUIRE(details.Navigate(Direction::Left, 0.0));
+    REQUIRE(details.Navigate(Direction::Down, 0.0));
+    REQUIRE(details.FocusedKey() == std::optional<std::string>("play"));
 
     TitleInfo info;
     info.state = TitleInfo::State::Ready;

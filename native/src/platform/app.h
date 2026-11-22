@@ -275,7 +275,8 @@ private:
     // The timeline drag, with the mouse captured while the button is held.
     bool HandleScrub(UINT message, POINT point);
     void ChangeVolume(double delta);
-    void SetVolume(double level);
+    // `save` is false while the volume bar is dragged, so each step does not write the settings file.
+    void SetVolume(double level, bool save = true);
     // The sound level and mute, kept between runs as the web keeps them in audioPrefs.
     void LoadAudio();
     void SaveAudio() const;
@@ -323,6 +324,8 @@ private:
 
     // Window-thread state. Workers never touch these.
     std::set<std::string> queuedArtwork_;
+    // The player's volume bar is being dragged (the mouse is captured).
+    bool volumeDragging_ = false;
     // Whether Windows has been asked for WM_MOUSELEAVE since the last one arrived.
     bool trackingLeave_ = false;
     // Downloads waiting for a worker, on-screen pictures at the front. Only a few run at once, so pictures never

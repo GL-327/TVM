@@ -64,12 +64,21 @@ struct Track {
     // The picture's height for a video track, and the channel count for an audio track. Zero when unknown.
     int height = 0;
     int channels = 0;
+    // A subtitle shown only for foreign speech.
+    bool forced = false;
+
 
     bool operator==(const Track&) const = default;
 };
 
-// A track's name for a menu: its title, else its language, else "Track N", as the web pickers name them.
+// A track's name for a menu: its language in words ("English", not "eng"), then what its title adds, such as
+// "English Â· SDH" or "English (Forced)". With no language, its title, else "Track N".
 std::string TrackLabel(const Track& track);
+// An ISO 639-1 or 639-2 code in words: "en" and "eng" are "English". Empty when the code is not known.
+std::string LanguageName(const std::string& code);
+// An audio track's format in words for the menu: "Dolby Digital+ Â· 5.1", "Stereo". Raw codec names that mean
+// nothing to a viewer (aac, opus) are left out.
+std::string AudioDetail(const Track& track);
 
 struct State {
     double position = 0.0;

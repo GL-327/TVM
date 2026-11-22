@@ -70,6 +70,9 @@ std::vector<DebridStream> KeepLanguage(const std::vector<DebridStream>& streams,
 std::optional<DebridStream> ParseDebridStream(const nlohmann::json& raw);
 // The picture height a release names, 1080 when it names none.
 int StreamHeight(const std::string& label);
+// A release's name in a few words for the quality menu: its source, its dynamic range and its size, such as
+// "BluRay \xC2\xB7 HDR \xC2\xB7 12.4 GB". Empty when the name says none of these.
+std::string StreamTags(const std::string& text);
 // Highest quality first. Being cached only breaks a tie at one quality.
 std::vector<DebridStream> RankDebridStreams(std::vector<DebridStream> streams);
 // The streams no taller than `maxHeight`, or the low ones when none is.

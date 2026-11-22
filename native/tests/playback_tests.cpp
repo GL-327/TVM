@@ -277,3 +277,43 @@ TEST(an_english_download_never_takes_a_stream_marked_as_another_language) {
 }
 
 }  // namespace
+
+TEST(the_quality_menu_names_a_release_in_a_few_words) {
+    REQUIRE_EQ(tvm::playback::StreamTags("Film.2019.2160p.UHD.BluRay.REMUX.HDR.HEVC\n\xF0\x9F\x91\xA4 12 \xF0\x9F\x92\xBE 58.3 GB"),
+               std::string("Remux \xC2\xB7 HDR \xC2\xB7 58.3 GB"));
+    REQUIRE_EQ(tvm::playback::StreamTags("Show.S01E01.1080p.WEB-DL.DDP5.1.H.264\n2,1 gb"),
+               std::string("WEB-DL \xC2\xB7 2.1 GB"));
+    REQUIRE_EQ(tvm::playback::StreamTags("Film 2160p DV BluRay 30 GB"),
+               std::string("BluRay \xC2\xB7 Dolby Vision \xC2\xB7 30 GB"));
+    REQUIRE_EQ(tvm::playback::StreamTags("Film.1080p.x264"), std::string(""));
+}
+
+TEST(tracks_read_as_languages_and_formats_not_codes) {
+    using tvm::mpv::Track;
+    REQUIRE_EQ(tvm::mpv::LanguageName("eng"), std::string("English"));
+    REQUIRE_EQ(tvm::mpv::LanguageName("fre"), std::string("French"));
+    REQUIRE_EQ(tvm::mpv::LanguageName("pt-BR"), std::string("Portuguese"));
+    REQUIRE_EQ(tvm::mpv::LanguageName("und"), std::string(""));
+    Track english;
+    english.id = 1;
+    english.lang = "eng";
+    REQUIRE_EQ(tvm::mpv::TrackLabel(english), std::string("English"));
+    english.title = "English SDH";
+    REQUIRE_EQ(tvm::mpv::TrackLabel(english), std::string("English \xC2\xB7 SDH"));
+    Track forced;
+    forced.id = 2;
+    forced.lang = "spa";
+    forced.title = "Forced";
+    forced.forced = true;
+    REQUIRE_EQ(tvm::mpv::TrackLabel(forced), std::string("Spanish (Forced)"));
+    Track bare;
+    bare.id = 3;
+    REQUIRE_EQ(tvm::mpv::TrackLabel(bare), std::string("Track 3"));
+    Track audio;
+    audio.codec = "eac3";
+    audio.channels = 6;
+    REQUIRE_EQ(tvm::mpv::AudioDetail(audio), std::string("Dolby Digital+ \xC2\xB7 5.1"));
+    audio.codec = "aac";
+    audio.channels = 2;
+    REQUIRE_EQ(tvm::mpv::AudioDetail(audio), std::string("Stereo"));
+}
