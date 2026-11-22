@@ -411,8 +411,8 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         instance_, window_, [this](std::function<void()> work) { background_->PostToUi(std::move(work)); },
         std::move(events));
 
-    // The open sting. It holds on the mark until the catalogue has loaded.
-    intro_ = std::make_unique<ui::Intro>(store_->Motion());
+    // The launch reveal, as the Android app builds its logo. It holds on the finished logo until the app is ready.
+    intro_ = std::make_unique<ui::LogoReveal>(store_->Motion());
     intro_->SetPending(true);
     // TVM Stream's sting. It plays the first time that screen opens, and holds for nothing.
     streamIntro_ = std::make_unique<ui::Intro>(store_->Motion(), ui::Intro::Form::Stream);
@@ -511,6 +511,11 @@ int App::Run(int showCommand) {
         SyncArtwork(now);
         if (const std::optional<nav::Direction> hop = hops_.Tick()) {
             shell_->Navigate(*hop, now);
+            dirty_ = true;
+        }
+        if (chooserCloseAtMs_.has_value() && now >= *chooserCloseAtMs_) {
+            chooserCloseAtMs_.reset();
+            if (shell_->ActiveScreenName() == "chooser") shell_->Back(now);
             dirty_ = true;
         }
         intro_->Tick(now);
@@ -618,6 +623,14 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             TypeSearch(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
             return 0;
         }
+        // A profile's name in the chooser's sheet.
+        if (auto* chooser = dynamic_cast<ui::ProfileChooser*>(&shell_->ActiveScreen());
+            chooser != nullptr && chooser->SheetOpen() && wParam >= 0x20 && wParam != 0x7F &&
+            (wParam < 0xD800 || wParam > 0xDFFF)) {
+            chooser->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
+            dirty_ = true;
+            return 0;
+        }
         // The new profile's name is typed the same way, while its field is open.
         if (auto* profiles = dynamic_cast<ui::ProfilesScreen*>(&shell_->ActiveScreen());
             profiles != nullptr && profiles->Creating() && wParam >= 0x20 && wParam != 0x7F &&
@@ -720,6 +733,12 @@ bool App::HandleKey(WPARAM virtualKey, LPARAM flags) {
         shell_->Select(now);
         dirty_ = true;
     } else if (*intent == nav::Intent::Back) {
+        // Back in the chooser's sheet closes the sheet, not the chooser.
+        if (auto* chooser = dynamic_cast<ui::ProfileChooser*>(&shell_->ActiveScreen()); chooser != nullptr && chooser->SheetOpen()) {
+            if (const std::optional<ui::Command> command = chooser->ActivateItem("sheet-cancel", now)) shell_->Execute(*command, now);
+            dirty_ = true;
+            return true;
+        }
         // Back at Home asks before closing TVM, rather than quitting on one press of Esc or the remote's Back.
         if (!shell_->Back(now)) ConfirmQuit();
         dirty_ = true;
@@ -741,9 +760,13 @@ void App::ConfirmQuit() {
 
 bool App::SkipIntro() {
     // The press goes to whichever sting is on screen. Otherwise it reaches the shell.
-    for (ui::Intro* intro : {intro_.get(), streamIntro_.get()}) {
-        if (!intro->Visible()) continue;
-        intro->Skip(NowMs());
+    if (intro_->Visible()) {
+        intro_->Skip(NowMs());
+        dirty_ = true;
+        return true;
+    }
+    if (streamIntro_->Visible()) {
+        streamIntro_->Skip(NowMs());
         dirty_ = true;
         return true;
     }
@@ -956,7 +979,8 @@ void App::LoadCatalog() {
             available = false;
         }
         background_->PostToUi([this, bundle = std::move(bundle), shelves = std::move(shelves), available] {
-            intro_->SetPending(false);
+            catalogSettled_ = true;
+            intro_->SetPending(!accountSettled_);
             if (!available) {
                 home_->SetStatus("The catalogue is unavailable. Check the connection.");
             } else {
@@ -1743,8 +1767,10 @@ std::vector<ui::TopButton> App::StreamNav(bool root) const {
         command.params["lane"] = lane;
         return command;
     };
+    // The orb opens the profile menu: switch profile, manage profiles, or Settings.
     ui::Command settings;
-    settings.name = "settings";
+    settings.name = "profile-menu";
+    settings.modal = true;
     // The profile's name, or "Profile" without one, as StreamChrome labels its orb.
     const std::string profileName = profiles::ActiveName(dataDir_).value_or("Profile");
     const auto on = [&](const std::string& lane) { return root && streamLane_ == lane; };
@@ -1965,6 +1991,7 @@ void App::SyncPages() {
     }
     if (name == "watchlist") BuildWatchlistPage();
     if (name == "profiles") ShowProfiles("");
+    if (name == "chooser" || name == "profile-menu") ShowChooser("");
     if (name == "updates") {
         updatesView_.version = config::kCoreVersion;
         updatesView_.autoUpdate = store_->CorePrefs().autoUpdate;
@@ -2099,6 +2126,41 @@ void App::BuildWatchlistPage() {
     dirty_ = true;
 }
 
+ui::ChooserView App::ChooserFromRegistry(const std::string& message) {
+    ui::ChooserView view;
+    view.message = message;
+    try {
+        const profiles::Registry registry = profiles::Load(dataDir_);
+        view.activeId = registry.activeId;
+        for (const profiles::Profile& profile : registry.profiles) {
+            view.profiles.push_back(ui::ProfileEntry{profile.id, profile.name, profile.hue});
+        }
+    } catch (const std::exception&) {
+        view.message = "Profiles could not be read on this device.";
+    }
+    try {
+        view.max = core_->Call("/api/plan").value("profilesMax", std::size_t(10));
+    } catch (const std::exception&) {
+        // Without the plan, the core's own cap.
+    }
+    return view;
+}
+
+void App::ShowChooser(const std::string& message) {
+    const ui::ChooserView view = ChooserFromRegistry(message);
+    if (auto* chooser = dynamic_cast<ui::ProfileChooser*>(shell_->ScreenNamed("chooser"))) chooser->SetView(view);
+    if (auto* menu = dynamic_cast<ui::ProfileMenu*>(shell_->ScreenNamed("profile-menu"))) menu->SetView(view);
+    dirty_ = true;
+}
+
+void App::OpenChooser() {
+    ui::Command chooser;
+    chooser.name = "chooser";
+    shell_->Execute(chooser, NowMs());
+    ShowChooser("");
+    dirty_ = true;
+}
+
 void App::ShowProfiles(const std::string& message) {
     auto* screen = dynamic_cast<ui::ProfilesScreen*>(shell_->ScreenNamed("profiles"));
     if (screen == nullptr) return;
@@ -2123,22 +2185,61 @@ void App::ApplyProfileAction(const ui::Command& command) {
         const auto found = command.params.find(key);
         return found == command.params.end() ? std::string() : found->second;
     };
+    const std::string from = param("from");
+    const double now = NowMs();
+    if (command.name == "profile-manage") {
+        // From the orb's menu: close it, then open the chooser in its place.
+        shell_->Back(now);
+        OpenChooser();
+        return;
+    }
+    if (command.name == "profile-settings") {
+        shell_->Back(now);
+        ui::Command settings;
+        settings.name = "settings";
+        shell_->Execute(settings, now);
+        dirty_ = true;
+        return;
+    }
     try {
         if (command.name == "profile-remove") {
             core_->Call("/api/profiles/remove", "POST", {{"id", param("id")}});
             ShowProfiles("");
+            ShowChooser("");
             RebuildHome();
+            return;
+        }
+        if (command.name == "profile-rename") {
+            // Renamed through the core, as the Android app renames, so both apps keep the same registry.
+            core_->Call("/api/profiles", "PUT", {{"id", param("id")}, {"name", param("name")}});
+            ShowChooser("");
+            RebuildHome();
+            RebuildStream();
+            return;
+        }
+        if (from == "chooser" && command.name == "profile-create") {
+            // A profile added from the chooser joins the grid; the viewer then picks who is watching.
+            core_->Call("/api/profiles", "POST", {{"name", param("name")}});
+            ShowChooser("");
             return;
         }
         // Choosing or making a profile switches to it, and Home follows that person's list and progress.
         if (command.name == "profile-open") core_->Call("/api/profiles/active", "POST", {{"id", param("id")}});
         if (command.name == "profile-create") core_->Call("/api/profiles", "POST", {{"name", param("name")}});
         titles_.clear();
+        // Each profile has its own searches.
+        recentSearches_.clear();
         RebuildHome();
         RebuildStream();
-        shell_->Back(NowMs());
+        if (from == "chooser") {
+            // The picked avatar settles first; the chooser then closes onto that person's Home.
+            chooserCloseAtMs_ = now + ui::ProfileChooser::kPickMs + 80.0;
+        } else {
+            shell_->Back(now);
+        }
     } catch (const std::exception& error) {
         ShowProfiles(error.what());
+        ShowChooser(error.what());
     }
 }
 
@@ -2258,6 +2359,15 @@ void App::SyncSearch() {
 }
 
 bool App::HandleSearchKey(WPARAM virtualKey) {
+    if (auto* chooser = dynamic_cast<ui::ProfileChooser*>(&shell_->ActiveScreen()); chooser != nullptr && chooser->SheetOpen()) {
+        // The sheet's name field: Backspace edits it (never Back), Enter saves, and letters arrive as characters.
+        if (virtualKey == VK_BACK) {
+            chooser->Erase();
+            dirty_ = true;
+            return true;
+        }
+        return virtualKey == VK_SPACE || (virtualKey >= '0' && virtualKey <= 'Z');
+    }
     if (auto* profiles = dynamic_cast<ui::ProfilesScreen*>(&shell_->ActiveScreen()); profiles != nullptr && profiles->Creating()) {
         // While the name field is open, Backspace edits it and letters arrive as characters.
         if (virtualKey == VK_BACK) {

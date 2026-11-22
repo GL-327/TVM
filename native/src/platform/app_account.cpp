@@ -25,6 +25,8 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
     const bool changed = account_.email != state.email || account_.developer != state.developer || account_.usable != state.usable || account_.liveTv != state.liveTv || account_.tier != state.tier;
     account_ = state;
     accountBusy_ = false;
+    accountSettled_ = true;
+    intro_->SetPending(!catalogSettled_);
     accountCheckedMs_ = NowMs();
     accountMessage_ = message;
     if (changed) {
@@ -38,6 +40,12 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
     }
     RebuildHome();
     if (pageName_ == "account") ShowInfoPage();
+    // "Who's watching?" when TVM opens, once the account can use TVM Stream, unless Settings turned it off. It sits
+    // under the launch reveal, which fades into it.
+    if (!launchChooserDone_ && account_.usable) {
+        launchChooserDone_ = true;
+        if (store_->ChooseProfileOnLaunch() && shell_->ActiveScreenName() == "home") OpenChooser();
+    }
     dirty_ = true;
 }
 

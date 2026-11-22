@@ -134,6 +134,8 @@ add_library(tvm_engine STATIC
   src/ui/stage.cpp
   src/ui/stage.h
   src/ui/intro.cpp
+  src/ui/logo_reveal.cpp
+  src/ui/profile_chooser.cpp
   src/ui/intro.h
   src/ui/live_playlist_screen.cpp
   src/ui/live_playlist_screen.h

@@ -6,6 +6,7 @@
 
 #include "ui/details_screen.h"
 #include "ui/pending_screen.h"
+#include "ui/profile_chooser.h"
 #include "ui/settings_screen.h"
 #include "ui/widget.h"
 
@@ -308,6 +309,8 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
         return scene;
     }
     if (entry.name == "profiles") return std::make_unique<ProfilesScreen>();
+    if (entry.name == "chooser") return std::make_unique<ProfileChooser>();
+    if (entry.name == "profile-menu") return std::make_unique<ProfileMenu>();
     if (entry.name == "plans") return std::make_unique<PlansScreen>();
     if (entry.name == "updates") return std::make_unique<UpdatesScreen>();
     if (entry.name == "watchlist") {

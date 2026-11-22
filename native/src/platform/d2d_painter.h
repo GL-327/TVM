@@ -43,6 +43,11 @@ public:
     double MeasureText(std::string_view text, const ui::TextStyle& style) override;
     void PushClip(const ui::Box& box) override;
     void PopClip() override;
+    void PushClipStroke(const std::vector<ui::Point>& points, double width) override;
+    void PushClipPolygons(const std::vector<std::vector<ui::Point>>& polygons) override;
+    void StrokePolyline(const std::vector<ui::Point>& points, double width, ui::Color color, bool closed = false) override;
+    void PushOpacity(double opacity) override;
+    void PopOpacity() override;
 
 private:
     ID2D1SolidColorBrush* Brush(ui::Color color);
@@ -64,6 +69,13 @@ private:
     // of theirs, so each set is made once.
     std::map<std::vector<float>, ComPtr<ID2D1GradientStopCollection>> stopCache_;
     int clipDepth_ = 0;
+    // Each pushed clip, in order: true for a shaped clip (a layer), false for an axis-aligned one.
+    std::vector<bool> clipLayers_;
+    // Each PushOpacity, in order: whether it pushed a layer.
+    std::vector<bool> opacityLayers_;
+    // The open line through `points` (or closed), as a geometry.
+    ComPtr<ID2D1PathGeometry> Polyline(const std::vector<ui::Point>& points, bool closed);
+    void PushGeometryLayer(ID2D1Geometry* mask, double opacity);
     ui::Box backdropBox_{};
     std::string backdropUrl_;
     double backdropFocusX_ = 0.7;

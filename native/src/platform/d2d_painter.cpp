@@ -711,12 +711,118 @@ void D2dPainter::DrawPath(const ui::Box& box, double viewBox, ID2D1PathGeometry*
 void D2dPainter::PushClip(const ui::Box& box) {
     target_->PushAxisAlignedClip(ToRect(box), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     ++clipDepth_;
+    clipLayers_.push_back(false);
 }
 
 void D2dPainter::PopClip() {
     if (clipDepth_ <= 0) return;
-    target_->PopAxisAlignedClip();
+    const bool layer = !clipLayers_.empty() && clipLayers_.back();
+    if (!clipLayers_.empty()) clipLayers_.pop_back();
+    if (layer) {
+        target_->PopLayer();
+    } else {
+        target_->PopAxisAlignedClip();
+    }
     --clipDepth_;
+}
+
+ComPtr<ID2D1PathGeometry> D2dPainter::Polyline(const std::vector<ui::Point>& points, bool closed) {
+    ComPtr<ID2D1PathGeometry> geometry;
+    if (points.size() < 2 || FAILED(graphics_.d2d()->CreatePathGeometry(&geometry))) return nullptr;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(geometry->Open(&sink))) return nullptr;
+    sink->BeginFigure(D2D1::Point2F(static_cast<FLOAT>(points[0].x), static_cast<FLOAT>(points[0].y)),
+                      closed ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW);
+    for (std::size_t i = 1; i < points.size(); ++i) {
+        sink->AddLine(D2D1::Point2F(static_cast<FLOAT>(points[i].x), static_cast<FLOAT>(points[i].y)));
+    }
+    sink->EndFigure(closed ? D2D1_FIGURE_END_CLOSED : D2D1_FIGURE_END_OPEN);
+    if (FAILED(sink->Close())) return nullptr;
+    return geometry;
+}
+
+void D2dPainter::PushGeometryLayer(ID2D1Geometry* mask, double opacity) {
+    ComPtr<ID2D1Layer> layer;
+    if (FAILED(target_->CreateLayer(nullptr, &layer))) {
+        // Without a layer nothing is clipped; the pop still pairs, as an empty axis-aligned clip would not.
+        target_->PushAxisAlignedClip(D2D1::RectF(-1e6f, -1e6f, 1e6f, 1e6f), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        ++clipDepth_;
+        clipLayers_.push_back(false);
+        return;
+    }
+    target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), mask, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                                             D2D1::IdentityMatrix(), static_cast<FLOAT>(opacity)),
+                       layer.Get());
+    ++clipDepth_;
+    clipLayers_.push_back(true);
+}
+
+void D2dPainter::PushClipStroke(const std::vector<ui::Point>& points, double width) {
+    // The band is the line widened by the stroke: a geometry of its own, used as the layer's mask.
+    const ComPtr<ID2D1PathGeometry> line = Polyline(points, false);
+    ComPtr<ID2D1PathGeometry> band;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (!line || FAILED(graphics_.d2d()->CreatePathGeometry(&band)) || FAILED(band->Open(&sink)) ||
+        FAILED(line->Widen(static_cast<FLOAT>(width), graphics_.RoundStroke(), nullptr,
+                           D2D1_DEFAULT_FLATTENING_TOLERANCE, sink.Get())) ||
+        FAILED(sink->Close())) {
+        // Nothing to show through: an empty clip.
+        target_->PushAxisAlignedClip(D2D1::RectF(0.0f, 0.0f, 0.0f, 0.0f), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        ++clipDepth_;
+        clipLayers_.push_back(false);
+        return;
+    }
+    PushGeometryLayer(band.Get(), 1.0);
+}
+
+void D2dPainter::PushClipPolygons(const std::vector<std::vector<ui::Point>>& polygons) {
+    ComPtr<ID2D1PathGeometry> geometry;
+    ComPtr<ID2D1GeometrySink> sink;
+    bool ok = SUCCEEDED(graphics_.d2d()->CreatePathGeometry(&geometry)) && SUCCEEDED(geometry->Open(&sink));
+    if (ok) {
+        sink->SetFillMode(D2D1_FILL_MODE_WINDING);
+        for (const std::vector<ui::Point>& polygon : polygons) {
+            if (polygon.size() < 3) continue;
+            sink->BeginFigure(D2D1::Point2F(static_cast<FLOAT>(polygon[0].x), static_cast<FLOAT>(polygon[0].y)),
+                              D2D1_FIGURE_BEGIN_FILLED);
+            for (std::size_t i = 1; i < polygon.size(); ++i) {
+                sink->AddLine(D2D1::Point2F(static_cast<FLOAT>(polygon[i].x), static_cast<FLOAT>(polygon[i].y)));
+            }
+            sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        }
+        ok = SUCCEEDED(sink->Close());
+    }
+    if (!ok) {
+        target_->PushAxisAlignedClip(D2D1::RectF(0.0f, 0.0f, 0.0f, 0.0f), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        ++clipDepth_;
+        clipLayers_.push_back(false);
+        return;
+    }
+    PushGeometryLayer(geometry.Get(), 1.0);
+}
+
+void D2dPainter::StrokePolyline(const std::vector<ui::Point>& points, double width, ui::Color color, bool closed) {
+    const ComPtr<ID2D1PathGeometry> line = Polyline(points, closed);
+    if (!line) return;
+    target_->DrawGeometry(line.Get(), Brush(color), static_cast<FLOAT>(width), graphics_.RoundStroke());
+}
+
+void D2dPainter::PushOpacity(double opacity) {
+    ComPtr<ID2D1Layer> layer;
+    if (FAILED(target_->CreateLayer(nullptr, &layer))) {
+        opacityLayers_.push_back(false);
+        return;
+    }
+    target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                                             D2D1::IdentityMatrix(), static_cast<FLOAT>(std::clamp(opacity, 0.0, 1.0))),
+                       layer.Get());
+    opacityLayers_.push_back(true);
+}
+
+void D2dPainter::PopOpacity() {
+    if (opacityLayers_.empty()) return;
+    if (opacityLayers_.back()) target_->PopLayer();
+    opacityLayers_.pop_back();
 }
 
 }  // namespace tvm::platform

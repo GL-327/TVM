@@ -42,6 +42,8 @@
 #include "platform/graphics.h"
 #include "platform/snapshot.h"
 #include "ui/details_screen.h"
+#include "ui/logo_reveal.h"
+#include "ui/profile_chooser.h"
 #include "ui/player_screen.h"
 #include "ui/preferences_store.h"
 #include "ui/scene.h"
@@ -402,6 +404,24 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
     // Live TV, Library and Search are lanes of Home under the same chrome.
     const int lane = screen == L"live" ? 3 : screen == L"library" ? 4 : screen == L"search" ? 5 : 0;
     if (home != nullptr && lane > 0) ShowSnapshotLane(*home, lane, lane, art, 0.0);
+    // "Who's watching?" (with `-edit` in edit mode, `-sheet` with a profile's sheet open) and the orb's menu, over
+    // Home, with four sample profiles.
+    if (screen.rfind(L"chooser", 0) == 0 || screen == L"profile-menu") {
+        tvm::ui::ChooserView people;
+        people.profiles = {{"p1", "Alex", 221}, {"p2", "Sam", 28}, {"p3", "Kids", 140}, {"p4", "Jordan", 300}};
+        people.activeId = "p1";
+        people.max = 5;
+        tvm::ui::Command open;
+        open.name = screen == L"profile-menu" ? "profile-menu" : "chooser";
+        open.modal = screen == L"profile-menu";
+        shell.Execute(open, 0.0);
+        if (auto* chooser = dynamic_cast<tvm::ui::ProfileChooser*>(&shell.ActiveScreen())) {
+            chooser->SetView(people);
+            if (screen != L"chooser") chooser->ActivateItem("manage", 0.0);
+            if (screen == L"chooser-sheet") chooser->ActivateItem("pick:p2", 0.0);
+        }
+        if (auto* menu = dynamic_cast<tvm::ui::ProfileMenu*>(&shell.ActiveScreen())) menu->SetView(people);
+    }
 
     double nowMs = 0.0;
     for (const std::wstring& token : SplitCommas(keys)) {
@@ -475,6 +495,19 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
             painter.ImageFaded(tvm::ui::Box{0.0, 0.0, static_cast<double>(width), static_cast<double>(height)}, art,
                                0.0, 1.0, 0.5, 0.5);
             raw->Paint(painter);
+        };
+    } else if (scenario == L"logo-reveal") {
+        // The launch reveal from start to its fade, over Home's dark ground.
+        auto reveal = std::make_shared<tvm::ui::LogoReveal>(store.Motion());
+        reveal->Start(0.0);
+        endMs = tvm::ui::LogoReveal::kTotalMs + 600.0;
+        tick = [reveal](double now) {
+            reveal->Tick(now);
+            return reveal->Animating();
+        };
+        paint = [reveal, width, height](tvm::ui::Painter& painter) {
+            painter.Clear(tvm::ui::Rgb(0x0B0B0F));
+            reveal->Paint(painter, static_cast<double>(width), static_cast<double>(height));
         };
     } else if (scenario == L"menu") {
         // Open the subtitles: the hover slides down the rows, the wheel scrolls the list, the pointer leaves and the

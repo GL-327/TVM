@@ -163,7 +163,7 @@ void SettingsScreen::BuildRows() {
     push("account", "Your account", "Sign in, email verification and access", Open("account"));
     push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
     push("plan", "Plan", "Access and pricing", Open("plans"));
-    push("profiles", "Profiles", "TVM Stream only", Open("profiles"));
+    push("profiles", "Profiles", "Switch, add, rename or remove", Open("chooser"));
     row(RowKind::ChooseProfile, "choose-profile", "Choose profile on launch");
     push("realdebrid", "Real-Debrid", "Your token", Open("realdebrid"));
 

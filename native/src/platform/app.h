@@ -42,6 +42,8 @@
 #include "platform/overlay_window.h"
 #include "ui/catalog_view.h"
 #include "ui/intro.h"
+#include "ui/logo_reveal.h"
+#include "ui/profile_chooser.h"
 #include "ui/preferences_store.h"
 #include "ui/realdebrid_screen.h"
 #include "ui/scene.h"
@@ -106,6 +108,10 @@ private:
     void HandleUndecodable(const std::wstring& file);
     // Esc or the remote's Back at Home: ask before closing TVM.
     void ConfirmQuit();
+    // "Who's watching?" and the orb's profile menu, filled in from the profile registry.
+    ui::ChooserView ChooserFromRegistry(const std::string& message);
+    void ShowChooser(const std::string& message);
+    void OpenChooser();
     // Opens TVM again, then closes this window (Settings > Restart).
     void RestartApp();
     // Appends frame-time statistics to frame-times.log (TVM_FRAME_LOG=1).
@@ -302,7 +308,8 @@ private:
     std::unique_ptr<GlassLens> lens_;
     std::unique_ptr<ui::Shell> shell_;
     // The open sting, drawn over the shell until it has played or been skipped.
-    std::unique_ptr<ui::Intro> intro_;
+    // The launch reveal, ported from the Android app.
+    std::unique_ptr<ui::LogoReveal> intro_;
     // TVM Stream's sting, started when that screen first opens.
     std::unique_ptr<ui::Intro> streamIntro_;
     // Owned by the shell. Kept to set the catalogue's rails and status.
@@ -444,6 +451,13 @@ private:
     bool searchFailed_ = false;
     // A search on its way, for the page's loading state.
     bool searchRunning_ = false;
+    // The chooser closes a moment after a pick, so its avatar's pick animation is seen.
+    std::optional<double> chooserCloseAtMs_;
+    // The launch chooser has been considered once this run.
+    bool launchChooserDone_ = false;
+    // The launch reveal holds on the finished logo until both of these have answered (or its hold runs out).
+    bool catalogSettled_ = false;
+    bool accountSettled_ = false;
     // What was searched this session, newest first, offered as chips on an empty Search page.
     std::vector<std::string> recentSearches_;
     double searchTypedMs_ = 0.0;

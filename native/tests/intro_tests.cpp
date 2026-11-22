@@ -8,6 +8,7 @@
 #include "harness.h"
 #include "motion/preferences.h"
 #include "ui/intro.h"
+#include "ui/logo_reveal.h"
 #include "ui/painter.h"
 
 namespace {
@@ -363,6 +364,123 @@ TEST(reduced_motion_paints_the_stream_tag_at_full_strength) {
     intro.Paint(frame, kWidth, kHeight);
     REQUIRE(frame.Joined().find("STREAM") != std::string::npos);
     REQUIRE_NEAR(frame.AlphaOf("S"), 1.0, 1e-9);
+}
+
+
+// ------------------------------------------------------------ the launch reveal (from the Android app)
+
+using tvm::ui::LogoReveal;
+using tvm::ui::Point;
+
+// Counts what one frame of the reveal draws: filled shapes, traced lines, shaped clips and the opacity layer.
+class RevealPainter final : public tvm::ui::Painter {
+public:
+    int polygons = 0;
+    int polylines = 0;
+    int strokeClips = 0;
+    int shapeClips = 0;
+    int clipDepth = 0;
+    int opacityDepth = 0;
+    double opacity = 1.0;
+    void Clear(Color) override {}
+    void FillRoundRect(const Box&, double, Color) override {}
+    void StrokeRoundRect(const Box&, double, double, Color) override {}
+    bool Image(const Box&, const std::string&, double) override { return false; }
+    void Paragraph(const Box&, std::string_view, const TextStyle&, Color) override {}
+    void Text(const Box&, std::string_view, const TextStyle&, Color) override {}
+    void FillPolygon(const std::vector<Point>& points, Color) override {
+        if (points.size() >= 3) ++polygons;
+    }
+    void StrokePolyline(const std::vector<Point>& points, double, Color, bool) override {
+        if (points.size() >= 2) ++polylines;
+    }
+    void PushClip(const Box&) override { ++clipDepth; }
+    void PopClip() override { --clipDepth; }
+    void PushClipStroke(const std::vector<Point>&, double) override {
+        ++strokeClips;
+        ++clipDepth;
+    }
+    void PushClipPolygons(const std::vector<std::vector<Point>>&) override {
+        ++shapeClips;
+        ++clipDepth;
+    }
+    void PushOpacity(double value) override {
+        opacity = value;
+        ++opacityDepth;
+    }
+    void PopOpacity() override { --opacityDepth; }
+};
+
+RevealPainter RevealFrame(LogoReveal& reveal, double nowMs) {
+    reveal.Tick(nowMs);
+    RevealPainter painter;
+    reveal.Paint(painter, 1920.0, 1080.0);
+    return painter;
+}
+
+TEST(the_reveal_follows_the_android_timeline) {
+    LogoReveal reveal(Auto());
+    reveal.Start(0.0);
+    // Before the letters: only the wash.
+    RevealPainter early = RevealFrame(reveal, 200.0);
+    REQUIRE_EQ(early.polygons, 0);
+    REQUIRE_EQ(early.polylines, 0);
+    // The T is being traced at 400 ms, before it fills.
+    RevealPainter tracing = RevealFrame(reveal, 400.0);
+    REQUIRE(tracing.polylines >= 1);
+    // At 1800 ms the star is on the trail: the lower sweep shows through its stroke clip.
+    RevealPainter travelling = RevealFrame(reveal, 1800.0);
+    REQUIRE(travelling.strokeClips >= 1);
+    // During the shine the letters clip the light.
+    RevealPainter shining = RevealFrame(reveal, 3200.0);
+    REQUIRE_EQ(shining.shapeClips, 1);
+    REQUIRE_EQ(shining.clipDepth, 0);
+    REQUIRE(reveal.Covers());
+}
+
+TEST(the_reveal_holds_while_pending_then_fades_out_in_350_ms) {
+    LogoReveal reveal(Auto());
+    reveal.SetPending(true);
+    reveal.Start(0.0);
+    reveal.Tick(5000.0);
+    REQUIRE(reveal.Visible());
+    REQUIRE(reveal.Covers());
+    reveal.SetPending(false);
+    reveal.Tick(5100.0);
+    REQUIRE(reveal.Visible());
+    REQUIRE(!reveal.Covers());
+    RevealPainter fading = RevealFrame(reveal, 5275.0);
+    REQUIRE_EQ(fading.opacityDepth, 0);
+    REQUIRE(fading.opacity < 1.0 && fading.opacity > 0.0);
+    reveal.Tick(5100.0 + LogoReveal::kFadeOutMs);
+    REQUIRE(!reveal.Visible());
+}
+
+TEST(the_reveal_never_holds_forever) {
+    LogoReveal reveal(Auto());
+    reveal.SetPending(true);
+    reveal.Start(0.0);
+    reveal.Tick(LogoReveal::kTotalMs + LogoReveal::kHoldMaxMs);
+    REQUIRE(!reveal.Covers());
+    reveal.Tick(LogoReveal::kTotalMs + LogoReveal::kHoldMaxMs + LogoReveal::kFadeOutMs);
+    REQUIRE(!reveal.Visible());
+}
+
+TEST(skipping_the_reveal_fades_it_out_and_reduced_motion_shows_the_last_frame) {
+    LogoReveal reveal(Auto());
+    reveal.Start(0.0);
+    reveal.Tick(900.0);
+    reveal.Skip(900.0);
+    REQUIRE(!reveal.Covers());
+    reveal.Tick(900.0 + LogoReveal::kFadeOutMs);
+    REQUIRE(!reveal.Visible());
+
+    LogoReveal still(Reduced());
+    still.Start(0.0);
+    REQUIRE_NEAR(still.Elapsed(), LogoReveal::kTotalMs, 1e-9);
+    RevealPainter last = RevealFrame(still, 10.0);
+    // Three letters, the two sweeps, the upper arc and the star are all there.
+    REQUIRE(last.polygons >= 7);
 }
 
 }  // namespace

@@ -189,6 +189,35 @@ public:
 
     virtual void PushClip(const Box& box) = 0;
     virtual void PopClip() = 0;
+
+    // Clips to a band `width` wide along the open line through `points`, with round ends and joins. Pair it with
+    // PopClip. A painter without shaped clips clips to the band's bounds.
+    virtual void PushClipStroke(const std::vector<Point>& points, double width) { PushClip(BoundsOf(points, width / 2.0)); }
+    // Clips to the union of closed polygons. Pair it with PopClip.
+    virtual void PushClipPolygons(const std::vector<std::vector<Point>>& polygons) {
+        std::vector<Point> all;
+        for (const std::vector<Point>& polygon : polygons) all.insert(all.end(), polygon.begin(), polygon.end());
+        PushClip(BoundsOf(all, 0.0));
+    }
+    // Strokes the line through `points` (closed back to its start when `closed`), with round ends and joins.
+    virtual void StrokePolyline(const std::vector<Point>& /*points*/, double /*width*/, Color /*color*/,
+                                bool /*closed*/ = false) {}
+    // Everything drawn until PopOpacity is composited at `opacity`, as one layer.
+    virtual void PushOpacity(double /*opacity*/) {}
+    virtual void PopOpacity() {}
+
+protected:
+    static Box BoundsOf(const std::vector<Point>& points, double pad) {
+        if (points.empty()) return Box{0.0, 0.0, 0.0, 0.0};
+        double left = points[0].x, top = points[0].y, right = left, bottom = top;
+        for (const Point& point : points) {
+            left = point.x < left ? point.x : left;
+            top = point.y < top ? point.y : top;
+            right = point.x > right ? point.x : right;
+            bottom = point.y > bottom ? point.y : bottom;
+        }
+        return Box{left - pad, top - pad, right - left + 2.0 * pad, bottom - top + 2.0 * pad};
+    }
 };
 
 }  // namespace tvm::ui

@@ -13,6 +13,7 @@
 #include "nav/pointer.h"
 #include "ui/details_screen.h"
 #include "ui/pending_screen.h"
+#include "ui/profile_chooser.h"
 #include "ui/scene.h"
 #include "ui/screen_base.h"
 #include "ui/settings_screen.h"
@@ -498,6 +499,111 @@ TEST(a_cancelled_touch_opens_nothing) {
     shell.TouchCancel();
     shell.TouchUp(7, card.CenterX(), card.CenterY(), 20.0);
     REQUIRE(Names(shell) == std::vector<std::string>{"home"});
+}
+
+
+// ------------------------------------------------------------ who's watching
+
+tvm::ui::ChooserView ThreeProfiles() {
+    tvm::ui::ChooserView view;
+    view.profiles = {{"a", "Ana", 210}, {"b", "ben", 30}, {"c", "Cy", 300}};
+    view.activeId = "b";
+    view.max = 4;
+    return view;
+}
+
+TEST(the_chooser_opens_on_the_active_profile_and_picks_with_its_animation) {
+    tvm::ui::ProfileChooser chooser;
+    chooser.Layout(1920.0, 1080.0);
+    chooser.SetView(ThreeProfiles());
+    REQUIRE(chooser.FocusedKey() == std::optional<std::string>("pick:b"));
+    // Three profiles and Add Profile, then Manage profiles.
+    REQUIRE((chooser.Keys() == std::vector<std::string>{"pick:a", "pick:b", "pick:c", "add", "manage"}));
+    REQUIRE(chooser.Navigate(Direction::Right, 0.0));
+    REQUIRE(chooser.FocusedKey() == std::optional<std::string>("pick:c"));
+    REQUIRE(chooser.Navigate(Direction::Down, 0.0));
+    REQUIRE(chooser.FocusedKey() == std::optional<std::string>("manage"));
+    REQUIRE(chooser.Navigate(Direction::Up, 0.0));
+    const std::optional<Command> pick = chooser.ActivateItem("pick:a", 100.0);
+    REQUIRE_EQ(pick->name, std::string("profile-open"));
+    REQUIRE_EQ(pick->params.at("id"), std::string("a"));
+    REQUIRE_EQ(pick->params.at("from"), std::string("chooser"));
+    chooser.Tick(100.0);
+    REQUIRE(chooser.Animating());
+    chooser.Tick(100.0 + tvm::ui::ProfileChooser::kPickMs);
+    REQUIRE(!chooser.Animating());
+}
+
+TEST(the_chooser_hides_add_at_the_plans_limit) {
+    tvm::ui::ProfileChooser chooser;
+    chooser.Layout(1280.0, 720.0);
+    tvm::ui::ChooserView view = ThreeProfiles();
+    view.max = 3;
+    chooser.SetView(view);
+    REQUIRE((chooser.Keys() == std::vector<std::string>{"pick:a", "pick:b", "pick:c", "manage"}));
+}
+
+TEST(managing_renames_and_deletes_only_after_confirming) {
+    tvm::ui::ProfileChooser chooser;
+    chooser.Layout(1920.0, 1080.0);
+    chooser.SetView(ThreeProfiles());
+    REQUIRE(!chooser.ActivateItem("manage", 0.0).has_value());
+    REQUIRE(chooser.Editing());
+    // In edit mode a profile opens its sheet with its name.
+    REQUIRE(!chooser.ActivateItem("pick:a", 0.0).has_value());
+    REQUIRE(chooser.SheetOpen());
+    REQUIRE_EQ(chooser.SheetName(), std::string("Ana"));
+    chooser.Erase();
+    chooser.Type("ya");
+    const std::optional<Command> rename = chooser.ActivateItem("sheet-save", 0.0);
+    REQUIRE_EQ(rename->name, std::string("profile-rename"));
+    REQUIRE_EQ(rename->params.at("id"), std::string("a"));
+    REQUIRE_EQ(rename->params.at("name"), std::string("Anya"));
+    REQUIRE(!chooser.SheetOpen());
+    // Delete asks first.
+    chooser.ActivateItem("pick:c", 0.0);
+    REQUIRE(!chooser.ActivateItem("sheet-delete", 0.0).has_value());
+    const std::optional<Command> remove = chooser.ActivateItem("sheet-delete", 0.0);
+    REQUIRE_EQ(remove->name, std::string("profile-remove"));
+    REQUIRE_EQ(remove->params.at("id"), std::string("c"));
+}
+
+TEST(the_last_profile_cannot_be_deleted_and_names_stop_at_24_characters) {
+    tvm::ui::ProfileChooser chooser;
+    chooser.Layout(1920.0, 1080.0);
+    tvm::ui::ChooserView view;
+    view.profiles = {{"only", "Profile 1", 221}};
+    view.activeId = "only";
+    chooser.SetView(view);
+    chooser.ActivateItem("manage", 0.0);
+    chooser.ActivateItem("pick:only", 0.0);
+    REQUIRE((chooser.Keys() == std::vector<std::string>{"sheet-save", "sheet-cancel"}));
+    chooser.Type(std::string(40, 'x'));
+    REQUIRE_EQ(chooser.SheetName().size(), std::size_t{24});
+    // An empty name is not saved.
+    chooser.ActivateItem("sheet-cancel", 0.0);
+    chooser.ActivateItem("add", 0.0);
+    REQUIRE(!chooser.ActivateItem("sheet-save", 0.0).has_value());
+}
+
+TEST(the_orb_menu_switches_profile_or_closes_from_outside) {
+    tvm::ui::ProfileMenu menu;
+    menu.Layout(1920.0, 1080.0);
+    menu.SetView(ThreeProfiles());
+    REQUIRE(menu.FocusedKey() == std::optional<std::string>("switch:b"));
+    REQUIRE((menu.Keys() == std::vector<std::string>{"switch:a", "switch:b", "switch:c", "menu-manage", "menu-settings"}));
+    const std::optional<Command> pick = menu.ActivateItem("switch:c", 0.0);
+    REQUIRE_EQ(pick->name, std::string("profile-open"));
+    REQUIRE_EQ(pick->params.at("from"), std::string("menu"));
+    // The panel sits at the top right, and a click off it closes the menu.
+    const tvm::ui::Box panel = menu.PanelBox();
+    REQUIRE(panel.Right() > 1700.0);
+    const std::optional<std::string> outside = menu.ItemAt(200.0, 900.0);
+    REQUIRE(outside.has_value());
+    REQUIRE_EQ(menu.ActivateItem(*outside, 0.0)->name, std::string("back"));
+    // The pick left the focus on Cy; Down reaches Manage profiles.
+    REQUIRE(menu.Navigate(Direction::Down, 0.0));
+    REQUIRE(menu.FocusedKey() == std::optional<std::string>("menu-manage"));
 }
 
 }  // namespace
