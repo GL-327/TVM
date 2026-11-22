@@ -173,6 +173,13 @@ TEST(base64_round_trips_every_byte) {
     REQUIRE(tvm::util::Base64Decode(tvm::util::Base64Encode(all)) == all);
 }
 
+TEST(ctrl_backspace_erases_the_previous_word) {
+    REQUIRE_EQ(tvm::util::ErasePreviousWord("hello big world"), std::string("hello big "));
+    REQUIRE_EQ(tvm::util::ErasePreviousWord("hello big "), std::string("hello "));
+    REQUIRE_EQ(tvm::util::ErasePreviousWord("word"), std::string(""));
+    REQUIRE_EQ(tvm::util::ErasePreviousWord(""), std::string(""));
+}
+
 TEST(trim_and_bom_handling) {
     REQUIRE_EQ(tvm::util::Trim("  x\r\n"), std::string("x"));
     REQUIRE_EQ(tvm::util::Trim(" \t "), std::string(""));

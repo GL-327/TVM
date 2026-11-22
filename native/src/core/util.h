@@ -26,6 +26,9 @@ std::string ToUtf8(const std::wstring& wide);
 // JavaScript String.prototype.trim for the ASCII whitespace that appears in
 // TVM's files. Callers strip a UTF-8 byte order mark first.
 std::string Trim(const std::string& text);
+// The text with its last word removed, as Ctrl+Backspace does in a text field: trailing spaces go first, then the
+// characters back to the previous space. "hello big world" becomes "hello big ".
+std::string ErasePreviousWord(const std::string& text);
 std::string StripBom(const std::string& text);
 
 // Form encoding as URLSearchParams writes it: a space becomes '+', letters, digits and

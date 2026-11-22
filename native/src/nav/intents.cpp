@@ -48,8 +48,9 @@ std::optional<Intent> IntentFromKey(const KeyInput& key) {
     case kReturn:
     case kSpace:
         return Intent::Select;
+    // Backspace is a text-editing key only: it is never Back, so it can never leave a screen or close TVM.
+    // Esc and the remote's Back go back.
     case kEscape:
-    case kBack:
     case kBrowserBack:
         return Intent::Back;
     case kHome:

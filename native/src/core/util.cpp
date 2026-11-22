@@ -76,6 +76,13 @@ std::string ToUtf8(const std::wstring& wide) {
     return utf8;
 }
 
+std::string ErasePreviousWord(const std::string& text) {
+    std::size_t end = text.size();
+    while (end > 0 && text[end - 1] == ' ') --end;
+    while (end > 0 && text[end - 1] != ' ') --end;
+    return text.substr(0, end);
+}
+
 std::string Trim(const std::string& text) {
     const auto first = text.find_first_not_of(kAsciiWhitespace);
     if (first == std::string::npos) return {};

@@ -58,7 +58,8 @@ TEST(intents_map_the_dpad_and_select) {
 
 TEST(intents_map_back_home_and_media_keys) {
     REQUIRE(tvm::nav::IntentFromKey({0x1B}) == Intent::Back);
-    REQUIRE(tvm::nav::IntentFromKey({0x08}) == Intent::Back);
+    // Backspace edits text and nothing else: it is never Back.
+    REQUIRE(!tvm::nav::IntentFromKey({0x08}).has_value());
     REQUIRE(tvm::nav::IntentFromKey({0xA6}) == Intent::Back);
     REQUIRE(tvm::nav::IntentFromKey({0x24}) == Intent::Home);
     REQUIRE(tvm::nav::IntentFromKey({0xB3}) == Intent::PlayPause);

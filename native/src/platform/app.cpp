@@ -675,6 +675,13 @@ bool App::HandleKey(WPARAM virtualKey, LPARAM flags) {
 
     // While the open sting is on screen, OK, Enter, Escape and Space end it and do nothing else.
     if ((virtualKey == VK_RETURN || virtualKey == VK_ESCAPE || virtualKey == VK_SPACE) && SkipIntro()) return true;
+    // Backspace edits the focused field, and with no field focused it does nothing at all. It is never routed to the
+    // player, the shell or Back, so it can never leave a screen or close TVM, however long it is held.
+    if (virtualKey == VK_BACK) {
+        HandleSearchKey(virtualKey);
+        dirty_ = true;
+        return true;
+    }
     if (HandlePlayerKey(virtualKey, flags)) return true;
     if (HandleSearchKey(virtualKey)) return true;
     if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->ShowChrome(now);
@@ -697,10 +704,23 @@ bool App::HandleKey(WPARAM virtualKey, LPARAM flags) {
         shell_->Select(now);
         dirty_ = true;
     } else if (*intent == nav::Intent::Back) {
-        if (!shell_->Back(now)) PostQuitMessage(0);
+        // Back at Home asks before closing TVM, rather than quitting on one press of Esc or the remote's Back.
+        if (!shell_->Back(now)) ConfirmQuit();
         dirty_ = true;
     }
     return true;
+}
+
+void App::ConfirmQuit() {
+    if (shell_->ActiveScreenName() == "confirm") return;
+    ui::Command confirm;
+    confirm.name = "confirm";
+    confirm.modal = true;
+    confirm.params = {{"title", "Quit TVM?"},
+                      {"body", "TVM closes. Your profiles, My List and watch history stay on this PC."},
+                      {"confirmLabel", "Quit"},
+                      {"action", "shutdown"}};
+    shell_->Execute(confirm, NowMs());
 }
 
 bool App::SkipIntro() {
@@ -2215,8 +2235,19 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
     if (ui::InfoScreen* page = TypingPage()) {
         // A page's field takes Backspace and a paste; letters arrive as characters.
         if (virtualKey == VK_BACK) {
-            if (page->FieldText().empty()) return false;
-            page->Erase();
+            // An empty field keeps Backspace too: it never falls through to Back.
+            if (page->FieldText().empty()) return true;
+            if (KeyDown(VK_CONTROL)) {
+                // Erase a character at a time until the field is down to the text before the last word.
+                const std::size_t keep = util::ErasePreviousWord(page->FieldText()).size();
+                while (page->FieldText().size() > keep) {
+                    const std::size_t before = page->FieldText().size();
+                    page->Erase();
+                    if (page->FieldText().size() >= before) break;
+                }
+            } else {
+                page->Erase();
+            }
             TypedIntoPage(*page);
             return true;
         }
@@ -2250,11 +2281,16 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
         return true;
     }
     if (virtualKey == VK_BACK) {
-        // Backspace removes the last letter, and leaves search once the field is empty.
-        if (searchQuery_.empty()) return false;
-        std::size_t cut = searchQuery_.size() - 1;
-        while (cut > 0 && (static_cast<unsigned char>(searchQuery_[cut]) & 0xC0) == 0x80) --cut;
-        searchQuery_.erase(cut);
+        // Backspace removes the last letter (Ctrl+Backspace the last word). With the field empty it does nothing;
+        // it never leaves Search.
+        if (searchQuery_.empty()) return true;
+        if (KeyDown(VK_CONTROL)) {
+            searchQuery_ = util::ErasePreviousWord(searchQuery_);
+        } else {
+            std::size_t cut = searchQuery_.size() - 1;
+            while (cut > 0 && (static_cast<unsigned char>(searchQuery_[cut]) & 0xC0) == 0x80) --cut;
+            searchQuery_.erase(cut);
+        }
         TypeSearch("");
         return true;
     }
@@ -3018,7 +3054,7 @@ bool App::HandlePlayerKey(WPARAM virtualKey, LPARAM flags) {
     const double now = NowMs();
     if (player->MenuOpen()) {
         // Back closes an open menu rather than the player. Every other key is the menu's, through the shell.
-        if (virtualKey == VK_ESCAPE || virtualKey == VK_BACK || virtualKey == VK_BROWSER_BACK) {
+        if (virtualKey == VK_ESCAPE || virtualKey == VK_BROWSER_BACK) {
             player->CloseMenu();
             player->ShowChrome(now);
             dirty_ = true;
