@@ -1,10 +1,12 @@
 #include "platform/app.h"
 #include <shellapi.h>
+#include <timeapi.h>
 
 #include <algorithm>
 #include <iterator>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <optional>
 #include <stdexcept>
 
@@ -447,6 +449,18 @@ int App::Run(int showCommand) {
     RefreshAccount();
     if (store_->CorePrefs().autoUpdate) CheckForUpdates();
 
+    // Waits between frames are timed to the millisecond rather than the default ~15.6 ms system tick, so an
+    // animation that has to wait for its next frame does not overshoot it by a whole tick.
+    timeBeginPeriod(1);
+    struct TimerPeriod {
+        ~TimerPeriod() { timeEndPeriod(1); }
+    } period;
+    // TVM_FRAME_LOG=1 writes frame-time statistics while anything animates, to frame-times.log in the data folder.
+    const bool frameLog = util::ProcessEnvironment()(L"TVM_FRAME_LOG").has_value();
+    std::vector<double> frameGaps;
+    double lastFrameMs = 0.0;
+    double frameLogSinceMs = NowMs();
+
     bool running = true;
     while (running) {
         MSG message{};
@@ -496,14 +510,28 @@ int App::Run(int showCommand) {
         streamIntro_->Tick(now);
         // Pictures still being read keep the frames coming, so each one appears as soon as it is ready.
         const bool animating = shell_->Tick(now) || intro_->Animating() || streamIntro_->Animating() || images_->Busy();
+        const double frameStartMs = NowMs();
         if (dirty_ || animating) {
             Render();
             dirty_ = false;
+            if (frameLog) {
+                if (lastFrameMs > 0.0 && animating) frameGaps.push_back(frameStartMs - lastFrameMs);
+                lastFrameMs = animating ? frameStartMs : 0.0;
+                if (frameStartMs - frameLogSinceMs > 5000.0 && frameGaps.size() > 30) {
+                    WriteFrameLog(frameGaps);
+                    frameGaps.clear();
+                    frameLogSinceMs = frameStartMs;
+                }
+            }
         }
 
         if (animating) {
-            // Sleep one frame, waking early for input.
-            MsgWaitForMultipleObjects(0, nullptr, FALSE, kFrameMs, QS_ALLINPUT);
+            // The window's Present waits for the display's vertical blank, so a drawn frame already lasts one refresh;
+            // sleeping a whole frame on top of it would halve the rate. Only the part of a frame not yet used is
+            // waited for (as when the frame was not presented), and input still wakes the loop at once.
+            const double used = NowMs() - frameStartMs;
+            const double rest = std::max(0.0, static_cast<double>(kFrameMs) - used);
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(rest), QS_ALLINPUT);
         } else {
             // Nothing is moving. The wait ends early for whatever is due next: the hero's turn, or a picture retry.
             double due = 1000.0;
@@ -904,6 +932,31 @@ constexpr int kArtworkConcurrency = 4;
 // A failed picture is tried again after these waits; after the last it keeps its placeholder for the session.
 constexpr double kArtworkBackoffMs[] = {2000.0, 8000.0, 30000.0, 120000.0};
 }  // namespace
+
+void App::WriteFrameLog(std::vector<double> gaps) const {
+    // Rolling frame statistics: the mean gap between animated frames, its frame rate, the 1% and 0.1% slowest
+    // frames, and how many frames took longer than 25 ms (a visible hitch at 60 Hz).
+    std::sort(gaps.begin(), gaps.end());
+    double total = 0.0;
+    for (double gap : gaps) total += gap;
+    const double mean = total / static_cast<double>(gaps.size());
+    const auto at = [&](double share) {
+        const std::size_t index = std::min(gaps.size() - 1, static_cast<std::size_t>(share * static_cast<double>(gaps.size())));
+        return gaps[index];
+    };
+    const std::size_t hitches = static_cast<std::size_t>(std::count_if(gaps.begin(), gaps.end(), [](double gap) { return gap > 25.0; }));
+    char line[256];
+    std::snprintf(line, sizeof(line), "%s frames=%zu mean=%.2fms fps=%.1f p99=%.2fms p99.9=%.2fms worst=%.2fms over25ms=%zu\n",
+                  util::IsoTimestamp().c_str(), gaps.size(), mean, 1000.0 / mean, at(0.99), at(0.999), gaps.back(), hitches);
+    try {
+        const paths::fs::path path = dataDir_ / "frame-times.log";
+        std::string text = util::ReadTextFile(path).value_or("");
+        if (text.size() > 256 * 1024) text.erase(0, text.size() - 128 * 1024);
+        util::WriteFileAtomically(path, text + line);
+    } catch (...) {
+        // A log is a convenience; failing to write it changes nothing on screen.
+    }
+}
 
 void App::QueueArtwork(const std::string& url, bool onScreen) {
     if (url.empty() || artwork_->Lookup(url).has_value()) return;

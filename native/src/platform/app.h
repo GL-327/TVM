@@ -104,6 +104,8 @@ private:
     void SyncArtwork(double nowMs);
     // A cached picture that would not decode is downloaded once more before its placeholder is accepted.
     void HandleUndecodable(const std::wstring& file);
+    // Appends frame-time statistics to frame-times.log (TVM_FRAME_LOG=1).
+    void WriteFrameLog(std::vector<double> gaps) const;
     void QueueRailArtwork(const std::vector<ui::RailData>& rails);
     // Keeps the details for the title on top in step with the shell.
     void SyncDetails();

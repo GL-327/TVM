@@ -50,6 +50,9 @@ private:
     // The closed outline through `points`, or nothing when there are fewer than three points.
     ComPtr<ID2D1PathGeometry> Polygon(const std::vector<ui::Point>& points);
     std::optional<paths::fs::path> ResolveFile(const std::string& url) const;
+    // Parses SVG path data into a geometry in its own units; DrawPath scales it into a box.
+    bool BuildPath(std::string_view data, bool filled, ComPtr<ID2D1PathGeometry>& geometry);
+    void DrawPath(const ui::Box& box, double viewBox, ID2D1PathGeometry* geometry, const ui::PathStyle& style);
 
     ID2D1RenderTarget* target_;
     Graphics& graphics_;

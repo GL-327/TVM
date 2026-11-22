@@ -37,6 +37,12 @@ public:
     double MeasureText(std::string_view text, double sizePx, int weight);
 
     ID2D1Factory* d2d() const { return d2d_.Get(); }
+    // Vector glyphs parsed once and kept: a path's geometry is in its own units and drawn through a transform, so it
+    // does not depend on where or how large it is drawn. Nothing when it is not cached yet.
+    ID2D1PathGeometry* CachedPath(const std::string& key) const;
+    void CachePath(const std::string& key, ComPtr<ID2D1PathGeometry> geometry);
+    // The round-capped, round-joined stroke every glyph line uses.
+    ID2D1StrokeStyle* RoundStroke();
     IDWriteFactory* dwrite() const { return dwrite_.Get(); }
     IWICImagingFactory* wic() const { return wic_.Get(); }
 
@@ -48,6 +54,8 @@ private:
     std::wstring family_;
     std::map<std::tuple<long, int, bool>, ComPtr<IDWriteTextFormat>> formats_;
     std::map<std::tuple<std::string, long, int>, double> measuredText_;
+    std::map<std::string, ComPtr<ID2D1PathGeometry>> paths_;
+    ComPtr<ID2D1StrokeStyle> roundStroke_;
     IDWriteTextFormat* CachedFormat(double sizePx, int weight, bool wrap);
 };
 

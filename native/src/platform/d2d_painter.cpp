@@ -589,10 +589,19 @@ double D2dPainter::MeasureText(std::string_view text, const ui::TextStyle& style
 }
 
 void D2dPainter::Path(const ui::Box& box, double viewBox, std::string_view data, const ui::PathStyle& style) {
-    ComPtr<ID2D1PathGeometry> geometry;
-    if (viewBox <= 0.0 || FAILED(graphics_.d2d()->CreatePathGeometry(&geometry))) return;
+    if (viewBox <= 0.0) return;
+    // A glyph is parsed once and its geometry reused on every later frame.
+    const std::string cacheKey = std::string(data) + (style.fill.a > 0.0 ? "#filled" : "#hollow");
+    ComPtr<ID2D1PathGeometry> geometry = graphics_.CachedPath(cacheKey);
+    if (!geometry && !BuildPath(data, style.fill.a > 0.0, geometry)) return;
+    if (graphics_.CachedPath(cacheKey) == nullptr) graphics_.CachePath(cacheKey, geometry);
+    DrawPath(box, viewBox, geometry.Get(), style);
+}
+
+bool D2dPainter::BuildPath(std::string_view data, bool filled, ComPtr<ID2D1PathGeometry>& geometry) {
+    if (FAILED(graphics_.d2d()->CreatePathGeometry(&geometry))) return false;
     ComPtr<ID2D1GeometrySink> sink;
-    if (FAILED(geometry->Open(&sink))) return;
+    if (FAILED(geometry->Open(&sink))) return false;
 
     std::size_t at = 0;
     const auto skip = [&] {
@@ -615,7 +624,7 @@ void D2dPainter::Path(const ui::Box& box, double viewBox, std::string_view data,
         return at < data.size() && !std::isalpha(static_cast<unsigned char>(data[at]));
     };
 
-    const D2D1_FIGURE_BEGIN fill = style.fill.a > 0.0 ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW;
+    const D2D1_FIGURE_BEGIN fill = filled ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW;
     D2D1_POINT_2F current{0.0f, 0.0f};
     D2D1_POINT_2F start{0.0f, 0.0f};
     bool open = false;
@@ -679,8 +688,10 @@ void D2dPainter::Path(const ui::Box& box, double viewBox, std::string_view data,
         }
     }
     if (open) sink->EndFigure(D2D1_FIGURE_END_OPEN);
-    if (FAILED(sink->Close())) return;
+    return SUCCEEDED(sink->Close());
+}
 
+void D2dPainter::DrawPath(const ui::Box& box, double viewBox, ID2D1PathGeometry* geometry, const ui::PathStyle& style) {
     const auto scale = static_cast<FLOAT>(std::min(box.width, box.height) / viewBox);
     const D2D1_MATRIX_3X2_F fit =
         D2D1::Matrix3x2F::Scale(style.mirror ? -scale : scale, scale) *
@@ -689,14 +700,10 @@ void D2dPainter::Path(const ui::Box& box, double viewBox, std::string_view data,
     D2D1_MATRIX_3X2_F previous{};
     target_->GetTransform(&previous);
     target_->SetTransform(fit * previous);
-    if (style.fill.a > 0.0) target_->FillGeometry(geometry.Get(), Brush(style.fill));
+    if (style.fill.a > 0.0) target_->FillGeometry(geometry, Brush(style.fill));
     if (style.stroke.a > 0.0 && style.strokeWidth > 0.0) {
-        ComPtr<ID2D1StrokeStyle> round;
-        graphics_.d2d()->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
-                                                                       D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND),
-                                           nullptr, 0, &round);
-        target_->DrawGeometry(geometry.Get(), Brush(style.stroke), static_cast<FLOAT>(style.strokeWidth),
-                              round.Get());
+        target_->DrawGeometry(geometry, Brush(style.stroke), static_cast<FLOAT>(style.strokeWidth),
+                              graphics_.RoundStroke());
     }
     target_->SetTransform(previous);
 }

@@ -1,4 +1,4 @@
-#include "platform/graphics.h"
+﻿#include "platform/graphics.h"
 
 #include <dwrite_3.h>
 
@@ -169,6 +169,26 @@ IDWriteTextFormat* Graphics::CachedFormat(double sizePx, int weight, bool wrap) 
     IDWriteTextFormat* raw = format.Get();
     formats_.emplace(std::make_tuple(key, weight, wrap), std::move(format));
     return raw;
+}
+
+ID2D1PathGeometry* Graphics::CachedPath(const std::string& key) const {
+    const auto found = paths_.find(key);
+    return found == paths_.end() ? nullptr : found->second.Get();
+}
+
+void Graphics::CachePath(const std::string& key, ComPtr<ID2D1PathGeometry> geometry) {
+    // The app draws a few dozen distinct glyphs; the bound only guards against an unexpected stream of new ones.
+    if (paths_.size() >= 512) paths_.clear();
+    paths_[key] = std::move(geometry);
+}
+
+ID2D1StrokeStyle* Graphics::RoundStroke() {
+    if (!roundStroke_) {
+        d2d_->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
+                                                           D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND),
+                                nullptr, 0, &roundStroke_);
+    }
+    return roundStroke_.Get();
 }
 
 }  // namespace tvm::platform

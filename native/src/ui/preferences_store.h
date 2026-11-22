@@ -5,6 +5,11 @@
 // (core preferences). The screens see only this interface, so tests can use a
 // memory store and never touch the real data folder.
 
+#include <chrono>
+#include <optional>
+
+#include <nlohmann/json.hpp>
+
 #include "core/paths.h"
 #include "core/prefs.h"
 #include "motion/preferences.h"
@@ -48,7 +53,15 @@ public:
     void SaveGlass(GlassClarity clarity) override;
 
 private:
+    // ui-prefs.json, read once and kept in memory. The shell asks for the look and the motion every frame, so the
+    // file is checked for an outside change at most once a second rather than read and parsed each time.
+    const nlohmann::ordered_json& UiJson() const;
+    void SaveUiJson(nlohmann::ordered_json json);
+
     paths::fs::path dataDir_;
+    mutable std::optional<nlohmann::ordered_json> cached_;
+    mutable std::optional<paths::fs::file_time_type> cachedStamp_;
+    mutable std::chrono::steady_clock::time_point checkedAt_{};
 };
 
 }  // namespace tvm::ui

@@ -15,14 +15,40 @@ nlohmann::ordered_json ReadUiJson(const paths::fs::path& path) {
     return json.is_object() ? json : nlohmann::ordered_json::object();
 }
 
-motion::MotionSettings ReadUiPrefs(const paths::fs::path& path) {
+
+}  // namespace
+
+FilePreferenceStore::FilePreferenceStore(paths::fs::path dataDir) : dataDir_(std::move(dataDir)) {}
+
+const nlohmann::ordered_json& FilePreferenceStore::UiJson() const {
+    const auto now = std::chrono::steady_clock::now();
+    if (cached_.has_value() && now - checkedAt_ < std::chrono::seconds(1)) return *cached_;
+    checkedAt_ = now;
+    const paths::fs::path path = paths::UiPrefsPath(dataDir_);
+    std::error_code error;
+    const auto stamp = paths::fs::last_write_time(path, error);
+    const std::optional<paths::fs::file_time_type> current =
+        error ? std::nullopt : std::optional<paths::fs::file_time_type>(stamp);
+    if (!cached_.has_value() || current != cachedStamp_) {
+        cached_ = ReadUiJson(path);
+        cachedStamp_ = current;
+    }
+    return *cached_;
+}
+
+void FilePreferenceStore::SaveUiJson(nlohmann::ordered_json json) {
+    const paths::fs::path path = paths::UiPrefsPath(dataDir_);
+    util::WriteFileAtomically(path, json.dump());
+    std::error_code error;
+    const auto stamp = paths::fs::last_write_time(path, error);
+    cachedStamp_ = error ? std::nullopt : std::optional<paths::fs::file_time_type>(stamp);
+    cached_ = std::move(json);
+    checkedAt_ = std::chrono::steady_clock::now();
+}
+
+motion::MotionSettings FilePreferenceStore::Motion() const {
     motion::MotionSettings settings;
-    const std::optional<std::string> text = util::ReadTextFile(path);
-    if (!text) return settings;
-
-    const nlohmann::json raw = nlohmann::json::parse(util::StripBom(*text), nullptr, false);
-    if (!raw.is_object()) return settings;
-
+    const nlohmann::ordered_json& raw = UiJson();
     if (const auto motion = raw.find("motion"); motion != raw.end() && motion->is_string()) {
         settings.preference = motion::ParseMotionPreference(motion->get<std::string>());
     }
@@ -32,19 +58,11 @@ motion::MotionSettings ReadUiPrefs(const paths::fs::path& path) {
     return settings;
 }
 
-}  // namespace
-
-FilePreferenceStore::FilePreferenceStore(paths::fs::path dataDir) : dataDir_(std::move(dataDir)) {}
-
-motion::MotionSettings FilePreferenceStore::Motion() const {
-    return ReadUiPrefs(paths::UiPrefsPath(dataDir_));
-}
-
 void FilePreferenceStore::SaveMotion(const motion::MotionSettings& settings) {
-    auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    auto json = UiJson();
     json["motion"] = std::string(motion::ToString(settings.preference));
     json["performance"] = settings.performanceMode;
-    util::WriteFileAtomically(paths::UiPrefsPath(dataDir_), json.dump());
+    SaveUiJson(std::move(json));
 }
 
 prefs::CorePrefs FilePreferenceStore::CorePrefs() const {
@@ -56,28 +74,28 @@ void FilePreferenceStore::SaveCorePrefs(const prefs::CorePrefsPatch& patch) {
 }
 
 Theme FilePreferenceStore::Look() const {
-    const auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    const nlohmann::ordered_json& json = UiJson();
     const auto value = json.find("theme");
     return value != json.end() && value->is_string() ? ParseTheme(value->get<std::string>()) : Theme::Dark;
 }
 
 void FilePreferenceStore::SaveLook(Theme theme) {
-    auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    auto json = UiJson();
     json["theme"] = ThemeId(theme);
-    util::WriteFileAtomically(paths::UiPrefsPath(dataDir_), json.dump());
+    SaveUiJson(std::move(json));
 }
 
 GlassClarity FilePreferenceStore::Glass() const {
-    const auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    const nlohmann::ordered_json& json = UiJson();
     const auto value = json.find("glass");
     return value != json.end() && value->is_string() ? ParseGlassClarity(value->get<std::string>())
                                                      : GlassClarity::Clear;
 }
 
 void FilePreferenceStore::SaveGlass(GlassClarity clarity) {
-    auto json = ReadUiJson(paths::UiPrefsPath(dataDir_));
+    auto json = UiJson();
     json["glass"] = GlassClarityId(clarity);
-    util::WriteFileAtomically(paths::UiPrefsPath(dataDir_), json.dump());
+    SaveUiJson(std::move(json));
 }
 
 }  // namespace tvm::ui

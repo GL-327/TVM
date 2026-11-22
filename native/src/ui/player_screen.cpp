@@ -395,7 +395,11 @@ bool PlayerScreen::Animating() const {
     if (hintsFromMs_ > 0.0 && (clockMs_ < hintsFromMs_ || HintsOpacity(clockMs_) > 0.0)) return true;
     // The live pill pulses, and a held arrow's preview runs out on the clock.
     if (view_.live || clockMs_ < holdUntilMs_) return ChromeOpacity(clockMs_) > 0.0 || clockMs_ < holdUntilMs_;
-    return ChromeOpacity(clockMs_) > 0.0;
+    // A paused or held chrome is still: nothing moves, so no frames are drawn until something changes. Playing, the
+    // frames run only while the chrome fades out; the clock's own updates from mpv redraw the time as it passes.
+    if (view_.paused || view_.buffering || MenuOpen() || scrub_.has_value()) return false;
+    const double idle = clockMs_ - lastActivityMs_ - kIdleHideMs;
+    return idle >= -kIdleFadeMs && idle <= kIdleFadeMs;
 }
 
 std::vector<std::string> PlayerScreen::Items() const {

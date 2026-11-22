@@ -186,7 +186,7 @@ add_library(tvm_platform STATIC
   src/platform/snapshot.cpp
   src/platform/snapshot.h
 )
-target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dxguid dwrite windowscodecs ole32 shell32 user32 gdi32)
+target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dxguid dwrite windowscodecs ole32 shell32 user32 gdi32 winmm)
 
 # Resource id 1 is the TVM icon; App registers its window class with it.
 set(TVM_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/tvm.ico")
