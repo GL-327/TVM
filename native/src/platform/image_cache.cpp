@@ -279,8 +279,8 @@ ID2D1Bitmap* ImageCache::Get(ID2D1RenderTarget* target, const std::wstring& file
     const D2D1_SIZE_U pixels = raw->GetPixelSize();
     std::size_t bytes = static_cast<std::size_t>(pixels.width) * pixels.height * 4;
     if (const auto blurred = blurredBitmaps_.find(file); blurred != blurredBitmaps_.end()) {
-        const D2D1_SIZE_U small = blurred->second->GetPixelSize();
-        bytes += static_cast<std::size_t>(small.width) * small.height * 4;
+        const D2D1_SIZE_U blurredSize = blurred->second->GetPixelSize();
+        bytes += static_cast<std::size_t>(blurredSize.width) * blurredSize.height * 4;
     }
     totalBytes_ += bytes;
     bytes_[file] = bytes;
