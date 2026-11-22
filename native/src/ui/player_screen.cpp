@@ -338,8 +338,9 @@ std::size_t PlayerScreen::MenuRowsShown(const std::string& menu) const {
     const std::optional<Box> button = BoxOf(menu);
     std::size_t fits = kMenuRowsMost;
     if (button.has_value()) {
-        // As many rows as fit between the top of the window and the button, never fewer than three.
-        const double room = button->y - Rem(1.0) - Rem(1.0) - Rem(kMenuHeadingRem) - 2.0 * Rem(kMenuPadRem);
+        // As many rows as fit between the top of the window and the timeline, never fewer than three.
+        const double room = std::min(button->y, TrackBox().y) - Rem(1.0) - Rem(1.0) - Rem(kMenuHeadingRem) -
+                            2.0 * Rem(kMenuPadRem);
         fits = static_cast<std::size_t>(std::max(0.0, std::floor(room / Rem(kMenuRowRem))));
         fits = std::clamp(fits, kMenuRowsLeast, kMenuRowsMost);
     }
@@ -392,7 +393,9 @@ std::optional<Box> PlayerScreen::MenuBoxFor(const std::string& menu) const {
     const double width = std::min(std::clamp(fit, Rem(kMenuMinWidthRem), Rem(kMenuMaxWidthRem)),
                                   std::max(1.0, width_ - 2.0 * Rem(kPadXRem)));
     const double x = std::clamp(button->Right() - width, Rem(kPadXRem), width_ - Rem(kPadXRem) - width);
-    return Box{x, std::max(0.0, button->y - Rem(1.0) - height), width, height};
+    // It opens above its button and above the timeline, so it never covers the bar.
+    const double bottom = std::min(button->y, TrackBox().y) - Rem(0.9);
+    return Box{x, std::max(0.0, bottom - height), width, height};
 }
 
 std::optional<double> PlayerScreen::ShareAt(double x) const {
@@ -958,6 +961,9 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
     if (glow > 0.01 && menu == menu_) {
         const double at = menuRow_.Value(clockMs_) - static_cast<double>(menuFirst_);
         const Box pill{x, top + at * rowHeight + Rem(0.08), width, rowHeight - Rem(0.16)};
+        // A soft light under the glass, so the highlight reads over the dark panel even where the overlay gives the
+        // glass nothing to refract.
+        painter.FillRoundRect(pill, pill.height / 2.0, Rgb(0xFFFFFF, 0.12 * glow * fade));
         GlassStyle rowGlass;
         rowGlass.kind = GlassKind::Pill;
         rowGlass.focused = true;

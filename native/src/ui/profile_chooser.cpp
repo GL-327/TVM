@@ -676,6 +676,7 @@ void ProfileMenu::Paint(Painter& painter) const {
             row.y += (next.y - row.y) * (index - whole);
         }
         const Box pill{row.x, row.y + Rem(0.1), row.width, row.height - Rem(0.2)};
+        painter.FillRoundRect(pill, pill.height / 2.0, Rgb(0xFFFFFF, 0.10 * open));
         GlassStyle glass;
         glass.kind = GlassKind::Pill;
         glass.focused = true;
