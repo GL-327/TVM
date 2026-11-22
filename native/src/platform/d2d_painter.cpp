@@ -629,6 +629,9 @@ bool D2dPainter::BuildPath(std::string_view data, bool filled, ComPtr<ID2D1PathG
     D2D1_POINT_2F start{0.0f, 0.0f};
     bool open = false;
     char command = 'M';
+    // The last curve's second control point, so S and T can mirror it.
+    D2D1_POINT_2F lastControl{0.0f, 0.0f};
+    char lastCurve = 0;
     while (true) {
         skip();
         if (at >= data.size()) break;
@@ -636,7 +639,9 @@ bool D2dPainter::BuildPath(std::string_view data, bool filled, ComPtr<ID2D1PathG
         const bool relative = std::islower(static_cast<unsigned char>(command)) != 0;
         const FLOAT ox = relative ? current.x : 0.0f;
         const FLOAT oy = relative ? current.y : 0.0f;
-        switch (std::toupper(static_cast<unsigned char>(command))) {
+        const int kind = std::toupper(static_cast<unsigned char>(command));
+        if (kind != 'C' && kind != 'S') lastCurve = 0;
+        switch (kind) {
         case 'M': {
             const FLOAT x = number();
             const FLOAT y = number();
@@ -675,6 +680,40 @@ bool D2dPainter::BuildPath(std::string_view data, bool filled, ComPtr<ID2D1PathG
                                           sweep ? D2D1_SWEEP_DIRECTION_CLOCKWISE : D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
                                           large ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL));
             break;
+        }
+        case 'C':
+        case 'S': {
+            // Cubic curves; S takes its first control point mirrored from the last curve's.
+            const char upper = static_cast<char>(std::toupper(static_cast<unsigned char>(command)));
+            D2D1_POINT_2F first = current;
+            if (upper == 'C') {
+                const FLOAT x1 = number();
+                const FLOAT y1 = number();
+                first = D2D1::Point2F(ox + x1, oy + y1);
+            } else if (lastCurve == 'C') {
+                first = D2D1::Point2F(2.0f * current.x - lastControl.x, 2.0f * current.y - lastControl.y);
+            }
+            const FLOAT x2 = number();
+            const FLOAT y2 = number();
+            const FLOAT x = number();
+            const FLOAT y = number();
+            const D2D1_POINT_2F second = D2D1::Point2F(ox + x2, oy + y2);
+            current = D2D1::Point2F(ox + x, oy + y);
+            sink->AddBezier(D2D1::BezierSegment(first, second, current));
+            lastControl = second;
+            lastCurve = 'C';
+            continue;
+        }
+        case 'Q': {
+            const FLOAT x1 = number();
+            const FLOAT y1 = number();
+            const FLOAT x = number();
+            const FLOAT y = number();
+            const D2D1_POINT_2F control = D2D1::Point2F(ox + x1, oy + y1);
+            current = D2D1::Point2F(ox + x, oy + y);
+            sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(control, current));
+            lastCurve = 0;
+            continue;
         }
         case 'Z':
             if (open) sink->EndFigure(D2D1_FIGURE_END_CLOSED);
