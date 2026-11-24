@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "motion/preferences.h"
+#include "ui/glass_styles.h"
 #include "ui/widget.h"
 
 namespace tvm::ui {
@@ -958,19 +959,11 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
     painter.PushClip(rows);
     // The highlight: the glass pill, sliding between rows and fading when the pointer leaves them.
     const double glow = std::clamp(menuGlow_.Value(clockMs_), 0.0, 1.0);
+    const double at = menuRow_.Value(clockMs_) - static_cast<double>(menuFirst_);
     if (glow > 0.01 && menu == menu_) {
-        const double at = menuRow_.Value(clockMs_) - static_cast<double>(menuFirst_);
         const Box pill{x, top + at * rowHeight + Rem(0.08), width, rowHeight - Rem(0.16)};
-        // A soft light under the glass, so the highlight reads over the dark panel even where the overlay gives the
-        // glass nothing to refract.
-        painter.FillRoundRect(pill, pill.height / 2.0, Rgb(0xFFFFFF, 0.12 * glow * fade));
-        GlassStyle rowGlass;
-        rowGlass.kind = GlassKind::Pill;
-        rowGlass.focused = true;
-        rowGlass.focusAmount = glow;
-        rowGlass.opacity = fade * glow;
-        rowGlass.reduceTransparency = tokens::reduceTransparency;
-        painter.Glass(pill, pill.height / 2.0, rowGlass);
+        // The Home nav pill's hover plate, sliding between rows; the row under it reads in dark ink.
+        painter.Glass(pill, Rem(0.6), glass::NavHover(glow, fade));
     }
     const double tick = Rem(1.05);
     for (std::size_t i = menuFirst_; i < options.size() && i < menuFirst_ + shown; ++i) {
@@ -980,21 +973,27 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
         const double labelLeft = row.x + Rem(0.85);
         const double textRight = row.Right() - Rem(0.7) - tick - Rem(0.5);
         const double labelWidth = std::min(painter.MeasureText(option.label, labelStyle), textRight - labelLeft);
-        painter.Text(Box{labelLeft, row.y, labelWidth + 2.0, row.height}, option.label, labelStyle,
-                     faded(option.selected ? Rgb(0xFFFFFF) : Rgb(0xFFFFFF, 0.86)));
+        // How much of the hover plate is under this row: its ink turns dark as the plate arrives.
+        const double under = menu == menu_ ? glow * std::clamp(1.0 - std::abs(at - static_cast<double>(i - menuFirst_)), 0.0, 1.0)
+                                           : 0.0;
+        Color labelInk = glass::InkOnPlate(under, fade);
+        if (!option.selected && under < 0.5) labelInk.a *= 0.86;
+        painter.Text(Box{labelLeft, row.y, labelWidth + 2.0, row.height}, option.label, labelStyle, labelInk);
         if (!option.detail.empty()) {
             // The detail sits after the label, muted, and gives way to it when space is short.
             const TextStyle detailStyle{Rem(0.72), false, 450};
             const double detailLeft = labelLeft + labelWidth + Rem(0.7);
             if (textRight - detailLeft > Rem(1.5)) {
+                Color detailInk = labelInk;
+                detailInk.a *= 0.6;
                 painter.Text(Box{detailLeft, row.y, textRight - detailLeft, row.height}, option.detail, detailStyle,
-                             faded(Rgb(0xFFFFFF, 0.5)));
+                             detailInk);
             }
         }
         // The chosen row carries a blue tick at its end.
         if (option.selected) {
             painter.Path(Box{row.Right() - Rem(0.7) - tick, row.CenterY() - tick / 2.0, tick, tick}, 32.0, kCheckPath,
-                         PathStyle{Color{0, 0, 0, 0}, faded(kMenuCheck), 3.2, false});
+                         PathStyle{Color{0, 0, 0, 0}, under > 0.5 ? faded(Rgb(0x1F6FE0)) : faded(kMenuCheck), 3.2, false});
         }
     }
     painter.PopClip();
@@ -1103,8 +1102,10 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         const bool iconOnly = name == kPlayKey || name == kRewindKey || name == kForwardKey;
         const std::vector<std::string> tools = ToolKeys();
         const bool tool = std::find(tools.begin(), tools.end(), std::string(name)) != tools.end();
-        if (amount > 0.01 && !iconOnly && !tool) {
-            const bool round = name == kMuteKey || name == kFullscreenKey || name == kDownloadKey;
+        // Mute and full screen draw their own rounded-square glass below.
+        const bool glassButton = name == kMuteKey || name == kFullscreenKey;
+        if (amount > 0.01 && !iconOnly && !tool && !glassButton) {
+            const bool round = name == kDownloadKey;
             const double radius = round ? std::min(box.width, box.height) / 2.0 : Rem(0.8);
             painter.FillRoundRect(box, radius, Rgb(0xFFFFFF, 0.14 * amount * opacity));
         }
@@ -1224,14 +1225,34 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         }
     }
 
+    // The Home nav pill's glass for the controls at the foot: one rounded-square capsule holds the sound (its button,
+    // bar and level) and one holds the tools, and each button gets the pill's hover plate. A button's square is the
+    // same size and corner as the tools' highlights, so full screen, mute and the tools read as one family.
+    const double squareSize = Rem(2.5);
+    const double squareRadius = Rem(0.6);
+    const double groupRadius = Rem(0.75);
+    const auto square = [&](const Box& hit) {
+        return Box{hit.CenterX() - squareSize / 2.0, hit.CenterY() - squareSize / 2.0, squareSize, squareSize};
+    };
+    const auto plate = [&](const Box& box, double amount) {
+        if (amount > 0.01) painter.Glass(box, squareRadius, glass::NavHover(amount, opacity));
+    };
+
     // The sound: the speaker, which mutes, then its bar from silence to 100% with a thumb on the level. A boost past
     // 100% shows the bar full and its percentage in blue.
     const Box mute = button(kMuteKey);
-    const Box speaker = GlyphBox(mute, Rem(kGlyphRem));
-    const bool silent = view_.muted || view_.volume <= 0.0;
-    painter.Path(speaker, 32.0, kSpeakerPath, line);
-    painter.Path(speaker, 32.0, silent ? kMutedPath : kWavesPath, line);
+    const Box muteSquare = square(mute);
     const Box volumeTrack = VolumeTrackBox();
+    const Box soundGroup{muteSquare.x - Rem(0.2), muteSquare.y - Rem(0.2),
+                         volumeTrack.Right() + Rem(3.4) - (muteSquare.x - Rem(0.2)), muteSquare.height + Rem(0.4)};
+    painter.Glass(soundGroup, groupRadius, glass::NavCapsule(opacity));
+    const double muteAmount = lit(kMuteKey);
+    plate(muteSquare, muteAmount);
+    const PathStyle muteLine{Color{0, 0, 0, 0}, glass::InkOnPlate(muteAmount, opacity), kGlyphStroke, false};
+    const Box speaker = GlyphBox(muteSquare, Rem(kGlyphRem) * 0.92);
+    const bool silent = view_.muted || view_.volume <= 0.0;
+    painter.Path(speaker, 32.0, kSpeakerPath, muteLine);
+    painter.Path(speaker, 32.0, silent ? kMutedPath : kWavesPath, muteLine);
     const double volumeHeight = Rem(volumeDragging_ ? 0.3 : 0.22);
     const Box volumeBar{volumeTrack.x, volumeTrack.CenterY() - volumeHeight / 2.0, volumeTrack.width, volumeHeight};
     painter.FillRoundRect(volumeBar, volumeHeight / 2.0, Rgb(0xFFFFFF, 0.24 * opacity));
@@ -1246,35 +1267,48 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                           Rgb(0x000000, 0.3 * opacity));
     painter.FillRoundRect(Box{knobX - knob / 2.0, volumeBar.CenterY() - knob / 2.0, knob, knob}, knob / 2.0, ink);
     const std::string percent = silent ? "Muted" : Fixed(std::round(view_.volume * 100.0), "%.0f%%");
-    painter.Text(Box{volumeTrack.Right() + Rem(0.55), volumeTrack.y, Rem(4.0), volumeTrack.height}, percent,
+    painter.Text(Box{volumeTrack.Right() + Rem(0.55), volumeTrack.y, Rem(3.0), volumeTrack.height}, percent,
                  TextStyle{Rem(0.72), true, 600}, view_.volume > 1.0 && !silent ? WithAlpha(kFill, opacity) : ink);
 
-    // The tools: subtitles, audio, quality and speed, each a word that opens its menu.
-    for (const std::string& tool : ToolKeys()) {
+    // The tools: subtitles, audio, quality (its badge: 4K, 1080p, HDR) and speed, in one capsule. Hover brings the
+    // pill's hover plate up under a tool; an open menu gives its tool the pill's selected plate. Labels turn dark on
+    // the plate, as the pill's tab labels do.
+    const std::vector<std::string> toolKeys = ToolKeys();
+    if (!toolKeys.empty()) {
+        const Box first = *BoxOf(toolKeys.front());
+        const Box last = *BoxOf(toolKeys.back());
+        const Box toolGroup{first.x - Rem(0.2), first.y - Rem(0.2), last.Right() - first.x + Rem(0.4),
+                            first.height + Rem(0.4)};
+        painter.Glass(toolGroup, groupRadius, glass::NavCapsule(opacity));
+    }
+    for (const std::string& tool : toolKeys) {
         const Box box = button(tool.c_str());
-        // The existing glass comes up under the pointer or the remote, as a rounded square, and stays while its menu
-        // is open.
-        const double amount = std::max(lit(tool.c_str()), menu_ == tool ? 1.0 : 0.0);
-        if (amount > 0.01) {
-            GlassStyle toolGlass;
-            toolGlass.kind = GlassKind::Pill;
-            toolGlass.focused = true;
-            toolGlass.focusAmount = amount;
-            toolGlass.opacity = amount * opacity;
-            toolGlass.reduceTransparency = tokens::reduceTransparency;
-            painter.Glass(box, Rem(0.6), toolGlass);
+        const bool open = menu_ == tool;
+        const double amount = lit(tool.c_str());
+        if (open) {
+            painter.Glass(box, Rem(0.55), glass::NavSelected(opacity));
+        } else if (amount > 0.01) {
+            painter.Glass(box, Rem(0.55), glass::NavHover(amount, opacity));
         }
+        const double onPlate = open ? 1.0 : amount;
         // Subtitles read faint while they are off.
         const bool off = tool == kSubtitlesKey &&
                          std::none_of(view_.subtitles.begin(), view_.subtitles.end(),
                                       [](const PlayerOption& option) { return option.selected && option.id != "no"; });
-        CenteredText(painter, box, ToolLabel(tool), TextStyle{Rem(kToolFontRem), true, 650},
-                     off ? WithAlpha(kInkMuted, opacity) : ink);
+        Color label = glass::InkOnPlate(onPlate, opacity);
+        if (off && onPlate < 0.5) label = WithAlpha(kInkMuted, opacity);
+        CenteredText(painter, box, ToolLabel(tool), TextStyle{Rem(kToolFontRem), true, 650}, label);
     }
 
-    // Full screen, at the right.
+    // Full screen, at the right: its own rounded-square glass button, the same size and corner as mute.
     const Box full = button(kFullscreenKey);
-    painter.Path(GlyphBox(full, Rem(kGlyphRem)), 32.0, view_.fullscreen ? kExitFullscreenPath : kFullscreenPath, line);
+    const Box fullSquare = square(full);
+    const double fullAmount = lit(kFullscreenKey);
+    painter.Glass(fullSquare, squareRadius, glass::NavCapsule(opacity));
+    plate(fullSquare, fullAmount);
+    painter.Path(GlyphBox(fullSquare, Rem(kGlyphRem) * 0.86), 32.0,
+                 view_.fullscreen ? kExitFullscreenPath : kFullscreenPath,
+                 PathStyle{Color{0, 0, 0, 0}, glass::InkOnPlate(fullAmount, opacity), kGlyphStroke, false});
 
     // The title sits at the top centre (PaintTitleOverlay), so the middle of the control row is the transport's.
 }

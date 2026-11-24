@@ -2845,6 +2845,13 @@ void App::OnPlayerState(const mpv::State& state) {
                 ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), mpv::AudioDetail(track), track.selected});
         } else if (track.type == "video" && track.selected && track.height > 0) {
             playerView_.qualityLabel = track.height >= 2000 ? "4K" : std::to_string(track.height) + "p";
+            // HDR on the badge only when the release playing says so (its tags read "HDR", "HDR10+" or
+            // "Dolby Vision"); mpv's track list does not report it.
+            if (streamChosen_ < streamChoices_.size()) {
+                const std::string& tags = streamChoices_[streamChosen_].detail;
+                if (tags.find("Dolby Vision") != std::string::npos) playerView_.qualityLabel += " DV";
+                else if (tags.find("HDR") != std::string::npos) playerView_.qualityLabel += " HDR";
+            }
         }
     }
     if (!playerView_.subtitles.empty()) {
