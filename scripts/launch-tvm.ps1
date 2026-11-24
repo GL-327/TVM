@@ -9,6 +9,6 @@ $nativeExe = @(
     (Join-Path $repo "native\build\tvm.exe")
 ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $nativeExe) {
-    throw "Build the C++ desktop client with native\build.bat, or download the Native Windows package from GitHub Releases."
+    throw "Build the C++ desktop client with native\build.bat, or download TVM.exe from https://github.com/GL-327/TVM/releases/latest."
 }
 Start-Process -FilePath $nativeExe -WorkingDirectory $repo

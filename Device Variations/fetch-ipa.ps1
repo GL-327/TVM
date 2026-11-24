@@ -80,6 +80,7 @@ function Find-Asset($assets, [string[]] $Names) {
 Set-Location $repoRoot
 
 $devices = @(Release-Assets "devices")
+$nativeWindows = @(Release-Assets "native-windows")
 $ios = @(Release-Assets "ios")
 $android = @(Release-Assets "android")
 $roku = @(Release-Assets "roku")
@@ -88,6 +89,11 @@ $desktop = @(Release-Assets "desktop")
 Write-Host "Downloading device packages into $here"
 
 # One file per platform, the same names the release pages carry.
+$winExe = Find-Asset $devices @("TVM.exe")
+if (-not $winExe) { $winExe = Find-Asset $nativeWindows @("TVM.exe") }
+if (-not $winExe) { Fail "No TVM.exe on the devices or native-windows GitHub release." }
+Save-Asset $winExe (Join-Path $here "TVM.exe") | Out-Null
+
 $ipa = Find-Asset $devices @("TVM.ipa")
 if (-not $ipa) { $ipa = Find-Asset $ios @("TVM.ipa") }
 if (-not $ipa) { Fail "No TVM.ipa on the devices or ios GitHub release." }
@@ -118,6 +124,7 @@ Get-ChildItem -Path $here -Filter "TVM-desktop-*" -ErrorAction SilentlyContinue 
 $stamp = @"
 TVM Device Variations
 Fetched: $(Get-Date -Format o)
+Windows:$((Get-Item (Join-Path $here 'TVM.exe')).Length) bytes
 IPA:    $((Get-Item (Join-Path $here 'TVM.ipa')).Length) bytes
 APK:    $((Get-Item (Join-Path $here 'TVM.apk')).Length) bytes
 Roku:   $((Get-Item (Join-Path $here 'TVM-roku.zip')).Length) bytes

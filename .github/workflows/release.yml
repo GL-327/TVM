@@ -112,7 +112,7 @@ jobs:
           cat > release/NOTES.md <<EOF
           Responsive browser desktop for **macOS and Linux**, with shared Core and UI.
           Install Node.js 22+, extract TVM-desktop.zip, then run TVM.command on macOS or TVM.sh on Linux.
-          Windows uses the C++ client from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows), which includes Node and the shared Core/UI.
+          Windows uses the single-file **TVM.exe** installer from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows) (or [TVM downloads](https://github.com/GL-327/TVM/releases/latest)), which includes Node and the shared Core/UI.
           Build: $SHA. Electron has been retired. See [desktop setup](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
           EOF
           gh release create desktop --title "Desktop browser — macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \
@@ -122,11 +122,11 @@ jobs:
           for old in $(gh release view desktop --json assets --jq '.assets[].name' 2>/dev/null || true); do
             [ "$old" = "TVM-desktop.zip" ] || gh release delete-asset desktop "$old" --yes || true
           done
-          gh release upload desktop "release/TVM-desktop.zip#$GITHUB_SHA" --clobber
+          gh release upload desktop "release/TVM-desktop.zip" --clobber
           printf '%s\n' 'TVM in mobile and desktop browsers. Install Node.js 22+, extract TVM-web.zip, then run TVM-web.cmd or TVM-web.sh. Core serves the responsive UI at http://127.0.0.1:7345/. See the repository README for authenticated LAN access.' > release/WEB.md
           gh release create web --title 'Web browser — mobile & desktop' --notes-file release/WEB.md --latest=false 2>/dev/null \
             || gh release edit web --title 'Web browser — mobile & desktop' --notes-file release/WEB.md --latest=false
-          gh release upload web "release/TVM-web.zip#$GITHUB_SHA" --clobber
+          gh release upload web "release/TVM-web.zip" --clobber
           bash scripts/publish-device-package.sh release/TVM-desktop.zip release/TVM-web.zip
 
       # What installed copies download to update themselves. Kept off the
