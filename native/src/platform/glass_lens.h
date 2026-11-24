@@ -1,14 +1,15 @@
 #pragma once
 
-// Clear refracting glass, after PyGlass (github.com/neomosh8/pyglass, MIT): each surface is a slab of glass
-// with a flat interior and a rounded rim. What is already drawn under the surface is copied from the render
-// target, shown 1:1 through the flat interior, and bent inward at the rim by Snell's law through the
-// roundover, a little differently for red, green and blue. A Fresnel reflection of a soft key and fill light,
-// and a thin pastel spectral line, brighten the grazing rim.
+// Liquid Glass, after PyGlass (github.com/neomosh8/pyglass, MIT) and the open fits of iOS 26/27 glass (Kyant0's
+// Backdrop, the Flutter liquid_glass_renderer): each surface is a flat slab of glass whose edge rolls over in a
+// convex bezel. What is already drawn under the surface is copied from the render target, diffused a little (much
+// more for frosted glass), seen undistorted through the flat middle, and pulled inward at the bezel, a touch
+// differently for red, green and blue. A neutral specular glint, lit from the upper left with half as much on the
+// far edge, iOS 27's dark contour where the edge runs across the light, and a soft shadow complete it.
 //
-// The geometry is solved once per surface size on the CPU into a displacement map and a reflection overlay.
-// Each frame then costs one GPU copy of the pixels under the surface and three displacement-map effects, all
-// on the GPU through Direct2D 1.1 effects. Where the render target is not a Direct2D 1.1 device context, or
+// The geometry is solved once per surface size on the CPU into a displacement map, a glint overlay, a contour and a
+// shadow. Each frame then costs one GPU copy of the pixels under the surface, a blur and three displacement-map
+// effects, all on the GPU through Direct2D 1.1 effects. Where the render target is not a Direct2D 1.1 device context, or
 // nothing has been drawn under the glass (the player's overlay over mpv), callers fall back to frosted glass.
 
 #include <cstdint>
@@ -40,13 +41,23 @@ public:
     // frames, or -1 before the first measurement.
     bool DrawRefraction(const ui::Box& box, double radius, double opacity, bool frosted = false,
                         double* brightness = nullptr);
-    // Draws the rim's Fresnel reflection and spectral line over the surface. Call after any veil.
-    void DrawRim(const ui::Box& box, double radius, double opacity);
+    // Draws the rim over the surface: iOS 27's dark contour at `contour` strength, then the neutral specular glint
+    // and grazing veil at `opacity`. Call after any veil.
+    void DrawRim(const ui::Box& box, double radius, double opacity, double contour = 0.0);
+    // Draws the surface's soft drop shadow, outside its shape, `drop` pixels further down than at rest (a focused
+    // surface lifts). Call before DrawRefraction. False when it could not.
+    bool DrawShadow(const ui::Box& box, double radius, double opacity, double drop = 0.0);
 
 private:
     struct Kernel {
         ComPtr<ID2D1Bitmap1> displacement;
         ComPtr<ID2D1Bitmap1> rim;
+        ComPtr<ID2D1Bitmap1> contour;
+        // Half the surface's shorter side, which sets how far it diffuses the picture.
+        double half = 0.0;
+        // The drop shadow, `shadowMargin` pixels larger than the surface on every side.
+        ComPtr<ID2D1Bitmap1> shadow;
+        std::uint32_t shadowMargin = 0;
         ComPtr<ID2D1Bitmap1> capture;
         // A CPU-readable copy of the capture, for measuring brightness.
         ComPtr<ID2D1Bitmap1> readback;
@@ -84,6 +95,7 @@ private:
     ComPtr<ID2D1Effect> sum_;
     ComPtr<ID2D1Effect> vibrancy_;
     ComPtr<ID2D1Effect> frost_;
+    ComPtr<ID2D1Effect> soften_;
     std::map<Key, Kernel> kernels_;
     std::uint64_t clock_ = 0;
 };

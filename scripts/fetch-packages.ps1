@@ -81,40 +81,17 @@ function Find-Asset($assets, [string[]] $Names) {
 Set-Location $repoRoot
 
 $devices = @(Release-Assets "devices")
-$nativeWindows = @(Release-Assets "native-windows")
-$ios = @(Release-Assets "ios")
-$android = @(Release-Assets "android")
-$roku = @(Release-Assets "roku")
-$desktop = @(Release-Assets "desktop")
+if ($devices.Count -eq 0) { Fail "Could not read TVM Downloads (the devices release) from GitHub." }
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 Write-Host "Downloading device packages into $outDir"
 
-# One file per platform, the same names the release pages carry.
-$winExe = Find-Asset $devices @("TVM.exe")
-if (-not $winExe) { $winExe = Find-Asset $nativeWindows @("TVM.exe") }
-if (-not $winExe) { Fail "No TVM.exe on the devices or native-windows GitHub release." }
-Save-Asset $winExe (Join-Path $outDir "TVM.exe") | Out-Null
-
-$ipa = Find-Asset $devices @("TVM.ipa")
-if (-not $ipa) { $ipa = Find-Asset $ios @("TVM.ipa") }
-if (-not $ipa) { Fail "No TVM.ipa on the devices or ios GitHub release." }
-Save-Asset $ipa (Join-Path $outDir "TVM.ipa") | Out-Null
-
-$apk = Find-Asset $devices @("TVM.apk")
-if (-not $apk) { $apk = Find-Asset $android @("TVM.apk") }
-if (-not $apk) { Fail "No TVM.apk on the devices or android GitHub release." }
-Save-Asset $apk (Join-Path $outDir "TVM.apk") | Out-Null
-
-$rokuZip = Find-Asset $devices @("TVM-roku.zip")
-if (-not $rokuZip) { $rokuZip = Find-Asset $roku @("TVM-roku.zip") }
-if (-not $rokuZip) { Fail "No TVM-roku.zip on the devices or roku GitHub release." }
-Save-Asset $rokuZip (Join-Path $outDir "TVM-roku.zip") | Out-Null
-
-$desktopZip = Find-Asset $devices @("TVM-desktop.zip")
-if (-not $desktopZip) { $desktopZip = Find-Asset $desktop @("TVM-desktop.zip") }
-if (-not $desktopZip) { Fail "No TVM-desktop.zip on the devices or desktop GitHub release." }
-Save-Asset $desktopZip (Join-Path $outDir "TVM-desktop.zip") | Out-Null
+# One file per platform, the same names TVM Downloads carries.
+foreach ($name in @("TVM.exe", "TVM.ipa", "TVM.apk", "TVM-roku.zip", "TVM-desktop.zip")) {
+    $asset = Find-Asset $devices @($name)
+    if (-not $asset) { Fail "No $name on TVM Downloads yet. Its build may still be running." }
+    Save-Asset $asset (Join-Path $outDir $name) | Out-Null
+}
 
 # Older names this folder used to hold, so a stale APK cannot be installed by
 # mistake months from now.

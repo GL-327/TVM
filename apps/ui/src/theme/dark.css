@@ -34,13 +34,17 @@ html[data-theme='dark'] {
   --tvm-shadow-card: 0 0.8rem 2rem rgba(0, 0, 0, 0.62);
   --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(74, 160, 224, 0.28);
 
-  --tvm-glass-bg: linear-gradient(155deg, rgba(22, 40, 68, 0.56), rgba(8, 16, 30, 0.74));
-  --tvm-glass-bg-elevated: linear-gradient(155deg, rgba(24, 46, 78, 0.68), rgba(9, 18, 34, 0.84));
-  --tvm-glass-blur: blur(28px) saturate(190%);
-  --tvm-glass-rim-light: inset 0 1px 0.5px rgba(255, 255, 255, 0.28);
-  --tvm-glass-rim-chroma: inset 0 -1px 1px rgba(110, 200, 255, 0.22);
-  --tvm-glass-sheen: linear-gradient(132deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 34%, transparent 64%);
-  --tvm-glass-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.54);
+  /* Liquid Glass, tuned to the open fits of iOS 27 glass (Kyant0 Backdrop, Flutter liquid_glass_renderer):
+     a neutral grey wash rather than a coloured one, the picture diffused and its colour lifted behind it, a
+     white glint along the top edge with half as much on the far edge, iOS 27's dark contour, and a soft drop
+     shadow. Glass reflects white light: no tinted rims. */
+  --tvm-glass-bg: linear-gradient(180deg, rgba(48, 48, 52, 0.40), rgba(26, 26, 30, 0.54));
+  --tvm-glass-bg-elevated: linear-gradient(180deg, rgba(48, 48, 52, 0.56), rgba(24, 24, 28, 0.70));
+  --tvm-glass-blur: blur(16px) saturate(175%) brightness(1.04);
+  --tvm-glass-rim-light: inset 0 1px 0 rgba(255, 255, 255, 0.34), inset 1px 0 0 rgba(255, 255, 255, 0.10);
+  --tvm-glass-rim-chroma: inset 0 -1px 0 rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.42);
+  --tvm-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.025) 36%, transparent 58%);
+  --tvm-glass-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.30);
   --tvm-glass-focus-glow: 0 0 0 0.14rem rgba(158, 220, 255, 0.88), 0 0.85rem 2.2rem rgba(74, 160, 224, 0.34);
 
   --tvm-scene-sky: #14284c;

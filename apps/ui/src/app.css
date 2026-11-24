@@ -338,7 +338,7 @@ body,
   backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.28)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.18)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14)),
     0 0.55rem 1.4rem rgba(0, 0, 0, 0.28);
   color: var(--tvm-text);
   transition:
@@ -621,7 +621,7 @@ body,
   backdrop-filter: var(--tvm-glass-blur, blur(24px) saturate(180%));
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.24)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.16)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14)),
     0 0.75rem 1.8rem rgba(0, 0, 0, 0.28);
   color: var(--tvm-text);
   text-align: left;
@@ -1434,7 +1434,7 @@ img.stage__art.art--ready {
   backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.24)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14)),
     var(--tvm-glass-shadow, 0 1rem 2.4rem rgba(0, 0, 0, 0.35));
 }
 
@@ -1520,7 +1520,7 @@ img.stage__art.art--ready {
   backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.28)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14)),
     var(--tvm-glass-shadow, var(--tvm-shadow-card));
 }
 
@@ -2113,7 +2113,7 @@ html.tvm-egg--happy .app::after {
   backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.3)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14)),
     var(--tvm-glass-shadow, 0 0.7rem 2.4rem rgba(0, 0, 0, 0.5));
   animation: search-pill-in var(--tvm-motion-base) var(--tvm-motion-ease) backwards;
 }
@@ -2502,7 +2502,7 @@ html.tvm-egg--happy .app::after {
   backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.3)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14)),
     var(--tvm-glass-shadow, 0 0.65rem 2rem rgba(0, 0, 0, 0.45));
 }
 

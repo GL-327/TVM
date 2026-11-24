@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "motion/preferences.h"
+#include "ui/glass_styles.h"
 #include "ui/layout.h"
 #include "ui/theme.h"
 #include "ui/widget.h"
@@ -655,14 +656,8 @@ void ProfileMenu::Paint(Painter& painter) const {
     const Box panel{rest.Right() - rest.width * scale, rest.y - Rem(0.3) * (1.0 - open), rest.width * scale,
                     rest.height * scale};
     const double radius = Rem(1.375);
-    for (int layer = 3; layer >= 1; --layer) {
-        const double spread = Rem(0.22) * layer;
-        painter.FillRoundRect(Box{panel.x - spread, panel.y - spread + Rem(0.35), panel.width + 2.0 * spread,
-                                  panel.height + 2.0 * spread},
-                              radius + spread, Rgb(0x000000, 0.10 * open));
-    }
-    painter.FillRoundRect(panel, radius, Rgb(0x141720, 0.97 * open));
-    painter.StrokeRoundRect(panel, radius, 1.0, Rgb(0xFFFFFF, 0.08 * open));
+    // A frosted Liquid Glass menu, as Apple's are: its own soft shadow, the artwork diffused behind the rows.
+    painter.Glass(panel, radius, glass::MenuPanel(open));
 
     const std::vector<std::string> keys = Keys();
     const auto at = std::find(keys.begin(), keys.end(), focused_);

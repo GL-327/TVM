@@ -3,6 +3,7 @@ import { enterTvmStream } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
 import { usePhoneShell } from '../nav/usePhoneShell';
 import { FocusButton } from './FocusButton';
+import { useLiquidLens } from './liquidLens';
 import {
   IconApps,
   IconHome,
@@ -52,7 +53,10 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
   const navigate = useNavigate();
   const phone = usePhoneShell();
   const rootRef = useRef<HTMLElement>(null);
+  const frostRef = useRef<HTMLDivElement>(null);
   const hideRef = useRef(0);
+  // The bar is the one piece of glass on every screen, so it refracts like the Windows app's capsule.
+  useLiquidLens(frostRef, { blur: 5 });
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
 
@@ -274,7 +278,9 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
         onWheel={passWheelToPage}
       >
         {phone && more ? moreSheet : null}
-        <div className="ribbon__frost">{phone ? phoneBar : tvList}</div>
+        <div ref={frostRef} className="ribbon__frost">
+          {phone ? phoneBar : tvList}
+        </div>
       </nav>
     </>
   );

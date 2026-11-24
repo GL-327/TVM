@@ -4,7 +4,7 @@ Electron has been retired. Windows uses the C++20 desktop client; macOS and Linu
 
 ## Windows download
 
-Download **TVM.exe** from [TVM downloads](https://github.com/GL-327/TVM/releases/latest) (or the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows)) and run it — no ZIP extraction or administrator prompt is needed. On first run it installs TVM into `%LOCALAPPDATA%\Programs\TVM`, adds Start menu and Desktop shortcuts, and opens TVM; subsequent runs launch TVM directly or update it if the EXE is newer. It includes Node, Core, the web UI and artwork. Playback uses mpv; TVM can install a verified portable Windows build automatically when it is missing. You can also install mpv yourself or set `TVM_MPV_PATH`. The browser UI is available at `http://127.0.0.1:7345/` while Core runs.
+Download **TVM.exe** from [TVM downloads](https://github.com/GL-327/TVM/releases/latest) and run it — no ZIP extraction or administrator prompt is needed. On first run it installs TVM into `%LOCALAPPDATA%\Programs\TVM`, adds Start menu and Desktop shortcuts, and opens TVM; subsequent runs launch TVM directly or update it if the EXE is newer. It includes Node, Core, the web UI and artwork. Playback uses mpv; TVM can install a verified portable Windows build automatically when it is missing. You can also install mpv yourself or set `TVM_MPV_PATH`. The browser UI is available at `http://127.0.0.1:7345/` while Core runs.
 
 Sign in through **Account**. New accounts need the operator to activate them. The account screen supports registration, email codes, accepting terms and developer sign-in. Donations open the shared payment screen in your browser; card details remain in Stripe's fields.
 
@@ -32,7 +32,7 @@ Install Node.js 22+, curl, and ffmpeg for browser transcodes. From a checkout:
 ./scripts/launchers/TVM.sh
 ```
 
-The launcher starts Core and Vite and opens your browser. From the [Desktop browser release](https://github.com/GL-327/TVM/releases/tag/desktop), extract `TVM-desktop.zip` and run `TVM.command` on macOS or `TVM.sh` on Linux. The package serves its built UI directly from Core. The browser client supports phone, tablet and desktop sizes, keyboard/remote navigation, touch and rotation. Browser downloads use a browser with the directory-picker API; Windows native downloads work independently of that API.
+The launcher starts Core and Vite and opens your browser. From [TVM Downloads](https://github.com/GL-327/TVM/releases/latest), extract `TVM-desktop.zip` and run `TVM.command` on macOS or `TVM.sh` on Linux. The package serves its built UI directly from Core. The browser client supports phone, tablet and desktop sizes, keyboard/remote navigation, touch and rotation. Browser downloads use a browser with the directory-picker API; Windows native downloads work independently of that API.
 
 ## Other clients
 

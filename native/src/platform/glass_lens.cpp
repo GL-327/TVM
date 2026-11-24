@@ -37,56 +37,74 @@ namespace tvm::platform {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
 // Surfaces larger than this on either side are not refracted; nothing in the UI is that large.
 constexpr std::uint32_t kMaxSide = 2048;
 constexpr std::size_t kMaxKernels = 48;
 
-// The slab, scaled from PyGlass's tuned neutral material (bevel 56, strength 42, IOR 1.5 inside to 5 at the
-// rim) to TVM's smaller controls: a pill is domed across its whole height, a panel keeps a flat centre.
-constexpr double kMaxBevel = 28.0;
-constexpr double kStrengthPerBevel = 0.85;
-constexpr double kIorEdge = 5.0;
-constexpr double kIorInner = 1.5;
-// Red bends least and blue most, so colour separates into cyan/violet along curved rims.
-constexpr double kChroma = 0.20;
-constexpr double kReflect = 0.72;
-constexpr double kF0 = 0.04;
-constexpr double kGlow = 0.42;
-constexpr double kGlowWidth = 2.6;
-constexpr double kGlowSaturation = 0.65;
-// Vibrancy boost on refracted pixels so underlying artwork blooms vividly through Clear & Frosted glass.
-constexpr float kVibrancySaturation = 1.28f;
-// Frosted glass: a rough face scatters light into a cone, seen as a blur of the picture behind (PyGlass's frost).
-constexpr float kFrostSigma = 16.0f;
+// The slab: a flat sheet of glass whose edge rolls over in a convex bezel, as Liquid Glass does. Only the bezel
+// bends light, so the middle of a control shows what is behind it undistorted while the rim pulls in a compressed,
+// strongly bent ring of what lies inside it. The numbers follow the open fits of iOS 26 and 27 glass (Kyant0's
+// Backdrop and the Flutter liquid_glass_renderer): the bezel is half the shorter half-side, at most 24 px (16 px on
+// the 64 px navigation capsule, 12 px on a button), and the rim shift is 1.75 times the bezel, never past the
+// middle.
+constexpr double kBevelFraction = 0.50;
+constexpr double kMinBevel = 5.0;
+constexpr double kMaxBevel = 24.0;
+constexpr double kShiftPerBevel = 1.75;
+// Dispersion: red bends a little less and blue a little more. Apple's glass shows almost none, so it is kept to a
+// few percent of the shift, which only colours the strongly bent rim on high-contrast edges.
+constexpr double kChroma = 0.04;
+// Light falls from the upper left, steeper than 45 degrees, so top edges catch more of it than the sides.
+constexpr double kLightX = -0.50;
+constexpr double kLightY = -0.866;
+// The specular glint: a neutral white line about a pixel wide at the silhouette with a faint bleed four times as
+// wide, strongest where the edge faces the light and half as strong where it faces directly away (light reflected
+// inside the glass). iOS 27 made it brighter.
+constexpr double kGlint = 1.0;
+constexpr double kGlintWidth = 1.4;
+constexpr double kGlintBleed = 0.21;
+constexpr double kFarSide = 0.50;
+// A faint white veil over the outer few pixels, where the bezel turns to grazing and reflects more than it passes.
+constexpr double kRimVeil = 0.12;
+constexpr double kRimVeilWidth = 3.0;
+// iOS 27's darker edge: a thin shade along the silhouette, strongest where the edge runs across the light and gone
+// where it faces it, which gives the glass its depth against any backdrop.
+constexpr double kContourWidth = 1.6;
+constexpr double kContourBleed = 0.30;
+constexpr double kContourDirectionality = 0.85;
+// Colour behind the glass is lifted a little, as Apple's material does after it diffuses the picture.
+constexpr float kVibrancySaturation = 1.35f;
+// How far the glass diffuses what is behind it, as a share of the surface's shorter half-side. Clear glass (the
+// default) softens it just enough to keep labels legible; frosted glass scatters it like Apple's tinted setting.
+constexpr double kClearSigma = 0.12;
+constexpr double kClearSigmaMin = 1.5;
+constexpr double kClearSigmaMax = 5.0;
+constexpr double kFrostSigma = 0.35;
+constexpr double kFrostSigmaMin = 8.0;
+constexpr double kFrostSigmaMax = 18.0;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
 // for the first time always measures, so a still frame adapts at once.
 constexpr int kMeasuresPerFrame = 3;
 constexpr std::uint64_t kReadingFrames = 12;
 
-struct Vec3 {
-    double x, y, z;
-};
-
-Vec3 Normalize(Vec3 v) {
-    const double length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-    return Vec3{v.x / length, v.y / length, v.z / length};
-}
-
-// A fully saturated colour for hue `h` in [0, 1).
-std::array<double, 3> Hue(double h) {
-    const double h6 = (h - std::floor(h)) * 6.0;
-    const int i = static_cast<int>(std::floor(h6)) % 6;
-    const double f = h6 - std::floor(h6);
-    const double q = 1.0 - f;
-    switch (i) {
-    case 0: return {1.0, f, 0.0};
-    case 1: return {q, 1.0, 0.0};
-    case 2: return {0.0, 1.0, f};
-    case 3: return {0.0, q, 1.0};
-    case 4: return {f, 0.0, 1.0};
-    default: return {1.0, 0.0, q};
+// Signed distance from (px, py), measured from the centre, to a rounded rectangle of half-sides hx, hy and corner
+// radius r: negative inside. `nx`, `ny` receive the outward normal in the plane.
+double RoundedBoxDistance(double px, double py, double hx, double hy, double r, double& nx, double& ny) {
+    const double qx = std::fabs(px) - (hx - r);
+    const double qy = std::fabs(py) - (hy - r);
+    nx = 0.0;
+    ny = 0.0;
+    if (qx > 0.0 && qy > 0.0) {
+        const double length = std::hypot(qx, qy);
+        nx = std::copysign(qx / length, px);
+        ny = std::copysign(qy / length, py);
+    } else if (qx > qy) {
+        nx = px < 0.0 ? -1.0 : 1.0;
+    } else {
+        ny = py < 0.0 ? -1.0 : 1.0;
     }
+    const double outside = std::hypot(std::max(qx, 0.0), std::max(qy, 0.0));
+    return outside + std::min(std::max(qx, qy), 0.0) - r;
 }
 
 std::uint8_t Byte(double value) {
@@ -138,7 +156,8 @@ GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
     }
     made = made && SUCCEEDED(dc_->CreateEffect(CLSID_D2D1Composite, &sum_)) &&
            SUCCEEDED(dc_->CreateEffect(CLSID_D2D1ColorMatrix, &vibrancy_)) &&
-           SUCCEEDED(dc_->CreateEffect(CLSID_D2D1GaussianBlur, &frost_));
+           SUCCEEDED(dc_->CreateEffect(CLSID_D2D1GaussianBlur, &frost_)) &&
+           SUCCEEDED(dc_->CreateEffect(CLSID_D2D1GaussianBlur, &soften_));
     if (!made) {
         dc_.Reset();
         return;
@@ -148,9 +167,9 @@ GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
     sum_->SetValue(D2D1_COMPOSITE_PROP_MODE, D2D1_COMPOSITE_MODE_PLUS);
     vibrancy_->SetInputEffect(0, sum_.Get());
     vibrancy_->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, SaturationMatrix(kVibrancySaturation));
-    frost_->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, kFrostSigma);
     // Hard edges: the blur never pulls in transparent black from outside the copied pixels.
     frost_->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_HARD);
+    soften_->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_HARD);
 }
 
 void GlassLens::BeginFrame() {
@@ -226,94 +245,78 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
 
     const double hx = w / 2.0;
     const double hy = h / 2.0;
-    const double bevel = std::min(kMaxBevel, std::min(hx, hy));
-    const double strength = kStrengthPerBevel * bevel;
-    // A pixel at the rim never samples past the middle of the surface.
-    const double clampShift = 0.85 * std::min(hx, hy);
-    const Vec3 key = Normalize(Vec3{-0.52, -0.78, 0.35});
-    const Vec3 fill = Normalize(Vec3{0.58, 0.72, 0.38});
+    const double half = std::min(hx, hy);
+    const double bevel = std::clamp(kBevelFraction * half, std::min(kMinBevel, half), std::min(kMaxBevel, half));
+    const double amount = std::min(kShiftPerBevel * bevel, 0.9 * half);
+    const double lightLength = std::hypot(kLightX, kLightY);
+    const double lx = kLightX / lightLength;
+    const double ly = kLightY / lightLength;
 
     std::vector<double> shiftX(static_cast<std::size_t>(w) * h, 0.0);
     std::vector<double> shiftY(shiftX.size(), 0.0);
     std::vector<std::uint8_t> rim(shiftX.size() * 4, 0);
+    std::vector<std::uint8_t> contour(shiftX.size() * 4, 0);
     double maxShift = 0.5;
     for (std::uint32_t y = 0; y < h; ++y) {
         for (std::uint32_t x = 0; x < w; ++x) {
             const std::size_t i = static_cast<std::size_t>(y) * w + x;
-            // Signed distance to the rounded rectangle, and the outward normal in the plane.
-            const double px = x + 0.5 - hx;
-            const double py = y + 0.5 - hy;
-            const double qx = std::fabs(px) - (hx - r);
-            const double qy = std::fabs(py) - (hy - r);
-            const double outside = std::hypot(std::max(qx, 0.0), std::max(qy, 0.0));
-            const double sdf = outside + std::min(std::max(qx, qy), 0.0) - r;
-            const double d = -sdf;
-            if (d <= 0.0) continue;
             double nx = 0.0;
             double ny = 0.0;
-            if (qx > 0.0 && qy > 0.0) {
-                const double length = std::hypot(qx, qy);
-                nx = std::copysign(qx / length, px);
-                ny = std::copysign(qy / length, py);
-            } else if (qx > qy) {
-                nx = px < 0.0 ? -1.0 : 1.0;
-            } else {
-                ny = py < 0.0 ? -1.0 : 1.0;
-            }
+            const double d = -RoundedBoxDistance(x + 0.5 - hx, y + 0.5 - hy, hx, hy, r, nx, ny);
+            if (d <= 0.0) continue;
 
-            // Smooth squircle meniscus profile (p = 2.6): steep at the outer rim and C1-smooth into the flat interior.
-            const double t = std::clamp(d / bevel, 0.0, 1.0);
-            const double u = std::clamp(1.0 - t, 0.0, 0.988);
-            const double uPow = std::pow(u, 2.6);
-            const double denom = std::pow(std::max(1.0 - uPow, 1e-4), 1.0 - 1.0 / 2.6);
-            const double slope = std::min(7.5, std::pow(u, 1.6) / denom);
-            const double cosT = 1.0 / std::sqrt(1.0 + slope * slope);
-            const double sinT = slope * cosT;
+            // Refraction through the convex bezel, in the closed form both fits use: the slope of a quarter circle,
+            // nothing at the inner end of the bezel and the full shift at the rim, where the face is vertical. The
+            // ray leans inward, so each rim pixel shows the picture a little further inside.
+            const double rimward = std::clamp(1.0 - d / bevel, 0.0, 1.0);
+            const double shift = amount * (1.0 - std::sqrt(1.0 - rimward * rimward));
+            shiftX[i] = -shift * nx;
+            shiftY[i] = -shift * ny;
+            maxShift = std::max({maxShift, std::fabs(shiftX[i]), std::fabs(shiftY[i])});
 
-            // Snell's law for a vertical ray through the tilted surface, projected `strength` below.
-            const double ior = kIorEdge + (kIorInner - kIorEdge) * t;
-            const double eta = 1.0 / ior;
-            const double cosR = std::sqrt(std::clamp(1.0 - eta * eta * sinT * sinT, 0.0, 1.0));
-            const double coeff = eta * cosT - cosR;
-            const double tz = eta - coeff * cosT;
-            const double project = strength / std::max(tz, 1e-3);
-            const double dx = std::clamp(coeff * nx * sinT * project, -clampShift, clampShift);
-            const double dy = std::clamp(coeff * ny * sinT * project, -clampShift, clampShift);
-            shiftX[i] = dx;
-            shiftY[i] = dy;
-            maxShift = std::max({maxShift, std::fabs(dx), std::fabs(dy)});
+            // How squarely this stretch of rim faces the light (1), faces away from it (-1) or runs across it (0).
+            const double facing = nx * lx + ny * ly;
+            const double lobe = facing > 0.0 ? facing : kFarSide * -facing;
 
-            // Dual-light Schlick Fresnel: crisp warm-white top-left key specular + cool sky-blue bottom-right bounce.
-            const double fresnel = (kF0 + (1.0 - kF0) * std::pow(1.0 - std::clamp(cosT, 0.0, 1.0), 5.0)) * kReflect;
-            const double rx = 2.0 * cosT * (nx * sinT);
-            const double ry = 2.0 * cosT * (ny * sinT);
-            const double rz = 2.0 * cosT * cosT - 1.0;
-            const double dotKey = std::clamp(rx * key.x + ry * key.y + rz * key.z, 0.0, 1.0);
-            const double dotFill = std::clamp(rx * fill.x + ry * fill.y + rz * fill.z, 0.0, 1.0);
-            const double specKey = std::pow(dotKey, 42.0) + 0.30 * std::pow(dotKey, 10.0);
-            const double specFill = std::pow(dotFill, 18.0);
-            const double horizon = std::clamp(1.0 - std::clamp(rz, 0.0, 1.0), 0.0, 1.0);
-            const double envR = std::min(1.0, (horizon * 118.0 + specKey * 255.0 + specFill * 145.0) / 255.0);
-            const double envG = std::min(1.0, (horizon * 146.0 + specKey * 250.0 + specFill * 212.0) / 255.0);
-            const double envB = std::min(1.0, (horizon * 190.0 + specKey * 238.0 + specFill * 255.0) / 255.0);
+            const double glint = kGlint * lobe *
+                                 (std::clamp(1.0 - d / kGlintWidth, 0.0, 1.0) +
+                                  kGlintBleed * std::clamp(1.0 - d / (4.0 * kGlintWidth), 0.0, 1.0));
+            const double grazing = std::clamp(1.0 - d / kRimVeilWidth, 0.0, 1.0);
+            const double veil = kRimVeil * grazing * grazing * (0.5 + 0.5 * lobe);
+            const double white = std::clamp(glint + veil, 0.0, 0.96);
+            rim[i * 4 + 0] = Byte(white);
+            rim[i * 4 + 1] = Byte(white);
+            rim[i * 4 + 2] = Byte(white);
+            rim[i * 4 + 3] = Byte(white);
 
-            // Spectral dispersion rim + deeper inner meniscus glow.
-            const std::array<double, 3> spectral = Hue(std::atan2(ny, nx) / (2.0 * kPi) + 0.5);
-            const double edgeLine = std::clamp(1.0 - d / kGlowWidth, 0.0, 1.0);
-            const double innerGlow = std::pow(std::clamp(1.0 - d / std::max(4.0, bevel * 0.45), 0.0, 1.0), 2.2) * 0.16;
-            const double line = edgeLine * kGlow + innerGlow;
-            std::array<double, 3> glow{};
-            for (int c = 0; c < 3; ++c) glow[c] = (spectral[c] * kGlowSaturation + (1.0 - kGlowSaturation)) * line;
+            const double across = 1.0 - kContourDirectionality * std::fabs(facing);
+            const double shade = std::clamp(across * (std::clamp(1.0 - d / kContourWidth, 0.0, 1.0) +
+                                                      kContourBleed * std::clamp(1.0 - d / (3.0 * kContourWidth), 0.0, 1.0)),
+                                            0.0, 1.0);
+            contour[i * 4 + 3] = Byte(shade);
+        }
+    }
 
-            // Over the transmitted picture this gives picture * (1 - F) + environment * F + glow, premultiplied.
-            const double alpha = std::clamp(fresnel + line, 0.0, 1.0);
-            const double red = std::min(alpha, envR * fresnel + glow[0]);
-            const double green = std::min(alpha, envG * fresnel + glow[1]);
-            const double blue = std::min(alpha, envB * fresnel + glow[2]);
-            rim[i * 4 + 0] = Byte(blue);
-            rim[i * 4 + 1] = Byte(green);
-            rim[i * 4 + 2] = Byte(red);
-            rim[i * 4 + 3] = Byte(alpha);
+    // The soft shadow under the surface: the shape blurred (so half strength right at its edge), dropped a little,
+    // and wider for larger surfaces. Nothing is drawn inside the shape, which the glass covers.
+    const double sigma = std::clamp(0.375 * half, 5.0, 22.0);
+    const std::uint32_t margin = static_cast<std::uint32_t>(std::ceil(3.0 * sigma));
+    const double drop = std::clamp(0.19 * half, 2.0, 12.0);
+    const std::uint32_t sw = w + 2 * margin;
+    const std::uint32_t sh = h + 2 * margin;
+    std::vector<std::uint8_t> shadow(static_cast<std::size_t>(sw) * sh * 4, 0);
+    for (std::uint32_t y = 0; y < sh; ++y) {
+        for (std::uint32_t x = 0; x < sw; ++x) {
+            const double px = x + 0.5 - margin - hx;
+            const double py = y + 0.5 - margin - hy;
+            double nx = 0.0;
+            double ny = 0.0;
+            const double own = RoundedBoxDistance(px, py, hx, hy, r, nx, ny);
+            if (own <= -0.5) continue;
+            const double cast = RoundedBoxDistance(px, py - drop, hx, hy, r, nx, ny);
+            const double outside = std::clamp(own + 0.5, 0.0, 1.0);
+            const double a = outside * 0.5 * std::erfc(cast / (sigma * std::sqrt(2.0)));
+            shadow[(static_cast<std::size_t>(y) * sw + x) * 4 + 3] = Byte(a);
         }
     }
 
@@ -328,6 +331,8 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
 
     Kernel kernel;
     kernel.maxShift = maxShift;
+    kernel.shadowMargin = margin;
+    kernel.half = half;
     kernel.used = ++clock_;
     const D2D1_BITMAP_PROPERTIES1 straight = D2D1::BitmapProperties1(
         D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
@@ -335,6 +340,8 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
     const D2D1_SIZE_U size = D2D1::SizeU(w, h);
     if (FAILED(dc_->CreateBitmap(size, map.data(), w * 4, straight, &kernel.displacement)) ||
         FAILED(dc_->CreateBitmap(size, rim.data(), w * 4, straight, &kernel.rim)) ||
+        FAILED(dc_->CreateBitmap(size, contour.data(), w * 4, straight, &kernel.contour)) ||
+        FAILED(dc_->CreateBitmap(D2D1::SizeU(sw, sh), shadow.data(), sw * 4, straight, &kernel.shadow)) ||
         FAILED(dc_->CreateBitmap(size, nullptr, 0, captured, &kernel.capture))) {
         return nullptr;
     }
@@ -398,13 +405,13 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     const float scale = static_cast<float>(2.0 * kernel->maxShift);
     const float channelScale[3] = {scale * static_cast<float>(1.0 - kChroma), scale,
                                    scale * static_cast<float>(1.0 + kChroma)};
-    if (frosted) frost_->SetInput(0, kernel->capture.Get());
+    ID2D1Effect* scatter = frosted ? frost_.Get() : soften_.Get();
+    const double sigma = frosted ? std::clamp(kFrostSigma * kernel->half, kFrostSigmaMin, kFrostSigmaMax)
+                                 : std::clamp(kClearSigma * kernel->half, kClearSigmaMin, kClearSigmaMax);
+    scatter->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, static_cast<FLOAT>(sigma));
+    scatter->SetInput(0, kernel->capture.Get());
     for (int c = 0; c < 3; ++c) {
-        if (frosted) {
-            shift_[c]->SetInputEffect(0, frost_.Get());
-        } else {
-            shift_[c]->SetInput(0, kernel->capture.Get());
-        }
+        shift_[c]->SetInputEffect(0, scatter);
         shift_[c]->SetInput(1, kernel->displacement.Get());
         shift_[c]->SetValue(D2D1_DISPLACEMENTMAP_PROP_SCALE, channelScale[c]);
     }
@@ -416,8 +423,24 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     return true;
 }
 
-void GlassLens::DrawRim(const ui::Box& box, double radius, double opacity) {
-    if (!ok() || opacity <= 0.0) return;
+bool GlassLens::DrawShadow(const ui::Box& box, double radius, double opacity, double drop) {
+    if (!ok() || opacity <= 0.0) return false;
+    Placement placement{};
+    if (!Place(box, placement)) return false;
+    Kernel* kernel = KernelFor(placement, radius);
+    if (kernel == nullptr || !kernel->shadow) return false;
+    const D2D1_SIZE_U size = kernel->shadow->GetPixelSize();
+    const FLOAT left = static_cast<FLOAT>(placement.x) - static_cast<FLOAT>(kernel->shadowMargin);
+    const FLOAT top = static_cast<FLOAT>(placement.y) - static_cast<FLOAT>(kernel->shadowMargin) + static_cast<FLOAT>(drop);
+    const D2D1_RECT_F destination =
+        D2D1::RectF(left, top, left + static_cast<FLOAT>(size.width), top + static_cast<FLOAT>(size.height));
+    dc_->DrawBitmap(kernel->shadow.Get(), destination, static_cast<FLOAT>(std::clamp(opacity, 0.0, 1.0)),
+                    D2D1_INTERPOLATION_MODE_LINEAR, nullptr, nullptr);
+    return true;
+}
+
+void GlassLens::DrawRim(const ui::Box& box, double radius, double opacity, double contour) {
+    if (!ok() || (opacity <= 0.0 && contour <= 0.0)) return;
     Placement placement{};
     if (!Place(box, placement)) return;
     Kernel* kernel = KernelFor(placement, radius);
@@ -427,8 +450,14 @@ void GlassLens::DrawRim(const ui::Box& box, double radius, double opacity) {
         static_cast<FLOAT>(placement.x), static_cast<FLOAT>(placement.y),
         static_cast<FLOAT>(placement.x + static_cast<std::int32_t>(placement.width)),
         static_cast<FLOAT>(placement.y + static_cast<std::int32_t>(placement.height)));
-    dc_->DrawBitmap(kernel->rim.Get(), destination, static_cast<FLOAT>(opacity), D2D1_INTERPOLATION_MODE_LINEAR,
-                    nullptr, nullptr);
+    if (contour > 0.0) {
+        dc_->DrawBitmap(kernel->contour.Get(), destination, static_cast<FLOAT>(std::min(contour, 1.0)),
+                        D2D1_INTERPOLATION_MODE_LINEAR, nullptr, nullptr);
+    }
+    if (opacity > 0.0) {
+        dc_->DrawBitmap(kernel->rim.Get(), destination, static_cast<FLOAT>(std::min(opacity, 1.0)),
+                        D2D1_INTERPOLATION_MODE_LINEAR, nullptr, nullptr);
+    }
     dc_->PopLayer();
 }
 

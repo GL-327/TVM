@@ -88,7 +88,7 @@ jobs:
           publish() {
             local tag="$1" title="$2" platform="$3"
             {
-              echo "> **Not an app download.** Install the app from the **$platform** release."
+              echo "> **Not a download.** Get the $platform app from [TVM Downloads](https://github.com/GL-327/TVM/releases/latest)."
               echo ">"
               echo "> This holds the interface an installed app downloads to update itself."
               echo "> The app reads \`tvm-$4-ui.json\` first and only fetches the bundle when it is newer,"
@@ -101,12 +101,12 @@ jobs:
                 for (const entry of feed.entries.slice(0, 12)) console.log(`- ${entry.title}`);
               ' "feed/tvm-$4-ui.json"
             } > "feed/$tag-notes.md"
-            gh release create "$tag" --prerelease --title "$title" --notes-file "feed/$tag-notes.md" 2>/dev/null \
-              || gh release edit "$tag" --prerelease --title "$title" --notes-file "feed/$tag-notes.md"
+            gh release create "$tag" --prerelease --latest=false --title "$title" --notes-file "feed/$tag-notes.md" 2>/dev/null \
+              || gh release edit "$tag" --prerelease --latest=false --title "$title" --notes-file "feed/$tag-notes.md"
             # The bundle first, then the manifest that points at it, so a phone
             # never reads a manifest whose bundle is not there yet.
             gh release upload "$tag" "feed/tvm-$4-ui.tar.gz" --clobber
             gh release upload "$tag" "feed/tvm-$4-ui.json" --clobber
           }
-          publish ios-ui "iOS interface feed" "iOS" ios
-          publish android-ui "Android interface feed" "Android" android
+          publish ios-ui "Update channel · iOS interface" "iOS" ios
+          publish android-ui "Update channel · Android interface" "Android" android

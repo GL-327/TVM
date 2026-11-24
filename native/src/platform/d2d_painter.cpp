@@ -179,18 +179,16 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                                           static_cast<FLOAT>(width));
         }
     };
-    // The thin luminous edge: warm-white top-left key specular, soft ice-blue transition, faint sides,
-    // and cool sky-blue bounce light along the bottom-right curve.
+    // The thin specular edge where there is no lens to draw one: lit from the upper left like the lens rim, quiet
+    // along the sides, with a weaker neutral bounce on the lower right. Glass reflects white light, never a tint.
     const auto edge = [&](double strength) {
         const double lit = strength * (1.0 - 0.22 * press);
-        const auto warmKey = [&](double a) { return ui::Rgb(0xFFFDF8, std::clamp(a, 0.0, 1.0) * alpha); };
-        const auto coolBounce = [&](double a) { return ui::Rgb(0xA6DCFF, std::clamp(a, 0.0, 1.0) * alpha); };
         const ComPtr<ID2D1GradientStopCollection> collection = Stops({
-            ui::GradientStop{0.00, warmKey((0.58 + 0.30 * emphasis) * lit)},
-            ui::GradientStop{0.24, coolBounce((0.22 + 0.14 * emphasis) * lit)},
-            ui::GradientStop{0.58, white((0.08 + 0.06 * emphasis) * lit)},
-            ui::GradientStop{0.84, coolBounce((0.22 + 0.16 * emphasis) * lit)},
-            ui::GradientStop{1.00, coolBounce((0.36 + 0.22 * emphasis) * lit)},
+            ui::GradientStop{0.00, white((0.62 + 0.28 * emphasis) * lit)},
+            ui::GradientStop{0.26, white((0.20 + 0.12 * emphasis) * lit)},
+            ui::GradientStop{0.55, white((0.07 + 0.05 * emphasis) * lit)},
+            ui::GradientStop{0.80, white((0.14 + 0.10 * emphasis) * lit)},
+            ui::GradientStop{1.00, white((0.34 + 0.18 * emphasis) * lit)},
         });
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
             D2D1::Point2F(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y)),
@@ -202,25 +200,25 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
             target_->DrawRoundedRectangle(ToRounded(rim, std::max(0.0, clampedRadius - 0.5)), brush.Get(), 1.0f);
         }
     };
-    // Diagonal caustic sheen + subtle bottom-right sky-blue internal bounce.
+    // The top gloss: light from above caught in the upper face of the glass, fading out before the middle, with a
+    // faint neutral return at the bottom where light leaves through the far bevel.
     const auto drawCaustic = [&](double sheenStrength) {
         if (sheenStrength <= 0.0) return;
         const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-            ui::GradientStop{0.00, ui::Rgb(0xFFFDF8, std::clamp(sheenStrength, 0.0, 1.0) * alpha)},
-            ui::GradientStop{0.42, ui::Rgb(0xE8F5FF, std::clamp(sheenStrength * 0.24, 0.0, 1.0) * alpha)},
-            ui::GradientStop{0.72, white(0.0)},
-            ui::GradientStop{1.00, ui::Rgb(0x8CD2FF, std::clamp(sheenStrength * 0.38, 0.0, 1.0) * alpha)},
+            ui::GradientStop{0.00, white(sheenStrength)},
+            ui::GradientStop{0.38, white(sheenStrength * 0.22)},
+            ui::GradientStop{0.62, white(0.0)},
+            ui::GradientStop{1.00, white(sheenStrength * 0.30)},
         });
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y)),
-            D2D1::Point2F(static_cast<FLOAT>(box.x + box.width * 0.72),
-                          static_cast<FLOAT>(box.y + box.height * 0.85)));
+            D2D1::Point2F(static_cast<FLOAT>(box.x + box.width * 0.18), static_cast<FLOAT>(box.y)),
+            D2D1::Point2F(static_cast<FLOAT>(box.x + box.width * 0.50), static_cast<FLOAT>(box.Bottom())));
         ComPtr<ID2D1LinearGradientBrush> brush;
         if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
             target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
         }
     };
-    // Animated slanted optical sweep highlight with crisp white core and cool ice-blue feather.
+    // A soft slanted highlight sweeping once across a newly focused surface.
     const auto drawSweep = [&](double plate) {
         if (style.sweep < 0.0 || style.sweep > 1.0 || ui::tokens::reduceMotion) return;
         const double band = std::max(box.height * 1.35, box.width * 0.38);
@@ -228,9 +226,9 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         const double strength = 0.62 * std::sin(kSweepPi * style.sweep) * (plate > 0.0 ? 1.0 : 0.55);
         const ComPtr<ID2D1GradientStopCollection> stops = Stops({
             ui::GradientStop{0.00, white(0.0)},
-            ui::GradientStop{0.28, ui::Rgb(0xA8DCFF, strength * 0.32 * alpha)},
+            ui::GradientStop{0.28, white(strength * 0.22)},
             ui::GradientStop{0.50, isLight || plate > 0.0 ? ui::Rgb(0xFFFFFF, strength * alpha) : white(strength * 0.75)},
-            ui::GradientStop{0.72, ui::Rgb(0xC2B8FF, strength * 0.28 * alpha)},
+            ui::GradientStop{0.72, white(strength * 0.22)},
             ui::GradientStop{1.00, white(0.0)},
         });
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
@@ -242,26 +240,33 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         }
     };
 
-    // 2. Poster cards whose artwork already fills the shape: crisp optical top sheen, inner chromatic rim and edge.
+    // 2. Poster cards whose artwork already fills the shape: a faint top gloss, an inner hairline and the edge.
     if (style.rimOnly && !style.focused) {
-        drawCaustic(0.11);
+        drawCaustic(0.09);
         if (box.width > 6.0 && box.height > 6.0) {
             const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
-            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0, ui::Rgb(0xBAE6FF, 0.06 * alpha));
+            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0, white(0.06));
         }
         edge(0.95);
         return;
     }
 
-    // 3. Dual-layer elevation drop shadow: tight dark contact shadow + soft ambient spread beneath floating glass.
-    const double shadowScale = (isLight ? 0.55 : 1.0) * alpha * (1.0 - 0.35 * press);
+    // 3. A soft, diffuse shadow a little below the surface, deeper as it lifts under focus and shallower as it is
+    // pressed. Where there is no lens to draw it, two faint rings stand in.
+    const double shadowScale = (isLight ? 0.50 : 1.0) * alpha * (1.0 - 0.35 * press);
     const double liftScale = 1.0 + 0.45 * emphasis;
-    outerRing(0.0, 2.0, black(0.04 * shadowScale), black((0.24 + 0.14 * emphasis) * shadowScale));
-    outerRing(1.5, cardOrPanel ? 9.0 : 6.5, black(0.015 * shadowScale),
-              black((0.11 + 0.09 * emphasis) * shadowScale * liftScale));
+    const double shadowDepth = style.kind == ui::GlassKind::Panel ? 0.62 : (style.kind == ui::GlassKind::Card ? 0.30 : 0.44);
+    const double lifted = std::min(box.width, box.height) * 0.14 * emphasis * (1.0 - press);
+    if (lens_ == nullptr || !lens_->DrawShadow(box, clampedRadius, shadowDepth * shadowScale * liftScale, lifted)) {
+        outerRing(0.0, 2.0, black(0.03 * shadowScale), black((0.16 + 0.10 * emphasis) * shadowScale));
+        outerRing(1.5, cardOrPanel ? 9.0 : 6.5, black(0.015 * shadowScale),
+                  black((0.10 + 0.08 * emphasis) * shadowScale * liftScale));
+    }
 
-    // 4. Hover and focus light the surface from within and add a restrained outer glow, not a thick ring.
-    if (emphasis > 0.0) {
+    // 4. Hover and focus light the surface from within and add a restrained outer glow, not a thick ring. A surface
+    // that turns into the bright focus plate needs none: as on Apple TV the plate, the lift and the deeper shadow
+    // say it is focused, and a glow around it only greys the picture into an outline.
+    if (emphasis > 0.0 && !style.focusPlate) {
         const ui::Color glow = isLight ? ui::tokens::kFocusRing : ui::Rgb(0xFFFFFF);
         outerRing(1.0, 2.0, ui::Color{glow.r, glow.g, glow.b, 0.20 * emphasis * alpha},
                   ui::Color{glow.r, glow.g, glow.b, 0.14 * emphasis * alpha});
@@ -269,11 +274,13 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                   ui::Color{glow.r, glow.g, glow.b, 0.04 * emphasis * alpha});
     }
 
-    // 5. Clear glass: the pixels already drawn beneath are seen 1:1 through the flat interior and bent at the rim.
-    // The veil adapts to what is behind: almost nothing over a dark picture, more over a bright one, so labels stay
-    // legible without the glass going grey. Frosted glass (Settings > Look) scatters the picture first.
+    // 5. Liquid Glass: the pixels already drawn beneath, diffused a little, seen undistorted through the flat middle
+    // and bent at the bezel. The wash adapts to what is behind, as Apple's regular glass does: a neutral grey (dark)
+    // or white (light) that thickens over bright pictures in dark mode and over dark pictures in light mode, so
+    // labels stay legible without the glass losing the colour behind it. Frosted glass (Settings > Look) scatters
+    // the picture much further and carries a thicker wash, like Apple's tinted setting.
     const bool lensKind = style.kind != ui::GlassKind::Card;
-    const bool frosted = ui::tokens::frostedGlass;
+    const bool frosted = ui::tokens::frostedGlass || style.frosted;
     double behind = -1.0;
     if (!style.rimOnly && lensKind && lens_ != nullptr &&
         lens_->DrawRefraction(box, clampedRadius, alpha, frosted, &behind)) {
@@ -283,44 +290,49 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         if (style.activeTab) {
             FillRoundRect(box, clampedRadius, white((isLight ? 0.86 : 0.74) - 0.05 * press));
         } else if (isLight) {
-            // Light glass lifts toward white over dark pictures so dark labels keep their contrast.
-            const double lift = cardOrPanel ? 0.55 : 0.12 + 0.26 * (1.0 - bright);
-            FillRoundRect(box, clampedRadius, white(lift + (frosted ? 0.30 : 0.0) + 0.08 * emphasis - 0.05 * press));
-        } else {
-            const double shade = cardOrPanel ? 0.40 : 0.06 + 0.30 * bright;
+            const double wash = cardOrPanel ? 0.55 : 0.22 + 0.18 * (1.0 - bright);
             FillRoundRect(box, clampedRadius,
-                          ui::Rgb(0x05070B, std::clamp(shade + (frosted ? 0.10 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
-            // Frosted glass carries a milky veil from light scattered inside it.
-            FillRoundRect(box, clampedRadius, white((frosted ? 0.15 : 0.02) + 0.06 * emphasis - 0.02 * press));
+                          ui::Rgb(0xFDFCFD, std::clamp(wash + (frosted ? 0.22 : 0.0) + 0.08 * emphasis - 0.05 * press,
+                                                       0.0, 1.0) * alpha));
+        } else {
+            const double wash = cardOrPanel ? 0.50 : 0.20 + 0.24 * bright;
+            FillRoundRect(box, clampedRadius,
+                          ui::Rgb(0x202020, std::clamp(wash + (frosted ? 0.12 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
+            // Light scattered inside the glass: a breath of white, milkier when frosted, brighter under focus.
+            FillRoundRect(box, clampedRadius, white((frosted ? 0.08 : 0.02) + 0.06 * emphasis - 0.02 * press));
         }
         if (style.tint.has_value() && !style.activeTab) {
             ui::Color tint = *style.tint;
             tint.a = std::min(0.04, tint.a) * alpha;
             FillRoundRect(box, clampedRadius, tint);
         }
+        // iOS 27's dark contour gives depth on any backdrop: stronger in dark mode, faint on light glass, gone under
+        // a bright plate. The glint brightens under focus and dims as the surface is pressed.
+        const double contour = (cardOrPanel ? (isLight ? 0.30 : 0.60) : (isLight ? 0.18 : 0.40)) *
+                               (style.activeTab ? 0.5 : 1.0) * (1.0 - plate) * alpha;
         lens_->DrawRim(box, clampedRadius,
                        alpha * (1.0 + 0.3 * emphasis) * (1.0 - 0.3 * press) * (style.activeTab ? 0.6 : 1.0) *
-                           (1.0 - 0.7 * plate));
+                           (1.0 - 0.7 * plate),
+                       contour);
         // Focus as on Apple TV: the glass fills with a bright plate, a touch brighter at the top.
         if (plate > 0.0) {
             const double top = (isLight ? 0.97 : 0.94) - 0.08 * press;
             fillVertical(box, clampedRadius,
                          {ui::GradientStop{0.0, white(top * plate)}, ui::GradientStop{1.0, white((top - 0.12) * plate)}});
         }
-        // Diagonal caustic sheen + animated optical GlassSweep across NavCapsule, pills, modals, dropdowns & orb.
-        const double sheen = ((style.activeTab ? 0.12 : 0.09) + 0.06 * emphasis - 0.03 * press) * (1.0 - plate);
+        // The top gloss and, on a newly focused surface, one soft sweep of light. The lens has drawn the rim.
+        const double sheen = ((style.activeTab ? 0.10 : 0.07) + 0.05 * emphasis - 0.03 * press) * (1.0 - plate);
         drawCaustic(sheen);
         drawSweep(plate);
-        if (style.kind == ui::GlassKind::Orb || style.activeTab || cardOrPanel) {
-            const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
-            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0,
-                            style.activeTab || plate > 0.5 ? white(0.32) : ui::Rgb(0xB8E4FF, 0.08 * alpha));
+        if (style.activeTab || plate > 0.5) {
+            const ui::Box inner{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
+            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.0), 1.0, white(0.30));
         }
         if (isLight && !style.activeTab) {
+            // On a pale page a white edge alone vanishes, so a hairline of shade defines the shape.
             const ui::Box rimBox{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
-            StrokeRoundRect(rimBox, clampedRadius + 0.5, 1.0, black(0.08));
+            StrokeRoundRect(rimBox, clampedRadius + 0.5, 1.0, black(0.07));
         }
-        edge(style.activeTab ? 1.05 : 0.96);
         return;
     }
 
@@ -414,7 +426,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                           ui::GradientStop{1.0, white((top - 0.12) * emphasis)}});
         }
 
-        // 7. Diagonal caustic sheen + animated GlassSweep across non-lens optical glass (player controls & cards).
+        // 7. The top gloss and focus sweep on glass drawn without a lens (player controls over video, cards).
         const double plate = style.focusPlate ? emphasis : 0.0;
         const double sheen = ((style.activeTab ? 0.18 : (cardOrPanel ? 0.09 : 0.14)) + 0.06 * emphasis - 0.04 * press) *
                              (1.0 - 0.7 * plate);
@@ -439,13 +451,14 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         }
     }
 
-    // 8. Multi-stop chromatic inner rim + specular outer edge so player controls & cards read as thick optical glass.
+    // 8. An inner hairline of light caught in the glass's thickness, brighter where it faces the light, then the
+    // specular outer edge, so controls drawn without a lens still read as thick glass.
     if (box.width > 6.0 && box.height > 6.0 && !style.rimOnly) {
         const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
         const ComPtr<ID2D1GradientStopCollection> innerStops = Stops({
-            ui::GradientStop{0.00, ui::Rgb(0xC6ECFF, (style.activeTab ? 0.34 : 0.11 + 0.06 * emphasis) * alpha)},
-            ui::GradientStop{0.48, ui::Rgb(0xD8C4FF, (style.activeTab ? 0.18 : 0.05 + 0.03 * emphasis) * alpha)},
-            ui::GradientStop{1.00, ui::Rgb(0x98DCFF, (style.activeTab ? 0.28 : 0.09 + 0.05 * emphasis) * alpha)},
+            ui::GradientStop{0.00, white(style.activeTab ? 0.34 : 0.12 + 0.06 * emphasis)},
+            ui::GradientStop{0.50, white(style.activeTab ? 0.14 : 0.04 + 0.03 * emphasis)},
+            ui::GradientStop{1.00, white(style.activeTab ? 0.24 : 0.08 + 0.05 * emphasis)},
         });
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES innerProps = D2D1::LinearGradientBrushProperties(
             D2D1::Point2F(static_cast<FLOAT>(inner.x), static_cast<FLOAT>(inner.y)),

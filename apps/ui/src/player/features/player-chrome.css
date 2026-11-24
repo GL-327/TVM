@@ -822,7 +822,7 @@ html:not([data-theme]) .stream-page,
   box-shadow:
     0 1.2rem 2.8rem color-mix(in srgb, #000 50%, transparent),
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.24)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.16));
+    var(--tvm-glass-rim-chroma, inset 0 -1px 0 rgba(255, 255, 255, 0.14));
   pointer-events: auto;
 }
 

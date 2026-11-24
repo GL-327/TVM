@@ -91,6 +91,9 @@ struct GlassStyle {
     bool reduceTransparency = false;
     bool warm = false;
     bool rimOnly = false;
+    // Always diffuse the picture behind as frosted glass does, whatever the viewer's Liquid Glass setting: menus and
+    // sheets that hold rows of text over artwork, as Apple's own menus are.
+    bool frosted = false;
     // Hover or focus emphasis and press depth, each eased from 0 to 1 by callers that animate them. A bool
     // `focused` or `pressed` with a zero amount counts as fully on.
     double focusAmount = 0.0;

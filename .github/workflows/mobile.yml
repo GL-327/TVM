@@ -167,10 +167,10 @@ jobs:
           path: apps/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      # One stable "android" release that always holds the newest APK, so the
-      # Releases page shows a single obvious Android download instead of an
-      # artifact buried in a run that expires after 90 days.
-      - name: Publish the Android release
+      # Installed Android apps update themselves from the `android` release
+      # (TvmAppUpdate.kt reads its "| Build |" row and TVM.apk), so it stays,
+      # as a pre-release update channel. People download from TVM Downloads.
+      - name: Publish the Android app
         if: steps.android.outputs.present == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -182,24 +182,24 @@ jobs:
           if [ -n "${TVM_ANDROID_KEYSTORE:-}" ]; then
             SIGNED="Signed with TVM's own key, so a newer APK installs over this one and keeps your sign-in."
           else
-            SIGNED="Signed with a one-off debug key. If an older TVM is installed, uninstall it first or Android will say the app is not installed."
+            SIGNED="Signed with a one-off debug key. If an older TVM is installed, uninstall it first."
           fi
           cat > release/NOTES.md <<EOF
-          Android phone, tablet, and Android TV.
+          > **Not a download.** Get TVM from [TVM Downloads](https://github.com/GL-327/TVM/releases/latest).
+          > Installed Android apps read this to update themselves.
 
           | | |
           |---|---|
-          | Download | \`TVM.apk\` |
+          | File | \`TVM.apk\` |
           | Build | \`$SHA\` |
           | Minimum | Android 8.0 (API 26) |
 
-          Install **TVM.apk** on your phone/tablet (allow installs from this source when prompted), or sideload on Android TV with \`adb install TVM.apk\`.
-
           $SIGNED
           EOF
-          gh release create android --title "Android" --notes-file release/NOTES.md 2>/dev/null \
-            || gh release edit android --title "Android" --notes-file release/NOTES.md
-          # One file per platform: drop anything an older build left behind.
+          TITLE="Update channel · Android app"
+          gh release create android --prerelease --latest=false --title "$TITLE" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit android --prerelease --latest=false --title "$TITLE" --notes-file release/NOTES.md
+          # One file only: drop anything an older build left behind.
           for old in $(gh release view android --json assets --jq '.assets[].name' 2>/dev/null || true); do
             [ "$old" = "TVM.apk" ] || gh release delete-asset android "$old" --yes || true
           done
@@ -351,8 +351,9 @@ jobs:
           path: apps/ios/build/TVM-unsigned.ipa
           if-no-files-found: error
 
-      # One stable "ios" release that always holds the newest IPA.
-      - name: Publish the iOS release
+      # The IPA goes straight onto TVM Downloads. Installed iPhones update
+      # their interface from the ios-ui channel (ui-feed.yml), not from here.
+      - name: Publish to TVM Downloads
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -360,23 +361,4 @@ jobs:
           set -euo pipefail
           mkdir -p release
           cp apps/ios/build/TVM-unsigned.ipa release/TVM.ipa
-          SHA="$(git rev-parse --short HEAD)"
-          cat > release/NOTES.md <<EOF
-          iPhone and iPad (unsigned IPA).
-
-          | | |
-          |---|---|
-          | Download | \`TVM.ipa\` |
-          | Build | \`$SHA\` |
-          | Minimum | iOS 15 |
-
-          Sideload **TVM.ipa** with [Sideloadly](https://sideloadly.io), [AltStore](https://altstore.io), or [SideStore](https://sidestore.io) using your Apple ID, then trust your certificate under **Settings -> General -> VPN & Device Management**.
-          EOF
-          gh release create ios --title "iOS" --notes-file release/NOTES.md 2>/dev/null \
-            || gh release edit ios --title "iOS" --notes-file release/NOTES.md
-          # One file per platform: drop anything an older build left behind.
-          for old in $(gh release view ios --json assets --jq '.assets[].name' 2>/dev/null || true); do
-            [ "$old" = "TVM.ipa" ] || gh release delete-asset ios "$old" --yes || true
-          done
-          gh release upload ios release/TVM.ipa --clobber
           bash scripts/publish-device-package.sh release/TVM.ipa

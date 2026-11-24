@@ -109,20 +109,26 @@ jobs:
             native/build/home-*.png
             native/build/settings-light.png
           if-no-files-found: error
-      - name: Publish native Windows download
+      # Installed copies update from TVM-native-windows.zip on this pre-release
+      # channel (app.cpp and update-native.ps1 read the asset's label, the full
+      # commit). TVM.exe itself is published on TVM Downloads below.
+      - name: Publish the Windows update channel
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $notes = 'Windows C++ desktop app. Run **TVM.exe** to install into %LOCALAPPDATA%\Programs\TVM and launch TVM (includes Core, UI, Node, and mpv setup). (`TVM-native-windows.zip` is retained for in-app updates.)'
+          $title = 'Update channel · Windows app'
+          $notes = "> **Not a download.** Get **TVM.exe** from [TVM Downloads](https://github.com/GL-327/TVM/releases/latest).`n> Installed Windows copies read this to update themselves."
           gh release view native-windows *> $null
-          if ($LASTEXITCODE -ne 0) { gh release create native-windows --latest=false --target $env:GITHUB_SHA --title 'Native Windows (C++)' --notes $notes }
-          else { gh release edit native-windows --prerelease=false --latest=false --title 'Native Windows (C++)' --notes $notes }
+          if ($LASTEXITCODE -ne 0) { gh release create native-windows --prerelease --latest=false --target $env:GITHUB_SHA --title $title --notes $notes }
+          else { gh release edit native-windows --prerelease --latest=false --title $title --notes $notes }
           if ($LASTEXITCODE -ne 0) { throw 'Could not prepare release' }
-          gh release upload native-windows "native/dist/TVM.exe" "native/TVM-native-windows.zip#$env:GITHUB_SHA" --clobber
+          gh release upload native-windows "native/TVM-native-windows.zip#$env:GITHUB_SHA" --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Could not upload release' }
-      - name: Publish Windows on the main downloads page
+          $stale = gh release view native-windows --json assets --jq '.assets[].name' | Where-Object { $_ -ne 'TVM-native-windows.zip' }
+          foreach ($name in $stale) { gh release delete-asset native-windows $name --yes }
+      - name: Publish TVM.exe to TVM Downloads
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

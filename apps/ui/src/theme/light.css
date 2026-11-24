@@ -34,13 +34,16 @@
   --tvm-shadow-card: 0 0.8rem 2rem rgba(18, 50, 74, 0.12);
   --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(30, 201, 160, 0.22);
 
-  --tvm-glass-bg: linear-gradient(155deg, rgba(255, 253, 246, 0.74), rgba(232, 248, 242, 0.66));
-  --tvm-glass-bg-elevated: linear-gradient(155deg, rgba(255, 254, 250, 0.84), rgba(235, 250, 244, 0.78));
-  --tvm-glass-blur: blur(28px) saturate(190%);
-  --tvm-glass-rim-light: inset 0 1px 0.5px rgba(255, 255, 255, 0.88);
-  --tvm-glass-rim-chroma: inset 0 -1px 1px rgba(30, 201, 160, 0.24);
-  --tvm-glass-sheen: linear-gradient(132deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.08) 38%, transparent 65%);
-  --tvm-glass-shadow: 0 1rem 2.6rem rgba(18, 50, 74, 0.16);
+  /* Liquid Glass, tuned to the open fits of iOS 27 glass: a near-white wash, the picture diffused and its colour
+     lifted, a bright top glint with half as much on the far edge, a faint dark contour so the shape holds on pale
+     pages, and a light drop shadow. */
+  --tvm-glass-bg: linear-gradient(180deg, rgba(253, 252, 253, 0.64), rgba(246, 246, 249, 0.52));
+  --tvm-glass-bg-elevated: linear-gradient(180deg, rgba(253, 252, 253, 0.80), rgba(246, 246, 249, 0.70));
+  --tvm-glass-blur: blur(16px) saturate(175%) brightness(1.03);
+  --tvm-glass-rim-light: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 1px 0 0 rgba(255, 255, 255, 0.45);
+  --tvm-glass-rim-chroma: inset 0 -1px 0 rgba(255, 255, 255, 0.50), 0 0 0 0.5px rgba(0, 0, 0, 0.14);
+  --tvm-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.08) 40%, transparent 64%);
+  --tvm-glass-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.12);
   --tvm-glass-focus-glow: 0 0 0 0.14rem rgba(14, 168, 132, 0.82), 0 0.75rem 2rem rgba(30, 201, 160, 0.28);
 
   --tvm-scene-sky: #d2f2ff;
