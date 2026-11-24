@@ -224,7 +224,7 @@ check('the Android app applies a GitHub UI bundle on open unless auto-update is 
   const smokeAt = workflow.indexOf('node scripts/android-smoke.mjs');
   check('the APK is installed and opened on an emulator before it is released',
     existsSync(join(REPO, 'scripts', 'android-smoke.mjs')) &&
-    smokeAt !== -1 && smokeAt < workflow.indexOf('name: Publish the Android release'));
+    smokeAt !== -1 && smokeAt < workflow.indexOf('name: Publish the Android app'));
   check("CI signs the APK with TVM's key when the secret is set",
     workflow.includes('secrets.TVM_ANDROID_SIGNING') &&
     appGradle.includes('System.getenv("TVM_ANDROID_KEYSTORE")') &&
