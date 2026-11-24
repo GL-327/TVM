@@ -557,6 +557,19 @@ void D2dPainter::FillLinearGradient(const ui::Box& box, double x0, double y0, do
     target_->FillRectangle(ToRect(box), brush.Get());
 }
 
+void D2dPainter::FillRoundRectLinear(const ui::Box& box, double radius, double x0, double y0, double x1, double y1,
+                                     const std::vector<ui::GradientStop>& stops) {
+    const ComPtr<ID2D1GradientStopCollection> collection = Stops(stops);
+    const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES properties = D2D1::LinearGradientBrushProperties(
+        D2D1::Point2F(static_cast<FLOAT>(x0), static_cast<FLOAT>(y0)),
+        D2D1::Point2F(static_cast<FLOAT>(x1), static_cast<FLOAT>(y1)));
+    ComPtr<ID2D1LinearGradientBrush> brush;
+    if (FAILED(target_->CreateLinearGradientBrush(properties, collection.Get(), &brush))) {
+        throw std::runtime_error("could not create a gradient brush");
+    }
+    target_->FillRoundedRectangle(ToRounded(box, radius), brush.Get());
+}
+
 void D2dPainter::FillRadialGradient(const ui::Box& box, double cx, double cy, double rx, double ry,
                                     const std::vector<ui::GradientStop>& stops) {
     const ComPtr<ID2D1GradientStopCollection> collection = Stops(stops);

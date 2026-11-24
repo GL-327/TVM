@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace tvm::ui {
 
@@ -144,6 +145,23 @@ void Card::Arrange(const Box& box, const Metrics& /*metrics*/) {
     box_ = box;
 }
 
+namespace {
+
+// The artwork's box on whole pixels while the card is at rest (not mid-way through its focus grow). A fractional
+// edge is drawn at partial coverage by every layer on it (the picture, its scrim, the glass rim), and the partial
+// row of picture that shows through reads as a thin bright line at the foot of the poster. While the focus eases the
+// box stays fractional, so the grow is as smooth as before.
+Box SnappedArt(const Box& box, double focus) {
+    if (focus > 0.0 && focus < 1.0) return box;
+    const double left = std::round(box.x);
+    const double top = std::round(box.y);
+    const double right = std::round(box.Right());
+    const double bottom = std::round(box.Bottom());
+    return Box{left, top, right - left, bottom - top};
+}
+
+}  // namespace
+
 void Card::Paint(Painter& painter, const Metrics& metrics) const {
     const double focus = std::clamp(focusAmount_, 0.0, 1.0);
     if (logo_) {
@@ -155,10 +173,11 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
         const double width = box_.width * scale;
         const double height = artHeight * scale;
         const double bottom = box_.y + artHeight - metrics.Rem(kPosterLiftRem) * motionFocus;
-        const Box tile{box_.CenterX() - width / 2.0, bottom - height, width, height};
+        const Box tile = SnappedArt(Box{box_.CenterX() - width / 2.0, bottom - height, width, height}, focus);
         const double radius = metrics.Rem(kPosterRadiusRem);
-        painter.FillLinearGradient(tile, tile.x, tile.y, tile.x, tile.Bottom(),
-                                   {GradientStop{0.0, Rgb(0x1A2130)}, GradientStop{1.0, Rgb(0x0D121B)}});
+        // The plate is rounded with the tile, so its corners never show outside the glass rim.
+        painter.FillRoundRectLinear(tile, radius, tile.x, tile.y, tile.x, tile.Bottom(),
+                                    {GradientStop{0.0, Rgb(0x1A2130)}, GradientStop{1.0, Rgb(0x0D121B)}});
         const Box logoBox{tile.x + tile.width * 0.18, tile.y + tile.height * 0.2, tile.width * 0.64, tile.height * 0.6};
         const bool hasLogo = !posterUrl_.empty() && painter.ImageContain(logoBox, posterUrl_);
         if (!hasLogo) {
@@ -207,7 +226,7 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
     const double width = box_.width * scale;
     const double height = artHeight * scale;
     const double bottom = box_.y + artHeight - metrics.Rem(kPosterLiftRem) * motionFocus;
-    const Box poster{box_.CenterX() - width / 2.0, bottom - height, width, height};
+    const Box poster = SnappedArt(Box{box_.CenterX() - width / 2.0, bottom - height, width, height}, focus);
 
     const bool hasArt = !posterUrl_.empty() && painter.Image(poster, posterUrl_, radius);
 
@@ -240,12 +259,13 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
             painter.Text(Box{tx, poster.y, std::max(0.0, poster.Right() - tx - metrics.Rem(1.0)), poster.height * 0.88},
                          title_, titleStyle, Mix(tokens::kTextMuted, tokens::kText, focus));
         } else {
-            // Subtle bottom scrim so the progress bar and title remain legible over bright frames.
-            const Box scrim{poster.x + 2.0, poster.Bottom() - poster.height * 0.36, poster.width - 4.0,
-                            poster.height * 0.36 - 2.0};
-            painter.FillLinearGradient(scrim, scrim.x, scrim.y, scrim.x, scrim.Bottom(),
-                                       {GradientStop{0.0, Rgb(0x000000, 0.0)},
-                                        GradientStop{1.0, Rgb(0x04080E, 0.68)}});
+            // Subtle bottom scrim so the progress bar and title remain legible over bright frames. It covers the
+            // picture's whole lower 36%, right to its edges and foot, and is rounded with the picture: it used to stop
+            // 2 px short (a bright strip of picture showed below it) and its square corners poked out of the curve.
+            const double scrimTop = poster.Bottom() - poster.height * 0.36;
+            painter.FillRoundRectLinear(poster, radius, poster.x, scrimTop, poster.x, poster.Bottom(),
+                                        {GradientStop{0.0, Rgb(0x000000, 0.0)},
+                                         GradientStop{1.0, Rgb(0x04080E, 0.68)}});
             painter.Text(Box{poster.x + metrics.Rem(kProgressInsetXRem),
                              poster.Bottom() - metrics.Rem(kProgressInsetBottomRem + 2.1),
                              poster.width - 2.0 * metrics.Rem(kProgressInsetXRem), metrics.Rem(1.6)},

@@ -35,6 +35,8 @@ public:
                            const std::vector<ui::GradientStop>& stops) override;
     void FillLinearGradient(const ui::Box& box, double x0, double y0, double x1, double y1,
                             const std::vector<ui::GradientStop>& stops) override;
+    void FillRoundRectLinear(const ui::Box& box, double radius, double x0, double y0, double x1, double y1,
+                             const std::vector<ui::GradientStop>& stops) override;
     void FillRadialGradient(const ui::Box& box, double cx, double cy, double rx, double ry,
                             const std::vector<ui::GradientStop>& stops) override;
     void Paragraph(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color) override;

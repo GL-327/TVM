@@ -734,7 +734,10 @@ Scene::HeroBoxes Scene::HeroLayout() const {
 void Scene::PaintHeroBackdrop(Painter& painter) const {
     const Box hero = HeroBox();
     // The full-bleed hero artwork extends behind the Continue Watching shelf and fades smoothly into the ink ground.
-    const Box backdrop{hero.x, hero.y, hero.width, std::max(hero.height * 1.62, viewportHeight_ * 0.78)};
+    // On whole pixels, so the picture and the scrim closing it never share a partly covered last row (a thin line).
+    const double backdropTop = std::round(hero.y);
+    const double backdropBottom = std::round(hero.y + std::max(hero.height * 1.62, viewportHeight_ * 0.78));
+    const Box backdrop{hero.x, backdropTop, hero.width, backdropBottom - backdropTop};
     const double fade = HeroFade();
     const HeroData& data = heroes_[heroIndex_];
     const double dissolve = artFade_.has_value() ? std::clamp(artFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
@@ -746,7 +749,7 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
     painter.FillLinearGradient(backdrop, slant.x0, slant.y0, slant.x1, slant.y1,
                                {GradientStop{0.0, WithAlpha(tokens::kBackgroundElevated, fade)},
                                 GradientStop{0.7, WithAlpha(tokens::kBackgroundDeep, fade)},
-                                GradientStop{1.0, WithAlpha(tokens::kBackgroundDeep, fade)}});
+                                GradientStop{1.0, WithAlpha(tokens::kBackground, fade)}});
     const Color hue = HslColor(static_cast<double>(data.hue), 0.55, 0.38);
     painter.FillRadialGradient(backdrop, backdrop.x + 0.7 * backdrop.width, backdrop.y + 0.2 * backdrop.height,
                                0.7 * backdrop.width, 0.8 * backdrop.height,
@@ -777,8 +780,11 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
                                 GradientStop{0.34, WithAlpha(background, 0.0)},
                                 GradientStop{0.58, WithAlpha(background, fade * 0.36)},
                                 GradientStop{0.82, WithAlpha(background, fade * 0.84)},
-                                GradientStop{0.96, WithAlpha(background, fade)},
-                                GradientStop{1.0, WithAlpha(background, fade)}});
+                                // The foot is always the page's own ground, whatever the scroll fade, so the backdrop
+                                // never ends in a hard edge against the page as it scrolls away.
+                                GradientStop{0.96, background},
+                                GradientStop{1.0, background}});
+    painter.FillRoundRect(Box{backdrop.x, backdrop.Bottom() - 2.0, backdrop.width, 3.0}, 0.0, background);
 }
 
 void Scene::PaintHero(Painter& painter) const {

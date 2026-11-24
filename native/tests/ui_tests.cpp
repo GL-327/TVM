@@ -300,8 +300,10 @@ TEST(the_focused_poster_is_drawn_at_the_focus_scale) {
 
     // Posters are filled in paint order: card 0 of rail 0 first, then card 1.
     REQUIRE(painter.fills.size() >= 2);
-    REQUIRE_NEAR(painter.fills[0].width, 168.0 * 1.04, 1e-6);  // Focused.
-    REQUIRE_NEAR(painter.fills[1].width, 168.0, 1e-6);         // Not focused.
+    // At rest the artwork sits on whole pixels (so no partly covered row shows at its edges), so the focused size is
+    // the 1.04 scale to within a pixel.
+    REQUIRE_NEAR(painter.fills[0].width, 168.0 * 1.04, 1.0);  // Focused.
+    REQUIRE_NEAR(painter.fills[1].width, 168.0, 1.0);         // Not focused.
 }
 
 TEST(optical_glass_material_is_applied_to_cards_hero_pills_and_nav_capsule) {

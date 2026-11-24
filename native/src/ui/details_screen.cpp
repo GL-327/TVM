@@ -247,7 +247,11 @@ void DetailsScreen::PaintPage(Painter& painter) const {
 
     // The backdrop fills the top of the page, under the vignette: dark at the left behind the copy, and
     // fading into the page at the foot, as `.details__vignette` paints it.
-    const Box hero{0.0, -scroll_, width_, HeroHeight()};
+    // The hero sits on whole pixels. With a fractional foot, the picture and the gradient closing it over it were
+    // both drawn at partial coverage on that last row, so up to a quarter of the picture showed there: a thin line
+    // under the backdrop.
+    const double heroTop = std::round(-scroll_);
+    const Box hero{0.0, heroTop, width_, std::round(-scroll_ + HeroHeight()) - heroTop};
     const std::string& backdropUrl = info_.backdropUrl.empty() ? "asset:lighthouse.jpg" : info_.backdropUrl;
     painter.SetBackdrop(hero, backdropUrl, 0.5, 0.25);
     if (!info_.backdropUrl.empty()) painter.ImageFaded(hero, info_.backdropUrl, 0.0, 1.0, 0.5, 0.25);
@@ -262,12 +266,16 @@ void DetailsScreen::PaintPage(Painter& painter) const {
                                 GradientStop{0.68, WithAlpha(background, 0.52)},
                                 GradientStop{0.94, background},
                                 GradientStop{1.0, background}});
+    // And the last rows are the page's own ground, solid, so nothing of the picture can show at the seam.
+    painter.FillRoundRect(Box{hero.x, hero.Bottom() - 2.0, hero.width, 3.0}, 0.0, background);
 
     // The poster: artwork when it is on disk, a glass card placeholder until then.
     const double x = Rem(kSafeXRem);
     const bool compact = CompactViewport(width_, height_);
     const double posterY = compact ? Rem(3.0) - scroll_ : HeroHeight() - scroll_ - Rem(kHeroPadBottomRem) - Rem(kDetailsPosterHeightRem);
-    const Box poster{x, posterY, Rem(kDetailsPosterWidthRem), Rem(kDetailsPosterHeightRem)};
+    // On whole pixels, as the cards are, so no partly covered row of the picture shows at its foot.
+    const Box poster{std::round(x), std::round(posterY), std::round(x + Rem(kDetailsPosterWidthRem)) - std::round(x),
+                     std::round(posterY + Rem(kDetailsPosterHeightRem)) - std::round(posterY)};
     if (!compact) {
         const bool hasPoster = !info_.posterUrl.empty() && painter.Image(poster, info_.posterUrl, Rem(kPosterRadiusRem));
         GlassStyle posterGlass;

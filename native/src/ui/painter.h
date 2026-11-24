@@ -173,6 +173,13 @@ public:
     virtual void FillRadialGradient(const Box& /*box*/, double /*cx*/, double /*cy*/, double /*rx*/, double /*ry*/,
                                     const std::vector<GradientStop>& /*stops*/) {}
 
+    // Fills a rounded rectangle with a gradient along the line from (x0, y0) to (x1, y1). Overlays on rounded
+    // artwork use it so no corner of the overlay pokes out past the artwork's curve.
+    virtual void FillRoundRectLinear(const Box& box, double /*radius*/, double x0, double y0, double x1, double y1,
+                                     const std::vector<GradientStop>& stops) {
+        FillLinearGradient(box, x0, y0, x1, y1, stops);
+    }
+
     // Fills the polygon through `points`, in order, with a colour.
     virtual void FillPolygon(const std::vector<Point>& /*points*/, Color /*color*/) {}
 
