@@ -235,7 +235,7 @@ constexpr double kLaneKickerRem = 0.8125;
 constexpr double kLaneHeadingRem = 2.25;
 constexpr double kLaneFieldRem = 3.4;
 // The search page's field: a large pill centred under its heading, about half the window wide.
-constexpr double kSearchHeroRem = 4.0;
+constexpr double kSearchHeroRem = 4.4;
 constexpr double kSearchHeroMinRem = 34.0;
 constexpr double kSearchHeroMaxRem = 52.0;
 constexpr double kLaneButtonRem = 2.6;
@@ -943,8 +943,10 @@ bool Scene::HasLaneHeader() const {
 std::optional<Box> Scene::LaneHeadingBox() const {
     if (!Streamy() || HeroActive() || heading_.empty()) return std::nullopt;
     const double x = metrics_.Rem(kSafeXRem + (CompactViewport(viewportWidth_, viewportHeight_) ? 0.0 : kRailInsetRem));
-    const double top = ChromeHeight() + metrics_.Rem(0.35);
-    const double height = metrics_.Rem((kicker_.empty() ? 0.0 : kLaneKickerRem * 1.6) + kLaneHeadingRem * 1.2);
+    // Search gets more air under the chrome and a larger heading, as a television search page has.
+    const double top = ChromeHeight() + metrics_.Rem(searchField_ ? 1.2 : 0.35);
+    const double heading = kLaneHeadingRem * (searchField_ ? 1.15 : 1.0);
+    const double height = metrics_.Rem((kicker_.empty() ? 0.0 : kLaneKickerRem * 1.6) + heading * 1.2);
     return Box{x, top, viewportWidth_ - 2.0 * x, height};
 }
 
@@ -1020,12 +1022,13 @@ void Scene::PaintLaneHeader(Painter& painter) const {
                          TextStyle{metrics_.Rem(kLaneKickerRem), true, 700}, tokens::kTextFaint);
             y += metrics_.Rem(kLaneKickerRem * 1.6);
         }
-        const TextStyle headingStyle{metrics_.Rem(kLaneHeadingRem), true, 750};
+        const TextStyle headingStyle{metrics_.Rem(searchField_ ? kLaneHeadingRem * 1.15 : kLaneHeadingRem), true, 750};
         // On Search the heading is centred over the field.
         const double headingX = searchField_
                                     ? viewportWidth_ / 2.0 - painter.MeasureText(heading_, headingStyle) / 2.0
                                     : heading->x;
-        painter.Text(Box{headingX, y, heading->width, metrics_.Rem(kLaneHeadingRem * 1.2)}, heading_, headingStyle,
+        painter.Text(Box{headingX, y, heading->width, metrics_.Rem(kLaneHeadingRem * (searchField_ ? 1.15 : 1.0) * 1.2)},
+                     heading_, headingStyle,
                      tokens::kText);
     }
 
@@ -1079,23 +1082,35 @@ void Scene::PaintSearchField(Painter& painter) const {
 }
 
 void Scene::PaintSearchField(Painter& painter, const Box& field, bool active, double emphasis) const {
-    GlassStyle glass;
-    glass.kind = GlassKind::Pill;
-    glass.focused = active;
-    glass.focusAmount = active ? 1.0 : std::clamp(emphasis, 0.0, 1.0) * 0.6;
-    glass.reduceTransparency = tokens::reduceTransparency;
-    glass.tint = tokens::kSurface;
-    glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
-    glass.ringColor = tokens::kFocusRing;
-    painter.Glass(field, field.height / 2.0, glass);
-
     // The search page's hero field reads larger than the field on other pages.
     const bool hero = searchField_ && Streamy();
+    if (hero) {
+        // The Home nav pill's resting glass, a quiet inner tint, and a thin accent line while it takes the typing:
+        // no glow rings, no metallic rim.
+        painter.FillRoundRect(field, field.height / 2.0, WithAlpha(tokens::kText, active ? 0.07 : 0.04));
+        painter.Glass(field, field.height / 2.0, glass::NavCapsule());
+        const double hover = active ? 0.0 : std::clamp(emphasis, 0.0, 1.0);
+        if (hover > 0.01) painter.FillRoundRect(field, field.height / 2.0, WithAlpha(tokens::kText, 0.04 * hover));
+        if (active) {
+            painter.StrokeRoundRect(field, field.height / 2.0, 1.5, WithAlpha(tokens::kFocusRing, 0.75));
+        }
+    } else {
+        GlassStyle glass;
+        glass.kind = GlassKind::Pill;
+        glass.focused = active;
+        glass.focusAmount = active ? 1.0 : std::clamp(emphasis, 0.0, 1.0) * 0.6;
+        glass.reduceTransparency = tokens::reduceTransparency;
+        glass.tint = tokens::kSurface;
+        glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+        glass.ringColor = tokens::kFocusRing;
+        painter.Glass(field, field.height / 2.0, glass);
+    }
+
     const double glyph = metrics_.Rem(hero ? 1.6 : 1.4);
     painter.Path(Box{field.x + metrics_.Rem(hero ? 1.4 : 1.0), field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0,
                  kSearchGlyph, PathStyle{Color{0, 0, 0, 0}, active ? tokens::kText : tokens::kTextMuted, 2.4, false});
-    const double textX = field.x + metrics_.Rem(hero ? 3.8 : 3.0);
-    const TextStyle style{metrics_.Rem(hero ? 1.4 : 1.25), false, 500};
+    const double textX = field.x + metrics_.Rem(hero ? 3.9 : 3.0);
+    const TextStyle style{metrics_.Rem(hero ? 1.5 : 1.25), false, 500};
     if (query_.empty()) {
         painter.Text(Box{textX, field.y, field.Right() - textX, field.height},
                      searchField_ ? "Search films and series" : "Title or https://\xE2\x80\xA6", style,

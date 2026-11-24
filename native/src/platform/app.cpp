@@ -2567,12 +2567,17 @@ void App::ApplySearch() {
             return data;
         };
         const bool idle = util::Trim(searchQuery_).empty() && searchResults_.empty() && !searchRunning_;
-        if (idle) {
+        // Nothing matched: the same suggestions as the empty page, so the page is never a dead end.
+        const bool nothing = !idle && searchResults_.empty() && !searchRunning_ && !searchFailed_ &&
+                             util::Trim(searchQuery_).size() >= 2 && !searchPending_;
+        if (idle || nothing) {
             // An empty Search: what was searched before, as chips, and what is popular now from the catalogue that
             // is already loaded. Nothing here is made up.
-            lane.status = recentSearches_.empty() ? "Find films and series by title."
-                                                  : "Type a title, or pick up a recent search above.";
-            for (const std::string& recent : recentSearches_) {
+            if (idle) {
+                lane.status = recentSearches_.empty() ? "Find films and series by title."
+                                                      : "Type a title, or pick up a recent search above.";
+            }
+            for (const std::string& recent : idle ? recentSearches_ : std::vector<std::string>{}) {
                 ui::Command again;
                 again.name = "search-recent";
                 again.action = true;
@@ -2602,7 +2607,7 @@ void App::ApplySearch() {
             if (popular != nullptr) {
                 ui::RailData rail;
                 rail.id = "search-popular";
-                rail.title = "Popular now";
+                rail.title = idle ? "Popular now" : "Popular now \xC2\xB7 try one of these";
                 for (std::size_t i = 0; i < popular->items.size() && i < perRow * 2; ++i) {
                     rail.cards.push_back(card(popular->items[i]));
                 }
