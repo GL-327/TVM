@@ -42,8 +42,14 @@
     --tvm-glass-bg-elevated,
     linear-gradient(155deg, rgba(22, 36, 58, 0.72), rgba(10, 18, 32, 0.84))
   );
-  -webkit-backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
-  backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  /*
+   * No backdrop-filter. Behind the card is only the gate's static gradient, so
+   * blurring it changes nothing you can see, but it costs a GPU render surface
+   * on the very first screen. On the Android emulator's software GPU that
+   * surface crashed the emulator within a minute of launch, and every phone
+   * build failed its install test until it went. The glass reads from the
+   * wash, the rim, the sheen and the shadow.
+   */
   box-shadow:
     var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.34)),
     var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
