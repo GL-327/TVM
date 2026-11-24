@@ -379,3 +379,13 @@
   opacity: 0;
   pointer-events: none;
 }
+
+/*
+ * The gate's glass buttons sit on the same static gradient as the card, so a
+ * backdrop blur here is invisible too, and it is the first screen a phone
+ * draws. See .gate__panel.
+ */
+.gate .tvm-button--glass {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

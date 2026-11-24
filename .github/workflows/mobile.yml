@@ -143,7 +143,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Install and open the APK on an Android emulator
+        id: smoke
         if: steps.android.outputs.present == 'true'
+        # A second emulator below gets the last word.
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -154,6 +157,21 @@ jobs:
           # Run twice at most: the emulator's Play services sometimes crash and
           # take the app down with them, which says nothing about TVM.
           script: node scripts/android-smoke.mjs "$(ls apps/android/app/build/outputs/apk/debug/*.apk | head -1)" android-smoke || node scripts/android-smoke.mjs "$(ls apps/android/app/build/outputs/apk/debug/*.apk | head -1)" android-smoke
+      # The host-side SwiftShader GPU has crashed the whole emulator ("Failed
+      # to find ColorBuffer", then adb loses it) while the WebView drew its
+      # first screen. When that happens the same test runs again on a fresh
+      # emulator that renders inside the guest instead. The APK is published
+      # only if one of the two passes.
+      - name: Install and open the APK on an emulator with guest rendering
+        if: steps.android.outputs.present == 'true' && steps.smoke.outcome == 'failure'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu guest -noaudio -no-boot-anim -no-snapshot
+          script: node scripts/android-smoke.mjs "$(ls apps/android/app/build/outputs/apk/debug/*.apk | head -1)" android-smoke
       - uses: actions/upload-artifact@v4
         if: always() && steps.android.outputs.present == 'true'
         with:
