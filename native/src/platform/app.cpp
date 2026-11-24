@@ -315,6 +315,10 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             if (lane != command.params.end()) OpenStreamTab(lane->second);
         } else if (command.name == "search-submit") {
             if (searchPending_ || !searchQuery_.empty()) RunSearch();
+        } else if (command.name == "search-filter") {
+            const auto kind = command.params.find("kind");
+            if (kind != command.params.end()) searchFilter_ = kind->second;
+            ApplySearch();
         } else if (command.name == "search-recent") {
             const auto query = command.params.find("query");
             if (query != command.params.end()) {
@@ -2516,6 +2520,8 @@ void App::RunSearch() {
             searchFailed_ = failed;
             searchResults_ = results;
             ++searchResultsGeneration_;
+            // A new search shows everything again.
+            searchFilter_ = "all";
             if (!failed && !results.empty()) {
                 // Remembered for this session, newest first, without repeats.
                 std::erase_if(recentSearches_, [&](const std::string& old) { return lower(old) == wanted; });
@@ -2540,7 +2546,7 @@ void App::ApplySearch() {
     if (streamLane_ == "search" && account_.usable) {
         // The Search lane: the field under the chrome, then films and series in their own grids.
         ui::SceneView lane;
-        lane.heading = "Search";
+        // No heading: the field is the page's title, as on a television's search page.
         lane.searchField = true;
         lane.query = searchQuery_;
         lane.status = searchStatus_.empty() ? "Find films and series by title." : searchStatus_;
@@ -2559,8 +2565,9 @@ void App::ApplySearch() {
         const double windowWidth = std::max<LONG>(1, client.right - client.left);
         const double rem = ui::ViewportRem(windowWidth, std::max<LONG>(1, client.bottom - client.top));
         const double usable = windowWidth - 2.0 * rem * (2.5 + 1.0);
+        // Search's grid has more space between posters (1.6rem) than the browse rails.
         const std::size_t perRow =
-            std::clamp<std::size_t>(static_cast<std::size_t>((usable + rem) / (rem * (10.5 + 1.0))), 3, 12);
+            std::clamp<std::size_t>(static_cast<std::size_t>((usable + rem * 1.6) / (rem * (10.5 + 1.6))), 3, 12);
         const auto card = [](const catalog::MediaItem& item) {
             ui::CardData data{item.id, item.title, item.poster, std::nullopt};
             if (item.year.has_value()) data.subtitle = std::to_string(*item.year);
@@ -2614,10 +2621,49 @@ void App::ApplySearch() {
                 lane.rails.push_back(std::move(rail));
             }
         }
+        if (!searchResults_.empty()) {
+            // All · Movies · Series, a segmented control under the field; switching shows the same results, filtered.
+            for (const auto& [kind, label] : std::vector<std::pair<std::string, std::string>>{
+                     {"all", "All"}, {"movies", "Movies"}, {"series", "Series"}}) {
+                ui::Command filter;
+                filter.name = "search-filter";
+                filter.action = true;
+                filter.params["kind"] = kind;
+                ui::TopButton tab{label, filter, searchFilter_ == kind};
+                tab.segment = true;
+                lane.topButtons.push_back(tab);
+            }
+        }
+        const auto passes = [this](const catalog::MediaItem& item) {
+            if (searchFilter_ == "movies") return item.kind != "series";
+            if (searchFilter_ == "series") return item.kind == "series";
+            return true;
+        };
+        // The Top Result: the best match, when it is the title typed or starts with it, as a large card first.
+        std::string topId;
+        if (!searchResults_.empty() && passes(searchResults_.front())) {
+            const catalog::MediaItem& best = searchResults_.front();
+            std::string wanted = util::Trim(searchQuery_);
+            std::string title = best.title;
+            for (char& c : wanted) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            for (char& c : title) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (!wanted.empty() && title.rfind(wanted, 0) == 0) {
+                topId = best.id;
+                ui::RailData rail;
+                rail.id = "search-top";
+                rail.title = "Top Result";
+                ui::CardData feature{best.id, best.title, best.backdrop.empty() ? best.poster : best.backdrop, std::nullopt};
+                feature.feature = true;
+                feature.subtitle = std::string(best.kind == "series" ? "Series" : "Movie") +
+                                   (best.year.has_value() ? " \xC2\xB7 " + std::to_string(*best.year) : std::string());
+                rail.cards.push_back(feature);
+                lane.rails.push_back(std::move(rail));
+            }
+        }
         for (const bool series : {false, true}) {
             std::vector<const catalog::MediaItem*> group;
             for (const catalog::MediaItem& item : searchResults_) {
-                if ((item.kind == "series") == series) group.push_back(&item);
+                if ((item.kind == "series") == series && passes(item) && item.id != topId) group.push_back(&item);
             }
             for (std::size_t i = 0; i < group.size(); i += perRow) {
                 ui::RailData rail;

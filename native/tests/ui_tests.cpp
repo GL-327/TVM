@@ -733,4 +733,71 @@ TEST(a_title_in_two_rails_keeps_the_focus_in_the_rail_it_was_in) {
     REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(4, 2)));
 }
 
+
+// ---------------------------------------------------------------- search, as a television search page
+
+tvm::ui::SceneView SearchResults(const std::string& filter) {
+    tvm::ui::SceneView view = StreamView(5);
+    view.searchField = true;
+    view.query = "light";
+    for (const auto& [kind, label] : std::vector<std::pair<std::string, std::string>>{
+             {"all", "All"}, {"movies", "Movies"}, {"series", "Series"}}) {
+        tvm::ui::Command command;
+        command.name = "search-filter";
+        command.action = true;
+        command.params["kind"] = kind;
+        tvm::ui::TopButton tab{label, command, filter == kind};
+        tab.segment = true;
+        view.pageButtons.push_back(tab);
+    }
+    tvm::ui::RailData top;
+    top.id = "search-top";
+    top.title = "Top Result";
+    tvm::ui::CardData feature;
+    feature.itemId = "tt1";
+    feature.title = "Light";
+    feature.feature = true;
+    feature.subtitle = "Movie \xC2\xB7 2024";
+    top.cards = {feature};
+    tvm::ui::RailData movies;
+    movies.id = "movies-0";
+    movies.title = "Movies \xC2\xB7 4";
+    for (int i = 0; i < 4; ++i) {
+        tvm::ui::CardData card;
+        card.itemId = "tt" + std::to_string(10 + i);
+        card.title = "Film " + std::to_string(i);
+        movies.cards.push_back(card);
+    }
+    view.rails = {top, movies};
+    return view;
+}
+
+TEST(search_puts_its_filter_tabs_in_one_row_under_the_field_and_the_keys_reach_them) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetHeroes({}, 0.0);
+    scene.SetView(SearchResults("all"), 0.0);
+    REQUIRE(scene.FocusItem("search-field", 0.0, false));
+    // Down from the field reaches the tabs; Right moves along them, and OK asks for that filter.
+    REQUIRE(scene.Navigate(Direction::Down, 0.0));
+    const std::optional<std::string> first = scene.FocusedKey();
+    REQUIRE(first.has_value() && first->rfind("page:", 0) == 0);
+    REQUIRE(scene.Navigate(Direction::Right, 0.0));
+    const std::optional<tvm::ui::Command> pick = scene.Select(0.0);
+    REQUIRE(pick.has_value());
+    REQUIRE_EQ(pick->name, std::string("search-filter"));
+}
+
+TEST(search_top_result_is_a_large_card_and_the_grid_has_more_room) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    scene.SetHeroes({}, 0.0);
+    scene.SetView(SearchResults("all"), 0.0);
+    // The Top Result card is far wider than a poster; posters keep their size.
+    REQUIRE(scene.CardBox(0, 0).width > 400.0);
+    REQUIRE_NEAR(scene.CardBox(1, 0).width, 168.0, 1.0);
+    // Posters in Search sit further apart than on the browse rails (1.6rem rather than 1rem).
+    REQUIRE_NEAR(scene.CardBox(1, 1).x - scene.CardBox(1, 0).Right(), 1.6 * 16.0, 1.0);
+}
+
 }  // namespace

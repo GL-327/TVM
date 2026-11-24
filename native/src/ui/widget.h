@@ -134,6 +134,13 @@ public:
     bool logo() const { return logo_; }
     // A second line under a poster's title, such as a search result's year.
     void SetSubtitle(std::string subtitle) { subtitle_ = std::move(subtitle); }
+    // A large feature card, as Search's Top Result: a wide picture with the title and `meta` over its foot. It grows
+    // and lifts on focus exactly as the other cards do.
+    void SetFeature(std::string meta) {
+        feature_ = true;
+        subtitle_ = std::move(meta);
+    }
+    bool feature() const { return feature_; }
 
     const std::string& itemId() const { return itemId_; }
     const std::string& posterUrl() const { return posterUrl_; }
@@ -154,6 +161,7 @@ public:
 
 private:
     bool logo_ = false;
+    bool feature_ = false;
     std::string subtitle_;
     std::string title_;
     std::string focusKey_;

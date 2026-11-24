@@ -219,17 +219,57 @@ tvm::ui::SceneView SnapshotPageLane(int lane, const std::string& art) {
         for (auto& rail : rows(movies, "movies", "Movies")) view.rails.push_back(rail);
         for (auto& rail : rows(series, "series", "Series")) view.rails.push_back(rail);
     } else if (lane == 5) {
-        view.heading = "Search";
+        // Search with results, as the app builds it: the field, the All · Movies · Series tabs, the Top Result, then
+        // the films and the series.
         view.searchField = true;
         view.query = "light";
         view.status = "9 matches";
-        std::vector<tvm::ui::CardData> movies, series;
+        for (const auto& [kind, label] : std::vector<std::pair<std::string, std::string>>{
+                 {"all", "All"}, {"movies", "Movies"}, {"series", "Series"}}) {
+            tvm::ui::TopButton tab{label, act("search-filter"), kind == "all"};
+            tab.segment = true;
+            view.pageButtons.push_back(tab);
+        }
+        tvm::ui::RailData top;
+        top.id = "search-top";
+        top.title = "Top Result";
+        tvm::ui::CardData feature{"tt-light", "Light", art, std::nullopt};
+        feature.feature = true;
+        feature.subtitle = "Movie \xC2\xB7 2024";
+        top.cards = {feature};
+        view.rails.push_back(top);
         const char* films[] = {"The Last Light", "Lighthouse", "Northern Lights", "Light Years", "Pale Light"};
         const char* shows[] = {"Lights Out", "Light & Shadow", "Lightkeepers", "First Light"};
-        for (int i = 0; i < 5; ++i) movies.push_back({"tt-q" + std::to_string(i), films[i], i == 0 ? "asset:lighthouse.jpg" : i == 2 ? art : "", std::nullopt});
-        for (int i = 0; i < 4; ++i) series.push_back({"tt-r" + std::to_string(i), shows[i], i == 1 ? art : "", std::nullopt});
-        for (auto& rail : rows(movies, "movies", "Movies")) view.rails.push_back(rail);
-        for (auto& rail : rows(series, "series", "Series")) view.rails.push_back(rail);
+        tvm::ui::RailData movies{"movies-0", "Movies \xC2\xB7 5", {}};
+        for (int i = 0; i < 5; ++i) {
+            tvm::ui::CardData card{"tt-q" + std::to_string(i), films[i], i == 0 ? "asset:lighthouse.jpg" : i == 2 ? art : "", std::nullopt};
+            card.subtitle = std::to_string(2015 + i);
+            movies.cards.push_back(card);
+        }
+        tvm::ui::RailData series{"series-0", "Series \xC2\xB7 4", {}};
+        for (int i = 0; i < 4; ++i) {
+            tvm::ui::CardData card{"tt-r" + std::to_string(i), shows[i], i == 1 ? art : "", std::nullopt};
+            card.subtitle = std::to_string(2008 + i * 3);
+            series.cards.push_back(card);
+        }
+        view.rails.push_back(movies);
+        view.rails.push_back(series);
+    } else if (lane == 6) {
+        // Search before anything is typed: recent searches and what is popular now.
+        view.searchField = true;
+        view.status = "Type a title, or pick up a recent search above.";
+        for (const char* recent : {"the last light", "northward", "harbor"}) {
+            view.pageButtons.push_back(tvm::ui::TopButton{recent, act("search-recent")});
+        }
+        tvm::ui::RailData popular{"search-popular", "Popular now", {}};
+        const char* titles[] = {"The Last Light", "Cold Meridian", "Vesper", "The Glass Coast", "Solstice", "Low Tide",
+                                "Northward", "Quiet Harbor", "Pale Signal"};
+        for (int i = 0; i < 9; ++i) {
+            tvm::ui::CardData card{"tt-p" + std::to_string(i), titles[i], i == 0 ? "asset:lighthouse.jpg" : i % 3 == 1 ? art : "", std::nullopt};
+            card.subtitle = std::to_string(2016 + i % 8);
+            popular.cards.push_back(card);
+        }
+        view.rails.push_back(popular);
     }
     return view;
 }
@@ -470,8 +510,15 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
     tvm::ui::Shell shell(std::move(root), store);
     shell.Layout(width, height);
     // Live TV, Library and Search are lanes of Home under the same chrome.
-    const int lane = screen == L"live" ? 3 : screen == L"library" ? 4 : screen == L"search" ? 5 : 0;
+    const int lane = screen == L"live"           ? 3
+                     : screen == L"library"      ? 4
+                     : screen == L"search"       ? 5
+                     : screen == L"search-typing" ? 5
+                     : screen == L"search-empty"  ? 6
+                                                  : 0;
     if (home != nullptr && lane > 0) ShowSnapshotLane(*home, lane, lane, art, 0.0);
+    // The field taking typing: its accent line and caret.
+    if (home != nullptr && screen == L"search-typing") home->FocusItem("search-field", 0.0, false);
     // Settings with the App language list open.
     if (screen == L"settings-language") {
         auto& page = dynamic_cast<tvm::ui::SettingsScreen&>(shell.ActiveScreen());

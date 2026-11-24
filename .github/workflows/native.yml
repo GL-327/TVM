@@ -63,7 +63,7 @@ jobs:
           }
           $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--frames', "$out/frames-buttons-frosted", '--scenario', 'buttons', '--size', '1280x720', '--glass', 'frosted', '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0) { throw 'Frosted animation frames failed' }
-          foreach ($screen in @('live', 'library', 'search', 'player', 'player-cc', 'player-audio', 'player-quality', 'player-speed', 'details', 'chooser', 'chooser-edit', 'chooser-sheet', 'profile-menu', 'settings', 'settings-language', 'details-series', 'details-series-open', 'downloads', 'downloads-empty', 'downloads-list', 'downloads-open')) {
+          foreach ($screen in @('live', 'library', 'search', 'search-empty', 'search-typing', 'player', 'player-cc', 'player-audio', 'player-quality', 'player-speed', 'details', 'chooser', 'chooser-edit', 'chooser-sheet', 'profile-menu', 'settings', 'settings-language', 'details-series', 'details-series-open', 'downloads', 'downloads-empty', 'downloads-list', 'downloads-open')) {
             $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--snapshot', "$out/page-$screen.png", '--size', '1920x1080', '--screen', $screen, '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
             if ($process.ExitCode -ne 0) { throw "Page still failed: $screen" }
           }

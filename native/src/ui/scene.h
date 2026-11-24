@@ -44,6 +44,8 @@ struct CardData {
     bool logo = false;
     // Under a channel's name, or under a poster's title (a search result's year).
     std::string subtitle;
+    // A large feature card (Search's Top Result): the picture is `posterUrl` (a backdrop), `subtitle` is its meta line.
+    bool feature = false;
 };
 
 struct RailData {
@@ -71,6 +73,9 @@ struct TopButton {
     bool lockup = false;
     // The circular profile orb at the top right.
     bool orb = false;
+    // One tab of a segmented control (Search's All · Movies · Series): the tabs sit in one glass capsule, the chosen
+    // one on the light plate, as the Home navigation pill draws its tabs.
+    bool segment = false;
 };
 
 // How a scene is dressed. Home has its buttons at the top right and the launcher's hero. TVM Stream

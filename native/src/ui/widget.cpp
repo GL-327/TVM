@@ -133,6 +133,7 @@ Size Card::Measure(double /*availableWidth*/, const Metrics& metrics) {
         return Size{metrics.Rem(kChannelWidthRem), metrics.Rem(kChannelHeightRem) + metrics.Rem(kCardLabelGapRem) +
                                                        metrics.Rem(kCardLabelHeightRem) * (subtitle_.empty() ? 1.0 : 1.8)};
     }
+    if (feature_) return Size{metrics.Rem(30.0), metrics.Rem(16.9)};
     if (progress_.has_value()) {
         return Size{metrics.Rem(kLandscapeWidthRem), metrics.Rem(kLandscapeHeightRem)};
     }
@@ -217,7 +218,7 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
         return;
     }
     const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
-    const bool landscape = progress_.has_value();
+    const bool landscape = progress_.has_value() || feature_;
     const double artHeight = landscape ? box_.height : metrics.Rem(kPosterHeightRem);
     const double radius = metrics.Rem(kPosterRadiusRem);
 
@@ -250,6 +251,21 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
     glass.ringOutset = metrics.Rem(kPosterRingOffsetRem) + glass.ringWidth / 2.0;
     painter.Glass(poster, radius, glass);
 
+    if (feature_) {
+        // The Top Result: the picture with a scrim over its lower half (rounded with it), the title large over the
+        // foot, and what it is under that.
+        const double scrimTop = poster.Bottom() - poster.height * 0.6;
+        painter.FillRoundRectLinear(poster, radius, poster.x, scrimTop, poster.x, poster.Bottom(),
+                                    {GradientStop{0.0, Rgb(0x000000, 0.0)}, GradientStop{1.0, Rgb(0x04080E, 0.82)}});
+        const double inset = metrics.Rem(1.3);
+        painter.Text(Box{poster.x + inset, poster.Bottom() - metrics.Rem(4.6), poster.width - 2.0 * inset, metrics.Rem(2.4)},
+                     title_, TextStyle{metrics.Rem(1.8), true, 750}, Rgb(0xF5F7FA));
+        if (!subtitle_.empty()) {
+            painter.Text(Box{poster.x + inset, poster.Bottom() - metrics.Rem(2.3), poster.width - 2.0 * inset, metrics.Rem(1.4)},
+                         subtitle_, TextStyle{metrics.Rem(0.95), true, 550}, Rgb(0xF5F7FA, 0.78));
+        }
+        return;
+    }
     if (progress_.has_value()) {
         // Continue Watching landscape card: title centred on placeholder or over bottom scrim, plus inset progress bar.
         const TextStyle titleStyle{metrics.Rem(1.375), false, 500};

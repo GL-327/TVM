@@ -456,6 +456,8 @@ private:
     bool searchRunning_ = false;
     // Counts each new set of search results, so a new set opens at the top of the page.
     int searchResultsGeneration_ = 0;
+    // Search's filter tab: all, movies or series.
+    std::string searchFilter_ = "all";
     // The chooser closes a moment after a pick, so its avatar's pick animation is seen.
     std::optional<double> chooserCloseAtMs_;
     // The launch chooser has been considered once this run.
