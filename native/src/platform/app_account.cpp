@@ -23,6 +23,7 @@ void App::RefreshAccount() {
 
 void App::FinishAccount(const coreapi::AccountState& state, const std::string& message) {
     const bool changed = account_.email != state.email || account_.developer != state.developer || account_.usable != state.usable || account_.liveTv != state.liveTv || account_.tier != state.tier;
+    const bool first = !accountSettled_;
     account_ = state;
     accountBusy_ = false;
     accountSettled_ = true;
@@ -38,7 +39,9 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
         titles_.clear();
         fieldValues_.clear();
     }
-    RebuildHome();
+    // Home is rebuilt only when the answer changed what it shows. The periodic check (every 30 s) used to rebuild it
+    // every time, which put every rail back to its start and glided the page to the focused card.
+    if (first || changed) RebuildHome();
     if (pageName_ == "account") ShowInfoPage();
     // "Who's watching?" when TVM opens, once the account can use TVM Stream, unless Settings turned it off. It sits
     // under the launch reveal, which fades into it.

@@ -129,6 +129,18 @@ private:
     nav::MouseState mouse_;
     nav::ClickTracker clicks_;
     nav::TouchGesture touch_;
+    // A mouse press on a rail that can scroll: once it moves sideways past the tap slop, the rail follows the pointer
+    // (and the press is no longer a click); on release it coasts on, as a touch swipe does.
+    struct MouseDrag {
+        ScrollSurface rail;
+        double startX = 0.0;
+        double startY = 0.0;
+        double lastX = 0.0;
+        double lastMs = 0.0;
+        double velocity = 0.0;
+        bool dragging = false;
+    };
+    std::optional<MouseDrag> mouseDrag_;
     std::optional<ScrollSurface> touchRail_;
     std::optional<ScrollSurface> touchPage_;
 };

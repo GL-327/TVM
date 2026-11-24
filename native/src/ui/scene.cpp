@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <string_view>
 
 #include "motion/tween.h"
+#include "nav/pointer.h"
 #include "nav/wrap.h"
+#include "ui/glass_styles.h"
 
 namespace tvm::ui {
 
@@ -288,6 +291,23 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     const std::optional<std::string> focused = focus_.Focused();
     const std::optional<std::string> itemId = FocusedItemId();
     const std::optional<std::size_t> top = focused.has_value() ? TopIndexOf(*focused) : std::nullopt;
+    // A new view of the same page (the catalogue or the account refreshed) keeps the viewer's place exactly: the
+    // page's scroll, each rail's scroll, and the focused title in its own rail. Nothing moves. A different page
+    // starts at the top.
+    const bool samePage = view.style == style_ && view.pageKey == pageKey_ && !rails_.empty();
+    const double pageWas = pageCamera_.active() ? pageCamera_.target() : pageScroll_;
+    std::map<std::string, double> railWas;
+    std::string focusedRail;
+    for (std::size_t r = 0; r < rails_.size() && r < railIds_.size(); ++r) {
+        if (railIds_[r].empty()) continue;
+        railWas[railIds_[r]] = r < railCamera_.size() && railCamera_[r].active() ? railCamera_[r].target()
+                                                                                    : rails_[r]->scroll();
+    }
+    if (focused.has_value() && cardByKey_.contains(*focused)) {
+        const std::size_t rail = cards_[cardByKey_.at(*focused)].rail;
+        if (rail < railIds_.size()) focusedRail = railIds_[rail];
+    }
+    pageKey_ = view.pageKey;
     // Where the selected tab's glass is now, so it can slide from there to the newly selected tab.
     const std::optional<Box> indicatorWas = TabIndicatorBox();
     const std::optional<std::size_t> activeWas = activeTab_;
@@ -316,6 +336,32 @@ void Scene::SetView(const SceneView& view, double nowMs) {
         }
     }
     SetRails(view.rails);
+
+    if (samePage) {
+        for (std::size_t r = 0; r < rails_.size() && r < railIds_.size(); ++r) {
+            const auto was = railWas.find(railIds_[r]);
+            if (was != railWas.end()) rails_[r]->SetScroll(std::clamp(was->second, 0.0, rails_[r]->MaxScroll()));
+        }
+        pageScroll_ = std::clamp(pageWas, 0.0, MaxPageScroll());
+        Arrange();
+        // The focused title, in the rail it was in when it is still there, else wherever it now is. No camera.
+        if (itemId.has_value()) {
+            std::optional<std::string> key;
+            for (const CardRef& ref : cards_) {
+                if (ref.card->itemId() != *itemId) continue;
+                const bool sameRail = ref.rail < railIds_.size() && railIds_[ref.rail] == focusedRail;
+                if (!key.has_value() || sameRail) key = ref.key;
+                if (sameRail) break;
+            }
+            if (key.has_value()) {
+                FocusKey(*key, nowMs, false);
+                return;
+            }
+        }
+        if (top.has_value() && *top < tops_.size()) FocusKey(TopKey(*top), nowMs, false);
+        if (focused.has_value() && IsHeroKey(*focused) && HeroActive()) FocusKey(*focused, nowMs, false);
+        return;
+    }
 
     if (itemId.has_value() && FocusTitle(*itemId, nowMs)) return;
     if (top.has_value() && *top < tops_.size()) FocusKey(TopKey(*top), nowMs, false);
@@ -393,6 +439,67 @@ void Scene::PointerLeft(double nowMs) {
     EaseFocusedLook(false, nowMs);
 }
 
+void Scene::PointerAt(double x, double y, double nowMs) {
+    std::optional<std::size_t> under;
+    const bool belowHeader = !(HasLaneHeader() && y < HeaderTop());
+    for (std::size_t r = 0; r < rails_.size() && belowHeader; ++r) {
+        if (Contains(rails_[r]->box(), x, y)) under = r;
+    }
+    arrowHover_.clear();
+    if (under.has_value()) {
+        for (const bool next : {false, true}) {
+            const std::optional<Box> box = RailArrowBox(*under, next);
+            if (box.has_value() && Contains(*box, x, y)) {
+                arrowHover_ = std::string(next ? "rail-next:" : "rail-prev:") + std::to_string(*under);
+            }
+        }
+    }
+    if (under == arrowRail_) return;
+    // The arrows fade in over the rail under the pointer, and out as it leaves.
+    const bool reduced = motion::PrefersReducedMotion(motion_);
+    if (under.has_value()) {
+        arrowRail_ = under;
+        arrowFade_ = motion::Tween(0.0, 1.0, nowMs, reduced ? 0.0 : 180.0, kGlassEase);
+    } else {
+        arrowFade_ = motion::Tween(arrowFade_.Value(nowMs), 0.0, nowMs, reduced ? 0.0 : 160.0, kGlassEase);
+        if (reduced) arrowRail_.reset();
+    }
+}
+
+std::optional<Box> Scene::RailArrowBox(std::size_t rail, bool next) const {
+    if (rail >= rails_.size()) return std::nullopt;
+    const Rail& row = *rails_[rail];
+    const double max = row.MaxScroll();
+    if (!nav::CanScroll(row.ContentWidth(), row.box().width)) return std::nullopt;
+    if (next ? row.scroll() >= max - 0.5 : row.scroll() <= 0.5) return std::nullopt;
+    // A round glass button at the rail's edge, centred on the pictures (not their titles).
+    const double size = metrics_.Rem(2.75);
+    const double art = std::min(row.box().height, metrics_.Rem(kPosterHeightRem));
+    const double y = row.box().y + art / 2.0 - size / 2.0;
+    const double x = next ? row.box().Right() - size - metrics_.Rem(0.35) : row.box().x + metrics_.Rem(0.35);
+    return Box{x, y, size, size};
+}
+
+void Scene::PaintRailArrows(Painter& painter) const {
+    if (!arrowRail_.has_value()) return;
+    const double fade = std::clamp(arrowFade_.Value(clockMs_), 0.0, 1.0);
+    if (fade <= 0.01) return;
+    const std::size_t rail = *arrowRail_;
+    for (const bool next : {false, true}) {
+        const std::optional<Box> box = RailArrowBox(rail, next);
+        if (!box.has_value()) continue;
+        const std::string key = std::string(next ? "rail-next:" : "rail-prev:") + std::to_string(rail);
+        const bool hovered = arrowHover_ == key;
+        // The nav pill's glass: the resting capsule, and its hover plate under the pointer.
+        painter.Glass(*box, box->height / 2.0, glass::NavCapsule(fade));
+        if (hovered) painter.Glass(*box, box->height / 2.0, glass::NavHover(1.0, fade));
+        const double glyph = box->width * 0.46;
+        painter.Path(Box{box->CenterX() - glyph / 2.0, box->CenterY() - glyph / 2.0, glyph, glyph}, 24.0,
+                     next ? "M9 5l7 7-7 7" : "M15 5l-7 7 7 7",
+                     PathStyle{Color{0, 0, 0, 0}, glass::InkOnPlate(hovered ? 1.0 : 0.0, fade), 2.6, false});
+    }
+}
+
 void Scene::ShowFocus(double nowMs) {
     if (!focusHidden_) return;
     focusHidden_ = false;
@@ -448,6 +555,8 @@ void Scene::Build(const std::vector<RailData>& rails) {
     cardByKey_.clear();
     railOffset_.clear();
     rails_.clear();
+    railIds_.clear();
+    if (arrowRail_.has_value() && *arrowRail_ >= rails.size()) arrowRail_.reset();
 
     page_ = std::make_unique<Stack>(kSectionSpacingRem);
     for (std::size_t r = 0; r < rails.size(); ++r) {
@@ -469,6 +578,7 @@ void Scene::Build(const std::vector<RailData>& rails) {
             rail->Add(std::move(card));
         }
         rails_.push_back(rail.get());
+        railIds_.push_back(spec.id);
         section->Add(std::move(rail));
         page_->Add(std::move(section));
     }
@@ -1452,10 +1562,11 @@ bool Scene::Animating() const {
     const bool titleMoving = titleFade_.has_value() && !titleFade_->Done(clockMs_);
     const bool pictureMoving = artFade_.has_value() && !artFade_->Done(clockMs_);
     const bool contentFading = contentFade_.has_value() && !contentFade_->Done(clockMs_);
+    const bool arrowsFading = arrowRail_.has_value() && !arrowFade_.Done(clockMs_);
     // The search placeholders breathe while a search runs.
     const bool searching = loading_ && searchField_ && rails_.empty() && !motion::PrefersReducedMotion(motion_);
     return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving || contentFading ||
-           ControlsAnimating() || searching;
+           ControlsAnimating() || searching || arrowsFading;
 }
 
 bool Scene::CameraActive() const {
@@ -1765,6 +1876,8 @@ std::optional<Command> Scene::Select(double nowMs) {
 }
 
 bool Scene::FocusItem(const std::string& key, double nowMs, bool withCamera) {
+    // A rail arrow is not a focus stop: the hover look is set by PointerAt.
+    if (key.rfind("rail-", 0) == 0) return false;
     if (focus_.Focused() == std::optional<std::string>(key)) return false;
     if (TopIndexOf(key).has_value() || (HeroActive() && IsHeroKey(key)) || HeaderIndexOf(key).has_value()) {
         FocusKey(key, nowMs, withCamera);
@@ -1792,6 +1905,15 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
         if (Contains(boxes.watch, x, y)) return std::string(kHeroPlayKey);
         if (Contains(boxes.learn, x, y)) return std::string(kHeroInfoKey);
     }
+    // A rail's arrows sit over its cards, so they are found first.
+    if (arrowRail_.has_value() && arrowFade_.target() > 0.0) {
+        for (const bool next : {false, true}) {
+            const std::optional<Box> box = RailArrowBox(*arrowRail_, next);
+            if (box.has_value() && Contains(*box, x, y)) {
+                return std::string(next ? "rail-next:" : "rail-prev:") + std::to_string(*arrowRail_);
+            }
+        }
+    }
     for (std::size_t r = 0; r < rails_.size(); ++r) {
         if (!Contains(rails_[r]->box(), x, y)) continue;
         for (std::size_t i = 0; i < CardCount(r); ++i) {
@@ -1802,6 +1924,19 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
 }
 
 std::optional<Command> Scene::ActivateItem(const std::string& key, double nowMs) {
+    if (key.rfind("rail-next:", 0) == 0 || key.rfind("rail-prev:", 0) == 0) {
+        // A rail's arrow steps the rail by most of its width, on the same camera as the wheel, to its ends at most.
+        const bool next = key[5] == 'n';
+        const std::size_t rail = std::stoul(key.substr(10));
+        if (rail >= rails_.size()) return std::nullopt;
+        const std::optional<ScrollSurface> surface =
+            SurfaceAt(rails_[rail]->box().CenterX(), rails_[rail]->box().CenterY(), nav::Axis::X);
+        if (!surface.has_value() || surface->kind != ScrollSurface::Kind::Rail) return std::nullopt;
+        const double step = rails_[rail]->box().width * 0.85;
+        const double from = railCamera_.at(rail).active() ? railCamera_.at(rail).target() : rails_[rail]->scroll();
+        AnimateScroll(*surface, std::clamp(from + (next ? step : -step), 0.0, rails_[rail]->MaxScroll()), nowMs);
+        return std::nullopt;
+    }
     if (key == "search-clear") {
         Command command;
         command.name = "search-clear";
@@ -1959,6 +2094,7 @@ void Scene::Paint(Painter& painter) const {
     painter.Clear(tokens::kBackground);
     if (HeroActive()) PaintHeroBackdrop(painter);
     page_->Paint(painter, metrics_);
+    PaintRailArrows(painter);
     if (HeroActive()) PaintHero(painter);
     // Switching to or from Live TV, Library or Search: the new page's content fades in from the ground.
     if (contentFade_.has_value() && !contentFade_->Done(clockMs_)) {

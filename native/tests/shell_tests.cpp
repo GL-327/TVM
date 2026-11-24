@@ -469,6 +469,59 @@ TEST(wheel_over_the_page_scrolls_the_page) {
     REQUIRE_NEAR(scene.PageScroll(), 100.0, 1e-6);
 }
 
+TEST(a_mouse_drag_along_a_rail_slides_it_and_does_not_open_a_card) {
+    MemoryStore store;
+    Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 12}});
+    auto& scene = dynamic_cast<Scene&>(shell.ActiveScreen());
+    const tvm::ui::Box card = CardOf(scene, 3, 4);
+    shell.MouseDown(card.CenterX(), card.CenterY(), 0.0);
+    shell.MouseMove(card.CenterX() - 100.0, card.CenterY(), true, 100.0);
+    shell.MouseMove(card.CenterX() - 300.0, card.CenterY(), true, 400.0);
+    REQUIRE_NEAR(scene.RailScroll(3), 300.0, 1e-6);
+    shell.MouseUp(card.CenterX() - 300.0, card.CenterY(), 2000.0);
+    Settle(shell, 2000.0);
+    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
+    REQUIRE(scene.RailScroll(3) >= 300.0 - 1e-6);
+    // The page did not move.
+    REQUIRE_NEAR(scene.PageScroll(), 0.0, 1e-6);
+}
+
+TEST(a_rails_arrows_show_only_where_it_can_move_and_step_it_to_its_ends) {
+    MemoryStore store;
+    Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 12}});
+    auto& scene = dynamic_cast<Scene&>(shell.ActiveScreen());
+    const tvm::ui::Box card = CardOf(scene, 3, 2);
+    shell.MouseMove(card.CenterX(), card.CenterY(), false, 0.0);
+    shell.MouseMove(card.CenterX() + 4.0, card.CenterY(), false, 0.0);
+    REQUIRE(scene.ArrowRail() == std::optional<std::size_t>(3));
+    // At the start only the forward arrow shows. A rail that fits has none.
+    REQUIRE(!scene.RailArrowBox(3, false).has_value());
+    REQUIRE(scene.RailArrowBox(3, true).has_value());
+    REQUIRE(!scene.RailArrowBox(0, true).has_value());
+    // Clicking it steps the rail along, without opening the card under it.
+    double now = 1000.0;
+    for (int i = 0; i < 6; ++i) {
+        const std::optional<tvm::ui::Box> next = scene.RailArrowBox(3, true);
+        if (!next.has_value()) break;
+        shell.MouseMove(next->CenterX(), next->CenterY(), false, now);
+        shell.MouseDown(next->CenterX(), next->CenterY(), now);
+        shell.MouseUp(next->CenterX(), next->CenterY(), now + 10.0);
+        now = Settle(shell, now + 10.0) + 10.0;
+    }
+    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
+    // It stops at the end: the forward arrow has gone, the back arrow shows.
+    REQUIRE(!scene.RailArrowBox(3, true).has_value());
+    REQUIRE(scene.RailArrowBox(3, false).has_value());
+    const double end = scene.RailScroll(3);
+    REQUIRE(end > 0.0);
+    const tvm::ui::Box back = *scene.RailArrowBox(3, false);
+    shell.MouseMove(back.CenterX(), back.CenterY(), false, now);
+    shell.MouseDown(back.CenterX(), back.CenterY(), now);
+    shell.MouseUp(back.CenterX(), back.CenterY(), now + 10.0);
+    Settle(shell, now + 10.0);
+    REQUIRE(scene.RailScroll(3) < end);
+}
+
 TEST(touch_tap_opens_the_card_under_the_finger) {
     MemoryStore store;
     Shell shell = MakeShell(store);

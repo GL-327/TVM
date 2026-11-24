@@ -1,5 +1,6 @@
 #include "ui/shell.h"
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include <stdexcept>
@@ -352,11 +353,30 @@ void Shell::ApplyMotionIfChanged() {
 void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
     const nav::MouseState::MoveResult result = mouse_.OnMove(x, y, buttonDown);
     clicks_.Move(0, x, y);
+    if (mouseDrag_.has_value() && buttonDown) {
+        MouseDrag& drag = *mouseDrag_;
+        if (!drag.dragging && nav::PanAxis(x - drag.startX, y - drag.startY) == std::optional<nav::Axis>(nav::Axis::X)) {
+            drag.dragging = true;
+            Top().SetPressed(std::nullopt, nowMs);
+        }
+        if (drag.dragging) {
+            const double dt = std::max(1.0, nowMs - drag.lastMs);
+            drag.velocity = (x - drag.lastX) / dt;
+            drag.lastX = x;
+            drag.lastMs = nowMs;
+            const double scroll = std::clamp(nav::DragScroll(drag.rail.scroll, drag.startX, x), 0.0, drag.rail.maxScroll);
+            Top().SetScroll(drag.rail, scroll, nowMs);
+            return;
+        }
+    } else if (!buttonDown) {
+        mouseDrag_.reset();
+    }
     if (!result.counted) return;
 
     // Hover moves focus without moving the camera, so content does not slide
     // out from under the pointer. Over empty space the focus stays put for the remote, but its hover look eases
     // away, so nothing stays lit after the pointer has left it.
+    Top().PointerAt(x, y, nowMs);
     const std::optional<std::string> item = Top().ItemAt(x, y);
     if (!item.has_value()) {
         Top().PointerLeft(nowMs);
@@ -367,6 +387,7 @@ void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
 }
 
 void Shell::MouseLeave(double nowMs) {
+    Top().PointerAt(-1.0, -1.0, nowMs);
     Top().PointerLeft(nowMs);
 }
 
@@ -376,10 +397,29 @@ void Shell::MouseDown(double x, double y, double nowMs) {
     clicks_.Press(0, x, y, item);
     // The pressed look shows at once; the action still waits for the release, as before.
     Top().SetPressed(item, nowMs);
+    mouseDrag_.reset();
+    const std::optional<ScrollSurface> rail = Top().SurfaceAt(x, y, nav::Axis::X);
+    if (rail.has_value() && rail->kind == ScrollSurface::Kind::Rail && rail->canPan) {
+        mouseDrag_ = MouseDrag{*rail, x, y, x, nowMs, 0.0, false};
+    }
 }
 
 void Shell::MouseUp(double x, double y, double nowMs) {
     Top().SetPressed(std::nullopt, nowMs);
+    if (mouseDrag_.has_value() && mouseDrag_->dragging) {
+        // A drag is never a click. It coasts on a little in the direction it was going.
+        const MouseDrag drag = *mouseDrag_;
+        mouseDrag_.reset();
+        clicks_.Release(0, x, y);
+        const double scroll = std::clamp(nav::DragScroll(drag.rail.scroll, drag.startX, x), 0.0, drag.rail.maxScroll);
+        ScrollSurface rail = drag.rail;
+        rail.scroll = scroll;
+        if (std::fabs(drag.velocity) > 0.05) {
+            Top().AnimateScroll(rail, std::clamp(nav::MomentumTarget(scroll, drag.velocity), 0.0, rail.maxScroll), nowMs);
+        }
+        return;
+    }
+    mouseDrag_.reset();
     const std::optional<std::string> item = clicks_.Release(0, x, y);
     if (!item.has_value()) return;
     const std::optional<Command> command = Top().ActivateItem(*item, nowMs);

@@ -652,7 +652,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_LBUTTONUP:
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:
-        if (!FromTouchOrPen() && HandleMouse(message, wParam, lParam)) return 0;
+        // A handled sideways wheel answers TRUE: several touchpad and mouse drivers stop sending WM_MOUSEHWHEEL to a
+        // window that answers 0, which left the rails moving one notch and then no further.
+        if (!FromTouchOrPen() && HandleMouse(message, wParam, lParam)) return message == WM_MOUSEHWHEEL ? TRUE : 0;
         break;
     case WM_CAPTURECHANGED:
         // Another window took the mouse mid-drag (Alt+Tab, a dialog): the volume drag ends where it was.
@@ -1804,6 +1806,7 @@ void App::BuildPageLane() {
 void App::ShowPageLane(ui::SceneView view) {
     const double now = NowMs();
     view.style = ui::SceneStyle::Stream;
+    if (view.pageKey.empty()) view.pageKey = "lane:" + streamLane_;
     view.pageButtons = std::move(view.topButtons);
     view.topButtons = StreamNav(true);
     home_->SetHeroes({}, now);
@@ -1845,6 +1848,8 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         return command;
     };
     ui::SceneView view;
+    // Each lane is its own page: a rebuild of the same lane keeps the viewer's place, a new lane starts at the top.
+    view.pageKey = std::string(root ? "home:" : "stream:") + streamLane_;
     view.style = ui::SceneStyle::Stream;
     if (!account_.usable) {
         view.topButtons = {
@@ -2510,6 +2515,7 @@ void App::RunSearch() {
             searchRunning_ = false;
             searchFailed_ = failed;
             searchResults_ = results;
+            ++searchResultsGeneration_;
             if (!failed && !results.empty()) {
                 // Remembered for this session, newest first, without repeats.
                 std::erase_if(recentSearches_, [&](const std::string& old) { return lower(old) == wanted; });
@@ -2539,6 +2545,8 @@ void App::ApplySearch() {
         lane.query = searchQuery_;
         lane.status = searchStatus_.empty() ? "Find films and series by title." : searchStatus_;
         lane.loading = searchRunning_;
+        // New results start at the top; the same results (status, typing) keep the place.
+        lane.pageKey = "lane:search:" + std::to_string(searchResultsGeneration_);
         if (searchFailed_) {
             ui::Command retry;
             retry.name = "search-submit";

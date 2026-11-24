@@ -662,4 +662,73 @@ TEST(the_search_lane_field_is_a_focusable_item_and_not_focused_on_entry) {
     REQUIRE(command.has_value());
     REQUIRE_EQ(command->name, std::string("search-submit"));
 }
+
+// ---------------------------------------------------------------- rebuilds keep the viewer's place
+
+tvm::ui::SceneView ManyRails(const std::string& pageKey) {
+    tvm::ui::SceneView view;
+    view.style = tvm::ui::SceneStyle::Stream;
+    view.pageKey = pageKey;
+    for (int r = 0; r < 6; ++r) {
+        tvm::ui::RailData rail;
+        rail.id = "rail-" + std::to_string(r);
+        rail.title = "Rail " + std::to_string(r);
+        for (int i = 0; i < 16; ++i) {
+            tvm::ui::CardData card;
+            card.itemId = "tt" + std::to_string(r * 100 + i);
+            card.title = "Title " + std::to_string(i);
+            rail.cards.push_back(card);
+        }
+        view.rails.push_back(rail);
+    }
+    return view;
+}
+
+TEST(a_rebuild_of_the_same_page_keeps_its_scroll_rails_and_focus_without_moving) {
+    Scene scene = MakeScene({});
+    scene.SetView(ManyRails("home:all"), 0.0);
+    // The viewer scrolls the page down, slides rail 3 along, and hovers a card in it.
+    tvm::ui::ScrollSurface page;
+    page.kind = tvm::ui::ScrollSurface::Kind::Page;
+    scene.SetScroll(page, 500.0, 0.0);
+    tvm::ui::ScrollSurface rail;
+    rail.kind = tvm::ui::ScrollSurface::Kind::Rail;
+    rail.index = 3;
+    scene.SetScroll(rail, 640.0, 0.0);
+    REQUIRE(scene.FocusItem(Key(3, 5), 0.0, false));
+    const double pageWas = scene.PageScroll();
+    const double railWas = scene.RailScroll(3);
+
+    // The catalogue or the account refreshes: the same page is built again.
+    scene.SetView(ManyRails("home:all"), 100.0);
+    REQUIRE_NEAR(scene.PageScroll(), pageWas, 1e-6);
+    REQUIRE_NEAR(scene.RailScroll(3), railWas, 1e-6);
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(3, 5)));
+    Settle(scene, 100.0);
+    REQUIRE_NEAR(scene.PageScroll(), pageWas, 1e-6);
+    REQUIRE_NEAR(scene.RailScroll(3), railWas, 1e-6);
+}
+
+TEST(a_different_page_starts_at_the_top) {
+    Scene scene = MakeScene({});
+    scene.SetView(ManyRails("home:all"), 0.0);
+    tvm::ui::ScrollSurface page;
+    page.kind = tvm::ui::ScrollSurface::Kind::Page;
+    scene.SetScroll(page, 500.0, 0.0);
+    scene.SetView(ManyRails("home:movies"), 100.0);
+    Settle(scene, 100.0);
+    REQUIRE_NEAR(scene.RailScroll(3), 0.0, 1e-6);
+}
+
+TEST(a_title_in_two_rails_keeps_the_focus_in_the_rail_it_was_in) {
+    Scene scene = MakeScene({});
+    tvm::ui::SceneView view = ManyRails("home:all");
+    // The same title is in rail 0 and rail 4.
+    view.rails[4].cards[2].itemId = view.rails[0].cards[2].itemId;
+    scene.SetView(view, 0.0);
+    REQUIRE(scene.FocusItem(Key(4, 2), 0.0, false));
+    scene.SetView(view, 100.0);
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(4, 2)));
+}
+
 }  // namespace

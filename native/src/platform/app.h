@@ -451,6 +451,8 @@ private:
     bool searchFailed_ = false;
     // A search on its way, for the page's loading state.
     bool searchRunning_ = false;
+    // Counts each new set of search results, so a new set opens at the top of the page.
+    int searchResultsGeneration_ = 0;
     // The chooser closes a moment after a pick, so its avatar's pick animation is seen.
     std::optional<double> chooserCloseAtMs_;
     // The launch chooser has been considered once this run.

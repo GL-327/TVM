@@ -126,6 +126,10 @@ struct SceneView {
     std::optional<Color> brandColor;
     // A search is on its way: the results area shows placeholder posters until it answers.
     bool loading = false;
+    // Which page this is, such as a TVM Stream lane. A new view of the same page keeps the viewer's place (the page's
+    // scroll, each rail's scroll by its id, and the focused title) without moving the camera; a different page
+    // starts at the top.
+    std::string pageKey;
 };
 
 class Scene final : public Screen {
@@ -181,6 +185,10 @@ public:
     // easing. Used when switching to or from Live TV, Library or Search, which have no hero to dissolve.
     void FadeContentIn(double nowMs);
     void PointerLeft(double nowMs) override;
+    void PointerAt(double x, double y, double nowMs) override;
+    // A rail's arrow, at its start (`next` false) or its end, while that side can still move. Exposed for tests.
+    std::optional<Box> RailArrowBox(std::size_t rail, bool next) const;
+    std::optional<std::size_t> ArrowRail() const { return arrowRail_; }
     void ShowFocus(double nowMs) override;
     // Whether the focused item is drawn focused: false while the pointer rests on empty space.
     bool FocusShown() const { return !focusHidden_; }
@@ -295,6 +303,14 @@ private:
     std::unique_ptr<Stack> page_;
     std::vector<Rail*> rails_;
     std::vector<std::size_t> railOffset_;
+    // Each rail's id, from its RailData, so a rebuild can put each rail back where the viewer left it.
+    std::vector<std::string> railIds_;
+    std::string pageKey_;
+    // The rail under the pointer, whose arrows show, how far they have faded in, and the arrow under the pointer.
+    std::optional<std::size_t> arrowRail_;
+    motion::Tween arrowFade_;
+    std::string arrowHover_;
+    void PaintRailArrows(Painter& painter) const;
     std::vector<CardRef> cards_;
     std::unordered_map<std::string, std::size_t> cardByKey_;
 
