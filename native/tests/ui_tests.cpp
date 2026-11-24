@@ -772,20 +772,33 @@ tvm::ui::SceneView SearchResults(const std::string& filter) {
     return view;
 }
 
-TEST(search_puts_its_filter_tabs_in_one_row_under_the_field_and_the_keys_reach_them) {
+TEST(search_browse_tiles_are_large_and_open_their_genre) {
     Scene scene(SmallRails(), MotionSettings{});
     scene.Layout(1920.0, 1080.0);
     scene.SetHeroes({}, 0.0);
-    scene.SetView(SearchResults("all"), 0.0);
-    REQUIRE(scene.FocusItem("search-field", 0.0, false));
-    // Down from the field reaches the tabs; Right moves along them, and OK asks for that filter.
-    REQUIRE(scene.Navigate(Direction::Down, 0.0));
-    const std::optional<std::string> first = scene.FocusedKey();
-    REQUIRE(first.has_value() && first->rfind("page:", 0) == 0);
-    REQUIRE(scene.Navigate(Direction::Right, 0.0));
-    const std::optional<tvm::ui::Command> pick = scene.Select(0.0);
-    REQUIRE(pick.has_value());
-    REQUIRE_EQ(pick->name, std::string("search-filter"));
+    tvm::ui::SceneView view = StreamView(5);
+    view.searchField = true;
+    tvm::ui::RailData browse;
+    browse.id = "search-browse-0";
+    browse.title = "Browse";
+    for (const char* genre : {"Action", "Comedy", "Drama"}) {
+        tvm::ui::CardData tile;
+        tile.itemId = std::string("browse:") + genre;
+        tile.title = genre;
+        tile.category = true;
+        browse.cards.push_back(tile);
+    }
+    view.rails = {browse};
+    scene.SetView(view, 0.0);
+    // The tiles are tall and larger than posters (15.5rem by 23rem at 1080p).
+    REQUIRE_NEAR(scene.CardBox(0, 0).width, 15.5 * 16.0, 1.0);
+    REQUIRE(scene.CardBox(0, 0).height >= 23.0 * 16.0 - 1.0);
+    // OK on a tile asks the app for that genre, rather than opening a title.
+    REQUIRE(scene.FocusItem("card:0:1", 0.0, false));
+    const std::optional<tvm::ui::Command> open = scene.Select(0.0);
+    REQUIRE(open.has_value());
+    REQUIRE_EQ(open->name, std::string("search-browse"));
+    REQUIRE_EQ(open->params.at("genre"), std::string("Comedy"));
 }
 
 TEST(search_top_result_is_a_large_card_and_the_grid_has_more_room) {

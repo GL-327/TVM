@@ -458,6 +458,8 @@ private:
     int searchResultsGeneration_ = 0;
     // Search's filter tab: all, movies or series.
     std::string searchFilter_ = "all";
+    // The genre a Browse tile opened on Search, while nothing is typed.
+    std::string browseGenre_;
     // The chooser closes a moment after a pick, so its avatar's pick animation is seen.
     std::optional<double> chooserCloseAtMs_;
     // The launch chooser has been considered once this run.

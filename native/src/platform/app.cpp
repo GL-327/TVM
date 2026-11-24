@@ -315,6 +315,12 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             if (lane != command.params.end()) OpenStreamTab(lane->second);
         } else if (command.name == "search-submit") {
             if (searchPending_ || !searchQuery_.empty()) RunSearch();
+        } else if (command.name == "search-browse") {
+            // A Browse tile opens its genre; the back chip (no genre) returns to Browse.
+            const auto genre = command.params.find("genre");
+            browseGenre_ = genre == command.params.end() ? std::string() : genre->second;
+            ++searchResultsGeneration_;
+            ApplySearch();
         } else if (command.name == "search-filter") {
             const auto kind = command.params.find("kind");
             if (kind != command.params.end()) searchFilter_ = kind->second;
@@ -2458,6 +2464,8 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
 }
 
 void App::TypeSearch(const std::string& text) {
+    // Typing leaves a genre page for the search.
+    browseGenre_.clear();
     const bool wasIdle = util::Trim(searchQuery_).empty();
     const bool wasRunning = searchRunning_;
     const bool wasFailed = searchFailed_;
@@ -2577,12 +2585,57 @@ void App::ApplySearch() {
         // Nothing matched: the same suggestions as the empty page, so the page is never a dead end.
         const bool nothing = !idle && searchResults_.empty() && !searchRunning_ && !searchFailed_ &&
                              util::Trim(searchQuery_).size() >= 2 && !searchPending_;
-        if (idle || nothing) {
-            // An empty Search: what was searched before, as chips, and what is popular now from the catalogue that
-            // is already loaded. Nothing here is made up.
+        // A Browse tile was chosen: that genre's films and series, from the catalogue already loaded.
+        const catalog::GenreShelf* browsing = nullptr;
+        if (idle && !browseGenre_.empty()) {
+            for (const catalog::GenreShelf& shelf : shelves_) {
+                if (shelf.genre == browseGenre_) browsing = &shelf;
+            }
+        }
+        if (browsing != nullptr) {
+            lane.status = browsing->genre;
+            ui::Command back;
+            back.name = "search-browse";
+            back.action = true;
+            lane.topButtons.push_back(ui::TopButton{"\xE2\x80\xB9 Browse", back, false});
+            for (const bool series : {false, true}) {
+                const std::vector<catalog::MediaItem>& items = series ? browsing->shows : browsing->movies;
+                for (std::size_t i = 0; i < items.size(); i += perRow) {
+                    ui::RailData rail;
+                    rail.id = std::string(series ? "browse-series-" : "browse-movies-") + std::to_string(i / perRow);
+                    if (i == 0) rail.title = std::string(series ? "Series" : "Movies") + " \xC2\xB7 " + std::to_string(items.size());
+                    for (std::size_t j = i; j < std::min(i + perRow, items.size()); ++j) rail.cards.push_back(card(items[j]));
+                    lane.rails.push_back(std::move(rail));
+                }
+            }
+        } else if (idle || nothing) {
+            // An empty Search: what was searched before, as chips, then Browse, a tile for each genre with a picture
+            // from that genre, as the Apple TV app shows under its search line. Nothing here is made up.
             if (idle) {
-                lane.status = recentSearches_.empty() ? "Find films and series by title."
-                                                      : "Type a title, or pick up a recent search above.";
+                lane.status.clear();
+                const std::size_t tilesPerRow = std::clamp<std::size_t>(
+                    static_cast<std::size_t>((usable + rem * 1.6) / (rem * (ui::kCategoryWidthRem + 1.6))), 2, 8);
+                std::vector<ui::CardData> tiles;
+                for (const catalog::GenreShelf& shelf : shelves_) {
+                    if (shelf.genre.empty() || (shelf.movies.empty() && shelf.shows.empty())) continue;
+                    // The genre's picture: the first of its titles with a poster.
+                    std::string picture;
+                    for (const std::vector<catalog::MediaItem>* list : {&shelf.movies, &shelf.shows}) {
+                        for (const catalog::MediaItem& item : *list) {
+                            if (picture.empty() && !item.poster.empty()) picture = item.poster;
+                        }
+                    }
+                    ui::CardData tile{"browse:" + shelf.genre, shelf.genre, picture, std::nullopt};
+                    tile.category = true;
+                    tiles.push_back(tile);
+                }
+                for (std::size_t i = 0; i < tiles.size(); i += tilesPerRow) {
+                    ui::RailData rail;
+                    rail.id = "search-browse-" + std::to_string(i / tilesPerRow);
+                    if (i == 0) rail.title = "Browse";
+                    for (std::size_t j = i; j < std::min(i + tilesPerRow, tiles.size()); ++j) rail.cards.push_back(tiles[j]);
+                    lane.rails.push_back(std::move(rail));
+                }
             }
             for (const std::string& recent : idle ? recentSearches_ : std::vector<std::string>{}) {
                 ui::Command again;
@@ -2611,7 +2664,8 @@ void App::ApplySearch() {
                     }
                 }
             }
-            if (popular != nullptr) {
+            // Popular now when nothing matched, or when there are no genres to browse yet.
+            if (popular != nullptr && (nothing || lane.rails.empty())) {
                 ui::RailData rail;
                 rail.id = "search-popular";
                 rail.title = idle ? "Popular now" : "Popular now \xC2\xB7 try one of these";
@@ -2619,19 +2673,6 @@ void App::ApplySearch() {
                     rail.cards.push_back(card(popular->items[i]));
                 }
                 lane.rails.push_back(std::move(rail));
-            }
-        }
-        if (!searchResults_.empty()) {
-            // All · Movies · Series, a segmented control under the field; switching shows the same results, filtered.
-            for (const auto& [kind, label] : std::vector<std::pair<std::string, std::string>>{
-                     {"all", "All"}, {"movies", "Movies"}, {"series", "Series"}}) {
-                ui::Command filter;
-                filter.name = "search-filter";
-                filter.action = true;
-                filter.params["kind"] = kind;
-                ui::TopButton tab{label, filter, searchFilter_ == kind};
-                tab.segment = true;
-                lane.topButtons.push_back(tab);
             }
         }
         const auto passes = [this](const catalog::MediaItem& item) {

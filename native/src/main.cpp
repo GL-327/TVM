@@ -224,12 +224,6 @@ tvm::ui::SceneView SnapshotPageLane(int lane, const std::string& art) {
         view.searchField = true;
         view.query = "light";
         view.status = "9 matches";
-        for (const auto& [kind, label] : std::vector<std::pair<std::string, std::string>>{
-                 {"all", "All"}, {"movies", "Movies"}, {"series", "Series"}}) {
-            tvm::ui::TopButton tab{label, act("search-filter"), kind == "all"};
-            tab.segment = true;
-            view.pageButtons.push_back(tab);
-        }
         tvm::ui::RailData top;
         top.id = "search-top";
         top.title = "Top Result";
@@ -255,21 +249,25 @@ tvm::ui::SceneView SnapshotPageLane(int lane, const std::string& art) {
         view.rails.push_back(movies);
         view.rails.push_back(series);
     } else if (lane == 6) {
-        // Search before anything is typed: recent searches and what is popular now.
+        // Search before anything is typed: recent searches, then Browse, a tall tile for each genre.
         view.searchField = true;
-        view.status = "Type a title, or pick up a recent search above.";
         for (const char* recent : {"the last light", "northward", "harbor"}) {
             view.pageButtons.push_back(tvm::ui::TopButton{recent, act("search-recent")});
         }
-        tvm::ui::RailData popular{"search-popular", "Popular now", {}};
-        const char* titles[] = {"The Last Light", "Cold Meridian", "Vesper", "The Glass Coast", "Solstice", "Low Tide",
-                                "Northward", "Quiet Harbor", "Pale Signal"};
-        for (int i = 0; i < 9; ++i) {
-            tvm::ui::CardData card{"tt-p" + std::to_string(i), titles[i], i == 0 ? "asset:lighthouse.jpg" : i % 3 == 1 ? art : "", std::nullopt};
-            card.subtitle = std::to_string(2016 + i % 8);
-            popular.cards.push_back(card);
+        const char* genres[] = {"Action & Adventure", "Comedy", "Drama", "Kids & Family", "Science Fiction", "Thriller",
+                                "Documentary", "Romance", "Horror", "Animation", "Crime", "Mystery"};
+        tvm::ui::RailData row;
+        for (int i = 0; i < 12; ++i) {
+            if (i % 6 == 0) {
+                if (!row.cards.empty()) view.rails.push_back(row);
+                row = tvm::ui::RailData{"search-browse-" + std::to_string(i / 6), i == 0 ? "Browse" : "", {}};
+            }
+            tvm::ui::CardData tile{std::string("browse:") + genres[i], genres[i],
+                                   i % 3 == 0 ? "asset:lighthouse.jpg" : i % 3 == 1 ? art : "", std::nullopt};
+            tile.category = true;
+            row.cards.push_back(tile);
         }
-        view.rails.push_back(popular);
+        view.rails.push_back(row);
     }
     return view;
 }

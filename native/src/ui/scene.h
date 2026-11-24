@@ -46,6 +46,8 @@ struct CardData {
     std::string subtitle;
     // A large feature card (Search's Top Result): the picture is `posterUrl` (a backdrop), `subtitle` is its meta line.
     bool feature = false;
+    // A Browse tile on Search (a genre). OK sends `search-browse` with its title as the genre, not Details.
+    bool category = false;
 };
 
 struct RailData {

@@ -235,9 +235,9 @@ constexpr double kLaneKickerRem = 0.8125;
 constexpr double kLaneHeadingRem = 2.25;
 constexpr double kLaneFieldRem = 3.4;
 // The search page's field: a large pill centred under its heading, about half the window wide.
-constexpr double kSearchHeroRem = 5.0;
-constexpr double kSearchHeroMinRem = 36.0;
-constexpr double kSearchHeroMaxRem = 60.0;
+constexpr double kSearchHeroRem = 4.6;
+// The gap from the field to the rule under it, and from the rule to what follows.
+constexpr double kSearchRuleGapRem = 0.9;
 constexpr double kSearchSectionSpacingRem = 3.0;
 constexpr double kSearchRailSpacingRem = 1.6;
 constexpr double kSegmentRem = 2.6;
@@ -578,6 +578,7 @@ void Scene::Build(const std::vector<RailData>& rails) {
             auto card = std::make_unique<Card>(data.title, key, data.itemId, data.posterUrl, data.progress);
             if (data.logo) card->SetLogo(data.subtitle);
             else if (data.feature) card->SetFeature(data.subtitle);
+            else if (data.category) card->SetCategory();
             else if (!data.subtitle.empty()) card->SetSubtitle(data.subtitle);
             cards_.push_back(CardRef{card.get(), r, i, key});
             cardByKey_[key] = cards_.size() - 1;
@@ -930,7 +931,11 @@ double Scene::HeaderTop() const {
         if (!HasLaneHeader()) return ChromeHeight();
         double bottom = ChromeHeight();
         if (const std::optional<Box> heading = LaneHeadingBox()) bottom = heading->Bottom();
-        for (const HeaderItem& item : HeaderItems()) bottom = std::max(bottom, item.box.Bottom());
+        for (const HeaderItem& item : HeaderItems()) {
+            bottom = std::max(bottom, item.box.Bottom());
+            // Search keeps room for the rule under its field.
+            if (item.key == kSearchFieldKey) bottom = std::max(bottom, item.box.Bottom() + metrics_.Rem(kSearchRuleGapRem) * 2.0);
+        }
         return bottom + metrics_.Rem(kLaneGapRem);
     }
     if (style_ == SceneStyle::Page) return tops_.empty()
@@ -964,14 +969,10 @@ std::vector<Scene::HeaderItem> Scene::HeaderItems() const {
     double y = ChromeHeight() + metrics_.Rem(searchField_ ? 2.2 : 0.35);
     if (const std::optional<Box> heading = LaneHeadingBox()) y = heading->Bottom() + metrics_.Rem(0.5);
     if (searchField_) {
-        // Search: the field is the page's centrepiece, as on a television's search page: large, centred, and most of
-        // the window wide, with no heading over it.
-        const double fieldWidth = std::min(width, std::clamp(viewportWidth_ * 0.6, metrics_.Rem(kSearchHeroMinRem),
-                                                             metrics_.Rem(kSearchHeroMaxRem)));
-        items.push_back(HeaderItem{kSearchFieldKey,
-                                   Box{viewportWidth_ / 2.0 - fieldWidth / 2.0, y, fieldWidth, metrics_.Rem(kSearchHeroRem)},
-                                   -1});
-        y += metrics_.Rem(kSearchHeroRem + kLaneGapRem);
+        // Search, as the Apple TV app's: the field is one line across the page, a large lens and large type, with no
+        // box and no heading; a thin rule runs under it (PaintLaneHeader).
+        items.push_back(HeaderItem{kSearchFieldKey, Box{x, y, width, metrics_.Rem(kSearchHeroRem)}, -1});
+        y += metrics_.Rem(kSearchHeroRem) + metrics_.Rem(kSearchRuleGapRem) * 2.0;
     }
     // A segmented control's tabs sit side by side in one row, touching, centred under the field.
     const bool segmented = std::any_of(pageButtons_.begin(), pageButtons_.end(), [](const TopButton& b) { return b.segment; });
@@ -982,7 +983,7 @@ std::vector<Scene::HeaderItem> Scene::HeaderItems() const {
             widths.push_back(metrics_.Rem(1.6 * 2.0) + static_cast<double>(button.label.size()) * 0.56 * metrics_.Rem(0.95));
             total += widths.back();
         }
-        double left = viewportWidth_ / 2.0 - total / 2.0;
+        double left = searchField_ ? x : viewportWidth_ / 2.0 - total / 2.0;
         for (std::size_t i = 0; i < pageButtons_.size(); ++i) {
             items.push_back(HeaderItem{kPageButtonPrefix + std::to_string(i), Box{left, y, widths[i], metrics_.Rem(kSegmentRem)},
                                        static_cast<int>(i)});
@@ -991,23 +992,10 @@ std::vector<Scene::HeaderItem> Scene::HeaderItems() const {
         return items;
     }
     FlowLayout flow(x, y, width, metrics_.Rem(0.75));
-    const std::size_t firstButton = items.size();
     for (std::size_t i = 0; i < pageButtons_.size(); ++i) {
         items.push_back(HeaderItem{kPageButtonPrefix + std::to_string(i),
                                    flow.Place(metrics_.Rem(PageButtonWidthRem(pageButtons_[i])), metrics_.Rem(kLaneButtonRem)),
                                    static_cast<int>(i)});
-    }
-    if (searchField_ && items.size() > firstButton) {
-        // On Search the chips (recent searches, Try again) are centred under the field, row by row.
-        std::size_t start = firstButton;
-        while (start < items.size()) {
-            std::size_t end = start;
-            while (end < items.size() && std::abs(items[end].box.y - items[start].box.y) < 0.5) ++end;
-            const double rowWidth = items[end - 1].box.Right() - items[start].box.x;
-            const double shift = (viewportWidth_ - rowWidth) / 2.0 - items[start].box.x;
-            for (std::size_t i = start; i < end; ++i) items[i].box.x += shift;
-            start = end;
-        }
     }
     return items;
 }
@@ -1130,42 +1118,69 @@ void Scene::PaintSearchField(Painter& painter) const {
 }
 
 void Scene::PaintSearchField(Painter& painter, const Box& field, bool active, double emphasis) const {
-    // The search page's hero field reads larger than the field on other pages.
-    const bool hero = searchField_ && Streamy();
-    if (hero) {
-        // The Home nav pill's resting glass, a quiet inner tint, and a thin accent line while it takes the typing:
-        // no glow rings, no metallic rim.
-        painter.FillRoundRect(field, field.height / 2.0, WithAlpha(tokens::kText, active ? 0.07 : 0.04));
-        painter.Glass(field, field.height / 2.0, glass::NavCapsule());
-        const double hover = active ? 0.0 : std::clamp(emphasis, 0.0, 1.0);
-        if (hover > 0.01) painter.FillRoundRect(field, field.height / 2.0, WithAlpha(tokens::kText, 0.04 * hover));
-        if (active) {
-            painter.StrokeRoundRect(field, field.height / 2.0, 1.5, WithAlpha(tokens::kFocusRing, 0.75));
+    // The search page's field: flat, as the Apple TV app's, a large lens and large type on one line.
+    if (searchField_ && Streamy()) {
+        const double glyph = metrics_.Rem(2.6);
+        const double hover = active ? 1.0 : std::clamp(emphasis, 0.0, 1.0);
+        const Color lens = Mix(tokens::kTextMuted, tokens::kText, hover);
+        painter.Path(Box{field.x, field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0, kSearchGlyph,
+                     PathStyle{Color{0, 0, 0, 0}, lens, 2.6, false});
+        const double textX = field.x + glyph + metrics_.Rem(1.3);
+        const TextStyle style{metrics_.Rem(2.6), true, 650};
+        const bool caretOn = motion::PrefersReducedMotion(motion_) || std::fmod(clockMs_, kCaretBlinkMs) < kCaretBlinkMs / 2.0;
+        const TextStyle hintStyle{metrics_.Rem(1.2), false, 500};
+        if (query_.empty()) {
+            painter.Text(Box{textX, field.y, field.Right() - textX - metrics_.Rem(16.0), field.height},
+                         "Movies, Series, and More", style, WithAlpha(tokens::kText, 0.34 + 0.12 * hover));
+            if (active && caretOn) {
+                painter.FillRoundRect(Box{textX - 2.0, field.y + field.height * 0.22, 3.0, field.height * 0.56}, 1.5,
+                                      tokens::kAccentStrong);
+            }
+            // On a computer the keyboard is the way in, so the hint says so (the TV app offers dictation here).
+            const std::string hint = active ? "Start typing" : "Type to search";
+            const double hintWidth = painter.MeasureText(hint, hintStyle);
+            painter.Text(Box{field.Right() - hintWidth - 2.0, field.y, hintWidth + 4.0, field.height}, hint, hintStyle,
+                         WithAlpha(tokens::kText, 0.38));
+        } else {
+            const double width = painter.MeasureText(query_, style);
+            painter.Text(Box{textX, field.y, field.Right() - textX - metrics_.Rem(3.5), field.height}, query_, style,
+                         tokens::kText);
+            if (active && caretOn) {
+                const double caretX = std::min(textX + width + 3.0, field.Right() - metrics_.Rem(3.5));
+                painter.FillRoundRect(Box{caretX, field.y + field.height * 0.22, 3.0, field.height * 0.56}, 1.5,
+                                      tokens::kAccentStrong);
+            }
+            // Clear, at the end of the line.
+            const double mark = metrics_.Rem(1.1);
+            painter.Path(Box{field.Right() - metrics_.Rem(1.4) - mark / 2.0, field.CenterY() - mark / 2.0, mark, mark},
+                         32.0, "M7 7l18 18M25 7L7 25", PathStyle{Color{0, 0, 0, 0}, tokens::kTextMuted, 3.0, false});
         }
-    } else {
-        GlassStyle glass;
-        glass.kind = GlassKind::Pill;
-        glass.focused = active;
-        glass.focusAmount = active ? 1.0 : std::clamp(emphasis, 0.0, 1.0) * 0.6;
-        glass.reduceTransparency = tokens::reduceTransparency;
-        glass.tint = tokens::kSurface;
-        glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
-        glass.ringColor = tokens::kFocusRing;
-        painter.Glass(field, field.height / 2.0, glass);
+        // The rule under the line, brightening to the accent while the field takes typing.
+        const double ruleY = field.Bottom() + metrics_.Rem(kSearchRuleGapRem);
+        painter.FillRoundRect(Box{field.x, ruleY, field.width, active ? 2.0 : 1.0}, 0.0,
+                              active ? WithAlpha(tokens::kAccentStrong, 0.75) : WithAlpha(tokens::kText, 0.14));
+        return;
     }
 
-    const double glyph = metrics_.Rem(hero ? 2.0 : 1.4);
-    painter.Path(Box{field.x + metrics_.Rem(hero ? 1.7 : 1.0), field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0,
-                 kSearchGlyph, PathStyle{Color{0, 0, 0, 0}, active ? tokens::kText : tokens::kTextMuted, 2.4, false});
-    const double textX = field.x + metrics_.Rem(hero ? 4.6 : 3.0);
-    const TextStyle style{metrics_.Rem(hero ? 2.0 : 1.25), false, hero ? 450 : 500};
-    // The caret blinks while the field takes typing (steady with reduced motion).
-    const bool caretOn = !hero || motion::PrefersReducedMotion(motion_) || std::fmod(clockMs_, kCaretBlinkMs) < kCaretBlinkMs / 2.0;
+    GlassStyle glass;
+    glass.kind = GlassKind::Pill;
+    glass.focused = active;
+    glass.focusAmount = active ? 1.0 : std::clamp(emphasis, 0.0, 1.0) * 0.6;
+    glass.reduceTransparency = tokens::reduceTransparency;
+    glass.tint = tokens::kSurface;
+    glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+    glass.ringColor = tokens::kFocusRing;
+    painter.Glass(field, field.height / 2.0, glass);
+
+    const double glyph = metrics_.Rem(1.4);
+    painter.Path(Box{field.x + metrics_.Rem(1.0), field.CenterY() - glyph / 2.0, glyph, glyph}, 32.0, kSearchGlyph,
+                 PathStyle{Color{0, 0, 0, 0}, active ? tokens::kText : tokens::kTextMuted, 2.4, false});
+    const double textX = field.x + metrics_.Rem(3.0);
+    const TextStyle style{metrics_.Rem(1.25), false, 500};
     if (query_.empty()) {
         painter.Text(Box{textX, field.y, field.Right() - textX, field.height},
-                     hero ? "Movies, series and more" : (searchField_ ? "Search films and series" : "Title or https://\xE2\x80\xA6"), style,
-                     tokens::kTextFaint);
-        if (active && caretOn) {
+                     searchField_ ? "Search films and series" : "Title or https://\xE2\x80\xA6", style, tokens::kTextFaint);
+        if (active) {
             painter.FillRoundRect(Box{textX - 1.0, field.y + field.height * 0.28, 2.0, field.height * 0.44}, 0.0,
                                   tokens::kText);
         }
@@ -1174,7 +1189,7 @@ void Scene::PaintSearchField(Painter& painter, const Box& field, bool active, do
         painter.Text(Box{textX, field.y, field.Right() - textX - metrics_.Rem(3.0), field.height}, query_, style,
                      tokens::kText);
         // The caret, after the last letter, while typing goes into the field.
-        if (active && caretOn) {
+        if (active) {
             const double caretX = std::min(textX + width + 2.0, field.Right() - metrics_.Rem(3.0));
             painter.FillRoundRect(Box{caretX, field.y + field.height * 0.25, 2.0, field.height * 0.5}, 0.0,
                                   tokens::kText);
@@ -1925,6 +1940,13 @@ std::optional<Command> Scene::Select(double nowMs) {
 
     const CardRef& card = cards_[cardByKey_.at(*focused)];
     Command command;
+    if (card.card->itemId().rfind("browse:", 0) == 0) {
+        // A Browse tile on Search: the app shows that genre's titles.
+        command.name = "search-browse";
+        command.action = true;
+        command.params["genre"] = card.card->itemId().substr(7);
+        return command;
+    }
     switch (cardAction_) {
     case CardAction::Details:
         // OK on a title opens its details. The shell pushes the screen, and the
@@ -2187,9 +2209,7 @@ void Scene::Paint(Painter& painter) const {
             const double x = metrics_.Rem(kSafeXRem + (CompactViewport(viewportWidth_, viewportHeight_) ? 0.0 : kRailInsetRem));
             const TextStyle statusStyle{metrics_.Rem(1.0), false};
             // On Search the line is centred under the field.
-            const double statusX = searchField_
-                                       ? std::max(x, viewportWidth_ / 2.0 - painter.MeasureText(status_, statusStyle) / 2.0)
-                                       : x;
+            const double statusX = x;
             painter.Text(Box{statusX, headerTop, viewportWidth_ - statusX - x, metrics_.Rem(kTopButtonHeightRem)},
                          status_, statusStyle, tokens::kTextMuted);
         }

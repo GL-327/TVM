@@ -141,6 +141,9 @@ public:
         subtitle_ = std::move(meta);
     }
     bool feature() const { return feature_; }
+    // A Browse tile on Search: a tall picture with the category's name over its foot, as the Apple TV app's Browse
+    // tiles are. It grows and lifts on focus as the other cards do.
+    void SetCategory() { category_ = true; }
 
     const std::string& itemId() const { return itemId_; }
     const std::string& posterUrl() const { return posterUrl_; }
@@ -162,6 +165,7 @@ public:
 private:
     bool logo_ = false;
     bool feature_ = false;
+    bool category_ = false;
     std::string subtitle_;
     std::string title_;
     std::string focusKey_;
@@ -177,6 +181,9 @@ inline constexpr double kFocusScale = 1.06;
 inline constexpr double kFocusRingWidthRem = 0.18;
 inline constexpr double kFocusRingOffsetRem = 0.14;
 inline constexpr double kPosterWidthRem = 10.5;
+// Search's Browse tiles: tall, larger than a poster, as the Apple TV app's.
+inline constexpr double kCategoryWidthRem = 15.5;
+inline constexpr double kCategoryHeightRem = 23.0;
 inline constexpr double kPosterHeightRem = 15.75;
 inline constexpr double kLandscapeWidthRem = 26.25;
 inline constexpr double kLandscapeHeightRem = 14.75;
