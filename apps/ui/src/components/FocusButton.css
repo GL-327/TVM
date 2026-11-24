@@ -6,7 +6,10 @@
 .tvm-button {
   contain: layout style;
   backface-visibility: hidden;
-  transition: transform var(--tvm-motion-fast) var(--tvm-motion-ease);
+  transition:
+    transform var(--tvm-motion-fast) cubic-bezier(0.22, 1.2, 0.36, 1),
+    background-color var(--tvm-motion-fast) var(--tvm-motion-ease),
+    border-color var(--tvm-motion-fast) var(--tvm-motion-ease);
 }
 
 .tvm-button:focus,

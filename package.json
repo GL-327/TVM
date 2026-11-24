@@ -9,9 +9,15 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
+    "dev:web": "node scripts/launch-web.mjs",
+    "dev:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch-tvm.ps1",
+    "dev:roku": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/roku-dev.ps1",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "check": "pnpm -r run typecheck && node apps/ios/check-project.mjs && node apps/android/check-project.mjs && node apps/roku/scripts/check.mjs",
+    "roku:package": "node apps/roku/scripts/package.mjs",
+    "fetch:packages": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-packages.ps1"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

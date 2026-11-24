@@ -141,6 +141,30 @@ TEST(settings_lists_the_web_rows_in_order) {
     REQUIRE(settings.RowLabels() == expected);
 }
 
+TEST(settings_surfaces_developer_diagnostics_when_dev_account_active) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(1920.0, 1080.0);
+
+    tvm::ui::DeveloperDiagnostics diag;
+    diag.active = true;
+    diag.buildVersion = "v1.0.0 · Native Windows";
+    diag.rdTokenSource = "account";
+    diag.glassMode = "Clear";
+    settings.SetDeveloperDiagnostics(diag);
+
+    const std::vector<std::string> labels = settings.RowLabels();
+    REQUIRE(std::find(labels.begin(), labels.end(), "Developer Diagnostics") != labels.end());
+    REQUIRE_EQ(settings.DetailOf("dev-build"), std::string("v1.0.0 · Native Windows"));
+    REQUIRE_EQ(settings.DetailOf("dev-rd-source"), std::string("account"));
+    REQUIRE_EQ(settings.DetailOf("dev-glass"), std::string("Clear"));
+
+    const std::optional<Command> refresh = settings.ActivateItem("dev-refresh-cache", 0.0);
+    REQUIRE(refresh.has_value());
+    REQUIRE_EQ(refresh->name, std::string("dev-refresh-cache"));
+    REQUIRE(refresh->action);
+}
+
 TEST(settings_focus_starts_on_motion) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
@@ -522,7 +546,7 @@ TEST(a_mouse_drag_along_a_rail_slides_it_and_does_not_open_a_card) {
     REQUIRE_NEAR(scene.PageScroll(), 0.0, 1e-6);
 }
 
-TEST(a_rails_arrows_show_only_where_it_can_move_and_step_it_to_its_ends) {
+TEST(a_rails_arrows_show_whenever_scrollable_and_wrap_smoothly_at_both_ends) {
     MemoryStore store;
     Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 12}});
     auto& scene = dynamic_cast<Scene&>(shell.ActiveScreen());
@@ -530,32 +554,47 @@ TEST(a_rails_arrows_show_only_where_it_can_move_and_step_it_to_its_ends) {
     shell.MouseMove(card.CenterX(), card.CenterY(), false, 0.0);
     shell.MouseMove(card.CenterX() + 4.0, card.CenterY(), false, 0.0);
     REQUIRE(scene.ArrowRail() == std::optional<std::size_t>(3));
-    // At the start only the forward arrow shows. A rail that fits has none.
-    REQUIRE(!scene.RailArrowBox(3, false).has_value());
+    // Both arrows show whenever MaxScroll() > 0. A rail that fits has none.
+    REQUIRE(scene.RailArrowBox(3, false).has_value());
     REQUIRE(scene.RailArrowBox(3, true).has_value());
     REQUIRE(!scene.RailArrowBox(0, true).has_value());
-    // Clicking it steps the rail along, without opening the card under it.
+    REQUIRE(!scene.RailArrowBox(0, false).has_value());
+
+    // Clicking rail-prev at scroll 0 wraps smoothly to MaxScroll().
     double now = 1000.0;
-    for (int i = 0; i < 6; ++i) {
-        const std::optional<tvm::ui::Box> next = scene.RailArrowBox(3, true);
-        if (!next.has_value()) break;
-        shell.MouseMove(next->CenterX(), next->CenterY(), false, now);
-        shell.MouseDown(next->CenterX(), next->CenterY(), now);
-        shell.MouseUp(next->CenterX(), next->CenterY(), now + 10.0);
+    const tvm::ui::Box prevAtStart = *scene.RailArrowBox(3, false);
+    shell.MouseMove(prevAtStart.CenterX(), prevAtStart.CenterY(), false, now);
+    shell.MouseDown(prevAtStart.CenterX(), prevAtStart.CenterY(), now);
+    shell.MouseUp(prevAtStart.CenterX(), prevAtStart.CenterY(), now + 10.0);
+    now = Settle(shell, now + 10.0) + 10.0;
+    const double maxScroll = scene.RailScroll(3);
+    REQUIRE(maxScroll > 0.0);
+    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
+
+    // Clicking rail-next at MaxScroll() wraps smoothly back to 0.
+    const tvm::ui::Box nextAtEnd = *scene.RailArrowBox(3, true);
+    shell.MouseMove(nextAtEnd.CenterX(), nextAtEnd.CenterY(), false, now);
+    shell.MouseDown(nextAtEnd.CenterX(), nextAtEnd.CenterY(), now);
+    shell.MouseUp(nextAtEnd.CenterX(), nextAtEnd.CenterY(), now + 10.0);
+    now = Settle(shell, now + 10.0) + 10.0;
+    REQUIRE_NEAR(scene.RailScroll(3), 0.0, 1e-6);
+
+    // Stepping forward reaches MaxScroll(), and horizontal wheel at ends also wraps smoothly.
+    for (int i = 0; i < 6 && scene.RailScroll(3) < maxScroll - 0.5; ++i) {
+        const tvm::ui::Box next = *scene.RailArrowBox(3, true);
+        shell.MouseMove(next.CenterX(), next.CenterY(), false, now);
+        shell.MouseDown(next.CenterX(), next.CenterY(), now);
+        shell.MouseUp(next.CenterX(), next.CenterY(), now + 10.0);
         now = Settle(shell, now + 10.0) + 10.0;
     }
-    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
-    // It stops at the end: the forward arrow has gone, the back arrow shows.
-    REQUIRE(!scene.RailArrowBox(3, true).has_value());
-    REQUIRE(scene.RailArrowBox(3, false).has_value());
-    const double end = scene.RailScroll(3);
-    REQUIRE(end > 0.0);
-    const tvm::ui::Box back = *scene.RailArrowBox(3, false);
-    shell.MouseMove(back.CenterX(), back.CenterY(), false, now);
-    shell.MouseDown(back.CenterX(), back.CenterY(), now);
-    shell.MouseUp(back.CenterX(), back.CenterY(), now + 10.0);
-    Settle(shell, now + 10.0);
-    REQUIRE(scene.RailScroll(3) < end);
+    REQUIRE_NEAR(scene.RailScroll(3), maxScroll, 0.5);
+    const tvm::ui::Box cardAtEnd = CardOf(scene, 3, 11);
+    shell.Wheel(cardAtEnd.CenterX(), cardAtEnd.CenterY(), 100.0, 0.0, false, WheelMode::Pixel, now);
+    now = Settle(shell, now) + 10.0;
+    REQUIRE_NEAR(scene.RailScroll(3), 0.0, 1e-6);
+    shell.Wheel(CardOf(scene, 3, 0).CenterX(), CardOf(scene, 3, 0).CenterY(), -100.0, 0.0, false, WheelMode::Pixel, now);
+    Settle(shell, now);
+    REQUIRE_NEAR(scene.RailScroll(3), maxScroll, 0.5);
 }
 
 TEST(touch_tap_opens_the_card_under_the_finger) {

@@ -179,12 +179,26 @@ TEST(right_and_left_wrap_along_a_rail) {
     REQUIRE(scene.Navigate(Direction::Right, 0.0));
     REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 1)));
     REQUIRE(scene.Navigate(Direction::Left, 0.0));
-    REQUIRE(!scene.Navigate(Direction::Left, 0.0));  // Hard stop at rail start (no wrapping)
     REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 0)));
-    for (int i = 0; i < 4; ++i) REQUIRE(scene.Navigate(Direction::Right, 0.0));
+    // Left at index 0 wraps seamlessly to the last card (index 4).
+    REQUIRE(scene.Navigate(Direction::Left, 0.0));
     REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 4)));
-    REQUIRE(!scene.Navigate(Direction::Right, 0.0));  // Hard stop at rail end (no wrapping)
-    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 4)));
+    // Right at index 4 wraps seamlessly back to the first card (index 0).
+    REQUIRE(scene.Navigate(Direction::Right, 0.0));
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>(Key(0, 0)));
+
+    // Wrapping on a scrolling rail smoothly scrolls the camera to the wrapped end and back.
+    Scene scrolling = MakeScene({{"Long", 12}});
+    double now = 0.0;
+    REQUIRE(scrolling.Navigate(Direction::Left, now));
+    REQUIRE(scrolling.FocusedKey() == std::optional<std::string>(Key(0, 11)));
+    Settle(scrolling, now);
+    REQUIRE(scrolling.RailScroll(0) > 0.0);
+    now += 100.0;
+    REQUIRE(scrolling.Navigate(Direction::Right, now));
+    REQUIRE(scrolling.FocusedKey() == std::optional<std::string>(Key(0, 0)));
+    Settle(scrolling, now);
+    REQUIRE_NEAR(scrolling.RailScroll(0), 0.0, 1e-6);
 }
 
 TEST(down_moves_to_the_closest_card_in_the_next_rail) {

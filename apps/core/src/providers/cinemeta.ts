@@ -15,15 +15,19 @@ const GENRE_TTL_MS = 20 * 60 * 1000;
 const META_TTL_MS = 30 * 60 * 1000;
 
 export const GENRE_RAILS = [
-  { id: 'horror', title: 'Horror', genre: 'Horror' },
-  { id: 'action', title: 'Action', genre: 'Action' },
-  { id: 'comedy', title: 'Comedy', genre: 'Comedy' },
-  { id: 'thriller', title: 'Thriller', genre: 'Thriller' },
-  { id: 'scifi', title: 'Sci-Fi', genre: 'Sci-Fi' },
-  { id: 'romance', title: 'Romance', genre: 'Romance' },
-  { id: 'crime', title: 'Crime', genre: 'Crime' },
-  { id: 'documentary', title: 'Documentaries', genre: 'Documentary' },
-  { id: 'anime', title: 'Anime', genre: 'Anime' },
+  { id: 'action', title: 'Action & Adventure', genre: 'Action', genres: ['Action', 'Adventure'] },
+  { id: 'scifi', title: 'Sci-Fi & Fantasy', genre: 'Sci-Fi', genres: ['Sci-Fi', 'Fantasy'] },
+  { id: 'comedy', title: 'Comedy', genre: 'Comedy', genres: ['Comedy'] },
+  { id: 'thriller', title: 'Thrillers', genre: 'Thriller', genres: ['Thriller'] },
+  { id: 'drama', title: 'Critically Acclaimed Drama', genre: 'Drama', genres: ['Drama'] },
+  { id: 'crime', title: 'Crime & Mystery', genre: 'Crime', genres: ['Crime', 'Mystery'] },
+  { id: 'horror', title: 'Horror', genre: 'Horror', genres: ['Horror'] },
+  { id: 'animation', title: 'Animation & Family', genre: 'Animation', genres: ['Animation', 'Family'] },
+  { id: 'romance', title: 'Romance', genre: 'Romance', genres: ['Romance'] },
+  { id: 'documentary', title: 'Documentaries', genre: 'Documentary', genres: ['Documentary'] },
+  { id: 'anime', title: 'Anime', genre: 'Anime', genres: ['Anime'] },
+  { id: 'history', title: 'History & Biography', genre: 'History', genres: ['History', 'Biography'] },
+  { id: 'mystery', title: 'Mystery & Suspense', genre: 'Mystery', genres: ['Mystery'] },
 ] as const;
 
 export function seriesGenresForRail(genre: string): readonly string[] {

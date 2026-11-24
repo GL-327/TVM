@@ -164,6 +164,13 @@ void Shell::SetPlayerView(const PlayerView& view, double nowMs) {
     }
 }
 
+void Shell::SetDeveloperDiagnostics(const DeveloperDiagnostics& diag) {
+    for (auto& [key, screen] : screens_) {
+        auto* settings = dynamic_cast<SettingsScreen*>(screen.get());
+        if (settings != nullptr) settings->SetDeveloperDiagnostics(diag);
+    }
+}
+
 PlayerScreen* Shell::ActivePlayer() {
     return dynamic_cast<PlayerScreen*>(&Top());
 }
@@ -451,6 +458,17 @@ void Shell::Wheel(double x, double y, double deltaX, double deltaY, bool shift, 
 }
 
 void Shell::Pan(const ScrollSurface& surface, double delta, nav::WheelMode mode, double nowMs) {
+    // Allow horizontal mouse/trackpad wheel at rail ends to wrap smoothly to the opposite end.
+    if (surface.kind == ScrollSurface::Kind::Rail && surface.maxScroll > 0.0) {
+        if (delta < 0.0 && surface.scroll <= 0.5 && surface.target <= 0.5) {
+            Top().AnimateScroll(surface, surface.maxScroll, nowMs);
+            return;
+        }
+        if (delta > 0.0 && surface.scroll >= surface.maxScroll - 0.5 && surface.target >= surface.maxScroll - 0.5) {
+            Top().AnimateScroll(surface, 0.0, nowMs);
+            return;
+        }
+    }
     // Pixel deltas from a trackpad already carry momentum, so they move at once.
     // Notches ease, and each one adds to the target a spin is heading for.
     if (mode == nav::WheelMode::Pixel && std::fabs(delta) < kWheelInstantPx) {

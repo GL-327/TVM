@@ -54,8 +54,8 @@ jobs:
           cp apps/core/package.json stage/core/package.json
           cp -r apps/ui/dist/. stage/ui/
           cp scripts/launch-tvm.sh scripts/launch-web.mjs stage/
-          cp TVM-web.cmd TVM-web.sh stage/
-          cp TVM.sh TVM.command stage/
+          cp scripts/launchers/TVM-web.cmd scripts/launchers/TVM-web.sh stage/
+          cp scripts/launchers/TVM.sh scripts/launchers/TVM.command stage/
           cp docs/DESKTOP.md stage/README.md
           cp package.json stage/
           chmod +x stage/launch-tvm.sh stage/TVM.sh stage/TVM.command stage/TVM-web.sh

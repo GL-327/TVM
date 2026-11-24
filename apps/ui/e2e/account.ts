@@ -13,6 +13,7 @@ export const USABLE_ACCOUNT = {
     createdAt: '2026-01-01T00:00:00.000Z',
     termsVersion: '2026-09-15',
     termsAcceptedAt: '2026-09-15T00:00:00.000Z',
+    rdKey: true,
   },
   usable: { ok: true, reason: null },
   termsVersion: '2026-09-15',

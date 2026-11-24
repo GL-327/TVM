@@ -18,7 +18,7 @@ Install Node.js 22+, pnpm 11, and either Visual Studio C++ Build Tools with CMak
 pnpm install
 pnpm build
 native\build.bat
-.\TVM.cmd
+.\scripts\launchers\TVM.cmd
 ```
 
 Create the complete Windows ZIP with `powershell -File native/package.ps1` after the native build. The executable starts Core hidden and reuses only a matching data directory. If an older Core already occupies the port, close that Core and choose Retry. Core stays running when the desktop window closes so connected browser/Roku clients remain available.
@@ -29,13 +29,13 @@ Install Node.js 22+, curl, and ffmpeg for browser transcodes. From a checkout:
 
 ```bash
 ./scripts/setup-desktop.sh --with-media
-./TVM.sh
+./scripts/launchers/TVM.sh
 ```
 
 The launcher starts Core and Vite and opens your browser. From the [Desktop browser release](https://github.com/GL-327/TVM/releases/tag/desktop), extract `TVM-desktop.zip` and run `TVM.command` on macOS or `TVM.sh` on Linux. The package serves its built UI directly from Core. The browser client supports phone, tablet and desktop sizes, keyboard/remote navigation, touch and rotation. Browser downloads use a browser with the directory-picker API; Windows native downloads work independently of that API.
 
 ## Other clients
 
-Keep `apps/core` and `apps/ui`: the browser, iOS and Android clients require them. Roku has its own SceneGraph/BrightScript UI. For LAN access use the authenticated configuration in [INITIAL_TESTING.md](INITIAL_TESTING.md). Credentials and billing controls stay local by default.
+Keep `apps/core` and `apps/ui`: the browser, iOS and Android clients require them. Roku has its own SceneGraph/BrightScript UI. For LAN access, start Core with `TVM_CORE_BIND=0.0.0.0` and set `TVM_LAN_TOKEN` to a random token of at least 32 characters (see [README.md](../README.md)). Credentials and billing controls stay local by default.
 
 The iOS IPA needs Apple signing for installation. Android and iOS native changes require a new package; Roku BrightScript changes require channel installation. Physical playback and accessibility QA remain device checks.

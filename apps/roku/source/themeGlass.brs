@@ -140,14 +140,14 @@ sub paintGlassOverlay(overlay as Object)
     fillColor = tvmGlassFillStrong()
   end if
 
-  paintGlassRect(overlay.findNode("rim"), showRim, width, height, [0, 0], radius, tvmGlassHairline())
+  paintGlassRect(overlay.findNode("rim"), showRim, width, height, [0, 0], radius, tvmGlassEdge())
   paintGlassRect(overlay.findNode("fill"), true, width, height, [0, 0], radius, fillColor)
 
   specH = 6
   if height < 120 then specH = 4
-  hiW = width - 24
+  hiW = width - 32
   if hiW < 8 then hiW = width
-  paintGlassRect(overlay.findNode("highlight"), showHi, hiW, specH, [12, 6], 4, tvmGlassHighlight())
+  paintGlassRect(overlay.findNode("highlight"), showHi, hiW, specH, [16, 4], 4, tvmGlassHighlight())
 end sub
 
 function tvmMakeGlassOverlay(width as Integer, height as Integer, radius as Integer, variant as String) as Object
@@ -174,7 +174,7 @@ sub paintGlassChrome(node as Object)
   end if
   pillRing = node.findNode("pillRing")
   if pillRing <> invalid
-    pillRing.color = tvmGlassHairline()
+    pillRing.color = tvmGlassEdge()
   end if
 end sub
 

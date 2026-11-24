@@ -10,8 +10,9 @@ import { IconApps, IconLive, IconStream, IconWatchlist } from '../components/Ico
 import { HeroArt } from '../components/HeroArt';
 import { ART_REFERRER } from '../components/artFace';
 import { PageScene } from '../components/PageScene';
+import { ToastPill, useToast } from '../components/ToastPill';
 import { preferBackdrop } from '../data/artwork';
-import { asTitle, fetchHome, peekHome, type CatalogRail } from '../data/media';
+import { addWatchlist, asTitle, fetchHome, peekHome, removeWatchlist, toMediaItem, type CatalogRail } from '../data/media';
 import { applyPlanClass, fetchPlan } from '../data/plan';
 import { enterTvmStream } from '../data/profiles';
 import { launchTitle } from '../data/launchTitle';
@@ -61,11 +62,11 @@ const HomeShelves = memo(function HomeShelves({
   return (
     <div className="home__shelf">
       {watching.length > 0 && (
-        <Rail title={shelfTitle('Continue watching')}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
+        <Rail title={shelfTitle('Continue watching')} loop={false}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
       )}
 
       {watchlist.length > 0 && (
-        <Rail title={shelfTitle('Watchlist')}>{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
+        <Rail title={shelfTitle('Watchlist')} loop={false}>{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
       )}
 
       {catalogRails.length > 0 ? (
@@ -97,6 +98,8 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   );
   const [slide, setSlide] = useState(0);
   const [tick, setTick] = useState(0);
+  const [watchlistBusy, setWatchlistBusy] = useState(false);
+  const { message: toast, showToast } = useToast();
 
   useEffect(() => {
     void fetchPlan().then((status) => {
@@ -146,6 +149,23 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   }, [featured, rails, watching]);
 
   const displayHero = heroes[slide % Math.max(heroes.length, 1)];
+  const heroSaved = displayHero !== undefined && watchlist.some((entry) => entry.id === displayHero.id);
+
+  const toggleHeroWatchlist = useCallback(async (): Promise<void> => {
+    if (displayHero === undefined || watchlistBusy) return;
+    setWatchlistBusy(true);
+    try {
+      const next = heroSaved
+        ? await removeWatchlist(displayHero.id)
+        : await addWatchlist(toMediaItem(displayHero));
+      setWatchlist(next.map(asTitle));
+      showToast(heroSaved ? 'Removed from My List' : 'Added to My List');
+    } catch {
+      showToast('Could not update My List');
+    } finally {
+      setWatchlistBusy(false);
+    }
+  }, [displayHero, heroSaved, showToast, watchlistBusy]);
   const catalogRails = useMemo(
     () => rails.filter(rail => rail.id !== 'anime-adapted').map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0),
     [rails],
@@ -353,9 +373,21 @@ export function Home(_props: ScreenProps): React.JSX.Element {
             </span>
             <BrandLockup focusId="hero-mark" />
           </p>
-          <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={openStream}>
-            Browse TVM Stream
-          </FocusButton>
+          <div className="stage__actions" data-wrap="row">
+            <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={openStream}>
+              Browse TVM Stream
+            </FocusButton>
+            {hero !== undefined && (
+              <FocusButton
+                id="hero-watchlist"
+                className="tvm-button--glass stage__watchlist"
+                disabled={watchlistBusy}
+                onSelect={() => void toggleHeroWatchlist()}
+              >
+                {heroSaved ? '✓ In My List' : '+ My List'}
+              </FocusButton>
+            )}
+          </div>
           {heroes.length > 1 && (
             <div className="stage__dots" aria-hidden="true">
               {heroes.map((item, index) => (
@@ -375,6 +407,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
         loading={loading}
         openTitle={openTitle}
       />
+      <ToastPill message={toast} />
     </main>
   );
 }

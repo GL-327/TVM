@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
 #include <stdexcept>
 
@@ -24,11 +25,24 @@ struct AccountState {
     bool developer = false;
     bool liveTv = false;
     bool canSendEmail = false;
+    bool rdKey = false;
     std::string reason = "no_account";
     std::string name, email, tier, termsVersion;
 };
 
+struct RealDebridStatus {
+    bool configured = false;
+    std::optional<std::string> username;
+    bool premium = false;
+    std::string error;
+    std::string source;  // "account", "device", or ""
+
+    bool operator==(const RealDebridStatus&) const = default;
+};
+
 AccountState ParseAccount(const nlohmann::json& body);
+RealDebridStatus ParseRealDebridStatus(const nlohmann::json& body);
+bool ShouldPromptForRealDebrid(const AccountState& account, const RealDebridStatus& rdStatus, bool dismissed);
 admin::Account ParseAdminAccount(const nlohmann::json& body);
 std::optional<admin::MailSettings> ParseMailStatus(const nlohmann::json& body);
 bool AllowsRoute(const AccountState& state, const std::string& route);

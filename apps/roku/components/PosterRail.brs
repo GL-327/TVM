@@ -1,7 +1,7 @@
-' Windowed, non-looping rail. Only the visible cards plus a small buffer exist
-' as nodes; cards that scroll out of the window go to a pool and are reused.
-' Left and Right stop at the ends (rails do not wrap). Setting live = false
-' drops every card, so rows far from focus cost almost nothing.
+' Windowed, infinitely looping rail. Only the visible cards plus a small buffer
+' exist as nodes; cards that scroll out of the window go to a pool and are
+' reused. When count > visible, item indices wrap modularly around count.
+' Setting live = false drops every card, so rows far from focus cost almost nothing.
 sub init()
   m.heading = m.top.findNode("heading")
   m.track = m.top.findNode("track")
@@ -13,6 +13,9 @@ sub init()
   m.pool = []
   m.count = 0
   m.viewFirst = 0
+  m.focusSlot = 0
+  m.lastCol = -1
+  m.wasFocused = false
   m.buffer = 2
   m.top.width = 3840
   m.top.height = railRowHeight("portrait")
@@ -52,6 +55,9 @@ sub onItems()
   if m.track = invalid then return
   clearCards()
   m.viewFirst = 0
+  m.focusSlot = 0
+  m.lastCol = -1
+  m.wasFocused = false
   items = m.top.items
   m.count = 0
   if items <> invalid then m.count = items.Count()
@@ -73,12 +79,12 @@ end sub
 
 sub syncWindow()
   items = m.top.items
-  if items = invalid then return
+  if items = invalid or m.count <= 0 then return
   win = railWindow(m.count, m.viewFirst, visibleCount(), m.buffer)
 
   stale = []
   for each key in m.liveCards
-    idx = Val(key)
+    idx = Int(Val(key))
     if idx < win.first or idx > win.last then stale.Push(key)
   end for
   for each key in stale
@@ -102,7 +108,7 @@ sub syncWindow()
       end if
       card.hasFocusStyle = false
       card.dimmed = false
-      card.item = items[i]
+      card.item = items[railWrapIndex(i, m.count)]
       card.translation = [i * pitch, 0]
       m.track.appendChild(card)
       m.liveCards[key] = card
@@ -114,10 +120,10 @@ end sub
 sub paintCards()
   col = m.top.focusCol
   for each key in m.liveCards
-    idx = Val(key)
+    slot = Int(Val(key))
     card = m.liveCards[key]
-    card.hasFocusStyle = (col >= 0 and idx = col)
-    card.dimmed = (col >= 0 and idx <> col)
+    card.hasFocusStyle = (col >= 0 and slot = m.focusSlot)
+    card.dimmed = (col >= 0 and slot <> m.focusSlot)
   end for
 end sub
 
@@ -126,12 +132,21 @@ sub onFocusCol()
   col = m.top.focusCol
   if col >= 0 and m.count > 0
     if col > m.count - 1 then col = m.count - 1
-    first = railViewFirst(m.count, col, m.viewFirst, visibleCount())
+    vis = visibleCount()
+    slot = railLoopSlot(col, m.lastCol, m.focusSlot, m.viewFirst, m.count, vis, m.wasFocused)
+    m.lastCol = col
+    m.focusSlot = slot
+    m.wasFocused = true
+    first = railLoopViewFirst(m.count, slot, m.viewFirst, vis)
     if first <> m.viewFirst
       m.viewFirst = first
       if m.top.live then syncWindow()
       slideTo(trackX(first))
+    else if m.top.live
+      syncWindow()
     end if
+  else
+    m.wasFocused = false
   end if
   if m.top.live then paintCards()
 end sub

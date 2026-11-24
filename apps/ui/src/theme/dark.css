@@ -34,6 +34,15 @@ html[data-theme='dark'] {
   --tvm-shadow-card: 0 0.8rem 2rem rgba(0, 0, 0, 0.62);
   --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(74, 160, 224, 0.28);
 
+  --tvm-glass-bg: linear-gradient(155deg, rgba(22, 40, 68, 0.56), rgba(8, 16, 30, 0.74));
+  --tvm-glass-bg-elevated: linear-gradient(155deg, rgba(24, 46, 78, 0.68), rgba(9, 18, 34, 0.84));
+  --tvm-glass-blur: blur(28px) saturate(190%);
+  --tvm-glass-rim-light: inset 0 1px 0.5px rgba(255, 255, 255, 0.28);
+  --tvm-glass-rim-chroma: inset 0 -1px 1px rgba(110, 200, 255, 0.22);
+  --tvm-glass-sheen: linear-gradient(132deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 34%, transparent 64%);
+  --tvm-glass-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.54);
+  --tvm-glass-focus-glow: 0 0 0 0.14rem rgba(158, 220, 255, 0.88), 0 0.85rem 2.2rem rgba(74, 160, 224, 0.34);
+
   --tvm-scene-sky: #14284c;
   --tvm-scene-sky-mid: #0c1c38;
   --tvm-scene-horizon: #1a4a72;
@@ -83,11 +92,18 @@ html[data-theme='dark'] {
   background: color-mix(in srgb, var(--tvm-surface) 90%, #000);
 }
 
-[data-theme='dark'] .ribbon,
-[data-theme='dark'] .search-pill__panel {
-  background: color-mix(in srgb, #102238 78%, transparent);
+[data-theme='dark'] .ribbon {
+  background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+[data-theme='dark'] .ribbon__frost {
+  background: var(--tvm-glass-bg);
+}
+
+[data-theme='dark'] .search-pill__panel {
+  background: var(--tvm-glass-bg-elevated);
 }
 
 [data-theme='dark'] .ribbon__glyph,

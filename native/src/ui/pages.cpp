@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "motion/preferences.h"
+#include "ui/glass_styles.h"
 #include "ui/widget.h"
 
 namespace tvm::ui {
@@ -94,9 +95,11 @@ double PageScreen::MaxScroll() const {
 
 void PageScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
-    painter.Clear(tokens::kBackground);
-    // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
-    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
+    if (!ShowsStage()) {
+        painter.Clear(tokens::kBackground);
+        // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
+        painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
+    }
     PaintContent(painter, scroll_);
     for (const PageButton& button : Buttons()) {
         const Box box = Shifted(button.box, scroll_);
@@ -795,10 +798,111 @@ void InfoScreen::Erase() {
 void InfoScreen::Arrange() {
     buttons_.clear();
     placed_.clear();
+    cardBox_ = Box{};
     if (height_ <= 0.0) return;
     const double rem = ViewportRem(width_, height_);
+
+    if (view_.centeredCard) {
+        const double outerMargin = Rem(2.5);
+        const double cardWidth = std::min(std::max(Rem(24.0), width_ - 2.0 * outerMargin), Rem(44.0));
+        const double cardX = std::max(outerMargin, (width_ - cardWidth) / 2.0);
+        const double padX = Rem(2.5);
+        const double padY = Rem(2.2);
+        const double x = cardX + padX;
+        const double innerWidth = std::max(Rem(16.0), cardWidth - 2.0 * padX);
+        const double widthRem = innerWidth / rem;
+        fieldX_ = x;
+        fieldWidth_ = innerWidth;
+
+        // Lay out from y = 0 inside the card, then vertically centre the card in the viewport.
+        double y = padY + Rem(4.5);
+        int row = 0;
+
+        ledeTop_ = y;
+        ledeHeight_ = view_.lede.empty() ? 0.0 : Rem(Lines(view_.lede, 1.0, widthRem) * 1.5);
+        y += ledeHeight_ + (view_.lede.empty() ? 0.0 : Rem(1.0));
+
+        const auto addRow = [&](const std::vector<InfoAction>& actions) {
+            if (actions.empty()) return;
+            FlowLayout flow(x, y, innerWidth, Rem(kButtonGapRem));
+            for (const InfoAction& action : actions) {
+                PageButton button;
+                button.key = action.key;
+                button.label = action.label;
+                button.primary = action.primary;
+                button.disabled = action.disabled;
+                const double width = ButtonWidthRem(action.label) * rem;
+                button.box = flow.Place(width, std::max(44.0, Rem(kButtonHeightRem)));
+                button.row = row + flow.Row();
+                buttons_.push_back(std::move(button));
+            }
+            y = flow.Bottom() + Rem(0.9);
+            row += flow.Row() + 1;
+        };
+
+        for (const std::vector<InfoAction>& filter : view_.filters) addRow(filter);
+
+        summariesTop_ = y;
+        if (!view_.fieldSummaries.empty()) {
+            y += static_cast<double>(view_.fieldSummaries.size()) * Rem(2.4) + Rem(0.5);
+        }
+
+        messageTop_ = y;
+        if (!view_.message.empty()) y += Rem(Lines(view_.message, 1.0, widthRem) * 1.5 + 0.6);
+
+        fieldTop_ = y;
+        if (view_.field) y += Rem(1.5 + 3.0 + 1.0);
+
+        for (const InfoBlock& block : view_.blocks) {
+            double height = 0.0;
+            switch (block.kind) {
+            case InfoBlock::Kind::Heading:
+                y += Rem(0.5);
+                height = Rem(1.9);
+                break;
+            case InfoBlock::Kind::Paragraph:
+                height = Rem(Lines(block.text, 0.98, widthRem) * 1.5);
+                break;
+            case InfoBlock::Kind::Note:
+                height = Rem(Lines(block.text, 0.85, widthRem) * 1.4);
+                break;
+            case InfoBlock::Kind::Bullet:
+                height = Rem(Lines(block.text + "  " + block.value, 0.95, widthRem - 1.2) * 1.5);
+                break;
+            case InfoBlock::Kind::Row:
+                height = Rem(kInfoRowRem);
+                break;
+            case InfoBlock::Kind::Rule:
+                height = Rem(0.6);
+                break;
+            }
+            placed_.push_back(Placed{block, Box{x, y, innerWidth, height}});
+            y += height + (block.kind == InfoBlock::Kind::Row ? Rem(kInfoRowPitchRem - kInfoRowRem) : Rem(0.5));
+        }
+        if (!view_.blocks.empty()) y += Rem(0.6);
+
+        for (const std::vector<InfoAction>& line : view_.actions) addRow(line);
+        addRow(view_.topActions);
+
+        const double totalHeight = y + padY - Rem(0.6);
+        const double cardY = std::max(Rem(2.0), (height_ - totalHeight) / 2.0);
+        headerTop_ = cardY + padY;
+        ledeTop_ += cardY;
+        summariesTop_ += cardY;
+        messageTop_ += cardY;
+        fieldTop_ += cardY;
+        for (PageButton& b : buttons_) b.box.y += cardY;
+        for (Placed& p : placed_) p.box.y += cardY;
+        cardBox_ = Box{cardX, cardY, cardWidth, totalHeight};
+        contentHeight_ = cardY + totalHeight + Rem(2.0);
+        return;
+    }
+
     const double x = Rem(kSafeXRem);
     const double widthRem = std::min(width_ / rem - 2.0 * kSafeXRem, kInfoWidthRem);
+    headerTop_ = Rem(kSafeYRem);
+    fieldX_ = x;
+    fieldWidth_ = std::min(Rem(widthRem), Rem(36.0));
     double y = Rem(kSafeYRem + 4.8);
     int row = 0;
 
@@ -887,13 +991,68 @@ void InfoScreen::Arrange() {
 }
 
 void InfoScreen::PaintContent(Painter& painter, double scroll) const {
-    const double x = Rem(kSafeXRem);
-    PaintHeader(painter, Rem(kSafeYRem) - scroll, view_.kicker, view_.heading, "");
-    if (!view_.lede.empty()) {
-        painter.Paragraph(Box{x, ledeTop_ - scroll, std::min(width_ - 2.0 * x, Rem(48.0)), ledeHeight_ + Rem(0.4)},
-                          view_.lede, TextStyle{Rem(1.0625), false}, tokens::kTextMuted);
+    if (view_.centeredCard) {
+        const Box viewport{0.0, 0.0, width_, height_};
+        if (!view_.backdropUrl.empty()) {
+            painter.ImageFaded(viewport, view_.backdropUrl, 0.0, 0.42, 0.7, 0.2);
+            painter.FillLinearGradient(viewport, 0.0, 0.0, 0.0, height_,
+                                       {GradientStop{0.0, WithAlphaOf(tokens::kBackground, 0.35)},
+                                        GradientStop{0.55, WithAlphaOf(tokens::kBackground, 0.62)},
+                                        GradientStop{1.0, WithAlphaOf(tokens::kBackground, 0.88)}});
+            painter.SetBackdrop(viewport, view_.backdropUrl, 0.7, 0.2);
+        }
+        const Box card = Shifted(cardBox_, scroll);
+        painter.Glass(card, Rem(1.5), glass::SheetPanel());
+
+        const double x = fieldX_;
+        const double innerWidth = fieldWidth_;
+        const double headerY = headerTop_ - scroll;
+        painter.Text(Box{x, headerY, innerWidth, Rem(1.2)}, Upper(view_.kicker),
+                     TextStyle{Rem(0.8125), true, 750}, tokens::kAccentStrong);
+        painter.Text(Box{x, headerY + Rem(1.15), innerWidth, Rem(3.1)}, view_.heading,
+                     TextStyle{Rem(2.35), true, 750}, tokens::kText);
+        if (!view_.lede.empty()) {
+            painter.Paragraph(Box{x, ledeTop_ - scroll, innerWidth, ledeHeight_ + Rem(0.4)}, view_.lede,
+                              TextStyle{Rem(1.0), false}, tokens::kTextMuted);
+        }
+        if (!view_.fieldSummaries.empty()) {
+            double sy = summariesTop_ - scroll;
+            for (const InfoView::FieldSummary& summary : view_.fieldSummaries) {
+                const Box row{x, sy, innerWidth, Rem(2.15)};
+                GlassStyle rowGlass;
+                rowGlass.kind = GlassKind::Panel;
+                rowGlass.focused = summary.active;
+                rowGlass.focusAmount = summary.active ? 1.0 : 0.0;
+                rowGlass.reduceTransparency = tokens::reduceTransparency;
+                rowGlass.tint = summary.active ? tokens::kSurfaceHover : tokens::kSurface;
+                painter.Glass(row, Rem(0.6), rowGlass);
+                painter.Text(Box{row.x + Rem(0.85), row.y, Rem(8.5), row.height}, summary.label,
+                             TextStyle{Rem(0.88), true, 650},
+                             summary.active ? tokens::kAccentStrong : tokens::kTextMuted);
+                std::string shown = summary.value;
+                if (summary.secret && !shown.empty()) {
+                    shown.clear();
+                    for (std::size_t i = 0; i < summary.value.size(); ++i) {
+                        if ((static_cast<unsigned char>(summary.value[i]) & 0xC0) != 0x80) shown += "\xE2\x80\xA2";
+                    }
+                }
+                painter.Text(Box{row.x + Rem(9.5), row.y, std::max(0.0, row.width - Rem(10.35)), row.height},
+                             shown.empty() ? (summary.active ? "Typing below..." : "Not entered") : shown,
+                             TextStyle{Rem(0.92), false, 500},
+                             shown.empty() ? tokens::kTextFaint : tokens::kText);
+                sy += Rem(2.4);
+            }
+        }
+    } else {
+        const double x = Rem(kSafeXRem);
+        PaintHeader(painter, Rem(kSafeYRem) - scroll, view_.kicker, view_.heading, "");
+        if (!view_.lede.empty()) {
+            painter.Paragraph(Box{x, ledeTop_ - scroll, std::min(width_ - 2.0 * x, Rem(48.0)), ledeHeight_ + Rem(0.4)},
+                              view_.lede, TextStyle{Rem(1.0625), false}, tokens::kTextMuted);
+        }
     }
-    const double widthPx = std::min(width_ - 2.0 * x, Rem(kInfoWidthRem));
+    const double x = fieldX_;
+    const double widthPx = view_.centeredCard ? fieldWidth_ : std::min(width_ - 2.0 * x, Rem(kInfoWidthRem));
     if (!view_.message.empty()) {
         painter.Paragraph(Box{x, messageTop_ - scroll, widthPx, Rem(Lines(view_.message, 1.0, widthPx / (ViewportRem(width_, height_))) * 1.6)},
                           view_.message, TextStyle{Rem(1.0), true, 600},
@@ -902,7 +1061,7 @@ void InfoScreen::PaintContent(Painter& painter, double scroll) const {
     if (view_.field) {
         const double top = fieldTop_ - scroll;
         painter.Text(Box{x, top, widthPx, Rem(1.4)}, view_.fieldLabel, TextStyle{Rem(0.9), true, 600}, tokens::kTextMuted);
-        const Box box{x, top + Rem(1.6), std::min(widthPx, Rem(36.0)), Rem(3.0)};
+        const Box box{x, top + Rem(1.6), view_.centeredCard ? fieldWidth_ : std::min(widthPx, Rem(36.0)), Rem(3.0)};
         GlassStyle fieldGlass;
         fieldGlass.kind = GlassKind::Panel;
         fieldGlass.focused = true;

@@ -205,6 +205,45 @@ TEST(an_info_page_field_hides_a_secret_and_goes_with_each_press) {
     REQUIRE(screen.FieldText().empty());
 }
 
+TEST(centered_liquid_glass_signin_card_draws_summaries_and_navigates_modes) {
+    tvm::ui::InfoScreen screen;
+    screen.Layout(1920.0, 1080.0);
+    tvm::ui::InfoView view;
+    view.centeredCard = true;
+    view.backdropUrl = "asset:lighthouse.jpg";
+    view.kicker = "TVM";
+    view.heading = "Sign in to TVM";
+    view.filters = {
+        {{"info:account-mode-signin", "Sign In", true},
+         {"info:account-mode-register", "Create Account"},
+         {"info:account-mode-dev", "Developer Access"}},
+        {{"info:field-email", "Email", true}, {"info:field-password", "Password"}},
+    };
+    view.field = true;
+    view.fieldLabel = "Email";
+    view.fieldPlaceholder = "you@example.com";
+    view.fieldSummaries = {{"Email", "ada@tvm.test", false, true}, {"Password", "secret", true, false}};
+    view.actions = {{{"info:account-signin", "Sign In", true}}};
+    screen.SetView(view);
+
+    REQUIRE(screen.ShowsStage());
+    TextPainter painter;
+    screen.Paint(painter);
+    REQUIRE(painter.Has("Sign in to TVM"));
+    REQUIRE(painter.Has("ada@tvm.test"));
+    REQUIRE(!painter.Has("secret"));
+    REQUIRE(painter.Has("\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2"));
+
+    REQUIRE_EQ(screen.FocusedKey(), std::optional<std::string>("info:account-mode-signin"));
+    REQUIRE(screen.Navigate(Direction::Right, 0.0));
+    REQUIRE_EQ(screen.FocusedKey(), std::optional<std::string>("info:account-mode-register"));
+    REQUIRE(screen.Navigate(Direction::Down, 0.0));
+    REQUIRE(screen.FocusedKey().has_value());
+    const std::optional<Command> cmd = screen.ActivateItem("info:account-signin", 0.0);
+    REQUIRE(cmd.has_value());
+    REQUIRE_EQ(cmd->name, std::string("info:account-signin"));
+}
+
 TEST(pbkdf2_sha256_matches_the_published_vector) {
     const tvm::util::Bytes salt = {'s', 'a', 'l', 't'};
     const tvm::util::Bytes key = tvm::crypto::Pbkdf2Sha256("password", salt, 1, 32);

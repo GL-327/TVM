@@ -537,13 +537,13 @@
   ],
   "railWindow": [
     {
-      "name": "start of rail",
+      "name": "start of rail includes left buffer when looping",
       "count": 16,
       "viewFirst": 0,
       "visible": 11,
       "buffer": 2,
       "expected": {
-        "first": 0,
+        "first": -2,
         "last": 12
       }
     },
@@ -559,36 +559,36 @@
       }
     },
     {
-      "name": "end of rail clipped to count",
+      "name": "end of rail includes right wrap buffer",
       "count": 16,
       "viewFirst": 5,
       "visible": 11,
       "buffer": 2,
       "expected": {
         "first": 3,
-        "last": 15
+        "last": 17
       }
     },
     {
-      "name": "buffer clipped at start",
+      "name": "buffer wraps below zero",
       "count": 40,
       "viewFirst": 1,
       "visible": 11,
       "buffer": 3,
       "expected": {
-        "first": 0,
+        "first": -2,
         "last": 14
       }
     },
     {
-      "name": "buffer clipped at end",
+      "name": "buffer wraps past end",
       "count": 16,
       "viewFirst": 5,
       "visible": 11,
       "buffer": 4,
       "expected": {
         "first": 1,
-        "last": 15
+        "last": 19
       }
     },
     {

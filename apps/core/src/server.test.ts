@@ -168,7 +168,7 @@ describe('core API', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         planId: 'premium',
-        name: 'Arthur',
+        name: 'Alex',
         number: '1111111111111111',
         expiry: '12/99',
         cvc: '123',

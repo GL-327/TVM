@@ -474,8 +474,7 @@ std::optional<Box> Scene::RailArrowBox(std::size_t rail, bool next) const {
     if (rail >= rails_.size()) return std::nullopt;
     const Rail& row = *rails_[rail];
     const double max = row.MaxScroll();
-    if (!nav::CanScroll(row.ContentWidth(), row.box().width)) return std::nullopt;
-    if (next ? row.scroll() >= max - 0.5 : row.scroll() <= 0.5) return std::nullopt;
+    if (!nav::CanScroll(row.ContentWidth(), row.box().width) || max <= 0.0) return std::nullopt;
     // A round glass button at the rail's edge, centred on the pictures (not their titles).
     const double size = metrics_.Rem(2.75);
     const double art = std::min(row.box().height, metrics_.Rem(kPosterHeightRem));
@@ -805,14 +804,28 @@ void Scene::PaintHero(Painter& painter) const {
     const double titleAlpha = titleFade_.has_value() ? std::clamp(titleFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
 
     if (notice) {
-        painter.Text(boxes.kicker, "TVM STREAM", kickerStyle, tokens::kTextMuted);
+        const double padX = metrics_.Rem(1.8);
+        const double padY = metrics_.Rem(1.5);
+        const double cardRight =
+            std::max({boxes.kicker.Right(), boxes.title.Right(), boxes.body.Right(), boxes.watch.Right(), boxes.learn.Right()});
+        const double cardBottom = std::max(boxes.watch.Bottom(), boxes.learn.Bottom());
+        const Box card{boxes.kicker.x - padX, boxes.kicker.y - padY, cardRight - boxes.kicker.x + 2.0 * padX,
+                       cardBottom - boxes.kicker.y + 2.0 * padY};
+        GlassStyle cardGlass;
+        cardGlass.kind = GlassKind::Panel;
+        cardGlass.reduceTransparency = tokens::reduceTransparency;
+        cardGlass.tint = tokens::kSurface;
+        painter.Glass(card, metrics_.Rem(1.25), cardGlass);
+
+        painter.Text(boxes.kicker, data.itemId == "account-gate" ? "TVM" : "TVM STREAM", kickerStyle,
+                     tokens::kAccentStrong);
         painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kNoticeTitleRem), true, 700},
                      WithAlpha(tokens::kText, titleAlpha));
         painter.Paragraph(boxes.body, data.body, TextStyle{metrics_.Rem(1.125), false}, tokens::kTextMuted);
         DrawButton(painter, metrics_, boxes.watch, PlayLabel(),
-                   ButtonLook{true, watchFocused, watchFocused ? 1.0 : 0.0});
+                   ButtonLook{true, watchFocused, watchFocused ? std::max(EmphasisOf(kHeroPlayKey), 1.0) : EmphasisOf(kHeroPlayKey)});
         DrawButton(painter, metrics_, boxes.learn, InfoLabel(),
-                   ButtonLook{false, learnFocused, learnFocused ? 1.0 : 0.0});
+                   ButtonLook{false, learnFocused, learnFocused ? std::max(EmphasisOf(kHeroInfoKey), 1.0) : EmphasisOf(kHeroInfoKey)});
         return;
     }
 
@@ -1875,12 +1888,12 @@ bool Scene::Navigate(nav::Direction direction, double nowMs) {
 
     std::optional<std::size_t> target;
     if (direction == nav::Direction::Left || direction == nav::Direction::Right) {
-        // Hard stops at rail ends (no wrapping, per DECISIONS.md and WINDOWS-VISUAL-SPEC.md).
+        // Infinite looping categories: wrap seamlessly at both rail ends.
         const std::size_t count = CardCount(current.rail);
-        if (direction == nav::Direction::Right && current.index + 1 < count) {
-            target = GlobalIndex(current.rail, current.index + 1);
-        } else if (direction == nav::Direction::Left && current.index > 0) {
-            target = GlobalIndex(current.rail, current.index - 1);
+        const std::optional<int> wrapped =
+            nav::RowWrapIndex(static_cast<int>(current.index), direction, static_cast<int>(count));
+        if (wrapped.has_value()) {
+            target = GlobalIndex(current.rail, static_cast<std::size_t>(*wrapped));
         }
     } else {
         const auto row = nav::NeighborRowIndex(static_cast<int>(current.rail), direction,
@@ -2021,7 +2034,7 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
 
 std::optional<Command> Scene::ActivateItem(const std::string& key, double nowMs) {
     if (key.rfind("rail-next:", 0) == 0 || key.rfind("rail-prev:", 0) == 0) {
-        // A rail's arrow steps the rail by most of its width, on the same camera as the wheel, to its ends at most.
+        // A rail's arrow steps the rail by most of its width, wrapping seamlessly at either end.
         const bool next = key[5] == 'n';
         const std::size_t rail = std::stoul(key.substr(10));
         if (rail >= rails_.size()) return std::nullopt;
@@ -2029,8 +2042,11 @@ std::optional<Command> Scene::ActivateItem(const std::string& key, double nowMs)
             SurfaceAt(rails_[rail]->box().CenterX(), rails_[rail]->box().CenterY(), nav::Axis::X);
         if (!surface.has_value() || surface->kind != ScrollSurface::Kind::Rail) return std::nullopt;
         const double step = rails_[rail]->box().width * 0.85;
+        const double max = rails_[rail]->MaxScroll();
         const double from = railCamera_.at(rail).active() ? railCamera_.at(rail).target() : rails_[rail]->scroll();
-        AnimateScroll(*surface, std::clamp(from + (next ? step : -step), 0.0, rails_[rail]->MaxScroll()), nowMs);
+        const double target = next ? (from >= max - 0.5 ? 0.0 : std::min(from + step, max))
+                                   : (from <= 0.5 ? max : std::max(from - step, 0.0));
+        AnimateScroll(*surface, target, nowMs);
         return std::nullopt;
     }
     if (key == "search-clear") {

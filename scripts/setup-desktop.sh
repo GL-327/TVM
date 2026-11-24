@@ -105,7 +105,7 @@ fi
 
 echo ""
 echo "TVM is ready."
-echo "  Start:        ./TVM.sh"
-echo "  macOS Finder: double-click TVM.command"
+echo "  Start:        ./scripts/launchers/TVM.sh"
+echo "  macOS Finder: double-click scripts/launchers/TVM.command"
 echo ""
 echo "See docs/DESKTOP.md for browser and media requirements."

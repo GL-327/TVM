@@ -209,13 +209,13 @@ export function Library(_props: ScreenProps): React.JSX.Element {
       )}
 
       {rdReady && !loading && watchingLane.length > 0 && (
-        <Rail title="Continue Watching">
+        <Rail title="Continue Watching" loop={false}>
           {mapRailPosters(watchingLane, 'continue', openTitle, { layout: 'landscape' })}
         </Rail>
       )}
 
       {rdReady && !loading && watchlist.length > 0 && (
-        <Rail title="My List">
+        <Rail title="My List" loop={false}>
           {mapRailPosters(
             watchlist.filter((title) => inLane(title, lane)),
             'liked',

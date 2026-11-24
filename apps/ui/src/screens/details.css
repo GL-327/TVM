@@ -147,10 +147,14 @@
 .details .stage__kicker {
   display: inline-flex;
   margin: 0 0 0.55rem;
-  padding: 0.16rem 0.58rem;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 0.2rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 999px;
-  color: rgba(255, 255, 255, 0.86);
+  background: rgba(14, 22, 36, 0.48);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  color: rgba(255, 255, 255, 0.92);
   letter-spacing: 0.14em;
 }
 
@@ -208,12 +212,21 @@
 }
 
 .details .tvm-button--glass {
-  background: rgba(22, 22, 24, 0.72);
-  box-shadow: none;
+  background: var(--tvm-glass-bg, rgba(22, 28, 42, 0.64));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  box-shadow:
+    var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.28)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.18)),
+    0 0.6rem 1.6rem rgba(0, 0, 0, 0.34);
 }
 
+.details .tvm-button--glass:hover,
 .details .tvm-button--glass[data-focused='true'] {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: var(--tvm-glass-focus-glow, 0 0 0 0.14rem rgba(255, 255, 255, 0.8));
   transform: none;
 }
 
@@ -293,10 +306,12 @@
   justify-content: flex-start;
   padding: 0.65rem 1.05rem;
   overflow: visible;
-  border: none;
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.9rem;
+  background: var(--tvm-glass-bg, rgba(255, 255, 255, 0.08));
+  -webkit-backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  box-shadow: var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.22));
   color: #fff;
   font-size: 1.05rem;
   font-weight: 650;
@@ -336,10 +351,12 @@
   gap: 1rem;
   padding: 0.42rem 0.65rem;
   overflow: visible;
-  border: none;
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.9rem;
+  background: var(--tvm-glass-bg, rgba(255, 255, 255, 0.08));
+  -webkit-backdrop-filter: var(--tvm-glass-blur, blur(24px) saturate(180%));
+  backdrop-filter: var(--tvm-glass-blur, blur(24px) saturate(180%));
+  box-shadow: var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.2));
   color: #fff;
   text-align: left;
   content-visibility: auto;

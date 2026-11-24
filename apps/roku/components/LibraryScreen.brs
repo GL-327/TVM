@@ -116,7 +116,7 @@ sub onPayload()
         })
         if not isMediaItem(m.heroItem) then m.heroItem = items[0]
       end if
-      if m.rails.Count() >= 8 then exit for
+      if m.rails.Count() >= 24 then exit for
     end for
   end if
   renderHero()

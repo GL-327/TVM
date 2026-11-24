@@ -82,6 +82,7 @@ private:
     ComPtr<ID2D1Effect> shift_[3];
     ComPtr<ID2D1Effect> channel_[3];
     ComPtr<ID2D1Effect> sum_;
+    ComPtr<ID2D1Effect> vibrancy_;
     ComPtr<ID2D1Effect> frost_;
     std::map<Key, Kernel> kernels_;
     std::uint64_t clock_ = 0;

@@ -2134,11 +2134,11 @@
   },
   {
    "name": "long name truncates",
-   "text": "Arthur's very long living room television",
+   "text": "Alex's very long living room television",
    "perLine": 11,
    "expected": {
-    "l1": "Arthur's",
-    "l2": "very lon...",
+    "l1": "Alex's very",
+    "l2": "long liv...",
     "cut": true
    }
   },

@@ -5,7 +5,7 @@
   "heartbeatSec": 30,
   "account": {
     "id": "acc_demo",
-    "name": "Arthur",
+    "name": "Alex",
     "role": "dev"
   },
   "currentInstallationId": "inst_living",
@@ -84,7 +84,7 @@
     },
     {
       "id": "inst_iphone",
-      "name": "Arthur's iPhone",
+      "name": "Alex's iPhone",
       "room": null,
       "platform": "ios",
       "model": "iPhone",
@@ -155,7 +155,7 @@
     },
     {
       "id": "inst_tab",
-      "name": "Arthur's very long named Galaxy Tab in the study",
+      "name": "Alex's very long named Galaxy Tab in the study",
       "room": null,
       "platform": "android",
       "model": "Tab",
@@ -231,7 +231,7 @@
         "type": "device.renamed",
         "actor": {
           "installationId": null,
-          "name": "Arthur"
+          "name": "Alex"
         },
         "target": {
           "installationId": "inst_bed",
@@ -259,11 +259,11 @@
         "type": "device.signed_out",
         "actor": {
           "installationId": null,
-          "name": "Arthur"
+          "name": "Alex"
         },
         "target": {
           "installationId": "inst_iphone",
-          "name": "Arthur's iPhone"
+          "name": "Alex's iPhone"
         },
         "detail": null
       },
@@ -277,7 +277,7 @@
         },
         "target": {
           "installationId": "inst_tab",
-          "name": "Arthur's very long named Galaxy Tab in the study"
+          "name": "Alex's very long named Galaxy Tab in the study"
         },
         "detail": null
       },
@@ -287,7 +287,7 @@
         "type": "device.linked",
         "actor": {
           "installationId": null,
-          "name": "Arthur"
+          "name": "Alex"
         },
         "target": {
           "installationId": "inst_att",

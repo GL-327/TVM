@@ -66,6 +66,8 @@ sub init()
   m.hubPlayCmd = ""
   m.health = {}
   m.rd = {}
+  m.rdPromptedOnce = false
+  m.rdBootCheck = false
   m.detailsSaved = false
   m.profilesNext = ""
   m.pendingPlayItem = invalid
@@ -291,6 +293,7 @@ sub renderStack()
     if top.kind <> "modal" then m.serviceNode.setFocus(true)
   else if screen.name = "realdebrid"
     ensureRealDebrid()
+    m.rdNode.firstLoad = (aaGet(screen.params, "firstLoad", false) = true)
     m.rdNode.status = m.rd
     m.rdNode.visible = true
     if top.kind <> "modal" then m.rdNode.setFocus(true)
@@ -1231,6 +1234,7 @@ sub onAccountDone()
   if task.ok
     usable = aaGet(json, "usable", {})
     if aaGet(usable, "ok", false) = true and m.accountWaitHome = true
+      m.accountState = json
       enterHome()
       return
     end if
@@ -1250,6 +1254,11 @@ sub enterHome()
   loadHealth(false)
   loadHome()
   loadProfiles(false)
+  account = aaGet(m.accountState, "account", {})
+  if aaGet(account, "rdKey", false) <> true and m.rdPromptedOnce <> true
+    m.rdBootCheck = true
+    loadRdStatus()
+  end if
 end sub
 
 sub showAccountGate(json as Object)
@@ -1275,27 +1284,27 @@ sub paintAccountGate(json as Object)
   if signedIn = true and reason = "awaiting_activation"
     m.accountNode.phase = "waiting"
     m.accountNode.heading = "Almost there"
-    m.accountNode.lede = "Your account exists and your sign-in works. It needs the app owner to switch it on before there is anything to watch."
+    m.accountNode.lede = "Your account is signed in and waiting for activation."
   else if signedIn = true and reason = "email_unverified"
     m.accountNode.phase = "verify"
     m.accountNode.heading = "Check your email"
-    m.accountNode.lede = "We sent a six-digit code to " + email + ". Type it in here. It lasts fifteen minutes."
+    m.accountNode.lede = "Enter the six-digit code sent to " + email + "."
   else if signedIn = true and reason = "suspended"
     m.accountNode.phase = "suspended"
-    m.accountNode.heading = "This account is switched off"
-    m.accountNode.lede = "Access to this account has been turned off by the app owner."
+    m.accountNode.heading = "Account paused"
+    m.accountNode.lede = "This account is currently unavailable."
   else if signedIn = true and reason = "terms_required"
     m.accountNode.phase = "terms"
     m.accountNode.heading = "Before you start"
-    m.accountNode.lede = "Please agree to the current terms on this device to continue."
+    m.accountNode.lede = "Review and accept the current terms to continue."
   else if m.accountMode = "register"
     m.accountNode.phase = "register"
-    m.accountNode.heading = "Ask for an account"
-    m.accountNode.lede = "Creating an account does not give you access on its own. The app owner switches accounts on by hand."
+    m.accountNode.heading = "Create an account"
+    m.accountNode.lede = "Enter your details below to get started on this television."
   else
     m.accountNode.phase = "signin"
-    m.accountNode.heading = "Sign in to TVM"
-    m.accountNode.lede = "TVM is not open to the public. Sign in with the account the app owner set up for you."
+    m.accountNode.heading = "Welcome to TVM"
+    m.accountNode.lede = "Sign in with a code on your phone, or enter your account below."
   end if
   m.accountNode.status = err
 end sub
@@ -1844,7 +1853,15 @@ sub onRdTokenDone()
     navigate("modal", "notice", { title: "Token not stored", body: "Core rejected the token. Check it and try again." })
     return
   end if
+  if task.json <> invalid
+    m.rd = task.json
+    if m.rdNode <> invalid then m.rdNode.status = m.rd
+    if m.profileNode <> invalid then m.profileNode.rd = m.rd
+  end if
   loadHome()
+  if visibleScreen(m.stack).name = "realdebrid" and aaGet(m.rd, "configured", false) = true
+    navigate("pop", "", {})
+  end if
   where = "on this Roku"
   if m.coreUrl <> "" then where = "on the computer"
   navigate("modal", "notice", { title: "Real-Debrid", body: "The token is stored " + where + ". Home will refresh with that account." })
@@ -1906,10 +1923,20 @@ end sub
 
 sub onRdStatusDone()
   task = m.rdTask
-  if task = invalid or not task.ok then return
+  if task = invalid or not task.ok
+    m.rdBootCheck = false
+    return
+  end if
   m.rd = task.json
   if m.profileNode <> invalid then m.profileNode.rd = m.rd
   if m.rdNode <> invalid then m.rdNode.status = m.rd
+  if m.rdBootCheck = true
+    m.rdBootCheck = false
+    if aaGet(m.rd, "configured", false) <> true and m.rdPromptedOnce <> true
+      m.rdPromptedOnce = true
+      navigate("push", "realdebrid", { firstLoad: true })
+    end if
+  end if
 end sub
 
 sub loadDetails(params as Object)

@@ -1049,7 +1049,7 @@
     {
       "type": "device.linked",
       "actor": {
-        "name": "Arthur"
+        "name": "Alex"
       },
       "target": {
         "name": "Basement TV"
@@ -1059,7 +1059,7 @@
     {
       "type": "device.renamed",
       "actor": {
-        "name": "Arthur"
+        "name": "Alex"
       },
       "target": {
         "name": "Bedroom TV"

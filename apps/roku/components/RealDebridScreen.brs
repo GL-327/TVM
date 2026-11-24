@@ -12,13 +12,25 @@ sub init()
   m.lede.font = tvmFontBody()
   m.account.font = tvmFontBodyLg()
   m.premium.font = tvmFontBody()
-  m.paste.variant = "primary"
+  m.paste.variant = "glassPill"
+  m.paste.pillWidth = 540
+  m.paste.accent = true
   m.paste.label = "Paste token"
-  m.back.variant = "glass"
+  m.back.variant = "glassPill"
+  m.back.pillWidth = 540
   m.back.label = "Back"
   m.col = 0
   m.seq = 0
   paintFocus()
+end sub
+
+sub onFirstLoad()
+  if m.back = invalid then return
+  if m.top.firstLoad = true
+    m.back.label = "Skip for now"
+  else
+    m.back.label = "Back"
+  end if
 end sub
 
 sub onStatus()
@@ -28,7 +40,7 @@ sub onStatus()
   if configured and username <> ""
     m.account.text = "Signed in as " + username
   else if configured
-    m.account.text = "Token stored on this computer"
+    m.account.text = "Token stored on this device"
   else
     m.account.text = "Not connected"
   end if

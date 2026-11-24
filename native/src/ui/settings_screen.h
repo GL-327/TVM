@@ -15,6 +15,15 @@
 
 namespace tvm::ui {
 
+struct DeveloperDiagnostics {
+    bool active = false;
+    std::string buildVersion;
+    std::string rdTokenSource;
+    std::string glassMode;
+
+    bool operator==(const DeveloperDiagnostics&) const = default;
+};
+
 class SettingsScreen final : public ScreenBase {
 public:
     SettingsScreen(PreferenceStore& store, motion::MotionSettings motion);
@@ -37,6 +46,7 @@ public:
     bool CloseOverlay(double nowMs) override;
     // The App language list, while it is open. Exposed for tests.
     const Dropdown& LanguageList() const { return language_; }
+    void SetDeveloperDiagnostics(DeveloperDiagnostics diag);
 
     // Exposed for tests.
     std::vector<std::string> RowLabels() const;
@@ -84,6 +94,7 @@ private:
 
     PreferenceStore& store_;
     prefs::CorePrefs core_;
+    DeveloperDiagnostics diag_;
     Metrics metrics_;
     double width_ = 0.0;
     double height_ = 0.0;

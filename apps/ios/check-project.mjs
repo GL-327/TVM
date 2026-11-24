@@ -692,10 +692,10 @@ check('the iPhone applies a GitHub UI bundle on open unless auto-update is off',
   (read(join(ROOT, 'TVM', 'TVMUpdater.swift')) ?? '').includes('tvm-ios-ui.tar.gz') &&
   (read(join(ROOT, 'TVM', 'TVMLocalCore.swift')) ?? '').includes('/api/update/apply') &&
   (read(join(REPO, 'apps', 'ui', 'src', 'data', 'launchUpdate.ts')) ?? '').includes('applyGithubUpdateOnLaunch'));
-check('Device Variations ships the IPA next to the other device packages',
-  (read(join(REPO, 'Device Variations', 'fetch-ipa.ps1')) ?? '').includes('TVM-ios.ipa') &&
-  (read(join(REPO, 'Device Variations', 'fetch-ipa.ps1')) ?? '').includes('TVM-android.apk') &&
-  (read(join(REPO, 'Device Variations', 'fetch-ipa.ps1')) ?? '').includes('TVM-roku.zip') &&
+check('scripts/fetch-packages.ps1 ships the IPA next to the other device packages',
+  (read(join(REPO, 'scripts', 'fetch-packages.ps1')) ?? '').includes('TVM-ios.ipa') &&
+  (read(join(REPO, 'scripts', 'fetch-packages.ps1')) ?? '').includes('TVM-android.apk') &&
+  (read(join(REPO, 'scripts', 'fetch-packages.ps1')) ?? '').includes('TVM-roku.zip') &&
   (read(join(REPO, '.github', 'workflows', 'mobile.yml')) ?? '').includes('publish-device-package.sh'),
   'Sideloadly was pointed at this folder, which previously had no IPA');
 {

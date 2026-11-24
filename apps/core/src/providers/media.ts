@@ -580,6 +580,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     if (films.length > 0) rails.push({ id: 'films', title: 'Popular films', items: films });
     const series = takeUnused(bundle.seriesTop, used, 16);
     if (series.length > 0) rails.push({ id: 'series', title: 'Popular series', items: series });
+    const topFilms = takeUnused(bundle.moviesRated, used, 16);
+    if (topFilms.length > 0) rails.push({ id: 'top-films', title: 'Top rated films', items: topFilms });
+    const topSeries = takeUnused(bundle.seriesRated, used, 16);
+    if (topSeries.length > 0) rails.push({ id: 'top-series', title: 'Top rated series', items: topSeries });
     const fresh = takeUnused(bundle.newFilms, used, 16);
     if (fresh.length > 0) rails.push({ id: 'new-films', title: 'New films', items: fresh });
     const recent = takeUnused(bundle.recentTv, used, 16);
@@ -594,12 +598,15 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     const genreLists = await Promise.all(
       GENRE_RAILS.map(async (rail) => {
         try {
-          const seriesGenres = seriesGenresForRail(rail.genre);
-          const [movies, ...showLists] = await Promise.all([
-            catalog.genre('movie', rail.genre),
-            ...seriesGenres.map((genre) => catalog.genre('series', genre)),
+          const movieGenres = rail.genres;
+          const seriesGenres = rail.genre === 'Anime'
+            ? seriesGenresForRail(rail.genre)
+            : [...new Set(movieGenres.flatMap((genre) => seriesGenresForRail(genre)))];
+          const [movieLists, showLists] = await Promise.all([
+            Promise.all(movieGenres.map((genre) => catalog.genre('movie', genre))),
+            Promise.all(seriesGenres.map((genre) => catalog.genre('series', genre))),
           ]);
-          return { rail, movies, shows: dedupeItems(showLists.flat()) };
+          return { rail, movies: dedupeItems(movieLists.flat()), shows: dedupeItems(showLists.flat()) };
         } catch {
           return { rail, movies: [], shows: [] };
         }

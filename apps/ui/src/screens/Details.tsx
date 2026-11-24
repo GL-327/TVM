@@ -4,6 +4,7 @@ import { Chip } from '../components/Chip';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
 import { Skeleton } from '../components/Skeleton';
+import { ToastPill, useToast } from '../components/ToastPill';
 import { titleById, type Title } from '../data/catalog';
 import { episodeHeading } from '../data/episodes';
 import {
@@ -69,6 +70,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const [season, setSeason] = useState<number | null>(null);
   const [loadingTitle, setLoadingTitle] = useState(snapshot === undefined && id !== '');
   const [attempt, setAttempt] = useState(0);
+  const { message: toast, showToast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -227,7 +229,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     if (saving) return;
     setSaving(true);
     void (saved ? removeWatchlist(title.id) : addWatchlist(toMediaItem(title)))
-      .then((items) => setSaved(items.some((item) => item.id === title.id)))
+      .then((items) => {
+        const nextSaved = items.some((item) => item.id === title.id);
+        setSaved(nextSaved);
+        showToast(nextSaved ? 'Added to My List' : 'Removed from My List');
+      })
       .catch((error: unknown) => navigate.pushModal('notice', { params: {
         title: 'Watchlist', body: error instanceof Error ? error.message : 'Your watchlist could not be updated.',
       } }))
@@ -374,6 +380,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
           )}
         </section>
       )}
+      <ToastPill message={toast} />
     </DetailsShell>
   );
 }

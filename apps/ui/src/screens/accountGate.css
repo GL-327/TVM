@@ -1,26 +1,10 @@
 /*
- * The door. One panel, centred, readable on a phone and across a room.
- *
- * Deliberately plain: this is the first thing anyone sees and the last place
- * to be clever. The scene layers and rail machinery are not loaded here at
- * all, so the gate paints instantly even before the catalogue exists — the one
- * decoration is a static gradient, which costs a single paint.
+ * Liquid Glass sign-in gate. Centered frosted card floating over a layered
+ * ambient backdrop, preserving safe-centering and keyboard-field scrolling.
  */
 
 .gate {
-  /*
-   * The box is the window, and it does its own scrolling.
-   *
-   * min-height let the gate grow past the window instead, and its ancestors
-   * clip rather than scroll — so on a 900px-tall desktop window the panel was
-   * taller than the screen, the top of it (the TVM mark and the heading) was
-   * simply cut off, and there was no scrollbar anywhere to reach it.
-   *
-   * safe centring is the other half: plain centring keeps centring content
-   * that is taller than its box, which pushes the top above the scroll origin
-   * and makes it unreachable even once the box does scroll. The safe keyword
-   * falls back to start alignment exactly when that would happen.
-   */
+  position: relative;
   height: 100dvh;
   display: grid;
   place-items: safe center;
@@ -29,86 +13,254 @@
     max(1.25rem, env(safe-area-inset-bottom, 0px), var(--tvm-safe-bottom, 1.25rem));
   color: var(--tvm-text, #f5f5f7);
   overflow-y: auto;
-
-  /*
-   * One static wash of the signature colour behind the panel.
-   *
-   * On a phone the panel fills the screen and this is barely visible, which is
-   * why it went unnoticed; on a desktop monitor the card is a narrow column in
-   * the middle of a black field and the first screen of the app read as
-   * unfinished. This is a gradient, not a scene: no layers, no blur, no
-   * animation, one paint at load and nothing per frame — the rest of the file
-   * stays as plain as it claims to be.
-   */
   background:
     radial-gradient(
-      120% 80% at 50% -10%,
-      color-mix(in srgb, var(--tvm-mark, var(--tvm-brand-violet)) 22%, transparent),
+      95% 70% at 15% 8%,
+      color-mix(in srgb, var(--tvm-accent, #6ec8ff) 20%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      85% 65% at 85% 92%,
+      color-mix(in srgb, var(--tvm-mark, #4aa0e0) 24%, transparent),
       transparent 60%
     ),
-    var(--tvm-bg-deep, #000);
+    radial-gradient(
+      110% 75% at 50% -10%,
+      color-mix(in srgb, var(--tvm-brand-violet, #7c5cff) 22%, transparent),
+      transparent 62%
+    ),
+    var(--tvm-bg-deep, #030710);
 }
 
 .gate__panel {
-  width: min(32rem, 100%);
-  background: var(--tvm-surface);
-  border: 1px solid var(--tvm-border-soft);
-  border-radius: 16px;
-  padding: clamp(1.25rem, 4vw, 2rem);
+  position: relative;
+  width: min(30.5rem, 100%);
+  padding: clamp(1.35rem, 4vw, 2.15rem);
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, #fff 18%, transparent);
+  background: var(
+    --tvm-glass-bg-elevated,
+    linear-gradient(155deg, rgba(22, 36, 58, 0.72), rgba(10, 18, 32, 0.84))
+  );
+  -webkit-backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  backdrop-filter: var(--tvm-glass-blur, blur(28px) saturate(190%));
+  box-shadow:
+    var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.34)),
+    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
+    var(--tvm-glass-shadow, 0 24px 64px rgba(0, 0, 0, 0.55));
+  overflow: hidden;
 }
 
-.gate__panel--wide { width: min(46rem, 100%); }
+.gate__panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: var(
+    --tvm-glass-sheen,
+    linear-gradient(132deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 34%, transparent 62%)
+  );
+}
 
-.gate__mark { display: block; margin-bottom: 1rem; }
+.gate__panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.gate__panel--wide {
+  width: min(46rem, 100%);
+}
+
+.gate__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.1rem;
+}
+
+.gate__mark {
+  display: block;
+}
 
 .gate__mark-hit {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   padding: 0;
   border: 0;
   background: none;
   cursor: default;
 }
 
-.gate h1 {
-  margin: 0 0 0.5rem;
-  font-size: clamp(1.4rem, 5vw, 1.9rem);
-  letter-spacing: -0.02em;
+.gate__brand-pill {
+  padding: 0.24rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--tvm-accent-strong, #9edcff);
+  border: 1px solid color-mix(in srgb, var(--tvm-accent, #6ec8ff) 32%, transparent);
+  background: color-mix(in srgb, var(--tvm-accent, #6ec8ff) 12%, transparent);
 }
 
-.gate__lede { margin: 0 0 1.25rem; color: var(--tvm-text-muted); line-height: 1.5; }
-.gate__meta { margin: -0.75rem 0 1rem; font-size: 0.8rem; color: var(--tvm-text-faint); }
-.gate__hint { margin: 0 0 1rem; font-size: 0.9rem; color: var(--tvm-text-muted); }
+.gate-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.28rem;
+  margin-bottom: 1.25rem;
+  padding: 0.28rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #fff 14%, transparent);
+  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 52%, transparent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+.tvm-button.gate-tab {
+  min-width: 0;
+  min-height: 2.35rem;
+  justify-content: center;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tvm-text-muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.tvm-button.gate-tab .tvm-button__label {
+  justify-content: center;
+}
+
+.tvm-button.gate-tab--active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.1));
+  border-color: color-mix(in srgb, #fff 28%, transparent);
+  color: var(--tvm-text, #fff);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 4px 14px rgba(0, 0, 0, 0.26);
+}
+
+.tvm-button.gate-tab[data-focused='true'],
+.tvm-button.gate-tab:focus-visible {
+  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
+  outline-offset: 2px;
+  color: var(--tvm-text);
+  transform: none;
+}
+
+.gate h1 {
+  margin: 0 0 0.4rem;
+  font-size: clamp(1.45rem, 4.5vw, 1.9rem);
+  font-weight: 780;
+  letter-spacing: -0.025em;
+}
+
+.gate__lede {
+  margin: 0 0 1.25rem;
+  color: var(--tvm-text-muted);
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+
+.gate__meta {
+  margin: -0.8rem 0 1rem;
+  font-size: 0.8rem;
+  color: var(--tvm-text-faint);
+}
+
+.gate__hint {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  color: var(--tvm-text-muted);
+}
 
 .gate__notice,
 .gate__error {
   margin: 0 0 1rem;
-  padding: 0.7rem 0.9rem;
-  border-radius: 10px;
-  font-size: 0.9rem;
+  padding: 0.72rem 0.95rem;
+  border-radius: 12px;
+  font-size: 0.88rem;
   border: 1px solid transparent;
 }
 
-.gate__notice { background: color-mix(in srgb, var(--tvm-success) 14%, transparent); border-color: color-mix(in srgb, var(--tvm-success) 40%, transparent); }
-.gate__error { background: color-mix(in srgb, var(--tvm-danger) 14%, transparent); border-color: color-mix(in srgb, var(--tvm-danger) 40%, transparent); }
+.gate__notice {
+  background: color-mix(in srgb, var(--tvm-success) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tvm-success) 42%, transparent);
+}
 
-.gate__field { display: block; margin-bottom: 0.9rem; }
-.gate__field > span { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: var(--tvm-text-muted); }
+.gate__error {
+  background: color-mix(in srgb, var(--tvm-danger) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tvm-danger) 42%, transparent);
+}
 
-.gate__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.1rem; }
+.gate__field {
+  display: block;
+  margin-bottom: 0.95rem;
+}
 
-/*
- * The terms must be scrollable and obviously long rather than hidden behind a
- * link: a term a consumer was not actually shown does not bind them.
- */
+.gate__field > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 640;
+  letter-spacing: 0.02em;
+  color: var(--tvm-text-muted);
+}
+
+.gate .token-field__input {
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #fff 16%, transparent);
+  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 48%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.gate .token-field__input:focus,
+.gate .token-field__input[data-focused='true'] {
+  outline: none;
+  border-color: var(--tvm-accent-strong, #9edcff);
+  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 64%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--tvm-accent, #6ec8ff) 26%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.gate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.2rem;
+}
+
+.gate__actions .tvm-button--primary {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 2.95rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 96%, var(--tvm-accent-strong, #9edcff)),
+    color-mix(in srgb, #e6f4ff 90%, var(--tvm-accent, #6ec8ff))
+  );
+  color: #06111e;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 26px rgba(0, 0, 0, 0.34);
+}
+
+/* Scrollable terms document */
 .gate-terms {
   max-height: min(46vh, 26rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1rem;
+  padding: 1rem 1.1rem;
   margin-bottom: 1rem;
-  background: var(--tvm-bg);
-  border: 1px solid var(--tvm-border-soft);
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 55%, transparent);
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  border-radius: 14px;
   font-size: 0.88rem;
   line-height: 1.55;
 }
@@ -118,18 +270,66 @@
 .gate-terms p { margin: 0 0 0.55rem; color: var(--tvm-text-muted); }
 .gate-terms__intro { color: var(--tvm-text); }
 
-.gate-prices { margin-top: 1.5rem; border-top: 1px solid var(--tvm-border-soft); padding-top: 1.1rem; }
-.gate-prices h2 { margin: 0 0 0.8rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tvm-text-faint); }
+/* Collapsible plans drawer */
+.gate-plans {
+  margin-top: 1.35rem;
+  border-top: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  padding-top: 0.85rem;
+}
 
-.gate-price { margin-bottom: 0.9rem; }
+.gate-plans__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--tvm-text-muted);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.gate-plans__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.gate-plans__toggle:hover {
+  background: color-mix(in srgb, #fff 8%, transparent);
+  color: var(--tvm-text);
+}
+
+.gate-plans[open] .gate-plans__chevron {
+  transform: rotate(180deg);
+}
+
+.gate-plans__chevron {
+  transition: transform 180ms ease;
+}
+
+.gate-prices {
+  margin-top: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 44%, transparent);
+}
+
+.gate-prices h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tvm-text-faint);
+}
+
+.gate-price { margin-bottom: 0.85rem; }
 .gate-price__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
-.gate-price__name { font-weight: 600; }
-.gate-price__amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.gate-price__name { font-weight: 650; }
+.gate-price__amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 650; }
 .gate-price__amount span { font-size: 0.78rem; font-weight: 400; color: var(--tvm-text-faint); }
 
-/* Its own line beneath the monthly figure, so the head stays a clean two-column
-   row. The parent sets nowrap to protect the price itself; this line is prose
-   and is allowed to wrap on a narrow phone. */
 .gate-price__plus {
   display: block;
   margin-top: 0.15rem;
@@ -137,37 +337,30 @@
   white-space: normal;
   color: var(--tvm-text-muted);
 }
-.gate-price__summary { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--tvm-text-muted); }
+
+.gate-price__summary { margin: 0.15rem 0 0; font-size: 0.84rem; color: var(--tvm-text-muted); }
 
 .gate-price__terms { list-style: none; margin: 0.5rem 0 0; padding: 0; font-size: 0.82rem; }
 .gate-price__terms li { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.25rem 0; color: var(--tvm-text-muted); }
 
 .gate-prices__route {
-  margin: 1rem 0 0;
-  padding: 0.8rem 0.9rem;
+  margin: 0.9rem 0 0;
+  padding: 0.75rem 0.9rem;
   border-radius: 10px;
   background: color-mix(in srgb, var(--tvm-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tvm-accent) 35%, transparent);
-  font-size: 0.87rem;
+  border: 1px solid color-mix(in srgb, var(--tvm-accent) 32%, transparent);
+  font-size: 0.85rem;
   line-height: 1.5;
 }
 
 @media (max-width: 480px) {
-  .gate__panel { border-radius: 12px; }
+  .gate__panel { border-radius: 20px; }
   .gate__actions .tvm-button { flex: 1 1 100%; min-height: 44px; }
+  .tvm-button.gate-tab { font-size: 0.74rem; padding-inline: 0.35rem; }
 }
 
-/*
- * The sign-in fields sit in a real <form> so Enter and the phone keyboard's Go
- * key submit it. The form adds no box of its own.
- */
 .gate__form { display: contents; }
 
-/*
- * Implicit submission needs a submit button inside the form. It must stay
- * rendered - WebKit ignores a display:none default button - so it is moved
- * off-screen instead, and kept out of focus and the accessibility tree.
- */
 .gate__implicit-submit {
   position: absolute;
   width: 1px;

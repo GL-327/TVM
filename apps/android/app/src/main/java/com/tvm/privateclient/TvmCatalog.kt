@@ -145,10 +145,18 @@ class TvmCatalog(
         }
         val encoded = queryEncode(name)
         val items = fetchCatalog("/catalog/$kind/top/genre=$encoded.json", kind)
-        synchronized(lock) {
-            genreMem[key] = System.currentTimeMillis() to items
+        if (items.isNotEmpty()) {
+            synchronized(lock) {
+                genreMem[key] = System.currentTimeMillis() to items
+            }
+            return items
         }
-        return items
+        return fallback.filter { item ->
+            item.kind == kind && item.genres.any {
+                it.equals(name, ignoreCase = true) ||
+                    (name.equals("Sci-Fi", ignoreCase = true) && it.equals("Science Fiction", ignoreCase = true))
+            }
+        }
     }
 
     suspend fun meta(id: String): TitleMeta? {

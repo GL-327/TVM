@@ -203,6 +203,24 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
     return () => window.removeEventListener('tvm:secret-door', door);
   }, [navigate, state]);
   useEffect(() => {
+    if (root === 'donate') return undefined;
+    const onShortcut = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (isTextEntryTarget(event.target) || isEditable(event.target)) return;
+      if (document.querySelector('.rd-onboarding') !== null) return;
+      const isSlash = event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey;
+      const isPalette = event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey;
+      if (!isSlash && !isPalette) return;
+      if (activeEntry(state).name === 'search') return;
+      event.preventDefault();
+      navigate.pushModal('search', {
+        params: { from: visibleScreen(state).name === 'home' ? 'home' : 'app' },
+      });
+    };
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  }, [navigate, root, state]);
+  useEffect(() => {
     let startX = 0;
     let startY = 0;
     let tracking = false;

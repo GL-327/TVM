@@ -882,8 +882,8 @@ function lcMetaToItem(meta as Object, fallbackKind = "movie" as String) as Objec
   return item
 end function
 
-function lcFetchCinemetaCatalog(path as String, kind as String, limit = 20 as Integer) as Object
-  res = lcHttp("https://v3-cinemeta.strem.io" + path, "GET", "", {}, 8000)
+function lcFetchCinemetaCatalog(path as String, kind as String, limit = 20 as Integer, timeoutMs = 8000 as Integer) as Object
+  res = lcHttp("https://v3-cinemeta.strem.io" + path, "GET", "", {}, timeoutMs)
   out = []
   if not res.ok or res.json = invalid then return out
   metas = lcAaGet(res.json, "metas", [])
@@ -909,6 +909,53 @@ function lcDedupeItems(items as Object) as Object
     end if
   end for
   return out
+end function
+
+function lcTakeUnused(items as Object, used as Object, limit as Integer) as Object
+  out = []
+  for each item in items
+    id = lcAaText(item, "id", "")
+    if id <> "" and not used.DoesExist(id)
+      used[id] = true
+      out.Push(item)
+      if out.Count() >= limit then exit for
+    end if
+  end for
+  return out
+end function
+
+function lcFilterFallbackGenre(fb as Object, genre as String) as Object
+  out = []
+  needle = LCase(genre)
+  for each item in fb
+    genres = lcAaGet(item, "genres", [])
+    if Type(genres) = "roArray"
+      matched = false
+      for each g in genres
+        gl = LCase(g)
+        if gl = needle or (needle = "sci-fi" and gl = "science fiction")
+          matched = true
+          exit for
+        end if
+      end for
+      if matched then out.Push(item)
+    end if
+  end for
+  return out
+end function
+
+function lcGenreSpecs() as Object
+  return [
+    { id: "action", title: "Action", genre: "Action" }
+    { id: "scifi", title: "Sci-Fi", genre: "Sci-Fi" }
+    { id: "comedy", title: "Comedy", genre: "Comedy" }
+    { id: "thriller", title: "Thriller", genre: "Thriller" }
+    { id: "drama", title: "Drama", genre: "Drama" }
+    { id: "crime", title: "Crime", genre: "Crime" }
+    { id: "horror", title: "Horror", genre: "Horror" }
+    { id: "animation", title: "Animation", genre: "Animation" }
+    { id: "documentary", title: "Documentary", genre: "Documentary" }
+  ]
 end function
 
 function lcAttachProgress(items as Object, pm as Object) as Object
@@ -939,9 +986,10 @@ function lcCatalogBundle() as Object
   seriesTop = lcFetchCinemetaCatalog("/catalog/series/top.json", "series", 20)
   moviesRated = lcFetchCinemetaCatalog("/catalog/movie/imdbRating.json", "movie", 20)
   seriesRated = lcFetchCinemetaCatalog("/catalog/series/imdbRating.json", "series", 20)
+  recentTv = lcFetchCinemetaCatalog("/catalog/series/last-videos.json", "series", 20)
+  fb = lcFallbackItems()
 
   if moviesTop.Count() = 0 and seriesTop.Count() = 0
-    fb = lcFallbackItems()
     fbMovies = []
     fbSeries = []
     for each item in fb
@@ -951,12 +999,21 @@ function lcCatalogBundle() as Object
         fbMovies.Push(item)
       end if
     end for
+    usedFb = {}
+    rails = []
+    if fb.Count() > 0 then rails.Push({ id: "for-you", title: "Recommended", items: lcTakeUnused(fb, usedFb, 16) })
+    if fbMovies.Count() > 0 then rails.Push({ id: "films", title: "Popular Movies", items: fbMovies })
+    if fbSeries.Count() > 0 then rails.Push({ id: "series", title: "Popular Series", items: fbSeries })
+    if fbMovies.Count() > 0 then rails.Push({ id: "top-films", title: "Top Rated Movies", items: fbMovies })
+    if fbSeries.Count() > 0 then rails.Push({ id: "top-series", title: "Top Rated Series", items: fbSeries })
+    if fbSeries.Count() > 0 then rails.Push({ id: "recent-tv", title: "Recently Updated", items: fbSeries })
+    for each spec in lcGenreSpecs()
+      gItems = lcFilterFallbackGenre(fb, spec.genre)
+      if gItems.Count() > 0 then rails.Push({ id: spec.id, title: spec.title, items: gItems })
+    end for
     bundle = {
       trending: fbMovies
-      rails: [
-        { id: "films", title: "Popular Movies", items: fbMovies }
-        { id: "series", title: "Popular Series", items: fbSeries }
-      ]
+      rails: rails
       all: fb
     }
     if fb.Count() > 0 then bundle.featured = fb[0]
@@ -970,19 +1027,41 @@ function lcCatalogBundle() as Object
       if trending.Count() >= 6 then exit for
     end if
   end for
-  all = lcDedupeItems([])
-  for each src in [moviesTop, seriesTop, moviesRated, seriesRated]
+  all = []
+  for each src in [moviesTop, seriesTop, moviesRated, seriesRated, recentTv]
     for each item in src
       all.Push(item)
     end for
   end for
   all = lcDedupeItems(all)
 
+  used = {}
   rails = []
-  if moviesTop.Count() > 0 then rails.Push({ id: "films", title: "Popular Movies", items: moviesTop })
-  if seriesTop.Count() > 0 then rails.Push({ id: "series", title: "Popular Series", items: seriesTop })
-  if moviesRated.Count() > 0 then rails.Push({ id: "rated-movies", title: "Top Rated Movies", items: moviesRated })
-  if seriesRated.Count() > 0 then rails.Push({ id: "rated-series", title: "Top Rated Series", items: seriesRated })
+  forYou = lcTakeUnused(all, used, 16)
+  if forYou.Count() > 0 then rails.Push({ id: "for-you", title: "Recommended", items: forYou })
+  films = lcTakeUnused(moviesTop, used, 16)
+  if films.Count() > 0 then rails.Push({ id: "films", title: "Popular Movies", items: films })
+  series = lcTakeUnused(seriesTop, used, 16)
+  if series.Count() > 0 then rails.Push({ id: "series", title: "Popular Series", items: series })
+  topFilms = lcTakeUnused(moviesRated, used, 16)
+  if topFilms.Count() > 0 then rails.Push({ id: "top-films", title: "Top Rated Movies", items: topFilms })
+  topSeries = lcTakeUnused(seriesRated, used, 16)
+  if topSeries.Count() > 0 then rails.Push({ id: "top-series", title: "Top Rated Series", items: topSeries })
+  recent = lcTakeUnused(recentTv, used, 16)
+  if recent.Count() > 0 then rails.Push({ id: "recent-tv", title: "Recently Updated", items: recent })
+
+  for each spec in lcGenreSpecs()
+    gItems = lcFetchCinemetaCatalog("/catalog/movie/top/genre=" + lcUrlEncode(spec.genre) + ".json", "movie", 16, 4000)
+    if gItems.Count() = 0 then gItems = lcFilterFallbackGenre(fb, spec.genre)
+    picked = lcTakeUnused(gItems, used, 16)
+    if picked.Count() > 0
+      rails.Push({ id: spec.id, title: spec.title, items: picked })
+      for each item in picked
+        all.Push(item)
+      end for
+    end if
+  end for
+  all = lcDedupeItems(all)
 
   bundle = {
     trending: trending
@@ -1162,15 +1241,22 @@ end function
 
 ' ---- Real-Debrid ----
 
-function lcRdToken(ctx as Object) as String
+function lcRdTokenInfo(ctx as Object) as Object
   acc = lcResolveAccount(ctx)
   if acc <> invalid
     accTok = lcAaText(acc, "rdToken", "")
-    if accTok <> "" then return accTok
+    if accTok <> "" then return { token: accTok, source: "account" }
   end if
   sec = lcReg()
-  if sec.Exists("localRdToken") then return sec.Read("localRdToken").Trim()
-  return ""
+  if sec.Exists("localRdToken")
+    localTok = sec.Read("localRdToken").Trim()
+    if localTok <> "" then return { token: localTok, source: "device" }
+  end if
+  return { token: "", source: "none" }
+end function
+
+function lcRdToken(ctx as Object) as String
+  return lcRdTokenInfo(ctx).token
 end function
 
 function lcRdRequest(token as String, path as String, method = "GET" as String, form = "" as String) as Object
@@ -1183,32 +1269,27 @@ function lcRdRequest(token as String, path as String, method = "GET" as String, 
 end function
 
 function lcGetRdStatus(ctx as Object) as Object
-  tok = lcRdToken(ctx)
-  if tok = "" then return { configured: false, premium: false, username: "" }
+  info = lcRdTokenInfo(ctx)
+  tok = info.token
+  src = info.source
+  if tok = "" then return { configured: false, premium: false, username: "", source: "none" }
   res = lcRdRequest(tok, "/user", "GET")
   if res.status = 401 or res.status = 403
-    return { configured: true, premium: false, error: "needs-auth" }
+    return { configured: true, premium: false, error: "needs-auth", source: src }
   end if
   if not res.ok or res.json = invalid
-    return { configured: true, premium: false, error: "unreachable" }
+    return { configured: true, premium: false, error: "unreachable", source: src }
   end if
   return {
     configured: true
     username: lcAaText(res.json, "username", "")
     premium: (lcAaInt(res.json, "premium", 0) > 0)
+    source: src
   }
 end function
 
 function lcSetRdToken(ctx as Object) as Object
   tok = lcAaText(ctx.body, "token", "").Trim()
-  sec = lcReg()
-  if tok = ""
-    sec.Delete("localRdToken")
-  else
-    sec.Write("localRdToken", tok)
-  end if
-  sec.Flush()
-
   acc = lcResolveAccount(ctx)
   if acc <> invalid and lcAaText(acc, "role", "") <> "dev"
     store = lcLoadAccountStore()
@@ -1219,6 +1300,14 @@ function lcSetRdToken(ctx as Object) as Object
         exit for
       end if
     end for
+  else
+    sec = lcReg()
+    if tok = ""
+      sec.Delete("localRdToken")
+    else
+      sec.Write("localRdToken", tok)
+    end if
+    sec.Flush()
   end if
   return { status: 200, json: lcGetRdStatus(ctx) }
 end function

@@ -605,8 +605,8 @@ sub moveFocus(intent as String)
     row = m.rails[m.railRow]
     count = 0
     if row <> invalid then count = row.items.Count()
-    if intent = "left" and m.railCol > 0 then m.railCol = m.railCol - 1
-    if intent = "right" and m.railCol < count - 1 then m.railCol = m.railCol + 1
+    if intent = "left" and count > 0 then m.railCol = (m.railCol - 1 + count) mod count
+    if intent = "right" and count > 0 then m.railCol = (m.railCol + 1) mod count
     if intent = "up"
       if m.railRow > 0
         m.railRow = m.railRow - 1

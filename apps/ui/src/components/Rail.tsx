@@ -22,10 +22,9 @@ interface RailProps {
   /**
    * Repeat the row endlessly.
    *
-   * Off by default, and deliberately so. A conveyor made "Continue watching"
-   * read as an endless wall rather than the short, finite list of things you
-   * actually have part-watched, and it cost three copies of every poster in
-   * the DOM — on Home that was 720 images where 240 were needed.
+   * On by default so category carousels scroll in a continuous, infinite loop
+   * by keyboard/remote arrows, mouse wheel, trackpad, and drag. Finite personal
+   * shelves like Continue Watching can pass `loop={false}`.
    */
   loop?: boolean;
 }
@@ -180,7 +179,7 @@ function LoopingTrack({ children, loop }: { children: ReactNode; loop: boolean }
   );
 }
 
-export function Rail({ title, children, action, id, bare = false, loop = false }: RailProps): React.JSX.Element {
+export function Rail({ title, children, action, id, bare = false, loop = true }: RailProps): React.JSX.Element {
   const railRef = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {

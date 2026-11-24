@@ -83,12 +83,45 @@ function resolveRailFocus(rails as Object, railId as String, itemId as String, f
   return { row: row, col: col, found: false }
 end function
 
+' Wraps an arbitrary virtual slot index into [0, count - 1].
+function railWrapIndex(index as Integer, count as Integer) as Integer
+  if count <= 0 then return 0
+  wrapped = index mod count
+  if wrapped < 0 then wrapped = wrapped + count
+  return wrapped
+end function
+
+' Resolves the virtual slot for an item index `col` when stepping around a
+' looping rail (when count > visible). Preserves continuous left/right wraps.
+function railLoopSlot(col as Integer, prevCol as Integer, prevSlot as Integer, prevFirst as Integer, count as Integer, visible as Integer, wasFocused as Boolean) as Integer
+  if count <= 0 then return 0
+  if count <= visible then return col
+  if wasFocused and prevCol >= 0
+    delta = col - prevCol
+    half = Int(count / 2)
+    if delta > half then delta = delta - count
+    if delta < -half then delta = delta + count
+    return prevSlot + delta
+  end if
+  s = prevFirst
+  while s < prevFirst + visible
+    if railWrapIndex(s, count) = col then return s
+    s = s + 1
+  end while
+  return col
+end function
+
 ' Smallest scroll that keeps `focus` inside the visible span of `visible` cards.
+' When count > visible and a virtual slot is focused, scrolls continuously without clamping.
 function railViewFirst(count as Integer, focus as Integer, prevFirst as Integer, visible as Integer) as Integer
+  if count <= visible
+    return 0
+  end if
   first = prevFirst
   if focus >= 0
     if focus < first then first = focus
     if focus > first + visible - 1 then first = focus - visible + 1
+    return first
   end if
   maxFirst = count - visible
   if maxFirst < 0 then maxFirst = 0
@@ -97,14 +130,21 @@ function railViewFirst(count as Integer, focus as Integer, prevFirst as Integer,
   return first
 end function
 
+' Continuous scroll for signed virtual slots (including negative slots when wrapping left).
+function railLoopViewFirst(count as Integer, slot as Integer, prevFirst as Integer, visible as Integer) as Integer
+  if count <= visible then return 0
+  first = prevFirst
+  if slot < first then first = slot
+  if slot > first + visible - 1 then first = slot - visible + 1
+  return first
+end function
+
 ' Live card span: the visible cards plus `buffer` each side.
+' When count > visible, extends cleanly past 0 and count - 1 for modular wraparound.
 function railWindow(count as Integer, viewFirst as Integer, visible as Integer, buffer as Integer) as Object
   if count <= 0 then return { first: 0, last: -1 }
-  first = viewFirst - buffer
-  if first < 0 then first = 0
-  last = viewFirst + visible - 1 + buffer
-  if last > count - 1 then last = count - 1
-  return { first: first, last: last }
+  if count <= visible then return { first: 0, last: count - 1 }
+  return { first: viewFirst - buffer, last: viewFirst + visible - 1 + buffer }
 end function
 
 ' Rows that keep live cards: the focused row, one above and two below.

@@ -45,6 +45,18 @@ inline GlassStyle NavHover(double amount, double opacity = 1.0, double sweep = -
     return style;
 }
 
+// A floating Liquid Glass sheet/modal/dropdown panel with subtle surface tint and crisp rim.
+inline GlassStyle SheetPanel(double opacity = 1.0, bool focused = false) {
+    GlassStyle style;
+    style.kind = GlassKind::Panel;
+    style.focused = focused;
+    style.focusAmount = focused ? 1.0 : 0.0;
+    style.opacity = opacity;
+    style.tint = tokens::kSurface;
+    style.reduceTransparency = tokens::reduceTransparency;
+    return style;
+}
+
 // The ink for a label on glass that may carry the light plate: white on clear glass, dark on the plate, eased by
 // `plate` from 0 to 1, as the pill's tab labels turn dark when selected or hovered.
 inline Color InkOnPlate(double plate, double opacity = 1.0) {

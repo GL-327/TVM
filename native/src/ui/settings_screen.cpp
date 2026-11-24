@@ -105,6 +105,7 @@ SettingsScreen::SettingsScreen(PreferenceStore& store, motion::MotionSettings mo
 }
 
 void SettingsScreen::BuildRows() {
+    rows_.clear();
     auto group = [this](std::string title) {
         rows_.push_back(Row{RowKind::Group, "", std::move(title), "", {}, 0.0, 0.0});
     };
@@ -157,6 +158,15 @@ void SettingsScreen::BuildRows() {
     push("restart", "Restart", "",
          Confirm("Restart TVM?", "The interface reloads. Nothing on disk is changed.", "Restart", "restart"));
 
+    if (diag_.active) {
+        group("Developer Diagnostics");
+        row(RowKind::Info, "dev-build", "Build info", diag_.buildVersion);
+        row(RowKind::Info, "dev-rd-source", "RD token source", diag_.rdTokenSource);
+        row(RowKind::Info, "dev-glass", "Glass mode");
+        push("dev-refresh-cache", "Quick cache refresh", "Reload catalog and artwork",
+             Command{false, "dev-refresh-cache", {}, true});
+    }
+
     RefreshDetails();
 
     // Focus starts on the first row that can take it.
@@ -166,6 +176,15 @@ void SettingsScreen::BuildRows() {
             break;
         }
     }
+}
+
+void SettingsScreen::SetDeveloperDiagnostics(DeveloperDiagnostics diag) {
+    if (diag_ == diag) return;
+    diag_ = std::move(diag);
+    const std::optional<std::string> prevFocus = FocusedKey();
+    BuildRows();
+    if (width_ > 0.0 && height_ > 0.0) Arrange();
+    if (prevFocus.has_value()) FocusItem(*prevFocus, clockMs_, false);
 }
 
 void SettingsScreen::RefreshDetails() {
@@ -196,6 +215,9 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
                                               : "Off \xC2\xB7 open the last profile";
     case RowKind::Push:
     case RowKind::Info:
+        if (row.key == "dev-glass") {
+            return store_.Glass() == GlassClarity::Frosted ? "Frosted" : "Clear";
+        }
         return row.detail;
     case RowKind::Group:
         break;
@@ -575,13 +597,18 @@ void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) co
         painter.Text(Box{right - width, box.y, width + 2.0, box.height}, value, style,
                      focused ? tokens::kText : tokens::kTextMuted);
         right -= width + metrics_.Rem(0.8);
+    } else if (row.kind == RowKind::Info && !row.detail.empty()) {
+        const TextStyle style{metrics_.Rem(0.95), true, 600};
+        const double width = std::min(painter.MeasureText(row.detail, style), box.width * 0.52);
+        painter.Text(Box{right - width, box.y, width + 2.0, box.height}, row.detail, style, tokens::kAccentStrong);
+        right -= width + metrics_.Rem(0.8);
     }
 
     // The name, with a short second line for the switches and choices that explain themselves.
     const double textX = box.x + metrics_.Rem(1.2);
     const double textWidth = std::max(0.0, right - textX);
     const TextStyle labelStyle{metrics_.Rem(1.0), true, focused ? 620 : 540};
-    if (words.empty() || row.kind == RowKind::Push) {
+    if (words.empty() || row.kind == RowKind::Push || row.kind == RowKind::Info) {
         painter.Text(Box{textX, box.y, textWidth, box.height}, row.label, labelStyle, labelColor);
         return;
     }

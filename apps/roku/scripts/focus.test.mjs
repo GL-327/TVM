@@ -94,11 +94,36 @@ export function resolveRailFocus(rails, railId, itemId, fallbackRow, fallbackCol
   return { row, col, found: false };
 }
 
+export function railWrapIndex(index, count) {
+  if (count <= 0) return 0;
+  let wrapped = index % count;
+  if (wrapped < 0) wrapped += count;
+  return wrapped;
+}
+
+export function railLoopSlot(col, prevCol, prevSlot, prevFirst, count, visible, wasFocused) {
+  if (count <= 0) return 0;
+  if (count <= visible) return col;
+  if (wasFocused && prevCol >= 0) {
+    let delta = col - prevCol;
+    const half = Math.trunc(count / 2);
+    if (delta > half) delta -= count;
+    if (delta < -half) delta += count;
+    return prevSlot + delta;
+  }
+  for (let s = prevFirst; s < prevFirst + visible; s++) {
+    if (railWrapIndex(s, count) === col) return s;
+  }
+  return col;
+}
+
 export function railViewFirst(count, focus, prevFirst, visible) {
+  if (count <= visible) return 0;
   let first = prevFirst;
   if (focus >= 0) {
     if (focus < first) first = focus;
     if (focus > first + visible - 1) first = focus - visible + 1;
+    return first;
   }
   let maxFirst = count - visible;
   if (maxFirst < 0) maxFirst = 0;
@@ -107,13 +132,18 @@ export function railViewFirst(count, focus, prevFirst, visible) {
   return first;
 }
 
+export function railLoopViewFirst(count, slot, prevFirst, visible) {
+  if (count <= visible) return 0;
+  let first = prevFirst;
+  if (slot < first) first = slot;
+  if (slot > first + visible - 1) first = slot - visible + 1;
+  return first;
+}
+
 export function railWindow(count, viewFirst, visible, buffer) {
   if (count <= 0) return { first: 0, last: -1 };
-  let first = viewFirst - buffer;
-  if (first < 0) first = 0;
-  let last = viewFirst + visible - 1 + buffer;
-  if (last > count - 1) last = count - 1;
-  return { first, last };
+  if (count <= visible) return { first: 0, last: count - 1 };
+  return { first: viewFirst - buffer, last: viewFirst + visible - 1 + buffer };
 }
 
 export function railRowLive(row, focusRow) {
@@ -312,4 +342,21 @@ test('node budget: max live nodes over focus rows 0..7 stays under 1500', () => 
   console.log(`node budget: max live nodes = ${max}`);
   console.log(`node budget: legacy estimate = ${legacy}`);
   assert.ok(max < 1500, `max live nodes ${max} is not under 1500`);
+});
+
+test('looping rail wraps forward past last item and backward past zero', () => {
+  const count = 16;
+  const visible = 11;
+  // Step right from index 15 (slot 15, viewFirst 5) to index 0 -> slot 16, viewFirst 6.
+  const nextSlot = railLoopSlot(0, 15, 15, 5, count, visible, true);
+  assert.equal(nextSlot, 16);
+  assert.equal(railLoopViewFirst(count, nextSlot, 5, visible), 6);
+  assert.equal(railWrapIndex(nextSlot, count), 0);
+
+  // Step left from index 0 (slot 0, viewFirst 0) to index 15 -> slot -1, viewFirst -1.
+  const prevSlot = railLoopSlot(15, 0, 0, 0, count, visible, true);
+  assert.equal(prevSlot, -1);
+  assert.equal(railLoopViewFirst(count, prevSlot, 0, visible), -1);
+  assert.equal(railWrapIndex(prevSlot, count), 15);
+  assert.deepEqual(railWindow(count, -1, visible, 2), { first: -3, last: 11 });
 });

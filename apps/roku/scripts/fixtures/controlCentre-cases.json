@@ -544,7 +544,7 @@
         },
         {
           "id": "inst_phone",
-          "name": "Arthur's iPhone",
+          "name": "Alex's iPhone",
           "platform": "ios",
           "state": "offline",
           "presence": "offline",
@@ -673,7 +673,7 @@
           },
           {
             "id": "inst_phone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "platform": "ios",
             "state": "offline",
             "presence": "offline",
@@ -767,7 +767,7 @@
           },
           {
             "id": "inst_phone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "platform": "ios",
             "state": "offline",
             "presence": "offline",
@@ -905,7 +905,7 @@
           },
           {
             "id": "inst_phone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "platform": "ios",
             "state": "offline",
             "presence": "offline",
@@ -974,7 +974,7 @@
         "header|devices-head|Continue on|||none|false|false|false",
         "row|dev:inst_bed|Bedroom TV||tv|chevron|true|false|false",
         "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
-        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_phone|Alex's iPhone|Offline|phone|none|false|false|false",
         "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
         "row|hub|Open TVM Hub||dots|chevron|true|false|false"
       ]
@@ -1037,7 +1037,7 @@
           },
           {
             "id": "inst_phone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "platform": "ios",
             "state": "offline",
             "presence": "offline",
@@ -1106,7 +1106,7 @@
         "header|devices-head|Continue on|||none|false|false|false",
         "row|dev:inst_bed|Bedroom TV|Sending...|tv|none|true|false|false",
         "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
-        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_phone|Alex's iPhone|Offline|phone|none|false|false|false",
         "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
         "row|hub|Open TVM Hub||dots|chevron|true|false|false"
       ]
@@ -1134,7 +1134,7 @@
           },
           {
             "id": "inst_phone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "platform": "ios",
             "state": "offline",
             "presence": "offline",
@@ -1203,7 +1203,7 @@
         "header|devices-head|Continue on|||none|false|false|false",
         "row|dev:inst_bed|Bedroom TV|Playing on Bedroom TV|tv|none|true|false|false",
         "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
-        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_phone|Alex's iPhone|Offline|phone|none|false|false|false",
         "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
         "row|hub|Open TVM Hub||dots|chevron|true|false|false"
       ]
@@ -1231,7 +1231,7 @@
           },
           {
             "id": "inst_phone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "platform": "ios",
             "state": "offline",
             "presence": "offline",
@@ -1300,7 +1300,7 @@
         "header|devices-head|Continue on|||none|false|false|false",
         "row|dev:inst_bed|Bedroom TV|The device is offline|tv|chevron|true|false|false",
         "row|dev:inst_web|Kitchen browser||web|chevron|true|false|false",
-        "row|dev:inst_phone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_phone|Alex's iPhone|Offline|phone|none|false|false|false",
         "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
         "row|hub|Open TVM Hub||dots|chevron|true|false|false"
       ]
@@ -1387,7 +1387,7 @@
           },
           {
             "id": "inst_iphone",
-            "name": "Arthur's iPhone",
+            "name": "Alex's iPhone",
             "room": null,
             "platform": "ios",
             "model": "iPhone",
@@ -1458,7 +1458,7 @@
           },
           {
             "id": "inst_tab",
-            "name": "Arthur's very long named Galaxy Tab in the study",
+            "name": "Alex's very long named Galaxy Tab in the study",
             "room": null,
             "platform": "android",
             "model": "Tab",
@@ -1507,10 +1507,10 @@
       "expected": [
         "header|devices-head|Continue on|Demo data||none|false|false|false",
         "row|dev:inst_bed|Bedroom TV|Demo|tv|chevron|true|false|false",
-        "row|dev:inst_iphone|Arthur's iPhone|Offline|phone|none|false|false|false",
+        "row|dev:inst_iphone|Alex's iPhone|Offline|phone|none|false|false|false",
         "row|dev:inst_pc|Windows PC|Can't play titles|laptop|none|false|false|false",
         "row|dev:inst_web|Kitchen browser|Can't play titles|web|none|false|false|false",
-        "row|dev:inst_tab|Arthur's very long named Galaxy Tab in the study|Offline|phone|none|false|false|false",
+        "row|dev:inst_tab|Alex's very long named Galaxy Tab in the study|Offline|phone|none|false|false|false",
         "row|dev:inst_att|Basement TV|Offline|tv|none|false|false|false",
         "row|hub|Open TVM Hub||dots|chevron|true|false|false"
       ]
@@ -2897,7 +2897,7 @@
         {
           "kind": "row",
           "id": "dev:inst_phone",
-          "label": "Arthur's iPhone",
+          "label": "Alex's iPhone",
           "detail": "Offline",
           "glyph": "phone",
           "trailing": "none",

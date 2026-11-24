@@ -44,16 +44,40 @@ sub paint()
   tint = tvmGlassTint()
   if m.top.tintColor <> "" then tint = m.top.tintColor
   if m.top.focused then tint = tvmGlassTintFocused()
-  if m.top.active then tint = "0xFFFFFFD9"
+  if m.top.active then tint = "0xFFFFFFE6"
   m.tint.blendColor = tint
   m.rim.uri = "pkg:/images/glass/" + m.shape + ".9.png"
-  m.rim.blendColor = "0xFFFFFFFF"
-  if m.top.focused then m.rim.uri = "pkg:/images/glass/" + m.shape + "-focus.9.png"
+  m.rim.blendColor = "0xF2F9FFFF"
+  if m.top.focused
+    m.rim.uri = "pkg:/images/glass/" + m.shape + "-focus.9.png"
+    m.rim.blendColor = "0xE6F4FFFF"
+  end if
   if m.top.selected then m.rim.blendColor = "0xC9E1FFFF"
   m.rim.opacity = tvmGlassRimOpacity()
-  m.glow.visible = m.top.focused
-  m.shadow.opacity = 0.8
+  if m.top.focused then m.rim.opacity = 1.0
+  m.glow.visible = (m.top.focused or m.top.active)
+  if m.top.focused
+    m.glow.opacity = 0.94
+    m.glow.blendColor = "0xCFE8FFFF"
+  else if m.top.active
+    m.glow.opacity = 0.42
+    m.glow.blendColor = "0xFFFFFFCC"
+  end if
+  m.shadow.opacity = 0.85
   if m.top.focused then m.shadow.opacity = 1.0
-  m.bodyGradient.visible = not tvmReduceTransparency()
-  m.sheen.visible = not tvmReduceTransparency()
+  reduced = tvmReduceTransparency()
+  m.bodyGradient.visible = not reduced
+  m.sheen.visible = not reduced
+  if not reduced
+    m.bodyGradient.blendColor = "0xEAF6FFFF"
+    m.bodyGradient.opacity = 0.85
+    m.sheen.blendColor = "0xFFFFFFF2"
+    m.sheen.opacity = 0.80
+    if m.top.focused
+      m.bodyGradient.opacity = 1.0
+      m.sheen.opacity = 1.0
+    else if m.top.active
+      m.sheen.opacity = 0.95
+    end if
+  end if
 end sub

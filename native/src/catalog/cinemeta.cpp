@@ -55,15 +55,19 @@ std::string ToJsString(const nlohmann::json& value) {
 
 const std::vector<GenreRail>& GenreRails() {
     static const std::vector<GenreRail> rails = {
-        {"horror", "Horror", "Horror"},
-        {"action", "Action", "Action"},
+        {"action", "Action & Adventure", "Action"},
+        {"scifi", "Sci-Fi & Fantasy", "Sci-Fi"},
         {"comedy", "Comedy", "Comedy"},
-        {"thriller", "Thriller", "Thriller"},
-        {"scifi", "Sci-Fi", "Sci-Fi"},
+        {"thriller", "Thrillers", "Thriller"},
+        {"drama", "Critically Acclaimed Drama", "Drama"},
+        {"crime", "Crime & Mystery", "Crime"},
+        {"horror", "Horror", "Horror"},
+        {"animation", "Animation & Family", "Animation"},
         {"romance", "Romance", "Romance"},
-        {"crime", "Crime", "Crime"},
         {"documentary", "Documentaries", "Documentary"},
         {"anime", "Anime", "Anime"},
+        {"history", "History & Biography", "History"},
+        {"mystery", "Mystery & Suspense", "Mystery"},
     };
     return rails;
 }

@@ -19,7 +19,7 @@ import { focusKeyFor } from './railNav';
 import { requestFocus } from './focusEngine';
 import { cancelPendingReveal, suppressNextReveal } from './revealFocused';
 import { animate, cancelScrollAnim, scrollTarget } from './scrollAnim';
-import { cancelLoopingTrack } from './loopingRail';
+import { cancelLoopingTrack, wrapPointerScroll } from './loopingRail';
 
 const DESKTOP_CLASS = 'desktop-shell';
 /** Ignore sub-pixel jitter and the synthetic move a scroll emits under a still mouse. */
@@ -351,6 +351,7 @@ export function startPointerInput(): () => void {
     hoverTarget = null;
     if (node === null || !node.isConnected || !mouseActive) return;
     if (node === document.activeElement) return;
+    if (node.closest('[data-loop-clone="true"]') !== null) return;
     const key = focusKeyFor(node);
     if (key === null) return;
     // Focus without panning: the content must not slide out from under the cursor.
@@ -390,6 +391,8 @@ export function startPointerInput(): () => void {
       if (touch.axis === 'x' && touch.rail !== null) {
         event.preventDefault();
         touch.rail.scrollLeft = railPanLeft(touch.startScroll, touch.x, event.clientX);
+        const jump = wrapPointerScroll(touch.rail);
+        if (jump !== 0) touch.startScroll += jump;
       }
       if (touch.axis === 'y' && touch.page !== null) {
         event.preventDefault();
@@ -483,7 +486,10 @@ export function startPointerInput(): () => void {
     touch = null;
     if (performance.now() - tap.lastAt < 80) {
       if (tap.axis === 'x' && tap.rail !== null && tap.velocityX !== 0) {
-        animate(tap.rail, 'x', momentumTarget(tap.rail.scrollLeft, tap.velocityX));
+        const panRail = tap.rail;
+        animate(panRail, 'x', momentumTarget(panRail.scrollLeft, tap.velocityX), () => {
+          wrapPointerScroll(panRail);
+        });
       } else if (tap.axis === 'y' && tap.page !== null && tap.velocityY !== 0) {
         animate(tap.page, 'y', momentumTarget(tap.page.scrollTop, tap.velocityY));
       }
@@ -516,9 +522,23 @@ export function startPointerInput(): () => void {
     const pan = (host: HTMLElement, axis: 'x' | 'y', delta: number): void => {
       if (event.deltaMode === 0 && Math.abs(delta) < 80) {
         cancelScrollAnim(host);
-        if (axis === 'x') host.scrollLeft += delta;
-        else host.scrollTop += delta;
+        if (axis === 'x') {
+          host.scrollLeft += delta;
+          wrapPointerScroll(host);
+        } else {
+          host.scrollTop += delta;
+        }
       } else {
+        if (axis === 'x' && host.dataset.looping === 'true') {
+          const prevTarget = scrollTarget(host, 'x');
+          const jump = wrapPointerScroll(host);
+          const current = host.scrollLeft;
+          const pending = prevTarget + jump;
+          animate(host, axis, wheelTarget(current, pending, delta), () => {
+            wrapPointerScroll(host);
+          });
+          return;
+        }
         const current = axis === 'x' ? host.scrollLeft : host.scrollTop;
         animate(host, axis, wheelTarget(current, scrollTarget(host, axis), delta));
       }

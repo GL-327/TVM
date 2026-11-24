@@ -135,7 +135,10 @@ private:
     void SaveRealDebridToken();
     void ClearRealDebridToken();
     void ChangeRealDebridToken(std::string token, bool clearing);
-    void FinishRealDebrid(const realdebrid::Status& status, const std::string& message);
+    void FinishRealDebrid(const coreapi::RealDebridStatus& status, const std::string& message);
+    void RefreshRdStatus();
+    void MaybePromptRealDebrid();
+    void UpdateSettingsDiagnostics();
 
     // Live TV login. Asking the panel happens on workers, as for Real-Debrid. The screen is
     // rebuilt from the answer each time, so no part of it is changed on a worker.
@@ -188,6 +191,8 @@ private:
     void OpenStreamTab(const std::string& lane);
     // Whether typing goes into a search field: the Search modal, or the Search lane with its field focused.
     bool SearchTyping() const;
+    // True whenever the user is currently typing into any text input (Search, InfoScreen field, Profile sheet).
+    bool IsEditingText() const;
 
     // Watchlist, Profiles and Updates, each filled in as it comes on top.
     void SyncPages();
@@ -208,7 +213,7 @@ private:
     void AccountAction(const std::string& verb);
     void RefreshAccount();
     void FinishAccount(const coreapi::AccountState& state, const std::string& message = "");
-    realdebrid::Status CoreRealDebrid() const;
+    coreapi::RealDebridStatus CoreRealDebrid() const;
     std::optional<admin::MailSettings> CoreMail() const;
     playback::Resolution CorePlayback(const std::string& id, const std::string& title, int maxHeight = 0) const;
     // The info page on top when it has a field to type into.
@@ -300,6 +305,12 @@ private:
     bool accountBusy_ = false;
     double accountCheckedMs_ = 0;
     std::string accountMessage_;
+    std::string accountAuthMode_ = "signin";
+    coreapi::RealDebridStatus rdStatus_;
+    bool rdStatusLoaded_ = false;
+    bool rdStatusChecking_ = false;
+    bool rdOnboardingDismissed_ = false;
+    bool rdOnboardingPrompted_ = false;
     Graphics graphics_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     std::unique_ptr<ui::FilePreferenceStore> store_;

@@ -1,4 +1,5 @@
 #include "platform/app.h"
+#include "platform/core_host.h"
 #include <shellapi.h>
 #include <timeapi.h>
 
@@ -103,8 +104,17 @@ std::optional<std::string> ClipboardText(HWND window, std::size_t longest = kLon
     return text;
 }
 
+realdebrid::Status ToCatalogRdStatus(const coreapi::RealDebridStatus& status) {
+    realdebrid::Status out;
+    out.configured = status.configured;
+    out.username = status.username;
+    out.premium = status.premium;
+    out.error = status.error;
+    return out;
+}
+
 // What the Real-Debrid screen says once a token is saved.
-std::string SavedMessage(const realdebrid::Status& status) {
+std::string SavedMessage(const coreapi::RealDebridStatus& status) {
     if (status.error == "needs-auth") return "Real-Debrid rejected that token.";
     if (status.username.has_value()) return "Signed in as " + *status.username + ".";
     if (status.error == "unreachable") return "Token saved on this machine. Real-Debrid could not be reached to check it.";
@@ -368,6 +378,19 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             updatesView_.autoUpdate = store_->CorePrefs().autoUpdate;
             updatesView_.message = updatesView_.autoUpdate ? "Automatic updates on." : "Automatic updates off.";
             ShowUpdates();
+        } else if (command.name == "dev-refresh-cache") {
+            titles_.clear();
+            hubs_.clear();
+            background_->Run([this] {
+                try { core_->Call("/api/maintenance/clear-cache", "POST"); }
+                catch (...) {}
+                background_->PostToUi([this] {
+                    LoadCatalog();
+                    if (account_.usable) RefreshRdStatus();
+                    RebuildHome();
+                    dirty_ = true;
+                });
+            });
         }
     });
 
@@ -528,6 +551,7 @@ int App::Run(int showCommand) {
             if (shell_->ActiveScreenName() == "chooser") shell_->Back(now);
             dirty_ = true;
         }
+        MaybePromptRealDebrid();
         intro_->Tick(now);
         streamIntro_->Tick(now);
         // Pictures still being read keep the frames coming, so each one appears as soon as it is ready.
@@ -726,6 +750,25 @@ bool App::HandleKey(WPARAM virtualKey, LPARAM flags) {
     if (HandlePlayerKey(virtualKey, flags)) return true;
     if (HandleSearchKey(virtualKey)) return true;
     if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->ShowChrome(now);
+
+    if (!IsEditingText() && !playerOpen_) {
+        if ((virtualKey == 'K' && KeyDown(VK_CONTROL)) ||
+            (virtualKey == VK_OEM_2 && !KeyDown(VK_CONTROL) && !KeyDown(VK_MENU) && !KeyDown(VK_SHIFT))) {
+            if (account_.usable) {
+                OpenStreamTab("search");
+                home_->FocusItem("search-field", now, false);
+                dirty_ = true;
+            }
+            return true;
+        }
+        if (virtualKey == VK_F5 || (virtualKey == 'R' && KeyDown(VK_CONTROL))) {
+            LoadCatalog();
+            RefreshAccount();
+            if (account_.usable) RefreshRdStatus();
+            dirty_ = true;
+            return true;
+        }
+    }
 
     const nav::KeyInput key{static_cast<unsigned>(virtualKey), KeyDown(VK_CONTROL), KeyDown(VK_MENU),
                             KeyDown(VK_LWIN) || KeyDown(VK_RWIN)};
@@ -1292,7 +1335,7 @@ void App::RefreshRealDebrid() {
     dirty_ = true;
 
     background_->Run([this] {
-        const realdebrid::Status status = CoreRealDebrid();
+        const coreapi::RealDebridStatus status = CoreRealDebrid();
         background_->PostToUi([this, status] { FinishRealDebrid(status, ""); });
     });
 }
@@ -1334,14 +1377,18 @@ void App::ChangeRealDebridToken(std::string token, bool clearing) {
         } catch (const std::exception&) {
             stored = false;
         }
-        const realdebrid::Status status = CoreRealDebrid();
+        const coreapi::RealDebridStatus status = CoreRealDebrid();
         std::string message = kNotStoredMessage;
         if (stored) message = clearing ? kClearedMessage : SavedMessage(status);
         background_->PostToUi([this, status, message] { FinishRealDebrid(status, message); });
     });
 }
 
-void App::FinishRealDebrid(const realdebrid::Status& status, const std::string& message) {
+void App::FinishRealDebrid(const coreapi::RealDebridStatus& status, const std::string& message) {
+    rdStatus_ = status;
+    rdStatusLoaded_ = true;
+    streamStatus_ = ToCatalogRdStatus(status);
+    streamStatusLoaded_ = true;
     realDebridView_.loaded = true;
     realDebridView_.configured = status.configured;
     realDebridView_.username = status.username;
@@ -1350,7 +1397,63 @@ void App::FinishRealDebrid(const realdebrid::Status& status, const std::string& 
     realDebridView_.busy = false;
     realDebridView_.message = message;
     shell_->SetRealDebridView(realDebridView_);
+    UpdateSettingsDiagnostics();
     dirty_ = true;
+}
+
+void App::RefreshRdStatus() {
+    if (rdStatusChecking_ || !account_.usable) return;
+    rdStatusChecking_ = true;
+    background_->Run([this] {
+        coreapi::RealDebridStatus status;
+        bool ok = false;
+        try {
+            EnsureCore(*core_);
+            status = coreapi::ParseRealDebridStatus(core_->Call("/api/rd/status"));
+            ok = true;
+        } catch (...) {}
+        background_->PostToUi([this, status, ok] {
+            rdStatusChecking_ = false;
+            if (ok) {
+                rdStatus_ = status;
+                rdStatusLoaded_ = true;
+                streamStatus_ = ToCatalogRdStatus(status);
+                streamStatusLoaded_ = true;
+                UpdateSettingsDiagnostics();
+                MaybePromptRealDebrid();
+            }
+            dirty_ = true;
+        });
+    });
+}
+
+void App::MaybePromptRealDebrid() {
+    if (!account_.usable || !rdStatusLoaded_) return;
+    if (!coreapi::ShouldPromptForRealDebrid(account_, rdStatus_, rdOnboardingDismissed_ || rdOnboardingPrompted_)) return;
+    if (shell_->ActiveScreenName() != "home") return;
+    if (intro_->Covers()) return;
+    rdOnboardingPrompted_ = true;
+    ui::Command setup;
+    setup.name = "setup";
+    shell_->Execute(setup, NowMs());
+    dirty_ = true;
+}
+
+void App::UpdateSettingsDiagnostics() {
+    ui::DeveloperDiagnostics diag;
+    diag.active = account_.usable && account_.developer;
+    if (diag.active) {
+        diag.buildVersion = std::string("v") + config::kCoreVersion + " \xC2\xB7 Native Windows";
+        if (rdStatusLoaded_) {
+            diag.rdTokenSource = rdStatus_.source.empty()
+                                     ? (rdStatus_.configured ? "device" : "Not configured")
+                                     : rdStatus_.source;
+        } else {
+            diag.rdTokenSource = account_.rdKey ? "account" : "Checking\xE2\x80\xA6";
+        }
+        diag.glassMode = store_->Glass() == ui::GlassClarity::Frosted ? "Frosted" : "Clear";
+    }
+    shell_->SetDeveloperDiagnostics(diag);
 }
 
 void App::SyncXtream() {
@@ -1735,10 +1838,13 @@ void App::SyncStream() {
 
 void App::RefreshStreamStatus() {
     background_->Run([this] {
-        const realdebrid::Status status = CoreRealDebrid();
+        const coreapi::RealDebridStatus status = CoreRealDebrid();
         background_->PostToUi([this, status] {
-            streamStatus_ = status;
+            rdStatus_ = status;
+            rdStatusLoaded_ = true;
+            streamStatus_ = ToCatalogRdStatus(status);
             streamStatusLoaded_ = true;
+            UpdateSettingsDiagnostics();
             RebuildStream();
         });
     });
@@ -1832,6 +1938,23 @@ bool App::SearchTyping() const {
            home_->FocusedKey() == std::optional<std::string>("search-field");
 }
 
+bool App::IsEditingText() const {
+    if (SearchTyping()) return true;
+    if (const auto* page = dynamic_cast<const ui::InfoScreen*>(&shell_->ActiveScreen());
+        page != nullptr && page->HasField()) {
+        return true;
+    }
+    if (const auto* chooser = dynamic_cast<const ui::ProfileChooser*>(&shell_->ActiveScreen());
+        chooser != nullptr && chooser->SheetOpen()) {
+        return true;
+    }
+    if (const auto* profiles = dynamic_cast<const ui::ProfilesScreen*>(&shell_->ActiveScreen());
+        profiles != nullptr && profiles->Creating()) {
+        return true;
+    }
+    return false;
+}
+
 void App::RebuildStream() {
     if (ui::Scene* scene = shell_->StreamScene()) BuildBrowse(*scene, false);
 }
@@ -1872,15 +1995,18 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         door.title = "Welcome to TVM";
         door.backdropUrl = "asset:lighthouse.jpg";
         door.body = accountMessage_.empty()
-                        ? (accountBusy_ ? "Starting your account service..." : "Sign in or create an account to continue.")
+                        ? (accountBusy_ ? "Connecting to your TVM account service\xE2\x80\xA6"
+                                        : "Sign in to unlock your personal library, 4K streams, and continue watching across devices.")
                         : accountMessage_;
-        door.playLabel = "Your account";
+        door.playLabel = "Sign In";
         door.playCommand = open("account", false);
-        door.infoLabel = "Access & pricing";
+        door.infoLabel = "Plans & Access";
         door.infoCommand = open("plans", false);
-        scene.SetView(view, NowMs());
-        scene.SetHeroes({door}, NowMs());
+        const double now = NowMs();
+        scene.SetView(view, now);
+        scene.SetHeroes({door}, now);
         scene.SetRails({});
+        if (!scene.FocusedKey().has_value()) scene.FocusItem("hero-play", now, false);
         return;
     }
     // Live TV, Library and Search are pages under the same chrome, on the same scene.
@@ -2012,6 +2138,10 @@ void App::SyncPages() {
         updatesView_.autoUpdate = store_->CorePrefs().autoUpdate;
         updatesView_.message.clear();
         ShowUpdates();
+    }
+    if (name == "settings") {
+        UpdateSettingsDiagnostics();
+        if (account_.usable && !rdStatusLoaded_ && !rdStatusChecking_) RefreshRdStatus();
     }
 }
 

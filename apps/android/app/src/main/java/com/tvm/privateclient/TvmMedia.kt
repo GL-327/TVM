@@ -972,6 +972,8 @@ class TvmMedia(
         take(bundle.catalog, "for-you", "You might like")
         take(bundle.moviesTop, "films", "Popular films")
         take(bundle.seriesTop, "series", "Popular series")
+        take(bundle.moviesRated, "top-films", "Top rated films")
+        take(bundle.seriesRated, "top-series", "Top rated series")
         take(bundle.newFilms, "new-films", "New films")
         take(bundle.recentTv, "new-series", "Recently updated")
         val first: MediaItem? = watching.firstOrNull()
@@ -983,13 +985,37 @@ class TvmMedia(
                 rails.add(CatalogRail("because", "Because you watched ${first.title}", because))
             }
         }
-        val genres: List<Pair<String, String>> = listOf(
-            "horror" to "Horror", "action" to "Action", "comedy" to "Comedy",
-            "thriller" to "Thriller", "scifi" to "Sci-Fi", "romance" to "Romance",
+        val genres: List<Triple<String, String, List<String>>> = listOf(
+            Triple("action", "Action & Adventure", listOf("Action", "Adventure")),
+            Triple("scifi", "Sci-Fi & Fantasy", listOf("Sci-Fi", "Fantasy")),
+            Triple("comedy", "Comedy", listOf("Comedy")),
+            Triple("thriller", "Thrillers", listOf("Thriller")),
+            Triple("drama", "Critically Acclaimed Drama", listOf("Drama")),
+            Triple("crime", "Crime & Mystery", listOf("Crime", "Mystery")),
+            Triple("horror", "Horror", listOf("Horror")),
+            Triple("animation", "Animation & Family", listOf("Animation", "Family")),
+            Triple("romance", "Romance", listOf("Romance")),
+            Triple("documentary", "Documentaries", listOf("Documentary")),
+            Triple("anime", "Anime", listOf("Anime")),
+            Triple("history", "History & Biography", listOf("History", "Biography")),
+            Triple("mystery", "Mystery & Suspense", listOf("Mystery")),
         )
-        for ((id, name) in genres) {
-            val movies: List<MediaItem> = catalog.genre("movie", name)
-            val shows: List<MediaItem> = catalog.genre("series", name)
+        for ((id, title, names) in genres) {
+            val seenMovies: MutableSet<String> = mutableSetOf()
+            val movies: MutableList<MediaItem> = mutableListOf()
+            for (g in names) {
+                for (item in catalog.genre("movie", g)) {
+                    if (seenMovies.add(item.id)) movies.add(item)
+                }
+            }
+            val seriesNames: List<String> = if (id == "anime") listOf("Animation") else names
+            val seenShows: MutableSet<String> = mutableSetOf()
+            val shows: MutableList<MediaItem> = mutableListOf()
+            for (g in seriesNames) {
+                for (item in catalog.genre("series", g)) {
+                    if (seenShows.add(item.id)) shows.add(item)
+                }
+            }
             val mixed: MutableList<MediaItem> = mutableListOf()
             var i = 0
             while (mixed.size < 16 && i < maxOf(movies.size, shows.size)) {
@@ -1004,7 +1030,7 @@ class TvmMedia(
                 }
                 i += 1
             }
-            if (mixed.isNotEmpty()) rails.add(CatalogRail(id, name, mixed))
+            if (mixed.isNotEmpty()) rails.add(CatalogRail(id, title, mixed))
         }
         if (rails.isEmpty()) {
             take(catalog.fallbackItems(), "films", "Popular films")

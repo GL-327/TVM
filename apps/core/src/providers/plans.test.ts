@@ -143,7 +143,7 @@ describe('plans', () => {
     expect(() =>
       plans.checkout({
         planId: 'premium',
-        name: 'Arthur',
+        name: 'Alex',
         number: '1111111111111111',
         expiry: '12/99',
         cvc: '123',

@@ -48,14 +48,8 @@ apps/roku/config.json
 apps/roku/*.zip
 Desktop/*.zip
 
-# Local sideload binaries in Device Variations/ — keep the folder on disk, do not commit EXE/APK/IPA/zip
-/Device Variations/*.exe
-/Device Variations/*.apk
-/Device Variations/*.ipa
-/Device Variations/*.zip
-/Device Variations/*.tar.gz
-/Device Variations/*.sha256
-/Device Variations/BUILD.txt
+# Local downloaded device packages
+/dist/
 
 # Editor and OS
 .DS_Store

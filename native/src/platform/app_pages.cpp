@@ -220,7 +220,10 @@ void App::OpenInfoPage(const nav::ViewEntry& entry) {
         fieldValues_["mail-settings.from"] = mailDraft_.from;
     }
     if (pageName_ == "developer" || pageName_ == "setup") fieldMode_ = "code";
-    if (pageName_ == "account") fieldMode_ = account_.signedIn ? "emailcode" : "email";
+    if (pageName_ == "account") {
+        fieldMode_ = account_.signedIn ? "emailcode" : "email";
+        if (!account_.signedIn) accountAuthMode_ = "signin";
+    }
     // The check opens the channels Live TV lists, so they are read when Live TV has not read them yet.
     if (pageName_ == "live-check" && !liveLoaded_) RefreshLiveTv();
     ShowInfoPage();
@@ -277,6 +280,11 @@ void App::ApplyInfoAction(const ui::Command& command) {
     if (verb.rfind("field-", 0) == 0) {
         // Moves the field to another of the page's inputs, with that input's text.
         fieldMode_ = verb.substr(6);
+        if (pageName_ == "account") {
+            if (fieldMode_ == "name") accountAuthMode_ = "register";
+            else if (fieldMode_ == "devcode") accountAuthMode_ = "dev";
+            else if (accountAuthMode_ == "dev") accountAuthMode_ = "signin";
+        }
         ShowInfoPage();
         if (ui::InfoScreen* screen = TypingPage()) screen->SetFieldText(value(fieldMode_));
         return;
@@ -401,10 +409,37 @@ void App::ApplyInfoAction(const ui::Command& command) {
         }
     }
     // ---- Setup
-    else if (verb == "setup-save") {
+    else if (verb == "setup-skip") {
+        rdOnboardingDismissed_ = true;
+        shell_->PopToRoot(NowMs());
+        RebuildHome();
+        return;
+    } else if (verb == "setup-paste") {
+        std::string clip;
+        if (OpenClipboard(window_)) {
+            if (HANDLE handle = GetClipboardData(CF_UNICODETEXT)) {
+                if (const auto* wide = static_cast<const wchar_t*>(GlobalLock(handle))) {
+                    const std::wstring w(wide);
+                    GlobalUnlock(handle);
+                    if (w.size() <= 4096) clip = util::Trim(util::ToUtf8(w));
+                }
+            }
+            CloseClipboard();
+        }
+        if (clip.empty()) {
+            say("Clipboard is empty. Copy your API key from real-debrid.com/apitoken.", true);
+        } else {
+            fieldValues_["setup.code"] = clip;
+            pageMessage_.clear();
+            pageMessageBad_ = false;
+            ShowInfoPage();
+            if (ui::InfoScreen* screen = TypingPage()) screen->SetFieldText(clip);
+            return;
+        }
+    } else if (verb == "setup-save") {
         const std::string token = util::Trim(value("code"));
         if (token.empty() || token.find_first_of("\r\n") != std::string::npos) {
-            say("Paste a token, then press OK.");
+            say("Paste or type your Real-Debrid API key, then choose Connect Real-Debrid.", true);
         } else if (!pageBusy_) {
             pageBusy_ = true;
             pageMessage_.clear();
@@ -415,7 +450,7 @@ void App::ApplyInfoAction(const ui::Command& command) {
                 } catch (const std::exception&) {
                     stored = false;
                 }
-                const realdebrid::Status status = CoreRealDebrid();
+                const coreapi::RealDebridStatus status = CoreRealDebrid();
                 background_->PostToUi([this, status, stored] {
                     pageBusy_ = false;
                     fieldValues_.erase("setup.code");
@@ -425,9 +460,10 @@ void App::ApplyInfoAction(const ui::Command& command) {
                     } else if (status.error == "needs-auth") {
                         pageMessage_ = "Real-Debrid rejected that token.";
                     } else {
-                        // Setup hands over to TVM Stream, as navigate.reset('library') does.
+                        rdOnboardingDismissed_ = true;
                         FinishRealDebrid(status, "Token saved on this machine.");
                         shell_->PopToRoot(NowMs());
+                        RebuildHome();
                         RebuildStream();
                         return;
                     }
@@ -1112,19 +1148,20 @@ ui::InfoView App::SystemInfoView() const {
 
 ui::InfoView App::SetupView() const {
     ui::InfoView view;
-    view.kicker = "TVM";
-    view.heading = "Enter your Real-Debrid token";
-    view.lede = "Paste the API token from real-debrid.com/apitoken, then press OK. This unlocks TVM Stream only. Home and the other apps "
-                "stay available. The token is encrypted on this machine and sent to Real-Debrid and the Torrentio resolver when you "
-                "request catalogue playback. Only connect sources you are authorised to use.";
+    view.centeredCard = true;
+    view.backdropUrl = "asset:lighthouse.jpg";
+    view.kicker = "Real-Debrid";
+    view.heading = "Connect Real-Debrid";
+    view.lede = "Paste your API key from real-debrid.com/apitoken to stream 4K & HD titles. Saved securely on this device.";
     view.message = pageMessage_;
     view.messageBad = pageMessageBad_;
     view.field = true;
-    view.fieldLabel = "Real-Debrid API token";
-    view.fieldPlaceholder = "Paste token, then press OK";
+    view.fieldLabel = "Real-Debrid API key";
+    view.fieldPlaceholder = "Paste or type your API key";
     view.fieldSecret = true;
-    view.actions = {{Button("info:setup-save", pageBusy_ ? "Connecting\xE2\x80\xA6" : "Continue", true),
-                     Button("open:legal", "Privacy & terms"), Button("stream-home", "Set up later")}};
+    view.actions = {{Button("info:setup-save", pageBusy_ ? "Connecting\xE2\x80\xA6" : "Connect Real-Debrid", true),
+                     Button("info:setup-paste", "Paste from clipboard")},
+                    {Button("info:setup-skip", "Skip for now"), Button("open:legal", "Privacy & terms")}};
     return view;
 }
 

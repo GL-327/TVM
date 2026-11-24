@@ -1,5 +1,7 @@
 sub init()
   m.top.focusable = true
+  m.card = m.top.findNode("card")
+  m.brandLabel = m.top.findNode("brandLabel")
   m.headingLabel = m.top.findNode("headingLabel")
   m.ledeLabel = m.top.findNode("ledeLabel")
   m.statusLabel = m.top.findNode("statusLabel")
@@ -17,41 +19,43 @@ sub init()
   m.resendCode = m.top.findNode("resendCode")
   m.seq = 0
   m.col = 0
-  m.codeSignIn.variant = "row"
+
+  m.brandLabel.font = tvmFontCaption()
+  m.headingLabel.font = tvmFontTitle()
+  m.ledeLabel.font = tvmFontSecondary()
+  m.statusLabel.font = tvmFontMeta()
+
+  for each btn in [m.codeSignIn, m.name, m.email, m.password, m.submit, m.switchMode, m.dev, m.recheck, m.signout, m.agree, m.emailCode, m.resendCode]
+    btn.variant = "glassPill"
+    btn.pillWidth = 1520
+  end for
+
   m.codeSignIn.label = "Sign in with a code"
-  m.codeSignIn.detail = "Use your phone or computer. No typing here."
   m.codeSignIn.itemId = "codeSignIn"
-  m.name.variant = "row"
   m.name.label = "Your name"
   m.name.itemId = "name"
-  m.email.variant = "row"
   m.email.label = "Email"
   m.email.itemId = "email"
-  m.password.variant = "row"
   m.password.label = "Password"
   m.password.itemId = "password"
-  m.submit.variant = "primary"
   m.submit.label = "Sign in"
+  m.submit.accent = true
   m.submit.itemId = "submit"
-  m.switchMode.variant = "row"
   m.switchMode.label = "I need an account"
   m.switchMode.itemId = "switch"
-  m.dev.variant = "row"
   m.dev.label = "I'm a dev"
   m.dev.itemId = "dev"
-  m.recheck.variant = "primary"
   m.recheck.label = "Check again"
+  m.recheck.accent = true
   m.recheck.itemId = "recheck"
-  m.signout.variant = "row"
   m.signout.label = "Sign out"
   m.signout.itemId = "signout"
-  m.agree.variant = "primary"
   m.agree.label = "I have read and agree"
+  m.agree.accent = true
   m.agree.itemId = "agree"
-  m.emailCode.variant = "primary"
   m.emailCode.label = "Enter the code"
+  m.emailCode.accent = true
   m.emailCode.itemId = "emailCode"
-  m.resendCode.variant = "row"
   m.resendCode.label = "Send a new code"
   m.resendCode.itemId = "resendCode"
   paint()
@@ -70,7 +74,12 @@ sub onStatus()
 end sub
 
 sub onEmailDetail()
-  m.email.detail = m.top.emailDetail
+  detail = m.top.emailDetail
+  if detail <> invalid and detail <> ""
+    m.email.label = detail
+  else
+    m.email.label = "Email"
+  end if
 end sub
 
 sub onSignedAs()
@@ -129,24 +138,42 @@ sub paint()
     m.submit.label = "Sign in"
     m.switchMode.label = "I need an account"
   end if
-  m.password.detail = "At least 10 characters"
   signed = m.top.signedAs
-  if signed <> invalid and signed <> "" then m.recheck.detail = signed
+  if signed <> invalid and signed <> ""
+    m.recheck.label = "Check again · " + signed
+  else
+    m.recheck.label = "Check again"
+  end if
   buttons = formButtons()
+  headerH = 510
+  stepH = 164
+  cardW = 1760
+  cardH = headerH + (buttons.Count() * stepH) + 72
+  if cardH < 720 then cardH = 720
+  cardX = Int((3840 - cardW) / 2)
+  cardY = Int((2160 - cardH) / 2)
+  innerX = cardX + 120
+  if m.card <> invalid
+    m.card.width = cardW
+    m.card.height = cardH
+    m.card.translation = [cardX, cardY]
+  end if
+  m.brandLabel.translation = [innerX, cardY + 72]
+  m.headingLabel.translation = [innerX, cardY + 148]
+  m.ledeLabel.translation = [innerX, cardY + 268]
+  m.statusLabel.translation = [innerX, cardY + 412]
+
+  i = 0
+  while i < buttons.Count()
+    buttons[i].translation = [innerX, cardY + headerH + (i * stepH)]
+    i = i + 1
+  end while
+
   if m.col < 0 then m.col = 0
   if buttons.Count() > 0 and m.col > buttons.Count() - 1 then m.col = buttons.Count() - 1
-  m.name.hasFocusStyle = false
-  m.codeSignIn.hasFocusStyle = false
-  m.email.hasFocusStyle = false
-  m.password.hasFocusStyle = false
-  m.submit.hasFocusStyle = false
-  m.switchMode.hasFocusStyle = false
-  m.dev.hasFocusStyle = false
-  m.recheck.hasFocusStyle = false
-  m.signout.hasFocusStyle = false
-  m.agree.hasFocusStyle = false
-  m.emailCode.hasFocusStyle = false
-  m.resendCode.hasFocusStyle = false
+  for each btn in [m.name, m.codeSignIn, m.email, m.password, m.submit, m.switchMode, m.dev, m.recheck, m.signout, m.agree, m.emailCode, m.resendCode]
+    btn.hasFocusStyle = false
+  end for
   if buttons.Count() = 0
     m.top.focusKey = ""
     return

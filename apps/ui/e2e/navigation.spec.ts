@@ -21,6 +21,7 @@ const CHROME = new Set([
   'profile',
   'hero-play',
   'hero-info',
+  'hero-watchlist',
   'launch-stream',
   'launch-live',
   'launch-watchlist',

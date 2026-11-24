@@ -32,10 +32,27 @@ AccountState ParseAccount(const nlohmann::json& body) {
     state.tier = Text(*account, "tier");
     state.developer = Text(*account, "role") == "dev";
     state.liveTv = state.developer || state.tier == "stream-live";
+    state.rdKey = Flag(*account, "rdKey");
     state.usable = usable != body.end() && usable->is_object() && Flag(*usable, "ok");
     state.reason = usable != body.end() && usable->is_object() ? Text(*usable, "reason") : "no_account";
     if (!state.usable && state.reason.empty()) state.reason = "no_account";
     return state;
+}
+
+RealDebridStatus ParseRealDebridStatus(const nlohmann::json& body) {
+    RealDebridStatus status;
+    if (!body.is_object()) return status;
+    status.configured = Flag(body, "configured");
+    const std::string username = Text(body, "username");
+    if (!username.empty()) status.username = username;
+    status.premium = Flag(body, "premium");
+    status.error = Text(body, "error");
+    status.source = Text(body, "source");
+    return status;
+}
+
+bool ShouldPromptForRealDebrid(const AccountState& account, const RealDebridStatus& rdStatus, bool dismissed) {
+    return account.usable && !account.rdKey && !rdStatus.configured && !dismissed;
 }
 
 bool AllowsRoute(const AccountState& state, const std::string& route) {

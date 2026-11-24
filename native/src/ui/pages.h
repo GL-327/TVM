@@ -235,6 +235,18 @@ struct InfoView {
     std::string fieldLabel;
     std::string fieldPlaceholder;
     bool fieldSecret = false;
+    // Sleek centered Liquid Glass card mode over atmospheric backdrop (Sign-In, Connect Real-Debrid, etc.).
+    bool centeredCard = false;
+    std::string backdropUrl;
+    struct FieldSummary {
+        std::string label;
+        std::string value;
+        bool secret = false;
+        bool active = false;
+
+        bool operator==(const FieldSummary&) const = default;
+    };
+    std::vector<FieldSummary> fieldSummaries;
 
     bool operator==(const InfoView&) const = default;
 };
@@ -254,6 +266,7 @@ public:
     void ClearField() { fieldText_.clear(); }
     // A page with several fields shows one at a time, so the app puts the chosen one's text back.
     void SetFieldText(std::string text) { fieldText_ = std::move(text); }
+    bool ShowsStage() const override { return view_.centeredCard; }
 
 protected:
     std::vector<PageButton> Buttons() const override { return buttons_; }
@@ -274,6 +287,11 @@ private:
     std::string fieldText_;
     std::vector<PageButton> buttons_;
     std::vector<Placed> placed_;
+    Box cardBox_{};
+    double headerTop_ = 0.0;
+    double fieldX_ = 0.0;
+    double fieldWidth_ = 0.0;
+    double summariesTop_ = 0.0;
     double ledeTop_ = 0.0;
     double ledeHeight_ = 0.0;
     double messageTop_ = 0.0;

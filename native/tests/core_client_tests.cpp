@@ -111,3 +111,43 @@ TEST(native_admin_status_uses_public_core_fields_and_accepts_nullable_mail_usern
     REQUIRE(mail->password.empty());
     REQUIRE_EQ(mail->host, "smtp.example.test");
 }
+
+TEST(native_realdebrid_prompt_gating_respects_account_key_configured_and_dismissed) {
+    const auto withRdKey = coreapi::ParseAccount({
+        {"signedIn", true},
+        {"account", {{"role", "member"}, {"email", "viewer@example.test"}, {"tier", "stream"}, {"rdKey", true}}},
+        {"usable", {{"ok", true}}},
+    });
+    REQUIRE(withRdKey.rdKey);
+
+    const auto withoutRdKey = coreapi::ParseAccount({
+        {"signedIn", true},
+        {"account", {{"role", "member"}, {"email", "viewer@example.test"}, {"tier", "stream"}, {"rdKey", false}}},
+        {"usable", {{"ok", true}}},
+    });
+    REQUIRE(!withoutRdKey.rdKey);
+
+    const auto notConfigured = coreapi::ParseRealDebridStatus({{"configured", false}, {"source", nullptr}});
+    REQUIRE(!notConfigured.configured);
+    REQUIRE(notConfigured.source.empty());
+
+    const auto deviceConfigured = coreapi::ParseRealDebridStatus({{"configured", true}, {"username", "ada"}, {"premium", true}, {"source", "device"}});
+    REQUIRE(deviceConfigured.configured);
+    REQUIRE_EQ(deviceConfigured.username, std::optional<std::string>("ada"));
+    REQUIRE(deviceConfigured.premium);
+    REQUIRE_EQ(deviceConfigured.source, std::string("device"));
+
+    const auto accountConfigured = coreapi::ParseRealDebridStatus({{"configured", true}, {"source", "account"}});
+    REQUIRE_EQ(accountConfigured.source, std::string("account"));
+
+    // Never prompt when unusable, when account already has a remote rdKey, when configured, or when dismissed.
+    coreapi::AccountState unusable = withoutRdKey;
+    unusable.usable = false;
+    REQUIRE(!coreapi::ShouldPromptForRealDebrid(unusable, notConfigured, false));
+    REQUIRE(!coreapi::ShouldPromptForRealDebrid(withRdKey, notConfigured, false));
+    REQUIRE(!coreapi::ShouldPromptForRealDebrid(withoutRdKey, deviceConfigured, false));
+    REQUIRE(!coreapi::ShouldPromptForRealDebrid(withoutRdKey, notConfigured, true));
+
+    // Prompt only when usable, no remote rdKey, not configured locally, and not dismissed.
+    REQUIRE(coreapi::ShouldPromptForRealDebrid(withoutRdKey, notConfigured, false));
+}

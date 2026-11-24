@@ -179,15 +179,18 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                                           static_cast<FLOAT>(width));
         }
     };
-    // The thin luminous edge: brightest where the overhead light catches the top-left curve, faint along the
-    // sides, and a softer bounce along the bottom-right.
+    // The thin luminous edge: warm-white top-left key specular, soft ice-blue transition, faint sides,
+    // and cool sky-blue bounce light along the bottom-right curve.
     const auto edge = [&](double strength) {
-        const double lit = strength * (1.0 - 0.25 * press);
+        const double lit = strength * (1.0 - 0.22 * press);
+        const auto warmKey = [&](double a) { return ui::Rgb(0xFFFDF8, std::clamp(a, 0.0, 1.0) * alpha); };
+        const auto coolBounce = [&](double a) { return ui::Rgb(0xA6DCFF, std::clamp(a, 0.0, 1.0) * alpha); };
         const ComPtr<ID2D1GradientStopCollection> collection = Stops({
-            ui::GradientStop{0.00, white((0.50 + 0.30 * emphasis) * lit)},
-            ui::GradientStop{0.30, white((0.16 + 0.10 * emphasis) * lit)},
-            ui::GradientStop{0.62, white((0.07 + 0.06 * emphasis) * lit)},
-            ui::GradientStop{1.00, white((0.24 + 0.18 * emphasis) * lit)},
+            ui::GradientStop{0.00, warmKey((0.58 + 0.30 * emphasis) * lit)},
+            ui::GradientStop{0.24, coolBounce((0.22 + 0.14 * emphasis) * lit)},
+            ui::GradientStop{0.58, white((0.08 + 0.06 * emphasis) * lit)},
+            ui::GradientStop{0.84, coolBounce((0.22 + 0.16 * emphasis) * lit)},
+            ui::GradientStop{1.00, coolBounce((0.36 + 0.22 * emphasis) * lit)},
         });
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
             D2D1::Point2F(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y)),
@@ -199,22 +202,63 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
             target_->DrawRoundedRectangle(ToRounded(rim, std::max(0.0, clampedRadius - 0.5)), brush.Get(), 1.0f);
         }
     };
+    // Diagonal caustic sheen + subtle bottom-right sky-blue internal bounce.
+    const auto drawCaustic = [&](double sheenStrength) {
+        if (sheenStrength <= 0.0) return;
+        const ComPtr<ID2D1GradientStopCollection> stops = Stops({
+            ui::GradientStop{0.00, ui::Rgb(0xFFFDF8, std::clamp(sheenStrength, 0.0, 1.0) * alpha)},
+            ui::GradientStop{0.42, ui::Rgb(0xE8F5FF, std::clamp(sheenStrength * 0.24, 0.0, 1.0) * alpha)},
+            ui::GradientStop{0.72, white(0.0)},
+            ui::GradientStop{1.00, ui::Rgb(0x8CD2FF, std::clamp(sheenStrength * 0.38, 0.0, 1.0) * alpha)},
+        });
+        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
+            D2D1::Point2F(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y)),
+            D2D1::Point2F(static_cast<FLOAT>(box.x + box.width * 0.72),
+                          static_cast<FLOAT>(box.y + box.height * 0.85)));
+        ComPtr<ID2D1LinearGradientBrush> brush;
+        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
+            target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
+        }
+    };
+    // Animated slanted optical sweep highlight with crisp white core and cool ice-blue feather.
+    const auto drawSweep = [&](double plate) {
+        if (style.sweep < 0.0 || style.sweep > 1.0 || ui::tokens::reduceMotion) return;
+        const double band = std::max(box.height * 1.35, box.width * 0.38);
+        const double centre = box.x - band + (box.width + 2.0 * band) * style.sweep;
+        const double strength = 0.62 * std::sin(kSweepPi * style.sweep) * (plate > 0.0 ? 1.0 : 0.55);
+        const ComPtr<ID2D1GradientStopCollection> stops = Stops({
+            ui::GradientStop{0.00, white(0.0)},
+            ui::GradientStop{0.28, ui::Rgb(0xA8DCFF, strength * 0.32 * alpha)},
+            ui::GradientStop{0.50, isLight || plate > 0.0 ? ui::Rgb(0xFFFFFF, strength * alpha) : white(strength * 0.75)},
+            ui::GradientStop{0.72, ui::Rgb(0xC2B8FF, strength * 0.28 * alpha)},
+            ui::GradientStop{1.00, white(0.0)},
+        });
+        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
+            D2D1::Point2F(static_cast<FLOAT>(centre - band / 2.0), static_cast<FLOAT>(box.y)),
+            D2D1::Point2F(static_cast<FLOAT>(centre + band / 2.0), static_cast<FLOAT>(box.y + box.height * 0.40)));
+        ComPtr<ID2D1LinearGradientBrush> brush;
+        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
+            target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
+        }
+    };
 
-    // 2. Poster cards whose artwork already fills the shape: only a faint sheen and the edge.
+    // 2. Poster cards whose artwork already fills the shape: crisp optical top sheen, inner chromatic rim and edge.
     if (style.rimOnly && !style.focused) {
-        fillVertical(box, clampedRadius,
-                     {ui::GradientStop{0.0, white(0.08)}, ui::GradientStop{0.45, white(0.0)},
-                      ui::GradientStop{1.0, white(0.0)}});
-        edge(0.85);
+        drawCaustic(0.11);
+        if (box.width > 6.0 && box.height > 6.0) {
+            const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
+            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0, ui::Rgb(0xBAE6FF, 0.06 * alpha));
+        }
+        edge(0.95);
         return;
     }
 
-    // 3. A soft contact shadow, drawn only outside the shape so it never shows through the glass: almost nothing
-    // above, a little more below, as a surface floating just off the picture.
+    // 3. Dual-layer elevation drop shadow: tight dark contact shadow + soft ambient spread beneath floating glass.
     const double shadowScale = (isLight ? 0.55 : 1.0) * alpha * (1.0 - 0.35 * press);
-    // A raised (focused) surface casts a little more shadow, as it lifts toward the viewer.
-    outerRing(0.0, 2.0, black(0.02 * shadowScale), black((0.16 + 0.10 * emphasis) * shadowScale));
-    outerRing(2.0, 5.0, black(0.0), black((0.07 + 0.08 * emphasis) * shadowScale));
+    const double liftScale = 1.0 + 0.45 * emphasis;
+    outerRing(0.0, 2.0, black(0.04 * shadowScale), black((0.24 + 0.14 * emphasis) * shadowScale));
+    outerRing(1.5, cardOrPanel ? 9.0 : 6.5, black(0.015 * shadowScale),
+              black((0.11 + 0.09 * emphasis) * shadowScale * liftScale));
 
     // 4. Hover and focus light the surface from within and add a restrained outer glow, not a thick ring.
     if (emphasis > 0.0) {
@@ -263,41 +307,20 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
             fillVertical(box, clampedRadius,
                          {ui::GradientStop{0.0, white(top * plate)}, ui::GradientStop{1.0, white((top - 0.12) * plate)}});
         }
-        // A soft sheen over the upper half, as PyGlass's GlassStyle draws it.
-        const double sheen = ((style.activeTab ? 0.10 : 0.06) + 0.05 * emphasis - 0.03 * press) * (1.0 - plate);
-        if (sheen > 0.0) {
-            fillVertical(box, clampedRadius,
-                         {ui::GradientStop{0.0, white(sheen)}, ui::GradientStop{0.55, white(0.0)},
-                          ui::GradientStop{1.0, white(0.0)}});
-        }
-        // The focus highlight sweeps across once, a slanted band of light.
-        if (style.sweep >= 0.0 && style.sweep <= 1.0 && !ui::tokens::reduceMotion) {
-            const double band = std::max(box.height * 1.2, box.width * 0.35);
-            const double centre = box.x - band + (box.width + 2.0 * band) * style.sweep;
-            const double strength = 0.55 * std::sin(kSweepPi * style.sweep) * (plate > 0.0 ? 1.0 : 0.45);
-            const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-                ui::GradientStop{0.0, white(0.0)},
-                ui::GradientStop{0.5, isLight || plate > 0.0 ? ui::Rgb(0xFFFFFF, strength * alpha) : white(strength * 0.6)},
-                ui::GradientStop{1.0, white(0.0)},
-            });
-            const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-                D2D1::Point2F(static_cast<FLOAT>(centre - band / 2.0), static_cast<FLOAT>(box.y)),
-                D2D1::Point2F(static_cast<FLOAT>(centre + band / 2.0), static_cast<FLOAT>(box.y + box.height * 0.35)));
-            ComPtr<ID2D1LinearGradientBrush> brush;
-            if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
-                target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
-            }
-        }
-        if (style.kind == ui::GlassKind::Orb || style.activeTab) {
+        // Diagonal caustic sheen + animated optical GlassSweep across NavCapsule, pills, modals, dropdowns & orb.
+        const double sheen = ((style.activeTab ? 0.12 : 0.09) + 0.06 * emphasis - 0.03 * press) * (1.0 - plate);
+        drawCaustic(sheen);
+        drawSweep(plate);
+        if (style.kind == ui::GlassKind::Orb || style.activeTab || cardOrPanel) {
             const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
             StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0,
-                            white(style.activeTab || plate > 0.5 ? 0.30 : 0.05));
+                            style.activeTab || plate > 0.5 ? white(0.32) : ui::Rgb(0xB8E4FF, 0.08 * alpha));
         }
         if (isLight && !style.activeTab) {
             const ui::Box rimBox{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
             StrokeRoundRect(rimBox, clampedRadius + 0.5, 1.0, black(0.08));
         }
-        edge(style.activeTab ? 1.0 : 0.9);
+        edge(style.activeTab ? 1.05 : 0.96);
         return;
     }
 
@@ -391,16 +414,17 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                           ui::GradientStop{1.0, white((top - 0.12) * emphasis)}});
         }
 
-        // 7. A soft sheen across the upper half, where light enters the curved top of the glass.
-        const double sheen = (style.activeTab ? 0.18 : (cardOrPanel ? 0.06 : 0.12)) + 0.06 * emphasis - 0.04 * press;
-        fillVertical(box, clampedRadius,
-                     {ui::GradientStop{0.0, white(sheen)}, ui::GradientStop{0.48, white(sheen * 0.15)},
-                      ui::GradientStop{1.0, white(0.0)}});
+        // 7. Diagonal caustic sheen + animated GlassSweep across non-lens optical glass (player controls & cards).
+        const double plate = style.focusPlate ? emphasis : 0.0;
+        const double sheen = ((style.activeTab ? 0.18 : (cardOrPanel ? 0.09 : 0.14)) + 0.06 * emphasis - 0.04 * press) *
+                             (1.0 - 0.7 * plate);
+        drawCaustic(sheen);
+        drawSweep(plate);
 
         // The orb's small internal reflection, up and to the left.
         if (style.kind == ui::GlassKind::Orb) {
             const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-                ui::GradientStop{0.0, white(0.16 + 0.06 * emphasis)},
+                ui::GradientStop{0.0, white(0.18 + 0.06 * emphasis)},
                 ui::GradientStop{1.0, white(0.0)},
             });
             const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES props = D2D1::RadialGradientBrushProperties(
@@ -415,18 +439,28 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         }
     }
 
-    // 8. The edge, with a faint inner glow just inside it so the surface reads as thick glass, not a flat outline.
+    // 8. Multi-stop chromatic inner rim + specular outer edge so player controls & cards read as thick optical glass.
     if (box.width > 6.0 && box.height > 6.0 && !style.rimOnly) {
         const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
-        StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0,
-                        style.activeTab ? white(0.30) : white(0.035 + 0.03 * emphasis));
+        const ComPtr<ID2D1GradientStopCollection> innerStops = Stops({
+            ui::GradientStop{0.00, ui::Rgb(0xC6ECFF, (style.activeTab ? 0.34 : 0.11 + 0.06 * emphasis) * alpha)},
+            ui::GradientStop{0.48, ui::Rgb(0xD8C4FF, (style.activeTab ? 0.18 : 0.05 + 0.03 * emphasis) * alpha)},
+            ui::GradientStop{1.00, ui::Rgb(0x98DCFF, (style.activeTab ? 0.28 : 0.09 + 0.05 * emphasis) * alpha)},
+        });
+        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES innerProps = D2D1::LinearGradientBrushProperties(
+            D2D1::Point2F(static_cast<FLOAT>(inner.x), static_cast<FLOAT>(inner.y)),
+            D2D1::Point2F(static_cast<FLOAT>(inner.Right()), static_cast<FLOAT>(inner.Bottom())));
+        ComPtr<ID2D1LinearGradientBrush> innerBrush;
+        if (SUCCEEDED(target_->CreateLinearGradientBrush(innerProps, innerStops.Get(), &innerBrush))) {
+            target_->DrawRoundedRectangle(ToRounded(inner, std::max(0.0, clampedRadius - 1.5)), innerBrush.Get(), 1.15f);
+        }
     }
     if (isLight && !style.activeTab) {
         // On a pale page a white edge alone vanishes, so a hairline of shade defines the shape.
         const ui::Box rim{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
         StrokeRoundRect(rim, clampedRadius + 0.5, 1.0, black(0.08));
     }
-    edge(style.activeTab ? 1.1 : 1.0);
+    edge(style.activeTab ? 1.15 : 1.05);
 }
 
 void D2dPainter::FillRoundRect(const ui::Box& box, double radius, ui::Color color) {

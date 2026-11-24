@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
-import { fetchLive } from '../data/media';
+import { clearCache, fetchLive, fetchRdStatus, type RdStatus } from '../data/media';
 import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
-import { fetchAccount } from '../data/account';
+import { fetchAccount, isDevAccount } from '../data/account';
+import { fetchAppBuild, type AppBuild } from '../data/appBuild';
 import { hydratePrefs, readPrefs, savePrefs } from '../data/prefs';
 import { languageName, nextLanguage } from '../i18n/locale';
 import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
@@ -25,6 +26,10 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [performance, setPerformance] = useState(readPerformanceMode);
   const [language, setLanguage] = useState(() => readPrefs().language);
   const [autoUpdate, setAutoUpdate] = useState(() => readPrefs().autoUpdate);
+  const [isDevRole, setIsDevRole] = useState(false);
+  const [appBuild, setAppBuild] = useState<AppBuild | null>(null);
+  const [rdStatus, setRdStatus] = useState<RdStatus | null>(null);
+  const [refreshingCache, setRefreshingCache] = useState(false);
   const pageRef = useRef<HTMLElement>(null);
 
   useEffect(() => bindKeyboardFields(pageRef.current), []);
@@ -53,11 +58,23 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
       setTheme(readStoredTheme());
     });
     void fetchAccount().then((state) => {
+      const devRole = isDevAccount(state);
+      setIsDevRole(devRole);
       setAccessDetail(state.account?.activated
         ? state.account.tier === 'stream-live' ? 'TVM Stream + Live TV' : 'TVM Stream'
         : 'Waiting for activation');
+      if (devRole) {
+        void fetchAppBuild().then(setAppBuild);
+        void fetchRdStatus().then(setRdStatus);
+      }
     }).catch(() => setAccessDetail('View access'));
   }, []);
+
+  useEffect(() => {
+    if (!plan.developer && !isDevRole) return;
+    if (appBuild === null) void fetchAppBuild().then(setAppBuild);
+    if (rdStatus === null) void fetchRdStatus().then(setRdStatus);
+  }, [appBuild, isDevRole, plan.developer, rdStatus]);
 
   return (
     <main ref={pageRef} className="page page--settings page--docked" data-keyboard-fields="">
@@ -257,6 +274,55 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
           Restart
         </FocusButton>
         </section>
+        {plan.developer || isDevRole ? (
+          <section className="settings-group settings-dev-card" aria-label="Developer Diagnostics">
+            <h2 className="settings-group__title">Developer Diagnostics</h2>
+            <dl className="panel__rows settings-dev-card__rows">
+              <div className="panel__row">
+                <dt>Build</dt>
+                <dd>
+                  {appBuild === null
+                    ? 'Checking…'
+                    : appBuild.kind === 'known'
+                      ? appBuild.build
+                      : appBuild.kind === 'desktop'
+                        ? 'Desktop checkout'
+                        : 'Legacy shell'}
+                </dd>
+              </div>
+              <div className="panel__row">
+                <dt>Real-Debrid key source</dt>
+                <dd>
+                  {rdStatus === null
+                    ? 'Checking…'
+                    : !rdStatus.configured
+                      ? 'Not configured'
+                      : rdStatus.source === 'account'
+                        ? 'Account (remote)'
+                        : 'Device (local)'}
+                </dd>
+              </div>
+              <div className="panel__row">
+                <dt>Theme & motion</dt>
+                <dd>
+                  {theme} · motion:{motion} · perf:{performance ? 'on' : 'off'}
+                </dd>
+              </div>
+            </dl>
+            <FocusButton
+              id="dev-refresh-cache"
+              className="settings-row settings-dev-card__action"
+              disabled={refreshingCache}
+              detail={refreshingCache ? 'Refreshing…' : 'Reload UI'}
+              onSelect={() => {
+                setRefreshingCache(true);
+                void clearCache().finally(() => window.location.reload());
+              }}
+            >
+              Clear cache & reload
+            </FocusButton>
+          </section>
+        ) : null}
       </div>
     </main>
   );

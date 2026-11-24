@@ -15,6 +15,15 @@ namespace {
 constexpr std::size_t kRailLimit = 16;
 constexpr std::size_t kBecauseLimit = 12;
 
+std::vector<std::string> MovieGenresForRail(const std::string& id, const std::string& primary) {
+    if (id == "action") return {"Action", "Adventure"};
+    if (id == "scifi") return {"Sci-Fi", "Fantasy"};
+    if (id == "crime") return {"Crime", "Mystery"};
+    if (id == "animation") return {"Animation", "Family"};
+    if (id == "history") return {"History", "Biography"};
+    return {primary};
+}
+
 }  // namespace
 
 std::vector<HomeRail> BuildHomeRails(const CatalogBundle& bundle, const std::vector<GenreShelf>& shelves,
@@ -40,6 +49,8 @@ std::vector<HomeRail> BuildHomeRails(const CatalogBundle& bundle, const std::vec
 
     add("films", "Popular films", TakeUnused(bundle.moviesTop, used, kRailLimit));
     add("series", "Popular series", TakeUnused(bundle.seriesTop, used, kRailLimit));
+    add("top-films", "Top rated films", TakeUnused(bundle.moviesRated, used, kRailLimit));
+    add("top-series", "Top rated series", TakeUnused(bundle.seriesRated, used, kRailLimit));
     add("new-films", "New films", TakeUnused(bundle.newFilms, used, kRailLimit));
     add("new-series", "Recently updated", TakeUnused(bundle.recentTv, used, kRailLimit));
 
@@ -63,14 +74,18 @@ std::vector<GenreShelf> FetchGenreShelves(CatalogService& service) {
     // One rail's requests run together, as Promise.all does in the web core.
     std::vector<std::future<GenreShelf>> pending;
     for (const GenreRail& rail : GenreRails()) {
-        pending.push_back(std::async(std::launch::async, [&service, genre = std::string(rail.genre)] {
+        pending.push_back(std::async(std::launch::async, [&service, id = std::string(rail.id), genre = std::string(rail.genre)] {
             GenreShelf shelf;
             shelf.genre = genre;
-            shelf.movies = service.Genre("movie", genre);
-            for (const std::string& series : SeriesGenresForRail(genre)) {
-                const std::vector<MediaItem> items = service.Genre("series", series);
-                shelf.shows.insert(shelf.shows.end(), items.begin(), items.end());
+            for (const std::string& movieGenre : MovieGenresForRail(id, genre)) {
+                const std::vector<MediaItem> movies = service.Genre("movie", movieGenre);
+                shelf.movies.insert(shelf.movies.end(), movies.begin(), movies.end());
+                for (const std::string& series : SeriesGenresForRail(movieGenre)) {
+                    const std::vector<MediaItem> items = service.Genre("series", series);
+                    shelf.shows.insert(shelf.shows.end(), items.begin(), items.end());
+                }
             }
+            shelf.movies = DedupeItems(shelf.movies);
             shelf.shows = DedupeItems(shelf.shows);
             return shelf;
         }));

@@ -28,9 +28,10 @@ jobs:
           bash -n scripts/launch-tvm.sh
           bash -n scripts/setup-desktop.sh
           bash -n scripts/roku-dev.sh
-          bash -n TVM.sh
-          bash -n TVM.command
-          bash -n TVM-roku.sh
+          bash -n scripts/launchers/TVM.sh
+          bash -n scripts/launchers/TVM.command
+          bash -n scripts/launchers/TVM-web.sh
+          bash -n scripts/launchers/TVM-roku.sh
           bash -n scripts/iptv-tester.sh
           test -f docs/DESKTOP.md
       - run: pnpm install --frozen-lockfile

@@ -22,7 +22,9 @@ void App::RefreshAccount() {
 }
 
 void App::FinishAccount(const coreapi::AccountState& state, const std::string& message) {
-    const bool changed = account_.email != state.email || account_.developer != state.developer || account_.usable != state.usable || account_.liveTv != state.liveTv || account_.tier != state.tier;
+    const bool changed = account_.email != state.email || account_.developer != state.developer ||
+                         account_.usable != state.usable || account_.liveTv != state.liveTv ||
+                         account_.tier != state.tier || account_.rdKey != state.rdKey;
     const bool first = !accountSettled_;
     account_ = state;
     accountBusy_ = false;
@@ -36,6 +38,11 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
         shell_->PopToRoot(NowMs());
         streamStatusLoaded_ = false;
         realDebridOpened_ = false;
+        rdStatus_ = {};
+        rdStatusLoaded_ = false;
+        rdStatusChecking_ = false;
+        rdOnboardingDismissed_ = false;
+        rdOnboardingPrompted_ = false;
         titles_.clear();
         fieldValues_.clear();
     }
@@ -43,48 +50,134 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
     // every time, which put every rail back to its start and glided the page to the focused card.
     if (first || changed) RebuildHome();
     if (pageName_ == "account") ShowInfoPage();
+    UpdateSettingsDiagnostics();
     // "Who's watching?" when TVM opens, once the account can use TVM Stream, unless Settings turned it off. It sits
     // under the launch reveal, which fades into it.
     if (!launchChooserDone_ && account_.usable) {
         launchChooserDone_ = true;
         if (store_->ChooseProfileOnLaunch() && shell_->ActiveScreenName() == "home") OpenChooser();
     }
+    if (account_.usable && !rdStatusLoaded_ && !rdStatusChecking_) {
+        RefreshRdStatus();
+    } else {
+        MaybePromptRealDebrid();
+    }
     dirty_ = true;
 }
 
 ui::InfoView App::AccountView() const {
+    const auto fieldVal = [this](const char* key) -> std::string {
+        const auto found = fieldValues_.find(std::string("account.") + key);
+        return found == fieldValues_.end() ? std::string() : found->second;
+    };
     ui::InfoView view;
-    view.kicker = "Your TVM account";
-    view.heading = account_.signedIn ? (account_.name.empty() ? account_.email : account_.name) : "Sign in to TVM";
-    view.lede = account_.signedIn ? account_.email + "  /  " + account_.tier : "Use the same account as web, mobile and Roku. New accounts need activation by the operator.";
-    view.message = accountBusy_ ? "Contacting TVM Core..." : accountMessage_;
-    view.topActions = {Action("back", "Back"), Action("info:account-refresh", "Retry / refresh", false, accountBusy_), Action("open:legal", "Privacy & terms")};
+    view.centeredCard = true;
+    view.backdropUrl = "asset:lighthouse.jpg";
     if (!account_.signedIn) {
+        const std::string mode = accountAuthMode_.empty() ? "signin" : accountAuthMode_;
+        const std::string activeField = fieldMode_.empty() ? (mode == "dev" ? "devcode" : "email") : fieldMode_;
+        view.kicker = "TVM";
+        view.filters.push_back({
+            Action("info:account-mode-signin", "Sign In", mode == "signin", accountBusy_),
+            Action("info:account-mode-register", "Create Account", mode == "register", accountBusy_),
+            Action("info:account-mode-dev", "Developer Access", mode == "dev", accountBusy_),
+        });
+        view.message = accountBusy_ ? "Contacting TVM Core\xE2\x80\xA6" : accountMessage_;
+        view.messageBad = !accountBusy_ && !accountMessage_.empty();
         view.field = true;
-        view.fieldLabel = fieldMode_.empty() ? "email" : fieldMode_;
-        view.fieldPlaceholder = "Type here, then choose an action";
-        view.fieldSecret = fieldMode_ == "password" || fieldMode_ == "devcode";
-        view.actions = {
-            {Action("info:field-email", "Email"), Action("info:field-password", "Password"), Action("info:field-name", "Display name")},
-            {Action("info:account-signin", "Sign in", true, accountBusy_), Action("info:account-register", "Create account", false, accountBusy_)},
-            {Action("info:field-devcode", "Developer code"), Action("info:account-dev", "Switch to developer account", false, accountBusy_)}
-        };
-    } else {
-        if (!account_.usable) view.lede += "\nAccess: " + account_.reason;
-        view.actions = {{Action("info:account-signout", "Sign out", false, accountBusy_), Action("open:plans", "Access & pricing")}};
-        if (account_.reason == "terms_required") view.actions.push_back({Action("open:legal", "Read terms"), Action("info:account-terms", "Accept current terms", true, accountBusy_)});
-        if (account_.reason == "email_unverified") {
-            view.field = true; view.fieldLabel = "Email verification code"; view.fieldPlaceholder = "Code from your email";
-            view.actions.push_back({Action("info:account-verify", "Verify email", true, accountBusy_), Action("info:account-send", "Send a new code", false, accountBusy_ || !account_.canSendEmail)});
+        if (mode == "register") {
+            view.heading = "Create your account";
+            view.lede = "Set up your TVM account to sync your library, profiles, and progress across devices.";
+            view.filters.push_back({
+                Action("info:field-name", "Display name", activeField == "name"),
+                Action("info:field-email", "Email", activeField == "email"),
+                Action("info:field-password", "Password", activeField == "password"),
+            });
+            view.fieldSummaries = {
+                {"Display name", fieldVal("name"), false, activeField == "name"},
+                {"Email", fieldVal("email"), false, activeField == "email"},
+                {"Password", fieldVal("password"), true, activeField == "password"},
+            };
+            view.fieldLabel = activeField == "name" ? "Display name" : activeField == "password" ? "Password" : "Email";
+            view.fieldPlaceholder = activeField == "name"       ? "Your name"
+                                    : activeField == "password" ? "Create a password"
+                                                                : "you@example.com";
+            view.fieldSecret = activeField == "password";
+            view.actions = {{Action("info:account-register", "Create Account", true, accountBusy_)}};
+        } else if (mode == "dev") {
+            view.heading = "Developer access";
+            view.lede = "Enter your developer code to access diagnostics, mail settings, and account tools.";
+            view.filters.push_back({Action("info:field-devcode", "Developer code", true)});
+            view.fieldLabel = "Developer code";
+            view.fieldPlaceholder = "Enter developer code";
+            view.fieldSecret = true;
+            view.actions = {{Action("info:account-dev", "Sign in as Developer", true, accountBusy_)}};
+        } else {
+            view.heading = "Sign in to TVM";
+            view.lede = "Welcome back. Enter your email and password to pick up where you left off.";
+            view.filters.push_back({
+                Action("info:field-email", "Email", activeField == "email"),
+                Action("info:field-password", "Password", activeField == "password"),
+            });
+            view.fieldSummaries = {
+                {"Email", fieldVal("email"), false, activeField == "email"},
+                {"Password", fieldVal("password"), true, activeField == "password"},
+            };
+            view.fieldLabel = activeField == "password" ? "Password" : "Email";
+            view.fieldPlaceholder = activeField == "password" ? "Enter your password" : "you@example.com";
+            view.fieldSecret = activeField == "password";
+            view.actions = {{Action("info:account-signin", "Sign In", true, accountBusy_),
+                             Action("info:account-refresh", "Refresh", false, accountBusy_)}};
         }
-        if (account_.usable) view.actions.push_back({Action("open:realdebrid", "Media account"), Action("open:profiles", "Profiles")});
-        if (account_.developer) view.actions.push_back({Action("open:developer", "Developer tools")});
+        view.topActions = {Action("open:legal", "Privacy & terms"), Action("back", "Back")};
+        return view;
     }
+
+    view.kicker = "Your TVM account";
+    view.heading = account_.name.empty() ? account_.email : account_.name;
+    view.lede = account_.email + (account_.tier.empty() ? "" : "  \xC2\xB7  " + account_.tier);
+    view.message = accountBusy_ ? "Contacting TVM Core\xE2\x80\xA6" : accountMessage_;
+    view.messageBad = !accountBusy_ && !accountMessage_.empty();
+    const std::string rdLabel = account_.rdKey
+                                    ? "Assigned to account"
+                                    : (rdStatus_.configured ? "Connected on this device" : "Not connected");
+    view.blocks = {
+        {ui::InfoBlock::Kind::Row, "Status", account_.usable ? "Active" : account_.reason, account_.usable, !account_.usable},
+        {ui::InfoBlock::Kind::Row, "Real-Debrid", rdLabel, account_.rdKey || rdStatus_.configured, false},
+    };
+    view.actions = {{Action("info:account-signout", "Sign out", false, accountBusy_), Action("open:plans", "Access & pricing")}};
+    if (account_.reason == "terms_required") {
+        view.actions.push_back({Action("open:legal", "Read terms"), Action("info:account-terms", "Accept current terms", true, accountBusy_)});
+    }
+    if (account_.reason == "email_unverified") {
+        view.field = true;
+        view.fieldLabel = "Email verification code";
+        view.fieldPlaceholder = "Code from your email";
+        view.actions.push_back({Action("info:account-verify", "Verify email", true, accountBusy_),
+                                Action("info:account-send", "Send a new code", false, accountBusy_ || !account_.canSendEmail)});
+    }
+    if (account_.usable) view.actions.push_back({Action("open:realdebrid", "Media account"), Action("open:profiles", "Profiles")});
+    if (account_.developer) view.actions.push_back({Action("open:developer", "Developer tools")});
+    view.topActions = {Action("info:account-refresh", "Refresh", false, accountBusy_),
+                       Action("open:legal", "Privacy & terms"), Action("back", "Back")};
     return view;
 }
 
 void App::AccountAction(const std::string& verb) {
     if (verb == "refresh") { RefreshAccount(); ShowInfoPage(); return; }
+    if (verb == "mode-signin" || verb == "mode-register" || verb == "mode-dev") {
+        accountAuthMode_ = verb.substr(5);
+        if (accountAuthMode_ == "dev") {
+            fieldMode_ = "devcode";
+        } else if (accountAuthMode_ == "register") {
+            if (fieldMode_ != "email" && fieldMode_ != "password") fieldMode_ = "name";
+        } else {
+            if (fieldMode_ != "password") fieldMode_ = "email";
+        }
+        ShowInfoPage();
+        if (auto* screen = TypingPage()) screen->SetFieldText(fieldValues_["account." + fieldMode_]);
+        return;
+    }
     if (accountBusy_) return;
     const auto email = fieldValues_["account.email"];
     const auto password = fieldValues_["account.password"];
@@ -121,16 +214,14 @@ std::optional<admin::MailSettings> App::CoreMail() const {
     return coreapi::ParseMailStatus(core_->Call("/api/admin/mail"));
 }
 
-realdebrid::Status App::CoreRealDebrid() const {
-    realdebrid::Status status;
+coreapi::RealDebridStatus App::CoreRealDebrid() const {
     try {
-        const auto body = core_->Call("/api/rd/status");
-        status.configured = body.value("configured", false);
-        if (body.contains("username") && body["username"].is_string()) status.username = body["username"].get<std::string>();
-        status.premium = body.value("premium", false);
-        if (body.contains("error") && body["error"].is_string()) status.error = body["error"].get<std::string>();
-    } catch (...) { status.error = "needs-auth"; }
-    return status;
+        return coreapi::ParseRealDebridStatus(core_->Call("/api/rd/status"));
+    } catch (...) {
+        coreapi::RealDebridStatus status;
+        status.error = "needs-auth";
+        return status;
+    }
 }
 
 playback::Resolution App::CorePlayback(const std::string& id, const std::string& title, int maxHeight) const {

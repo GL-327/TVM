@@ -24,6 +24,7 @@
 #include "ui/preferences_store.h"
 #include "ui/realdebrid_screen.h"
 #include "ui/screen.h"
+#include "ui/settings_screen.h"
 #include "ui/stage.h"
 #include "ui/xtream_screen.h"
 
@@ -84,6 +85,8 @@ public:
     void SetStreamView(const SceneView& view, const std::vector<HeroData>& heroes, double nowMs);
     // Gives every player screen the app's latest playback state.
     void SetPlayerView(const PlayerView& view, double nowMs);
+    // Updates Developer Diagnostics on any open Settings screen.
+    void SetDeveloperDiagnostics(const DeveloperDiagnostics& diag);
     // The player on top, when the user is on one.
     PlayerScreen* ActivePlayer();
     // Closes every screen down to Home, as the stream chrome's Home link does.

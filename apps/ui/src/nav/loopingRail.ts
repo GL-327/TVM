@@ -90,6 +90,18 @@ export function parkLoopScroll(track: HTMLElement, scrollLeft = track.scrollLeft
   return normalizeLoopScroll(scrollLeft, readLoopSetWidth(track), track.clientWidth);
 }
 
+/** Wrap a pointer-driven scroll back into the middle set; returns the applied jump delta. */
+export function wrapPointerScroll(track: HTMLElement): number {
+  if (track.dataset.looping !== 'true') return 0;
+  const setWidth = readLoopSetWidth(track);
+  if (setWidth <= 1) return 0;
+  const current = track.scrollLeft;
+  const next = normalizeLoopScroll(current, setWidth, track.clientWidth);
+  if (!isLoopSeamJump(current, next, setWidth)) return 0;
+  track.scrollLeft = next;
+  return next - current;
+}
+
 /** True when the camera jumped a whole catalog set, not one title. */
 export function isLoopSeamJump(from: number, to: number, setWidth: number): boolean {
   return setWidth > 1 && Math.abs(to - from) >= setWidth * 0.45;

@@ -135,10 +135,19 @@ final class TVMCatalog {
         lock.unlock()
         let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
         let items = await fetchCatalog("/catalog/\(kind)/top/genre=\(encoded).json", kind: kind)
-        lock.lock()
-        genreMem[key] = (Date(), items)
-        lock.unlock()
-        return items
+        if !items.isEmpty {
+            lock.lock()
+            genreMem[key] = (Date(), items)
+            lock.unlock()
+            return items
+        }
+        let lower = name.lowercased()
+        return fallback.filter { item in
+            item.kind == kind && item.genres.contains {
+                let g = $0.lowercased()
+                return g == lower || (lower == "sci-fi" && g == "science fiction")
+            }
+        }
     }
 
     func meta(_ id: String) async -> TitleMeta? {

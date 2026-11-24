@@ -1,0 +1,19 @@
+@echo off
+rem Start TVM desktop.
+rem Works from a git checkout (scripts\launchers\) and from the desktop package (root).
+title TVM
+cd /d "%~dp0"
+set "TVM_LAUNCHER=%~dp0launch-tvm.ps1"
+if not exist "%TVM_LAUNCHER%" set "TVM_LAUNCHER=%~dp0..\launch-tvm.ps1"
+if not exist "%TVM_LAUNCHER%" set "TVM_LAUNCHER=%~dp0scripts\launch-tvm.ps1"
+if not exist "%TVM_LAUNCHER%" (
+  echo launch-tvm.ps1 is missing.
+  pause
+  exit /b 1
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TVM_LAUNCHER%" %*
+if errorlevel 1 (
+  echo.
+  echo TVM failed to start.
+  pause
+)

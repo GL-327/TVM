@@ -800,6 +800,8 @@ final class TVMMedia {
         take(bundle.catalog, id: "for-you", title: "You might like")
         take(bundle.moviesTop, id: "films", title: "Popular films")
         take(bundle.seriesTop, id: "series", title: "Popular series")
+        take(bundle.moviesRated, id: "top-films", title: "Top rated films")
+        take(bundle.seriesRated, id: "top-series", title: "Top rated series")
         take(bundle.newFilms, id: "new-films", title: "New films")
         take(bundle.recentTv, id: "new-series", title: "Recently updated")
         if let first = watching.first {
@@ -810,13 +812,37 @@ final class TVMMedia {
                 rails.append(CatalogRail(id: "because", title: "Because you watched \(first.title)", items: because))
             }
         }
-        let genres: [(String, String)] = [
-            ("horror", "Horror"), ("action", "Action"), ("comedy", "Comedy"),
-            ("thriller", "Thriller"), ("scifi", "Sci-Fi"), ("romance", "Romance"),
+        let genres: [(id: String, title: String, names: [String])] = [
+            ("action", "Action & Adventure", ["Action", "Adventure"]),
+            ("scifi", "Sci-Fi & Fantasy", ["Sci-Fi", "Fantasy"]),
+            ("comedy", "Comedy", ["Comedy"]),
+            ("thriller", "Thrillers", ["Thriller"]),
+            ("drama", "Critically Acclaimed Drama", ["Drama"]),
+            ("crime", "Crime & Mystery", ["Crime", "Mystery"]),
+            ("horror", "Horror", ["Horror"]),
+            ("animation", "Animation & Family", ["Animation", "Family"]),
+            ("romance", "Romance", ["Romance"]),
+            ("documentary", "Documentaries", ["Documentary"]),
+            ("anime", "Anime", ["Anime"]),
+            ("history", "History & Biography", ["History", "Biography"]),
+            ("mystery", "Mystery & Suspense", ["Mystery"]),
         ]
-        for (id, name) in genres {
-            let movies = await catalog.genre(kind: "movie", name: name)
-            let shows = await catalog.genre(kind: "series", name: name)
+        for entry in genres {
+            var seenMovies = Set<String>()
+            var movies: [MediaItem] = []
+            for g in entry.names {
+                for item in await catalog.genre(kind: "movie", name: g) where seenMovies.insert(item.id).inserted {
+                    movies.append(item)
+                }
+            }
+            let seriesNames = entry.id == "anime" ? ["Animation"] : entry.names
+            var seenShows = Set<String>()
+            var shows: [MediaItem] = []
+            for g in seriesNames {
+                for item in await catalog.genre(kind: "series", name: g) where seenShows.insert(item.id).inserted {
+                    shows.append(item)
+                }
+            }
             var mixed: [MediaItem] = []
             var i = 0
             while mixed.count < 16, i < max(movies.count, shows.count) {
@@ -825,7 +851,7 @@ final class TVMMedia {
                 if i < shows.count, !used.contains(shows[i].id) { mixed.append(shows[i]); used.insert(shows[i].id) }
                 i += 1
             }
-            if !mixed.isEmpty { rails.append(CatalogRail(id: id, title: name, items: mixed)) }
+            if !mixed.isEmpty { rails.append(CatalogRail(id: entry.id, title: entry.title, items: mixed)) }
         }
         if rails.isEmpty {
             take(catalog.fallbackItems(), id: "films", title: "Popular films")

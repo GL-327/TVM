@@ -34,6 +34,15 @@
   --tvm-shadow-card: 0 0.8rem 2rem rgba(18, 50, 74, 0.12);
   --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(30, 201, 160, 0.22);
 
+  --tvm-glass-bg: linear-gradient(155deg, rgba(255, 253, 246, 0.74), rgba(232, 248, 242, 0.66));
+  --tvm-glass-bg-elevated: linear-gradient(155deg, rgba(255, 254, 250, 0.84), rgba(235, 250, 244, 0.78));
+  --tvm-glass-blur: blur(28px) saturate(190%);
+  --tvm-glass-rim-light: inset 0 1px 0.5px rgba(255, 255, 255, 0.88);
+  --tvm-glass-rim-chroma: inset 0 -1px 1px rgba(30, 201, 160, 0.24);
+  --tvm-glass-sheen: linear-gradient(132deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.08) 38%, transparent 65%);
+  --tvm-glass-shadow: 0 1rem 2.6rem rgba(18, 50, 74, 0.16);
+  --tvm-glass-focus-glow: 0 0 0 0.14rem rgba(14, 168, 132, 0.82), 0 0.75rem 2rem rgba(30, 201, 160, 0.28);
+
   --tvm-scene-sky: #d2f2ff;
   --tvm-scene-sky-mid: #e4fff6;
   --tvm-scene-horizon: #fff6e8;
@@ -65,10 +74,15 @@
   color: var(--tvm-text);
 }
 
-[data-theme='light'] .ribbon,
+[data-theme='light'] .ribbon {
+  background: transparent;
+  color: var(--tvm-text);
+}
+
+[data-theme='light'] .ribbon__frost,
 [data-theme='light'] .search-pill__panel,
 [data-theme='light'] .setup-card {
-  background: color-mix(in srgb, var(--tvm-surface) 88%, transparent);
+  background: var(--tvm-glass-bg-elevated);
   color: var(--tvm-text);
 }
 

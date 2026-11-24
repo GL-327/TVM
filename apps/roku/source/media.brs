@@ -80,7 +80,7 @@ function homeContentRails(payload as Object) as Object
           items: clipItems(items, 16)
         })
       end if
-      if rails.Count() >= 8 then exit for
+      if rails.Count() >= 24 then exit for
     end for
   end if
 

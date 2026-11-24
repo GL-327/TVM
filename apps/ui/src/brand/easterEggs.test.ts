@@ -26,6 +26,6 @@ describe('easter eggs', () => {
   it('recognises a few profile names', () => {
     expect(profileEaster('Happy')).toContain('sunshine');
     expect(profileEaster('TVM')).toContain('house');
-    expect(profileEaster('Arthur')).toBeNull();
+    expect(profileEaster('Alex')).toBeNull();
   });
 });

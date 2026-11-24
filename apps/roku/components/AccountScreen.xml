@@ -12,25 +12,28 @@
     <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="AccountScreen.brs" />
   <children>
-    <Label text="TVM" translation="[160, 220]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
-    <Label id="headingLabel" translation="[160, 400]" width="3200" wrap="true" maxLines="2" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
-    <Label id="ledeLabel" translation="[160, 560]" width="3000" wrap="true" maxLines="4" color="0xC4C4C4FF" font="font:MediumSystemFont" />
-    <Label id="statusLabel" translation="[160, 820]" width="3000" wrap="true" maxLines="3" color="0xFFBF69FF" font="font:SmallSystemFont" />
-    <FocusButton id="codeSignIn" translation="[160, 980]" />
-    <FocusButton id="name" translation="[160, 980]" />
-    <FocusButton id="email" translation="[160, 1180]" />
-    <FocusButton id="password" translation="[160, 1380]" />
-    <FocusButton id="submit" translation="[160, 1580]" />
-    <FocusButton id="switchMode" translation="[160, 1760]" />
-    <FocusButton id="dev" translation="[160, 1940]" />
-    <FocusButton id="recheck" translation="[160, 1180]" />
-    <FocusButton id="signout" translation="[160, 1380]" />
-    <FocusButton id="agree" translation="[160, 1180]" />
-    <!-- The email code, typed on the television rather than somewhere else.
-         These share slots with buttons that never show at the same time. -->
-    <FocusButton id="emailCode" translation="[160, 980]" />
-    <FocusButton id="resendCode" translation="[160, 1180]" />
+    <Poster id="backdrop" width="3840" height="2160" uri="pkg:/images/lighthouse.jpg" loadWidth="96" loadHeight="54" opacity="0.22" />
+    <Rectangle width="3840" height="2160" color="0x081018BA" />
+    <GlassPanel id="card" shape="panel" width="1760" height="1566" translation="[1040, 297]" />
+    <Label id="brandLabel" text="TVM" translation="[1160, 369]" width="1520" color="0x9FE7FFFF" />
+    <Label id="headingLabel" translation="[1160, 445]" width="1520" wrap="true" maxLines="2" color="0xF5F5F5FF" />
+    <Label id="ledeLabel" translation="[1160, 565]" width="1520" wrap="true" maxLines="3" color="0xC4C4C4FF" />
+    <Label id="statusLabel" translation="[1160, 709]" width="1520" wrap="true" maxLines="2" color="0xFFBF69FF" />
+    <FocusButton id="codeSignIn" translation="[1160, 807]" />
+    <FocusButton id="name" translation="[1160, 807]" />
+    <FocusButton id="email" translation="[1160, 971]" />
+    <FocusButton id="password" translation="[1160, 1135]" />
+    <FocusButton id="submit" translation="[1160, 1299]" />
+    <FocusButton id="switchMode" translation="[1160, 1463]" />
+    <FocusButton id="dev" translation="[1160, 1627]" />
+    <FocusButton id="recheck" translation="[1160, 807]" />
+    <FocusButton id="signout" translation="[1160, 971]" />
+    <FocusButton id="agree" translation="[1160, 807]" />
+    <FocusButton id="emailCode" translation="[1160, 807]" />
+    <FocusButton id="resendCode" translation="[1160, 971]" />
   </children>
 </component>

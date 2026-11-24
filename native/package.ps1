@@ -18,7 +18,7 @@ try {
     Copy-Item -Path (Join-Path $repo 'apps/ui/dist/*') -Destination (Join-Path $stage 'ui') -Recurse
     Copy-Item -LiteralPath (Get-Command node).Source -Destination (Join-Path $stage 'bin/node.exe')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $stage 'README.md')
-    Copy-Item -LiteralPath (Join-Path $repo 'TVM.cmd') -Destination $stage
+    Copy-Item -LiteralPath (Join-Path $repo 'scripts/launchers/TVM.cmd') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $repo 'scripts/launch-tvm.cmd'),(Join-Path $repo 'scripts/launch-tvm.ps1') -Destination $stage
     $commit = (git rev-parse HEAD).Trim()
     @{commit=$commit; builtAt=[DateTime]::UtcNow.ToString('o'); version=(Get-Content (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).version} | ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $stage 'native-build.json')

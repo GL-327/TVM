@@ -45,16 +45,18 @@ constexpr std::size_t kMaxKernels = 48;
 // The slab, scaled from PyGlass's tuned neutral material (bevel 56, strength 42, IOR 1.5 inside to 5 at the
 // rim) to TVM's smaller controls: a pill is domed across its whole height, a panel keeps a flat centre.
 constexpr double kMaxBevel = 28.0;
-constexpr double kStrengthPerBevel = 0.75;
+constexpr double kStrengthPerBevel = 0.85;
 constexpr double kIorEdge = 5.0;
 constexpr double kIorInner = 1.5;
-// Red bends least and blue most, so colour separates along the rim.
-constexpr double kChroma = 0.12;
-constexpr double kReflect = 0.62;
-constexpr double kF0 = 0.035;
-constexpr double kGlow = 0.34;
-constexpr double kGlowWidth = 1.8;
-constexpr double kGlowSaturation = 0.55;
+// Red bends least and blue most, so colour separates into cyan/violet along curved rims.
+constexpr double kChroma = 0.20;
+constexpr double kReflect = 0.72;
+constexpr double kF0 = 0.04;
+constexpr double kGlow = 0.42;
+constexpr double kGlowWidth = 2.6;
+constexpr double kGlowSaturation = 0.65;
+// Vibrancy boost on refracted pixels so underlying artwork blooms vividly through Clear & Frosted glass.
+constexpr float kVibrancySaturation = 1.28f;
 // Frosted glass: a rough face scatters light into a cone, seen as a blur of the picture behind (PyGlass's frost).
 constexpr float kFrostSigma = 16.0f;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
@@ -98,6 +100,25 @@ D2D1_MATRIX_5X4_F KeepChannel(int channel) {
     return m;
 }
 
+D2D1_MATRIX_5X4_F SaturationMatrix(float s) {
+    const float inv = 1.0f - s;
+    const float lr = 0.2126f * inv;
+    const float lg = 0.7152f * inv;
+    const float lb = 0.0722f * inv;
+    D2D1_MATRIX_5X4_F m{};
+    m.m[0][0] = lr + s;
+    m.m[1][0] = lg;
+    m.m[2][0] = lb;
+    m.m[0][1] = lr;
+    m.m[1][1] = lg + s;
+    m.m[2][1] = lb;
+    m.m[0][2] = lr;
+    m.m[1][2] = lg;
+    m.m[2][2] = lb + s;
+    m.m[3][3] = 1.0f;
+    return m;
+}
+
 }  // namespace
 
 GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
@@ -116,6 +137,7 @@ GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
         channel_[c]->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, KeepChannel(c));
     }
     made = made && SUCCEEDED(dc_->CreateEffect(CLSID_D2D1Composite, &sum_)) &&
+           SUCCEEDED(dc_->CreateEffect(CLSID_D2D1ColorMatrix, &vibrancy_)) &&
            SUCCEEDED(dc_->CreateEffect(CLSID_D2D1GaussianBlur, &frost_));
     if (!made) {
         dc_.Reset();
@@ -124,6 +146,8 @@ GlassLens::GlassLens(ID2D1RenderTarget* target) : target_(target) {
     sum_->SetInputCount(3);
     for (int c = 0; c < 3; ++c) sum_->SetInputEffect(static_cast<UINT32>(c), channel_[c].Get());
     sum_->SetValue(D2D1_COMPOSITE_PROP_MODE, D2D1_COMPOSITE_MODE_PLUS);
+    vibrancy_->SetInputEffect(0, sum_.Get());
+    vibrancy_->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, SaturationMatrix(kVibrancySaturation));
     frost_->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, kFrostSigma);
     // Hard edges: the blur never pulls in transparent black from outside the copied pixels.
     frost_->SetValue(D2D1_GAUSSIANBLUR_PROP_BORDER_MODE, D2D1_BORDER_MODE_HARD);
@@ -206,8 +230,8 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
     const double strength = kStrengthPerBevel * bevel;
     // A pixel at the rim never samples past the middle of the surface.
     const double clampShift = 0.85 * std::min(hx, hy);
-    const Vec3 key = Normalize(Vec3{0.0, -0.85, 0.52});
-    const Vec3 fill = Normalize(Vec3{-0.62, 0.55, 0.56});
+    const Vec3 key = Normalize(Vec3{-0.52, -0.78, 0.35});
+    const Vec3 fill = Normalize(Vec3{0.58, 0.72, 0.38});
 
     std::vector<double> shiftX(static_cast<std::size_t>(w) * h, 0.0);
     std::vector<double> shiftY(shiftX.size(), 0.0);
@@ -237,10 +261,12 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
                 ny = py < 0.0 ? -1.0 : 1.0;
             }
 
-            // The quarter-circle roundover: its slope grows toward the rim and is flat at the bevel's inner edge.
+            // Smooth squircle meniscus profile (p = 2.6): steep at the outer rim and C1-smooth into the flat interior.
             const double t = std::clamp(d / bevel, 0.0, 1.0);
-            const double xx = std::clamp(1.0 - t, 0.0, 0.985);
-            const double slope = xx / std::sqrt(1.0 - xx * xx);
+            const double u = std::clamp(1.0 - t, 0.0, 0.988);
+            const double uPow = std::pow(u, 2.6);
+            const double denom = std::pow(std::max(1.0 - uPow, 1e-4), 1.0 - 1.0 / 2.6);
+            const double slope = std::min(7.5, std::pow(u, 1.6) / denom);
             const double cosT = 1.0 / std::sqrt(1.0 + slope * slope);
             const double sinT = slope * cosT;
 
@@ -257,23 +283,25 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
             shiftY[i] = dy;
             maxShift = std::max({maxShift, std::fabs(dx), std::fabs(dy)});
 
-            // Schlick's Fresnel term, reflecting a faint horizon, a warm key from above and a cool fill.
+            // Dual-light Schlick Fresnel: crisp warm-white top-left key specular + cool sky-blue bottom-right bounce.
             const double fresnel = (kF0 + (1.0 - kF0) * std::pow(1.0 - std::clamp(cosT, 0.0, 1.0), 5.0)) * kReflect;
             const double rx = 2.0 * cosT * (nx * sinT);
             const double ry = 2.0 * cosT * (ny * sinT);
             const double rz = 2.0 * cosT * cosT - 1.0;
             const double dotKey = std::clamp(rx * key.x + ry * key.y + rz * key.z, 0.0, 1.0);
             const double dotFill = std::clamp(rx * fill.x + ry * fill.y + rz * fill.z, 0.0, 1.0);
-            const double specKey = std::pow(dotKey, 55.0);
-            const double specFill = std::pow(dotFill, 22.0);
+            const double specKey = std::pow(dotKey, 42.0) + 0.30 * std::pow(dotKey, 10.0);
+            const double specFill = std::pow(dotFill, 18.0);
             const double horizon = std::clamp(1.0 - std::clamp(rz, 0.0, 1.0), 0.0, 1.0);
-            const double envR = (horizon * 120.0 + specKey * 255.0 + specFill * 150.0) / 255.0;
-            const double envG = (horizon * 140.0 + specKey * 252.0 + specFill * 195.0) / 255.0;
-            const double envB = (horizon * 175.0 + specKey * 245.0 + specFill * 255.0) / 255.0;
+            const double envR = std::min(1.0, (horizon * 118.0 + specKey * 255.0 + specFill * 145.0) / 255.0);
+            const double envG = std::min(1.0, (horizon * 146.0 + specKey * 250.0 + specFill * 212.0) / 255.0);
+            const double envB = std::min(1.0, (horizon * 190.0 + specKey * 238.0 + specFill * 255.0) / 255.0);
 
-            // A thin pastel line whose hue turns around the rim, as light disperses through the edge.
+            // Spectral dispersion rim + deeper inner meniscus glow.
             const std::array<double, 3> spectral = Hue(std::atan2(ny, nx) / (2.0 * kPi) + 0.5);
-            const double line = std::clamp(1.0 - d / kGlowWidth, 0.0, 1.0) * kGlow;
+            const double edgeLine = std::clamp(1.0 - d / kGlowWidth, 0.0, 1.0);
+            const double innerGlow = std::pow(std::clamp(1.0 - d / std::max(4.0, bevel * 0.45), 0.0, 1.0), 2.2) * 0.16;
+            const double line = edgeLine * kGlow + innerGlow;
             std::array<double, 3> glow{};
             for (int c = 0; c < 3; ++c) glow[c] = (spectral[c] * kGlowSaturation + (1.0 - kGlowSaturation)) * line;
 
@@ -382,7 +410,7 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     }
 
     PushShape(box, radius, opacity);
-    dc_->DrawImage(sum_.Get(), D2D1::Point2F(static_cast<FLOAT>(placement.x), static_cast<FLOAT>(placement.y)),
+    dc_->DrawImage(vibrancy_.Get(), D2D1::Point2F(static_cast<FLOAT>(placement.x), static_cast<FLOAT>(placement.y)),
                    D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
     dc_->PopLayer();
     return true;

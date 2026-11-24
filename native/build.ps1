@@ -37,4 +37,4 @@ if (-not $SkipTests) {
     & $ctestExe --test-dir $buildDir -C Release --output-on-failure
     if ($LASTEXITCODE -ne 0) { throw 'Native tests failed.' }
 }
-Write-Host 'Built TVM native. Start it with native\run.bat or TVM.cmd.'
+Write-Host 'Built TVM native. Start it with native\run.bat or scripts\launchers\TVM.cmd.'

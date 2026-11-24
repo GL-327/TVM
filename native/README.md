@@ -10,7 +10,7 @@ From the repository root:
 
 ```powershell
 .\native\build.bat
-.\TVM.cmd
+.\scripts\launchers\TVM.cmd
 ```
 
 The build uses this checkout's package.json and source files. Install either
@@ -121,4 +121,4 @@ recording painters. Snapshot mode also uses scratch data:
 native/build/tvm.exe --snapshot native/build/home.png --size 390x844
 ```
 
-Use docs/PLATFORMS.md for all supported clients and their build requirements.
+See [README.md](../README.md) and [docs/DESKTOP.md](../docs/DESKTOP.md) for all supported clients and build requirements.

@@ -203,7 +203,7 @@ function tvmGlassFillStrong() as String
 end function
 
 function tvmGlassHighlight() as String
-  return "0xFFFFFF5C"
+  return "0xFFFFFF72"
 end function
 
 function tvmGlassSheen() as String
@@ -348,12 +348,12 @@ end function
 ' Glass fills. Normal: ~18% white over dark scenes. Reduce Transparency: opaque ink.
 function tvmGlassTint() as String
   if tvmReduceTransparency() then return "0x12151CFF"
-  return "0xFFFFFF1F"
+  return "0xEAF6FF22"
 end function
 
 function tvmGlassTintFocused() as String
   if tvmReduceTransparency() then return "0x232833FF"
-  return "0xFFFFFF30"
+  return "0xF5FBFF38"
 end function
 
 function tvmGlassTintPressed() as String
@@ -364,5 +364,5 @@ end function
 ' Reduce Transparency uses a solid, contrast-safe rim instead of a faint specular.
 function tvmGlassRimOpacity() as Float
   if tvmReduceTransparency() then return 1.0
-  return 0.9
+  return 0.94
 end function
