@@ -42,6 +42,7 @@
 #include "platform/graphics.h"
 #include "platform/snapshot.h"
 #include "ui/details_screen.h"
+#include "ui/downloads_screen.h"
 #include "ui/logo_reveal.h"
 #include "ui/profile_chooser.h"
 #include "ui/player_screen.h"
@@ -330,17 +331,83 @@ void SettleMotion(tvm::ui::Shell& shell, double& nowMs) {
 int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys,
                 tvm::ui::Theme theme, const std::wstring& screen, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
-    const bool settings = screen == L"settings";
-    if (screen == L"details") {
-        // A title's page with its backdrop, and the bare Back arrow at the top left.
+    const bool settings = screen == L"settings" || screen == L"settings-language";
+    if (screen.rfind(L"downloads", 0) == 0) {
+        // Downloads over a title's page: "downloads" with a series and its downloads, "downloads-empty" for a film with
+        // none, "downloads-list" for the list alone, "downloads-open" with the quality list open.
         tvm::platform::SnapshotWriter writer(graphics, width, height);
-        tvm::ui::DetailsScreen details("tt0000001", "The Last Light");
+        tvm::ui::DownloadsScreen downloads;
+        downloads.Layout(width, height);
+        tvm::ui::DownloadsView view;
+        if (screen != L"downloads-list") {
+            view.title = screen == L"downloads-empty" ? "The Last Light" : "Northward";
+            view.subtitle = screen == L"downloads-empty" ? "Film" : "Series \xC2\xB7 18 episodes";
+            view.posterUrl = art;
+            view.backdropUrl = art;
+            if (screen != L"downloads-empty") {
+                view.choices.push_back({"scope", "Download", {"Full series", "One season", "One episode"}, 1});
+                view.choices.push_back({"season", "Season", {"Season 1", "Season 2"}, 0});
+            }
+            view.choices.push_back({"language", "Audio", {"English", "Original / any language", "Japanese", "French"}, 0});
+            view.choices.push_back({"quality", "Highest quality", {"Up to 480p", "Up to 720p", "Up to 1080p", "Up to 4K"}, 2});
+            view.folder = "C:\\Users\\Viewer\\Downloads\\TVM";
+            view.startLabel = screen == L"downloads-empty" ? "Download \xC2\xB7 English \xC2\xB7 up to 1080p"
+                                                           : "Download 10 episodes \xC2\xB7 English \xC2\xB7 up to 1080p";
+            view.startEnabled = true;
+            view.note = "Only English audio is downloaded: a source in another language, or marked MULTi, is never used "
+                        "instead, and the download stops if none is found.";
+        }
+        if (screen != L"downloads-empty") {
+            tvm::ui::DownloadJobView running{3, "Northward \xC2\xB7 S1 E2 \xC2\xB7 The Long Road", "downloading", 0.42,
+                                             "1.3 GB of 3.1 GB", true, false};
+            tvm::ui::DownloadJobView queued{4, "Northward \xC2\xB7 S1 E3 \xC2\xB7 Ice", "queued", -1.0,
+                                            "Waiting for the download before it", true, false};
+            tvm::ui::DownloadJobView done{2, "Northward \xC2\xB7 S1 E1 \xC2\xB7 Pilot", "complete", 1.0,
+                                          "2.8 GB \xC2\xB7 C:\\Users\\Viewer\\Downloads\\TVM\\Northward S01E01.mkv", false, true};
+            tvm::ui::DownloadJobView failed{1, "Quiet Harbor", "failed", -1.0, "No English source was found", false, false};
+            view.jobs = {running, queued, done, failed};
+        }
+        downloads.SetView(view);
+        if (screen == L"downloads-open") downloads.ActivateItem("choice:quality", 0.0);
+        for (double now = 0.0; now <= 800.0; now += 16.0) downloads.Tick(now);
+        writer.Save([&](tvm::ui::Painter& painter) {
+            const tvm::ui::ThemeScope look(theme);
+            painter.Clear(tvm::ui::Rgb(0x071018));
+            painter.ImageFaded(tvm::ui::Box{0.0, 0.0, static_cast<double>(width), static_cast<double>(height)}, art, 0.0,
+                               0.5, 0.5, 0.3);
+            downloads.Paint(painter);
+        }, path);
+        std::printf("wrote %ls\n", path.c_str());
+        return 0;
+    }
+    if (screen.rfind(L"details", 0) == 0) {
+        // A title's page with its backdrop, and the bare Back arrow at the top left. "details-series" is a series with
+        // its season picker; "details-series-open" has the season list open.
+        const bool series = screen.rfind(L"details-series", 0) == 0;
+        tvm::platform::SnapshotWriter writer(graphics, width, height);
+        tvm::ui::DetailsScreen details("tt0000001", series ? "Northward" : "The Last Light");
         details.Layout(width, height);
         tvm::ui::TitleInfo info;
         info.state = tvm::ui::TitleInfo::State::Ready;
         info.id = info.media.id = "tt0000001";
-        info.title = "The Last Light";
-        info.kind = "movie";
+        info.title = series ? "Northward" : "The Last Light";
+        info.kind = info.media.kind = series ? "series" : "movie";
+        if (series) {
+            for (const int season : {1, 2, 3, 0}) {
+                for (int episode = 1; episode <= (season == 0 ? 2 : 6); ++episode) {
+                    tvm::catalog::MediaItem child;
+                    child.id = "tt0000001:" + std::to_string(season) + ":" + std::to_string(episode);
+                    child.title = "Episode " + std::to_string(episode);
+                    child.episodeName = episode == 1 ? "Pilot" : (episode == 2 ? "The Long Road" : "Ice and Light");
+                    child.synopsis = "The crew push north as the light starts to fail.";
+                    child.kind = "episode";
+                    child.season = season;
+                    child.episode = episode;
+                    child.poster = art;
+                    info.children.push_back(child);
+                }
+            }
+        }
         info.year = 2024;
         info.rating = "7.8";
         info.runtime = "2h 6m";
@@ -352,6 +419,7 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         for (const std::wstring& token : SplitCommas(keys)) {
             if (const auto direction = ParseDirection(token)) details.Navigate(*direction, 0.0);
         }
+        if (screen == L"details-series-open") details.ActivateItem("season-menu", 0.0);
         for (double now = 0.0; now <= 1000.0; now += 16.0) details.Tick(now);
         writer.Save([&](tvm::ui::Painter& painter) {
             const tvm::ui::ThemeScope look(theme);
@@ -404,6 +472,12 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
     // Live TV, Library and Search are lanes of Home under the same chrome.
     const int lane = screen == L"live" ? 3 : screen == L"library" ? 4 : screen == L"search" ? 5 : 0;
     if (home != nullptr && lane > 0) ShowSnapshotLane(*home, lane, lane, art, 0.0);
+    // Settings with the App language list open.
+    if (screen == L"settings-language") {
+        auto& page = dynamic_cast<tvm::ui::SettingsScreen&>(shell.ActiveScreen());
+        page.FocusItem("language", 0.0, true);
+        page.Select(0.0);
+    }
     // "Who's watching?" (with `-edit` in edit mode, `-sheet` with a profile's sheet open) and the orb's menu, over
     // Home, with four sample profiles.
     if (screen.rfind(L"chooser", 0) == 0 || screen == L"profile-menu") {
@@ -592,6 +666,29 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
                       {820.0, release},          {1150.0, hover("hero-info")}, {1600.0, press("hero-info")},
                       {1720.0, release}};
             endMs = 2200.0;
+        } else if (scenario == L"rail-scroll") {
+            // A carousel: the pointer comes over it and its arrow shows, a click steps it along twice, the back arrow
+            // steps it back, then a mouse drag slides it and lets it coast.
+            const tvm::ui::Box card = scene->CardBox(1, 2);
+            const double y = card.CenterY();
+            const auto move = [host](double x, double yy, bool down) {
+                return [host, x, yy, down](double now) { host->MouseMove(x, yy, down, now); };
+            };
+            const auto arrowClick = [host, scene](bool next) {
+                return [host, scene, next](double now) {
+                    if (const auto arrow = scene->RailArrowBox(1, next)) {
+                        host->MouseMove(arrow->CenterX(), arrow->CenterY(), false, now);
+                        host->MouseDown(arrow->CenterX(), arrow->CenterY(), now);
+                        host->MouseUp(arrow->CenterX(), arrow->CenterY(), now + 1.0);
+                    }
+                };
+            };
+            events = {{0.0, move(card.CenterX(), y, false)},     {120.0, move(card.CenterX() + 4.0, y, false)},
+                      {500.0, arrowClick(true)},                 {1300.0, arrowClick(true)},
+                      {2100.0, arrowClick(false)},               {2900.0, [host, card, y](double now) { host->MouseDown(card.CenterX() + 300.0, y, now); }},
+                      {2950.0, move(card.CenterX() + 200.0, y, true)}, {3000.0, move(card.CenterX() + 60.0, y, true)},
+                      {3050.0, move(card.CenterX() - 80.0, y, true)},  {3080.0, [host, card, y](double now) { host->MouseUp(card.CenterX() - 80.0, y, now); }}};
+            endMs = 3900.0;
         } else if (scenario == L"orb") {
             events = {{0.0, hover("settings")}, {200.0, hover("top:6")}, {700.0, press("top:6")},
                       {820.0, release},          {1150.0, hover("settings")}};
