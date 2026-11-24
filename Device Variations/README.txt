@@ -12,10 +12,11 @@ GitHub: https://github.com/GL-327/TVM/releases/tag/devices
 
 Files
 -----
-TVM.ipa              iPhone & iPad. Unsigned — re-sign first.
+TVM.exe              Windows desktop single-file installer & launcher
+TVM.ipa              iPhone & iPad. Unsigned — re-sign first (not App Store).
 TVM.apk              Android phone, tablet and TV. Install directly.
 TVM-roku.zip         Roku developer sideload channel
-TVM-desktop.zip      Windows, macOS and Linux, all in one
+TVM-desktop.zip      macOS and Linux browser desktop
 fetch-ipa.ps1        Re-download every package from GitHub Releases
 
 iOS — TVM.ipa  (standalone compiled app, not App Store signed)
@@ -57,10 +58,11 @@ GitHub when the desktop app opens.
 
 Desktop
 -------
-Extract TVM-desktop.zip and run the entry point for your OS: TVM.cmd on
-Windows, TVM.command on macOS, ./TVM.sh on Linux. It needs Node.js 22 or
-newer. From then on it updates itself: on opening it checks GitHub, applies
-Core and the interface, and restarts into them.
+Windows: download and run TVM.exe (single-file installer & launcher; includes
+Core, UI, and Node).
+macOS & Linux: extract TVM-desktop.zip and run TVM.command on macOS or ./TVM.sh
+on Linux (needs Node.js 22 or newer). From then on it updates itself: on opening
+it checks GitHub, applies Core and the interface, and restarts into them.
 
 What this IPA cannot do
 -----------------------

@@ -3,7 +3,7 @@
 The supported products are desktop, web browser, iOS, Android and Roku.
 The USB appliance has been retired. Its historical source remains in Git history.
 
-Windows desktop runs the C++20 client under `native/`, packaged with the shared Core/UI and Node. Build with `native/build.bat` and start `TVM.cmd`, or extract the Native Windows release ZIP. Electron has been retired. macOS/Linux desktop use the responsive browser UI. See [desktop setup](DESKTOP.md).
+Windows desktop runs the C++20 client under `native/`, packaged with the shared Core/UI and Node. Build with `native/build.bat` and start `TVM.cmd`, or download and run **TVM.exe** from GitHub Releases. Electron has been retired. macOS/Linux desktop use the responsive browser UI. See [desktop setup](DESKTOP.md).
 
 | App | Update behavior | Native package changes |
 | --- | --- | --- |
@@ -27,6 +27,5 @@ The iOS build and simulator tests run on the macOS GitHub runner. Roku hardware
 installation and playback must be checked on a physical device. Compilation
 and browser emulation alone do not establish either hardware result.
 
-For Windows, download **TVM-native-windows.zip** from the Native Windows release, extract the
-whole folder, and open `TVM.cmd`. GitHub's **Source code (zip)** requires a
+For Windows, download **TVM.exe** from [GitHub Releases](https://github.com/GL-327/TVM/releases/latest) and run it directly. GitHub's **Source code (zip)** requires a
 development setup and is not the packaged Windows app.

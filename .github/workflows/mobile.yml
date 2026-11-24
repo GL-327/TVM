@@ -381,22 +381,21 @@ jobs:
           | Build | \`$SHA\` |
           | Minimum | iOS 15 |
 
-          ### Set up
-          This IPA is **unsigned**. Apple does not let an app outside the App
-          Store install itself, so you sign it with your own free Apple ID. Do
-          this on a computer:
+          ### Set up (sideload — not on the App Store)
+          This IPA is an **unsigned iPhone/iPad app** built outside the App
+          Store. Sign it with your own free Apple ID using a sideloading tool:
 
           1. Download **TVM.ipa** below.
-          2. Install [Sideloadly](https://sideloadly.io) (or AltStore).
-          3. Plug the iPhone in, drag the IPA into Sideloadly, enter your Apple
-             ID, and press Start.
+          2. Install [Sideloadly](https://sideloadly.io), [AltStore](https://altstore.io), or [SideStore](https://sidestore.io).
+          3. Plug the iPhone in, drag the IPA into Sideloadly (or open it in AltStore/SideStore), enter your Apple
+             ID, and install.
           4. On the iPhone: **Settings → General → VPN & Device Management**,
              then trust your developer certificate.
           5. Open TVM. It runs its own core on the phone; nothing else to run.
           6. Sign in, or press **I'm a dev** and enter the developer code.
 
-          A free Apple ID signature lasts 7 days. Running Sideloadly again
-          renews it and keeps everything you have saved.
+          A free Apple ID signature lasts 7 days. Re-signing with Sideloadly
+          (or refreshing in AltStore/SideStore) renews it and keeps everything you have saved.
 
           ### Keeping it current
           TVM refreshes its interface from GitHub every time it opens. The app

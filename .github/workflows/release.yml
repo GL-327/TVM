@@ -112,7 +112,7 @@ jobs:
           cat > release/NOTES.md <<EOF
           Responsive browser desktop for **macOS and Linux**, with shared Core and UI.
           Install Node.js 22+, extract TVM-desktop.zip, then run TVM.command on macOS or TVM.sh on Linux.
-          Windows uses the C++ client from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows), which includes Node and the shared Core/UI.
+          Windows uses the single-file **TVM.exe** installer from the [Native Windows release](https://github.com/GL-327/TVM/releases/tag/native-windows) (or [TVM downloads](https://github.com/GL-327/TVM/releases/latest)), which includes Node and the shared Core/UI.
           Build: $SHA. Electron has been retired. See [desktop setup](https://github.com/GL-327/TVM/blob/main/docs/DESKTOP.md).
           EOF
           gh release create desktop --title "Desktop browser — macOS & Linux" --notes-file release/NOTES.md 2>/dev/null \

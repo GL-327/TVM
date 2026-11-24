@@ -15,11 +15,11 @@ cat > "$NOTES" <<EOF
 
 Current installers for Windows, macOS/Linux, iOS, Android, Roku and mobile/desktop web browsers. Release target: \`$SHA\`.
 
-- **TVM-native-windows.zip** — Windows C++ desktop, with Core/UI and Node included. Extract everything and run TVM.cmd.
+- **TVM.exe** — Windows desktop installer & launcher (single compiled EXE; includes Core, UI, and Node). Download and run it.
 - **TVM-desktop.zip** — macOS/Linux browser desktop. Requires Node.js 22+; run TVM.command or TVM.sh.
 - **TVM-web.zip** — responsive web client with its Core host. Requires Node.js 22+; run TVM-web.cmd or TVM-web.sh. Works in mobile and desktop browsers.
 - **TVM.apk** — Android phone/tablet/TV package.
-- **TVM.ipa** — iPhone/iPad package. Requires signing with your Apple account/team before sideloading.
+- **TVM.ipa** — iPhone/iPad sideloadable app (not on the App Store). Sign and install with Sideloadly, AltStore, or SideStore using your Apple ID.
 - **TVM-roku.zip** — developer-mode Roku channel; connects to a TVM Core on your computer.
 
 Read the [README and installation guide](https://github.com/GL-327/TVM#readme) for what TVM does, accounts, media connections, LAN setup and updates.
@@ -35,6 +35,7 @@ rm -f "$NOTES"
 for file in "$@"; do
   name="$(basename "$file")"
   case "$name" in
+    TVM.exe) stale="TVM-native-windows.zip" ;;
     TVM.ipa) stale="TVM-ios.ipa TVM-unsigned.ipa" ;;
     TVM.apk) stale="TVM-android.apk" ;;
     TVM-desktop.zip) stale="$(gh release view devices --json assets --jq '.assets[].name | select(startswith("TVM-desktop-"))' 2>/dev/null || true)" ;;
