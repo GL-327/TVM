@@ -693,6 +693,86 @@ TEST(the_orb_menu_switches_profile_or_closes_from_outside) {
     REQUIRE(menu.FocusedKey() == std::optional<std::string>("menu-manage"));
 }
 
+
+// ------------------------------------------------------------ series details: season picker
+
+tvm::ui::TitleInfo ThreeSeasons() {
+    tvm::ui::TitleInfo info;
+    info.state = tvm::ui::TitleInfo::State::Ready;
+    info.id = info.media.id = "tt5";
+    info.title = "A Series";
+    info.kind = info.media.kind = "series";
+    for (const int season : {1, 2, 3, 0}) {
+        for (int episode = 1; episode <= (season == 2 ? 4 : 2); ++episode) {
+            tvm::catalog::MediaItem child;
+            child.id = "tt5:" + std::to_string(season) + ":" + std::to_string(episode);
+            child.title = "Episode " + std::to_string(episode);
+            child.kind = "episode";
+            child.season = season;
+            child.episode = episode;
+            info.children.push_back(child);
+        }
+    }
+    return info;
+}
+
+TEST(a_series_shows_one_season_picker_and_its_list_switches_the_episodes) {
+    tvm::ui::DetailsScreen details("tt5", "A Series");
+    details.Layout(1920.0, 1080.0);
+    details.SetInfo(ThreeSeasons());
+    // The page opens on the picker, showing season 1; there are no season pills.
+    REQUIRE(details.FocusedKey() == std::optional<std::string>("season-menu"));
+    REQUIRE(details.BoxOf("season-menu").has_value());
+    REQUIRE(!details.BoxOf("season:2").has_value());
+    REQUIRE_EQ(details.Season(), 1);
+    REQUIRE_EQ(details.Episodes().size(), std::size_t{2});
+
+    // OK opens the list of every season, Specials last, on the current one.
+    REQUIRE(!details.Select(0.0).has_value());
+    REQUIRE(details.SeasonList().IsOpen());
+    REQUIRE_EQ(details.SeasonList().Count(), std::size_t{4});
+    REQUIRE_EQ(details.SeasonList().Selected(), std::size_t{0});
+    // Down picks season 2, whose four episodes then show.
+    REQUIRE(details.Navigate(Direction::Down, 0.0));
+    REQUIRE(!details.Select(0.0).has_value());
+    REQUIRE(!details.SeasonList().IsOpen());
+    REQUIRE_EQ(details.Season(), 2);
+    REQUIRE_EQ(details.Episodes().size(), std::size_t{4});
+    REQUIRE(details.FocusedKey() == std::optional<std::string>("season-menu"));
+
+    // Down reaches the first episode, Up comes back to the picker, and Up again the buttons.
+    REQUIRE(details.Navigate(Direction::Down, 0.0));
+    REQUIRE(details.FocusedKey() == std::optional<std::string>("ep:0"));
+    REQUIRE(details.Navigate(Direction::Up, 0.0));
+    REQUIRE(details.FocusedKey() == std::optional<std::string>("season-menu"));
+}
+
+TEST(the_season_list_takes_the_mouse_and_closes_on_back_or_outside) {
+    tvm::ui::DetailsScreen details("tt5", "A Series");
+    details.Layout(1920.0, 1080.0);
+    details.SetInfo(ThreeSeasons());
+    const tvm::ui::Box picker = *details.BoxOf("season-menu");
+    REQUIRE(details.ItemAt(picker.CenterX(), picker.CenterY()) == std::optional<std::string>("season-menu"));
+    details.ActivateItem("season-menu", 0.0);
+    REQUIRE(details.SeasonList().IsOpen());
+    // Back closes only the list.
+    REQUIRE(details.CloseOverlay(0.0));
+    REQUIRE(!details.SeasonList().IsOpen());
+    // A click on the Specials row picks it.
+    details.ActivateItem("season-menu", 0.0);
+    const tvm::ui::Box specials = *details.SeasonList().RowBox(3);
+    const std::optional<std::string> key = details.ItemAt(specials.CenterX(), specials.CenterY());
+    REQUIRE(key.has_value());
+    details.ActivateItem(*key, 0.0);
+    REQUIRE_EQ(details.Season(), 0);
+    // A click elsewhere closes it without a pick.
+    details.ActivateItem("season-menu", 0.0);
+    REQUIRE(details.ItemAt(5.0, 1000.0) == std::optional<std::string>("season-dismiss"));
+    details.ActivateItem("season-dismiss", 0.0);
+    REQUIRE(!details.SeasonList().IsOpen());
+    REQUIRE_EQ(details.Season(), 0);
+}
+
 }  // namespace
 
 TEST(shell_navigation_guard_blocks_screens_and_actions_before_dispatch) {

@@ -14,6 +14,7 @@
 #include "ui/button_focus.h"
 #include "ui/layout.h"
 #include "ui/catalog_view.h"
+#include "ui/dropdown.h"
 #include "ui/screen_base.h"
 
 namespace tvm::ui {
@@ -40,6 +41,11 @@ public:
     std::optional<ScrollSurface> SurfaceAt(double x, double y, nav::Axis axis) const override;
     void SetScroll(const ScrollSurface& surface, double value, double nowMs) override;
     void AnimateScroll(const ScrollSurface& surface, double target, double nowMs) override;
+    bool CloseOverlay(double nowMs) override;
+    // The season list, while it is open. Exposed for tests.
+    const Dropdown& SeasonList() const { return seasonList_; }
+    // "Season 2", or "Specials" for season 0.
+    static std::string SeasonLabel(int season);
 
     const std::string& id() const { return id_; }
     const TitleInfo& info() const { return info_; }
@@ -81,6 +87,9 @@ private:
     double height_ = 0.0;
     double scroll_ = 0.0;
     std::optional<motion::Tween> scrollTween_;
+    // The list of seasons, which opens under the season picker.
+    Dropdown seasonList_;
+    void PickSeason(std::size_t index, double nowMs);
 };
 
 }  // namespace tvm::ui

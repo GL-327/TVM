@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "motion/preferences.h"
+#include "ui/glass_styles.h"
 #include "ui/widget.h"
 
 namespace tvm::ui {
@@ -23,7 +24,7 @@ constexpr double kCopyMaxRem = 46.0;
 constexpr double kHeroPadBottomRem = 1.35;
 constexpr double kButtonHeightRem = 2.85;
 constexpr double kButtonGapRem = 0.75;
-constexpr double kSeasonTabHeightRem = 2.6;
+constexpr double kSeasonTabHeightRem = 2.75;
 constexpr double kEpisodeHeightRem = 4.95;
 constexpr double kEpisodeGapRem = 0.55;
 constexpr double kStillWidthRem = 7.0;
@@ -36,7 +37,9 @@ constexpr char kPlayKey[] = "play";
 constexpr char kListKey[] = "list";
 constexpr char kDownloadKey[] = "download";
 constexpr char kBackKey[] = "back";
-constexpr char kSeasonPrefix[] = "season:";
+// The season picker: one control showing the season, which opens a list of every season.
+constexpr char kSeasonMenuKey[] = "season-menu";
+constexpr char kSeasonPickPrefix[] = "season-pick:";
 constexpr char kEpisodePrefix[] = "ep:";
 
 bool StartsWith(const std::string& text, const char* prefix) {
@@ -102,9 +105,13 @@ void DetailsScreen::SetInfo(TitleInfo info) {
     info_ = std::move(info);
     if (info_.title.empty()) info_.title = title_;
     const std::vector<int> seasons = Seasons();
-    if (std::find(seasons.begin(), seasons.end(), season_) == seasons.end()) season_ = seasons.empty() ? 0 : seasons[0];
+    // The first answer opens on the first numbered season (Specials, season 0, come last). Later answers keep the
+    // season shown, while it is still there.
+    if (first || std::find(seasons.begin(), seasons.end(), season_) == seasons.end()) {
+        season_ = seasons.empty() ? 0 : seasons[0];
+    }
     // A series opens on its first season, as Details.tsx focuses it. A film opens on Play.
-    if (first && IsSeries() && !seasons.empty()) focused_ = kSeasonPrefix + std::to_string(season_);
+    if (first && IsSeries() && !seasons.empty()) focused_ = kSeasonMenuKey;
     if (!BoxOf(focused_).has_value()) focused_ = ActionKeys().front();
 }
 
@@ -124,9 +131,13 @@ std::vector<std::string> DetailsScreen::ActionKeys() const {
 }
 
 std::vector<std::string> DetailsScreen::SeasonKeys() const {
-    std::vector<std::string> keys;
-    for (int season : Seasons()) keys.push_back(kSeasonPrefix + std::to_string(season));
-    return keys;
+    // One control for all the seasons, as the Android app has, in place of a row of season pills.
+    if (Seasons().empty()) return {};
+    return {kSeasonMenuKey};
+}
+
+std::string DetailsScreen::SeasonLabel(int season) {
+    return season == 0 ? "Specials" : "Season " + std::to_string(season);
 }
 
 double DetailsScreen::ContentHeight() const {
@@ -161,12 +172,12 @@ std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
     }
 
     const double tabsY = HeroHeight() - scroll_ + Rem(1.0);
-    FlowLayout tabs(x, tabsY, width_ - 2.0 * x, Rem(0.6));
-    for (int season : Seasons()) {
-        const std::string label = season == 0 ? "Specials" : "Season " + std::to_string(season);
-        const double width = Rem(1.6) + static_cast<double>(label.size()) * 0.56 * Rem(1.0);
-        const Box box = tabs.Place(width, Rem(kSeasonTabHeightRem));
-        if (key == kSeasonPrefix + std::to_string(season)) return box;
+    if (key == kSeasonMenuKey && !Seasons().empty()) {
+        // Wide enough for the longest season name and the chevron, so it does not change size between seasons.
+        std::size_t longest = 0;
+        for (int season : Seasons()) longest = std::max(longest, SeasonLabel(season).size());
+        const double width = Rem(1.2) + static_cast<double>(longest) * 0.56 * Rem(1.0) + Rem(2.4);
+        return Box{x, tabsY, width, Rem(kSeasonTabHeightRem)};
     }
 
     if (StartsWith(key, kEpisodePrefix)) {
@@ -180,13 +191,7 @@ std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
 }
 
 double DetailsScreen::SeasonsHeight() const {
-    const double x = Rem(kSafeXRem);
-    FlowLayout tabs(x, 0, width_ - 2.0 * x, Rem(0.6));
-    for (int season : Seasons()) {
-        const std::string label = season == 0 ? "Specials" : "Season " + std::to_string(season);
-        tabs.Place(Rem(1.6) + static_cast<double>(label.size()) * 0.56 * Rem(1.0), Rem(kSeasonTabHeightRem));
-    }
-    return tabs.Bottom();
+    return Seasons().empty() ? 0.0 : Rem(kSeasonTabHeightRem);
 }
 
 std::string DetailsScreen::MetaLine() const {
@@ -218,12 +223,13 @@ bool DetailsScreen::Tick(double nowMs) {
 }
 
 bool DetailsScreen::Animating() const {
-    return buttonFocus_.Animating(clockMs_) || scrollTween_.has_value();
+    return buttonFocus_.Animating(clockMs_) || scrollTween_.has_value() || seasonList_.Animating(clockMs_);
 }
 
 void DetailsScreen::Paint(Painter& painter) const {
     PaintPage(painter);
     PaintBack(painter);
+    seasonList_.Paint(painter, clockMs_);
 }
 
 void DetailsScreen::PaintBack(Painter& painter) const {
@@ -322,30 +328,22 @@ void DetailsScreen::PaintPage(Painter& painter) const {
 
     if (!IsSeries()) return;
 
-    // The season tabs, then the season's episodes.
-    for (int season : Seasons()) {
-        const std::string key = kSeasonPrefix + std::to_string(season);
-        const Box tab = *BoxOf(key);
-        if (tab.Bottom() < 0.0 || tab.y > height_) continue;
-        const bool shown = season == season_;
-        const bool focused = ShowsFocus(focused_, key);
-        GlassStyle tabGlass;
-        tabGlass.kind = GlassKind::Tab;
-        tabGlass.focused = focused;
-        tabGlass.activeTab = shown;
-        tabGlass.focusAmount = focused ? 1.0 : 0.0;
-        tabGlass.reduceTransparency = tokens::reduceTransparency;
-        tabGlass.tint = shown ? tokens::kPrimary : (focused ? tokens::kSurfaceHover : tokens::kSurface);
-        tabGlass.ringWidth = Rem(kFocusRingWidthRem);
-        tabGlass.ringOutset = Rem(kFocusRingOffsetRem) + tabGlass.ringWidth / 2.0;
-        tabGlass.ringColor = tokens::kFocusRing;
-        painter.Glass(tab, tab.height / 2.0, tabGlass);
-
-        const std::string label = season == 0 ? "Specials" : "Season " + std::to_string(season);
+    // The season picker, then the season's episodes. The picker is the Home nav pill's glass: its resting capsule,
+    // and its hover plate under the pointer or the remote, with the label turning dark on the plate.
+    if (const std::optional<Box> menu = BoxOf(kSeasonMenuKey); menu.has_value() && menu->Bottom() >= 0.0 && menu->y <= height_) {
+        const double amount = seasonList_.IsOpen() ? 1.0 : buttonFocus_.Amount(kSeasonMenuKey, clockMs_);
+        const double radius = Rem(0.75);
+        painter.Glass(*menu, radius, glass::NavCapsule());
+        if (amount > 0.01) painter.Glass(*menu, radius, glass::NavHover(amount));
+        const Color ink = glass::InkOnPlate(amount);
         const TextStyle style{Rem(1.0), true, 650};
-        const double width = painter.MeasureText(label, style);
-        painter.Text(Box{tab.CenterX() - width / 2.0, tab.y, width + 2.0, tab.height}, label, style,
-                     shown ? tokens::kOnPrimary : tokens::kText);
+        painter.Text(Box{menu->x + Rem(1.0), menu->y, menu->width - Rem(2.6), menu->height}, SeasonLabel(season_), style, ink);
+        if (Seasons().size() > 1) {
+            const double chev = Rem(0.85);
+            painter.Path(Box{menu->Right() - Rem(1.0) - chev, menu->CenterY() - chev / 2.0, chev, chev}, 24.0,
+                         seasonList_.IsOpen() ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6",
+                         PathStyle{Color{0, 0, 0, 0}, ink, 2.4, false});
+        }
     }
 
     const std::vector<const catalog::MediaItem*> episodes = Episodes();
@@ -406,7 +404,7 @@ void DetailsScreen::ScrollTo(double target, double nowMs) {
 void DetailsScreen::FollowFocus(double nowMs) {
     // The buttons sit in the hero, so the page goes back to the top for them. A tab or an episode is
     // brought to a third of the way down, so the rows after it show.
-    if (!StartsWith(focused_, kSeasonPrefix) && !StartsWith(focused_, kEpisodePrefix)) {
+    if (focused_ != kSeasonMenuKey && !StartsWith(focused_, kEpisodePrefix)) {
         const auto box = BoxOf(focused_);
         ScrollTo(box && box->Bottom() > height_ - Rem(1.0) ? box->Bottom() + scroll_ - height_ + Rem(2.0) : 0.0, nowMs);
         return;
@@ -418,12 +416,13 @@ void DetailsScreen::FollowFocus(double nowMs) {
 }
 
 bool DetailsScreen::Navigate(nav::Direction direction, double nowMs) {
+    // An open season list takes the arrows.
+    if (seasonList_.IsOpen()) return seasonList_.Navigate(direction, nowMs);
     const std::vector<std::string> actions = ActionKeys();
-    const std::vector<std::string> seasons = SeasonKeys();
+    const bool picker = !SeasonKeys().empty();
     const std::size_t episodes = Episodes().size();
     const auto move = [&](const std::string& key) {
         focused_ = key;
-        if (StartsWith(key, kSeasonPrefix)) season_ = std::stoi(key.substr(sizeof(kSeasonPrefix) - 1));
         FollowFocus(nowMs);
         return true;
     };
@@ -442,27 +441,46 @@ bool DetailsScreen::Navigate(nav::Direction direction, double nowMs) {
     }
     if (std::find(actions.begin(), actions.end(), focused_) != actions.end()) {
         if (direction == nav::Direction::Up) return move(kBackKey);
-        if (direction == nav::Direction::Down && !seasons.empty()) return move(kSeasonPrefix + std::to_string(season_));
+        if (direction == nav::Direction::Down && picker) return move(kSeasonMenuKey);
+        if (direction == nav::Direction::Down && episodes > 0) return move(std::string(kEpisodePrefix) + "0");
         return along(actions);
     }
-    if (StartsWith(focused_, kSeasonPrefix)) {
+    if (focused_ == kSeasonMenuKey) {
         if (direction == nav::Direction::Up) return move(actions.front());
         if (direction == nav::Direction::Down && episodes > 0) return move(std::string(kEpisodePrefix) + "0");
-        // Moving along the tabs shows that season at once, as the tabs on the web do.
-        return along(seasons);
+        return false;
     }
     if (StartsWith(focused_, kEpisodePrefix)) {
         const std::size_t index = std::stoul(focused_.substr(sizeof(kEpisodePrefix) - 1));
         if (direction == nav::Direction::Up) {
-            return index == 0 ? move(kSeasonPrefix + std::to_string(season_))
-                              : move(kEpisodePrefix + std::to_string(index - 1));
+            if (index > 0) return move(kEpisodePrefix + std::to_string(index - 1));
+            return move(picker ? std::string(kSeasonMenuKey) : actions.front());
         }
         if (direction == nav::Direction::Down && index + 1 < episodes) return move(kEpisodePrefix + std::to_string(index + 1));
     }
     return false;
 }
 
-std::optional<Command> DetailsScreen::Select(double /*nowMs*/) {
+bool DetailsScreen::CloseOverlay(double nowMs) {
+    if (!seasonList_.IsOpen()) return false;
+    seasonList_.Close(nowMs);
+    return true;
+}
+
+void DetailsScreen::PickSeason(std::size_t index, double nowMs) {
+    const std::vector<int> seasons = Seasons();
+    // The episodes follow at once; the page keeps its place, as the Android picker keeps the scroll.
+    if (index < seasons.size()) season_ = seasons[index];
+    seasonList_.Close(nowMs);
+    focused_ = kSeasonMenuKey;
+}
+
+std::optional<Command> DetailsScreen::Select(double nowMs) {
+    clockMs_ = std::max(clockMs_, nowMs);
+    if (seasonList_.IsOpen()) {
+        PickSeason(seasonList_.Highlighted(), nowMs);
+        return std::nullopt;
+    }
     return Activate(focused_);
 }
 
@@ -470,7 +488,11 @@ std::optional<std::string> DetailsScreen::FocusedKey() const {
     return focused_;
 }
 
-bool DetailsScreen::FocusItem(const std::string& key, double /*nowMs*/, bool /*withCamera*/) {
+bool DetailsScreen::FocusItem(const std::string& key, double nowMs, bool /*withCamera*/) {
+    if (StartsWith(key, kSeasonPickPrefix)) {
+        seasonList_.Hover(std::stoul(key.substr(sizeof(kSeasonPickPrefix) - 1)), nowMs);
+        return true;
+    }
     // A hover moves the focus, and leaves the page where it is.
     if (key == focused_ || !BoxOf(key).has_value()) return false;
     focused_ = key;
@@ -478,6 +500,12 @@ bool DetailsScreen::FocusItem(const std::string& key, double /*nowMs*/, bool /*w
 }
 
 std::optional<std::string> DetailsScreen::ItemAt(double x, double y) const {
+    if (seasonList_.IsOpen()) {
+        // While the season list is open it is the only thing to pick; a click anywhere else closes it.
+        if (const std::optional<std::size_t> row = seasonList_.RowAt(x, y)) return kSeasonPickPrefix + std::to_string(*row);
+        if (seasonList_.Contains(x, y)) return std::nullopt;
+        return std::string("season-dismiss");
+    }
     // The arrow sits over the page, so it is found first.
     std::vector<std::string> keys = {kBackKey};
     for (const std::string& key : ActionKeys()) keys.push_back(key);
@@ -490,15 +518,39 @@ std::optional<std::string> DetailsScreen::ItemAt(double x, double y) const {
     return std::nullopt;
 }
 
-std::optional<Command> DetailsScreen::ActivateItem(const std::string& key, double /*nowMs*/) {
+std::optional<Command> DetailsScreen::ActivateItem(const std::string& key, double nowMs) {
+    clockMs_ = std::max(clockMs_, nowMs);
+    if (key == "season-dismiss") {
+        seasonList_.Close(nowMs);
+        return std::nullopt;
+    }
+    if (StartsWith(key, kSeasonPickPrefix)) {
+        PickSeason(std::stoul(key.substr(sizeof(kSeasonPickPrefix) - 1)), nowMs);
+        return std::nullopt;
+    }
     if (!BoxOf(key).has_value()) return std::nullopt;
     focused_ = key;
     return Activate(key);
 }
 
 std::optional<Command> DetailsScreen::Activate(const std::string& key) {
-    if (StartsWith(key, kSeasonPrefix)) {
-        season_ = std::stoi(key.substr(sizeof(kSeasonPrefix) - 1));
+    if (key == kSeasonMenuKey) {
+        // The list of every season, each with its episode count, opens under the control on the current season.
+        const std::vector<int> seasons = Seasons();
+        if (seasons.size() < 2) return std::nullopt;
+        std::vector<DropdownOption> options;
+        std::size_t current = 0;
+        for (std::size_t i = 0; i < seasons.size(); ++i) {
+            std::size_t count = 0;
+            for (const catalog::MediaItem& child : info_.children) {
+                if (child.season.value_or(-1) == seasons[i]) ++count;
+            }
+            options.push_back(DropdownOption{SeasonLabel(seasons[i]),
+                                             count == 1 ? "1 episode" : std::to_string(count) + " episodes"});
+            if (seasons[i] == season_) current = i;
+        }
+        seasonList_.Open(*BoxOf(kSeasonMenuKey), std::move(options), current, width_, height_,
+                         ViewportRem(width_, height_), clockMs_, motion_);
         return std::nullopt;
     }
     Command command;
