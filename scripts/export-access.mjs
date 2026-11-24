@@ -36,6 +36,7 @@ const payload = {
 const targets = [
   'apps/ios/TVM/Access.json',
   'apps/android/app/src/main/assets/Access.json',
+  'apps/roku/source/data/access.json',
 ];
 
 for (const target of targets) {

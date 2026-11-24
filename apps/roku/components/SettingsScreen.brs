@@ -99,22 +99,32 @@ end sub
 
 sub onCoreUrl()
   url = m.top.coreUrl
-  if url = invalid or url = "" then url = "Not set"
+  if url = invalid or url = "" then url = "Standalone (no PC server needed)"
   setRowDetail("url", url)
 end sub
 
 sub onHealth()
   health = m.top.health
   connected = (health <> invalid and health.ok = true)
+  standalone = (m.top.coreUrl = invalid or m.top.coreUrl = "")
   if connected
-    setRowDetail("network", "Connected")
+    if standalone
+      setRowDetail("network", "Standalone (on this Roku)")
+    else
+      setRowDetail("network", "Connected")
+    end if
   else
     setRowDetail("network", "Offline")
   end if
   setRowDetail("profiles", "TVM Stream only")
   setRowDetail("account", "Sign out of this TVM account")
-  setRowDetail("realdebrid", "Saved securely by Core on your computer")
-  setRowDetail("token", "Replace the saved device credential")
+  if standalone
+    setRowDetail("realdebrid", "Saved on this Roku")
+    setRowDetail("token", "Optional (only for a PC Core server)")
+  else
+    setRowDetail("realdebrid", "Saved securely by Core on your computer")
+    setRowDetail("token", "Replace the saved device credential")
+  end if
   setRowDetail("computer", "Billing, updates and data controls")
   setRowDetail("display", "4K canvas, scaled to this panel")
   setRowDetail("livetv", "M3U / M3U8")

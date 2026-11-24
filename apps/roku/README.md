@@ -4,9 +4,9 @@ The product UI is `apps/ui` (the same React app as desktop browser). On this PC,
 `TVM-roku.cmd` opens **that UI** in a 1920×1080 TV frame.
 
 A Roku box cannot run Chromium or React. The sideloaded `tvm-roku.zip` is a
-SceneGraph client that talks to Core over HTTP. It will not look identical to
-desktop. Use the PC TV preview to judge the living-room look; use the zip only
-to test a real remote and Roku playback.
+SceneGraph client that runs standalone directly on the Roku (no PC server
+required). If you want to connect to a desktop TVM Core on your LAN instead,
+you can configure a Core URL and `TVM_LAN_TOKEN` in Settings.
 
 Windows desktop uses the C++ renderer. The shared browser UI remains in `apps/ui`.
 
@@ -170,11 +170,8 @@ That writes `tvm-roku.zip`. On a PC browser open `http://<roku-ip>` (developer
 username `rokudev`, plus the password you set). Upload the zip under **Install
 and restart**.
 
-If you created `config.json` before packaging, it is included in the zip. If
-not, use the on-device setup screen after sideload.
-
-Laptop copies of both the windowed desktop app and this Roku zip live in
-`Desktop/` at the repo root. `Install-to-Desktop.cmd` puts them on your Desktop.
+If you created `config.json` before packaging, it is included in the zip.
+Otherwise the channel boots straight into standalone mode on the Roku.
 
 Check the project without a Roku:
 

@@ -29,7 +29,7 @@ Install Node.js 22+, curl, and ffmpeg for browser transcodes. From a checkout:
 
 ```bash
 ./scripts/setup-desktop.sh --with-media
-./TVM-windowed.sh
+./TVM.sh
 ```
 
 The launcher starts Core and Vite and opens your browser. From the [Desktop browser release](https://github.com/GL-327/TVM/releases/tag/desktop), extract `TVM-desktop.zip` and run `TVM.command` on macOS or `TVM.sh` on Linux. The package serves its built UI directly from Core. The browser client supports phone, tablet and desktop sizes, keyboard/remote navigation, touch and rotation. Browser downloads use a browser with the directory-picker API; Windows native downloads work independently of that API.

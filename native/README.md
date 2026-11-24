@@ -10,7 +10,7 @@ From the repository root:
 
 ```powershell
 .\native\build.bat
-.\TVM-native.cmd
+.\TVM.cmd
 ```
 
 The build uses this checkout's package.json and source files. Install either

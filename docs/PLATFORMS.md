@@ -11,7 +11,7 @@ Windows desktop runs the C++20 client under `native/`, packaged with the shared 
 | Web browser | Loads the UI from its connected Core. Reload after Core updates. | Uses the desktop Core installation. |
 | iOS | Checks the verified shared UI feed on launch, unless disabled in Settings. | Swift/VLC changes require a new signed IPA. This GitHub build is not an App Store release. |
 | Android | Checks the verified shared UI feed on launch, unless disabled in Settings. | Kotlin/player changes require installation of the new APK. |
-| Roku | Catalog and playback services come from the connected Core. | The developer-mode channel ZIP must be uploaded again when its BrightScript changes. Channel Store distribution is needed for Roku-managed channel updates. |
+| Roku | Runs standalone on the Roku device (or connects to a PC Core if configured in Settings). | Upload the new `TVM-roku.zip` in developer mode when channel code changes. |
 
 Shared UI updates do not replace phone or Roku native executables. Native changes on those devices require installation through their platform distribution channel.
 

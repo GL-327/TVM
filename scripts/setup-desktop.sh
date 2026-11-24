@@ -105,8 +105,7 @@ fi
 
 echo ""
 echo "TVM is ready."
-echo "  Laptop window:     ./TVM-windowed.sh"
-echo "  Fullscreen kiosk:  ./TVM.sh"
-echo "  macOS Finder:      double-click TVM-windowed.command"
+echo "  Start:        ./TVM.sh"
+echo "  macOS Finder: double-click TVM.command"
 echo ""
 echo "See docs/DESKTOP.md for browser and media requirements."

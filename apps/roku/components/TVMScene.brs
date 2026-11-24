@@ -130,10 +130,10 @@ sub applyCanvasScale()
 end sub
 
 sub onBoot()
-  if not isValidCoreUrl(m.coreUrl) or not isCoreToken(m.coreToken)
+  if isValidCoreUrl(m.coreUrl) and not isCoreToken(m.coreToken)
     m.stack = createViewStack("setup")
     renderStack()
-    if isValidCoreUrl(m.coreUrl) and not isCoreToken(m.coreToken) then showTokenKeyboard()
+    showTokenKeyboard()
     return
   end if
   loadAccount(true)
@@ -1117,11 +1117,22 @@ end sub
 
 sub applyCoreUrl(text as String)
   url = normalizeCoreUrl(text)
+  if url = "" or LCase(url) = "standalone"
+    saveCoreBaseUrl("")
+    saveCoreToken("")
+    saveAccountToken("")
+    m.coreUrl = ""
+    m.coreToken = ""
+    m.accountToken = ""
+    if m.settingsNode <> invalid then m.settingsNode.coreUrl = ""
+    loadAccount(true)
+    return
+  end if
   if not isValidCoreUrl(url)
     restoreScreenFocus()
     navigate("modal", "notice", {
       title: "That URL will not work"
-      body: "Use http:// followed by this computer's LAN address and Core port. Copy apps/roku/config.example.json to config.json for sideload defaults."
+      body: "Use http:// followed by your computer's LAN IP and Core port, or leave blank for Standalone mode."
     })
     return
   end if
@@ -1159,7 +1170,6 @@ sub restoreScreenFocus()
 end sub
 
 sub loadHealth(thenHome as Boolean)
-  if m.coreUrl = "" then return
   m.healthWaitHome = thenHome
   ' Health is public; profiles verifies both connectivity AND authentication.
   m.healthTask = startApiGet(joinCorePath(m.coreUrl, "/api/profiles"), "onHealthDone")
@@ -1204,7 +1214,7 @@ end sub
 
 sub loadAccount(thenHome as Boolean)
   m.accountWaitHome = thenHome
-  if m.coreUrl = "" or not isValidCoreUrl(m.coreUrl)
+  if m.coreUrl <> "" and not isValidCoreUrl(m.coreUrl)
     body = {}
     body.signedIn = false
     showAccountGate(body)
@@ -1318,6 +1328,7 @@ sub submitOwnerCode(code as String)
     restoreScreenFocus()
     return
   end if
+  if m.accountNode <> invalid then m.accountNode.status = "Checking code..."
   body = {}
   body.code = text
   m.ownerUnlockTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/dev"), "POST", FormatJson(body), "onOwnerUnlockDone")
@@ -1332,6 +1343,7 @@ sub submitDevSignIn(code as String)
     restoreScreenFocus()
     return
   end if
+  if m.accountNode <> invalid then m.accountNode.status = "Checking code..."
   body = {}
   body.code = text
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/dev"), "POST", FormatJson(body), "onAccountSignInDone")
@@ -1465,9 +1477,11 @@ sub showChannelInfo()
   build = info.GetValue("tvm_commit")
   line = "Channel version " + info.GetVersion()
   if build <> invalid and build <> "" then line = line + ", build " + build + "."
+  mode = "Running standalone on this Roku (no PC server required)."
+  if m.coreUrl <> "" then mode = "Connected to Core at " + m.coreUrl + "."
   navigate("modal", "notice", {
     title: "This channel"
-    body: line + " Most of what you see comes from the computer running TVM, so it keeps up on its own. The channel itself is replaced by hand: download TVM-roku.zip from the TVM releases page and upload it at http://" + rokuAddress() + " the way you installed it."
+    body: line + " " + mode + " To update the channel, download TVM-roku.zip from GitHub Releases and upload it at http://" + rokuAddress() + "."
   })
 end sub
 
@@ -1529,7 +1543,7 @@ end sub
 sub loadHome()
   ensureHome()
   if m.homeSilent <> true then m.homeNode.mode = "loading"
-  if m.coreUrl = "" or not isValidCoreUrl(m.coreUrl)
+  if m.coreUrl <> "" and not isValidCoreUrl(m.coreUrl)
     showHomeError()
     return
   end if
@@ -1537,7 +1551,7 @@ sub loadHome()
 end sub
 
 sub onHomePoll()
-  if m.coreUrl = "" or not isValidCoreUrl(m.coreUrl) then return
+  if m.coreUrl <> "" and not isValidCoreUrl(m.coreUrl) then return
   if m.stack = invalid then return
   if visibleScreen(m.stack).name <> "home" then return
   if m.homeNode = invalid then return
@@ -1731,7 +1745,6 @@ sub onLivePickSaveDone()
 end sub
 
 sub loadProfiles(show as Boolean)
-  if m.coreUrl = "" then return
   m.profilesShow = show
   if show then ensureProfiles()
   m.profilesTask = startApiGet(joinCorePath(m.coreUrl, "/api/profiles"), "onProfilesDone")
@@ -1832,7 +1845,9 @@ sub onRdTokenDone()
     return
   end if
   loadHome()
-  navigate("modal", "notice", { title: "Real-Debrid", body: "The token is stored on the computer. Home will refresh with that account." })
+  where = "on this Roku"
+  if m.coreUrl <> "" then where = "on the computer"
+  navigate("modal", "notice", { title: "Real-Debrid", body: "The token is stored " + where + ". Home will refresh with that account." })
 end sub
 
 sub saveLiveUrl(url as String)
@@ -1946,10 +1961,12 @@ end sub
 sub showNetworkInfo()
   connected = "Offline"
   if m.health <> invalid and m.health.ok = true then connected = "Connected"
+  modeLine = "Mode: Standalone (on this Roku)"
+  if m.coreUrl <> "" then modeLine = "Core: " + m.coreUrl
   navigate("push", "info", {
     kicker: "Device status"
     heading: "Network"
-    body: "Status: " + connected + chr(10) + "Core: " + m.coreUrl + chr(10) + "TVM reports the active connection. Wi-Fi selection is handled by the appliance or this Roku, not a fake web control."
+    body: "Status: " + connected + chr(10) + modeLine + chr(10) + "TVM runs directly on this Roku without a PC server. You can optionally set a Core URL in Settings."
   })
 end sub
 
@@ -2089,7 +2106,7 @@ sub onPlayDone()
       return
     end if
     headers = aaGet(json, "headers", {})
-    if coreOwnsUrl(m.coreUrl, url) and isCoreToken(m.coreToken)
+    if m.coreUrl <> "" and coreOwnsUrl(m.coreUrl, url) and isCoreToken(m.coreToken)
       headers["Authorization"] = "Bearer " + m.coreToken
     end if
     startAt = aaGet(json, "startAt", 0)
@@ -2423,7 +2440,9 @@ sub startHubAgent()
   m.hubAgent.fixture = hubFixtureEnabled()
   m.hubAgent.mayNavigate = true
   m.hubAgent.active = false
-  m.hubAgent.active = true
+  if m.coreUrl <> "" or hubFixtureEnabled()
+    m.hubAgent.active = true
+  end if
 end sub
 
 sub onHubCredential()
@@ -2533,6 +2552,13 @@ end sub
 ' is an account token and this Roku's device credential.
 
 sub startCodeSignIn()
+  if m.coreUrl = ""
+    if m.accountNode <> invalid
+      m.accountNode.status = "Sign in with a code requires a PC Core server in Settings. Use Email or I'm a dev on this Roku."
+    end if
+    restoreScreenFocus()
+    return
+  end if
   stopCodeSignIn()
   m.pair = { userCode: "", uri: "", message: "Getting a code...", deviceCode: "", interval: 5, expiresIn: 600 }
   navigate("modal", "codesignin", {})

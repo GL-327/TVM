@@ -108,5 +108,5 @@ jobs:
             gh release upload "$tag" "feed/tvm-$4-ui.tar.gz" --clobber
             gh release upload "$tag" "feed/tvm-$4-ui.json" --clobber
           }
-          publish ios-ui "Component — iOS interface bundle (auto-update feed)" "iOS — iPhone & iPad" ios
-          publish android-ui "Component — Android interface bundle (auto-update feed)" "Android — phone, tablet & TV" android
+          publish ios-ui "iOS interface feed" "iOS" ios
+          publish android-ui "Android interface feed" "Android" android

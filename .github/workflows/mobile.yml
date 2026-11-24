@@ -117,6 +117,12 @@ jobs:
         if: steps.android.outputs.present == 'true'
         working-directory: apps/android
         run: chmod +x gradlew && ./gradlew assembleDebug testDebugUnitTest --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.android.outputs.present == 'true'
+        with:
+          name: tvm-android-test-reports
+          path: apps/android/app/build/reports/tests
+          if-no-files-found: ignore
       - name: Check the APK signature
         if: steps.android.outputs.present == 'true'
         run: |
@@ -179,7 +185,7 @@ jobs:
             SIGNED="Signed with a one-off debug key. If an older TVM is installed, uninstall it first or Android will say the app is not installed."
           fi
           cat > release/NOTES.md <<EOF
-          **Android phone, tablet and Android TV.**
+          Android phone, tablet, and Android TV.
 
           | | |
           |---|---|
@@ -187,29 +193,12 @@ jobs:
           | Build | \`$SHA\` |
           | Minimum | Android 8.0 (API 26) |
 
-          ### Set up
-          1. Download **TVM.apk** below, on the phone itself.
-          2. Open it from the notification or from Files. Android asks whether to
-             allow installs from this source — allow it, then press Install.
-          3. Open TVM. It starts its own core on the phone; nothing else to run.
-          4. Sign in, or press **I'm a dev** and enter the developer code.
+          Install **TVM.apk** on your phone/tablet (allow installs from this source when prompted), or sideload on Android TV with \`adb install TVM.apk\`.
 
-          Android TV has no browser, so sideload it from a computer instead:
-          \`adb connect <tv-ip>\` then \`adb install TVM.apk\`.
-
-          ### Keeping it current
-          TVM refreshes its interface from GitHub every time it opens. The app
-          around that interface only changes when you install an APK, so when
-          **Account → Updates** says a newer app is needed, come back here and
-          install this file again. Updates also shows which build you have.
-
-          This is a private test build, not a Play Store release.
           $SIGNED
-          Before publishing, CI installed this APK on an Android 14 emulator,
-          opened it and checked it reached the sign-in screen.
           EOF
-          gh release create android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md 2>/dev/null \
-            || gh release edit android --title "Android — phone, tablet & TV" --notes-file release/NOTES.md
+          gh release create android --title "Android" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit android --title "Android" --notes-file release/NOTES.md
           # One file per platform: drop anything an older build left behind.
           for old in $(gh release view android --json assets --jq '.assets[].name' 2>/dev/null || true); do
             [ "$old" = "TVM.apk" ] || gh release delete-asset android "$old" --yes || true
@@ -373,7 +362,7 @@ jobs:
           cp apps/ios/build/TVM-unsigned.ipa release/TVM.ipa
           SHA="$(git rev-parse --short HEAD)"
           cat > release/NOTES.md <<EOF
-          **iPhone and iPad.**
+          iPhone and iPad (unsigned IPA).
 
           | | |
           |---|---|
@@ -381,30 +370,10 @@ jobs:
           | Build | \`$SHA\` |
           | Minimum | iOS 15 |
 
-          ### Set up (sideload — not on the App Store)
-          This IPA is an **unsigned iPhone/iPad app** built outside the App
-          Store. Sign it with your own free Apple ID using a sideloading tool:
-
-          1. Download **TVM.ipa** below.
-          2. Install [Sideloadly](https://sideloadly.io), [AltStore](https://altstore.io), or [SideStore](https://sidestore.io).
-          3. Plug the iPhone in, drag the IPA into Sideloadly (or open it in AltStore/SideStore), enter your Apple
-             ID, and install.
-          4. On the iPhone: **Settings → General → VPN & Device Management**,
-             then trust your developer certificate.
-          5. Open TVM. It runs its own core on the phone; nothing else to run.
-          6. Sign in, or press **I'm a dev** and enter the developer code.
-
-          A free Apple ID signature lasts 7 days. Re-signing with Sideloadly
-          (or refreshing in AltStore/SideStore) renews it and keeps everything you have saved.
-
-          ### Keeping it current
-          TVM refreshes its interface from GitHub every time it opens. The app
-          around that interface only changes when you install an IPA, so when
-          **Account → Updates** says a newer app is needed, come back here and
-          install this file again. Updates also shows which build you have.
+          Sideload **TVM.ipa** with [Sideloadly](https://sideloadly.io), [AltStore](https://altstore.io), or [SideStore](https://sidestore.io) using your Apple ID, then trust your certificate under **Settings -> General -> VPN & Device Management**.
           EOF
-          gh release create ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md 2>/dev/null \
-            || gh release edit ios --title "iOS — iPhone & iPad" --notes-file release/NOTES.md
+          gh release create ios --title "iOS" --notes-file release/NOTES.md 2>/dev/null \
+            || gh release edit ios --title "iOS" --notes-file release/NOTES.md
           # One file per platform: drop anything an older build left behind.
           for old in $(gh release view ios --json assets --jq '.assets[].name' 2>/dev/null || true); do
             [ "$old" = "TVM.ipa" ] || gh release delete-asset ios "$old" --yes || true

@@ -21,6 +21,12 @@ sub exec()
   if method = invalid or method = "" then method = "GET"
   method = UCase(method)
 
+  if Left(url, 6) = "local:"
+    result = lcHandleRequest(url, method, m.top.requestBody, m.top.accountToken, m.top.profileId, m.top.requestId)
+    applyResult(result)
+    return
+  end if
+
   transfer = CreateObject("roUrlTransfer")
   port = CreateObject("roMessagePort")
   transfer.SetPort(port)

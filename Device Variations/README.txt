@@ -12,15 +12,15 @@ GitHub: https://github.com/GL-327/TVM/releases/tag/devices
 
 Files
 -----
-TVM.exe              Windows desktop single-file installer & launcher
-TVM.ipa              iPhone & iPad. Unsigned — re-sign first (not App Store).
-TVM.apk              Android phone, tablet and TV. Install directly.
-TVM-roku.zip         Roku developer sideload channel
+TVM.exe              Windows desktop installer and launcher
+TVM.ipa              iPhone and iPad (unsigned, re-sign with Sideloadly or AltStore)
+TVM.apk              Android phone, tablet, and TV
+TVM-roku.zip         Standalone Roku developer channel
 TVM-desktop.zip      macOS and Linux browser desktop
-fetch-ipa.ps1        Re-download every package from GitHub Releases
+fetch-ipa.ps1        Download the latest packages from GitHub Releases
 
-iOS — TVM.ipa  (standalone compiled app, not App Store signed)
---------------------------------------------------------------
+iOS - TVM.ipa (unsigned standalone app)
+---------------------------------------
 Payload/TVM.app from the Mobile packages ios-ipa job. Embeds the production
 UI and an on-device Core. No PC, host address, LAN token, or Core on your
 computer. Ad-hoc / unsigned: it will NOT launch until you re-sign it with
@@ -52,9 +52,9 @@ released.
 
 Roku
 ----
-Sideload TVM-roku.zip from the Roku developer page on your network. Point
-it at the desktop Core. The channel itself is the zip; Core updates from
-GitHub when the desktop app opens.
+Sideload TVM-roku.zip from the Roku developer page on your network. It runs
+standalone on the Roku (no PC server required); you can also point it at a
+desktop Core in Settings if you want.
 
 Desktop
 -------

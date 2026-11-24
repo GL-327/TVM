@@ -101,9 +101,10 @@ function isAccountToken(token as Dynamic) as Boolean
 end function
 
 function joinCorePath(base as String, path as String) as String
-  b = normalizeCoreUrl(base)
   p = path
   if Left(p, 1) <> "/" then p = "/" + p
+  b = normalizeCoreUrl(base)
+  if b = "" then return "local:" + p
   return b + p
 end function
 

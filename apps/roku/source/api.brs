@@ -20,7 +20,10 @@ function startApiRequest(url as String, method as String, body as String, callba
   task.requestId = id
   task.requestMethod = method
   task.requestBody = body
-  if m.coreUrl <> invalid and coreOwnsUrl(m.coreUrl, url)
+  if Left(url, 6) = "local:"
+    account = m.accountToken
+    if isAccountToken(account) then task.accountToken = account.Trim()
+  else if m.coreUrl <> invalid and m.coreUrl <> "" and coreOwnsUrl(m.coreUrl, url)
     token = m.coreToken
     if isCoreToken(token) then task.authToken = token.Trim()
     account = m.accountToken

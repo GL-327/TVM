@@ -1,4 +1,4 @@
-' TVM Hub client helpers (contract: docs/redesign/HUB-V1-CONTRACT.md, base
+' TVM Hub client helpers (contract: docs/HUB-V1-CONTRACT.md, base
 ' path /api/hub/v1). Everything that does not touch a node or the network is
 ' pure, so apps/roku/scripts/hub.test.mjs ports it to JS and runs the same
 ' fixture (scripts/fixtures/hub-cases.json) through both.

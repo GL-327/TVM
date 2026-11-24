@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-26T14:32:25.462Z",
+  "generated": "2026-11-24T10:28:59.627Z",
   "termsVersion": "2026-09-15",
   "terms": {
     "version": "2026-09-15",
@@ -115,7 +115,12 @@
       "summary": "Films and series from your own sources, with the best available picture.",
       "planId": "max",
       "liveTv": false,
-      "monthlyPence": 999,
+      "monthlyPence": 1000,
+      "yearlyPence": 9000,
+      "liveTvMonthlyPence": 0,
+      "liveTvYearlyPence": 0,
+      "orderable": true,
+      "availability": "available",
       "liveTvTerms": [],
       "includes": [
         "Films and series through your own sources",
@@ -128,39 +133,16 @@
     {
       "id": "stream-live",
       "name": "Movies and TV shows + Live TV",
-      "summary": "Everything above, plus live channels through your own IPTV subscription.",
+      "summary": "Live TV: Coming soon.",
       "planId": "max",
       "liveTv": true,
-      "monthlyPence": 999,
-      "liveTvTerms": [
-        {
-          "id": "quarter",
-          "name": "3-month",
-          "usdCents": 3999,
-          "amountPence": 3999,
-          "interval": "month",
-          "intervalCount": 3,
-          "blurb": "Billed every 3 months"
-        },
-        {
-          "id": "year",
-          "name": "1-year",
-          "usdCents": 8999,
-          "amountPence": 8999,
-          "interval": "year",
-          "intervalCount": 1,
-          "blurb": "Billed once per year"
-        },
-        {
-          "id": "lifetime",
-          "name": "Lifetime",
-          "usdCents": 59900,
-          "amountPence": 59900,
-          "interval": null,
-          "intervalCount": 0,
-          "blurb": "One payment; access lasts only while the service stays online"
-        }
-      ],
+      "monthlyPence": 1000,
+      "yearlyPence": 9000,
+      "liveTvMonthlyPence": 700,
+      "liveTvYearlyPence": 6000,
+      "orderable": false,
+      "availability": "Coming soon",
+      "liveTvTerms": [],
       "includes": [
         "Everything in Movies and TV shows",
         "Live TV, using an IPTV subscription you supply",
@@ -174,5 +156,5 @@
     "detail": "There is no checkout here and nothing to buy in the app. Create an account, then contact the owner to have it switched on. The prices above are what access costs.",
     "action": "Contact the app owner"
   },
-  "streamMonthlyPence": 999
+  "streamMonthlyPence": 1000
 }

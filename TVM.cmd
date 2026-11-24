@@ -1,5 +1,5 @@
 @echo off
-rem Living-room start: fullscreen kiosk. Use TVM-windowed.cmd on a laptop.
+rem Start TVM desktop.
 rem Works from a git checkout (scripts\) and from the desktop package (root).
 title TVM
 cd /d "%~dp0"

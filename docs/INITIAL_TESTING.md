@@ -4,7 +4,7 @@ This build is for private, local desktop testing. It is not approved for a publi
 
 ## Start here
 
-Close TVM and reopen `TVM-windowed.cmd` (Windows) or `./TVM-windowed.sh` (Linux/macOS) from the project directory. The launcher starts the local service, interface and desktop shell. If an older service is already running without watch mode, restart that service first. For a clean test profile, set `TVM_DATA_DIR` to a new absolute directory before starting; do not delete your existing data just to test. Linux and macOS setup is in [DESKTOP.md](DESKTOP.md).
+Close TVM and reopen `TVM.cmd` (Windows) or `./TVM.sh` (Linux/macOS) from the project directory. The launcher starts the local service, interface and desktop shell. If an older service is already running without watch mode, restart that service first. For a clean test profile, set `TVM_DATA_DIR` to a new absolute directory before starting; do not delete your existing data just to test. Linux and macOS setup is in [DESKTOP.md](DESKTOP.md).
 
 1. In Settings, switch between Light and Dark. A retired saved theme should migrate to Dark, while a saved Light preference stays Light. The existing developer code is unchanged.
 2. Browse with arrows, OK and Back; test the mouse too. Change Motion to Reduced and check the calmer result. Minimise and restore the app; effects should resume without an animation jump or runaway loop.

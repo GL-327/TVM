@@ -1,0 +1,1644 @@
+' On-device standalone Core for Roku (no PC server required).
+' Uses roUrlTransfer for Cinemeta / Torrentio / Real-Debrid / TVMaze / M3U
+' and roRegistrySection + tmp:/ for state and caching.
+
+function lcHandleRequest(url as String, method as String, bodyStr as String, accountToken as String, profileId as String, requestId as String) as Object
+  result = {
+    ok: false
+    statusCode: 500
+    json: {}
+    error: ""
+    requestId: requestId
+  }
+
+  raw = Mid(url, 7) ' strip "local:"
+  qIdx = Instr(1, raw, "?")
+  path = raw
+  queryStr = ""
+  if qIdx > 0
+    path = Left(raw, qIdx - 1)
+    queryStr = Mid(raw, qIdx + 1)
+  end if
+  if Left(path, 1) <> "/" then path = "/" + path
+
+  mth = UCase(method)
+  if mth = "" then mth = "GET"
+
+  reqBody = {}
+  if bodyStr <> invalid and bodyStr.Trim() <> ""
+    parsed = ParseJson(bodyStr)
+    if parsed <> invalid and GetInterface(parsed, "ifAssociativeArray") <> invalid
+      reqBody = parsed
+    end if
+  end if
+
+  query = lcParseQuery(queryStr)
+  ctx = {
+    method: mth
+    path: path
+    query: query
+    body: reqBody
+    accountToken: accountToken.Trim()
+    profileId: profileId.Trim()
+  }
+
+  res = lcRoute(ctx)
+  code = lcAaInt(res, "status", 200)
+  payload = lcAaGet(res, "json", {})
+  if payload = invalid then payload = {}
+  result.statusCode = code
+  result.json = payload
+  if code >= 200 and code < 300
+    result.ok = true
+  else
+    result.error = lcAaText(payload, "error", "http_" + StrI(code).Trim())
+  end if
+  return result
+end function
+
+function lcRoute(ctx as Object) as Object
+  path = ctx.path
+  mth = ctx.method
+
+  if path = "/api/health"
+    return { status: 200, json: { ok: true, status: "ok", version: "standalone", standalone: true } }
+  end if
+
+  if path = "/api/account" and mth = "GET"
+    return lcGetAccount(ctx)
+  else if path = "/api/account/register" and mth = "POST"
+    return lcRegisterAccount(ctx)
+  else if path = "/api/account/signin" and mth = "POST"
+    return lcSignInAccount(ctx)
+  else if path = "/api/account/dev" and mth = "POST"
+    return lcDevSignIn(ctx)
+  else if path = "/api/account/terms" and mth = "POST"
+    return lcAcceptTerms(ctx)
+  else if path = "/api/account/signout" and mth = "POST"
+    return lcSignOut(ctx)
+  else if path = "/api/account/email/verify" and mth = "POST"
+    return { status: 200, json: { ok: true } }
+  else if path = "/api/account/email/send" and mth = "POST"
+    return { status: 503, json: { error: "This Roku runs standalone and cannot send email." } }
+  else if path = "/api/admin/accounts/activate" and mth = "POST"
+    return lcAdminActivate(ctx)
+  else if path = "/api/profiles" and mth = "GET"
+    return { status: 200, json: lcGetProfiles() }
+  else if path = "/api/profiles" and mth = "POST"
+    return lcCreateProfile(ctx)
+  else if path = "/api/profiles/active" and mth = "POST"
+    return lcActivateProfile(ctx)
+  else if path = "/api/profiles/remove" and mth = "POST"
+    return lcRemoveProfile(ctx)
+  else if path = "/api/home" and mth = "GET"
+    return { status: 200, json: lcGetHome(ctx) }
+  else if path = "/api/library" and mth = "GET"
+    return { status: 200, json: lcGetLibrary(ctx) }
+  else if path = "/api/watchlist" and mth = "GET"
+    return { status: 200, json: { items: lcGetWatchlist(lcActiveProfileId(ctx)) } }
+  else if path = "/api/watchlist" and mth = "PUT"
+    return lcAddWatchlist(ctx)
+  else if path = "/api/watchlist/remove" and mth = "POST"
+    return lcRemoveWatchlist(ctx)
+  else if path = "/api/search" and mth = "GET"
+    return { status: 200, json: { items: lcSearch(lcAaText(ctx.query, "q", "")) } }
+  else if path = "/api/media" and mth = "GET"
+    return lcGetMedia(lcAaText(ctx.query, "id", ""))
+  else if path = "/api/media/children" and mth = "GET"
+    return { status: 200, json: { items: lcGetChildren(lcAaText(ctx.query, "id", "")) } }
+  else if Left(path, 10) = "/api/apps/" and mth = "GET"
+    return { status: 200, json: lcGetServiceApp(Mid(path, 11)) }
+  else if path = "/api/rd/status" and mth = "GET"
+    return { status: 200, json: lcGetRdStatus(ctx) }
+  else if path = "/api/rd/token" and mth = "PUT"
+    return lcSetRdToken(ctx)
+  else if path = "/api/live" and mth = "GET"
+    return { status: 200, json: lcGetLive(ctx) }
+  else if path = "/api/live" and mth = "PUT"
+    return lcSaveLiveUrl(ctx)
+  else if path = "/api/live/catalog" and mth = "GET"
+    return { status: 200, json: lcGetLiveCatalog(ctx) }
+  else if path = "/api/live/picks" and mth = "POST"
+    return lcToggleLivePick(ctx)
+  else if path = "/api/live/picks/group" and mth = "POST"
+    return lcToggleLiveGroup(ctx)
+  else if path = "/api/playback" and mth = "POST"
+    return lcPlayback(ctx)
+  else if path = "/api/progress" and mth = "POST"
+    return lcSaveProgress(ctx)
+  else if path = "/api/update/status" and mth = "GET"
+    return { status: 200, json: { current: "standalone", autoUpdate: false } }
+  else if path = "/api/maintenance/clear-cache" and mth = "POST"
+    lcClearCacheFiles()
+    return { status: 200, json: { ok: true } }
+  else if path = "/api/maintenance/factory-reset" and mth = "POST"
+    lcFactoryReset()
+    return { status: 200, json: { ok: true } }
+  end if
+
+  return { status: 404, json: { error: "not_found" } }
+end function
+
+' ---- Helpers ----
+
+function lcAaGet(obj as Dynamic, key as String, fallback as Dynamic) as Dynamic
+  if obj = invalid then return fallback
+  if GetInterface(obj, "ifAssociativeArray") = invalid then return fallback
+  if not obj.DoesExist(key) then return fallback
+  val = obj[key]
+  if val = invalid then return fallback
+  return val
+end function
+
+function lcAaText(obj as Dynamic, key as String, fallback = "" as String) as String
+  val = lcAaGet(obj, key, invalid)
+  if val = invalid then return fallback
+  t = Type(val)
+  if t = "String" or t = "roString" then return val
+  if t = "Integer" or t = "roInt" or t = "roInteger" then return StrI(val).Trim()
+  if t = "Float" or t = "roFloat" or t = "Double" or t = "roDouble" then return StrI(Int(val)).Trim()
+  return fallback
+end function
+
+function lcAaInt(obj as Dynamic, key as String, fallback = 0 as Integer) as Integer
+  val = lcAaGet(obj, key, invalid)
+  if val = invalid then return fallback
+  t = Type(val)
+  if t = "Integer" or t = "roInt" or t = "roInteger" then return val
+  if t = "Float" or t = "roFloat" or t = "Double" or t = "roDouble" then return Int(val)
+  if t = "String" or t = "roString" then return Int(Val(val))
+  return fallback
+end function
+
+function lcAaBool(obj as Dynamic, key as String, fallback = false as Boolean) as Boolean
+  val = lcAaGet(obj, key, invalid)
+  if val = invalid then return fallback
+  if Type(val) = "Boolean" or Type(val) = "roBoolean" then return val
+  return fallback
+end function
+
+function lcParseQuery(q as String) as Object
+  out = {}
+  if q = "" then return out
+  xfer = CreateObject("roUrlTransfer")
+  for each part in q.Tokenize("&")
+    eq = Instr(1, part, "=")
+    if eq > 0
+      k = xfer.Unescape(Left(part, eq - 1))
+      v = xfer.Unescape(Mid(part, eq + 1).Replace("+", " "))
+      out[k] = v
+    else
+      out[xfer.Unescape(part)] = ""
+    end if
+  end for
+  return out
+end function
+
+function lcUrlEncode(text as String) as String
+  xfer = CreateObject("roUrlTransfer")
+  return xfer.Escape(text)
+end function
+
+function lcNowSeconds() as Integer
+  dt = CreateObject("roDateTime")
+  return dt.AsSeconds()
+end function
+
+function lcNowIso() as String
+  dt = CreateObject("roDateTime")
+  return dt.ToISOString()
+end function
+
+function lcUuid() as String
+  di = CreateObject("roDeviceInfo")
+  return di.GetRandomUUID()
+end function
+
+function lcNewToken() as String
+  return (lcUuid() + lcUuid()).Replace("-", "")
+end function
+
+function lcSha256Hex(text as String) as String
+  ba = CreateObject("roByteArray")
+  ba.FromAsciiString(text)
+  dg = CreateObject("roEVPDigest")
+  dg.Setup("sha256")
+  dg.Update(ba)
+  return LCase(dg.Final())
+end function
+
+function lcConstantTimeEquals(a as String, b as String) as Boolean
+  if Len(a) <> Len(b) or Len(a) = 0 then return false
+  diff = 0
+  for i = 0 to Len(a) - 1
+    ca = Asc(Mid(a, i + 1, 1))
+    cb = Asc(Mid(b, i + 1, 1))
+    diff = diff or ((ca + cb) - 2 * (ca and cb))
+  end for
+  return diff = 0
+end function
+
+' Same PBKDF2-HMAC-SHA256 constants as devUnlock.ts, TVMDevUnlock.swift, TvmDevUnlock.kt.
+function lcVerifyDevCode(code as Dynamic) as Boolean
+  if code = invalid then return false
+  t = Type(code)
+  if t <> "String" and t <> "roString" then return false
+  trimmed = code.Trim()
+  if Len(trimmed) = 0 or Len(trimmed) > 128 then return false
+
+  saltHex = "27d2bd86ac0ed42eaf21ac5744bcb4e3"
+  expectedHex = "45d072775474c40a8c97c4329cdf0ad65ea2884a9b8a512fe215b853bee7cfac"
+  iterations = 600000
+
+  keyBa = CreateObject("roByteArray")
+  keyBa.FromAsciiString(trimmed)
+
+  saltBlock = CreateObject("roByteArray")
+  saltBlock.FromHexString(saltHex + "00000001")
+
+  hmac = CreateObject("roHMAC")
+  if hmac.Setup("sha256", keyBa) <> 0 then return false
+  u = hmac.Process(saltBlock)
+  if u = invalid or u.Count() <> 32 then return false
+
+  ' Unrolled 32-byte accumulator (BrightScript lacks ^ / EOR, so xor(a,b) = (a+b) - 2*(a and b)).
+  t0 = u[0] : t1 = u[1] : t2 = u[2] : t3 = u[3]
+  t4 = u[4] : t5 = u[5] : t6 = u[6] : t7 = u[7]
+  t8 = u[8] : t9 = u[9] : t10 = u[10] : t11 = u[11]
+  t12 = u[12] : t13 = u[13] : t14 = u[14] : t15 = u[15]
+  t16 = u[16] : t17 = u[17] : t18 = u[18] : t19 = u[19]
+  t20 = u[20] : t21 = u[21] : t22 = u[22] : t23 = u[23]
+  t24 = u[24] : t25 = u[25] : t26 = u[26] : t27 = u[27]
+  t28 = u[28] : t29 = u[29] : t30 = u[30] : t31 = u[31]
+
+  for i = 2 to iterations
+    u = hmac.Process(u)
+    b = u[0] : t0 = (t0 + b) - 2 * (t0 and b)
+    b = u[1] : t1 = (t1 + b) - 2 * (t1 and b)
+    b = u[2] : t2 = (t2 + b) - 2 * (t2 and b)
+    b = u[3] : t3 = (t3 + b) - 2 * (t3 and b)
+    b = u[4] : t4 = (t4 + b) - 2 * (t4 and b)
+    b = u[5] : t5 = (t5 + b) - 2 * (t5 and b)
+    b = u[6] : t6 = (t6 + b) - 2 * (t6 and b)
+    b = u[7] : t7 = (t7 + b) - 2 * (t7 and b)
+    b = u[8] : t8 = (t8 + b) - 2 * (t8 and b)
+    b = u[9] : t9 = (t9 + b) - 2 * (t9 and b)
+    b = u[10] : t10 = (t10 + b) - 2 * (t10 and b)
+    b = u[11] : t11 = (t11 + b) - 2 * (t11 and b)
+    b = u[12] : t12 = (t12 + b) - 2 * (t12 and b)
+    b = u[13] : t13 = (t13 + b) - 2 * (t13 and b)
+    b = u[14] : t14 = (t14 + b) - 2 * (t14 and b)
+    b = u[15] : t15 = (t15 + b) - 2 * (t15 and b)
+    b = u[16] : t16 = (t16 + b) - 2 * (t16 and b)
+    b = u[17] : t17 = (t17 + b) - 2 * (t17 and b)
+    b = u[18] : t18 = (t18 + b) - 2 * (t18 and b)
+    b = u[19] : t19 = (t19 + b) - 2 * (t19 and b)
+    b = u[20] : t20 = (t20 + b) - 2 * (t20 and b)
+    b = u[21] : t21 = (t21 + b) - 2 * (t21 and b)
+    b = u[22] : t22 = (t22 + b) - 2 * (t22 and b)
+    b = u[23] : t23 = (t23 + b) - 2 * (t23 and b)
+    b = u[24] : t24 = (t24 + b) - 2 * (t24 and b)
+    b = u[25] : t25 = (t25 + b) - 2 * (t25 and b)
+    b = u[26] : t26 = (t26 + b) - 2 * (t26 and b)
+    b = u[27] : t27 = (t27 + b) - 2 * (t27 and b)
+    b = u[28] : t28 = (t28 + b) - 2 * (t28 and b)
+    b = u[29] : t29 = (t29 + b) - 2 * (t29 and b)
+    b = u[30] : t30 = (t30 + b) - 2 * (t30 and b)
+    b = u[31] : t31 = (t31 + b) - 2 * (t31 and b)
+  end for
+
+  derived = CreateObject("roByteArray")
+  derived.Push(t0) : derived.Push(t1) : derived.Push(t2) : derived.Push(t3)
+  derived.Push(t4) : derived.Push(t5) : derived.Push(t6) : derived.Push(t7)
+  derived.Push(t8) : derived.Push(t9) : derived.Push(t10) : derived.Push(t11)
+  derived.Push(t12) : derived.Push(t13) : derived.Push(t14) : derived.Push(t15)
+  derived.Push(t16) : derived.Push(t17) : derived.Push(t18) : derived.Push(t19)
+  derived.Push(t20) : derived.Push(t21) : derived.Push(t22) : derived.Push(t23)
+  derived.Push(t24) : derived.Push(t25) : derived.Push(t26) : derived.Push(t27)
+  derived.Push(t28) : derived.Push(t29) : derived.Push(t30) : derived.Push(t31)
+
+  expectedBa = CreateObject("roByteArray")
+  expectedBa.FromHexString(expectedHex)
+  diff = 0
+  for idx = 0 to 31
+    da = derived[idx]
+    db = expectedBa[idx]
+    diff = diff or ((da + db) - 2 * (da and db))
+  end for
+  return diff = 0
+end function
+
+' ---- Registry & tmp:/ storage ----
+
+function lcReg() as Object
+  return CreateObject("roRegistrySection", "tvm")
+end function
+
+function lcReadRegJson(key as String, fallback as Dynamic) as Dynamic
+  sec = lcReg()
+  if not sec.Exists(key) then return fallback
+  raw = sec.Read(key)
+  if raw = invalid or raw = "" then return fallback
+  parsed = ParseJson(raw)
+  if parsed = invalid then return fallback
+  return parsed
+end function
+
+sub lcWriteRegJson(key as String, val as Object)
+  sec = lcReg()
+  sec.Write(key, FormatJson(val))
+  sec.Flush()
+end sub
+
+function lcReadTmpJson(name as String, maxAgeSeconds = 0 as Integer) as Dynamic
+  path = "tmp:/" + name
+  raw = ReadAsciiFile(path)
+  if raw = invalid or raw = "" then return invalid
+  parsed = ParseJson(raw)
+  if parsed = invalid then return invalid
+  if maxAgeSeconds > 0 and GetInterface(parsed, "ifAssociativeArray") <> invalid
+    at = lcAaInt(parsed, "_at", 0)
+    if lcNowSeconds() - at > maxAgeSeconds then return invalid
+  end if
+  return parsed
+end function
+
+sub lcWriteTmpJson(name as String, obj as Object)
+  if GetInterface(obj, "ifAssociativeArray") <> invalid
+    obj._at = lcNowSeconds()
+  end if
+  WriteAsciiFile("tmp:/" + name, FormatJson(obj))
+end sub
+
+sub lcClearCacheFiles()
+  fs = CreateObject("roFileSystem")
+  for each entry in fs.GetDirectoryListing("tmp:/")
+    if Left(entry, 4) = "tvm_"
+      DeleteFile("tmp:/" + entry)
+    end if
+  end for
+end sub
+
+sub lcFactoryReset()
+  lcClearCacheFiles()
+  sec = lcReg()
+  for each k in ["localAccounts", "localSessions", "localProfiles", "localWatchlist", "localProgress", "localRdToken", "localLive", "accountToken"]
+    if sec.Exists(k) then sec.Delete(k)
+  end for
+  sec.Flush()
+end sub
+
+' ---- HTTP client ----
+
+function lcHttp(url as String, method = "GET" as String, body = "" as String, headers = {} as Object, timeoutMs = 15000 as Integer) as Object
+  out = { ok: false, status: 0, body: "", json: invalid }
+  xfer = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  xfer.SetPort(port)
+  xfer.SetUrl(url)
+  xfer.EnableEncodings(true)
+  xfer.RetainBodyOnError(true)
+  if LCase(Left(url, 8)) = "https://"
+    xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    xfer.InitClientCertificates()
+  end if
+  xfer.AddHeader("User-Agent", "TVM-Roku/1.0")
+  if GetInterface(headers, "ifAssociativeArray") <> invalid
+    for each k in headers
+      xfer.AddHeader(k, lcAaText(headers, k, ""))
+    end for
+  end if
+
+  mth = UCase(method)
+  sent = false
+  if mth = "GET"
+    sent = xfer.AsyncGetToString()
+  else
+    xfer.SetRequest(mth)
+    sent = xfer.AsyncPostFromString(body)
+  end if
+  if not sent then return out
+
+  msg = wait(timeoutMs, port)
+  if msg = invalid
+    xfer.AsyncCancel()
+    return out
+  end if
+  if type(msg) <> "roUrlEvent" then return out
+
+  code = msg.GetResponseCode()
+  text = msg.GetString()
+  if text = invalid then text = ""
+  out.status = code
+  out.body = text
+  out.ok = (code >= 200 and code < 300)
+  if text <> ""
+    parsed = ParseJson(text)
+    if parsed <> invalid then out.json = parsed
+  end if
+  return out
+end function
+
+' ---- Accounts & Access ----
+
+function lcTermsVersion() as String
+  raw = ReadAsciiFile("pkg:/source/data/access.json")
+  if raw <> invalid and raw <> ""
+    parsed = ParseJson(raw)
+    v = lcAaText(parsed, "termsVersion", "")
+    if v <> "" then return v
+  end if
+  return "2026-09-15"
+end function
+
+function lcLoadAccountStore() as Object
+  data = lcReadRegJson("localAccounts", invalid)
+  if data = invalid or GetInterface(data, "ifAssociativeArray") = invalid
+    data = { accounts: [], sessions: {} }
+  end if
+  if lcAaGet(data, "accounts", invalid) = invalid then data.accounts = []
+  if lcAaGet(data, "sessions", invalid) = invalid then data.sessions = {}
+  return data
+end function
+
+sub lcSaveAccountStore(data as Object)
+  lcWriteRegJson("localAccounts", data)
+end sub
+
+function lcPublicAccount(acc as Object) as Object
+  if acc = invalid then return invalid
+  rdTok = lcAaText(acc, "rdToken", "")
+  hint = ""
+  if Len(rdTok) >= 4 then hint = "••••" + Right(rdTok, 4)
+  return {
+    id: lcAaText(acc, "id", "")
+    email: lcAaText(acc, "email", "")
+    displayName: lcAaText(acc, "displayName", "")
+    role: lcAaText(acc, "role", "member")
+    tier: lcAaGet(acc, "tier", invalid)
+    activated: lcAaBool(acc, "activated", false)
+    suspended: lcAaBool(acc, "suspended", false)
+    emailVerified: lcAaBool(acc, "emailVerified", true)
+    acceptedTermsVersion: lcAaText(acc, "acceptedTermsVersion", "")
+    rdKey: (rdTok <> "")
+    rdKeyHint: hint
+  }
+end function
+
+function lcAccountUsable(acc as Object) as Object
+  if acc = invalid then return { ok: false, reason: "no_account" }
+  if lcAaText(acc, "role", "") = "dev" then return { ok: true, reason: "ok" }
+  if lcAaBool(acc, "suspended", false) then return { ok: false, reason: "suspended" }
+  if not lcAaBool(acc, "emailVerified", true) then return { ok: false, reason: "email_unverified" }
+  if not lcAaBool(acc, "activated", false) then return { ok: false, reason: "awaiting_activation" }
+  tv = lcTermsVersion()
+  if tv <> "" and lcAaText(acc, "acceptedTermsVersion", "") <> tv
+    return { ok: false, reason: "terms_required" }
+  end if
+  return { ok: true, reason: "ok" }
+end function
+
+function lcResolveAccount(ctx as Object) as Object
+  tok = ctx.accountToken
+  if tok = "" then return invalid
+  store = lcLoadAccountStore()
+  sess = lcAaGet(store.sessions, tok, invalid)
+  if sess = invalid then return invalid
+  exp = lcAaInt(sess, "expiresAt", 0)
+  if exp > 0 and lcNowSeconds() > exp then return invalid
+  accId = lcAaText(sess, "accountId", "")
+  for each acc in store.accounts
+    if lcAaText(acc, "id", "") = accId then return acc
+  end for
+  return invalid
+end function
+
+function lcIsDev(ctx as Object) as Boolean
+  acc = lcResolveAccount(ctx)
+  if acc = invalid then return false
+  return lcAaText(acc, "role", "") = "dev"
+end function
+
+function lcGetAccount(ctx as Object) as Object
+  acc = lcResolveAccount(ctx)
+  if acc = invalid
+    return { status: 200, json: { signedIn: false, usable: { ok: false, reason: "no_account" }, canSendEmail: false, standalone: true } }
+  end if
+  return {
+    status: 200
+    json: {
+      signedIn: true
+      account: lcPublicAccount(acc)
+      usable: lcAccountUsable(acc)
+      canSendEmail: false
+      standalone: true
+    }
+  }
+end function
+
+function lcPasswordHash(password as String, salt as String) as String
+  acc = salt + ":" + password
+  h = lcSha256Hex(acc)
+  for i = 1 to 200
+    h = lcSha256Hex(salt + ":" + h)
+  end for
+  return h
+end function
+
+function lcRegisterAccount(ctx as Object) as Object
+  email = LCase(lcAaText(ctx.body, "email", "").Trim())
+  password = lcAaText(ctx.body, "password", "")
+  displayName = lcAaText(ctx.body, "displayName", "").Trim()
+  if email = "" or Instr(1, email, "@") = 0
+    return { status: 400, json: { error: "Enter a valid email address." } }
+  end if
+  if Len(password) < 10
+    return { status: 400, json: { error: "Password must be at least 10 characters." } }
+  end if
+  store = lcLoadAccountStore()
+  for each existing in store.accounts
+    if LCase(lcAaText(existing, "email", "")) = email
+      return { status: 400, json: { error: "That account could not be created." } }
+    end if
+  end for
+  salt = lcNewToken()
+  acc = {
+    id: "acc_" + Left(lcNewToken(), 12)
+    email: email
+    displayName: displayName
+    role: "member"
+    tier: invalid
+    activated: false
+    suspended: false
+    emailVerified: true
+    acceptedTermsVersion: ""
+    passwordSalt: salt
+    passwordHash: lcPasswordHash(password, salt)
+    rdToken: ""
+    createdAt: lcNowIso()
+  }
+  store.accounts.Push(acc)
+  lcSaveAccountStore(store)
+  return { status: 201, json: { account: lcPublicAccount(acc) } }
+end function
+
+function lcSignInAccount(ctx as Object) as Object
+  email = LCase(lcAaText(ctx.body, "email", "").Trim())
+  password = lcAaText(ctx.body, "password", "")
+  store = lcLoadAccountStore()
+  found = invalid
+  for each acc in store.accounts
+    if LCase(lcAaText(acc, "email", "")) = email and lcAaText(acc, "role", "") <> "dev"
+      found = acc
+      exit for
+    end if
+  end for
+  if found = invalid
+    return { status: 401, json: { error: "Email or password did not match." } }
+  end if
+  salt = lcAaText(found, "passwordSalt", "")
+  expected = lcAaText(found, "passwordHash", "")
+  actual = lcPasswordHash(password, salt)
+  if not lcConstantTimeEquals(actual, expected)
+    return { status: 401, json: { error: "Email or password did not match." } }
+  end if
+  tok = lcNewToken()
+  store.sessions[tok] = { accountId: found.id, expiresAt: lcNowSeconds() + 30 * 86400 }
+  lcSaveAccountStore(store)
+  return { status: 200, json: { token: tok, account: lcPublicAccount(found), usable: lcAccountUsable(found) } }
+end function
+
+function lcDevSignIn(ctx as Object) as Object
+  code = lcAaText(ctx.body, "code", "")
+  if not lcVerifyDevCode(code)
+    return { status: 403, json: { error: "That code is not valid." } }
+  end if
+  store = lcLoadAccountStore()
+  devAcc = invalid
+  for each acc in store.accounts
+    if lcAaText(acc, "id", "") = "acc_dev"
+      devAcc = acc
+      exit for
+    end if
+  end for
+  if devAcc = invalid
+    devAcc = {
+      id: "acc_dev"
+      email: "dev"
+      displayName: "Developer"
+      role: "dev"
+      tier: "stream-live"
+      activated: true
+      suspended: false
+      emailVerified: true
+      acceptedTermsVersion: lcTermsVersion()
+      rdToken: ""
+    }
+    store.accounts.Push(devAcc)
+  end if
+  tok = lcNewToken()
+  store.sessions[tok] = { accountId: "acc_dev", expiresAt: lcNowSeconds() + 30 * 86400 }
+  lcSaveAccountStore(store)
+  return { status: 200, json: { token: tok, account: lcPublicAccount(devAcc), usable: lcAccountUsable(devAcc) } }
+end function
+
+function lcAcceptTerms(ctx as Object) as Object
+  tok = ctx.accountToken
+  if tok = "" then return { status: 401, json: { error: "Not signed in." } }
+  store = lcLoadAccountStore()
+  sess = lcAaGet(store.sessions, tok, invalid)
+  if sess = invalid then return { status: 401, json: { error: "Not signed in." } }
+  accId = lcAaText(sess, "accountId", "")
+  for each acc in store.accounts
+    if lcAaText(acc, "id", "") = accId
+      acc.acceptedTermsVersion = lcTermsVersion()
+      lcSaveAccountStore(store)
+      return { status: 200, json: { account: lcPublicAccount(acc), usable: lcAccountUsable(acc) } }
+    end if
+  end for
+  return { status: 401, json: { error: "Not signed in." } }
+end function
+
+function lcSignOut(ctx as Object) as Object
+  tok = ctx.accountToken
+  if tok <> ""
+    store = lcLoadAccountStore()
+    if store.sessions.DoesExist(tok)
+      store.sessions.Delete(tok)
+      lcSaveAccountStore(store)
+    end if
+  end if
+  return { status: 200, json: { ok: true } }
+end function
+
+function lcAdminActivate(ctx as Object) as Object
+  if not lcIsDev(ctx) then return { status: 403, json: { error: "Developer access required." } }
+  targetId = lcAaText(ctx.body, "id", "")
+  tier = lcAaText(ctx.body, "tier", "stream-live")
+  store = lcLoadAccountStore()
+  for each acc in store.accounts
+    if lcAaText(acc, "id", "") = targetId and lcAaText(acc, "role", "") <> "dev"
+      acc.activated = true
+      acc.tier = tier
+      lcSaveAccountStore(store)
+      return { status: 200, json: { account: lcPublicAccount(acc) } }
+    end if
+  end for
+  return { status: 404, json: { error: "Account not found." } }
+end function
+
+' ---- Profiles ----
+
+function lcGetProfiles() as Object
+  data = lcReadRegJson("localProfiles", invalid)
+  if data = invalid or GetInterface(data, "ifAssociativeArray") = invalid or lcAaGet(data, "profiles", invalid) = invalid or data.profiles.Count() = 0
+    data = {
+      activeId: "main"
+      profiles: [{ id: "main", name: "Main", color: "#2F6BFF" }]
+    }
+    lcWriteRegJson("localProfiles", data)
+  end if
+  data.ok = true
+  data.version = "1.0.0-standalone"
+  data.status = "ok"
+  return data
+end function
+
+function lcActiveProfileId(ctx as Object) as String
+  if ctx.profileId <> "" then return ctx.profileId
+  reg = lcGetProfiles()
+  return lcAaText(reg, "activeId", "main")
+end function
+
+function lcCreateProfile(ctx as Object) as Object
+  name = lcAaText(ctx.body, "name", "").Trim()
+  if name = "" then return { status: 400, json: { error: "Name required." } }
+  data = lcGetProfiles()
+  if data.profiles.Count() >= 5 then return { status: 400, json: { error: "Up to five profiles allowed." } }
+  colors = ["#2F6BFF", "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B"]
+  idx = data.profiles.Count() mod colors.Count()
+  id = "prof_" + Left(lcNewToken(), 8)
+  data.profiles.Push({ id: id, name: name, color: colors[idx] })
+  data.activeId = id
+  lcWriteRegJson("localProfiles", data)
+  return { status: 201, json: data }
+end function
+
+function lcActivateProfile(ctx as Object) as Object
+  id = lcAaText(ctx.body, "id", "")
+  data = lcGetProfiles()
+  for each p in data.profiles
+    if lcAaText(p, "id", "") = id
+      data.activeId = id
+      lcWriteRegJson("localProfiles", data)
+      return { status: 200, json: data }
+    end if
+  end for
+  return { status: 404, json: { error: "Profile not found." } }
+end function
+
+function lcRemoveProfile(ctx as Object) as Object
+  id = lcAaText(ctx.body, "id", "")
+  data = lcGetProfiles()
+  if data.profiles.Count() <= 1 then return { status: 400, json: { error: "Keep at least one profile." } }
+  kept = []
+  for each p in data.profiles
+    if lcAaText(p, "id", "") <> id then kept.Push(p)
+  end for
+  if kept.Count() = data.profiles.Count() then return { status: 404, json: { error: "Profile not found." } }
+  data.profiles = kept
+  if data.activeId = id then data.activeId = lcAaText(kept[0], "id", "main")
+  lcWriteRegJson("localProfiles", data)
+  return { status: 200, json: data }
+end function
+
+' ---- Watchlist & Progress ----
+
+function lcGetWatchlist(pid as String) as Object
+  all = lcReadRegJson("localWatchlist", {})
+  if GetInterface(all, "ifAssociativeArray") = invalid then return []
+  items = lcAaGet(all, pid, [])
+  if Type(items) <> "roArray" then return []
+  return items
+end function
+
+function lcAddWatchlist(ctx as Object) as Object
+  pid = lcActiveProfileId(ctx)
+  item = lcAaGet(ctx.body, "item", ctx.body)
+  id = lcAaText(item, "id", "")
+  if id = "" then return { status: 400, json: { error: "Missing title id." } }
+  all = lcReadRegJson("localWatchlist", {})
+  if GetInterface(all, "ifAssociativeArray") = invalid then all = {}
+  list = lcGetWatchlist(pid)
+  out = [item]
+  for each existing in list
+    if lcAaText(existing, "id", "") <> id
+      out.Push(existing)
+      if out.Count() >= 24 then exit for
+    end if
+  end for
+  all[pid] = out
+  lcWriteRegJson("localWatchlist", all)
+  return { status: 200, json: { items: out } }
+end function
+
+function lcRemoveWatchlist(ctx as Object) as Object
+  pid = lcActiveProfileId(ctx)
+  id = lcAaText(ctx.body, "id", "")
+  all = lcReadRegJson("localWatchlist", {})
+  if GetInterface(all, "ifAssociativeArray") = invalid then all = {}
+  out = []
+  for each existing in lcGetWatchlist(pid)
+    if lcAaText(existing, "id", "") <> id then out.Push(existing)
+  end for
+  all[pid] = out
+  lcWriteRegJson("localWatchlist", all)
+  return { status: 200, json: { items: out } }
+end function
+
+function lcProgressMap(pid as String) as Object
+  all = lcReadRegJson("localProgress", {})
+  if GetInterface(all, "ifAssociativeArray") = invalid then return {}
+  m = lcAaGet(all, pid, {})
+  if GetInterface(m, "ifAssociativeArray") = invalid then return {}
+  return m
+end function
+
+function lcSaveProgress(ctx as Object) as Object
+  pid = lcActiveProfileId(ctx)
+  id = lcAaText(ctx.body, "id", "")
+  if id = "" then return { status: 400, json: { error: "Missing id." } }
+  posSec = lcAaGet(ctx.body, "position", 0)
+  dur = lcAaGet(ctx.body, "duration", 0)
+  all = lcReadRegJson("localProgress", {})
+  if GetInterface(all, "ifAssociativeArray") = invalid then all = {}
+  pm = lcProgressMap(pid)
+  ratio = 0.0
+  if dur > 0 then ratio = (posSec * 1.0) / (dur * 1.0)
+  if ratio >= 0.92
+    if pm.DoesExist(id) then pm.Delete(id)
+  else if posSec > 5
+    pm[id] = { position: posSec, duration: dur, ratio: ratio, updatedAt: lcNowSeconds() }
+  end if
+  ' Keep progress map bounded so registry stays small.
+  keys = pm.Keys()
+  if keys.Count() > 24
+    oldestKey = ""
+    oldestTime = 2147483647
+    for each k in keys
+      t = lcAaInt(pm[k], "updatedAt", 0)
+      if t < oldestTime
+        oldestTime = t
+        oldestKey = k
+      end if
+    end for
+    if oldestKey <> "" then pm.Delete(oldestKey)
+  end if
+  all[pid] = pm
+  lcWriteRegJson("localProgress", all)
+  return { status: 200, json: { ok: true } }
+end function
+
+' ---- Cinemeta & Fallback Catalog ----
+
+function lcFallbackItems() as Object
+  raw = ReadAsciiFile("pkg:/source/data/fallbackCatalog.json")
+  if raw = invalid or raw = "" then return []
+  parsed = ParseJson(raw)
+  items = lcAaGet(parsed, "items", [])
+  if Type(items) <> "roArray" then return []
+  return items
+end function
+
+function lcMetaToItem(meta as Object, fallbackKind = "movie" as String) as Object
+  if meta = invalid or GetInterface(meta, "ifAssociativeArray") = invalid then return invalid
+  id = lcAaText(meta, "imdb_id", "")
+  if id = "" then id = lcAaText(meta, "id", "")
+  title = lcAaText(meta, "name", "")
+  if title = "" then title = lcAaText(meta, "title", "")
+  if id = "" or title = "" then return invalid
+  kind = LCase(lcAaText(meta, "type", fallbackKind))
+  if kind <> "series" then kind = "movie"
+  year = lcAaInt(meta, "year", 0)
+  if year = 0
+    ri = lcAaText(meta, "releaseInfo", "")
+    if Len(ri) >= 4 then year = Int(Val(Left(ri, 4)))
+  end if
+  genres = lcAaGet(meta, "genres", [])
+  if Type(genres) <> "roArray" then genres = []
+  item = {
+    id: id
+    title: title
+    kind: kind
+    synopsis: lcAaText(meta, "description", lcAaText(meta, "synopsis", ""))
+    poster: lcAaText(meta, "poster", "")
+    backdrop: lcAaText(meta, "background", lcAaText(meta, "backdrop", ""))
+    genres: genres
+    rating: lcAaText(meta, "imdbRating", lcAaText(meta, "rating", ""))
+    runtime: lcAaText(meta, "runtime", "")
+    playable: true
+  }
+  if year > 0 then item.year = year
+  return item
+end function
+
+function lcFetchCinemetaCatalog(path as String, kind as String, limit = 20 as Integer) as Object
+  res = lcHttp("https://v3-cinemeta.strem.io" + path, "GET", "", {}, 8000)
+  out = []
+  if not res.ok or res.json = invalid then return out
+  metas = lcAaGet(res.json, "metas", [])
+  if Type(metas) <> "roArray" then return out
+  for each meta in metas
+    item = lcMetaToItem(meta, kind)
+    if item <> invalid
+      out.Push(item)
+      if out.Count() >= limit then exit for
+    end if
+  end for
+  return out
+end function
+
+function lcDedupeItems(items as Object) as Object
+  out = []
+  seen = {}
+  for each item in items
+    id = lcAaText(item, "id", "")
+    if id <> "" and not seen.DoesExist(id)
+      seen[id] = true
+      out.Push(item)
+    end if
+  end for
+  return out
+end function
+
+function lcAttachProgress(items as Object, pm as Object) as Object
+  out = []
+  for each item in items
+    id = lcAaText(item, "id", "")
+    if id <> "" and pm.DoesExist(id)
+      copy = {}
+      for each k in item
+        copy[k] = item[k]
+      end for
+      copy.progress = pm[id]
+      out.Push(copy)
+    else
+      out.Push(item)
+    end if
+  end for
+  return out
+end function
+
+function lcCatalogBundle() as Object
+  cached = lcReadTmpJson("tvm_home_cache.json", 720)
+  if cached <> invalid and lcAaGet(cached, "rails", invalid) <> invalid
+    return cached
+  end if
+
+  moviesTop = lcFetchCinemetaCatalog("/catalog/movie/top.json", "movie", 20)
+  seriesTop = lcFetchCinemetaCatalog("/catalog/series/top.json", "series", 20)
+  moviesRated = lcFetchCinemetaCatalog("/catalog/movie/imdbRating.json", "movie", 20)
+  seriesRated = lcFetchCinemetaCatalog("/catalog/series/imdbRating.json", "series", 20)
+
+  if moviesTop.Count() = 0 and seriesTop.Count() = 0
+    fb = lcFallbackItems()
+    fbMovies = []
+    fbSeries = []
+    for each item in fb
+      if lcAaText(item, "kind", "movie") = "series"
+        fbSeries.Push(item)
+      else
+        fbMovies.Push(item)
+      end if
+    end for
+    bundle = {
+      trending: fbMovies
+      rails: [
+        { id: "films", title: "Popular Movies", items: fbMovies }
+        { id: "series", title: "Popular Series", items: fbSeries }
+      ]
+      all: fb
+    }
+    if fb.Count() > 0 then bundle.featured = fb[0]
+    return bundle
+  end if
+
+  trending = []
+  for each item in moviesTop
+    if lcAaText(item, "backdrop", "") <> ""
+      trending.Push(item)
+      if trending.Count() >= 6 then exit for
+    end if
+  end for
+  all = lcDedupeItems([])
+  for each src in [moviesTop, seriesTop, moviesRated, seriesRated]
+    for each item in src
+      all.Push(item)
+    end for
+  end for
+  all = lcDedupeItems(all)
+
+  rails = []
+  if moviesTop.Count() > 0 then rails.Push({ id: "films", title: "Popular Movies", items: moviesTop })
+  if seriesTop.Count() > 0 then rails.Push({ id: "series", title: "Popular Series", items: seriesTop })
+  if moviesRated.Count() > 0 then rails.Push({ id: "rated-movies", title: "Top Rated Movies", items: moviesRated })
+  if seriesRated.Count() > 0 then rails.Push({ id: "rated-series", title: "Top Rated Series", items: seriesRated })
+
+  bundle = {
+    trending: trending
+    rails: rails
+    all: all
+  }
+  if trending.Count() > 0
+    bundle.featured = trending[0]
+  else if all.Count() > 0
+    bundle.featured = all[0]
+  end if
+  lcWriteTmpJson("tvm_home_cache.json", bundle)
+  return bundle
+end function
+
+function lcGetHome(ctx as Object) as Object
+  pid = lcActiveProfileId(ctx)
+  pm = lcProgressMap(pid)
+  wl = lcGetWatchlist(pid)
+  bundle = lcCatalogBundle()
+
+  cw = []
+  all = lcAaGet(bundle, "all", [])
+  byId = {}
+  for each item in all
+    byId[lcAaText(item, "id", "")] = item
+  end for
+  for each item in wl
+    byId[lcAaText(item, "id", "")] = item
+  end for
+  for each id in pm.Keys()
+    baseId = id
+    colon = Instr(1, id, ":")
+    if colon > 0 then baseId = Left(id, colon - 1)
+    if byId.DoesExist(baseId)
+      src = byId[baseId]
+      copy = {}
+      for each k in src
+        copy[k] = src[k]
+      end for
+      copy.id = id
+      copy.progress = pm[id]
+      cw.Push(copy)
+    end if
+  end for
+
+  rails = []
+  for each r in lcAaGet(bundle, "rails", [])
+    rails.Push({ id: r.id, title: r.title, items: lcAttachProgress(r.items, pm) })
+  end for
+
+  return {
+    featured: lcAaGet(bundle, "featured", invalid)
+    trending: lcAaGet(bundle, "trending", [])
+    continueWatching: cw
+    watchlist: lcAttachProgress(wl, pm)
+    rails: rails
+  }
+end function
+
+function lcGetLibrary(ctx as Object) as Object
+  bundle = lcCatalogBundle()
+  return { items: lcAaGet(bundle, "all", []) }
+end function
+
+function lcSearch(query as String) as Object
+  q = query.Trim()
+  if Len(q) < 2 then return []
+  enc = lcUrlEncode(q)
+  movies = lcFetchCinemetaCatalog("/catalog/movie/top/search=" + enc + ".json", "movie", 12)
+  series = lcFetchCinemetaCatalog("/catalog/series/top/search=" + enc + ".json", "series", 12)
+  combined = []
+  for each item in movies
+    combined.Push(item)
+  end for
+  for each item in series
+    combined.Push(item)
+  end for
+  if combined.Count() = 0
+    needle = LCase(q)
+    for each fb in lcFallbackItems()
+      if Instr(1, LCase(lcAaText(fb, "title", "")), needle) > 0
+        combined.Push(fb)
+      end if
+    end for
+  end if
+  return lcDedupeItems(combined)
+end function
+
+function lcFetchMetaRaw(id as String) as Object
+  base = id
+  colon = Instr(1, id, ":")
+  if colon > 0 then base = Left(id, colon - 1)
+  if Left(LCase(base), 2) <> "tt" then return invalid
+
+  cached = lcReadTmpJson("tvm_meta_" + base + ".json", 3600)
+  if cached <> invalid then return cached
+
+  for each kind in ["movie", "series"]
+    res = lcHttp("https://v3-cinemeta.strem.io/meta/" + kind + "/" + base + ".json", "GET", "", {}, 8000)
+    if res.ok and res.json <> invalid
+      meta = lcAaGet(res.json, "meta", invalid)
+      if meta <> invalid and lcAaText(meta, "name", "") <> ""
+        lcWriteTmpJson("tvm_meta_" + base + ".json", meta)
+        return meta
+      end if
+    end if
+  end for
+  return invalid
+end function
+
+function lcGetMedia(id as String) as Object
+  meta = lcFetchMetaRaw(id)
+  if meta <> invalid
+    item = lcMetaToItem(meta, "movie")
+    if item <> invalid then return { status: 200, json: item }
+  end if
+  for each fb in lcFallbackItems()
+    if lcAaText(fb, "id", "") = id then return { status: 200, json: fb }
+  end for
+  return { status: 404, json: { error: "Not found" } }
+end function
+
+function lcGetChildren(id as String) as Object
+  meta = lcFetchMetaRaw(id)
+  if meta = invalid then return []
+  videos = lcAaGet(meta, "videos", [])
+  if Type(videos) <> "roArray" then return []
+  showTitle = lcAaText(meta, "name", "")
+  backdrop = lcAaText(meta, "background", "")
+  poster = lcAaText(meta, "poster", "")
+  out = []
+  for each v in videos
+    s = lcAaInt(v, "season", 0)
+    e = lcAaInt(v, "episode", 0)
+    if s > 0 and e > 0
+      epTitle = lcAaText(v, "title", lcAaText(v, "name", "Episode " + StrI(e).Trim()))
+      epId = lcAaText(v, "id", id + ":" + StrI(s).Trim() + ":" + StrI(e).Trim())
+      thumb = lcAaText(v, "thumbnail", backdrop)
+      if thumb = "" then thumb = poster
+      out.Push({
+        id: epId
+        title: epTitle
+        episodeName: epTitle
+        showTitle: showTitle
+        kind: "series"
+        season: s
+        episode: e
+        synopsis: lcAaText(v, "overview", "")
+        poster: thumb
+        backdrop: thumb
+        aired: lcAaText(v, "released", "")
+        playable: true
+      })
+    end if
+  end for
+  return out
+end function
+
+function lcGetServiceApp(appId as String) as Object
+  bundle = lcCatalogBundle()
+  all = lcAaGet(bundle, "all", [])
+  subset = []
+  for each item in all
+    subset.Push(item)
+    if subset.Count() >= 12 then exit for
+  end for
+  hero = invalid
+  if subset.Count() > 0 then hero = subset[0]
+  return {
+    appId: appId
+    hero: hero
+    continueWatching: []
+    rails: [{ id: "originals", title: "Featured", items: subset }]
+  }
+end function
+
+' ---- Real-Debrid ----
+
+function lcRdToken(ctx as Object) as String
+  acc = lcResolveAccount(ctx)
+  if acc <> invalid
+    accTok = lcAaText(acc, "rdToken", "")
+    if accTok <> "" then return accTok
+  end if
+  sec = lcReg()
+  if sec.Exists("localRdToken") then return sec.Read("localRdToken").Trim()
+  return ""
+end function
+
+function lcRdRequest(token as String, path as String, method = "GET" as String, form = "" as String) as Object
+  headers = {
+    "Authorization": "Bearer " + token
+    "Accept": "application/json"
+  }
+  if form <> "" then headers["Content-Type"] = "application/x-www-form-urlencoded"
+  return lcHttp("https://api.real-debrid.com/rest/1.0" + path, method, form, headers, 15000)
+end function
+
+function lcGetRdStatus(ctx as Object) as Object
+  tok = lcRdToken(ctx)
+  if tok = "" then return { configured: false, premium: false, username: "" }
+  res = lcRdRequest(tok, "/user", "GET")
+  if res.status = 401 or res.status = 403
+    return { configured: true, premium: false, error: "needs-auth" }
+  end if
+  if not res.ok or res.json = invalid
+    return { configured: true, premium: false, error: "unreachable" }
+  end if
+  return {
+    configured: true
+    username: lcAaText(res.json, "username", "")
+    premium: (lcAaInt(res.json, "premium", 0) > 0)
+  }
+end function
+
+function lcSetRdToken(ctx as Object) as Object
+  tok = lcAaText(ctx.body, "token", "").Trim()
+  sec = lcReg()
+  if tok = ""
+    sec.Delete("localRdToken")
+  else
+    sec.Write("localRdToken", tok)
+  end if
+  sec.Flush()
+
+  acc = lcResolveAccount(ctx)
+  if acc <> invalid and lcAaText(acc, "role", "") <> "dev"
+    store = lcLoadAccountStore()
+    for each row in store.accounts
+      if lcAaText(row, "id", "") = lcAaText(acc, "id", "")
+        row.rdToken = tok
+        lcSaveAccountStore(store)
+        exit for
+      end if
+    end for
+  end if
+  return { status: 200, json: lcGetRdStatus(ctx) }
+end function
+
+' ---- Live TV (M3U + DW News test channel) ----
+
+function lcLoadLiveState() as Object
+  data = lcReadRegJson("localLive", invalid)
+  if data = invalid or GetInterface(data, "ifAssociativeArray") = invalid
+    data = { url: "", picks: [] }
+  end if
+  if lcAaGet(data, "picks", invalid) = invalid then data.picks = []
+  return data
+end function
+
+function lcLoadLiveChannels() as Object
+  cached = lcReadTmpJson("tvm_live_channels.json", 0)
+  if cached <> invalid and Type(lcAaGet(cached, "channels", invalid)) = "roArray"
+    return cached.channels
+  end if
+  return []
+end function
+
+function lcParseM3u(text as String) as Object
+  channels = []
+  lines = text.Replace(chr(13), "").Tokenize(chr(10))
+  curName = ""
+  curGroup = ""
+  curLogo = ""
+  for each rawLine in lines
+    line = rawLine.Trim()
+    if line <> ""
+      if Left(line, 7) = "#EXTINF"
+        curName = ""
+        curGroup = ""
+        curLogo = ""
+        comma = Instr(1, line, ",")
+        if comma > 0 then curName = Mid(line, comma + 1).Trim()
+        curGroup = lcM3uAttr(line, "group-title")
+        curLogo = lcM3uAttr(line, "tvg-logo")
+      else if Left(line, 1) <> "#"
+        if Left(LCase(line), 7) = "http://" or Left(LCase(line), 8) = "https://"
+          if curName = "" then curName = "Channel " + StrI(channels.Count() + 1).Trim()
+          channels.Push({
+            id: "live:" + Left(lcSha256Hex(line), 12)
+            title: curName
+            group: curGroup
+            logo: curLogo
+            url: line
+            kind: "live"
+            playable: true
+          })
+          curName = ""
+          if channels.Count() >= 2000 then exit for
+        end if
+      end if
+    end if
+  end for
+  return channels
+end function
+
+function lcM3uAttr(line as String, attr as String) as String
+  needle = attr + "="""
+  idx = Instr(1, line, needle)
+  if idx = 0 then return ""
+  rest = Mid(line, idx + Len(needle))
+  q = Instr(1, rest, """")
+  if q = 0 then return ""
+  return Left(rest, q - 1)
+end function
+
+function lcGetLive(ctx as Object) as Object
+  state = lcLoadLiveState()
+  all = lcLoadLiveChannels()
+  if all.Count() = 0 and lcAaText(state, "url", "") <> ""
+    res = lcHttp(lcAaText(state, "url", ""), "GET", "", {}, 15000)
+    if res.ok and res.body <> ""
+      all = lcParseM3u(res.body)
+      lcWriteTmpJson("tvm_live_channels.json", { channels: all })
+    end if
+  end if
+  picksSet = {}
+  for each id in lcAaGet(state, "picks", [])
+    picksSet[id] = true
+  end for
+
+  channels = []
+  if lcIsDev(ctx)
+    channels.Push({
+      id: "live:test:dw-news"
+      title: "DW News (Test)"
+      group: "News"
+      kind: "live"
+      playable: true
+    })
+  end if
+  for each ch in all
+    if picksSet.DoesExist(ch.id)
+      channels.Push({
+        id: ch.id
+        title: ch.title
+        group: ch.group
+        logo: ch.logo
+        kind: "live"
+        playable: true
+      })
+    end if
+  end for
+  return {
+    configured: (lcAaText(state, "url", "") <> "" or channels.Count() > 0)
+    url: lcAaText(state, "url", "")
+    channels: channels
+  }
+end function
+
+function lcSaveLiveUrl(ctx as Object) as Object
+  url = lcAaText(ctx.body, "url", "").Trim()
+  if url = ""
+    lcWriteRegJson("localLive", { url: "", picks: [] })
+    DeleteFile("tmp:/tvm_live_channels.json")
+    return { status: 200, json: lcGetLive(ctx) }
+  end if
+  if Left(LCase(url), 7) <> "http://" and Left(LCase(url), 8) <> "https://"
+    return { status: 400, json: { error: "Invalid M3U URL." } }
+  end if
+  res = lcHttp(url, "GET", "", {}, 15000)
+  if not res.ok or res.body = ""
+    return { status: 400, json: { error: "Could not load that playlist." } }
+  end if
+  channels = lcParseM3u(res.body)
+  lcWriteTmpJson("tvm_live_channels.json", { channels: channels })
+  picks = []
+  for each ch in channels
+    picks.Push(ch.id)
+    if picks.Count() >= 48 then exit for
+  end for
+  lcWriteRegJson("localLive", { url: url, picks: picks })
+  return { status: 200, json: lcGetLive(ctx) }
+end function
+
+function lcGetLiveCatalog(ctx as Object) as Object
+  state = lcLoadLiveState()
+  all = lcLoadLiveChannels()
+  picksSet = {}
+  for each id in lcAaGet(state, "picks", [])
+    picksSet[id] = true
+  end for
+  q = LCase(lcAaText(ctx.query, "q", "").Trim())
+  grp = lcAaText(ctx.query, "group", "").Trim()
+  limit = lcAaInt(ctx.query, "limit", 8)
+  offset = lcAaInt(ctx.query, "offset", 0)
+
+  groupsSeen = {}
+  groups = []
+  filtered = []
+  for each ch in all
+    g = lcAaText(ch, "group", "")
+    if g <> "" and not groupsSeen.DoesExist(g)
+      groupsSeen[g] = true
+      groups.Push(g)
+    end if
+    matchGroup = (grp = "" or g = grp)
+    matchQuery = (q = "" or Instr(1, LCase(ch.title), q) > 0)
+    if matchGroup and matchQuery then filtered.Push(ch)
+  end for
+
+  pageItems = []
+  idx = offset
+  while idx < filtered.Count() and pageItems.Count() < limit
+    ch = filtered[idx]
+    pageItems.Push({
+      id: ch.id
+      title: ch.title
+      group: ch.group
+      logo: ch.logo
+      picked: picksSet.DoesExist(ch.id)
+    })
+    idx = idx + 1
+  end while
+
+  return {
+    total: filtered.Count()
+    pickedCount: lcAaGet(state, "picks", []).Count()
+    limit: limit
+    offset: offset
+    groups: groups
+    items: pageItems
+  }
+end function
+
+function lcToggleLivePick(ctx as Object) as Object
+  id = lcAaText(ctx.body, "id", "")
+  picked = lcAaBool(ctx.body, "picked", false)
+  state = lcLoadLiveState()
+  picks = []
+  for each existing in lcAaGet(state, "picks", [])
+    if existing <> id then picks.Push(existing)
+  end for
+  if picked
+    if picks.Count() >= 48 then return { status: 400, json: { error: "limit" } }
+    picks.Push(id)
+  end if
+  state.picks = picks
+  lcWriteRegJson("localLive", state)
+  return { status: 200, json: { ok: true } }
+end function
+
+function lcToggleLiveGroup(ctx as Object) as Object
+  grp = lcAaText(ctx.body, "group", "")
+  picked = lcAaBool(ctx.body, "picked", true)
+  state = lcLoadLiveState()
+  all = lcLoadLiveChannels()
+  picksSet = {}
+  for each existing in lcAaGet(state, "picks", [])
+    picksSet[existing] = true
+  end for
+  for each ch in all
+    if lcAaText(ch, "group", "") = grp
+      if picked
+        if picksSet.Count() < 48 then picksSet[ch.id] = true
+      else
+        if picksSet.DoesExist(ch.id) then picksSet.Delete(ch.id)
+      end if
+    end if
+  end for
+  state.picks = picksSet.Keys()
+  lcWriteRegJson("localLive", state)
+  return { status: 200, json: { ok: true } }
+end function
+
+' ---- Playback ----
+
+function lcPlayback(ctx as Object) as Object
+  pid = lcActiveProfileId(ctx)
+  pm = lcProgressMap(pid)
+  id = lcAaText(ctx.body, "id", "")
+  title = lcAaText(ctx.body, "title", "Stream")
+  link = lcAaText(ctx.body, "link", "").Trim()
+
+  startAt = 0
+  if id <> "" and pm.DoesExist(id)
+    startAt = lcAaGet(pm[id], "position", 0)
+  end if
+
+  ' Live TV
+  if Left(id, 5) = "live:"
+    if id = "live:test:dw-news" and lcIsDev(ctx)
+      return {
+        status: 200
+        json: {
+          kind: "stream"
+          url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8"
+          mimeType: "application/vnd.apple.mpegurl"
+          title: "DW News"
+          startAt: 0
+        }
+      }
+    end if
+    for each ch in lcLoadLiveChannels()
+      if ch.id = id
+        return { status: 200, json: { kind: "stream", url: ch.url, mimeType: "application/vnd.apple.mpegurl", title: ch.title, startAt: 0 } }
+      end if
+    end for
+    return { status: 404, json: { kind: "unavailable", reason: "empty" } }
+  end if
+
+  tok = lcRdToken(ctx)
+
+  ' Direct link
+  if link <> ""
+    if tok <> "" and Instr(1, LCase(link), "real-debrid.com") > 0
+      unr = lcRdRequest(tok, "/unrestrict/link", "POST", "link=" + lcUrlEncode(link))
+      if unr.ok and unr.json <> invalid
+        dl = lcAaText(unr.json, "download", "")
+        if dl <> ""
+          return {
+            status: 200
+            json: {
+              kind: "stream"
+              url: dl
+              mimeType: lcAaText(unr.json, "mimeType", "video/mp4")
+              title: lcAaText(unr.json, "filename", title)
+              startAt: startAt
+            }
+          }
+        end if
+      end if
+    end if
+    return { status: 200, json: { kind: "stream", url: link, mimeType: "video/mp4", title: title, startAt: startAt } }
+  end if
+
+  if tok = ""
+    return { status: 409, json: { kind: "unavailable", reason: "not-configured" } }
+  end if
+
+  ' Verify RD token quickly
+  st = lcGetRdStatus(ctx)
+  if lcAaText(st, "error", "") = "needs-auth"
+    return { status: 409, json: { kind: "unavailable", reason: "needs-auth" } }
+  end if
+
+  ' Extract IMDB ID + optional season/episode
+  imdb = ""
+  parts = id.Tokenize(":")
+  if parts.Count() > 0 and Left(LCase(parts[0]), 2) = "tt" then imdb = parts[0]
+  season = lcAaGet(ctx.body, "season", invalid)
+  episode = lcAaGet(ctx.body, "episode", invalid)
+  if parts.Count() >= 3 and season = invalid
+    season = Int(Val(parts[1]))
+    episode = Int(Val(parts[2]))
+  end if
+  if imdb = ""
+    return { status: 409, json: { kind: "unavailable", reason: "empty" } }
+  end if
+
+  tPath = "/realdebrid=" + lcUrlEncode(tok) + "/stream/movie/" + imdb + ".json"
+  if season <> invalid and episode <> invalid
+    tPath = "/realdebrid=" + lcUrlEncode(tok) + "/stream/series/" + imdb + ":" + StrI(Int(season)).Trim() + ":" + StrI(Int(episode)).Trim() + ".json"
+  end if
+
+  tRes = lcHttp("https://torrentio.strem.fun" + tPath, "GET", "", {}, 15000)
+  if not tRes.ok or tRes.json = invalid
+    return { status: 409, json: { kind: "unavailable", reason: "empty" } }
+  end if
+  streams = lcAaGet(tRes.json, "streams", [])
+  if Type(streams) <> "roArray" or streams.Count() = 0
+    return { status: 409, json: { kind: "unavailable", reason: "empty" } }
+  end if
+
+  ' Prefer streams that carry an infoHash (directly or inside Torrentio resolve URL)
+  ' and resolve via Real-Debrid API.
+  hashRegex = CreateObject("roRegex", "/([0-9a-f]{40})/[^/]*/([0-9]+|null)/", "i")
+  tried = 0
+  for each s in streams
+    if tried >= 4 then exit for
+    sName = lcAaText(s, "name", "")
+    sTitle = lcAaText(s, "title", "")
+    sUrl = lcAaText(s, "url", "")
+    label = LCase(sName + " " + sTitle)
+    if Instr(1, label, "cam") = 0 and Instr(1, label, "tsrip") = 0
+      infoHash = lcAaText(s, "infoHash", lcAaText(s, "info_hash", ""))
+      fileIdx = lcAaGet(s, "fileIdx", invalid)
+      if infoHash = "" and sUrl <> ""
+        m = hashRegex.Match(sUrl)
+        if m <> invalid and m.Count() >= 2
+          infoHash = m[1]
+          if fileIdx = invalid and m.Count() >= 3 and m[2] <> "null"
+            fileIdx = Int(Val(m[2]))
+          end if
+        end if
+      end if
+      if infoHash <> ""
+        tried = tried + 1
+        dl = lcResolveMagnetViaRd(tok, infoHash, fileIdx)
+        if dl <> invalid
+          return {
+            status: 200
+            json: {
+              kind: "stream"
+              url: dl.download
+              mimeType: dl.mimeType
+              title: title
+              startAt: startAt
+            }
+          }
+        end if
+      end if
+    end if
+  end for
+
+  return { status: 409, json: { kind: "unavailable", reason: "not-in-library" } }
+end function
+
+function lcResolveMagnetViaRd(token as String, infoHash as String, fileIdx as Dynamic) as Object
+  magnet = "magnet:?xt=urn:btih:" + infoHash
+  addRes = lcRdRequest(token, "/torrents/addMagnet", "POST", "magnet=" + lcUrlEncode(magnet))
+  if not addRes.ok or addRes.json = invalid then return invalid
+  tid = lcAaText(addRes.json, "id", "")
+  if tid = "" then return invalid
+
+  links = []
+  for attempt = 1 to 6
+    infoRes = lcRdRequest(token, "/torrents/info/" + tid, "GET")
+    if infoRes.ok and infoRes.json <> invalid
+      st = lcAaText(infoRes.json, "status", "")
+      if st = "waiting_files_selection"
+        sel = "all"
+        if fileIdx <> invalid
+          files = lcAaGet(infoRes.json, "files", [])
+          idxNum = Int(fileIdx)
+          if Type(files) = "roArray" and idxNum >= 0 and idxNum < files.Count()
+            sel = StrI(lcAaInt(files[idxNum], "id", 1)).Trim()
+          end if
+        end if
+        lcRdRequest(token, "/torrents/selectFiles/" + tid, "POST", "files=" + lcUrlEncode(sel))
+      else if st = "downloaded"
+        links = lcAaGet(infoRes.json, "links", [])
+        if Type(links) = "roArray" and links.Count() > 0 then exit for
+      else if st = "error" or st = "virus" or st = "dead"
+        exit for
+      end if
+    end if
+    sleep(400)
+  end for
+
+  if Type(links) <> "roArray" or links.Count() = 0
+    lcRdRequest(token, "/torrents/delete/" + tid, "DELETE")
+    return invalid
+  end if
+
+  linkToUse = ""
+  if Type(links[0]) = "String" or Type(links[0]) = "roString" then linkToUse = links[0]
+  if linkToUse = "" then return invalid
+
+  unr = lcRdRequest(token, "/unrestrict/link", "POST", "link=" + lcUrlEncode(linkToUse))
+  if not unr.ok or unr.json = invalid then return invalid
+  dl = lcAaText(unr.json, "download", "")
+  if dl = "" then return invalid
+  return {
+    download: dl
+    mimeType: lcAaText(unr.json, "mimeType", "video/mp4")
+  }
+end function

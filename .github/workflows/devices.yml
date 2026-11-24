@@ -1,0 +1,46 @@
+name: Sync TVM Downloads
+
+on:
+  workflow_run:
+    workflows:
+      - Native Windows
+      - Mobile packages
+      - Desktop & Roku packages
+    branches: [main]
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: devices-release
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait until other release builds finish
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          active="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=main&per_page=30" \
+            --jq '[.workflow_runs[] | select((.status == "in_progress" or .status == "queued") and (.name == "Native Windows" or .name == "Mobile packages" or .name == "Desktop & Roku packages"))] | length')"
+          if [ "$active" -gt 0 ]; then
+            echo "waiting=true" >> "$GITHUB_OUTPUT"
+            echo "$active build workflow(s) still running; skipping sync until they finish."
+          else
+            echo "waiting=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Republish devices release from latest main
+        if: steps.check.outputs.waiting != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: bash scripts/publish-device-package.sh --sync

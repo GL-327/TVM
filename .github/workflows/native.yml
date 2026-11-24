@@ -3,7 +3,6 @@ name: Native Windows
 on:
   push:
     branches: [main]
-    paths: ['native/**', 'apps/core/**', 'apps/ui/**', 'packages/**', 'scripts/launch-tvm*', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/native.yml']
   pull_request:
     paths: ['native/**', 'apps/core/**', 'apps/ui/**', 'packages/**', 'scripts/launch-tvm*', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/native.yml']
   workflow_dispatch:
@@ -116,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $notes = 'Windows C++ desktop app. Download and run **TVM.exe** — single-file installer and launcher with no admin prompt or ZIP extraction needed. Includes the shared Core, responsive web UI, and Node runtime; playback uses mpv with verified automatic setup when missing. (`TVM-native-windows.zip` is retained for in-app auto-updates.) Electron is retired. See native/README.md.'
+          $notes = 'Windows C++ desktop app. Run **TVM.exe** to install into %LOCALAPPDATA%\Programs\TVM and launch TVM (includes Core, UI, Node, and mpv setup). (`TVM-native-windows.zip` is retained for in-app updates.)'
           gh release view native-windows *> $null
           if ($LASTEXITCODE -ne 0) { gh release create native-windows --latest=false --target $env:GITHUB_SHA --title 'Native Windows (C++)' --notes $notes }
           else { gh release edit native-windows --prerelease=false --latest=false --title 'Native Windows (C++)' --notes $notes }

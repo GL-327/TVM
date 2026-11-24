@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Living-room start: fullscreen kiosk. Use TVM-windowed.sh on a laptop.
+# Start TVM desktop.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$here/scripts/launch-tvm.sh" ]; then

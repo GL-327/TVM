@@ -1,6 +1,6 @@
 # iOS testing and sideloading
 
-**14 September update:** See [MOBILE_READINESS.md](MOBILE_READINESS.md) for the current change list and verification gates. iPhone is now landscape with a fitted 16:9 web-app frame; mobile viewing requires Basic or higher (at least 1080p). HLS Live TV and provider-generated HLS playlists are supported; raw MPEG-TS and unsupported containers still need provider conversion or the optional home Core. Earlier portrait instructions below apply to iPad/browser regression checks, not iPhone orientation support.
+**14 September update:** iPhone is now landscape with a fitted 16:9 web-app frame; mobile viewing requires Basic or higher (at least 1080p). HLS Live TV and provider-generated HLS playlists are supported; raw MPEG-TS and unsupported containers still need provider conversion or the optional home Core. Earlier portrait instructions below apply to iPad/browser regression checks, not iPhone orientation support.
 
 ## Current status
 
