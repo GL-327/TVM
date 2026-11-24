@@ -233,13 +233,20 @@ ui::InfoScreen* App::TypingPage() {
 }
 
 void App::ShowInfoPage() {
+    if (pageName_ == "downloads") {
+        // Downloads has its own screen; it shows the same state the old page did.
+        if (auto* downloads = dynamic_cast<ui::DownloadsScreen*>(shell_->ScreenNamed("downloads"))) {
+            downloads->SetView(DownloadsScreenView());
+            dirty_ = true;
+        }
+        return;
+    }
     auto* screen = dynamic_cast<ui::InfoScreen*>(shell_->ScreenNamed(pageName_));
     if (screen == nullptr) return;
     ui::InfoView view;
     if (pageName_ == "account") view = AccountView();
     else if (pageName_ == "legal") view = LegalView();
     else if (pageName_ == "donate") view = DonateView();
-    else if (pageName_ == "downloads") view = DownloadsView();
     else if (pageName_ == "changelog") view = ChangelogView();
     else if (pageName_ == "diagnostics") view = DiagnosticsView();
     else if (pageName_ == "system-info") view = SystemInfoView();
@@ -314,7 +321,33 @@ void App::ApplyInfoAction(const ui::Command& command) {
         }
     }
     // ---- Downloads
-    else if (verb.rfind("dl-scope-", 0) == 0) {
+    else if (verb.rfind("dl-set-", 0) == 0) {
+        // A pick from one of the Downloads lists, by its row.
+        const std::string field = verb.substr(7);
+        const auto at = command.params.find("index");
+        const std::size_t index = at == command.params.end() ? 0 : static_cast<std::size_t>(std::atoi(at->second.c_str()));
+        if (field == "scope") {
+            static const std::vector<std::string> kScopes = {"series", "season", "episode"};
+            if (index < kScopes.size()) downloadScope_ = kScopes[index];
+        } else if (field == "season") {
+            const std::vector<int> seasons = DownloadSeasons();
+            if (index < seasons.size()) {
+                downloadSeason_ = seasons[index];
+                const std::vector<const catalog::MediaItem*> episodes = DownloadSeasonEpisodes();
+                if (!episodes.empty()) downloadEpisode_ = episodes.front()->id;
+            }
+        } else if (field == "episode") {
+            const std::vector<const catalog::MediaItem*> episodes = DownloadSeasonEpisodes();
+            if (index < episodes.size()) downloadEpisode_ = episodes[index]->id;
+        } else if (field == "language") {
+            if (index < Languages().size()) downloadLanguage_ = Languages()[index].id;
+            SaveDownloadPrefs();
+        } else if (field == "quality") {
+            static const std::vector<int> kHeights = {480, 720, 1080, 2160};
+            if (index < kHeights.size()) downloadQuality_ = kHeights[index];
+            SaveDownloadPrefs();
+        }
+    } else if (verb.rfind("dl-scope-", 0) == 0) {
         downloadScope_ = verb.substr(9);
     } else if (verb == "dl-season") {
         std::vector<int> seasons;
@@ -676,81 +709,120 @@ ui::InfoView App::DonateView() const {
 
 // ------------------------------------------------------------------ Downloads
 
-ui::InfoView App::DownloadsView() const {
-    ui::InfoView view;
-    const std::string id = Param(pageParams_, "id");
-    const std::string title = Param(pageParams_, "title");
-    const bool series = !downloadEpisodes_.empty() || downloadEpisodesLoading_;
-    view.kicker = "YOUR OFFLINE LIBRARY";
-    view.heading = id.empty() ? "Downloads" : "Take it with you.";
-    view.lede = id.empty() ? "Your downloads keep going while you browse." : (title.empty() ? "This title" : title);
-    view.topActions = {Button("back", "Close")};
+std::vector<int> App::DownloadSeasons() const {
+    std::vector<int> seasons;
+    for (const catalog::MediaItem& item : downloadEpisodes_) {
+        if (item.season && std::find(seasons.begin(), seasons.end(), *item.season) == seasons.end()) seasons.push_back(*item.season);
+    }
+    std::sort(seasons.begin(), seasons.end());
+    return seasons;
+}
 
-    std::size_t count = 1;
+std::vector<const catalog::MediaItem*> App::DownloadSeasonEpisodes() const {
+    std::vector<const catalog::MediaItem*> episodes;
+    for (const catalog::MediaItem& item : downloadEpisodes_) {
+        if (item.season == downloadSeason_) episodes.push_back(&item);
+    }
+    return episodes;
+}
+
+ui::DownloadsView App::DownloadsScreenView() const {
+    ui::DownloadsView view;
+    const std::string id = Param(pageParams_, "id");
+    const bool series = !downloadEpisodes_.empty() || downloadEpisodesLoading_;
     if (!id.empty()) {
+        // The header: the title, with its artwork from the details already loaded for it.
+        const std::string title = Param(pageParams_, "title");
+        view.title = title.empty() ? "This title" : title;
+        const std::string base = id.substr(0, id.find(':'));
+        if (const auto cached = titles_.find(base); cached != titles_.end()) {
+            view.posterUrl = cached->second.posterUrl;
+            view.backdropUrl = cached->second.backdropUrl;
+            if (view.title == "This title" && !cached->second.title.empty()) view.title = cached->second.title;
+        }
+        std::size_t count = 1;
         if (series) {
             count = 0;
             for (const catalog::MediaItem& item : downloadEpisodes_) {
                 if (downloadScope_ == "series" || (downloadScope_ == "season" ? item.season == downloadSeason_ : item.id == downloadEpisode_)) ++count;
             }
-            view.filters.push_back({Button("info:dl-scope-series", "Full series \xC2\xB7 " + std::to_string(downloadEpisodes_.size()) + " episodes",
-                                           downloadScope_ == "series"),
-                                    Button("info:dl-scope-season", "One season", downloadScope_ == "season"),
-                                    Button("info:dl-scope-episode", "One episode", downloadScope_ == "episode")});
-            std::vector<ui::InfoAction> which;
-            if (downloadScope_ != "series") which.push_back(Button("info:dl-season", "Season " + std::to_string(downloadSeason_) + " \xC2\xB7 change"));
-            if (downloadScope_ == "episode") {
-                const auto episode = std::find_if(downloadEpisodes_.begin(), downloadEpisodes_.end(),
-                                                  [&](const catalog::MediaItem& item) { return item.id == downloadEpisode_; });
-                const std::string label = episode == downloadEpisodes_.end()
-                                              ? "Episode \xC2\xB7 change"
-                                              : "Episode " + std::to_string(episode->episode.value_or(0)) + " \xC2\xB7 " +
-                                                    episode->episodeName.value_or(episode->title) + " \xC2\xB7 change";
-                which.push_back(Button("info:dl-episode", label));
+            view.subtitle = "Series \xC2\xB7 " + std::to_string(downloadEpisodes_.size()) + " episodes";
+            static const std::vector<std::string> kScopes = {"series", "season", "episode"};
+            const auto scope = std::find(kScopes.begin(), kScopes.end(), downloadScope_);
+            view.choices.push_back(ui::DownloadChoice{"scope", "Download",
+                                                      {"Full series", "One season", "One episode"},
+                                                      static_cast<std::size_t>(scope == kScopes.end() ? 2 : scope - kScopes.begin())});
+            if (downloadScope_ != "series") {
+                ui::DownloadChoice season{"season", "Season", {}, 0};
+                const std::vector<int> seasons = DownloadSeasons();
+                for (std::size_t i = 0; i < seasons.size(); ++i) {
+                    season.options.push_back(seasons[i] == 0 ? std::string("Specials") : "Season " + std::to_string(seasons[i]));
+                    if (seasons[i] == downloadSeason_) season.chosen = i;
+                }
+                if (!season.options.empty()) view.choices.push_back(season);
             }
-            if (!which.empty()) view.filters.push_back(which);
+            if (downloadScope_ == "episode") {
+                ui::DownloadChoice episode{"episode", "Episode", {}, 0};
+                const std::vector<const catalog::MediaItem*> episodes = DownloadSeasonEpisodes();
+                for (std::size_t i = 0; i < episodes.size(); ++i) {
+                    episode.options.push_back(std::to_string(episodes[i]->episode.value_or(0)) + ". " +
+                                              episodes[i]->episodeName.value_or(episodes[i]->title));
+                    if (episodes[i]->id == downloadEpisode_) episode.chosen = i;
+                }
+                if (!episode.options.empty()) view.choices.push_back(episode);
+            }
+        } else {
+            view.subtitle = "Film";
         }
-        view.filters.push_back({Button("info:dl-language", std::string("Audio: ") + LanguageOf(downloadLanguage_).label + " \xC2\xB7 change"),
-                                Button("info:dl-quality", "Maximum quality: " + QualityLabel(downloadQuality_) + " \xC2\xB7 change")});
-        // The button says what it will fetch, so the language and quality are confirmed before anything starts.
+        // Audio and quality. The quality is a ceiling: nothing above it is fetched, and the card shows what was found.
+        ui::DownloadChoice audio{"language", "Audio", {}, 0};
+        for (std::size_t i = 0; i < Languages().size(); ++i) {
+            audio.options.push_back(Languages()[i].label);
+            if (Languages()[i].id == downloadLanguage_) audio.chosen = i;
+        }
+        view.choices.push_back(audio);
+        ui::DownloadChoice quality{"quality", "Highest quality", {"Up to 480p", "Up to 720p", "Up to 1080p", "Up to 4K"}, 2};
+        static const std::vector<int> kHeights = {480, 720, 1080, 2160};
+        for (std::size_t i = 0; i < kHeights.size(); ++i) {
+            if (kHeights[i] == downloadQuality_) quality.chosen = i;
+        }
+        view.choices.push_back(quality);
+
+        view.folder = downloadFolder_.empty() ? "" : util::ToUtf8(downloadFolder_.wstring());
         const std::string what = count > 1 ? "Download " + std::to_string(count) + " episodes" : std::string("Download");
-        const std::string startLabel = pageBusy_ ? std::string("Adding\xE2\x80\xA6")
-                                                 : what + " \xC2\xB7 " + LanguageOf(downloadLanguage_).label + " \xC2\xB7 " +
-                                                       (downloadQuality_ == 2160 ? std::string("4K") : std::to_string(downloadQuality_) + "p");
-        view.filters.push_back({Button("info:dl-folder", "Choose folder"),
-                                Button("info:dl-start", startLabel, true,
-                                       pageBusy_ || downloadFolder_.empty() || count == 0 || downloadEpisodesLoading_)});
-        view.blocks.push_back(Note("The audio language is a must: a source marked as another language, or as MULTi, is never downloaded "
-                                   "instead, and the download stops if none is found. Original files keep all included audio and subtitle "
-                                   "tracks. Availability can vary by episode."));
-        view.blocks.push_back(Row("Save to", downloadFolder_.empty() ? "Choose a folder on this device" : util::ToUtf8(downloadFolder_.wstring())));
-        if (downloadEpisodesLoading_) view.blocks.push_back(Paragraph("Loading episodes\xE2\x80\xA6"));
-        else if (series && downloadEpisodes_.empty()) view.blocks.push_back(Paragraph("No episodes are available to download yet."));
+        view.startLabel = pageBusy_ ? std::string("Adding\xE2\x80\xA6")
+                                    : what + " \xC2\xB7 " + LanguageOf(downloadLanguage_).label + " \xC2\xB7 up to " +
+                                          (downloadQuality_ == 2160 ? std::string("4K") : std::to_string(downloadQuality_) + "p");
+        view.startEnabled = !(pageBusy_ || downloadFolder_.empty() || count == 0 || downloadEpisodesLoading_);
+        if (downloadEpisodesLoading_) view.status = "Loading episodes\xE2\x80\xA6";
+        else if (series && downloadEpisodes_.empty()) view.status = "No episodes are available to download yet.";
+        view.note = downloadLanguage_ == "original"
+                        ? "Original keeps the file's own audio tracks and subtitles. Availability can vary by episode."
+                        : std::string("Only ") + LanguageOf(downloadLanguage_).label +
+                              " audio is downloaded: a source in another language, or marked MULTi, is never used "
+                              "instead, and the download stops if none is found.";
     }
     view.message = pageMessage_;
     view.messageBad = pageMessageBad_;
-
-    std::size_t active = 0;
-    for (const DownloadJob& job : downloads_) {
-        if (job.state == "queued" || job.state == "resolving" || job.state == "downloading") ++active;
-    }
-    view.blocks.push_back(Heading("Your downloads \xC2\xB7 " + std::to_string(active) + " active"));
-    if (downloads_.empty()) {
-        view.blocks.push_back(Paragraph(id.empty() ? "Open a film or series and choose Download to get started." : "Your downloads will appear here."));
-    }
     for (auto job = downloads_.rbegin(); job != downloads_.rend(); ++job) {
-        std::string status;
-        if (job->state == "downloading") status = Size(job->bytes) + (job->total > 0 ? " of " + Size(job->total) : "");
-        else if (job->state == "resolving") status = "Finding your file\xE2\x80\xA6";
-        else status = std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(job->state[0])))) + job->state.substr(1);
-        if (!job->error.empty()) status += " \xC2\xB7 " + job->error;
-        view.blocks.push_back(Bullet(job->title, status, job->state == "complete", job->state == "failed"));
-        if (!job->path.empty() && job->state == "complete") view.blocks.push_back(Note(util::ToUtf8(job->path.wstring())));
-        const bool running = job->state == "queued" || job->state == "resolving" || job->state == "downloading";
-        if (running) view.actions.push_back({Button("info:dl-cancel-" + std::to_string(job->id), "Cancel \xC2\xB7 " + job->title)});
-        if (job->state == "complete") view.actions.push_back({Button("info:dl-show-" + std::to_string(job->id), "Show file \xC2\xB7 " + job->title)});
+        ui::DownloadJobView card;
+        card.id = job->id;
+        card.title = job->title;
+        card.state = job->state;
+        if (job->state == "downloading" && job->total > 0) {
+            card.progress = static_cast<double>(job->bytes) / static_cast<double>(job->total);
+        }
+        if (job->state == "downloading") card.status = Size(job->bytes) + (job->total > 0 ? " of " + Size(job->total) : "");
+        else if (job->state == "resolving") card.status = "Finding your file\xE2\x80\xA6";
+        else if (job->state == "queued") card.status = "Waiting for the download before it";
+        else if (job->state == "complete") card.status = job->path.empty() ? "Saved" : util::ToUtf8(job->path.wstring());
+        else if (job->state == "cancelled") card.status = "Cancelled";
+        else card.status = job->error.empty() ? "It could not be downloaded" : job->error;
+        if (job->state == "complete" && job->total > 0) card.status = Size(job->total) + " \xC2\xB7 " + card.status;
+        card.canCancel = job->state == "queued" || job->state == "resolving" || job->state == "downloading";
+        card.canShow = job->state == "complete" && !job->path.empty();
+        view.jobs.push_back(card);
     }
-    view.blocks.push_back(Note("Keep TVM open until downloads finish."));
     return view;
 }
 

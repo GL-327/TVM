@@ -1989,7 +1989,7 @@ void App::SyncPages() {
     if (auto* previous = dynamic_cast<ui::InfoScreen*>(shell_->ScreenNamed(pageName_))) previous->ClearField();
     pageOpened_ = entry.key;
     const std::string& name = entry.name;
-    if (dynamic_cast<ui::InfoScreen*>(&shell_->ActiveScreen()) != nullptr) OpenInfoPage(entry);
+    if (dynamic_cast<ui::InfoScreen*>(&shell_->ActiveScreen()) != nullptr || name == "downloads") OpenInfoPage(entry);
     if (name == "service") {
         const auto id = entry.params.find("id");
         OpenServiceHub(id == entry.params.end() ? "" : id->second);

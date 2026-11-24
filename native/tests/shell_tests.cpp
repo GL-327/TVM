@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "nav/focus_tree.h"
 #include "nav/pointer.h"
 #include "ui/details_screen.h"
+#include "ui/downloads_screen.h"
 #include "ui/pending_screen.h"
 #include "ui/profile_chooser.h"
 #include "ui/scene.h"
@@ -771,6 +773,97 @@ TEST(the_season_list_takes_the_mouse_and_closes_on_back_or_outside) {
     details.ActivateItem("season-dismiss", 0.0);
     REQUIRE(!details.SeasonList().IsOpen());
     REQUIRE_EQ(details.Season(), 0);
+}
+
+
+// ------------------------------------------------------------ downloads
+
+tvm::ui::DownloadsView SeriesDownload() {
+    tvm::ui::DownloadsView view;
+    view.title = "A Series";
+    view.subtitle = "Series \xC2\xB7 8 episodes";
+    view.choices = {{"scope", "Download", {"Full series", "One season", "One episode"}, 1},
+                    {"season", "Season", {"Season 1", "Season 2"}, 0},
+                    {"language", "Audio", {"English", "Original / any language", "Japanese"}, 0},
+                    {"quality", "Highest quality", {"Up to 480p", "Up to 720p", "Up to 1080p", "Up to 4K"}, 2}};
+    view.folder = "C:\\Users\\viewer\\Downloads\\TVM";
+    view.startLabel = "Download 4 episodes \xC2\xB7 English \xC2\xB7 up to 1080p";
+    view.startEnabled = true;
+    view.note = "Only English audio is downloaded.";
+    tvm::ui::DownloadJobView running;
+    running.id = 7;
+    running.title = "A Series S1E1";
+    running.state = "downloading";
+    running.progress = 0.42;
+    running.status = "420 MB of 1.0 GB";
+    running.canCancel = true;
+    tvm::ui::DownloadJobView done;
+    done.id = 6;
+    done.title = "A Film";
+    done.state = "complete";
+    done.status = "C:\\Users\\viewer\\Downloads\\TVM\\A Film.mkv";
+    done.canShow = true;
+    view.jobs = {running, done};
+    return view;
+}
+
+TEST(downloads_opens_on_the_download_button_and_sends_the_old_commands) {
+    tvm::ui::DownloadsScreen downloads;
+    downloads.Layout(1920.0, 1080.0);
+    downloads.SetView(SeriesDownload());
+    REQUIRE(downloads.FocusedKey() == std::optional<std::string>("start"));
+    REQUIRE_EQ(downloads.Select(0.0)->name, std::string("info:dl-start"));
+    REQUIRE_EQ(downloads.ActivateItem("folder", 0.0)->name, std::string("info:dl-folder"));
+    REQUIRE_EQ(downloads.ActivateItem("cancel:7", 0.0)->name, std::string("info:dl-cancel-7"));
+    REQUIRE_EQ(downloads.ActivateItem("show:6", 0.0)->name, std::string("info:dl-show-6"));
+    REQUIRE_EQ(downloads.ActivateItem("close", 0.0)->name, std::string("back"));
+    // A finished download has no Cancel, a running one no Show file.
+    REQUIRE(!downloads.BoxOf("cancel:6").has_value());
+    REQUIRE(!downloads.BoxOf("show:7").has_value());
+}
+
+TEST(downloads_choices_open_a_list_and_a_pick_sends_its_row) {
+    tvm::ui::DownloadsScreen downloads;
+    downloads.Layout(1920.0, 1080.0);
+    downloads.SetView(SeriesDownload());
+    REQUIRE(!downloads.ActivateItem("choice:quality", 0.0).has_value());
+    REQUIRE(downloads.List().IsOpen());
+    REQUIRE_EQ(downloads.List().Count(), std::size_t{4});
+    REQUIRE_EQ(downloads.List().Selected(), std::size_t{2});
+    REQUIRE(downloads.Navigate(Direction::Down, 0.0));
+    const std::optional<Command> pick = downloads.Select(0.0);
+    REQUIRE_EQ(pick->name, std::string("info:dl-set-quality"));
+    REQUIRE_EQ(pick->params.at("index"), std::string("3"));
+    REQUIRE(!downloads.List().IsOpen());
+    // Back closes an open list and keeps the page.
+    downloads.ActivateItem("choice:language", 0.0);
+    REQUIRE(downloads.CloseOverlay(0.0));
+    REQUIRE(!downloads.List().IsOpen());
+}
+
+TEST(downloads_waits_on_a_disabled_button_and_shows_an_empty_list) {
+    tvm::ui::DownloadsScreen downloads;
+    downloads.Layout(1280.0, 720.0);
+    tvm::ui::DownloadsView view = SeriesDownload();
+    view.startEnabled = false;
+    view.jobs.clear();
+    downloads.SetView(view);
+    REQUIRE(!downloads.ActivateItem("start", 0.0).has_value());
+    // Every choice, the folder and the button are reachable with the arrows from Close.
+    std::set<std::string> seen;
+    REQUIRE(downloads.FocusItem("close", 0.0, false));
+    for (int i = 0; i < 12; ++i) {
+        seen.insert(*downloads.FocusedKey());
+        downloads.Navigate(i % 2 == 0 ? Direction::Down : Direction::Left, 0.0);
+    }
+    REQUIRE(seen.contains("choice:scope"));
+    REQUIRE(seen.contains("start"));
+    // The page without a title is just the list.
+    tvm::ui::DownloadsScreen list;
+    list.Layout(1920.0, 1080.0);
+    list.SetView(tvm::ui::DownloadsView{});
+    REQUIRE(list.FocusedKey() == std::optional<std::string>("close"));
+    REQUIRE(!list.BoxOf("start").has_value());
 }
 
 }  // namespace

@@ -42,6 +42,7 @@
 #include "platform/overlay_window.h"
 #include "ui/catalog_view.h"
 #include "ui/intro.h"
+#include "ui/downloads_screen.h"
 #include "ui/logo_reveal.h"
 #include "ui/profile_chooser.h"
 #include "ui/preferences_store.h"
@@ -216,7 +217,9 @@ private:
     void TypedIntoPage(ui::InfoScreen& page);
     ui::InfoView LegalView() const;
     ui::InfoView DonateView() const;
-    ui::InfoView DownloadsView() const;
+    ui::DownloadsView DownloadsScreenView() const;
+    std::vector<int> DownloadSeasons() const;
+    std::vector<const catalog::MediaItem*> DownloadSeasonEpisodes() const;
     ui::InfoView ChangelogView() const;
     ui::InfoView DiagnosticsView() const;
     ui::InfoView SystemInfoView() const;

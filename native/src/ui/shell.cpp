@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "ui/details_screen.h"
+#include "ui/downloads_screen.h"
 #include "ui/pending_screen.h"
 #include "ui/profile_chooser.h"
 #include "ui/settings_screen.h"
@@ -298,7 +299,7 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
     }
     // The pages the app fills in from an InfoView.
     static const std::set<std::string> kInfoPages = {
-        "legal", "donate", "downloads", "changelog", "diagnostics", "system-info", "setup", "recovery",
+        "legal", "donate", "changelog", "diagnostics", "system-info", "setup", "recovery",
         "live-check", "mail-settings", "accounts", "developer", "apps", "confirm", "account"};
     if (kInfoPages.contains(entry.name)) return std::make_unique<InfoScreen>();
     if (entry.name == "service") {
@@ -311,6 +312,7 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
         return scene;
     }
     if (entry.name == "profiles") return std::make_unique<ProfilesScreen>();
+    if (entry.name == "downloads") return std::make_unique<DownloadsScreen>();
     if (entry.name == "chooser") return std::make_unique<ProfileChooser>();
     if (entry.name == "profile-menu") return std::make_unique<ProfileMenu>();
     if (entry.name == "plans") return std::make_unique<PlansScreen>();
