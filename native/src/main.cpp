@@ -734,6 +734,15 @@ int RunFrames(const std::wstring& dir, const std::wstring& scenario, unsigned wi
                       {2950.0, move(card.CenterX() + 200.0, y, true)}, {3000.0, move(card.CenterX() + 60.0, y, true)},
                       {3050.0, move(card.CenterX() - 80.0, y, true)},  {3080.0, [host, card, y](double now) { host->MouseUp(card.CenterX() - 80.0, y, now); }}};
             endMs = 3900.0;
+        } else if (scenario == L"card-hover") {
+            // The pointer rests on a Continue Watching card with a picture, then on a poster with one, then leaves.
+            const tvm::ui::Box wide = scene->CardBox(0, 0);
+            const tvm::ui::Box tall = scene->CardBox(1, 0);
+            const auto at = [host](double x, double y) { return [host, x, y](double now) { host->MouseMove(x, y, false, now); }; };
+            events = {{0.0, at(wide.CenterX(), wide.CenterY())}, {40.0, at(wide.CenterX() + 2.0, wide.CenterY())},
+                      {900.0, at(tall.CenterX(), tall.CenterY())}, {940.0, at(tall.CenterX() + 2.0, tall.CenterY())},
+                      {1800.0, [host](double now) { host->MouseLeave(now); }}};
+            endMs = 2400.0;
         } else if (scenario == L"orb") {
             events = {{0.0, hover("settings")}, {200.0, hover("top:6")}, {700.0, press("top:6")},
                       {820.0, release},          {1150.0, hover("settings")}};

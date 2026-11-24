@@ -68,10 +68,14 @@ jobs:
           }
           $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--snapshot', "$out/page-details-back-focused.png", '--size', '1920x1080', '--screen', 'details', '--keys', 'Up', '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0) { throw 'Details focus still failed' }
-          foreach ($scenario in @('nav-all-tabs', 'hover-leave', 'player-controls', 'nav-intro', 'tab-switch', 'buttons', 'orb', 'menu', 'logo-reveal', 'rail-scroll')) {
+          foreach ($scenario in @('nav-all-tabs', 'hover-leave', 'player-controls', 'nav-intro', 'tab-switch', 'buttons', 'orb', 'menu', 'logo-reveal', 'rail-scroll', 'card-hover')) {
             $process = Start-Process native/build/Release/tvm.exe -ArgumentList '--frames', "$out/frames-$scenario", '--scenario', $scenario, '--size', '1280x720', '--art', 'native/tools/snapshot-art/bright.jpg' -Wait -PassThru -WindowStyle Hidden
             if ($process.ExitCode -ne 0) { throw "Animation frames failed: $scenario" }
           }
+          # The icon the built exe carries (taskbar, title bar, shortcuts), at the large size Explorer shows.
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path native/build/Release/tvm.exe))
+          $icon.ToBitmap().Save("$out/exe-icon.png", [System.Drawing.Imaging.ImageFormat]::Png)
       - uses: actions/upload-artifact@v4
         with:
           name: tvm-native-glass-snapshots

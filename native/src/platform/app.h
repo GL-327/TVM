@@ -260,6 +260,8 @@ private:
     void SyncSearch();
     bool HandleSearchKey(WPARAM virtualKey);
     void TypeSearch(const std::string& text);
+    // The scene showing the Search page now (the lane on Home or the Search screen), if any.
+    ui::Scene* SearchScene();
     void RunSearch();
     void ApplySearch();
 

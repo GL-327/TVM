@@ -131,6 +131,13 @@ private:
 
     nav::MouseState mouse_;
     nav::ClickTracker clicks_;
+    // Where the pointer last was over the window, and until when content moving under it (a wheel spin, an arrow's
+    // glide, a coasting drag) should re-pick what is hovered. Any key ends that, so the remote's focus is not taken.
+    bool pointerIn_ = false;
+    double pointerX_ = 0.0;
+    double pointerY_ = 0.0;
+    double rehoverUntilMs_ = 0.0;
+    void HoverAt(double x, double y, double nowMs);
     nav::TouchGesture touch_;
     // A mouse press on a rail that can scroll: once it moves sideways past the tap slop, the rail follows the pointer
     // (and the press is no longer a click); on release it coasts on, as a touch swipe does.

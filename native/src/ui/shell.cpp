@@ -22,6 +22,9 @@ constexpr double kWheelNotchPx = 100.0;
 constexpr double kWheelUnitsPerNotch = 120.0;
 // A wheel step this small, in pixels, moves at once instead of easing.
 constexpr double kWheelInstantPx = 80.0;
+// How long after a wheel spin, an arrow click or a drag the hover keeps re-picking what is under a still pointer,
+// long enough for the glide that follows to finish.
+constexpr double kRehoverMs = 1200.0;
 
 bool HasEntry(const nav::ViewStackState& stack, const std::string& key) {
     for (const nav::ViewEntry& entry : stack.entries) {
@@ -59,6 +62,11 @@ bool Shell::Tick(double nowMs) {
     clock_ = nowMs;
     bool active = false;
     for (auto& [key, screen] : screens_) active = screen->Tick(nowMs) || active;
+    // Content that moved under a still pointer: what is under it now is what is hovered.
+    if (nowMs < rehoverUntilMs_ && pointerIn_ && mouse_.cursorVisible() &&
+        !(mouseDrag_.has_value() && mouseDrag_->dragging)) {
+        HoverAt(pointerX_, pointerY_, nowMs);
+    }
     ApplyMotionIfChanged();
     return active || Animating();
 }
@@ -200,6 +208,7 @@ void Shell::KeyPressed() {
 }
 
 void Shell::Navigate(nav::Direction direction, double nowMs) {
+    rehoverUntilMs_ = 0.0;
     KeyPressed();
     Top().Navigate(direction, nowMs);
 }
@@ -383,12 +392,20 @@ void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
     }
     if (!result.counted) return;
 
+    pointerIn_ = true;
+    pointerX_ = x;
+    pointerY_ = y;
+    HoverAt(x, y, nowMs);
+}
+
+void Shell::HoverAt(double x, double y, double nowMs) {
     // Hover moves focus without moving the camera, so content does not slide
     // out from under the pointer. Over empty space the focus stays put for the remote, but its hover look eases
     // away, so nothing stays lit after the pointer has left it.
     Top().PointerAt(x, y, nowMs);
     const std::optional<std::string> item = Top().ItemAt(x, y);
-    if (!item.has_value()) {
+    // Over a rail's arrow only the arrow is lit (PointerAt): the poster beneath it lets its hover go.
+    if (!item.has_value() || item->rfind("rail-", 0) == 0) {
         Top().PointerLeft(nowMs);
         return;
     }
@@ -397,6 +414,7 @@ void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
 }
 
 void Shell::MouseLeave(double nowMs) {
+    pointerIn_ = false;
     Top().PointerAt(-1.0, -1.0, nowMs);
     Top().PointerLeft(nowMs);
 }
@@ -405,11 +423,15 @@ void Shell::MouseDown(double x, double y, double nowMs) {
     mouse_.ShowCursor();
     const std::optional<std::string> item = Top().ItemAt(x, y);
     clicks_.Press(0, x, y, item);
+    Top().PressedElsewhere(item, nowMs);
     // The pressed look shows at once; the action still waits for the release, as before.
     Top().SetPressed(item, nowMs);
     mouseDrag_.reset();
     const std::optional<ScrollSurface> rail = Top().SurfaceAt(x, y, nav::Axis::X);
-    if (rail.has_value() && rail->kind == ScrollSurface::Kind::Rail && rail->canPan) {
+    // A press on a rail's arrow is always a click: were it to become a drag, the rail would be pulled back to where
+    // it was at the press while the arrow's glide is still under way.
+    const bool arrow = item.has_value() && item->rfind("rail-", 0) == 0;
+    if (!arrow && rail.has_value() && rail->kind == ScrollSurface::Kind::Rail && rail->canPan) {
         mouseDrag_ = MouseDrag{*rail, x, y, x, nowMs, 0.0, false};
     }
 }
@@ -421,6 +443,7 @@ void Shell::MouseUp(double x, double y, double nowMs) {
         const MouseDrag drag = *mouseDrag_;
         mouseDrag_.reset();
         clicks_.Release(0, x, y);
+        rehoverUntilMs_ = nowMs + kRehoverMs;
         const double scroll = std::clamp(nav::DragScroll(drag.rail.scroll, drag.startX, x), 0.0, drag.rail.maxScroll);
         ScrollSurface rail = drag.rail;
         rail.scroll = scroll;
@@ -432,6 +455,7 @@ void Shell::MouseUp(double x, double y, double nowMs) {
     mouseDrag_.reset();
     const std::optional<std::string> item = clicks_.Release(0, x, y);
     if (!item.has_value()) return;
+    if (item->rfind("rail-", 0) == 0) rehoverUntilMs_ = nowMs + kRehoverMs;
     const std::optional<Command> command = Top().ActivateItem(*item, nowMs);
     if (command.has_value()) Open(*command, nowMs);
     ApplyMotionIfChanged();
@@ -439,6 +463,7 @@ void Shell::MouseUp(double x, double y, double nowMs) {
 
 void Shell::Wheel(double x, double y, double deltaX, double deltaY, bool shift, nav::WheelMode mode, double nowMs) {
     mouse_.ShowCursor();
+    rehoverUntilMs_ = nowMs + kRehoverMs;
 
     // A sideways wheel, or Shift with the wheel, over a rail moves the rail.
     // Anything else moves the page.

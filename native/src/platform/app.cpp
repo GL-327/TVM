@@ -717,6 +717,16 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             SetCursor(nullptr);
             return TRUE;
         }
+        // Over the search field the pointer is a text cursor, as over any text box.
+        if (LOWORD(lParam) == HTCLIENT && SearchScene() != nullptr) {
+            POINT point{};
+            GetCursorPos(&point);
+            ScreenToClient(window_, &point);
+            if (SearchScene()->ItemAt(point.x, point.y) == std::optional<std::string>("search-field")) {
+                SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
+                return TRUE;
+            }
+        }
         break;
     case Background::kMessage:
         // A worker's result, applied on this thread.
@@ -1932,10 +1942,21 @@ void App::ShowPageLane(ui::SceneView view) {
 }
 
 bool App::SearchTyping() const {
+    // Letters go into the search field only while it has the caret: after a click on it (or OK on it, Ctrl+F or /).
+    // Hover alone never starts or stops typing.
     const std::string active = shell_->ActiveScreenName();
-    if (active == "search") return true;
-    return active == "home" && streamLane_ == "search" &&
-           home_->FocusedKey() == std::optional<std::string>("search-field");
+    if (active == "search") {
+        const ui::Scene* scene = shell_->SceneNamed("search");
+        return scene != nullptr && scene->SearchEditing();
+    }
+    return active == "home" && streamLane_ == "search" && home_->SearchEditing();
+}
+
+ui::Scene* App::SearchScene() {
+    const std::string active = shell_->ActiveScreenName();
+    if (active == "search") return shell_->SceneNamed("search");
+    if (active == "home" && streamLane_ == "search") return home_;
+    return nullptr;
 }
 
 bool App::IsEditingText() const {
@@ -2548,7 +2569,17 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
         }
         return virtualKey == VK_SPACE || (virtualKey >= '0' && virtualKey <= 'Z');
     }
-    if (!SearchTyping()) return false;
+    if (!SearchTyping()) {
+        // Ctrl+F or / on the Search page puts the caret in the field.
+        ui::Scene* scene = SearchScene();
+        if (scene != nullptr && ((virtualKey == 'F' && KeyDown(VK_CONTROL)) || (virtualKey == VK_OEM_2 && !KeyDown(VK_SHIFT)))) {
+            scene->FocusItem("search-field", NowMs(), true);
+            scene->SetSearchEditing(true, NowMs());
+            dirty_ = true;
+            return true;
+        }
+        return false;
+    }
     const bool lane = shell_->ActiveScreenName() == "home";
     if (virtualKey == VK_RETURN) {
         // Enter searches at once, without waiting for the pause after typing.
@@ -2564,9 +2595,9 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
         }
         return false;
     }
-    if (lane && virtualKey == VK_ESCAPE) {
-        // Esc leaves the field and goes back up to the Search tab; typing stops going into the field.
-        home_->FocusItem("top:5", NowMs(), false);
+    if (virtualKey == VK_ESCAPE) {
+        // Esc takes the caret out of the field; the next Esc goes back as usual.
+        if (ui::Scene* scene = SearchScene()) scene->SetSearchEditing(false, NowMs());
         dirty_ = true;
         return true;
     }

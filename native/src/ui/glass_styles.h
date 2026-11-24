@@ -65,6 +65,45 @@ inline GlassStyle MenuPanel(double opacity = 1.0) {
     return style;
 }
 
+// The nav pill's hover glass for one control, field for field as PaintStreamChrome builds it for a hovered tab: the
+// plate comes in by `emphasis`, a press squeezes it, and `sweep` (0 to 1, or -1) runs the light across it once.
+inline GlassStyle NavTabHover(double emphasis, double press, double sweep, double opacity) {
+    GlassStyle style;
+    style.kind = GlassKind::Tab;
+    style.focused = emphasis > 0.0;
+    style.focusAmount = emphasis > 0.0 ? (emphasis > 1e-3 ? emphasis : 1e-3) : 0.0;
+    style.pressAmount = press;
+    style.focusPlate = true;
+    style.sweep = sweep;
+    style.opacity = opacity;
+    style.reduceTransparency = tokens::reduceTransparency;
+    style.ringColor = tokens::kFocusRing;
+    return style;
+}
+
+// The nav pill's selected tab: its light plate, lit further by hover and squeezed by a press.
+inline GlassStyle NavTabSelected(double emphasis, double press, double opacity) {
+    GlassStyle style;
+    style.kind = GlassKind::Tab;
+    style.activeTab = true;
+    style.focused = emphasis > 0.0;
+    style.focusAmount = emphasis;
+    style.pressAmount = press;
+    style.opacity = opacity;
+    style.reduceTransparency = tokens::reduceTransparency;
+    style.ringColor = tokens::kFocusRing;
+    return style;
+}
+
+// A nav tab label's colour: near-white at rest (brighter with hover), dark on the plate by `plated`.
+inline Color NavLabel(double emphasis, double plated, double opacity = 1.0) {
+    const double p = tokens::reduceTransparency ? 0.0 : (plated < 0.0 ? 0.0 : (plated > 1.0 ? 1.0 : plated));
+    const Color resting = Mix(Mix(tokens::kTextMuted, tokens::kText, 0.55), tokens::kText, emphasis);
+    Color ink = Mix(resting, tokens::kOnPrimary, p);
+    ink.a *= opacity;
+    return ink;
+}
+
 // The ink for a label on glass that may carry the light plate: white on clear glass, dark on the plate, eased by
 // `plate` from 0 to 1, as the pill's tab labels turn dark when selected or hovered.
 inline Color InkOnPlate(double plate, double opacity = 1.0) {

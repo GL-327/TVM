@@ -77,6 +77,9 @@ public:
     // Pointer: the pointer moved onto nothing, or left the window. The focused item keeps its place, so the remote
     // and the keyboard still start from it, but its hover look eases away.
     virtual void PointerLeft(double /*nowMs*/) {}
+    // A press somewhere other than `key` (nothing, when it was on empty space): a text field being typed into stops
+    // taking the typing, as a desktop text box loses its caret when you click away.
+    virtual void PressedElsewhere(const std::optional<std::string>& /*key*/, double /*nowMs*/) {}
     // Back (Esc, the remote's Back) first closes anything open over the screen, such as a dropdown list. True when
     // something was closed, so the screen itself stays.
     virtual bool CloseOverlay(double /*nowMs*/) { return false; }

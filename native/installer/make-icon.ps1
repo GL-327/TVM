@@ -1,5 +1,5 @@
 # Builds native/assets/tvm.ico from native/assets/tvm-icon.png.
-# Each size is stored as a PNG entry, which Windows Vista and later read.
+# Each size is a rounded square (transparent corners), stored as a PNG entry, which Windows Vista and later read.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $assets = Join-Path (Split-Path -Parent $PSScriptRoot) 'assets'
@@ -12,8 +12,23 @@ try {
         $g = [System.Drawing.Graphics]::FromImage($bitmap)
         $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
-        $g.DrawImage($source, 0, 0, $size, $size)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        # A rounded square like Windows 11 app icons: corners about 22% of the side, a small clear margin at
+        # 48px and up so it sits like other taskbar icons, and almost none at 16-32px so the lettering stays legible.
+        $margin = if ($size -le 24) { 0 } elseif ($size -le 32) { 1 } else { [Math]::Round($size * 0.04) }
+        $inner = $size - 2 * $margin
+        $r = $inner * 0.22
+        $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $path.AddArc($margin, $margin, 2 * $r, 2 * $r, 180, 90)
+        $path.AddArc($margin + $inner - 2 * $r, $margin, 2 * $r, 2 * $r, 270, 90)
+        $path.AddArc($margin + $inner - 2 * $r, $margin + $inner - 2 * $r, 2 * $r, 2 * $r, 0, 90)
+        $path.AddArc($margin, $margin + $inner - 2 * $r, 2 * $r, 2 * $r, 90, 90)
+        $path.CloseFigure()
+        $brush = New-Object System.Drawing.TextureBrush $source
+        $brush.ScaleTransform($inner / $source.Width, $inner / $source.Height)
+        $brush.TranslateTransform($margin, $margin, [System.Drawing.Drawing2D.MatrixOrder]::Append)
+        $g.FillPath($brush, $path)
+        $brush.Dispose(); $path.Dispose()
         $g.Dispose()
         $png = New-Object System.IO.MemoryStream
         $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)

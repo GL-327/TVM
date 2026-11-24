@@ -192,9 +192,22 @@ public:
     // easing. Used when switching to or from Live TV, Library or Search, which have no hero to dissolve.
     void FadeContentIn(double nowMs);
     void PointerLeft(double nowMs) override;
+    void PressedElsewhere(const std::optional<std::string>& key, double nowMs) override;
+    // Whether the search field takes the typing: only after a click on it (or OK/Enter on it, Ctrl+F or /), never
+    // from hover. A click elsewhere, Esc, moving into the results or leaving the page ends it.
+    bool SearchEditing() const { return searchEditing_ && searchField_; }
+    void SetSearchEditing(bool on, double nowMs);
+private:
+    bool NavigateFocus(nav::Direction direction, double nowMs);
+public:
     void PointerAt(double x, double y, double nowMs) override;
     // A rail's arrow, at its start (`next` false) or its end, while that side can still move. Exposed for tests.
     std::optional<Box> RailArrowBox(std::size_t rail, bool next) const;
+    // Where a rail's arrow sits, whether or not it can move the rail now.
+    std::optional<Box> RailArrowShape(std::size_t rail) const;
+    std::optional<Box> RailArrowShapeAt(std::size_t rail, bool next) const;
+    // The rail's scroll once its glide ends.
+    double RailTarget(std::size_t rail) const;
     std::optional<std::size_t> ArrowRail() const { return arrowRail_; }
     void ShowFocus(double nowMs) override;
     // Whether the focused item is drawn focused: false while the pointer rests on empty space.
@@ -212,6 +225,7 @@ public:
     std::optional<Box> TabIndicatorBox() const;
 
     double RailScroll(std::size_t rail) const { return rails_.at(rail)->scroll(); }
+    Box RailBox(std::size_t rail) const { return rails_.at(rail)->box(); }
     double PageScroll() const { return pageScroll_; }
     const Box& CardBox(std::size_t rail, std::size_t index) const;
     double CardFocus(std::size_t rail, std::size_t index) const;
@@ -317,6 +331,8 @@ private:
     std::optional<std::size_t> arrowRail_;
     motion::Tween arrowFade_;
     std::string arrowHover_;
+    // Each arrow fades out when its side runs out (and back in), instead of vanishing mid-glide.
+    motion::Tween arrowSide_[2];
     void PaintRailArrows(Painter& painter) const;
     std::vector<CardRef> cards_;
     std::unordered_map<std::string, std::size_t> cardByKey_;
@@ -346,6 +362,8 @@ private:
 
     std::vector<TopButton> pageButtons_;
     bool searchField_ = false;
+    bool searchEditing_ = false;
+    double caretStartMs_ = 0.0;
     bool loading_ = false;
     // The search page's placeholders while a search runs, and its empty-result mark.
     void PaintSearchExtras(Painter& painter) const;

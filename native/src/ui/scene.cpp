@@ -311,6 +311,7 @@ void Scene::SetView(const SceneView& view, double nowMs) {
         const std::size_t rail = cards_[cardByKey_.at(*focused)].rail;
         if (rail < railIds_.size()) focusedRail = railIds_[rail];
     }
+    if (!samePage) searchEditing_ = false;
     pageKey_ = view.pageKey;
     // Where the selected tab's glass is now, so it can slide from there to the newly selected tab.
     const std::optional<Box> indicatorWas = TabIndicatorBox();
@@ -446,8 +447,14 @@ void Scene::PointerLeft(double nowMs) {
 void Scene::PointerAt(double x, double y, double nowMs) {
     std::optional<std::size_t> under;
     const bool belowHeader = !(HasLaneHeader() && y < HeaderTop());
+    // The row's hover zone reaches past its box by the lift and grow of a hovered poster, so moving from a poster
+    // to its arrow, or across the titles to the next row, does not drop the arrows on the way.
+    const double pad = metrics_.Rem(1.25);
     for (std::size_t r = 0; r < rails_.size() && belowHeader; ++r) {
-        if (Contains(rails_[r]->box(), x, y)) under = r;
+        const Box b = rails_[r]->box();
+        if (Contains(Box{b.x, b.y - pad, b.width, b.height + 2.0 * pad}, x, y)) {
+            if (!under.has_value() || Contains(b, x, y)) under = r;
+        }
     }
     arrowHover_.clear();
     if (under.has_value()) {
@@ -464,6 +471,10 @@ void Scene::PointerAt(double x, double y, double nowMs) {
     if (under.has_value()) {
         arrowRail_ = under;
         arrowFade_ = motion::Tween(0.0, 1.0, nowMs, reduced ? 0.0 : 180.0, kGlassEase);
+        for (const bool next : {false, true}) {
+            const double shown = RailArrowBox(*under, next).has_value() ? 1.0 : 0.0;
+            arrowSide_[next ? 1 : 0] = motion::Tween(shown, shown, nowMs, 0.0, kGlassEase);
+        }
     } else {
         arrowFade_ = motion::Tween(arrowFade_.Value(nowMs), 0.0, nowMs, reduced ? 0.0 : 160.0, kGlassEase);
         if (reduced) arrowRail_.reset();
@@ -475,6 +486,26 @@ std::optional<Box> Scene::RailArrowBox(std::size_t rail, bool next) const {
     const Rail& row = *rails_[rail];
     const double max = row.MaxScroll();
     if (!nav::CanScroll(row.ContentWidth(), row.box().width) || max <= 0.0) return std::nullopt;
+    // Decided by where the rail is heading, so an arrow does not blink out and back while a glide passes an end.
+    const double heading = RailTarget(rail);
+    if (next ? heading >= max - 0.5 : heading <= 0.5) return std::nullopt;
+    return RailArrowShapeAt(rail, next);
+}
+
+double Scene::RailTarget(std::size_t rail) const {
+    if (rail >= rails_.size()) return 0.0;
+    return rail < railCamera_.size() && railCamera_.at(rail).active() ? railCamera_.at(rail).target() : rails_[rail]->scroll();
+}
+
+std::optional<Box> Scene::RailArrowShape(std::size_t rail) const {
+    if (rail >= rails_.size()) return std::nullopt;
+    const Rail& row = *rails_[rail];
+    if (!nav::CanScroll(row.ContentWidth(), row.box().width)) return std::nullopt;
+    return row.box();
+}
+
+std::optional<Box> Scene::RailArrowShapeAt(std::size_t rail, bool next) const {
+    const Rail& row = *rails_[rail];
     // A round glass button at the rail's edge, centred on the pictures (not their titles).
     const double size = metrics_.Rem(2.75);
     const double art = std::min(row.box().height, metrics_.Rem(kPosterHeightRem));
@@ -485,14 +516,18 @@ std::optional<Box> Scene::RailArrowBox(std::size_t rail, bool next) const {
 
 void Scene::PaintRailArrows(Painter& painter) const {
     if (!arrowRail_.has_value()) return;
-    const double fade = std::clamp(arrowFade_.Value(clockMs_), 0.0, 1.0);
-    if (fade <= 0.01) return;
+    const double outer = std::clamp(arrowFade_.Value(clockMs_), 0.0, 1.0);
+    if (outer <= 0.01) return;
     const std::size_t rail = *arrowRail_;
+    if (!RailArrowShape(rail).has_value()) return;
     for (const bool next : {false, true}) {
-        const std::optional<Box> box = RailArrowBox(rail, next);
+        const double side = std::clamp(arrowSide_[next ? 1 : 0].Value(clockMs_), 0.0, 1.0);
+        if (side <= 0.01) continue;
+        const std::optional<Box> box = RailArrowShapeAt(rail, next);
         if (!box.has_value()) continue;
+        const double fade = outer * side;
         const std::string key = std::string(next ? "rail-next:" : "rail-prev:") + std::to_string(rail);
-        const bool hovered = arrowHover_ == key;
+        const bool hovered = arrowHover_ == key && RailArrowBox(rail, next).has_value();
         // The nav pill's glass: the resting capsule, and its hover plate under the pointer.
         painter.Glass(*box, box->height / 2.0, glass::NavCapsule(fade));
         if (hovered) painter.Glass(*box, box->height / 2.0, glass::NavHover(1.0, fade));
@@ -1061,7 +1096,7 @@ void Scene::PaintLaneHeader(Painter& painter) const {
         const bool focused = ShowsFocus(item.key);
         const double emphasis = EmphasisOf(item.key);
         if (item.button < 0) {
-            PaintSearchField(painter, item.box, focus_.Focused() == std::optional<std::string>(item.key), emphasis);
+            PaintSearchField(painter, item.box, SearchEditing(), emphasis);
             continue;
         }
         const TopButton& button = pageButtons_[static_cast<std::size_t>(item.button)];
@@ -1140,7 +1175,7 @@ void Scene::PaintSearchField(Painter& painter, const Box& field, bool active, do
                      PathStyle{Color{0, 0, 0, 0}, lens, 2.6, false});
         const double textX = field.x + glyph + metrics_.Rem(1.3);
         const TextStyle style{metrics_.Rem(2.6), true, 650};
-        const bool caretOn = motion::PrefersReducedMotion(motion_) || std::fmod(clockMs_, kCaretBlinkMs) < kCaretBlinkMs / 2.0;
+        const bool caretOn = motion::PrefersReducedMotion(motion_) || std::fmod(std::max(0.0, clockMs_ - caretStartMs_), kCaretBlinkMs) < kCaretBlinkMs / 2.0;
         const TextStyle hintStyle{metrics_.Rem(1.2), false, 500};
         if (query_.empty()) {
             painter.Text(Box{textX, field.y, field.Right() - textX - metrics_.Rem(16.0), field.height},
@@ -1644,6 +1679,13 @@ bool Scene::Tick(double nowMs) {
         rails_[r]->SetScroll(step.position);
         moved = true;
     }
+    if (arrowRail_.has_value()) {
+        for (const bool next : {false, true}) {
+            motion::Tween& side = arrowSide_[next ? 1 : 0];
+            const double shown = RailArrowBox(*arrowRail_, next).has_value() ? 1.0 : 0.0;
+            if (side.target() != shown) side = motion::Tween(side.Value(nowMs), shown, nowMs, reduced ? 0.0 : 160.0, kGlassEase);
+        }
+    }
     if (pageCamera_.active()) {
         const motion::CameraStep step = pageCamera_.Step(nowMs, reduced);
         pageScroll_ = step.position;
@@ -1661,9 +1703,10 @@ bool Scene::Animating() const {
     const bool titleMoving = titleFade_.has_value() && !titleFade_->Done(clockMs_);
     const bool pictureMoving = artFade_.has_value() && !artFade_->Done(clockMs_);
     const bool contentFading = contentFade_.has_value() && !contentFade_->Done(clockMs_);
-    const bool arrowsFading = arrowRail_.has_value() && !arrowFade_.Done(clockMs_);
+    const bool arrowsFading = arrowRail_.has_value() &&
+                              (!arrowFade_.Done(clockMs_) || !arrowSide_[0].Done(clockMs_) || !arrowSide_[1].Done(clockMs_));
     // The search field's caret blinks while the field has the focus.
-    const bool caretBlinking = searchField_ && Streamy() && focus_.Focused() == std::optional<std::string>(kSearchFieldKey) &&
+    const bool caretBlinking = SearchEditing() && Streamy() &&
                                !motion::PrefersReducedMotion(motion_);
     // The search placeholders breathe while a search runs.
     const bool searching = loading_ && searchField_ && rails_.empty() && !motion::PrefersReducedMotion(motion_);
@@ -1678,6 +1721,23 @@ bool Scene::CameraActive() const {
 }
 
 bool Scene::Navigate(nav::Direction direction, double nowMs) {
+    const bool moved = NavigateFocus(direction, nowMs);
+    // Moving off the field with the keys (into the results, up to the tabs) stops the typing.
+    if (searchEditing_ && focus_.Focused() != std::optional<std::string>(kSearchFieldKey)) searchEditing_ = false;
+    return moved;
+}
+
+void Scene::SetSearchEditing(bool on, double nowMs) {
+    if (on && !searchEditing_) caretStartMs_ = nowMs;
+    searchEditing_ = on && searchField_;
+}
+
+void Scene::PressedElsewhere(const std::optional<std::string>& key, double /*nowMs*/) {
+    if (key == std::optional<std::string>(kSearchFieldKey) || key == std::optional<std::string>("search-clear")) return;
+    searchEditing_ = false;
+}
+
+bool Scene::NavigateFocus(nav::Direction direction, double nowMs) {
     const std::optional<std::string> focused = focus_.Focused();
     if (!focused.has_value()) return false;
 
@@ -1926,7 +1986,11 @@ std::optional<Command> Scene::Select(double nowMs) {
     if (const std::optional<std::size_t> at = HeaderIndexOf(*focused)) {
         const HeaderItem item = HeaderItems()[*at];
         if (item.button >= 0) return pageButtons_[static_cast<std::size_t>(item.button)].command;
-        // OK on the search field runs the search now.
+        // OK on the search field starts typing into it; once typing, OK runs the search now.
+        if (!SearchEditing()) {
+            SetSearchEditing(true, nowMs);
+            return std::nullopt;
+        }
         Command command;
         command.name = "search-submit";
         command.action = true;
@@ -2034,9 +2098,9 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
 
 std::optional<Command> Scene::ActivateItem(const std::string& key, double nowMs) {
     if (key.rfind("rail-next:", 0) == 0 || key.rfind("rail-prev:", 0) == 0) {
-        // A rail's arrow steps the rail by most of its width, wrapping seamlessly at either end.
-        const bool next = key[5] == 'n';
-        const std::size_t rail = std::stoul(key.substr(10));
+        // A rail's arrow steps the rail by most of its width, on the same camera as the wheel, to its ends at most.
+        const bool next = key.rfind("rail-next:", 0) == 0;
+        const std::size_t rail = std::stoul(key.substr(std::string_view("rail-next:").size()));
         if (rail >= rails_.size()) return std::nullopt;
         const std::optional<ScrollSurface> surface =
             SurfaceAt(rails_[rail]->box().CenterX(), rails_[rail]->box().CenterY(), nav::Axis::X);
@@ -2044,8 +2108,8 @@ std::optional<Command> Scene::ActivateItem(const std::string& key, double nowMs)
         const double step = rails_[rail]->box().width * 0.85;
         const double max = rails_[rail]->MaxScroll();
         const double from = railCamera_.at(rail).active() ? railCamera_.at(rail).target() : rails_[rail]->scroll();
-        const double target = next ? (from >= max - 0.5 ? 0.0 : std::min(from + step, max))
-                                   : (from <= 0.5 ? max : std::max(from - step, 0.0));
+        // Each arrow only goes its own way and stops at the end (it hides there): back never jumps to the end.
+        const double target = next ? std::min(from + step, max) : std::max(from - step, 0.0);
         AnimateScroll(*surface, target, nowMs);
         return std::nullopt;
     }
@@ -2054,7 +2118,14 @@ std::optional<Command> Scene::ActivateItem(const std::string& key, double nowMs)
         command.name = "search-clear";
         command.action = true;
         FocusItem(kSearchFieldKey, nowMs, false);
+        SetSearchEditing(true, nowMs);
         return command;
+    }
+    if (key == kSearchFieldKey && searchField_) {
+        // A click on the field puts the caret in it.
+        FocusItem(key, nowMs, false);
+        SetSearchEditing(true, nowMs);
+        return std::nullopt;
     }
     const bool heroKey = HeroActive() && IsHeroKey(key);
     if (!TopIndexOf(key).has_value() && !heroKey && !cardByKey_.contains(key) && !HeaderIndexOf(key).has_value()) {

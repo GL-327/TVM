@@ -546,7 +546,42 @@ TEST(a_mouse_drag_along_a_rail_slides_it_and_does_not_open_a_card) {
     REQUIRE_NEAR(scene.PageScroll(), 0.0, 1e-6);
 }
 
-TEST(a_rails_arrows_show_whenever_scrollable_and_wrap_smoothly_at_both_ends) {
+TEST(rail_arrow_clicks_during_a_glide_add_up_and_never_pull_the_rail_back) {
+    MemoryStore store;
+    Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 20}});
+    auto& scene = dynamic_cast<Scene&>(shell.ActiveScreen());
+    const tvm::ui::Box card = CardOf(scene, 3, 2);
+    shell.MouseMove(card.CenterX(), card.CenterY(), false, 0.0);
+    shell.MouseMove(card.CenterX() + 4.0, card.CenterY(), false, 0.0);
+    const tvm::ui::Box next = *scene.RailArrowBox(3, true);
+    // Over the arrow, only the arrow is lit: the poster under the pointer lets its hover go.
+    shell.MouseMove(next.CenterX(), next.CenterY(), false, 10.0);
+    // Two quick clicks, the second while the first glide runs, with a hand that wobbles past the pan slop.
+    shell.MouseDown(next.CenterX(), next.CenterY(), 20.0);
+    shell.MouseUp(next.CenterX(), next.CenterY(), 30.0);
+    shell.Tick(60.0);
+    const double midway = scene.RailScroll(3);
+    shell.MouseDown(next.CenterX(), next.CenterY(), 80.0);
+    shell.MouseMove(next.CenterX() + 6.0, next.CenterY(), true, 90.0);
+    REQUIRE(scene.RailScroll(3) >= midway - 1e-6);
+    shell.MouseUp(next.CenterX() + 6.0, next.CenterY(), 100.0);
+    Settle(shell, 100.0);
+    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
+    // Both steps count: the rail went forward by two steps (or to its end), not one, and never back.
+    const double step = scene.RailBox(3).width * 0.85;
+    REQUIRE(scene.RailScroll(3) > step * 1.01);
+    // The back arrow only ever goes back.
+    const double before = scene.RailScroll(3);
+    const tvm::ui::Box back = *scene.RailArrowBox(3, false);
+    shell.MouseMove(back.CenterX(), back.CenterY(), false, 3000.0);
+    shell.MouseDown(back.CenterX(), back.CenterY(), 3000.0);
+    shell.MouseUp(back.CenterX(), back.CenterY(), 3010.0);
+    Settle(shell, 3010.0);
+    REQUIRE(scene.RailScroll(3) < before);
+}
+
+
+TEST(a_rails_arrows_show_only_where_it_can_move_and_step_it_to_its_ends) {
     MemoryStore store;
     Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 12}});
     auto& scene = dynamic_cast<Scene&>(shell.ActiveScreen());
@@ -554,47 +589,32 @@ TEST(a_rails_arrows_show_whenever_scrollable_and_wrap_smoothly_at_both_ends) {
     shell.MouseMove(card.CenterX(), card.CenterY(), false, 0.0);
     shell.MouseMove(card.CenterX() + 4.0, card.CenterY(), false, 0.0);
     REQUIRE(scene.ArrowRail() == std::optional<std::size_t>(3));
-    // Both arrows show whenever MaxScroll() > 0. A rail that fits has none.
-    REQUIRE(scene.RailArrowBox(3, false).has_value());
+    // At the start only the forward arrow shows. A rail that fits has none.
+    REQUIRE(!scene.RailArrowBox(3, false).has_value());
     REQUIRE(scene.RailArrowBox(3, true).has_value());
     REQUIRE(!scene.RailArrowBox(0, true).has_value());
-    REQUIRE(!scene.RailArrowBox(0, false).has_value());
-
-    // Clicking rail-prev at scroll 0 wraps smoothly to MaxScroll().
+    // Clicking it steps the rail along, without opening the card under it.
     double now = 1000.0;
-    const tvm::ui::Box prevAtStart = *scene.RailArrowBox(3, false);
-    shell.MouseMove(prevAtStart.CenterX(), prevAtStart.CenterY(), false, now);
-    shell.MouseDown(prevAtStart.CenterX(), prevAtStart.CenterY(), now);
-    shell.MouseUp(prevAtStart.CenterX(), prevAtStart.CenterY(), now + 10.0);
-    now = Settle(shell, now + 10.0) + 10.0;
-    const double maxScroll = scene.RailScroll(3);
-    REQUIRE(maxScroll > 0.0);
-    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
-
-    // Clicking rail-next at MaxScroll() wraps smoothly back to 0.
-    const tvm::ui::Box nextAtEnd = *scene.RailArrowBox(3, true);
-    shell.MouseMove(nextAtEnd.CenterX(), nextAtEnd.CenterY(), false, now);
-    shell.MouseDown(nextAtEnd.CenterX(), nextAtEnd.CenterY(), now);
-    shell.MouseUp(nextAtEnd.CenterX(), nextAtEnd.CenterY(), now + 10.0);
-    now = Settle(shell, now + 10.0) + 10.0;
-    REQUIRE_NEAR(scene.RailScroll(3), 0.0, 1e-6);
-
-    // Stepping forward reaches MaxScroll(), and horizontal wheel at ends also wraps smoothly.
-    for (int i = 0; i < 6 && scene.RailScroll(3) < maxScroll - 0.5; ++i) {
-        const tvm::ui::Box next = *scene.RailArrowBox(3, true);
-        shell.MouseMove(next.CenterX(), next.CenterY(), false, now);
-        shell.MouseDown(next.CenterX(), next.CenterY(), now);
-        shell.MouseUp(next.CenterX(), next.CenterY(), now + 10.0);
+    for (int i = 0; i < 6; ++i) {
+        const std::optional<tvm::ui::Box> next = scene.RailArrowBox(3, true);
+        if (!next.has_value()) break;
+        shell.MouseMove(next->CenterX(), next->CenterY(), false, now);
+        shell.MouseDown(next->CenterX(), next->CenterY(), now);
+        shell.MouseUp(next->CenterX(), next->CenterY(), now + 10.0);
         now = Settle(shell, now + 10.0) + 10.0;
     }
-    REQUIRE_NEAR(scene.RailScroll(3), maxScroll, 0.5);
-    const tvm::ui::Box cardAtEnd = CardOf(scene, 3, 11);
-    shell.Wheel(cardAtEnd.CenterX(), cardAtEnd.CenterY(), 100.0, 0.0, false, WheelMode::Pixel, now);
-    now = Settle(shell, now) + 10.0;
-    REQUIRE_NEAR(scene.RailScroll(3), 0.0, 1e-6);
-    shell.Wheel(CardOf(scene, 3, 0).CenterX(), CardOf(scene, 3, 0).CenterY(), -100.0, 0.0, false, WheelMode::Pixel, now);
-    Settle(shell, now);
-    REQUIRE_NEAR(scene.RailScroll(3), maxScroll, 0.5);
+    REQUIRE(Names(shell) == std::vector<std::string>{"home"});
+    // It stops at the end: the forward arrow has gone, the back arrow shows.
+    REQUIRE(!scene.RailArrowBox(3, true).has_value());
+    REQUIRE(scene.RailArrowBox(3, false).has_value());
+    const double end = scene.RailScroll(3);
+    REQUIRE(end > 0.0);
+    const tvm::ui::Box back = *scene.RailArrowBox(3, false);
+    shell.MouseMove(back.CenterX(), back.CenterY(), false, now);
+    shell.MouseDown(back.CenterX(), back.CenterY(), now);
+    shell.MouseUp(back.CenterX(), back.CenterY(), now + 10.0);
+    Settle(shell, now + 10.0);
+    REQUIRE(scene.RailScroll(3) < end);
 }
 
 TEST(touch_tap_opens_the_card_under_the_finger) {

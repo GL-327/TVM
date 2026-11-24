@@ -167,6 +167,7 @@ public:
     bool FocusItem(const std::string& key, double nowMs, bool withCamera) override;
     std::optional<std::string> ItemAt(double x, double y) const override;
     std::optional<Command> ActivateItem(const std::string& key, double nowMs) override;
+    void SetPressed(const std::optional<std::string>& key, double nowMs) override;
 
     // The boxes of the chrome's parts, in window pixels.
     std::optional<Box> BoxOf(const std::string& key) const;
@@ -253,6 +254,14 @@ private:
     void PaintPreview(Painter& painter, double opacity) const;
     std::string focused_ = "play";
     ButtonFocusSet buttonFocus_;
+    // The nav pill's hover motion on the control glass: the light that sweeps across once a control is lit, and the
+    // squeeze of a press.
+    std::string sweepKey_;
+    double sweepStartMs_ = -1e9;
+    std::string pressKey_;
+    motion::Tween press_;
+    double SweepOf(const std::string& key) const;
+    double PressOf(const std::string& key) const;
     double width_ = 0.0;
     double height_ = 0.0;
     double clockMs_ = 0.0;

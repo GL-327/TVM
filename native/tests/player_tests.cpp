@@ -49,6 +49,9 @@ public:
     }
     void PushClip(const Box& /*box*/) override {}
     void PopClip() override {}
+    void Glass(const Box& box, double /*radius*/, const tvm::ui::GlassStyle& style) override {
+        glasses.push_back({box, style});
+    }
 
     bool Has(const std::string& text) const {
         for (const std::string& drawn : texts) {
@@ -58,6 +61,7 @@ public:
     }
 
     std::vector<std::string> texts;
+    std::vector<std::pair<Box, tvm::ui::GlassStyle>> glasses;
 };
 
 class MemoryStore final : public tvm::ui::PreferenceStore {
@@ -568,3 +572,42 @@ TEST(an_episode_shows_its_name_after_season_and_number) {
     REQUIRE(painter.Has("Hands"));
 }
 }  // namespace
+
+TEST(the_control_glass_shows_only_on_hover_as_the_nav_pills_hover_glass) {
+    PlayerView view = Playing();
+    view.subtitles = {tvm::ui::PlayerOption{"no", "Off", "", true}, tvm::ui::PlayerOption{"en", "English", "", false}};
+    PlayerScreen player = Player(view);
+    player.ShowChrome(0.0);
+    player.Tick(400.0);
+    // At rest (focus on Play, which is icon only) no control carries glass: no capsules behind the groups.
+    TextPainter rest;
+    player.Paint(rest);
+    for (const auto& [box, style] : rest.glasses) {
+        REQUIRE(style.kind != tvm::ui::GlassKind::Pill);
+        REQUIRE(style.kind != tvm::ui::GlassKind::Tab);
+    }
+    // Hovering the subtitles tool brings up the nav pill's hover glass over it, with its light sweep.
+    REQUIRE(player.FocusItem("cc", 500.0, false));
+    player.Tick(500.0);
+    player.Tick(800.0);
+    TextPainter hover;
+    player.Paint(hover);
+    const Box cc = *player.BoxOf("cc");
+    int found = 0;
+    for (const auto& [box, style] : hover.glasses) {
+        if (style.kind != tvm::ui::GlassKind::Tab || std::fabs(box.CenterX() - cc.CenterX()) > 1.0) continue;
+        ++found;
+        REQUIRE(style.focusPlate);
+        REQUIRE(style.focusAmount > 0.5);
+        REQUIRE(style.sweep >= 0.0 && style.sweep <= 1.0);
+    }
+    REQUIRE_EQ(found, 1);
+    // A press squeezes it.
+    player.SetPressed(std::string("cc"), 900.0);
+    player.Tick(1000.0);
+    TextPainter pressed;
+    player.Paint(pressed);
+    bool squeezed = false;
+    for (const auto& [box, style] : pressed.glasses) squeezed = squeezed || (style.kind == tvm::ui::GlassKind::Tab && style.pressAmount > 0.5);
+    REQUIRE(squeezed);
+}

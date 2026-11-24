@@ -674,9 +674,39 @@ TEST(the_search_lane_field_is_a_focusable_item_and_not_focused_on_entry) {
     REQUIRE(scene.FocusedKey() == std::optional<std::string>("top:5"));
     REQUIRE(scene.Navigate(Direction::Down, 0.0));
     REQUIRE(scene.FocusedKey() == std::optional<std::string>("search-field"));
+    // Reaching the field does not put the caret in it; OK does, and OK again searches.
+    REQUIRE(!scene.SearchEditing());
+    REQUIRE(!scene.Select(0.0).has_value());
+    REQUIRE(scene.SearchEditing());
     const auto command = scene.Select(0.0);
     REQUIRE(command.has_value());
     REQUIRE_EQ(command->name, std::string("search-submit"));
+    // Moving off it with the keys takes the caret out.
+    REQUIRE(scene.Navigate(Direction::Up, 0.0));
+    REQUIRE(!scene.SearchEditing());
+}
+
+TEST(the_search_field_takes_typing_only_after_a_click_and_keeps_it_while_the_pointer_moves) {
+    Scene scene(SmallRails(), MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    tvm::ui::SceneView view = StreamView(5);
+    view.searchField = true;
+    scene.SetHeroes({}, 0.0);
+    scene.SetView(view, 0.0);
+    // Hover alone focuses the field but gives it no caret.
+    REQUIRE(scene.FocusItem("search-field", 0.0, false));
+    REQUIRE(!scene.SearchEditing());
+    // A click does.
+    REQUIRE(!scene.ActivateItem("search-field", 10.0).has_value());
+    REQUIRE(scene.SearchEditing());
+    // The pointer drifting onto something else does not take it away.
+    scene.PointerLeft(20.0);
+    REQUIRE(scene.SearchEditing());
+    // A press on the field or its clear mark keeps it; a press anywhere else ends it.
+    scene.PressedElsewhere(std::string("search-field"), 30.0);
+    REQUIRE(scene.SearchEditing());
+    scene.PressedElsewhere(std::nullopt, 40.0);
+    REQUIRE(!scene.SearchEditing());
 }
 
 // ---------------------------------------------------------------- rebuilds keep the viewer's place

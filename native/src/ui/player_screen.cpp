@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <cmath>
 #include <cstdio>
 
@@ -14,6 +15,12 @@ namespace tvm::ui {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+// The nav pill's hover motion (scene.cpp): the light sweeps across 90 ms after a control lights, over 850 ms, and a
+// press squeezes the glass in 70 ms and lets go in 240 ms.
+constexpr double kSweepDelayMs = 90.0;
+constexpr double kSweepMs = 850.0;
+constexpr double kPressInMs = 70.0;
+constexpr double kPressOutMs = 240.0;
 
 // cinema-controls.css, in rems.
 constexpr double kPadXRem = 2.5;           // the header's and footer's left and right
@@ -438,6 +445,27 @@ double PlayerScreen::ChromeOpacity(double nowMs) const {
     return std::clamp(1.0 - kChromeEase.Ease(std::clamp(idle / kIdleFadeMs, 0.0, 1.0)), 0.0, 1.0);
 }
 
+double PlayerScreen::SweepOf(const std::string& key) const {
+    if (tokens::reduceMotion || motion::PrefersReducedMotion(motion_) || key != sweepKey_) return -1.0;
+    const double t = (clockMs_ - sweepStartMs_ - kSweepDelayMs) / kSweepMs;
+    return t >= 0.0 && t <= 1.0 ? t : -1.0;
+}
+
+double PlayerScreen::PressOf(const std::string& key) const {
+    return key == pressKey_ ? std::clamp(press_.Value(clockMs_), 0.0, 1.0) : 0.0;
+}
+
+void PlayerScreen::SetPressed(const std::optional<std::string>& key, double nowMs) {
+    const bool reduced = motion::PrefersReducedMotion(motion_);
+    if (key.has_value()) {
+        const double from = PressOf(*key);
+        pressKey_ = *key;
+        press_ = motion::Tween(from, 1.0, nowMs, reduced ? 0.0 : kPressInMs, motion::kEaseOut);
+    } else if (!pressKey_.empty()) {
+        press_ = motion::Tween(PressOf(pressKey_), 0.0, nowMs, reduced ? 0.0 : kPressOutMs, kMenuEase);
+    }
+}
+
 bool PlayerScreen::Tick(double nowMs) {
     clockMs_ = nowMs;
     // The hints leave with the chrome, as RemoteHints hides itself when the controls go.
@@ -445,6 +473,12 @@ bool PlayerScreen::Tick(double nowMs) {
         hintsLeaveMs_ = nowMs;
     }
     buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
+    if (focusHidden_) {
+        sweepKey_.clear();
+    } else if (sweepKey_ != focused_) {
+        sweepKey_ = focused_;
+        sweepStartMs_ = nowMs;
+    }
     // The menu's highlight fades away when the pointer leaves its rows, and back when it or a key returns.
     const double glow = focusHidden_ ? 0.0 : 1.0;
     if (glow != menuGlowTarget_) {
@@ -457,6 +491,8 @@ bool PlayerScreen::Tick(double nowMs) {
 
 bool PlayerScreen::Animating() const {
     if (buttonFocus_.Animating(clockMs_)) return true;
+    if (!press_.Done(clockMs_)) return true;
+    if (!sweepKey_.empty() && clockMs_ - sweepStartMs_ < kSweepDelayMs + kSweepMs) return true;
     if (!menuShown_.empty() && !menuFade_.Done(clockMs_)) return true;
     if (MenuOpen() && (!menuRow_.Done(clockMs_) || !menuGlow_.Done(clockMs_))) return true;
     // The spinner turns, and the chrome's timer runs, only while they are on screen.
@@ -1225,17 +1261,43 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         }
     }
 
-    // The Home nav pill's glass for the controls at the foot: one rounded-square capsule holds the sound (its button,
-    // bar and level) and one holds the tools, and each button gets the pill's hover plate. A button's square is the
-    // same size and corner as the tools' highlights, so full screen, mute and the tools read as one family.
+    // The Home nav pill's Liquid Glass, as its tabs use it: nothing at rest (the controls sit on the scrim, with the
+    // nav labels' soft shadow), and the pill's hover glass under a control while it is hovered or focused, growing a
+    // touch, sweeping its light once and squeezing on a press. An open menu gives its tool the pill's selected glass.
+    // The buttons keep their rounded-square corners.
     const double squareSize = Rem(2.5);
     const double squareRadius = Rem(0.6);
-    const double groupRadius = Rem(0.75);
     const auto square = [&](const Box& hit) {
         return Box{hit.CenterX() - squareSize / 2.0, hit.CenterY() - squareSize / 2.0, squareSize, squareSize};
     };
-    const auto plate = [&](const Box& box, double amount) {
-        if (amount > 0.01) painter.Glass(box, squareRadius, glass::NavHover(amount, opacity));
+    const bool reducedLook = tokens::reduceMotion;
+    const auto grown = [&](const Box& box, double emphasis, double press) {
+        const double scale = reducedLook ? 1.0 : 1.0 + 0.04 * emphasis - 0.05 * press;
+        return Box{box.CenterX() - box.width * scale / 2.0, box.CenterY() - box.height * scale / 2.0, box.width * scale,
+                   box.height * scale};
+    };
+    const auto hoverGlass = [&](const char* key, const Box& box, double radius) {
+        const double amount = lit(key);
+        if (amount <= 0.01) return;
+        const double press = PressOf(key);
+        painter.Glass(grown(box, amount, press), radius, glass::NavTabHover(amount, press, SweepOf(key), amount * opacity));
+    };
+    // The nav labels' shadow: two soft offsets that keep light ink legible over a bright frame, gone on the plate.
+    const auto shadowed = [&](double plated, const std::function<void(double dx, double dy, Color ink)>& draw) {
+        if (plated >= 0.99) return;
+        const Color shade = Rgb(0x000000, 0.42 * (1.0 - plated) * opacity);
+        draw(0.0, 1.0, shade);
+        draw(0.6, 1.6, WithAlpha(shade, shade.a * 0.5));
+    };
+    const auto glyph = [&](const Box& box, const std::vector<const char*>& paths, double viewBox, double amount) {
+        const Color ink = glass::NavLabel(amount, amount, opacity);
+        shadowed(amount, [&](double dx, double dy, Color shade) {
+            for (const char* path : paths) {
+                painter.Path(Box{box.x + dx, box.y + dy, box.width, box.height}, viewBox, path,
+                             PathStyle{Color{0, 0, 0, 0}, shade, kGlyphStroke, false});
+            }
+        });
+        for (const char* path : paths) painter.Path(box, viewBox, path, PathStyle{Color{0, 0, 0, 0}, ink, kGlyphStroke, false});
     };
 
     // The sound: the speaker, which mutes, then its bar from silence to 100% with a thumb on the level. A boost past
@@ -1243,18 +1305,14 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const Box mute = button(kMuteKey);
     const Box muteSquare = square(mute);
     const Box volumeTrack = VolumeTrackBox();
-    const Box soundGroup{muteSquare.x - Rem(0.2), muteSquare.y - Rem(0.2),
-                         volumeTrack.Right() + Rem(3.4) - (muteSquare.x - Rem(0.2)), muteSquare.height + Rem(0.4)};
-    painter.Glass(soundGroup, groupRadius, glass::NavCapsule(opacity));
     const double muteAmount = lit(kMuteKey);
-    plate(muteSquare, muteAmount);
-    const PathStyle muteLine{Color{0, 0, 0, 0}, glass::InkOnPlate(muteAmount, opacity), kGlyphStroke, false};
-    const Box speaker = GlyphBox(muteSquare, Rem(kGlyphRem) * 0.92);
+    hoverGlass(kMuteKey, muteSquare, squareRadius);
     const bool silent = view_.muted || view_.volume <= 0.0;
-    painter.Path(speaker, 32.0, kSpeakerPath, muteLine);
-    painter.Path(speaker, 32.0, silent ? kMutedPath : kWavesPath, muteLine);
+    glyph(GlyphBox(muteSquare, Rem(kGlyphRem) * 0.92), {kSpeakerPath, silent ? kMutedPath : kWavesPath}, 32.0, muteAmount);
     const double volumeHeight = Rem(volumeDragging_ ? 0.3 : 0.22);
     const Box volumeBar{volumeTrack.x, volumeTrack.CenterY() - volumeHeight / 2.0, volumeTrack.width, volumeHeight};
+    painter.FillRoundRect(Box{volumeBar.x, volumeBar.y + 1.0, volumeBar.width, volumeBar.height}, volumeHeight / 2.0,
+                          Rgb(0x000000, 0.28 * opacity));
     painter.FillRoundRect(volumeBar, volumeHeight / 2.0, Rgb(0xFFFFFF, 0.24 * opacity));
     const double level = silent ? 0.0 : std::clamp(view_.volume / kSliderVolume, 0.0, 1.0);
     if (level > 0.0) {
@@ -1267,48 +1325,44 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                           Rgb(0x000000, 0.3 * opacity));
     painter.FillRoundRect(Box{knobX - knob / 2.0, volumeBar.CenterY() - knob / 2.0, knob, knob}, knob / 2.0, ink);
     const std::string percent = silent ? "Muted" : Fixed(std::round(view_.volume * 100.0), "%.0f%%");
-    painter.Text(Box{volumeTrack.Right() + Rem(0.55), volumeTrack.y, Rem(3.0), volumeTrack.height}, percent,
-                 TextStyle{Rem(0.72), true, 600}, view_.volume > 1.0 && !silent ? WithAlpha(kFill, opacity) : ink);
+    const Box percentBox{volumeTrack.Right() + Rem(0.55), volumeTrack.y, Rem(3.0), volumeTrack.height};
+    const TextStyle percentStyle{Rem(0.72), true, 600};
+    painter.Text(Box{percentBox.x, percentBox.y + 1.0, percentBox.width, percentBox.height}, percent, percentStyle,
+                 Rgb(0x000000, 0.42 * opacity));
+    painter.Text(percentBox, percent, percentStyle, view_.volume > 1.0 && !silent ? WithAlpha(kFill, opacity) : ink);
 
-    // The tools: subtitles, audio, quality (its badge: 4K, 1080p, HDR) and speed, in one capsule. Hover brings the
-    // pill's hover plate up under a tool; an open menu gives its tool the pill's selected plate. Labels turn dark on
-    // the plate, as the pill's tab labels do.
-    const std::vector<std::string> toolKeys = ToolKeys();
-    if (!toolKeys.empty()) {
-        const Box first = *BoxOf(toolKeys.front());
-        const Box last = *BoxOf(toolKeys.back());
-        const Box toolGroup{first.x - Rem(0.2), first.y - Rem(0.2), last.Right() - first.x + Rem(0.4),
-                            first.height + Rem(0.4)};
-        painter.Glass(toolGroup, groupRadius, glass::NavCapsule(opacity));
-    }
-    for (const std::string& tool : toolKeys) {
+    // The tools: subtitles, audio, quality (its badge: 4K, 1080p, HDR) and speed. Labels turn dark on the plate, as
+    // the pill's tab labels do.
+    for (const std::string& tool : ToolKeys()) {
         const Box box = button(tool.c_str());
         const bool open = menu_ == tool;
         const double amount = lit(tool.c_str());
+        const double press = PressOf(tool);
         if (open) {
-            painter.Glass(box, Rem(0.55), glass::NavSelected(opacity));
-        } else if (amount > 0.01) {
-            painter.Glass(box, Rem(0.55), glass::NavHover(amount, opacity));
+            painter.Glass(grown(box, amount, press), Rem(0.55), glass::NavTabSelected(amount, press, opacity));
+        } else {
+            hoverGlass(tool.c_str(), box, Rem(0.55));
         }
-        const double onPlate = open ? 1.0 : amount;
+        const double plated = open ? 1.0 : amount;
         // Subtitles read faint while they are off.
         const bool off = tool == kSubtitlesKey &&
                          std::none_of(view_.subtitles.begin(), view_.subtitles.end(),
                                       [](const PlayerOption& option) { return option.selected && option.id != "no"; });
-        Color label = glass::InkOnPlate(onPlate, opacity);
-        if (off && onPlate < 0.5) label = WithAlpha(kInkMuted, opacity);
-        CenteredText(painter, box, ToolLabel(tool), TextStyle{Rem(kToolFontRem), true, 650}, label);
+        Color label = glass::NavLabel(amount, plated, opacity);
+        if (off && plated < 0.5) label = WithAlpha(kInkMuted, opacity);
+        const TextStyle style{Rem(kToolFontRem), true, 650};
+        shadowed(plated, [&](double dx, double dy, Color shade) {
+            CenteredText(painter, Box{box.x + dx, box.y + dy, box.width, box.height}, ToolLabel(tool), style, shade);
+        });
+        CenteredText(painter, box, ToolLabel(tool), style, label);
     }
 
-    // Full screen, at the right: its own rounded-square glass button, the same size and corner as mute.
+    // Full screen, at the right: the same rounded square as mute.
     const Box full = button(kFullscreenKey);
     const Box fullSquare = square(full);
-    const double fullAmount = lit(kFullscreenKey);
-    painter.Glass(fullSquare, squareRadius, glass::NavCapsule(opacity));
-    plate(fullSquare, fullAmount);
-    painter.Path(GlyphBox(fullSquare, Rem(kGlyphRem) * 0.86), 32.0,
-                 view_.fullscreen ? kExitFullscreenPath : kFullscreenPath,
-                 PathStyle{Color{0, 0, 0, 0}, glass::InkOnPlate(fullAmount, opacity), kGlyphStroke, false});
+    hoverGlass(kFullscreenKey, fullSquare, squareRadius);
+    glyph(GlyphBox(fullSquare, Rem(kGlyphRem) * 0.86), {view_.fullscreen ? kExitFullscreenPath : kFullscreenPath}, 32.0,
+          lit(kFullscreenKey));
 
     // The title sits at the top centre (PaintTitleOverlay), so the middle of the control row is the transport's.
 }
