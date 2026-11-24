@@ -77,6 +77,9 @@ public:
     // Pointer: the pointer moved onto nothing, or left the window. The focused item keeps its place, so the remote
     // and the keyboard still start from it, but its hover look eases away.
     virtual void PointerLeft(double /*nowMs*/) {}
+    // Back (Esc, the remote's Back) first closes anything open over the screen, such as a dropdown list. True when
+    // something was closed, so the screen itself stays.
+    virtual bool CloseOverlay(double /*nowMs*/) { return false; }
     // Pointer: where the pointer is, on every real move, before ItemAt. A screen can show controls that belong to
     // the area under the pointer (a rail's arrows).
     virtual void PointerAt(double /*x*/, double /*y*/, double /*nowMs*/) {}

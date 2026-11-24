@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "motion/camera.h"
+#include "ui/dropdown.h"
 #include "ui/preferences_store.h"
 #include "ui/screen_base.h"
 #include "ui/widget.h"
@@ -33,6 +34,9 @@ public:
     std::optional<ScrollSurface> SurfaceAt(double x, double y, nav::Axis axis) const override;
     void SetScroll(const ScrollSurface& surface, double value, double nowMs) override;
     void AnimateScroll(const ScrollSurface& surface, double target, double nowMs) override;
+    bool CloseOverlay(double nowMs) override;
+    // The App language list, while it is open. Exposed for tests.
+    const Dropdown& LanguageList() const { return language_; }
 
     // Exposed for tests.
     std::vector<std::string> RowLabels() const;
@@ -76,7 +80,6 @@ private:
     bool Focusable(const Row& row) const;
     std::optional<Command> ApplyRow(std::size_t index);
     Box ScreenBox(const Row& row) const;
-    bool TwoColumns() const;
     void PaintRow(Painter& painter, const Row& row, bool focused) const;
 
     PreferenceStore& store_;
@@ -89,6 +92,10 @@ private:
     double pageScroll_ = 0.0;
     double contentBottom_ = 0.0;
     motion::CameraTween camera_;
+    // App language's list, which opens over the page.
+    Dropdown language_;
+    double clockMs_ = 0.0;
+    void PickLanguage(std::size_t index, double nowMs);
 };
 
 }  // namespace tvm::ui

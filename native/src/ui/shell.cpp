@@ -205,6 +205,7 @@ void Shell::Select(double nowMs) {
 
 bool Shell::Back(double nowMs) {
     KeyPressed();
+    if (Top().CloseOverlay(nowMs)) return true;
     if (!nav::CanGoBack(stack_)) return false;
 
     stack_ = nav::Reduce(stack_, nav::RememberFocus(Top().FocusedKey()));

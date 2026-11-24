@@ -8,6 +8,7 @@
 
 #include "motion/camera.h"
 #include "nav/wrap.h"
+#include "ui/glass_styles.h"
 
 namespace tvm::ui {
 
@@ -16,56 +17,22 @@ namespace {
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
 
-// Each setting is its own floating row, with an icon, its name over a short description, and its value or a
-// chevron at the right. Sections flow into two columns on a wide window.
-constexpr double kRowWidthRem = 60.0;
-constexpr double kTwoColumnWidthRem = 116.0;
-constexpr double kColumnGapRem = 2.5;
-constexpr double kTwoColumnMinPx = 1600.0;
-constexpr double kRowHeightRem = 4.0;
-constexpr double kRowGapRem = 0.6;
-constexpr double kGroupGapRem = 1.75;
+// One column of slim rows at a comfortable desktop width: the name at the left (with a short second line only for
+// the switches and choices that have one), and the value, switch or chevron at the right. Section headings stay.
+constexpr double kRowWidthRem = 52.0;
+constexpr double kRowHeightRem = 3.1;
+constexpr double kTallRowHeightRem = 3.7;
+constexpr double kRowGapRem = 0.45;
+constexpr double kGroupGapRem = 1.6;
 constexpr double kGroupTitleRem = 0.95;
 constexpr double kHeaderRem = 8.0;
 constexpr double kEnsureVisiblePadRem = 4.0;
-constexpr Color kDanger = Rgb(0xFF5A52);
+constexpr double kRowRadiusRem = 0.85;
+constexpr Color kDanger = Rgb(0xFF6B63);
 
 Color WithAlpha(Color color, double alpha) {
     color.a = alpha;
     return color;
-}
-
-// A 24-unit line icon for each row.
-const char* IconFor(const std::string& key) {
-    if (key == "motion") return "M3 12h4l2.5-6 5 12 2.5-6h4";
-    if (key == "performance") return "M13 3 5 13.5h6L10 21l8-10.5h-6z";
-    if (key == "themes") return "M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z";
-    if (key == "glass") return "M12 3.5s6 6.4 6 10.8a6 6 0 0 1-12 0c0-4.4 6-10.8 6-10.8z";
-    if (key == "language") {
-        return "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3.5 12h17M12 3c2.4 2.6 3.5 5.6 3.5 9s-1.1 6.4-3.5 9"
-               "M12 3c-2.4 2.6-3.5 5.6-3.5 9s1.1 6.4 3.5 9";
-    }
-    if (key == "account") return "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.6-3.6 3.6-5.5 7.5-5.5s6.9 1.9 7.5 5.5";
-    if (key == "privacy") return "M12 3 5 6v5.5c0 4.4 2.9 7.8 7 9.5 4.1-1.7 7-5.1 7-9.5V6z";
-    if (key == "plan") return "M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2zM3.5 10.5h17";
-    if (key == "profiles" || key == "choose-profile") {
-        return "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.5-3.3 3.1-5.3 6.5-5.3s6 2 6.5 5.3"
-               "M15.5 4.3a3.5 3.5 0 0 1 0 6.4M18 14.9c1.9.7 3.2 2.4 3.5 5.1";
-    }
-    if (key == "realdebrid") return "M8 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h9M18 12v3M21 12v2";
-    if (key == "network") return "M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.01";
-    if (key == "display") return "M3.5 5h17v11h-17zM8 20h8M12 16v4";
-    if (key == "livetv") return "M3.5 8h17v12h-17zM8 3.5l4 4.5 4-4.5";
-    if (key == "live-playlist") return "M4 6.5h16M4 12h16M4 17.5h10";
-    if (key == "updates") return "M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5";
-    if (key == "auto-update") return "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3 2";
-    if (key == "changelog") return "M12 3.5l2 5 5 2-5 2-2 5-2-5-5-2 5-2z";
-    if (key == "diagnostics") return "M3 12h4l2-5 4 10 2-5h6";
-    if (key == "developer") return "M8.5 7 3.5 12l5 5M15.5 7l5 5-5 5";
-    if (key == "clear-cache") return "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3";
-    if (key == "factory-reset") return "M4 12a8 8 0 1 0 2.4-5.7M4 4v5h5";
-    if (key == "restart") return "M12 3v8M6.5 6.5a8 8 0 1 0 11 0";
-    return "M12 12h.01";
 }
 
 // A toggle row's value ("On", "Dark") and the words after it, split at the first " · ".
@@ -261,76 +228,35 @@ void SettingsScreen::Layout(double width, double height) {
     pageScroll_ = std::clamp(pageScroll_, 0.0, MaxPageScroll());
 }
 
-bool SettingsScreen::TwoColumns() const {
-    return width_ >= kTwoColumnMinPx && !CompactViewport(width_, height_);
-}
-
 void SettingsScreen::Arrange() {
-    // The content is centred: one column of rows, or two on a wide window. Positions are in page coordinates.
-    const bool two = TwoColumns();
+    // One column, centred at a comfortable width. Positions are in page coordinates.
     const double safe = metrics_.Rem(kSafeXRem);
-    const double content = std::min(width_ - 2.0 * safe, metrics_.Rem(two ? kTwoColumnWidthRem : kRowWidthRem));
+    const double content = std::min(width_ - 2.0 * safe, metrics_.Rem(kRowWidthRem));
     const double left = std::max(safe, (width_ - content) / 2.0);
-    const double gap = metrics_.Rem(kColumnGapRem);
-    const double columnWidth = two ? (content - gap) / 2.0 : content;
-    const double rowHeight = CompactViewport(width_, height_) ? std::max(64.0, metrics_.Rem(kRowHeightRem))
-                                                              : metrics_.Rem(kRowHeightRem);
+    const bool compact = CompactViewport(width_, height_);
     const double titleHeight = metrics_.Rem(kGroupTitleRem) * 1.6;
-
-    // Each section's height, so the sections can be shared between the columns in their order: the first column
-    // takes sections until it holds about half.
-    std::vector<std::size_t> starts;
-    for (std::size_t i = 0; i < rows_.size(); ++i) {
-        if (rows_[i].kind == RowKind::Group) starts.push_back(i);
-    }
-    std::vector<double> heights;
-    double total = 0.0;
-    for (std::size_t g = 0; g < starts.size(); ++g) {
-        const std::size_t end = g + 1 < starts.size() ? starts[g + 1] : rows_.size();
-        const double count = static_cast<double>(end - starts[g] - 1);
-        const double height = titleHeight + metrics_.Rem(0.5) + count * rowHeight + std::max(0.0, count - 1.0) * metrics_.Rem(kRowGapRem);
-        heights.push_back(height);
-        total += height;
-    }
-    std::size_t split = starts.size();
-    if (two) {
-        double running = 0.0;
-        for (std::size_t g = 0; g < heights.size(); ++g) {
-            // A section goes to the second column once the first already holds half, or would overshoot by more.
-            if (running >= total / 2.0 || running + heights[g] / 2.0 > total / 2.0) {
-                split = std::max<std::size_t>(g, 1);
-                break;
-            }
-            running += heights[g];
-        }
-    }
-
-    const double top = metrics_.Rem(kSafeYRem) + metrics_.Rem(kHeaderRem);
-    double y[2] = {top, top};
-    bool firstInColumn[2] = {true, true};
-    contentBottom_ = top;
-    std::size_t group = 0;
-    int column = 0;
-    for (std::size_t i = 0; i < rows_.size(); ++i) {
-        Row& row = rows_[i];
+    double y = metrics_.Rem(kSafeYRem) + metrics_.Rem(kHeaderRem);
+    bool first = true;
+    for (Row& row : rows_) {
         if (row.kind == RowKind::Group) {
-            column = two && group >= split ? 1 : 0;
-            ++group;
-            if (!firstInColumn[column]) y[column] += metrics_.Rem(kGroupGapRem);
-            firstInColumn[column] = false;
-            row.top = y[column];
+            if (!first) y += metrics_.Rem(kGroupGapRem);
+            row.top = y;
             row.height = titleHeight;
-            y[column] += row.height + metrics_.Rem(0.5);
+            y += row.height + metrics_.Rem(0.35);
         } else {
-            row.top = y[column];
-            row.height = rowHeight;
-            y[column] += row.height + metrics_.Rem(kRowGapRem);
+            // A row with a second line (a switch's or a choice's explanation) is a little taller.
+            const bool tall = !SplitDetail(row.detail).second.empty() && row.kind != RowKind::Push;
+            const double height = metrics_.Rem(tall ? kTallRowHeightRem : kRowHeightRem);
+            row.top = y;
+            row.height = compact ? std::max(56.0, height) : height;
+            y += row.height + metrics_.Rem(kRowGapRem);
         }
-        row.column = column;
-        row.left = left + (column == 1 ? columnWidth + gap : 0.0);
-        row.width = columnWidth;
-        contentBottom_ = std::max(contentBottom_, row.top + row.height);
+        row.column = 0;
+        row.left = left;
+        row.width = content;
+        first = false;
     }
+    contentBottom_ = y - metrics_.Rem(kRowGapRem);
 }
 
 double SettingsScreen::MaxPageScroll() const {
@@ -346,15 +272,16 @@ std::optional<std::size_t> SettingsScreen::FocusedIndex() const {
 }
 
 bool SettingsScreen::Tick(double nowMs) {
+    clockMs_ = nowMs;
     const bool reduced = motion::PrefersReducedMotion(motion_);
-    if (!camera_.active()) return false;
+    if (!camera_.active()) return language_.Animating(nowMs);
     const motion::CameraStep step = camera_.Step(nowMs, reduced);
     pageScroll_ = step.position;
     return true;
 }
 
 bool SettingsScreen::Animating() const {
-    return camera_.active();
+    return camera_.active() || language_.Animating(clockMs_);
 }
 
 void SettingsScreen::EnsureVisible(const Row& row, double nowMs) {
@@ -370,33 +297,19 @@ void SettingsScreen::EnsureVisible(const Row& row, double nowMs) {
 }
 
 bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
+    // An open list takes the arrows.
+    if (language_.IsOpen()) return language_.Navigate(direction, nowMs);
+    if (direction != nav::Direction::Up && direction != nav::Direction::Down) return false;
     if (!focus_.has_value()) return false;
-    const Row& current = rows_[*focus_];
+    // The nearest focusable row above or below. Headings and info rows are skipped.
     std::optional<std::size_t> next;
-    if (direction == nav::Direction::Up || direction == nav::Direction::Down) {
-        // The nearest focusable row above or below in the same column. Headings and info rows are skipped.
-        if (direction == nav::Direction::Down) {
-            for (std::size_t i = *focus_ + 1; i < rows_.size() && !next.has_value(); ++i) {
-                if (Focusable(rows_[i]) && rows_[i].column == current.column) next = i;
-            }
-        } else {
-            for (std::size_t i = *focus_; i > 0 && !next.has_value(); --i) {
-                if (Focusable(rows_[i - 1]) && rows_[i - 1].column == current.column) next = i - 1;
-            }
+    if (direction == nav::Direction::Down) {
+        for (std::size_t i = *focus_ + 1; i < rows_.size() && !next.has_value(); ++i) {
+            if (Focusable(rows_[i])) next = i;
         }
-    } else if (TwoColumns()) {
-        // Left and right cross to the row level with this one in the other column.
-        const int other = direction == nav::Direction::Right ? 1 : 0;
-        if (current.column == other) return false;
-        const double middle = current.top + current.height / 2.0;
-        double best = 0.0;
-        for (std::size_t i = 0; i < rows_.size(); ++i) {
-            if (!Focusable(rows_[i]) || rows_[i].column != other) continue;
-            const double distance = std::abs(rows_[i].top + rows_[i].height / 2.0 - middle);
-            if (!next.has_value() || distance < best) {
-                next = i;
-                best = distance;
-            }
+    } else {
+        for (std::size_t i = *focus_; i > 0 && !next.has_value(); --i) {
+            if (Focusable(rows_[i - 1])) next = i - 1;
         }
     }
     if (!next.has_value()) return false;
@@ -405,7 +318,12 @@ bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
     return true;
 }
 
-std::optional<Command> SettingsScreen::Select(double /*nowMs*/) {
+std::optional<Command> SettingsScreen::Select(double nowMs) {
+    clockMs_ = std::max(clockMs_, nowMs);
+    if (language_.IsOpen()) {
+        PickLanguage(language_.Highlighted(), nowMs);
+        return std::nullopt;
+    }
     const std::optional<std::size_t> index = FocusedIndex();
     if (!index.has_value()) return std::nullopt;
     return ApplyRow(*index);
@@ -429,11 +347,20 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
         RefreshDetails();
         return std::nullopt;
 
-    case RowKind::Language:
-        core_.language = NextLanguage(core_.language);
-        store_.SaveCorePrefs(prefs::CorePrefsPatch{core_.language, std::nullopt});
-        RefreshDetails();
+    case RowKind::Language: {
+        // A list of the supported languages opens under the row's value, as Android's picker does.
+        std::vector<DropdownOption> options;
+        std::size_t selected = 0;
+        for (std::size_t i = 0; i < kLanguages.size(); ++i) {
+            options.push_back(DropdownOption{kLanguages[i].name, ""});
+            if (core_.language == kLanguages[i].id) selected = i;
+        }
+        const Box box = ScreenBox(row);
+        const double width = metrics_.Rem(15.0);
+        language_.Open(Box{box.Right() - width, box.y, width, box.height}, std::move(options), selected, width_, height_,
+                       metrics_.rem, clockMs_, motion_);
         return std::nullopt;
+    }
 
     case RowKind::Theme:
         store_.SaveLook(store_.Look() == Theme::Dark ? Theme::Light : Theme::Dark);
@@ -471,7 +398,26 @@ std::optional<std::string> SettingsScreen::FocusedKey() const {
     return rows_[*focus_].key;
 }
 
+void SettingsScreen::PickLanguage(std::size_t index, double nowMs) {
+    if (index < kLanguages.size()) {
+        core_.language = kLanguages[index].id;
+        store_.SaveCorePrefs(prefs::CorePrefsPatch{core_.language, std::nullopt});
+        RefreshDetails();
+    }
+    language_.Close(nowMs);
+}
+
+bool SettingsScreen::CloseOverlay(double nowMs) {
+    if (!language_.IsOpen()) return false;
+    language_.Close(nowMs);
+    return true;
+}
+
 bool SettingsScreen::FocusItem(const std::string& key, double nowMs, bool withCamera) {
+    if (key.rfind("lang:", 0) == 0) {
+        language_.Hover(std::stoul(key.substr(5)), nowMs);
+        return true;
+    }
     for (std::size_t i = 0; i < rows_.size(); ++i) {
         if (!Focusable(rows_[i]) || rows_[i].key != key) continue;
         if (focus_ == std::optional<std::size_t>(i)) return false;
@@ -483,6 +429,12 @@ bool SettingsScreen::FocusItem(const std::string& key, double nowMs, bool withCa
 }
 
 std::optional<std::string> SettingsScreen::ItemAt(double x, double y) const {
+    if (language_.IsOpen()) {
+        // While the list is open it is the only thing to pick; a click anywhere else closes it.
+        if (const std::optional<std::size_t> row = language_.RowAt(x, y)) return "lang:" + std::to_string(*row);
+        if (language_.Contains(x, y)) return std::nullopt;
+        return std::string("lang-dismiss");
+    }
     for (const Row& row : rows_) {
         if (!Focusable(row)) continue;
         const Box box = ScreenBox(row);
@@ -492,6 +444,15 @@ std::optional<std::string> SettingsScreen::ItemAt(double x, double y) const {
 }
 
 std::optional<Command> SettingsScreen::ActivateItem(const std::string& key, double nowMs) {
+    clockMs_ = std::max(clockMs_, nowMs);
+    if (key == "lang-dismiss") {
+        language_.Close(nowMs);
+        return std::nullopt;
+    }
+    if (key.rfind("lang:", 0) == 0) {
+        PickLanguage(std::stoul(key.substr(5)), nowMs);
+        return std::nullopt;
+    }
     if (!FocusItem(key, nowMs, true) && FocusedKey() != std::optional<std::string>(key)) return std::nullopt;
     return Select(nowMs);
 }
@@ -549,87 +510,84 @@ void SettingsScreen::Paint(Painter& painter) const {
         if (row.kind == RowKind::Group) {
             std::string title = row.label;
             for (char& c : title) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            painter.Text(Box{box.x + metrics_.Rem(1.2), box.y, box.width, box.height}, title,
+            painter.Text(Box{box.x + metrics_.Rem(1.1), box.y, box.width, box.height}, title,
                          TextStyle{metrics_.Rem(kGroupTitleRem) * 0.82, true, 750}, tokens::kTextFaint);
             continue;
         }
         PaintRow(painter, row, !focusHidden_ && focus_ == std::optional<std::size_t>(i));
     }
+    language_.Paint(painter, clockMs_);
 }
 
 void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) const {
     const Box box = ScreenBox(row);
-    const double lift = (focused && !tokens::reduceMotion) ? metrics_.Rem(0.12) : 0.0;
-    const Box drawn{box.x, box.y - lift, box.width, box.height};
-    const double ringWidth = metrics_.Rem(kFocusRingWidthRem);
+    const double radius = metrics_.Rem(kRowRadiusRem);
+    // The nav pill's glass: the resting capsule material for every row, and its hover plate softly under the
+    // focused one. No outer rings, no metallic rim.
+    painter.Glass(box, radius, glass::NavCapsule());
+    if (focused) {
+        painter.FillRoundRect(box, radius, WithAlpha(tokens::kText, 0.06));
+        GlassStyle hover = glass::NavHover(0.32);
+        painter.Glass(box, radius, hover);
+    }
 
-    // Its own floating glass row, rounded as a pill.
-    GlassStyle rowGlass;
-    rowGlass.kind = GlassKind::Panel;
-    rowGlass.focused = focused;
-    rowGlass.focusAmount = focused ? 1.0 : 0.0;
-    rowGlass.reduceTransparency = tokens::reduceTransparency;
-    rowGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
-    rowGlass.ringWidth = ringWidth;
-    rowGlass.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-    rowGlass.ringColor = tokens::kFocusRing;
-    painter.Glass(drawn, drawn.height / 2.0, rowGlass);
-
-    // The icon on a tinted disc; the reset and cache rows read red.
     const bool danger = row.key == "factory-reset" || row.key == "clear-cache";
-    const Color accent = danger ? kDanger : tokens::kAccentStrong;
-    const double disc = metrics_.Rem(2.4);
-    const Box discBox{drawn.x + metrics_.Rem(0.8), drawn.CenterY() - disc / 2.0, disc, disc};
-    painter.FillRoundRect(discBox, disc / 2.0, WithAlpha(accent, focused ? 0.24 : 0.16));
-    const double icon = metrics_.Rem(1.3);
-    painter.Path(Box{discBox.CenterX() - icon / 2.0, discBox.CenterY() - icon / 2.0, icon, icon}, 24.0, IconFor(row.key),
-                 PathStyle{Color{0, 0, 0, 0}, accent, 2.0, false});
-
-    // The value or the way in, at the right.
+    const Color labelColor = danger ? kDanger : (focused ? tokens::kText : Mix(tokens::kTextMuted, tokens::kText, 0.75));
+    const Color muted = tokens::kTextMuted;
     const bool toggle = row.kind != RowKind::Push && row.kind != RowKind::Info;
     const auto [value, words] = toggle ? SplitDetail(row.detail) : std::pair<std::string, std::string>{"", row.detail};
-    double right = drawn.Right() - metrics_.Rem(1.3);
-    const Color muted = tokens::kTextMuted;
+
+    // At the right: a switch, a value (with a chevron for a list), or the way in.
+    double right = box.Right() - metrics_.Rem(1.1);
     if (row.kind == RowKind::Push) {
-        const double chev = metrics_.Rem(0.95);
-        painter.Path(Box{right - chev, drawn.CenterY() - chev / 2.0, chev, chev}, 32.0, "m12 7 9 9-9 9",
+        const double chev = metrics_.Rem(0.85);
+        painter.Path(Box{right - chev, box.CenterY() - chev / 2.0, chev, chev}, 32.0, "m12 7 9 9-9 9",
                      PathStyle{Color{0, 0, 0, 0}, focused ? tokens::kText : muted, 2.8, false});
-        right -= chev + metrics_.Rem(0.6);
+        right -= chev + metrics_.Rem(0.7);
+        if (!words.empty()) {
+            // The row's short description reads as its value, quietly, before the chevron.
+            const TextStyle style{metrics_.Rem(0.88), false, 450};
+            const double width = std::min(painter.MeasureText(words, style), box.width * 0.45);
+            painter.Text(Box{right - width, box.y, width + 2.0, box.height}, words, style, tokens::kTextFaint);
+            right -= width + metrics_.Rem(0.8);
+        }
     } else if (toggle && (value == "On" || value == "Off")) {
-        // A switch for the rows that are on or off.
         const bool on = value == "On";
-        const double trackWidth = metrics_.Rem(2.75);
-        const double trackHeight = metrics_.Rem(1.6);
-        const Box track{right - trackWidth, drawn.CenterY() - trackHeight / 2.0, trackWidth, trackHeight};
+        const double trackWidth = metrics_.Rem(2.6);
+        const double trackHeight = metrics_.Rem(1.5);
+        const Box track{right - trackWidth, box.CenterY() - trackHeight / 2.0, trackWidth, trackHeight};
         painter.FillRoundRect(track, trackHeight / 2.0, on ? tokens::kAccentStrong : WithAlpha(tokens::kText, 0.18));
         const double knob = trackHeight - metrics_.Rem(0.3);
         const double knobX = on ? track.Right() - metrics_.Rem(0.15) - knob : track.x + metrics_.Rem(0.15);
         painter.FillRoundRect(Box{knobX, track.CenterY() - knob / 2.0, knob, knob}, knob / 2.0, Rgb(0xFFFFFF));
         right = track.x - metrics_.Rem(0.8);
     } else if (toggle && !value.empty()) {
-        // A value chip for the rows that cycle: Theme, Liquid Glass, Motion, App language.
-        const TextStyle chipStyle{metrics_.Rem(0.88), true, 650};
-        const double chipWidth = painter.MeasureText(value, chipStyle) + metrics_.Rem(1.6);
-        const double chipHeight = metrics_.Rem(1.9);
-        const Box chip{right - chipWidth, drawn.CenterY() - chipHeight / 2.0, chipWidth, chipHeight};
-        painter.FillRoundRect(chip, chipHeight / 2.0, WithAlpha(tokens::kText, focused ? 0.16 : 0.10));
-        painter.Text(Box{chip.x + metrics_.Rem(0.8), chip.y, chipWidth, chip.height}, value, chipStyle, tokens::kText);
-        right = chip.x - metrics_.Rem(0.8);
+        const bool list = row.kind == RowKind::Language;
+        if (list) {
+            // App language opens a list: a small chevron after its value.
+            const double chev = metrics_.Rem(0.8);
+            painter.Path(Box{right - chev, box.CenterY() - chev / 2.0, chev, chev}, 24.0, "M6 9l6 6 6-6",
+                         PathStyle{Color{0, 0, 0, 0}, focused ? tokens::kText : muted, 2.4, false});
+            right -= chev + metrics_.Rem(0.5);
+        }
+        const TextStyle style{metrics_.Rem(0.95), true, 600};
+        const double width = painter.MeasureText(value, style);
+        painter.Text(Box{right - width, box.y, width + 2.0, box.height}, value, style,
+                     focused ? tokens::kText : tokens::kTextMuted);
+        right -= width + metrics_.Rem(0.8);
     }
 
-    // The name over a short description.
-    const double textX = discBox.Right() + metrics_.Rem(0.9);
+    // The name, with a short second line for the switches and choices that explain themselves.
+    const double textX = box.x + metrics_.Rem(1.2);
     const double textWidth = std::max(0.0, right - textX);
-    const Color labelColor = focused ? tokens::kText : Mix(tokens::kTextMuted, tokens::kText, 0.7);
-    if (words.empty()) {
-        painter.Text(Box{textX, drawn.y, textWidth, drawn.height}, row.label,
-                     TextStyle{metrics_.Rem(1.05), true, focused ? 650 : 550}, labelColor);
+    const TextStyle labelStyle{metrics_.Rem(1.0), true, focused ? 620 : 540};
+    if (words.empty() || row.kind == RowKind::Push) {
+        painter.Text(Box{textX, box.y, textWidth, box.height}, row.label, labelStyle, labelColor);
         return;
     }
-    painter.Text(Box{textX, drawn.y + drawn.height * 0.16, textWidth, drawn.height * 0.4}, row.label,
-                 TextStyle{metrics_.Rem(1.05), true, focused ? 650 : 550}, labelColor);
-    painter.Text(Box{textX, drawn.y + drawn.height * 0.52, textWidth, drawn.height * 0.32}, words,
-                 TextStyle{metrics_.Rem(0.85), false, 450}, muted);
+    painter.Text(Box{textX, box.y + box.height * 0.12, textWidth, box.height * 0.44}, row.label, labelStyle, labelColor);
+    painter.Text(Box{textX, box.y + box.height * 0.52, textWidth, box.height * 0.34}, words,
+                 TextStyle{metrics_.Rem(0.8), false, 450}, tokens::kTextFaint);
 }
 
 }  // namespace tvm::ui

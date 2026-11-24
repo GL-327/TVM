@@ -195,17 +195,51 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
     REQUIRE(!settings.Navigate(Direction::Up, 0.0));  // Nothing above the first row.
 }
 
-TEST(settings_language_cycles_in_the_web_order_and_saves) {
+TEST(settings_language_opens_a_list_and_saves_the_pick) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
     REQUIRE(settings.FocusItem("language", 0.0, false));
-
     REQUIRE(settings.DetailOf("language") == "English");
-    (void)settings.Select(0.0);
+
+    // OK opens the list of the nine supported languages on the current one, without leaving the page.
+    REQUIRE(!settings.Select(0.0).has_value());
+    REQUIRE(settings.LanguageList().IsOpen());
+    REQUIRE_EQ(settings.LanguageList().Count(), std::size_t{9});
+    REQUIRE_EQ(settings.LanguageList().Selected(), std::size_t{0});
+    REQUIRE_EQ(store.coreSaves, 0);
+    // Down twice reaches Français; OK saves it and closes the list.
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(!settings.Select(0.0).has_value());
+    REQUIRE(!settings.LanguageList().IsOpen());
+    REQUIRE(store.core_.language == "fr");
+    REQUIRE(settings.DetailOf("language") == "Fran\xC3\xA7" "ais");
+    REQUIRE_EQ(store.coreSaves, 1);
+}
+
+TEST(settings_language_list_closes_on_back_and_on_a_click_outside) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(1920.0, 1080.0);
+    settings.FocusItem("language", 0.0, false);
+    settings.Select(0.0);
+    // Back closes the list and keeps the page.
+    REQUIRE(settings.CloseOverlay(0.0));
+    REQUIRE(!settings.LanguageList().IsOpen());
+    REQUIRE(!settings.CloseOverlay(0.0));
+    REQUIRE(store.core_.language == "en");
+    // Opened again, a click on a row picks it; a click elsewhere closes it.
+    settings.Select(0.0);
+    const tvm::ui::Box row = *settings.LanguageList().RowBox(1);
+    const std::optional<std::string> key = settings.ItemAt(row.CenterX(), row.CenterY());
+    REQUIRE(key == std::optional<std::string>("lang:1"));
+    settings.ActivateItem(*key, 0.0);
     REQUIRE(store.core_.language == "es");
-    REQUIRE(settings.DetailOf("language") == "Español");
-    REQUIRE(store.coreSaves == 1);
+    settings.Select(0.0);
+    REQUIRE(settings.ItemAt(5.0, 5.0) == std::optional<std::string>("lang-dismiss"));
+    settings.ActivateItem("lang-dismiss", 0.0);
+    REQUIRE(!settings.LanguageList().IsOpen());
 }
 
 TEST(settings_automatic_updates_toggle_and_save) {
