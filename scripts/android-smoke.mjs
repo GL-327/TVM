@@ -143,8 +143,10 @@ try {
 
   await step('the sign-in screen is showing', 180, async () =>
     (await evaluate("document.querySelector('.gate h1')?.textContent ?? ''")) === 'Sign in to TVM');
-  await step('it has the "I\'m a dev" button', 30, async () =>
-    (await evaluate("[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === \"I'm a dev\")")) === true);
+  // Developer codes were removed in 1.2.0: accounts live on the private TVM
+  // accounts service and the owner manages them on its dashboard.
+  await step('it has no developer-code button', 30, async () =>
+    (await evaluate("[...document.querySelectorAll('button')].some((b) => /I'm a dev|Developer Access/.test(b.textContent))")) === false);
 
   // The keyboard slides over the page: the page is not resized for it and
   // nothing on it moves (one owner, tvm-android.js 6b). The app tells the page
@@ -187,24 +189,19 @@ try {
     await sleep(800);
   }
 
-  // One real round trip through the phone's account code.
-  const signUp = { email: 'smoke@example.com', password: 'a good long password' };
-  await step('an account can be created', 90, async () => {
-    const reply = await core('/api/account/register', { method: 'POST', body: JSON.stringify(signUp) });
-    // A retry after a slow first attempt finds the account already there.
-    if (reply.status !== 200 && !String(reply.body.error).includes('could not be created')) throw new Error(JSON.stringify(reply.body));
+  // The phone's account code answers. It no longer registers a real account:
+  // accounts live on the owner's private service, and a test sign-up on every
+  // build would fill its dashboard and spend its sign-up limits.
+  await step('the account code answers', 60, async () => {
+    const reply = await core('/api/account');
+    if (![200, 401, 503].includes(reply.status) || typeof reply.body !== 'object' || reply.body === null) {
+      throw new Error(`/api/account answered ${reply.status}: ${JSON.stringify(reply.body)}`);
+    }
     return true;
   });
-  const token = await step('it can sign in', 90, async () => {
-    const reply = await core('/api/account/signin', { method: 'POST', body: JSON.stringify(signUp) });
-    if (reply.status !== 200) throw new Error(JSON.stringify(reply.body));
-    return reply.body.token;
-  });
-  await step('the account waits to be switched on', 60, async () => {
-    const me = await core('/api/account', { headers: { authorization: `Bearer ${token}` } });
-    if (me.body.usable?.reason !== 'awaiting_activation' || me.body.account?.role !== 'member') {
-      throw new Error(JSON.stringify(me.body));
-    }
+  await step('developer codes are gone', 30, async () => {
+    const reply = await core('/api/account/dev', { method: 'POST', body: '{}' });
+    if (reply.status !== 410) throw new Error(`/api/account/dev answered ${reply.status}`);
     return true;
   });
 
