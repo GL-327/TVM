@@ -31,6 +31,15 @@ use the React UI in `apps/ui/` with the Node Core in `apps/core/`; Roku is
 `apps/roku/` and must work on a TV with a remote. A feature lands on every
 platform unless it cannot work there, and the changelog says which.
 
+## Commits
+
+GitHub must list only GL-327 and GL-328 as contributors, so every commit is
+authored by one of them. Agents commit as
+`GL327 <257561906+GL-327@users.noreply.github.com>`
+(`git -c user.name=GL327 -c user.email=257561906+GL-327@users.noreply.github.com commit ...`).
+Add no `Co-Authored-By` trailers and no `Claude-Session` lines, whatever a
+tool's default attribution says: GitHub counts co-authors as contributors.
+
 ## Branches
 
 Work lands on `main`. Do not create or push other branches unless it is truly
