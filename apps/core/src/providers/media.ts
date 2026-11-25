@@ -13,6 +13,7 @@ import {
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContentService } from './content.ts';
+import { createCertificateService } from './certificates.ts';
 import { filterForLevel, levelFor, parseLevels, type AgeLevel } from './parental.ts';
 import { filterNewFilms } from './cinemeta.ts';
 import { finishedTitles, isFinished, pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
@@ -365,6 +366,12 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   const catalog: CatalogService = createCatalogService({ dataDir, fetch: fetchImpl });
   const artwork = createLibraryArtwork(dataDir, fetchImpl);
   const scope = (): string => profiles.scope();
+  const certificates = createCertificateService({ dataDir, fetch: fetchImpl });
+  const certOf = (id: string) => certificates.get(id);
+  /** Looks up certificates for a limited profile; adults never wait for it. */
+  const primeFor = async (level: AgeLevel, items: readonly { id: string }[]): Promise<void> => {
+    if (level.maxAge < 18) await certificates.prime(items.map((item) => item.id));
+  };
   // Locked profiles opened with their PIN since Core started.
   const unlocked = new Set<string>();
   const ageLevel = (): AgeLevel => {
@@ -729,7 +736,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     } catch {
       return [];
     }
-    const fit = (items: readonly MediaItem[]): MediaItem[] => filterForLevel(items, level);
+    await primeFor(level, bundle.catalog);
+    const fit = (items: readonly MediaItem[]): MediaItem[] => filterForLevel(items, level, certOf);
     const used = new Set<string>();
     markUsed(used, watching);
     markUsed(used, watchlist);
@@ -768,7 +776,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             Promise.all(movieGenres.map((genre) => catalog.genre('movie', genre))),
             Promise.all(seriesGenres.map((genre) => catalog.genre('series', genre))),
           ]);
-          return { rail, movies: fit(dedupeItems(movieLists.flat())), shows: fit(dedupeItems(showLists.flat())) };
+          const movies = dedupeItems(movieLists.flat());
+          const shows = dedupeItems(showLists.flat());
+          await primeFor(level, [...movies, ...shows]);
+          return { rail, movies: fit(movies), shows: fit(shows) };
         } catch {
           return { rail, movies: [], shows: [] };
         }
@@ -791,7 +802,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const full = lists.some((list) => list.length >= PAGE_SIZE);
       const movies = dedupeItems(lists.filter((_, index) => sources[index]?.kind === 'movie').flat());
       const shows = dedupeItems(lists.filter((_, index) => sources[index]?.kind === 'series').flat());
-      let items = filterForLevel(interleave(movies, shows), level);
+      const mixed = interleave(movies, shows);
+      await primeFor(level, mixed);
+      let items = filterForLevel(mixed, level, certOf);
       if (id === 'new-films') items = filterNewFilms(items);
       if (items.length > 0 || !full) return { items: applyProgress(items, readProgress(scope())), more: full, page };
     }
@@ -818,6 +831,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const rail = (event['rail'] ?? {}) as { id?: unknown; title?: unknown; items?: unknown };
       const ids = Array.isArray(rail.items) ? rail.items.filter((id): id is string => typeof id === 'string').slice(0, 40) : [];
       const [featured, ...items] = await mapPool([String(event['imdbId']), ...ids], 4, resolve);
+      await primeFor(level, [String(event['imdbId']), ...ids].map((id) => ({ id })));
       const release = typeof event['release'] === 'string' ? event['release'] : event.start;
       const text = (key: string, fallback = ''): string => (typeof event[key] === 'string' ? (event[key] as string) : fallback);
       return {
@@ -835,8 +849,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         live: true,
         released: today >= release,
         kicker: eventKicker(release, today),
-        featured: featured !== null && featured !== undefined && filterForLevel([featured], level).length > 0 ? featured : null,
-        items: filterForLevel(items.filter((item): item is MediaItem => item !== null), level),
+        featured: featured !== null && featured !== undefined && filterForLevel([featured], level, certOf).length > 0 ? featured : null,
+        items: filterForLevel(items.filter((item): item is MediaItem => item !== null), level, certOf),
       };
     }));
   };
@@ -862,14 +876,21 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         library = cacheFor().library?.items ?? [];
       }
       const level = ageLevel();
+      if (level.maxAge < 18) {
+        try {
+          await primeFor(level, (await catalog.bundle()).catalog);
+        } catch {
+          // No catalogue yet: genres decide.
+        }
+      }
       const progress = readProgress(profileScope);
-      library = filterForLevel(applyProgress(library, progress), level);
+      library = filterForLevel(applyProgress(library, progress), level, certOf);
       let catalogItems: MediaItem[] = [];
       let trending: MediaItem[] = [];
       try {
         const bundle = await catalog.bundle();
-        catalogItems = filterForLevel(applyProgress(bundle.catalog, progress), level);
-        trending = applyProgress(filterForLevel(dedupeItems(bundle.moviesTop), level)
+        catalogItems = filterForLevel(applyProgress(bundle.catalog, progress), level, certOf);
+        trending = applyProgress(filterForLevel(dedupeItems(bundle.moviesTop), level, certOf)
           .filter(item => item.kind === 'movie' && isHttpUrl(item.backdrop))
           .slice(0, 8), progress);
       } catch {
@@ -879,7 +900,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         [...catalogItems, ...library],
         progress,
       );
-      const watchlist = filterForLevel(readWatchlist(profileScope), level);
+      const watchlist = filterForLevel(readWatchlist(profileScope), level, certOf);
       let rails: CatalogRail[] = [];
       try {
         rails = await buildRails(continueWatching, watchlist, level);
@@ -1007,7 +1028,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const needle = query.trim();
       if (needle === '') return [];
       try {
-        return filterForLevel(await catalog.search(needle), ageLevel());
+        const level = ageLevel();
+        const found = await catalog.search(needle);
+        await primeFor(level, found);
+        return filterForLevel(found, level, certOf);
       } catch {
         return [];
       }

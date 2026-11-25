@@ -124,3 +124,31 @@ describe('age limits', () => {
     expect(liveGroupAllowed('News', levelFor(15))).toBe(true);
   });
 });
+
+describe('age certificates', () => {
+  it('turns BBFC and MPA labels into ages', async () => {
+    const { certificateAge, certificatesFromSparql } = await import('./certificates.ts');
+    expect(certificateAge('12A certificate')).toBe(12);
+    expect(certificateAge('U certificate')).toBe(0);
+    expect(certificateAge('PG-13')).toBe(13);
+    expect(certificateAge('R')).toBe(17);
+    expect(certificateAge('Unrated')).toBeNull();
+    const found = certificatesFromSparql({
+      results: {
+        bindings: [
+          { imdb: { value: 'tt0816692' }, bbfcLabel: { value: '12A certificate' }, mpaLabel: { value: 'PG-13' } },
+          { imdb: { value: 'tt0816692' }, bbfcLabel: { value: '12 certificate' }, mpaLabel: { value: 'PG-13' } },
+          { imdb: { value: 'tt0084787' }, mpaLabel: { value: 'R' } },
+        ],
+      },
+    });
+    expect(found.get('tt0816692')).toEqual({ label: '12A', age: 12 });
+    expect(found.get('tt0084787')).toEqual({ label: 'R', age: 17 });
+  });
+
+  it('lets a real certificate decide before genres', () => {
+    expect(allowedForLevel({ genres: ['Crime'], kind: 'movie' }, levelFor(12), { age: 12 })).toBe(true);
+    expect(allowedForLevel({ genres: ['Animation'], kind: 'movie' }, levelFor(7), { age: 13 })).toBe(false);
+    expect(allowedForLevel({ genres: ['Drama'], kind: 'movie' }, levelFor(7), { age: 0 })).toBe(true);
+  });
+});

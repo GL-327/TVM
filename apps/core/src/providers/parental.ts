@@ -58,8 +58,14 @@ const norm = (genre: string): string => genre.trim().toLowerCase();
  * True when a title suits the limit. Files from the viewer's own library have
  * no genres, so nothing says what they are: they stay hidden up to 12.
  */
-export function allowedForLevel(item: Pick<MediaItem, 'genres' | 'kind'>, level: AgeLevel): boolean {
+export function allowedForLevel(
+  item: Pick<MediaItem, 'genres' | 'kind'>,
+  level: AgeLevel,
+  certificate?: { age: number } | null,
+): boolean {
   if (level.maxAge >= 18) return true;
+  // A real certificate (BBFC or MPA, by IMDb id) decides; genres are the fallback.
+  if (certificate !== undefined && certificate !== null) return certificate.age <= level.maxAge;
   const genres = (item.genres ?? []).map(norm);
   if (genres.length === 0) return level.allow === null && (item.kind !== 'file' || level.maxAge >= 15);
   if (level.block.some((blocked) => genres.includes(norm(blocked)))) return false;
@@ -67,8 +73,14 @@ export function allowedForLevel(item: Pick<MediaItem, 'genres' | 'kind'>, level:
   return true;
 }
 
-export function filterForLevel<T extends Pick<MediaItem, 'genres' | 'kind'>>(items: readonly T[], level: AgeLevel): T[] {
-  return level.maxAge >= 18 ? [...items] : items.filter((item) => allowedForLevel(item, level));
+export function filterForLevel<T extends Pick<MediaItem, 'genres' | 'kind'> & { id?: string }>(
+  items: readonly T[],
+  level: AgeLevel,
+  certificateOf?: (id: string) => { age: number } | null | undefined,
+): T[] {
+  if (level.maxAge >= 18) return [...items];
+  return items.filter((item) =>
+    allowedForLevel(item, level, item.id === undefined || certificateOf === undefined ? undefined : certificateOf(item.id)));
 }
 
 export function liveGroupAllowed(group: string, level: AgeLevel): boolean {
