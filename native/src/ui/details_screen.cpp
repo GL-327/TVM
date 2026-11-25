@@ -126,7 +126,10 @@ std::vector<std::string> DetailsScreen::ActionKeys() const {
     if (!IsSeries()) keys.push_back(kPlayKey);
     if (HasListButton()) keys.push_back(kListKey);
     // Downloads takes the catalogue's id, so it also waits for the record, as the list button does.
-    if (HasListButton()) keys.push_back(kDownloadKey);
+    if (HasListButton() && !info_.hideDownloads) keys.push_back(kDownloadKey);
+    if (info_.state == TitleInfo::State::Ready && !info_.rating.empty()) keys.push_back("imdb");
+    if (info_.state == TitleInfo::State::Ready) for (const auto& service : info_.services) keys.push_back("watch:" + service.first);
+    if (keys.empty()) keys.push_back(kBackKey);
     return keys;
 }
 
@@ -141,9 +144,11 @@ std::string DetailsScreen::SeasonLabel(int season) {
 }
 
 double DetailsScreen::ContentHeight() const {
-    if (!IsSeries()) return HeroHeight();
+    const auto last = BoxOf(ActionKeys().back());
+    const double base = std::max(HeroHeight(), last ? last->Bottom() + scroll_ + Rem(7.4) : HeroHeight());
+    if (!IsSeries()) return base;
     const double episodes = static_cast<double>(Episodes().size());
-    return HeroHeight() + Rem(1.0) + SeasonsHeight() + Rem(1.2) +
+    return base + Rem(1.0) + SeasonsHeight() + Rem(1.2) +
            episodes * (Rem(kEpisodeHeightRem) + Rem(kEpisodeGapRem)) + Rem(2.4);
 }
 
@@ -164,14 +169,22 @@ std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
     const double copyX = compact ? x : x + Rem(kDetailsPosterWidthRem) + Rem(kCopyGapRem);
     const double buttonsY = posterY + Rem(8.2);
 
+    if (key == "reviews-link" && ReviewsOpen()) {
+        const auto badge = BoxOf("imdb");
+        if (!badge) return std::nullopt;
+        const double panelHeight = Rem(info_.reviews.contains("reviews") && !info_.reviews["reviews"].empty() ? 33.0 : 9.0);
+        const double top = std::min(badge->Bottom() + Rem(0.6), height_ - panelHeight - Rem(1));
+        return Box{std::clamp(badge->x, Rem(1), std::max(Rem(1), width_ - Rem(35))), top + panelHeight - Rem(3.3), Rem(32), Rem(2.5)};
+    }
+
     FlowLayout actions(copyX, buttonsY, width_ - copyX - x, Rem(kButtonGapRem));
     for (const std::string& action : ActionKeys()) {
-        const double width = action == kListKey ? Rem(14.5) : action == kPlayKey ? Rem(8.4) : action == kDownloadKey ? Rem(10.0) : Rem(7.0);
+        const double width = action == kListKey ? Rem(14.5) : action == kPlayKey ? Rem(8.4) : action == kDownloadKey ? Rem(10.0) : action.rfind("watch:", 0) == 0 ? Rem(19.0) : Rem(10.0);
         const Box box = actions.Place(width, compact ? std::max(44.0, Rem(kButtonHeightRem)) : Rem(kButtonHeightRem));
         if (action == key) return box;
     }
 
-    const double tabsY = HeroHeight() - scroll_ + Rem(1.0);
+    const double tabsY = std::max(HeroHeight() - scroll_ + Rem(1.0), actions.Bottom() + Rem(7.4));
     if (key == kSeasonMenuKey && !Seasons().empty()) {
         // Wide enough for the longest season name and the chevron, so it does not change size between seasons.
         std::size_t longest = 0;
@@ -197,7 +210,6 @@ double DetailsScreen::SeasonsHeight() const {
 std::string DetailsScreen::MetaLine() const {
     // The parts that are known, joined with a middle dot.
     std::vector<std::string> parts;
-    if (!info_.rating.empty()) parts.push_back("IMDb " + info_.rating);
     if (info_.year.has_value()) parts.push_back(std::to_string(*info_.year));
     if (info_.runtime.has_value() && !info_.runtime->empty()) parts.push_back(*info_.runtime);
     const std::size_t seasons = Seasons().size();
@@ -214,6 +226,9 @@ std::string DetailsScreen::MetaLine() const {
 
 bool DetailsScreen::Tick(double nowMs) {
     clockMs_ = nowMs;
+    if ((focused_ == "imdb" || focused_ == "reviews-link") && !focusHidden_) {
+        if (ratingEntered_ < 0) ratingEntered_ = nowMs;
+    } else ratingEntered_ = -1;
     buttonFocus_.Track(focused_, focusHidden_, nowMs, motion_);
     if (scrollTween_.has_value()) {
         scroll_ = scrollTween_->Value(nowMs);
@@ -223,12 +238,14 @@ bool DetailsScreen::Tick(double nowMs) {
 }
 
 bool DetailsScreen::Animating() const {
-    return buttonFocus_.Animating(clockMs_) || scrollTween_.has_value() || seasonList_.Animating(clockMs_);
+    return buttonFocus_.Animating(clockMs_) || scrollTween_.has_value() || seasonList_.Animating(clockMs_) ||
+           (ratingEntered_ >= 0 && clockMs_ - ratingEntered_ < 370);
 }
 
 void DetailsScreen::Paint(Painter& painter) const {
     PaintPage(painter);
     PaintBack(painter);
+    if (ReviewsOpen()) PaintReviews(painter);
     seasonList_.Paint(painter, clockMs_);
 }
 
@@ -236,6 +253,7 @@ void DetailsScreen::PaintBack(Painter& painter) const {
     // A minimal arrow: no pill and no word, a thick rounded stroke on a soft shadow so it reads over any backdrop.
     // The pointer or the remote brightens it and grows it a touch; there is no outline around it.
     const Box box = *BoxOf(kBackKey);
+    painter.Glass(box, box.height / 2.0, glass::NavCapsule());
     const double amount = buttonFocus_.Amount(kBackKey, clockMs_);
     const double glyph = Rem(1.75) * (1.0 + 0.12 * amount);
     const Box arrow{box.CenterX() - glyph / 2.0, box.CenterY() - glyph / 2.0, glyph, glyph};
@@ -310,6 +328,23 @@ void DetailsScreen::PaintPage(Painter& painter) const {
     painter.Text(Box{copyX, posterY + Rem(5.8), copyWidth, Rem(1.5)}, MetaLine(), TextStyle{Rem(1.125), false, 450},
                  tokens::kTextMuted);
     for (const std::string& key : ActionKeys()) {
+        if (key == "imdb") {
+            const Box badge = *BoxOf(key);
+            painter.Glass(badge, badge.height / 2, glass::NavCapsule());
+            const Box logo{badge.x + Rem(0.65), badge.CenterY() - Rem(0.8), Rem(3.1), Rem(1.6)};
+            painter.FillRoundRect(logo, Rem(0.25), Rgb(0xF5C518));
+            painter.Text({logo.x + Rem(0.25), logo.y, logo.width, logo.height}, "IMDb", {Rem(1.0), true, 800}, Rgb(0));
+            painter.Text({logo.Right() + Rem(0.6), badge.y, Rem(2.1), badge.height}, info_.rating, {Rem(1.15), true, 650}, tokens::kText);
+            painter.Text({logo.Right() + Rem(2.8), badge.y, Rem(2), badge.height}, "/10", {Rem(0.8), false}, tokens::kTextMuted);
+            if (ShowsFocus(focused_, key)) painter.StrokeRoundRect(badge, badge.height / 2, 1.5, Rgb(0xFFFFFF, 0.7));
+            continue;
+        }
+        if (key.rfind("watch:", 0) == 0) {
+            std::string label;
+            for (const auto& service : info_.services) if ("watch:" + service.first == key) label = "Look for it on " + service.second;
+            DrawButton(painter, metrics, *BoxOf(key), label, {false, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)});
+            continue;
+        }
         const std::string label = key == kPlayKey   ? "Play"
                                   : key == kListKey ? (info_.saved ? "Remove from My List" : "Add to My List")
                                                     : "Download";
@@ -317,7 +352,7 @@ void DetailsScreen::PaintPage(Painter& painter) const {
                    ButtonLook{key == kPlayKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)});
     }
     const auto lastAction = BoxOf(ActionKeys().back());
-    const Box synopsis{copyX, compact && lastAction ? lastAction->Bottom() + Rem(1.0) : posterY + Rem(11.6), copyWidth, Rem(4.4)};
+    const Box synopsis{copyX, lastAction ? lastAction->Bottom() + Rem(1.0) : posterY + Rem(11.6), copyWidth, Rem(4.4)};
     std::string body = info_.synopsis;
     if (info_.state == TitleInfo::State::Loading) body = "Loading the details...";
     if (info_.state == TitleInfo::State::Unavailable) {
@@ -416,6 +451,8 @@ void DetailsScreen::FollowFocus(double nowMs) {
 }
 
 bool DetailsScreen::Navigate(nav::Direction direction, double nowMs) {
+    if (focused_ == "imdb" && ReviewsOpen() && direction == nav::Direction::Down) { focused_ = "reviews-link"; return true; }
+    if (focused_ == "reviews-link") { focused_ = "imdb"; return true; }
     // An open season list takes the arrows.
     if (seasonList_.IsOpen()) return seasonList_.Navigate(direction, nowMs);
     const std::vector<std::string> actions = ActionKeys();
@@ -500,6 +537,12 @@ bool DetailsScreen::FocusItem(const std::string& key, double nowMs, bool /*withC
 }
 
 std::optional<std::string> DetailsScreen::ItemAt(double x, double y) const {
+    if (ReviewsOpen()) {
+        const auto link = BoxOf("reviews-link");
+        if (link && Contains(*link, x, y)) return "reviews-link";
+        // Keep the review panel open while the pointer crosses its text.
+        if (link && Contains({link->x, link->y - Rem(30), link->width, Rem(33)}, x, y)) return "imdb";
+    }
     if (seasonList_.IsOpen()) {
         // While the season list is open it is the only thing to pick; a click anywhere else closes it.
         if (const std::optional<std::size_t> row = seasonList_.RowAt(x, y)) return kSeasonPickPrefix + std::to_string(*row);
@@ -518,6 +561,35 @@ std::optional<std::string> DetailsScreen::ItemAt(double x, double y) const {
     return std::nullopt;
 }
 
+void DetailsScreen::PaintReviews(Painter& painter) const {
+    const auto link = BoxOf("reviews-link");
+    if (!link) return;
+    const bool hasReviews = info_.reviews.contains("reviews") && info_.reviews["reviews"].is_array() && !info_.reviews["reviews"].empty();
+    const double panelHeight = Rem(hasReviews ? 33.0 : 9.0);
+    const Box panel{link->x - Rem(0.7), link->Bottom() + Rem(0.8) - panelHeight, link->width + Rem(1.4), panelHeight};
+    painter.Glass(panel, Rem(1.75), glass::MenuPanel());
+    double y = panel.y + Rem(1.0);
+    painter.Text({panel.x + Rem(1.2), y, panel.width - Rem(2.4), Rem(2)}, "IMDb " + info_.rating + "/10", {Rem(1.25), true, 700}, Rgb(0xFFFFFF, 0.95));
+    y += Rem(2.8);
+    if (hasReviews) {
+        const auto& reviews = info_.reviews["reviews"];
+        for (std::size_t i = 0; i < std::min<std::size_t>(3, reviews.size()); ++i) {
+            const auto& review = reviews[i];
+            std::string stars;
+            if (review.contains("stars") && review["stars"].is_number()) {
+                char value[24]{};
+                std::snprintf(value, sizeof(value), "%.1f/5", review["stars"].get<double>());
+                stars = std::string("  ★ ") + value;
+            }
+            painter.Text({panel.x + Rem(1.2), y, panel.width - Rem(2.4), Rem(1.5)}, review.value("author", "Letterboxd viewer") + stars, {Rem(0.95), true, 650}, Rgb(0xFFFFFF, 0.95));
+            painter.Paragraph({panel.x + Rem(1.2), y + Rem(1.8), panel.width - Rem(2.4), Rem(4.6)}, review.value("text", ""), {Rem(0.9), false}, Rgb(0xFFFFFF, 0.66));
+            y += Rem(8.2);
+        }
+    } else painter.Text({panel.x + Rem(1.2), y, panel.width - Rem(2.4), Rem(1.8)}, "Read reviews on IMDb", {Rem(1), false}, Rgb(0xFFFFFF, 0.66));
+    painter.Text(*link, hasReviews ? "More reviews on IMDb" : "Open IMDb", {Rem(0.95), true, 600}, Rgb(0x96BAFF));
+    if (ShowsFocus(focused_, "reviews-link")) painter.StrokeRoundRect(*link, link->height / 2, 1, Rgb(0xFFFFFF, 0.7));
+}
+
 std::optional<Command> DetailsScreen::ActivateItem(const std::string& key, double nowMs) {
     clockMs_ = std::max(clockMs_, nowMs);
     if (key == "season-dismiss") {
@@ -534,6 +606,12 @@ std::optional<Command> DetailsScreen::ActivateItem(const std::string& key, doubl
 }
 
 std::optional<Command> DetailsScreen::Activate(const std::string& key) {
+    if (key == "imdb" || key == "reviews-link") {
+        Command command; command.name = "imdb-open"; command.action = true; command.params["id"] = id_; return command;
+    }
+    if (key.rfind("watch:", 0) == 0) {
+        Command command; command.name = "service-watch"; command.action = true; command.params = {{"id", key.substr(6)}, {"title", info_.title}}; return command;
+    }
     if (key == kSeasonMenuKey) {
         // The list of every season, each with its episode count, opens under the control on the current season.
         const std::vector<int> seasons = Seasons();

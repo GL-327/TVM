@@ -89,7 +89,7 @@ GlassClarity FilePreferenceStore::Glass() const {
     const nlohmann::ordered_json& json = UiJson();
     const auto value = json.find("glass");
     return value != json.end() && value->is_string() ? ParseGlassClarity(value->get<std::string>())
-                                                     : GlassClarity::Clear;
+                                                     : GlassClarity::Default;
 }
 
 void FilePreferenceStore::SaveGlass(GlassClarity clarity) {

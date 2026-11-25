@@ -182,8 +182,8 @@ CatalogBundle CatalogService::Bundle() {
     }
 }
 
-std::vector<MediaItem> CatalogService::Genre(const std::string& kind, const std::string& genre) {
-    const std::string key = kind + ":" + genre;
+std::vector<MediaItem> CatalogService::Genre(const std::string& kind, const std::string& genre, std::size_t skip, const std::string& catalogue) {
+    const std::string key = kind + ":" + catalogue + ":" + genre + ":" + std::to_string(skip);
     {
         std::lock_guard lock(mutex_);
         const auto hit = genres_.find(key);
@@ -192,7 +192,7 @@ std::vector<MediaItem> CatalogService::Genre(const std::string& kind, const std:
 
     try {
         const std::vector<MediaItem> items = FetchCatalog(
-            "/catalog/" + kind + "/top/genre=" + js::EncodeUriComponent(genre) + ".json", kind, kGenreFetchMs);
+            "/catalog/" + kind + "/" + catalogue + "/" + (genre.empty() ? "skip=" + std::to_string(skip) : "genre=" + js::EncodeUriComponent(genre) + (skip == 0 ? "" : "&skip=" + std::to_string(skip))) + ".json", kind, kGenreFetchMs);
         std::lock_guard lock(mutex_);
         genres_[key] = GenreEntry{NowMs(), items};
         return items;
@@ -221,6 +221,7 @@ std::optional<TitleMeta> ReadMeta(Fetcher& fetch, const std::string& kind, const
 
         TitleMeta result;
         result.item = *item;
+        if (meta->contains("logo") && (*meta)["logo"].is_string()) result.logo = (*meta)["logo"].get<std::string>();
         if (kind == "series") {
             const auto videos = meta->find("videos");
             result.children = MapVideos(*item, videos == meta->end() ? nullptr : &*videos);

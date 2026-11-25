@@ -133,6 +133,7 @@ void SettingsScreen::BuildRows() {
     push("plan", "Plan", "Access and pricing", Open("plans"));
     push("profiles", "Profiles", "Switch, add, rename or remove", Open("chooser"));
     row(RowKind::ChooseProfile, "choose-profile", "Choose profile on launch");
+    push("services", "Streaming services", "Sign in to your services", Open("services"));
     push("realdebrid", "Real-Debrid", "Your token", Open("realdebrid"));
 
     group("Device");
@@ -142,7 +143,7 @@ void SettingsScreen::BuildRows() {
     push("live-playlist", "Live TV playlist", "M3U / M3U8", Open("live-playlist"));
     push("updates", "Updates", "GLogic Studios", Open("updates"));
     row(RowKind::AutoUpdate, "auto-update", "Check for updates on launch");
-    push("changelog", "What's new", "The latest changes on GitHub", Open("changelog", {}, true));
+    push("changelog", "What's new", "Release notes for TVM", Open("changelog", {}, true));
     push("diagnostics", "Diagnostics", "", Open("diagnostics", {}, true));
     push("developer", "Developer", "Accounts, email and channel check", Open("developer"));
 
@@ -204,8 +205,7 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
     case RowKind::Theme:
         return store_.Look() == Theme::Light ? "Light" : "Dark";
     case RowKind::Glass:
-        return store_.Glass() == GlassClarity::Frosted ? "Frosted \xC2\xB7 softer, easier to read over busy pictures"
-                                                       : "Clear \xC2\xB7 see the picture through the glass";
+        return store_.Glass() == GlassClarity::Tinted ? "Tinted - more contrast" : store_.Glass() == GlassClarity::Clear ? "Clear - less blur" : "Default - balanced glass";
     case RowKind::Language:
         return LanguageName(core_.language);
     case RowKind::AutoUpdate:
@@ -216,7 +216,7 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
     case RowKind::Push:
     case RowKind::Info:
         if (row.key == "dev-glass") {
-            return store_.Glass() == GlassClarity::Frosted ? "Frosted" : "Clear";
+            return store_.Glass() == GlassClarity::Tinted ? "Tinted" : store_.Glass() == GlassClarity::Clear ? "Clear" : "Default";
         }
         return row.detail;
     case RowKind::Group:
@@ -390,7 +390,7 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
         return std::nullopt;
 
     case RowKind::Glass:
-        store_.SaveGlass(store_.Glass() == GlassClarity::Clear ? GlassClarity::Frosted : GlassClarity::Clear);
+        store_.SaveGlass(store_.Glass() == GlassClarity::Clear ? GlassClarity::Default : store_.Glass() == GlassClarity::Default ? GlassClarity::Tinted : GlassClarity::Clear);
         RefreshDetails();
         return std::nullopt;
 

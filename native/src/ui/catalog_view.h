@@ -42,6 +42,9 @@ struct TitleInfo {
     catalog::MediaItem media;
     // Whether the title is on the viewer's watchlist.
     bool saved = false;
+    bool hideDownloads = false;
+    nlohmann::json reviews = nlohmann::json::object();
+    std::vector<std::pair<std::string, std::string>> services;
 };
 
 // Home's rails as the scene shows them.

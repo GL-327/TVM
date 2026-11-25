@@ -103,7 +103,6 @@ constexpr double kAndroidStroke = 3.1;
 constexpr double kIdleHideMs = 3000.0;
 constexpr double kIdleFadeMs = 260.0;
 constexpr motion::CubicBezier kChromeEase{0.22, 1.0, 0.36, 1.0};
-constexpr double kSpinnerPeriodMs = 900.0;
 
 constexpr char kBackKey[] = "back";
 constexpr char kRewindKey[] = "rewind";
@@ -467,6 +466,12 @@ void PlayerScreen::SetPressed(const std::optional<std::string>& key, double nowM
 }
 
 bool PlayerScreen::Tick(double nowMs) {
+    if (nowMs - lastCacheMs_ >= 200) {
+        bufferGain_ = std::max(0.0, view_.cacheSeconds - lastCacheSeconds_) / std::max(0.2, (nowMs - lastCacheMs_) / 1000.0);
+        lastCacheSeconds_ = view_.cacheSeconds;
+        lastCacheMs_ = nowMs;
+    }
+    orbit_.Tick(nowMs, view_.cacheSpeed, bufferGain_, view_.phase == PlayerView::Phase::Resolving);
     clockMs_ = nowMs;
     // The hints leave with the chrome, as RemoteHints hides itself when the controls go.
     if (hintsFromMs_ > 0.0 && nowMs >= hintsFromMs_ && hintsLeaveMs_ <= 0.0 && ChromeOpacity(nowMs) < 1.0) {
@@ -516,7 +521,7 @@ std::vector<std::string> PlayerScreen::Items() const {
     case PlayerView::Phase::Playing: {
         // A live channel has no seeking, as CinemaControls leaves out the two seek buttons.
         std::vector<std::string> items = {kBackKey};
-        if (!view_.live) items.push_back(kDownloadKey);
+        if (!view_.live && !view_.hideDownloads) items.push_back(kDownloadKey);
         if (view_.canSave) items.push_back(kWatchlistKey);
         if (view_.live && view_.liveBehind >= kLiveDriftThreshold) items.push_back(kGoLiveKey);
         items.push_back(kPlayKey);
@@ -1087,28 +1092,16 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
 }
 
 void PlayerScreen::PaintQueue(Painter& painter) const {
-    // `.player__queue`: the veil at 88% black, and the card centred in it.
     painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0, Rgb(0x000000, 0.88));
-    const double mark = Rem(4.5);
-    const Box markBox{width_ / 2.0 - mark / 2.0, height_ / 2.0 - Rem(6.2), mark, mark};
-    // The mark breathes, as TvmMark's looped animation does.
-    const double breath = motion::PrefersReducedMotion(motion_)
-                              ? 1.0
-                              : 0.82 + 0.18 * (0.5 + 0.5 * std::sin(clockMs_ / 1400.0 * 2.0 * kPi));
-    painter.FillRadialGradient(Box{markBox.x - mark, markBox.y - mark, mark * 3.0, mark * 3.0}, markBox.CenterX(),
-                               markBox.CenterY(), mark * 1.4, mark * 1.4,
-                               {GradientStop{0.0, Rgb(0x7AD7FF, 0.30 * breath)}, GradientStop{1.0, Rgb(0x7AD7FF, 0.0)}});
-    painter.FillRoundRect(markBox, mark * 0.22, kMarkPlate);
-    painter.ImageFaded(markBox, kMarkImage, mark * 0.22, 1.0, 0.5, 0.5);
-
-    CenteredText(painter, Box{0.0, markBox.Bottom() + Rem(0.9), width_, Rem(1.2)}, "TVM CINEMA",
-                 TextStyle{Rem(0.74), true, 800}, kFill);
-    const double heading = std::clamp(width_ * 0.034, Rem(1.7), Rem(2.4));
-    CenteredText(painter, Box{0.0, markBox.Bottom() + Rem(2.4), width_, heading * 1.35}, "Getting your stream ready",
-                 TextStyle{heading, true, 650}, kInk);
-    CenteredText(painter, Box{0.0, markBox.Bottom() + Rem(2.6) + heading * 1.4, width_, Rem(1.6)},
-                 "Checking the source and preparing playback. Press Back to cancel.", TextStyle{Rem(1.05), false},
-                 kInkMuted);
+    const double cy = height_ / 2.0 - Rem(2.0);
+    orbit_.Paint(painter, width_ / 2.0, cy, Rem(3.5), view_.bufferPercent / 100.0,
+                 motion::PrefersReducedMotion(motion_) || tokens::reduceMotion, clockMs_);
+    const std::string status = view_.phase == PlayerView::Phase::Resolving ? "Finding the best stream"
+                               : view_.bufferPercent > 0 ? "Buffering " + std::to_string(static_cast<int>(std::round(view_.bufferPercent))) + "%"
+                                                         : "Connecting";
+    CenteredText(painter, Box{0, cy + Rem(5.0), width_, Rem(2)}, status, TextStyle{Rem(1.3), true, 600}, kInk);
+    CenteredText(painter, Box{Rem(2), cy + Rem(7.2), width_ - Rem(4), Rem(1.8)}, view_.title == "Loading" ? "Press Back to cancel" : view_.title,
+                 TextStyle{Rem(1.0), false}, kInkMuted);
 }
 
 void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
@@ -1319,6 +1312,9 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         painter.FillRoundRect(Box{volumeBar.x, volumeBar.y, volumeBar.width * level, volumeBar.height},
                               volumeHeight / 2.0, ink);
     }
+    const double unityX = volumeBar.x + volumeBar.width / 2.0;
+    painter.FillRoundRect(Box{unityX - 0.5, volumeBar.CenterY() - Rem(0.36), 1.0, Rem(0.72)}, 0.5,
+                          Rgb(0xFFFFFF, 0.66 * opacity));
     const double knob = Rem(volumeDragging_ ? 0.95 : 0.75);
     const double knobX = volumeBar.x + volumeBar.width * level;
     painter.FillRoundRect(Box{knobX - knob / 2.0, volumeBar.CenterY() - knob / 2.0 + 1.0, knob, knob}, knob / 2.0,
@@ -1368,20 +1364,11 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
 }
 
 void PlayerScreen::PaintSpinner(Painter& painter) const {
-    // Twelve dots around a ring, the brightest turning once in 900 ms, as the web buffering ring turns.
-    const double radius = Rem(1.6);
-    const double dot = Rem(0.34);
-    const double cx = width_ / 2.0;
-    const double cy = height_ / 2.0;
-    const double turn = motion::PrefersReducedMotion(motion_) ? 0.0 : std::fmod(clockMs_ / kSpinnerPeriodMs, 1.0);
-    for (int i = 0; i < 12; ++i) {
-        const double angle = static_cast<double>(i) / 12.0 * 2.0 * kPi;
-        const double age = std::fmod(turn - static_cast<double>(i) / 12.0 + 1.0, 1.0);
-        const double alpha = 0.18 + 0.82 * (1.0 - age);
-        painter.FillRoundRect(Box{cx + std::sin(angle) * radius - dot / 2.0, cy - std::cos(angle) * radius - dot / 2.0,
-                                  dot, dot},
-                              dot / 2.0, Rgb(0xF6F7F8, alpha));
-    }
+    orbit_.Paint(painter, width_ / 2.0, height_ / 2.0 - Rem(1), Rem(2.6), view_.bufferPercent / 100,
+                 motion::PrefersReducedMotion(motion_) || tokens::reduceMotion, clockMs_);
+    CenteredText(painter, {0, height_ / 2.0 + Rem(3.0), width_, Rem(2)},
+                 "Buffering " + std::to_string(static_cast<int>(std::round(view_.bufferPercent))) + "%",
+                 TextStyle{Rem(1.05), true, 600}, Rgb(0xFFFFFF, 0.95));
 }
 
 void PlayerScreen::PaintError(Painter& painter) const {
@@ -1396,7 +1383,7 @@ void PlayerScreen::PaintError(Painter& painter) const {
                       kInkMuted);
     for (const char* key : {kRetryKey, kErrorBackKey}) {
         const ButtonLook look{std::string_view(key) == kRetryKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)};
-        DrawButton(painter, metrics, *BoxOf(key), std::string_view(key) == kRetryKey ? "Retry" : "Back", look);
+        DrawButton(painter, metrics, *BoxOf(key), std::string_view(key) == kRetryKey ? (view_.errorNextChannel ? "Next channel" : "Retry") : "Back", look);
     }
 }
 

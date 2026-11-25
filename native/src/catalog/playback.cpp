@@ -5,6 +5,9 @@
 #include <map>
 #include <regex>
 #include <set>
+#include <sstream>
+#include <windows.h>
+#include <shlwapi.h>
 
 #include "catalog/catalog_service.h"
 #include "catalog/realdebrid.h"
@@ -26,6 +29,7 @@ bool Matches(const std::string& text, const char* pattern) {
 
 int QualityScore(const std::string& label) {
     if (Matches(label, R"(\b2160p|4k|uhd\b)")) return 40;
+    if (Matches(label, R"(\b1440p\b)")) return 35;
     if (Matches(label, R"(\b1080p\b)")) return 30;
     if (Matches(label, R"(\b720p\b)")) return 15;
     if (Matches(label, R"(\b480p\b)")) return 5;
@@ -136,8 +140,68 @@ std::optional<DebridStream> ParseDebridStream(const nlohmann::json& raw) {
     return stream;
 }
 
+int ScreenClass(int physicalHeight) {
+    for (const int step : {720, 1080, 1440, 2160}) if (physicalHeight <= step) return step;
+    return 2160;
+}
+
+std::optional<HlsSelection> SelectHls(const std::string& master, const std::string& url, int maxHeight) {
+    if (master.rfind("#EXTM3U", 0) != 0 || master.find("#EXT-X-STREAM-INF:") == std::string::npos) return std::nullopt;
+    const auto absolute = [&](const std::string& relative) {
+        wchar_t combined[32768]{};
+        DWORD count = static_cast<DWORD>(std::size(combined));
+        if (FAILED(UrlCombineW(util::ToWide(url).c_str(), util::ToWide(relative).c_str(), combined, &count, 0))) return std::string();
+        const auto result = util::ToUtf8(combined);
+        return http::IsWebUrl(result) ? result : std::string();
+    };
+    struct Variant { std::string tag, uri; int height; };
+    std::vector<Variant> variants;
+    std::vector<std::string> retained;
+    std::istringstream input(master);
+    std::string line, pending;
+    const std::regex resolution(R"((?:^|,)RESOLUTION=\d+x(\d+)(?:,|$))");
+    const std::regex uri(R"hls(URI="([^"]+)")hls");
+    while (std::getline(input, line)) {
+        line = util::Trim(line);
+        if (line.empty()) continue;
+        if (line.rfind("#EXT-X-STREAM-INF:", 0) == 0) { pending = line; continue; }
+        if (!pending.empty() && line.front() != '#') {
+            std::smatch match;
+            int height = 0;
+            const auto attributes = pending.substr(pending.find(':') + 1);
+            if (std::regex_search(attributes, match, resolution)) {
+                try { height = std::stoi(match[1]); } catch (...) { return std::nullopt; }
+            }
+            const auto address = absolute(line);
+            if (address.empty()) return std::nullopt;
+            variants.push_back({pending, address, height}); pending.clear();
+        } else {
+            // An I-frame list is optional and may exceed the display cap; ordinary picture/audio remain intact.
+            if (line.rfind("#EXT-X-I-FRAME-STREAM-INF:", 0) == 0) continue;
+            std::smatch match;
+            if (std::regex_search(line, match, uri)) {
+                const auto address = absolute(match[1]);
+                if (address.empty()) return std::nullopt;
+                line.replace(static_cast<std::size_t>(match.position(1)), static_cast<std::size_t>(match.length(1)), address);
+            }
+            retained.push_back(line);
+        }
+    }
+    HlsSelection result;
+    for (const auto& variant : variants) if (variant.height > 0) result.heights.push_back(variant.height);
+    std::sort(result.heights.begin(), result.heights.end());
+    result.heights.erase(std::unique(result.heights.begin(), result.heights.end()), result.heights.end());
+    if (result.heights.empty()) return std::nullopt;
+    result.height = result.heights.front();
+    for (int height : result.heights) if (height <= maxHeight) result.height = height;
+    for (const auto& tag : retained) result.master += tag + '\n';
+    for (const auto& variant : variants) if (variant.height == result.height) result.master += variant.tag + '\n' + variant.uri + '\n';
+    return result;
+}
+
 int StreamHeight(const std::string& label) {
     if (Matches(label, R"(\b2160p|4k|uhd\b)")) return 2160;
+    if (Matches(label, R"(\b1440p\b)")) return 1440;
     if (Matches(label, R"(\b1080p\b)")) return 1080;
     if (Matches(label, R"(\b720p\b)")) return 720;
     if (Matches(label, R"(\b480p\b)")) return 480;

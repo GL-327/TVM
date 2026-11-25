@@ -280,30 +280,30 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
     // labels stay legible without the glass losing the colour behind it. Frosted glass (Settings > Look) scatters
     // the picture much further and carries a thicker wash, like Apple's tinted setting.
     const bool lensKind = style.kind != ui::GlassKind::Card;
-    const bool frosted = ui::tokens::frostedGlass || style.frosted;
+    const bool frosted = ui::tokens::frostedGlass || style.frosted || style.kind == ui::GlassKind::Panel;
     double behind = -1.0;
     if (!style.rimOnly && lensKind && lens_ != nullptr &&
         lens_->DrawRefraction(box, clampedRadius, alpha, frosted, &behind)) {
         // 0 over a dark picture, 1 over a bright one.
         const double bright = behind < 0.0 ? 0.5 : std::clamp((behind - 0.30) / 0.45, 0.0, 1.0);
-        const double plate = style.focusPlate ? emphasis : 0.0;
+        const double plate = style.focusPlate ? emphasis * 0.18 : 0.0;
         if (style.activeTab) {
-            FillRoundRect(box, clampedRadius, white((isLight ? 0.86 : 0.74) - 0.05 * press));
+            FillRoundRect(box, clampedRadius, white(0.22 + 0.12 * press));
         } else if (isLight) {
             const double wash = cardOrPanel ? 0.55 : 0.22 + 0.18 * (1.0 - bright);
             FillRoundRect(box, clampedRadius,
                           ui::Rgb(0xFDFCFD, std::clamp(wash + (frosted ? 0.22 : 0.0) + 0.08 * emphasis - 0.05 * press,
                                                        0.0, 1.0) * alpha));
         } else {
-            const double wash = cardOrPanel ? 0.50 : 0.20 + 0.24 * bright;
+            const double wash = 0.10 * bright;
             FillRoundRect(box, clampedRadius,
-                          ui::Rgb(0x202020, std::clamp(wash + (frosted ? 0.12 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
+                          ui::Rgb(0x000000, std::clamp(wash + (frosted ? 0.12 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
             // Light scattered inside the glass: a breath of white, milkier when frosted, brighter under focus.
-            FillRoundRect(box, clampedRadius, white((frosted ? 0.08 : 0.02) + 0.06 * emphasis - 0.02 * press));
+            FillRoundRect(box, clampedRadius, white((ui::tokens::frostedGlass ? 0.16 : 0.09) + 0.10 * emphasis + 0.12 * press));
         }
         if (style.tint.has_value() && !style.activeTab) {
             ui::Color tint = *style.tint;
-            tint.a = std::min(0.04, tint.a) * alpha;
+            tint.a = (style.selected ? 0.55 : std::min(0.04, tint.a)) * alpha;
             FillRoundRect(box, clampedRadius, tint);
         }
         // iOS 27's dark contour gives depth on any backdrop: stronger in dark mode, faint on light glass, gone under
@@ -316,7 +316,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                        contour);
         // Focus as on Apple TV: the glass fills with a bright plate, a touch brighter at the top.
         if (plate > 0.0) {
-            const double top = (isLight ? 0.97 : 0.94) - 0.08 * press;
+            const double top = 0.22 + 0.12 * press;
             fillVertical(box, clampedRadius,
                          {ui::GradientStop{0.0, white(top * plate)}, ui::GradientStop{1.0, white((top - 0.12) * plate)}});
         }
@@ -324,6 +324,10 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         const double sheen = ((style.activeTab ? 0.10 : 0.07) + 0.05 * emphasis - 0.03 * press) * (1.0 - plate);
         drawCaustic(sheen);
         drawSweep(plate);
+        const ui::Box darkRim{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
+        StrokeRoundRect(darkRim, std::max(0.0, clampedRadius - 1.0), 1.0, black(0.22));
+        FillRoundRectLinear(box, clampedRadius, box.x, box.y, box.Right(), box.Bottom(),
+                           {{0.0, white(style.activeTab ? 0.40 : 0.28)}, {0.45, white(0.0)}, {1.0, white(0.0)}});
         if (style.activeTab || plate > 0.5) {
             const ui::Box inner{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
             StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.0), 1.0, white(0.30));
@@ -402,32 +406,32 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                 target_->FillRoundedRectangle(ToRounded(box, clampedRadius), backdropBrush_.Get());
                 backdropBrush_->SetOpacity(1.0f);
             }
-            FillRoundRect(box, clampedRadius, white((isLight ? 0.94 : 0.84) - 0.05 * press));
+            FillRoundRect(box, clampedRadius, white(0.22 + 0.12 * press));
         } else if (isLight) {
             const double base = sampled ? (cardOrPanel ? 0.62 : 0.34) : (cardOrPanel ? 0.86 : 0.70);
             FillRoundRect(box, clampedRadius, white(base + 0.10 * emphasis - 0.06 * press));
         } else {
-            const double dim = sampled ? (cardOrPanel ? 0.42 : 0.14) : (cardOrPanel ? 0.72 : 0.50);
+            const double dim = sampled ? 0.10 : (cardOrPanel ? 0.42 : 0.14);
             FillRoundRect(box, clampedRadius, ui::Rgb(0x0B0D12, std::clamp(dim + 0.08 * press, 0.0, 1.0) * alpha));
             FillRoundRect(box, clampedRadius, white(0.07 + 0.06 * emphasis - 0.03 * press));
         }
         // A caller's tint only colours the glass faintly, so it can echo the brand but never muddy the material.
         if (style.tint.has_value() && !style.activeTab) {
             ui::Color tint = *style.tint;
-            tint.a = std::min(0.06, tint.a) * alpha;
+            tint.a = (style.selected ? 0.55 : std::min(0.06, tint.a)) * alpha;
             FillRoundRect(box, clampedRadius, tint);
         }
 
         // Apple TV focus on the frosted path too, so a darkened label always sits on a bright plate.
         if (style.focusPlate && emphasis > 0.0 && !style.activeTab) {
-            const double top = (isLight ? 0.97 : 0.94) - 0.08 * press;
+            const double top = 0.22 + 0.12 * press;
             fillVertical(box, clampedRadius,
                          {ui::GradientStop{0.0, white(top * emphasis)},
                           ui::GradientStop{1.0, white((top - 0.12) * emphasis)}});
         }
 
         // 7. The top gloss and focus sweep on glass drawn without a lens (player controls over video, cards).
-        const double plate = style.focusPlate ? emphasis : 0.0;
+        const double plate = style.focusPlate ? emphasis * 0.18 : 0.0;
         const double sheen = ((style.activeTab ? 0.18 : (cardOrPanel ? 0.09 : 0.14)) + 0.06 * emphasis - 0.04 * press) *
                              (1.0 - 0.7 * plate);
         drawCaustic(sheen);
@@ -472,6 +476,12 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         // On a pale page a white edge alone vanishes, so a hairline of shade defines the shape.
         const ui::Box rim{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
         StrokeRoundRect(rim, clampedRadius + 0.5, 1.0, black(0.08));
+    }
+    if (!style.rimOnly) {
+        const ui::Box inner{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
+        StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.0), 1.0, black(0.22));
+        FillRoundRectLinear(box, clampedRadius, box.x, box.y, box.Right(), box.Bottom(),
+                           {{0.0, white(style.activeTab ? 0.40 : 0.28)}, {0.45, white(0.0)}, {1.0, white(0.0)}});
     }
     edge(style.activeTab ? 1.15 : 1.05);
 }

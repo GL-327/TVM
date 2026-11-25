@@ -9,6 +9,8 @@
 #include "ui/downloads_screen.h"
 #include "ui/pending_screen.h"
 #include "ui/profile_chooser.h"
+#include "ui/profile_editor.h"
+#include "ui/glass_styles.h"
 #include "ui/settings_screen.h"
 #include "ui/widget.h"
 
@@ -96,6 +98,49 @@ void Shell::Paint(Painter& painter) const {
     for (const nav::ViewEntry& modal : nav::OpenModals(stack_)) {
         screens_.at(modal.key)->Paint(painter);
     }
+    if (const auto back = BackBox()) {
+        painter.Glass(*back, back->height / 2, backFocused_ ? glass::NavSelected() : glass::NavCapsule());
+        const double inset = back->width * 0.24;
+        painter.Path({back->x + inset, back->y + inset, back->width - 2 * inset, back->height - 2 * inset}, 24, "M15 5l-7 7 7 7", {{0,0,0,0}, Rgb(0xFFFFFF, 0.95), 2.3, false});
+    }
+    if (releaseCard_ && ActiveScreenName() == "home") {
+        const Box card = ReleaseBox();
+        const double rem = ViewportRem(width_, height_);
+        painter.Glass(card, 18 * rem / 16, glass::MenuPanel());
+        const double x = card.x + 1.3 * rem, width = card.width - 2.6 * rem;
+        painter.Text({x, card.y + rem, width, 2 * rem}, "Updated to " + releaseCard_->version, {1.15 * rem, true, 650}, Rgb(0xFFFFFF, 0.95));
+        painter.Paragraph({x, card.y + 3 * rem, width, 3.5 * rem}, releaseCard_->title, {1.05 * rem, true, 600}, Rgb(0xFFFFFF, 0.95));
+        double y = card.y + 7 * rem;
+        for (std::size_t i = 0; i < std::min<std::size_t>(4, releaseCard_->highlights.size()); ++i) {
+            painter.Paragraph({x, y, width, 3.2 * rem}, releaseCard_->highlights[i], {0.88 * rem, false}, Rgb(0xFFFFFF, 0.66));
+            y += 3.6 * rem;
+        }
+        painter.Text({x, card.Bottom() - 3.5 * rem, width, 2.5 * rem}, "All changes", {0.95 * rem, true, 600}, Rgb(0x9DBDFF));
+    }
+}
+
+std::optional<Box> Shell::BackBox() const {
+    const auto name = ActiveScreenName();
+    if (!nav::CanGoBack(stack_) || name == "player" || name == "details" || name == "profile-menu") return std::nullopt;
+    const double rem = ViewportRem(width_, height_);
+    const double side = std::max(44.0, 2.75 * rem);
+    return Box{1.0 * rem, 0.5 * rem, side, side};
+}
+Box Shell::ReleaseBox() const {
+    const double rem = ViewportRem(width_, height_);
+    const double width = std::min(width_ - 3 * rem, 31 * rem);
+    return {width_ - width - 1.5 * rem, height_ - 28.5 * rem, width, 27 * rem};
+}
+std::optional<std::string> Shell::Hit(double x, double y) {
+    const auto inside = [&](const Box& box) { return x >= box.x && y >= box.y && x < box.Right() && y < box.Bottom(); };
+    if (const auto back = BackBox(); back && inside(*back)) return "shell-back";
+    if (releaseCard_ && ActiveScreenName() == "home" && inside(ReleaseBox())) return "shell-changelog";
+    return Top().ItemAt(x, y);
+}
+bool Shell::ActivateChrome(const std::string& key, double nowMs) {
+    if (key == "shell-back") { backFocused_ = false; Back(nowMs); return true; }
+    if (key == "shell-changelog") { Command command; command.name = "changelog"; Open(command, nowMs); return true; }
+    return false;
 }
 
 void Shell::SetTitleInfo(const std::string& id, const TitleInfo& info) {
@@ -210,11 +255,13 @@ void Shell::KeyPressed() {
 void Shell::Navigate(nav::Direction direction, double nowMs) {
     rehoverUntilMs_ = 0.0;
     KeyPressed();
-    Top().Navigate(direction, nowMs);
+    if (backFocused_) { if (direction == nav::Direction::Down || direction == nav::Direction::Right) backFocused_ = false; return; }
+    if (!Top().Navigate(direction, nowMs) && direction == nav::Direction::Up && BackBox()) backFocused_ = true;
 }
 
 void Shell::Select(double nowMs) {
     KeyPressed();
+    if (backFocused_) { ActivateChrome("shell-back", nowMs); return; }
     const std::optional<Command> command = Top().Select(nowMs);
     if (command.has_value()) Open(*command, nowMs);
     ApplyMotionIfChanged();
@@ -222,6 +269,7 @@ void Shell::Select(double nowMs) {
 
 bool Shell::Back(double nowMs) {
     KeyPressed();
+    backFocused_ = false;
     if (Top().CloseOverlay(nowMs)) return true;
     if (!nav::CanGoBack(stack_)) return false;
 
@@ -316,7 +364,7 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
     // The pages the app fills in from an InfoView.
     static const std::set<std::string> kInfoPages = {
         "legal", "donate", "changelog", "diagnostics", "system-info", "setup", "recovery",
-        "live-check", "mail-settings", "accounts", "developer", "apps", "confirm", "account"};
+        "live-check", "mail-settings", "accounts", "developer", "apps", "confirm", "account", "services"};
     if (kInfoPages.contains(entry.name)) return std::make_unique<InfoScreen>();
     if (entry.name == "service") {
         // A service hub is a stream-style scene in the service's colours. The app fills it in.
@@ -327,6 +375,7 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
         scene->SetView(view, 0.0);
         return scene;
     }
+    if (entry.name == "profile-editor" || entry.name == "pin-pad") return std::make_unique<ProfileEditor>();
     if (entry.name == "profiles") return std::make_unique<ProfilesScreen>();
     if (entry.name == "downloads") return std::make_unique<DownloadsScreen>();
     if (entry.name == "chooser") return std::make_unique<ProfileChooser>();
@@ -403,9 +452,9 @@ void Shell::HoverAt(double x, double y, double nowMs) {
     // out from under the pointer. Over empty space the focus stays put for the remote, but its hover look eases
     // away, so nothing stays lit after the pointer has left it.
     Top().PointerAt(x, y, nowMs);
-    const std::optional<std::string> item = Top().ItemAt(x, y);
-    // Over a rail's arrow only the arrow is lit (PointerAt): the poster beneath it lets its hover go.
-    if (!item.has_value() || item->rfind("rail-", 0) == 0) {
+    const std::optional<std::string> item = Hit(x, y);
+    // Chrome and rail arrows must not light or focus the poster beneath them.
+    if (!item.has_value() || item->rfind("rail-", 0) == 0 || *item == "shell-back" || *item == "shell-changelog") {
         Top().PointerLeft(nowMs);
         return;
     }
@@ -421,7 +470,7 @@ void Shell::MouseLeave(double nowMs) {
 
 void Shell::MouseDown(double x, double y, double nowMs) {
     mouse_.ShowCursor();
-    const std::optional<std::string> item = Top().ItemAt(x, y);
+    const std::optional<std::string> item = Hit(x, y);
     clicks_.Press(0, x, y, item);
     Top().PressedElsewhere(item, nowMs);
     // The pressed look shows at once; the action still waits for the release, as before.
@@ -456,6 +505,7 @@ void Shell::MouseUp(double x, double y, double nowMs) {
     const std::optional<std::string> item = clicks_.Release(0, x, y);
     if (!item.has_value()) return;
     if (item->rfind("rail-", 0) == 0) rehoverUntilMs_ = nowMs + kRehoverMs;
+    if (ActivateChrome(*item, nowMs)) return;
     const std::optional<Command> command = Top().ActivateItem(*item, nowMs);
     if (command.has_value()) Open(*command, nowMs);
     ApplyMotionIfChanged();
@@ -483,17 +533,6 @@ void Shell::Wheel(double x, double y, double deltaX, double deltaY, bool shift, 
 }
 
 void Shell::Pan(const ScrollSurface& surface, double delta, nav::WheelMode mode, double nowMs) {
-    // Allow horizontal mouse/trackpad wheel at rail ends to wrap smoothly to the opposite end.
-    if (surface.kind == ScrollSurface::Kind::Rail && surface.maxScroll > 0.0) {
-        if (delta < 0.0 && surface.scroll <= 0.5 && surface.target <= 0.5) {
-            Top().AnimateScroll(surface, surface.maxScroll, nowMs);
-            return;
-        }
-        if (delta > 0.0 && surface.scroll >= surface.maxScroll - 0.5 && surface.target >= surface.maxScroll - 0.5) {
-            Top().AnimateScroll(surface, 0.0, nowMs);
-            return;
-        }
-    }
     // Pixel deltas from a trackpad already carry momentum, so they move at once.
     // Notches ease, and each one adds to the target a spin is heading for.
     if (mode == nav::WheelMode::Pixel && std::fabs(delta) < kWheelInstantPx) {
@@ -507,7 +546,7 @@ void Shell::TouchDown(std::uint32_t pointerId, double x, double y, double nowMs)
     touchRail_.reset();
     touchPage_.reset();
 
-    const std::optional<std::string> item = Top().ItemAt(x, y);
+    const std::optional<std::string> item = Hit(x, y);
     std::optional<ScrollSurface> rail = Top().SurfaceAt(x, y, nav::Axis::X);
     if (rail.has_value() && !(rail->kind == ScrollSurface::Kind::Rail && rail->canPan)) rail.reset();
     std::optional<ScrollSurface> page = Top().SurfaceAt(x, y, nav::Axis::Y);
@@ -548,6 +587,7 @@ void Shell::TouchUp(std::uint32_t pointerId, double x, double y, double nowMs) {
     touchPage_.reset();
 
     if (release.tapKey.has_value()) {
+        if (ActivateChrome(*release.tapKey, nowMs)) return;
         const std::optional<Command> command = Top().ActivateItem(*release.tapKey, nowMs);
         if (command.has_value()) Open(*command, nowMs);
     }

@@ -80,6 +80,7 @@ constexpr motion::CubicBezier kHeroEase{0.2, 0.65, 0.3, 1.0};
 constexpr double kHeroFadeSpan = 0.92;
 constexpr char kHeroPlayKey[] = "hero-play";
 constexpr char kHeroInfoKey[] = "hero-info";
+constexpr char kHeroImdbKey[] = "hero-imdb";
 constexpr std::string_view kWatchLabel = "Play";
 constexpr std::string_view kLearnLabel = "Details";
 constexpr std::string_view kDefaultMetaLabel = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
@@ -117,7 +118,7 @@ constexpr double kButtonGapRowRem = 0.75;
 constexpr char kSearchGlyph[] = "M14 5a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM21 21l6 6";
 
 bool IsHeroKey(const std::string& key) {
-    return key == kHeroPlayKey || key == kHeroInfoKey;
+    return key == kHeroPlayKey || key == kHeroInfoKey || key == kHeroImdbKey;
 }
 
 // The colour at a fraction of its own opacity.
@@ -298,7 +299,7 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     // A new view of the same page (the catalogue or the account refreshed) keeps the viewer's place exactly: the
     // page's scroll, each rail's scroll, and the focused title in its own rail. Nothing moves. A different page
     // starts at the top.
-    const bool samePage = view.style == style_ && view.pageKey == pageKey_ && !rails_.empty();
+    const bool samePage = view.style == style_ && view.pageKey == pageKey_;
     const double pageWas = pageCamera_.active() ? pageCamera_.target() : pageScroll_;
     std::map<std::string, double> railWas;
     std::string focusedRail;
@@ -345,10 +346,14 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     if (samePage) {
         for (std::size_t r = 0; r < rails_.size() && r < railIds_.size(); ++r) {
             const auto was = railWas.find(railIds_[r]);
-            if (was != railWas.end()) rails_[r]->SetScroll(std::clamp(was->second, 0.0, rails_[r]->MaxScroll()));
+            if (was != railWas.end()) rails_[r]->SetScroll(std::clamp(was->second + (rails_[r]->Loop() && was->second < Rail::kRingOrigin / 2.0 ? Rail::kRingOrigin : 0.0), 0.0, rails_[r]->MaxScroll()));
         }
         pageScroll_ = std::clamp(pageWas, 0.0, MaxPageScroll());
         Arrange();
+        if (focused == std::optional<std::string>(kSearchFieldKey)) {
+            FocusKey(kSearchFieldKey, nowMs, false);
+            return;
+        }
         // The focused title, in the rail it was in when it is still there, else wherever it now is. No camera.
         if (itemId.has_value()) {
             std::optional<std::string> key;
@@ -594,6 +599,7 @@ void Scene::Build(const std::vector<RailData>& rails) {
     railOffset_.clear();
     rails_.clear();
     railIds_.clear();
+    railMore_.clear();
     if (arrowRail_.has_value() && *arrowRail_ >= rails.size()) arrowRail_.reset();
 
     // Search's results breathe more than the browse rails: more space between rows and between posters.
@@ -605,6 +611,8 @@ void Scene::Build(const std::vector<RailData>& rails) {
         if (!spec.title.empty()) section->Add(std::make_unique<Heading>(spec.title, kHeadingSizeRem));
 
         auto rail = std::make_unique<Rail>(searchField_ ? kSearchRailSpacingRem : kRailSpacingRem, kRailInsetRem);
+        rail->SetLoop(spec.loop);
+        railMore_.push_back(spec.more);
         railOffset_.push_back(cards_.size());
         for (std::size_t i = 0; i < spec.cards.size(); ++i) {
             const CardData& data = spec.cards[i];
@@ -629,6 +637,19 @@ void Scene::Build(const std::vector<RailData>& rails) {
 void Scene::SetRails(const std::vector<RailData>& rails) {
     Build(rails);
     if (viewportWidth_ > 0.0) Layout(viewportWidth_, viewportHeight_);
+}
+
+std::vector<std::string> Scene::RailsNearEnd() const {
+    std::vector<std::string> ids;
+    for (std::size_t r = 0; r < rails_.size(); ++r) {
+        if (!railMore_[r] || CardCount(r) == 0) continue;
+        const auto& row = *rails_[r];
+        if (row.box().Bottom() < HeaderTop() || row.box().y > viewportHeight_) continue;
+        const double last = row.ContentLeftOf(CardCount(r) - 1);
+        const double step = CardCount(r) > 1 ? row.ContentLeftOf(1) - row.ContentLeftOf(0) : metrics_.Rem(12);
+        if (last - row.scroll() - row.box().width <= step * 12.0) ids.push_back(railIds_[r]);
+    }
+    return ids;
 }
 
 void Scene::SetStatus(std::string status) {
@@ -740,7 +761,7 @@ Scene::HeroBoxes Scene::HeroLayout() const {
         boxes.body = Box{x, bottom - metrics_.Rem(kNoticeBodyRem),
                          std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), metrics_.Rem(kNoticeBodyRem)};
         bottom = boxes.body.y - metrics_.Rem(kHeroKickerMarginRem);
-        const double noticeTitle = metrics_.Rem(kNoticeTitleRem * 1.2);
+        const double noticeTitle = metrics_.Rem(kNoticeTitleRem * (heroes_[heroIndex_].title.size() > 36 ? 2.4 : 1.2));
         boxes.title = Box{x, bottom - noticeTitle, std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), noticeTitle};
         bottom = boxes.title.y - metrics_.Rem(kHeroKickerMarginRem);
         boxes.kicker = Box{x, bottom - metrics_.Rem(kHeroKickerHeightRem), copyWidth, metrics_.Rem(kHeroKickerHeightRem)};
@@ -763,13 +784,34 @@ Scene::HeroBoxes Scene::HeroLayout() const {
     boxes.meta = Box{x, bottom - metaHeight, copyWidth, metaHeight};
     bottom = boxes.meta.y - metrics_.Rem(kHeroMetaMarginTopRem);
 
-    const double titleHeight = metrics_.Rem(kHeroTitleFontRem * kHeroTitleLineRem);
+    const double titleHeight = metrics_.Rem(heroes_[heroIndex_].title.size() > 36 ? 7.0 : kHeroTitleFontRem * kHeroTitleLineRem);
     boxes.title = Box{x, bottom - titleHeight, copyWidth, titleHeight};
     bottom = boxes.title.y - metrics_.Rem(kHeroKickerMarginRem);
 
     const double kickerHeight = metrics_.Rem(kHeroKickerHeightRem);
     boxes.kicker = Box{x, bottom - kickerHeight, copyWidth, kickerHeight};
     return boxes;
+}
+
+std::optional<Box> Scene::HeroRatingBox() const {
+    if (!HeroActive() || heroes_[heroIndex_].rating.empty()) return std::nullopt;
+    const auto boxes = HeroLayout();
+    const double width = metrics_.Rem(9.5), height = metrics_.Rem(2.3);
+    double x = boxes.learn.Right() + metrics_.Rem(1.2);
+    double y = boxes.learn.CenterY() - height / 2;
+    if (x + width > viewportWidth_ - metrics_.Rem(2.5)) { x = boxes.watch.x; y = boxes.watch.y - height - metrics_.Rem(0.7); }
+    return Box{x, y, width, height};
+}
+void Scene::PaintHeroRating(Painter& painter) const {
+    const auto box = HeroRatingBox();
+    if (!box) return;
+    const double logoWidth = metrics_.Rem(3.4);
+    painter.FillRoundRect(*box, metrics_.Rem(0.35), Rgb(0, 0.18));
+    painter.FillRoundRect({box->x, box->y, logoWidth, box->height}, metrics_.Rem(0.3), Rgb(0xF5C518));
+    painter.Text({box->x + metrics_.Rem(0.25), box->y, logoWidth, box->height}, "IMDb", {metrics_.Rem(1), true, 800}, Rgb(0));
+    painter.Text({box->x + logoWidth + metrics_.Rem(0.5), box->y, metrics_.Rem(2.4), box->height}, heroes_[heroIndex_].rating, {metrics_.Rem(1.1), true, 650}, Rgb(0xFFFFFF, 0.95));
+    painter.Text({box->x + logoWidth + metrics_.Rem(3), box->y, metrics_.Rem(2.2), box->height}, "/10", {metrics_.Rem(0.8), false}, Rgb(0xFFFFFF, 0.66));
+    if (ShowsFocus(kHeroImdbKey)) painter.StrokeRoundRect(*box, box->height / 2, 1.5, Rgb(0xFFFFFF, 0.7));
 }
 
 void Scene::PaintHeroBackdrop(Painter& painter) const {
@@ -804,6 +846,12 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
     }
     if (!artCurrent_.empty()) {
         painter.ImageFaded(backdrop, artCurrent_, 0.0, fade * dissolve, 0.7, 0.2);
+    }
+
+    if (data.accent) {
+        painter.FillRadialGradient(backdrop, backdrop.x + backdrop.width * 0.3, backdrop.y + backdrop.height * 0.35,
+            backdrop.width * 0.65, backdrop.height * 0.8,
+            {{0.0, WithAlpha(*data.accent, fade * 0.16)}, {1.0, WithAlpha(*data.accent, 0.0)}});
     }
 
     // Left and bottom readable scrims (Study 03: dark behind left headline & rails, clear over right lighthouse).
@@ -852,15 +900,20 @@ void Scene::PaintHero(Painter& painter) const {
         cardGlass.tint = tokens::kSurface;
         painter.Glass(card, metrics_.Rem(1.25), cardGlass);
 
-        painter.Text(boxes.kicker, data.itemId == "account-gate" ? "TVM" : "TVM STREAM", kickerStyle,
+        painter.Text(boxes.kicker, data.accent.has_value() ? data.meta : data.itemId == "account-gate" ? "TVM" : "TVM STREAM", kickerStyle,
                      tokens::kAccentStrong);
-        painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kNoticeTitleRem), true, 700},
-                     WithAlpha(tokens::kText, titleAlpha));
+        if (data.logoUrl.empty() || !painter.ImageContain(boxes.title, data.logoUrl))
+            painter.Paragraph(boxes.title, data.title, TextStyle{metrics_.Rem(kNoticeTitleRem), true, 700},
+                              WithAlpha(tokens::kText, titleAlpha));
         painter.Paragraph(boxes.body, data.body, TextStyle{metrics_.Rem(1.125), false}, tokens::kTextMuted);
+        const Color previousPrimary = tokens::palette.primary;
+        if (data.accent) { tokens::palette.primary = *data.accent; tokens::palette.primary.a = 0.55; }
         DrawButton(painter, metrics_, boxes.watch, PlayLabel(),
                    ButtonLook{true, watchFocused, watchFocused ? std::max(EmphasisOf(kHeroPlayKey), 1.0) : EmphasisOf(kHeroPlayKey)});
         DrawButton(painter, metrics_, boxes.learn, InfoLabel(),
                    ButtonLook{false, learnFocused, learnFocused ? std::max(EmphasisOf(kHeroInfoKey), 1.0) : EmphasisOf(kHeroInfoKey)});
+        tokens::palette.primary = previousPrimary;
+        PaintHeroRating(painter);
         return;
     }
 
@@ -870,8 +923,11 @@ void Scene::PaintHero(Painter& painter) const {
     }
 
     // 1. 72px Bold mixed-case hero title.
-    painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kHeroTitleFontRem), true, 700},
-                 WithAlpha(tokens::kText, titleAlpha));
+    if (data.title.size() > 36) {
+        painter.Paragraph(boxes.title, data.title, TextStyle{metrics_.Rem(3.0), true, 700}, WithAlpha(tokens::kText, titleAlpha));
+    } else {
+        painter.Text(boxes.title, data.title, TextStyle{metrics_.Rem(kHeroTitleFontRem), true, 700}, WithAlpha(tokens::kText, titleAlpha));
+    }
 
     // 2. 22px Regular metadata line ("Movie · Drama · 2h 6m · 4K").
     const std::string metaText = !data.meta.empty() ? data.meta : std::string(kDefaultMetaLabel);
@@ -904,6 +960,8 @@ void Scene::PaintHero(Painter& painter) const {
         glass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
         glass.pressAmount = press;
         glass.focusPlate = true;
+        glass.selected = withPlayGlyph;
+        if (withPlayGlyph) glass.tint = data.accent.value_or(Rgb(0x2F6BFF));
         glass.sweep = SweepOf(key);
         glass.reduceTransparency = tokens::reduceTransparency;
         glass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
@@ -912,7 +970,7 @@ void Scene::PaintHero(Painter& painter) const {
         painter.Glass(shape, radius, glass);
 
         // The label darkens as the plate brightens behind it.
-        const Color ink = tokens::reduceTransparency ? tokens::kText : Mix(tokens::kText, kPlateInk, emphasis);
+        const Color ink = Rgb(0xFFFFFF, 0.95);
         const TextStyle labelStyle{metrics_.Rem(kHeroButtonFontRem), true, 600};
         const double textWidth = painter.MeasureText(label, labelStyle);
         if (withPlayGlyph) {
@@ -932,6 +990,8 @@ void Scene::PaintHero(Painter& painter) const {
 
     paintHeroPill(boxes.watch, PlayLabel(), kHeroPlayKey, watchFocused, true);
     paintHeroPill(boxes.learn, InfoLabel(), kHeroInfoKey, learnFocused, false);
+
+    PaintHeroRating(painter);
 
     // 4. Carousel indicator dots when there is more than one hero title.
     if (heroes_.size() > 1) {
@@ -1438,7 +1498,7 @@ void Scene::PaintStreamChrome(Painter& painter) const {
             if (initial[0] >= 'a' && initial[0] <= 'z') initial[0] = static_cast<char>(initial[0] - 'a' + 'A');
             const TextStyle orbText{metrics_.Rem(1.35), true, 700};
             const double tw = painter.MeasureText(initial, orbText);
-            const Color orbInk = tokens::reduceTransparency ? tokens::kText : Mix(tokens::kText, kPlateInk, emphasis);
+            const Color orbInk = tokens::reduceTransparency ? tokens::kText : Mix(tokens::kText, Rgb(0xFFFFFF), emphasis);
             painter.Text(Box{orbShape.CenterX() - tw / 2.0, orbShape.y, tw + 4.0, orbShape.height}, initial, orbText,
                          Faded(orbInk, orbStage));
             continue;
@@ -1663,6 +1723,10 @@ void Scene::SyncFocus() {
             button.rect = nav::Rect{box.x, box.y, box.Right(), box.Bottom()};
             focus_.Upsert(button);
         }
+        if (const auto box = HeroRatingBox()) {
+            nav::FocusNode button; button.key = kHeroImdbKey; button.parent = kPageKey;
+            button.rect = nav::Rect{box->x, box->y, box->Right(), box->Bottom()}; focus_.Upsert(button);
+        }
     }
 }
 
@@ -1819,6 +1883,8 @@ bool Scene::NavigateFocus(nav::Direction direction, double nowMs) {
 
     // The hero's two glass pills (Play and Details) sit side by side, both for regular titles and notices.
     if (HeroActive() && IsHeroKey(*focused)) {
+        if (*focused == kHeroInfoKey && direction == nav::Direction::Right && HeroRatingBox()) { FocusKey(kHeroImdbKey, nowMs, true); return true; }
+        if (*focused == kHeroImdbKey && direction == nav::Direction::Left) { FocusKey(kHeroInfoKey, nowMs, true); return true; }
         const bool onPlay = *focused == kHeroPlayKey;
         const HeroBoxes boxes = HeroLayout();
         const bool stacked = std::abs(boxes.watch.CenterY() - boxes.learn.CenterY()) > 4.0;
@@ -1953,7 +2019,8 @@ bool Scene::NavigateFocus(nav::Direction direction, double nowMs) {
         const std::optional<int> wrapped =
             nav::RowWrapIndex(static_cast<int>(current.index), direction, static_cast<int>(count));
         if (wrapped.has_value()) {
-            target = GlobalIndex(current.rail, static_cast<std::size_t>(*wrapped));
+            const auto index = static_cast<std::size_t>(*wrapped);
+            target = GlobalIndex(current.rail, index);
         }
     } else {
         const auto row = nav::NeighborRowIndex(static_cast<int>(current.rail), direction,
@@ -1999,6 +2066,9 @@ std::optional<Command> Scene::Select(double nowMs) {
 
     // Watch opens the title on the hero, as its card would. Browse opens the TVM Stream page.
     // On TVM Stream both open the billboard's title, as Library.tsx does. A notice brings its own commands.
+    if (*focused == kHeroImdbKey && HeroActive()) {
+        Command command; command.name = "imdb-open"; command.action = true; command.params["id"] = heroes_[heroIndex_].itemId; return command;
+    }
     if (IsHeroKey(*focused) && HeroActive()) {
         const HeroData& hero = heroes_[heroIndex_];
         const bool play = *focused == kHeroPlayKey;
@@ -2077,6 +2147,7 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
         const HeroBoxes boxes = HeroLayout();
         if (Contains(boxes.watch, x, y)) return std::string(kHeroPlayKey);
         if (Contains(boxes.learn, x, y)) return std::string(kHeroInfoKey);
+        if (const auto box = HeroRatingBox(); box && Contains(*box, x, y)) return std::string(kHeroImdbKey);
     }
     // A rail's arrows sit over its cards, so they are found first.
     if (arrowRail_.has_value() && arrowFade_.target() > 0.0) {
@@ -2089,9 +2160,7 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
     }
     for (std::size_t r = 0; r < rails_.size(); ++r) {
         if (!Contains(rails_[r]->box(), x, y)) continue;
-        for (std::size_t i = 0; i < CardCount(r); ++i) {
-            if (Contains(CardBox(r, i), x, y)) return cards_.at(GlobalIndex(r, i)).key;
-        }
+        if (const auto index = rails_[r]->IndexAt(x)) return cards_.at(GlobalIndex(r, *index)).key;
     }
     return std::nullopt;
 }

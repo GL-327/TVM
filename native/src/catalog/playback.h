@@ -70,6 +70,16 @@ std::vector<DebridStream> KeepLanguage(const std::vector<DebridStream>& streams,
 std::optional<DebridStream> ParseDebridStream(const nlohmann::json& raw);
 // The picture height a release names, 1080 when it names none.
 int StreamHeight(const std::string& label);
+// Physical display height rounded up to the next streaming ladder step.
+int ScreenClass(int physicalHeight);
+// Keep the best fitting HLS picture variants and their audio groups. Relative addresses become absolute
+// because the resulting master is played from a local cache file.
+struct HlsSelection {
+    std::string master;
+    std::vector<int> heights;
+    int height = 0;
+};
+std::optional<HlsSelection> SelectHls(const std::string& master, const std::string& url, int maxHeight);
 // A release's name in a few words for the quality menu: its source, its dynamic range and its size, such as
 // "BluRay \xC2\xB7 HDR \xC2\xB7 12.4 GB". Empty when the name says none of these.
 std::string StreamTags(const std::string& text);
@@ -103,6 +113,10 @@ struct Resolution {
     // Every ranked stream for a catalogue title, best first, and the one that is playing.
     std::vector<StreamChoice> choices;
     std::size_t chosen = 0;
+    std::string hlsSource;
+    std::vector<int> hlsHeights;
+    int hlsHeight = 0;
+    int bestHeight = 0;
 
     bool ok() const { return !url.empty(); }
 };

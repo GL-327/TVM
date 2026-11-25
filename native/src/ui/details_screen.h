@@ -62,6 +62,9 @@ public:
 private:
     void PaintPage(Painter& painter) const;
     void PaintBack(Painter& painter) const;
+    void PaintReviews(Painter& painter) const;
+    bool ReviewsOpen() const { return ratingEntered_ >= 0 && clockMs_ - ratingEntered_ >= 350; }
+    double ratingEntered_ = -1;
     bool HasListButton() const;
     std::vector<std::string> ActionKeys() const;
     std::vector<std::string> SeasonKeys() const;

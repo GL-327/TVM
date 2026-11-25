@@ -51,7 +51,7 @@ std::optional<std::filesystem::path> FindMpvExecutable(const util::EnvLookup& en
 // The properties TVM watches. `cache-buffering-state` is a percentage, so `paused-for-cache` is the
 // one that means "stalled".
 inline constexpr const char* kObservedProperties[] = {"time-pos", "duration", "pause", "paused-for-cache",
-                                                      "eof-reached", "track-list", "speed"};
+                                                      "eof-reached", "track-list", "speed", "cache-speed", "demuxer-cache-duration", "cache-buffering-state"};
 
 // One of the file's tracks, as mpv's track-list reports it.
 struct Track {
@@ -90,6 +90,9 @@ struct State {
     bool ended = false;
     std::vector<Track> tracks;
     double speed = 1.0;
+    double cacheSpeed = 0;
+    double cacheSeconds = 0;
+    double bufferPercent = 0;
 
     bool operator==(const State&) const = default;
 };

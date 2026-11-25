@@ -196,10 +196,6 @@ void App::OpenInfoPage(const nav::ViewEntry& entry) {
         }
         LoadDownloadPrefs();
     }
-    if (pageName_ == "changelog" && updatesView_.changes.empty() && !updatesView_.busy) {
-        updatesView_.version = config::kCoreVersion;
-        CheckForUpdates();
-    }
     if (pageName_ == "accounts") {
         fieldMode_ = "search";
         accountOpen_.clear();
@@ -260,6 +256,7 @@ void App::ShowInfoPage() {
     else if (pageName_ == "accounts") view = AccountsView();
     else if (pageName_ == "developer") view = DeveloperView();
     else if (pageName_ == "apps") view = AppsView();
+    else if (pageName_ == "services") view = ServicesView();
     else if (pageName_ == "confirm") view = ConfirmView();
     screen->SetView(std::move(view));
     dirty_ = true;
@@ -290,6 +287,18 @@ void App::ApplyInfoAction(const ui::Command& command) {
         return;
     }
 
+    if (verb.rfind("service-", 0) == 0 && verb.find(':') != std::string::npos) {
+        const auto at = verb.find(':');
+        const auto action = verb.substr(0, at);
+        const auto id = verb.substr(at + 1);
+        try {
+            if (action == "service-signin") LaunchService(id, true);
+            else if (action == "service-open") LaunchService(id, false);
+            else if (action == "service-disconnect" || action == "service-yes") { ConnectService(id, action == "service-yes"); pendingService_.clear(); }
+            else if (action == "service-later") pendingService_.clear();
+        } catch (const std::exception& error) { say(error.what(), true); }
+        ShowInfoPage(); return;
+    }
     if (verb.rfind("account-", 0) == 0) { AccountAction(verb.substr(8)); return; }
 
     if (verb.rfind("service-site-", 0) == 0) {
@@ -1084,9 +1093,25 @@ ui::InfoView App::ChangelogView() const {
     ui::InfoView view;
     view.heading = "What's new";
     view.lede = std::string("Build ") + config::kCoreVersion + " is on this device.";
-    if (updatesView_.busy && updatesView_.changes.empty()) view.blocks.push_back(Paragraph("Asking GitHub for the latest changes\xE2\x80\xA6"));
-    else if (updatesView_.changes.empty()) view.blocks.push_back(Paragraph("The latest GitHub changes are now in this interface."));
-    for (const std::string& change : updatesView_.changes) view.blocks.push_back(Bullet(change, ""));
+    const auto data = content_->Read("changelog");
+    if (data.contains("releases")) for (const auto& release : data["releases"]) {
+        view.blocks.push_back(Heading(release.value("version", "") + " ? " + release.value("date", "")));
+        view.blocks.push_back(Paragraph(release.value("title", "")));
+        for (const auto& highlight : release["highlights"]) if (highlight.is_string()) view.blocks.push_back(Bullet(highlight.get<std::string>(), ""));
+        std::map<std::string, std::vector<std::string>> groups;
+        for (const auto& change : release["changes"]) {
+            if (change.contains("platforms") && change["platforms"].is_array()) {
+                bool windows = false;
+                for (const auto& platform : change["platforms"]) if (platform == "windows" || platform == "native" || platform == "all") windows = true;
+                if (!windows) continue;
+            }
+            groups[change.value("area", "Other")].push_back(change.value("text", ""));
+        }
+        for (const auto& [area, changes] : groups) {
+            view.blocks.push_back(Heading(area));
+            for (const auto& change : changes) view.blocks.push_back(Bullet(change, ""));
+        }
+    }
     view.actions = {{Button("back", "Close", true)}};
     return view;
 }
@@ -1573,6 +1598,7 @@ ui::InfoView App::AppsView() const {
     ui::InfoView view;
     view.kicker = "Your apps";
     view.heading = "Apps";
+    view.filters.push_back({Button("open:services", "Services", true)});
     view.lede = "Open a service hub or TVM Stream. Playback still uses this machine.";
     ui::InfoAction stream = Button("stream-home", "TVM");
     stream.tile = ui::Rgb(0x2F6BFF);
@@ -1663,13 +1689,13 @@ void App::ShowServiceHub(const hubs::Hub& hub) {
         ui::RailData data;
         data.id = rail.id;
         data.title = rail.title;
-        for (const catalog::MediaItem& item : rail.items) data.cards.push_back(ui::CardData{item.id, item.title, item.poster, std::nullopt});
+        for (const catalog::MediaItem& item : rail.items) if (Allowed(item)) data.cards.push_back(ui::CardData{item.id, item.title, item.poster, std::nullopt});
         view.rails.push_back(std::move(data));
     }
     if (view.rails.empty()) view.status = "Nothing in " + hub.name + " yet. Check this PC is online, then open it again.";
 
     std::vector<ui::HeroData> heroes;
-    if (hub.hero.has_value()) {
+    if (hub.hero.has_value() && Allowed(*hub.hero)) {
         ui::HeroData hero;
         hero.itemId = hub.hero->id;
         hero.title = hub.hero->title;

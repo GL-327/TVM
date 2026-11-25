@@ -128,8 +128,8 @@ void PageScreen::Paint(Painter& painter) const {
 
 double PageScreen::PaintHeader(Painter& painter, double top, const std::string& kicker, const std::string& heading,
                                const std::string& lede) const {
-    const double x = Rem(kSafeXRem);
-    const double width = width_ - 2.0 * x;
+    const double x = Rem(kSafeXRem + 3.0);
+    const double width = width_ - x - Rem(kSafeXRem);
     painter.Text(Box{x, top, width, Rem(1.2)}, Upper(kicker), TextStyle{Rem(0.8125), true, 700}, tokens::kTextFaint);
     painter.Text(Box{x, top + Rem(1.1), width, Rem(3.25)}, heading, TextStyle{Rem(2.75), true, 750}, tokens::kText);
     if (lede.empty()) return top + Rem(4.8);
@@ -881,7 +881,7 @@ void InfoScreen::Arrange() {
         }
         if (!view_.blocks.empty()) y += Rem(0.6);
 
-        for (const std::vector<InfoAction>& line : view_.actions) addRow(line);
+        if (!view_.interleaveActions) for (const std::vector<InfoAction>& line : view_.actions) addRow(line);
         addRow(view_.topActions);
 
         const double totalHeight = y + padY - Rem(0.6);
@@ -958,6 +958,7 @@ void InfoScreen::Arrange() {
         ++row;
     }
 
+    std::size_t actionRow = 0;
     for (const InfoBlock& block : view_.blocks) {
         double height = 0.0;
         switch (block.kind) {
@@ -983,10 +984,11 @@ void InfoScreen::Arrange() {
         }
         placed_.push_back(Placed{block, Box{x, y, Rem(widthRem), height}});
         y += height + (block.kind == InfoBlock::Kind::Row ? Rem(kInfoRowPitchRem - kInfoRowRem) : Rem(0.55));
+        if (view_.interleaveActions && actionRow < view_.actions.size()) addRow(view_.actions[actionRow++]);
     }
     if (!view_.blocks.empty()) y += Rem(0.8);
 
-    for (const std::vector<InfoAction>& line : view_.actions) addRow(line);
+    if (!view_.interleaveActions) for (const std::vector<InfoAction>& line : view_.actions) addRow(line);
     contentHeight_ = y + Rem(2.0);
 }
 
@@ -1062,15 +1064,9 @@ void InfoScreen::PaintContent(Painter& painter, double scroll) const {
         const double top = fieldTop_ - scroll;
         painter.Text(Box{x, top, widthPx, Rem(1.4)}, view_.fieldLabel, TextStyle{Rem(0.9), true, 600}, tokens::kTextMuted);
         const Box box{x, top + Rem(1.6), view_.centeredCard ? fieldWidth_ : std::min(widthPx, Rem(36.0)), Rem(3.0)};
-        GlassStyle fieldGlass;
-        fieldGlass.kind = GlassKind::Panel;
-        fieldGlass.focused = true;
-        fieldGlass.focusAmount = 1.0;
-        fieldGlass.reduceTransparency = tokens::reduceTransparency;
-        fieldGlass.tint = tokens::kSurface;
-        fieldGlass.ringWidth = Rem(kFocusRingWidthRem);
-        fieldGlass.ringColor = tokens::kFocusRing;
-        painter.Glass(box, Rem(0.75), fieldGlass);
+        painter.FillRoundRect({box.x, box.y + 1, box.width, box.height}, Rem(0.75), Rgb(0, 0.35));
+        painter.FillRoundRect(box, Rem(0.75), Rgb(0xFFFFFF, 0.06));
+        painter.StrokeRoundRect(box, Rem(0.75), 2, Rgb(0x2F6BFF, 0.85));
         const TextStyle style{Rem(1.15), false, 500};
         // A secret is shown as dots, as a password field is.
         std::string shown = fieldText_;

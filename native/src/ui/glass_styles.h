@@ -107,10 +107,8 @@ inline Color NavLabel(double emphasis, double plated, double opacity = 1.0) {
 // The ink for a label on glass that may carry the light plate: white on clear glass, dark on the plate, eased by
 // `plate` from 0 to 1, as the pill's tab labels turn dark when selected or hovered.
 inline Color InkOnPlate(double plate, double opacity = 1.0) {
-    // With Reduce Transparency there is no plate, so the label stays light. The dark ink is the pill's kPlateInk.
-    const double clamped = plate < 0.0 ? 0.0 : (plate > 1.0 ? 1.0 : plate);
-    const double t = tokens::reduceTransparency ? 0.0 : clamped;
-    Color ink = Mix(Rgb(0xF6F7FA), Rgb(0x111318), t);
+    (void)plate;
+    Color ink = Rgb(0xFFFFFF, 0.95);
     ink.a *= opacity;
     return ink;
 }

@@ -374,8 +374,8 @@ TEST(home_shelves_put_for_you_first_and_keep_watching_titles_off_the_catalogue_r
     const MediaItem five = Movie("tt5", "Five");
     tvm::catalog::CatalogBundle bundle;
     bundle.moviesTop = {five, Movie("tt1", "One")};
-    // "You might like" takes sixteen of these, so "Because you watched" draws on the two left over.
-    for (int i = 10; i < 28; ++i) bundle.catalog.push_back(Movie("tt" + std::to_string(i), "Film " + std::to_string(i)));
+    // "You might like" takes forty of these, so "Because you watched" draws on the two left over.
+    for (int i = 10; i < 52; ++i) bundle.catalog.push_back(Movie("tt" + std::to_string(i), "Film " + std::to_string(i)));
     bundle.catalog.push_back(five);
 
     const auto rails = tvm::catalog::BuildHomeRails(bundle, {}, {five}, {}, 2026);
@@ -392,7 +392,7 @@ TEST(home_shelves_put_for_you_first_and_keep_watching_titles_off_the_catalogue_r
     REQUIRE(because != nullptr);
     REQUIRE_EQ(because->title, std::string("Because you watched Five"));
     REQUIRE_EQ(because->items.size(), std::size_t{2});
-    REQUIRE_EQ(because->items[0].id, std::string("tt26"));
+    REQUIRE_EQ(because->items[0].id, std::string("tt50"));
 }
 
 TEST(a_title_on_the_watchlist_is_not_repeated_on_the_catalogue_rails) {

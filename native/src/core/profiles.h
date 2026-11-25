@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core/paths.h"
+#include <nlohmann/json.hpp>
 
 namespace tvm::profiles {
 
@@ -35,12 +36,20 @@ struct Profile {
     int hue = 221;
     std::string created;
 
+    std::string avatar;
+    std::string kind = "standard";
+    int maxAge = 18;
+    nlohmann::json pin = nullptr;
+    nlohmann::json extra = nlohmann::json::object();
+
     bool operator==(const Profile&) const = default;
 };
 
 struct Registry {
     std::string activeId;
     std::vector<Profile> profiles;
+
+    nlohmann::json extra = nlohmann::json::object();
 
     bool operator==(const Registry&) const = default;
 };
@@ -51,8 +60,16 @@ Registry Load(const paths::fs::path& dataDir);
 // A new profile, which becomes the active one. Throws std::runtime_error "TVM holds N profiles." at the cap.
 Registry Create(const paths::fs::path& dataDir, const std::string& name, std::size_t max = kMaxProfiles);
 // Throws "TVM needs at least one profile." for the last one.
-Registry Remove(const paths::fs::path& dataDir, const std::string& id);
+Registry Remove(const paths::fs::path& dataDir, const std::string& id, const std::string& pin = "");
 // Throws "Unknown profile." for an id the registry does not list.
-Registry SwitchTo(const paths::fs::path& dataDir, const std::string& id);
+Registry SwitchTo(const paths::fs::path& dataDir, const std::string& id, const std::string& pin = "");
+
+// Only these methods authenticate profile changes; callers never persist a PIN in plain text.
+nlohmann::json HashPin(const std::string& pin);
+bool CheckPin(const nlohmann::json& stored, const std::string& pin);
+void Verify(const paths::fs::path& dataDir, const std::string& id, const std::string& pin);
+Registry Update(const paths::fs::path& dataDir, const std::string& id, const nlohmann::json& patch,
+                const std::string& currentPin = "", const std::string& adultId = "", const std::string& adultPin = "");
+std::optional<Profile> Active(const paths::fs::path& dataDir);
 
 }  // namespace tvm::profiles

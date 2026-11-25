@@ -21,15 +21,15 @@
 #include "motion/tween.h"
 #include "ui/button_focus.h"
 #include "ui/layout.h"
+#include "ui/orbit.h"
 #include "ui/screen_base.h"
 
 namespace tvm::ui {
 
-// The loudest the sound goes: 1000%, the most mpv's --volume-max allows.
-inline constexpr double kMaxVolume = 10.0;
-// The volume bar runs from silence to 100%. Louder (up to kMaxVolume) is reached with the wheel or the Up arrow, and
-// then the bar shows full with its percentage in blue.
-inline constexpr double kSliderVolume = 1.0;
+// Both the slider and the keys reach 200%, with the boost filter keeping peaks below clipping.
+inline constexpr double kMaxVolume = 2.0;
+// The volume bar spans silence to 200%; its midpoint marks 100%.
+inline constexpr double kSliderVolume = 2.0;
 
 // One row of a player menu: subtitles, audio, quality or speed.
 struct PlayerOption {
@@ -63,13 +63,18 @@ struct PlayerView {
     bool started = false;
     // mpv is waiting on its cache.
     bool buffering = false;
+    double cacheSpeed = 0;
+    double cacheSeconds = 0;
+    double bufferPercent = 0;
     bool live = false;
+    bool hideDownloads = false;
     // From 0 to kMaxVolume, where 1 is 100%.
     double volume = 1.0;
     bool muted = false;
     bool fullscreen = false;
     std::string errorTitle;
     std::string errorBody;
+    bool errorNextChannel = false;
 
     // The menus' rows. A menu with no rows has no button, as the web pickers hide themselves.
     std::vector<PlayerOption> subtitles;
@@ -220,6 +225,10 @@ private:
     std::string ToolLabel(const std::string& key) const;
     std::map<std::string, Box> CompactControls() const;
 
+    Orbit orbit_;
+    double lastCacheSeconds_ = 0;
+    double lastCacheMs_ = 0;
+    double bufferGain_ = 0;
     PlayerView view_;
     bool volumeDragging_ = false;
     std::string menu_;

@@ -132,7 +132,7 @@ TEST(settings_lists_the_web_rows_in_order) {
         "Picture", "Motion", "Performance mode",
         "Look", "Theme", "Liquid Glass",
         "Language", "App language",
-        "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Choose profile on launch", "Real-Debrid",
+        "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Choose profile on launch", "Streaming services", "Real-Debrid",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
         "Device", "Network", "Display", "Live TV login", "Live TV playlist", "Updates", "Check for updates on launch",
         "What's new", "Diagnostics", "Developer",
@@ -280,20 +280,22 @@ TEST(settings_automatic_updates_toggle_and_save) {
     REQUIRE(settings.DetailOf("auto-update") == "Off · check from Updates");
 }
 
-TEST(settings_switches_liquid_glass_between_clear_and_frosted) {
+TEST(settings_cycles_clear_default_and_tinted_glass) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
-    settings.Layout(1920.0, 1080.0);
-    REQUIRE(settings.FocusItem("glass", 0.0, false));
-    REQUIRE(settings.DetailOf("glass").rfind("Clear", 0) == 0);
-    (void)settings.Select(0.0);
-    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Frosted);
-    REQUIRE_EQ(store.glassSaves, 1);
-    REQUIRE(settings.DetailOf("glass").rfind("Frosted", 0) == 0);
+    settings.Layout(1920, 1080);
+    REQUIRE(settings.FocusItem("glass", 0, false));
+    REQUIRE(settings.DetailOf("glass").starts_with("Clear"));
+    (void)settings.Select(0);
+    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Default);
+    REQUIRE(settings.DetailOf("glass").starts_with("Default"));
+    (void)settings.Select(0);
+    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Tinted);
     SettingsScreen reopened(store, MotionSettings{});
-    REQUIRE(reopened.DetailOf("glass").rfind("Frosted", 0) == 0);
-    (void)settings.Select(0.0);
+    REQUIRE(reopened.DetailOf("glass").starts_with("Tinted"));
+    (void)settings.Select(0);
     REQUIRE(store.glass_ == tvm::ui::GlassClarity::Clear);
+    REQUIRE_EQ(store.glassSaves, 3);
 }
 
 TEST(settings_switches_the_saved_theme_and_keeps_it_on_reopen) {
@@ -691,47 +693,26 @@ TEST(the_chooser_hides_add_at_the_plans_limit) {
     REQUIRE((chooser.Keys() == std::vector<std::string>{"pick:a", "pick:b", "pick:c", "manage"}));
 }
 
-TEST(managing_renames_and_deletes_only_after_confirming) {
+TEST(managing_a_profile_opens_the_full_editor) {
     tvm::ui::ProfileChooser chooser;
-    chooser.Layout(1920.0, 1080.0);
+    chooser.Layout(1920, 1080);
     chooser.SetView(ThreeProfiles());
-    REQUIRE(!chooser.ActivateItem("manage", 0.0).has_value());
+    REQUIRE(!chooser.ActivateItem("manage", 0).has_value());
     REQUIRE(chooser.Editing());
-    // In edit mode a profile opens its sheet with its name.
-    REQUIRE(!chooser.ActivateItem("pick:a", 0.0).has_value());
-    REQUIRE(chooser.SheetOpen());
-    REQUIRE_EQ(chooser.SheetName(), std::string("Ana"));
-    chooser.Erase();
-    chooser.Type("ya");
-    const std::optional<Command> rename = chooser.ActivateItem("sheet-save", 0.0);
-    REQUIRE_EQ(rename->name, std::string("profile-rename"));
-    REQUIRE_EQ(rename->params.at("id"), std::string("a"));
-    REQUIRE_EQ(rename->params.at("name"), std::string("Anya"));
-    REQUIRE(!chooser.SheetOpen());
-    // Delete asks first.
-    chooser.ActivateItem("pick:c", 0.0);
-    REQUIRE(!chooser.ActivateItem("sheet-delete", 0.0).has_value());
-    const std::optional<Command> remove = chooser.ActivateItem("sheet-delete", 0.0);
-    REQUIRE_EQ(remove->name, std::string("profile-remove"));
-    REQUIRE_EQ(remove->params.at("id"), std::string("c"));
+    const auto edit = chooser.ActivateItem("pick:a", 0);
+    REQUIRE(edit.has_value());
+    REQUIRE_EQ(edit->name, std::string("profile-edit"));
+    REQUIRE_EQ(edit->params.at("id"), std::string("a"));
 }
 
-TEST(the_last_profile_cannot_be_deleted_and_names_stop_at_24_characters) {
+TEST(adding_from_the_chooser_opens_a_blank_profile_editor) {
     tvm::ui::ProfileChooser chooser;
-    chooser.Layout(1920.0, 1080.0);
-    tvm::ui::ChooserView view;
-    view.profiles = {{"only", "Profile 1", 221}};
-    view.activeId = "only";
-    chooser.SetView(view);
-    chooser.ActivateItem("manage", 0.0);
-    chooser.ActivateItem("pick:only", 0.0);
-    REQUIRE((chooser.Keys() == std::vector<std::string>{"sheet-save", "sheet-cancel"}));
-    chooser.Type(std::string(40, 'x'));
-    REQUIRE_EQ(chooser.SheetName().size(), std::size_t{24});
-    // An empty name is not saved.
-    chooser.ActivateItem("sheet-cancel", 0.0);
-    chooser.ActivateItem("add", 0.0);
-    REQUIRE(!chooser.ActivateItem("sheet-save", 0.0).has_value());
+    chooser.Layout(1920, 1080);
+    chooser.SetView(ThreeProfiles());
+    const auto add = chooser.ActivateItem("add", 0);
+    REQUIRE(add.has_value());
+    REQUIRE_EQ(add->name, std::string("profile-edit"));
+    REQUIRE(!add->params.contains("id") || add->params.at("id").empty());
 }
 
 TEST(the_orb_menu_switches_profile_or_closes_from_outside) {

@@ -54,6 +54,8 @@ struct RailData {
     std::string id;
     std::string title;
     std::vector<CardData> cards;
+    bool loop = false;
+    bool more = false;
 };
 
 // What OK does on a card. Home opens the title's details. The Live TV screen plays
@@ -99,6 +101,9 @@ struct HeroData {
     std::string title;
     std::string backdropUrl;
     int hue = 0;
+    std::optional<Color> accent;
+    std::string rating;
+    std::string logoUrl;
     // The metadata line under the 72px hero title, e.g. "Movie · Drama · 2h 6m · 4K".
     std::string meta;
     // A paragraph under the title. When there is one the hero is a notice, such as TVM Stream's
@@ -224,6 +229,7 @@ public:
     // Where the selected tab's glass is drawn now: on the selected tab, or between two tabs while it slides.
     std::optional<Box> TabIndicatorBox() const;
 
+    std::vector<std::string> RailsNearEnd() const;
     double RailScroll(std::size_t rail) const { return rails_.at(rail)->scroll(); }
     Box RailBox(std::size_t rail) const { return rails_.at(rail)->box(); }
     double PageScroll() const { return pageScroll_; }
@@ -291,6 +297,8 @@ private:
     Box HeroBox() const;
     double HeroFade() const;
     HeroBoxes HeroLayout() const;
+    std::optional<Box> HeroRatingBox() const;
+    void PaintHeroRating(Painter& painter) const;
     // Starts the crossfade to the pending picture, once the picture is there.
     void StartHeroArt(double nowMs);
     void PaintHeroBackdrop(Painter& painter) const;
@@ -326,6 +334,7 @@ private:
     std::vector<std::size_t> railOffset_;
     // Each rail's id, from its RailData, so a rebuild can put each rail back where the viewer left it.
     std::vector<std::string> railIds_;
+    std::vector<bool> railMore_;
     std::string pageKey_;
     // The rail under the pointer, whose arrows show, how far they have faded in, and the arrow under the pointer.
     std::optional<std::size_t> arrowRail_;

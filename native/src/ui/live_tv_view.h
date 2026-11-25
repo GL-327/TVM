@@ -23,6 +23,7 @@ struct LiveTvState {
     std::vector<std::string> picks;
     // The last refusal, such as the limit on picks. Empty when there is none.
     std::string message;
+    std::vector<catalog::LiveChannel> freeChannels;
 };
 
 SceneView LiveTvView(const LiveTvState& state);

@@ -45,6 +45,7 @@ struct CatalogBundle {
 struct TitleMeta {
     MediaItem item;
     std::vector<MediaItem> children;
+    std::string logo;
 
     bool operator==(const TitleMeta&) const = default;
 };
@@ -60,7 +61,7 @@ public:
     CatalogBundle Bundle();
 
     // Titles for one genre. A failed request gives nothing, and is not cached.
-    std::vector<MediaItem> Genre(const std::string& kind, const std::string& genre);
+    std::vector<MediaItem> Genre(const std::string& kind, const std::string& genre, std::size_t skip = 0, const std::string& catalogue = "top");
 
     // The movie or series with this IMDb id, with its episodes. Nothing when
     // Cinemeta has neither.

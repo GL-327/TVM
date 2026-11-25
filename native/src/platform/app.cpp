@@ -12,10 +12,12 @@
 #include <stdexcept>
 
 #include "catalog/artwork.h"
+#include "catalog/cinemeta.h"
 #include "catalog/progress.h"
 #include "catalog/rails.h"
 #include "catalog/watchlist.h"
 #include "core/config.h"
+#include "core/js.h"
 #include "core/mpv.h"
 #include "core/prefs.h"
 #include "core/paths.h"
@@ -127,7 +129,7 @@ constexpr char kNotStoredMessage[] = "The token was not stored.";
 // The Home hero turns to its next title this often, as the web Home does.
 constexpr double kHeroTurnMs = 8000.0;
 // A search starts once typing pauses for this long, or at once on Enter.
-constexpr double kSearchDebounceMs = 220.0;
+constexpr double kSearchDebounceMs = 250.0;
 // The most titles the hero turns through.
 constexpr std::size_t kHeroLimit = 4;
 
@@ -170,6 +172,7 @@ std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watc
         hero.itemId = item.id;
         hero.title = item.title;
         hero.meta = HeroMetaLine(item);
+        hero.rating = item.rating;
         hero.backdropUrl = catalog::PreferBackdrop(item.id, item.backdrop, item.poster);
         if (hero.backdropUrl.empty()) hero.backdropUrl = "asset:lighthouse.jpg";
         hero.hue = item.hue;
@@ -226,6 +229,10 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     core_ = std::make_unique<coreapi::Client>(dataDir_, config::ResolvePort(util::ProcessEnvironment()));
     catalog_ = std::make_unique<catalog::CatalogService>(paths::fs::path(options.dataDir));
     xtream_ = std::make_unique<xtream::Client>(xtream::ClientOptions{dataDir_});
+    content_ = std::make_unique<content::Store>(dataDir_);
+    releaseNotice_ = std::make_unique<content::ReleaseNotice>(config::kCoreVersion, util::ReadTextFile(dataDir_ / "last-seen-version").value_or(""));
+    parental_ = content_->Read("parental");
+    RefreshProfilePolicy();
     LoadAudio();
     hintsSeen_ = std::filesystem::exists(dataDir_ / "player-hints-seen");
     artwork_ = std::make_unique<ArtworkStore>(paths::ArtworkCacheDir(paths::fs::path(options.dataDir)));
@@ -268,6 +275,12 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     // Home wears the stream chrome from its first frame, while the catalogue loads.
     BuildBrowse(*home_, true);
     shell_->SetNavigationGuard([this](const ui::Command& command) {
+        if (releaseNotice_ && releaseNotice_->Visible()) DismissReleaseNotice(NowMs() + (command.name == "changelog" ? 1200 : 0));
+        if (kidsProfile_ && (command.name == "settings" || command.name == "account" || command.name == "developer" || command.name == "downloads")) return false;
+        if (command.name == "live-tv" || command.name == "live-playlist" || command.name == "live-xtream") return true;
+        const auto freeId = command.params.find("id");
+        if (command.name == "player" && freeId != command.params.end() && freeId->second.rfind("live:free:", 0) == 0) return true;
+        if (command.action && command.name.rfind("player-", 0) == 0 && playerId_.rfind("live:free:", 0) == 0) return true;
         if (command.action) {
             if (command.name == "back" || command.name == "stream-home") return true;
             if (command.name.rfind("updates-", 0) == 0) return true;
@@ -285,6 +298,9 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         const auto id = command.params.find("id");
         if (command.name == "watchlist" && id != command.params.end()) {
             ToggleWatchlist(id->second);
+        } else if (command.name == "event-rail") {
+            for (const auto& rail : eventRails_) if (!rail.cards.empty()) { home_->FocusTitle(rail.cards.front().itemId, NowMs()); break; }
+            dirty_ = true;
         } else if (command.name == "realdebrid-paste") {
             SaveRealDebridToken();
         } else if (command.name == "realdebrid-disconnect") {
@@ -353,6 +369,12 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             shell_->PopToRoot(NowMs());
         } else if (command.name == "back") {
             shell_->Back(NowMs());
+        } else if (command.name == "imdb-open") {
+            const auto play = playback::ParsePlayId(id == command.params.end() ? "" : id->second);
+            if (play) ShellExecuteW(window_, L"open", util::ToWide("https://www.imdb.com/title/" + play->imdb + "/").c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        } else if (command.name == "service-watch") {
+            const auto title = command.params.find("title");
+            if (id != command.params.end()) LaunchService(id->second, false, title == command.params.end() ? "" : title->second);
         } else if (command.name == "watchlist-filter") {
             const auto value = command.params.find("value");
             if (value != command.params.end()) watchlistFilter_ = value->second;
@@ -485,6 +507,7 @@ int App::Run(int showCommand) {
     UpdateWindow(window_);
     Resize();
     intro_->Start(NowMs());
+    RefreshContent();
     LoadCatalog();
     RefreshAccount();
     if (store_->CorePrefs().autoUpdate) CheckForUpdates();
@@ -541,6 +564,10 @@ int App::Run(int showCommand) {
             });
         }
         TurnHero(now);
+        SyncReleaseNotice(now);
+        if (now - updatesCheckedMs_ >= 21600000.0 && store_->CorePrefs().autoUpdate) CheckForUpdates();
+        PageRails();
+        if (now - contentCheckedMs_ >= 21600000.0 || contentDate_ != content::LocalDate()) RefreshContent();
         SyncArtwork(now);
         if (const std::optional<nav::Direction> hop = hops_.Tick()) {
             shell_->Navigate(*hop, now);
@@ -606,7 +633,27 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 }
 
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
+    if (shell_ && releaseNotice_) {
+        bool input = message == WM_KEYDOWN || message == WM_CHAR || message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL ||
+                     message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_SIZE || message == WM_POINTERDOWN ||
+                     message == WM_XBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN;
+        if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP) {
+            const double rem = ui::ViewportRem(home_->metrics().rem * 120.0, home_->ViewportHeight());
+            RECT client{}; GetClientRect(window_, &client);
+            const double cardWidth = std::min(static_cast<double>(client.right) - 3 * rem, 31 * rem);
+            const POINT point = ClientPoint(lParam);
+            const bool inCard = releaseNotice_->Visible() && point.x >= client.right - cardWidth - 1.5 * rem && point.y >= client.bottom - 28.5 * rem;
+            input = !inCard;
+        }
+        if (input) DismissReleaseNotice(NowMs());
+    }
     switch (message) {
+    case WM_XBUTTONUP:
+        if (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) { shell_->Back(NowMs()); dirty_ = true; return TRUE; }
+        break;
+    case WM_APPCOMMAND:
+        if (GET_APPCOMMAND_LPARAM(lParam) == APPCOMMAND_BROWSER_BACKWARD) { shell_->Back(NowMs()); dirty_ = true; return TRUE; }
+        break;
     case WM_DPICHANGED: {
         const auto* suggested = reinterpret_cast<const RECT*>(lParam);
         SetWindowPos(window_, nullptr, suggested->left, suggested->top,
@@ -651,6 +698,11 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (HandleKey(wParam, lParam)) return 0;
         break;
     case WM_CHAR:
+        if (auto* editor = dynamic_cast<ui::ProfileEditor*>(&shell_->ActiveScreen()); editor && editor->Typing() && wParam >= 0x20 && wParam != 0x7F) {
+            editor->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
+            dirty_ = true;
+            return 0;
+        }
         // Letters typed on the search page go into the query. Control characters are keys, handled above.
         if (SearchTyping() && wParam >= 0x20 && wParam != 0x7F &&
             (wParam < 0xD800 || wParam > 0xDFFF)) {
@@ -750,10 +802,9 @@ bool App::HandleKey(WPARAM virtualKey, LPARAM flags) {
 
     // While the open sting is on screen, OK, Enter, Escape and Space end it and do nothing else.
     if ((virtualKey == VK_RETURN || virtualKey == VK_ESCAPE || virtualKey == VK_SPACE) && SkipIntro()) return true;
-    // Backspace edits the focused field, and with no field focused it does nothing at all. It is never routed to the
-    // player, the shell or Back, so it can never leave a screen or close TVM, however long it is held.
     if (virtualKey == VK_BACK) {
-        HandleSearchKey(virtualKey);
+        if (IsEditingText()) HandleSearchKey(virtualKey);
+        else shell_->Back(now);
         dirty_ = true;
         return true;
     }
@@ -1191,7 +1242,8 @@ void App::HandleUndecodable(const std::wstring& file) {
 
 void App::QueueRailArtwork(const std::vector<ui::RailData>& rails) {
     for (const ui::RailData& rail : rails) {
-        for (const ui::CardData& card : rail.cards) QueueArtwork(card.posterUrl);
+        // The painter requests pictures lazily for tiles approaching the viewport.
+        for (std::size_t i = 0; i < std::min<std::size_t>(12, rail.cards.size()); ++i) QueueArtwork(rail.cards[i].posterUrl);
     }
 }
 
@@ -1224,12 +1276,26 @@ void App::ShowTitle(const std::string& id) {
             info = ui::InfoFromMeta(id, std::nullopt);
         }
         background_->PostToUi([this, id, info] { FinishTitle(id, info); });
+        if (info.state == ui::TitleInfo::State::Ready && info.kind != "series") {
+            try { info.reviews = core_->Call("/api/reviews?id=" + js::EncodeUriComponent(id)); } catch (...) {}
+            background_->PostToUi([this, id, info] { FinishTitle(id, info); });
+        }
     });
 }
 
 void App::FinishTitle(const std::string& id, const ui::TitleInfo& info) {
     titlesInFlight_.erase(id);
     ui::TitleInfo shown = info;
+    shown.hideDownloads = kidsProfile_;
+    if (shown.state == ui::TitleInfo::State::Ready && !Allowed(shown.media)) {
+        shown.state = ui::TitleInfo::State::Unavailable;
+        shown.synopsis = "This title is outside this profile's age limit. Filters by genre.";
+        shown.children.clear();
+    }
+    shown.services.clear();
+    const auto connected = ConnectedServices();
+    const auto services = content_->Read("services");
+    if (services.contains("services")) for (const auto& service : services["services"]) if (connected.value(service.value("id", ""), false)) shown.services.push_back({service.value("id", ""), service.value("name", "")});
     shown.saved = SavedOnWatchlist(id);
     // Only a real answer is kept. An unavailable title is asked for again when it is opened.
     if (shown.state == ui::TitleInfo::State::Ready) titles_[id] = shown;
@@ -1655,10 +1721,29 @@ void App::RefreshLiveTv() {
 }
 
 void App::ApplyLiveTv() {
+    std::erase_if(liveCatalog_.channels, [](const auto& channel) { return channel.id.rfind("live:free:", 0) == 0; });
+    std::vector<catalog::LiveChannel> free;
+    const auto data = content_->Read("free-channels");
+    if (data.contains("channels")) for (const auto& row : data["channels"]) {
+        const auto group = row.value("group", "Live");
+        if (!content::AllowsLive(parental_, profileMaxAge_, group)) continue;
+        catalog::LiveChannel channel;
+        channel.id = "live:free:" + row.value("id", "");
+        channel.name = row.value("name", "");
+        channel.url = row.value("url", "");
+        channel.group = group;
+        channel.logo = row.value("logo", "");
+        channel.source = "free";
+        if (row.contains("geo") && row["geo"].is_string()) channel.geo = row["geo"].get<std::string>();
+        free.push_back(channel);
+    }
     ui::LiveTvState state;
+    state.freeChannels = free;
     state.loaded = liveLoaded_;
     state.choosing = liveChoosing_;
     state.catalog = liveCatalog_;
+    std::erase_if(state.catalog.channels, [this](const auto& channel) { return !content::AllowsLive(parental_, profileMaxAge_, live::GroupOf(channel)); });
+    liveCatalog_.channels.insert(liveCatalog_.channels.begin(), free.begin(), free.end());
     state.picks = livePicks_;
     state.message = liveMessage_;
     ui::SceneView view = ui::LiveTvView(state);
@@ -1960,6 +2045,7 @@ ui::Scene* App::SearchScene() {
 }
 
 bool App::IsEditingText() const {
+    if (const auto* editor = dynamic_cast<const ui::ProfileEditor*>(&shell_->ActiveScreen())) return editor->Typing();
     if (SearchTyping()) return true;
     if (const auto* page = dynamic_cast<const ui::InfoScreen*>(&shell_->ActiveScreen());
         page != nullptr && page->HasField()) {
@@ -1982,6 +2068,7 @@ void App::RebuildStream() {
 
 void App::BuildBrowse(ui::Scene& scene, bool root) {
     const auto inLane = [this](const catalog::MediaItem& item) {
+        if (!Allowed(item)) return false;
         if (streamLane_ == "shows") return item.kind == "series";
         if (streamLane_ == "movies") return item.kind != "series";
         return true;
@@ -2009,6 +2096,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         view.topButtons = {
             ui::TopButton{"Account", open("account", false)},
             ui::TopButton{"Settings", open("settings", false)},
+            ui::TopButton{"Live TV", open("live-tv", false)},
             ui::TopButton{"Updates", open("updates", false)},
         };
         ui::HeroData door;
@@ -2099,30 +2187,36 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
             rail.title = "Continue Watching";
             view.rails.push_back(std::move(rail));
         }
+        if (root && streamLane_ == "all") {
+            for (const auto& eventRail : eventRails_) view.rails.push_back(eventRail);
+        }
         if (!listLane.empty()) {
             ui::RailData rail = ui::WatchlistRail(listLane);
             rail.title = "My List";
             view.rails.push_back(std::move(rail));
         }
-        for (ui::RailData& rail : ui::RailsFromCatalog(catalogRails)) view.rails.push_back(std::move(rail));
+        for (ui::RailData& rail : ui::RailsFromCatalog(catalogRails)) {
+            auto& page = railPages_[rail.id];
+            // Start the first prefetch at zero to retain titles trimmed from the initial 40-card view.
+            if (rail.id == "for-you" || rail.id == "because") page.more = false;
+            std::set<std::string> ids;
+            for (const auto& card : rail.cards) ids.insert(card.itemId);
+            for (const auto& item : page.items) if (inLane(item) && ids.insert(item.id).second)
+                rail.cards.push_back(ui::CardData{item.id, item.title, item.poster, std::nullopt});
+            rail.more = page.more;
+            rail.loop = !page.more;
+            view.rails.push_back(std::move(rail));
+        }
 
         // The billboard: the title in progress, else the newest film, as the core's `featured` picks it.
         std::vector<catalog::MediaItem> laneWatching;
         for (const catalog::ProgressItem& entry : watchingLane) laneWatching.push_back(entry.item);
         std::vector<ui::HeroData> candidates = HeroTitles(laneWatching, catalogRails);
         // Home turns through its titles. The stream page shows one billboard.
-        if (root) heroes = candidates;
+        if (root && streamLane_ == "all" && !eventHeroes_.empty()) heroes = eventHeroes_;
+        else if (root) heroes = candidates;
         else if (!candidates.empty()) heroes.push_back(candidates.front());
         if (view.rails.empty() && heroes.empty()) view.status = "Nothing on this lane yet.";
-    }
-    if (heroes.empty() && root) {
-        ui::HeroData fallback;
-        fallback.itemId = "featured-last-light";
-        fallback.title = "The Last Light";
-        fallback.meta = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
-        fallback.backdropUrl = "asset:lighthouse.jpg";
-        fallback.hue = 212;
-        heroes.push_back(fallback);
     }
 
     // The first view puts the focus on the billboard's first button, as the web page opens. Later ones
@@ -2133,7 +2227,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
     scene.SetView(view, now);
     if (first && !heroes.empty()) scene.FocusItem("hero-play", now, true);
     scene.SetImageReady([this](const std::string& url) { return artwork_->Lookup(url).has_value(); });
-    for (const ui::HeroData& hero : heroes) QueueArtwork(hero.backdropUrl);
+    for (const ui::HeroData& hero : heroes) { QueueArtwork(hero.backdropUrl); QueueArtwork(hero.logoUrl); }
     QueueRailArtwork(view.rails);
     dirty_ = true;
 }
@@ -2146,6 +2240,9 @@ void App::SyncPages() {
     if (auto* previous = dynamic_cast<ui::InfoScreen*>(shell_->ScreenNamed(pageName_))) previous->ClearField();
     pageOpened_ = entry.key;
     const std::string& name = entry.name;
+    if (name != "profile-editor" && name != "pin-pad") {
+        profileEditId_.clear(); profileEditPin_.clear(); adultApprovalId_.clear(); adultApprovalPin_.clear();
+    }
     if (dynamic_cast<ui::InfoScreen*>(&shell_->ActiveScreen()) != nullptr || name == "downloads") OpenInfoPage(entry);
     if (name == "service") {
         const auto id = entry.params.find("id");
@@ -2176,6 +2273,7 @@ void App::BuildWatchlistPage() {
     // watchlistView: the filter, then the order. The list is kept newest first, which is "Recently saved".
     std::vector<catalog::MediaItem> items;
     for (const catalog::WatchlistEntry& entry : saved) {
+        if (!Allowed(entry.item)) continue;
         const bool series = entry.item.kind == "series";
         if (watchlistFilter_ == "movie" && series) continue;
         if (watchlistFilter_ == "series" && !series) continue;
@@ -2299,7 +2397,16 @@ ui::ChooserView App::ChooserFromRegistry(const std::string& message) {
         const profiles::Registry registry = profiles::Load(dataDir_);
         view.activeId = registry.activeId;
         for (const profiles::Profile& profile : registry.profiles) {
-            view.profiles.push_back(ui::ProfileEntry{profile.id, profile.name, profile.hue});
+            ui::ProfileEntry entry{profile.id, profile.name, profile.hue};
+            entry.avatar = profile.avatar;
+            entry.kind = profile.kind;
+            entry.maxAge = profile.maxAge;
+            entry.locked = !profile.pin.is_null();
+            const auto avatars = content_->Read("avatars");
+            if (avatars.contains("sets")) for (const auto& set : avatars["sets"]) for (const auto& avatar : set["avatars"]) {
+                if (set.value("id", "") + "/" + avatar.value("id", "") == profile.avatar) entry.avatarUrl = avatar.value("image", "");
+            }
+            view.profiles.push_back(entry);
         }
     } catch (const std::exception&) {
         view.message = "Profiles could not be read on this device.";
@@ -2337,7 +2444,16 @@ void App::ShowProfiles(const std::string& message) {
         view.max = core_->Call("/api/plan").value("profilesMax", std::size_t(10));
         view.activeId = registry.activeId;
         for (const profiles::Profile& profile : registry.profiles) {
-            view.profiles.push_back(ui::ProfileEntry{profile.id, profile.name, profile.hue});
+            ui::ProfileEntry entry{profile.id, profile.name, profile.hue};
+            entry.avatar = profile.avatar;
+            entry.kind = profile.kind;
+            entry.maxAge = profile.maxAge;
+            entry.locked = !profile.pin.is_null();
+            const auto avatars = content_->Read("avatars");
+            if (avatars.contains("sets")) for (const auto& set : avatars["sets"]) for (const auto& avatar : set["avatars"]) {
+                if (set.value("id", "") + "/" + avatar.value("id", "") == profile.avatar) entry.avatarUrl = avatar.value("image", "");
+            }
+            view.profiles.push_back(entry);
         }
     } catch (const std::exception&) {
         view.message = "Profiles could not be read on this device.";
@@ -2368,8 +2484,44 @@ void App::ApplyProfileAction(const ui::Command& command) {
         return;
     }
     try {
+        if (command.name == "profile-edit") {
+            const auto registry = profiles::Load(dataDir_);
+            for (const auto& profile : registry.profiles) if (profile.id == param("id") && !profile.pin.is_null() && profileEditId_ != profile.id) {
+                AskProfilePin(command, profile.id); return;
+            }
+            OpenProfileEditor(param("id")); return;
+        }
+        if (command.name == "profile-unlock") {
+            profiles::Verify(dataDir_, param("id"), param("pin"));
+            const auto pending = pendingProfileAction_;
+            pendingProfileAction_.reset();
+            shell_->Back(now);
+            if (!pending) return;
+            if (pending->name == "profile-save-edited") { adultApprovalId_ = param("id"); adultApprovalPin_ = param("pin"); }
+            else { profileEditId_ = param("id"); profileEditPin_ = param("pin"); }
+            ApplyProfileAction(*pending); return;
+        }
+        if (command.name == "profile-save-edited") {
+            auto id = param("id");
+            const auto patch = nlohmann::json::parse(param("patch"));
+            if (id.empty()) { const auto registry = profiles::Create(dataDir_, patch.value("name", "Profile")); id = registry.activeId; }
+            const auto registry = profiles::Load(dataDir_);
+            for (const auto& profile : registry.profiles) if (profile.id == id && profile.kind == "kids" && patch.value("kind", "kids") != "kids" && adultApprovalId_.empty()) {
+                for (const auto& adult : registry.profiles) if (adult.kind != "kids" && !adult.pin.is_null()) { AskProfilePin(command, adult.id); return; }
+            }
+            profiles::Update(dataDir_, id, patch, profileEditId_ == id ? profileEditPin_ : "", adultApprovalId_, adultApprovalPin_);
+            profileEditPin_.clear(); profileEditId_.clear(); adultApprovalId_.clear(); adultApprovalPin_.clear();
+            shell_->Back(now);
+            RefreshProfilePolicy();
+            ShowChooser(""); RebuildHome(); RefreshContent(); return;
+        }
+        if (command.name == "profile-delete-edited") {
+            profiles::Remove(dataDir_, param("id"), profileEditId_ == param("id") ? profileEditPin_ : "");
+            profileEditPin_.clear(); profileEditId_.clear();
+            shell_->Back(now); RefreshProfilePolicy(); ShowChooser(""); RebuildHome(); return;
+        }
         if (command.name == "profile-remove") {
-            core_->Call("/api/profiles/remove", "POST", {{"id", param("id")}});
+            profiles::Remove(dataDir_, param("id"));
             ShowProfiles("");
             ShowChooser("");
             RebuildHome();
@@ -2390,8 +2542,15 @@ void App::ApplyProfileAction(const ui::Command& command) {
             return;
         }
         // Choosing or making a profile switches to it, and Home follows that person's list and progress.
-        if (command.name == "profile-open") core_->Call("/api/profiles/active", "POST", {{"id", param("id")}});
+        if (command.name == "profile-open") {
+            const auto registry = profiles::Load(dataDir_);
+            for (const auto& profile : registry.profiles) if (profile.id == param("id") && !profile.pin.is_null() && profileEditId_ != profile.id) { AskProfilePin(command, profile.id); return; }
+            profiles::SwitchTo(dataDir_, param("id"), profileEditId_ == param("id") ? profileEditPin_ : "");
+            profileEditPin_.clear(); profileEditId_.clear();
+        }
         if (command.name == "profile-create") core_->Call("/api/profiles", "POST", {{"name", param("name")}});
+        RefreshProfilePolicy();
+        RefreshContent();
         titles_.clear();
         // Each profile has its own searches.
         recentSearches_.clear();
@@ -2404,6 +2563,7 @@ void App::ApplyProfileAction(const ui::Command& command) {
             shell_->Back(now);
         }
     } catch (const std::exception& error) {
+        if (auto* editor = dynamic_cast<ui::ProfileEditor*>(&shell_->ActiveScreen())) editor->Fail(error.what(), now);
         ShowProfiles(error.what());
         ShowChooser(error.what());
     }
@@ -2427,6 +2587,7 @@ void App::TypedIntoPage(ui::InfoScreen& page) {
 }
 
 void App::CheckForUpdates() {
+    updatesCheckedMs_ = NowMs();
     if (updatesView_.busy) return;
     updatesView_.busy = true;
     updatesView_.message.clear();
@@ -2525,6 +2686,15 @@ void App::SyncSearch() {
 }
 
 bool App::HandleSearchKey(WPARAM virtualKey) {
+    if (auto* editor = dynamic_cast<ui::ProfileEditor*>(&shell_->ActiveScreen())) {
+        if (virtualKey == VK_BACK && editor->Typing()) { editor->Erase(); dirty_ = true; return true; }
+        if (virtualKey == VK_RETURN && editor->Typing()) {
+            const auto command = editor->Submit();
+            if (command) shell_->Execute(*command, NowMs());
+            dirty_ = true; return true;
+        }
+        return false;
+    }
     if (auto* chooser = dynamic_cast<ui::ProfileChooser*>(&shell_->ActiveScreen()); chooser != nullptr && chooser->SheetOpen()) {
         // The sheet's name field: Backspace edits it (never Back), Enter saves, and letters arrive as characters.
         if (virtualKey == VK_BACK) {
@@ -2688,6 +2858,7 @@ void App::RunSearch() {
             searchRunning_ = false;
             searchFailed_ = failed;
             searchResults_ = results;
+            std::erase_if(searchResults_, [this](const auto& item) { return !Allowed(item); });
             ++searchResultsGeneration_;
             // A new search shows everything again.
             searchFilter_ = "all";
@@ -2721,7 +2892,7 @@ void App::ApplySearch() {
         lane.status = searchStatus_.empty() ? "Find films and series by title." : searchStatus_;
         lane.loading = searchRunning_;
         // New results start at the top; the same results (status, typing) keep the place.
-        lane.pageKey = "lane:search:" + std::to_string(searchResultsGeneration_);
+        lane.pageKey = "lane:search";
         if (searchFailed_) {
             ui::Command retry;
             retry.name = "search-submit";
@@ -2760,7 +2931,8 @@ void App::ApplySearch() {
             back.action = true;
             lane.topButtons.push_back(ui::TopButton{"\xE2\x80\xB9 Browse", back, false});
             for (const bool series : {false, true}) {
-                const std::vector<catalog::MediaItem>& items = series ? browsing->shows : browsing->movies;
+                std::vector<catalog::MediaItem> items = series ? browsing->shows : browsing->movies;
+                std::erase_if(items, [this](const auto& item) { return !Allowed(item); });
                 for (std::size_t i = 0; i < items.size(); i += perRow) {
                     ui::RailData rail;
                     rail.id = std::string(series ? "browse-series-" : "browse-movies-") + std::to_string(i / perRow);
@@ -2783,9 +2955,10 @@ void App::ApplySearch() {
                     std::string picture;
                     for (const std::vector<catalog::MediaItem>* list : {&shelf.movies, &shelf.shows}) {
                         for (const catalog::MediaItem& item : *list) {
-                            if (picture.empty() && !item.poster.empty()) picture = item.poster;
+                            if (Allowed(item) && picture.empty() && !item.poster.empty()) picture = item.poster;
                         }
                     }
+                    if (profileMaxAge_ < 18 && picture.empty()) continue;
                     ui::CardData tile{"browse:" + shelf.genre, shelf.genre, picture, std::nullopt};
                     tile.category = true;
                     tiles.push_back(tile);
@@ -2831,12 +3004,13 @@ void App::ApplySearch() {
                 rail.id = "search-popular";
                 rail.title = idle ? "Popular now" : "Popular now \xC2\xB7 try one of these";
                 for (std::size_t i = 0; i < popular->items.size() && i < perRow * 2; ++i) {
-                    rail.cards.push_back(card(popular->items[i]));
+                    if (Allowed(popular->items[i])) rail.cards.push_back(card(popular->items[i]));
                 }
                 lane.rails.push_back(std::move(rail));
             }
         }
         const auto passes = [this](const catalog::MediaItem& item) {
+            if (!Allowed(item)) return false;
             if (searchFilter_ == "movies") return item.kind != "series";
             if (searchFilter_ == "series") return item.kind == "series";
             return true;
@@ -2918,6 +3092,9 @@ void App::SyncPlayer() {
     playerRetryAt_.reset();
     playerRecoveries_ = 0;
     streamChoices_.clear();
+    playerManualHeight_ = 0;
+    playerHlsSource_.clear(); playerHlsHeights_.clear(); playerHlsHeight_ = 0; playerHlsSwitching_ = false;
+    playerStallSince_ = 0; playerHealthySince_ = 0;
     nextEpisode_.reset();
     nextDismissed_ = false;
     recapDone_ = false;
@@ -2927,7 +3104,15 @@ void App::SyncPlayer() {
 }
 
 void App::StartPlayback() {
-    if (!account_.usable) return;
+    if (!account_.usable && playerId_.rfind("live:free:", 0) != 0) return;
+    MONITORINFOEXW monitor{};
+    monitor.cbSize = sizeof(monitor);
+    DEVMODEW display{};
+    display.dmSize = sizeof(display);
+    if (GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor) &&
+        EnumDisplaySettingsW(monitor.szDevice, ENUM_CURRENT_SETTINGS, &display))
+        playerScreenHeight_ = playback::ScreenClass(static_cast<int>(display.dmPelsHeight));
+    playerHlsSwitching_ = false; playerStallSince_ = 0; playerHealthySince_ = 0;
     const int generation = ++playerGeneration_;
     mpv_->Stop();
     overlay_->Show(false);
@@ -2936,7 +3121,8 @@ void App::StartPlayback() {
     const auto channel = std::find_if(liveCatalog_.channels.begin(), liveCatalog_.channels.end(),
                                       [this](const catalog::LiveChannel& entry) { return entry.id == playerId_; });
     playerLive_ = channel != liveCatalog_.channels.end();
-    if (playerLive_ && !account_.liveTv) { ShowPlayerError("Live TV access", "Live TV requires the appropriate account tier."); return; }
+    if (playerLive_) playerPlanHeight_ = 2160;
+    if (playerLive_ && playerId_.rfind("live:free:", 0) != 0 && !account_.liveTv) { ShowPlayerError("Live TV access", "Live TV requires the appropriate account tier."); return; }
     std::string title = playerLive_ ? channel->name : "";
     // The catalogue's own title, never a file name: the title's details if they were opened, the series for an
     // episode, the title Details passed along, or the show found for a previous episode.
@@ -2951,6 +3137,8 @@ void App::StartPlayback() {
     playerView_ = ui::PlayerView{};
     playerView_.title = title.empty() ? "Loading" : title;
     playerView_.live = playerLive_;
+    playerView_.hideDownloads = kidsProfile_;
+    if (playerLive_ && !content::AllowsLive(parental_, profileMaxAge_, live::GroupOf(*channel))) { ShowPlayerError("Channel unavailable", "This channel is outside this profile's age limit."); return; }
     playerView_.fullscreen = fullscreen_;
     // My List saves the title, or the series for an episode. A Real-Debrid file or a channel is not on it.
     const std::string saveId = SaveId();
@@ -2986,16 +3174,18 @@ void App::StartPlayback() {
             }
         }
         if (resolution.url.empty()) resolution.reason = "unsupported";
-        background_->Run([this, generation, resolution] {
+        background_->Run([this, generation, resolution, height = playerManualHeight_ > 0 ? playerManualHeight_ : playerScreenHeight_]() mutable {
             PrepareMpv(*core_);
+            PrepareHls(resolution, height);
             background_->PostToUi([this, generation, resolution] { FinishResolve(generation, resolution); });
         });
         return;
     }
 
-    background_->Run([this, generation, id = playerId_, title] {
+    background_->Run([this, generation, id = playerId_, title, height = playerManualHeight_ > 0 ? playerManualHeight_ : playerScreenHeight_] {
         PrepareMpv(*core_);
-        const playback::Resolution resolution = CorePlayback(id, title);
+        playback::Resolution resolution = CorePlayback(id, title, height);
+        PrepareHls(resolution, height);
         background_->PostToUi([this, generation, resolution] { FinishResolve(generation, resolution); });
     });
 }
@@ -3036,6 +3226,12 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
         }
     }
 
+    if (resolution.bestHeight > 0) playerPlanHeight_ = resolution.bestHeight;
+    playerBestHeight_ = std::min(playerScreenHeight_, playerPlanHeight_);
+    if (!resolution.hlsSource.empty()) {
+        playerHlsSource_ = resolution.hlsSource; playerHlsHeight_ = resolution.hlsHeight;
+        playerHlsHeights_ = resolution.hlsHeights;
+    }
     // A fresh search brings the quality menu's streams. A switch from that menu keeps them.
     if (!resolution.choices.empty()) {
         streamChoices_ = resolution.choices;
@@ -3076,6 +3272,30 @@ void App::OnPlayerState(const mpv::State& state) {
     playerView_.started = state.started;
     playerView_.buffering = mpv::Buffering(state);
     playerView_.speed = state.speed;
+    if (!playerHlsSource_.empty() && !playerHlsSwitching_ && playerManualHeight_ == 0 && state.started && !state.paused) {
+        const double now = NowMs();
+        if (state.pausedForCache) {
+            playerHealthySince_ = 0;
+            if (playerStallSince_ == 0) playerStallSince_ = now;
+            if (now - playerStallSince_ >= 4000) {
+                int lower = playerHlsHeight_;
+                for (int height : playerHlsHeights_) if (height < playerHlsHeight_) lower = height;
+                if (lower < playerHlsHeight_) SwitchHls(lower);
+            }
+        } else {
+            playerStallSince_ = 0;
+            if (playerHealthySince_ == 0) playerHealthySince_ = now;
+            const int best = playerBestHeight_;
+            if (now - playerHealthySince_ >= 15000 && playerHlsHeight_ < best && state.cacheSeconds >= 5) {
+                int higher = playerHlsHeight_;
+                for (int height : playerHlsHeights_) if (height <= best) higher = height;
+                if (higher > playerHlsHeight_) SwitchHls(higher);
+            }
+        }
+    }
+    playerView_.cacheSpeed = state.cacheSpeed;
+    playerView_.cacheSeconds = state.cacheSeconds;
+    playerView_.bufferPercent = state.bufferPercent;
     // A paused channel keeps broadcasting, so the pause is how far behind it falls.
     if (playerLive_ && state.paused && !livePausedAtMs_.has_value()) livePausedAtMs_ = NowMs();
     if (playerLive_ && !state.paused && livePausedAtMs_.has_value()) {
@@ -3138,6 +3358,14 @@ void App::OnPlayerState(const mpv::State& state) {
 
 void App::OnPlayerError(const std::string& message) {
     if (!playerOpen_) return;
+    if (playerLive_ && playerId_.rfind("live:free:", 0) == 0) {
+        const auto channel = std::find_if(liveCatalog_.channels.begin(), liveCatalog_.channels.end(),
+            [this](const auto& entry) { return entry.id == playerId_; });
+        const bool bbc = channel != liveCatalog_.channels.end() && channel->geo == "GB" && channel->name.rfind("BBC", 0) == 0;
+        playerView_.errorNextChannel = true;
+        ShowPlayerError("Channel unavailable", bbc ? "BBC channels play in the UK only" : "This channel isn't available right now");
+        return;
+    }
     // A stream that fails is found again at the same place, twice, before the viewer is told.
     const bool missing = message.find("not installed") != std::string::npos;
     if (!playerLive_ && !missing && playerRecoveries_ < 2) {
@@ -3255,6 +3483,18 @@ void App::ApplyPlayerAction(const ui::Command& command) {
     if (command.name == "player-close") {
         shell_->Back(now);
     } else if (command.name == "player-retry") {
+        if (playerView_.errorNextChannel) {
+            const auto current = std::find_if(liveCatalog_.channels.begin(), liveCatalog_.channels.end(),
+                [this](const auto& channel) { return channel.id == playerId_; });
+            const std::size_t start = current == liveCatalog_.channels.end() ? 0 : static_cast<std::size_t>(current - liveCatalog_.channels.begin()) + 1;
+            for (std::size_t n = 0; n < liveCatalog_.channels.size(); ++n) {
+                const auto& channel = liveCatalog_.channels[(start + n) % liveCatalog_.channels.size()];
+                if (channel.id.rfind("live:free:", 0) != 0 || !content::AllowsLive(parental_, profileMaxAge_, live::GroupOf(channel))) continue;
+                playerId_ = channel.id;
+                StartPlayback();
+                return;
+            }
+        }
         playerRecoveries_ = 0;
         playerRetryAt_ = playerView_.position > 0.0 ? std::optional<double>(playerView_.position) : std::nullopt;
         StartPlayback();
@@ -3342,15 +3582,30 @@ void App::PickPlayerOption(const std::string& kind, const std::string& id) {
         playerView_.speed = std::stod(id);
         mpv_->SetProperty("speed", playerView_.speed);
     } else if (kind == "quality") {
-        SwitchStream(std::stoul(id));
+        if (id == "auto") {
+            playerManualHeight_ = 0;
+            if (!playerHlsSource_.empty()) { SwitchHls(playerBestHeight_); return; }
+            playerRetryAt_ = playerView_.position;
+            StartPlayback();
+        } else {
+            const auto choice = std::stoul(id);
+            if (choice < streamChoices_.size()) {
+                playerManualHeight_ = streamChoices_[choice].height;
+                if (!playerHlsSource_.empty()) SwitchHls(playerManualHeight_);
+                else SwitchStream(choice);
+                ShowStreamChoices();
+                shell_->SetPlayerView(playerView_, NowMs());
+            }
+        }
     }
 }
 
 void App::ShowStreamChoices() {
     playerView_.qualities.clear();
+    if (!playerLive_ || !playerHlsSource_.empty()) playerView_.qualities.push_back({"auto", "Auto (best: " + std::to_string(playerBestHeight_) + "p)", "", playerManualHeight_ == 0});
     for (std::size_t i = 0; i < streamChoices_.size(); ++i) {
         const playback::StreamChoice& choice = streamChoices_[i];
-        playerView_.qualities.push_back(ui::PlayerOption{std::to_string(i), choice.label, choice.detail, i == streamChosen_});
+        playerView_.qualities.push_back(ui::PlayerOption{std::to_string(i), choice.label, choice.detail, playerManualHeight_ > 0 && (playerHlsSource_.empty() ? i == streamChosen_ : choice.height == playerHlsHeight_)});
     }
 }
 
@@ -3487,6 +3742,9 @@ void App::PlayNextEpisode() {
     playerRetryAt_.reset();
     playerRecoveries_ = 0;
     streamChoices_.clear();
+    playerManualHeight_ = 0;
+    playerHlsSource_.clear(); playerHlsHeights_.clear(); playerHlsHeight_ = 0; playerHlsSwitching_ = false;
+    playerStallSince_ = 0; playerHealthySince_ = 0;
     nextEpisode_.reset();
     nextDismissed_ = false;
     recapDone_ = false;

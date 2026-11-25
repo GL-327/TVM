@@ -315,8 +315,8 @@ TEST(the_focused_poster_is_drawn_at_the_focus_scale) {
     // Posters are filled in paint order: card 0 of rail 0 first, then card 1.
     REQUIRE(painter.fills.size() >= 2);
     // At rest the artwork sits on whole pixels (so no partly covered row shows at its edges), so the focused size is
-    // the 1.04 scale to within a pixel.
-    REQUIRE_NEAR(painter.fills[0].width, 168.0 * 1.04, 1.0);  // Focused.
+    // the poster focus scale to within a pixel.
+    REQUIRE_NEAR(painter.fills[0].width, 168.0 * tvm::ui::kPosterFocusScale, 1.0);  // Focused.
     REQUIRE_NEAR(painter.fills[1].width, 168.0, 1.0);         // Not focused.
 }
 

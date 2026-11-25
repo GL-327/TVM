@@ -12,6 +12,10 @@ add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 # A copy outside the repository sets it on the command line.
 set(TVM_REPO_ROOT "${PROJECT_SOURCE_DIR}/.." CACHE PATH "The TVM repository that this build mirrors")
 
+file(READ "${TVM_REPO_ROOT}/package.json" TVM_PACKAGE_JSON)
+string(JSON TVM_VERSION GET "${TVM_PACKAGE_JSON}" version)
+add_compile_definitions(TVM_VERSION="${TVM_VERSION}")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -23,6 +27,7 @@ endif()
 
 # Core runtime: configuration, storage and the local vault. No UI, no network.
 add_library(tvm_core STATIC
+  src/core/content.cpp
   src/core/core_client.cpp
   src/core/core_client.h
   src/core/downloads.cpp
@@ -89,7 +94,7 @@ add_library(tvm_core STATIC
 # third_party is a system include so vendored headers do not raise our warnings.
 target_include_directories(tvm_core SYSTEM PUBLIC third_party)
 target_include_directories(tvm_core PUBLIC src)
-target_link_libraries(tvm_core PUBLIC bcrypt crypt32 winhttp)
+target_link_libraries(tvm_core PUBLIC bcrypt crypt32 winhttp shlwapi)
 
 # Engine: remote intents, focus, motion and the widget tree. Pure logic with
 # no Win32 calls, so it is tested directly with a recording painter.
@@ -135,6 +140,7 @@ add_library(tvm_engine STATIC
   src/ui/stage.h
   src/ui/intro.cpp
   src/ui/logo_reveal.cpp
+  src/ui/profile_editor.cpp
   src/ui/profile_chooser.cpp
   src/ui/dropdown.cpp
   src/ui/downloads_screen.cpp
@@ -168,6 +174,8 @@ add_library(tvm_platform STATIC
   src/platform/app.cpp
   src/platform/app_account.cpp
   src/platform/app_update.cpp
+  src/platform/app_content.cpp
+  src/platform/app_services.cpp
   src/platform/app_pages.cpp
   src/platform/artwork_store.cpp
   src/platform/artwork_store.h
@@ -191,7 +199,7 @@ add_library(tvm_platform STATIC
   src/platform/snapshot.cpp
   src/platform/snapshot.h
 )
-target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dxguid dwrite windowscodecs ole32 shell32 user32 gdi32 winmm)
+target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dxguid dwrite windowscodecs ole32 shell32 user32 gdi32 winmm advapi32)
 
 # Resource id 1 is the TVM icon; App registers its window class with it.
 set(TVM_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/tvm.ico")
@@ -207,6 +215,10 @@ endif()
 add_custom_command(TARGET tvm POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:tvm>/assets")
+add_custom_command(TARGET tvm POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${TVM_REPO_ROOT}/packages/content" "$<TARGET_FILE_DIR:tvm>/content")
+install(DIRECTORY "${TVM_REPO_ROOT}/packages/content/" DESTINATION content FILES_MATCHING PATTERN "*.json")
 install(TARGETS tvm RUNTIME DESTINATION .)
 install(DIRECTORY assets DESTINATION .)
 install(FILES update-native.ps1 DESTINATION bin)
@@ -221,6 +233,7 @@ endif()
 
 add_executable(tvm_tests
   tests/main.cpp
+  tests/features_1_1_tests.cpp
   tests/core_tests.cpp
   tests/core_client_tests.cpp
   tests/downloads_tests.cpp

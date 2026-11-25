@@ -63,6 +63,7 @@ std::vector<std::string> BuildArgs(const LaunchOptions& options) {
         "--gpu-context=d3d11",
         // mpv's own high-quality scaling, debanding and tone mapping, so a 4K or HDR file looks as it should.
         "--profile=high-quality",
+        "--hls-bitrate=max",
         // mpv's volume stops at 100%. Louder than that is the boost filter's job.
         "--volume-max=100",
         "--af=" + BoostFilter(options.boost),
@@ -154,6 +155,12 @@ State ApplyProperty(State state, const std::string& name, const nlohmann::json& 
         state.ended = true;
     } else if (name == "speed" && data.is_number()) {
         state.speed = data.get<double>();
+    } else if (name == "cache-speed" && data.is_number()) {
+        state.cacheSpeed = std::max(0.0, data.get<double>());
+    } else if (name == "demuxer-cache-duration" && data.is_number()) {
+        state.cacheSeconds = std::max(0.0, data.get<double>());
+    } else if (name == "cache-buffering-state" && data.is_number()) {
+        state.bufferPercent = std::clamp(data.get<double>(), 0.0, 100.0);
     } else if (name == "track-list" && data.is_array()) {
         state.tracks.clear();
         for (const nlohmann::json& raw : data) {

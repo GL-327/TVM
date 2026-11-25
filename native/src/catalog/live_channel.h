@@ -16,6 +16,9 @@ struct LiveChannel {
     std::optional<std::string> group;
     std::optional<std::string> logo;
 
+    std::string source;
+    std::string geo;
+
     bool operator==(const LiveChannel&) const = default;
 };
 

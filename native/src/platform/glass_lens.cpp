@@ -26,6 +26,7 @@
 #include "platform/glass_lens.h"
 
 #include <d2d1effects.h>
+#include "ui/theme.h"
 
 #include <algorithm>
 #include <array>
@@ -47,9 +48,9 @@ constexpr std::size_t kMaxKernels = 48;
 // Backdrop and the Flutter liquid_glass_renderer): the bezel is half the shorter half-side, at most 24 px (16 px on
 // the 64 px navigation capsule, 12 px on a button), and the rim shift is 1.75 times the bezel, never past the
 // middle.
-constexpr double kBevelFraction = 0.50;
-constexpr double kMinBevel = 5.0;
-constexpr double kMaxBevel = 24.0;
+constexpr double kBevelFraction = 0.28;
+constexpr double kMinBevel = 6.0;
+constexpr double kMaxBevel = 22.0;
 constexpr double kShiftPerBevel = 1.75;
 // Dispersion: red bends a little less and blue a little more. Apple's glass shows almost none, so it is kept to a
 // few percent of the shift, which only colours the strongly bent rim on high-contrast edges.
@@ -69,19 +70,17 @@ constexpr double kRimVeil = 0.12;
 constexpr double kRimVeilWidth = 3.0;
 // iOS 27's darker edge: a thin shade along the silhouette, strongest where the edge runs across the light and gone
 // where it faces it, which gives the glass its depth against any backdrop.
-constexpr double kContourWidth = 1.6;
+constexpr double kContourWidth = 1.0;
 constexpr double kContourBleed = 0.30;
 constexpr double kContourDirectionality = 0.85;
 // Colour behind the glass is lifted a little, as Apple's material does after it diffuses the picture.
-constexpr float kVibrancySaturation = 1.35f;
+constexpr float kVibrancySaturation = 1.8f;
 // How far the glass diffuses what is behind it, as a share of the surface's shorter half-side. Clear glass (the
 // default) softens it just enough to keep labels legible; frosted glass scatters it like Apple's tinted setting.
 constexpr double kClearSigma = 0.12;
 constexpr double kClearSigmaMin = 1.5;
 constexpr double kClearSigmaMax = 5.0;
 constexpr double kFrostSigma = 0.35;
-constexpr double kFrostSigmaMin = 8.0;
-constexpr double kFrostSigmaMax = 18.0;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
 // for the first time always measures, so a still frame adapts at once.
 constexpr int kMeasuresPerFrame = 3;
@@ -124,15 +123,15 @@ D2D1_MATRIX_5X4_F SaturationMatrix(float s) {
     const float lg = 0.7152f * inv;
     const float lb = 0.0722f * inv;
     D2D1_MATRIX_5X4_F m{};
-    m.m[0][0] = lr + s;
+    m.m[0][0] = (lr + s) * 1.08f;
     m.m[1][0] = lg;
     m.m[2][0] = lb;
     m.m[0][1] = lr;
-    m.m[1][1] = lg + s;
+    m.m[1][1] = (lg + s) * 1.08f;
     m.m[2][1] = lb;
     m.m[0][2] = lr;
     m.m[1][2] = lg;
-    m.m[2][2] = lb + s;
+    m.m[2][2] = (lb + s) * 1.08f;
     m.m[3][3] = 1.0f;
     return m;
 }
@@ -406,8 +405,8 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     const float channelScale[3] = {scale * static_cast<float>(1.0 - kChroma), scale,
                                    scale * static_cast<float>(1.0 + kChroma)};
     ID2D1Effect* scatter = frosted ? frost_.Get() : soften_.Get();
-    const double sigma = frosted ? std::clamp(kFrostSigma * kernel->half, kFrostSigmaMin, kFrostSigmaMax)
-                                 : std::clamp(kClearSigma * kernel->half, kClearSigmaMin, kClearSigmaMax);
+    const double sigma = ui::tokens::clearGlass ? std::clamp(kClearSigma * kernel->half, kClearSigmaMin, kClearSigmaMax)
+                                               : frosted ? std::clamp(kFrostSigma * kernel->half, 26.0, 26.0) : 14.0;
     scatter->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, static_cast<FLOAT>(sigma));
     scatter->SetInput(0, kernel->capture.Get());
     for (int c = 0; c < 3; ++c) {

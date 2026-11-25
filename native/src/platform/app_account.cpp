@@ -66,10 +66,6 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
 }
 
 ui::InfoView App::AccountView() const {
-    const auto fieldVal = [this](const char* key) -> std::string {
-        const auto found = fieldValues_.find(std::string("account.") + key);
-        return found == fieldValues_.end() ? std::string() : found->second;
-    };
     ui::InfoView view;
     view.centeredCard = true;
     view.backdropUrl = "asset:lighthouse.jpg";
@@ -93,11 +89,6 @@ ui::InfoView App::AccountView() const {
                 Action("info:field-email", "Email", activeField == "email"),
                 Action("info:field-password", "Password", activeField == "password"),
             });
-            view.fieldSummaries = {
-                {"Display name", fieldVal("name"), false, activeField == "name"},
-                {"Email", fieldVal("email"), false, activeField == "email"},
-                {"Password", fieldVal("password"), true, activeField == "password"},
-            };
             view.fieldLabel = activeField == "name" ? "Display name" : activeField == "password" ? "Password" : "Email";
             view.fieldPlaceholder = activeField == "name"       ? "Your name"
                                     : activeField == "password" ? "Create a password"
@@ -119,10 +110,6 @@ ui::InfoView App::AccountView() const {
                 Action("info:field-email", "Email", activeField == "email"),
                 Action("info:field-password", "Password", activeField == "password"),
             });
-            view.fieldSummaries = {
-                {"Email", fieldVal("email"), false, activeField == "email"},
-                {"Password", fieldVal("password"), true, activeField == "password"},
-            };
             view.fieldLabel = activeField == "password" ? "Password" : "Email";
             view.fieldPlaceholder = activeField == "password" ? "Enter your password" : "you@example.com";
             view.fieldSecret = activeField == "password";
@@ -230,9 +217,9 @@ playback::Resolution App::CorePlayback(const std::string& id, const std::string&
         if (!core_->Status().usable) throw std::runtime_error("Sign in with an active account.");
         const auto plan = core_->Call("/api/plan");
         const int cap = plan.value("maxHeight", 1080);
-        const auto body = maxHeight > 0
-            ? core_->Call("/api/downloads/resolve", "POST", {{"id", id}, {"preferences", {{"language", "original"}, {"maxHeight", std::min(cap, maxHeight)}}}})
-            : core_->Call("/api/playback", "POST", {{"id", id}, {"title", title}, {"native", true}});
+        result.bestHeight = cap;
+        const auto body = core_->Call("/api/playback", "POST", {{"id", id}, {"title", title}, {"native", true},
+            {"screenHeight", maxHeight > 0 ? maxHeight : 1080}, {"maxHeight", std::min(cap, maxHeight > 0 ? maxHeight : 1080)}});
         result.url = body.value("url", std::string());
         // The core sends a clean "title" beside the raw, URL-encoded "filename"; a file name is only a last resort,
         // made readable first.
@@ -241,7 +228,7 @@ playback::Resolution App::CorePlayback(const std::string& id, const std::string&
                                       : playback::TitleFromFilename(body.value("filename", std::string()), title);
         if (result.url.empty()) result.reason = "unsupported";
         else {
-            for (int height : {480, 720, 1080, 2160}) {
+            for (int height : {480, 720, 1080, 1440, 2160}) {
                 if (height > cap) continue;
                 playback::StreamChoice choice;
                 choice.height = height; choice.label = "Up to " + std::to_string(height) + "p";

@@ -67,7 +67,28 @@ void Rail::Add(std::unique_ptr<Widget> child) {
 }
 
 double Rail::MaxScroll() const {
-    return std::max(0.0, contentWidth_ - box_.width);
+    return loop_ && !children_.empty() ? kRingOrigin * 2.0 : std::max(0.0, contentWidth_ - box_.width);
+}
+
+double Rail::Period() const {
+    if (desired_.empty()) return 0.0;
+    return contentWidth_ - 2.0 * (contentLeft_.empty() ? 0.0 : contentLeft_.front()) +
+           (desired_.size() > 1 ? contentLeft_[1] - contentLeft_[0] - desired_[0].width : box_.height * 0.06);
+}
+double Rail::ContentLeftOf(std::size_t index) const {
+    const double base = contentLeft_.at(index);
+    const double period = Period();
+    if (!loop_ || period <= 0.0) return base;
+    const double centre = scrollX_ + box_.width / 2.0 - desired_[index].width / 2.0;
+    return base + kRingOrigin + std::round((centre - base - kRingOrigin) / period) * period;
+}
+std::optional<std::size_t> Rail::IndexAt(double x) const {
+    for (std::size_t i = 0; i < children_.size(); ++i) {
+        double local = x - box_.x + scrollX_ - contentLeft_[i];
+        if (loop_ && Period() > 0.0) local -= kRingOrigin + std::floor((local - kRingOrigin) / Period()) * Period();
+        if (local >= 0.0 && local < desired_[i].width) return i;
+    }
+    return std::nullopt;
 }
 
 Size Rail::Measure(double availableWidth, const Metrics& metrics) {
@@ -95,7 +116,7 @@ void Rail::Arrange(const Box& box, const Metrics& metrics) {
     scrollX_ = std::clamp(scrollX_, 0.0, MaxScroll());
     for (std::size_t i = 0; i < children_.size(); ++i) {
         const Size& size = desired_.at(i);
-        children_[i]->Arrange(Box{box.x + contentLeft_[i] - scrollX_, box.y, size.width, size.height}, metrics);
+        children_[i]->Arrange(Box{box.x + ContentLeftOf(i) - scrollX_, box.y, size.width, size.height}, metrics);
     }
 }
 
@@ -106,8 +127,23 @@ void Rail::Paint(Painter& painter, const Metrics& metrics) const {
     painter.PushClip(Box{box_.x, box_.y - pad, box_.width, box_.height + 2.0 * pad});
     for (const auto& child : children_) {
         const Box& cb = child->box();
-        if (cb.Right() < box_.x - pad || cb.x > box_.Right() + pad) continue;
-        child->Paint(painter, metrics);
+        if (!loop_ || Period() <= 0.0) {
+            if (cb.Right() < box_.x - pad || cb.x > box_.Right() + pad) continue;
+            child->Paint(painter, metrics);
+            continue;
+        }
+        const Box original = cb;
+        const double period = Period();
+        const double first = std::floor((box_.x - pad - original.Right()) / period);
+        const double last = std::ceil((box_.Right() + pad - original.x) / period);
+        for (double copy = first; copy <= last; copy += 1.0) {
+            Box repeated = original;
+            repeated.x += copy * period;
+            if (repeated.Right() < box_.x - pad || repeated.x > box_.Right() + pad) continue;
+            child->Arrange(repeated, metrics);
+            child->Paint(painter, metrics);
+        }
+        child->Arrange(original, metrics);
     }
     painter.PopClip();
 }
@@ -343,7 +379,7 @@ void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const 
     GlassStyle glass;
     glass.kind = GlassKind::Pill;
     glass.focused = look.focused;
-    glass.activeTab = look.primary;
+    glass.selected = look.primary;
     glass.focusAmount = focus;
     glass.reduceTransparency = tokens::reduceTransparency;
     glass.tint = fill;

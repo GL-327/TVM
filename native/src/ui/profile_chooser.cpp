@@ -337,10 +337,9 @@ std::optional<Command> ProfileChooser::Activate(const std::string& key, double n
         return std::nullopt;
     }
     if (key == kAddKey) {
-        sheet_ = Sheet{};
-        name_.clear();
-        focused_ = "sheet-save";
-        return std::nullopt;
+        command.name = "profile-edit"; command.action = true;
+        command.params["from"] = "chooser";
+        return command;
     }
     if (key.rfind(kPickPrefix, 0) == 0) {
         const std::string id = key.substr(sizeof(kPickPrefix) - 1);
@@ -349,10 +348,9 @@ std::optional<Command> ProfileChooser::Activate(const std::string& key, double n
             const auto profile = std::find_if(view_.profiles.begin(), view_.profiles.end(),
                                               [&](const ProfileEntry& p) { return p.id == id; });
             if (profile == view_.profiles.end()) return std::nullopt;
-            sheet_ = Sheet{id, false};
-            name_ = profile->name;
-            focused_ = "sheet-save";
-            return std::nullopt;
+            command.name = "profile-edit";
+            command.params["id"] = id;
+            return command;
         }
         // The avatar scales down as it is picked, then the app switches and closes the chooser.
         const bool reduced = motion::PrefersReducedMotion(motion_) || tokens::reduceMotion;
@@ -431,8 +429,15 @@ void ProfileChooser::PaintTile(Painter& painter, std::size_t index) const {
         const std::string initial = Initial(profile->name);
         const TextStyle initialStyle{Rem(2.5) * scale, true, 750};
         const double initialWidth = painter.MeasureText(initial, initialStyle);
+        if (profile->avatarUrl.empty() || !painter.Image(avatar, profile->avatarUrl, radius)) {
         painter.Text(Box{avatar.CenterX() - initialWidth / 2.0, avatar.y, initialWidth + 2.0, avatar.height}, initial,
                      initialStyle, Rgb(0xFFFFFF));
+        }
+        if (profile->locked) {
+            const Box lock{avatar.Right() - Rem(1.7), avatar.Bottom() - Rem(1.7), Rem(1.35), Rem(1.35)};
+            painter.Glass(lock, Rem(0.4), glass::MenuPanel());
+            painter.Path(lock, 24, "M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5z", {{0,0,0,0}, Rgb(0xFFFFFF), 2, false});
+        }
         // The active profile: a 3 px gap of the ground, then a 5 px blue ring.
         if (profile->id == view_.activeId && !editMode_) {
             painter.StrokeRoundRect(Inflate(avatar, 3.0 + 2.5), radius + 5.5, 5.0, kRing);
@@ -543,12 +548,13 @@ std::vector<std::string> ProfileMenu::Keys() const {
     std::vector<std::string> keys;
     for (const ProfileEntry& profile : view_.profiles) keys.push_back(kSwitchPrefix + profile.id);
     keys.push_back(kMenuManage);
-    keys.push_back(kMenuSettings);
+    const bool kids = std::any_of(view_.profiles.begin(), view_.profiles.end(), [this](const auto& p) { return p.id == view_.activeId && p.kind == "kids"; });
+    if (!kids) keys.push_back(kMenuSettings);
     return keys;
 }
 
 Box ProfileMenu::PanelBox() const {
-    const double rows = static_cast<double>(view_.profiles.size() + 2);
+    const double rows = static_cast<double>(Keys().size());
     const double height = 2.0 * Rem(kMenuPadRem) + rows * Rem(kMenuRowRem) + Rem(kMenuGapRem);
     const double width = std::min(Rem(kMenuWidthRem), width_ - 2.0 * Rem(1.0));
     // Under the orb at the top right of the stream chrome.

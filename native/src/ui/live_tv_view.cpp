@@ -58,6 +58,7 @@ std::vector<RailData> GroupedRails(const std::vector<catalog::LiveChannel>& chan
         card.title = marks && picked.contains(channel.id) ? kPickedMark + channel.name : channel.name;
         card.posterUrl = channel.logo.value_or("");
         card.logo = true;
+        card.subtitle = channel.geo == "GB" ? "UK" : "";
         rails[group].cards.push_back(card);
     }
 
@@ -73,7 +74,7 @@ std::string WithMessage(std::string text, const std::string& message) {
 
 }  // namespace
 
-SceneView LiveTvView(const LiveTvState& state) {
+SceneView PlaylistTvView(const LiveTvState& state) {
     SceneView view;
     view.cardAction = CardAction::Play;
 
@@ -132,6 +133,16 @@ SceneView LiveTvView(const LiveTvState& state) {
     view.topButtons = {ActionButton("Choose channels", "live-choose"), LoginButton(), PlaylistButton(),
                        TopButton{"Check channels", check}};
     view.rails = GroupedRails(status.shown, picked, false);
+    return view;
+}
+
+SceneView LiveTvView(const LiveTvState& state) {
+    SceneView view = PlaylistTvView(state);
+    auto free = GroupedRails(state.freeChannels, {}, false);
+    for (auto& rail : free) { rail.id = "free-" + rail.id; rail.title = "Free channels \xC2\xB7 " + rail.title; }
+    view.rails.insert(view.rails.begin(), free.begin(), free.end());
+    if (!free.empty() && (!state.loaded || view.rails.size() == free.size()))
+        view.status = state.message.empty() ? "Free channels. No login needed. Add your own channels below." : state.message;
     return view;
 }
 

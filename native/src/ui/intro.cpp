@@ -383,7 +383,7 @@ void DrawWord(const Frame& f, double centreX, double top, double size) {
         DrawGlow(f, x + 0.5 * kWordAdvance[i] * size, y + 0.5 * size, 0.35 * size, opacity);
         // Each letter's box is two em wide, so a glyph that is wider than an em is not cut with an ellipsis.
         f.painter.Text(Box{x, y, 2.0 * size, size}, kLetters[i], TextStyle{size, true, kWordWeight},
-                       Scaled(tokens::kText, opacity * f.alpha));
+                       Scaled(Rgb(0xFFFFFF), opacity * f.alpha));
     }
 
     // The sheen is a band at 105 degrees, `.tvm-intro__sheen`, which sweeps across the word and is clipped to it.
@@ -529,7 +529,7 @@ void DrawSkip(const Frame& f) {
     const double right = f.width - 1.4 * f.rem;
     const double bottom = f.height - 1.2 * f.rem;
     DrawSpaced(f, hint, right - hint.WidthEm() * size, bottom - lineHeight, size, lineHeight, kSkipWeight,
-               Scaled(tokens::kText, 0.55 * opacity * f.alpha));
+               Scaled(Rgb(0xFFFFFF), 0.55 * opacity * f.alpha));
 }
 
 }  // namespace

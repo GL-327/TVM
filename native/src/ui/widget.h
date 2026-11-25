@@ -80,18 +80,24 @@ public:
     void Add(std::unique_ptr<Widget> child);
     const std::vector<std::unique_ptr<Widget>>& children() const { return children_; }
 
+    static constexpr double kRingOrigin = 10000000.0;
+    void SetLoop(bool loop) { loop_ = loop; if (loop_) scrollX_ = kRingOrigin; }
+    bool Loop() const { return loop_; }
+    double Period() const;
+    std::optional<std::size_t> IndexAt(double x) const;
     void SetScroll(double scrollX) { scrollX_ = scrollX; }
     double scroll() const { return scrollX_; }
-    double ContentWidth() const { return contentWidth_; }
+    double ContentWidth() const { return loop_ ? box_.width + Period() : contentWidth_; }
     double MaxScroll() const;
     // Left edge of a child inside the content, before scrolling.
-    double ContentLeftOf(std::size_t index) const { return contentLeft_.at(index); }
+    double ContentLeftOf(std::size_t index) const;
 
     Size Measure(double availableWidth, const Metrics& metrics) override;
     void Arrange(const Box& box, const Metrics& metrics) override;
     void Paint(Painter& painter, const Metrics& metrics) const override;
 
 private:
+    bool loop_ = false;
     double spacingRem_;
     double insetRem_;
     double scrollX_ = 0.0;
@@ -177,7 +183,7 @@ private:
 };
 
 // Layout and motion values shared by the widgets.
-inline constexpr double kFocusScale = 1.06;
+inline constexpr double kFocusScale = 1.05;
 inline constexpr double kFocusRingWidthRem = 0.18;
 inline constexpr double kFocusRingOffsetRem = 0.14;
 inline constexpr double kPosterWidthRem = 10.5;
@@ -194,7 +200,7 @@ inline constexpr double kCardLabelGapRem = 0.75;
 inline constexpr double kCardLabelHeightRem = 1.75;
 // Poster and card focus tokens from DECISIONS.md and WINDOWS-VISUAL-SPEC.md:
 // scale 1.04, lift 6px (0.375rem at 1080p), directional glass rim and outer focus glow.
-inline constexpr double kPosterFocusScale = 1.04;
+inline constexpr double kPosterFocusScale = 1.08;
 inline constexpr double kPosterLiftRem = 0.375;
 inline constexpr double kPosterRingWidthRem = 0.16;
 inline constexpr double kPosterRingOffsetRem = 0.18;

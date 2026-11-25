@@ -30,7 +30,7 @@ public:
     virtual Theme Look() const { return Theme::Dark; }
     virtual void SaveLook(Theme /*theme*/) {}
 
-    virtual GlassClarity Glass() const { return GlassClarity::Clear; }
+    virtual GlassClarity Glass() const { return GlassClarity::Default; }
     virtual void SaveGlass(GlassClarity /*clarity*/) {}
 
     // Whether "Who's watching?" shows each time TVM opens. On unless the viewer turns it off.

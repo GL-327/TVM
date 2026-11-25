@@ -12,8 +12,8 @@ namespace tvm::catalog {
 
 namespace {
 
-constexpr std::size_t kRailLimit = 16;
-constexpr std::size_t kBecauseLimit = 12;
+constexpr std::size_t kRailLimit = 40;
+constexpr std::size_t kBecauseLimit = 40;
 
 std::vector<std::string> MovieGenresForRail(const std::string& id, const std::string& primary) {
     if (id == "action") return {"Action", "Adventure"};
@@ -63,7 +63,8 @@ std::vector<HomeRail> BuildHomeRails(const CatalogBundle& bundle, const std::vec
     for (const GenreRail& rail : GenreRails()) {
         for (const GenreShelf& shelf : shelves) {
             if (shelf.genre != rail.genre) continue;
-            add(rail.id, rail.title, InterleaveUnused(shelf.movies, shelf.shows, used, kRailLimit));
+            std::set<std::string> rowUsed;
+            add(rail.id, rail.title, InterleaveUnused(shelf.movies, shelf.shows, rowUsed, kRailLimit));
             break;
         }
     }

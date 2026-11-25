@@ -30,6 +30,7 @@
 #include "catalog/realdebrid.h"
 #include "catalog/xtream.h"
 #include "core/admin.h"
+#include "core/content.h"
 #include "core/core_client.h"
 #include "core/paths.h"
 #include "nav/hop_queue.h"
@@ -45,6 +46,7 @@
 #include "ui/downloads_screen.h"
 #include "ui/logo_reveal.h"
 #include "ui/profile_chooser.h"
+#include "ui/profile_editor.h"
 #include "ui/preferences_store.h"
 #include "ui/realdebrid_screen.h"
 #include "ui/scene.h"
@@ -98,6 +100,15 @@ private:
     void LoadCatalog();
     // Builds Home's shelves from the stored catalogue and the viewer's watchlist and progress.
     void RebuildHome();
+    void RefreshContent();
+    void RefreshProfilePolicy();
+    bool Allowed(const catalog::MediaItem& item) const;
+    void PageRails();
+    void FilterView(ui::SceneView& view) const;
+    void SyncReleaseNotice(double nowMs);
+    void DismissReleaseNotice(double nowMs);
+    std::unique_ptr<content::ReleaseNotice> releaseNotice_;
+    double updatesCheckedMs_ = 0;
     // Turns the Home hero to its next title every eight seconds, while Home is on screen and not reduced.
     void TurnHero(double now);
     // Queues a download. `onScreen` puts it ahead of pictures fetched in advance.
@@ -199,6 +210,10 @@ private:
     void BuildWatchlistPage();
     void ShowProfiles(const std::string& message);
     void ApplyProfileAction(const ui::Command& command);
+    void OpenProfileEditor(const std::string& id);
+    void AskProfilePin(const ui::Command& pending, const std::string& id);
+    std::optional<ui::Command> pendingProfileAction_;
+    std::string profileEditPin_, profileEditId_, adultApprovalId_, adultApprovalPin_;
     void CheckForUpdates();
     void InstallNativeUpdate();
     void ShowUpdates();
@@ -235,6 +250,11 @@ private:
     ui::InfoView AccountsView() const;
     ui::InfoView DeveloperView() const;
     ui::InfoView AppsView() const;
+    ui::InfoView ServicesView() const;
+    nlohmann::json ConnectedServices() const;
+    void ConnectService(const std::string& id, bool connected);
+    void LaunchService(const std::string& id, bool signin, const std::string& title = "");
+    std::string pendingService_;
     ui::InfoView ConfirmView() const;
     void ExportPersonalData();
     // Removes everything TVM keeps in its data folder, then starts a fresh copy, as the web reload does.
@@ -269,6 +289,8 @@ private:
     // chrome is drawn over it in the overlay window. Leaving the player ends the session.
     void SyncPlayer();
     void StartPlayback();
+    void PrepareHls(playback::Resolution& resolution, int height) const;
+    void SwitchHls(int height);
     void StopPlayback();
     void ApplyPlayerAction(const ui::Command& command);
     void FinishResolve(int generation, const playback::Resolution& resolution);
@@ -337,6 +359,16 @@ private:
     LARGE_INTEGER start_{};
 
     // The catalogue as last fetched, and whether Home has been built from it.
+    std::unique_ptr<content::Store> content_;
+    nlohmann::json parental_;
+    int profileMaxAge_ = 18;
+    bool kidsProfile_ = false;
+    double contentCheckedMs_ = -21600000;
+    std::string contentDate_;
+    std::vector<ui::HeroData> eventHeroes_;
+    std::vector<ui::RailData> eventRails_;
+    struct RailPage { std::vector<catalog::MediaItem> items; std::size_t skip = 0; bool more = true; bool busy = false; };
+    std::map<std::string, RailPage> railPages_;
     catalog::CatalogBundle bundle_;
     std::vector<catalog::GenreShelf> shelves_;
     bool catalogReady_ = false;
@@ -504,6 +536,15 @@ private:
     // The streams the quality menu offers for this title, and the one playing.
     std::vector<playback::StreamChoice> streamChoices_;
     std::size_t streamChosen_ = 0;
+    int playerScreenHeight_ = 1080;
+    int playerBestHeight_ = 1080;
+    int playerPlanHeight_ = 2160;
+    int playerManualHeight_ = 0;
+    std::string playerHlsSource_;
+    std::vector<int> playerHlsHeights_;
+    int playerHlsHeight_ = 0;
+    bool playerHlsSwitching_ = false;
+    double playerStallSince_ = 0, playerHealthySince_ = 0;
     // The episode after the one playing, its show's name, and whether the viewer chose to watch the credits.
     std::optional<catalog::MediaItem> nextEpisode_;
     std::string showTitle_;

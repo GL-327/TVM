@@ -32,6 +32,8 @@ namespace tvm::ui {
 
 class Shell {
 public:
+    struct ReleaseCard { std::string version, title; std::vector<std::string> highlights; };
+    void SetReleaseCard(std::optional<ReleaseCard> card) { releaseCard_ = std::move(card); }
     // `root` is the home screen. It is the bottom of the stack and is never removed.
     Shell(std::unique_ptr<Screen> root, PreferenceStore& store);
 
@@ -115,6 +117,12 @@ private:
     void RestoreFocus(double nowMs);
     void ApplyMotionIfChanged();
     void Pan(const ScrollSurface& surface, double delta, nav::WheelMode mode, double nowMs);
+    std::optional<std::string> Hit(double x, double y);
+    bool ActivateChrome(const std::string& key, double nowMs);
+    std::optional<Box> BackBox() const;
+    Box ReleaseBox() const;
+    std::optional<ReleaseCard> releaseCard_;
+    bool backFocused_ = false;
 
     nav::ViewStackState stack_;
     std::map<std::string, std::unique_ptr<Screen>> screens_;

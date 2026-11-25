@@ -86,6 +86,11 @@ struct ProfileEntry {
     std::string id;
     std::string name;
     int hue = 221;
+    std::string avatar;
+    std::string avatarUrl;
+    std::string kind = "standard";
+    int maxAge = 18;
+    bool locked = false;
 
     bool operator==(const ProfileEntry&) const = default;
 };
@@ -230,6 +235,8 @@ struct InfoView {
     std::vector<InfoBlock> blocks;
     // Rows of buttons after the blocks, each row its own line.
     std::vector<std::vector<InfoAction>> actions;
+    // A labelled row may place its own actions directly below it, as the service list does.
+    bool interleaveActions = false;
     // A field typed into from the keyboard. Its text goes with every action as the "field" param.
     bool field = false;
     std::string fieldLabel;

@@ -45,6 +45,9 @@
 #include "ui/downloads_screen.h"
 #include "ui/logo_reveal.h"
 #include "ui/profile_chooser.h"
+#include "ui/profile_editor.h"
+#include "ui/live_tv_view.h"
+#include "core/content.h"
 #include "ui/player_screen.h"
 #include "ui/preferences_store.h"
 #include "ui/scene.h"
@@ -369,6 +372,88 @@ void SettleMotion(tvm::ui::Shell& shell, double& nowMs) {
 int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys,
                 tvm::ui::Theme theme, const std::wstring& screen, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
+    // Deterministic 1.1 visual fixtures use the production screens and bundled content, without an account or network.
+    if (screen == L"home-1.1" || screen == L"rail-seam" || screen == L"profile-editor" || screen == L"pin-pad" ||
+        screen == L"live-free" || screen == L"services") {
+        const auto tempData = std::filesystem::temp_directory_path() / (L"tvm-feature-snapshot-" + std::to_wstring(GetCurrentProcessId()));
+        tvm::ui::FilePreferenceStore store(tempData);
+        store.SaveGlass(glass);
+        tvm::content::Store content(tempData);
+        auto root = SnapshotHomeScene(store.Motion(), art);
+        auto* scene = root.get();
+        tvm::ui::Shell shell(std::move(root), store);
+        shell.Layout(width, height);
+        if (screen == L"profile-editor" || screen == L"pin-pad") {
+            tvm::ui::Command open; open.name = "profile-editor";
+            shell.Execute(open, 0);
+            auto& editor = dynamic_cast<tvm::ui::ProfileEditor&>(shell.ActiveScreen());
+            tvm::ui::ProfileEntry person{"visual-check", "Alex", 221};
+            person.locked = true;
+            editor.SetProfile(person, content.Read("avatars"), "");
+            if (screen == L"pin-pad") { editor.Challenge(person.id, person.name); editor.Type("12"); }
+        } else if (screen == L"services") {
+            tvm::ui::Command open; open.name = "services";
+            shell.Execute(open, 0);
+            tvm::ui::InfoView view;
+            view.kicker = "Streaming services"; view.heading = "Your services"; view.interleaveActions = true;
+            view.lede = "Sign in on each service's own page. TVM never sees your password.";
+            const auto data = content.Read("services");
+            if (data.contains("services")) for (const auto& service : data["services"]) {
+                const std::string name = service.value("name", "Service");
+                view.blocks.push_back({tvm::ui::InfoBlock::Kind::Row, name, "Not connected"});
+                tvm::ui::InfoAction signin; signin.key = "signin:" + name; signin.label = "Sign in to " + name; signin.primary = true;
+                tvm::ui::InfoAction launch; launch.key = "open:" + name; launch.label = "Open " + name;
+                view.actions.push_back({signin, launch});
+            }
+            dynamic_cast<tvm::ui::InfoScreen&>(shell.ActiveScreen()).SetView(view);
+        } else if (screen == L"live-free") {
+            tvm::ui::LiveTvState state; state.loaded = true;
+            const auto data = content.Read("free-channels");
+            if (data.contains("channels")) for (const auto& channel : data["channels"]) {
+                tvm::catalog::LiveChannel item;
+                item.id = "live:free:" + channel.value("id", ""); item.name = channel.value("name", "");
+                item.group = channel.value("group", ""); if (channel.contains("geo") && channel["geo"].is_string()) item.geo = channel["geo"].get<std::string>(); item.logo = channel.value("logo", "");
+                state.freeChannels.push_back(item);
+            }
+            auto view = tvm::ui::LiveTvView(state);
+            view.style = tvm::ui::SceneStyle::Stream; view.pageKey = "live-tv";
+            view.pageButtons = view.topButtons; view.topButtons = SnapshotHomeView(3).topButtons;
+            view.heading = "Live TV";
+            scene->SetHeroes({}, 0); scene->SetView(view, 0);
+        } else if (screen == L"rail-seam") {
+            auto view = SnapshotHomeView(0);
+            view.rails.erase(view.rails.begin()); view.rails.resize(1);
+            auto& rail = view.rails.front(); rail.cards.resize(3); rail.loop = true; rail.title = "A short row at its seam";
+            scene->SetHeroes({}, 0); scene->SetView(view, 0);
+            scene->FocusItem("card:0:0", 0, true);
+            scene->Navigate(Direction::Left, 100);
+        } else {
+            auto view = SnapshotHomeView(0);
+            tvm::ui::HeroData hero = SnapshotHero(art);
+            const auto data = content.Read("events");
+            if (data.contains("events") && !data["events"].empty()) {
+                const auto& event = data["events"][0];
+                hero.itemId = event.value("imdbId", ""); hero.title = event.value("title", "Release spotlight");
+                hero.body = event.value("line", ""); hero.meta = tvm::content::EventKicker(event, event.value("start", ""));
+                hero.playLabel = "Watch the saga"; hero.infoLabel = "Details"; hero.rating = "8.0"; hero.accent = tvm::ui::Rgb(0x2F6BFF);
+                auto rail = view.rails.back(); rail.title = event["rail"].value("title", "Catch up"); rail.loop = true;
+                view.rails.insert(view.rails.begin() + 1, rail);
+            }
+            scene->SetView(view, 0); scene->SetHeroes({hero}, 0);
+            const auto notes = content.Read("changelog");
+            if (notes.contains("releases") && !notes["releases"].empty()) {
+                const auto& release = notes["releases"][0];
+                tvm::ui::Shell::ReleaseCard card; card.version = "1.1"; card.title = release.value("title", "");
+                for (const auto& line : release["highlights"]) if (line.is_string() && card.highlights.size() < 4) card.highlights.push_back(line.get<std::string>());
+                shell.SetReleaseCard(card);
+            }
+        }
+        for (double now = 0; now <= 1400; now += 16) shell.Tick(now);
+        tvm::platform::SaveSnapshot(shell, graphics, width, height, path);
+        std::error_code ignored; std::filesystem::remove_all(tempData, ignored);
+        std::printf("wrote %ls\n", path.c_str());
+        return 0;
+    }
     const bool settings = screen == L"settings" || screen == L"settings-language";
     if (screen.rfind(L"downloads", 0) == 0) {
         // Downloads over a title's page: "downloads" with a series and its downloads, "downloads-empty" for a film with
@@ -453,6 +538,15 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         info.synopsis = "A lighthouse keeper on a remote island finds the lamp burning on its own one winter night.";
         info.backdropUrl = art;
         details.SetInfo(info);
+        if (screen == L"details-reviews") {
+            info.reviews = {{"reviews", nlohmann::json::array({
+                {{"author", "Snapshot reviewer"}, {"stars", 4.0}, {"text", "A visual fixture for checking the review panel's spacing and four-line text area."}},
+                {{"author", "Second reviewer"}, {"stars", 3.5}, {"text", "The cast and coastal setting carry this quiet mystery."}},
+                {{"author", "Third reviewer"}, {"stars", 4.5}, {"text", "A strong final act, with room for the story to breathe."}}
+            })}};
+            details.SetInfo(info);
+            details.FocusItem("imdb", 0, false);
+        }
         // `--keys Up` shows the arrow focused, as the remote reaches it.
         for (const std::wstring& token : SplitCommas(keys)) {
             if (const auto direction = ParseDirection(token)) details.Navigate(*direction, 0.0);
@@ -471,8 +565,23 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         // "player-quality" and "player-speed" show that menu open.
         tvm::platform::SnapshotWriter writer(graphics, width, height);
         auto player = SnapshotPlayer(width, height);
+        if (screen == L"player-loading" || screen == L"player-volume") {
+            tvm::ui::PlayerView view;
+            view.title = "The Last Light";
+            if (screen == L"player-volume") {
+                view.phase = tvm::ui::PlayerView::Phase::Playing; view.started = true;
+                view.volume = 1.5; view.position = 1520; view.duration = 3480;
+            } else {
+                view.phase = tvm::ui::PlayerView::Phase::Playing;
+                view.buffering = true; view.bufferPercent = 42; view.cacheSpeed = 2200000; view.cacheSeconds = 5;
+            }
+            player->SetView(view, 0);
+            player->ShowChrome(0);
+            if (screen == L"player-volume") player->FocusItem("mute", 0, false);
+            for (double now = 0; now <= 800; now += 16) player->Tick(now);
+        }
         player->Tick(100.0);
-        if (screen.size() > 7) {
+        if (screen.size() > 7 && screen != L"player-loading" && screen != L"player-volume") {
             const std::wstring menu = screen.substr(7);
             std::string key;
             for (const wchar_t c : menu) key.push_back(static_cast<char>(c & 0x7F));
@@ -789,7 +898,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE /*previous*/, PWSTR /*commandL
         std::optional<std::wstring> frames;
         std::wstring scenario = L"tab-switch";
         std::string art = "asset:lighthouse.jpg";
-        tvm::ui::GlassClarity glass = tvm::ui::GlassClarity::Clear;
+        tvm::ui::GlassClarity glass = tvm::ui::GlassClarity::Default;
         std::wstring keys;
         tvm::ui::Theme theme = tvm::ui::Theme::Dark;
         std::wstring screen;

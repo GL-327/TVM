@@ -121,9 +121,8 @@ TEST(while_the_stream_is_found_the_queue_card_shows) {
     PlayerScreen player = Player(view);
     TextPainter painter;
     player.Paint(painter);
-    REQUIRE(painter.Has("TVM CINEMA"));
-    REQUIRE(painter.Has("Getting your stream ready"));
-    REQUIRE(painter.Has("Checking the source and preparing playback. Press Back to cancel."));
+    REQUIRE(painter.Has("Finding the best stream"));
+    REQUIRE(painter.Has("Dune"));
     REQUIRE(!player.OverVideo());
 }
 
@@ -133,7 +132,7 @@ TEST(the_queue_card_stays_until_mpv_draws_a_first_frame) {
     PlayerScreen player = Player(view);
     TextPainter painter;
     player.Paint(painter);
-    REQUIRE(painter.Has("Getting your stream ready"));
+    REQUIRE(painter.Has("Connecting"));
     REQUIRE(player.OverVideo());
 }
 
@@ -156,11 +155,12 @@ TEST(the_volume_bar_runs_from_silence_to_full) {
     REQUIRE(key.has_value());
     const std::optional<Command> command = player.ActivateItem(*key, 0.0);
     REQUIRE_EQ(command->name, std::string("player-volume"));
-    REQUIRE_NEAR(std::stod(command->params.at("level")), 1.0, 0.01);
-    // The middle of the bar is half volume, and a drag follows the pointer, clamped at the ends.
-    REQUIRE_NEAR(*player.VolumeAt(bar.CenterX(), bar.CenterY()), 0.5, 0.01);
+    REQUIRE_NEAR(std::stod(command->params.at("level")), 2.0, 0.01);
+    // The middle is 100%; boosted levels stay above it while dragging.
+    REQUIRE_NEAR(*player.VolumeAt(bar.CenterX(), bar.CenterY()), 1.0, 0.01);
     REQUIRE_NEAR(player.VolumeAtX(bar.x - 50.0), 0.0, 1e-9);
-    REQUIRE_NEAR(player.VolumeAtX(bar.Right() + 50.0), 1.0, 1e-9);
+    REQUIRE_NEAR(player.VolumeAtX(bar.Right() + 50.0), 2.0, 1e-9);
+    REQUIRE_NEAR(player.VolumeAtX(bar.x + bar.width * 0.75), 1.5, 1e-9);
     REQUIRE(!player.VolumeAt(bar.CenterX(), bar.y - 40.0).has_value());
 }
 
