@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="OrbitLoader" extends="Group">
+  <interface>
+    <field id="active" type="boolean" onChange="onActive" />
+    <field id="percentage" type="float" onChange="onPercentage" />
+    <field id="rate" type="float" value="0.35" alwaysNotify="true" onChange="onRate" />
+    <field id="status" type="string" onChange="onStatus" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="OrbitLoader.brs" />
+  <children>
+    <Poster width="320" height="320" translation="[360, 0]" uri="pkg:/images/glass/orbit-ring.png" />
+    <Group id="progress" translation="[360, 0]" />
+    <Group id="comet" translation="[360, 0]" scaleRotateCenter="[160,160]">
+      <Poster width="320" height="320" uri="pkg:/images/glass/orbit-comet.png" />
+    </Group>
+    <Label id="status" translation="[0, 380]" width="1040" height="150" horizAlign="center" wrap="true" maxLines="2" />
+    <Timer id="tick" duration="0.0333" repeat="true" />
+  </children>
+</component>

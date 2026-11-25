@@ -6,6 +6,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateRawSync } from "node:zlib";
+import { syncContent } from './sync-content.mjs';
 
 const rokuRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(rokuRoot, "tvm-roku.zip");
@@ -83,7 +84,7 @@ export function buildZip(files) {
   for (const file of files) {
     const nameBuf = Buffer.from(file.name, "utf8");
     const crc = crc32(file.data);
-    const compressed = deflateRawSync(file.data);
+    const compressed = deflateRawSync(file.data, { level: 9 });
     const store = compressed.length >= file.data.length;
     const payload = store ? file.data : compressed;
     const method = store ? 0 : 8;
@@ -169,6 +170,7 @@ export function listZipNames(buf) {
 }
 
 export function packageChannel() {
+  syncContent();
   const files = channelFiles()
     .map((path) => ({
       name: relative(rokuRoot, path).replaceAll("\\", "/"),

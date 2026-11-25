@@ -8,6 +8,7 @@
     <field id="variant" type="string" value="glass" onChange="layout" />
     <field id="hasFocusStyle" type="boolean" onChange="onFocusStyle" />
     <field id="active" type="boolean" onChange="onFocusStyle" />
+    <field id="accentColor" type="string" value="0x2F6BFF8C" onChange="paintGlassPill" />
     <field id="accent" type="boolean" onChange="onFocusStyle" />
     <field id="disabled" type="boolean" onChange="onFocusStyle" />
     <field id="pressed" type="boolean" onChange="onPressed" />

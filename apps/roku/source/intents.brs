@@ -2,6 +2,9 @@
 ' Screens must not read raw Roku key names except through this map.
 
 function intentFromKey(key as String) as String
+  if m.global <> invalid
+    if m.global.hasField("inputSerial") then m.global.inputSerial = m.global.inputSerial + 1
+  end if
   if key = "up" then return "up"
   if key = "down" then return "down"
   if key = "left" then return "left"

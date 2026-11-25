@@ -9,10 +9,11 @@ sub init()
   m.groupLabel = m.top.findNode("groupLabel")
   m.badge = m.top.findNode("badge")
   m.badgeLabel = m.top.findNode("badgeLabel")
-  m.nameLabel.font = tvmFont("bold", 34)
+  m.nameLabel.font = tvmFont("bold", 56)
   m.groupLabel.font = tvmFontCaption()
   m.initial.font = tvmFont("bold", 72)
   m.badgeLabel.font = tvmFontCaption()
+  m.logo.observeField("loadStatus", "onLogoLoad")
   layout()
 end sub
 
@@ -82,7 +83,7 @@ sub onItem()
   if m.nameLabel = invalid then return
   layout()
   item = m.top.item
-  name = aaGet(item, "name", "Channel")
+  name = aaGet(item, "name", aaGet(item, "title", "Channel"))
   group = aaGet(item, "group", "Live")
   logo = aaGet(item, "logo", "")
   picked = aaGet(item, "picked", false)
@@ -101,9 +102,14 @@ sub onItem()
     m.initial.visible = true
   end if
   picking = m.top.picking = true
-  m.badge.visible = picking
-  m.badgeLabel.visible = picking
-  if picked = true
+  uk = aaGet(item, "geo", "") = "GB"
+  m.badge.visible = picking or uk
+  m.badgeLabel.visible = picking or uk
+  if not picking and uk
+    m.badgeLabel.text = "UK"
+    m.badge.color = "0xFFFFFF38"
+    m.badgeLabel.color = tvmText()
+  else if picked = true
     m.badgeLabel.text = "ON"
     m.badge.color = tvmFocus()
     m.badgeLabel.color = tvmAccentInk()
@@ -124,4 +130,9 @@ sub onFocusStyle()
     m.ring.color = "0x00000000"
     m.top.scale = [1.0, 1.0]
   end if
+end sub
+
+sub onLogoLoad()
+  m.logo.visible = m.logo.loadStatus = "ready"
+  m.initial.visible = not m.logo.visible
 end sub

@@ -27,6 +27,8 @@ sub onRegistry()
     profile = profiles[i]
     orb = CreateObject("roSGNode", "ProfileOrb")
     orb.name = aaGet(profile, "name", "Profile")
+    orb.avatar = asText(aaGet(profile, "avatar", ""))
+    orb.locked = (aaGet(profile, "locked", false) = true)
     hue = aaGet(profile, "hue", 220)
     if hue <> invalid then orb.hue = Int(hue)
     orb.translation = [i * 400, 0]
@@ -85,7 +87,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     return true
   end if
   if intent = "info" and m.col < m.profiles.Count()
-    emit("remove", { id: aaGet(m.profiles[m.col], "id", "") })
+    emit("edit", { id: aaGet(m.profiles[m.col], "id", "") })
     return true
   end if
   if intent = "select"

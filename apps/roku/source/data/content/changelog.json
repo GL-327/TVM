@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
+  "releases": [
+    {
+      "version": "1.1.0",
+      "date": "2026-11-25",
+      "title": "New glass, longer rows, and your services",
+      "highlights": [
+        "Rows keep going: far more films and shows per category, loading as you scroll.",
+        "Sign in to Netflix, Disney+ and others, then open titles there from TVM.",
+        "Kids profiles, age limits, PIN locks and character profile pictures.",
+        "Free live channels, including BBC One, BBC News and CBeebies (UK only)."
+      ],
+      "changes": [
+        {
+          "area": "Look",
+          "text": "Glass redone to match iOS 27: clearer centre, sharper edges, brighter highlights.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Each category now holds dozens of titles and loops round without a visible seam.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Big releases get their own spot. Sunrise on the Reaping now, Avengers: Doomsday from 9 December.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "IMDb rating on every title. Hover it for the top reviews, click it to open IMDb.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Services",
+          "text": "Sign in to your streaming services once and open shows in them from TVM.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Profiles",
+          "text": "Kids profiles, age limits by genre, and a 4-digit PIN to lock any profile.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Profiles",
+          "text": "Pick a profile picture from Hunger Games, Avengers, Jujutsu Kaisen and more.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "A Free channels row that works without a login or playlist.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Volume slider now goes to 200%. It no longer drops back under 100%.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Starts at the best quality your screen can show, unless you pick one yourself.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "New loading animation that speeds up as the stream comes in.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Search",
+          "text": "Typing no longer gets cut off when results arrive.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Navigation",
+          "text": "A Back button on most pages.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "What's new shows once after an update, in the corner of Home. Every version's notes live in Settings.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Windows",
+          "text": "The Windows and Roku apps get these changes in the next update.",
+          "platforms": [
+            "windows",
+            "roku"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-11-24",
+      "title": "TVM everywhere",
+      "highlights": [
+        "One app on Windows, Mac, Linux, iPhone, Android, Roku and the web.",
+        "Real-Debrid and your own Live TV playlist, set up from Account.",
+        "Liquid Glass across the app, with Clear and Frosted styles."
+      ],
+      "changes": [
+        {
+          "area": "Windows",
+          "text": "A single TVM.exe that installs and updates itself."
+        },
+        {
+          "area": "Roku",
+          "text": "Runs on its own, with no PC needed."
+        },
+        {
+          "area": "Home",
+          "text": "Categories loop, and keep their place when you come back."
+        },
+        {
+          "area": "Search",
+          "text": "A television-style search page."
+        },
+        {
+          "area": "Player",
+          "text": "New controls, a draggable volume bar and readable menus."
+        },
+        {
+          "area": "Profiles",
+          "text": "\"Who's watching?\" chooser with up to 10 profiles."
+        },
+        {
+          "area": "Account",
+          "text": "Sign in, create an account or use a developer code."
+        }
+      ]
+    }
+  ]
+}

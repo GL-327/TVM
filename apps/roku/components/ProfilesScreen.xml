@@ -13,7 +13,7 @@
   <children>
     <Label id="kicker" translation="[160, 144]" color="0x8A8A8AFF" text="Who's watching?" />
     <Label id="heading" translation="[160, 220]" color="0xF5F5F5FF" text="Profiles" />
-    <Label id="lede" translation="[160, 360]" width="3200" wrap="true" maxLines="2" color="0xC4C4C4FF" text="OK switches. Options removes a profile. Add is limited to five." />
+    <Label id="lede" translation="[160, 360]" width="3200" wrap="true" maxLines="2" color="0xC4C4C4FF" text="OK switches. Options edits a profile. Add is limited to five." />
     <Group id="orbs" translation="[160, 560]" />
   </children>
 </component>

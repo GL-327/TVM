@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="DetailsPanel" extends="Group">
   <interface>
+    <field id="reviewPreview" type="assocarray" onChange="onReviewPreview" />
+    <field id="connectedServices" type="array" onChange="onServices" />
     <field id="item" type="assocarray" onChange="onItem" />
     <field id="children" type="array" onChange="onChildren" />
     <field id="saved" type="boolean" onChange="onSaved" />
@@ -22,13 +24,20 @@
     <Poster id="vignetteBottom" width="3840" height="840" translation="[0, 1320]" uri="pkg:/images/chrome/details-vignette-bottom.png" />
     <Label id="kicker" translation="[160, 360]" width="2400" height="60" color="0xC4C4C4FF" />
     <Label id="title" translation="[160, 430]" width="2400" height="260" wrap="true" maxLines="2" color="0xF5F5F5FF" />
-    <Label id="imdb" translation="[160, 710]" width="440" height="64" color="0xF5C518FF" />
+    <Poster id="imdbBadge" width="420" height="72" translation="[192, 706]" uri="pkg:/images/glass/chip-fill.9.png" blendColor="0xF5C518FF" />
+    <Label id="imdb" translation="[212, 710]" width="380" height="64" horizAlign="center" color="0x000000FF" />
     <Label id="meta" translation="[600, 710]" width="2400" height="64" color="0xD8D9E8FF" />
     <FocusButton id="play" translation="[160, 830]" />
     <FocusButton id="imdbBtn" translation="[600, 830]" />
     <FocusButton id="save" translation="[1040, 830]" />
+    <FocusButton id="watchOn" translation="[2200, 830]" visible="false" />
     <FocusButton id="back" translation="[1600, 830]" />
     <Label id="synopsis" translation="[160, 1030]" width="2400" height="260" wrap="true" maxLines="3" color="0xD8D9E8FF" />
+    <Group id="reviewPopover" translation="[192, 980]" visible="false">
+      <GlassPanel width="1900" height="1020" shape="panel" />
+      <Label id="reviewText" translation="[64, 64]" width="1772" height="880" wrap="true" maxLines="14" />
+    </Group>
+    <Timer id="reviewDelay" duration="0.35" repeat="false" />
     <Group id="picker" translation="[160, 1330]" />
   </children>
 </component>

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "note": "Age limits for profiles. TVM's catalogue sources carry genres but no official certificates, so limits filter by genre and say so in the UI ('Filters by genre'). A title passes when it has at least one `allow` genre (if `allow` is set) and none of the `block` genres. Live TV: `liveGroups` lists the channel groups a limited profile can see (null = all).",
+  "levels": [
+    { "maxAge": 7, "label": "Up to 7", "allow": ["Animation", "Family"], "block": ["Horror", "Crime", "Thriller", "War", "Mystery", "Romance", "Reality-TV", "Talk-Show", "News"], "liveGroups": ["Kids"] },
+    { "maxAge": 12, "label": "Up to 12", "allow": null, "block": ["Horror", "Crime", "Thriller", "War"], "liveGroups": ["Kids", "Movies", "Music", "Science", "Sport"] },
+    { "maxAge": 15, "label": "Up to 15", "allow": null, "block": ["Horror"], "liveGroups": null },
+    { "maxAge": 18, "label": "No limit", "allow": null, "block": [], "liveGroups": null }
+  ],
+  "kidsDefault": 7,
+  "pin": {
+    "digits": 4,
+    "kdf": "pbkdf2-sha256",
+    "iterations": 20000,
+    "saltBytes": 16,
+    "keyBytes": 32,
+    "maxTries": 5,
+    "lockoutSeconds": 60,
+    "testVector": { "pin": "1234", "saltHex": "00112233445566778899aabbccddeeff", "hashHex": "1eeaf002a05b931ed2f5dd9fd99fc48b215f8e2dc3f300d356eb83bfe6a4adb4" }
+  }
+}

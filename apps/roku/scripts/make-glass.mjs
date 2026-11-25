@@ -104,7 +104,7 @@ function nine(art, insetX, insetY) {
 }
 const files = {};
 for (const [shape, w, h, radius] of [
-  ['panel', 256, 256, 80],
+  ['panel', 256, 256, 56],
   ['pill', 288, 144, 72],
   ['tab', 224, 112, 56],
   ['chip', 120, 60, 30],
@@ -120,24 +120,28 @@ for (const [shape, w, h, radius] of [
     return nine(art, radius + margin + 2, insetY);
   };
   files[`${shape}-fill.9.png`] = shapeImage((x, y, d) => [white(d <= 0 ? 1 : 0)]);
-  files[`${shape}-body.9.png`] = shapeImage((x, y, d) => [white(d <= 0 ? 0.16 * (1 - clamp(y / h)) + 0.03 * clamp(y / h) : 0)]);
+  files[`${shape}-body.9.png`] = shapeImage((x, y, d) => [white(d <= 0 ? 0.07 * (1 - clamp(y / h)) + 0.01 * clamp(y / h) : 0)]);
   files[`${shape}-gloss.9.png`] = shapeImage((x, y, d) => {
     const u = (x - w * 0.43) / (w * 0.79);
     const edgeY = h * (-0.5 + 0.95 * Math.sqrt(Math.max(0, 1 - u * u)));
-    const gloss = (0.26 - 0.24 * clamp(y / (h * 0.45))) * (1 - smooth(edgeY - 3, edgeY + 1, y));
+    const gloss = (0.28 - 0.26 * clamp(y / (h * 0.45))) * (1 - smooth(edgeY - 3, edgeY + 1, y));
     return [white(d <= 0 ? gloss : 0)];
   });
   function rim(x, y, d, focus) {
     if (d > 0) return [];
     const depth = -d;
     const light = clamp(1 - (x / w * 0.42 + y / h * 0.58));
-    const stroke = (focus ? 0.55 + 0.4 * light : 0.15 + 0.6 * light) * (1 - smooth(2, 3.5, depth));
-    const dark = 0.18 * smooth(2.5, 3.5, depth) * (1 - smooth(4.5, 5.5, depth));
+    const stroke = (focus ? 0.55 + 0.4 * light : 0.1 + 0.4 * light) * (1 - smooth(2, 3.5, depth));
+    const dark = 0.22 * smooth(2.5, 3.5, depth) * (1 - smooth(4.5, 5.5, depth));
     const refraction = 0.08 * Math.exp(-(((depth - 8) / 6) ** 2)) * smooth(0.55, 1, y / h);
     return [white(refraction), black(dark), white(stroke)];
   }
   files[`${shape}.9.png`] = shapeImage((x, y, d) => rim(x, y, d, false));
   files[`${shape}-focus.9.png`] = shapeImage((x, y, d) => rim(x, y, d, true));
+  if (shape === 'pill') {
+    files['pill-thumb.9.png'] = shapeImage((x, y, d) => rim(x, y, d, true));
+    files['pill-accent.9.png'] = shapeImage((x, y, d) => [[47, 107, 255, d <= 0 ? .55 : 0], ...rim(x, y, d, true)]);
+  }
   files[`${shape}-shadow.9.png`] = shapeImage((x, y) => {
     const d = roundedRect(x, y - 12, w, h, radius);
     return [black(0.33 * Math.exp(-(Math.max(0, d) ** 2) / (2 * 18 ** 2)))];
@@ -192,6 +196,24 @@ for (const [name, w, h, radius] of [
 ]) {
   files[name] = raster(w, h, (x, y) => over([white(roundedRect(x, y, w, h, radius) <= 0 ? 1 : 0)]));
 }
+// TVM orbit: glass ring, a tapered comet arc, and three trailing particles.
+files['orbit-ring.png'] = raster(320, 320, (x, y) => {
+  const d = Math.hypot(x - 160, y - 160) - 146;
+  const light = clamp(1 - (x + y) / 640);
+  return over([white(Math.abs(d) < 5 ? .12 : 0), black(d > -5 && d < -3 ? .22 : 0), white(Math.abs(d) < 1.3 ? .18 + .5 * light : 0)]);
+});
+files['orbit-comet.png'] = raster(320, 320, (x, y) => {
+  const dx = x - 160, dy = y - 160;
+  const radius = Math.hypot(dx, dy), a = (Math.atan2(dy, dx) + Math.PI * 2) % (Math.PI * 2);
+  let alpha = 0;
+  if (a < 1.25) alpha = Math.exp(-(((radius - 146) / 3.5) ** 2)) * (1 - a / 1.25);
+  for (let i = 0; i < 3; i++) {
+    const t = 1.4 + i * .18;
+    const d = Math.hypot(dx - Math.cos(t) * 146, dy - Math.sin(t) * 146);
+    alpha = Math.max(alpha, (1 - i * .22) * Math.exp(-d * d / 8));
+  }
+  return over([white(alpha)]);
+});
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   mkdirSync(outDir, { recursive: true });
   for (const [name, img] of Object.entries(files)) {

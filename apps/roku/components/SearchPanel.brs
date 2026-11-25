@@ -78,7 +78,7 @@ sub onResults()
   m.rail.title = ""
   m.rail.items = items
   if m.zone = "results" then m.rail.focusCol = m.resultCol else m.rail.focusCol = -1
-  holdFocus()
+  if m.resultCol >= items.Count() then m.resultCol = 0
 end sub
 
 sub paintQuery()

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="ApiTask" extends="Task">
   <interface>
+    <field id="appendItems" type="array" />
+    <field id="railId" type="string" />
+    <field id="pageTarget" type="string" />
     <field id="requestUrl" type="string" />
     <field id="requestId" type="string" />
     <field id="requestMethod" type="string" value="GET" />
@@ -17,5 +20,8 @@
     <field id="done" type="boolean" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/localCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/contentCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/playbackCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/reviewsCore.brs" />
   <script type="text/brightscript" uri="ApiTask.brs" />
 </component>

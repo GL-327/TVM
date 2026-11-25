@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ReleaseCard" extends="Group">
+  <interface>
+    <field id="title" type="string" onChange="paint" />
+    <field id="body" type="string" onChange="paint" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="ReleaseCard.brs" />
+  <children>
+    <GlassPanel width="1280" height="960" shape="panel" tintColor="0x121824E8" />
+    <Label id="title" translation="[56, 48]" width="1168" height="160" wrap="true" maxLines="2" color="0xFFFFFFFF" />
+    <Label id="body" translation="[56, 224]" width="1168" height="680" wrap="true" maxLines="12" color="0xFFFFFFDD" />
+  </children>
+</component>

@@ -15,6 +15,8 @@
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="pkg:/source/hub.brs" />
   <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
+  <script type="text/brightscript" uri="TVMFeatures.brs" />
+  <script type="text/brightscript" uri="TVMReleaseFeatures.brs" />
   <script type="text/brightscript" uri="TVMScene.brs" />
   <children>
     <Rectangle id="letterbox" width="1920" height="1080" color="0x000000FF" />
@@ -29,6 +31,12 @@
       <AmbientBackdrop id="ambient" />
       <Group id="screenHost" />
       <Group id="overlayHost" />
+      <Group id="backHint" translation="[192, 48]" visible="false">
+        <GlassPanel shape="chip" width="260" height="72" />
+        <Label id="backHintText" text="‹  Back" width="260" height="72" horizAlign="center" vertAlign="center" />
+      </Group>
+      <ReleaseCard id="releaseCard" translation="[2368, 1080]" visible="false" />
+      <ReleaseCard id="updateCard" translation="[2368, 96]" visible="false" />
       <Label
         id="bootLabel"
         text="Starting..."

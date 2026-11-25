@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="CatalogScreen" extends="Group">
   <interface>
+    <field id="more" type="boolean" />
+    <field id="nextSkip" type="integer" />
+    <field id="railId" type="string" />
+    <field id="appendPage" type="assocarray" alwaysNotify="true" onChange="onAppendPage" />
     <field id="kind" type="string" />
     <field id="navId" type="string" value="library" onChange="onNavId" />
     <field id="heading" type="string" onChange="onHeading" />

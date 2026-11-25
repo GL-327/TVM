@@ -37,6 +37,11 @@ sub buildPage()
     m.title.text = "You"
     m.subtitle.text = "Back closes this menu"
   end if
+  if m.global.hasField("kidsProfile") and m.global.kidsProfile
+    m.spec = [{ id: "profiles", label: "Switch profile", detail: "Choose who is watching" }]
+  else if m.page = "root"
+    m.spec.Push({ id: "services", label: "Services", detail: "Your streaming channels" })
+  end if
   rowW = 1040
   rowH = 176
   labelFont = tvmFont("semibold", tvmTypeSize(tvmTypeSecondary()))

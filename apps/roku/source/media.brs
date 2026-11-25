@@ -4,7 +4,7 @@ function asText(value as Dynamic) as String
   if valueType = "roString" or valueType = "String" then return value
   if valueType = "Integer" or valueType = "roInt" or valueType = "roInteger" then return StrI(value).Trim()
   if valueType = "Float" or valueType = "roFloat" or valueType = "Double" or valueType = "roDouble"
-    return StrI(Int(value)).Trim()
+    return value.ToStr().Trim()
   end if
   return ""
 end function
@@ -77,7 +77,9 @@ function homeContentRails(payload as Object) as Object
         rails.Push({
           id: aaGet(rail, "id", "rail")
           title: aaGet(rail, "title", "Titles")
-          items: clipItems(items, 16)
+          items: items
+          more: aaGet(rail, "more", false)
+          nextSkip: aaGet(rail, "nextSkip", items.Count())
         })
       end if
       if rails.Count() >= 24 then exit for

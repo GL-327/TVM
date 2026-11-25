@@ -42,7 +42,9 @@ function lcHandleRequest(url as String, method as String, bodyStr as String, acc
     profileId: profileId.Trim()
   }
 
-  res = lcRoute(ctx)
+  res = lcV11Route(ctx)
+  if res = invalid then res = lcRoute(ctx)
+  res = lcFilterResponse(res, ctx)
   code = lcAaInt(res, "status", 200)
   payload = lcAaGet(res, "json", {})
   if payload = invalid then payload = {}
@@ -156,7 +158,7 @@ function lcAaText(obj as Dynamic, key as String, fallback = "" as String) as Str
   t = Type(val)
   if t = "String" or t = "roString" then return val
   if t = "Integer" or t = "roInt" or t = "roInteger" then return StrI(val).Trim()
-  if t = "Float" or t = "roFloat" or t = "Double" or t = "roDouble" then return StrI(Int(val)).Trim()
+  if t = "Float" or t = "roFloat" or t = "Double" or t = "roDouble" then return val.ToStr().Trim()
   return fallback
 end function
 
@@ -402,7 +404,7 @@ function lcHttp(url as String, method = "GET" as String, body = "" as String, he
     xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.InitClientCertificates()
   end if
-  xfer.AddHeader("User-Agent", "TVM-Roku/1.0")
+  xfer.AddHeader("User-Agent", "TVM-Roku/1.1")
   if GetInterface(headers, "ifAssociativeArray") <> invalid
     for each k in headers
       xfer.AddHeader(k, lcAaText(headers, k, ""))
@@ -690,18 +692,7 @@ end function
 ' ---- Profiles ----
 
 function lcGetProfiles() as Object
-  data = lcReadRegJson("localProfiles", invalid)
-  if data = invalid or GetInterface(data, "ifAssociativeArray") = invalid or lcAaGet(data, "profiles", invalid) = invalid or data.profiles.Count() = 0
-    data = {
-      activeId: "main"
-      profiles: [{ id: "main", name: "Main", color: "#2F6BFF" }]
-    }
-    lcWriteRegJson("localProfiles", data)
-  end if
-  data.ok = true
-  data.version = "1.0.0-standalone"
-  data.status = "ok"
-  return data
+  return lcPublicProfiles(lcProfilesStore())
 end function
 
 function lcActiveProfileId(ctx as Object) as String
@@ -713,25 +704,29 @@ end function
 function lcCreateProfile(ctx as Object) as Object
   name = lcAaText(ctx.body, "name", "").Trim()
   if name = "" then return { status: 400, json: { error: "Name required." } }
-  data = lcGetProfiles()
+  data = lcProfilesStore()
   if data.profiles.Count() >= 5 then return { status: 400, json: { error: "Up to five profiles allowed." } }
   colors = ["#2F6BFF", "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B"]
   idx = data.profiles.Count() mod colors.Count()
   id = "prof_" + Left(lcNewToken(), 8)
-  data.profiles.Push({ id: id, name: name, color: colors[idx] })
+  p = { id: id, name: name, color: colors[idx], hue: 220 + idx * 35, created: lcNowIso(), kind: "standard", maxAge: 18, avatar: invalid }
+  if not lcSetProfileFields(p, ctx.body) then return { status: 400, json: { error: "Check the profile name, age limit and four-digit PIN." } }
+  data.profiles.Push(p)
   data.activeId = id
   lcWriteRegJson("localProfiles", data)
-  return { status: 201, json: data }
+  return { status: 201, json: lcPublicProfiles(data) }
 end function
 
 function lcActivateProfile(ctx as Object) as Object
   id = lcAaText(ctx.body, "id", "")
-  data = lcGetProfiles()
+  data = lcProfilesStore()
   for each p in data.profiles
     if lcAaText(p, "id", "") = id
+      err = lcPinError(data, p, lcAaText(ctx.body, "pin"))
+      if err <> invalid then return err
       data.activeId = id
       lcWriteRegJson("localProfiles", data)
-      return { status: 200, json: data }
+      return { status: 200, json: lcPublicProfiles(data) }
     end if
   end for
   return { status: 404, json: { error: "Profile not found." } }
@@ -739,7 +734,11 @@ end function
 
 function lcRemoveProfile(ctx as Object) as Object
   id = lcAaText(ctx.body, "id", "")
-  data = lcGetProfiles()
+  data = lcProfilesStore()
+  p = lcFindProfile(data, id)
+  if p = invalid then return { status: 404, json: { error: "Profile not found." } }
+  err = lcPinError(data, p, lcAaText(ctx.body, "pin"))
+  if err <> invalid then return err
   if data.profiles.Count() <= 1 then return { status: 400, json: { error: "Keep at least one profile." } }
   kept = []
   for each p in data.profiles
@@ -749,7 +748,7 @@ function lcRemoveProfile(ctx as Object) as Object
   data.profiles = kept
   if data.activeId = id then data.activeId = lcAaText(kept[0], "id", "main")
   lcWriteRegJson("localProfiles", data)
-  return { status: 200, json: data }
+  return { status: 200, json: lcPublicProfiles(data) }
 end function
 
 ' ---- Watchlist & Progress ----
@@ -875,6 +874,8 @@ function lcMetaToItem(meta as Object, fallbackKind = "movie" as String) as Objec
     backdrop: lcAaText(meta, "background", lcAaText(meta, "backdrop", ""))
     genres: genres
     rating: lcAaText(meta, "imdbRating", lcAaText(meta, "rating", ""))
+    imdbRating: lcAaText(meta, "imdbRating", lcAaText(meta, "rating", ""))
+    logo: lcAaText(meta, "logo", "")
     runtime: lcAaText(meta, "runtime", "")
     playable: true
   }
@@ -978,101 +979,41 @@ end function
 
 function lcCatalogBundle() as Object
   cached = lcReadTmpJson("tvm_home_cache.json", 720)
-  if cached <> invalid and lcAaGet(cached, "rails", invalid) <> invalid
-    return cached
-  end if
-
-  moviesTop = lcFetchCinemetaCatalog("/catalog/movie/top.json", "movie", 20)
-  seriesTop = lcFetchCinemetaCatalog("/catalog/series/top.json", "series", 20)
-  moviesRated = lcFetchCinemetaCatalog("/catalog/movie/imdbRating.json", "movie", 20)
-  seriesRated = lcFetchCinemetaCatalog("/catalog/series/imdbRating.json", "series", 20)
-  recentTv = lcFetchCinemetaCatalog("/catalog/series/last-videos.json", "series", 20)
-  fb = lcFallbackItems()
-
-  if moviesTop.Count() = 0 and seriesTop.Count() = 0
-    fbMovies = []
-    fbSeries = []
-    for each item in fb
-      if lcAaText(item, "kind", "movie") = "series"
-        fbSeries.Push(item)
-      else
-        fbMovies.Push(item)
-      end if
-    end for
-    usedFb = {}
-    rails = []
-    if fb.Count() > 0 then rails.Push({ id: "for-you", title: "Recommended", items: lcTakeUnused(fb, usedFb, 16) })
-    if fbMovies.Count() > 0 then rails.Push({ id: "films", title: "Popular Movies", items: fbMovies })
-    if fbSeries.Count() > 0 then rails.Push({ id: "series", title: "Popular Series", items: fbSeries })
-    if fbMovies.Count() > 0 then rails.Push({ id: "top-films", title: "Top Rated Movies", items: fbMovies })
-    if fbSeries.Count() > 0 then rails.Push({ id: "top-series", title: "Top Rated Series", items: fbSeries })
-    if fbSeries.Count() > 0 then rails.Push({ id: "recent-tv", title: "Recently Updated", items: fbSeries })
-    for each spec in lcGenreSpecs()
-      gItems = lcFilterFallbackGenre(fb, spec.genre)
-      if gItems.Count() > 0 then rails.Push({ id: spec.id, title: spec.title, items: gItems })
-    end for
-    bundle = {
-      trending: fbMovies
-      rails: rails
-      all: fb
-    }
-    if fb.Count() > 0 then bundle.featured = fb[0]
-    return bundle
-  end if
-
+  if cached <> invalid then return cached
+  rails = [] : all = []
+  specs = [
+    { id: "films", title: "Popular Movies" }
+    { id: "series", title: "Popular Series" }
+    { id: "top-films", title: "Top Rated Movies" }
+    { id: "top-series", title: "Top Rated Series" }
+    { id: "recent-tv", title: "Recently Updated" }
+  ]
+  for each genre in lcGenreSpecs()
+    specs.Push(genre)
+  end for
+  for each spec in specs
+    res = lcRailPage({ query: { id: spec.id, skip: 0 }, profileId: "", unfiltered: true })
+    page = res.json
+    items = lcAaGet(page, "items", [])
+    more = true
+    nextSkip = lcAaInt(page, "nextSkip", 0)
+    if res.status = 200 then more = lcAaBool(page, "more", false)
+    if items.Count() = 0 and res.status <> 200
+      fb = lcFallbackItems()
+      if spec.DoesExist("genre") then fb = lcFilterFallbackGenre(fb, spec.genre)
+      items = fb
+    end if
+    rails.Push({ id: spec.id, title: spec.title, items: items, more: more, nextSkip: nextSkip })
+    all.Append(items)
+  end for
+  all = lcDedupeItems(all)
   trending = []
-  for each item in moviesTop
-    if lcAaText(item, "backdrop", "") <> ""
-      trending.Push(item)
-      if trending.Count() >= 6 then exit for
-    end if
+  for each item in all
+    if lcAaText(item, "backdrop") <> "" then trending.Push(item)
+    if trending.Count() >= 6 then exit for
   end for
-  all = []
-  for each src in [moviesTop, seriesTop, moviesRated, seriesRated, recentTv]
-    for each item in src
-      all.Push(item)
-    end for
-  end for
-  all = lcDedupeItems(all)
-
-  used = {}
-  rails = []
-  forYou = lcTakeUnused(all, used, 16)
-  if forYou.Count() > 0 then rails.Push({ id: "for-you", title: "Recommended", items: forYou })
-  films = lcTakeUnused(moviesTop, used, 16)
-  if films.Count() > 0 then rails.Push({ id: "films", title: "Popular Movies", items: films })
-  series = lcTakeUnused(seriesTop, used, 16)
-  if series.Count() > 0 then rails.Push({ id: "series", title: "Popular Series", items: series })
-  topFilms = lcTakeUnused(moviesRated, used, 16)
-  if topFilms.Count() > 0 then rails.Push({ id: "top-films", title: "Top Rated Movies", items: topFilms })
-  topSeries = lcTakeUnused(seriesRated, used, 16)
-  if topSeries.Count() > 0 then rails.Push({ id: "top-series", title: "Top Rated Series", items: topSeries })
-  recent = lcTakeUnused(recentTv, used, 16)
-  if recent.Count() > 0 then rails.Push({ id: "recent-tv", title: "Recently Updated", items: recent })
-
-  for each spec in lcGenreSpecs()
-    gItems = lcFetchCinemetaCatalog("/catalog/movie/top/genre=" + lcUrlEncode(spec.genre) + ".json", "movie", 16, 4000)
-    if gItems.Count() = 0 then gItems = lcFilterFallbackGenre(fb, spec.genre)
-    picked = lcTakeUnused(gItems, used, 16)
-    if picked.Count() > 0
-      rails.Push({ id: spec.id, title: spec.title, items: picked })
-      for each item in picked
-        all.Push(item)
-      end for
-    end if
-  end for
-  all = lcDedupeItems(all)
-
-  bundle = {
-    trending: trending
-    rails: rails
-    all: all
-  }
-  if trending.Count() > 0
-    bundle.featured = trending[0]
-  else if all.Count() > 0
-    bundle.featured = all[0]
-  end if
+  bundle = { trending: trending, rails: rails, all: all }
+  if trending.Count() > 0 then bundle.featured = trending[0]
   lcWriteTmpJson("tvm_home_cache.json", bundle)
   return bundle
 end function
@@ -1110,7 +1051,7 @@ function lcGetHome(ctx as Object) as Object
 
   rails = []
   for each r in lcAaGet(bundle, "rails", [])
-    rails.Push({ id: r.id, title: r.title, items: lcAttachProgress(r.items, pm) })
+    rails.Push({ id: r.id, title: r.title, items: lcAttachProgress(r.items, pm), more: lcAaBool(r, "more"), nextSkip: lcAaInt(r, "nextSkip", r.items.Count()) })
   end for
 
   return {
@@ -1208,6 +1149,7 @@ function lcGetChildren(id as String) as Object
         episodeName: epTitle
         showTitle: showTitle
         kind: "series"
+        genres: lcAaGet(meta, "genres", [])
         season: s
         episode: e
         synopsis: lcAaText(v, "overview", "")
@@ -1394,7 +1336,7 @@ function lcGetLive(ctx as Object) as Object
     picksSet[id] = true
   end for
 
-  channels = []
+  channels = lcFreeChannels(ctx)
   if lcIsDev(ctx)
     channels.Push({
       id: "live:test:dw-news"
@@ -1450,7 +1392,9 @@ end function
 
 function lcGetLiveCatalog(ctx as Object) as Object
   state = lcLoadLiveState()
-  all = lcLoadLiveChannels()
+  all = lcFreeChannels(ctx)
+  all.Append(lcLoadLiveChannels())
+  all = lcFilterItems(all, ctx)
   picksSet = {}
   for each id in lcAaGet(state, "picks", [])
     picksSet[id] = true
@@ -1474,6 +1418,7 @@ function lcGetLiveCatalog(ctx as Object) as Object
     if matchGroup and matchQuery then filtered.Push(ch)
   end for
 
+  if offset < 0 then offset = 0
   pageItems = []
   idx = offset
   while idx < filtered.Count() and pageItems.Count() < limit
@@ -1552,6 +1497,16 @@ function lcPlayback(ctx as Object) as Object
     startAt = lcAaGet(pm[id], "position", 0)
   end if
 
+  ' Reject blocked titles even if an old card or remote command supplied the id.
+  if Left(id, 2) = "tt" and lcProfileLevel(ctx).maxAge < 18
+    media = lcGetMedia(id)
+    if media.status <> 200 then return { status: 403, json: { error: "Title unavailable for this profile." } }
+    if not lcAllowed(media.json, lcProfileLevel(ctx)) then return { status: 403, json: { error: "Hidden by this profile's age limit. Filters by genre." } }
+  end if
+  if lcProfileLevel(ctx).maxAge < 18 and link <> "" then return { status: 403, json: { error: "Direct links are unavailable on age-limited profiles." } }
+  for each ch in lcFreeChannels(ctx)
+    if ch.id = id then return { status: 200, json: { kind: "stream", url: ch.url, mimeType: "application/vnd.apple.mpegurl", title: ch.title, geo: ch.geo, source: "free", startAt: 0 } }
+  end for
   ' Live TV
   if Left(id, 5) = "live:"
     if id = "live:test:dw-news" and lcIsDev(ctx)
@@ -1566,7 +1521,7 @@ function lcPlayback(ctx as Object) as Object
         }
       }
     end if
-    for each ch in lcLoadLiveChannels()
+    for each ch in lcFilterItems(lcLoadLiveChannels(), ctx)
       if ch.id = id
         return { status: 200, json: { kind: "stream", url: ch.url, mimeType: "application/vnd.apple.mpegurl", title: ch.title, startAt: 0 } }
       end if
@@ -1641,6 +1596,8 @@ function lcPlayback(ctx as Object) as Object
   ' and resolve via Real-Debrid API.
   hashRegex = CreateObject("roRegex", "/([0-9a-f]{40})/[^/]*/([0-9]+|null)/", "i")
   tried = 0
+  availableQualities = lcStreamQualities(lcRankStreams(streams))
+  streams = lcRankStreams(streams, lcAaInt(ctx.body, "quality", 0))
   for each s in streams
     if tried >= 4 then exit for
     sName = lcAaText(s, "name", "")
@@ -1651,11 +1608,11 @@ function lcPlayback(ctx as Object) as Object
       infoHash = lcAaText(s, "infoHash", lcAaText(s, "info_hash", ""))
       fileIdx = lcAaGet(s, "fileIdx", invalid)
       if infoHash = "" and sUrl <> ""
-        m = hashRegex.Match(sUrl)
-        if m <> invalid and m.Count() >= 2
-          infoHash = m[1]
-          if fileIdx = invalid and m.Count() >= 3 and m[2] <> "null"
-            fileIdx = Int(Val(m[2]))
+        matches = hashRegex.Match(sUrl)
+        if matches <> invalid and matches.Count() >= 2
+          infoHash = matches[1]
+          if fileIdx = invalid and matches.Count() >= 3 and matches[2] <> "null"
+            fileIdx = Int(Val(matches[2]))
           end if
         end if
       end if
@@ -1671,6 +1628,8 @@ function lcPlayback(ctx as Object) as Object
               mimeType: dl.mimeType
               title: title
               startAt: startAt
+              resolution: lcStreamHeight(s)
+              qualities: availableQualities
             }
           }
         end if

@@ -15,6 +15,7 @@ sub init()
   m.hlAnim = m.top.findNode("hlAnim")
   m.hlMove = m.top.findNode("hlMove")
   m.hlRingMove = m.top.findNode("hlRingMove")
+  m.hlStretch = m.top.findNode("hlStretch")
   m.spec = tvmNavSpec()
   m.labels = []
   m.pillX = 996
@@ -79,7 +80,7 @@ sub paint()
   i = 0
   while i < m.labels.Count()
     if i = active
-      m.labels[i].color = tvmAccentInk()
+      m.labels[i].color = "0xFFFFFFFF"
     else if i = col or i = active
       m.labels[i].color = tvmText()
     else
@@ -115,7 +116,13 @@ sub moveHighlight(x as Float)
   startX = fromX
   if current <> invalid then startX = current[0]
   m.hlAnim.duration = tvmMotionTab()
-  m.hlMove.keyValue = [current, [x, y]]
+  overshoot = (x - startX) * 0.025
+  if overshoot > 24 then overshoot = 24
+  if overshoot < -24 then overshoot = -24
+  m.hlMove.keyValue = [current, [x + overshoot, y], [x, y]]
   m.hlRingMove.keyValue = [[startX - 16, 72], [x - 16, 72]]
+  scale = 1.0
+  if m.top.hasBarFocus then scale = tvmPillFocusScale()
+  m.hlStretch.keyValue = [[scale, scale], [1.18, scale], [scale, scale]]
   m.hlAnim.control = "start"
 end sub

@@ -1,131 +1,92 @@
 sub init()
   m.top.focusable = true
   m.ribbon = m.top.findNode("ribbon")
-  m.kicker = m.top.findNode("kicker")
-  m.heading = m.top.findNode("heading")
-  m.lede = m.top.findNode("lede")
+  m.heading = m.top.findNode("heading") : m.heading.font = tvmFontTitle()
+  m.lede = m.top.findNode("lede") : m.lede.font = tvmFontBody()
+  m.top.findNode("kicker").font = tvmFontCaption()
   m.grid = m.top.findNode("grid")
-  m.empty = m.top.findNode("empty")
-  m.error = m.top.findNode("error")
-  m.loading = m.top.findNode("loading")
-  m.choose = m.top.findNode("choose")
-  m.playlist = m.top.findNode("playlist")
-  m.nextPage = m.top.findNode("nextPage")
-  m.kicker.font = tvmFontCaption()
-  m.heading.font = tvmFontTitle()
-  m.lede.font = tvmFontBody()
-  m.loading.font = tvmFontBody()
-  m.ribbon.activeId = "live"
-  m.ribbon.focusCol = 4
-  m.ribbon.hasBarFocus = false
-  m.choose.variant = "primary"
-  m.choose.label = "Choose channels"
-  m.playlist.variant = "glass"
-  m.playlist.label = "Playlist"
-  m.nextPage.variant = "glass"
-  m.nextPage.label = "More"
-  m.empty.title = "Add a playlist you are allowed to use"
-  m.empty.body = "TVM only shows channels from an official service or an M3U/M3U8 playlist you supply."
-  m.error.title = "Playlist could not be loaded"
-  m.error.body = "Check the URL in Settings, then retry."
-  m.all = []
-  m.channels = []
-  m.tiles = []
-  m.pageIndex = 0
-  m.pageSize = 12
-  m.zone = "grid"
-  m.col = 0
-  m.action = 0
-  m.seq = 0
+  m.choose = m.top.findNode("choose") : m.choose.variant = "glassPill" : m.choose.label = "Choose channels" : m.choose.pillWidth = 560
+  m.playlist = m.top.findNode("playlist") : m.playlist.variant = "glassPill" : m.playlist.label = "Playlist"
+  m.top.findNode("nextPage").visible = false
+  m.top.findNode("loading").visible = false
+  m.top.findNode("empty").visible = false
+  m.top.findNode("error").visible = false
+  m.groups = [] : m.tiles = [] : m.row = 0 : m.col = 0 : m.zone = "grid" : m.navCol = 3 : m.seq = 0
 end sub
 
 sub onMode()
-  mode = m.top.mode
-  ready = (mode = "ready" and m.channels.Count() > 0)
-  m.grid.visible = ready
-  m.empty.visible = (mode = "empty" or (mode = "ready" and m.channels.Count() = 0))
-  m.error.visible = (mode = "error")
-  m.loading.visible = (mode = "loading")
-  m.error.hasFocusStyle = (mode = "error" and m.zone <> "ribbon")
-  paintFocus()
-end sub
-
-sub rebuildPage()
-  while m.grid.getChildCount() > 0
-    m.grid.removeChildIndex(0)
-  end while
-  m.tiles = []
-  m.channels = []
-  cols = 4
-  startAt = m.pageIndex * m.pageSize
-  i = 0
-  while i < m.pageSize and startAt + i < m.all.Count()
-    ch = m.all[startAt + i]
-    m.channels.Push(ch)
-    tile = CreateObject("roSGNode", "ChannelTile")
-    tile.item = ch
-    tile.picking = false
-    tile.translation = [(i mod cols) * 880, Int(i / cols) * 420]
-    m.grid.appendChild(tile)
-    m.tiles.Push(tile)
-    i = i + 1
-  end while
-  more = m.all.Count() > m.pageSize
-  m.nextPage.visible = more
-  if m.pageIndex > 0
-    m.nextPage.label = "More"
-  else
-    m.nextPage.label = "More"
-  end if
-  if m.nextPage.visible = false and m.zone = "next" then m.zone = "choose"
-  if m.col >= m.channels.Count() then m.col = 0
+  ' Playlist failure must never hide the bundled free channels.
+  if m.top.mode = "error" then m.lede.text = "Your playlist could not load. Free channels are still available."
 end sub
 
 sub onStatus()
-  status = m.top.status
-  m.all = aaArray(status, "channels")
-  m.pageIndex = 0
-  m.col = 0
-  picked = asText(aaGet(status, "picked", "0"))
-  total = asText(aaGet(status, "total", "0"))
-  needsPicks = aaGet(status, "needsPicks", false)
-  if needsPicks = true and m.all.Count() = 0
-    m.heading.text = "Choose channels"
-    m.lede.text = total + " channels in this playlist. Pick the ones you watch."
-    m.empty.title = "Pick the channels you watch"
-    m.empty.body = "This playlist is too large to show at once. The same lineup appears on this Roku and on the computer."
-  else if needsPicks = true
-    m.heading.text = "Your channels"
-    m.lede.text = total + " in the playlist. Choose which channels to keep on Live TV."
-  else if m.all.Count() = 0
-    m.heading.text = "Your channels"
-    m.lede.text = ""
-    m.empty.title = "Add a playlist you are allowed to use"
-    m.empty.body = "TVM only shows channels from an official service or an M3U/M3U8 playlist you supply."
-  else
-    m.heading.text = "Your channels"
-    if total <> "0"
-      m.lede.text = picked + " of " + total + " channels on Live TV."
-    else
-      m.lede.text = asText(m.all.Count()) + " channels."
-    end if
-  end if
+  channels = aaArray(m.top.status, "channels")
+  groups = [] : byGroup = {}
+  for each source in ["free", "playlist"]
+    for each ch in channels
+      free = aaGet(ch, "source", "") = "free"
+      if (source = "free" and free) or (source = "playlist" and not free)
+        group = asText(aaGet(ch, "group", "Other"))
+        id = source + ":" + group
+        if not byGroup.DoesExist(id)
+          prefix = "Your channels"
+          if free then prefix = "Free channels"
+          row = { id: id, title: prefix + " - " + group, items: [] }
+          byGroup[id] = row : groups.Push(row)
+        end if
+        byGroup[id].items.Push(ch)
+      end if
+    end for
+  end for
+  m.groups = groups
+  m.row = 0 : m.col = 0
+  m.heading.text = "Live TV"
+  m.lede.text = "Free channels play without a login or playlist. BBC channels play in the UK only."
   rebuildPage()
-  if m.channels.Count() = 0 and m.top.mode = "ready" then m.top.mode = "empty"
-  if m.channels.Count() = 0 then m.zone = "choose"
+end sub
+
+sub rebuildPage()
+  m.grid.removeChildren(m.grid.getChildren(-1, 0))
+  m.tiles = []
+  if m.groups.Count() = 0
+    m.lede.text = "No channels match this profile's age limit. Switch profile to see other groups."
+    m.zone = "choose"
+    paintFocus()
+    return
+  end if
+  firstRow = m.row
+  for rowIndex = firstRow to firstRow + 1
+    if rowIndex < m.groups.Count()
+      row = m.groups[rowIndex]
+      heading = CreateObject("roSGNode", "Label")
+      heading.font = tvmFont("semibold", 56) : heading.text = row.title
+      heading.translation = [0, (rowIndex - firstRow) * 620] : heading.width = 3440
+      m.grid.appendChild(heading)
+      first = 0
+      if rowIndex = m.row and m.col > 3 then first = m.col - 3
+      for i = first to first + 3
+        if i < row.items.Count()
+          tile = CreateObject("roSGNode", "ChannelTile")
+          tile.item = row.items[i]
+          tile.translation = [(i - first) * 864, (rowIndex - firstRow) * 620 + 100]
+          tile.hasFocusStyle = (m.zone = "grid" and rowIndex = m.row and i = m.col)
+          m.grid.appendChild(tile)
+          if rowIndex = m.row then m.tiles.Push({ node: tile, index: i })
+        end if
+      end for
+    end if
+  end for
   paintFocus()
 end sub
 
 sub paintFocus()
-  m.ribbon.hasBarFocus = (m.zone = "ribbon")
-  m.choose.hasFocusStyle = (m.zone = "choose")
-  m.playlist.hasFocusStyle = (m.zone = "playlist")
-  m.nextPage.hasFocusStyle = (m.zone = "next")
-  i = 0
-  while i < m.tiles.Count()
-    m.tiles[i].hasFocusStyle = (m.zone = "grid" and i = m.col)
-    i = i + 1
-  end while
+  m.ribbon.activeId = "live"
+  m.ribbon.hasBarFocus = m.zone = "ribbon" : m.ribbon.focusCol = m.navCol
+  m.choose.hasFocusStyle = m.zone = "choose"
+  m.playlist.hasFocusStyle = m.zone = "playlist"
+  for each tile in m.tiles
+    tile.node.hasFocusStyle = (m.zone = "grid" and tile.index = m.col)
+  end for
 end sub
 
 sub emit(kind as String, extra as Object)
@@ -142,92 +103,39 @@ end sub
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
-  if intent = "" then return false
   if intent = "back" then return false
-  if intent = "home"
-    emit("home", invalid)
-    return true
-  end if
-  if m.top.mode = "error" and intent = "select"
-    emit("retry", invalid)
-    return true
-  end if
   if m.zone = "ribbon"
-    if intent = "left" and m.ribbon.focusCol > 0 then m.ribbon.focusCol = m.ribbon.focusCol - 1
-    if intent = "right" and m.ribbon.focusCol < tvmRibbonLast() then m.ribbon.focusCol = m.ribbon.focusCol + 1
-    if intent = "down" then m.zone = "grid"
-    if intent = "select" then emit(tvmRibbonSpec()[m.ribbon.focusCol].action, invalid)
-    if m.zone = "grid" and m.channels.Count() = 0 then m.zone = "choose"
-    paintFocus()
-    return true
-  end if
-  if m.zone = "choose" or m.zone = "playlist" or m.zone = "next"
-    if intent = "up"
-      if m.channels.Count() > 0 then m.zone = "grid" else m.zone = "ribbon"
-    end if
-    if intent = "left"
-      if m.zone = "next"
-        m.zone = "playlist"
-      else if m.zone = "playlist"
-        m.zone = "choose"
-      end if
-    end if
-    if intent = "right"
-      if m.zone = "choose"
-        m.zone = "playlist"
-      else if m.zone = "playlist" and m.nextPage.visible = true
-        m.zone = "next"
-      end if
-    end if
+    if intent = "left" or intent = "right" then m.navCol = navStep(m.navCol, intent, tvmNavSpec().Count() + 1)
+    if intent = "down" then m.zone = "grid" : rebuildPage()
     if intent = "select"
-      if m.zone = "choose" then emit("picks", invalid)
-      if m.zone = "playlist" then emit("playlist", invalid)
-      if m.zone = "next"
-        if (m.pageIndex + 1) * m.pageSize >= m.all.Count()
-          m.pageIndex = 0
-        else
-          m.pageIndex = m.pageIndex + 1
-        end if
-        rebuildPage()
-      end if
+      if m.navCol >= tvmNavSpec().Count() then emit("you", invalid) else emit("nav", { id: tvmNavSpec()[m.navCol].id })
     end if
-    paintFocus()
-    return true
-  end if
-  cols = 4
-  count = m.channels.Count()
-  if count = 0
-    if intent = "up" then m.zone = "ribbon"
-    if intent = "down" or intent = "select" then m.zone = "choose"
-    if m.zone = "choose" and intent = "select" then emit("picks", invalid)
-    paintFocus()
-    return true
-  end if
-  row = Int(m.col / cols)
-  col = m.col mod cols
-  maxRow = Int((count - 1) / cols)
-  if intent = "left" and col > 0 then m.col = m.col - 1
-  if intent = "right" and m.col < count - 1 then m.col = m.col + 1
-  if intent = "up"
-    if row > 0 then m.col = m.col - cols else m.zone = "ribbon"
-  end if
-  if intent = "down"
-    nextCol = m.col + cols
-    if nextCol < count
-      m.col = nextCol
-    else
-      m.zone = "choose"
+  else if m.zone = "choose" or m.zone = "playlist"
+    if intent = "up"
+      if m.groups.Count() > 0 then m.zone = "grid" : rebuildPage() else m.zone = "ribbon"
     end if
+    if intent = "left" then m.zone = "choose"
+    if intent = "right" then m.zone = "playlist"
+    if intent = "select"
+      if m.zone = "choose" then emit("picks", invalid) else emit("playlist", invalid)
+    end if
+  else if m.groups.Count() > 0
+    count = m.groups[m.row].items.Count()
+    if intent = "left" and m.col > 0 then m.col = m.col - 1 : rebuildPage()
+    if intent = "right" and m.col < count - 1 then m.col = m.col + 1 : rebuildPage()
+    if intent = "up"
+      if m.row > 0 then m.row = m.row - 1 : m.col = 0 : rebuildPage() else m.zone = "ribbon"
+    end if
+    if intent = "down"
+      if m.row < m.groups.Count() - 1 then m.row = m.row + 1 : m.col = 0 : rebuildPage() else m.zone = "choose"
+    end if
+    if intent = "select" then emit("play", { item: m.groups[m.row].items[m.col] })
   end if
-  if intent = "select" then emit("play", { item: m.channels[m.col] })
   paintFocus()
   return true
 end function
 
-' TVM Hub nav command: the same key a physical remote would send.
 sub onRemoteIntent()
-  intent = m.top.remoteIntent
-  if intent = invalid or intent = "" then return
-  keyName = keyFromIntent(intent)
-  if keyName <> "" then onKeyEvent(keyName, true)
+  key = keyFromIntent(m.top.remoteIntent)
+  if key <> "" then onKeyEvent(key, true)
 end sub

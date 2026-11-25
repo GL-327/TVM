@@ -6,9 +6,15 @@ sub init()
     background: loadBackground()
     trendingHeroUri: ""
     hubFixture: loadFlag("hubFixture")
+    inputSerial: 0
+    kidsProfile: false
     uiScale: m.uiMetrics.scale
   })
   applyCurrentTheme()
+  m.featureNodes = {}
+  m.pageTasks = {}
+  m.kidsProfile = false
+  m.profileMaxAge = 18
   m.screenHost = m.top.findNode("screenHost")
   m.overlayHost = m.top.findNode("overlayHost")
   m.bootLabel = m.top.findNode("bootLabel")
@@ -78,6 +84,7 @@ sub init()
   m.livePicksGroup = ""
   m.livePicksOffset = 0
   m.top.setFocus(true)
+  initReleaseFeatures()
   initHubAgent()
 
   timer = CreateObject("roSGNode", "Timer")
@@ -138,12 +145,14 @@ sub onBoot()
     showTokenKeyboard()
     return
   end if
+  refreshRokuContent()
   loadAccount(true)
 end sub
 
 ' Screen name -> node. Every screen that exposes a focusKey field is remembered
 ' on the view stack and, if it also has a restoreKey field, restored on return.
 function screenNode(name as String) as Object
+  if m.featureNodes.DoesExist(name) then return m.featureNodes[name]
   if name = "home" then return m.homeNode
   if name = "settings" then return m.settingsNode
   if name = "setup" then return m.setupNode
@@ -182,6 +191,7 @@ sub applyRestoreKey(screen as Object)
 end sub
 
 sub navigate(kind as String, name as String, params as Object)
+  dismissReleaseCards()
   rememberActiveFocus()
   if kind = "push"
     m.stack = viewStackPush(m.stack, name, params)
@@ -195,6 +205,8 @@ sub navigate(kind as String, name as String, params as Object)
     m.stack = viewStackPop(m.stack)
   end if
   renderStack()
+  updateBackHint()
+  maybeShowReleaseCards()
   if kind = "push"
     if name = "catalog" then loadCatalog(params)
     if name = "library" then loadLibrary()
@@ -214,16 +226,23 @@ sub navigate(kind as String, name as String, params as Object)
     if name = "service" then loadService(params)
     if name = "details" then loadDetails(params)
     if name = "hub" then m.hubNode.reset = true
+    if featureName(name) then loadFeature(name, params)
   end if
 end sub
 
 sub renderStack()
+  if m.releaseCard <> invalid then m.releaseCard.visible = false
+  if m.updateCard <> invalid then m.updateCard.visible = false
   m.bootLabel.visible = false
   screen = visibleScreen(m.stack)
   top = activeEntry(m.stack)
 
   hideScreens()
-  if screen.name = "home"
+  if featureName(screen.name)
+    ensureFeature(screen.name)
+    m.featureNodes[screen.name].visible = true
+    if top.kind <> "modal" then m.featureNodes[screen.name].setFocus(true)
+  else if screen.name = "home"
     ensureHome()
     m.homeNode.visible = true
     m.homeNode.profileName = m.profileName
@@ -314,13 +333,19 @@ sub renderStack()
     if top.name = "confirm" then showConfirm(top.params)
     if top.name = "codesignin" then showCodePanel()
     if top.name = "search" then showSearch()
+    if top.name = "pin" then showPin(top.params)
+    if top.name = "loading" then showLoadingOrbit()
   end if
   if currentThemeId() = "light"
     repaintThemeNodes(m.screenHost, tvmPalettePairs(tvmThemePalette("dark"), tvmThemePalette("light")))
   end if
+  updateBackHint()
 end sub
 
 sub hideScreens()
+  for each name in m.featureNodes
+    m.featureNodes[name].visible = false
+  end for
   if m.homeNode <> invalid then m.homeNode.visible = false
   if m.settingsNode <> invalid then m.settingsNode.visible = false
   if m.setupNode <> invalid then m.setupNode.visible = false
@@ -563,6 +588,10 @@ sub showPlayer(params as Object)
   panel.observeField("playState", "onHubPlayerState")
   m.overlayHost.appendChild(panel)
   m.hubAgent.player = panel
+  panel.chosenQuality = aaGet(params, "chosenQuality", 0)
+  panel.qualities = aaGet(params, "qualities", [])
+  panel.resolution = aaGet(params, "resolution", 0)
+  panel.geo = aaGet(params, "geo", "")
   panel.streamTitle = aaGet(params, "title", "")
   panel.streamFormat = aaGet(params, "format", "mp4")
   panel.mediaId = aaGet(params, "mediaId", "")
@@ -603,6 +632,10 @@ end sub
 sub onHomeAction()
   action = m.homeNode.action
   if action = invalid then return
+  if aaGet(action, "type", "") = "changelog"
+    navigate("push", "changelog", {})
+    return
+  end if
   handleScreenAction(action)
 end sub
 
@@ -648,6 +681,7 @@ function handleRibbonKind(action as Object) as Boolean
     return true
   end if
   if kind = "settings"
+    if m.kidsProfile then return true
     navigate("push", "settings", {})
     return true
   end if
@@ -699,6 +733,8 @@ sub onYouAction()
   if action = invalid then return
   id = asText(aaGet(action, "id", ""))
   navigate("pop", "", {})
+  if m.kidsProfile and id <> "profiles" then return
+  if id = "services" then navigate("push", "services", {})
   if id = "hub"
     navigate("push", "hub", {})
   else if id = "profiles"
@@ -725,6 +761,7 @@ sub handleScreenAction(action as Object)
   if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
   if handleNavAction(action) then return
   if handleRibbonKind(action) then return
+  if kind = "more" then loadMoreRail(action)
   if kind = "retry" then loadHome()
   if kind = "details" then navigate("push", "details", { item: aaGet(action, "item", {}) })
   if kind = "play" then startPlayback(aaGet(action, "item", {}))
@@ -769,6 +806,8 @@ sub onSettingsAction()
   if kind = "livePlaylist" then showLiveKeyboard()
   if kind = "profiles" then navigate("push", "profiles", {})
   if kind = "updates" then loadUpdates()
+  if kind = "services" then navigate("push", "services", {})
+  if kind = "changelog" then navigate("push", "changelog", {})
   if kind = "toggleMotion"
     enabled = not tvmReduceMotion()
     saveReduceMotion(enabled)
@@ -849,6 +888,7 @@ sub onCatalogAction()
   if handleNavAction(action) then return
   if handleRibbonKind(action) then return
   if kind = "home" then navigate("home", "home", {})
+  if kind = "more" then loadMoreRail(action)
   if kind = "retry" then loadCatalog(visibleScreen(m.stack).params)
   if kind = "details" then navigate("push", "details", { item: aaGet(action, "item", {}) })
 end sub
@@ -857,6 +897,7 @@ sub onLiveAction()
   action = m.liveNode.action
   if action = invalid then return
   kind = aaGet(action, "type", "")
+  if handleNavAction(action) then return
   if handleRibbonKind(action) then return
   if kind = "home" then navigate("home", "home", {})
   if kind = "retry" then loadLive()
@@ -870,8 +911,9 @@ sub onProfilesAction()
   if action = invalid then return
   kind = aaGet(action, "type", "")
   if kind = "home" then navigate("home", "home", {})
-  if kind = "create" then showProfileKeyboard()
-  if kind = "switch" then switchProfile(aaGet(action, "id", ""))
+  if kind = "create" then openProfileEditor({ name: "New profile", kind: "standard", maxAge: 18, hue: 220 }, "")
+  if kind = "switch" then chooseProfile("switch", asText(aaGet(action, "id", "")))
+  if kind = "edit" then chooseProfile("edit", asText(aaGet(action, "id", "")))
   if kind = "remove"
     navigate("modal", "confirm", {
       title: "Remove this profile?"
@@ -921,6 +963,9 @@ sub onDetailsAction()
   if not isMediaItem(item) and m.detailsNode <> invalid then item = m.detailsNode.item
   if kind = "close" then navigate("pop", "", {})
   if kind = "play" then startPlayback(item)
+  if kind = "review-preview" then loadReviewPreview(item)
+  if kind = "reviews" then navigate("push", "reviews", { item: item })
+  if kind = "watch-on" then navigate("push", "services", { title: asText(aaGet(item, "title", "")) })
   if kind = "save" then toggleWatchlist(item)
   if kind = "notice"
     navigate("modal", "notice", {
@@ -939,6 +984,14 @@ sub onPlayerAction()
   action = m.overlayHost.getChild(0).action
   if action = invalid then return
   kind = aaGet(action, "type", "")
+  if kind = "quality"
+    m.selectedQuality = aaGet(action, "quality", 0)
+    m.qualityResume = aaGet(action, "position", 0)
+    navigate("pop", "", {})
+    postPlayback(m.playItem)
+    return
+  end if
+  if kind = "next-channel" then playNextChannel() : return
   if kind = "progress"
     postProgress(action)
     return
@@ -974,6 +1027,11 @@ sub onConfirmAction()
   end if
   confirmId = aaGet(action, "confirmId", "")
   navigate("pop", "", {})
+  if Left(confirmId, 18) = "service-connected:" then markService(Mid(confirmId, 19), true)
+  if confirmId = "editor-delete"
+    body = { id: m.editorProfile.id, pin: m.editorCurrentPin }
+    m.editorTask = startApiRequest(joinCorePath(m.coreUrl, "/api/profiles/remove"), "POST", FormatJson(body), "onProfileEditorSaved")
+  end if
   if confirmId = "sign-out"
     signOutAccount()
   else if confirmId = "clear-cache"
@@ -1028,6 +1086,7 @@ sub showKeyboard(mode as String, title as String, text as String, confirmLabel a
   end if
   dialog.observeField("buttonSelected", "onKeyboardButton")
   m.top.dialog = dialog
+  if mode = "search" then dialog.observeField("text", "onSearchDialogTyping")
 end sub
 
 sub onKeyboardButton()
@@ -1046,6 +1105,10 @@ sub onKeyboardButton()
     return
   end if
 
+  if mode = "editorName"
+    if text.Trim() <> "" then m.editorProfile.name = Left(text.Trim(), 24)
+    paintProfileEditor()
+  end if
   if mode = "coreUrl"
     applyCoreUrl(text)
     return
@@ -1569,9 +1632,9 @@ sub onHomePoll()
   loadHome()
 end sub
 
-sub onHomeDone()
-  task = m.homeTask
-  if task = invalid then return
+sub onHomeDone(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.homeTask then return
   if not task.ok
     silent = m.homeSilent
     m.homeSilent = false
@@ -1590,6 +1653,12 @@ sub onHomeDone()
   payload = task.json
   m.homeSilent = false
   m.homeNode.payload = payload
+  if m.eventProfile <> m.profileId
+    m.homeNode.event = {}
+    loadEvents()
+  else if m.eventsTask = invalid or m.eventDate <> sceneLocalDate()
+    loadEvents()
+  end if
   if m.libraryNode <> invalid
     m.libraryNode.payload = payload
     m.libraryNode.mode = "ready"
@@ -1599,6 +1668,7 @@ sub onHomeDone()
   else
     m.homeNode.mode = "ready"
   end if
+  maybeShowReleaseCards()
   if visibleScreen(m.stack).name = "home" and activeEntry(m.stack).kind <> "modal"
     m.homeNode.setFocus(true)
   end if
@@ -1622,6 +1692,14 @@ sub loadCatalog(params as Object)
   m.catalogQuery = aaGet(params, "query", "")
   m.catalogFilter = aaGet(params, "filter", "")
   path = "/api/library"
+  m.catalogNode.railId = ""
+  m.catalogNode.more = false
+  if m.catalogFilter = "movie" or m.catalogFilter = "series"
+    railId = "films"
+    if m.catalogFilter = "series" then railId = "series"
+    m.catalogNode.railId = railId
+    path = "/api/rails/more?id=" + railId + "&skip=0"
+  end if
   if kind = "watchlist" then path = "/api/watchlist"
   if kind = "search" then path = "/api/search?q=" + encodeQuery(m.catalogQuery)
   if kind = "children" then path = "/api/media/children?id=" + encodeQuery(aaGet(params, "id", ""))
@@ -1640,6 +1718,8 @@ sub onCatalogDone()
   end if
   items = itemsFromJson(task.json)
   if m.catalogFilter <> "" then items = filterItemsByKind(items, m.catalogFilter)
+  m.catalogNode.more = aaGet(task.json, "more", false)
+  m.catalogNode.nextSkip = aaGet(task.json, "nextSkip", items.Count())
   m.catalogNode.items = items
   if items.Count() = 0
     m.catalogNode.mode = "empty"
@@ -1652,20 +1732,44 @@ end sub
 sub loadLive()
   ensureLive()
   m.liveNode.mode = "loading"
+  m.liveRemoteData = {} : m.liveFreeData = [] : m.liveFailed = false
+  m.freeLiveTask = startApiRequest("local:/api/roku/free-fallback", "POST", FormatJson({ maxAge: m.profileMaxAge }), "onFreeLiveDone")
   m.liveTask = startApiGet(joinCorePath(m.coreUrl, "/api/live"), "onLiveDone")
 end sub
 
-sub onLiveDone()
-  task = m.liveTask
-  if task = invalid then return
-  if not task.ok
-    m.liveNode.mode = "error"
-    restoreScreenFocus()
-    return
-  end if
-  m.liveNode.status = task.json
+sub onLiveDone(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.liveTask or task.profileId <> m.profileId then return
+  m.liveFailed = not task.ok
+  if task.ok then m.liveRemoteData = task.json
+  paintLiveChannels()
+end sub
+
+sub onFreeLiveDone(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.freeLiveTask or task.profileId <> m.profileId then return
+  if task.ok then m.liveFreeData = aaArray(task.json, "channels")
+  paintLiveChannels()
+end sub
+
+sub paintLiveChannels()
+  channels = [] : seen = {}
+  ' Prefer the Core's current list; bundled channels cover a failed Core.
+  remote = aaArray(m.liveRemoteData, "channels")
+  for each source in [remote, m.liveFreeData]
+    for each channel in source
+      id = asText(aaGet(channel, "id", ""))
+      if not seen.DoesExist(id) then channels.Push(channel) : seen[id] = true
+    end for
+  end for
+  data = {}
+  for each key in m.liveRemoteData
+    data[key] = m.liveRemoteData[key]
+  end for
+  data.channels = channels
+  m.liveNode.status = data
   m.liveNode.mode = "ready"
-  restoreScreenFocus()
+  if m.liveFailed then m.liveNode.mode = "error"
 end sub
 
 sub loadLivePicks()
@@ -1772,6 +1876,7 @@ sub onProfilesDone()
     return
   end if
   json = task.json
+  m.profilesRegistry = json
   m.profileId = asText(aaGet(json, "activeId", ""))
   if m.profilesNode <> invalid then m.profilesNode.registry = json
   profiles = aaArray(json, "profiles")
@@ -1779,6 +1884,9 @@ sub onProfilesDone()
   while i < profiles.Count()
     if asText(aaGet(profiles[i], "id", "")) = m.profileId
       m.profileName = asText(aaGet(profiles[i], "name", ""))
+      m.kidsProfile = (aaGet(profiles[i], "kind", "standard") = "kids")
+      m.profileMaxAge = aaGet(profiles[i], "maxAge", 18)
+      m.global.kidsProfile = m.kidsProfile
       if m.libraryNode <> invalid then m.libraryNode.profile = profiles[i]
     end if
     i = i + 1
@@ -1804,6 +1912,18 @@ sub onSwitchProfileDone()
   end if
   m.profileId = asText(aaGet(task.json, "activeId", ""))
   if m.profilesNode <> invalid then m.profilesNode.registry = task.json
+  for each profile in aaArray(task.json, "profiles")
+    if asText(aaGet(profile, "id", "")) = m.profileId
+      m.kidsProfile = aaGet(profile, "kind", "standard") = "kids"
+      m.profileMaxAge = aaGet(profile, "maxAge", 18)
+      m.global.kidsProfile = m.kidsProfile
+    end if
+  end for
+  loadProfiles(false)
+  if m.homeNode <> invalid
+    m.homeNode.event = {}
+    m.homeNode.payload = {}
+  end if
   loadHome()
   nextName = m.profilesNext
   m.profilesNext = ""
@@ -1891,29 +2011,28 @@ sub onLiveSaveDone()
 end sub
 
 sub loadUpdates()
-  m.updateTask = startApiGet(joinCorePath(m.coreUrl, "/api/update/status"), "onUpdatesDone")
+  m.updateTask = startApiGet("local:/api/roku/update", "onUpdatesDone")
 end sub
 
 sub onUpdatesDone()
   task = m.updateTask
   restoreScreenFocus()
   if task = invalid or not task.ok
-    navigate("modal", "notice", { title: "Updates unavailable", body: "Core did not return update status." })
+    navigate("modal", "notice", { title: "Updates unavailable", body: "Could not check Roku channel updates. Try again later." })
     return
   end if
   json = task.json
-  current = asText(aaGet(json, "current", ""))
-  available = aaGet(json, "available", invalid)
-  automatic = "Off"
-  if aaGet(json, "autoUpdate", false) = true then automatic = "On"
-  body = "Core " + current + ". Automatic Core updates: " + automatic + ". Manage them in TVM on the computer."
-  if available <> invalid and GetInterface(available, "ifAssociativeArray") <> invalid
-    version = asText(aaGet(available, "version", ""))
-    if version <> ""
-      body = "Core " + current + " can update to " + version + ". Apply it from the TVM app on the computer."
+  body = "Installed Roku channel: " + m.installedVersion
+  if aaGet(json, "available", false) = true
+    body = body + Chr(10) + "Update available: " + asText(aaGet(json, "version", "")) + Chr(10) + releaseHighlights(aaGet(json, "notes", {}), 2)
+  else
+    if asText(aaGet(json, "version", "")) <> ""
+      body = body + Chr(10) + "No newer channel was found in the last update check."
+    else
+      body = body + Chr(10) + "Could not reach the update feed. Try again later."
     end if
   end if
-  body = body + chr(10) + chr(10) + "This developer-mode channel receives catalog and playback changes from Core. To update the Roku channel code, upload the latest TVM-roku.zip again."
+  body = body + Chr(10) + Chr(10) + "github.com/GL-327/TVM/releases/tag/devices" + Chr(10) + "Install the new TVM-roku.zip from your PC. TVM on your PC can install it for you: Settings > Roku on the Windows app"
   navigate("modal", "notice", { title: "Updates", body: body })
 end sub
 
@@ -1940,6 +2059,7 @@ sub onRdStatusDone()
 end sub
 
 sub loadDetails(params as Object)
+  m.detailsServicesTask = startApiGet(joinCorePath(m.coreUrl, "/api/services"), "onDetailsServices")
   loadDetailsSaved(params)
   item = aaGet(params, "item", {})
   id = asText(aaGet(item, "id", ""))
@@ -2075,6 +2195,8 @@ sub onWatchlistDone()
 end sub
 
 sub startPlayback(item as Object)
+  m.selectedQuality = 0
+  m.qualityResume = invalid
   if item = invalid
     navigate("modal", "notice", { title: "Nothing to play", body: "This card has no title." })
     return
@@ -2106,14 +2228,27 @@ end sub
 
 sub postPlayback(item as Object)
   if m.playTask <> invalid
-    if not m.playTask.done then return
+    if not m.playTask.done
+      if activeEntry(m.stack).name = "loading" then return
+      m.playTask.control = "STOP"
+    end if
   end if
   m.playItem = item
-  m.playTask = startApiRequest(joinCorePath(m.coreUrl, "/api/playback"), "POST", playbackBody(item), "onPlayDone")
+  body = ParseJson(playbackBody(item))
+  if m.selectedQuality <> invalid then body.quality = m.selectedQuality
+  navigate("modal", "loading", {})
+  url = joinCorePath(m.coreUrl, "/api/playback")
+  if aaGet(item, "source", "") = "free" and m.liveFailed = true
+    url = "local:/api/roku/free-playback" : body.maxAge = m.profileMaxAge
+  end if
+  m.playTask = startApiRequest(url, "POST", FormatJson(body), "onPlayDone")
 end sub
 
-sub onPlayDone()
-  task = m.playTask
+sub onPlayDone(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.playTask then return
+  if activeEntry(m.stack).name <> "loading" then return
+  navigate("pop", "", {})
   json = {}
   if task <> invalid then json = task.json
   kind = asText(aaGet(json, "kind", ""))
@@ -2137,6 +2272,7 @@ sub onPlayDone()
       headers["Authorization"] = "Bearer " + m.coreToken
     end if
     startAt = aaGet(json, "startAt", 0)
+    if m.qualityResume <> invalid then startAt = m.qualityResume
     mediaId = asText(aaGet(m.playItem, "id", ""))
     mediaKind = asText(aaGet(m.playItem, "kind", ""))
     if playItemIsLive(m.playItem)
@@ -2170,6 +2306,10 @@ sub onPlayDone()
       showNext: showNext
       nextTitle: nextTitle
       nextMediaId: nextMediaId
+      qualities: aaGet(json, "qualities", [])
+      resolution: aaGet(json, "resolution", 0)
+      geo: aaGet(json, "geo", aaGet(m.playItem, "geo", ""))
+      chosenQuality: m.selectedQuality
     })
     return
   end if
@@ -2318,9 +2458,16 @@ sub scheduleSearch(query as String)
     parent = m.searchTimer.getParent()
     if parent <> invalid then parent.removeChild(m.searchTimer)
   end if
-  if query = "" or Len(query) < 2 then return
+  m.pendingSearch = query
+  if query = "" or Len(query) < 2
+    if searchPanelOpen()
+      m.overlayHost.getChild(0).results = []
+      m.overlayHost.getChild(0).message = "Type at least two letters."
+    end if
+    return
+  end if
   timer = CreateObject("roSGNode", "Timer")
-  timer.duration = 0.35
+  timer.duration = 0.25
   timer.repeat = false
   timer.observeField("fire", "onSearchDebounce")
   m.pendingSearch = query
@@ -2335,16 +2482,22 @@ end sub
 
 sub runSearch(query as String)
   if query = "" then return
+  m.pendingSearch = query
+  m.searchRequestQuery = query
   m.searchTask = startApiGet(joinCorePath(m.coreUrl, "/api/search?q=" + encodeQuery(query)), "onSearchDone")
 end sub
 
-sub onSearchDone()
-  task = m.searchTask
+sub onSearchDone(event as Object)
+  task = event.GetRoSGNode()
+  if m.searchTask = invalid then return
+  if task.requestId <> m.searchTask.requestId then return
+  if not task.done then return
   if task = invalid or not searchPanelOpen() then return
   panel = m.overlayHost.getChild(0)
+  if panel.query <> m.searchRequestQuery or panel.query <> m.pendingSearch then return
   if not task.ok
     panel.message = "Search failed. Check Core, then retry."
-    focusSearchPanel()
+
     return
   end if
   items = itemsFromJson(task.json)
@@ -2354,7 +2507,7 @@ sub onSearchDone()
   else
     panel.message = StrI(items.Count()).Trim() + " titles"
   end if
-  focusSearchPanel()
+
 end sub
 
 sub onLibraryAction()
@@ -2719,4 +2872,68 @@ end sub
 sub onCodeSignInAction()
   stopCodeSignIn()
   navigate("pop", "", {})
+end sub
+
+sub loadMoreRail(action as Object)
+  target = asText(aaGet(action, "target", "home"))
+  railId = asText(aaGet(action, "railId", ""))
+  key = target + ":" + railId
+  if m.pageTasks.DoesExist(key)
+    if not m.pageTasks[key].done and m.pageTasks[key].profileId = m.profileId then return
+  end if
+  task = CreateObject("roSGNode", "ApiTask")
+  task.railId = railId : task.pageTarget = target
+  task.requestUrl = joinCorePath(m.coreUrl, "/api/rails/more?id=" + encodeQuery(railId) + "&skip=" + asText(aaGet(action, "skip", 0)))
+  task.profileId = m.profileId
+  task.authToken = m.coreToken
+  task.accountToken = m.accountToken
+  task.appendItems = aaGet(action, "items", [])
+  task.observeField("done", "onMoreRailDone")
+  m.pageTasks[key] = task
+  task.control = "RUN"
+end sub
+
+sub onMoreRailDone(event as Object)
+  task = event.GetRoSGNode()
+  key = task.pageTarget + ":" + task.railId
+  if not m.pageTasks.DoesExist(key) then return
+  if task <> m.pageTasks[key] or task.profileId <> m.profileId then return
+  m.pageTasks.Delete(key)
+  page = task.json
+  page.railId = task.railId
+  page.ok = task.ok
+  if task.pageTarget = "home" and m.homeNode <> invalid then m.homeNode.appendPage = page
+  if task.pageTarget = "catalog" and m.catalogNode <> invalid then m.catalogNode.appendPage = page
+end sub
+
+sub onSearchDialogTyping()
+  dialog = m.top.dialog
+  if dialog = invalid or not searchPanelOpen() then return
+  panel = m.overlayHost.getChild(0)
+  panel.query = dialog.text
+  scheduleSearch(dialog.text)
+end sub
+
+sub showLoadingOrbit()
+  node = CreateObject("roSGNode", "Group")
+  node.focusable = true
+  scrim = CreateObject("roSGNode", "Rectangle")
+  scrim.width = 3840 : scrim.height = 2160 : scrim.color = "0x000000DD"
+  node.appendChild(scrim)
+  orbit = CreateObject("roSGNode", "OrbitLoader")
+  orbit.translation = [1400, 760] : orbit.status = "Finding the best stream" : orbit.active = true
+  node.appendChild(orbit)
+  m.overlayHost.appendChild(node) : node.setFocus(true)
+end sub
+
+sub playNextChannel()
+  nextItem = invalid
+  if m.liveNode <> invalid
+    channels = aaArray(m.liveNode.status, "channels")
+    for i = 0 to channels.Count() - 1
+      if channels[i].id = aaGet(m.playItem, "id", "") then nextItem = channels[(i + 1) mod channels.Count()]
+    end for
+  end if
+  navigate("pop", "", {})
+  if nextItem <> invalid then startPlayback(nextItem)
 end sub

@@ -6,6 +6,8 @@
     <field id="shape" type="string" value="panel" onChange="layout" />
     <field id="focused" type="boolean" value="false" onChange="paint" />
     <field id="selected" type="boolean" value="false" onChange="paint" />
+    <field id="accent" type="boolean" onChange="paint" />
+    <field id="accentColor" type="string" value="0x2F6BFF8C" onChange="paint" />
     <field id="active" type="boolean" value="false" onChange="paint" />
     <field id="tintColor" type="string" value="" onChange="paint" />
   </interface>

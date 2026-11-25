@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="PlayerScreen" extends="Group">
   <interface>
+    <field id="chosenQuality" type="integer" value="0" />
+    <field id="resolution" type="integer" value="0" />
+    <field id="qualities" type="array" />
+    <field id="geo" type="string" />
     <field id="streamUrl" type="string" />
     <field id="streamTitle" type="string" />
     <field id="streamFormat" type="string" />
@@ -30,6 +34,7 @@
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="PlayerQuality.brs" />
   <script type="text/brightscript" uri="PlayerScreen.brs" />
   <children>
     <Rectangle width="3840" height="2160" color="0x000000FF" />
@@ -61,6 +66,11 @@
     </Group>
     <Label id="status" translation="[160, 1520]" width="3520" color="0xF5F5F5FF" />
     <FocusButton id="skipRecap" translation="[2320, 1864]" visible="false" />
+    <OrbitLoader id="orbit" translation="[1400, 760]" />
+    <Label translation="[192, 2050]" width="2800" height="60" text="Use the TV volume buttons" font="font:MediumSystemFont" color="0xFFFFFFAA" />
+    <FeatureScreen id="qualityPanel" visible="false" />
+    <Timer id="qualityStall" duration="5" repeat="false" />
+    <Timer id="qualityRecover" duration="60" repeat="false" />
     <ControlCentre id="cc" />
     <Animation id="chromeFade" duration="0.22" easeFunction="outCubic" optional="true">
       <FloatFieldInterpolator id="chromeFadeInterp" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="chrome.opacity" />

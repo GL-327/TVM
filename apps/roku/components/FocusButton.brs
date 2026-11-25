@@ -38,14 +38,14 @@ sub layout()
 
   if variant = "primary"
     setBox(496, 160, 480, 144)
-    m.bg.tintColor = tvmText()
-    m.text.color = tvmAccentInk()
+    m.bg.tintColor = "0x2F6BFF8C"
+    m.text.color = tvmText()
     m.text.translation = [48, 44]
     m.sub.visible = false
   else if variant = "pill"
     setBox(496, 160, 480, 144)
-    m.bg.shape = "card"
-    m.bg.tintColor = tvmSurfaceHover()
+    m.bg.shape = "pill"
+    m.bg.tintColor = tvmGlassTint()
     m.text.color = tvmText()
     m.text.horizAlign = "center"
     m.text.width = 480
@@ -268,7 +268,7 @@ sub onFocusStyle()
     if focused
       m.bg.tintColor = tvmFocus()
     else
-      m.bg.tintColor = tvmText()
+      m.bg.tintColor = "0x2F6BFF8C"
     end if
   else if variant = "row" or variant = "season"
     if focused
@@ -358,7 +358,9 @@ sub paintGlassPill()
   m.pillGlass.tintColor = ""
   if pressed then m.pillGlass.tintColor = tvmGlassTintPressed()
   m.pillText.color = tvmText()
-  if accent or m.top.active then m.pillText.color = tvmAccentInk()
+  m.pillGlass.accent = accent
+  m.pillGlass.accentColor = m.top.accentColor
+  if accent or m.top.active then m.pillText.color = "0xFFFFFFFF"
   m.pill.opacity = 1.0
   if disabled then m.pill.opacity = 0.4
   uri = m.top.iconUri

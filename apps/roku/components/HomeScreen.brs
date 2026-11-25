@@ -36,6 +36,10 @@ sub init()
     m.top.findNode("dot3")
   ]
 
+  m.event = invalid
+  m.top.findNode("eventLine").font = tvmFontBody()
+  m.top.findNode("heroRating").font = tvmFontMeta()
+  m.top.findNode("eventLogo").observeField("loadStatus", "onEventLogo")
   m.heroTitle.font = tvmFontHeroTitle()
   m.heroMeta.font = tvmFontSecondary()
   m.loading.font = tvmFontSecondary()
@@ -68,6 +72,7 @@ sub init()
   m.heroes = []
   m.heroSlide = 0
   m.heroSig = ""
+  m.pagePending = {}
   m.rails = []
   m.railNodes = []
   m.railsSig = ""
@@ -157,6 +162,15 @@ sub onPayload()
   end if
 
   newRails = homeContentRails(payload)
+  for each incoming in newRails
+    for each existing in m.rails
+      if incoming.id = existing.id and existing.items.Count() > incoming.items.Count()
+        incoming.items = existing.items
+        incoming.more = aaGet(existing, "more", false)
+        incoming.nextSkip = aaGet(existing, "nextSkip", existing.items.Count())
+      end if
+    end for
+  end for
   sig = railsSignature(newRails)
   if sig <> m.railsSig
     m.railsSig = sig
@@ -164,6 +178,7 @@ sub onPayload()
     renderRails()
     reapplyFocus()
   end if
+  if m.event <> invalid then onEvent()
   if m.top.mode = "ready"
     startHeroTimer()
     paintFocus()
@@ -202,6 +217,7 @@ end sub
 sub startHeroTimer()
   if m.heroTimer = invalid then return
   m.heroTimer.control = "stop"
+  if m.event <> invalid then return
   if m.top.mode = "ready" and m.heroes.Count() > 1
     m.heroTimer.control = "start"
   end if
@@ -213,6 +229,7 @@ sub stopHeroTimer()
 end sub
 
 sub onHeroTick()
+  if m.event <> invalid then return
   if m.heroes.Count() < 2 then return
   if m.zone = "rails" or m.top.visible = false then return
   if m.fadeBusy or m.loadingHeroUri <> "" then return
@@ -270,6 +287,34 @@ sub paintHeroCopy(item as Object)
     m.heroTitle.color = tvmText()
   end if
   m.heroMeta.text = homeHeroMeta(item)
+  score = imdbScoreText(asText(aaGet(item, "imdbRating", aaGet(item, "rating", ""))))
+  m.top.findNode("heroRating").text = ""
+  m.top.findNode("heroRatingBadge").visible = score <> ""
+  if score <> "" then m.top.findNode("heroRating").text = "IMDb " + score + " /10"
+  m.top.findNode("eventLine").visible = false
+  m.top.findNode("eventLogo").visible = false
+  m.top.findNode("eventGlow").visible = false
+  m.playBtn.pillWidth = 420
+  m.playBtn.translation = [0, 456] : m.detailsBtn.translation = [460, 456]
+  m.dots.translation = [0, 654]
+  m.playBtn.accent = true
+  if m.event <> invalid and asText(aaGet(item, "id", "")) = m.event.imdbId
+    m.heroTitle.text = m.event.title
+    m.heroMeta.text = m.event.kicker
+    m.top.findNode("eventLine").visible = true
+    m.top.findNode("eventLine").text = m.event.line
+    m.top.findNode("eventLogo").uri = asText(aaGet(item, "logo", ""))
+    onEventLogo()
+    m.top.findNode("eventGlow").visible = true
+    m.top.findNode("eventGlow").blendColor = "0x" + Mid(m.event.accent, 2) + "FF"
+    m.playBtn.accentColor = "0x" + Mid(m.event.accent, 2) + "8C"
+    m.playBtn.pillWidth = 640
+    m.playBtn.translation = [0, 620] : m.detailsBtn.translation = [680, 620]
+    m.dots.translation = [0, 820]
+    m.playBtn.label = "Watch the saga"
+    return
+  end if
+  m.playBtn.accentColor = "0x2F6BFF8C"
   if hasProgress(item)
     m.playBtn.label = "Resume"
   else
@@ -412,6 +457,7 @@ sub renderRails()
     rail.live = railRowLive(i, anchor)
     rail.layout = layout
     rail.title = m.rails[i].title
+    rail.loop = (m.rails[i].id <> "continue" and m.rails[i].id <> "watchlist")
     rail.items = m.rails[i].items
     rail.translation = [0, y]
     y = y + railRowHeight(layout)
@@ -544,10 +590,16 @@ end sub
 
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
+  releaseShortcut = m.top.releaseShortcut
   intent = intentFromKey(key)
   if intent = "" then return false
   if intent = "back" then return false
   if intent = "info"
+    if releaseShortcut
+      m.top.releaseShortcut = false
+      emit("changelog", invalid)
+      return true
+    end if
     if m.ownerTaps = invalid then m.ownerTaps = 0
     m.ownerTaps = m.ownerTaps + 1
     if m.ownerTaps >= 7
@@ -605,8 +657,24 @@ sub moveFocus(intent as String)
     row = m.rails[m.railRow]
     count = 0
     if row <> invalid then count = row.items.Count()
-    if intent = "left" and count > 0 then m.railCol = (m.railCol - 1 + count) mod count
-    if intent = "right" and count > 0 then m.railCol = (m.railCol + 1) mod count
+    personal = (row.id = "continue" or row.id = "watchlist")
+    if intent = "left" and count > 0
+      if not personal then m.railCol = (m.railCol - 1 + count) mod count
+      if personal and m.railCol > 0 then m.railCol = m.railCol - 1
+    end if
+    if intent = "right" and count > 0
+      if not personal then m.railCol = (m.railCol + 1) mod count
+      if personal and m.railCol < count - 1 then m.railCol = m.railCol + 1
+    end if
+    if not personal and count > 0 and (intent = "left" or intent = "right")
+      delta = 1
+      if intent = "left" then delta = -1
+      m.railNodes[m.railRow].callFunc("stepFocus", { delta: delta, col: m.railCol })
+    end if
+    if aaGet(row, "more", false) = true and m.railCol >= count - 12 and not m.pagePending.DoesExist(row.id)
+      m.pagePending[row.id] = true
+      emit("more", { railId: row.id, skip: aaGet(row, "nextSkip", count), items: row.items, target: "home" })
+    end if
     if intent = "up"
       if m.railRow > 0
         m.railRow = m.railRow - 1
@@ -658,6 +726,14 @@ sub activate()
   if m.zone = "hero"
     item = m.heroItem
     if isMediaItem(m.displayedHeroItem) then item = m.displayedHeroItem
+    if m.heroCol = 0 and m.event <> invalid
+      m.zone = "rails"
+      for i = 0 to m.rails.Count() - 1
+        if m.rails[i].id = m.event.rail.id then m.railRow = i
+      end for
+      m.railCol = 0 : paintFocus()
+      return
+    end if
     if m.heroCol = 0
       m.playBtn.pressed = true
       emit("play", { item: item })
@@ -682,4 +758,53 @@ sub onRemoteIntent()
   if intent = invalid or intent = "" then return
   keyName = keyFromIntent(intent)
   if keyName <> "" then onKeyEvent(keyName, true)
+end sub
+
+sub onAppendPage()
+  page = m.top.appendPage
+  id = asText(aaGet(page, "railId", ""))
+  m.pagePending.Delete(id)
+  if aaGet(page, "ok", false) <> true then return
+  for i = 0 to m.rails.Count() - 1
+    if m.rails[i].id = id
+      m.rails[i].items = page.items
+      m.rails[i].more = page.more
+      m.rails[i].nextSkip = page.nextSkip
+      m.railNodes[i].items = page.items
+      m.railNodes[i].focusCol = m.railCol
+    end if
+  end for
+end sub
+
+sub onEvent()
+  event = m.top.event
+  if event = invalid or aaGet(event, "hero", invalid) = invalid
+    if m.event = invalid then return
+    m.event = invalid : m.heroSig = "" : m.railsSig = ""
+    m.heroTitle.visible = true
+    onPayload()
+    return
+  end if
+  m.event = event
+  m.heroes = [event.hero] : m.heroItem = event.hero : m.heroSlide = 0
+  stopHeroTimer()
+  renderHero()
+  rail = { id: event.rail.id, title: event.rail.title, items: event.items, more: false }
+  rows = [] : inserted = false
+  for each row in m.rails
+    if Left(row.id, 6) <> "event-"
+      if row.id <> "continue" and not inserted then rows.Push(rail) : inserted = true
+      rows.Push(row)
+    end if
+  end for
+  if not inserted then rows.Push(rail)
+  m.rails = rows
+  renderRails() : reapplyFocus() : paintFocus()
+end sub
+
+sub onEventLogo()
+  logo = m.top.findNode("eventLogo")
+  show = (m.event <> invalid and logo.loadStatus = "ready" and logo.uri <> "")
+  logo.visible = show
+  m.heroTitle.visible = not show
 end sub

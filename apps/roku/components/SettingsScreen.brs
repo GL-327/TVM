@@ -21,9 +21,9 @@ sub init()
   m.rows = []
   m.col = 0
   m.seq = 0
-  m.ids = ["theme", "background", "account", "url", "token", "profiles", "realdebrid", "network", "display", "motion", "transparency", "hubdemo", "livetv", "computer", "restart", "channel"]
-  m.kinds = ["cycleTheme", "toggleBackground", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "toggleMotion", "toggleTransparency", "toggleHubDemo", "livePlaylist", "computerSettings", "restart", "channelInfo"]
-  labels = ["Theme", "Background", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Reduce Motion", "Reduce Transparency", "TVM Hub demo data", "Live TV playlist", "Manage on computer", "Reload Home", "This channel"]
+  m.ids = ["theme", "background", "account", "url", "token", "profiles", "realdebrid", "network", "display", "motion", "transparency", "hubdemo", "livetv", "computer", "restart", "channel", "services", "changelog", "updates"]
+  m.kinds = ["cycleTheme", "toggleBackground", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "toggleMotion", "toggleTransparency", "toggleHubDemo", "livePlaylist", "computerSettings", "restart", "channelInfo", "services", "changelog", "updates"]
+  labels = ["Theme", "Background", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Reduce Motion", "Reduce Transparency", "TVM Hub demo data", "Live TV playlist", "Manage on computer", "Reload Home", "This channel", "Streaming services", "What's new", "Check for updates"]
   i = 0
   while i < labels.Count()
     btn = CreateObject("roSGNode", "FocusButton")

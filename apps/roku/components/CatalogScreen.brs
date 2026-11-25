@@ -42,6 +42,8 @@ sub onItems()
   else
     m.rail.layout = "portrait"
   end if
+  m.rail.loop = (m.top.railId <> "")
+  m.pagePending = false
   m.rail.title = ""
   m.rail.items = m.top.items
   m.col = 0
@@ -114,6 +116,10 @@ sub paintFocus()
   end if
   if mode = "ready"
     m.rail.focusCol = m.col
+    if m.top.more and not m.pagePending and m.col >= m.top.items.Count() - 12
+      m.pagePending = true
+      emit("more", { railId: m.top.railId, skip: m.top.nextSkip, items: m.top.items, target: "catalog" })
+    end if
     m.error.hasFocusStyle = false
     items = m.top.items
     if items <> invalid and m.col < items.Count()
@@ -175,6 +181,15 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   items = m.top.items
   count = 0
   if items <> invalid then count = items.Count()
+  if m.top.railId <> "" and count > 0 and (intent = "left" or intent = "right")
+    if intent = "left" then m.col = (m.col - 1 + count) mod count
+    if intent = "right" then m.col = (m.col + 1) mod count
+    delta = 1
+    if intent = "left" then delta = -1
+    m.rail.callFunc("stepFocus", { delta: delta, col: m.col })
+    paintFocus()
+    return true
+  end if
   if intent = "left" and m.col > 0
     m.col = m.col - 1
     paintFocus()
@@ -198,4 +213,17 @@ sub onRemoteIntent()
   if intent = invalid or intent = "" then return
   keyName = keyFromIntent(intent)
   if keyName <> "" then onKeyEvent(keyName, true)
+end sub
+
+sub onAppendPage()
+  page = m.top.appendPage
+  m.pagePending = false
+  if aaGet(page, "ok", false) <> true then return
+  if asText(aaGet(page, "railId", "")) <> m.top.railId then return
+  m.top.more = page.more
+  m.top.nextSkip = page.nextSkip
+  col = m.col
+  m.top.items = page.items
+  m.col = col
+  paintFocus()
 end sub

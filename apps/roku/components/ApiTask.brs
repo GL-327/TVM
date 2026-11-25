@@ -114,6 +114,21 @@ sub exec()
 end sub
 
 sub applyResult(result as Object)
+  if m.top.appendItems <> invalid and result.ok
+    merged = [] : seen = {}
+    for each item in m.top.appendItems
+      merged.Push(item)
+      seen[lcAaText(item, "id")] = true
+    end for
+    for each item in lcAaGet(result.json, "items", [])
+      id = lcAaText(item, "id")
+      if not seen.DoesExist(id)
+        merged.Push(item)
+        seen[id] = true
+      end if
+    end for
+    result.json.items = merged
+  end if
   m.top.requestId = result.requestId
   m.top.statusCode = result.statusCode
   m.top.json = result.json

@@ -20,7 +20,7 @@ sub init()
   m.picker = m.top.findNode("picker")
   m.kicker.font = tvmFontMeta()
   m.title.font = tvmFontScreenTitle()
-  m.imdb.font = tvmFont("bold", tvmTypeSize(tvmTypeSecondary()))
+  m.imdb.font = tvmFont("bold", 56)
   m.meta.font = tvmFontSecondary()
   m.synopsis.font = tvmFontSecondary()
   m.play.variant = "glassPill"
@@ -49,6 +49,11 @@ sub init()
   m.seasonsBack = invalid
   m.episodeRail = invalid
   m.seriesLike = false
+  m.watchOn = m.top.findNode("watchOn")
+  m.watchOn.variant = "glassPill" : m.watchOn.pillWidth = 580 : m.watchOn.label = "Watch on"
+  m.reviewDelay = m.top.findNode("reviewDelay")
+  m.reviewDelay.observeField("fire", "showReviewPreview")
+  m.top.findNode("reviewText").font = tvmFont("regular", 56)
   m.actions = []
   buildActions()
   paintFocus()
@@ -59,6 +64,7 @@ sub buildActions()
   if not m.seriesLike then m.actions.Push({ id: "play", node: m.play })
   m.actions.Push({ id: "imdb", node: m.imdbBtn })
   m.actions.Push({ id: "save", node: m.save })
+  if m.top.connectedServices <> invalid and m.top.connectedServices.Count() > 0 then m.actions.Push({ id: "watch-on", node: m.watchOn })
   m.actions.Push({ id: "back", node: m.back })
   m.play.visible = not m.seriesLike
   x = 160
@@ -106,6 +112,8 @@ sub onItem()
   idChanged = (newId <> m.itemId)
   if idChanged
     m.itemId = newId
+    m.reviewShown = false
+    m.top.reviewPreview = {}
     resetForItem()
   end if
 
@@ -115,7 +123,7 @@ sub onItem()
   if m.seriesLike
     m.kicker.text = "SERIES"
     m.imdbBtn.pillWidth = 640
-    m.imdbBtn.label = "Series Graph"
+    m.imdbBtn.label = "IMDb reviews"
   else
     m.kicker.text = "FILM"
     if hasProgress(item)
@@ -129,15 +137,18 @@ sub onItem()
   buildActions()
 
   m.title.text = aaGet(item, "title", "Title")
-  rating = asText(aaGet(item, "rating", ""))
+  rating = asText(aaGet(item, "imdbRating", aaGet(item, "rating", "")))
   score = imdbScoreText(rating)
   if score <> ""
-    m.imdb.text = "IMDb " + score
+    m.imdb.text = "IMDb " + score + " /10"
+    m.imdb.color = "0x000000FF"
+    m.top.findNode("imdbBadge").visible = true
     m.imdb.visible = true
     m.meta.translation = [600, 710]
   else
     m.imdb.text = ""
     m.imdb.visible = false
+    m.top.findNode("imdbBadge").visible = false
     m.meta.translation = [160, 710]
   end if
 
@@ -225,6 +236,16 @@ function currentActionId() as String
 end function
 
 sub paintFocus()
+  if m.reviewDelay <> invalid
+    focused = (m.zone = "actions" and currentActionId() = "imdb")
+    m.top.findNode("reviewPopover").visible = focused and m.reviewShown = true
+    if focused and m.reviewShown <> true
+      if m.reviewDelay.control <> "start" then m.reviewDelay.control = "start"
+    else if not focused
+      m.reviewDelay.control = "stop"
+      m.reviewShown = false
+    end if
+  end if
   i = 0
   while i < m.actions.Count()
     m.actions[i].node.hasFocusStyle = (m.zone = "actions" and m.col = i)
@@ -418,13 +439,8 @@ sub activateAction()
   if id = "" then return
   m.actions[m.col].node.pressed = true
   if id = "play" then emit("play", invalid)
-  if id = "imdb"
-    if m.seriesLike
-      emit("notice", { title: "Series Graph", body: "Open Series Graph on the TVM computer. This Roku catalog is TVM Stream, not the licensed site." })
-    else
-      emit("notice", { title: "IMDb", body: "Title pages open in the TVM computer browser. This Roku stays in TVM." })
-    end if
-  end if
+  if id = "imdb" then emit("reviews", invalid)
+  if id = "watch-on" then emit("watch-on", invalid)
   if id = "save" then emit("save", invalid)
   if id = "back" then emit("close", invalid)
 end sub
@@ -435,4 +451,33 @@ sub onRemoteIntent()
   if intent = invalid or intent = "" then return
   keyName = keyFromIntent(intent)
   if keyName <> "" then onKeyEvent(keyName, true)
+end sub
+
+sub onServices()
+  if m.watchOn = invalid then return
+  m.watchOn.visible = (m.top.connectedServices <> invalid and m.top.connectedServices.Count() > 0)
+  buildActions()
+end sub
+
+sub showReviewPreview()
+  m.reviewShown = true
+  emit("review-preview", invalid)
+  onReviewPreview()
+end sub
+
+sub onReviewPreview()
+  if m.top.findNode("reviewText") = invalid then return
+  text = "Read reviews on IMDb"
+  item = m.top.item
+  rating = asText(aaGet(item, "imdbRating", aaGet(item, "rating", "")))
+  text = "IMDb " + rating + " /10" + Chr(10) + text
+  reviews = aaArray(m.top.reviewPreview, "reviews")
+  for each review in reviews
+    stars = ""
+    value = aaGet(review, "stars", invalid)
+    if value <> invalid then stars = value.ToStr() + " / 5"
+    text = text + Chr(10) + asText(aaGet(review, "author", "")) + "  " + stars + Chr(10) + Left(asText(aaGet(review, "text", "")), 180)
+  end for
+  m.top.findNode("reviewText").text = text
+  m.top.findNode("reviewPopover").visible = (m.reviewShown = true and m.zone = "actions" and currentActionId() = "imdb")
 end sub

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="FeatureScreen" extends="Group">
+  <interface>
+    <field id="heading" type="string" onChange="paintHeading" />
+    <field id="rows" type="array" onChange="buildRows" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" alwaysNotify="true" onChange="restore" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="FeatureScreen.brs" />
+  <children>
+    <Rectangle width="3840" height="2160" color="0x090D17FF" />
+    <Label id="heading" translation="[192, 200]" width="3400" height="140" />
+    <Group id="rows" translation="[192, 420]" />
+    <GlassPanel shape="panel" translation="[1420, 420]" width="2228" height="1510" />
+    <Poster id="preview" translation="[1500, 500]" width="260" height="260" loadDisplayMode="scaleToFit" />
+    <Label id="body" translation="[1500, 500]" width="2040" height="1320" wrap="true" maxLines="19" color="0xF2F2F2FF" />
+    <Label id="hint" translation="[1500, 1830]" width="2040" height="70" color="0xFFFFFFAA" text="Left / Right: read more    Back: return" />
+  </children>
+</component>

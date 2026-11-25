@@ -6,6 +6,10 @@ sub init()
   m.top.width = 304
   m.top.height = 400
   m.top.scaleRotateCenter = [152, 152]
+  m.avatar = m.top.findNode("avatar")
+  m.avatar.observeField("loadStatus", "onAvatarLoad")
+  m.top.findNode("initial").font = tvmFontTitle()
+  m.top.findNode("lock").font = tvmFontCaption()
   paint()
 end sub
 
@@ -51,6 +55,21 @@ sub paint()
   if m.tile = invalid then return
   m.tile.color = hslApprox(m.top.hue)
   m.caption.text = m.top.name
+  m.top.findNode("initial").text = UCase(Left(m.top.name, 1))
+  m.top.findNode("lock").visible = m.top.locked
+  uri = ""
+  data = ParseJson(ReadAsciiFile("tmp:/tvm_content_avatars.json"))
+  if data = invalid then data = ParseJson(ReadAsciiFile("cachefs:/tvm_v11_content_avatars.json"))
+  if data = invalid then data = ParseJson(ReadAsciiFile("pkg:/source/data/content/avatars.json"))
+  if data <> invalid
+    for each set in data.sets
+      for each avatar in set.avatars
+        if set.id + "/" + avatar.id = m.top.avatar then uri = avatar.image
+      end for
+    end for
+  end if
+  if m.avatar.uri <> uri then m.avatar.uri = uri
+  onAvatarLoad()
 end sub
 
 sub onFocus()
@@ -65,4 +84,8 @@ sub onFocus()
     m.top.scale = [1.0, 1.0]
     m.caption.color = tvmMuted()
   end if
+end sub
+
+sub onAvatarLoad()
+  m.avatar.visible = (m.avatar.loadStatus = "ready")
 end sub

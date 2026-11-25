@@ -306,7 +306,7 @@ function tvmMotionPanel() as Float
 end function
 
 function tvmMotionTab() as Float
-  return 0.18
+  return 0.4
 end function
 
 function tvmMotionFocus() as Float
@@ -314,12 +314,12 @@ function tvmMotionFocus() as Float
 end function
 
 function tvmMotionPress() as Float
-  return 0.08
+  return 0.09
 end function
 
 ' Focus geometry: posters scale 1.04, pills and nodes 1.06, lift 6 px (12 units).
 function tvmPillFocusScale() as Float
-  return 1.06
+  return 1.05
 end function
 
 function tvmFocusLift() as Integer
@@ -327,7 +327,7 @@ function tvmFocusLift() as Integer
 end function
 
 function tvmPressScale() as Float
-  return 0.98
+  return 0.96
 end function
 
 ' App-wide accessibility flags, stored in the registry and mirrored on m.global.
@@ -348,7 +348,7 @@ end function
 ' Glass fills. Normal: ~18% white over dark scenes. Reduce Transparency: opaque ink.
 function tvmGlassTint() as String
   if tvmReduceTransparency() then return "0x12151CFF"
-  return "0xEAF6FF22"
+  return "0xFFFFFF17"
 end function
 
 function tvmGlassTintFocused() as String

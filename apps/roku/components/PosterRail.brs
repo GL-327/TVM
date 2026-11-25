@@ -14,6 +14,7 @@ sub init()
   m.count = 0
   m.viewFirst = 0
   m.focusSlot = 0
+  m.slotOffset = 0 : m.pendingDelta = 0
   m.lastCol = -1
   m.wasFocused = false
   m.buffer = 2
@@ -53,9 +54,24 @@ end sub
 
 sub onItems()
   if m.track = invalid then return
+  oldCount = m.count
+  items = m.top.items
+  newCount = 0
+  if items <> invalid then newCount = items.Count()
+  if oldCount > 0 and newCount >= oldCount
+    m.count = newCount
+    ' An append must keep the focused item at its current virtual slot,
+    ' including after several laps around the old item count.
+    if m.top.focusCol >= 0 then m.slotOffset = m.focusSlot - m.top.focusCol
+    clearCards()
+    if m.top.live then syncWindow()
+    paintCards()
+    return
+  end if
   clearCards()
   m.viewFirst = 0
   m.focusSlot = 0
+  m.slotOffset = 0 : m.pendingDelta = 0
   m.lastCol = -1
   m.wasFocused = false
   items = m.top.items
@@ -80,7 +96,18 @@ end sub
 sub syncWindow()
   items = m.top.items
   if items = invalid or m.count <= 0 then return
-  win = railWindow(m.count, m.viewFirst, visibleCount(), m.buffer)
+  visible = visibleCount()
+  windowCount = m.count
+  if m.top.loop
+    ' Short rows use the same signed window as long rows. Each slot resolves
+    ' modulo the real count, so even one title fills the viewport.
+    if windowCount <= visible then windowCount = visible + 1
+  end if
+  win = railWindow(windowCount, m.viewFirst, visible, m.buffer)
+  if not m.top.loop
+    if win.first < 0 then win.first = 0
+    if win.last >= m.count then win.last = m.count - 1
+  end if
 
   stale = []
   for each key in m.liveCards
@@ -108,7 +135,7 @@ sub syncWindow()
       end if
       card.hasFocusStyle = false
       card.dimmed = false
-      card.item = items[railWrapIndex(i, m.count)]
+      card.item = items[railWrapIndex(i - m.slotOffset, m.count)]
       card.translation = [i * pitch, 0]
       m.track.appendChild(card)
       m.liveCards[key] = card
@@ -127,17 +154,41 @@ sub paintCards()
   end for
 end sub
 
+function stepFocus(movement as Object) as Boolean
+  m.pendingDelta = aaGet(movement, "delta", 0)
+  col = aaGet(movement, "col", m.top.focusCol)
+  if col = m.top.focusCol then onFocusCol() else m.top.focusCol = col
+  return true
+end function
+
 sub onFocusCol()
   if m.track = invalid then return
   col = m.top.focusCol
   if col >= 0 and m.count > 0
     if col > m.count - 1 then col = m.count - 1
     vis = visibleCount()
-    slot = railLoopSlot(col, m.lastCol, m.focusSlot, m.viewFirst, m.count, vis, m.wasFocused)
+    slot = col
+    if m.top.loop
+      if m.wasFocused and m.pendingDelta <> 0
+        slot = m.focusSlot + m.pendingDelta
+      else if m.wasFocused
+        slot = railLoopSlot(col, m.lastCol, m.focusSlot, m.viewFirst, m.count, 0, true)
+      else
+        slot = col + m.slotOffset
+      end if
+    end if
+    m.pendingDelta = 0
     m.lastCol = col
     m.focusSlot = slot
     m.wasFocused = true
-    first = railLoopViewFirst(m.count, slot, m.viewFirst, vis)
+    if m.top.loop
+      first = railLoopViewFirst(vis + 1, slot, m.viewFirst, vis)
+    else
+      first = m.viewFirst
+      if slot < first then first = slot
+      if slot >= first + vis then first = slot - vis + 1
+      if first < 0 then first = 0
+    end if
     if first <> m.viewFirst
       m.viewFirst = first
       if m.top.live then syncWindow()

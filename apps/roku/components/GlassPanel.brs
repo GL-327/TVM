@@ -42,9 +42,10 @@ end sub
 sub paint()
   if m.tint = invalid then return
   tint = tvmGlassTint()
-  if m.top.tintColor <> "" then tint = m.top.tintColor
   if m.top.focused then tint = tvmGlassTintFocused()
-  if m.top.active then tint = "0xFFFFFFE6"
+  if m.top.active then tint = "0xFFFFFF38"
+  if m.top.tintColor <> "" then tint = m.top.tintColor
+  if m.top.accent then tint = m.top.accentColor
   m.tint.blendColor = tint
   m.rim.uri = "pkg:/images/glass/" + m.shape + ".9.png"
   m.rim.blendColor = "0xF2F9FFFF"
@@ -52,7 +53,8 @@ sub paint()
     m.rim.uri = "pkg:/images/glass/" + m.shape + "-focus.9.png"
     m.rim.blendColor = "0xE6F4FFFF"
   end if
-  if m.top.selected then m.rim.blendColor = "0xC9E1FFFF"
+  if m.shape = "pill" and (m.top.selected or m.top.active) then m.rim.uri = "pkg:/images/glass/pill-thumb.9.png"
+  if m.top.selected then m.rim.blendColor = "0xFFFFFFFF"
   m.rim.opacity = tvmGlassRimOpacity()
   if m.top.focused then m.rim.opacity = 1.0
   m.glow.visible = (m.top.focused or m.top.active)
@@ -68,6 +70,11 @@ sub paint()
   reduced = tvmReduceTransparency()
   m.bodyGradient.visible = not reduced
   m.sheen.visible = not reduced
+  m.bodyGradient.uri = "pkg:/images/glass/" + m.shape + "-body.9.png"
+  if m.top.accent and m.shape = "pill" and m.top.accentColor = "0x2F6BFF8C" and not reduced
+    m.tint.blendColor = "0x00000000"
+    m.bodyGradient.uri = "pkg:/images/glass/pill-accent.9.png"
+  end if
   if not reduced
     m.bodyGradient.blendColor = "0xEAF6FFFF"
     m.bodyGradient.opacity = 0.85

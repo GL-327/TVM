@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="PosterRail" extends="Group">
   <interface>
+    <function name="stepFocus" />
+    <field id="loop" type="boolean" value="true" />
     <field id="title" type="string" onChange="onTitle" />
     <field id="items" type="array" onChange="onItems" />
     <field id="focusCol" type="integer" value="-1" onChange="onFocusCol" />

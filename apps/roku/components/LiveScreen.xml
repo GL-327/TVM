@@ -10,13 +10,14 @@
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
   <script type="text/brightscript" uri="LiveScreen.brs" />
   <children>
-    <RibbonBar id="ribbon" />
+    <NavStrip id="ribbon" />
     <Label id="kicker" translation="[160, 280]" color="0x8A8A8AFF" text="Live TV" />
     <Label id="heading" translation="[160, 352]" color="0xF5F5F5FF" text="Your channels" />
     <Label id="lede" translation="[160, 452]" width="3000" color="0xC4C4C4FF" text="" />
-    <Group id="grid" translation="[160, 540]" />
+    <Group id="grid" translation="[192, 580]" />
     <EmptyState id="empty" translation="[0, 540]" />
     <ErrorState id="error" translation="[0, 540]" />
     <Label id="loading" translation="[160, 560]" color="0xC4C4C4FF" text="Loading..." />

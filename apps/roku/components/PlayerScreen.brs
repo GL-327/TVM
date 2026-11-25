@@ -122,7 +122,7 @@ sub init()
   m.focusWatch.duration = 0.35
   m.focusWatch.repeat = true
   m.focusWatch.observeField("fire", "claimOverlayFocus")
-  m.top.observeField("streamUrl", "onStream")
+  m.top.observeField("streamUrl", "planStream")
   m.top.observeField("focusedChild", "onFocusedChild")
   m.top.observeField("mediaKind", "updateSkipRecap")
   m.top.observeField("recapEnd", "updateSkipRecap")
@@ -131,6 +131,7 @@ sub init()
   m.video.observeField("duration", "onDuration")
   m.video.enableUI = false
   m.video.focusable = false
+  initQuality()
   paintFocus()
 end sub
 
@@ -143,8 +144,8 @@ sub onOverlayFlags()
   updateNextUp()
 end sub
 
-sub onStream()
-  url = m.top.streamUrl
+sub beginStream()
+  url = m.playUrl
   if url = invalid or url = "" then return
   content = CreateObject("roSGNode", "ContentNode")
   content.url = url
@@ -166,6 +167,11 @@ sub onStream()
   end if
   if httpHeaders.Count() > 0 then content.HttpHeaders = httpHeaders
   m.video.setHttpAgent(agent)
+  m.orbit.active = true
+  m.orbit.status = "Connecting"
+  m.orbit.percentage = 0
+  m.lastBufferPercent = 0
+  m.bufferClock.Mark()
   startAt = m.top.startAt
   if startAt <> invalid and startAt > 0 then content.playStart = startAt
   m.heading.text = m.top.streamTitle
@@ -192,13 +198,28 @@ sub onState()
   publishPlayState(state)
   if m.ccOpen = true then pushCCState()
   if state = "error"
+    m.orbit.active = false
+    if m.manualQuality = 0 and m.variantIndex < m.variants.Count() - 1
+      m.variantIndex = m.variantIndex + 1
+      restartVariant()
+      return
+    end if
     m.bufferTimer.control = "stop"
-    m.top.message = "This stream could not play on this Roku. Press Back to choose another title."
+    if m.top.geo = "GB"
+      m.top.message = "BBC channels play in the UK only. Press OK for the next channel, or Back to return."
+    else if Left(m.top.mediaId, 5) = "live:"
+      m.top.message = "This channel is not available right now. Press OK for the next channel, or Back to return."
+    else
+      m.top.message = "This stream could not play on this Roku. Press Back to choose another title."
+    end if
     m.buffer.visible = false
     showChrome()
   else if state = "finished"
     closePlayer()
   else if state = "playing"
+    m.orbit.active = false
+    m.stallTimer.control = "stop"
+    if m.variantIndex > 0 and m.manualQuality = 0 then m.recoverTimer.control = "start"
     m.bufferTimer.control = "stop"
     m.top.message = ""
     m.buffer.visible = false
@@ -214,6 +235,9 @@ sub onState()
     m.pause.iconUri = "pkg:/images/icons/play.png"
     saveProgress(false)
   else if state = "buffering"
+    m.recoverTimer.control = "stop"
+    m.orbit.active = true
+    m.orbit.rate = 0.35
     m.buffer.visible = true
     if m.bufferTimer.control <> "start" then m.bufferTimer.control = "start"
   end if
@@ -504,6 +528,7 @@ sub stopFocusWatch()
 end sub
 
 sub claimOverlayFocus()
+  if m.qualityOpen then return
   if m.closing = true then return
   if m.video <> invalid
     m.video.enableUI = false
@@ -630,6 +655,9 @@ sub seekBy(delta as Integer)
 end sub
 
 sub closePlayer()
+  m.orbit.active = false
+  m.stallTimer.control = "stop"
+  m.recoverTimer.control = "stop"
   teardownCC()
   m.closing = true
   m.top.playState = "idle"
@@ -666,6 +694,14 @@ end sub
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
+  if m.qualityOpen
+    if intent = "back" then closeQuality() : return true
+    return true
+  end if
+  if m.video.state = "error" and intent = "select" and Left(m.top.mediaId, 5) = "live:"
+    emit("next-channel", invalid)
+    return true
+  end if
   holdFocus()
   if m.ccOpen = true and (isDirectional(intent) or intent = "select" or intent = "back" or intent = "info")
     m.cc.callFunc("handleIntent", intent)
@@ -677,7 +713,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   end if
   showChrome()
   if intent = "info"
-    openCC()
+    openQuality()
     return true
   end if
   if m.zone = "cc"
