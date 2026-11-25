@@ -49,8 +49,10 @@ import {
 import type { CatalogRail, HomePayload, MediaItem, PlaybackResolution, RdStatus } from './types.ts';
 import { addWatchlist, readWatchlist, removeWatchlist, type WatchlistItem } from './watchlist.ts';
 import { downloadLanguageMatches, type DownloadPreferences } from './downloadPreferences.ts';
+import { createCoreExtras, type CoreExtras, type ExtrasPlaybackResolution } from './extras.ts';
 
 export interface MediaService {
+  extras?: CoreExtras;
   configured(): boolean;
   status(): Promise<RdStatus>;
   setToken(token: string): Promise<RdStatus>;
@@ -72,7 +74,7 @@ export interface MediaService {
     screenHeight?: number;
     /** A quality the viewer picked (e.g. 720): the best source at or under it. */
     maxHeight?: number;
-  }): Promise<PlaybackResolution>;
+  }): Promise<ExtrasPlaybackResolution>;
   saveProgress(id: string, position: number, duration: number): void;
   watchlist(): WatchlistItem[];
   addToWatchlist(item: unknown): WatchlistItem[];
@@ -379,6 +381,14 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     const levels = parseLevels(options.content?.get('parental')['levels']);
     return levelFor(active === undefined ? 18 : profileMaxAge(active), levels);
   };
+  const extras = createCoreExtras({
+    dataDir, scope, fetch: fetchImpl,
+    item: async (id) => (await catalog.meta(id))?.item ?? null,
+    filter: () => {
+      const level = ageLevel();
+      return async (items) => { await primeFor(level, items); return filterForLevel(items, level, certOf); };
+    },
+  });
   const servicesPath = (): string => join(scope(), 'services.json');
   const readConnected = (): string[] => {
     try {
@@ -856,6 +866,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   };
 
   return {
+    extras,
     configured: () => rd.configured(),
     status: () => cachedStatus(),
     async setToken(token) {
@@ -946,6 +957,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       if (parsed !== null) {
         const meta = await catalog.meta(parsed.imdb);
         if (meta !== null) {
+          extras.remember(meta.item);
           if (parsed.season !== undefined && parsed.episode !== undefined) {
             return (
               meta.children.find((entry) => entry.season === parsed.season && entry.episode === parsed.episode) ??
@@ -1048,10 +1060,11 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       native?: boolean;
       screenHeight?: number;
       maxHeight?: number;
-    }): Promise<PlaybackResolution> {
+    }): Promise<ExtrasPlaybackResolution> {
       // StrictMode/remounts and two rapid Play presses must share resolution,
       // rather than start competing probes and conversions for one film.
       const plan = options.plan?.();
+      const profileScope = scope();
       const key = JSON.stringify([rd.tokenValue(), scope(), plan?.id, plan?.maxHeight, input]);
       const pending = playbackPending.get(key);
       if (pending) return pending;
@@ -1119,12 +1132,21 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         return { kind: 'unavailable', reason: 'empty' };
       }
       };
-      const task = resolve().finally(() => { if (playbackPending.get(key) === task) playbackPending.delete(key); });
+      const task = resolve().then(async (result) => {
+        if (result.kind !== 'stream') return result;
+        const parsed = input.id ? parsePlayId(input.id) : null;
+        const id = parsed?.imdb ?? (input.id ? extractImdb(input.id) : null);
+        if (!id) return result;
+        const season = input.season ?? parsed?.season;
+        const episode = input.episode ?? parsed?.episode;
+        return extras.enrichPlayback(result, { id, season, episode, title: input.title }, profileScope);
+      }).finally(() => { if (playbackPending.get(key) === task) playbackPending.delete(key); });
       playbackPending.set(key, task);
       return task;
     },
 
     saveProgress(id, position, duration) {
+      extras.recordProgress(id, position, duration, readProgress(scope())[id]);
       writeProgress(scope(), id, position, duration);
     },
 

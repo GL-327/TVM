@@ -22,8 +22,8 @@ describe('core prefs', () => {
   it('stores a Settings language override and auto-update off', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-prefs-'));
     dirs.push(dir);
-    expect(writePrefs(dir, { language: 'fr', autoUpdate: false })).toEqual({ language: 'fr', autoUpdate: false });
-    expect(JSON.parse(await readFile(join(dir, 'prefs.json'), 'utf8'))).toEqual({ language: 'fr', autoUpdate: false });
+    expect(writePrefs(dir, { language: 'fr', autoUpdate: false })).toEqual({ ...DEFAULT_PREFS, language: 'fr', autoUpdate: false });
+    expect(JSON.parse(await readFile(join(dir, 'prefs.json'), 'utf8'))).toEqual({ ...DEFAULT_PREFS, language: 'fr', autoUpdate: false });
     expect(writePrefs(dir, { language: 'zz' }).language).toBe('fr');
   });
 });

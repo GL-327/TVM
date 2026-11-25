@@ -51,7 +51,8 @@ import { createStreamer, type StreamerService } from './providers/streamer.ts';
 import { serveExactStatic, serveStatic } from './static.ts';
 import { resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
-import { readPrefs, writePrefs } from './prefs.ts';
+import { readPrefs, type CorePrefs } from './prefs.ts';
+import { extrasRoute, writeExtrasPrefs } from './providers/extras.ts';
 import { validDownloadPreferences } from './providers/downloadPreferences.ts';
 import { desktopRuntime } from './desktopRuntime.ts';
 import { ensureWindowsMpv } from './providers/mpvInstall.ts';
@@ -602,21 +603,33 @@ async function handleApi(
     return true;
   }
 
+  // TVM Extras routes stay together; all use the profile selected above.
+  if (path.startsWith('/api/extras/') && media.extras) {
+    const result = await extrasRoute(media.extras, path, request.method ?? 'GET', new URL(request.url ?? '/', 'http://localhost').searchParams);
+    if (result) {
+      response.setHeader('cache-control', 'no-store');
+      if ('text' in result) {
+        response.writeHead(result.status, { 'content-type': 'text/vtt; charset=utf-8' });
+        response.end(result.text);
+      } else if (result.status === 204) { response.writeHead(204); response.end(); }
+      else sendJson(response, result.status, result.body);
+      return true;
+    }
+  }
+
   if (path === '/api/prefs' && request.method === 'GET') {
-    sendJson(response, 200, readPrefs(dataDir));
+    const prefs = readPrefs(dataDir);
+    sendJson(response, 200, { ...prefs, subtitleLanguages: media.extras?.languages() ?? prefs.subtitleLanguages });
     return true;
   }
 
   if (path === '/api/prefs' && request.method === 'PUT') {
     try {
-      const body = (await readJson(request)) as { language?: unknown; autoUpdate?: unknown };
+      const body = (await readJson(request)) as Partial<CorePrefs>;
       sendJson(
         response,
         200,
-        writePrefs(dataDir, {
-          ...(typeof body.language === 'string' ? { language: body.language } : {}),
-          ...(typeof body.autoUpdate === 'boolean' ? { autoUpdate: body.autoUpdate } : {}),
-        }),
+        writeExtrasPrefs(dataDir, media.extras, body),
       );
     } catch (error) {
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'prefs rejected' });
