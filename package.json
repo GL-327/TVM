@@ -15,9 +15,10 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
-    "check": "pnpm -r run typecheck && node apps/ios/check-project.mjs && node apps/android/check-project.mjs && node apps/roku/scripts/check.mjs",
+    "check": "node scripts/check-changelog.mjs && node scripts/check-content.mjs && pnpm -r run typecheck && node apps/ios/check-project.mjs && node apps/android/check-project.mjs && node apps/roku/scripts/check.mjs",
     "roku:package": "node apps/roku/scripts/package.mjs",
-    "fetch:packages": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-packages.ps1"
+    "fetch:packages": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-packages.ps1",
+    "check:changelog": "node scripts/check-changelog.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

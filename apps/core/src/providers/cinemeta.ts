@@ -322,6 +322,33 @@ export function createCatalogService(options: CatalogServiceOptions) {
       }
     },
 
+    /**
+     * One later page (50 titles) of a Cinemeta list, for rows that keep
+     * loading as the viewer scrolls. Pages are cached like genres.
+     */
+    async page(
+      kind: 'movie' | 'series',
+      list: 'top' | 'imdbRating' | 'last-videos',
+      genre: string | null,
+      skip: number,
+    ): Promise<MediaItem[]> {
+      const offset = Math.max(0, Math.min(5000, Math.floor(skip / 50) * 50));
+      if (offset === 0 && genre !== null && list === 'top') return this.genre(kind, genre);
+      const extra = [genre === null ? null : `genre=${encodeURIComponent(genre)}`, offset > 0 ? `skip=${offset}` : null]
+        .filter((part): part is string => part !== null)
+        .join('&');
+      const key = `page:${kind}:${list}:${extra}`;
+      const hit = genreMem.get(key);
+      if (hit !== undefined && Date.now() - hit.at < GENRE_TTL_MS) return hit.items;
+      try {
+        const items = await fetchCatalog(`/catalog/${kind}/${list}${extra === '' ? '' : `/${extra}`}.json`, kind, GENRE_FETCH_MS);
+        genreMem.set(key, { at: Date.now(), items });
+        return items;
+      } catch {
+        return [];
+      }
+    },
+
     async meta(id: string): Promise<TitleMeta | null> {
       const imdb = id.match(/tt\d+/i)?.[0]?.toLowerCase();
       if (imdb === undefined) return null;

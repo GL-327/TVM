@@ -33,6 +33,11 @@ import { probeContentLength } from './providers/hlsProxy.ts';
 // inherits Core's content-route auth rather than defining its own.
 import { handleServerSideLive, serverSideLiveFor } from './Server Side Live/routes.ts';
 import { createMediaService, type MediaService } from './providers/media.ts';
+import { createContentService, isContentName, type ContentService } from './providers/content.ts';
+import { createReviewsService, type ReviewsService } from './providers/reviews.ts';
+import { createRokuUpdater, type RokuUpdater } from './providers/rokuUpdater.ts';
+import { liveGroupAllowed } from './providers/parental.ts';
+import { PinError, type ProfileChanges } from './providers/profiles.ts';
 import {
   createPlanService,
   isPlanId,
@@ -445,6 +450,7 @@ export interface CoreOptions {
   streamer?: StreamerService;
   dataDir?: string;
   env?: NodeJS.ProcessEnv;
+  content?: ContentService;
 }
 
 async function handleApi(
@@ -470,6 +476,9 @@ async function handleApi(
   donations: DonationService,
   mail: MailService,
   allowSignIn: ReturnType<typeof createSignInLimiter>,
+  content: ContentService,
+  reviews: ReviewsService,
+  roku: RokuUpdater,
 ): Promise<boolean> {
   // Dev mode belongs to the dev account, so dev-only routes check who is
   // asking rather than a switch for the whole machine. Otherwise anyone on
@@ -507,7 +516,7 @@ async function handleApi(
   const requestedProfile = request.headers['x-tvm-profile'];
   if (typeof requestedProfile === 'string' && requestedProfile !== '') {
     try {
-      media.switchProfile(requestedProfile);
+      media.followProfileHeader(requestedProfile);
     } catch {
       // Keep the stored active profile if the header is stale.
     }
@@ -623,56 +632,226 @@ async function handleApi(
     return true;
   }
 
+  const pinFailure = (error: unknown): boolean => {
+    if (!(error instanceof PinError)) return false;
+    sendJson(response, error.code === 'pin-invalid' ? 400 : 403, {
+      error: error.code,
+      ...(error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter }),
+    });
+    return true;
+  };
+  const profileChanges = (body: Record<string, unknown>): ProfileChanges => ({
+    ...(typeof body['name'] === 'string' ? { name: body['name'] } : {}),
+    ...(typeof body['hue'] === 'number' ? { hue: body['hue'] } : {}),
+    ...(body['avatar'] === null || typeof body['avatar'] === 'string' ? { avatar: body['avatar'] as string | null } : {}),
+    ...(body['kind'] === 'kids' || body['kind'] === 'standard' ? { kind: body['kind'] } : {}),
+    ...(typeof body['maxAge'] === 'number' ? { maxAge: body['maxAge'] } : {}),
+    ...(body['pin'] === null || typeof body['pin'] === 'string' ? { pin: body['pin'] as string | null } : {}),
+  });
+  const searchParams = (): URLSearchParams => new URL(request.url ?? '/', `http://${CORE_HOST}`).searchParams;
+
   if (path === '/api/profiles' && request.method === 'GET') {
     sendJson(response, 200, media.profiles());
     return true;
   }
 
   if (path === '/api/profiles' && request.method === 'POST') {
-    const body = (await readJson(request)) as { name?: unknown };
+    const body = (await readJson(request)) as Record<string, unknown>;
     try {
-      sendJson(response, 200, media.createProfile(typeof body.name === 'string' ? body.name : ''));
+      const { name, ...extra } = profileChanges(body);
+      sendJson(response, 200, media.createProfile(name ?? '', extra));
     } catch (error) {
+      if (pinFailure(error)) return true;
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'profile rejected' });
     }
     return true;
   }
 
   if (path === '/api/profiles' && request.method === 'PUT') {
-    const body = (await readJson(request)) as { id?: unknown; name?: unknown };
-    if (typeof body.id !== 'string' || typeof body.name !== 'string') {
-      sendJson(response, 400, { error: 'id and name are required' });
+    const body = (await readJson(request)) as Record<string, unknown>;
+    if (typeof body['id'] !== 'string') {
+      sendJson(response, 400, { error: 'id is required' });
       return true;
     }
-    sendJson(response, 200, media.renameProfile(body.id, body.name));
+    try {
+      sendJson(response, 200, media.updateProfile(body['id'], profileChanges(body), body['currentPin']));
+    } catch (error) {
+      if (pinFailure(error)) return true;
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'profile rejected' });
+    }
     return true;
   }
 
   if (path === '/api/profiles/active' && request.method === 'POST') {
-    const body = (await readJson(request)) as { id?: unknown };
+    const body = (await readJson(request)) as { id?: unknown; pin?: unknown };
     if (typeof body.id !== 'string') {
       sendJson(response, 400, { error: 'id must be a string' });
       return true;
     }
     try {
-      sendJson(response, 200, media.switchProfile(body.id));
+      sendJson(response, 200, media.switchProfile(body.id, body.pin));
     } catch (error) {
+      if (pinFailure(error)) return true;
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'profile rejected' });
+    }
+    return true;
+  }
+
+  if (path === '/api/profiles/verify-pin' && request.method === 'POST') {
+    const body = (await readJson(request)) as { id?: unknown; pin?: unknown };
+    if (typeof body.id !== 'string') {
+      sendJson(response, 400, { error: 'id must be a string' });
+      return true;
+    }
+    try {
+      sendJson(response, 200, { ok: media.verifyPin(body.id, body.pin) });
+    } catch (error) {
+      if (error instanceof PinError && (error.code === 'pin-wrong' || error.code === 'pin-required')) {
+        sendJson(response, 200, { ok: false, error: error.code });
+        return true;
+      }
+      if (pinFailure(error)) return true;
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'profile rejected' });
     }
     return true;
   }
 
   if (path === '/api/profiles/remove' && request.method === 'POST') {
-    const body = (await readJson(request)) as { id?: unknown };
+    const body = (await readJson(request)) as { id?: unknown; pin?: unknown };
     if (typeof body.id !== 'string') {
       sendJson(response, 400, { error: 'id must be a string' });
       return true;
     }
     try {
-      sendJson(response, 200, media.removeProfile(body.id));
+      sendJson(response, 200, media.removeProfile(body.id, body.pin));
     } catch (error) {
+      if (pinFailure(error)) return true;
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'profile rejected' });
     }
+    return true;
+  }
+
+  if (path.startsWith('/api/content/') && request.method === 'GET') {
+    const name = path.slice('/api/content/'.length);
+    if (!isContentName(name)) {
+      sendJson(response, 404, { error: 'not_found' });
+      return true;
+    }
+    sendJson(response, 200, content.get(name));
+    return true;
+  }
+
+  if (path === '/api/changelog' && request.method === 'GET') {
+    sendJson(response, 200, { current: CORE_VERSION, releases: content.list('changelog') });
+    return true;
+  }
+
+  if (path === '/api/events/active' && request.method === 'GET') {
+    sendJson(response, 200, { events: await media.activeEvents() });
+    return true;
+  }
+
+  if (path === '/api/rails/more' && request.method === 'GET') {
+    const params = searchParams();
+    const id = params.get('id') ?? '';
+    const skip = Number(params.get('skip') ?? '0');
+    const pageRaw = params.get('page');
+    const page = pageRaw === null ? undefined : Number(pageRaw);
+    if (!/^[a-z0-9-]{1,40}$/.test(id)) {
+      sendJson(response, 400, { error: 'id is required' });
+      return true;
+    }
+    sendJson(
+      response,
+      200,
+      await media.railMore(id, Number.isFinite(skip) ? skip : 0, page !== undefined && Number.isFinite(page) ? page : undefined),
+    );
+    return true;
+  }
+
+  if (path === '/api/live/free' && request.method === 'GET') {
+    const level = media.ageLevel();
+    const channels = (await content.fresh('free-channels'))['channels'];
+    const list = Array.isArray(channels) ? channels : [];
+    sendJson(response, 200, {
+      channels: list.filter(
+        (channel) =>
+          channel !== null &&
+          typeof channel === 'object' &&
+          liveGroupAllowed(String((channel as { group?: unknown }).group ?? ''), level),
+      ),
+    });
+    return true;
+  }
+
+  if (path === '/api/services' && request.method === 'GET') {
+    const connected = new Set(media.connectedServices());
+    sendJson(response, 200, {
+      services: content
+        .list<Record<string, unknown>>('services')
+        .map((service) => ({ ...service, connected: connected.has(String(service['id'])) })),
+    });
+    return true;
+  }
+
+  if (path === '/api/services/connected' && request.method === 'POST') {
+    const body = (await readJson(request)) as { id?: unknown; connected?: unknown };
+    const known = new Set(content.list<{ id?: unknown }>('services').map((service) => service.id));
+    if (typeof body.id !== 'string' || !known.has(body.id) || typeof body.connected !== 'boolean') {
+      sendJson(response, 400, { error: 'id (a known service) and connected are required' });
+      return true;
+    }
+    sendJson(response, 200, { connected: media.setServiceConnected(body.id, body.connected) });
+    return true;
+  }
+
+  // Installing on a Roku pushes code to a device and stores its password, so
+  // only this computer's own apps may do it, never a phone or browser on the LAN.
+  if (path.startsWith('/api/roku') && !isLoopback(request.socket.remoteAddress)) {
+    sendJson(response, 403, { error: 'roku_local_only' });
+    return true;
+  }
+
+  if (path === '/api/roku' && request.method === 'GET') {
+    sendJson(response, 200, roku.status());
+    return true;
+  }
+
+  if (path === '/api/roku/pair' && request.method === 'POST') {
+    const body = (await readJson(request)) as { host?: unknown; password?: unknown; autoUpdate?: unknown };
+    if (typeof body.host !== 'string' || typeof body.password !== 'string') {
+      sendJson(response, 400, { error: 'host and password are required' });
+      return true;
+    }
+    try {
+      sendJson(response, 200, roku.pair(body.host, body.password, body.autoUpdate !== false));
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'pairing rejected' });
+    }
+    return true;
+  }
+
+  if (path === '/api/roku/auto' && request.method === 'POST') {
+    const body = (await readJson(request)) as { enabled?: unknown };
+    sendJson(response, 200, roku.setAutoUpdate(body.enabled === true));
+    return true;
+  }
+
+  if (path === '/api/roku/install' && request.method === 'POST') {
+    const body = (await readJson(request)) as { force?: unknown };
+    sendJson(response, 200, await roku.install(body.force === true));
+    return true;
+  }
+
+  if (path === '/api/roku/forget' && request.method === 'POST') {
+    sendJson(response, 200, roku.forget());
+    return true;
+  }
+
+  if (path === '/api/reviews' && request.method === 'GET') {
+    const result = await reviews.get(searchParams().get('id') ?? '');
+    if (result === null) sendJson(response, 400, { error: 'id must be an IMDb id' });
+    else sendJson(response, 200, result);
     return true;
   }
 
@@ -978,6 +1157,8 @@ async function handleApi(
       episode?: unknown;
       startAt?: unknown;
       native?: unknown;
+      screenHeight?: unknown;
+      maxHeight?: unknown;
     };
     const id = typeof body.id === 'string' ? body.id : undefined;
     if (id?.startsWith('live:') && !liveAllowed()) return true;
@@ -996,6 +1177,8 @@ async function handleApi(
             episode: typeof body.episode === 'number' ? body.episode : undefined,
             startAt: typeof body.startAt === 'number' && Number.isFinite(body.startAt) ? Math.max(0, body.startAt) : undefined,
             native: body.native === true,
+            screenHeight: typeof body.screenHeight === "number" ? body.screenHeight : undefined,
+            maxHeight: typeof body.maxHeight === "number" ? body.maxHeight : undefined,
           });
     // Routing Real-Debrid media through Core re-buffers every byte in Node and
     // was the desktop play→buffer loop. Live channels already come back as
@@ -1844,9 +2027,19 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   });
   const session = options.session ?? createSessionService({ dataDir });
   const streamer = options.streamer ?? createStreamer({ dataDir, env });
+  const content = options.content ?? createContentService({ dataDir, env });
+  const roku = createRokuUpdater({ dataDir });
+  if (env['TVM_ROKU_UPDATER'] !== '0' && env['VITEST'] === undefined) roku.start();
+  const reviews = createReviewsService({
+    rating: async (imdbId) => {
+      const value = Number((await media.item(imdbId))?.rating ?? Number.NaN);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    },
+  });
   const media =
     options.media ??
     createMediaService({
+      content,
       dataDir,
       rd: createRealDebrid({ dataDir, env, accountToken: () => accounts.rdTokenFor(currentSessionToken()) }),
       streamer,
@@ -1919,6 +2112,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const handled = await runForSession(sessionToken, () => handleApi(
         path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork,
         dataDir, streamer, env, payments, subscriptions, billingProbe, accounts, donations, mail, allowSignIn,
+        content, reviews, roku,
       ));
       if (handled) return;
 

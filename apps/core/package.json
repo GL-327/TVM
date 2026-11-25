@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node ../../scripts/copy-content.mjs dist/content",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

@@ -35,6 +35,9 @@ jobs:
           bash -n scripts/iptv-tester.sh
           test -f docs/DESKTOP.md
       - run: pnpm install --frozen-lockfile
+      # Release notes are required with every version (CHANGELOG-RULES.md).
+      - run: node scripts/check-changelog.mjs
+      - run: node scripts/check-content.mjs
       - run: pnpm typecheck
       - run: pnpm --filter @tvm/core test
       - run: pnpm --filter @tvm/ui exec vitest run

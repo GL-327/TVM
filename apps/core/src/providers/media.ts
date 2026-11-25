@@ -1,7 +1,20 @@
 import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, type CatalogService } from './cinemeta.ts';
 import { createLibraryArtwork } from './libraryArtwork.ts';
 import { clearCacheDir, factoryResetDir } from './maintenance.ts';
-import { createProfileService, MAX_PROFILES, type ProfileRegistry, type ProfileService } from './profiles.ts';
+import {
+  createProfileService,
+  MAX_PROFILES,
+  profileMaxAge,
+  publicRegistry,
+  type ProfileChanges,
+  type ProfileService,
+  type PublicProfile,
+} from './profiles.ts';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { ContentService } from './content.ts';
+import { filterForLevel, levelFor, parseLevels, type AgeLevel } from './parental.ts';
+import { filterNewFilms } from './cinemeta.ts';
 import { finishedTitles, isFinished, pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
 import type { RdDownload, RdTorrent, RealDebrid } from './realdebrid.ts';
 import type { StreamerService } from './streamer.ts';
@@ -54,18 +67,144 @@ export interface MediaService {
     download?: DownloadPreferences;
     startAt?: number;
     native?: boolean;
+    /** Physical pixel height of the screen: sources taller than it are skipped. */
+    screenHeight?: number;
+    /** A quality the viewer picked (e.g. 720): the best source at or under it. */
+    maxHeight?: number;
   }): Promise<PlaybackResolution>;
   saveProgress(id: string, position: number, duration: number): void;
   watchlist(): WatchlistItem[];
   addToWatchlist(item: unknown): WatchlistItem[];
   removeFromWatchlist(id: string): WatchlistItem[];
-  profiles(): ProfileRegistry;
-  createProfile(name: string): ProfileRegistry;
-  renameProfile(id: string, name: string): ProfileRegistry;
-  removeProfile(id: string): ProfileRegistry;
-  switchProfile(id: string): ProfileRegistry;
+  profiles(): PublicRegistry;
+  createProfile(name: string, extra?: Omit<ProfileChanges, 'name'>): PublicRegistry;
+  renameProfile(id: string, name: string): PublicRegistry;
+  updateProfile(id: string, changes: ProfileChanges, currentPin?: unknown): PublicRegistry;
+  removeProfile(id: string, pin?: unknown): PublicRegistry;
+  /** Choosing a locked profile needs its PIN; once unlocked it stays open until Core restarts. */
+  switchProfile(id: string, pin?: unknown): PublicRegistry;
+  /** The per-request X-TVM-Profile header: never opens a locked profile that was not unlocked. */
+  followProfileHeader(id: string): void;
+  verifyPin(id: string, pin: unknown): boolean;
+  /** The active profile's age rule. */
+  ageLevel(): AgeLevel;
+  railMore(id: string, skip: number, page?: number): Promise<{ items: MediaItem[]; more: boolean; page: number }>;
+  activeEvents(now?: Date): Promise<ActiveEvent[]>;
+  connectedServices(): string[];
+  setServiceConnected(id: string, connected: boolean): string[];
   clearCache(): void;
   factoryReset(): void;
+}
+
+export interface PublicRegistry {
+  activeId: string;
+  profiles: PublicProfile[];
+}
+
+export interface ActiveEvent {
+  id: string;
+  title: string;
+  imdbId: string;
+  release: string;
+  start: string;
+  end: string;
+  accent: string;
+  glow: string;
+  line: string;
+  avatarSet: string | null;
+  rail: { id: string; title: string; items: string[] };
+  live: true;
+  released: boolean;
+  kicker: string;
+  featured: MediaItem | null;
+  items: MediaItem[];
+}
+
+/** Quality ladder steps a screen is rounded up to. */
+const LADDER = [480, 720, 1080, 1440, 2160];
+
+/**
+ * The tallest source to pick: the screen height rounded up to a ladder step
+ * (a 1600-pixel-tall screen still gets 2160p), or a quality the viewer chose.
+ */
+export function screenCapFor(screenHeight?: number, maxHeight?: number): number {
+  if (typeof maxHeight === "number" && Number.isFinite(maxHeight) && maxHeight >= 240) return Math.min(2160, Math.round(maxHeight));
+  if (typeof screenHeight !== "number" || !Number.isFinite(screenHeight) || screenHeight < 240) return 2160;
+  return LADDER.find((step) => step >= screenHeight - 8) ?? 2160;
+}
+
+export const RAIL_LIMIT = 40;
+const PAGE_SIZE = 50;
+
+type RailSource = { kind: 'movie' | 'series'; list: 'top' | 'imdbRating' | 'last-videos'; genre: string | null };
+
+/** Where each Home row's later pages come from. Rows built from history do not page. */
+export function railSources(id: string): RailSource[] {
+  switch (id) {
+    case 'films':
+    case 'new-films':
+      return [{ kind: 'movie', list: 'top', genre: null }];
+    case 'series':
+      return [{ kind: 'series', list: 'top', genre: null }];
+    case 'top-films':
+      return [{ kind: 'movie', list: 'imdbRating', genre: null }];
+    case 'top-series':
+      return [{ kind: 'series', list: 'imdbRating', genre: null }];
+    case 'new-series':
+      return [{ kind: 'series', list: 'last-videos', genre: null }];
+    default: {
+      const rail = GENRE_RAILS.find((entry) => entry.id === id);
+      if (rail === undefined) return [];
+      const seriesGenres = rail.genre === 'Anime'
+        ? seriesGenresForRail(rail.genre)
+        : [...new Set(rail.genres.flatMap((genre) => seriesGenresForRail(genre)))];
+      return [
+        ...rail.genres.map((genre): RailSource => ({ kind: 'movie', list: 'top', genre })),
+        ...seriesGenres.map((genre): RailSource => ({ kind: 'series', list: 'top', genre })),
+      ];
+    }
+  }
+}
+
+/**
+ * The page a "load more" asks for. Clients that pass back the `page` they
+ * were given get the next one exactly; a bare item count maps to the page
+ * that count has reached (the first 40 come from page 0).
+ */
+export function railPageFor(skip: number, sources: number, page?: number): number {
+  if (page !== undefined && Number.isInteger(page) && page >= 0) return Math.min(100, page + 1);
+  const perPage = PAGE_SIZE * Math.max(1, sources);
+  return Math.min(100, Math.max(1, Math.floor(Math.max(0, skip) / perPage) + 1));
+}
+
+export function interleave(first: readonly MediaItem[], second: readonly MediaItem[]): MediaItem[] {
+  const out: MediaItem[] = [];
+  for (let index = 0; index < Math.max(first.length, second.length); index += 1) {
+    const a = first[index];
+    const b = second[index];
+    if (a !== undefined) out.push(a);
+    if (b !== undefined) out.push(b);
+  }
+  return dedupeItems(out);
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export function localDay(now: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** "In cinemas 16 December" before the release day, "In cinemas now" from it. */
+export function eventKicker(release: string, today: string): string {
+  if (today >= release) return 'In cinemas now';
+  const [, month, day] = release.split('-').map(Number);
+  const name = MONTHS[(month ?? 1) - 1] ?? '';
+  return `In cinemas ${day ?? ''} ${name}`.trim();
+}
+
+export function liveEvents<T extends { start: string; end: string }>(events: readonly T[], today: string): T[] {
+  return events.filter((event) => typeof event.start === 'string' && typeof event.end === 'string' && event.start <= today && today <= event.end);
 }
 
 export interface MediaServiceOptions {
@@ -75,6 +214,7 @@ export interface MediaServiceOptions {
   fetch?: typeof fetch;
   plan?: () => { id: string; maxHeight: number; profilesMax: number };
   poolToken?: () => string | null;
+  content?: ContentService;
 }
 
 async function mapPool<T, R>(items: readonly T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -225,6 +365,26 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   const catalog: CatalogService = createCatalogService({ dataDir, fetch: fetchImpl });
   const artwork = createLibraryArtwork(dataDir, fetchImpl);
   const scope = (): string => profiles.scope();
+  // Locked profiles opened with their PIN since Core started.
+  const unlocked = new Set<string>();
+  const ageLevel = (): AgeLevel => {
+    const active = profiles.active();
+    const levels = parseLevels(options.content?.get('parental')['levels']);
+    return levelFor(active === undefined ? 18 : profileMaxAge(active), levels);
+  };
+  const servicesPath = (): string => join(scope(), 'services.json');
+  const readConnected = (): string[] => {
+    try {
+      const path = servicesPath();
+      if (!existsSync(path)) return [];
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as { connected?: unknown };
+      return Array.isArray(parsed.connected)
+        ? parsed.connected.filter((id): id is string => typeof id === 'string' && /^[a-z0-9-]{1,32}$/.test(id))
+        : [];
+    } catch {
+      return [];
+    }
+  };
   // One set of caches per Real-Debrid key: an account can have its own key,
   // and one account must never be shown another's library.
   const caches = new Map<string, RdCache>();
@@ -518,6 +678,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     download?: DownloadPreferences,
     requestedStart?: number,
     native = false,
+    screenCap = 2160,
   ): Promise<PlaybackResolution> => {
     try {
       const personal = rd.tokenValue();
@@ -536,7 +697,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       }
       const streams = await fetchTorrentioStreams(token, imdb, seasonNo, episodeNo, fetchImpl);
       if (streams.length === 0) return { kind: 'unavailable', reason: 'empty' };
-      const height = Math.min(options.plan?.().maxHeight ?? 2160, download?.maxHeight ?? 2160);
+      // The best source that fits the screen, unless the viewer picked a quality (screenCap carries that too).
+      const height = Math.min(options.plan?.().maxHeight ?? 2160, download?.maxHeight ?? 2160, screenCap);
       const eligible = download === undefined ? streams : streams.filter((stream) =>
         downloadLanguageMatches(stream.description ?? stream.title, download.language) && streamHeight(stream.description ?? stream.title) <= height);
       const ranked = capStreamsToHeight(rankDebridStreams(eligible), height).slice(0, PLAYABLE_STREAM_LIMIT);
@@ -560,36 +722,36 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     }
   };
 
-  const buildRails = async (watching: MediaItem[], watchlist: MediaItem[]): Promise<CatalogRail[]> => {
+  const buildRails = async (watching: MediaItem[], watchlist: MediaItem[], level: AgeLevel): Promise<CatalogRail[]> => {
     let bundle;
     try {
       bundle = await catalog.bundle();
     } catch {
       return [];
     }
+    const fit = (items: readonly MediaItem[]): MediaItem[] => filterForLevel(items, level);
     const used = new Set<string>();
     markUsed(used, watching);
     markUsed(used, watchlist);
     const history = [...watchlist, ...watching];
     const rails: CatalogRail[] = [];
-    const forYou = pickYouMightLike(bundle.catalog, history, used, 16);
+    const pool = fit(bundle.catalog);
+    const forYou = pickYouMightLike(pool, history, used, 24);
     markUsed(used, forYou);
     if (forYou.length > 0) rails.push({ id: 'for-you', title: 'You might like', items: forYou });
 
-    const films = takeUnused(bundle.moviesTop, used, 16);
-    if (films.length > 0) rails.push({ id: 'films', title: 'Popular films', items: films });
-    const series = takeUnused(bundle.seriesTop, used, 16);
-    if (series.length > 0) rails.push({ id: 'series', title: 'Popular series', items: series });
-    const topFilms = takeUnused(bundle.moviesRated, used, 16);
-    if (topFilms.length > 0) rails.push({ id: 'top-films', title: 'Top rated films', items: topFilms });
-    const topSeries = takeUnused(bundle.seriesRated, used, 16);
-    if (topSeries.length > 0) rails.push({ id: 'top-series', title: 'Top rated series', items: topSeries });
-    const fresh = takeUnused(bundle.newFilms, used, 16);
-    if (fresh.length > 0) rails.push({ id: 'new-films', title: 'New films', items: fresh });
-    const recent = takeUnused(bundle.recentTv, used, 16);
-    if (recent.length > 0) rails.push({ id: 'new-series', title: 'Recently updated', items: recent });
+    // Each row starts with up to 40 titles and loads more from /api/rails/more.
+    const paged = (id: string, title: string, items: MediaItem[]): void => {
+      if (items.length > 0) rails.push({ id, title, items, more: railSources(id).length > 0 });
+    };
+    paged('films', 'Popular films', takeUnused(fit(bundle.moviesTop), used, RAIL_LIMIT));
+    paged('series', 'Popular series', takeUnused(fit(bundle.seriesTop), used, RAIL_LIMIT));
+    paged('top-films', 'Top rated films', takeUnused(fit(bundle.moviesRated), used, RAIL_LIMIT));
+    paged('top-series', 'Top rated series', takeUnused(fit(bundle.seriesRated), used, RAIL_LIMIT));
+    paged('new-films', 'New films', takeUnused(fit(bundle.newFilms), used, RAIL_LIMIT));
+    paged('new-series', 'Recently updated', takeUnused(fit(bundle.recentTv), used, RAIL_LIMIT));
 
-    const because = becauseYouWatched(watching[0], bundle.catalog, used, 12);
+    const because = becauseYouWatched(watching[0], pool, used, 24);
     markUsed(used, because);
     if (because.length > 0 && watching[0] !== undefined) {
       rails.push({ id: 'because', title: `Because you watched ${watching[0].title}`, items: because });
@@ -606,17 +768,77 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             Promise.all(movieGenres.map((genre) => catalog.genre('movie', genre))),
             Promise.all(seriesGenres.map((genre) => catalog.genre('series', genre))),
           ]);
-          return { rail, movies: dedupeItems(movieLists.flat()), shows: dedupeItems(showLists.flat()) };
+          return { rail, movies: fit(dedupeItems(movieLists.flat())), shows: fit(dedupeItems(showLists.flat())) };
         } catch {
           return { rail, movies: [], shows: [] };
         }
       }),
     );
     for (const { rail, movies, shows } of genreLists) {
-      const picked = interleaveUnused(movies, shows, used, 16);
-      if (picked.length > 0) rails.push({ id: rail.id, title: rail.title, items: picked });
+      paged(rail.id, rail.title, interleaveUnused(movies, shows, used, RAIL_LIMIT));
     }
     return rails;
+  };
+
+  const railMore = async (id: string, skip: number, pageHint?: number): Promise<{ items: MediaItem[]; more: boolean; page: number }> => {
+    const sources = railSources(id);
+    let page = railPageFor(skip, sources.length, pageHint);
+    if (sources.length === 0) return { items: [], more: false, page };
+    const level = ageLevel();
+    // A page can filter down to nothing (an age limit, "new" films): look a little further.
+    for (let attempt = 0; attempt < 3; attempt += 1, page += 1) {
+      const lists = await Promise.all(sources.map((source) => catalog.page(source.kind, source.list, source.genre, page * PAGE_SIZE)));
+      const full = lists.some((list) => list.length >= PAGE_SIZE);
+      const movies = dedupeItems(lists.filter((_, index) => sources[index]?.kind === 'movie').flat());
+      const shows = dedupeItems(lists.filter((_, index) => sources[index]?.kind === 'series').flat());
+      let items = filterForLevel(interleave(movies, shows), level);
+      if (id === 'new-films') items = filterNewFilms(items);
+      if (items.length > 0 || !full) return { items: applyProgress(items, readProgress(scope())), more: full, page };
+    }
+    return { items: [], more: false, page };
+  };
+
+  const activeEvents = async (now = new Date()): Promise<ActiveEvent[]> => {
+    const today = localDay(now);
+    const raw = options.content?.list<Record<string, unknown>>('events') ?? [];
+    const live = liveEvents(
+      raw.filter((event): event is Record<string, unknown> & { start: string; end: string } =>
+        typeof event['start'] === 'string' && typeof event['end'] === 'string' && typeof event['imdbId'] === 'string'),
+      today,
+    );
+    const level = ageLevel();
+    const resolve = async (id: string): Promise<MediaItem | null> => {
+      try {
+        return (await catalog.meta(id))?.item ?? null;
+      } catch {
+        return null;
+      }
+    };
+    return Promise.all(live.map(async (event): Promise<ActiveEvent> => {
+      const rail = (event['rail'] ?? {}) as { id?: unknown; title?: unknown; items?: unknown };
+      const ids = Array.isArray(rail.items) ? rail.items.filter((id): id is string => typeof id === 'string').slice(0, 40) : [];
+      const [featured, ...items] = await mapPool([String(event['imdbId']), ...ids], 4, resolve);
+      const release = typeof event['release'] === 'string' ? event['release'] : event.start;
+      const text = (key: string, fallback = ''): string => (typeof event[key] === 'string' ? (event[key] as string) : fallback);
+      return {
+        id: text('id'),
+        title: text('title', featured?.title ?? ''),
+        imdbId: text('imdbId'),
+        release,
+        start: event.start,
+        end: event.end,
+        accent: text('accent', '#2f6bff'),
+        glow: text('glow', '#2f6bff'),
+        line: text('line'),
+        avatarSet: typeof event['avatarSet'] === 'string' ? event['avatarSet'] : null,
+        rail: { id: typeof rail.id === 'string' ? rail.id : `event-${text('id')}`, title: typeof rail.title === 'string' ? rail.title : text('title'), items: ids },
+        live: true,
+        released: today >= release,
+        kicker: eventKicker(release, today),
+        featured: featured !== null && featured !== undefined && filterForLevel([featured], level).length > 0 ? featured : null,
+        items: filterForLevel(items.filter((item): item is MediaItem => item !== null), level),
+      };
+    }));
   };
 
   return {
@@ -639,14 +861,15 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         error = caught instanceof Error && caught.name === 'RdAuth' ? 'needs-auth' : 'unreachable';
         library = cacheFor().library?.items ?? [];
       }
+      const level = ageLevel();
       const progress = readProgress(profileScope);
-      library = applyProgress(library, progress);
+      library = filterForLevel(applyProgress(library, progress), level);
       let catalogItems: MediaItem[] = [];
       let trending: MediaItem[] = [];
       try {
         const bundle = await catalog.bundle();
-        catalogItems = applyProgress(bundle.catalog, progress);
-        trending = applyProgress(dedupeItems(bundle.moviesTop)
+        catalogItems = filterForLevel(applyProgress(bundle.catalog, progress), level);
+        trending = applyProgress(filterForLevel(dedupeItems(bundle.moviesTop), level)
           .filter(item => item.kind === 'movie' && isHttpUrl(item.backdrop))
           .slice(0, 8), progress);
       } catch {
@@ -656,10 +879,10 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         [...catalogItems, ...library],
         progress,
       );
-      const watchlist = readWatchlist(profileScope);
+      const watchlist = filterForLevel(readWatchlist(profileScope), level);
       let rails: CatalogRail[] = [];
       try {
-        rails = await buildRails(continueWatching, watchlist);
+        rails = await buildRails(continueWatching, watchlist, level);
       } catch {
         rails = [];
       }
@@ -730,17 +953,61 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     watchlist: () => readWatchlist(scope()),
     addToWatchlist: (item) => addWatchlist(scope(), item),
     removeFromWatchlist: (id) => removeWatchlist(scope(), id),
-    profiles: () => profiles.list(),
-    createProfile: (name) => profiles.create(name, options.plan?.().profilesMax ?? MAX_PROFILES),
-    renameProfile: (id, name) => profiles.rename(id, name),
-    removeProfile: (id) => profiles.remove(id),
-    switchProfile: (id) => profiles.switchTo(id),
+    profiles: () => publicRegistry(profiles.list()),
+    createProfile: (name, extra) => publicRegistry(profiles.create(name, options.plan?.().profilesMax ?? MAX_PROFILES, extra)),
+    renameProfile: (id, name) => publicRegistry(profiles.update(id, { name }, undefined)),
+    updateProfile: (id, changes, currentPin) => {
+      const next = publicRegistry(profiles.update(id, changes, currentPin));
+      unlocked.add(id);
+      return next;
+    },
+    removeProfile: (id, pin) => {
+      profiles.unlock(id, pin);
+      unlocked.delete(id);
+      return publicRegistry(profiles.remove(id));
+    },
+    switchProfile: (id, pin) => {
+      if (profiles.activeId() !== id || !unlocked.has(id)) {
+        if (!unlocked.has(id)) profiles.unlock(id, pin);
+      }
+      unlocked.add(id);
+      return publicRegistry(profiles.switchTo(id));
+    },
+    followProfileHeader: (id) => {
+      const target = profiles.find(id);
+      if (target === undefined || target.id === profiles.activeId()) return;
+      if (target.pin && !unlocked.has(id)) return;
+      profiles.switchTo(id);
+    },
+    verifyPin: (id, pin) => {
+      try {
+        profiles.unlock(id, pin);
+        unlocked.add(id);
+        return true;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'PinError') throw error;
+        return false;
+      }
+    },
+    ageLevel,
+    railMore,
+    activeEvents,
+    connectedServices: () => readConnected(),
+    setServiceConnected: (id, connected) => {
+      const current = new Set(readConnected());
+      if (connected) current.add(id);
+      else current.delete(id);
+      const list = [...current].filter((entry) => /^[a-z0-9-]{1,32}$/.test(entry)).slice(0, 40);
+      mkdirSync(scope(), { recursive: true });
+      writeFileSync(servicesPath(), JSON.stringify({ connected: list }));
+      return list;
+    },
 
     async search(query: string): Promise<MediaItem[]> {
       const needle = query.trim();
       if (needle === '') return [];
       try {
-        return await catalog.search(needle);
+        return filterForLevel(await catalog.search(needle), ageLevel());
       } catch {
         return [];
       }
@@ -755,6 +1022,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       download?: DownloadPreferences;
       startAt?: number;
       native?: boolean;
+      screenHeight?: number;
+      maxHeight?: number;
     }): Promise<PlaybackResolution> {
       // StrictMode/remounts and two rapid Play presses must share resolution,
       // rather than start competing probes and conversions for one film.
@@ -786,6 +1055,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             input.download,
             input.startAt,
             input.native,
+            screenCapFor(input.screenHeight, input.maxHeight),
           );
         }
 
@@ -795,7 +1065,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         const episode = input.episode ?? tail?.episode;
 
         if (imdb !== null) {
-          return playFromTorrentio(imdb, season, episode, mediaId, input.download, input.startAt, input.native);
+          return playFromTorrentio(imdb, season, episode, mediaId, input.download, input.startAt, input.native, screenCapFor(input.screenHeight, input.maxHeight));
         }
 
         if (mediaId !== undefined && mediaId.startsWith('rd:')) {
@@ -813,7 +1083,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             const hits = await catalog.search(wanted);
             const hit = hits.find((item) => item.kind === (season !== undefined ? 'series' : item.kind)) ?? hits[0];
             if (hit !== undefined) {
-              return playFromTorrentio(hit.id, season, episode, hit.id, input.download, input.startAt, input.native);
+              return playFromTorrentio(hit.id, season, episode, hit.id, input.download, input.startAt, input.native, screenCapFor(input.screenHeight, input.maxHeight));
             }
           } catch {
             // Fall through to not-in-library.

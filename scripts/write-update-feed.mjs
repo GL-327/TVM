@@ -14,6 +14,7 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { CHANNEL_PATHS, REPO, changelogEntries, currentCommit, history, sha256 } from './update-feed-lib.mjs';
+import { releaseNotes } from './release-notes.mjs';
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 2) {
@@ -52,6 +53,8 @@ const manifest = {
   nativeApi: typeof stamp.nativeApi === 'number' ? stamp.nativeApi : 0,
   contentHash: typeof stamp.contentHash === 'string' ? stamp.contentHash : '',
   entries: changelogEntries(CHANNEL_PATHS[channel], 30),
+  // The written release notes (packages/content/changelog.json) for this version.
+  notes: releaseNotes(undefined, channel.startsWith('ios') ? 'ios' : channel.startsWith('android') ? 'android' : 'desktop'),
   history: history(200),
 };
 writeFileSync(resolve(out), `${JSON.stringify(manifest, null, 2)}\n`);

@@ -18,11 +18,12 @@ FULL_SHA="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 SHA="${FULL_SHA:0:7}"
 REPO="${GITHUB_REPOSITORY:-GL-327/TVM}"
 BASE="https://github.com/$REPO/releases/download/devices"
-ASSETS=(TVM.exe TVM.ipa TVM.apk TVM-desktop.zip TVM-web.zip TVM-roku.zip)
+ASSETS=(TVM.exe TVM.ipa TVM.apk TVM-desktop.zip TVM-web.zip TVM-roku.zip roku.json)
+VERSION="$(node -p "require('./package.json').version" 2>/dev/null || true)"
 
 NOTES="$(mktemp)"
 cat > "$NOTES" <<EOF
-Latest build of \`main\` · \`$SHA\`
+TVM $VERSION · latest build of \`main\` · \`$SHA\`
 
 | Device | Download | How to install |
 |---|---|---|
@@ -33,8 +34,11 @@ Latest build of \`main\` · \`$SHA\`
 | **Browser** | [TVM-web.zip]($BASE/TVM-web.zip) | Needs Node.js 22+. Unzip, run \`TVM-web.cmd\` or \`TVM-web.sh\`, open http://127.0.0.1:7345. |
 | **Roku** | [TVM-roku.zip]($BASE/TVM-roku.zip) | Standalone channel. Enable developer mode, open the Roku's IP in a browser, upload the zip. |
 
-Installed copies update themselves. The *Update channel* pre-releases below are what they read; they are not downloads.
+Installed copies update themselves. The *Update channel* pre-releases below are what they read; they are not downloads. \`roku.json\` is what the Roku channel checks for updates.
+
 EOF
+# The written notes for this version, from packages/content/changelog.json.
+node scripts/release-notes.mjs --markdown >> "$NOTES" 2>/dev/null || true
 trap 'rm -f "$NOTES"' EXIT
 
 if [ "$1" = "--sync" ]; then

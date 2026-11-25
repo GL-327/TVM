@@ -88,6 +88,10 @@ export interface CatalogRail {
   id: string;
   title: string;
   items: MediaItem[];
+  /** More titles load from /api/rails/more as the viewer nears the end. */
+  more?: boolean;
+  /** Personal shelves (Continue watching) do not loop. */
+  loop?: boolean;
 }
 
 export interface HomePayload {

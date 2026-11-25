@@ -186,15 +186,19 @@ jobs:
           cp apps/roku/tvm-roku.zip release/TVM-roku.zip
           node apps/roku/scripts/check.mjs
           unzip -l release/TVM-roku.zip | head -20
+          # What the channel reads to tell the viewer an update is out, with its notes.
+          node scripts/release-notes.mjs --roku release/roku.json
 
       - name: Publish to TVM Downloads
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/publish-device-package.sh release/TVM-roku.zip
+        run: bash scripts/publish-device-package.sh release/TVM-roku.zip release/roku.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: tvm-roku
-          path: release/TVM-roku.zip
+          path: |
+            release/TVM-roku.zip
+            release/roku.json
           if-no-files-found: error

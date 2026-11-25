@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
+  "releases": [
+    {
+      "version": "1.0.0",
+      "date": "2026-11-24",
+      "title": "TVM everywhere",
+      "highlights": [
+        "One app on Windows, Mac, Linux, iPhone, Android, Roku and the web.",
+        "Real-Debrid and your own Live TV playlist, set up from Account.",
+        "Liquid Glass across the app, with Clear and Frosted styles."
+      ],
+      "changes": [
+        {
+          "area": "Windows",
+          "text": "A single TVM.exe that installs and updates itself."
+        },
+        {
+          "area": "Roku",
+          "text": "Runs on its own, with no PC needed."
+        },
+        {
+          "area": "Home",
+          "text": "Categories loop, and keep their place when you come back."
+        },
+        {
+          "area": "Search",
+          "text": "A television-style search page."
+        },
+        {
+          "area": "Player",
+          "text": "New controls, a draggable volume bar and readable menus."
+        },
+        {
+          "area": "Profiles",
+          "text": "\"Who's watching?\" chooser with up to 10 profiles."
+        },
+        {
+          "area": "Account",
+          "text": "Sign in, create an account or use a developer code."
+        }
+      ]
+    }
+  ]
+}
