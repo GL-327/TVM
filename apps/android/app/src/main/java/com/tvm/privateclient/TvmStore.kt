@@ -84,17 +84,42 @@ class TvmStore(private val root: File) {
             val document = readJsonFile(file("profiles.json")) as? JSONObject
             val list = document?.opt("profiles") as? JSONArray
             if (document != null && list != null) {
+                val knownKeys = setOf("id", "name", "hue", "created", "avatar", "kind", "maxAge", "pin", "locked")
                 val profiles = ArrayList<ProfileRecord>()
                 for (index in 0 until list.length()) {
                     val item = list.opt(index) as? JSONObject ?: continue
                     val id = item.opt("id") as? String ?: continue
                     val name = item.opt("name") as? String ?: continue
+                    val kind = if (item.opt("kind") as? String == "kids") "kids" else "standard"
+                    val maxAge = TvmParental.normalizeAge(item.opt("maxAge"), kind) ?: TvmParental.defaultAge(kind)
+                    val avatarRaw = (item.opt("avatar") as? String)?.trim()
+                    val avatar = if (avatarRaw != null && TvmPins.AVATAR_RE.matches(avatarRaw)) avatarRaw else null
+                    val pinObj = item.opt("pin") as? JSONObject
+                    val pin = if (pinObj != null) {
+                        val hash = pinObj.opt("hash") as? String
+                        val salt = pinObj.opt("salt") as? String
+                        val iter = (pinObj.opt("iter") as? Number)?.toInt() ?: TvmPins.PIN_ITERATIONS
+                        if (!hash.isNullOrBlank() && !salt.isNullOrBlank() && iter > 0) {
+                            ProfilePin(hash = hash, salt = salt, iter = iter)
+                        } else null
+                    } else null
+                    val extra = LinkedHashMap<String, Any?>()
+                    val keys = item.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        if (key !in knownKeys) extra[key] = item.opt(key)
+                    }
                     profiles.add(
                         ProfileRecord(
                             id = id,
                             name = name,
-                            hue = (item.opt("hue") as? Number)?.toInt() ?: 220,
+                            hue = (item.opt("hue") as? Number)?.toInt() ?: hues[index % hues.size],
                             created = item.opt("created") as? String ?: isoNow(),
+                            avatar = avatar,
+                            kind = kind,
+                            maxAge = maxAge,
+                            pin = pin,
+                            extra = extra,
                         ),
                     )
                 }
@@ -122,10 +147,39 @@ class TvmStore(private val root: File) {
                 "profiles.json",
                 Json.obj(
                     "activeId" to activeId,
-                    "profiles" to Json.array(profiles.map { it.json() }),
+                    "profiles" to Json.array(profiles.map { it.storageJson() }),
                 ),
             )
             profileDir(activeId).mkdirs()
+        }
+    }
+
+    fun contentCacheFile(name: String): File = File(root, "content-cache/$name.json")
+
+    fun connectedServices(profileId: String): List<String> {
+        synchronized(monitor) {
+            val doc = readJsonFile(File(profileDir(profileId), "services.json")) as? JSONObject ?: return emptyList()
+            val arr = doc.opt("connected") as? JSONArray ?: return emptyList()
+            val out = ArrayList<String>()
+            for (i in 0 until arr.length()) {
+                val id = Json.string(arr.opt(i)) ?: continue
+                if (id !in out) out.add(id)
+            }
+            return out
+        }
+    }
+
+    fun saveConnectedServices(profileId: String, connected: List<String>) {
+        synchronized(monitor) {
+            val target = File(profileDir(profileId), "services.json")
+            target.parentFile?.mkdirs()
+            writeAtomic(target, serialize(Json.obj("connected" to JSONArray(connected))))
+        }
+    }
+
+    fun removeProfileData(profileId: String) {
+        synchronized(monitor) {
+            profileDir(profileId).deleteRecursively()
         }
     }
 

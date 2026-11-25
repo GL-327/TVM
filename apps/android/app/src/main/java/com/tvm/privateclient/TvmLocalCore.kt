@@ -30,6 +30,8 @@ class TvmLocalCore(
     app: TvmAppBundle = TvmAppBundle.None,
     private val bundledAccess: () -> String? = { null },
     http: TvmHttp = TvmHttp.Default,
+    val content: TvmContent = TvmContent(store, http = http),
+    val reviews: TvmReviews = TvmReviews(media::item),
 ) {
     private val accounts = TvmAccounts(store, bundledAccess)
 
@@ -95,15 +97,20 @@ class TvmLocalCore(
             bundledCatalog: () -> String?,
             app: TvmAppBundle = TvmAppBundle.None,
             bundledAccess: () -> String? = { null },
+            bundledContent: (String) -> String? = { null },
+            http: TvmHttp = TvmHttp.Default,
         ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
             XtreamKeychain.attach(root)
+            val content = TvmContent(store, bundledContent, http)
+            val pinGuard = PinGuard()
             val catalog = TvmCatalog(store, bundledCatalog)
             val rd = TvmRealDebrid(RdKeychain)
             val plans = TvmPlans(root)
-            val media = TvmMedia(store, catalog, rd, plans)
-            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess)
+            val media = TvmMedia(store, catalog, rd, plans, content, pinGuard)
+            val reviews = TvmReviews(media::item)
+            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews)
         }
     }
 
@@ -139,6 +146,8 @@ class TvmLocalCore(
          */
         try {
             route(method, path, parseQuery(query), Json.parseObject(body.toString(Charsets.UTF_8)), headers)
+        } catch (pin: PinException) {
+            HttpReply.json(pin.httpStatus, pin.json())
         } catch (problem: Exception) {
             HttpReply.json(400, Json.obj("error" to (problem.message ?: "request failed")))
         }
@@ -227,23 +236,90 @@ class TvmLocalCore(
             }
         }
 
+        if (path == "/api/changelog" && method == "GET") {
+            return HttpReply.json(200, content.changelogPayload())
+        }
+        if (path.startsWith("/api/content/") && method == "GET") {
+            val name = path.removePrefix("/api/content/").trim('/')
+            if (name !in TvmContent.CONTENT_NAMES) {
+                return HttpReply.json(404, Json.obj("error" to "not_found"))
+            }
+            val payload = if (name in TvmContent.REFRESHABLE) content.fresh(name) else content.load(name)
+            return if (payload != null) {
+                HttpReply.json(200, payload)
+            } else {
+                HttpReply.json(404, Json.obj("error" to "not_found"))
+            }
+        }
+
         if (path == "/api/profiles" && method == "GET") return HttpReply.json(200, media.profilesJson())
         if (path == "/api/profiles" && method == "POST") {
-            return HttpReply.json(200, media.createProfile(Json.string(json.opt("name")) ?: ""))
+            return HttpReply.json(
+                200,
+                media.createProfile(
+                    name = Json.string(json.opt("name")) ?: "",
+                    hue = if (json.has("hue") && json.opt("hue") !== JSONObject.NULL) Json.int(json.opt("hue")) else null,
+                    avatarRaw = if (json.has("avatar")) json.opt("avatar") else null,
+                    kindRaw = json.opt("kind") as? String,
+                    maxAgeRaw = if (json.has("maxAge")) json.opt("maxAge") else null,
+                    pinRaw = if (json.has("pin")) json.opt("pin") else null,
+                ),
+            )
         }
         if (path == "/api/profiles" && method == "PUT") {
-            val id = json.opt("id") as? String
-            val name = json.opt("name") as? String
-            if (id == null || name == null) return HttpReply.json(400, Json.obj("error" to "id and name are required"))
-            return HttpReply.json(200, media.renameProfile(id, name))
+            return HttpReply.json(200, media.updateProfile(json))
         }
         if (path == "/api/profiles/active" && method == "POST") {
             val id = json.opt("id") as? String ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
-            return HttpReply.json(200, media.switchProfile(id))
+            return HttpReply.json(200, media.switchProfile(id, extractPin(json, "pin")))
+        }
+        if (path == "/api/profiles/verify-pin" && method == "POST") {
+            val id = json.opt("id") as? String ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
+            return try {
+                HttpReply.json(200, media.verifyProfilePin(id, extractPin(json, "pin")))
+            } catch (pinError: PinException) {
+                if (pinError.errorCode == "pin-wrong" || pinError.errorCode == "pin-required") {
+                    HttpReply.json(200, Json.obj("ok" to false, "error" to pinError.errorCode))
+                } else {
+                    HttpReply.json(pinError.httpStatus, pinError.json())
+                }
+            }
         }
         if (path == "/api/profiles/remove" && method == "POST") {
             val id = json.opt("id") as? String ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
-            return HttpReply.json(200, media.removeProfile(id))
+            return HttpReply.json(200, media.removeProfile(id, extractPin(json, "pin")))
+        }
+
+        if (path == "/api/events/active" && method == "GET") {
+            return HttpReply.json(200, media.activeEvents())
+        }
+        if (path == "/api/services" && method == "GET") {
+            return HttpReply.json(200, media.servicesJson())
+        }
+        if (path == "/api/services/connected" && method == "POST") {
+            val id = Json.string(json.opt("id"))
+                ?: return HttpReply.json(400, Json.obj("error" to "id must be a string"))
+            val connected = json.opt("connected") as? Boolean
+                ?: return HttpReply.json(400, Json.obj("error" to "connected must be a boolean"))
+            return HttpReply.json(200, media.setServiceConnected(id, connected))
+        }
+        if (path == "/api/rails/more" && method == "GET") {
+            val railId = (query["id"] ?: "").trim()
+            if (!TvmMedia.RAIL_ID_RE.matches(railId)) {
+                return HttpReply.json(400, Json.obj("error" to "rail id is invalid"))
+            }
+            val skip = query["skip"]?.toIntOrNull() ?: 0
+            val page = query["page"]?.toIntOrNull()
+            return HttpReply.json(200, media.railMore(railId, skip, page))
+        }
+        if (path == "/api/reviews" && method == "GET") {
+            val rawId = (query["id"] ?: "").trim()
+            if (!TvmReviews.isValidImdbId(rawId)) {
+                return HttpReply.json(400, Json.obj("error" to "id must be an IMDb id"))
+            }
+            val payload = reviews.get(rawId)
+                ?: return HttpReply.json(400, Json.obj("error" to "id must be an IMDb id"))
+            return HttpReply.json(200, payload.json())
         }
 
         if (path == "/api/apps" && method == "GET") return HttpReply.json(200, media.appsList())
@@ -336,6 +412,8 @@ class TvmLocalCore(
                 Json.string(json.opt("title")),
                 Json.int(json.opt("season")),
                 Json.int(json.opt("episode")),
+                screenHeight = Json.int(json.opt("screenHeight")),
+                maxHeight = Json.int(json.opt("maxHeight")),
             )
             return HttpReply.json(status, payload)
         }
@@ -625,6 +703,7 @@ class TvmLocalCore(
         }
 
         if (path == "/api/live" && method == "GET") return HttpReply.json(200, liveStatus())
+        if (path == "/api/live/free" && method == "GET") return HttpReply.json(200, media.freeLiveJson())
         if (path == "/api/live" && method == "PUT") {
             val text = Json.string(json.opt("text")) ?: ""
             val url = Json.string(json.opt("url")) ?: ""
@@ -708,16 +787,47 @@ class TvmLocalCore(
             emptyList()
         }
 
-    private fun playLive(id: String): HttpReply {
-        if (!Json.bool(plans.status().opt("liveTv"), false)) {
-            return HttpReply.json(
-                409,
-                Json.obj("kind" to "unavailable", "reason" to "Live TV requires the Live TV add-on."),
-            )
+    private fun extractPin(json: JSONObject, key: String): String? {
+        if (!json.has(key)) return null
+        val raw = json.opt(key)
+        if (raw == null || raw === JSONObject.NULL) return null
+        if (raw !is String) throw PinException(400, "pin-invalid")
+        return raw
+    }
+
+    private suspend fun playLive(id: String): HttpReply {
+        val channel = if (id.startsWith("live:free:")) {
+            val targetId = id.removePrefix("live:free:")
+            val doc = content.fresh("free-channels")
+            val rawList = doc?.optJSONArray("channels")
+            var matched: JSONObject? = null
+            if (rawList != null) {
+                for (i in 0 until rawList.length()) {
+                    val row = rawList.optJSONObject(i) ?: continue
+                    val rid = Json.string(row.opt("id")) ?: continue
+                    if (rid == targetId || "live:free:$rid" == id) {
+                        matched = row
+                        break
+                    }
+                }
+            }
+            val freeChannel = matched
+                ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
+            if (!TvmParental.liveGroupAllowed(Json.string(freeChannel.opt("group")), media.ageLevel(), media.parentalLevels())) {
+                return HttpReply.json(403, Json.obj("kind" to "unavailable", "reason" to "parental-blocked"))
+            }
+            freeChannel
+        } else {
+            if (!Json.bool(plans.status().opt("liveTv"), false)) {
+                return HttpReply.json(
+                    409,
+                    Json.obj("kind" to "unavailable", "reason" to "Live TV requires the Live TV add-on."),
+                )
+            }
+            testChannels().firstOrNull { it.text("id") == id }
+                ?: synchronized(lock) { liveChannels.firstOrNull { it.text("id") == id } }
+                ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
         }
-        val channel = testChannels().firstOrNull { it.text("id") == id }
-            ?: synchronized(lock) { liveChannels.firstOrNull { it.text("id") == id } }
-            ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
         val raw = Json.string(channel.opt("url"))
             ?: return HttpReply.json(409, Json.obj("kind" to "unavailable", "reason" to "not-in-library"))
         if (!TvmPlayback.nativeCanOpen(raw)) {
@@ -768,29 +878,39 @@ class TvmLocalCore(
         return copy
     }
 
-    private fun liveStatus(): JSONObject = synchronized(lock) {
-        Json.obj(
-            "url" to liveUrl,
-            "host" to liveHost,
-            "username" to liveUser,
-            "configured" to (liveUrl != null || liveHost != null),
-            "channels" to Json.array(testChannels().map { card(it) } + liveChannels.take(PICK_LIMIT).map { card(it) }),
-            "error" to if (liveChannels.isEmpty() && liveUrl != null) {
-                "The playlist had no channels this phone can list."
-            } else {
-                null
-            },
-            "picked" to livePicks.size,
-            "total" to liveChannels.size,
-            "groups" to groupSummary(),
-            "needsPicks" to (livePicks.isEmpty() && liveChannels.size > PICK_LIMIT),
-            "pickLimit" to PICK_LIMIT,
-        )
+    private fun liveStatus(): JSONObject {
+        val age = media.ageLevel()
+        val levels = media.parentalLevels()
+        return synchronized(lock) {
+            val allowedTests = testChannels().filter { TvmParental.liveGroupAllowed(it.text("group"), age, levels) }
+            val allowedLive = liveChannels.filter { TvmParental.liveGroupAllowed(it.text("group"), age, levels) }
+            Json.obj(
+                "url" to liveUrl,
+                "host" to liveHost,
+                "username" to liveUser,
+                "configured" to (liveUrl != null || liveHost != null),
+                "channels" to Json.array(allowedTests.map { card(it) } + allowedLive.take(PICK_LIMIT).map { card(it) }),
+                "error" to if (liveChannels.isEmpty() && liveUrl != null) {
+                    "The playlist had no channels this phone can list."
+                } else {
+                    null
+                },
+                "picked" to livePicks.size,
+                "total" to allowedLive.size,
+                "groups" to groupSummary(),
+                "needsPicks" to (livePicks.isEmpty() && allowedLive.size > PICK_LIMIT),
+                "pickLimit" to PICK_LIMIT,
+            )
+        }
     }
 
     private fun liveCatalog(q: String, group: String, offset: Int): JSONObject {
+        val age = media.ageLevel()
+        val levels = media.parentalLevels()
         val matched = synchronized(lock) {
-            var items: List<JSONObject> = liveChannels
+            var items: List<JSONObject> = liveChannels.filter {
+                TvmParental.liveGroupAllowed(it.text("group"), age, levels)
+            }
             if (q.isNotEmpty()) {
                 items = items.filter { it.text("name", "").contains(q, ignoreCase = true) }
             }

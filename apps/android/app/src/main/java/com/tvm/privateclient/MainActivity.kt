@@ -256,6 +256,7 @@ class MainActivity : AppCompatActivity() {
                     { readAsset("FallbackCatalog.json") },
                     ApkBundle(assets),
                     { readAsset("Access.json") },
+                    bundledContent = { name -> readAsset("content/$name.json") },
                 )
                 // An interface staged on the last run goes live now; one left
                 // over from a different app build is dropped.

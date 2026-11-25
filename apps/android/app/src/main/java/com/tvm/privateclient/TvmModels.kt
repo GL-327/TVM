@@ -18,7 +18,7 @@ import java.util.Locale
 object StandalonePolicy {
     const val REQUIRES_LAN_TOKEN = false
     val BUNDLED_LAN_TOKEN: String? = null
-    const val VERSION = "1.0.0"
+    const val VERSION = "1.1.0"
 
     /**
      * What this build's native code provides to the interface. Bump it, and
@@ -215,12 +215,23 @@ data class MediaItem(
     }
 }
 
-data class CatalogRail(val id: String, val title: String, val items: List<MediaItem>) {
-    fun json(): JSONObject = Json.obj(
-        "id" to id,
-        "title" to title,
-        "items" to Json.array(items.map { it.json() }),
-    )
+data class CatalogRail(
+    val id: String,
+    val title: String,
+    val items: List<MediaItem>,
+    val more: Boolean? = null,
+    val page: Int? = null,
+) {
+    fun json(): JSONObject {
+        val out = Json.obj(
+            "id" to id,
+            "title" to title,
+            "items" to Json.array(items.map { it.json() }),
+        )
+        if (more != null) out.put("more", more)
+        if (page != null) out.put("page", page)
+        return out
+    }
 }
 
 data class RdStatus(
@@ -237,8 +248,47 @@ data class RdStatus(
     )
 }
 
-data class ProfileRecord(val id: String, val name: String, val hue: Int, val created: String) {
-    fun json(): JSONObject = Json.obj("id" to id, "name" to name, "hue" to hue, "created" to created)
+data class ProfilePin(val hash: String, val salt: String, val iter: Int = TvmPins.PIN_ITERATIONS) {
+    fun json(): JSONObject = Json.obj("hash" to hash, "salt" to salt, "iter" to iter)
+}
+
+data class ProfileRecord(
+    val id: String,
+    val name: String,
+    val hue: Int,
+    val created: String,
+    val avatar: String? = null,
+    val kind: String = "standard",
+    val maxAge: Int = if (kind == "kids") 7 else 18,
+    val pin: ProfilePin? = null,
+    val extra: Map<String, Any?> = emptyMap(),
+) {
+    val locked: Boolean get() = pin != null
+
+    fun json(): JSONObject = Json.obj(
+        "id" to id,
+        "name" to name,
+        "hue" to hue,
+        "created" to created,
+        "avatar" to avatar,
+        "kind" to kind,
+        "maxAge" to maxAge,
+        "locked" to locked,
+    )
+
+    fun storageJson(): JSONObject {
+        val out = JSONObject()
+        for ((k, v) in extra) out.put(k, v ?: JSONObject.NULL)
+        out.put("id", id)
+        out.put("name", name)
+        out.put("hue", hue)
+        out.put("created", created)
+        out.put("avatar", avatar ?: JSONObject.NULL)
+        out.put("kind", kind)
+        out.put("maxAge", maxAge)
+        if (pin != null) out.put("pin", pin.json()) else out.remove("pin")
+        return out
+    }
 }
 
 data class ProgressEntry(

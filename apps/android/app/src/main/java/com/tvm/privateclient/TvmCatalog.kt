@@ -44,6 +44,7 @@ class TvmCatalog(
     private var memoryAt: Long = 0
     private var memory: CatalogBundle? = null
     private val genreMem: MutableMap<String, Pair<Long, List<MediaItem>>> = mutableMapOf()
+    private val pageMem: MutableMap<String, Pair<Long, List<MediaItem>>> = mutableMapOf()
     private val metaMem: MutableMap<String, Pair<Long, TitleMeta>> = mutableMapOf()
     private val popularityMem: MutableMap<String, Pair<Long, Double>> = mutableMapOf()
     private val fallback: List<MediaItem>
@@ -61,6 +62,7 @@ class TvmCatalog(
             memory = null
             memoryAt = 0
             genreMem.clear()
+            pageMem.clear()
             metaMem.clear()
         }
         store.clearCacheFiles()
@@ -157,6 +159,28 @@ class TvmCatalog(
                     (name.equals("Sci-Fi", ignoreCase = true) && it.equals("Science Fiction", ignoreCase = true))
             }
         }
+    }
+
+    suspend fun page(kind: String, list: String, genre: String? = null, skip: Int = 0): List<MediaItem> {
+        val clamped = skip.coerceIn(0, 5000)
+        val cleanGenre = genre?.trim()?.takeIf { it.isNotEmpty() }
+        val key = "$kind:$list:${cleanGenre ?: ""}:$clamped"
+        synchronized(lock) {
+            val hit = pageMem[key]
+            if (hit != null && System.currentTimeMillis() - hit.first < 20 * 60 * 1000L) return hit.second
+        }
+        val extraParts = ArrayList<String>(2)
+        if (cleanGenre != null) extraParts.add("genre=${queryEncode(cleanGenre)}")
+        if (clamped > 0) extraParts.add("skip=$clamped")
+        val suffix = if (extraParts.isEmpty()) "" else "/${extraParts.joinToString("&")}"
+        val items = fetchCatalog("/catalog/$kind/$list$suffix.json", kind)
+        if (items.isNotEmpty()) {
+            synchronized(lock) {
+                if (pageMem.size >= 500) pageMem.clear()
+                pageMem[key] = System.currentTimeMillis() to items
+            }
+        }
+        return items
     }
 
     suspend fun meta(id: String): TitleMeta? {

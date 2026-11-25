@@ -20,7 +20,7 @@ android {
         // Android and launchers such as Samsung One UI treat an installed update as new
         // and refresh cached resources like the app icon. A local build stays at 4.
         versionCode = 4 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
-        versionName = "1.0.0"
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -90,4 +90,19 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("org.json:json:20240303")
+}
+
+val syncSharedContent by tasks.registering(Copy::class) {
+    val contentDir = rootProject.projectDir.resolve("../../packages/content")
+    if (contentDir.isDirectory) {
+        from(contentDir)
+        include("*.json")
+        into(layout.projectDirectory.dir("src/main/assets/content"))
+    }
+}
+
+tasks.configureEach {
+    if (name == "preBuild" || (name.startsWith("merge") && name.contains("Assets"))) {
+        dependsOn(syncSharedContent)
+    }
 }

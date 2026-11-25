@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "updated": "2026-11-25",
+  "note": "Big releases TVM gets ready for. An event is live from `start` to `end` (inclusive, the viewer's local date). Before `release` the kicker reads 'In cinemas <release, e.g. 16 December>'; from `release` on it reads 'In cinemas now'. Clients refresh this file from GitHub and fall back to the copy they shipped with. Add the next big release here a week or two before it opens.",
+  "events": [
+    {
+      "id": "sunrise-on-the-reaping",
+      "title": "The Hunger Games: Sunrise on the Reaping",
+      "imdbId": "tt32558705",
+      "release": "2026-11-20",
+      "start": "2026-11-13",
+      "end": "2026-12-08",
+      "accent": "#E8A33D",
+      "glow": "#FF6A2A",
+      "line": "The 50th Hunger Games. Haymitch's story, before Katniss.",
+      "rail": {
+        "id": "event-sunrise-on-the-reaping",
+        "title": "The Hunger Games, in story order",
+        "items": ["tt32558705", "tt10545296", "tt1392170", "tt1951264", "tt1951265", "tt1951266"]
+      },
+      "avatarSet": "sunrise-on-the-reaping"
+    },
+    {
+      "id": "avengers-doomsday",
+      "title": "Avengers: Doomsday",
+      "imdbId": "tt21357150",
+      "release": "2026-12-16",
+      "start": "2026-12-09",
+      "end": "2027-01-31",
+      "accent": "#3FA34D",
+      "glow": "#1E6B2A",
+      "line": "Doctor Doom arrives. Catch up on the road here first.",
+      "rail": {
+        "id": "event-avengers-doomsday",
+        "title": "The road to Doomsday",
+        "items": ["tt0371746", "tt0848228", "tt1843866", "tt2395427", "tt3498820", "tt3501632", "tt1825683", "tt4154756", "tt4154796", "tt9140554", "tt10872600", "tt9419884", "tt6263850", "tt20969586", "tt10676052"]
+      },
+      "avatarSet": "marvel"
+    }
+  ]
+}

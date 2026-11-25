@@ -1,0 +1,20 @@
+{
+  "name": "@tvm/content",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared data every TVM client ships with: changelog, release events, free channels, services, avatars and age limits.",
+  "exports": {
+    "./changelog.json": "./changelog.json",
+    "./events.json": "./events.json",
+    "./free-channels.json": "./free-channels.json",
+    "./services.json": "./services.json",
+    "./avatars.json": "./avatars.json",
+    "./parental.json": "./parental.json"
+  },
+  "scripts": {
+    "build": "echo \"@tvm/content is plain JSON\"",
+    "typecheck": "echo \"@tvm/content is plain JSON\"",
+    "test": "node ../../scripts/check-changelog.mjs && node ../../scripts/check-content.mjs"
+  }
+}

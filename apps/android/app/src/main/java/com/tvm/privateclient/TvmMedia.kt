@@ -5,7 +5,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
@@ -24,7 +27,18 @@ class TvmMedia(
     private val catalog: TvmCatalog,
     private val rd: TvmRealDebrid,
     private val plans: TvmPlans,
+    private val content: TvmContent? = null,
+    val pinGuard: PinGuard = PinGuard(),
 ) {
+    private val resolvedContent: TvmContent by lazy { content ?: TvmContent(store, enableRefresh = false) }
+
+    fun parentalLevels(): List<AgeLevel> = TvmParental.levels(resolvedContent)
+
+    fun ageLevel(): Int {
+        val registry = store.profiles()
+        return registry.profiles.firstOrNull { it.id == registry.activeId }?.maxAge ?: 18
+    }
+
     private class LibraryCache(
         val at: Long,
         val torrents: List<RdTorrent>,
@@ -40,9 +54,10 @@ class TvmMedia(
     fun applyProfileHeader(value: String?) {
         if (value.isNullOrEmpty()) return
         val registry = store.profiles()
-        if (registry.profiles.any { it.id == value }) {
-            store.saveProfiles(value, registry.profiles)
-        }
+        if (value == registry.activeId) return
+        val target = registry.profiles.firstOrNull { it.id == value } ?: return
+        if (target.locked && !pinGuard.isUnlocked(target.id)) return
+        store.saveProfiles(value, registry.profiles)
     }
 
     fun profilesJson(): JSONObject {
@@ -53,48 +68,196 @@ class TvmMedia(
         )
     }
 
-    fun createProfile(name: String): JSONObject {
+    fun createProfile(
+        name: String,
+        hue: Int? = null,
+        avatarRaw: Any? = null,
+        kindRaw: String? = null,
+        maxAgeRaw: Any? = null,
+        pinRaw: Any? = null,
+    ): JSONObject {
         val registry = store.profiles()
         if (registry.profiles.size >= plans.profilesMax()) {
             throw ClientException("TVM holds ${plans.profilesMax()} profiles.")
         }
-        val trimmed = name.trim()
+        val kind = when (kindRaw?.trim()) {
+            null, "", "standard" -> "standard"
+            "kids" -> "kids"
+            else -> throw ClientException("kind must be standard or kids")
+        }
+        val maxAge = if (maxAgeRaw == null || maxAgeRaw === JSONObject.NULL) {
+            TvmParental.defaultAge(kind)
+        } else {
+            TvmParental.normalizeAge(maxAgeRaw, kind)
+                ?: throw ClientException("maxAge must be 7, 12, 15, or 18")
+        }
+        val avatar = parseAvatarInput(avatarRaw)
+        val pin = parseOptionalNewPin(pinRaw)
+        val trimmed = name.trim().take(40)
         val profile = ProfileRecord(
             id = "profile-${UUID.randomUUID().toString().uppercase(Locale.US)}",
             name = if (trimmed.isEmpty()) "Profile ${registry.profiles.size + 1}" else trimmed,
-            hue = PROFILE_HUES[registry.profiles.size % 5],
+            hue = hue ?: PROFILE_HUES[registry.profiles.size % PROFILE_HUES.size],
             created = isoNow(),
+            avatar = avatar,
+            kind = kind,
+            maxAge = maxAge,
+            pin = pin,
         )
         val profiles: List<ProfileRecord> = registry.profiles + profile
         store.saveProfiles(profile.id, profiles)
+        pinGuard.markUnlocked(profile.id)
         return profilesJson()
     }
 
-    fun renameProfile(id: String, name: String): JSONObject {
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) return profilesJson()
+    fun updateProfile(body: JSONObject): JSONObject {
+        val id = Json.string(body.opt("id")) ?: throw ClientException("id is required")
         val registry = store.profiles()
-        val profiles: List<ProfileRecord> = registry.profiles.map { record ->
-            if (record.id == id) ProfileRecord(record.id, trimmed, record.hue, record.created) else record
+        val existing = registry.profiles.firstOrNull { it.id == id }
+            ?: throw PinException(404, "not_found")
+
+        val nextName = if (body.has("name")) {
+            val rawName = body.opt("name")
+            if (rawName === JSONObject.NULL || rawName !is String) {
+                throw ClientException("name must be a non-empty string")
+            }
+            val trimmed = rawName.trim().take(40)
+            if (trimmed.isEmpty()) throw ClientException("name must be a non-empty string")
+            trimmed
+        } else {
+            existing.name
         }
+
+        val nextHue = if (body.has("hue") && body.opt("hue") !== JSONObject.NULL) {
+            Json.int(body.opt("hue")) ?: throw ClientException("hue must be an integer")
+        } else {
+            existing.hue
+        }
+
+        val nextAvatar = if (body.has("avatar")) parseAvatarInput(body.opt("avatar")) else existing.avatar
+
+        val nextKind = if (body.has("kind") && body.opt("kind") !== JSONObject.NULL) {
+            when ((body.opt("kind") as? String)?.trim()) {
+                "standard" -> "standard"
+                "kids" -> "kids"
+                else -> throw ClientException("kind must be standard or kids")
+            }
+        } else {
+            existing.kind
+        }
+
+        val nextMaxAge = if (body.has("maxAge") && body.opt("maxAge") !== JSONObject.NULL) {
+            TvmParental.normalizeAge(body.opt("maxAge"), nextKind)
+                ?: throw ClientException("maxAge must be 7, 12, 15, or 18")
+        } else if (body.has("kind") && nextKind != existing.kind) {
+            TvmParental.defaultAge(nextKind)
+        } else {
+            existing.maxAge
+        }
+
+        val currentPin = extractPinCandidate(body, "currentPin")
+        val pinChangeRequested = body.has("pin")
+        val looseningKids = existing.kind == "kids" && (nextKind != "kids" || nextMaxAge > existing.maxAge)
+
+        if (existing.pin != null && (pinChangeRequested || looseningKids)) {
+            pinGuard.verify(existing.id, existing.pin, currentPin)
+        } else if (looseningKids) {
+            val guardians = registry.profiles.filter {
+                it.id != existing.id && it.kind == "standard" && it.pin != null
+            }
+            if (guardians.isNotEmpty()) {
+                pinGuard.verifyAny(guardians, currentPin)
+            }
+        }
+
+        val nextPin = if (pinChangeRequested) {
+            parseOptionalNewPin(body.opt("pin"))
+        } else {
+            existing.pin
+        }
+
+        val updated = existing.copy(
+            name = nextName,
+            hue = nextHue,
+            avatar = nextAvatar,
+            kind = nextKind,
+            maxAge = nextMaxAge,
+            pin = nextPin,
+        )
+        val profiles = registry.profiles.map { if (it.id == id) updated else it }
         store.saveProfiles(registry.activeId, profiles)
+        if (nextPin == null || pinChangeRequested) pinGuard.markUnlocked(id)
         return profilesJson()
     }
 
-    fun removeProfile(id: String): JSONObject {
+    fun renameProfile(id: String, name: String): JSONObject =
+        updateProfile(Json.obj("id" to id, "name" to name))
+
+    fun removeProfile(id: String, pin: String? = null): JSONObject {
         val registry = store.profiles()
         if (registry.profiles.size <= 1) throw ClientException("TVM needs at least one profile.")
+        val target = registry.profiles.firstOrNull { it.id == id }
+            ?: throw PinException(404, "not_found")
+        if (target.pin != null) {
+            pinGuard.verify(target.id, target.pin, pin)
+        }
         val profiles: List<ProfileRecord> = registry.profiles.filter { it.id != id }
         val active: String = if (registry.activeId == id) (profiles.firstOrNull()?.id ?: id) else registry.activeId
+        pinGuard.forget(id)
+        store.removeProfileData(id)
         store.saveProfiles(active, profiles)
         return profilesJson()
     }
 
-    fun switchProfile(id: String): JSONObject {
+    fun switchProfile(id: String, pin: String? = null): JSONObject {
         val registry = store.profiles()
-        if (!registry.profiles.any { it.id == id }) throw ClientException("Unknown profile.")
+        val target = registry.profiles.firstOrNull { it.id == id }
+            ?: throw PinException(404, "not_found")
+        if (target.pin != null) {
+            pinGuard.verify(target.id, target.pin, pin)
+            pinGuard.clearSessionUnlocks()
+            pinGuard.markUnlocked(target.id)
+        } else {
+            pinGuard.clearSessionUnlocks()
+        }
         store.saveProfiles(id, registry.profiles)
         return profilesJson()
+    }
+
+    fun verifyProfilePin(id: String, pin: String?): JSONObject {
+        val registry = store.profiles()
+        val target = registry.profiles.firstOrNull { it.id == id }
+            ?: throw PinException(404, "not_found")
+        if (target.pin == null) {
+            pinGuard.markUnlocked(target.id)
+            return Json.obj("ok" to true)
+        }
+        pinGuard.verify(target.id, target.pin, pin)
+        return Json.obj("ok" to true)
+    }
+
+    private fun parseAvatarInput(raw: Any?): String? {
+        if (raw == null || raw === JSONObject.NULL) return null
+        if (raw !is String) throw ClientException("avatar is invalid")
+        val trimmed = raw.trim().lowercase(Locale.US)
+        if (trimmed.isEmpty()) return null
+        if (!TvmPins.AVATAR_RE.matches(trimmed)) throw ClientException("avatar is invalid")
+        return trimmed
+    }
+
+    private fun parseOptionalNewPin(raw: Any?): ProfilePin? {
+        if (raw == null || raw === JSONObject.NULL) return null
+        if (raw !is String) throw PinException(400, "pin-invalid")
+        if (raw.trim().isEmpty()) return null
+        return TvmPins.makePin(raw.trim())
+    }
+
+    private fun extractPinCandidate(body: JSONObject, key: String): String? {
+        if (!body.has(key)) return null
+        val raw = body.opt(key)
+        if (raw == null || raw === JSONObject.NULL) return null
+        if (raw !is String) throw PinException(400, "pin-invalid")
+        return raw
     }
 
     fun watchlist(): List<MediaItem> = store.watchlist(activeProfile())
@@ -145,13 +308,19 @@ class TvmMedia(
             status = status.copy(error = if (error is RdClientException.NeedsAuth) "needs-auth" else "unreachable")
             library = synchronized(lock) { libraryCache?.items ?: emptyList() }
         }
+        val age = ageLevel()
+        val levels = parentalLevels()
         val progress: Map<String, ProgressEntry> = store.progress(activeProfile())
-        library = applyProgress(library, progress)
+        library = TvmParental.filterForLevel(applyProgress(library, progress), age, levels)
         val bundle: CatalogBundle = catalog.bundle()
-        val catalogItems: List<MediaItem> = applyProgress(bundle.catalog, progress)
+        val catalogItems: List<MediaItem> = TvmParental.filterForLevel(
+            applyProgress(bundle.catalog, progress),
+            age,
+            levels,
+        )
         val continueWatching: List<MediaItem> = continueWatching(catalogItems + library)
-        val watchlist: List<MediaItem> = watchlist()
-        val rails: MutableList<CatalogRail> = buildRails(bundle, continueWatching, watchlist).toMutableList()
+        val watchlist: List<MediaItem> = TvmParental.filterForLevel(watchlist(), age, levels)
+        val rails: MutableList<CatalogRail> = buildRails(bundle, continueWatching, watchlist, age, levels).toMutableList()
 
         /*
          * Split deliberately, with explicit types at each step. As one chained
@@ -197,7 +366,7 @@ class TvmMedia(
             // O(n log n x |genres|).
             val affinity: MutableMap<String, Int> = mutableMapOf()
             val unwatched: MutableList<MediaItem> = mutableListOf()
-            for (item in bundle.catalog) {
+            for (item in catalogItems) {
                 if (watchedIds.contains(item.id)) continue
                 val itemGenres: Set<String> = item.genres.toSet()
                 var total = 0
@@ -211,7 +380,7 @@ class TvmMedia(
             if (candidates.isNotEmpty()) {
                 val offset: Int = adaptationGeneration % candidates.size
                 val rotated: List<MediaItem> = candidates.drop(offset) + candidates.take(offset)
-                rails.add(0, CatalogRail("anime-adapted", "Adapted for you", rotated.take(16)))
+                rails.add(0, CatalogRail("anime-adapted", "Adapted for you", rotated.take(RAIL_LIMIT)))
             }
         }
 
@@ -291,7 +460,7 @@ class TvmMedia(
         // Cinemeta already ranked the remote hits; do not drop aliases like "lotr".
         val out: MutableList<MediaItem> = mutableListOf()
         for (item in localHits + remote) if (seen.add(item.id)) out.add(item)
-        return out
+        return TvmParental.filterForLevel(out, ageLevel(), parentalLevels())
     }
 
     private fun remember(item: MediaItem): MediaItem {
@@ -374,6 +543,8 @@ class TvmMedia(
         season: Int?,
         episode: Int?,
         download: DownloadPrefs? = null,
+        screenHeight: Int? = null,
+        maxHeight: Int? = null,
     ): Pair<Int, JSONObject> {
         if (!plans.mobileAllowed()) {
             return 403 to Json.obj("kind" to "unavailable", "reason" to "mobile-plan-required")
@@ -409,7 +580,7 @@ class TvmMedia(
                     val result = playFromLink(owned, id ?: matched)
                     if (result.first == 200 && (download == null || downloadable(result, download))) {
                         TvmPlaybackMemory.served(result.second.text("url", ""), owned)
-                        if (fitsScreen(result, download)) return result
+                        if (fitsScreen(result, download, screenHeight, maxHeight)) return result
                         libraryCopy = result
                     }
                 }
@@ -425,6 +596,8 @@ class TvmMedia(
                 episode ?: parsed?.episode ?: extra?.episode,
                 id ?: imdb,
                 download,
+                screenHeight,
+                maxHeight,
             )
             if (found.first == 200 || libraryCopy == null) return found
         }
@@ -443,14 +616,16 @@ class TvmMedia(
     suspend fun appHub(id: String): JSONObject? {
         val spec: JSONObject = appTiles().firstOrNull { it.text("id", "") == id } ?: return null
         if (id == "tvm-stream") return null
+        val age = ageLevel()
+        val levels = parentalLevels()
         val bundle: CatalogBundle = catalog.bundle()
-        val movies: List<MediaItem> = bundle.moviesTop.take(16)
-        val shows: List<MediaItem> = bundle.seriesTop.take(16)
+        val movies: List<MediaItem> = TvmParental.filterForLevel(bundle.moviesTop, age, levels).take(RAIL_LIMIT)
+        val shows: List<MediaItem> = TvmParental.filterForLevel(bundle.seriesTop, age, levels).take(RAIL_LIMIT)
         val seeds: List<String> = HUB_SEEDS[id] ?: emptyList()
         val seeded: MutableList<MediaItem> = mutableListOf()
         for (seed in seeds.take(8)) {
             val meta = catalog.meta(seed)
-            if (meta != null) seeded.add(meta.item)
+            if (meta != null && TvmParental.allowedForLevel(meta.item, age, levels)) seeded.add(meta.item)
         }
         val pool: List<MediaItem> = if (seeded.isEmpty()) movies + shows else seeded + movies
         val hero: MediaItem? = pool.firstOrNull { it.backdrop.isNotEmpty() } ?: pool.firstOrNull()
@@ -469,10 +644,143 @@ class TvmMedia(
                 listOf(
                     CatalogRail("$id-films", "Popular films", movies).json(),
                     CatalogRail("$id-shows", "Popular series", shows).json(),
-                    CatalogRail("$id-trending", "Trending now", pool.take(16)).json(),
+                    CatalogRail("$id-trending", "Trending now", pool.take(RAIL_LIMIT)).json(),
                 ),
             ),
         )
+    }
+
+    suspend fun railMore(id: String, skipParam: Int = 0, pageParam: Int? = null): JSONObject {
+        if (!RAIL_ID_RE.matches(id)) throw ClientException("rail id is invalid")
+        val sources = railSources(id)
+        if (sources.isEmpty()) {
+            return Json.obj("items" to JSONArray(), "more" to false)
+        }
+        val age = ageLevel()
+        val levels = parentalLevels()
+        var cursor = (pageParam ?: skipParam).coerceIn(0, 5000)
+        var sawRaw = false
+        var collected: List<MediaItem> = emptyList()
+
+        for (attempt in 0 until MAX_PAGE_ATTEMPTS) {
+            val perSourceCursor = (cursor / sources.size).coerceIn(0, 5000)
+            val perSourceLimit = if (sources.size > 1) maxOf(10, PAGE_SIZE / sources.size) else PAGE_SIZE
+            val perSource = sources.map { src ->
+                val fetched = catalog.page(src.kind, src.list, src.genre, perSourceCursor)
+                if (fetched.isNotEmpty()) sawRaw = true
+                fetched.take(perSourceLimit)
+            }
+            var batch = interleave(perSource)
+            if (id == "new-films") {
+                batch = filterNewFilms(batch)
+            }
+            collected = TvmParental.filterForLevel(batch, age, levels)
+            cursor += PAGE_SIZE
+            if (collected.isNotEmpty() || !sawRaw || cursor > 5000) break
+        }
+
+        val withProgress = applyProgress(collected, store.progress(activeProfile()))
+        val hasMore = sawRaw && cursor <= 5000 && withProgress.isNotEmpty()
+        return Json.obj(
+            "items" to Json.array(withProgress.map { it.json() }),
+            "more" to hasMore,
+            "page" to cursor,
+        )
+    }
+
+    suspend fun activeEvents(today: String = localIsoDate()): JSONObject {
+        val doc = resolvedContent.fresh("events")
+        val rawEvents = doc?.optJSONArray("events") ?: JSONArray()
+        val age = ageLevel()
+        val levels = parentalLevels()
+        val progress = store.progress(activeProfile())
+        val out = JSONArray()
+
+        for (i in 0 until rawEvents.length()) {
+            val event = rawEvents.optJSONObject(i) ?: continue
+            val start = Json.string(event.opt("start")) ?: continue
+            val end = Json.string(event.opt("end")) ?: continue
+            if (today < start || today > end) continue
+
+            val imdbId = Json.string(event.opt("imdbId")) ?: continue
+            val release = Json.string(event.opt("release")) ?: start
+            val spotlightRaw = item(imdbId) ?: catalog.meta(imdbId)?.item
+            if (spotlightRaw != null && !TvmParental.allowedForLevel(spotlightRaw, age, levels)) {
+                continue
+            }
+            val spotlight = spotlightRaw?.let { applyProgress(listOf(it), progress).firstOrNull() }
+
+            val railObj = event.optJSONObject("rail")
+            val railIds = Json.strings(railObj?.opt("items")).take(RAIL_LIMIT)
+            val resolvedItems = ArrayList<MediaItem>()
+            for (rid in railIds) {
+                val resolved = item(rid) ?: catalog.meta(rid)?.item ?: continue
+                if (TvmParental.allowedForLevel(resolved, age, levels)) {
+                    resolvedItems.add(resolved)
+                }
+            }
+            val itemsWithProgress = applyProgress(resolvedItems, progress)
+
+            val enriched = JSONObject(event.toString())
+            enriched.put("live", true)
+            enriched.put("released", today >= release)
+            enriched.put("kicker", eventKicker(release, today))
+            enriched.put("spotlight", spotlight?.json() ?: JSONObject.NULL)
+            enriched.put("featured", spotlight?.json() ?: JSONObject.NULL)
+            enriched.put("items", Json.array(itemsWithProgress.map { it.json() }))
+            out.put(enriched)
+        }
+        return Json.obj("events" to out)
+    }
+
+    suspend fun servicesJson(): JSONObject {
+        val doc = resolvedContent.fresh("services")
+        val raw = doc?.optJSONArray("services") ?: JSONArray()
+        val connected = store.connectedServices(activeProfile()).toSet()
+        val out = JSONArray()
+        for (i in 0 until raw.length()) {
+            val row = raw.optJSONObject(i) ?: continue
+            val copy = JSONObject(row.toString())
+            val id = Json.string(copy.opt("id")) ?: continue
+            copy.put("connected", id in connected)
+            out.put(copy)
+        }
+        return Json.obj("services" to out)
+    }
+
+    suspend fun setServiceConnected(id: String, connected: Boolean): JSONObject {
+        val doc = resolvedContent.fresh("services")
+        val raw = doc?.optJSONArray("services") ?: JSONArray()
+        val validIds = HashSet<String>()
+        for (i in 0 until raw.length()) {
+            Json.string(raw.optJSONObject(i)?.opt("id"))?.let { validIds.add(it) }
+        }
+        if (id !in validIds) throw ClientException("Unknown service.")
+        val profileId = activeProfile()
+        val current = store.connectedServices(profileId).toMutableList()
+        if (connected) {
+            if (id !in current) current.add(id)
+        } else {
+            current.removeAll { it == id }
+        }
+        store.saveConnectedServices(profileId, current)
+        return Json.obj("connected" to JSONArray(current))
+    }
+
+    suspend fun freeLiveJson(): JSONObject {
+        val doc = resolvedContent.fresh("free-channels")
+        val raw = doc?.optJSONArray("channels") ?: JSONArray()
+        val age = ageLevel()
+        val levels = parentalLevels()
+        val out = JSONArray()
+        for (i in 0 until raw.length()) {
+            val row = raw.optJSONObject(i) ?: continue
+            val group = Json.string(row.opt("group"))
+            if (TvmParental.liveGroupAllowed(group, age, levels)) {
+                out.put(JSONObject(row.toString()))
+            }
+        }
+        return Json.obj("channels" to out)
     }
 
     fun clearCache() {
@@ -562,6 +870,8 @@ class TvmMedia(
         episode: Int?,
         mediaId: String?,
         download: DownloadPrefs? = null,
+        screenHeight: Int? = null,
+        maxHeight: Int? = null,
     ): Pair<Int, JSONObject> {
         val token: String = rd.tokenValue()
             ?: return 409 to Json.obj("kind" to "unavailable", "reason" to "not-configured")
@@ -595,7 +905,7 @@ class TvmMedia(
         // The plan's limit and this screen's (TvmDeviceChrome.playbackHeight),
         // then this device's decoders: copies it can play fully come first.
         // A download takes the quality asked for (within the plan); playing takes this screen's.
-        val height: Int = capFor(download)
+        val height: Int = capFor(download, screenHeight, maxHeight)
         val label = { it: RdStream -> "${it.name} ${it.title}" }
         // A download's audio language is a must: a copy marked as another
         // language, or as MULTi, is never taken instead.
@@ -654,13 +964,22 @@ class TvmMedia(
     }
 
     /** The copy's own file name says it is no taller than this screen (or the download) needs. */
-    private fun fitsScreen(result: Pair<Int, JSONObject>, download: DownloadPrefs? = null): Boolean {
+    private fun fitsScreen(
+        result: Pair<Int, JSONObject>,
+        download: DownloadPrefs? = null,
+        screenHeight: Int? = null,
+        maxHeight: Int? = null,
+    ): Boolean {
         val name = result.second.text("filename", "")
-        return name.isEmpty() || rd.streamHeight(name) <= capFor(download)
+        return name.isEmpty() || rd.streamHeight(name) <= capFor(download, screenHeight, maxHeight)
     }
 
-    private fun capFor(download: DownloadPrefs?): Int =
-        if (download == null) TvmDeviceChrome.playbackHeight(plans.maxHeight()) else minOf(download.maxHeight, plans.maxHeight())
+    private fun capFor(download: DownloadPrefs?, screenHeight: Int? = null, maxHeight: Int? = null): Int =
+        if (download == null) {
+            minOf(TvmDeviceChrome.playbackHeight(plans.maxHeight()), screenCapFor(screenHeight, maxHeight))
+        } else {
+            minOf(download.maxHeight, plans.maxHeight())
+        }
 
     /** A library copy may be downloaded: its language and size fit what was asked. */
     private fun downloadable(result: Pair<Int, JSONObject>, download: DownloadPrefs): Boolean {
@@ -947,6 +1266,8 @@ class TvmMedia(
         bundle: CatalogBundle,
         watching: List<MediaItem>,
         watchlist: List<MediaItem>,
+        age: Int,
+        levels: List<AgeLevel>,
     ): List<CatalogRail> {
         val used: MutableSet<String> = mutableSetOf()
         for (item in watching) {
@@ -960,13 +1281,19 @@ class TvmMedia(
         val rails: MutableList<CatalogRail> = mutableListOf()
 
         fun take(source: List<MediaItem>, id: String, title: String) {
-            val items: List<MediaItem> =
-                source.filter { !used.contains(it.id) && !used.contains(it.title) }.take(16)
+            val items: List<MediaItem> = source.filter {
+                !used.contains(it.id) &&
+                    !used.contains(it.title) &&
+                    TvmParental.allowedForLevel(it, age, levels)
+            }.take(RAIL_LIMIT)
             for (item in items) {
                 used.add(item.id)
                 used.add(item.title)
             }
-            if (items.isNotEmpty()) rails.add(CatalogRail(id, title, items))
+            if (items.isNotEmpty()) {
+                val hasMore = if (railSources(id).isNotEmpty()) true else null
+                rails.add(CatalogRail(id, title, items, more = hasMore))
+            }
         }
 
         take(bundle.catalog, "for-you", "You might like")
@@ -979,33 +1306,22 @@ class TvmMedia(
         val first: MediaItem? = watching.firstOrNull()
         if (first != null) {
             val because: List<MediaItem> = bundle.catalog.filter { item ->
-                !used.contains(item.id) && item.genres.any { first.genres.contains(it) }
-            }.take(12)
+                !used.contains(item.id) &&
+                    item.genres.any { first.genres.contains(it) } &&
+                    TvmParental.allowedForLevel(item, age, levels)
+            }.take(RAIL_LIMIT)
             if (because.isNotEmpty()) {
                 rails.add(CatalogRail("because", "Because you watched ${first.title}", because))
             }
         }
-        val genres: List<Triple<String, String, List<String>>> = listOf(
-            Triple("action", "Action & Adventure", listOf("Action", "Adventure")),
-            Triple("scifi", "Sci-Fi & Fantasy", listOf("Sci-Fi", "Fantasy")),
-            Triple("comedy", "Comedy", listOf("Comedy")),
-            Triple("thriller", "Thrillers", listOf("Thriller")),
-            Triple("drama", "Critically Acclaimed Drama", listOf("Drama")),
-            Triple("crime", "Crime & Mystery", listOf("Crime", "Mystery")),
-            Triple("horror", "Horror", listOf("Horror")),
-            Triple("animation", "Animation & Family", listOf("Animation", "Family")),
-            Triple("romance", "Romance", listOf("Romance")),
-            Triple("documentary", "Documentaries", listOf("Documentary")),
-            Triple("anime", "Anime", listOf("Anime")),
-            Triple("history", "History & Biography", listOf("History", "Biography")),
-            Triple("mystery", "Mystery & Suspense", listOf("Mystery")),
-        )
-        for ((id, title, names) in genres) {
+        for ((id, title, names) in GENRE_RAILS) {
             val seenMovies: MutableSet<String> = mutableSetOf()
             val movies: MutableList<MediaItem> = mutableListOf()
             for (g in names) {
                 for (item in catalog.genre("movie", g)) {
-                    if (seenMovies.add(item.id)) movies.add(item)
+                    if (TvmParental.allowedForLevel(item, age, levels) && seenMovies.add(item.id)) {
+                        movies.add(item)
+                    }
                 }
             }
             val seriesNames: List<String> = if (id == "anime") listOf("Animation") else names
@@ -1013,24 +1329,26 @@ class TvmMedia(
             val shows: MutableList<MediaItem> = mutableListOf()
             for (g in seriesNames) {
                 for (item in catalog.genre("series", g)) {
-                    if (seenShows.add(item.id)) shows.add(item)
+                    if (TvmParental.allowedForLevel(item, age, levels) && seenShows.add(item.id)) {
+                        shows.add(item)
+                    }
                 }
             }
             val mixed: MutableList<MediaItem> = mutableListOf()
             var i = 0
-            while (mixed.size < 16 && i < maxOf(movies.size, shows.size)) {
+            while (mixed.size < RAIL_LIMIT && i < maxOf(movies.size, shows.size)) {
                 if (i < movies.size && !used.contains(movies[i].id)) {
                     mixed.add(movies[i])
                     used.add(movies[i].id)
                 }
-                if (mixed.size >= 16) break
+                if (mixed.size >= RAIL_LIMIT) break
                 if (i < shows.size && !used.contains(shows[i].id)) {
                     mixed.add(shows[i])
                     used.add(shows[i].id)
                 }
                 i += 1
             }
-            if (mixed.isNotEmpty()) rails.add(CatalogRail(id, title, mixed))
+            if (mixed.isNotEmpty()) rails.add(CatalogRail(id, title, mixed, more = true))
         }
         if (rails.isEmpty()) {
             take(catalog.fallbackItems(), "films", "Popular films")
@@ -1096,12 +1414,100 @@ class TvmMedia(
 
     private fun isoNow(): String = DateTimeFormatter.ISO_INSTANT.format(Instant.now().truncatedTo(ChronoUnit.SECONDS))
 
-    private companion object {
-        val PROFILE_HUES: List<Int> = listOf(350, 220, 140, 32, 280)
+    data class RailSource(val kind: String, val list: String, val genre: String? = null)
+
+    companion object {
+        val PROFILE_HUES: List<Int> = listOf(221, 190, 145, 38, 315)
         const val LIBRARY_TTL_MS: Long = 45_000
+        const val RAIL_LIMIT: Int = 40
+        const val PAGE_SIZE: Int = 50
+        const val MAX_PAGE_ATTEMPTS: Int = 3
+        val RAIL_ID_RE: Regex = Regex("^[a-z0-9-]{1,40}$")
+        val QUALITY_LADDER: List<Int> = listOf(480, 720, 1080, 1440, 2160)
 
         /** Case-sensitive, as the Swift regex was: Real-Debrid emits lowercase. */
         val HLS_SUFFIX: Regex = Regex("""\.m3u8(\?|$)""")
+
+        val GENRE_RAILS: List<Triple<String, String, List<String>>> = listOf(
+            Triple("action", "Action & Adventure", listOf("Action", "Adventure")),
+            Triple("scifi", "Sci-Fi & Fantasy", listOf("Sci-Fi", "Fantasy")),
+            Triple("comedy", "Comedy", listOf("Comedy")),
+            Triple("thriller", "Thrillers", listOf("Thriller")),
+            Triple("drama", "Critically Acclaimed Drama", listOf("Drama")),
+            Triple("crime", "Crime & Mystery", listOf("Crime", "Mystery")),
+            Triple("horror", "Horror", listOf("Horror")),
+            Triple("animation", "Animation & Family", listOf("Animation", "Family")),
+            Triple("romance", "Romance", listOf("Romance")),
+            Triple("documentary", "Documentaries", listOf("Documentary")),
+            Triple("anime", "Anime", listOf("Anime")),
+            Triple("history", "History & Biography", listOf("History", "Biography")),
+            Triple("mystery", "Mystery & Suspense", listOf("Mystery")),
+        )
+
+        private val EXTRA_GENRE_ALIASES: Map<String, List<String>> = mapOf(
+            "sci-fi" to listOf("Sci-Fi", "Fantasy"),
+            "adventure" to listOf("Adventure"),
+            "fantasy" to listOf("Fantasy"),
+            "family" to listOf("Family"),
+        )
+
+        fun railSources(id: String): List<RailSource> = when (id) {
+            "films" -> listOf(RailSource("movie", "top"))
+            "series" -> listOf(RailSource("series", "top"))
+            "top-films" -> listOf(RailSource("movie", "imdbRating"))
+            "top-series" -> listOf(RailSource("series", "imdbRating"))
+            "new-films" -> listOf(RailSource("movie", "year"))
+            "new-series" -> listOf(RailSource("series", "last-videos"))
+            else -> {
+                val matched = GENRE_RAILS.firstOrNull { it.first == id }
+                val names = matched?.third ?: EXTRA_GENRE_ALIASES[id]
+                if (names == null) {
+                    emptyList()
+                } else {
+                    val seriesNames = if (id == "anime") listOf("Animation") else names
+                    names.map { RailSource("movie", "top", it) } +
+                        seriesNames.map { RailSource("series", "top", it) }
+                }
+            }
+        }
+
+        fun interleave(lists: List<List<MediaItem>>): List<MediaItem> {
+            val out = ArrayList<MediaItem>()
+            val seen = HashSet<String>()
+            val maxLen = lists.maxOfOrNull { it.size } ?: 0
+            for (i in 0 until maxLen) {
+                for (list in lists) {
+                    if (i < list.size) {
+                        val item = list[i]
+                        if (seen.add(item.id)) out.add(item)
+                    }
+                }
+            }
+            return out
+        }
+
+        fun filterNewFilms(items: List<MediaItem>, currentYear: Int = LocalDate.now().year): List<MediaItem> =
+            items.filter { it.kind == "movie" && (it.year ?: 0) >= currentYear - 1 }
+
+        fun screenCapFor(screenHeight: Int?, maxHeight: Int?): Int {
+            if (maxHeight != null && maxHeight >= 240) return minOf(2160, maxHeight)
+            if (screenHeight != null && screenHeight >= 240) {
+                return QUALITY_LADDER.firstOrNull { it >= screenHeight - 8 } ?: 2160
+            }
+            return 2160
+        }
+
+        fun localIsoDate(date: LocalDate = LocalDate.now(ZoneId.systemDefault())): String =
+            date.toString()
+
+        fun formatReleaseDayMonth(isoDate: String): String {
+            val parsed = runCatching { LocalDate.parse(isoDate.trim()) }.getOrNull() ?: return isoDate
+            val month = parsed.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+            return "${parsed.dayOfMonth} $month"
+        }
+
+        fun eventKicker(release: String, today: String = localIsoDate()): String =
+            if (today >= release) "In cinemas now" else "In cinemas ${formatReleaseDayMonth(release)}"
 
         val HUB_SEEDS: Map<String, List<String>> = mapOf(
             "netflix" to listOf("tt4574334", "tt0903747", "tt1375666"),
