@@ -537,6 +537,17 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         info.genres = {"Drama", "Mystery"};
         info.synopsis = "A lighthouse keeper on a remote island finds the lamp burning on its own one winter night.";
         info.backdropUrl = art;
+        if (screen == L"details-extras" || screen == L"details-series-extras") {
+            info.trailerUrl = "https://www.youtube.com/watch?v=abcdefghijk";
+            if (series) { info.englishTitle = "The Northern Journey"; info.upcoming = "New episode Thursday, 26 November"; }
+            else {
+                info.collectionName = "The Last Light collection";
+                for (int i = 1; i <= 4; ++i) {
+                    tvm::catalog::MediaItem item; item.id = "tt000000" + std::to_string(i + 1);
+                    item.title = "The Last Light " + std::to_string(i + 1); item.poster = art; info.collection.push_back(item);
+                }
+            }
+        }
         details.SetInfo(info);
         if (screen == L"details-reviews") {
             info.reviews = {{"reviews", nlohmann::json::array({
@@ -580,8 +591,14 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             if (screen == L"player-volume") player->FocusItem("mute", 0, false);
             for (double now = 0; now <= 800; now += 16) player->Tick(now);
         }
+        if (screen == L"player-extras") {
+            auto view = player->view(); view.recap = true; view.skipLabel = "Skip credits";
+            view.nextUp = true; view.nextRemaining = 10; view.nextWindow = 10;
+            view.nextShow = "Northward"; view.nextEpisode = "S1 E2 - The Long Road"; view.nextStill = art;
+            player->SetView(view, 0);
+        }
         player->Tick(100.0);
-        if (screen.size() > 7 && screen != L"player-loading" && screen != L"player-volume") {
+        if (screen.size() > 7 && screen != L"player-loading" && screen != L"player-volume" && screen != L"player-extras") {
             const std::wstring menu = screen.substr(7);
             std::string key;
             for (const wchar_t c : menu) key.push_back(static_cast<char>(c & 0x7F));

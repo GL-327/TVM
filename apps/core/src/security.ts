@@ -30,6 +30,7 @@ const SIGNED_WEBHOOK = '/api/billing/webhook';
 export function accessError(request: IncomingMessage, path: string, env: NodeJS.ProcessEnv, sessionAuthenticated = false): string | null {
   if (path === SIGNED_WEBHOOK && request.method === 'POST') return null;
   const local = isLoopback(request.socket.remoteAddress);
+  if (!local && path === '/api/admin/key') return 'local_access_required';
   let host: URL;
   try {
     host = new URL(`http://${request.headers.host ?? ''}`);

@@ -5,10 +5,28 @@ import { Chip } from '../components/Chip';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
 import { ImdbBadge, openExternalUrl } from '../components/ImdbBadge';
+import { mapRailPosters } from '../components/PosterCard';
+import { Rail } from '../components/Rail';
 import { Skeleton } from '../components/Skeleton';
 import { ToastPill, useToast } from '../components/ToastPill';
+import { TrailerModal } from '../components/TrailerModal';
 import { titleById, type Title } from '../data/catalog';
 import { episodeHeading } from '../data/episodes';
+import {
+  fetchExtrasAnimeTitle,
+  fetchExtrasCollection,
+  fetchExtrasTrailers,
+  fetchExtrasUpcoming,
+  formatEpisodeCode,
+  formatUpcomingDate,
+  isAnimeCandidate,
+  shouldShowAnimeEnglishTitle,
+  visibleCollectionItems,
+  type ExtrasAnimeTitle,
+  type ExtrasCollection,
+  type ExtrasTrailer,
+  type ExtrasUpcomingEpisode,
+} from '../data/extras';
 import {
   addWatchlist,
   asTitle,
@@ -19,7 +37,7 @@ import {
   toMediaItem,
   type MediaItem,
 } from '../data/media';
-import { titleFromDetailsParams } from '../data/openDetails';
+import { openDetails, titleFromDetailsParams } from '../data/openDetails';
 import { isKidsProfile, peekActiveProfile } from '../data/profiles';
 import { fetchServices, openServiceExternal, serviceUrlForTitle, type ConnectedServiceStatus } from '../data/services';
 import { certificateLabel, formatAired, imdbIdFrom, imdbScore, imdbTitleUrl, playIdFor, seriesGraphUrl } from '../data/playId';
@@ -41,19 +59,23 @@ function episodeCountLabel(count: number): string {
 function DetailsShell({
   series,
   title,
+  overlay,
   children,
 }: {
   series: boolean;
   title?: Title;
+  overlay?: ReactNode;
   children: ReactNode;
 }): React.JSX.Element {
+  const blocked = overlay !== undefined && overlay !== null;
   return (
     <main className={`details${series ? ' details--series' : ''}`}>
       <div className="details__stage" aria-hidden="true">
         {title !== undefined && <Artwork title={title} kind="backdrop" className="details__backdrop" eager />}
         <div className="details__vignette" />
       </div>
-      <div className="details__body">{children}</div>
+      <div className="details__body" inert={blocked}>{children}</div>
+      {overlay}
     </main>
   );
 }
@@ -75,6 +97,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const [loadingTitle, setLoadingTitle] = useState(snapshot === undefined && id !== '');
   const [attempt, setAttempt] = useState(0);
   const [connectedServices, setConnectedServices] = useState<ConnectedServiceStatus[]>([]);
+  const [trailers, setTrailers] = useState<ExtrasTrailer[]>([]);
+  const [trailerOpen, setTrailerOpen] = useState(false);
+  const [collection, setCollection] = useState<ExtrasCollection | null>(null);
+  const [upcoming, setUpcoming] = useState<ExtrasUpcomingEpisode | null>(null);
+  const [animeInfo, setAnimeInfo] = useState<ExtrasAnimeTitle | null>(null);
   const { message: toast, showToast } = useToast();
 
   useEffect(() => {
@@ -165,6 +192,56 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const visibleFiles = useMemo(() => episodesForSeason(files, season), [files, season]);
 
   useEffect(() => {
+    setTrailers([]);
+    setTrailerOpen(false);
+    setCollection(null);
+    setAnimeInfo(null);
+    if (title === undefined) return undefined;
+    let cancelled = false;
+    const imdb = imdbIdFrom(title.id);
+    if (imdb !== null) {
+      void fetchExtrasTrailers(imdb).then((list) => {
+        if (!cancelled && list !== null) setTrailers(list);
+      });
+      void fetchExtrasCollection(imdb).then((col) => {
+        if (!cancelled && col !== null) setCollection(col);
+      });
+    }
+    if (isAnimeCandidate(title.genres) && title.title.trim() !== '') {
+      void fetchExtrasAnimeTitle(title.title).then((info) => {
+        if (!cancelled && info !== null) setAnimeInfo(info);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [title?.genres, title?.id, title?.title]);
+
+  useEffect(() => {
+    if (!seriesLike || title === undefined) {
+      setUpcoming(null);
+      return undefined;
+    }
+    const imdb = imdbIdFrom(title.id);
+    if (imdb === null) {
+      setUpcoming(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void fetchExtrasUpcoming(imdb).then((next) => {
+      if (!cancelled) setUpcoming(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [seriesLike, title?.id]);
+
+  const collectionItems = useMemo(
+    () => (title === undefined ? [] : visibleCollectionItems(collection, title.id)),
+    [collection, title],
+  );
+
+  useEffect(() => {
     if (title === undefined || season !== null) return;
     const next = seriesLike && seasons[0] !== undefined ? `season-${seasons[0]}` : seriesLike ? 'back' : 'play';
     const timer = window.setTimeout(() => requestFocus(`${scope}/${next}`), 0);
@@ -210,6 +287,9 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const score = imdbScore(title.rating);
   const certificate = certificateLabel(title.rating);
   const imdbUrl = imdbTitleUrl(title.id);
+  const englishSubtitle = animeInfo !== null ? shouldShowAnimeEnglishTitle(title.title, animeInfo.english) : null;
+  const upcomingDate = upcoming !== null ? formatUpcomingDate(upcoming.airstamp) : null;
+  const isAnimeTitle = animeInfo?.malId != null || title.genres.some((genre) => /^anime$/i.test(genre));
 
   const openWeb = (url: string, name: string): void => {
     navigate.push('service', { params: { id: name.toLowerCase(), url, title: name } });
@@ -223,6 +303,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
         title: title.title,
         ...(item.season !== undefined ? { season: item.season } : {}),
         ...(item.episode !== undefined ? { episode: item.episode } : {}),
+        ...(title.genres.length > 0 ? { genres: [...title.genres] } : {}),
+        ...(isAnimeTitle ? { anime: true } : {}),
       },
     });
   };
@@ -232,6 +314,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
       params: {
         id: playIdFor(title.id),
         title: title.title,
+        ...(title.genres.length > 0 ? { genres: [...title.genres] } : {}),
+        ...(isAnimeTitle ? { anime: true } : {}),
       },
     });
   };
@@ -252,7 +336,22 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   };
 
   return (
-    <DetailsShell series={seriesLike} title={title}>
+    <DetailsShell
+      series={seriesLike}
+      title={title}
+      overlay={
+        trailerOpen && trailers.length > 0 ? (
+          <TrailerModal
+            title={title.title}
+            trailers={trailers}
+            onClose={() => {
+              setTrailerOpen(false);
+              requestFocus(`${scope}/trailer`);
+            }}
+          />
+        ) : null
+      }
+    >
       <BackButton id="back" className="details__back" />
       <div className="details__hero">
         <div className="details__poster-stage">
@@ -261,6 +360,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
         <div className="details__copy">
           <p className="stage__kicker">{seriesLike ? 'Series' : 'Film'}</p>
           <h1 className="stage__title">{title.title}</h1>
+          {englishSubtitle !== null && <p className="details__anime-subtitle">{englishSubtitle}</p>}
           <p className="stage__meta">
             {(score !== null || imdbUrl !== null) && (
               <ImdbBadge
@@ -281,10 +381,24 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
               <Chip key={genre}>{genre}</Chip>
             ))}
           </p>
+          {seriesLike && upcomingDate !== null && upcoming !== null && (
+            <p className="details__coming-up">
+              <span className="details__coming-up-badge glass glass--chrome">Coming up</span>
+              <span>
+                New episode {upcomingDate}
+                {upcoming.name !== '' ? ` · ${formatEpisodeCode(upcoming.season, upcoming.episode)} ${upcoming.name}` : ''}
+              </span>
+            </p>
+          )}
           <div className="hero__actions details__actions">
             {!seriesLike && (
               <FocusButton id="play" variant="primary" onSelect={playFilm}>
                 {title.progress !== undefined ? 'Resume' : 'Play'}
+              </FocusButton>
+            )}
+            {trailers.length > 0 && (
+              <FocusButton id="trailer" className="tvm-button--glass" onSelect={() => setTrailerOpen(true)}>
+                Trailer
               </FocusButton>
             )}
             {!isKidsProfile(peekActiveProfile()) && (
@@ -414,6 +528,13 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
               })}
             </div>
           )}
+        </section>
+      )}
+      {collectionItems.length > 0 && (
+        <section className="details__collection" aria-label={collection?.name ?? 'Collection'}>
+          <Rail id="details-collection" title={collection?.name ?? 'Collection'} loop={false}>
+            {mapRailPosters(collectionItems.map(asTitle), 'collection', (picked) => openDetails(navigate, picked))}
+          </Rail>
         </section>
       )}
       <ToastPill message={toast} />

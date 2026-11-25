@@ -1,6 +1,6 @@
 ' Scene-owned feature navigation. All I/O still runs on ApiTask.
 function featureName(name as String) as Boolean
-  return name = "services" or name = "changelog" or name = "reviews" or name = "profile-edit" or name = "avatar-sets" or name = "avatars" or name = "adult-profiles"
+  return name = "stats" or name = "services" or name = "changelog" or name = "reviews" or name = "profile-edit" or name = "avatar-sets" or name = "avatars" or name = "adult-profiles"
 end function
 
 function uiContent(name as String) as Object
@@ -23,7 +23,10 @@ end sub
 sub loadFeature(name as String, params as Object)
   node = m.featureNodes[name]
   node.rows = [{ id: "loading", label: "Loading", body: "Loading…" }]
-  if name = "services"
+  if name = "stats"
+    node.heading = "Your stats"
+    loadYourStats()
+  else if name = "services"
     node.heading = "Your services"
     m.servicesTitle = asText(aaGet(params, "title", ""))
     m.servicesTask = startApiGet(joinCorePath(m.coreUrl, "/api/services"), "onServicesLoaded")
@@ -313,7 +316,9 @@ sub onFeatureAction(event as Object)
   row = aaGet(action, "row", {})
   id = asText(aaGet(row, "id", ""))
   name = visibleScreen(m.stack).name
-  if name = "services"
+  if name = "stats"
+    if id = "clear-history" then navigate("modal", "confirm", { title: "Clear history?", body: "Remove watch history and statistics for this profile on this Roku.", confirmLabel: "Clear history", confirmId: "clear-stats" })
+  else if name = "services"
     if id = "retry-services" then loadFeature("services", {}) : return
     service = aaGet(row, "service", invalid)
     if service = invalid then return

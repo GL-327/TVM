@@ -215,7 +215,9 @@ void App::OpenInfoPage(const nav::ViewEntry& entry) {
         fieldValues_["mail-settings.username"] = mailDraft_.username;
         fieldValues_["mail-settings.from"] = mailDraft_.from;
     }
-    if (pageName_ == "developer" || pageName_ == "setup") fieldMode_ = "code";
+    if (pageName_ == "setup") fieldMode_ = "code";
+    if (pageName_ == "extras-settings") fieldMode_ = "languages";
+    if (pageName_ == "stats" || pageName_ == "extras-settings") LoadExtrasPage();
     if (pageName_ == "account") {
         fieldMode_ = account_.signedIn ? "emailcode" : "email";
         if (!account_.signedIn) accountAuthMode_ = "signin";
@@ -243,7 +245,9 @@ void App::ShowInfoPage() {
     auto* screen = dynamic_cast<ui::InfoScreen*>(shell_->ScreenNamed(pageName_));
     if (screen == nullptr) return;
     ui::InfoView view;
-    if (pageName_ == "account") view = AccountView();
+    if (pageName_ == "stats") view = StatsView();
+    else if (pageName_ == "extras-settings") view = ExtrasView();
+    else if (pageName_ == "account") view = AccountView();
     else if (pageName_ == "legal") view = LegalView();
     else if (pageName_ == "donate") view = DonateView();
     else if (pageName_ == "changelog") view = ChangelogView();
@@ -274,13 +278,14 @@ void App::ApplyInfoAction(const ui::Command& command) {
         pageMessageBad_ = bad;
     };
 
+    if (verb.starts_with("extras-")) { ExtrasAction(verb.substr(7)); return; }
     if (verb.rfind("field-", 0) == 0) {
         // Moves the field to another of the page's inputs, with that input's text.
+        if (pageName_ == "account" && verb != "field-email" && verb != "field-password" && verb != "field-name" && verb != "field-emailcode") return;
         fieldMode_ = verb.substr(6);
         if (pageName_ == "account") {
             if (fieldMode_ == "name") accountAuthMode_ = "register";
-            else if (fieldMode_ == "devcode") accountAuthMode_ = "dev";
-            else if (accountAuthMode_ == "dev") accountAuthMode_ = "signin";
+
         }
         ShowInfoPage();
         if (ui::InfoScreen* screen = TypingPage()) screen->SetFieldText(value(fieldMode_));
@@ -601,11 +606,6 @@ void App::ApplyInfoAction(const ui::Command& command) {
             if (ui::InfoScreen* screen = TypingPage()) screen->SetFieldText(value("search"));
         }
     }
-    // ---- Developer
-    else if (verb == "dev-unlock" || verb == "dev-lock") {
-        ui::Command door; door.name = "account"; shell_->Execute(door, NowMs());
-        return;
-    }
     // ---- Confirm
     else if (verb == "confirm-yes") {
         const std::string action = Param(pageParams_, "action");
@@ -637,7 +637,7 @@ ui::InfoView App::LegalView() const {
     if (pageConfirm_) view.topActions.push_back(Button("info:legal-keep", "Keep my data"));
     if (pageConfirm_) {
         view.message = "This removes all TVM profiles, viewing history, lists, provider credentials, plans and receipts on this device, "
-                       "and locks DEV mode. Other providers\xE2\x80\x99 accounts and browser sessions are separate. This cannot be undone.";
+                       "and signs out. Other providers\xE2\x80\x99 accounts and browser sessions are separate. This cannot be undone.";
         view.messageBad = true;
     } else {
         view.message = pageMessage_;
@@ -1405,8 +1405,8 @@ ui::InfoView App::MailView() const {
     view.kicker = "Sign-up codes";
     view.heading = "Email";
     if (!account_.developer) {
-        view.lede = "Sign in to the dev account to change this.";
-        view.actions = {{Button("open:developer", "Developer", true), Button("back", "Back")}};
+        view.lede = "Sign in with an admin account to change this.";
+        view.actions = {{Button("open:account", "Sign in", true), Button("back", "Back")}};
         return view;
     }
     view.lede = "When this is set up, everyone who signs up is emailed a six-digit code and cannot use TVM until they type it in. Use an "
@@ -1475,8 +1475,8 @@ ui::InfoView App::AccountsView() const {
     view.kicker = "Developer";
     view.heading = "Accounts";
     if (!account_.developer) {
-        view.lede = "Sign in to the dev account to see who has signed up.";
-        view.actions = {{Button("open:developer", "Developer", true), Button("back", "Back")}};
+        view.lede = "Sign in with an admin account to manage members.";
+        view.actions = {{Button("open:account", "Sign in", true), Button("back", "Back")}};
         return view;
     }
     view.message = pageMessage_;
@@ -1565,32 +1565,10 @@ ui::InfoView App::AccountsView() const {
 // ------------------------------------------------------------------ Developer and Apps
 
 ui::InfoView App::DeveloperView() const {
-    ui::InfoView view;
-    view.message = pageMessage_;
-    view.messageBad = pageMessageBad_;
-    if (!account_.developer) {
-        // DeveloperUnlock.tsx: dev mode comes with the dev account.
-        view.kicker = "GLogic Studios";
-        view.heading = "Dev account";
-        view.lede = "Enter the dev code to switch to the dev account. Dev mode stays on until you sign out of it. The code is checked "
-                    "on this machine and never stored here.";
-        view.field = true;
-        view.fieldLabel = "Dev code";
-        view.fieldPlaceholder = "Code, then press OK";
-        view.fieldSecret = true;
-        // Not disabled while checking, so the focus stays on it; a press meanwhile is ignored.
-        view.actions = {{Button("info:dev-unlock", pageBusy_ ? "Checking\xE2\x80\xA6" : "Switch to dev account", true),
-                         Button("back", "Back")}};
-        return view;
-    }
-    view.kicker = "Studio panel";
-    view.heading = "Developer";
-    view.lede = "Developer account is active. Changes are handled by the shared Core.";
-    view.actions = {
-        {Button("open:accounts", "Accounts", true), Button("open:mail-settings", "Email"), Button("open:live-check", "Channel check")},
-        {Button("stream-home", "Jump Home"), Button("open:live-tv", "Jump Live TV"), Button("open:apps", "Jump Apps")},
-        {Button("info:dev-lock", "Sign out of the dev account")},
-    };
+    ui::InfoView view; view.kicker = "TVM"; view.heading = "Account tools";
+    view.lede = "Sign in with your TVM account. Account administration is handled through Core.";
+    view.actions = {{Button("open:account", "Your account", true), Button("back", "Back")}};
+    if (account_.developer) view.actions.push_back({Button("open:accounts", "Accounts", true), Button("open:live-check", "Channel check")});
     return view;
 }
 

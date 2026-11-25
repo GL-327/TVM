@@ -7,7 +7,15 @@ import { clearCache, fetchLive, fetchRdStatus, type RdStatus } from '../data/med
 import { applyPlanClass, displayMaxLabel, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { fetchAccount, isDevAccount } from '../data/account';
 import { fetchAppBuild, type AppBuild } from '../data/appBuild';
-import { hydratePrefs, readPrefs, savePrefs } from '../data/prefs';
+import { fetchExtrasStats, formatWatchDuration, STATS_CLEARED_EVENT, type ExtrasStats } from '../data/extras';
+import {
+  formatSubtitleLanguagesSummary,
+  hydratePrefs,
+  readPrefs,
+  savePrefs,
+  SUBTITLE_LANGUAGE_OPTIONS,
+  type SkipSegmentsMode,
+} from '../data/prefs';
 import { languageName, nextLanguage } from '../i18n/locale';
 import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
 import { bindKeyboardFields } from '../nav/pointerInput';
@@ -18,6 +26,12 @@ import { applyTheme, readStoredTheme } from '../theme/apply';
 import { applyGlassStyle, GLASS_STYLES, readStoredGlass, type GlassStyle } from '../theme/glass';
 import { THEMES, type ThemeId } from '../theme/registry';
 import { applyMotionPreference, applyPerformanceMode, readMotionPreference, readPerformanceMode } from '../theme/motion';
+
+const SKIP_SEGMENT_OPTIONS: ReadonlyArray<{ id: SkipSegmentsMode; label: string }> = [
+  { id: 'off', label: 'Off' },
+  { id: 'button', label: 'Show button' },
+  { id: 'auto', label: 'Skip automatically' },
+];
 
 export function Settings(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
@@ -30,6 +44,12 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [performance, setPerformance] = useState(readPerformanceMode);
   const [language, setLanguage] = useState(() => readPrefs().language);
   const [autoUpdate, setAutoUpdate] = useState(() => readPrefs().autoUpdate);
+  const [skipSegments, setSkipSegments] = useState<SkipSegmentsMode>(() => readPrefs().skipSegments);
+  const [autoplayNext, setAutoplayNext] = useState(() => readPrefs().autoplayNext);
+  const [heroPreviews, setHeroPreviews] = useState(() => readPrefs().heroPreviews);
+  const [subtitleLanguages, setSubtitleLanguages] = useState<string[]>(() => readPrefs().subtitleLanguages);
+  const [subMenuOpen, setSubMenuOpen] = useState(false);
+  const [statsSummary, setStatsSummary] = useState<ExtrasStats | null>(null);
   const [isDevRole, setIsDevRole] = useState(false);
   const [appBuild, setAppBuild] = useState<AppBuild | null>(null);
   const [rdStatus, setRdStatus] = useState<RdStatus | null>(null);
@@ -42,7 +62,20 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
     void hydratePrefs().then((prefs) => {
       setLanguage(prefs.language);
       setAutoUpdate(prefs.autoUpdate);
+      setSkipSegments(prefs.skipSegments);
+      setAutoplayNext(prefs.autoplayNext);
+      setHeroPreviews(prefs.heroPreviews);
+      setSubtitleLanguages(prefs.subtitleLanguages);
     });
+    void fetchExtrasStats().then((stats) => {
+      setStatsSummary(stats);
+    });
+    const onStatsCleared = (): void => {
+      void fetchExtrasStats().then((stats) => {
+        setStatsSummary(stats);
+      });
+    };
+    window.addEventListener(STATS_CLEARED_EVENT, onStatsCleared);
     void fetchLive()
       .then((status) => {
         if (status === null) {
@@ -72,6 +105,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         void fetchRdStatus().then(setRdStatus);
       }
     }).catch(() => setAccessDetail('View access'));
+    return () => window.removeEventListener(STATS_CLEARED_EVENT, onStatsCleared);
   }, []);
 
   useEffect(() => {
@@ -161,7 +195,97 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </FocusButton>
         </section>
         <section className="settings-group">
+          <h2 className="settings-group__title">Playback</h2>
+          <div className="settings-glass-row">
+            <div className="settings-glass-row__label">
+              <strong>Skip intro, recap and credits</strong>
+              <span>Hide, show a skip pill, or skip segments automatically</span>
+            </div>
+            <GlassSegmented
+              idPrefix="skip-segments"
+              ariaLabel="Skip intro, recap and credits"
+              options={SKIP_SEGMENT_OPTIONS}
+              value={skipSegments}
+              onChange={(next) => {
+                setSkipSegments(next);
+                void savePrefs({ skipSegments: next });
+              }}
+            />
+          </div>
+          <FocusButton
+            id="autoplay-next"
+            className="settings-row"
+            detail={autoplayNext ? 'On · 10 s countdown' : 'Off'}
+            onSelect={() => {
+              const next = !autoplayNext;
+              setAutoplayNext(next);
+              void savePrefs({ autoplayNext: next });
+            }}
+          >
+            Autoplay next episode
+          </FocusButton>
+          <FocusButton
+            id="hero-previews"
+            className="settings-row"
+            detail={heroPreviews ? 'On · muted trailer on desktop' : 'Off'}
+            onSelect={() => {
+              const next = !heroPreviews;
+              setHeroPreviews(next);
+              void savePrefs({ heroPreviews: next });
+            }}
+          >
+            Hero previews
+          </FocusButton>
+          <FocusButton
+            id="subtitle-languages"
+            className="settings-row"
+            ariaExpanded={subMenuOpen}
+            detail={formatSubtitleLanguagesSummary(subtitleLanguages)}
+            onSelect={() => setSubMenuOpen((open) => !open)}
+          >
+            Subtitle languages
+          </FocusButton>
+          {subMenuOpen && (
+            <div className="subtitle-prefs-panel glass glass--card glass-appear" role="group" aria-label="Preferred subtitle languages">
+              <p className="page__lede">Selected languages appear first in the player subtitle menu, in order.</p>
+              <div className="subtitle-prefs-grid" data-wrap="row">
+                {SUBTITLE_LANGUAGE_OPTIONS.map((option) => {
+                  const rank = subtitleLanguages.indexOf(option.code);
+                  const active = rank !== -1;
+                  return (
+                    <FocusButton
+                      key={option.code}
+                      id={`sub-lang-${option.code}`}
+                      className={`tvm-button--glass subtitle-prefs-chip${active ? ' glass--thumb' : ''}`}
+                      onSelect={() => {
+                        const next = active
+                          ? subtitleLanguages.filter((code) => code !== option.code)
+                          : [...subtitleLanguages, option.code];
+                        const resolved = next.length > 0 ? next : ['eng'];
+                        setSubtitleLanguages(resolved);
+                        void savePrefs({ subtitleLanguages: resolved });
+                      }}
+                    >
+                      {active ? `${rank + 1}. ${option.label}` : option.label}
+                    </FocusButton>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+        <section className="settings-group">
           <h2 className="settings-group__title">Account</h2>
+        {statsSummary !== null && (
+          <FocusButton
+            id="your-stats"
+            className="settings-row"
+            detail={`${formatWatchDuration(statsSummary.all)} all time`}
+            onSelect={() => navigate.push('stats')}
+          >
+            Your stats
+          </FocusButton>
+        )}
         <FocusButton id="privacy" className="settings-row" detail="Terms, data export and deletion" onSelect={() => navigate.push('legal')}>Privacy & terms</FocusButton>
         <FocusButton
           id="plan"

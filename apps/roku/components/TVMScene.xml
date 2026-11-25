@@ -17,6 +17,7 @@
   <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
   <script type="text/brightscript" uri="TVMFeatures.brs" />
   <script type="text/brightscript" uri="TVMReleaseFeatures.brs" />
+  <script type="text/brightscript" uri="TVMExtras.brs" />
   <script type="text/brightscript" uri="TVMScene.brs" />
   <children>
     <Rectangle id="letterbox" width="1920" height="1080" color="0x000000FF" />

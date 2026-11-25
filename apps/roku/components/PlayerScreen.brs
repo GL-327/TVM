@@ -132,6 +132,7 @@ sub init()
   m.video.enableUI = false
   m.video.focusable = false
   initQuality()
+  initPlayerExtras()
   paintFocus()
 end sub
 
@@ -153,6 +154,7 @@ sub beginStream()
   fmt = m.top.streamFormat
   if fmt = invalid or fmt = "" then fmt = "mp4"
   content.streamformat = fmt
+  content.subtitleTracks = m.extraTracks
   agent = CreateObject("roHttpAgent")
   agent.SetCertificatesFile("common:/certs/ca-bundle.crt")
   agent.InitClientCertificates()
@@ -183,6 +185,7 @@ sub beginStream()
   m.resumeApplied = false
   m.bufferTimer.control = "start"
   m.video.content = content
+  startPlayerExtras()
   m.video.control = "play"
   m.top.message = m.top.streamTitle
   startFocusWatch()
@@ -215,7 +218,11 @@ sub onState()
     m.buffer.visible = false
     showChrome()
   else if state = "finished"
-    closePlayer()
+    if nextIsOffered() and not m.upCancelled and aaGet(m.extrasPrefs, "autoplayNext", true) = true
+      doNext()
+    else
+      closePlayer()
+    end if
   else if state = "playing"
     m.orbit.active = false
     m.stallTimer.control = "stop"
@@ -260,11 +267,13 @@ sub onDuration()
 end sub
 
 sub onPosition()
+  measureWatchTime()
   m.position = m.video.position
   m.top.playPosition = m.position
   if m.ccOpen = true and m.cc <> invalid then m.cc.position = m.position
   paintBar()
   updateSkipRecap()
+  updateNextUp()
   if Abs(m.position - m.lastSaved) >= 10 then saveProgress(false)
 end sub
 
@@ -278,19 +287,14 @@ function skipRecapIsSeries() as Boolean
 end function
 
 function skipRecapAllowed() as Boolean
-  if m.skipped = true then return false
-  id = asText(m.top.mediaId)
-  if Left(id, 5) = "live:" then return false
-  kind = LCase(asText(m.top.mediaKind))
-  if kind = "live" then return false
-  if recapEndKnown() then return m.position < m.top.recapEnd
-  if skipRecapIsSeries() then return m.position < 90
-  return false
+  if aaGet(m.extrasPrefs, "skipSegments", "button") = "off" then return false
+  if m.activeSegment = invalid then return false
+  return not m.skipConsumed.DoesExist(m.activeSegment.key)
 end function
 
 function skipRecapTarget() as Float
-  if recapEndKnown() then return m.top.recapEnd
-  return 90
+  if m.activeSegment <> invalid then return m.activeSegment.target
+  return m.position
 end function
 
 function chromeLastCol() as Integer
@@ -342,44 +346,44 @@ function progressFocused() as Boolean
 end function
 
 sub updateSkipRecap()
-  if m.skipRecap = invalid then return
+  if m.skipRecap = invalid or m.extrasPrefs = invalid then return
+  m.activeSegment = playerSegment()
   show = skipRecapAllowed()
-  m.skipRecap.visible = show
   if show
-    if m.skipOffered <> true
-      m.skipOffered = true
+    segment = m.activeSegment
+    if not m.skipSeen.DoesExist(segment.key)
+      clock = CreateObject("roTimespan") : clock.Mark()
+      m.skipSeen[segment.key] = clock
+    end if
+    if aaGet(m.extrasPrefs, "skipSegments", "button") = "auto"
+      doSkipRecap()
+      return
+    end if
+    show = m.skipSeen[segment.key].TotalMilliseconds() < 8000
+    m.skipRecap.label = "Skip " + segment.kind
+    if show and m.activeSegmentKey <> segment.key
+      m.activeSegmentKey = segment.key
+      m.skipRecap.visible = true
       focusSkip()
       return
     end if
-  else if m.zone = "skip" or m.col = 4
-    m.col = 2
-    if m.chrome <> invalid and m.chrome.visible = true
-      focusChrome()
-    else
-      focusVideo()
-    end if
-    return
   end if
+  m.skipRecap.visible = show
+  if not show and m.zone = "skip" then focusVideo()
   paintFocus()
 end sub
 
 sub updateNextUp()
-  if m.nextUp = invalid then return
-  show = nextIsOffered()
-  m.nextUp.visible = show
-  if show
-    label = asText(m.top.nextTitle)
-    if label = "" then label = "Next"
-    m.nextUp.label = "Next"
-    if m.nextOffered <> true then m.nextOffered = true
-  else if nextFocused()
-    m.col = 2
-    if m.zone = "next" then focusChrome()
-  end if
+  if m.nextUp = invalid or m.extrasPrefs = invalid then return
+  showUpNextCard()
+  m.nextUp.visible = nextIsOffered() and extrasCreditsReached() and not m.upCancelled
+  m.nextUp.label = "Next"
   paintFocus()
 end sub
 
 sub doSkipRecap()
+  if m.activeSegment = invalid then return
+  m.skipConsumed[m.activeSegment.key] = true
   target = skipRecapTarget()
   if m.duration > 0 and target > m.duration then target = m.duration
   if target <= m.position then target = m.position + 1
@@ -422,7 +426,10 @@ sub saveProgress(force as Boolean)
   if id = invalid or id = "" then return
   if m.duration <= 0 then return
   m.lastSaved = m.position
-  emit("progress", { id: id, position: m.position, duration: m.duration })
+  watch = { id: id, position: m.position, duration: m.duration, watched: Int(m.watchSeconds), item: m.top.mediaItem }
+  m.watchSaveTask = playerExtrasTask("/api/extras/progress", "onSubtitleRemembered", "POST", FormatJson(watch))
+  emit("progress", watch)
+  m.watchSeconds = m.watchSeconds - Int(m.watchSeconds)
 end sub
 
 sub showChrome()
@@ -434,7 +441,7 @@ sub showChrome()
 end sub
 
 sub hideChrome()
-  if m.ccOpen = true then return
+  if m.ccOpen = true or m.upCard.visible then return
   if m.video.state = "paused" then return
   fadeChrome(0.0)
   if m.fadeOutTimer <> invalid
@@ -599,7 +606,8 @@ sub paintFocus()
   onProgress = progressFocused()
   onVideo = isVideoFocused()
   onCC = (m.zone = "cc")
-  onChrome = (onVideo = false and onSkip = false and onNext = false and onProgress = false and onCC = false)
+  onChrome = (m.zone = "chrome")
+  if m.upPlay <> invalid then paintUpNextFocus()
   if m.ccBtn <> invalid then m.ccBtn.hasFocusStyle = onCC
   if m.back <> invalid then m.back.hasFocusStyle = (onChrome and m.col = 0)
   if m.rewind <> invalid then m.rewind.hasFocusStyle = (onChrome and m.col = 1)
@@ -659,6 +667,7 @@ sub closePlayer()
   m.stallTimer.control = "stop"
   m.recoverTimer.control = "stop"
   teardownCC()
+  m.extrasTick.control = "stop"
   m.closing = true
   m.top.playState = "idle"
   m.bufferTimer.control = "stop"
@@ -671,6 +680,7 @@ end sub
 
 sub doNext()
   teardownCC()
+  m.extrasTick.control = "stop"
   m.closing = true
   m.top.playState = "idle"
   m.bufferTimer.control = "stop"
@@ -678,7 +688,7 @@ sub doNext()
   stopFocusWatch()
   saveProgress(true)
   m.video.control = "stop"
-  emit("next", { id: asText(m.top.nextMediaId), title: asText(m.top.nextTitle) })
+  emit("next", { id: asText(m.top.nextMediaId), title: asText(m.top.nextTitle), item: m.top.nextItem })
 end sub
 
 sub togglePlayback()
@@ -694,6 +704,9 @@ end sub
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
+  if not m.ccOpen and not m.qualityOpen
+    if handleUpNextKey(intent) then return true
+  end if
   if m.qualityOpen
     if intent = "back" then closeQuality() : return true
     return true
@@ -1000,6 +1013,7 @@ sub onCCAction()
     if id <> "" and m.video.hasField("audioTrack") then m.video.audioTrack = id
   else if kind = "subtitle"
     applySubtitle(asText(aaGet(action, "trackId", "")), aaGet(action, "off", false) = true)
+    rememberPlayerSubtitle(asText(aaGet(action, "trackId", "")), aaGet(action, "off", false) = true)
   else if kind = "openHub"
     leaveToHub()
   else if kind = "handoffApplied"
@@ -1015,6 +1029,7 @@ end sub
 ' Open TVM Hub: save progress, close the player, let the scene route.
 sub leaveToHub()
   teardownCC()
+  m.extrasTick.control = "stop"
   m.closing = true
   m.top.playState = "idle"
   m.bufferTimer.control = "stop"

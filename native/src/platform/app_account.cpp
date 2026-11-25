@@ -33,6 +33,8 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
     accountCheckedMs_ = NowMs();
     accountMessage_ = message;
     if (changed) {
+        ++extrasEpoch_; upcomingRail_ = {}; extrasHomeBusy_ = false; extrasHomeCheckedMs_ = -600000;
+        extrasStats_ = nlohmann::json::object(); extrasPrefs_ = {};
         StopPlayback();
         for (auto& job : downloads_) { job.cancel->store(true); if (job.state == "queued") job.state = "cancelled"; }
         shell_->PopToRoot(NowMs());
@@ -43,7 +45,7 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
         rdStatusChecking_ = false;
         rdOnboardingDismissed_ = false;
         rdOnboardingPrompted_ = false;
-        titles_.clear();
+        titles_.clear(); titlesInFlight_.clear(); shownTitle_.reset();
         fieldValues_.clear();
     }
     // Home is rebuilt only when the answer changed what it shows. The periodic check (every 30 s) used to rebuild it
@@ -71,12 +73,11 @@ ui::InfoView App::AccountView() const {
     view.backdropUrl = "asset:lighthouse.jpg";
     if (!account_.signedIn) {
         const std::string mode = accountAuthMode_.empty() ? "signin" : accountAuthMode_;
-        const std::string activeField = fieldMode_.empty() ? (mode == "dev" ? "devcode" : "email") : fieldMode_;
+        const std::string activeField = fieldMode_.empty() ? "email" : fieldMode_;
         view.kicker = "TVM";
         view.filters.push_back({
             Action("info:account-mode-signin", "Sign In", mode == "signin", accountBusy_),
             Action("info:account-mode-register", "Create Account", mode == "register", accountBusy_),
-            Action("info:account-mode-dev", "Developer Access", mode == "dev", accountBusy_),
         });
         view.message = accountBusy_ ? "Contacting TVM Core\xE2\x80\xA6" : accountMessage_;
         view.messageBad = !accountBusy_ && !accountMessage_.empty();
@@ -95,14 +96,6 @@ ui::InfoView App::AccountView() const {
                                                                 : "you@example.com";
             view.fieldSecret = activeField == "password";
             view.actions = {{Action("info:account-register", "Create Account", true, accountBusy_)}};
-        } else if (mode == "dev") {
-            view.heading = "Developer access";
-            view.lede = "Enter your developer code to access diagnostics, mail settings, and account tools.";
-            view.filters.push_back({Action("info:field-devcode", "Developer code", true)});
-            view.fieldLabel = "Developer code";
-            view.fieldPlaceholder = "Enter developer code";
-            view.fieldSecret = true;
-            view.actions = {{Action("info:account-dev", "Sign in as Developer", true, accountBusy_)}};
         } else {
             view.heading = "Sign in to TVM";
             view.lede = "Welcome back. Enter your email and password to pick up where you left off.";
@@ -144,7 +137,7 @@ ui::InfoView App::AccountView() const {
                                 Action("info:account-send", "Send a new code", false, accountBusy_ || !account_.canSendEmail)});
     }
     if (account_.usable) view.actions.push_back({Action("open:realdebrid", "Media account"), Action("open:profiles", "Profiles")});
-    if (account_.developer) view.actions.push_back({Action("open:developer", "Developer tools")});
+    if (account_.developer) view.actions.push_back({Action("open:accounts", "Accounts")});
     view.topActions = {Action("info:account-refresh", "Refresh", false, accountBusy_),
                        Action("open:legal", "Privacy & terms"), Action("back", "Back")};
     return view;
@@ -152,11 +145,9 @@ ui::InfoView App::AccountView() const {
 
 void App::AccountAction(const std::string& verb) {
     if (verb == "refresh") { RefreshAccount(); ShowInfoPage(); return; }
-    if (verb == "mode-signin" || verb == "mode-register" || verb == "mode-dev") {
+    if (verb == "mode-signin" || verb == "mode-register") {
         accountAuthMode_ = verb.substr(5);
-        if (accountAuthMode_ == "dev") {
-            fieldMode_ = "devcode";
-        } else if (accountAuthMode_ == "register") {
+        if (accountAuthMode_ == "register") {
             if (fieldMode_ != "email" && fieldMode_ != "password") fieldMode_ = "name";
         } else {
             if (fieldMode_ != "password") fieldMode_ = "email";
@@ -165,12 +156,13 @@ void App::AccountAction(const std::string& verb) {
         if (auto* screen = TypingPage()) screen->SetFieldText(fieldValues_["account." + fieldMode_]);
         return;
     }
+    if (verb != "signin" && verb != "register" && verb != "signout" && verb != "terms" && verb != "send" && verb != "verify") return;
     if (accountBusy_) return;
     const auto email = fieldValues_["account.email"];
     const auto password = fieldValues_["account.password"];
     const auto name = fieldValues_["account.name"];
     const auto code = fieldValues_["account." + fieldMode_];
-    fieldValues_.erase("account.password"); fieldValues_.erase("account.devcode");
+    fieldValues_.erase("account.password");
     if (auto* screen = TypingPage()) screen->ClearField();
     accountBusy_ = true;
     ShowInfoPage();
@@ -180,7 +172,6 @@ void App::AccountAction(const std::string& verb) {
         try {
             EnsureCore(*core_);
             if (verb == "signin") next = core_->SignIn(email, password);
-            else if (verb == "dev") next = core_->SignInDev(code);
             else {
                 if (verb == "register") { core_->Register(email, password, name); message = "Account created. Sign in to continue."; }
                 else if (verb == "signout") core_->SignOut();
@@ -221,6 +212,8 @@ playback::Resolution App::CorePlayback(const std::string& id, const std::string&
         const auto body = core_->Call("/api/playback", "POST", {{"id", id}, {"title", title}, {"native", true},
             {"screenHeight", maxHeight > 0 ? maxHeight : 1080}, {"maxHeight", std::min(cap, maxHeight > 0 ? maxHeight : 1080)}});
         result.url = body.value("url", std::string());
+        if (body.contains("subtitles") && body["subtitles"].is_array()) result.subtitles = body["subtitles"];
+        if (body.contains("segments") && body["segments"].is_object()) result.segments = body["segments"];
         // The core sends a clean "title" beside the raw, URL-encoded "filename"; a file name is only a last resort,
         // made readable first.
         const std::string clean = util::Trim(body.value("title", std::string()));

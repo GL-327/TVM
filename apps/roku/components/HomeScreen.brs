@@ -600,12 +600,6 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
       emit("changelog", invalid)
       return true
     end if
-    if m.ownerTaps = invalid then m.ownerTaps = 0
-    m.ownerTaps = m.ownerTaps + 1
-    if m.ownerTaps >= 7
-      m.ownerTaps = 0
-      emit("ownerDoor", invalid)
-    end if
     return true
   end if
   if isDirectional(intent)

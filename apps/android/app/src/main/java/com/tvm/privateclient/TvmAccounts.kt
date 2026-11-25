@@ -1,83 +1,122 @@
 package com.tvm.privateclient
 
-import java.security.MessageDigest
-import java.security.SecureRandom
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
-import java.util.TimeZone
-import java.util.UUID
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.PBEKeySpec
-import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Accounts on the phone. The Android build runs its own core, so the sign-in
- * screen is answered here, with the same rules as apps/core/src/providers/
- * accounts.ts: a new account can do nothing until the dev switches it on, a
- * wrong password and a missing account get the same answer, and passwords are
- * only ever stored as salted digests (PBKDF2, because scrypt is not in the
- * Android platform libraries).
- *
- * The dev account is built in. Its password is the developer code.
- *
- * Phones do not send email, so nobody here is asked for a code; the dev can
- * mark an address verified by hand instead.
+ * Where the private accounts service lives. The service holds accounts, sign-ins
+ * and Real-Debrid keys; this public app holds none of them. Must match
+ * ACCOUNTS_URL in apps/core/src/config.ts.
  */
-object TvmPassword {
-    private const val ITERATIONS = 210_000
-    private val random = SecureRandom()
+const val TVM_ACCOUNTS_URL = "https://tvm-accounts.tvm-accounts.workers.dev"
 
-    fun newSalt(): String {
-        val bytes = ByteArray(16)
-        random.nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
+/** One JSON request to the accounts service. An interface so tests need no network. */
+fun interface TvmAccountsHttp {
+    /** Returns the status and body text. Throws IOException when the service cannot be reached at all. */
+    fun send(method: String, url: String, bearer: String?, body: String?, timeoutMs: Int): Pair<Int, String>
+
+    companion object {
+        private const val MAX_BODY = 64 * 1024
+
+        val Default = TvmAccountsHttp { method, url, bearer, body, timeoutMs ->
+            val target = URL(url)
+            if (target.protocol != "https") throw IOException("accounts need https")
+            val connection = target.openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = method
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = timeoutMs
+                connection.readTimeout = timeoutMs
+                connection.useCaches = false
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("Accept-Encoding", "identity")
+                connection.setRequestProperty("User-Agent", "TVM/1.1 (Android; +https://github.com/GL-327/TVM)")
+                if (bearer != null) connection.setRequestProperty("Authorization", "Bearer $bearer")
+                if (body != null) {
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json")
+                    connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                }
+                val status = connection.responseCode
+                val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+                val text = stream?.use { String(TvmHttp.readLimited(it, MAX_BODY), Charsets.UTF_8) } ?: ""
+                status to text
+            } finally {
+                connection.disconnect()
+            }
+        }
     }
-
-    fun hash(password: String, salt: String): String? = try {
-        val spec = PBEKeySpec(password.toCharArray(), salt.hexToBytes(), ITERATIONS, 256)
-        val derived = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
-        spec.clearPassword()
-        derived.joinToString("") { "%02x".format(it) }
-    } catch (error: Exception) {
-        null
-    }
-
-    /** No early exit: how long a check takes must not say how much was right. */
-    fun matches(password: String, expected: String, salt: String): Boolean {
-        val actual = hash(password, salt) ?: return false
-        if (actual.length != expected.length) return false
-        var difference = 0
-        for (index in actual.indices) difference = difference or (actual[index].code xor expected[index].code)
-        return difference == 0
-    }
-
-    private fun String.hexToBytes(): ByteArray =
-        ByteArray(length / 2) { substring(it * 2, it * 2 + 2).toInt(16).toByte() }
 }
 
 /**
- * `readAccess` hands back the bundled Access.json. Passed in as a lambda the
- * way the catalogue already is, so this class needs no Android framework type and
- * stays testable off-device.
+ * Where the one session token is kept. On the phone this is
+ * EncryptedSharedPreferences (see EncryptedSessionVault in CredentialStore.kt);
+ * tests use the in-memory copy.
  */
-class TvmAccounts(private val store: TvmStore, private val readAccess: () -> String?) {
-    private val file = "accounts.json"
-    private val sessionMillis = 30L * 86_400_000L
-    private val random = SecureRandom()
+interface TvmSessionVault {
+    fun read(): String?
+    fun write(token: String?)
+}
 
+class MemorySessionVault : TvmSessionVault {
+    @Volatile
+    private var token: String? = null
+    override fun read(): String? = token
+    override fun write(token: String?) {
+        this.token = token
+    }
+}
+
+/** What the service said, in words the sign-in screen can show. */
+class AccountsException(val status: Int, message: String) : Exception(message)
+
+/** The answer to "who is this session": the account, signed out, or the service could not be asked. */
+sealed class AccountLookup {
+    class Found(val account: JSONObject) : AccountLookup()
+    object SignedOut : AccountLookup()
+    object Unavailable : AccountLookup()
+}
+
+/**
+ * Accounts on the phone. The accounts live in TVM's private service
+ * (TVM_ACCOUNTS_URL); this class only talks to it. The phone keeps the session
+ * token, in secure storage, and nothing else: no password, no ledger, no
+ * Real-Debrid key on disk. A member's Real-Debrid key is fetched from the
+ * service when it is needed and held in memory for a few minutes.
+ *
+ * The local /api/account routes keep the shape the interface already uses, so
+ * the service's role 'admin' is answered as the old 'dev' role.
+ *
+ * Existing on-phone accounts could not be moved (their passwords were stored as
+ * digests the service cannot read), so people register again and the owner
+ * switches them on. Admin work happens on the web dashboard, not here.
+ */
+class TvmAccounts(
+    private val readAccess: () -> String?,
+    private val http: TvmAccountsHttp = TvmAccountsHttp.Default,
+    private val vault: TvmSessionVault = MemorySessionVault(),
+    private val origin: String = TVM_ACCOUNTS_URL,
+    private val now: () -> Long = System::currentTimeMillis,
+) {
     companion object {
-        const val DEV_ACCOUNT_ID = "acc_dev"
-        /** Not an address, so nobody can register it or sign in to it with a password. */
-        private const val DEV_EMAIL = "dev"
+        private const val TIMEOUT_MS = 15_000
+        /** How long an answer about an account is trusted before the service is asked again. */
+        const val ACCOUNT_TTL_MS = 30_000L
+        /** How long a fetched Real-Debrid key stays in memory. */
+        const val RD_TTL_MS = 10 * 60_000L
+        /** A failed key fetch is not repeated on every request. */
+        private const val RD_FAILURE_TTL_MS = 30_000L
     }
 
-    private fun isDev(account: JSONObject): Boolean = account.text("role") == "dev"
+    private class CachedAccount(val account: JSONObject, val at: Long)
+    private class CachedKey(val token: String?, val expires: Long)
 
-    /** Members only: the dev account is not managed from the Accounts screen. */
-    private fun member(accounts: List<JSONObject>, id: String): JSONObject? =
-        accounts.firstOrNull { it.text("id") == id && !isDev(it) }
+    private val lock = Any()
+    private val accountCache = HashMap<String, CachedAccount>()
+    private val rdCache = HashMap<String, CachedKey>()
 
     // ---- Access resource (generated by scripts/export-access.mjs) ----------
 
@@ -93,50 +132,51 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
 
     fun termsVersion(): String = access().text("termsVersion", "")
 
-    // ---- Storage ----------------------------------------------------------
+    // ---- The service ---------------------------------------------------------
 
-    private fun load(): Pair<MutableList<JSONObject>, JSONObject> {
-        val root = store.readJSON(file) as? JSONObject ?: JSONObject()
-        val rows = root.optJSONArray("accounts") ?: JSONArray()
-        val accounts = MutableList(rows.length()) { rows.getJSONObject(it) }
-        val sessions = root.optJSONObject("sessions") ?: JSONObject()
-        // Expired sessions are dropped whenever the ledger is touched.
-        val now = System.currentTimeMillis()
-        val live = JSONObject()
-        for (key in sessions.keys()) {
-            val session = sessions.optJSONObject(key) ?: continue
-            if (parseIso(session.text("expiresAt")) > now) live.put(key, session)
+    private fun call(method: String, path: String, bearer: String?, body: JSONObject?): Pair<Int, JSONObject> {
+        val reply = try {
+            http.send(method, origin + path, bearer, body?.toString(), TIMEOUT_MS)
+        } catch (error: Exception) {
+            throw AccountsException(503, "TVM accounts cannot be reached. Check your connection and try again.")
         }
-        return accounts to live
+        val parsed = runCatching { JSONObject(reply.second) }.getOrNull() ?: JSONObject()
+        return reply.first to parsed
     }
 
-    private fun save(accounts: List<JSONObject>, sessions: JSONObject) {
-        store.writeJSON(file, JSONObject().apply {
-            put("version", 1)
-            put("accounts", JSONArray(accounts))
-            put("sessions", sessions)
-        })
+    private fun failure(status: Int, fallback: String): AccountsException = when {
+        status == 429 -> AccountsException(429, "Too many tries. Wait a few minutes and try again.")
+        status >= 500 -> AccountsException(503, "TVM accounts are not answering right now. Try again in a moment.")
+        else -> AccountsException(status, fallback)
     }
 
-    private fun iso(at: Date = Date()): String {
-        val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-        format.timeZone = TimeZone.getTimeZone("UTC")
-        return format.format(at)
+    /** The service's account, in the shape the rest of the phone's core reads. */
+    private fun local(service: JSONObject): JSONObject {
+        val status = service.text("status")
+        val version = service.opt("termsVersion").let { if (it is String && it.isNotEmpty()) it else null }
+        return JSONObject().apply {
+            put("id", service.text("id"))
+            put("email", service.text("email"))
+            put("displayName", service.text("displayName"))
+            put("role", if (service.text("role") == "admin") "dev" else "member")
+            put("activated", status == "active")
+            put("suspended", status == "suspended")
+            put("tier", when {
+                status == "waiting" -> JSONObject.NULL
+                service.optBoolean("liveTv") -> "stream-live"
+                else -> "stream"
+            })
+            put("createdAt", service.text("createdAt"))
+            put("termsVersion", version ?: JSONObject.NULL)
+            put("termsAcceptedAt", if (version != null) service.text("createdAt") else JSONObject.NULL)
+            put("emailVerified", service.optBoolean("emailVerified"))
+            put("hasRdToken", service.optBoolean("hasRdToken"))
+        }
     }
 
-    private fun parseIso(value: String): Long = runCatching {
-        val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-        format.timeZone = TimeZone.getTimeZone("UTC")
-        format.parse(value)?.time ?: 0L
-    }.getOrDefault(0L)
-
-    private fun digest(token: String): String =
-        MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
-
-    private fun newToken(): String {
-        val bytes = ByteArray(32)
-        random.nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
+    private fun clientName(raw: String?): String? {
+        val cleaned = raw?.filter { !it.isISOControl() }?.trim()?.take(200)
+        return if (cleaned.isNullOrEmpty()) null else cleaned
     }
 
     private fun normalize(email: String) = email.trim().lowercase(Locale.US)
@@ -152,11 +192,11 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
 
     // ---- Rules ------------------------------------------------------------
 
-    /** Same as the desktop core: switched on, a tier, current terms, not suspended. The dev account always passes. */
+    /** Switched on, a tier, current terms, not suspended. An owner (admin) account always passes, like the desktop. */
     fun usable(account: JSONObject?): JSONObject {
         val out = JSONObject()
         if (account == null) return out.put("ok", false).put("reason", "no_account")
-        if (isDev(account)) return out.put("ok", true).put("reason", JSONObject.NULL)
+        if (account.text("role") == "dev") return out.put("ok", true).put("reason", JSONObject.NULL)
         if (account.optBoolean("suspended")) return out.put("ok", false).put("reason", "suspended")
         if (!account.optBoolean("activated") || account.text("tier").isEmpty()) {
             return out.put("ok", false).put("reason", "awaiting_activation")
@@ -167,59 +207,22 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         return out.put("ok", true).put("reason", JSONObject.NULL)
     }
 
-    /** Never includes the digest, the salt or a Real-Debrid key. */
-    fun publicOf(account: JSONObject): JSONObject = publicJson(account)
-
-    private fun publicJson(account: JSONObject): JSONObject = JSONObject().apply {
+    /** Never includes a password or a Real-Debrid key. */
+    fun publicOf(account: JSONObject): JSONObject = JSONObject().apply {
         put("id", account.text("id"))
         put("email", account.text("email"))
         put("displayName", account.text("displayName"))
-        put("role", if (isDev(account)) "dev" else "member")
+        put("role", account.text("role").ifEmpty { "member" })
         put("activated", account.optBoolean("activated"))
         put("tier", account.opt("tier") ?: JSONObject.NULL)
         put("suspended", account.optBoolean("suspended"))
         put("createdAt", account.text("createdAt"))
         put("termsVersion", account.opt("termsVersion") ?: JSONObject.NULL)
         put("termsAcceptedAt", account.opt("termsAcceptedAt") ?: JSONObject.NULL)
-        put("emailVerified", account.text("emailVerifiedAt").isNotEmpty())
+        put("emailVerified", account.optBoolean("emailVerified"))
         // Phones never send a code.
         put("emailCodeSent", false)
-        put("rdKey", account.text("rdToken").isNotEmpty())
-    }
-
-    private fun adminJson(account: JSONObject, activeSessions: Int): JSONObject =
-        publicJson(account).apply {
-            put("activatedAt", account.opt("activatedAt") ?: JSONObject.NULL)
-            put("lastSeenAt", account.opt("lastSeenAt") ?: JSONObject.NULL)
-            put("signIns", account.optInt("signIns"))
-            put("lastClient", account.opt("lastClient") ?: JSONObject.NULL)
-            put("note", account.opt("note") ?: JSONObject.NULL)
-            put("activeSessions", activeSessions)
-            put("emailVerifiedAt", account.text("emailVerifiedAt").ifEmpty { null } ?: JSONObject.NULL)
-            val key = account.text("rdToken")
-            put("rdKeyHint", when {
-                key.isEmpty() -> JSONObject.NULL
-                key.length <= 4 -> "••••"
-                else -> "••••" + key.takeLast(4)
-            })
-        }
-
-    private fun sessionCount(sessions: JSONObject, id: String): Int =
-        sessions.keys().asSequence().count { sessions.optJSONObject(it)?.text("accountId") == id }
-
-    private fun openSession(account: JSONObject, sessions: JSONObject, client: String?): String {
-        val token = newToken()
-        val now = Date()
-        account.put("lastSeenAt", iso(now))
-        account.put("signIns", account.optInt("signIns") + 1)
-        if (client != null) account.put("lastClient", client.take(200))
-        sessions.put(digest(token), JSONObject().apply {
-            put("accountId", account.text("id"))
-            put("issuedAt", iso(now))
-            put("expiresAt", iso(Date(now.time + sessionMillis)))
-            put("client", client ?: JSONObject.NULL)
-        })
-        return token
+        put("rdKey", account.optBoolean("hasRdToken"))
     }
 
     // ---- Actions ----------------------------------------------------------
@@ -229,257 +232,169 @@ class TvmAccounts(private val store: TvmStore, private val readAccess: () -> Str
         if (!emailLooksValid(email)) return Result.failure(Exception("Enter a valid email address."))
         if (password.length < 10) return Result.failure(Exception("Use at least 10 characters."))
         if (password.length > 200) return Result.failure(Exception("That password is too long."))
-
-        val (accounts, sessions) = load()
-        // Same answer whether or not the address exists, so signup cannot be
-        // used to find out who has an account.
-        if (accounts.any { it.text("email") == email && !isDev(it) }) {
-            return Result.failure(Exception("That account could not be created. If it already exists, sign in instead."))
+        return runCatching {
+            val body = JSONObject().put("email", email).put("password", password)
+            val name = displayName?.trim()?.filter { !it.isISOControl() }?.take(80)
+            if (!name.isNullOrEmpty()) body.put("displayName", name)
+            clientName(client)?.let { body.put("client", it) }
+            val (status, reply) = call("POST", "/v1/register", null, body)
+            if (status != 201 && status != 200) {
+                throw failure(status, "That account could not be created. If it already exists, sign in instead.")
+            }
+            val account = reply.optJSONObject("account")
+                ?: throw AccountsException(503, "TVM accounts sent an answer this app does not understand.")
+            publicOf(local(account))
         }
-
-        val salt = TvmPassword.newSalt()
-        val hash = TvmPassword.hash(password, salt)
-            ?: return Result.failure(Exception("That account could not be created."))
-        val account = JSONObject().apply {
-            put("id", "acc_" + UUID.randomUUID().toString().replace("-", ""))
-            put("email", email)
-            put("displayName", (displayName?.trim()?.ifEmpty { null } ?: email.substringBefore('@')).take(80))
-            put("passwordHash", hash)
-            put("passwordSalt", salt)
-            put("createdAt", iso())
-            put("role", "member")
-            put("activated", false)
-            put("activatedAt", JSONObject.NULL)
-            put("tier", JSONObject.NULL)
-            put("note", JSONObject.NULL)
-            put("suspended", false)
-            put("termsVersion", JSONObject.NULL)
-            put("termsAcceptedAt", JSONObject.NULL)
-            put("emailVerifiedAt", JSONObject.NULL)
-            put("rdToken", JSONObject.NULL)
-            put("lastSeenAt", JSONObject.NULL)
-            put("signIns", 0)
-            put("lastClient", client?.take(200) ?: JSONObject.NULL)
-        }
-        accounts.add(account)
-        save(accounts, sessions)
-        return Result.success(publicJson(account))
     }
 
     fun signIn(rawEmail: String, password: String, client: String?): Result<JSONObject> {
         val email = normalize(rawEmail)
-        val (accounts, sessions) = load()
-        val index = accounts.indexOfFirst { it.text("email") == email && !isDev(it) }
-        if (index < 0) {
-            // Hash anyway, so a missing account and a wrong password take the
-            // same time.
-            TvmPassword.hash(password, TvmPassword.newSalt())
+        if (email.isEmpty() || password.isEmpty() || password.length > 200) {
             return Result.failure(Exception("That email address and password do not match."))
         }
-        val account = accounts[index]
-        val ok = TvmPassword.matches(password, account.text("passwordHash"), account.text("passwordSalt"))
-        if (!ok) return Result.failure(Exception("That email address and password do not match."))
-
-        val token = openSession(account, sessions, client)
-        save(accounts, sessions)
-        return Result.success(JSONObject().apply {
-            put("token", token)
-            put("account", publicJson(account))
-            put("usable", usable(account))
-        })
-    }
-
-    /** Signs in to the dev account, creating it the first time. The caller checks the developer code first. */
-    fun signInDev(client: String?): JSONObject {
-        val (accounts, sessions) = load()
-        var account = accounts.firstOrNull { it.text("id") == DEV_ACCOUNT_ID }
-        if (account == null) {
-            account = JSONObject().apply {
-                put("id", DEV_ACCOUNT_ID)
-                put("email", DEV_EMAIL)
-                put("displayName", "Dev")
-                put("passwordHash", "")
-                put("passwordSalt", "")
-                put("createdAt", iso())
-                put("activatedAt", iso())
-                put("note", JSONObject.NULL)
-                put("termsVersion", JSONObject.NULL)
-                put("termsAcceptedAt", JSONObject.NULL)
-                put("emailVerifiedAt", JSONObject.NULL)
-                put("rdToken", JSONObject.NULL)
-                put("lastSeenAt", JSONObject.NULL)
-                put("signIns", 0)
-                put("lastClient", JSONObject.NULL)
+        return runCatching {
+            val body = JSONObject().put("email", email).put("password", password)
+            clientName(client)?.let { body.put("client", it) }
+            val (status, reply) = call("POST", "/v1/signin", null, body)
+            if (status == 401 || status == 400) throw AccountsException(401, "That email address and password do not match.")
+            if (status != 200) throw failure(status, "Sign in failed.")
+            val session = reply.text("session")
+            val account = reply.optJSONObject("account")
+            if (session.isEmpty() || account == null) {
+                throw AccountsException(503, "TVM accounts sent an answer this app does not understand.")
             }
-            accounts.add(account)
-        }
-        account.put("role", "dev")
-        account.put("activated", true)
-        account.put("tier", "stream-live")
-        account.put("suspended", false)
-        val token = openSession(account, sessions, client)
-        save(accounts, sessions)
-        return JSONObject().apply {
-            put("token", token)
-            put("account", publicJson(account))
-            put("usable", usable(account))
+            // The phone remembers the latest session; other sessions (a paired Roku, say) are left alone.
+            runCatching { vault.write(session) }
+            val mapped = local(account)
+            synchronized(lock) { accountCache[session] = CachedAccount(mapped, now()) }
+            JSONObject().apply {
+                put("token", session)
+                put("account", publicOf(mapped))
+                put("usable", usable(mapped))
+            }
         }
     }
 
-    /** Whether the dev account has a session open on this phone. */
-    fun devSignedIn(): Boolean {
-        val (_, sessions) = load()
-        return sessionCount(sessions, DEV_ACCOUNT_ID) > 0
+    /** Best effort: the service forgets the session, and so does this phone, whatever the service says. */
+    private fun revoke(token: String) {
+        runCatching { call("POST", "/v1/signout", token, null) }
+        forget(token)
     }
-
-    /** The account's own Real-Debrid key for this session, if it has one. */
-    fun rdTokenFor(token: String?): String? = resolve(token)?.text("rdToken")?.ifEmpty { null }
 
     fun signOut(token: String) {
-        val (accounts, sessions) = load()
-        sessions.remove(digest(token))
-        save(accounts, sessions)
+        revoke(token)
+        if (vault.read() == token) runCatching { vault.write(null) }
     }
 
-    fun resolve(token: String?): JSONObject? {
+    /** Factory reset: close the session the phone holds and drop everything in memory. */
+    fun forgetEverything() {
+        vault.read()?.let { revoke(it) }
+        runCatching { vault.write(null) }
+        synchronized(lock) {
+            accountCache.clear()
+            rdCache.clear()
+        }
+    }
+
+    private fun forget(token: String) {
+        synchronized(lock) {
+            accountCache.remove(token)
+            rdCache.remove(token)
+        }
+    }
+
+    /** Who this session belongs to, asking the service at most every ACCOUNT_TTL_MS. */
+    fun lookup(token: String?): AccountLookup {
+        if (token.isNullOrEmpty()) return AccountLookup.SignedOut
+        val cached = synchronized(lock) { accountCache[token] }
+        if (cached != null && now() - cached.at < ACCOUNT_TTL_MS) return AccountLookup.Found(cached.account)
+        val reply = try {
+            call("GET", "/v1/me", token, null)
+        } catch (error: AccountsException) {
+            // The service cannot be reached: an account seen a moment ago stays signed in.
+            return if (cached != null) AccountLookup.Found(cached.account) else AccountLookup.Unavailable
+        }
+        val (status, body) = reply
+        if (status == 401 || status == 403) {
+            forget(token)
+            if (vault.read() == token) runCatching { vault.write(null) }
+            return AccountLookup.SignedOut
+        }
+        val account = body.optJSONObject("account")
+        if (status != 200 || account == null) {
+            return if (cached != null) AccountLookup.Found(cached.account) else AccountLookup.Unavailable
+        }
+        val mapped = local(account)
+        if (mapped.optBoolean("suspended")) {
+            forget(token)
+            return AccountLookup.SignedOut
+        }
+        synchronized(lock) {
+            accountCache[token] = CachedAccount(mapped, now())
+            // A change on the service (switched off, key removed) must not leave an old key in memory.
+            if (!mapped.optBoolean("activated") || !mapped.optBoolean("hasRdToken")) rdCache.remove(token)
+        }
+        return AccountLookup.Found(mapped)
+    }
+
+    fun resolve(token: String?): JSONObject? = (lookup(token) as? AccountLookup.Found)?.account
+
+    /** The account's own Real-Debrid key for this session, if it has one. Fetched on demand, held in memory only. */
+    fun rdTokenFor(token: String?): String? {
         if (token.isNullOrEmpty()) return null
-        val (accounts, sessions) = load()
-        val session = sessions.optJSONObject(digest(token)) ?: return null
-        val id = session.text("accountId")
-        return accounts.firstOrNull { it.text("id") == id }
-    }
-
-    fun acceptTerms(id: String): JSONObject? {
-        val (accounts, sessions) = load()
-        val account = accounts.firstOrNull { it.text("id") == id } ?: return null
-        account.put("termsVersion", termsVersion())
-        account.put("termsAcceptedAt", iso())
-        save(accounts, sessions)
-        return publicJson(account)
-    }
-
-    // ---- Dev only ---------------------------------------------------------
-
-    fun list(search: String?, state: String?): JSONObject {
-        val (all, sessions) = load()
-        val accounts = all.filterNot { isDev(it) }
-        val counts = mutableMapOf<String, Int>()
-        for (key in sessions.keys()) {
-            val id = sessions.optJSONObject(key)?.text("accountId") ?: continue
-            counts[id] = (counts[id] ?: 0) + 1
-        }
-        val needle = (search ?: "").trim().lowercase(Locale.US)
-        val filtered = accounts.filter { account ->
-            if (needle.isNotEmpty()
-                && !account.text("email").contains(needle)
-                && !account.text("displayName").lowercase(Locale.US).contains(needle)
-            ) return@filter false
-            when (state) {
-                "waiting" -> !account.optBoolean("activated") && !account.optBoolean("suspended")
-                "active" -> account.optBoolean("activated") && !account.optBoolean("suspended")
-                "suspended" -> account.optBoolean("suspended")
-                else -> true
+        val account = resolve(token) ?: return null
+        if (!account.optBoolean("activated") || !account.optBoolean("hasRdToken")) return null
+        val cached = synchronized(lock) { rdCache[token] }
+        if (cached != null && cached.expires > now()) return cached.token
+        return try {
+            val (status, body) = call("GET", "/v1/me/rd-token", token, null)
+            if (status == 200) {
+                val key = body.text("token").ifEmpty { null }
+                synchronized(lock) { rdCache[token] = CachedKey(key, now() + RD_TTL_MS) }
+                key
+            } else {
+                synchronized(lock) { rdCache[token] = CachedKey(null, now() + RD_FAILURE_TTL_MS) }
+                null
             }
-        }.sortedByDescending { it.text("createdAt") }
-
-        val tiers = JSONArray()
-        val source = access().optJSONArray("tiers") ?: JSONArray()
-        for (i in 0 until source.length()) {
-            val tier = source.optJSONObject(i) ?: continue
-            tiers.put(JSONObject().put("id", tier.text("id")).put("name", tier.text("name")))
-        }
-
-        return JSONObject().apply {
-            put("accounts", JSONArray(filtered.map { adminJson(it, counts[it.text("id")] ?: 0) }))
-            put("summary", JSONObject().apply {
-                put("total", accounts.size)
-                put("waiting", accounts.count { !it.optBoolean("activated") && !it.optBoolean("suspended") })
-                put("active", accounts.count { it.optBoolean("activated") && !it.optBoolean("suspended") })
-                put("suspended", accounts.count { it.optBoolean("suspended") })
-            })
-            put("tiers", tiers)
+        } catch (error: AccountsException) {
+            synchronized(lock) { rdCache[token] = CachedKey(null, now() + RD_FAILURE_TTL_MS) }
+            null
         }
     }
 
-    fun activate(id: String, tier: String, note: String?): JSONObject? {
-        if (tier != "stream" && tier != "stream-live") return null
-        val (accounts, sessions) = load()
-        val account = member(accounts, id) ?: return null
-        account.put("activated", true)
-        if (account.text("activatedAt").isEmpty()) account.put("activatedAt", iso())
-        account.put("tier", tier)
-        account.put("suspended", false)
-        if (note != null) account.put("note", note.take(500))
-        save(accounts, sessions)
-        return adminJson(account, 0)
-    }
-
-    fun setSuspended(id: String, suspended: Boolean): JSONObject? {
-        val (accounts, sessions) = load()
-        val account = member(accounts, id) ?: return null
-        account.put("suspended", suspended)
-        if (suspended) {
-            account.put("activated", false)
-            // Revoking must not wait for a token to lapse.
-            for (key in sessions.keys().asSequence().toList()) {
-                if (sessions.optJSONObject(key)?.text("accountId") == id) sessions.remove(key)
-            }
+    fun acceptTerms(token: String): Result<JSONObject> = runCatching {
+        val (status, body) = call("POST", "/v1/me/terms", token, JSONObject().put("version", termsVersion()))
+        if (status == 401) {
+            forget(token)
+            throw AccountsException(401, "Sign in first.")
         }
-        save(accounts, sessions)
-        return adminJson(account, 0)
+        if (status != 200) throw failure(status, "The terms could not be saved. Try again.")
+        val account = body.optJSONObject("account")
+            ?: throw AccountsException(503, "TVM accounts sent an answer this app does not understand.")
+        val mapped = local(account)
+        synchronized(lock) { accountCache[token] = CachedAccount(mapped, now()) }
+        publicOf(mapped)
     }
 
-    fun setNote(id: String, note: String?): JSONObject? {
-        val (accounts, sessions) = load()
-        val account = member(accounts, id) ?: return null
-        account.put("note", note?.take(500) ?: JSONObject.NULL)
-        save(accounts, sessions)
-        return adminJson(account, 0)
-    }
-
-    /** Turns Live TV on or off for an account that is already switched on. */
-    fun setLiveTv(id: String, enabled: Boolean): Result<JSONObject> {
-        val (accounts, sessions) = load()
-        val account = member(accounts, id) ?: return Result.failure(Exception("No such account."))
-        if (!account.optBoolean("activated") || account.text("tier").isEmpty()) {
-            return Result.failure(Exception("Switch the account on first."))
-        }
-        account.put("tier", if (enabled) "stream-live" else "stream")
-        save(accounts, sessions)
-        return Result.success(adminJson(account, sessionCount(sessions, id)))
-    }
-
-    /** Saves or clears this account's own Real-Debrid key. */
-    fun setRdToken(id: String, token: String): Result<JSONObject> {
-        val trimmed = token.trim()
+    /** Saves or clears this account's own Real-Debrid key on the service. */
+    fun setRdToken(token: String, key: String): Result<JSONObject> {
+        val trimmed = key.trim()
         if (trimmed.length > 200 || trimmed.any { it.isWhitespace() }) {
             return Result.failure(Exception("That does not look like a Real-Debrid key."))
         }
-        val (accounts, sessions) = load()
-        val account = member(accounts, id) ?: return Result.failure(Exception("No such account."))
-        account.put("rdToken", if (trimmed.isEmpty()) JSONObject.NULL else trimmed)
-        save(accounts, sessions)
-        return Result.success(adminJson(account, sessionCount(sessions, id)))
-    }
-
-    fun setEmailVerified(id: String, verified: Boolean): Result<JSONObject> {
-        val (accounts, sessions) = load()
-        val account = member(accounts, id) ?: return Result.failure(Exception("No such account."))
-        when {
-            !verified -> account.put("emailVerifiedAt", JSONObject.NULL)
-            account.text("emailVerifiedAt").isEmpty() -> account.put("emailVerifiedAt", iso())
+        return runCatching {
+            synchronized(lock) { rdCache.remove(token) }
+            val (status, body) = call("PUT", "/v1/me/rd-token", token, JSONObject().put("token", trimmed))
+            if (status == 401) {
+                forget(token)
+                throw AccountsException(401, "Sign in first.")
+            }
+            if (status != 200) throw failure(status, "That key could not be saved.")
+            val account = body.optJSONObject("account")
+                ?: throw AccountsException(503, "TVM accounts sent an answer this app does not understand.")
+            val mapped = local(account)
+            synchronized(lock) { accountCache[token] = CachedAccount(mapped, now()) }
+            publicOf(mapped)
         }
-        save(accounts, sessions)
-        return Result.success(adminJson(account, sessionCount(sessions, id)))
-    }
-
-    fun erase(id: String) {
-        if (id == DEV_ACCOUNT_ID) return
-        val (accounts, sessions) = load()
-        accounts.removeAll { it.text("id") == id }
-        for (key in sessions.keys().asSequence().toList()) {
-            if (sessions.optJSONObject(key)?.text("accountId") == id) sessions.remove(key)
-        }
-        save(accounts, sessions)
     }
 }

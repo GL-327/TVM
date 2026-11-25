@@ -1,5 +1,6 @@
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { hashToken, type AccountsService } from '../providers/accounts.ts';
+import { hashToken } from '../providers/accounts.ts';
+import type { CoreAccountsService } from '../providers/remoteAccounts.ts';
 import { recordActivity } from './activity.ts';
 import { actor, deviceParty, findDevice, install, publicDevice, rotateSecret, type Viewer } from './devices.ts';
 import { bad, HubError, notFound } from './errors.ts';
@@ -45,7 +46,7 @@ export function createPairLimiter(now: () => number = Date.now) {
     },
   };
 }
-export function createPairing(store: HubStore, accounts: AccountsService, now: () => number = Date.now) {
+export function createPairing(store: HubStore, accounts: CoreAccountsService, now: () => number = Date.now) {
   const limiter = createPairLimiter(now);
   function byUserCode(document: HubDocument, value: unknown, viewer: Viewer, session: string, ip: string): Pair {
     const key = hashToken(session);
@@ -96,6 +97,7 @@ export function createPairing(store: HubStore, accounts: AccountsService, now: (
           const b = bucket(document, viewer.accountId);
           const at = now();
           if (approve) {
+            if ('hasAdminKey' in accounts) throw new HubError(503, 'remote_pairing_unavailable', 'Sign in on the device. The accounts service does not support delegated sessions.');
             minted = accounts.openPairedSession(session, pair.input.name);
             const device = install(b, pair.input, viewer, at);
             pair.installationId = device.id; pair.accountToken = minted; pair.status = 'approved';
@@ -128,6 +130,7 @@ export function createPairing(store: HubStore, accounts: AccountsService, now: (
         if (pair.status === 'pending') bad('authorization_pending');
         if (accountId === null || pair.installationId === null || pair.accountToken === null) bad('expired_token');
         const accountToken = pair.accountToken;
+        if ('hasAdminKey' in accounts) throw new HubError(503, 'remote_pairing_unavailable');
         const account = accounts.resolve(accountToken);
         const b = bucket(document, accountId);
         const device = b.installations[pair.installationId];

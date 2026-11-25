@@ -233,10 +233,6 @@ async function stubReady(page: Page): Promise<void> {
   await page.route('**/api/billing/checkout', (route) =>
     route.fulfill({ json: { ...E2E_PLAN, id: 'free', name: 'TVM Free', price: 'Free', mocks: false } }),
   );
-  await page.route('**/api/dev/status', (route) => route.fulfill({ json: { unlocked: false } }));
-  await page.route('**/api/dev/unlock', (route) =>
-    route.fulfill({ status: 403, json: { unlocked: false, error: 'That code is not valid.' } }),
-  );
   await page.route('**/api/usage/tick', (route) => route.fulfill({ json: E2E_PLAN }));
   await page.route('**/api/ads/preroll', (route) => route.fulfill({ json: { url: '', mimeType: 'video/mp4', duration: 0 } }));
   await page.route('**/api/apps', (route) =>
@@ -666,18 +662,6 @@ test('Retired themes fall back to Dark; privacy and motion are reachable', async
   await expect(page.getByText(/This removes all TVM profiles/)).toBeVisible();
   await pressUntil(page, 'privacy-keep'); await page.keyboard.press('Enter');
   await expect(page.getByText(/This removes all TVM profiles/)).toHaveCount(0);
-});
-
-test('Developer rejects a wrong password', async ({ page }) => {
-  const mark = page.locator('[data-focus-id="hero-mark"]');
-  await expect(mark).toBeVisible();
-  for (let n = 0; n < 7; n++) await mark.click();
-  await expect(page.locator('[data-screen="developer-unlock"]')).toBeVisible();
-  await page.locator('[data-focus-id="dev-password"]').fill('nope');
-  await pressUntil(page, 'dev-unlock');
-  await page.keyboard.press('Enter');
-  await expect(page.getByText('That code is not valid.')).toBeVisible();
-  await expect(page.locator('[data-screen="developer"]')).toHaveCount(0);
 });
 
 test('MAX shows the mock live pack', async ({ page }) => {

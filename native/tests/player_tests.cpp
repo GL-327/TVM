@@ -203,7 +203,7 @@ TEST(dragging_the_timeline_previews_then_seeks_on_release) {
     REQUIRE(!player.Scrubbing());
 }
 
-TEST(next_up_shows_over_the_last_45_seconds_and_takes_the_focus) {
+TEST(next_up_displays_the_countdown_and_takes_the_focus) {
     REQUIRE_NEAR(tvm::ui::NextUpWindowSeconds(2400.0), 45.0, 1e-9);
     REQUIRE_NEAR(tvm::ui::NextUpWindowSeconds(100.0), 20.0, 1e-9);
     PlayerView view = Playing();
@@ -211,13 +211,13 @@ TEST(next_up_shows_over_the_last_45_seconds_and_takes_the_focus) {
     view.nextUp = true;
     view.nextShow = "Breaking Bad";
     view.nextEpisode = "S1 E2 \xC2\xB7 Cat's in the Bag...";
-    view.nextRemaining = 20.0;
+    view.nextRemaining = 10.0;
     player.SetView(view, 0.0);
     REQUIRE_EQ(player.FocusedKey(), std::optional<std::string>("next-play"));
     TextPainter painter;
     player.Paint(painter);
-    REQUIRE(painter.Has("UP NEXT \xC2\xB7 in 20s"));
-    REQUIRE(painter.Has("Play next"));
+    REQUIRE(painter.Has("UP NEXT \xC2\xB7 in 10s"));
+    REQUIRE(painter.Has("Play now"));
     REQUIRE_EQ(player.Select(0.0)->name, std::string("player-next"));
 }
 

@@ -19,6 +19,7 @@ import { KeyboardLayer } from './features/KeyboardLayer';
 import { applyIdleChromeHost, isInRecapWindow, useIdleChrome } from './features/useIdleChrome';
 import { FocusButton } from '../components/FocusButton';
 import { fullscreenAvailable, toggleFullscreen } from './features/KeyboardMap';
+import type { PlaybackSegments, PlaybackSubtitle } from '../data/media';
 import './features/player-chrome.css';
 import './features/perf.css';
 import './cinema-controls.css';
@@ -48,6 +49,8 @@ export interface PlayerSession {
   muted: boolean;
   controlsVisible: boolean;
   skipRecap: boolean;
+  segments?: PlaybackSegments | null;
+  subtitles?: readonly PlaybackSubtitle[];
   badges: readonly string[];
   overlay: PlayerOverlay;
   live: boolean;

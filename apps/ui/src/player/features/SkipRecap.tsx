@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { FocusButton } from '../../components/FocusButton';
+import type { ExtrasSegments } from '../../data/extras';
+import { PREFS_CHANGED_EVENT, readPrefs, type SkipSegmentsMode } from '../../data/prefs';
 import { requestFocus } from '../../nav/focusEngine';
 import { useScopedFocusKey } from '../../nav/ViewStackContext';
 import { usePlayerSession, type PlayerSession } from '../PlayerRoot';
@@ -12,6 +13,8 @@ export const SKIP_RECAP_SLOT = '[data-slot="skip-recap"]';
 
 /** Recap window used by the existing Player chrome when no richer marker is attached. */
 export const DEFAULT_RECAP_END_SECONDS = 90;
+/** Skip pill auto-hides after 8 s into the segment (or when the segment ends). */
+export const SKIP_PILL_VISIBLE_MS = 8_000;
 
 export interface RecapMetadata {
   start: number;
@@ -28,12 +31,22 @@ export type RecapLike =
   | null
   | undefined;
 
+export type ActiveSegmentKind = 'recap' | 'intro' | 'credits';
+
+export interface ActiveSegment {
+  kind: ActiveSegmentKind;
+  start: number;
+  end: number | null;
+  label: string;
+}
+
 export type SkipRecapProps = Partial<PlayerSession> & {
   recap?: RecapLike;
   recapEnd?: number;
   recapStart?: number;
   markers?: unknown;
   chapters?: unknown;
+  skipMode?: SkipSegmentsMode;
 };
 
 const RECAP_KEYS = ['recap', 'skipRecap', 'skip_recap', 'recapMarker', 'intro'] as const;
@@ -178,8 +191,48 @@ export function isRecapWindow(position: number, recap: RecapMetadata): boolean {
   return position >= recap.start - 0.15 && position < recap.end - 0.35;
 }
 
+export function isSegmentActive(position: number, start: number, end: number | null, duration = 0): boolean {
+  if (!Number.isFinite(position) || !Number.isFinite(start) || start < 0) return false;
+  if (position < start - 0.15) return false;
+  if (end !== null && Number.isFinite(end)) return position < end - 0.35;
+  if (Number.isFinite(duration) && duration > 0) return position < duration - 0.35;
+  return true;
+}
+
+export function activeSegmentForTime(
+  position: number,
+  duration: number,
+  segments: ExtrasSegments | null | undefined,
+  legacyRecap: RecapMetadata | null,
+  mode: SkipSegmentsMode,
+): ActiveSegment | null {
+  if (mode === 'off') return null;
+
+  if (segments !== null && segments !== undefined) {
+    if (segments.recap !== null && isSegmentActive(position, segments.recap.start, segments.recap.end, duration)) {
+      return { kind: 'recap', start: segments.recap.start, end: segments.recap.end, label: 'Skip recap' };
+    }
+    if (segments.intro !== null && isSegmentActive(position, segments.intro.start, segments.intro.end, duration)) {
+      return { kind: 'intro', start: segments.intro.start, end: segments.intro.end, label: 'Skip intro' };
+    }
+    if (segments.credits !== null && isSegmentActive(position, segments.credits.start, segments.credits.end, duration)) {
+      return { kind: 'credits', start: segments.credits.start, end: segments.credits.end, label: 'Skip credits' };
+    }
+  }
+
+  if (legacyRecap !== null && isRecapWindow(position, legacyRecap)) {
+    return {
+      kind: 'recap',
+      start: legacyRecap.start,
+      end: legacyRecap.end,
+      label: legacyRecap.label ?? 'Skip recap',
+    };
+  }
+  return null;
+}
+
 export function applyRecapSkip(
-  recap: RecapMetadata,
+  recap: { start: number; end: number | null },
   options: {
     seekTo?: (seconds: number) => void;
     seek?: (deltaSeconds: number) => void;
@@ -193,7 +246,12 @@ export function applyRecapSkip(
   const duration =
     options.duration ?? (video !== null && Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY);
   const current = options.position ?? video?.currentTime ?? 0;
-  const target = Math.max(Math.min(recap.end, duration), current + 1);
+  const desiredEnd = recap.end !== null && Number.isFinite(recap.end)
+    ? recap.end
+    : Number.isFinite(duration) && duration > 0
+      ? Math.max(0, duration - 0.08)
+      : current + 1;
+  const target = Math.max(Math.min(desiredEnd, duration), current + 1);
 
   if (options.seekTo !== undefined) {
     options.seekTo(target);
@@ -204,7 +262,9 @@ export function applyRecapSkip(
   }
 
   options.showControls?.();
-  window.dispatchEvent(new CustomEvent('tvm:user-activity'));
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('tvm:user-activity'));
+  }
   return target;
 }
 
@@ -219,35 +279,34 @@ export function activateSkipRecap(root: ParentNode = document): boolean {
   return true;
 }
 
-function useSkipRecapSlot(): HTMLElement | null {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const sync = (): void => {
-      const next = document.querySelector<HTMLElement>(SKIP_RECAP_SLOT);
-      setSlot((current) => (current === next ? current : next));
-    };
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-
-  return slot;
-}
-
 /**
- * Remote Skip Recap. Hidden unless a recap window exists. OK / click seeks to
- * the marker end through `seekTo` (or the html5 currentTime API).
+ * Player segment skip pill (Skip intro / Skip recap / Skip credits).
+ * Appears bottom-right as a Glass 27 pill for 8 s or until the segment ends,
+ * or skips automatically when the viewer picks Skip automatically in Settings.
  */
 export function SkipRecap(props: SkipRecapProps = {}): React.JSX.Element | null {
   const session = usePlayerSession();
   const merged: SkipRecapProps = { ...session, ...props };
-  const slot = useSkipRecapSlot();
   const skipKey = useScopedFocusKey(SKIP_RECAP_FOCUS_ID);
   const playKey = useScopedFocusKey('player-play');
   const [clock, setClock] = useState({ position: merged.position ?? 0, duration: merged.duration ?? 0 });
+  const [prefMode, setPrefMode] = useState<SkipSegmentsMode>(() => readPrefs().skipSegments);
+  const [timedOut, setTimedOut] = useState(false);
+  const [wakeCounter, setWakeCounter] = useState(0);
+  const autoSkippedRef = useRef<Set<string>>(new Set());
+  const prevVisibleRef = useRef(false);
   const hasSessionClock = merged.position !== undefined && merged.duration !== undefined;
+
+  useEffect(() => {
+    const sync = (): void => setPrefMode(readPrefs().skipSegments);
+    window.addEventListener(PREFS_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(PREFS_CHANGED_EVENT, sync);
+  }, []);
+
+  useEffect(() => {
+    autoSkippedRef.current.clear();
+    setTimedOut(false);
+  }, [merged.mediaId]);
 
   useEffect(() => {
     if (hasSessionClock) return;
@@ -272,59 +331,117 @@ export function SkipRecap(props: SkipRecapProps = {}): React.JSX.Element | null 
 
   const position = merged.position ?? clock.position;
   const duration = merged.duration ?? clock.duration;
-  const recap = useMemo(
+  const skipMode = props.skipMode ?? prefMode;
+  const isLive = merged.live === true || (typeof merged.mediaId === 'string' && isLivePlayback(merged.mediaId));
+  const legacyRecap = useMemo(
     () => resolveRecapMetadata(merged, findPlayerVideo(merged.videoRef)),
     [merged, clock.duration],
+  );
+  const active = useMemo(
+    () =>
+      isLive
+        ? null
+        : activeSegmentForTime(position, duration, merged.segments, legacyRecap, skipMode),
+    [duration, isLive, legacyRecap, merged.segments, position, skipMode],
   );
 
   const blocked =
     merged.overlay === 'queue' ||
     merged.overlay === 'ad' ||
-    merged.error !== null && merged.error !== undefined ||
+    (merged.error !== null && merged.error !== undefined) ||
     merged.engine === 'loading';
-  const visible = recap !== null && !blocked && isRecapWindow(position, recap);
+
+  const activeKey = active !== null ? `${active.kind}:${active.start}` : null;
 
   useEffect(() => {
-    if (!visible) return;
-    return () => {
+    setTimedOut(false);
+  }, [activeKey]);
+
+  useEffect(() => {
+    if (activeKey === null || blocked || skipMode !== 'button') return;
+    const onActivity = (): void => {
+      setTimedOut(false);
+      setWakeCounter((n) => n + 1);
+    };
+    window.addEventListener('tvm:user-activity', onActivity);
+    return () => window.removeEventListener('tvm:user-activity', onActivity);
+  }, [activeKey, blocked, skipMode]);
+
+  useEffect(() => {
+    if (activeKey === null || blocked || skipMode !== 'button' || merged.paused === true) return;
+    const timer = window.setTimeout(() => setTimedOut(true), SKIP_PILL_VISIBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeKey, blocked, merged.paused, skipMode, wakeCounter]);
+
+  const performSkip = useCallback(
+    (segment: ActiveSegment): void => {
+      applyRecapSkip(
+        { start: segment.start, end: segment.end },
+        {
+          seekTo: merged.seekTo,
+          seek: merged.seek,
+          video: findPlayerVideo(merged.videoRef),
+          position,
+          duration,
+          showControls: merged.showControls,
+        },
+      );
+    },
+    [duration, merged, position],
+  );
+
+  useEffect(() => {
+    if (skipMode !== 'auto' || blocked || active === null || activeKey === null) return;
+    if (autoSkippedRef.current.has(activeKey)) return;
+    // Leave open-ended credits to Up Next when a next episode card is active.
+    if (active.kind === 'credits' && active.end === null && document.querySelector('[data-next-up="true"]') !== null) {
+      return;
+    }
+    autoSkippedRef.current.add(activeKey);
+    performSkip(active);
+  }, [active, activeKey, blocked, performSkip, skipMode]);
+
+  const visible = active !== null && !blocked && !timedOut && skipMode !== 'off';
+
+  useEffect(() => {
+    if (visible && !prevVisibleRef.current) {
+      const menuOpen = document.querySelector('.player [data-player-menu], .player [role="listbox"]') !== null;
+      if (!menuOpen) {
+        const timer = window.setTimeout(() => requestFocus(skipKey), 30);
+        prevVisibleRef.current = visible;
+        return () => window.clearTimeout(timer);
+      }
+    }
+    if (!visible && prevVisibleRef.current) {
       const focused = document.querySelector(`[data-focus-id="${SKIP_RECAP_FOCUS_ID}"][data-focused="true"]`);
       if (focused !== null) requestFocus(playKey);
-    };
-  }, [playKey, visible, skipKey]);
+    }
+    prevVisibleRef.current = visible;
+    return undefined;
+  }, [playKey, skipKey, visible]);
 
   const onSelect = useCallback((): void => {
-    const marker = resolveRecapMetadata(merged, findPlayerVideo(merged.videoRef));
-    if (marker === null) return;
-    applyRecapSkip(marker, {
-      seekTo: merged.seekTo,
-      seek: merged.seek,
-      video: findPlayerVideo(merged.videoRef),
-      position,
-      duration,
-      showControls: merged.showControls,
-    });
-  }, [duration, merged, position]);
+    if (active === null) return;
+    performSkip(active);
+  }, [active, performSkip]);
 
-  if (!visible || recap === null) return null;
+  if (!visible || active === null) return null;
 
-  const button = (
+  return (
     <div
-      className={`player-skip-recap${slot !== null ? ' player-skip-recap--slotted' : ''}`}
+      className="player-skip-recap"
       data-player-skip-recap="true"
+      data-segment-kind={active.kind}
     >
       <FocusButton
         id={SKIP_RECAP_FOCUS_ID}
-        variant="primary"
-        className="player-skip-recap__btn"
+        className="glass glass--chrome player-skip-recap__btn"
         onSelect={onSelect}
       >
-        {recap.label ?? 'Skip recap'}
+        {active.label}
       </FocusButton>
     </div>
   );
-
-  if (slot !== null) return createPortal(button, slot);
-  return button;
 }
 
 export default SkipRecap;

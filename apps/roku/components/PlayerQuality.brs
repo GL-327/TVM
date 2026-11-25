@@ -17,6 +17,7 @@ end sub
 
 sub planStream()
   if m.top.streamUrl = "" then return
+  startPlayerExtras()
   m.manualQuality = m.top.chosenQuality
   m.orbit.active = true : m.orbit.status = "Connecting"
   task = CreateObject("roSGNode", "ApiTask")

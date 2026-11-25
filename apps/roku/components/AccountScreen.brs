@@ -11,7 +11,6 @@ sub init()
   m.password = m.top.findNode("password")
   m.submit = m.top.findNode("submit")
   m.switchMode = m.top.findNode("switchMode")
-  m.dev = m.top.findNode("dev")
   m.recheck = m.top.findNode("recheck")
   m.signout = m.top.findNode("signout")
   m.agree = m.top.findNode("agree")
@@ -25,7 +24,7 @@ sub init()
   m.ledeLabel.font = tvmFontSecondary()
   m.statusLabel.font = tvmFontMeta()
 
-  for each btn in [m.codeSignIn, m.name, m.email, m.password, m.submit, m.switchMode, m.dev, m.recheck, m.signout, m.agree, m.emailCode, m.resendCode]
+  for each btn in [m.codeSignIn, m.name, m.email, m.password, m.submit, m.switchMode, m.recheck, m.signout, m.agree, m.emailCode, m.resendCode]
     btn.variant = "glassPill"
     btn.pillWidth = 1520
   end for
@@ -43,8 +42,6 @@ sub init()
   m.submit.itemId = "submit"
   m.switchMode.label = "I need an account"
   m.switchMode.itemId = "switch"
-  m.dev.label = "I'm a dev"
-  m.dev.itemId = "dev"
   m.recheck.label = "Check again"
   m.recheck.accent = true
   m.recheck.itemId = "recheck"
@@ -101,7 +98,6 @@ function formButtons() as Object
     buttons.Push(m.password)
     buttons.Push(m.submit)
     buttons.Push(m.switchMode)
-    if phase = "signin" then buttons.Push(m.dev)
   else if phase = "verify"
     buttons.Push(m.emailCode)
     buttons.Push(m.resendCode)
@@ -125,7 +121,6 @@ sub paint()
   m.password.visible = signin
   m.submit.visible = signin
   m.switchMode.visible = signin
-  m.dev.visible = (phase = "signin")
   m.recheck.visible = (phase = "waiting" or phase = "suspended")
   m.agree.visible = (phase = "terms")
   m.emailCode.visible = (phase = "verify")
@@ -171,7 +166,7 @@ sub paint()
 
   if m.col < 0 then m.col = 0
   if buttons.Count() > 0 and m.col > buttons.Count() - 1 then m.col = buttons.Count() - 1
-  for each btn in [m.name, m.codeSignIn, m.email, m.password, m.submit, m.switchMode, m.dev, m.recheck, m.signout, m.agree, m.emailCode, m.resendCode]
+  for each btn in [m.name, m.codeSignIn, m.email, m.password, m.submit, m.switchMode, m.recheck, m.signout, m.agree, m.emailCode, m.resendCode]
     btn.hasFocusStyle = false
   end for
   if buttons.Count() = 0
@@ -190,15 +185,6 @@ end sub
 
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
-  if key = "options" or key = "info"
-    if m.secretTaps = invalid then m.secretTaps = 0
-    m.secretTaps = m.secretTaps + 1
-    if m.secretTaps >= 7
-      m.secretTaps = 0
-      emit("ownerDoor")
-    end if
-    return true
-  end if
   intent = intentFromKey(key)
   if intent = "" then return false
   if intent = "back" then return false
@@ -223,7 +209,6 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
       if id = "password" then emit("editPassword")
       if id = "submit" then emit("submit")
       if id = "switch" then emit("switchMode")
-      if id = "dev" then emit("dev")
       if id = "recheck" then emit("recheck")
       if id = "signout" then emit("signout")
       if id = "agree" then emit("agree")

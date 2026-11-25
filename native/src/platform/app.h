@@ -31,6 +31,7 @@
 #include "catalog/xtream.h"
 #include "core/admin.h"
 #include "core/content.h"
+#include "core/extras.h"
 #include "core/core_client.h"
 #include "core/paths.h"
 #include "nav/hop_queue.h"
@@ -101,6 +102,30 @@ private:
     // Builds Home's shelves from the stored catalogue and the viewer's watchlist and progress.
     void RebuildHome();
     void RefreshContent();
+    void RefreshExtrasHome();
+    void LoadPlayerExtras(int generation, const playback::Resolution& resolution);
+    void ApplyExtrasState(const mpv::State& state);
+    void RequestSubtitle(std::size_t index);
+    void LoadPreferredSubtitle();
+    void LoadExtrasPage();
+    void ExtrasAction(const std::string& verb);
+    ui::InfoView ExtrasView() const;
+    ui::InfoView StatsView() const;
+    extras::Preferences extrasPrefs_;
+    nlohmann::json extrasStats_ = nlohmann::json::object();
+    extras::Segments playerSegments_{};
+    extras::SegmentSession segmentSession_;
+    extras::NextCountdown nextCountdown_;
+    ui::RailData upcomingRail_;
+    unsigned extrasEpoch_ = 0;
+    bool extrasHomeBusy_ = false;
+    double extrasHomeCheckedMs_ = -600000;
+    struct ExternalSubtitle { std::string file, label, language, url; bool loading = false, loaded = false; };
+    std::vector<ExternalSubtitle> pendingSubtitles_;
+    std::vector<ExternalSubtitle> externalSubtitles_;
+    bool subtitlePreferenceApplied_ = false;
+    std::string subtitleChoice_;
+
     void RefreshProfilePolicy();
     bool Allowed(const catalog::MediaItem& item) const;
     void PageRails();

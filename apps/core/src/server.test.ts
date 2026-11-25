@@ -240,14 +240,14 @@ describe('core API', () => {
     expect(await paid.json()).toMatchObject({ id: 'basic', synthwave: true, pricePence: 499 });
   });
 
-  it('rejects a wrong developer code without a hint', async () => {
+  it('retires developer-code unlock', async () => {
     const response = await fetch(`${baseUrl}/api/dev/unlock`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ password: 'nope' }),
     });
-    expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ unlocked: false, error: 'That code is not valid.' });
+    expect(response.status).toBe(410);
+    expect(await response.json()).toEqual({ error: 'moved' });
   });
 });
 

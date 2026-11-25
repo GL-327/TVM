@@ -174,7 +174,7 @@ check('WebView does not install a touch listener that can swallow DOM clicks',
 check('WebView disables pinch zoom',
   main.includes('setSupportZoom(false)') && main.includes('builtInZoomControls = false'));
 check('TvmLiveReflector.kt exists', existsSync(join(SRC, 'TvmLiveReflector.kt')));
-check('TvmDevUnlock.kt exists', existsSync(join(SRC, 'TvmDevUnlock.kt')));
+check('the developer-code unlock is gone (TvmDevUnlock.kt is not shipped)', !existsSync(join(SRC, 'TvmDevUnlock.kt')));
 check('launcher foreground is the orbital PNG',
   existsSync(join(ROOT, 'app', 'src', 'main', 'res', 'drawable', 'ic_launcher_foreground.png')));
 {
@@ -207,14 +207,26 @@ check('the Android app applies a GitHub UI bundle on open unless auto-update is 
   const accounts = read(join(SRC, 'TvmAccounts.kt')) ?? '';
   const desktopLive = read(join(REPO, 'apps', 'core', 'src', 'providers', 'live.ts')) ?? '';
   const testUrl = /TEST_CHANNEL_URL = '([^']+)'/.exec(desktopLive)?.[1] ?? '';
-  check('Android answers the dev account the same way the desktop does',
-    core.includes('"/api/account/dev"') && core.includes('TvmDevUnlock.verify(code)') &&
-    core.includes('plans.setDeveloper(true)') && core.includes('!accounts.devSignedIn()') &&
-    accounts.includes('fun signInDev(') && accounts.includes('const val DEV_ACCOUNT_ID = "acc_dev"'));
-  check('the dev can set Live TV, a Real-Debrid key and a verified address per account on Android',
-    ['/api/admin/accounts/live-tv', '/api/admin/accounts/rd', '/api/admin/accounts/verify', '/api/admin/mail']
-      .every((route) => core.includes(`"${route}"`)) &&
-    core.includes('rd.useAccountToken(accounts.rdTokenFor('));
+  check('Android accounts are the private service: no local ledger, no password hashing, no developer code',
+    accounts.includes('TVM_ACCOUNTS_URL') && accounts.includes('/v1/signin') && accounts.includes('/v1/register') &&
+    accounts.includes('/v1/me/rd-token') && accounts.includes('/v1/me/terms') &&
+    !accounts.includes('PBKDF2') && !accounts.includes('passwordHash') && !accounts.includes('accounts.json') &&
+    !accounts.includes('signInDev') && !core.includes('TvmDevUnlock'),
+    'TvmAccounts.kt must only talk to the accounts service');
+  const serviceUrl = /TVM_ACCOUNTS_URL = "([^"]+)"/.exec(accounts)?.[1] ?? '';
+  check('the accounts service address matches Core',
+    serviceUrl !== '' && (read(join(REPO, 'apps', 'core', 'src', 'config.ts')) ?? '').includes(`ACCOUNTS_URL = '${serviceUrl}'`));
+  check('the developer-code routes answer 410 moved and account admin routes answer 403 use_dashboard',
+    /"\/api\/account\/dev"[\s\S]{0,80}HttpReply\.json\(410, Json\.obj\("error" to "moved"\)\)/.test(core) &&
+    /"\/api\/dev\/unlock"[\s\S]{0,80}HttpReply\.json\(410, Json\.obj\("error" to "moved"\)\)/.test(core) &&
+    /"\/api\/admin\/accounts"[\s\S]{0,160}HttpReply\.json\(403, Json\.obj\("error" to "use_dashboard"\)\)/.test(core));
+  check('the session token is the only account data kept, in encrypted preferences',
+    store.includes('class EncryptedSessionVault') && store.includes('EncryptedSharedPreferences') &&
+    main.includes('sessionVault = EncryptedSessionVault('));
+  const shipped = walk(join(ROOT, 'app', 'src', 'main')).filter((f) => /(\.kt|Access\.json)$/.test(f));
+  check('no developer-code digest or salt is shipped',
+    !shipped.some((f) => /developer.?code|TvmDevUnlock|expected\s*=\s*byteArrayOf/i.test(read(f) ?? '')),
+    'a developer-code digest, salt or unlock helper is still in apps/android');
   check('Android plays the same DW News test channel as the desktop, through its proxy',
     testUrl !== '' && core.includes(`"${testUrl}"`) && core.includes('testChannels().firstOrNull'),
     'apps/core/src/providers/live.ts TEST_CHANNEL_URL and TvmLocalCore.TEST_CHANNEL_URL must match');

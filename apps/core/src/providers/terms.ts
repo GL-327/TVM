@@ -116,7 +116,7 @@ export const TERMS: TermsDocument = {
       heading: '9. Your data',
       body: [
         'To run an account the operator stores your email address, a display name, a one-way digest of your password, when you signed up, when you last signed in, how many times you have signed in, and which kind of device you last used.',
-        'Your password itself is not stored and cannot be recovered by anyone, including the operator. It is kept as a salted scrypt digest, which only allows checking a password, never reading one.',
+        'Your password itself is not stored and cannot be recovered by anyone, including the operator. It is held by the private TVM accounts service as a salted PBKDF2 digest, which only allows checking a password, never reading one.',
         'The operator is the data controller. You can ask what is held about you, ask for it to be corrected, or ask for your account and its data to be deleted. Ask the operator, who will action it.',
         'What you watch is not sent anywhere by TVM. Playback happens between your device and whatever source you connected.',
       ],

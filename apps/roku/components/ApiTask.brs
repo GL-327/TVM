@@ -114,6 +114,7 @@ sub exec()
 end sub
 
 sub applyResult(result as Object)
+  if Instr(1, m.top.requestUrl, "/api/account/") > 0 or Instr(1, m.top.requestUrl, "/api/rd/token") > 0 then m.top.requestBody = ""
   if m.top.appendItems <> invalid and result.ok
     merged = [] : seen = {}
     for each item in m.top.appendItems

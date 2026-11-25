@@ -101,7 +101,7 @@ waiting for you.
 | Stored | Where |
 |---|---|
 | Email, display name | `secrets/accounts.enc`, AES-256-GCM sealed |
-| Password digest | Same file, salted scrypt per account |
+| Password digest | TVM's private accounts service, salted PBKDF2 per account |
 | Email code | Same file, salted SHA-256 digest, until used or expired |
 | Account's Real-Debrid key | Same file |
 | Signed up, last seen, sign-in count, last device | Same file |

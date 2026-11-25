@@ -11,14 +11,12 @@ import {
   registerAccount,
   sendEmailCode,
   signIn,
-  signInDev,
   signOut,
   verifyEmailCode,
   type AccountState,
   type TermsDocument,
   type TiersResponse,
 } from '../data/account';
-import { fetchAppBuild, type AppBuild } from '../data/appBuild';
 import { formatBillingMoney } from '../data/plan';
 import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
@@ -42,7 +40,7 @@ function typed(id: string, fallback: string): string {
  * The sign-in gate. Renders instead of the view stack until an account is
  * signed in, activated by the owner, and has accepted the current terms.
  */
-type Mode = 'signin' | 'register' | 'dev';
+type Mode = 'signin' | 'register';
 
 export interface AccountGateProps {
   state: AccountState;
@@ -132,8 +130,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [devCode, setDevCode] = useState('');
-  const [devBuild, setDevBuild] = useState<AppBuild | null>(null);
   const [emailCode, setEmailCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -154,8 +150,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setEmail('');
     setPassword('');
     setDisplayName('');
-    setDevCode('');
-    setDevBuild(null);
     setEmailCode('');
     setNotice(null);
     setMessage(null);
@@ -198,18 +192,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setPassword('');
   });
 
-  const submitDev = (code: string): Promise<void> => run(async () => {
-    const next = typed('gate-dev-code', code).trim();
-    if (next === '') throw new Error('Enter your developer access code.');
-    try {
-      onChanged(await signInDev(next));
-    } catch (error) {
-      setDevBuild(await fetchAppBuild());
-      throw error;
-    }
-    setDevCode('');
-  });
-
   const confirmEmail = (code: string): Promise<void> => run(async () => {
     const digits = typed('gate-code', code).replace(/\s+/g, '');
     if (!/^\d{6}$/.test(digits)) throw new Error('Enter the 6-digit verification code.');
@@ -243,14 +225,12 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setMode(next);
     setMessage(null);
     setNotice(null);
-    setDevBuild(null);
   };
   const firstFocus = (): string => {
     if (panel === 'terms') return 'agree';
     if (panel === 'email_unverified') return 'gate-code';
     if (state.signedIn) return 'recheck';
     if (mode === 'register') return 'gate-name';
-    if (mode === 'dev') return 'gate-dev-code';
     return 'gate-email';
   };
   useGateRemote({
@@ -370,72 +350,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     );
   }
 
-  // ---- The dev account ---------------------------------------------------
-  if (!state.signedIn && mode === 'dev') {
-    return (
-      <main ref={pageRef} className="gate" data-keyboard-fields="">
-        <div className="gate__panel">
-          <GateMark />
-          <div className="gate-tabs" role="tablist" aria-label="Sign-in mode" data-wrap="row">
-            <FocusButton id="gate-dev-tab-signin" className="gate-tab" disabled={busy} onSelect={() => switchMode('signin')}>
-              Sign in
-            </FocusButton>
-            <FocusButton id="gate-dev-tab-register" className="gate-tab" disabled={busy} onSelect={() => switchMode('register')}>
-              Create account
-            </FocusButton>
-            <FocusButton id="gate-dev-tab-dev" className="gate-tab gate-tab--active" disabled={busy} onSelect={() => switchMode('dev')}>
-              Developer
-            </FocusButton>
-          </div>
-          <h1>Dev account</h1>
-          <p className="gate__lede">
-            Enter your developer access code to unlock diagnostics and admin tools on this device.
-          </p>
-          {message !== null && <p className="gate__error" role="alert">{message}</p>}
-          {devBuild !== null && devBuild.kind !== 'desktop' && (
-            <p className="gate__hint">
-              {devBuild.kind === 'known'
-                ? `Build ${devBuild.build}.`
-                : 'Older app shell.'}{' '}
-              The access code is validated by the native shell—install the latest release if this persists.
-            </p>
-          )}
-          <form
-            className="gate__form"
-            noValidate
-            onKeyDown={confirmFieldOnEnter}
-            onSubmit={(event) => { event.preventDefault(); void submitDev(devCode); }}
-          >
-            <label className="gate__field">
-              <span>Developer code</span>
-              <FocusField
-                id="gate-dev-code"
-                type="password"
-                name="dev-code"
-                autoComplete="off"
-                enterKeyHint="go"
-                value={devCode}
-                onChange={setDevCode}
-                onConfirm={(value) => void submitDev(value)}
-                afterPasteFocusId="gate-dev-submit"
-                placeholder="Enter access code"
-              />
-            </label>
-            <div className="gate__actions">
-              <FocusButton id="gate-dev-submit" variant="primary" disabled={busy} onSelect={() => void submitDev(devCode)}>
-                {busy ? 'Signing in…' : 'Sign in'}
-              </FocusButton>
-              <FocusButton id="gate-dev-back" className="tvm-button--glass" disabled={busy} onSelect={() => switchMode('signin')}>
-                Back
-              </FocusButton>
-            </div>
-            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
-          </form>
-        </div>
-      </main>
-    );
-  }
-
   // ---- Signed out --------------------------------------------------------
   return (
     <main ref={pageRef} className="gate" data-keyboard-fields="">
@@ -457,14 +371,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
             onSelect={() => switchMode('register')}
           >
             Create account
-          </FocusButton>
-          <FocusButton
-            id="gate-dev"
-            className="gate-tab"
-            disabled={busy}
-            onSelect={() => switchMode('dev')}
-          >
-            I'm a dev
           </FocusButton>
         </div>
 

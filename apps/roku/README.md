@@ -149,6 +149,52 @@ in another.
 The product for this version is the sideloaded `tvm-roku.zip` over private-LAN
 HTTP. This is not a Channel Store or HTTPS release.
 
+## Accounts and TVM Extras
+
+Sign-in, registration, session checks, accepted terms and the Real-Debrid token
+use `https://tvm-accounts.tvm-accounts.workers.dev` directly from ApiTask over
+HTTPS. Only the session token is kept in the Roku registry. The channel deletes
+the previous local account ledger, local sessions and device RD token when it
+first runs an on-device request. Old local accounts must register with the
+private service and wait for the owner to activate them. There is no developer
+access code or local activation route. Email verification is managed by the
+owner; this service does not provide email-code endpoints.
+
+The optional PC Core connection still uses its separate LAN device credential.
+Code pairing requires that Core's Hub; email/password sign-in works standalone.
+
+Settings has Skip intro, recap and credits (Off / Button / Auto), Autoplay next
+episode, Subtitle languages (ISO three-letter codes, comma separated; English
+by default), and Your stats. During a sourced segment the skip pill has remote
+focus and OK skips to its end. It expires after eight seconds or at the segment
+end. Unknown segments never cause an assumed skip. Up next appears at credits,
+or in the last 30 seconds, with Play now and Cancel; Back on the card cancels
+autoplay for this playback. Its ten-second timer pauses while playback is paused
+or a playback panel is open. Only an already-aired next episode is offered.
+
+OpenSubtitles tracks load from the Stremio addon directly, one per language,
+with preferred languages first. Its UTF-8 SRT download URLs become Roku
+ContentNode `subtitleTracks` entries, with the URL in `TrackName`. Choose a
+language or Off in Control Centre > Audio; the choice is remembered per profile.
+Roku's system caption mode still controls whether the selected captions show.
+
+Details can show an ordered film collection, the next episode's local airdate,
+and an English anime title. Home adds New episodes this week for series in
+Continue Watching and the watchlist. Trailers and desktop hero previews are
+hidden on Roku. Sources are TheIntroDB v2, Wikidata SPARQL, AniList/AniSkip,
+TVmaze and Cinemeta, fetched on Tasks with six-second network timeouts. A Task
+has a 22-second overall source budget. Public metadata uses in-memory/tmp caches
+and a bounded registry cache; missing data hides the optional feature.
+
+Your stats uses this Roku's measured playback seconds, excluding seeks and
+pauses. It shows the last seven/30 UTC days, all time, titles finished, a daily
+streak, top genres and the 24 most recent titles. Clear history requires remote
+confirmation and clears that profile's statistics. Stats are never uploaded.
+Existing progress is not presented as watched hours because it includes seeks.
+
+Run `node --test apps/roku/scripts/` to include the pinned `brs@0.45.0`
+production-function fixture tests (npx downloads it on first use).
+
 ## Enable Roku developer mode
 
 On the Roku, from the home screen, press:

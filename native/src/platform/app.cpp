@@ -289,7 +289,7 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             return account_.usable;
         }
         if (coreapi::AllowsRoute(account_, command.name)) return true;
-        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or developer role." : "Sign in with an active account to continue.";
+        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or admin role." : "Sign in with an active account to continue.";
         ui::Command door; door.name = "account";
         shell_->Execute(door, NowMs());
         return false;
@@ -298,6 +298,10 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         const auto id = command.params.find("id");
         if (command.name == "watchlist" && id != command.params.end()) {
             ToggleWatchlist(id->second);
+        } else if (command.name == "trailer-open" && id != command.params.end()) {
+            const auto title = titles_.find(id->second);
+            if (title != titles_.end() && !title->second.trailerUrl.empty())
+                ShellExecuteW(window_, L"open", util::ToWide(title->second.trailerUrl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (command.name == "event-rail") {
             for (const auto& rail : eventRails_) if (!rail.cards.empty()) { home_->FocusTitle(rail.cards.front().itemId, NowMs()); break; }
             dirty_ = true;
@@ -447,7 +451,7 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         // The title played to its end: it counts as watched, and the player closes, as Player.tsx does.
         if (!playerOpen_) return;
         // An episode with a next one goes straight on to it, as Next Up does when its time runs out.
-        if (nextEpisode_.has_value() && !nextDismissed_ && !playerLive_) {
+        if (nextEpisode_.has_value() && !nextDismissed_ && !playerLive_ && extrasPrefs_.autoplay) {
             playerView_.position = playerView_.duration;
             SavePlayerProgress(true);
             PlayNextEpisode();
@@ -725,7 +729,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             dirty_ = true;
             return 0;
         }
-        // And into an info page's field, such as Setup's token or the dev code.
+        // And into an info page's field, such as Setup's token.
         if (ui::InfoScreen* page = TypingPage(); page != nullptr && wParam >= 0x20 && wParam != 0x7F &&
                                                  (wParam < 0xD800 || wParam > 0xDFFF)) {
             page->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
@@ -1268,17 +1272,42 @@ void App::ShowTitle(const std::string& id) {
     // The details screen shows its loading state until the answer comes back.
     if (!titlesInFlight_.insert(id).second) return;
 
-    background_->Run([this, id] {
+    const auto epoch = extrasEpoch_;
+    background_->Run([this, id, epoch] {
         ui::TitleInfo info;
-        try {
-            info = ui::InfoFromMeta(id, catalog_->Meta(id));
-        } catch (const std::exception&) {
-            info = ui::InfoFromMeta(id, std::nullopt);
+        try { info = ui::InfoFromMeta(id, catalog_->Meta(id)); }
+        catch (...) { info = ui::InfoFromMeta(id, std::nullopt); }
+        const auto publish = [this, id, epoch](const ui::TitleInfo& value) {
+            background_->PostToUi([this, id, epoch, value] { if (epoch == extrasEpoch_) FinishTitle(id, value); });
+        };
+        publish(info);
+        if (info.state != ui::TitleInfo::State::Ready) return;
+        try { info.trailerUrl = extras::YoutubeUrl(core_->Call("/api/extras/trailers?id=" + js::EncodeUriComponent(id))); } catch (...) {}
+        publish(info);
+        if (info.kind == "series") {
+            try { info.upcoming = extras::UpcomingLabel(core_->Call("/api/extras/upcoming?id=" + js::EncodeUriComponent(id)).value("next", nlohmann::json())); } catch (...) {}
+        } else {
+            try {
+                const auto collection = core_->Call("/api/extras/collection?id=" + js::EncodeUriComponent(id));
+                if (collection.contains("name") && collection["name"].is_string()) info.collectionName = collection["name"].get<std::string>();
+                if (collection.contains("items") && collection["items"].is_array() && collection["items"].size() >= 2)
+                    for (const auto& raw : collection["items"]) if (const auto item = catalog::FromJson(raw); item && item->id != id) info.collection.push_back(*item);
+            } catch (...) {}
         }
-        background_->PostToUi([this, id, info] { FinishTitle(id, info); });
-        if (info.state == ui::TitleInfo::State::Ready && info.kind != "series") {
+        publish(info);
+        bool anime = false;
+        for (const auto& genre : info.genres) if (genre == "Anime" || genre == "anime" || genre == "Animation" || genre == "animation") anime = true;
+        if (anime) {
+            try {
+                const auto title = core_->Call("/api/extras/anime-title?title=" + js::EncodeUriComponent(info.title));
+                if (title.contains("english") && title["english"].is_string()) info.englishTitle = title["english"].get<std::string>();
+                if (info.englishTitle == info.title) info.englishTitle.clear();
+            } catch (...) {}
+            publish(info);
+        }
+        if (info.kind != "series") {
             try { info.reviews = core_->Call("/api/reviews?id=" + js::EncodeUriComponent(id)); } catch (...) {}
-            background_->PostToUi([this, id, info] { FinishTitle(id, info); });
+            publish(info);
         }
     });
 }
@@ -1292,6 +1321,8 @@ void App::FinishTitle(const std::string& id, const ui::TitleInfo& info) {
         shown.synopsis = "This title is outside this profile's age limit. Filters by genre.";
         shown.children.clear();
     }
+    std::erase_if(shown.collection, [this](const auto& item) { return !Allowed(item); });
+    if (shown.state != ui::TitleInfo::State::Ready) { shown.collection.clear(); shown.trailerUrl.clear(); shown.upcoming.clear(); shown.englishTitle.clear(); }
     shown.services.clear();
     const auto connected = ConnectedServices();
     const auto services = content_->Read("services");
@@ -1301,6 +1332,7 @@ void App::FinishTitle(const std::string& id, const ui::TitleInfo& info) {
     if (shown.state == ui::TitleInfo::State::Ready) titles_[id] = shown;
     shell_->SetTitleInfo(id, shown);
     QueueTitleArtwork(shown);
+    for (const auto& item : shown.collection) QueueArtwork(item.poster);
     // My List in the player asked for this title before it had loaded.
     if (pendingSave_ == id) {
         pendingSave_.reset();
@@ -1337,6 +1369,7 @@ void App::QueueTitleArtwork(const ui::TitleInfo& info) {
 }
 
 void App::RebuildHome() {
+    RefreshExtrasHome();
     // A page lane needs no catalogue: Live TV, Library and Search have their own sources.
     if (account_.usable && IsPageLane(streamLane_)) {
         homeStale_ = false;
@@ -1379,6 +1412,7 @@ void App::ToggleWatchlist(const std::string& id) {
     // The list may refuse a change, so the button follows what was actually stored.
     const bool nowSaved = catalog::IsSaved(after, id);
     if (nowSaved == wasSaved) return;
+    extrasHomeCheckedMs_ = -600000;
 
     ui::TitleInfo info = cached->second;
     info.saved = nowSaved;
@@ -1960,7 +1994,7 @@ void App::SetStreamLane(const std::string& lane) {
 
 void App::OpenStreamTab(const std::string& lane) {
     if (lane == "live" && !coreapi::AllowsRoute(account_, "live-tv")) {
-        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or developer role."
+        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or admin role."
                                           : "Sign in with an active account to continue.";
         ui::Command door;
         door.name = "account";
@@ -2074,7 +2108,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         return true;
     };
 
-    // The chrome: centred glass capsule (Home · Movies · Series · Live TV · Library · Search) + profile orb.
+    // The chrome: centred glass capsule (Home Â· Movies Â· Series Â· Live TV Â· Library Â· Search) + profile orb.
     const auto open = [](const std::string& name, bool modal) {
         ui::Command command;
         command.name = name;
@@ -2187,6 +2221,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
             rail.title = "Continue Watching";
             view.rails.push_back(std::move(rail));
         }
+        if (root && streamLane_ != "movies" && !upcomingRail_.cards.empty()) view.rails.push_back(upcomingRail_);
         if (root && streamLane_ == "all") {
             for (const auto& eventRail : eventRails_) view.rails.push_back(eventRail);
         }
@@ -2492,7 +2527,7 @@ void App::ApplyProfileAction(const ui::Command& command) {
             OpenProfileEditor(param("id")); return;
         }
         if (command.name == "profile-unlock") {
-            profiles::Verify(dataDir_, param("id"), param("pin"));
+            if (!core_->Call("/api/profiles/verify-pin", "POST", {{"id", param("id")}, {"pin", param("pin")}}).value("ok", false)) throw std::runtime_error("Incorrect PIN.");
             const auto pending = pendingProfileAction_;
             pendingProfileAction_.reset();
             shell_->Back(now);
@@ -2502,26 +2537,31 @@ void App::ApplyProfileAction(const ui::Command& command) {
             ApplyProfileAction(*pending); return;
         }
         if (command.name == "profile-save-edited") {
-            auto id = param("id");
-            const auto patch = nlohmann::json::parse(param("patch"));
-            if (id.empty()) { const auto registry = profiles::Create(dataDir_, patch.value("name", "Profile")); id = registry.activeId; }
-            const auto registry = profiles::Load(dataDir_);
-            for (const auto& profile : registry.profiles) if (profile.id == id && profile.kind == "kids" && patch.value("kind", "kids") != "kids" && adultApprovalId_.empty()) {
-                for (const auto& adult : registry.profiles) if (adult.kind != "kids" && !adult.pin.is_null()) { AskProfilePin(command, adult.id); return; }
+            const auto id = param("id");
+            auto patch = nlohmann::json::parse(param("patch"));
+            if (id.empty()) core_->Call("/api/profiles", "POST", patch);
+            else {
+                const auto registry = profiles::Load(dataDir_);
+                for (const auto& profile : registry.profiles) if (profile.id == id && profile.kind == "kids" &&
+                    (patch.value("kind", "kids") != "kids" || patch.value("maxAge", profile.maxAge) > profile.maxAge) && adultApprovalId_.empty()) {
+                    for (const auto& adult : registry.profiles) if (adult.kind != "kids" && !adult.pin.is_null()) { AskProfilePin(command, adult.id); return; }
+                }
+                patch["id"] = id;
+                patch["currentPin"] = !adultApprovalPin_.empty() ? adultApprovalPin_ : profileEditId_ == id ? profileEditPin_ : "";
+                core_->Call("/api/profiles", "PUT", patch);
             }
-            profiles::Update(dataDir_, id, patch, profileEditId_ == id ? profileEditPin_ : "", adultApprovalId_, adultApprovalPin_);
             profileEditPin_.clear(); profileEditId_.clear(); adultApprovalId_.clear(); adultApprovalPin_.clear();
             shell_->Back(now);
             RefreshProfilePolicy();
             ShowChooser(""); RebuildHome(); RefreshContent(); return;
         }
         if (command.name == "profile-delete-edited") {
-            profiles::Remove(dataDir_, param("id"), profileEditId_ == param("id") ? profileEditPin_ : "");
+            core_->Call("/api/profiles/remove", "POST", {{"id", param("id")}, {"pin", profileEditId_ == param("id") ? profileEditPin_ : ""}});
             profileEditPin_.clear(); profileEditId_.clear();
             shell_->Back(now); RefreshProfilePolicy(); ShowChooser(""); RebuildHome(); return;
         }
         if (command.name == "profile-remove") {
-            profiles::Remove(dataDir_, param("id"));
+            core_->Call("/api/profiles/remove", "POST", {{"id", param("id")}});
             ShowProfiles("");
             ShowChooser("");
             RebuildHome();
@@ -2545,7 +2585,7 @@ void App::ApplyProfileAction(const ui::Command& command) {
         if (command.name == "profile-open") {
             const auto registry = profiles::Load(dataDir_);
             for (const auto& profile : registry.profiles) if (profile.id == param("id") && !profile.pin.is_null() && profileEditId_ != profile.id) { AskProfilePin(command, profile.id); return; }
-            profiles::SwitchTo(dataDir_, param("id"), profileEditId_ == param("id") ? profileEditPin_ : "");
+            core_->Call("/api/profiles/active", "POST", {{"id", param("id")}, {"pin", profileEditId_ == param("id") ? profileEditPin_ : ""}});
             profileEditPin_.clear(); profileEditId_.clear();
         }
         if (command.name == "profile-create") core_->Call("/api/profiles", "POST", {{"name", param("name")}});
@@ -3114,6 +3154,12 @@ void App::StartPlayback() {
         playerScreenHeight_ = playback::ScreenClass(static_cast<int>(display.dmPelsHeight));
     playerHlsSwitching_ = false; playerStallSince_ = 0; playerHealthySince_ = 0;
     const int generation = ++playerGeneration_;
+    playerSegments_ = {}; segmentSession_ = {}; pendingSubtitles_.clear(); externalSubtitles_.clear();
+    subtitlePreferenceApplied_ = false; subtitleChoice_.clear(); nextCountdown_ = {};
+    if (const auto folder = profiles::ActiveFolder(dataDir_)) {
+        const auto text = util::ReadTextFile(*folder / "native-subtitle-language");
+        if (text) subtitleChoice_ = util::Trim(*text);
+    }
     mpv_->Stop();
     overlay_->Show(false);
 
@@ -3154,7 +3200,7 @@ void App::StartPlayback() {
                                   nextEpisode_->episodeName.value_or(nextEpisode_->title);
         playerView_.nextStill = nextEpisode_->poster;
     }
-    // An episode shows "S1 · E2" beside its title, as CinemaControls writes it.
+    // An episode shows "S1 Â· E2" beside its title, as CinemaControls writes it.
     if (const std::optional<playback::PlayId> play = playback::ParsePlayId(playerId_); play && play->season) {
         playerView_.episode = "S" + std::to_string(*play->season) + " \xC2\xB7 E" + std::to_string(*play->episode);
     }
@@ -3260,7 +3306,11 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
         thumbnails_.clear();
         ++thumbnailSession_;
     }
-    if (mpv_->Start(*executable, resolution.url, startAt, playerVolume_, playerMuted_)) overlay_->Show(true);
+    pendingSubtitles_.clear(); externalSubtitles_.clear(); subtitlePreferenceApplied_ = false;
+    if (mpv_->Start(*executable, resolution.url, startAt, playerVolume_, playerMuted_)) {
+        overlay_->Show(true);
+        LoadPlayerExtras(generation, resolution);
+    }
     dirty_ = true;
 }
 
@@ -3311,7 +3361,7 @@ void App::OnPlayerState(const mpv::State& state) {
     for (const mpv::Track& track : state.tracks) {
         if (track.type == "sub") {
             playerView_.subtitles.push_back(
-                ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), "", track.selected});
+                ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), track.lang, track.selected});
             subtitleOn = subtitleOn || track.selected;
         } else if (track.type == "audio") {
             playerView_.audios.push_back(
@@ -3327,28 +3377,18 @@ void App::OnPlayerState(const mpv::State& state) {
             }
         }
     }
+    for (std::size_t i = 0; i < externalSubtitles_.size(); ++i) {
+        const auto& track = externalSubtitles_[i];
+        if (!track.loaded) playerView_.subtitles.push_back({"external:" + std::to_string(i), track.label, track.loading ? "Loading..." : "OpenSubtitles", false});
+    }
     if (!playerView_.subtitles.empty()) {
         playerView_.subtitles.insert(playerView_.subtitles.begin(), ui::PlayerOption{"no", "Off", "", !subtitleOn});
     }
 
-    // Next Up shows over the last seconds of an episode that has a next one.
-    const double remaining = playerView_.duration - playerView_.position;
-    playerView_.nextWindow = ui::NextUpWindowSeconds(playerView_.duration);
-    playerView_.nextRemaining = std::max(0.0, remaining);
-    playerView_.nextUp = nextEpisode_.has_value() && !nextDismissed_ && !playerLive_ && playerView_.duration > 0.0 &&
-                         remaining <= playerView_.nextWindow && remaining >= -0.25;
-
-    // Skip recap over an episode's opening 90 seconds, past the first episode, which has nothing to recap.
-    const std::optional<playback::PlayId> play = playback::ParsePlayId(playerId_);
-    const bool laterEpisode = play.has_value() && play->season.has_value() && !(play->season == 1 && play->episode == 1);
-    playerView_.recap = laterEpisode && !recapDone_ && state.started && playerView_.position >= 0.0 &&
-                        playerView_.position < playerView_.recapEnd - 0.35;
-
-    // Skip credits over the last seconds of a title with no next episode; Next Up covers the rest.
-    const double creditsWindow = ui::CreditsWindowSeconds(playerView_.duration);
-    playerView_.creditsRemaining = std::max(0.0, remaining);
-    playerView_.credits = !playerLive_ && !nextEpisode_.has_value() && !creditsWatched_ && creditsWindow > 0.0 &&
-                          remaining > 0.0 && remaining <= creditsWindow;
+    ApplyExtrasState(state);
+    if (playerView_.nextUp && extrasPrefs_.autoplay && playerView_.nextRemaining <= 0 && !state.paused && !mpv::Buffering(state)) {
+        PlayNextEpisode(); return;
+    }
     // A picture means the stream works, so the retries start again from nothing.
     if (state.started) playerRecoveries_ = 0;
     shell_->SetPlayerView(playerView_, NowMs());
@@ -3396,12 +3436,19 @@ void App::SavePlayerProgress(bool force) {
     lastProgressSaveMs_ = now;
     const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_);
     if (!folder.has_value()) return;
-    try {
-        catalog::WriteProgress(*folder, playerId_, playerView_.position, playerView_.duration);
-        homeStale_ = true;
-    } catch (const std::exception&) {
-        // The file could not be written. Playback goes on, and the next save tries again.
-    }
+    homeStale_ = true;
+    // Core records watched time before saving the new position. Writing the shared file first would lose that delta.
+    const auto id = playerId_; const auto position = playerView_.position; const auto duration = playerView_.duration;
+    background_->Run([this, folder = *folder, id, position, duration] {
+        if (profiles::ActiveFolder(dataDir_) != std::optional<paths::fs::path>(folder)) return;
+        try { core_->Call("/api/progress", "POST", {{"id", id}, {"position", position}, {"duration", duration}}); }
+        catch (...) { try { catalog::WriteProgress(folder, id, position, duration); } catch (...) {} }
+        background_->PostToUi([this, folder] {
+            if (profiles::ActiveFolder(dataDir_) != std::optional<paths::fs::path>(folder)) return;
+            homeStale_ = true;
+            if (!playerOpen_) RebuildHome();
+        });
+    });
 }
 
 void App::StopPlayback() {
@@ -3557,7 +3604,6 @@ void App::ApplyPlayerAction(const ui::Command& command) {
             ShowTitle(id);
         }
     } else if (command.name == "player-skip-recap") {
-        recapDone_ = true;
         playerView_.recap = false;
         mpv_->SeekTo(playerView_.recapEnd);
     } else if (command.name == "player-skip-credits") {
@@ -3575,7 +3621,24 @@ void App::ApplyPlayerAction(const ui::Command& command) {
 
 void App::PickPlayerOption(const std::string& kind, const std::string& id) {
     if (kind == "cc") {
+        if (id.starts_with("external:")) {
+            const auto index = std::stoul(id.substr(9));
+            if (index < externalSubtitles_.size()) {
+                subtitleChoice_ = externalSubtitles_[index].language;
+                subtitlePreferenceApplied_ = false;
+                if (const auto folder = profiles::ActiveFolder(dataDir_)) try { util::WriteFileAtomically(*folder / "native-subtitle-language", subtitleChoice_); } catch (...) {}
+                RequestSubtitle(index);
+            }
+            return;
+        }
+        subtitlePreferenceApplied_ = true;
         mpv_->SetProperty("sid", id == "no" ? nlohmann::json("no") : nlohmann::json(std::stoi(id)));
+        std::string language = id == "no" ? "off" : "";
+        for (const auto& option : playerView_.subtitles) if (option.id == id && id != "no") language = option.detail;
+        if (!language.empty()) {
+            subtitleChoice_ = language;
+            if (const auto folder = profiles::ActiveFolder(dataDir_)) try { util::WriteFileAtomically(*folder / "native-subtitle-language", language); } catch (...) {}
+        }
     } else if (kind == "audio") {
         mpv_->SetProperty("aid", std::stoi(id));
     } else if (kind == "speed") {
@@ -3696,7 +3759,7 @@ void App::LookUpNextEpisode() {
                 episodeName = item.episodeName.value_or("");
                 if (i + 1 < meta->children.size()) {
                     const catalog::MediaItem& after = meta->children[i + 1];
-                    if (after.season.value_or(0) > 0) next = after;
+                    if (after.season.value_or(0) > 0 && (!after.aired || *after.aired <= util::IsoTimestamp())) next = after;
                 }
                 break;
             }
@@ -3706,7 +3769,7 @@ void App::LookUpNextEpisode() {
             if (playerId_ != current) return;
             nextEpisode_ = next;
             showTitle_ = show;
-            // An episode reads as its show, with "S1 · E2 · Episode name" under it.
+            // An episode reads as its show, with "S1 Â· E2 Â· Episode name" under it.
             bool changed = false;
             if (!show.empty() && playerView_.title != show) {
                 playerView_.title = show;

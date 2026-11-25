@@ -85,6 +85,7 @@ struct PlayerView {
     std::string qualityLabel;
 
     // Next Up, from NextUp.tsx: shown over the last seconds of an episode that has a next one.
+    bool nextAutoplay = true;
     bool nextUp = false;
     std::string nextShow;
     std::string nextEpisode;
@@ -93,6 +94,7 @@ struct PlayerView {
     double nextWindow = 45.0;
 
     // Skip recap, from SkipRecap.tsx: offered over an episode's opening recap, which runs to recapEnd.
+    std::string skipLabel = "Skip recap";
     bool recap = false;
     double recapEnd = 90.0;
     // Skip credits, from CreditsAction.tsx: offered over the last seconds of a title with no next episode.

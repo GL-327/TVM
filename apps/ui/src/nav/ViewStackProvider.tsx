@@ -239,14 +239,6 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
     return () => window.removeEventListener('tvm:navigate-back', back);
   }, [navigate]);
   useEffect(() => {
-    const door = (): void => {
-      if (activeEntry(state).name === 'developer-unlock' || activeEntry(state).name === 'developer') return;
-      navigate.push('developer-unlock');
-    };
-    window.addEventListener('tvm:secret-door', door);
-    return () => window.removeEventListener('tvm:secret-door', door);
-  }, [navigate, state]);
-  useEffect(() => {
     if (root === 'donate') return undefined;
     const onShortcut = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || event.isComposing) return;

@@ -109,10 +109,12 @@ void App::OpenProfileEditor(const std::string& id) {
     dirty_ = true;
 }
 void App::RefreshProfilePolicy() {
+    ++extrasEpoch_; upcomingRail_ = {}; extrasHomeBusy_ = false; extrasHomeCheckedMs_ = -600000;
+    extrasPrefs_ = {}; extrasStats_ = nlohmann::json::object();
     const auto profile = profiles::Active(dataDir_);
     profileMaxAge_ = profile ? profile->maxAge : 18;
     kidsProfile_ = profile && profile->kind == "kids";
-    titles_.clear(); hubs_.clear();
+    titles_.clear(); titlesInFlight_.clear(); shownTitle_.reset(); hubs_.clear();
     ++searchGeneration_;
     std::erase_if(searchResults_, [this](const auto& item) { return !Allowed(item); });
 }

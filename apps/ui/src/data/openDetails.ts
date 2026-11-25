@@ -32,6 +32,7 @@ export function openPlayback(navigate: Navigate, title: Title): void {
     params: {
       id: playIdFor(title.id),
       title: title.title,
+      ...(title.genres.length > 0 ? { genres: [...title.genres] } : {}),
     },
   });
 }

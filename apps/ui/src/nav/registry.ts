@@ -11,7 +11,6 @@ const Donate = lazy(() => import('../screens/Donate').then((m) => ({ default: m.
 const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
 const Downloads = lazy(() => import('../screens/Downloads').then((m) => ({ default: m.Downloads })));
 const Developer = lazy(() => import('../screens/Developer').then((m) => ({ default: m.Developer })));
-const DeveloperUnlock = lazy(() => import('../screens/DeveloperUnlock').then((m) => ({ default: m.DeveloperUnlock })));
 const DiagnosticsModal = lazy(() => import('../screens/DiagnosticsModal').then((m) => ({ default: m.DiagnosticsModal })));
 const Library = lazy(() => import('../screens/Library').then((m) => ({ default: m.Library })));
 const Watchlist = lazy(() => import('../screens/Watchlist').then((m) => ({ default: m.Watchlist })));
@@ -32,6 +31,7 @@ const SearchModal = lazy(() => import('../screens/SearchModal').then((m) => ({ d
 const Service = lazy(() => import('../screens/Service').then((m) => ({ default: m.Service })));
 const Settings = lazy(() => import('../screens/Settings').then((m) => ({ default: m.Settings })));
 const Setup = lazy(() => import('../screens/Setup').then((m) => ({ default: m.Setup })));
+const Stats = lazy(() => import('../screens/Stats').then((m) => ({ default: m.Stats })));
 const SystemInfo = lazy(() => import('../screens/SystemInfo').then((m) => ({ default: m.SystemInfo })));
 const Updates = lazy(() => import('../screens/Updates').then((m) => ({ default: m.Updates })));
 const Changelog = lazy(() => import('../screens/ChangelogModal').then((m) => ({ default: m.ChangelogModal })));
@@ -66,11 +66,11 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   details: { component: Details, defaultFocus: 'back' },
   downloads: { component: Downloads, defaultFocus: 'downloads-close' },
   settings: { component: Settings, defaultFocus: 'performance' },
+  stats: { component: Stats, defaultFocus: 'stats-back' },
   plans: { component: Plans, defaultFocus: 'plan-free' },
   legal: { component: Legal, defaultFocus: 'legal-back' },
 
   developer: { component: Developer, defaultFocus: 'dev-free' },
-  'developer-unlock': { component: DeveloperUnlock, defaultFocus: 'dev-password' },
   'mail-settings': { component: MailSettings, defaultFocus: 'mail-host' },
   'system-info': { component: SystemInfo, defaultFocus: 'back' },
   updates: { component: Updates, defaultFocus: 'check' },

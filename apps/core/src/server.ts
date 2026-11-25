@@ -9,9 +9,10 @@ import { clearStripeConfig, loadStripeConfig, saveStripeConfig } from './provide
 import { createStripeClient } from './providers/stripeClient.ts';
 import { createSubscriptionService, type SubscriptionService } from './providers/subscriptions.ts';
 import { createBillingProbe, type BillingProbe } from './providers/billingProbe.ts';
-import { createAccountsService, isAccountTier, accountSessionToken, publicAccount, type AccountsService } from './providers/accounts.ts';
+import { isAccountTier, accountSessionToken, publicAccount, type AccountRecord } from './providers/accounts.ts';
 import { createMailService, type MailService } from './providers/mail.ts';
-import { currentSessionToken, runForSession } from './requestContext.ts';
+import { createRemoteAccountsService, AccountsError, type CoreAccountsService } from './providers/remoteAccounts.ts';
+import { currentAccount, setCurrentAccount, currentSessionToken, runForSession } from './requestContext.ts';
 import { entitlementForTier, accessTiers, ACCESS_TIERS, ACCESS_ROUTE } from './providers/accessTiers.ts';
 import { createFeatureFlags } from './providers/featureFlags.ts';
 import { requireCapability } from './providers/entitlementGate.ts';
@@ -441,7 +442,7 @@ export interface CoreOptions {
   apps?: AppsService;
   session?: SessionService;
   plans?: PlanService;
-  accounts?: AccountsService;
+  accounts?: CoreAccountsService;
   mail?: MailService;
   donations?: DonationService;
   payments?: PaymentService;
@@ -473,7 +474,7 @@ async function handleApi(
   payments: PaymentService,
   subscriptions: SubscriptionService,
   billingProbe: BillingProbe,
-  accounts: AccountsService,
+  accounts: CoreAccountsService,
   donations: DonationService,
   mail: MailService,
   allowSignIn: ReturnType<typeof createSignInLimiter>,
@@ -481,25 +482,34 @@ async function handleApi(
   reviews: ReviewsService,
   roku: RokuUpdater,
 ): Promise<boolean> {
-  // Dev mode belongs to the dev account, so dev-only routes check who is
-  // asking rather than a switch for the whole machine. Otherwise anyone on
-  // the LAN could use them while the dev is signed in on this Core.
-  let devAsking: boolean | null = null;
-  const devRequest = (): boolean => {
-    if (devAsking === null) {
-      devAsking = accounts.resolve(currentSessionToken())?.role === 'dev';
-      if (devAsking && !developer.unlocked()) developer.grant();
-    }
-    return devAsking;
+  const accountsAdmin = path === '/api/admin/accounts' || path.startsWith('/api/admin/accounts/');
+  if (accountsAdmin && (!('hasAdminKey' in accounts) || !accounts.hasAdminKey())) {
+    sendJson(response, 403, { error: 'admin_required' });
+    return true;
+  }
+  const publicEntry = path === '/api/health' || path === '/api/account/register' || path === '/api/account/signin' || path === '/api/account/signout';
+  const requestAccount = publicEntry ? null : await accounts.resolve(currentSessionToken());
+  setCurrentAccount(requestAccount);
+  const devRequest = (): boolean => requestAccount?.role === 'dev';
+  // Existing media providers read synchronously. Fill the bounded memory cache
+  // before entering them, and never fall back to a device's saved RD key.
+  if ('cachedRdTokenFor' in accounts && requestAccount?.activated
+    && !/^\/api\/(account|admin|dev)(\/|$)/.test(path)) {
+    await accounts.rdTokenFor(currentSessionToken());
+  }
+  const accountFailure = (error: unknown, fallback: number, message: string): void => {
+    if (error instanceof AccountsError) {
+      if (error.retryAfter) response.setHeader('retry-after', error.retryAfter);
+      sendJson(response, error.status, { error: error.message });
+    } else sendJson(response, fallback, { error: error instanceof Error ? error.message : message });
   };
-
   const liveAllowed = (): boolean => {
     // Interim machine-wide entitlement. Replace with account-scoped grants when migrated;
     // every proxy/segment request rechecks access rather than trusting the URL token.
     const decision = requireCapability('liveTv', {
       liveTv: plans.status().liveTv,
       liveTvHealthy: createFeatureFlags({ dataDir, env }).get()['liveTv.healthy'],
-      dev: accounts.resolve(currentSessionToken())?.role === 'dev',
+      dev: requestAccount?.role === 'dev',
     });
     if (!decision.ok) sendJson(response, decision.status, { error: decision.error, message: decision.message });
     return decision.ok;
@@ -530,7 +540,7 @@ async function handleApi(
   }
 
   if (path === '/api/desktop/mpv' && request.method === 'POST') {
-    const account = accounts.resolve(currentSessionToken());
+    const account = requestAccount;
     if (!isLoopback(request.socket.remoteAddress) || account === null || !accounts.usable(account).ok) {
       sendJson(response, 403, { error: 'A usable local account is required for playback setup.' });
       return true;
@@ -639,8 +649,8 @@ async function handleApi(
 
   if (path === '/api/rd/status' && request.method === 'GET') {
     const status = await media.status();
-    // Whose key this is: the account's own, or the one saved on the machine.
-    const own = accounts.rdTokenFor(currentSessionToken()) !== null;
+    // Keep the existing source field; signed-in keys now belong to the service.
+    const own = await accounts.rdTokenFor(currentSessionToken()) !== null;
     sendJson(response, 200, { ...status, source: own ? 'account' : status.configured ? 'device' : null });
     return true;
   }
@@ -880,20 +890,16 @@ async function handleApi(
         sendJson(response, 400, { error: 'token must be a string' });
         return true;
       }
-      // A member's key goes on their account, so it is theirs on every
-      // device and never replaces someone else's. The dev's key, or one set
-      // with nobody signed in, is the machine's.
-      const record = accounts.resolve(currentSessionToken());
-      if (record !== null && record.role === 'member') {
-        accounts.setRdToken(record.id, body.token);
-        const status = await media.status();
-        sendJson(response, 200, { ...status, source: body.token.trim() !== '' ? 'account' : status.configured ? 'device' : null });
-        return true;
-      }
-      const status = await media.setToken(body.token);
-      sendJson(response, 200, { ...status, source: status.configured ? 'device' : null });
+      const record = requestAccount;
+      if (record === null) { sendJson(response, 401, { error: 'Sign in first.' }); return true; }
+      if ('setOwnRdToken' in accounts) {
+        await accounts.setOwnRdToken(body.token);
+        if (record.activated) await accounts.rdTokenFor(currentSessionToken());
+      } else await accounts.setRdToken(record.id, body.token);
+      const status = await media.status();
+      sendJson(response, 200, { ...status, source: body.token.trim() !== '' ? 'account' : null });
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'token rejected' });
+      accountFailure(error, 400, 'token rejected');
     }
     return true;
   }
@@ -1437,54 +1443,16 @@ async function handleApi(
     return true;
   }
 
-  /** Emails a fresh code. Returns an error message, or null once it has gone. */
-  const sendEmailCode = async (accountId: string): Promise<{ status: number; error: string } | null> => {
-    if (!mail.configured()) return { status: 503, error: 'This TVM cannot send email. Ask the dev to switch your account on.' };
-    let issued: ReturnType<AccountsService['issueEmailCode']>;
-    try {
-      issued = accounts.issueEmailCode(accountId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'A code could not be made.';
-      return { status: message.startsWith('Wait') ? 429 : 400, error: message };
-    }
-    try {
-      await mail.sendCode(issued.email, issued.code);
-      return null;
-    } catch (error) {
-      accounts.cancelEmailCode(accountId);
-      // The mail server's own words are for the dev (the test button in
-      // Email settings shows them too), not for someone signing up.
-      console.log(`tvm-core: email code not sent: ${error instanceof Error ? error.message : String(error)}`);
-      return { status: 502, error: 'The code could not be sent. Try again in a minute, or ask the app owner to check the email settings.' };
-    }
-  };
-
   if (path === '/api/account/register' && request.method === 'POST') {
-    let created: ReturnType<AccountsService['register']>;
+    let created: Awaited<ReturnType<CoreAccountsService['register']>>;
     try {
       const body = (await readJson(request)) as Record<string, unknown>;
-      created = accounts.register({ ...body, client: clientLabel() });
+      created = await accounts.register({ ...body, client: clientLabel() });
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be created.' });
+      accountFailure(error, 400, 'That account could not be created.');
       return true;
     }
-    // Best effort. If it fails, the sign-in screen offers to send another.
-    if (mail.configured()) await sendEmailCode(created.id);
     sendJson(response, 200, created);
-    return true;
-  }
-
-  /**
-   * The dev account. The developer code is the password, and signing in
-   * switches developer mode on.
-   */
-  if (path === '/api/account/dev' && request.method === 'POST') {
-    const body = (await readJson(request)) as { code?: unknown };
-    if (!developer.unlock(typeof body.code === 'string' ? body.code.trim() : '')) {
-      sendJson(response, 403, { error: 'That code is not valid.' });
-      return true;
-    }
-    sendJson(response, 200, accounts.signInDev({ client: clientLabel() }));
     return true;
   }
 
@@ -1496,24 +1464,18 @@ async function handleApi(
         sendJson(response, 429, { error: 'rate_limited' });
         return true;
       }
-      sendJson(response, 200, accounts.signIn({ ...body, client: clientLabel() }));
+      sendJson(response, 200, await accounts.signIn({ ...body, client: clientLabel() }));
     } catch (error) {
-      sendJson(response, 401, { error: error instanceof Error ? error.message : 'Sign in failed.' });
+      accountFailure(error, 401, 'Sign in failed.');
     }
     return true;
   }
 
   if (path === '/api/account/signout' && request.method === 'POST') {
     const token = bearer();
-    if (token !== undefined) {
-      const leaving = accounts.resolve(token);
-      accounts.signOut(token);
-      // Developer mode goes with the dev account's last session.
-      if (leaving?.role === 'dev' && !accounts.devSignedIn()) {
-        developer.lock();
-        plans.clearOverrides();
-      }
-    }
+    if (token !== undefined) await accounts.signOut(token);
+    developer.lock();
+    plans.clearOverrides();
     sendJson(response, 200, { ok: true });
     return true;
   }
@@ -1523,7 +1485,7 @@ async function handleApi(
    * count and styles still live there, so the account's tier is pushed into
    * it. An account that cannot use TVM drops to the free entitlement.
    */
-  const syncEntitlement = (record: ReturnType<AccountsService['resolve']>): void => {
+  const syncEntitlement = (record: AccountRecord | null): void => {
     if (record === null) return;
     const usable = accounts.usable(record);
     if (!usable.ok || record.tier === null) {
@@ -1535,69 +1497,59 @@ async function handleApi(
   };
   /** Who am I, and may I use TVM? The interface asks this on every launch. */
   if (path === '/api/account' && request.method === 'GET') {
-    const record = accounts.resolve(bearer());
+    const record = requestAccount;
     if (record === null) {
       sendJson(response, 200, {
         signedIn: false,
         account: null,
         usable: { ok: false, reason: 'no_account' },
         termsVersion: TERMS_VERSION,
-        canSendEmail: mail.configured(),
+        canSendEmail: false,
       });
       return true;
     }
-    // Dev mode stays on for as long as the dev account is signed in, even if
-    // something switched it off in between.
-    if (record.role === 'dev' && !developer.unlocked()) developer.grant();
     syncEntitlement(record);
     sendJson(response, 200, {
       signedIn: true,
       account: publicAccount(record),
       usable: accounts.usable(record),
       termsVersion: TERMS_VERSION,
-      canSendEmail: mail.configured(),
+      canSendEmail: false,
     });
     return true;
   }
 
   if (path === '/api/account/terms' && request.method === 'POST') {
-    const record = accounts.resolve(bearer());
+    const record = requestAccount;
     if (record === null) {
       sendJson(response, 401, { error: 'Sign in first.' });
       return true;
     }
-    const accepted = accounts.acceptTerms(record.id);
-    syncEntitlement(accounts.resolve(bearer()));
+    const accepted = await accounts.acceptTerms(record.id);
+    syncEntitlement(await accounts.resolve(bearer()));
     sendJson(response, 200, accepted);
     return true;
   }
 
-  if (path === '/api/account/email/send' && request.method === 'POST') {
-    const record = accounts.resolve(bearer());
-    if (record === null || record.role === 'dev') {
-      sendJson(response, 401, { error: 'Sign in first.' });
-      return true;
-    }
-    const failed = await sendEmailCode(record.id);
-    if (failed !== null) sendJson(response, failed.status, { error: failed.error });
-    else sendJson(response, 200, { ok: true, email: record.email });
+  if ((path === '/api/account/email/send' || path === '/api/account/email/verify') && request.method === 'POST') {
+    sendJson(response, 410, { error: 'moved' });
     return true;
   }
 
-  if (path === '/api/account/email/verify' && request.method === 'POST') {
-    const record = accounts.resolve(bearer());
-    if (record === null || record.role === 'dev') {
-      sendJson(response, 401, { error: 'Sign in first.' });
+  if (path === '/api/admin/key' && request.method === 'POST') {
+    if (!isLoopback(request.socket.remoteAddress) || !devRequest() || !('installAdminKey' in accounts)) {
+      sendJson(response, 403, { error: 'admin_required' });
       return true;
     }
-    try {
-      const body = (await readJson(request)) as { code?: unknown };
-      const verified = accounts.verifyEmailCode(record.id, body.code);
-      syncEntitlement(accounts.resolve(bearer()));
-      sendJson(response, 200, verified);
-    } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That code could not be checked.' });
-    }
+    const body = await readJson(request) as { key?: unknown };
+    if (typeof body.key !== 'string') { sendJson(response, 400, { error: 'key must be a string' }); return true; }
+    accounts.installAdminKey(body.key);
+    sendJson(response, 200, { installed: accounts.hasAdminKey() });
+    return true;
+  }
+
+  if (accountsAdmin && !devRequest()) {
+    sendJson(response, 403, { error: 'admin_required' });
     return true;
   }
 
@@ -1613,11 +1565,11 @@ async function handleApi(
     }
     const url = new URL(request.url ?? '/', 'http://localhost');
     sendJson(response, 200, {
-      accounts: accounts.list({
+      accounts: await accounts.list({
         search: url.searchParams.get('search') ?? undefined,
         state: (url.searchParams.get('state') as 'all' | 'waiting' | 'active' | 'suspended' | null) ?? undefined,
       }),
-      summary: accounts.summary(),
+      summary: await accounts.summary(),
       tiers: ACCESS_TIERS.map((tier) => ({ id: tier.id, name: tier.name })),
     });
     return true;
@@ -1631,13 +1583,13 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown; tier?: unknown; note?: unknown };
       if (typeof body.id !== 'string' || !isAccountTier(body.tier)) throw new Error('Choose an account and a tier.');
-      sendJson(response, 200, accounts.activate({
+      sendJson(response, 200, await accounts.activate({
         id: body.id,
         tier: body.tier,
         note: typeof body.note === 'string' ? body.note : undefined,
       }));
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be activated.' });
+      accountFailure(error, 400, 'That account could not be activated.');
     }
     return true;
   }
@@ -1650,9 +1602,9 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown; suspended?: unknown };
       if (typeof body.id !== 'string') throw new Error('Choose an account.');
-      sendJson(response, 200, accounts.setSuspended(body.id, body.suspended !== false));
+      sendJson(response, 200, await accounts.setSuspended(body.id, body.suspended !== false));
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be changed.' });
+      accountFailure(error, 400, 'That account could not be changed.');
     }
     return true;
   }
@@ -1665,9 +1617,9 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown; note?: unknown };
       if (typeof body.id !== 'string') throw new Error('Choose an account.');
-      sendJson(response, 200, accounts.setNote(body.id, typeof body.note === 'string' ? body.note : null));
+      sendJson(response, 200, await accounts.setNote(body.id, typeof body.note === 'string' ? body.note : null));
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That note could not be saved.' });
+      accountFailure(error, 400, 'That note could not be saved.');
     }
     return true;
   }
@@ -1681,10 +1633,10 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown };
       if (typeof body.id !== 'string') throw new Error('Choose an account.');
-      accounts.erase(body.id);
-      sendJson(response, 200, { ok: true, summary: accounts.summary() });
+      await accounts.erase(body.id);
+      sendJson(response, 200, { ok: true, summary: await accounts.summary() });
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be erased.' });
+      accountFailure(error, 400, 'That account could not be erased.');
     }
     return true;
   }
@@ -1697,9 +1649,9 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown; enabled?: unknown };
       if (typeof body.id !== 'string' || typeof body.enabled !== 'boolean') throw new Error('Choose an account.');
-      sendJson(response, 200, accounts.setLiveTv(body.id, body.enabled));
+      sendJson(response, 200, await accounts.setLiveTv(body.id, body.enabled));
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'Live TV could not be changed.' });
+      accountFailure(error, 400, 'Live TV could not be changed.');
     }
     return true;
   }
@@ -1712,9 +1664,9 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown; token?: unknown };
       if (typeof body.id !== 'string' || typeof body.token !== 'string') throw new Error('Choose an account.');
-      sendJson(response, 200, accounts.setRdToken(body.id, body.token));
+      sendJson(response, 200, await accounts.setRdToken(body.id, body.token));
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That key could not be saved.' });
+      accountFailure(error, 400, 'That key could not be saved.');
     }
     return true;
   }
@@ -1727,9 +1679,9 @@ async function handleApi(
     try {
       const body = (await readJson(request)) as { id?: unknown; verified?: unknown };
       if (typeof body.id !== 'string') throw new Error('Choose an account.');
-      sendJson(response, 200, accounts.setEmailVerified(body.id, body.verified !== false));
+      sendJson(response, 200, await accounts.setEmailVerified(body.id, body.verified !== false));
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : 'That account could not be changed.' });
+      accountFailure(error, 400, 'That account could not be changed.');
     }
     return true;
   }
@@ -1922,14 +1874,6 @@ async function handleApi(
     return true;
   }
 
-  if (path === '/api/dev/unlock' && request.method === 'POST') {
-    const body = (await readJson(request)) as { password?: unknown };
-    const password = typeof body.password === 'string' ? body.password : '';
-    const ok = developer.unlock(password);
-    sendJson(response, ok ? 200 : 403, { unlocked: ok, error: ok ? undefined : 'That code is not valid.' });
-    return true;
-  }
-
   if (path === '/api/dev/lock' && request.method === 'POST') {
     developer.lock();
     plans.clearOverrides();
@@ -1968,16 +1912,9 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   const dataDir = options.dataDir ?? resolveDataDir(env);
   const update = options.update ?? createUpdateService({ dataDir, env });
   const developer = options.developer ?? createDevUnlockService({ dataDir });
-  const plans = options.plans ?? createPlanService({ dataDir, developer: () => developer.unlocked(), env });
+  const plans = options.plans ?? createPlanService({ dataDir, developer: () => currentAccount()?.role === 'dev', env });
   const mail = options.mail ?? createMailService({ dataDir });
-  // An account exists once somebody signs up, and works once the dev switches
-  // it on. When this machine can send email, the address has to be confirmed
-  // with a code first.
-  const accounts = options.accounts ?? createAccountsService({
-    dataDir,
-    termsVersion: TERMS_VERSION,
-    emailRequired: () => mail.configured(),
-  });
+  const accounts = options.accounts ?? createRemoteAccountsService({ dataDir, termsVersion: TERMS_VERSION, env });
   // Card payments. The plan service is the only thing that can grant an
   // entitlement, so payments reaches it through a three-function port rather
   // than writing entitlements itself.
@@ -2014,7 +1951,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       return createStripeClient({ config: state.config });
     },
     customerId: () => subscriptions.record()?.customerId ?? null,
-    developer: () => developer.unlocked(),
+    developer: () => currentAccount()?.role === 'dev',
     mode: () => {
       const state = loadStripeConfig(dataDir, env);
       return state.configured ? state.config.mode : null;
@@ -2035,7 +1972,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   });
   const live = options.live ?? createLiveService({
     dataDir,
-    includeMock: () => plans.status().liveTv && developer.unlocked(),
+    includeMock: () => plans.status().liveTv && currentAccount()?.role === 'dev',
     reflect: (url, profile) => serverSideLiveFor(dataDir, env).publish(url, profile),
   });
   const session = options.session ?? createSessionService({ dataDir });
@@ -2054,7 +1991,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
     createMediaService({
       content,
       dataDir,
-      rd: createRealDebrid({ dataDir, env, accountToken: () => accounts.rdTokenFor(currentSessionToken()) }),
+      rd: createRealDebrid({ dataDir, env, accountToken: () => 'cachedRdTokenFor' in accounts ? accounts.cachedRdTokenFor(currentSessionToken()) : accounts.rdTokenFor(currentSessionToken()) }),
       streamer,
       plan: () => plans.status(),
       poolToken: () => plans.poolToken(),
@@ -2067,7 +2004,6 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       continueWatching: async () => (await media.home()).continueWatching,
     });
 
-  const allowUnlock = createUnlockLimiter();
   const allowSignIn = createSignInLimiter();
   const lanSessions = createLanSessions(env);
   const allowPairing = createUnlockLimiter();
@@ -2102,9 +2038,8 @@ export function createCoreServer(options: CoreOptions = {}): Server {
         sendJson(response, 200, { ok: true });
         return;
       }
-      if ((path === '/api/dev/unlock' || path === '/api/account/dev') && request.method === 'POST' && !allowUnlock()) {
-        response.setHeader('retry-after', '60');
-        sendJson(response, 429, { error: 'Too many unlock attempts. Try again in one minute.' });
+      if ((path === '/api/dev/unlock' || path === '/api/account/dev') && request.method === 'POST') {
+        sendJson(response, 410, { error: 'moved' });
         return;
       }
       const addr = server.address();
@@ -2153,6 +2088,11 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const served = await serveStatic(uiDist, path, response);
       if (!served) sendJson(response, 404, { error: 'not_found', path });
     })().catch((error: unknown) => {
+      if (error instanceof AccountsError) {
+        if (error.retryAfter) response.setHeader('retry-after', error.retryAfter);
+        sendJson(response, error.status, { error: error.message });
+        return;
+      }
       if (error instanceof SyntaxError) {
         sendJson(response, 400, { error: 'invalid_json' });
         return;

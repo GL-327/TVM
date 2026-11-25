@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clampVolume, readAudioPrefs, restoredAudio, writeAudioPrefs } from '../player/audioPrefs';
 import { applyBoostedVolume } from '../player/audioGain';
+import { fetchExtrasSegments, fetchExtrasSubtitles, isAnimeCandidate, type ExtrasSegments } from '../data/extras';
 import { freeChannelErrorCopy } from '../data/freeLive';
-import { apiFetch, requestPlayback, saveProgress, type PlaybackResult } from '../data/media';
+import { apiFetch, requestPlayback, saveProgress, type PlaybackResult, type PlaybackSubtitle } from '../data/media';
+import { imdbIdFrom } from '../data/playId';
+import { hydratePrefs } from '../data/prefs';
 import { FALLBACK_PLAN, fetchPlan, tickUsage, type PlanStatus } from '../data/plan';
 import { playbackErrorMessage } from '../data/playbackErrors';
 import { useNavigate } from '../nav/ViewStackContext';
@@ -54,6 +57,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [overlay, setOverlay] = useState<'queue' | 'ad' | null>('queue');
   const [skipRecap, setSkipRecap] = useState(false);
   const [badges, setBadges] = useState<string[]>([]);
+  const [segments, setSegments] = useState<ExtrasSegments | null>(null);
+  const [streamSubtitles, setStreamSubtitles] = useState<PlaybackSubtitle[]>([]);
   const [shell, setShell] = useState(() => playerShellClass(false, 'landscape'));
   audioRef.current = { volume, muted };
 
@@ -61,6 +66,11 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const paramLink = typeof params['link'] === 'string' ? params['link'] : '';
   const paramTitle = typeof params['title'] === 'string' ? params['title'] : '';
   const paramGeo = typeof params['channelGeo'] === 'string' ? params['channelGeo'] : null;
+  const paramGenres = useMemo(
+    () => (Array.isArray(params['genres']) ? params['genres'].filter((g): g is string => typeof g === 'string') : []),
+    [params],
+  );
+  const paramAnime = params['anime'] === true;
   const freeQueue = useMemo(() => {
     const raw = params['freeQueue'];
     if (!Array.isArray(raw)) return [];
@@ -94,6 +104,10 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   }, [freeQueue, id]);
   const playbackSeason = typeof params['season'] === 'number' ? params['season'] : undefined;
   const playbackEpisode = typeof params['episode'] === 'number' ? params['episode'] : undefined;
+
+  useEffect(() => {
+    void hydratePrefs();
+  }, []);
 
   useEffect(() => {
     const sync = (): void => {
@@ -147,6 +161,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     setHasFrame(false);
     setError(null);
     setOverlay('queue');
+    setSegments(null);
+    setStreamSubtitles([]);
     const key = `${id}|${link}`;
     if (mediaKey.current !== key) {
       mediaKey.current = key;
@@ -255,7 +271,9 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
               return;
             }
             persist(durationRef.current, durationRef.current);
-            navigate.pop();
+            const endedEvent = new CustomEvent('tvm:playback-ended', { cancelable: true });
+            window.dispatchEvent(endedEvent);
+            if (!endedEvent.defaultPrevented) navigate.pop();
           },
           onClosed: () => { persist(); navigate.pop(); },
           onError: (message) => {
@@ -356,6 +374,54 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         return;
       }
       lastTick.current = Date.now();
+      const initialSubs = Array.isArray(result.subtitles) ? result.subtitles : [];
+      setStreamSubtitles(initialSubs);
+      const hasResolvedSegments =
+        result.segments != null &&
+        (result.segments.source !== null ||
+          result.segments.intro !== null ||
+          result.segments.recap !== null ||
+          result.segments.credits !== null);
+      if (hasResolvedSegments) setSegments(result.segments ?? null);
+
+      if (!live) {
+        const imdb = imdbIdFrom(id);
+        const anime = isAnimeCandidate(paramGenres, paramAnime);
+        if (!hasResolvedSegments && (imdb !== null || playbackTitle !== '')) {
+          void fetchExtrasSegments(
+            {
+              id: imdb ?? id,
+              season: playbackSeason,
+              episode: playbackEpisode,
+              title: playbackTitle,
+              anime,
+            },
+            request.signal,
+          ).then((loaded) => {
+            if (!cancelled && loaded !== null) setSegments(loaded);
+          });
+        }
+        if (imdb !== null) {
+          void fetchExtrasSubtitles(
+            { id: imdb, season: playbackSeason, episode: playbackEpisode },
+            request.signal,
+          ).then((extraSubs) => {
+            if (cancelled || extraSubs === null || extraSubs.length === 0) return;
+            setStreamSubtitles((prev) => {
+              const seen = new Set(prev.map((item) => item.url));
+              const merged = [...prev];
+              for (const sub of extraSubs) {
+                if (!seen.has(sub.url)) {
+                  seen.add(sub.url);
+                  merged.push(sub);
+                }
+              }
+              return merged;
+            });
+          });
+        }
+      }
+
       start(result);
       setOverlay(null);
     })();
@@ -581,6 +647,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       muted,
       controlsVisible: true,
       skipRecap,
+      segments,
+      subtitles: streamSubtitles,
       badges,
       overlay,
       live,
@@ -600,38 +668,39 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       setPlaybackRate: applyPlaybackRate,
     }),
     [
-      adjustVolume,
-      applyMuted,
-      applyPlaybackRate,
-      applyVolume,
-      badges,
-      buffering,
-      busy,
-      close,
-      duration,
-      error,
-      id,
-      live,
-      loading,
-      muted,
-      overlay,
-      pause,
-      paused,
-      playbackEngine,
-      play,
-      playbackEpisode,
-      playbackSeason,
-      position,
-      retry,
-      seek,
-      seekTo,
-      showControls,
-      skipRecap,
-      title,
-      togglePlayback,
-      volume,
-    ],
-  );
+    adjustVolume,
+    applyMuted,
+    applyPlaybackRate,
+    applyVolume,
+    badges,
+    buffering,
+    busy,
+    close,
+    duration,
+    error,
+    id,
+    live,
+    loading,
+    muted,
+    overlay,
+    pause,
+    paused,
+    playbackEngine,
+    play,
+    playbackEpisode,
+    playbackSeason,
+    position,
+    retry,
+    seek,
+    seekTo,
+    segments,
+    showControls,
+    skipRecap,
+    streamSubtitles,
+    title,
+    togglePlayback,
+    volume,
+  ]);
 
   return (
     <div

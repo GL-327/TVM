@@ -40,7 +40,7 @@ sub onStatus()
   if configured and username <> ""
     m.account.text = "Signed in as " + username
   else if configured
-    m.account.text = "Token stored on this device"
+    m.account.text = "Token saved securely in your TVM account"
   else
     m.account.text = "Not connected"
   end if

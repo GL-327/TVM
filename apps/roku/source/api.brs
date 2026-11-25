@@ -14,6 +14,11 @@ function startApiGet(url as String, callback as String) as Object
 end function
 
 function startApiRequest(url as String, method as String, body as String, callback as String) as Object
+  ' Accounts always use the private service through the on-device Task adapter.
+  for each route in ["/api/account", "/api/rd/"]
+    at = Instr(1, url, route)
+    if at > 0 then url = "local:" + Mid(url, at)
+  end for
   id = newRequestId()
   task = CreateObject("roSGNode", "ApiTask")
   task.requestUrl = url
@@ -32,6 +37,7 @@ function startApiRequest(url as String, method as String, body as String, callba
   end if
   ' Hoster resolution can take longer than an ordinary catalog request.
   if Right(url, 13) = "/api/playback" then task.timeoutMs = 65000
+  if m.profileMaxAge <> invalid then task.profileMaxAge = m.profileMaxAge
   if m.profileId <> invalid then task.profileId = m.profileId
   task.observeField("done", callback)
   task.control = "RUN"

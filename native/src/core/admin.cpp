@@ -15,19 +15,7 @@ namespace tvm::admin {
 
 namespace {
 
-// devUnlock.ts: the salt and digest are public by design; the code itself is in no repository.
-constexpr char kPbkdf2Salt[] = "27d2bd86ac0ed42eaf21ac5744bcb4e3";
-constexpr char kPbkdf2Hash[] = "45d072775474c40a8c97c4329cdf0ad65ea2884a9b8a512fe215b853bee7cfac";
-constexpr unsigned long kPbkdf2Iterations = 600000;
 constexpr char kDevAccountId[] = "acc_dev";
-
-util::Bytes FromHex(const std::string& hex) {
-    util::Bytes bytes;
-    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
-        bytes.push_back(static_cast<std::uint8_t>(std::stoi(hex.substr(i, 2), nullptr, 16)));
-    }
-    return bytes;
-}
 
 std::string Text(const nlohmann::json& object, const char* key) {
     const auto found = object.find(key);
@@ -76,25 +64,9 @@ nlohmann::json NullOr(const std::string& value) {
 
 // ------------------------------------------------------------------ developer mode
 
-bool DevUnlocked(const paths::fs::path& dataDir) {
-    try {
-        const std::optional<nlohmann::json> record = vault::ReadSealed(dataDir, paths::DevUnlockPath(dataDir));
-        return record.has_value() && record->is_object() && record->value("unlocked", false);
-    } catch (const std::exception&) {
-        // A damaged vault must not grant developer access.
-        return false;
-    }
-}
-
-bool UnlockDev(const paths::fs::path& dataDir, const std::string& code) {
-    const std::string trimmed = util::Trim(code);
-    if (trimmed.empty() || trimmed.size() > 128) return false;
-    const util::Bytes expected = FromHex(kPbkdf2Hash);
-    const util::Bytes derived = crypto::Pbkdf2Sha256(trimmed, FromHex(kPbkdf2Salt), kPbkdf2Iterations, expected.size());
-    if (!crypto::ConstantTimeEqual(derived, expected)) return false;
-    vault::WriteSealed(dataDir, paths::DevUnlockPath(dataDir), {{"unlocked", true}, {"at", util::IsoTimestamp()}});
-    return true;
-}
+// Legacy API kept fail-closed for old data directories. Account authority lives in Core.
+bool DevUnlocked(const paths::fs::path&) { return false; }
+bool UnlockDev(const paths::fs::path&, const std::string&) { return false; }
 
 void LockDev(const paths::fs::path& dataDir) {
     secrets::DeleteSecret(paths::DevUnlockPath(dataDir));

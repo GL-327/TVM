@@ -48,7 +48,9 @@ CorePrefs WritePrefs(const paths::fs::path& dataDir, const CorePrefsPatch& patch
     if (patch.autoUpdate) next.autoUpdate = *patch.autoUpdate;
 
     // Key order is fixed so the file reads the same as the Node version wrote it.
-    nlohmann::ordered_json json;
+    const auto stored = util::ReadTextFile(paths::PrefsPath(dataDir));
+    auto json = nlohmann::ordered_json::parse(stored.value_or("{}"), nullptr, false);
+    if (!json.is_object()) json = nlohmann::ordered_json::object();
     json["language"] = next.language;
     json["autoUpdate"] = next.autoUpdate;
     util::WriteFileAtomically(paths::PrefsPath(dataDir), json.dump());

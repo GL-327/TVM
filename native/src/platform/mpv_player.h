@@ -48,6 +48,7 @@ public:
     void Stop();
     bool Active() const { return process_ != nullptr; }
 
+    void AddSubtitle(const std::string& file, const std::string& label, const std::string& language, bool select);
     void TogglePause();
     void SetPaused(bool paused);
     void SeekBy(double seconds);

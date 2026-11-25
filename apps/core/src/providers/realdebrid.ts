@@ -63,7 +63,7 @@ export interface RealDebridOptions {
   dataDir: string;
   env?: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
-  /** The signed-in account's own key. It wins over the one saved on the machine. */
+  /** Authoritative account key. When provided, machine/environment keys are ignored. */
   accountToken?: () => string | null;
 }
 
@@ -82,7 +82,8 @@ export function createRealDebrid(options: RealDebridOptions): RealDebrid {
 
   const token = (): string | null => {
     const personal = options.accountToken?.() ?? null;
-    if (personal !== null && personal !== '') return personal;
+    // A remote account provider is authoritative; never reuse a machine key.
+    if (options.accountToken !== undefined) return personal;
     const path = rdTokenPath(dataDir);
     const stored = readSecret(path);
     if (stored !== null) return stored;

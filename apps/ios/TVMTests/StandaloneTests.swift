@@ -35,10 +35,17 @@ final class StandaloneTests: XCTestCase {
     }
 
     private var testFolders: [URL] = []
-    private func testCore(session: URLSession? = nil) -> TVMLocalCore {
+    /// Accounts are answered by an in-memory stand-in for the service, and the session token stays in memory,
+    /// so no test reaches the network or the Keychain for them.
+    private func testCore(session: URLSession? = nil, accounts: TVMAccountsTransport? = nil, vault: TVMSessionVault? = nil) -> TVMLocalCore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-test-\(UUID().uuidString)")
         testFolders.append(root)
-        return TVMLocalCore(session: session, store: TVMStore(root: root))
+        return TVMLocalCore(
+            session: session,
+            store: TVMStore(root: root),
+            accountsTransport: accounts ?? FakeAccountsService(),
+            sessionVault: vault ?? TVMMemorySessionVault()
+        )
     }
     override func tearDown() {
         for root in testFolders { try? FileManager.default.removeItem(at: root) }
@@ -680,82 +687,188 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(before, TVMBundledUI.overlayRoot(store: store))
     }
 
+    private func send(
+        _ core: TVMLocalCore, _ method: String, _ path: String,
+        body: [String: Any]? = nil, token: String? = nil, headers extra: [String: String] = [:]
+    ) async throws -> (status: Int, json: [String: Any]) {
+        var headers = extra
+        if let token { headers["authorization"] = "Bearer \(token)" }
+        let reply = await core.handle(method: method, path: path, query: [:], headers: headers, body: body.map { JSONValue.data($0) })
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: reply.body) as? [String: Any])
+        return (reply.status, object)
+    }
+
+    private func signInThroughCore(_ core: TVMLocalCore, email: String = "someone@example.com") async throws -> String {
+        let reply = try await send(core, "POST", "/api/account/signin", body: ["email": email, "password": "a good long password"])
+        XCTAssertEqual(reply.status, 200)
+        return try XCTUnwrap(reply.json["token"] as? String)
+    }
+
     func testAccountSessionPrefersTheRokuHeader() async throws {
-        let core = testCore()
-        let registered = await core.handle(
-            method: "POST", path: "/api/account/register", query: [:], headers: [:],
-            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password", "displayName": "Someone"])
-        )
-        XCTAssertEqual(registered.status, 200)
-        let signed = await core.handle(
-            method: "POST", path: "/api/account/signin", query: [:], headers: [:],
-            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password"])
-        )
-        XCTAssertEqual(signed.status, 200)
-        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: signed.body) as? [String: Any])
-        let token = try XCTUnwrap(payload["token"] as? String)
-        let viaHeader = await core.handle(
-            method: "GET", path: "/api/account", query: [:],
-            headers: ["x-tvm-account": token], body: nil
-        )
+        let service = FakeAccountsService()
+        service.join(status: "active")
+        let core = testCore(accounts: service)
+        let token = try await signInThroughCore(core)
+        let viaHeader = try await send(core, "GET", "/api/account", headers: ["x-tvm-account": token])
         XCTAssertEqual(viaHeader.status, 200)
-        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: viaHeader.body) as? [String: Any])
-        XCTAssertEqual(body["signedIn"] as? Bool, true)
+        XCTAssertEqual(viaHeader.json["signedIn"] as? Bool, true)
     }
 
-    func testAWrongDevCodeIsRefusedAndDevModeStaysOff() async throws {
-        let core = testCore()
-        let reply = await core.handle(
-            method: "POST", path: "/api/account/dev", query: [:], headers: [:],
-            body: JSONValue.data(["code": "not the code"])
-        )
-        XCTAssertEqual(reply.status, 403)
+    func testTheDeveloperCodeIsGoneAndBothRoutesAnswerMoved() async throws {
+        let service = FakeAccountsService()
+        let core = testCore(accounts: service)
+        let code = try await send(core, "POST", "/api/account/dev", body: ["code": "anything"])
+        XCTAssertEqual(code.status, 410)
+        XCTAssertEqual(code.json["error"] as? String, "moved")
+        XCTAssertEqual(code.json.count, 1)
+        let unlock = try await send(core, "POST", "/api/dev/unlock", body: ["password": "anything"])
+        XCTAssertEqual(unlock.status, 410)
+        XCTAssertEqual(unlock.json["error"] as? String, "moved")
         XCTAssertFalse(core.plans.developer())
+        XCTAssertTrue(service.log.isEmpty)
     }
 
-    func testDevOnlyRoutesNeedDevModeAndPhonesSayTheyDoNotSendEmail() async throws {
-        let core = testCore()
-        for path in ["/api/admin/accounts/live-tv", "/api/admin/accounts/rd", "/api/admin/accounts/verify"] {
-            let reply = await core.handle(method: "POST", path: path, query: [:], headers: [:], body: JSONValue.data(["id": "x"]))
-            XCTAssertEqual(reply.status, 403, path)
+    func testAccountAdminRoutesAreForTheDashboardNotThePhone() async throws {
+        let service = FakeAccountsService()
+        service.join(email: "owner@example.com", status: "active", role: "admin")
+        let core = testCore(accounts: service)
+        let owner = try await signInThroughCore(core, email: "owner@example.com")
+        let routes: [(String, String)] = [
+            ("GET", "/api/admin/accounts"),
+            ("POST", "/api/admin/accounts/activate"),
+            ("POST", "/api/admin/accounts/suspend"),
+            ("POST", "/api/admin/accounts/note"),
+            ("POST", "/api/admin/accounts/erase"),
+            ("POST", "/api/admin/accounts/live-tv"),
+            ("POST", "/api/admin/accounts/rd"),
+            ("POST", "/api/admin/accounts/verify"),
+        ]
+        for (method, path) in routes {
+            for who in [nil, owner] as [String?] {
+                let reply = try await send(core, method, path, body: ["id": "x"], token: who)
+                XCTAssertEqual(reply.status, 403, "\(method) \(path)")
+                XCTAssertEqual(reply.json["error"] as? String, "use_dashboard", "\(method) \(path)")
+            }
         }
-        let locked = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
-        XCTAssertEqual(locked.status, 403)
-
-        // Dev mode switched on for the phone is not enough; it has to be the dev asking.
-        core.plans.setDeveloper(true)
-        let stillLocked = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: [:], body: nil)
-        XCTAssertEqual(stillLocked.status, 403)
-
-        let dev = try XCTUnwrap(core.accounts.signInDev(client: "test")["token"] as? String)
-        let mail = await core.handle(method: "GET", path: "/api/admin/mail", query: [:], headers: ["authorization": "Bearer \(dev)"], body: nil)
-        XCTAssertEqual(mail.status, 200)
-        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: mail.body) as? [String: Any])
-        XCTAssertEqual(body["supported"] as? Bool, false)
-        let send = await core.handle(method: "POST", path: "/api/account/email/send", query: [:], headers: [:], body: nil)
-        XCTAssertEqual(send.status, 503)
     }
 
-    func testAMemberCannotUseTheAccountsScreenWhileTheDevIsSignedIn() async throws {
-        let core = testCore()
-        _ = await core.handle(
-            method: "POST", path: "/api/account/register", query: [:], headers: [:],
-            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password"])
-        )
-        let signed = await core.handle(
-            method: "POST", path: "/api/account/signin", query: [:], headers: [:],
-            body: JSONValue.data(["email": "someone@example.com", "password": "a good long password"])
-        )
-        let member = try XCTUnwrap((try JSONSerialization.jsonObject(with: signed.body) as? [String: Any])?["token"] as? String)
-        let dev = try XCTUnwrap(core.accounts.signInDev(client: "test")["token"] as? String)
-        core.plans.setDeveloper(true)
+    func testAnAdminAccountTurnsOnDeveloperModeAndOnlyThatAccount() async throws {
+        let service = FakeAccountsService()
+        service.join(email: "owner@example.com", status: "active", role: "admin")
+        service.join(status: "active")
+        let core = testCore(accounts: service)
+        let owner = try await signInThroughCore(core, email: "owner@example.com")
+        let member = try await signInThroughCore(core)
 
-        let asMember = await core.handle(method: "GET", path: "/api/admin/accounts", query: [:], headers: ["authorization": "Bearer \(member)"], body: nil)
-        XCTAssertEqual(asMember.status, 403)
-        let asDev = await core.handle(method: "GET", path: "/api/admin/accounts", query: [:], headers: ["authorization": "Bearer \(dev)"], body: nil)
-        XCTAssertEqual(asDev.status, 200)
-        let plan = await core.handle(method: "GET", path: "/api/plan", query: [:], headers: ["authorization": "Bearer \(member)"], body: nil)
-        XCTAssertEqual((try JSONSerialization.jsonObject(with: plan.body) as? [String: Any])?["developer"] as? Bool, false)
+        let ownerStatus = try await send(core, "GET", "/api/dev/status", token: owner)
+        XCTAssertEqual(ownerStatus.json["unlocked"] as? Bool, true)
+        let memberStatus = try await send(core, "GET", "/api/dev/status", token: member)
+        XCTAssertEqual(memberStatus.json["unlocked"] as? Bool, false)
+        let anonymous = try await send(core, "GET", "/api/dev/status")
+        XCTAssertEqual(anonymous.json["unlocked"] as? Bool, false)
+
+        let memberMail = try await send(core, "GET", "/api/admin/mail", token: member)
+        XCTAssertEqual(memberMail.status, 403)
+        let ownerMail = try await send(core, "GET", "/api/admin/mail", token: owner)
+        XCTAssertEqual(ownerMail.status, 200)
+        XCTAssertEqual(ownerMail.json["supported"] as? Bool, false)
+
+        let me = try await send(core, "GET", "/api/account", token: owner)
+        XCTAssertEqual((me.json["account"] as? [String: Any])?["role"] as? String, "dev")
+        XCTAssertEqual((me.json["usable"] as? [String: Any])?["ok"] as? Bool, true)
+    }
+
+    func testPhonesSayTheyDoNotSendEmail() async throws {
+        let core = testCore(accounts: FakeAccountsService())
+        let email = try await send(core, "POST", "/api/account/email/send")
+        XCTAssertEqual(email.status, 503)
+        let me = try await send(core, "GET", "/api/account")
+        XCTAssertEqual(me.json["signedIn"] as? Bool, false)
+    }
+
+    func testTheAccountScreenGetsTheSameShapeAsBefore() async throws {
+        let service = FakeAccountsService()
+        service.join(status: "active")
+        let core = testCore(accounts: service)
+        let token = try await signInThroughCore(core)
+        let me = try await send(core, "GET", "/api/account", token: token)
+        XCTAssertEqual(me.json["signedIn"] as? Bool, true)
+        XCTAssertEqual(me.json["canSendEmail"] as? Bool, false)
+        XCTAssertEqual(me.json["termsVersion"] as? String, TVMAccounts.termsVersion())
+        let account = try XCTUnwrap(me.json["account"] as? [String: Any])
+        for key in ["id", "email", "displayName", "role", "activated", "tier", "suspended", "createdAt",
+                    "termsVersion", "termsAcceptedAt", "emailVerified", "emailCodeSent", "rdKey"] {
+            XCTAssertNotNil(account[key], key)
+        }
+        XCTAssertEqual((me.json["usable"] as? [String: Any])?["reason"] as? String, "terms_required")
+
+        let agreed = try await send(core, "POST", "/api/account/terms", token: token)
+        XCTAssertEqual(agreed.status, 200)
+        let after = try await send(core, "GET", "/api/account", token: token)
+        XCTAssertEqual((after.json["usable"] as? [String: Any])?["ok"] as? Bool, true)
+    }
+
+    func testRegisterAndSignInErrorsKeepTheirStatuses() async throws {
+        let service = FakeAccountsService()
+        service.join()
+        let core = testCore(accounts: service)
+        let wrong = try await send(core, "POST", "/api/account/signin", body: ["email": "someone@example.com", "password": "nope nope nope"])
+        XCTAssertEqual(wrong.status, 401)
+        let bad = try await send(core, "POST", "/api/account/register", body: ["email": "x", "password": "a good long password"])
+        XCTAssertEqual(bad.status, 400)
+        service.down = true
+        let offline = try await send(core, "POST", "/api/account/signin", body: ["email": "someone@example.com", "password": "a good long password"])
+        XCTAssertEqual(offline.status, 503)
+        let unknown = try await send(core, "GET", "/api/account", token: String(repeating: "t", count: 43))
+        XCTAssertEqual(unknown.status, 503)
+    }
+
+    func testAMemberClearingTheirKeyGoesToTheServiceNotTheDevice() async throws {
+        let service = FakeAccountsService()
+        let member = service.join(status: "active")
+        member.rdToken = "RDKEY0000WXYZ"
+        let core = testCore(accounts: service)
+        let token = try await signInThroughCore(core)
+        let before = try await send(core, "GET", "/api/account", token: token)
+        XCTAssertEqual((before.json["account"] as? [String: Any])?["rdKey"] as? Bool, true)
+
+        // Clearing needs no call to Real-Debrid, so this stays off the network.
+        let cleared = try await send(core, "PUT", "/api/rd/token", body: ["token": ""], token: token)
+        XCTAssertEqual(cleared.status, 200)
+        XCTAssertTrue(cleared.json["source"] is NSNull)
+        XCTAssertNil(member.rdToken)
+        XCTAssertEqual(service.count("PUT /v1/me/rd-token"), 1)
+        let after = try await send(core, "GET", "/api/account", token: token)
+        XCTAssertEqual((after.json["account"] as? [String: Any])?["rdKey"] as? Bool, false)
+    }
+
+    func testFactoryResetSignsThePhoneOutOfTheService() async throws {
+        let service = FakeAccountsService()
+        service.join(status: "active")
+        let vault = TVMMemorySessionVault()
+        let core = testCore(accounts: service, vault: vault)
+        let token = try await signInThroughCore(core)
+        XCTAssertEqual(vault.read(), token)
+        let reset = try await send(core, "POST", "/api/maintenance/factory-reset")
+        XCTAssertEqual(reset.status, 200)
+        XCTAssertNil(vault.read())
+        XCTAssertNil(service.sessions[token])
+    }
+
+    func testOnlyTheSessionTokenIsKeptNoLedgerAndNoPassword() async throws {
+        let service = FakeAccountsService()
+        service.join()
+        let vault = TVMMemorySessionVault()
+        let core = testCore(accounts: service, vault: vault)
+        let token = try await signInThroughCore(core)
+        XCTAssertEqual(vault.read(), token)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: core.store.root.appendingPathComponent("accounts.json").path))
+        let files = FileManager.default.enumerator(at: core.store.root, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
+        for file in files {
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            XCTAssertFalse(text.contains("a good long password"))
+            XCTAssertFalse(text.contains(token))
+        }
     }
 
     func testTheTestChannelIsOnlyThereInDevModeAndHidesItsAddress() async throws {
@@ -813,277 +926,385 @@ final class MockPlaybackProtocol: URLProtocol {
     }
 }
 
-/**
- * The phone's account rules.
- *
- * The iPhone build runs its own embedded core, so the gate in front of
- * everything is answered here rather than by a desktop. The desktop equivalent
- * has had tests since it was written; this had none, which is the wrong way
- * round, because the rules that matter most are the ones about who gets in.
- *
- * Each test names the rule it protects rather than the method it calls: the
- * point is that this, the Kotlin port and the TypeScript core agree.
- */
-final class TVMAccountsTests: XCTestCase {
-    private var roots: [URL] = []
-    private let password = "a good long password"
+/// The accounts service, in memory. Same endpoints and answers as TVM-accounts' README.
+final class FakeAccountsService: TVMAccountsTransport {
+    final class Member {
+        let id: String
+        let email: String
+        let password: String
+        var status: String
+        var role: String
+        var liveTv = false
+        var termsVersion: String?
+        var rdToken: String?
 
-    override func tearDown() {
-        for root in roots { try? FileManager.default.removeItem(at: root) }
-        roots.removeAll()
-        super.tearDown()
+        init(id: String, email: String, password: String, status: String = "waiting", role: String = "member") {
+            self.id = id
+            self.email = email
+            self.password = password
+            self.status = status
+            self.role = role
+        }
     }
 
-    private func makeAccounts() -> (TVMAccounts, URL) {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tvm-accounts-\(UUID().uuidString)")
-        roots.append(root)
-        return (TVMAccounts(store: TVMStore(root: root)), root)
-    }
+    static let password = "a good long password"
+
+    var members: [Member] = []
+    var sessions: [String: Member] = [:]
+    var log: [String] = []
+    var bodies: [[String: Any]] = []
+    var down = false
+    private var counter = 0
+
+    func count(_ prefix: String) -> Int { log.filter { $0.hasPrefix(prefix) }.count }
 
     @discardableResult
-    private func register(_ accounts: TVMAccounts, email: String = "someone@example.com") throws -> String {
-        let made = try accounts.register(email: email, password: password, displayName: "Someone", client: "test").get()
-        return try XCTUnwrap(made["id"] as? String)
+    func join(email: String = "someone@example.com", status: String = "waiting", role: String = "member") -> Member {
+        let member = Member(id: "acc_seed_\(members.count)", email: email, password: FakeAccountsService.password, status: status, role: role)
+        members.append(member)
+        return member
     }
 
-    private func token(_ accounts: TVMAccounts, email: String = "someone@example.com") throws -> String {
-        let signedIn = try accounts.signIn(email: email, password: password, client: "test").get()
+    private func account(_ member: Member) -> [String: Any] {
+        [
+            "id": member.id, "email": member.email,
+            "displayName": String(member.email.split(separator: "@").first ?? ""),
+            "role": member.role, "status": member.status, "tier": "stream", "liveTv": member.liveTv,
+            "emailVerified": false,
+            "termsVersion": JSONValue.orNull(member.termsVersion),
+            "hasRdToken": member.rdToken != nil,
+            "createdAt": "2026-11-01T10:00:00.000Z",
+        ]
+    }
+
+    func send(method: String, url: URL, bearer: String?, body: Data?) async throws -> (status: Int, body: Data) {
+        if down { throw URLError(.notConnectedToInternet) }
+        let path = url.path
+        log.append("\(method) \(path)")
+        let json = JSONValue.object(body)
+        if body != nil { bodies.append(json) }
+        func reply(_ status: Int, _ value: [String: Any] = [:]) -> (status: Int, body: Data) {
+            (status, status == 204 ? Data() : JSONValue.data(value))
+        }
+        var session: Member?
+        if let bearer, let found = sessions[bearer], found.status != "suspended" { session = found }
+        let unauthorized = reply(401, ["error": "unauthorized"])
+
+        switch (method, path) {
+        case ("POST", "/v1/register"):
+            let email = json["email"] as? String ?? ""
+            // A duplicate gets the same receipt, so the service never says who has an account.
+            if members.contains(where: { $0.email == email }) {
+                return reply(201, ["account": account(Member(id: "acc_new", email: email, password: ""))])
+            }
+            counter += 1
+            let made = Member(id: "acc_\(counter)", email: email, password: json["password"] as? String ?? "")
+            members.append(made)
+            return reply(201, ["account": account(made)])
+        case ("POST", "/v1/signin"):
+            guard let member = members.first(where: { $0.email == (json["email"] as? String ?? "") }),
+                  member.password == (json["password"] as? String ?? ""), member.status != "suspended" else {
+                return reply(401, ["error": "invalid"])
+            }
+            counter += 1
+            let token = String(repeating: "s", count: 10) + String(format: "%040d", counter)
+            sessions[token] = member
+            return reply(200, ["session": token, "account": account(member)])
+        case ("POST", "/v1/signout"):
+            guard let bearer, session != nil else { return unauthorized }
+            sessions.removeValue(forKey: bearer)
+            return reply(204)
+        case ("GET", "/v1/me"):
+            guard let member = session else { return unauthorized }
+            return reply(200, ["account": account(member)])
+        case ("POST", "/v1/me/terms"):
+            guard let member = session else { return unauthorized }
+            member.termsVersion = json["version"] as? String
+            return reply(200, ["account": account(member)])
+        case ("PUT", "/v1/me/rd-token"):
+            guard let member = session else { return unauthorized }
+            let token = json["token"] as? String ?? ""
+            member.rdToken = token.isEmpty ? nil : token
+            return reply(200, ["account": account(member)])
+        case ("GET", "/v1/me/rd-token"):
+            guard let member = session else { return unauthorized }
+            guard member.status == "active" else { return reply(403, ["error": "forbidden"]) }
+            return reply(200, ["token": JSONValue.orNull(member.rdToken)])
+        default:
+            return reply(404, ["error": "not_found"])
+        }
+    }
+}
+
+/**
+ * The phone's account rules, against a mocked accounts service.
+ *
+ * The accounts live in TVM's private service; the phone only forwards to it and
+ * keeps a session token. These tests stand in for the service (FakeAccountsService)
+ * so they check what the phone sends, what it keeps, and how it answers the
+ * interface, without a network.
+ */
+final class TVMAccountsTests: XCTestCase {
+    private let password = FakeAccountsService.password
+    private let origin = "https://accounts.test"
+    private var service = FakeAccountsService()
+    private var vault = TVMMemorySessionVault()
+    private var clock = Date(timeIntervalSince1970: 1_000_000)
+
+    override func setUp() {
+        super.setUp()
+        service = FakeAccountsService()
+        vault = TVMMemorySessionVault()
+        clock = Date(timeIntervalSince1970: 1_000_000)
+    }
+
+    private func makeAccounts() -> TVMAccounts {
+        TVMAccounts(transport: service, vault: vault, origin: origin, now: { [unowned self] in self.clock })
+    }
+
+    private func token(_ accounts: TVMAccounts, email: String = "someone@example.com") async throws -> String {
+        let signedIn = try await accounts.signIn(email: email, password: password, client: "test").get()
         return try XCTUnwrap(signedIn["token"] as? String)
     }
 
-    func testAccountStartsInertAndGrantsNothing() throws {
-        let (accounts, _) = makeAccounts()
-        let made = try accounts.register(email: "someone@example.com", password: password, displayName: "Someone", client: "test").get()
+    // MARK: Registering and signing in
+
+    func testRegisteringSendsOnlyWhatTheServiceTakesAndGrantsNothing() async throws {
+        let accounts = makeAccounts()
+        let made = try await accounts.register(email: "  Someone@Example.com ", password: password, displayName: "Someone", client: "test agent").get()
         XCTAssertEqual(made["activated"] as? Bool, false)
-        XCTAssertNil(made["tier"] as? String)
-
-        let signedIn = try accounts.signIn(email: "someone@example.com", password: password, client: "test").get()
-        let usable = try XCTUnwrap(signedIn["usable"] as? [String: Any])
-        XCTAssertEqual(usable["ok"] as? Bool, false)
-        XCTAssertEqual(usable["reason"] as? String, "awaiting_activation")
+        XCTAssertTrue(made["tier"] is NSNull)
+        XCTAssertEqual(made["role"] as? String, "member")
+        XCTAssertEqual(service.log, ["POST /v1/register"])
+        let sent = try XCTUnwrap(service.bodies.first)
+        XCTAssertEqual(Set(sent.keys), ["email", "password", "displayName", "client"])
+        XCTAssertEqual(sent["email"] as? String, "someone@example.com")
+        XCTAssertTrue(service.sessions.isEmpty)
     }
 
-    func testActivationAloneIsNotEnoughTheTermsStillHaveToBeAgreed() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        XCTAssertNotNil(accounts.activate(id: id, tier: "stream-live", note: nil))
-
-        let version = TVMAccounts.termsVersion()
-        let waiting = TVMAccounts.usable(accounts.resolve(token: try token(accounts)), termsVersion: version)
-        XCTAssertEqual(waiting["reason"] as? String, "terms_required")
-
-        _ = accounts.acceptTerms(id: id)
-        let allowed = TVMAccounts.usable(accounts.resolve(token: try token(accounts)), termsVersion: version)
-        XCTAssertEqual(allowed["ok"] as? Bool, true)
-    }
-
-    func testWrongPasswordAndMissingAccountAnswerIdentically() throws {
-        let (accounts, _) = makeAccounts()
-        try register(accounts)
-
-        var wrongPassword: String?
-        var noSuchAccount: String?
-        if case .failure(let error) = accounts.signIn(email: "someone@example.com", password: "not the password", client: "test") {
-            wrongPassword = error.message
-        }
-        if case .failure(let error) = accounts.signIn(email: "nobody@example.com", password: "not the password", client: "test") {
-            noSuchAccount = error.message
-        }
-        XCTAssertNotNil(wrongPassword)
-        XCTAssertEqual(wrongPassword, noSuchAccount)
-    }
-
-    func testSigningUpTwiceSaysNothingAboutWhetherTheAddressIsTaken() throws {
-        let (accounts, _) = makeAccounts()
-        try register(accounts)
-
-        guard case .failure(let error) = accounts.register(email: "someone@example.com", password: "a different long password", displayName: nil, client: nil) else {
-            return XCTFail("a duplicate address must not be accepted")
-        }
-        XCTAssertFalse(error.message.contains("already registered"))
-        XCTAssertFalse(error.message.contains("taken"))
-        XCTAssertTrue(error.message.contains("could not be created"))
-    }
-
-    func testNothingOnDiskCanProduceThePasswordAndSaltsAreNeverShared() throws {
-        let (accounts, root) = makeAccounts()
-        try register(accounts, email: "one@example.com")
-        try register(accounts, email: "two@example.com")
-
-        let ledger = try String(contentsOf: root.appendingPathComponent("accounts.json"), encoding: .utf8)
-        XCTAssertFalse(ledger.contains(password))
-
-        let parsed = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(ledger.utf8)) as? [String: Any])
-        let rows = try XCTUnwrap(parsed["accounts"] as? [[String: Any]])
-        XCTAssertEqual(rows.count, 2)
-        XCTAssertNotEqual(rows[0]["passwordSalt"] as? String, rows[1]["passwordSalt"] as? String)
-        // Same password, different salt, so the digests have to differ too.
-        XCTAssertNotEqual(rows[0]["passwordHash"] as? String, rows[1]["passwordHash"] as? String)
-    }
-
-    func testTheOwnerListingNeverCarriesTheDigestOrTheSalt() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        _ = accounts.activate(id: id, tier: "stream", note: nil)
-
-        let listed = try XCTUnwrap(accounts.list(search: nil, state: nil)["accounts"] as? [[String: Any]])
-        let first = try XCTUnwrap(listed.first)
-        XCTAssertNil(first["passwordHash"])
-        XCTAssertNil(first["passwordSalt"])
-    }
-
-    func testATokenStopsWorkingTheMomentItIsSignedOut() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        _ = accounts.activate(id: id, tier: "stream", note: nil)
-        _ = accounts.acceptTerms(id: id)
-
-        let live = try token(accounts)
-        XCTAssertNotNil(accounts.resolve(token: live))
-        accounts.signOut(token: live)
-        XCTAssertNil(accounts.resolve(token: live))
-    }
-
-    func testSuspendingCutsLiveSessionsRatherThanWaitingForThemToLapse() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        _ = accounts.activate(id: id, tier: "stream", note: nil)
-        _ = accounts.acceptTerms(id: id)
-
-        let live = try token(accounts)
-        XCTAssertNotNil(accounts.resolve(token: live))
-        _ = accounts.setSuspended(id: id, suspended: true)
-        XCTAssertNil(accounts.resolve(token: live))
-    }
-
-    func testErasingTakesTheAccountAndItsSessionsTogether() throws {
-        let (accounts, root) = makeAccounts()
-        let id = try register(accounts)
-        _ = accounts.activate(id: id, tier: "stream", note: nil)
-        _ = accounts.acceptTerms(id: id)
-        let live = try token(accounts)
-
-        accounts.erase(id: id)
-        XCTAssertNil(accounts.resolve(token: live))
-        XCTAssertEqual((accounts.list(search: nil, state: nil)["accounts"] as? [[String: Any]])?.count, 0)
-        let ledger = try String(contentsOf: root.appendingPathComponent("accounts.json"), encoding: .utf8)
-        XCTAssertFalse(ledger.contains("someone@example.com"))
-    }
-
-    func testOnlyTheTwoRealTiersCanBeGranted() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        XCTAssertNil(accounts.activate(id: id, tier: "free", note: nil))
-        XCTAssertNil(accounts.activate(id: id, tier: "premium", note: nil))
-        XCTAssertNotNil(accounts.activate(id: id, tier: "stream", note: nil))
-        XCTAssertNotNil(accounts.activate(id: id, tier: "stream-live", note: nil))
-    }
-
-    func testTermsAgreedToAnOlderVersionDoNotCarryOver() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        _ = accounts.activate(id: id, tier: "stream", note: nil)
-        _ = accounts.acceptTerms(id: id)
-
-        let account = accounts.resolve(token: try token(accounts))
-        XCTAssertEqual(TVMAccounts.usable(account, termsVersion: TVMAccounts.termsVersion())["ok"] as? Bool, true)
-        // The same account, judged by a build carrying newer terms.
-        XCTAssertEqual(TVMAccounts.usable(account, termsVersion: "2099-01-01")["reason"] as? String, "terms_required")
-    }
-
-    func testAPasswordBelowTenCharactersIsRefused() throws {
-        let (accounts, _) = makeAccounts()
-        if case .success = accounts.register(email: "someone@example.com", password: "short", displayName: nil, client: nil) {
-            XCTFail("a five character password must not be accepted")
-        }
-        if case .failure(let error) = accounts.register(email: "someone@example.com", password: "0123456789", displayName: nil, client: nil) {
+    func testBadInputIsRefusedWithoutAskingTheService() async throws {
+        let accounts = makeAccounts()
+        if case .success = await accounts.register(email: "not an email", password: password, displayName: nil, client: nil) { XCTFail("not an address") }
+        if case .success = await accounts.register(email: "someone@example.com", password: "short", displayName: nil, client: nil) { XCTFail("too short") }
+        if case .success = await accounts.register(email: "someone@example.com", password: String(repeating: "x", count: 201), displayName: nil, client: nil) { XCTFail("too long") }
+        XCTAssertTrue(service.log.isEmpty)
+        if case .failure(let error) = await accounts.register(email: "someone@example.com", password: "0123456789", displayName: nil, client: nil) {
             XCTFail("ten characters is the documented minimum: \(error.message)")
         }
     }
 
-    // MARK: The dev account
-
-    func testDevAccountIsBuiltInAlwaysUsableAndNotListed() throws {
-        let (accounts, _) = makeAccounts()
-        let first = accounts.signInDev(client: "test")
-        let account = try XCTUnwrap(first["account"] as? [String: Any])
-        XCTAssertEqual(account["role"] as? String, "dev")
-        XCTAssertEqual((first["usable"] as? [String: Any])?["ok"] as? Bool, true)
-        let second = accounts.signInDev(client: "test")
-        XCTAssertEqual((second["account"] as? [String: Any])?["id"] as? String, TVMAccounts.devAccountID)
-        XCTAssertEqual((accounts.list(search: nil, state: nil)["accounts"] as? [[String: Any]])?.count, 0)
-        XCTAssertEqual((accounts.list(search: nil, state: nil)["summary"] as? [String: Any])?["total"] as? Int, 0)
+    func testAWaitingAccountSignsInButCanDoNothing() async throws {
+        service.join()
+        let accounts = makeAccounts()
+        let signedIn = try await accounts.signIn(email: "someone@example.com", password: password, client: "test").get()
+        let usable = try XCTUnwrap(signedIn["usable"] as? [String: Any])
+        XCTAssertEqual(usable["ok"] as? Bool, false)
+        XCTAssertEqual(usable["reason"] as? String, "awaiting_activation")
+        XCTAssertEqual((signedIn["account"] as? [String: Any])?["activated"] as? Bool, false)
     }
 
-    func testDevAccountCannotBeReachedWithAPassword() {
-        let (accounts, _) = makeAccounts()
-        _ = accounts.signInDev(client: "test")
-        if case .success = accounts.signIn(email: "dev", password: "", client: "test") {
-            XCTFail("the dev account has no password")
+    func testWrongPasswordAndMissingAccountAnswerIdentically() async throws {
+        service.join()
+        let accounts = makeAccounts()
+        var wrongPassword: String?
+        var noSuchAccount: String?
+        if case .failure(let error) = await accounts.signIn(email: "someone@example.com", password: "not the password", client: "test") {
+            wrongPassword = error.message
         }
-        if case .success = accounts.signIn(email: "dev", password: password, client: "test") {
-            XCTFail("the dev account has no password")
+        if case .failure(let error) = await accounts.signIn(email: "nobody@example.com", password: password, client: "test") {
+            noSuchAccount = error.message
+        }
+        XCTAssertNotNil(wrongPassword)
+        XCTAssertEqual(wrongPassword, noSuchAccount)
+        XCTAssertNil(vault.read())
+    }
+
+    func testActivationAloneIsNotEnoughTheTermsStillHaveToBeAgreed() async throws {
+        let member = service.join(status: "active")
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        let version = TVMAccounts.termsVersion()
+        let before = TVMAccounts.usable(await accounts.resolve(token: live), termsVersion: version)
+        XCTAssertEqual(before["reason"] as? String, "terms_required")
+
+        let accepted = try await accounts.acceptTerms(token: live).get()
+        XCTAssertEqual(accepted["termsVersion"] as? String, version)
+        XCTAssertEqual(member.termsVersion, version)
+        let allowed = TVMAccounts.usable(await accounts.resolve(token: live), termsVersion: version)
+        XCTAssertEqual(allowed["ok"] as? Bool, true)
+    }
+
+    func testTermsAgreedToAnOlderVersionDoNotCarryOver() async throws {
+        service.join(status: "active").termsVersion = "2025-01-01"
+        let accounts = makeAccounts()
+        let account = await accounts.resolve(token: try await token(accounts))
+        XCTAssertEqual(TVMAccounts.usable(account, termsVersion: TVMAccounts.termsVersion())["reason"] as? String, "terms_required")
+        // The same account, judged by a build carrying newer terms.
+        XCTAssertEqual(TVMAccounts.usable(account, termsVersion: "2025-01-01")["ok"] as? Bool, true)
+    }
+
+    func testAnAdminAccountIsAnsweredAsTheOldDevRoleAndAlwaysUsable() async throws {
+        service.join(email: "owner@example.com", status: "active", role: "admin")
+        let accounts = makeAccounts()
+        let signedIn = try await accounts.signIn(email: "owner@example.com", password: password, client: "test").get()
+        XCTAssertEqual((signedIn["account"] as? [String: Any])?["role"] as? String, "dev")
+        XCTAssertEqual((signedIn["usable"] as? [String: Any])?["ok"] as? Bool, true)
+    }
+
+    func testASuspendedAccountIsSignedOut() async throws {
+        let member = service.join(status: "active")
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        clock = clock.addingTimeInterval(TVMAccounts.accountTTL + 1)
+        member.status = "suspended"
+        let gone = await accounts.resolve(token: live)
+        XCTAssertNil(gone)
+        XCTAssertNil(vault.read())
+        if case .success = await accounts.signIn(email: "someone@example.com", password: password, client: "test") {
+            XCTFail("a suspended account cannot sign in")
         }
     }
 
-    func testDevAccountCannotBeSwitchedOffOrErasedFromTheAccountsScreen() throws {
-        let (accounts, _) = makeAccounts()
-        let token = try XCTUnwrap(accounts.signInDev(client: "test")["token"] as? String)
-        XCTAssertNil(accounts.setSuspended(id: TVMAccounts.devAccountID, suspended: true))
-        XCTAssertNil(accounts.activate(id: TVMAccounts.devAccountID, tier: "stream", note: nil))
-        if case .success = accounts.setRdToken(id: TVMAccounts.devAccountID, token: "abc") {
-            XCTFail("the dev account is not edited from the Accounts screen")
+    func testServiceTierFollowsLiveTv() async throws {
+        let member = service.join(status: "active")
+        member.liveTv = true
+        let accounts = makeAccounts()
+        let account = await accounts.resolve(token: try await token(accounts))
+        XCTAssertEqual(account?.tier, "stream-live")
+    }
+
+    // MARK: What the phone keeps
+
+    func testASecondSignInIsRememberedAndLeavesOtherSessionsAlone() async throws {
+        service.join()
+        let accounts = makeAccounts()
+        let first = try await token(accounts)
+        let second = try await token(accounts)
+        XCTAssertEqual(vault.read(), second)
+        XCTAssertNotNil(service.sessions[first])
+        XCTAssertNotNil(service.sessions[second])
+    }
+
+    func testSigningOutClosesTheSessionAndForgetsIt() async throws {
+        service.join(status: "active")
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        await accounts.signOut(token: live)
+        XCTAssertTrue(service.sessions.isEmpty)
+        XCTAssertNil(vault.read())
+        let gone = await accounts.resolve(token: live)
+        XCTAssertNil(gone)
+    }
+
+    func testSigningOutWorksEvenWhenTheServiceIsUnreachable() async throws {
+        service.join()
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        service.down = true
+        await accounts.signOut(token: live)
+        XCTAssertNil(vault.read())
+    }
+
+    // MARK: The service cannot be reached
+
+    func testAnUnreachableServiceSaysSoInsteadOfPretendingTheAccountIsMissing() async throws {
+        service.join()
+        service.down = true
+        let accounts = makeAccounts()
+        guard case .failure(let error) = await accounts.signIn(email: "someone@example.com", password: password, client: "test") else {
+            return XCTFail("the service is down")
         }
-        accounts.erase(id: TVMAccounts.devAccountID)
-        XCTAssertNotNil(accounts.resolve(token: token))
+        XCTAssertEqual(error.status, 503)
+        if case .unavailable = await accounts.lookup(token: String(repeating: "x", count: 40)) {} else {
+            XCTFail("no cached answer and no service")
+        }
     }
 
-    func testDevCountsAsSignedInUntilItsLastSessionEnds() throws {
-        let (accounts, _) = makeAccounts()
-        XCTAssertFalse(accounts.devSignedIn())
-        let one = try XCTUnwrap(accounts.signInDev(client: "test")["token"] as? String)
-        let two = try XCTUnwrap(accounts.signInDev(client: "test")["token"] as? String)
-        accounts.signOut(token: one)
-        XCTAssertTrue(accounts.devSignedIn())
-        accounts.signOut(token: two)
-        XCTAssertFalse(accounts.devSignedIn())
+    func testAnAccountSeenAMomentAgoStaysSignedInThroughAnOutage() async throws {
+        service.join(status: "active")
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        clock = clock.addingTimeInterval(TVMAccounts.accountTTL + 1)
+        service.down = true
+        let kept = await accounts.resolve(token: live)
+        XCTAssertNotNil(kept)
     }
 
-    // MARK: What the dev sets per account
+    func testTheServiceIsNotAskedAboutTheSameSessionOnEveryRequest() async throws {
+        service.join(status: "active")
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        for _ in 0..<5 { _ = await accounts.resolve(token: live) }
+        XCTAssertEqual(service.count("GET /v1/me"), 0)
+        clock = clock.addingTimeInterval(TVMAccounts.accountTTL + 1)
+        _ = await accounts.resolve(token: live)
+        _ = await accounts.resolve(token: live)
+        XCTAssertEqual(service.count("GET /v1/me"), 1)
+    }
 
-    func testAnAccountKeepsItsOwnRealDebridKeyAndOnlyShowsItsEnd() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        let live = try token(accounts)
-        XCTAssertNil(accounts.rdTokenFor(token: live))
+    // MARK: The Real-Debrid key
 
-        let saved = try accounts.setRdToken(id: id, token: "  ABCDEFGHIJKLMNOPQRSTUVWXYZ1234  ").get()
+    func testTheRealDebridKeyIsFetchedWhenNeededAndHeldInMemoryForAWhile() async throws {
+        service.join(status: "active").rdToken = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234"
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        let first = await accounts.rdTokenFor(token: live)
+        let second = await accounts.rdTokenFor(token: live)
+        XCTAssertEqual(first, "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234")
+        XCTAssertEqual(second, "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234")
+        XCTAssertEqual(service.count("GET /v1/me/rd-token"), 1)
+
+        clock = clock.addingTimeInterval(TVMAccounts.rdTTL + 1)
+        let third = await accounts.rdTokenFor(token: live)
+        XCTAssertEqual(third, "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234")
+        XCTAssertEqual(service.count("GET /v1/me/rd-token"), 2)
+    }
+
+    func testNoKeyIsFetchedForAnAccountThatIsNotOnOrHasNone() async throws {
+        service.join(email: "waiting@example.com").rdToken = "KEYKEYKEYKEY"
+        service.join(email: "empty@example.com", status: "active")
+        let accounts = makeAccounts()
+        let waiting = await accounts.rdTokenFor(token: try await token(accounts, email: "waiting@example.com"))
+        let empty = await accounts.rdTokenFor(token: try await token(accounts, email: "empty@example.com"))
+        let none = await accounts.rdTokenFor(token: nil)
+        XCTAssertNil(waiting)
+        XCTAssertNil(empty)
+        XCTAssertNil(none)
+        XCTAssertEqual(service.count("GET /v1/me/rd-token"), 0)
+    }
+
+    func testSavingAndClearingAKeyGoesToTheServiceAndNeverOntoThePhone() async throws {
+        let member = service.join(status: "active")
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+
+        let saved = try await accounts.setRdToken(token: live, key: "  RDKEY0000WXYZ  ").get()
         XCTAssertEqual(saved["rdKey"] as? Bool, true)
-        XCTAssertEqual(saved["rdKeyHint"] as? String, "••••1234")
-        XCTAssertEqual(accounts.rdTokenFor(token: live), "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234")
+        XCTAssertFalse("\(saved)".contains("RDKEY"))
+        XCTAssertEqual(member.rdToken, "RDKEY0000WXYZ")
+        let fetched = await accounts.rdTokenFor(token: live)
+        XCTAssertEqual(fetched, "RDKEY0000WXYZ")
 
-        XCTAssertEqual(try accounts.setRdToken(id: id, token: "").get()["rdKey"] as? Bool, false)
-        XCTAssertNil(accounts.rdTokenFor(token: live))
-        if case .success = accounts.setRdToken(id: id, token: "has a space") {
+        let cleared = try await accounts.setRdToken(token: live, key: "").get()
+        XCTAssertEqual(cleared["rdKey"] as? Bool, false)
+        XCTAssertNil(member.rdToken)
+        let gone = await accounts.rdTokenFor(token: live)
+        XCTAssertNil(gone)
+        if case .success = await accounts.setRdToken(token: live, key: "has a space") {
             XCTFail("a Real-Debrid key has no spaces")
         }
     }
 
-    func testLiveTvIsSwitchedOnlyForAnAccountThatIsOn() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        if case .success = accounts.setLiveTv(id: id, enabled: true) {
-            XCTFail("the account is not switched on yet")
-        }
-        _ = accounts.activate(id: id, tier: "stream", note: nil)
-        XCTAssertEqual(try accounts.setLiveTv(id: id, enabled: true).get()["tier"] as? String, "stream-live")
-        XCTAssertEqual(try accounts.setLiveTv(id: id, enabled: false).get()["tier"] as? String, "stream")
-    }
-
-    func testTheDevCanMarkAnAddressVerified() throws {
-        let (accounts, _) = makeAccounts()
-        let id = try register(accounts)
-        XCTAssertEqual(try accounts.setEmailVerified(id: id, verified: true).get()["emailVerified"] as? Bool, true)
-        XCTAssertEqual(try accounts.setEmailVerified(id: id, verified: false).get()["emailVerified"] as? Bool, false)
+    func testASwitchedOffAccountDropsItsKeyFromMemory() async throws {
+        let member = service.join(status: "active")
+        member.rdToken = "KEYKEYKEYKEY"
+        let accounts = makeAccounts()
+        let live = try await token(accounts)
+        let held = await accounts.rdTokenFor(token: live)
+        XCTAssertEqual(held, "KEYKEYKEYKEY")
+        member.status = "waiting"
+        clock = clock.addingTimeInterval(TVMAccounts.accountTTL + 1)
+        let dropped = await accounts.rdTokenFor(token: live)
+        XCTAssertNil(dropped)
     }
 }

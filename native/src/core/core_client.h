@@ -54,9 +54,9 @@ public:
     Client(paths::fs::path dataDir, unsigned port = 7345, http::Transport transport = http::Send);
     nlohmann::json Call(const std::string& path, const std::string& method = "GET",
                         const nlohmann::json& body = nullptr) const;
+    std::string Subtitle(const std::string& url) const;
     AccountState Status() const;
     AccountState SignIn(const std::string& email, const std::string& password);
-    AccountState SignInDev(const std::string& code);
     void Register(const std::string& email, const std::string& password, const std::string& name);
     void SignOut();
     const std::string& origin() const { return origin_; }

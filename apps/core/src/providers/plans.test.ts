@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { cvcOk, expiryOk, lastFour, luhnOk } from './card.ts';
-import { createDevUnlockService, verifyDeveloperPassword } from './devUnlock.ts';
+import { createDevUnlockService } from './devUnlock.ts';
 import { createPlanService, formatGbp, isPlanId, LIVE_TV_ADDON_PENCE, migratePlanId } from './plans.ts';
 import { openJson, sealJson, writeSealed } from './vault.ts';
 import { billingPath, devUnlockFlagPath, devUnlockPath } from '../update/paths.ts';
@@ -244,25 +244,25 @@ describe('plans', () => {
   });
 
   it('does not put the developer password in this module', () => {
-    expect(verifyDeveloperPassword('wrong')).toBe(false);
-    expect(verifyDeveloperPassword('')).toBe(false);
+    expect(createDevUnlockService({ dataDir: 'unused' }).unlock('wrong')).toBe(false);
+    expect(createDevUnlockService({ dataDir: 'unused' }).unlock('')).toBe(false);
   });
 
-  it('keeps developer unlock across a new service instance', async () => {
+  it('ignores legacy persisted developer unlocks', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'tvm-dev-persist-'));
     dirs.push(dir);
     writeSealed(dir, devUnlockPath(dir), { unlocked: true, at: '2026-08-17T00:00:00.000Z' });
     await writeFile(devUnlockFlagPath(dir), JSON.stringify({ unlocked: true, at: '2026-08-17T00:00:00.000Z' }));
 
     const first = createDevUnlockService({ dataDir: dir });
-    expect(first.unlocked()).toBe(true);
+    expect(first.unlocked()).toBe(false);
     const plans = createPlanService({ dataDir: dir, developer: () => first.unlocked() });
-    expect(plans.status().developer).toBe(true);
+    expect(plans.status().developer).toBe(false);
 
     const second = createDevUnlockService({ dataDir: dir });
     const again = createPlanService({ dataDir: dir, developer: () => second.unlocked() });
-    expect(second.unlocked()).toBe(true);
-    expect(again.status().developer).toBe(true);
+    expect(second.unlocked()).toBe(false);
+    expect(again.status().developer).toBe(false);
 
     second.lock();
     const locked = createDevUnlockService({ dataDir: dir });

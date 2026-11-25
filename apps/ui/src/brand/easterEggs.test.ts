@@ -17,10 +17,11 @@ describe('easter eggs', () => {
     expect(bumpMarkEgg(6)).toBe(0);
     expect(bumpMarkEgg(3)).toBe(4);
     const src = readFileSync(new URL('./easterEggs.ts', import.meta.url), 'utf8');
-    expect(src).toContain('tvm:secret-door');
+    expect(src).toContain("pulseEgg('mark')");
+    expect(src).not.toContain('tvm:secret-door');
     const nav = readFileSync(new URL('../nav/ViewStackProvider.tsx', import.meta.url), 'utf8');
-    expect(nav).toContain('tvm:secret-door');
-    expect(nav).toContain("navigate.push('developer-unlock')");
+    expect(nav).not.toContain('tvm:secret-door');
+    expect(nav).not.toContain('developer-unlock');
   });
 
   it('recognises a few profile names', () => {

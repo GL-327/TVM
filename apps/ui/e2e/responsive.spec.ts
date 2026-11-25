@@ -19,10 +19,9 @@ test('native donation handoff works signed out and stays on its public page', as
   await page.goto('/donate?e2e=1');
   await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
   await expect(page.getByText('When finished, close this tab and return to the TVM window.')).toBeVisible();
-  await page.evaluate(() => window.dispatchEvent(new Event('tvm:secret-door')));
   await page.keyboard.press('Escape');
   await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
-  await expect(page.locator('[data-screen="home"], [data-screen="developer-unlock"]')).toHaveCount(0);
+  await expect(page.locator('[data-screen="home"]')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
 });
 

@@ -67,6 +67,8 @@ private:
     double ratingEntered_ = -1;
     bool HasListButton() const;
     std::vector<std::string> ActionKeys() const;
+    std::vector<std::string> CollectionKeys() const;
+    std::size_t CollectionColumns() const;
     std::vector<std::string> SeasonKeys() const;
     std::string MetaLine() const;
     std::optional<Command> Activate(const std::string& key);

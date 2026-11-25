@@ -125,12 +125,23 @@ std::vector<std::string> DetailsScreen::ActionKeys() const {
     // A series plays from its episodes, so it has no Play button, as on the web.
     if (!IsSeries()) keys.push_back(kPlayKey);
     if (HasListButton()) keys.push_back(kListKey);
+    if (!info_.trailerUrl.empty()) keys.push_back("trailer");
     // Downloads takes the catalogue's id, so it also waits for the record, as the list button does.
     if (HasListButton() && !info_.hideDownloads) keys.push_back(kDownloadKey);
     if (info_.state == TitleInfo::State::Ready && !info_.rating.empty()) keys.push_back("imdb");
     if (info_.state == TitleInfo::State::Ready) for (const auto& service : info_.services) keys.push_back("watch:" + service.first);
     if (keys.empty()) keys.push_back(kBackKey);
     return keys;
+}
+
+std::vector<std::string> DetailsScreen::CollectionKeys() const {
+    std::vector<std::string> keys;
+    if (info_.collectionName.empty()) return keys;
+    for (std::size_t i = 0; i < info_.collection.size(); ++i) keys.push_back("collection:" + std::to_string(i));
+    return keys;
+}
+std::size_t DetailsScreen::CollectionColumns() const {
+    return static_cast<std::size_t>(std::max(1.0, std::floor((width_ - Rem(2 * kSafeXRem)) / Rem(10.5))));
 }
 
 std::vector<std::string> DetailsScreen::SeasonKeys() const {
@@ -146,6 +157,7 @@ std::string DetailsScreen::SeasonLabel(int season) {
 double DetailsScreen::ContentHeight() const {
     const auto last = BoxOf(ActionKeys().back());
     const double base = std::max(HeroHeight(), last ? last->Bottom() + scroll_ + Rem(7.4) : HeroHeight());
+    if (!CollectionKeys().empty()) { const auto box = BoxOf(CollectionKeys().back()); return std::max(base, box->Bottom() + scroll_ + Rem(2.0)); }
     if (!IsSeries()) return base;
     const double episodes = static_cast<double>(Episodes().size());
     return base + Rem(1.0) + SeasonsHeight() + Rem(1.2) +
@@ -165,9 +177,9 @@ std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
     const double x = Rem(kSafeXRem);
     const double heroBottom = HeroHeight() - scroll_ - Rem(kHeroPadBottomRem);
     const bool compact = CompactViewport(width_, height_);
-    const double posterY = compact ? Rem(3.0) - scroll_ : heroBottom - Rem(kDetailsPosterHeightRem);
+    const double posterY = compact ? Rem(5.6) - scroll_ : heroBottom - Rem(kDetailsPosterHeightRem);
     const double copyX = compact ? x : x + Rem(kDetailsPosterWidthRem) + Rem(kCopyGapRem);
-    const double buttonsY = posterY + Rem(8.2);
+    const double buttonsY = posterY + Rem(8.2) + (info_.englishTitle.empty() ? 0.0 : Rem(1.6));
 
     if (key == "reviews-link" && ReviewsOpen()) {
         const auto badge = BoxOf("imdb");
@@ -184,7 +196,13 @@ std::optional<Box> DetailsScreen::BoxOf(const std::string& key) const {
         if (action == key) return box;
     }
 
-    const double tabsY = std::max(HeroHeight() - scroll_ + Rem(1.0), actions.Bottom() + Rem(7.4));
+    const double tabsY = std::max(HeroHeight() - scroll_ + Rem(1.0), actions.Bottom() + Rem(7.4) + (info_.upcoming.empty() ? 0.0 : Rem(2.0)));
+    if (StartsWith(key, "collection:")) {
+        const auto index = std::stoul(key.substr(11));
+        if (index >= CollectionKeys().size()) return std::nullopt;
+        const auto columns = CollectionColumns();
+        return Box{x + static_cast<double>(index % columns) * Rem(10.5), tabsY + Rem(2.8) + static_cast<double>(index / columns) * Rem(18.0), Rem(9.5), Rem(17.0)};
+    }
     if (key == kSeasonMenuKey && !Seasons().empty()) {
         // Wide enough for the longest season name and the chevron, so it does not change size between seasons.
         std::size_t longest = 0;
@@ -296,7 +314,7 @@ void DetailsScreen::PaintPage(Painter& painter) const {
     // The poster: artwork when it is on disk, a glass card placeholder until then.
     const double x = Rem(kSafeXRem);
     const bool compact = CompactViewport(width_, height_);
-    const double posterY = compact ? Rem(3.0) - scroll_ : HeroHeight() - scroll_ - Rem(kHeroPadBottomRem) - Rem(kDetailsPosterHeightRem);
+    const double posterY = compact ? Rem(5.6) - scroll_ : HeroHeight() - scroll_ - Rem(kHeroPadBottomRem) - Rem(kDetailsPosterHeightRem);
     // On whole pixels, as the cards are, so no partly covered row of the picture shows at its foot.
     const Box poster{std::round(x), std::round(posterY), std::round(x + Rem(kDetailsPosterWidthRem)) - std::round(x),
                      std::round(posterY + Rem(kDetailsPosterHeightRem)) - std::round(posterY)};
@@ -325,7 +343,8 @@ void DetailsScreen::PaintPage(Painter& painter) const {
     painter.Text(Box{pill.x + Rem(0.58), pill.y, pill.width, pill.height}, kicker, kickerStyle, tokens::kAccentStrong);
     painter.Text(Box{copyX, posterY + Rem(1.9), copyWidth, Rem(3.8)}, info_.title, TextStyle{Rem(3.0), true, 700},
                  tokens::kText);
-    painter.Text(Box{copyX, posterY + Rem(5.8), copyWidth, Rem(1.5)}, MetaLine(), TextStyle{Rem(1.125), false, 450},
+    if (!info_.englishTitle.empty()) painter.Text({copyX, posterY + Rem(5.7), copyWidth, Rem(1.5)}, info_.englishTitle, {Rem(1.0), false}, tokens::kTextMuted);
+    painter.Text(Box{copyX, posterY + Rem(5.8) + (info_.englishTitle.empty() ? 0.0 : Rem(1.6)), copyWidth, Rem(1.5)}, MetaLine(), TextStyle{Rem(1.125), false, 450},
                  tokens::kTextMuted);
     for (const std::string& key : ActionKeys()) {
         if (key == "imdb") {
@@ -347,7 +366,7 @@ void DetailsScreen::PaintPage(Painter& painter) const {
         }
         const std::string label = key == kPlayKey   ? "Play"
                                   : key == kListKey ? (info_.saved ? "Remove from My List" : "Add to My List")
-                                                    : "Download";
+                                                    : key == "trailer" ? "Trailer" : "Download";
         DrawButton(painter, metrics, *BoxOf(key), label,
                    ButtonLook{key == kPlayKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)});
     }
@@ -361,6 +380,20 @@ void DetailsScreen::PaintPage(Painter& painter) const {
     if (info_.state == TitleInfo::State::Ready && body.empty()) body = "No synopsis is listed for this title.";
     painter.Paragraph(synopsis, body, TextStyle{Rem(1.0), false}, tokens::kTextMuted);
 
+    if (!info_.upcoming.empty()) painter.Text({copyX, synopsis.Bottom() + Rem(0.4), copyWidth, Rem(1.6)}, info_.upcoming, {Rem(1.0), true, 600}, tokens::kAccentStrong);
+    const auto collectionKeys = CollectionKeys();
+    if (!collectionKeys.empty()) {
+        const auto first = *BoxOf(collectionKeys.front());
+        painter.Text({x, first.y - Rem(2.8), width_ - 2 * x, Rem(2.0)}, info_.collectionName, {Rem(1.3), true, 650}, tokens::kText);
+        for (std::size_t i = 0; i < collectionKeys.size(); ++i) {
+            const auto box = *BoxOf(collectionKeys[i]);
+            if (box.Bottom() < 0 || box.y > height_) continue;
+            const auto& item = info_.collection[i];
+            painter.Glass(box, Rem(0.7), ShowsFocus(focused_, collectionKeys[i]) ? glass::NavSelected() : glass::NavCapsule());
+            painter.Image({box.x + Rem(0.3), box.y + Rem(0.3), box.width - Rem(0.6), Rem(13.3)}, item.poster, Rem(0.5));
+            painter.Paragraph({box.x + Rem(0.5), box.y + Rem(14.0), box.width - Rem(1.0), Rem(2.5)}, item.title, {Rem(0.9), true, 600}, tokens::kText);
+        }
+    }
     if (!IsSeries()) return;
 
     // The season picker, then the season's episodes. The picker is the Home nav pill's glass: its resting capsule,
@@ -456,6 +489,7 @@ bool DetailsScreen::Navigate(nav::Direction direction, double nowMs) {
     // An open season list takes the arrows.
     if (seasonList_.IsOpen()) return seasonList_.Navigate(direction, nowMs);
     const std::vector<std::string> actions = ActionKeys();
+    const auto collection = CollectionKeys();
     const bool picker = !SeasonKeys().empty();
     const std::size_t episodes = Episodes().size();
     const auto move = [&](const std::string& key) {
@@ -478,9 +512,17 @@ bool DetailsScreen::Navigate(nav::Direction direction, double nowMs) {
     }
     if (std::find(actions.begin(), actions.end(), focused_) != actions.end()) {
         if (direction == nav::Direction::Up) return move(kBackKey);
+        if (direction == nav::Direction::Down && !collection.empty()) return move(collection.front());
         if (direction == nav::Direction::Down && picker) return move(kSeasonMenuKey);
         if (direction == nav::Direction::Down && episodes > 0) return move(std::string(kEpisodePrefix) + "0");
         return along(actions);
+    }
+    if (StartsWith(focused_, "collection:")) {
+        const auto index = std::stoul(focused_.substr(11));
+        const auto columns = CollectionColumns();
+        if (direction == nav::Direction::Up) return move(index >= columns ? collection[index - columns] : actions.front());
+        if (direction == nav::Direction::Down && index + columns < collection.size()) return move(collection[index + columns]);
+        return along(collection);
     }
     if (focused_ == kSeasonMenuKey) {
         if (direction == nav::Direction::Up) return move(actions.front());
@@ -552,6 +594,7 @@ std::optional<std::string> DetailsScreen::ItemAt(double x, double y) const {
     // The arrow sits over the page, so it is found first.
     std::vector<std::string> keys = {kBackKey};
     for (const std::string& key : ActionKeys()) keys.push_back(key);
+    for (const auto& key : CollectionKeys()) keys.push_back(key);
     for (const std::string& key : SeasonKeys()) keys.push_back(key);
     for (std::size_t i = 0; i < Episodes().size(); ++i) keys.push_back(kEpisodePrefix + std::to_string(i));
     for (const std::string& key : keys) {
@@ -579,7 +622,7 @@ void DetailsScreen::PaintReviews(Painter& painter) const {
             if (review.contains("stars") && review["stars"].is_number()) {
                 char value[24]{};
                 std::snprintf(value, sizeof(value), "%.1f/5", review["stars"].get<double>());
-                stars = std::string("  ★ ") + value;
+                stars = std::string("  â˜… ") + value;
             }
             painter.Text({panel.x + Rem(1.2), y, panel.width - Rem(2.4), Rem(1.5)}, review.value("author", "Letterboxd viewer") + stars, {Rem(0.95), true, 650}, Rgb(0xFFFFFF, 0.95));
             painter.Paragraph({panel.x + Rem(1.2), y + Rem(1.8), panel.width - Rem(2.4), Rem(4.6)}, review.value("text", ""), {Rem(0.9), false}, Rgb(0xFFFFFF, 0.66));
@@ -606,6 +649,12 @@ std::optional<Command> DetailsScreen::ActivateItem(const std::string& key, doubl
 }
 
 std::optional<Command> DetailsScreen::Activate(const std::string& key) {
+    if (key == "trailer") { Command command; command.name = "trailer-open"; command.action = true; command.params["id"] = id_; return command; }
+    if (StartsWith(key, "collection:")) {
+        const auto index = std::stoul(key.substr(11));
+        if (index >= info_.collection.size()) return std::nullopt;
+        Command command; command.name = "details"; command.params = {{"id", info_.collection[index].id}, {"title", info_.collection[index].title}}; return command;
+    }
     if (key == "imdb" || key == "reviews-link") {
         Command command; command.name = "imdb-open"; command.action = true; command.params["id"] = id_; return command;
     }

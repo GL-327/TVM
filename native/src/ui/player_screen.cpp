@@ -675,7 +675,7 @@ std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
 
     // Skip recap and the credits' two buttons sit at the right, just over the timeline, as the cinema
     // chrome's recap slot places them.
-    const double endY = TrackBox().y - Rem(1.4) - button;
+    const double endY = TrackBox().y - Rem(1.4) - button - (view_.nextUp ? Rem(kNextHeightRem + 1.0) : 0.0);
     if (key == kRecapKey) return Box{width_ - x - Rem(9.2), endY, Rem(9.2), button};
     if (key == kCreditsWatchKey) return Box{width_ - x - Rem(9.6), endY, Rem(9.6), button};
     if (key == kCreditsSkipKey) return Box{width_ - x - Rem(9.6) - Rem(0.7) - Rem(11.6), endY, Rem(11.6), button};
@@ -938,7 +938,7 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
         painter.Glass(box, box.height / 2.0, glass);
         CenteredText(painter, box, label, TextStyle{Rem(0.85), true, 700}, Rgb(0x14171C));
     };
-    if (view_.recap) light(kRecapKey, "Skip recap");
+    if (view_.recap) light(kRecapKey, view_.skipLabel);
     if (view_.credits) {
         const long total = static_cast<long>(std::ceil(std::max(0.0, view_.creditsRemaining)));
         char remain[16];
@@ -1070,13 +1070,13 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
     const double x = compact ? card.x + Rem(0.8) : still.Right() + Rem(0.9);
     const double width = card.Right() - x - Rem(0.8);
     const long seconds = static_cast<long>(std::ceil(std::max(0.0, view_.nextRemaining)));
-    painter.Text(Box{x, card.y + Rem(0.55), width, Rem(1.1)}, "UP NEXT \xC2\xB7 in " + std::to_string(seconds) + "s",
+    painter.Text(Box{x, card.y + Rem(0.55), width, Rem(1.1)}, (view_.nextAutoplay ? "UP NEXT \xC2\xB7 in " + std::to_string(seconds) + "s" : std::string("UP NEXT")),
                  TextStyle{Rem(0.66), true, 800}, kFill);
     painter.Text(Box{x, card.y + Rem(1.55), width, Rem(1.3)}, view_.nextShow, TextStyle{Rem(0.85), false, 550}, kInkMuted);
     painter.Text(Box{x, card.y + Rem(2.75), width, Rem(1.5)}, view_.nextEpisode, TextStyle{Rem(1.0), true, 700}, kInk);
 
     const Metrics metrics{ViewportRem(width_, height_)};
-    DrawButton(painter, metrics, *BoxOf(kNextPlayKey), "Play next",
+    DrawButton(painter, metrics, *BoxOf(kNextPlayKey), "Play now",
                ButtonLook{true, ShowsFocus(focused_, kNextPlayKey), ShowsFocus(focused_, kNextPlayKey) ? 1.0 : 0.0});
     const Box dismiss = *BoxOf(kNextDismissKey);
     if (ShowsFocus(focused_, kNextDismissKey)) {
@@ -1088,7 +1088,7 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
         dismissGlass.tint = kHover;
         painter.Glass(dismiss, dismiss.height / 2.0, dismissGlass);
     }
-    CenteredText(painter, dismiss, "Watch credits", TextStyle{Rem(0.8), true, 600}, kInkMuted);
+    CenteredText(painter, dismiss, "Cancel", TextStyle{Rem(0.8), true, 600}, kInkMuted);
 }
 
 void PlayerScreen::PaintQueue(Painter& painter) const {

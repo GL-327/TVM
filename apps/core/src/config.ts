@@ -14,8 +14,20 @@ export const CORE_HOST = '127.0.0.1' as const;
 
 export const DEFAULT_CORE_PORT = 7345;
 
+export const ACCOUNTS_URL = 'https://tvm-accounts.tvm-accounts.workers.dev';
+
+/** Credentials may only travel over HTTPS, except to a local test service. */
+export function resolveAccountsUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const url = new URL(env['TVM_ACCOUNTS_URL']?.trim() || ACCOUNTS_URL);
+  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))
+    || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
+    throw new Error('TVM_ACCOUNTS_URL must be an HTTPS origin (HTTP is allowed on loopback).');
+  }
+  return url.origin;
+}
+
 /** Kept in step with package.json by a test; see config.test.ts. */
-export const CORE_VERSION = '1.1.0';
+export const CORE_VERSION = '1.2.0';
 
 const IPV4 =
   /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})$/;

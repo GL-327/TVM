@@ -8,6 +8,7 @@
     <field id="requestId" type="string" />
     <field id="requestMethod" type="string" value="GET" />
     <field id="requestBody" type="string" />
+    <field id="profileMaxAge" type="integer" value="18" />
     <field id="profileId" type="string" />
     <field id="authToken" type="string" />
     <field id="accountToken" type="string" />
@@ -23,5 +24,7 @@
   <script type="text/brightscript" uri="pkg:/source/contentCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/playbackCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/reviewsCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/accountsCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/extrasCore.brs" />
   <script type="text/brightscript" uri="ApiTask.brs" />
 </component>

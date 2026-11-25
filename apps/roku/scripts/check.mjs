@@ -417,16 +417,19 @@ if (!/createViewStack\("home"\)/.test(sceneBrs) || !/enterHome\(/.test(sceneBrs)
 if (!/headers\["Authorization"\] = "Bearer " \+ m\.coreToken/.test(sceneBrs)) {
   fail("TVMScene must send the LAN bearer on Core-hosted streams");
 }
-if (!/submitOwnerCode\(/.test(sceneBrs) || !/ownerDoor/.test(sceneBrs)) {
-  fail("TVMScene must accept the hidden owner code without advertising it");
-}
 const accountBrs = existsSync(join(rokuRoot, "components/AccountScreen.brs"))
   ? read(join(rokuRoot, "components/AccountScreen.brs"))
   : "";
-if (!/ownerDoor/.test(accountBrs)) fail("AccountScreen must open the owner door from seven Info presses");
-if (!/I'm a dev/.test(accountBrs)) fail("AccountScreen must offer I'm a dev on the sign-in screen");
-if (!/devCode/.test(sceneBrs) || !/submitDevSignIn\(/.test(sceneBrs)) {
-  fail("TVMScene must sign the Roku in as the dev account and keep that session");
+if (/ownerDoor|devCode|submitDevSignIn|\/api\/account\/dev/.test(sceneBrs + accountBrs)) {
+  fail("Roku must not offer developer or owner-code sign-in");
+}
+const accountsBrs = read(join(rokuRoot, "source/accountsCore.brs"));
+const localCoreBrs = read(join(rokuRoot, "source/localCore.brs"));
+if (!accountsBrs.includes("https://tvm-accounts.tvm-accounts.workers.dev") || !accountsBrs.includes('"/v1/signin"')) {
+  fail("Accounts must use the private HTTPS service");
+}
+if (/lcLoadAccountStore|lcSaveAccountStore|lcVerifyDevCode|passwordHash|expectedHex/.test(localCoreBrs + accountsBrs)) {
+  fail("Roku must not ship a local account ledger or developer-code digest");
 }
 if (!/sub onAccountSignInDone\(\)[\s\S]*?loadAccount\(true\)/.test(sceneBrs)) {
   fail("A successful Roku sign-in must reload /api/account so the gate sees signedIn");
@@ -434,11 +437,11 @@ if (!/sub onAccountSignInDone\(\)[\s\S]*?loadAccount\(true\)/.test(sceneBrs)) {
 const homeBrs = existsSync(join(rokuRoot, "components/HomeScreen.brs"))
   ? read(join(rokuRoot, "components/HomeScreen.brs"))
   : "";
-if (!/ownerDoor/.test(homeBrs)) fail("HomeScreen must open the owner door from seven Info presses");
+if (/ownerDoor/.test(homeBrs)) fail("HomeScreen must not offer an owner unlock");
 const settingsBrs = existsSync(join(rokuRoot, "components/SettingsScreen.brs"))
   ? read(join(rokuRoot, "components/SettingsScreen.brs"))
   : "";
-if (!/ownerDoor/.test(settingsBrs)) fail("SettingsScreen must open the owner door from seven Info presses");
+if (/ownerDoor/.test(settingsBrs)) fail("SettingsScreen must not offer an owner unlock");
 
 const rokuReadme = existsSync(join(rokuRoot, "README.md")) ? read(join(rokuRoot, "README.md")) : "";
 if (/no API authentication/i.test(rokuReadme)) {

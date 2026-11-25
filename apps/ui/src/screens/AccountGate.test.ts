@@ -32,34 +32,21 @@ describe('the door', () => {
   });
 
   /*
-   * The gate renders instead of every screen, so on a fresh install the only
-   * way in for the owner has to be on the gate itself. It used to be a hidden
-   * code form on the waiting panel, reached by registering first.
+   * Accounts live on the private account server and users with role === 'dev'
+   * sign in normally with their email and password.
    */
-  it('puts the dev account on the sign-in screen', () => {
+  it('offers sign-in and account request tabs without developer code entry', () => {
     const src = gate();
     const signedOut = src.slice(src.indexOf('// ---- Signed out'));
-    expect(signedOut).toContain('id="gate-dev"');
-    expect(signedOut).toContain("I'm a dev");
-    expect(signedOut).toContain("switchMode('dev')");
-    expect(signedOut.indexOf('id="gate-dev"')).toBeLessThan(signedOut.indexOf('<Prices tiers={tiers}'));
-
-    const devPanel = src.slice(src.indexOf('// ---- The dev account'), src.indexOf('// ---- Signed out'));
-    expect(devPanel).toContain('<h1>Dev account</h1>');
-    expect(devPanel).toContain('id="gate-dev-code"');
-    expect(devPanel).toContain('type="password"');
-    expect(devPanel).toContain('void submitDev(');
-    expect(src).toContain("typed('gate-dev-code', code).trim()");
-    expect(src).toContain('signInDev(next)');
-    expect(src).toContain("typed('gate-email', email).trim()");
-    expect(src).toContain("typed('gate-password', password)");
-  });
-
-  it('no longer needs the hidden owner form', () => {
-    const src = gate();
-    expect(src).not.toContain('OwnerUnlock');
+    expect(signedOut).not.toContain('id="gate-dev"');
+    expect(signedOut).not.toContain("I'm a dev");
+    expect(signedOut).not.toContain("switchMode('dev')");
+    expect(src).not.toContain('gate-dev-code');
+    expect(src).not.toContain('signInDev');
     expect(src).not.toContain("addEventListener('tvm:secret-door'");
     expect(src).not.toContain('unlockDeveloper');
+    expect(src).toContain("typed('gate-email', email).trim()");
+    expect(src).toContain("typed('gate-password', password)");
   });
 
   it('asks for the emailed code before the account can go any further', () => {
@@ -96,7 +83,6 @@ describe('the door', () => {
     expect(reset).toContain("setEmail('')");
     expect(reset).toContain("setPassword('')");
     expect(reset).toContain("setDisplayName('')");
-    expect(reset).toContain("setDevCode('')");
     expect(reset).toContain("setEmailCode('')");
     expect(reset).toContain('setNotice(null)');
     expect(reset).toContain('setMessage(null)');
@@ -112,10 +98,10 @@ describe('the door', () => {
   it('can be driven with a keyboard or a remote, and Enter signs in', () => {
     const src = gate();
     expect(src).toContain('useGateRemote({');
-    // Sign-in, dev code and email code: all real forms that confirm on Enter.
-    expect(src.match(/<form\s+className="gate__form"/g)?.length).toBe(3);
-    expect(src.match(/onKeyDown={confirmFieldOnEnter}/g)?.length).toBe(3);
-    expect(src.match(/<button type="submit" className="gate__implicit-submit"/g)?.length).toBe(3);
+    // Sign-in and email code: both real forms that confirm on Enter.
+    expect(src.match(/<form\s+className="gate__form"/g)?.length).toBe(2);
+    expect(src.match(/onKeyDown={confirmFieldOnEnter}/g)?.length).toBe(2);
+    expect(src.match(/<button type="submit" className="gate__implicit-submit"/g)?.length).toBe(2);
     // Enter in the email field moves on; in the password field it submits.
     const email = src.slice(src.indexOf('id="gate-email"'), src.indexOf('id="gate-password"'));
     expect(email).toContain("onConfirm={next('gate-password')}");
@@ -126,7 +112,7 @@ describe('the door', () => {
     expect(password).toContain("'current-password'");
     // A double press must not send two requests.
     expect(src).toContain('inFlight.current');
-    // Back from the dev code returns to signing in.
+    // Back from register returns to signing in.
     expect(src).toContain("mode !== 'signin' ? () => switchMode('signin') : undefined");
   });
 

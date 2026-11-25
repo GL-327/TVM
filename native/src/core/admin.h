@@ -1,9 +1,7 @@
 #pragma once
 
-// The developer's side of TVM: developer mode, the accounts people sign up with, and the mail server the
-// sign-up codes are sent from. Ported from apps/core/src/providers/devUnlock.ts, the dev-only part of
-// accounts.ts, and the settings part of mail.ts. Each is sealed in the vault in the same file the Node core
-// uses, so either app reads what the other wrote.
+// Legacy sealed data helpers. Viewer account and admin screens use the local Core,
+// which connects to the private accounts service. No local unlock grants access.
 
 #include <optional>
 #include <string>
@@ -15,10 +13,8 @@ namespace tvm::admin {
 
 // ------------------------------------------------------------------ developer mode
 
-// Whether developer mode is on for this data folder: a sealed record that says so.
+// Legacy entry points never grant access. The private service owns account roles.
 bool DevUnlocked(const paths::fs::path& dataDir);
-// Checks the developer code against its PBKDF2 digest, the same one the Node, iPhone and Android apps hold,
-// and turns developer mode on when it matches. Surrounding space is ignored. Slow on purpose.
 bool UnlockDev(const paths::fs::path& dataDir, const std::string& code);
 void LockDev(const paths::fs::path& dataDir);
 

@@ -42,7 +42,9 @@ function lcHandleRequest(url as String, method as String, bodyStr as String, acc
     profileId: profileId.Trim()
   }
 
-  res = lcV11Route(ctx)
+  lcPurgeLegacyAccounts()
+  res = lcExtrasRoute(ctx)
+  if res = invalid then res = lcV11Route(ctx)
   if res = invalid then res = lcRoute(ctx)
   res = lcFilterResponse(res, ctx)
   code = lcAaInt(res, "status", 200)
@@ -72,18 +74,14 @@ function lcRoute(ctx as Object) as Object
     return lcRegisterAccount(ctx)
   else if path = "/api/account/signin" and mth = "POST"
     return lcSignInAccount(ctx)
-  else if path = "/api/account/dev" and mth = "POST"
-    return lcDevSignIn(ctx)
   else if path = "/api/account/terms" and mth = "POST"
     return lcAcceptTerms(ctx)
   else if path = "/api/account/signout" and mth = "POST"
     return lcSignOut(ctx)
   else if path = "/api/account/email/verify" and mth = "POST"
-    return { status: 200, json: { ok: true } }
+    return { status: 404, json: { error: "not_supported" } }
   else if path = "/api/account/email/send" and mth = "POST"
     return { status: 503, json: { error: "This Roku runs standalone and cannot send email." } }
-  else if path = "/api/admin/accounts/activate" and mth = "POST"
-    return lcAdminActivate(ctx)
   else if path = "/api/profiles" and mth = "GET"
     return { status: 200, json: lcGetProfiles() }
   else if path = "/api/profiles" and mth = "POST"
@@ -229,103 +227,13 @@ function lcSha256Hex(text as String) as String
   return LCase(dg.Final())
 end function
 
+' Profile PIN comparison (account password verification lives in the service).
 function lcConstantTimeEquals(a as String, b as String) as Boolean
   if Len(a) <> Len(b) or Len(a) = 0 then return false
   diff = 0
-  for i = 0 to Len(a) - 1
-    ca = Asc(Mid(a, i + 1, 1))
-    cb = Asc(Mid(b, i + 1, 1))
+  for i = 1 to Len(a)
+    ca = Asc(Mid(a, i, 1)) : cb = Asc(Mid(b, i, 1))
     diff = diff or ((ca + cb) - 2 * (ca and cb))
-  end for
-  return diff = 0
-end function
-
-' Same PBKDF2-HMAC-SHA256 constants as devUnlock.ts, TVMDevUnlock.swift, TvmDevUnlock.kt.
-function lcVerifyDevCode(code as Dynamic) as Boolean
-  if code = invalid then return false
-  t = Type(code)
-  if t <> "String" and t <> "roString" then return false
-  trimmed = code.Trim()
-  if Len(trimmed) = 0 or Len(trimmed) > 128 then return false
-
-  saltHex = "27d2bd86ac0ed42eaf21ac5744bcb4e3"
-  expectedHex = "45d072775474c40a8c97c4329cdf0ad65ea2884a9b8a512fe215b853bee7cfac"
-  iterations = 600000
-
-  keyBa = CreateObject("roByteArray")
-  keyBa.FromAsciiString(trimmed)
-
-  saltBlock = CreateObject("roByteArray")
-  saltBlock.FromHexString(saltHex + "00000001")
-
-  hmac = CreateObject("roHMAC")
-  if hmac.Setup("sha256", keyBa) <> 0 then return false
-  u = hmac.Process(saltBlock)
-  if u = invalid or u.Count() <> 32 then return false
-
-  ' Unrolled 32-byte accumulator (BrightScript lacks ^ / EOR, so xor(a,b) = (a+b) - 2*(a and b)).
-  t0 = u[0] : t1 = u[1] : t2 = u[2] : t3 = u[3]
-  t4 = u[4] : t5 = u[5] : t6 = u[6] : t7 = u[7]
-  t8 = u[8] : t9 = u[9] : t10 = u[10] : t11 = u[11]
-  t12 = u[12] : t13 = u[13] : t14 = u[14] : t15 = u[15]
-  t16 = u[16] : t17 = u[17] : t18 = u[18] : t19 = u[19]
-  t20 = u[20] : t21 = u[21] : t22 = u[22] : t23 = u[23]
-  t24 = u[24] : t25 = u[25] : t26 = u[26] : t27 = u[27]
-  t28 = u[28] : t29 = u[29] : t30 = u[30] : t31 = u[31]
-
-  for i = 2 to iterations
-    u = hmac.Process(u)
-    b = u[0] : t0 = (t0 + b) - 2 * (t0 and b)
-    b = u[1] : t1 = (t1 + b) - 2 * (t1 and b)
-    b = u[2] : t2 = (t2 + b) - 2 * (t2 and b)
-    b = u[3] : t3 = (t3 + b) - 2 * (t3 and b)
-    b = u[4] : t4 = (t4 + b) - 2 * (t4 and b)
-    b = u[5] : t5 = (t5 + b) - 2 * (t5 and b)
-    b = u[6] : t6 = (t6 + b) - 2 * (t6 and b)
-    b = u[7] : t7 = (t7 + b) - 2 * (t7 and b)
-    b = u[8] : t8 = (t8 + b) - 2 * (t8 and b)
-    b = u[9] : t9 = (t9 + b) - 2 * (t9 and b)
-    b = u[10] : t10 = (t10 + b) - 2 * (t10 and b)
-    b = u[11] : t11 = (t11 + b) - 2 * (t11 and b)
-    b = u[12] : t12 = (t12 + b) - 2 * (t12 and b)
-    b = u[13] : t13 = (t13 + b) - 2 * (t13 and b)
-    b = u[14] : t14 = (t14 + b) - 2 * (t14 and b)
-    b = u[15] : t15 = (t15 + b) - 2 * (t15 and b)
-    b = u[16] : t16 = (t16 + b) - 2 * (t16 and b)
-    b = u[17] : t17 = (t17 + b) - 2 * (t17 and b)
-    b = u[18] : t18 = (t18 + b) - 2 * (t18 and b)
-    b = u[19] : t19 = (t19 + b) - 2 * (t19 and b)
-    b = u[20] : t20 = (t20 + b) - 2 * (t20 and b)
-    b = u[21] : t21 = (t21 + b) - 2 * (t21 and b)
-    b = u[22] : t22 = (t22 + b) - 2 * (t22 and b)
-    b = u[23] : t23 = (t23 + b) - 2 * (t23 and b)
-    b = u[24] : t24 = (t24 + b) - 2 * (t24 and b)
-    b = u[25] : t25 = (t25 + b) - 2 * (t25 and b)
-    b = u[26] : t26 = (t26 + b) - 2 * (t26 and b)
-    b = u[27] : t27 = (t27 + b) - 2 * (t27 and b)
-    b = u[28] : t28 = (t28 + b) - 2 * (t28 and b)
-    b = u[29] : t29 = (t29 + b) - 2 * (t29 and b)
-    b = u[30] : t30 = (t30 + b) - 2 * (t30 and b)
-    b = u[31] : t31 = (t31 + b) - 2 * (t31 and b)
-  end for
-
-  derived = CreateObject("roByteArray")
-  derived.Push(t0) : derived.Push(t1) : derived.Push(t2) : derived.Push(t3)
-  derived.Push(t4) : derived.Push(t5) : derived.Push(t6) : derived.Push(t7)
-  derived.Push(t8) : derived.Push(t9) : derived.Push(t10) : derived.Push(t11)
-  derived.Push(t12) : derived.Push(t13) : derived.Push(t14) : derived.Push(t15)
-  derived.Push(t16) : derived.Push(t17) : derived.Push(t18) : derived.Push(t19)
-  derived.Push(t20) : derived.Push(t21) : derived.Push(t22) : derived.Push(t23)
-  derived.Push(t24) : derived.Push(t25) : derived.Push(t26) : derived.Push(t27)
-  derived.Push(t28) : derived.Push(t29) : derived.Push(t30) : derived.Push(t31)
-
-  expectedBa = CreateObject("roByteArray")
-  expectedBa.FromHexString(expectedHex)
-  diff = 0
-  for idx = 0 to 31
-    da = derived[idx]
-    db = expectedBa[idx]
-    diff = diff or ((da + db) - 2 * (da and db))
   end for
   return diff = 0
 end function
@@ -451,242 +359,6 @@ function lcTermsVersion() as String
     if v <> "" then return v
   end if
   return "2026-09-15"
-end function
-
-function lcLoadAccountStore() as Object
-  data = lcReadRegJson("localAccounts", invalid)
-  if data = invalid or GetInterface(data, "ifAssociativeArray") = invalid
-    data = { accounts: [], sessions: {} }
-  end if
-  if lcAaGet(data, "accounts", invalid) = invalid then data.accounts = []
-  if lcAaGet(data, "sessions", invalid) = invalid then data.sessions = {}
-  return data
-end function
-
-sub lcSaveAccountStore(data as Object)
-  lcWriteRegJson("localAccounts", data)
-end sub
-
-function lcPublicAccount(acc as Object) as Object
-  if acc = invalid then return invalid
-  rdTok = lcAaText(acc, "rdToken", "")
-  hint = ""
-  if Len(rdTok) >= 4 then hint = "••••" + Right(rdTok, 4)
-  return {
-    id: lcAaText(acc, "id", "")
-    email: lcAaText(acc, "email", "")
-    displayName: lcAaText(acc, "displayName", "")
-    role: lcAaText(acc, "role", "member")
-    tier: lcAaGet(acc, "tier", invalid)
-    activated: lcAaBool(acc, "activated", false)
-    suspended: lcAaBool(acc, "suspended", false)
-    emailVerified: lcAaBool(acc, "emailVerified", true)
-    acceptedTermsVersion: lcAaText(acc, "acceptedTermsVersion", "")
-    rdKey: (rdTok <> "")
-    rdKeyHint: hint
-  }
-end function
-
-function lcAccountUsable(acc as Object) as Object
-  if acc = invalid then return { ok: false, reason: "no_account" }
-  if lcAaText(acc, "role", "") = "dev" then return { ok: true, reason: "ok" }
-  if lcAaBool(acc, "suspended", false) then return { ok: false, reason: "suspended" }
-  if not lcAaBool(acc, "emailVerified", true) then return { ok: false, reason: "email_unverified" }
-  if not lcAaBool(acc, "activated", false) then return { ok: false, reason: "awaiting_activation" }
-  tv = lcTermsVersion()
-  if tv <> "" and lcAaText(acc, "acceptedTermsVersion", "") <> tv
-    return { ok: false, reason: "terms_required" }
-  end if
-  return { ok: true, reason: "ok" }
-end function
-
-function lcResolveAccount(ctx as Object) as Object
-  tok = ctx.accountToken
-  if tok = "" then return invalid
-  store = lcLoadAccountStore()
-  sess = lcAaGet(store.sessions, tok, invalid)
-  if sess = invalid then return invalid
-  exp = lcAaInt(sess, "expiresAt", 0)
-  if exp > 0 and lcNowSeconds() > exp then return invalid
-  accId = lcAaText(sess, "accountId", "")
-  for each acc in store.accounts
-    if lcAaText(acc, "id", "") = accId then return acc
-  end for
-  return invalid
-end function
-
-function lcIsDev(ctx as Object) as Boolean
-  acc = lcResolveAccount(ctx)
-  if acc = invalid then return false
-  return lcAaText(acc, "role", "") = "dev"
-end function
-
-function lcGetAccount(ctx as Object) as Object
-  acc = lcResolveAccount(ctx)
-  if acc = invalid
-    return { status: 200, json: { signedIn: false, usable: { ok: false, reason: "no_account" }, canSendEmail: false, standalone: true } }
-  end if
-  return {
-    status: 200
-    json: {
-      signedIn: true
-      account: lcPublicAccount(acc)
-      usable: lcAccountUsable(acc)
-      canSendEmail: false
-      standalone: true
-    }
-  }
-end function
-
-function lcPasswordHash(password as String, salt as String) as String
-  acc = salt + ":" + password
-  h = lcSha256Hex(acc)
-  for i = 1 to 200
-    h = lcSha256Hex(salt + ":" + h)
-  end for
-  return h
-end function
-
-function lcRegisterAccount(ctx as Object) as Object
-  email = LCase(lcAaText(ctx.body, "email", "").Trim())
-  password = lcAaText(ctx.body, "password", "")
-  displayName = lcAaText(ctx.body, "displayName", "").Trim()
-  if email = "" or Instr(1, email, "@") = 0
-    return { status: 400, json: { error: "Enter a valid email address." } }
-  end if
-  if Len(password) < 10
-    return { status: 400, json: { error: "Password must be at least 10 characters." } }
-  end if
-  store = lcLoadAccountStore()
-  for each existing in store.accounts
-    if LCase(lcAaText(existing, "email", "")) = email
-      return { status: 400, json: { error: "That account could not be created." } }
-    end if
-  end for
-  salt = lcNewToken()
-  acc = {
-    id: "acc_" + Left(lcNewToken(), 12)
-    email: email
-    displayName: displayName
-    role: "member"
-    tier: invalid
-    activated: false
-    suspended: false
-    emailVerified: true
-    acceptedTermsVersion: ""
-    passwordSalt: salt
-    passwordHash: lcPasswordHash(password, salt)
-    rdToken: ""
-    createdAt: lcNowIso()
-  }
-  store.accounts.Push(acc)
-  lcSaveAccountStore(store)
-  return { status: 201, json: { account: lcPublicAccount(acc) } }
-end function
-
-function lcSignInAccount(ctx as Object) as Object
-  email = LCase(lcAaText(ctx.body, "email", "").Trim())
-  password = lcAaText(ctx.body, "password", "")
-  store = lcLoadAccountStore()
-  found = invalid
-  for each acc in store.accounts
-    if LCase(lcAaText(acc, "email", "")) = email and lcAaText(acc, "role", "") <> "dev"
-      found = acc
-      exit for
-    end if
-  end for
-  if found = invalid
-    return { status: 401, json: { error: "Email or password did not match." } }
-  end if
-  salt = lcAaText(found, "passwordSalt", "")
-  expected = lcAaText(found, "passwordHash", "")
-  actual = lcPasswordHash(password, salt)
-  if not lcConstantTimeEquals(actual, expected)
-    return { status: 401, json: { error: "Email or password did not match." } }
-  end if
-  tok = lcNewToken()
-  store.sessions[tok] = { accountId: found.id, expiresAt: lcNowSeconds() + 30 * 86400 }
-  lcSaveAccountStore(store)
-  return { status: 200, json: { token: tok, account: lcPublicAccount(found), usable: lcAccountUsable(found) } }
-end function
-
-function lcDevSignIn(ctx as Object) as Object
-  code = lcAaText(ctx.body, "code", "")
-  if not lcVerifyDevCode(code)
-    return { status: 403, json: { error: "That code is not valid." } }
-  end if
-  store = lcLoadAccountStore()
-  devAcc = invalid
-  for each acc in store.accounts
-    if lcAaText(acc, "id", "") = "acc_dev"
-      devAcc = acc
-      exit for
-    end if
-  end for
-  if devAcc = invalid
-    devAcc = {
-      id: "acc_dev"
-      email: "dev"
-      displayName: "Developer"
-      role: "dev"
-      tier: "stream-live"
-      activated: true
-      suspended: false
-      emailVerified: true
-      acceptedTermsVersion: lcTermsVersion()
-      rdToken: ""
-    }
-    store.accounts.Push(devAcc)
-  end if
-  tok = lcNewToken()
-  store.sessions[tok] = { accountId: "acc_dev", expiresAt: lcNowSeconds() + 30 * 86400 }
-  lcSaveAccountStore(store)
-  return { status: 200, json: { token: tok, account: lcPublicAccount(devAcc), usable: lcAccountUsable(devAcc) } }
-end function
-
-function lcAcceptTerms(ctx as Object) as Object
-  tok = ctx.accountToken
-  if tok = "" then return { status: 401, json: { error: "Not signed in." } }
-  store = lcLoadAccountStore()
-  sess = lcAaGet(store.sessions, tok, invalid)
-  if sess = invalid then return { status: 401, json: { error: "Not signed in." } }
-  accId = lcAaText(sess, "accountId", "")
-  for each acc in store.accounts
-    if lcAaText(acc, "id", "") = accId
-      acc.acceptedTermsVersion = lcTermsVersion()
-      lcSaveAccountStore(store)
-      return { status: 200, json: { account: lcPublicAccount(acc), usable: lcAccountUsable(acc) } }
-    end if
-  end for
-  return { status: 401, json: { error: "Not signed in." } }
-end function
-
-function lcSignOut(ctx as Object) as Object
-  tok = ctx.accountToken
-  if tok <> ""
-    store = lcLoadAccountStore()
-    if store.sessions.DoesExist(tok)
-      store.sessions.Delete(tok)
-      lcSaveAccountStore(store)
-    end if
-  end if
-  return { status: 200, json: { ok: true } }
-end function
-
-function lcAdminActivate(ctx as Object) as Object
-  if not lcIsDev(ctx) then return { status: 403, json: { error: "Developer access required." } }
-  targetId = lcAaText(ctx.body, "id", "")
-  tier = lcAaText(ctx.body, "tier", "stream-live")
-  store = lcLoadAccountStore()
-  for each acc in store.accounts
-    if lcAaText(acc, "id", "") = targetId and lcAaText(acc, "role", "") <> "dev"
-      acc.activated = true
-      acc.tier = tier
-      lcSaveAccountStore(store)
-      return { status: 200, json: { account: lcPublicAccount(acc) } }
-    end if
-  end for
-  return { status: 404, json: { error: "Account not found." } }
 end function
 
 ' ---- Profiles ----
@@ -1184,16 +856,8 @@ end function
 ' ---- Real-Debrid ----
 
 function lcRdTokenInfo(ctx as Object) as Object
-  acc = lcResolveAccount(ctx)
-  if acc <> invalid
-    accTok = lcAaText(acc, "rdToken", "")
-    if accTok <> "" then return { token: accTok, source: "account" }
-  end if
-  sec = lcReg()
-  if sec.Exists("localRdToken")
-    localTok = sec.Read("localRdToken").Trim()
-    if localTok <> "" then return { token: localTok, source: "device" }
-  end if
+  res = lcAccountsHttp(ctx, "/v1/me/rd-token")
+  if res.ok then return { token: lcAaText(res.json, "token"), source: "account" }
   return { token: "", source: "none" }
 end function
 
@@ -1231,26 +895,8 @@ function lcGetRdStatus(ctx as Object) as Object
 end function
 
 function lcSetRdToken(ctx as Object) as Object
-  tok = lcAaText(ctx.body, "token", "").Trim()
-  acc = lcResolveAccount(ctx)
-  if acc <> invalid and lcAaText(acc, "role", "") <> "dev"
-    store = lcLoadAccountStore()
-    for each row in store.accounts
-      if lcAaText(row, "id", "") = lcAaText(acc, "id", "")
-        row.rdToken = tok
-        lcSaveAccountStore(store)
-        exit for
-      end if
-    end for
-  else
-    sec = lcReg()
-    if tok = ""
-      sec.Delete("localRdToken")
-    else
-      sec.Write("localRdToken", tok)
-    end if
-    sec.Flush()
-  end if
+  res = lcAccountsHttp(ctx, "/v1/me/rd-token", "PUT", { token: lcAaText(ctx.body, "token").Trim() })
+  if not res.ok then return lcAccountsError(res)
   return { status: 200, json: lcGetRdStatus(ctx) }
 end function
 
@@ -1337,7 +983,7 @@ function lcGetLive(ctx as Object) as Object
   end for
 
   channels = lcFreeChannels(ctx)
-  if lcIsDev(ctx)
+  if lcHasLiveTv(ctx)
     channels.Push({
       id: "live:test:dw-news"
       title: "DW News (Test)"
@@ -1509,7 +1155,7 @@ function lcPlayback(ctx as Object) as Object
   end for
   ' Live TV
   if Left(id, 5) = "live:"
-    if id = "live:test:dw-news" and lcIsDev(ctx)
+    if id = "live:test:dw-news" and lcHasLiveTv(ctx)
       return {
         status: 200
         json: {

@@ -1,279 +1,193 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CORE_HOST } from './config.ts';
-import { createAccountsService } from './providers/accounts.ts';
-import type { DevUnlockService } from './providers/devUnlock.ts';
-import { createMailService, type MailMessage } from './providers/mail.ts';
+import { createCoreServer } from './server.ts';
+import { createRemoteAccountsService } from './providers/remoteAccounts.ts';
+import { mockAccountsApi } from './providers/remoteAccountsTestSupport.ts';
 import { TERMS_VERSION } from './providers/terms.ts';
-import { startCoreServer, type RunningCore } from './server.ts';
+import { readSealed } from './providers/vault.ts';
 
 vi.mock('./providers/secureFile.ts', async original => ({ ...await original<typeof import('./providers/secureFile.ts')>(), windowsProtect: (value: string) => value }));
-
-/** The real developer code is not in the repository, so tests use a stand-in. */
-function fakeDeveloper(): DevUnlockService & { on: () => boolean } {
-  let on = false;
-  return {
-    on: () => on,
-    unlocked: () => on,
-    unlock: (code: string) => {
-      if (code !== 'test-dev-code') return false;
-      on = true;
-      return true;
-    },
-    grant: () => { on = true; },
-    lock: () => { on = false; },
-  };
-}
-
-const running: RunningCore[] = [];
+const servers: Server[] = [];
 const dirs: string[] = [];
-
 afterEach(async () => {
-  await Promise.all(running.splice(0).map((core) => core.close()));
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
-
-async function boot(options: { mail?: boolean } = {}) {
-  const dataDir = await mkdtemp(join(tmpdir(), 'tvm-account-routes-'));
-  dirs.push(dataDir);
-  const developer = fakeDeveloper();
-  const outbox: MailMessage[] = [];
-  const mail = createMailService({ dataDir, send: async (_settings, message) => { outbox.push(message); } });
-  if (options.mail === true) {
-    mail.save({ host: 'smtp.example.com', port: 587, security: 'starttls', username: 'tvm@example.com', password: 'secret-pass', from: 'tvm@example.com' });
+  vi.unstubAllGlobals();
+  for (const server of servers.splice(0)) {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
   }
-  const accounts = createAccountsService({ dataDir, termsVersion: TERMS_VERSION, emailRequired: () => mail.configured() });
-  const core = await startCoreServer(0, { dataDir, env: {}, developer, mail, accounts });
-  running.push(core);
-  const base = `http://${CORE_HOST}:${core.port}`;
-
-  const call = async (path: string, init: { method?: string; body?: unknown; token?: string } = {}) => {
-    const headers: Record<string, string> = {};
-    if (init.body !== undefined) headers['content-type'] = 'application/json';
-    if (init.token !== undefined) headers['authorization'] = `Bearer ${init.token}`;
-    const response = await fetch(`${base}${path}`, {
-      method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
-      headers,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })));
+});
+async function boot(lan = false, realMedia = false) {
+  const dataDir = await mkdtemp(join(tmpdir(), 'tvm-remote-routes-')); dirs.push(dataDir);
+  const mock = mockAccountsApi();
+  const accounts = createRemoteAccountsService({ dataDir, termsVersion: TERMS_VERSION, env: {}, fetch: mock.api });
+  const media = { status: vi.fn(async () => ({ configured: accounts.cachedRdTokenFor('member-session') !== null,
+    username: null, premium: false, error: null })), configured: () => false };
+  const server = createCoreServer({ dataDir, env: { TVM_LAN_TOKEN: 'l'.repeat(32) }, accounts,
+    ...(realMedia ? {} : { media: media as unknown as import('./providers/media.ts').MediaService }) });
+  if (lan) server.prependListener('connection', socket => Object.defineProperty(socket, 'remoteAddress', { value: '192.168.1.50' }));
+  servers.push(server);
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const call = async (path: string, options: { method?: string; body?: unknown; token?: string } = {}) => {
+    const response = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${path}`, {
+      method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+      headers: { ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(lan ? { authorization: `Bearer ${'l'.repeat(32)}` } : {}),
+        ...(options.token ? { 'x-tvm-account': options.token } : {}) },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
-    return { status: response.status, body: (await response.json()) as Record<string, any> };
+    return { status: response.status, headers: response.headers, body: await response.json() as Record<string, any> };
   };
-
-  const member = async (email = 'ada@example.com') => {
-    await call('/api/account/register', { body: { email, password: 'correct horse battery' } });
-    const signed = await call('/api/account/signin', { body: { email, password: 'correct horse battery' } });
-    return signed.body['token'] as string;
-  };
-
-  return { call, member, developer, outbox, accounts };
+  const install = () => call('/api/admin/key', { token: 'admin-session', body: { key: 'fixture-admin-key' } });
+  return { ...mock, accounts, media, dataDir, call, install };
 }
-
-describe('the dev account over HTTP', () => {
-  it('refuses a wrong code', async () => {
-    const { call, developer } = await boot();
-    const refused = await call('/api/account/dev', { body: { code: 'nope' } });
-    expect(refused.status).toBe(403);
-    expect(refused.body['error']).toBe('That code is not valid.');
-    expect(developer.on()).toBe(false);
+describe('remote account HTTP compatibility', () => {
+  it('selects the remote provider by default and honors the service-origin override', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'tvm-default-remote-')); dirs.push(dataDir);
+    const mock = mockAccountsApi();
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).startsWith('https://accounts-test.example/')) return mock.api(input, init);
+      return realFetch(input, init);
+    }));
+    const server = createCoreServer({ dataDir, env: { TVM_ACCOUNTS_URL: 'https://accounts-test.example' } });
+    servers.push(server);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const response = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/account/signin`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: mock.member.email, password: 'test-password' }),
+    });
+    expect(await response.json()).toMatchObject({ token: 'member-session', account: { id: mock.member.id } });
+    expect(mock.api.mock.calls[0]?.[0]).toBe('https://accounts-test.example/v1/signin');
+    expect(await readdir(join(dataDir, 'secrets'))).not.toContain('accounts.enc');
   });
-
-  it('signs in with the code, turns dev mode on, and turns it off again on sign-out', async () => {
-    const { call, developer } = await boot();
-    const signed = await call('/api/account/dev', { body: { code: 'test-dev-code' } });
-    expect(signed.status).toBe(200);
-    expect(signed.body['account']).toMatchObject({ role: 'dev', displayName: 'Dev' });
-    expect(developer.on()).toBe(true);
-
-    const token = signed.body['token'] as string;
-    const me = await call('/api/account', { token });
-    expect(me.body).toMatchObject({ signedIn: true, usable: { ok: true, reason: null }, account: { role: 'dev', tier: 'stream-live' } });
-    expect(me.body['account']).not.toHaveProperty('passwordHash');
-
-    // Something switched dev mode off; the dev account turns it back on.
-    developer.lock();
-    await call('/api/account', { token });
-    expect(developer.on()).toBe(true);
-
-    await call('/api/account/signout', { method: 'POST', token });
-    expect(developer.on()).toBe(false);
-    expect((await call('/api/account', { token })).body['signedIn']).toBe(false);
+  it('registers, signs in, accepts terms and signs out using the existing shapes', async () => {
+    const f = await boot();
+    expect((await f.call('/api/account')).body).toMatchObject({ signedIn: false, canSendEmail: false });
+    expect((await f.call('/api/account/register', { body: { email: f.member.email, password: 'test-password' } })).body)
+      .toMatchObject({ id: f.member.id, activated: false, tier: null, role: 'member', emailCodeSent: false });
+    const signed = await f.call('/api/account/signin', { body: { email: f.member.email, password: 'test-password' } });
+    expect(signed.body).toMatchObject({ token: 'member-session', usable: { reason: 'awaiting_activation' } });
+    expect((await f.call('/api/account', { token: 'member-session' })).body)
+      .toMatchObject({ signedIn: true, account: { rdKey: false }, usable: { reason: 'awaiting_activation' } });
+    f.member.status = 'active';
+    expect((await f.call('/api/account/terms', { token: 'member-session', body: {} })).body.termsVersion).toBe(TERMS_VERSION);
+    expect((await f.call('/api/account', { token: 'member-session' })).body.usable).toEqual({ ok: true, reason: null });
+    expect((await f.call('/api/account/signout', { token: 'member-session', body: {} })).body).toEqual({ ok: true });
+    expect((await f.call('/api/account', { token: 'member-session' })).body.signedIn).toBe(false);
+    const saved = readSealed<{ tokens: string[] }>(f.dataDir, join(f.dataDir, 'secrets', 'account-sessions.enc'));
+    expect(saved?.tokens).toEqual([]);
   });
-
-  it('keeps dev mode on while another dev session is still open', async () => {
-    const { call, developer } = await boot();
-    const first = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
-    await call('/api/account/dev', { body: { code: 'test-dev-code' } });
-    await call('/api/account/signout', { method: 'POST', token: first });
-    expect(developer.on()).toBe(true);
-  });
-});
-
-describe('dev mode belongs to the dev account, not the machine', () => {
-  it('refuses the Accounts screen to everyone else while the dev is signed in', async () => {
-    const { call, member, developer } = await boot();
-    const token = await member();
-    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
-    expect(developer.on()).toBe(true);
-
-    const listed = await call('/api/admin/accounts', { token: dev });
-    expect(listed.status).toBe(200);
-    const id = (listed.body['accounts'] as Array<{ id: string }>)[0]!.id;
-
-    expect((await call('/api/admin/accounts', { token })).status).toBe(403);
-    expect((await call('/api/admin/accounts')).status).toBe(403);
-    expect((await call('/api/admin/accounts/activate', { token, body: { id, tier: 'stream-live' } })).status).toBe(403);
-    expect((await call('/api/admin/accounts/rd', { token, body: { id, token: 'RDKEY' } })).status).toBe(403);
-    expect((await call('/api/plan', { method: 'PUT', token, body: { id: 'max' } })).status).toBe(403);
-
-    // Nobody else is told dev mode is on, so nobody else is shown the screen.
-    expect((await call('/api/plan', { token })).body['developer']).toBe(false);
-    expect((await call('/api/plan', { token: dev })).body['developer']).toBe(true);
-    expect((await call('/api/dev/status', { token })).body['unlocked']).toBe(false);
-    expect((await call('/api/dev/status', { token: dev })).body['unlocked']).toBe(true);
-  });
-
-  it('turns dev mode back on for the dev account if something switched it off', async () => {
-    const { call, developer } = await boot();
-    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
-    developer.lock();
-    expect((await call('/api/admin/accounts', { token: dev })).status).toBe(200);
-    expect(developer.on()).toBe(true);
-  });
-});
-
-describe('email codes over HTTP', () => {
-  it('sends a code on sign-up and holds the account until it is typed in', async () => {
-    const { call, member, outbox } = await boot({ mail: true });
-    const token = await member();
-    expect(outbox).toHaveLength(1);
-    expect(outbox[0]!.to).toBe('ada@example.com');
-    const code = /(\d{6})/.exec(outbox[0]!.subject)![1]!;
-
-    const before = await call('/api/account', { token });
-    expect(before.body).toMatchObject({ canSendEmail: true, usable: { reason: 'email_unverified' }, account: { emailCodeSent: true, emailVerified: false } });
-
-    const wrong = await call('/api/account/email/verify', { token, body: { code: code === '000000' ? '111111' : '000000' } });
-    expect(wrong.status).toBe(400);
-
-    const right = await call('/api/account/email/verify', { token, body: { code } });
-    expect(right.status).toBe(200);
-    expect(right.body['emailVerified']).toBe(true);
-    expect((await call('/api/account', { token })).body['usable']).toEqual({ ok: false, reason: 'awaiting_activation' });
-  });
-
-  it('keeps the mail server\'s error for the dev and tells the person something they can act on', async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), 'tvm-account-routes-'));
-    dirs.push(dataDir);
-    const mail = createMailService({ dataDir, send: async () => { throw new Error('The mail server refused the sign-in (535 5.7.8 bad credentials).'); } });
-    mail.save({ host: 'smtp.example.com', port: 587, security: 'starttls', username: 'tvm@example.com', password: 'secret-pass', from: 'tvm@example.com' });
-    const accounts = createAccountsService({ dataDir, termsVersion: TERMS_VERSION, emailRequired: () => mail.configured() });
-    const core = await startCoreServer(0, { dataDir, env: {}, developer: fakeDeveloper(), mail, accounts });
-    running.push(core);
-    const base = `http://${CORE_HOST}:${core.port}`;
-    const post = async (path: string, body: unknown, token?: string) => {
-      const response = await fetch(`${base}${path}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
-        body: JSON.stringify(body),
-      });
-      return { status: response.status, body: (await response.json()) as Record<string, any> };
-    };
-    const signUp = { email: 'ada@example.com', password: 'correct horse battery' };
-    expect((await post('/api/account/register', signUp)).status).toBe(200);
-    const token = (await post('/api/account/signin', signUp)).body['token'] as string;
-    const again = await post('/api/account/email/send', {}, token);
-    expect(again.status).toBe(502);
-    expect(again.body['error']).toMatch(/could not be sent/);
-    expect(again.body['error']).not.toContain('535');
-  });
-
-  it('makes you wait before sending another', async () => {
-    const { call, member } = await boot({ mail: true });
-    const token = await member();
-    const again = await call('/api/account/email/send', { method: 'POST', token });
-    expect(again.status).toBe(429);
-    expect(again.body['error']).toMatch(/Wait \d+ seconds/);
-  });
-
-  it('does not ask for a code when this machine cannot send one', async () => {
-    const { call, member, outbox } = await boot();
-    const token = await member();
-    expect(outbox).toHaveLength(0);
-    const me = await call('/api/account', { token });
-    expect(me.body).toMatchObject({ canSendEmail: false, usable: { reason: 'awaiting_activation' } });
-    expect((await call('/api/account/email/send', { method: 'POST', token })).status).toBe(503);
-  });
-});
-
-describe('what the dev sets per account', () => {
-  it('needs dev mode', async () => {
-    const { call, member } = await boot();
-    await member();
-    for (const path of ['/api/admin/accounts/live-tv', '/api/admin/accounts/rd', '/api/admin/accounts/verify', '/api/admin/mail/test']) {
-      expect((await call(path, { body: { id: 'x' } })).status).toBe(403);
+  it('requires both admin role and a sealed local admin key for every accounts action', async () => {
+    const f = await boot();
+    const routes = ['/api/admin/accounts', ...['activate', 'suspend', 'note', 'erase', 'live-tv', 'rd', 'verify'].map(x => `/api/admin/accounts/${x}`)];
+    for (const token of [undefined, 'member-session', 'admin-session']) {
+      for (const path of routes) expect((await f.call(path, { token, ...(path.endsWith('accounts') ? {} : { body: { id: f.member.id } }) })).status).toBe(403);
     }
-    expect((await call('/api/admin/mail')).status).toBe(403);
+    expect(f.api.mock.calls.some(([url]) => String(url).includes('/v1/admin/'))).toBe(false);
+    expect((await f.call('/api/admin/key', { token: 'member-session', body: { key: 'fixture-admin-key' } })).status).toBe(403);
+    expect((await f.install()).body).toEqual({ installed: true });
+    expect((await f.call('/api/admin/accounts', { token: 'member-session' })).status).toBe(403);
+    const listed = await f.call('/api/admin/accounts?state=waiting&search=Ada', { token: 'admin-session' });
+    expect(listed.body).toMatchObject({ accounts: expect.arrayContaining([expect.objectContaining({ id: f.member.id })]), summary: { total: 2 }, tiers: expect.any(Array) });
+    const file = await readFile(join(f.dataDir, 'secrets', 'accounts-admin-key.enc'), 'utf8');
+    expect(file).not.toContain('fixture-admin-key');
+    expect((await f.call('/api/admin/key', { token: 'admin-session', body: { key: '' } })).body).toEqual({ installed: false });
+    expect((await f.call('/api/admin/accounts', { token: 'admin-session' })).status).toBe(403);
   });
-
-  it('switches Live TV, saves a Real-Debrid key and marks an address verified', async () => {
-    const { call, member } = await boot({ mail: true });
-    const token = await member();
-    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
-    const listed = await call('/api/admin/accounts', { token: dev });
-    const id = (listed.body['accounts'] as Array<{ id: string }>)[0]!.id;
-    expect(listed.body['accounts']).toHaveLength(1);
-
-    await call('/api/admin/accounts/activate', { token: dev, body: { id, tier: 'stream' } });
-    const live = await call('/api/admin/accounts/live-tv', { token: dev, body: { id, enabled: true } });
-    expect(live.body['tier']).toBe('stream-live');
-
-    const key = await call('/api/admin/accounts/rd', { token: dev, body: { id, token: 'RDKEY0000000000000000000000WXYZ' } });
-    expect(key.body).toMatchObject({ rdKey: true, rdKeyHint: '••••WXYZ' });
-    expect(JSON.stringify(key.body)).not.toContain('RDKEY0000');
-
-    const verified = await call('/api/admin/accounts/verify', { token: dev, body: { id, verified: true } });
-    expect(verified.body['emailVerified']).toBe(true);
-
-    const me = await call('/api/account', { token });
-    expect(me.body['account']).toMatchObject({ tier: 'stream-live', rdKey: true, emailVerified: true });
-    expect(me.body['usable']).toEqual({ ok: false, reason: 'terms_required' });
+  it('translates all admin mutations without returning secrets', async () => {
+    const f = await boot(); await f.install();
+    const post = (action: string, body: unknown) => f.call(`/api/admin/accounts/${action}`, { token: 'admin-session', body: { id: f.member.id, ...body as object } });
+    expect((await post('activate', { tier: 'stream' })).body.activated).toBe(true);
+    expect((await post('live-tv', { enabled: true })).body.tier).toBe('stream-live');
+    expect((await post('note', { note: 'private note' })).body.note).toBe('private note');
+    expect((await post('verify', { verified: true })).body.emailVerified).toBe(true);
+    const rd = await post('rd', { token: 'fixture-rd-secret' });
+    expect(rd.body).toMatchObject({ rdKey: true, rdKeyHint: '\u2022'.repeat(4) });
+    expect(JSON.stringify(rd.body)).not.toContain('fixture-rd-secret');
+    expect((await post('suspend', { suspended: true })).body.suspended).toBe(true);
+    expect((await post('erase', {})).body).toMatchObject({ ok: true, summary: expect.any(Object) });
+    const calls = f.api.mock.calls.filter(([url]) => String(url).includes('/v1/admin/'));
+    for (const [, init] of calls) expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fixture-admin-key');
   });
-
-  it('saves a member key to their own account from the Real-Debrid screen', async () => {
-    const { call, member, accounts } = await boot();
-    const token = await member();
-    const saved = await call('/api/rd/token', { method: 'PUT', token, body: { token: '' } });
-    expect(saved.status).toBe(200);
-    expect(saved.body['source']).toBeNull();
-    const id = accounts.list()[0]!.id;
-    accounts.setRdToken(id, 'RDKEYFORADA');
-    expect(accounts.rdTokenFor(token)).toBe('RDKEYFORADA');
-    const cleared = await call('/api/rd/token', { method: 'PUT', token, body: { token: '' } });
-    expect(cleared.body['source']).toBeNull();
-    expect(accounts.rdTokenFor(token)).toBeNull();
+  it('maps admin role to dev for existing screens without granting other sessions privileges', async () => {
+    const f = await boot();
+    expect((await f.call('/api/account', { token: 'admin-session' })).body.account.role).toBe('dev');
+    expect((await f.call('/api/dev/status', { token: 'admin-session' })).body).toEqual({ unlocked: true });
+    expect((await f.call('/api/plan', { token: 'admin-session' })).body.developer).toBe(true);
+    expect((await f.call('/api/dev/status', { token: 'member-session' })).body).toEqual({ unlocked: false });
+    expect((await f.call('/api/plan', { token: 'member-session' })).body.developer).toBe(false);
   });
-
-  it('keeps mail settings to itself', async () => {
-    const { call } = await boot({ mail: true });
-    const dev = (await call('/api/account/dev', { body: { code: 'test-dev-code' } })).body['token'] as string;
-    const status = await call('/api/admin/mail', { token: dev });
-    expect(status.body).toMatchObject({ configured: true, host: 'smtp.example.com', supported: true });
-    expect(JSON.stringify(status.body)).not.toContain('secret-pass');
-    const test = await call('/api/admin/mail/test', { token: dev, body: { to: 'me@example.com' } });
-    expect(test.status).toBe(200);
+  it('returns moved for code unlocks regardless of repeated attempts', async () => {
+    const f = await boot();
+    for (let i = 0; i < 7; i++) for (const path of ['/api/account/dev', '/api/dev/unlock']) {
+      expect(await f.call(path, { body: { code: 'obsolete' } })).toMatchObject({ status: 410, body: { error: 'moved' } });
+    }
+    expect(f.api).not.toHaveBeenCalled();
   });
-});
-
-it('native playback setup requires a usable local account', async () => {
-  const { call, member } = await boot();
-  expect((await call('/api/desktop/mpv', { body: {} })).status).toBe(403);
-  const waiting = await member();
-  expect((await call('/api/desktop/mpv', { body: {}, token: waiting })).status).toBe(403);
-  const signed = await call('/api/account/dev', { body: { code: 'test-dev-code' } });
-  const ready = await call('/api/desktop/mpv', { body: {}, token: signed.body['token'] });
-  expect(ready.status).toBe(200);
-  // The isolated Core has no installation environment and never downloads a player.
-  expect(ready.body['installed']).toBe(false);
+  it('never installs or clears an admin key over the LAN', async () => {
+    const f = await boot(true);
+    expect((await f.install()).status).toBe(403);
+    expect(f.accounts.hasAdminKey()).toBe(false);
+  });
+  it('saves every signed-in user RD key on the service and never creates a device token file', async () => {
+    const f = await boot(); f.member.status = 'active';
+    expect((await f.call('/api/rd/token', { method: 'PUT', token: 'member-session', body: { token: 'fixture-rd-secret' } })).body.source).toBe('account');
+    expect(f.rd.get(f.member.id)).toBe('fixture-rd-secret');
+    expect((await f.call('/api/rd/token', { method: 'PUT', token: 'admin-session', body: { token: 'owner-rd-secret' } })).status).toBe(200);
+    expect(f.rd.get(f.owner.id)).toBe('owner-rd-secret');
+    expect((await f.call('/api/rd/token', { method: 'PUT', body: { token: 'anonymous-key' } })).status).toBe(401);
+    expect((await f.call('/api/rd/token', { method: 'PUT', token: 'member-session', body: { token: '' } })).body.source).toBeNull();
+    expect(await readdir(join(f.dataDir, 'secrets')).catch(() => [])).not.toContain('rd-token');
+  });
+  it('preserves service rate limits and hides upstream response text', async () => {
+    const f = await boot();
+    f.api.mockResolvedValueOnce(new Response('{"error":"secret diagnostic"}', { status: 429, headers: { 'retry-after': '900' } }));
+    const result = await f.call('/api/account/signin', { body: { email: f.member.email, password: 'wrong' } });
+    expect(result.status).toBe(429); expect(result.headers.get('retry-after')).toBe('900');
+    expect(result.body).toEqual({ error: 'rate_limited' });
+  });
+  it('uses the remote cached token in the real RD provider, including after rotation and clear', async () => {
+    const realFetch = globalThis.fetch;
+    const rdTokens: Array<string | null> = [];
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).startsWith('https://api.real-debrid.com/')) {
+        rdTokens.push(new Headers(init?.headers).get('authorization'));
+        return Response.json({ username: 'Ada', premium: 1 });
+      }
+      return realFetch(input, init);
+    }));
+    const f = await boot(false, true); f.member.status = 'active'; f.member.hasRdToken = true;
+    f.rd.set(f.member.id, 'remote-rd-first');
+    expect((await f.call('/api/rd/status', { token: 'member-session' })).body)
+      .toMatchObject({ configured: true, username: 'Ada', source: 'account' });
+    expect((await f.call('/api/rd/configured', { token: 'member-session' })).body).toEqual({ configured: true });
+    await f.call('/api/rd/token', { method: 'PUT', token: 'member-session', body: { token: 'remote-rd-next' } });
+    expect(rdTokens).toEqual(['Bearer remote-rd-first', 'Bearer remote-rd-next']);
+    expect((await f.call('/api/rd/token', { method: 'PUT', token: 'member-session', body: { token: '' } })).body)
+      .toMatchObject({ configured: false, source: null });
+    expect((await f.call('/api/rd/status')).body).toMatchObject({ configured: false, source: null });
+  });
+  it('uses remote sessions for Hub identity and refuses to mint a local delegated session', async () => {
+    const f = await boot();
+    expect((await f.call('/api/hub/v1/overview', { token: 'member-session' })).body)
+      .toMatchObject({ account: { id: f.member.id, role: 'member' } });
+    const paired = await f.call('/api/hub/v1/pair/start', { body: {
+      clientId: 'test-remote-client', platform: 'roku', name: 'Living room', appVersion: '1.0', capabilities: [],
+    } });
+    expect(paired.status).toBe(200);
+    const approved = await f.call('/api/hub/v1/pair/approve', { token: 'admin-session', body: { userCode: paired.body.userCode } });
+    expect(approved).toMatchObject({ status: 503, body: { error: 'remote_pairing_unavailable' } });
+  });
+  it('returns moved for local email codes and lets remote admin verification drive account state', async () => {
+    const f = await boot();
+    for (const path of ['/api/account/email/send', '/api/account/email/verify']) {
+      expect(await f.call(path, { token: 'member-session', body: {} })).toMatchObject({ status: 410, body: { error: 'moved' } });
+    }
+    expect((await f.call('/api/account', { token: 'member-session' })).body).toMatchObject({ canSendEmail: false, account: { emailVerified: false, emailCodeSent: false } });
+  });
 });

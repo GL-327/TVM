@@ -29,7 +29,6 @@
     <FocusButton id="password" translation="[1160, 1135]" />
     <FocusButton id="submit" translation="[1160, 1299]" />
     <FocusButton id="switchMode" translation="[1160, 1463]" />
-    <FocusButton id="dev" translation="[1160, 1627]" />
     <FocusButton id="recheck" translation="[1160, 807]" />
     <FocusButton id="signout" translation="[1160, 971]" />
     <FocusButton id="agree" translation="[1160, 807]" />

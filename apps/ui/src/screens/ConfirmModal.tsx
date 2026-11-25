@@ -1,4 +1,5 @@
 import { FocusButton } from '../components/FocusButton';
+import { clearExtrasStats } from '../data/extras';
 import { clearCache, factoryReset } from '../data/media';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
@@ -21,6 +22,10 @@ export function ConfirmModal({ params }: ScreenProps): React.JSX.Element {
     }
     if (action === 'clear-cache') {
       void clearCache().then(() => navigate.pop());
+      return;
+    }
+    if (action === 'clear-stats-history') {
+      void clearExtrasStats().finally(() => navigate.pop());
       return;
     }
     if (action === 'factory-reset') {

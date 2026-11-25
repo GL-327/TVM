@@ -1,13 +1,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readJson, sendJson } from './http.ts';
-import { accountSessionToken, type AccountsService } from './providers/accounts.ts';
+import { accountSessionToken } from './providers/accounts.ts';
+import type { CoreAccountsService } from './providers/remoteAccounts.ts';
 import { ACCESS_ROUTE } from './providers/accessTiers.ts';
 import { createFeatureFlags } from './providers/featureFlags.ts';
 import { priceBookAt, type PriceBook } from './providers/priceBook.ts';
 import { createQuoteService, QuoteError, type QuoteInput } from './providers/quotes.ts';
 
 export function createPricingContext(options: {
-  dataDir: string; accounts: AccountsService; env?: NodeJS.ProcessEnv; now?: () => Date; books?: readonly PriceBook[];
+  dataDir: string; accounts: CoreAccountsService; env?: NodeJS.ProcessEnv; now?: () => Date; books?: readonly PriceBook[];
 }) {
   const flags = createFeatureFlags(options);
   const quotes = createQuoteService({ ...options, flags: flags.get });
@@ -23,7 +24,7 @@ export async function handlePricingApi(request: IncomingMessage, response: Serve
     return true;
   }
   const header = (name: string): string | undefined => typeof request.headers[name] === 'string' ? request.headers[name] : undefined;
-  const account = ctx.accounts.resolve(accountSessionToken(header('authorization'), header('x-tvm-account'), ctx.env?.['TVM_LAN_TOKEN']));
+  const account = await ctx.accounts.resolve(accountSessionToken(header('authorization'), header('x-tvm-account'), ctx.env?.['TVM_LAN_TOKEN']));
   if (path === '/api/admin/flags' && (request.method === 'GET' || request.method === 'PUT')) {
     if (account?.role !== 'dev') sendJson(response, 403, { error: 'dev_account_required' });
     else if (request.method === 'GET') sendJson(response, 200, { flags: ctx.flags.get() });

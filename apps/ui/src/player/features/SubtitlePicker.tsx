@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FocusButton } from '../../components/FocusButton';
+import { currentProfileId } from '../../data/media';
+import {
+  normalizeSubtitleLangCode,
+  PREFS_CHANGED_EVENT,
+  readPrefs,
+  readProfileSubtitleLanguage,
+  savePrefs,
+  saveProfileSubtitleLanguage,
+  subtitleLanguagesMatch,
+} from '../../data/prefs';
 import { requestFocus } from '../../nav/focusEngine';
 import { useFocusScope, useScopedFocusKey } from '../../nav/ViewStackContext';
 import { attachedHls, HLS_INSTANCE_CHANGE } from '../hlsBridge';
@@ -224,6 +234,21 @@ function CcGlyph(): React.JSX.Element {
   );
 }
 
+export function sortSubtitlesByPreference(
+  tracks: readonly ListedSubtitle[],
+  preferredLanguages: readonly string[],
+): ListedSubtitle[] {
+  if (tracks.length <= 1 || preferredLanguages.length === 0) return [...tracks];
+  const rank = (lang: string): number => {
+    const idx = preferredLanguages.findIndex((pref) => subtitleLanguagesMatch(lang, pref));
+    return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+  };
+  return tracks
+    .map((track, originalIndex) => ({ track, originalIndex, prefRank: rank(track.language) }))
+    .sort((a, b) => (a.prefRank !== b.prefRank ? a.prefRank - b.prefRank : a.originalIndex - b.originalIndex))
+    .map((entry) => entry.track);
+}
+
 /**
  * Focusable CC control. Hidden unless the current video already has caption
  * or subtitle tracks (in-band, `<track>`, playback `subtitles`, or HLS).
@@ -233,13 +258,31 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
   const [hls, setHls] = useState<HlsSubtitleApi | null>(() => props.hls ?? attachedHls(resolveVideo(props)) as unknown as HlsSubtitleApi | null);
   const [generation, setGeneration] = useState(0);
   const [open, setOpen] = useState(false);
+  const [preferredLanguages, setPreferredLanguages] = useState<string[]>(() => readPrefs().subtitleLanguages);
+  const autoAppliedRef = useRef(false);
+  const userPickedRef = useRef(false);
   const scope = useFocusScope();
   const toggleKey = useScopedFocusKey('player-cc');
 
+  useEffect(() => {
+    const sync = (): void => setPreferredLanguages(readPrefs().subtitleLanguages);
+    window.addEventListener(PREFS_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(PREFS_CHANGED_EVENT, sync);
+  }, []);
+
+  useEffect(() => {
+    autoAppliedRef.current = false;
+    userPickedRef.current = false;
+  }, [video]);
+
   const appSubs = useMemo(() => readAppSubtitles(props), [props.stream, props.subtitles]);
-  const listed = useMemo(
+  const rawListed = useMemo(
     () => listSubtitleTracks(video, hls),
     [generation, hls, video],
+  );
+  const listed = useMemo(
+    () => sortSubtitlesByPreference(rawListed, preferredLanguages),
+    [preferredLanguages, rawListed],
   );
   const active = listed.find((row) => row.selected) ?? null;
 
@@ -263,6 +306,26 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
     attachAppSubtitleTracks(video, appSubs);
     refresh();
   }, [appSubs, refresh, video]);
+
+  useEffect(() => {
+    if (video === null || listed.length === 0 || autoAppliedRef.current || userPickedRef.current) return;
+    const saved = readProfileSubtitleLanguage(currentProfileId());
+    if (saved === null) return;
+    if (saved === 'off') {
+      autoAppliedRef.current = true;
+      return;
+    }
+    const match = listed.find(
+      (row) => subtitleLanguagesMatch(row.language, saved) || row.label.toLowerCase() === saved.toLowerCase(),
+    );
+    if (match !== undefined) {
+      autoAppliedRef.current = true;
+      if (!match.selected) {
+        applySelection(video, hls, match.id);
+        refresh();
+      }
+    }
+  }, [hls, listed, refresh, video]);
 
   useEffect(() => {
     if (video === null) return;
@@ -335,11 +398,21 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
 
   const pick = useCallback(
     (id: string | null): void => {
+      userPickedRef.current = true;
+      const chosen = id === null ? null : (listed.find((row) => row.id === id) ?? null);
+      saveProfileSubtitleLanguage(currentProfileId(), chosen === null ? 'off' : (chosen.language || chosen.label));
+      if (chosen !== null && chosen.language.trim() !== '') {
+        const code = normalizeSubtitleLangCode(chosen.language);
+        if (code !== '') {
+          const rest = preferredLanguages.filter((lang) => !subtitleLanguagesMatch(lang, code));
+          void savePrefs({ subtitleLanguages: [code, ...rest] });
+        }
+      }
       applySelection(video, hls, id);
       refresh();
       closeMenu();
     },
-    [closeMenu, hls, refresh, video],
+    [closeMenu, hls, listed, preferredLanguages, refresh, video],
   );
 
   const onMenuArrow = useCallback(
@@ -372,11 +445,11 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
         </span>
       </FocusButton>
       {open ? (
-        <div className="player-cc__menu" role="listbox" aria-label="Subtitles" data-wrap="y">
+        <div className="player-cc__menu glass glass--sheet glass-appear" role="listbox" aria-label="Subtitles" data-wrap="y">
           <p className="player-cc__heading">Subtitles</p>
           <FocusButton
             id="player-cc-off"
-            className={`player-cc__row${active === null ? ' player-cc__row--on' : ''}`}
+            className={`player-cc__row${active === null ? ' player-cc__row--on glass--thumb' : ''}`}
             detail={active === null ? 'On' : undefined}
             onSelect={() => pick(null)}
             onArrowPress={onMenuArrow}
@@ -387,7 +460,7 @@ export function SubtitlePicker(props: SubtitlePickerProps): React.JSX.Element | 
             <FocusButton
               key={row.id}
               id={`player-cc-${row.id.replace(':', '-')}`}
-              className={`player-cc__row${row.selected ? ' player-cc__row--on' : ''}`}
+              className={`player-cc__row${row.selected ? ' player-cc__row--on glass--thumb' : ''}`}
               detail={row.kind === 'captions' ? 'CC' : row.language !== '' ? row.language : undefined}
               onSelect={() => pick(row.id)}
               onArrowPress={onMenuArrow}
@@ -442,19 +515,12 @@ const PICKER_CSS = `
   flex-direction: column;
   gap: 0.35rem;
   min-width: 16.5rem;
+  max-width: calc(100vw - 2rem);
   max-height: min(22rem, 52vh);
   padding: 0.7rem;
   overflow: auto;
-  border: 1px solid color-mix(in srgb, #fff, transparent 82%);
-  border-radius: 0.7rem;
-  background: color-mix(in srgb, #0b0b0b, transparent 12%);
-  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.45);
-  /*
-   * Frost is a theme decision, not this overlay's. --player-chip-filter is
-   * "none" for every theme shipped (see player-chrome.css): blurring live
-   * video is per-frame GPU work on the one surface where smoothness matters
-   * most, and the fill below is already opaque enough to read against.
-   */
+  border-radius: 18px;
+  background: color-mix(in srgb, #0b0d14, transparent 10%);
   -webkit-backdrop-filter: var(--player-chip-filter, none);
   backdrop-filter: var(--player-chip-filter, none);
 }
@@ -470,7 +536,7 @@ const PICKER_CSS = `
   width: 100%;
   min-height: 2.7rem;
   justify-content: space-between;
-  border-radius: 0.5rem;
+  border-radius: 12px;
 }
 .player-cc__row--on {
   box-shadow: inset 0 0 0 0.1rem #fff;

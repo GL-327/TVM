@@ -3,6 +3,67 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.2.0",
+      "date": "2026-11-25",
+      "title": "Skip intros, subtitles, and private accounts",
+      "highlights": [
+        "Skip intros, recaps and credits, with an Up next countdown when the credits roll.",
+        "Subtitles in your languages, trailers, film collections and new-episode dates.",
+        "Accounts now live on TVM's own private server. Members need to sign up again.",
+        "Your stats: hours watched, streak and top genres, with history you can clear."
+      ],
+      "changes": [
+        {
+          "area": "Player",
+          "text": "Skip intro, recap and credits. Choose Off, a Skip button, or skip automatically in Settings."
+        },
+        {
+          "area": "Player",
+          "text": "Up next counts down to the next episode when the credits start. Autoplay can be turned off."
+        },
+        {
+          "area": "Player",
+          "text": "Subtitles from OpenSubtitles in your preferred languages, remembered per profile."
+        },
+        {
+          "area": "Details",
+          "text": "Trailers, the rest of a film collection in order, and the date of a show's next episode."
+        },
+        {
+          "area": "Details",
+          "text": "Anime shows its English title when there is one."
+        },
+        {
+          "area": "Home",
+          "text": "A New episodes this week row for shows you are watching or saved."
+        },
+        {
+          "area": "Home",
+          "text": "Optional muted trailer previews on the big title at the top, on computers.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Your stats: hours watched, finished titles, streak and top genres. Clear history any time."
+        },
+        {
+          "area": "Accounts",
+          "text": "Sign-ins and Real-Debrid tokens moved to TVM's private accounts server, encrypted there."
+        },
+        {
+          "area": "Accounts",
+          "text": "Members need to sign up again once. The owner switches each account on."
+        },
+        {
+          "area": "Accounts",
+          "text": "Developer codes are gone. The owner manages accounts from a private web dashboard."
+        }
+      ]
+    },
+    {
       "version": "1.1.0",
       "date": "2026-11-25",
       "title": "Glass, longer rows, and your other services",

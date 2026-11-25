@@ -27,6 +27,8 @@ endif()
 
 # Core runtime: configuration, storage and the local vault. No UI, no network.
 add_library(tvm_core STATIC
+  src/core/extras.cpp
+  src/core/extras.h
   src/core/content.cpp
   src/core/core_client.cpp
   src/core/core_client.h
@@ -174,6 +176,7 @@ add_library(tvm_platform STATIC
   src/platform/app.cpp
   src/platform/app_account.cpp
   src/platform/app_update.cpp
+  src/platform/app_extras.cpp
   src/platform/app_content.cpp
   src/platform/app_services.cpp
   src/platform/app_pages.cpp
@@ -232,6 +235,7 @@ if(MINGW)
 endif()
 
 add_executable(tvm_tests
+  tests/extras_tests.cpp
   tests/main.cpp
   tests/features_1_1_tests.cpp
   tests/core_tests.cpp

@@ -43,7 +43,7 @@ final class StandaloneRuntime: ObservableObject {
         // when the download finishes.
         TVMBundledUI.prepare(store: core.store)
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { TVMShellScripts.tourToken = core.accounts.smokeTourToken() }
+        if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { TVMShellScripts.tourToken = await core.accounts.smokeTourToken() }
         #endif
         await TVMUpdater.waitForLaunchApply(store: core.store, session: TVMUpdater.downloadSession())
         do {

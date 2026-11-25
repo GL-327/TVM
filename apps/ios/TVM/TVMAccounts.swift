@@ -1,119 +1,154 @@
 import Foundation
-import CommonCrypto
+import Security
 
-/**
- Accounts on the phone. The iPhone app runs its own core, so the sign-in
- screen is answered here, with the same rules as apps/core/src/providers/
- accounts.ts: a new account can do nothing until the dev switches it on, a
- wrong password and a missing account get the same answer, and passwords are
- only ever stored as salted digests (PBKDF2, because scrypt is in neither
- CryptoKit nor CommonCrypto).
+/// Where the private accounts service lives. The service holds accounts,
+/// sign-ins and Real-Debrid keys; this public app holds none of them. Must match
+/// ACCOUNTS_URL in apps/core/src/config.ts.
+let tvmAccountsURL = "https://tvm-accounts.tvm-accounts.workers.dev"
 
- The dev account is built in. Its password is the developer code.
+/// One JSON request to the accounts service. A protocol so tests need no network.
+protocol TVMAccountsTransport {
+    /// Throws when the service cannot be reached at all.
+    func send(method: String, url: URL, bearer: String?, body: Data?) async throws -> (status: Int, body: Data)
+}
 
- Phones do not send email, so nobody here is asked for a code; the dev can
- mark an address verified by hand instead.
- */
-
-enum TVMPassword {
-    static let iterations: UInt32 = 210_000
-
-    static func hash(_ password: String, salt: String) -> String? {
-        guard let passwordData = password.data(using: .utf8),
-              let saltData = Data(hexString: salt) else { return nil }
-        var derived = [UInt8](repeating: 0, count: 32)
-        let status = passwordData.withUnsafeBytes { passwordBytes -> Int32 in
-            guard let base = passwordBytes.bindMemory(to: Int8.self).baseAddress else { return Int32(kCCParamError) }
-            return saltData.withUnsafeBytes { saltBytes -> Int32 in
-                guard let saltBase = saltBytes.bindMemory(to: UInt8.self).baseAddress else { return Int32(kCCParamError) }
-                return CCKeyDerivationPBKDF(
-                    CCPBKDFAlgorithm(kCCPBKDF2), base, passwordData.count,
-                    saltBase, saltData.count,
-                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256), iterations,
-                    &derived, derived.count
-                )
-            }
-        }
-        guard status == Int32(kCCSuccess) else { return nil }
-        return derived.map { String(format: "%02x", $0) }.joined()
-    }
-
-    static func newSalt() -> String {
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return bytes.map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// No early exit: how long a check takes must not say how much was right.
-    static func matches(_ password: String, hash expected: String, salt: String) -> Bool {
-        guard let actual = hash(password, salt: salt), actual.count == expected.count else { return false }
-        var difference: UInt8 = 0
-        for (left, right) in zip(actual.utf8, expected.utf8) { difference |= left ^ right }
-        return difference == 0
+/// Never follow a redirect with a bearer token attached.
+private final class TVMAccountsNoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }
 
-extension Data {
-    init?(hexString: String) {
-        guard hexString.count % 2 == 0 else { return nil }
-        var bytes = [UInt8]()
-        bytes.reserveCapacity(hexString.count / 2)
-        var index = hexString.startIndex
-        while index < hexString.endIndex {
-            let next = hexString.index(index, offsetBy: 2)
-            guard let byte = UInt8(hexString[index..<next], radix: 16) else { return nil }
-            bytes.append(byte)
-            index = next
+struct TVMURLSessionTransport: TVMAccountsTransport {
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 30
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration, delegate: TVMAccountsNoRedirect(), delegateQueue: nil)
+    }()
+
+    func send(method: String, url: URL, bearer: String?, body: Data?) async throws -> (status: Int, body: Data) {
+        guard url.scheme == "https" else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("TVM/1.1 (iOS; +https://github.com/GL-327/TVM)", forHTTPHeaderField: "User-Agent")
+        if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        self.init(bytes)
+        let (data, response) = try await TVMURLSessionTransport.session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        return (http.statusCode, data)
+    }
+}
+
+/// Where the one session token is kept: the Keychain on the phone, memory in tests.
+protocol TVMSessionVault: AnyObject {
+    func read() -> String?
+    func write(_ token: String?)
+}
+
+final class TVMMemorySessionVault: TVMSessionVault {
+    private let lock = NSLock()
+    private var token: String?
+
+    func read() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return token
+    }
+
+    func write(_ token: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.token = token
+    }
+}
+
+/// The accounts session token, and nothing else about the account. Passwords
+/// and Real-Debrid keys live in the accounts service. Reads and writes never
+/// throw: a Keychain that is locked or unavailable just means signing in again.
+final class TVMKeychainSessionVault: TVMSessionVault {
+    private var query: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "TVM.Standalone.AccountSession",
+            kSecAttrAccount as String: "session",
+        ]
+    }
+
+    func read() -> String? {
+        var request = query
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8), !token.isEmpty else { return nil }
+        return token
+    }
+
+    func write(_ token: String?) {
+        guard let token, !token.isEmpty else {
+            SecItemDelete(query as CFDictionary)
+            return
+        }
+        let values: [String: Any] = [
+            kSecValueData as String: Data(token.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        var status = SecItemUpdate(query as CFDictionary, values as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query.merging(values) { _, new in new } as CFDictionary, nil)
+        }
     }
 }
 
 /// Swift's String is not an Error, so a failure needs a type of its own.
 struct TVMAccountError: Error {
     let message: String
-    init(_ message: String) { self.message = message }
+    /// The status the local route answers with when it is not the route's usual one (429, 503, 401); 0 otherwise.
+    let status: Int
+    init(_ message: String, status: Int = 0) {
+        self.message = message
+        self.status = status
+    }
 }
 
+/// The answer to "who is this session": the account, signed out, or the service could not be asked.
+enum TVMAccountLookup {
+    case found(TVMAccount)
+    case signedOut
+    case unavailable
+}
+
+/// An account as the service describes it, in the shape the rest of the phone's core reads.
+/// The service's role "admin" is "dev" here, as the interface already knows it.
 struct TVMAccount {
     var id: String
     var email: String
     var displayName: String
-    var passwordHash: String
-    var passwordSalt: String
-    var createdAt: String
     var role: String
     var activated: Bool
-    var activatedAt: String?
-    var tier: String?
-    var note: String?
     var suspended: Bool
+    var tier: String?
+    var createdAt: String
     var termsVersion: String?
     var termsAcceptedAt: String?
-    var emailVerifiedAt: String?
-    /// This account's own Real-Debrid key. It wins over the one saved on the phone.
-    var rdToken: String?
-    var lastSeenAt: String?
-    var signIns: Int
-    var lastClient: String?
+    var emailVerified: Bool
+    var hasRdToken: Bool
 
     var isDev: Bool { role == "dev" }
 
-    func json() -> [String: Any] {
-        [
-            "id": id, "email": email, "displayName": displayName,
-            "passwordHash": passwordHash, "passwordSalt": passwordSalt,
-            "createdAt": createdAt, "role": role, "activated": activated,
-            "activatedAt": JSONValue.orNull(activatedAt), "tier": JSONValue.orNull(tier),
-            "note": JSONValue.orNull(note), "suspended": suspended,
-            "termsVersion": JSONValue.orNull(termsVersion), "termsAcceptedAt": JSONValue.orNull(termsAcceptedAt),
-            "emailVerifiedAt": JSONValue.orNull(emailVerifiedAt), "rdToken": JSONValue.orNull(rdToken),
-            "lastSeenAt": JSONValue.orNull(lastSeenAt), "signIns": signIns,
-            "lastClient": JSONValue.orNull(lastClient),
-        ]
-    }
-
-    /// Never includes the digest, the salt or a Real-Debrid key.
+    /// Never includes a password or a Real-Debrid key.
     func publicJSON() -> [String: Any] {
         [
             "id": id, "email": email, "displayName": displayName,
@@ -122,68 +157,93 @@ struct TVMAccount {
             "createdAt": createdAt,
             "termsVersion": JSONValue.orNull(termsVersion),
             "termsAcceptedAt": JSONValue.orNull(termsAcceptedAt),
-            "emailVerified": emailVerifiedAt != nil,
+            "emailVerified": emailVerified,
             // Phones never send a code.
             "emailCodeSent": false,
-            "rdKey": rdToken != nil,
+            "rdKey": hasRdToken,
         ]
     }
 
-    func adminJSON(activeSessions: Int) -> [String: Any] {
-        var out = publicJSON()
-        out["activatedAt"] = JSONValue.orNull(activatedAt)
-        out["lastSeenAt"] = JSONValue.orNull(lastSeenAt)
-        out["signIns"] = signIns
-        out["lastClient"] = JSONValue.orNull(lastClient)
-        out["note"] = JSONValue.orNull(note)
-        out["activeSessions"] = activeSessions
-        out["emailVerifiedAt"] = JSONValue.orNull(emailVerifiedAt)
-        if let key = rdToken {
-            out["rdKeyHint"] = key.count <= 4 ? "••••" : "••••" + String(key.suffix(4))
-        } else {
-            out["rdKeyHint"] = NSNull()
-        }
-        return out
-    }
-
-    static func from(_ raw: Any?) -> TVMAccount? {
+    static func from(service raw: Any?) -> TVMAccount? {
         guard let row = raw as? [String: Any],
               let id = row["id"] as? String,
-              let email = row["email"] as? String,
-              let hash = row["passwordHash"] as? String,
-              let salt = row["passwordSalt"] as? String else { return nil }
+              let email = row["email"] as? String else { return nil }
+        let status = row["status"] as? String ?? "waiting"
+        let version = (row["termsVersion"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let createdAt = row["createdAt"] as? String ?? ""
+        let tier: String?
+        if status == "waiting" {
+            tier = nil
+        } else {
+            tier = (row["liveTv"] as? Bool ?? false) ? "stream-live" : "stream"
+        }
         return TVMAccount(
             id: id, email: email,
             displayName: row["displayName"] as? String ?? email,
-            passwordHash: hash, passwordSalt: salt,
-            createdAt: row["createdAt"] as? String ?? "",
-            role: (row["role"] as? String) == "dev" ? "dev" : "member",
-            activated: row["activated"] as? Bool ?? false,
-            activatedAt: row["activatedAt"] as? String,
-            tier: row["tier"] as? String,
-            note: row["note"] as? String,
-            suspended: row["suspended"] as? Bool ?? false,
-            termsVersion: row["termsVersion"] as? String,
-            termsAcceptedAt: row["termsAcceptedAt"] as? String,
-            emailVerifiedAt: (row["emailVerifiedAt"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            rdToken: (row["rdToken"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            lastSeenAt: row["lastSeenAt"] as? String,
-            signIns: row["signIns"] as? Int ?? 0,
-            lastClient: row["lastClient"] as? String
+            role: (row["role"] as? String) == "admin" ? "dev" : "member",
+            activated: status == "active",
+            suspended: status == "suspended",
+            tier: tier,
+            createdAt: createdAt,
+            termsVersion: version,
+            termsAcceptedAt: version == nil ? nil : createdAt,
+            emailVerified: row["emailVerified"] as? Bool ?? false,
+            hasRdToken: row["hasRdToken"] as? Bool ?? false
         )
     }
 }
 
+/**
+ Accounts on the phone. The accounts live in TVM's private service
+ (tvmAccountsURL); this class only talks to it. The phone keeps the session
+ token, in the Keychain, and nothing else: no password, no ledger, no
+ Real-Debrid key on disk. A member's Real-Debrid key is fetched from the
+ service when it is needed and held in memory for a few minutes.
+
+ The local /api/account routes keep the shape the interface already uses, so
+ the service's role "admin" is answered as the old "dev" role.
+
+ Accounts that were stored on the phone could not be moved (their passwords
+ were kept as digests the service cannot read), so people register again and the
+ owner switches them on. Admin work happens on the web dashboard, not here.
+ */
 final class TVMAccounts {
-    static let devAccountID = "acc_dev"
-    /// Not an address, so nobody can register it or sign in to it with a password.
-    private static let devEmail = "dev"
+    /// How long an answer about an account is trusted before the service is asked again.
+    static let accountTTL: TimeInterval = 30
+    /// How long a fetched Real-Debrid key stays in memory.
+    static let rdTTL: TimeInterval = 10 * 60
+    /// A failed key fetch is not repeated on every request.
+    private static let rdFailureTTL: TimeInterval = 30
 
-    private let store: TVMStore
-    private let file = "accounts.json"
-    private let sessionDays: TimeInterval = 30 * 86_400
+    private struct CachedAccount {
+        let account: TVMAccount
+        let at: Date
+    }
 
-    init(store: TVMStore) { self.store = store }
+    private struct CachedKey {
+        let token: String?
+        let expires: Date
+    }
+
+    private var transport: TVMAccountsTransport
+    private var vault: TVMSessionVault
+    private let origin: String
+    private let now: () -> Date
+    private let lock = NSLock()
+    private var accountCache: [String: CachedAccount] = [:]
+    private var rdCache: [String: CachedKey] = [:]
+
+    init(
+        transport: TVMAccountsTransport = TVMURLSessionTransport(),
+        vault: TVMSessionVault = TVMKeychainSessionVault(),
+        origin: String = tvmAccountsURL,
+        now: @escaping () -> Date = { Date() }
+    ) {
+        self.transport = transport
+        self.vault = vault
+        self.origin = origin
+        self.now = now
+    }
 
     // MARK: Access resource
 
@@ -199,43 +259,39 @@ final class TVMAccounts {
         access()["termsVersion"] as? String ?? ""
     }
 
-    // MARK: Storage
+    // MARK: The service
 
-    private func load() -> (accounts: [TVMAccount], sessions: [String: [String: Any]]) {
-        let root = store.readJSON(file) as? [String: Any] ?? [:]
-        let rows = (root["accounts"] as? [Any] ?? []).compactMap(TVMAccount.from)
-        var sessions = root["sessions"] as? [String: [String: Any]] ?? [:]
-        let now = Date()
-        for (key, session) in sessions {
-            let expires = (session["expiresAt"] as? String).flatMap(TVMAccounts.date) ?? Date.distantPast
-            if expires <= now { sessions.removeValue(forKey: key) }
+    private static let unreachable = "TVM accounts cannot be reached. Check your connection and try again."
+    private static let misunderstood = "TVM accounts sent an answer this app does not understand."
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
+    private func call(_ method: String, _ path: String, bearer: String? = nil, body: [String: Any]? = nil) async throws -> (status: Int, json: [String: Any]) {
+        guard let url = URL(string: origin + path) else { throw TVMAccountError(TVMAccounts.unreachable, status: 503) }
+        do {
+            let reply = try await transport.send(method: method, url: url, bearer: bearer, body: body.map { JSONValue.data($0) })
+            return (reply.status, JSONValue.object(reply.body))
+        } catch {
+            throw TVMAccountError(TVMAccounts.unreachable, status: 503)
         }
-        return (rows, sessions)
     }
 
-    private func save(_ accounts: [TVMAccount], _ sessions: [String: [String: Any]]) {
-        store.writeJSON(file, ["version": 1, "accounts": accounts.map { $0.json() }, "sessions": sessions])
+    private static func failure(_ status: Int, _ fallback: String) -> TVMAccountError {
+        if status == 429 { return TVMAccountError("Too many tries. Wait a few minutes and try again.", status: 429) }
+        if status >= 500 { return TVMAccountError("TVM accounts are not answering right now. Try again in a moment.", status: 503) }
+        return TVMAccountError(fallback, status: status == 401 ? 401 : 0)
     }
 
-    private static func date(_ iso: String) -> Date? {
-        ISO8601DateFormatter().date(from: iso)
-    }
-
-    private static func iso(_ date: Date = Date()) -> String {
-        ISO8601DateFormatter().string(from: date)
-    }
-
-    private static func digest(_ token: String) -> String {
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        let data = Data(token.utf8)
-        data.withUnsafeBytes { _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash) }
-        return hash.map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func newToken() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return bytes.map { String(format: "%02x", $0) }.joined()
+    /// Text for a field the service takes: no control characters, trimmed, clipped.
+    private static func cleaned(_ raw: String?, limit: Int) -> String? {
+        guard let raw else { return nil }
+        let kept = String(String.UnicodeScalarView(raw.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }))
+        let text = String(kept.trimmingCharacters(in: .whitespacesAndNewlines).prefix(limit))
+        return text.isEmpty ? nil : text
     }
 
     static func normalize(_ email: String) -> String {
@@ -251,34 +307,9 @@ final class TVMAccounts {
         return !host.hasPrefix(".") && !email.contains(" ")
     }
 
-    private static func sessionCount(_ sessions: [String: [String: Any]], id: String) -> Int {
-        sessions.values.filter { ($0["accountId"] as? String) == id }.count
-    }
-
-    /// Opens a session for the account at `index` and returns its token.
-    private static func openSession(_ accounts: inout [TVMAccount], _ index: Int, _ sessions: inout [String: [String: Any]], client: String?, days: TimeInterval) -> String {
-        let token = newToken()
-        let now = Date()
-        accounts[index].lastSeenAt = iso(now)
-        accounts[index].signIns += 1
-        if let client { accounts[index].lastClient = String(client.prefix(200)) }
-        sessions[digest(token)] = [
-            "accountId": accounts[index].id,
-            "issuedAt": iso(now),
-            "expiresAt": iso(now.addingTimeInterval(days)),
-            "client": JSONValue.orNull(client),
-        ]
-        return token
-    }
-
-    /// Members only: the dev account is not managed from the Accounts screen.
-    private func memberIndex(_ accounts: [TVMAccount], _ id: String) -> Int? {
-        accounts.firstIndex { $0.id == id && !$0.isDev }
-    }
-
     // MARK: Rules
 
-    /// Same as the desktop core: switched on, a tier, current terms, not suspended. The dev account always passes.
+    /// Switched on, a tier, current terms, not suspended. An owner (admin) account always passes, like the desktop.
     static func usable(_ account: TVMAccount?, termsVersion: String) -> [String: Any] {
         guard let account else { return ["ok": false, "reason": "no_account"] }
         if account.isDev { return ["ok": true, "reason": NSNull()] }
@@ -292,249 +323,221 @@ final class TVMAccounts {
 
     // MARK: Actions
 
-    func register(email rawEmail: String, password: String, displayName: String?, client: String?) -> Result<[String: Any], TVMAccountError> {
+    func register(email rawEmail: String, password: String, displayName: String?, client: String?) async -> Result<[String: Any], TVMAccountError> {
         let email = TVMAccounts.normalize(rawEmail)
         guard TVMAccounts.emailLooksValid(email) else { return .failure(TVMAccountError("Enter a valid email address.")) }
-        guard password.count >= 10 else { return .failure(TVMAccountError("Use at least 10 characters.")) }
-        guard password.count <= 200 else { return .failure(TVMAccountError("That password is too long.")) }
-
-        var (accounts, sessions) = load()
-        // Same answer whether or not the address exists, so signup cannot be
-        // used to find out who has an account.
-        guard !accounts.contains(where: { $0.email == email && !$0.isDev }) else {
-            return .failure(TVMAccountError("That account could not be created. If it already exists, sign in instead."))
+        guard password.utf16.count >= 10 else { return .failure(TVMAccountError("Use at least 10 characters.")) }
+        guard password.utf16.count <= 200 else { return .failure(TVMAccountError("That password is too long.")) }
+        var body: [String: Any] = ["email": email, "password": password]
+        if let name = TVMAccounts.cleaned(displayName, limit: 80) { body["displayName"] = name }
+        if let agent = TVMAccounts.cleaned(client, limit: 200) { body["client"] = agent }
+        do {
+            let reply = try await call("POST", "/v1/register", body: body)
+            guard reply.status == 201 || reply.status == 200 else {
+                throw TVMAccounts.failure(reply.status, "That account could not be created. If it already exists, sign in instead.")
+            }
+            guard let account = TVMAccount.from(service: reply.json["account"]) else {
+                throw TVMAccountError(TVMAccounts.misunderstood, status: 503)
+            }
+            return .success(account.publicJSON())
+        } catch let error as TVMAccountError {
+            return .failure(error)
+        } catch {
+            return .failure(TVMAccountError(TVMAccounts.unreachable, status: 503))
         }
-
-        let salt = TVMPassword.newSalt()
-        guard let hash = TVMPassword.hash(password, salt: salt) else { return .failure(TVMAccountError("That account could not be created.")) }
-        let name = (displayName?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-            ?? String(email.split(separator: "@").first ?? "")
-        let account = TVMAccount(
-            id: "acc_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))",
-            email: email, displayName: String(name.prefix(80)),
-            passwordHash: hash, passwordSalt: salt,
-            createdAt: TVMAccounts.iso(), role: "member", activated: false, activatedAt: nil, tier: nil,
-            note: nil, suspended: false, termsVersion: nil, termsAcceptedAt: nil,
-            emailVerifiedAt: nil, rdToken: nil,
-            lastSeenAt: nil, signIns: 0, lastClient: client.map { String($0.prefix(200)) }
-        )
-        accounts.append(account)
-        save(accounts, sessions)
-        return .success(account.publicJSON())
     }
 
-    func signIn(email rawEmail: String, password: String, client: String?) -> Result<[String: Any], TVMAccountError> {
+    func signIn(email rawEmail: String, password: String, client: String?) async -> Result<[String: Any], TVMAccountError> {
+        let mismatch = "That email address and password do not match."
         let email = TVMAccounts.normalize(rawEmail)
-        var (accounts, sessions) = load()
-        guard let index = accounts.firstIndex(where: { $0.email == email && !$0.isDev }) else {
-            // Hash anyway, so a missing account and a wrong password take the
-            // same time.
-            _ = TVMPassword.hash(password, salt: TVMPassword.newSalt())
-            return .failure(TVMAccountError("That email address and password do not match."))
+        guard !email.isEmpty, !password.isEmpty, password.utf16.count <= 200 else {
+            return .failure(TVMAccountError(mismatch, status: 401))
         }
-        guard TVMPassword.matches(password, hash: accounts[index].passwordHash, salt: accounts[index].passwordSalt) else {
-            return .failure(TVMAccountError("That email address and password do not match."))
+        var body: [String: Any] = ["email": email, "password": password]
+        if let agent = TVMAccounts.cleaned(client, limit: 200) { body["client"] = agent }
+        do {
+            let reply = try await call("POST", "/v1/signin", body: body)
+            if reply.status == 401 || reply.status == 400 { throw TVMAccountError(mismatch, status: 401) }
+            guard reply.status == 200 else { throw TVMAccounts.failure(reply.status, "Sign in failed.") }
+            guard let session = reply.json["session"] as? String, !session.isEmpty,
+                  let account = TVMAccount.from(service: reply.json["account"]) else {
+                throw TVMAccountError(TVMAccounts.misunderstood, status: 503)
+            }
+            // The phone remembers the latest session; other sessions (a paired Roku, say) are left alone.
+            vault.write(session)
+            locked { accountCache[session] = CachedAccount(account: account, at: now()) }
+            return .success([
+                "token": session,
+                "account": account.publicJSON(),
+                "usable": TVMAccounts.usable(account, termsVersion: TVMAccounts.termsVersion()),
+            ])
+        } catch let error as TVMAccountError {
+            return .failure(error)
+        } catch {
+            return .failure(TVMAccountError(TVMAccounts.unreachable, status: 503))
         }
-
-        let token = TVMAccounts.openSession(&accounts, index, &sessions, client: client, days: sessionDays)
-        save(accounts, sessions)
-        return .success([
-            "token": token,
-            "account": accounts[index].publicJSON(),
-            "usable": TVMAccounts.usable(accounts[index], termsVersion: TVMAccounts.termsVersion()),
-        ])
     }
 
-    /// Signs in to the dev account, creating it the first time. The caller checks the developer code first.
-    func signInDev(client: String?) -> [String: Any] {
-        var (accounts, sessions) = load()
-        let index: Int
-        if let existing = accounts.firstIndex(where: { $0.id == TVMAccounts.devAccountID }) {
-            index = existing
-        } else {
-            let now = TVMAccounts.iso()
-            accounts.append(TVMAccount(
-                id: TVMAccounts.devAccountID, email: TVMAccounts.devEmail, displayName: "Dev",
-                passwordHash: "", passwordSalt: "",
-                createdAt: now, role: "dev", activated: true, activatedAt: now, tier: "stream-live",
-                note: nil, suspended: false, termsVersion: nil, termsAcceptedAt: nil,
-                emailVerifiedAt: nil, rdToken: nil,
-                lastSeenAt: nil, signIns: 0, lastClient: nil
-            ))
-            index = accounts.count - 1
+    /// Best effort: the service forgets the session, and so does this phone, whatever the service says.
+    private func revoke(_ token: String) async {
+        _ = try? await call("POST", "/v1/signout", bearer: token)
+        forget(token)
+    }
+
+    func signOut(token: String) async {
+        await revoke(token)
+        if vault.read() == token { vault.write(nil) }
+    }
+
+    /// Factory reset: close the session the phone holds and drop everything in memory.
+    func forgetEverything() async {
+        if let held = vault.read() { await revoke(held) }
+        vault.write(nil)
+        locked {
+            accountCache.removeAll()
+            rdCache.removeAll()
         }
-        accounts[index].role = "dev"
-        accounts[index].activated = true
-        accounts[index].tier = "stream-live"
-        accounts[index].suspended = false
-        let token = TVMAccounts.openSession(&accounts, index, &sessions, client: client, days: sessionDays)
-        save(accounts, sessions)
-        return [
-            "token": token,
-            "account": accounts[index].publicJSON(),
-            "usable": TVMAccounts.usable(accounts[index], termsVersion: TVMAccounts.termsVersion()),
-        ]
     }
 
-    /// Whether the dev account has a session open on this phone.
-    func devSignedIn() -> Bool {
-        TVMAccounts.sessionCount(load().sessions, id: TVMAccounts.devAccountID) > 0
+    private func forget(_ token: String) {
+        locked {
+            accountCache.removeValue(forKey: token)
+            rdCache.removeValue(forKey: token)
+        }
     }
 
-    func signOut(token: String) {
-        var (accounts, sessions) = load()
-        sessions.removeValue(forKey: TVMAccounts.digest(token))
-        save(accounts, sessions)
+    /// Who this session belongs to, asking the service at most every `accountTTL` seconds.
+    func lookup(token: String?) async -> TVMAccountLookup {
+        guard let token, !token.isEmpty else { return .signedOut }
+        let cached = locked { accountCache[token] }
+        if let cached, now().timeIntervalSince(cached.at) < TVMAccounts.accountTTL { return .found(cached.account) }
+        let reply: (status: Int, json: [String: Any])
+        do {
+            reply = try await call("GET", "/v1/me", bearer: token)
+        } catch {
+            // The service cannot be reached: an account seen a moment ago stays signed in.
+            if let cached { return .found(cached.account) }
+            return .unavailable
+        }
+        if reply.status == 401 || reply.status == 403 {
+            forget(token)
+            if vault.read() == token { vault.write(nil) }
+            return .signedOut
+        }
+        guard reply.status == 200, let account = TVMAccount.from(service: reply.json["account"]) else {
+            if let cached { return .found(cached.account) }
+            return .unavailable
+        }
+        if account.suspended {
+            forget(token)
+            return .signedOut
+        }
+        locked {
+            accountCache[token] = CachedAccount(account: account, at: now())
+            // A change on the service (switched off, key removed) must not leave an old key in memory.
+            if !account.activated || !account.hasRdToken { rdCache.removeValue(forKey: token) }
+        }
+        return .found(account)
     }
 
-    func resolve(token: String?) -> TVMAccount? {
-        guard let token, !token.isEmpty else { return nil }
-        let (accounts, sessions) = load()
-        guard let session = sessions[TVMAccounts.digest(token)],
-              let id = session["accountId"] as? String else { return nil }
-        return accounts.first { $0.id == id }
+    func resolve(token: String?) async -> TVMAccount? {
+        if case .found(let account) = await lookup(token: token) { return account }
+        return nil
     }
 
-    /// The account's own Real-Debrid key for this session, if it has one.
-    func rdTokenFor(token: String?) -> String? {
-        resolve(token: token)?.rdToken
+    /// The account's own Real-Debrid key for this session, if it has one. Fetched on demand, held in memory only.
+    func rdTokenFor(token: String?) async -> String? {
+        guard let token, !token.isEmpty,
+              let account = await resolve(token: token),
+              account.activated, account.hasRdToken else { return nil }
+        if let cached = locked({ rdCache[token] }), cached.expires > now() { return cached.token }
+        do {
+            let reply = try await call("GET", "/v1/me/rd-token", bearer: token)
+            if reply.status == 200 {
+                let key = (reply.json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                locked { rdCache[token] = CachedKey(token: key, expires: now().addingTimeInterval(TVMAccounts.rdTTL)) }
+                return key
+            }
+        } catch {
+            // Fall through to the short failure cache.
+        }
+        locked { rdCache[token] = CachedKey(token: nil, expires: now().addingTimeInterval(TVMAccounts.rdFailureTTL)) }
+        return nil
+    }
+
+    func acceptTerms(token: String) async -> Result<[String: Any], TVMAccountError> {
+        do {
+            let reply = try await call("POST", "/v1/me/terms", bearer: token, body: ["version": TVMAccounts.termsVersion()])
+            if reply.status == 401 {
+                forget(token)
+                throw TVMAccountError("Sign in first.", status: 401)
+            }
+            guard reply.status == 200 else { throw TVMAccounts.failure(reply.status, "The terms could not be saved. Try again.") }
+            guard let account = TVMAccount.from(service: reply.json["account"]) else {
+                throw TVMAccountError(TVMAccounts.misunderstood, status: 503)
+            }
+            locked { accountCache[token] = CachedAccount(account: account, at: now()) }
+            return .success(account.publicJSON())
+        } catch let error as TVMAccountError {
+            return .failure(error)
+        } catch {
+            return .failure(TVMAccountError(TVMAccounts.unreachable, status: 503))
+        }
+    }
+
+    /// Saves or clears this account's own Real-Debrid key on the service.
+    func setRdToken(token: String, key: String) async -> Result<[String: Any], TVMAccountError> {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.utf16.count <= 200, trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return .failure(TVMAccountError("That does not look like a Real-Debrid key."))
+        }
+        locked { _ = rdCache.removeValue(forKey: token) }
+        do {
+            let reply = try await call("PUT", "/v1/me/rd-token", bearer: token, body: ["token": trimmed])
+            if reply.status == 401 {
+                forget(token)
+                throw TVMAccountError("Sign in first.", status: 401)
+            }
+            guard reply.status == 200 else { throw TVMAccounts.failure(reply.status, "That key could not be saved.") }
+            guard let account = TVMAccount.from(service: reply.json["account"]) else {
+                throw TVMAccountError(TVMAccounts.misunderstood, status: 503)
+            }
+            locked { accountCache[token] = CachedAccount(account: account, at: now()) }
+            return .success(account.publicJSON())
+        } catch let error as TVMAccountError {
+            return .failure(error)
+        } catch {
+            return .failure(TVMAccountError(TVMAccounts.unreachable, status: 503))
+        }
     }
 
     #if DEBUG
-    /// CI's simulator screenshot tour only (debug builds, -TVMSmokeTour): a
-    /// switched-on test account, so the tour can reach Home. Not compiled
-    /// into the app people install.
-    func smokeTourToken() -> String? {
-        let email = "tour@tvm.test", password = "simulator-tour-only"
-        _ = register(email: email, password: password, displayName: "Tour", client: "ci-tour")
-        guard case .success(let first) = signIn(email: email, password: password, client: "ci-tour"),
-              let id = (first["account"] as? [String: Any])?["id"] as? String else { return nil }
-        _ = activate(id: id, tier: "stream", note: "CI simulator tour")
-        _ = acceptTerms(id: id)
-        guard case .success(let session) = signIn(email: email, password: password, client: "ci-tour") else { return nil }
+    /// CI's simulator screenshot tour only (debug builds, -TVMSmokeTour): an
+    /// offline stand-in for the service that answers as a switched-on test
+    /// account, so the tour can reach Home. Not compiled into the app people
+    /// install.
+    func smokeTourToken() async -> String? {
+        transport = TVMTourTransport()
+        vault = TVMMemorySessionVault()
+        guard case .success(let session) = await signIn(email: "tour@tvm.test", password: "simulator-tour-only", client: "ci-tour") else { return nil }
         return session["token"] as? String
     }
     #endif
+}
 
-    func acceptTerms(id: String) -> [String: Any]? {
-        var (accounts, sessions) = load()
-        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return nil }
-        accounts[index].termsVersion = TVMAccounts.termsVersion()
-        accounts[index].termsAcceptedAt = TVMAccounts.iso()
-        save(accounts, sessions)
-        return accounts[index].publicJSON()
-    }
-
-    // MARK: Dev only
-
-    func list(search: String?, state: String?) -> [String: Any] {
-        let (all, sessions) = load()
-        let accounts = all.filter { !$0.isDev }
-        var counts: [String: Int] = [:]
-        for session in sessions.values {
-            if let id = session["accountId"] as? String { counts[id, default: 0] += 1 }
-        }
-        let needle = (search ?? "").trimmingCharacters(in: .whitespaces).lowercased()
-        let filtered = accounts.filter { account in
-            if !needle.isEmpty && !account.email.contains(needle) && !account.displayName.lowercased().contains(needle) { return false }
-            switch state {
-            case "waiting": return !account.activated && !account.suspended
-            case "active": return account.activated && !account.suspended
-            case "suspended": return account.suspended
-            default: return true
-            }
-        }.sorted { $0.createdAt > $1.createdAt }
-
-        return [
-            "accounts": filtered.map { $0.adminJSON(activeSessions: counts[$0.id] ?? 0) },
-            "summary": [
-                "total": accounts.count,
-                "waiting": accounts.filter { !$0.activated && !$0.suspended }.count,
-                "active": accounts.filter { $0.activated && !$0.suspended }.count,
-                "suspended": accounts.filter { $0.suspended }.count,
-            ],
-            "tiers": (TVMAccounts.access()["tiers"] as? [[String: Any]] ?? []).map {
-                ["id": $0["id"] ?? "", "name": $0["name"] ?? ""]
-            },
+#if DEBUG
+/// The tour's offline service (see TVMAccounts.smokeTourToken).
+struct TVMTourTransport: TVMAccountsTransport {
+    func send(method: String, url: URL, bearer: String?, body: Data?) async throws -> (status: Int, body: Data) {
+        let account: [String: Any] = [
+            "id": "acc_tour", "email": "tour@tvm.test", "displayName": "Tour", "role": "member",
+            "status": "active", "tier": "stream", "liveTv": false, "emailVerified": false,
+            "termsVersion": TVMAccounts.termsVersion(), "hasRdToken": false,
+            "createdAt": "2026-01-01T00:00:00.000Z",
         ]
-    }
-
-    func activate(id: String, tier: String, note: String?) -> [String: Any]? {
-        guard tier == "stream" || tier == "stream-live" else { return nil }
-        var (accounts, sessions) = load()
-        guard let index = memberIndex(accounts, id) else { return nil }
-        accounts[index].activated = true
-        accounts[index].activatedAt = accounts[index].activatedAt ?? TVMAccounts.iso()
-        accounts[index].tier = tier
-        accounts[index].suspended = false
-        if let note { accounts[index].note = String(note.prefix(500)) }
-        save(accounts, sessions)
-        return accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id))
-    }
-
-    /// Turns Live TV on or off for an account that is already switched on.
-    func setLiveTv(id: String, enabled: Bool) -> Result<[String: Any], TVMAccountError> {
-        var (accounts, sessions) = load()
-        guard let index = memberIndex(accounts, id) else { return .failure(TVMAccountError("No such account.")) }
-        guard accounts[index].activated, accounts[index].tier != nil else {
-            return .failure(TVMAccountError("Switch the account on first."))
-        }
-        accounts[index].tier = enabled ? "stream-live" : "stream"
-        save(accounts, sessions)
-        return .success(accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id)))
-    }
-
-    /// Saves or clears this account's own Real-Debrid key.
-    func setRdToken(id: String, token: String) -> Result<[String: Any], TVMAccountError> {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count <= 200, trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
-            return .failure(TVMAccountError("That does not look like a Real-Debrid key."))
-        }
-        var (accounts, sessions) = load()
-        guard let index = memberIndex(accounts, id) else { return .failure(TVMAccountError("No such account.")) }
-        accounts[index].rdToken = trimmed.isEmpty ? nil : trimmed
-        save(accounts, sessions)
-        return .success(accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id)))
-    }
-
-    func setEmailVerified(id: String, verified: Bool) -> Result<[String: Any], TVMAccountError> {
-        var (accounts, sessions) = load()
-        guard let index = memberIndex(accounts, id) else { return .failure(TVMAccountError("No such account.")) }
-        accounts[index].emailVerifiedAt = verified ? (accounts[index].emailVerifiedAt ?? TVMAccounts.iso()) : nil
-        save(accounts, sessions)
-        return .success(accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id)))
-    }
-
-    func setSuspended(id: String, suspended: Bool) -> [String: Any]? {
-        var (accounts, sessions) = load()
-        guard let index = memberIndex(accounts, id) else { return nil }
-        accounts[index].suspended = suspended
-        if suspended {
-            accounts[index].activated = false
-            // Revoking must not wait for a token to lapse.
-            for (key, session) in sessions where (session["accountId"] as? String) == id {
-                sessions.removeValue(forKey: key)
-            }
-        }
-        save(accounts, sessions)
-        return accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id))
-    }
-
-    func setNote(id: String, note: String?) -> [String: Any]? {
-        var (accounts, sessions) = load()
-        guard let index = memberIndex(accounts, id) else { return nil }
-        accounts[index].note = note.map { String($0.prefix(500)) }
-        save(accounts, sessions)
-        return accounts[index].adminJSON(activeSessions: TVMAccounts.sessionCount(sessions, id: id))
-    }
-
-    func erase(id: String) {
-        guard id != TVMAccounts.devAccountID else { return }
-        var (accounts, sessions) = load()
-        accounts.removeAll { $0.id == id }
-        for (key, session) in sessions where (session["accountId"] as? String) == id {
-            sessions.removeValue(forKey: key)
-        }
-        save(accounts, sessions)
+        var answer: [String: Any] = ["account": account]
+        if url.path == "/v1/signin" { answer["session"] = String(repeating: "t", count: 43) }
+        return (200, JSONValue.data(answer))
     }
 }
+#endif

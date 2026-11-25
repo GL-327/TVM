@@ -158,6 +158,10 @@ void MpvPlayer::Stop() {
     if (host_ != nullptr) ShowWindow(host_, SW_HIDE);
 }
 
+void MpvPlayer::AddSubtitle(const std::string& file, const std::string& label, const std::string& language, bool select) {
+    Write({"sub-add", file, select ? "select" : "auto", label, language});
+}
+
 void MpvPlayer::TogglePause() {
     Write(nlohmann::json::array({"cycle", "pause"}));
 }

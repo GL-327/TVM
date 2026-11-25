@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readJson, sendJson } from '../http.ts';
-import { accountSessionToken, type AccountsService } from '../providers/accounts.ts';
+import { accountSessionToken } from '../providers/accounts.ts';
+import type { CoreAccountsService } from '../providers/remoteAccounts.ts';
 import { readActivity } from './activity.ts';
 import { ack, expireCommands, getCommand, inbox, sendCommand } from './commands.ts';
 import { findDevice, publicDevice, register, rename, resolveDevice, revoke, setRoom, type Viewer } from './devices.ts';
@@ -11,7 +12,7 @@ import { bucket, createHubStore, transactHub } from './store.ts';
 import { bodyObject } from './validation.ts';
 import { HEARTBEAT_SEC } from './vocab.ts';
 
-export function createHubContext(options: { dataDir: string; accounts: AccountsService; env?: NodeJS.ProcessEnv; now?: () => number }) {
+export function createHubContext<T extends CoreAccountsService>(options: { dataDir: string; accounts: T; env?: NodeJS.ProcessEnv; now?: () => number }) {
   const now = options.now ?? Date.now;
   const store = createHubStore(options.dataDir, now);
   return { store, now, accounts: options.accounts, env: options.env ?? {}, pairing: createPairing(store, options.accounts, now) };
@@ -21,8 +22,8 @@ function header(request: IncomingMessage, key: string): string | undefined {
   const value = request.headers[key];
   return typeof value === 'string' ? value : undefined;
 }
-function accountViewer(ctx: HubContext, session: string | undefined, request: IncomingMessage): Viewer {
-  const account = ctx.accounts.resolve(session);
+async function accountViewer(ctx: HubContext, session: string | undefined, request: IncomingMessage): Promise<Viewer> {
+  const account = await ctx.accounts.resolve(session);
   if (account === null || account.suspended) throw new HubError(401, 'auth_required');
   return { accountId: account.id, name: account.displayName, role: account.role, profileId: header(request, 'x-tvm-profile') };
 }
@@ -52,7 +53,7 @@ export async function handleHubApi(request: IncomingMessage, response: ServerRes
       if (route === '/pair/token' && method === 'POST') {
         respond(200, pairing.token(input['deviceCode'])); return true;
       }
-      const viewer = accountViewer(ctx, session, request);
+      const viewer = await accountViewer(ctx, session, request);
       const ip = request.socket.remoteAddress ?? 'unknown';
       if (route === '/pair/lookup' && method === 'GET') {
         respond(200, pairing.lookup(query.get('userCode'), viewer, session!, ip)); return true;
@@ -62,6 +63,8 @@ export async function handleHubApi(request: IncomingMessage, response: ServerRes
       }
       notFound();
     }
+    const needsDevice = route === '/presence' || route === '/session/signout' || route === '/inbox' || /^\/commands\/[^/]+\/ack$/.test(route);
+    const authenticatedViewer = needsDevice && session === undefined ? null : await accountViewer(ctx, session, request);
     const result = transactHub(ctx.store, document => {
       const at = ctx.now();
       const ackMatch = /^\/commands\/([^/]+)\/ack$/.exec(route);
@@ -70,7 +73,7 @@ export async function handleHubApi(request: IncomingMessage, response: ServerRes
       const identity = credential !== undefined || needsDevice ? resolveDevice(document, credential, at) : null;
       const viewer: Viewer = needsDevice && session === undefined
         ? { accountId: identity!.accountId, name: 'Device', role: 'member', profileId: header(request, 'x-tvm-profile') }
-        : accountViewer(ctx, session, request);
+        : authenticatedViewer!;
       if (identity !== null) {
         if (identity.accountId !== viewer.accountId) notFound();
         viewer.installationId = identity.installationId;

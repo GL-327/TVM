@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="SettingsScreen" extends="Group">
   <interface>
+    <field id="extrasPrefs" type="assocarray" onChange="paintExtrasPrefs" />
     <field id="coreUrl" type="string" onChange="onCoreUrl" />
     <field id="health" type="assocarray" onChange="onHealth" />
     <field id="themeId" type="string" onChange="onThemeId" />
@@ -13,6 +14,7 @@
   <script type="text/brightscript" uri="pkg:/source/theme.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="SettingsScreen.brs" />
   <children>
     <Label id="kicker" text="Device and services" translation="[160, 144]" color="0x8A8A8AFF" font="font:SmallSystemFont" />

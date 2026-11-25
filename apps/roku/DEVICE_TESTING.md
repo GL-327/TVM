@@ -137,3 +137,39 @@ Without Core, do steps 1 to 4 with demo data (Settings > TVM Hub demo data).
     once Core has the routes.
 14. Memory. With the Hub open and six devices, run `r2d2_bitmaps`: the orb
     texture appears once, not once per node.
+
+## Accounts and Extras acceptance
+
+- [ ] Upgrade a Roku with old local account/session/RD registry keys. Confirm
+  those keys are deleted and a fresh service sign-in is required.
+- [ ] Register a disposable test member through the channel, sign in while
+  waiting, activate it through the owner's separate admin dashboard, recheck,
+  accept terms and sign out. Reopen to confirm session persistence/revocation.
+  Check offline, invalid password, expired session and rate-limit messages.
+- [ ] Save, retrieve and clear an RD token for an active account. Confirm only
+  the session token is persisted locally, and no developer entry or seven-Info
+  unlock remains. Never put real credentials in screenshots or logs.
+- [ ] Play a known IntroDB episode (Breaking Bad S1E1 has intro and credits).
+  Check Off/Button/Auto, start/end boundaries, eight-second expiry, OK, remote
+  seek and a second segment. An unknown title must show no assumed recap skip.
+- [ ] Test an anime with no IntroDB data and valid AniList/AniSkip mapping.
+- [ ] At credits check the next episode thumbnail/title, ten-second countdown,
+  Play now, Cancel, Back to cancel, autoplay Off, pause/resume, and panels open.
+  For unknown credits check the last-30-seconds fallback. Final or unaired next
+  episodes must not autoplay. Resume an episode inside the credits as well.
+- [ ] In Control Centre choose an OpenSubtitles language and Off, return to a
+  second episode, change profile, and check each profile's remembered choice.
+  Verify firmware accepts late sidecar subtitleTracks updates while playing,
+  UTF-8 text, SRT timing and captions during quality fallback.
+- [ ] Open a film collection, browse Left/Right and OK into another film, then
+  Back to the same collection card. Check restricted profiles and missing data.
+- [ ] Check Coming up dates and New episodes this week against TVmaze. Switch
+  profiles while requests are running: old results must not appear.
+- [ ] Your stats: play/pause/seek, finish a title, change profiles, reopen the
+  channel, then Clear history (Cancel and Confirm). Check totals, UTC day
+  boundaries, streak, genre ranking and remote paging through history.
+- [ ] Disable networking during each Extras request. Main playback/navigation
+  must keep working; unavailable optional metadata disappears quietly.
+
+These checks require Roku hardware; compiler and off-device fixture tests do
+not establish firmware playback or remote-focus acceptance.

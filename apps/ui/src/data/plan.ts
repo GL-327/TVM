@@ -516,16 +516,6 @@ export async function resetUsage(): Promise<PlanStatus> {
   return asPlan(body);
 }
 
-export async function fetchDeveloper(): Promise<{ unlocked: boolean }> {
-  try {
-    const response = await send('/api/dev/status');
-    if (!response.ok) return { unlocked: false };
-    return (await response.json()) as { unlocked: boolean };
-  } catch {
-    return { unlocked: false };
-  }
-}
-
 export async function saveOverrides(overrides: Record<string, unknown>): Promise<PlanStatus> {
   const response = await send('/api/dev/overrides', {
     method: 'PUT',

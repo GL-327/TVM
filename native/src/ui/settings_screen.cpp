@@ -127,6 +127,10 @@ void SettingsScreen::BuildRows() {
     group("Language");
     row(RowKind::Language, "language", "App language");
 
+    group("Playback");
+    push("extras-settings", "TVM Extras", "Skipping, autoplay and subtitle languages", Open("extras-settings"));
+    push("stats", "Your stats", "Watch time and history", Open("stats"));
+
     group("Account");
     push("account", "Your account", "Sign in, email verification and access", Open("account"));
     push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
@@ -145,7 +149,7 @@ void SettingsScreen::BuildRows() {
     row(RowKind::AutoUpdate, "auto-update", "Check for updates on launch");
     push("changelog", "What's new", "Release notes for TVM", Open("changelog", {}, true));
     push("diagnostics", "Diagnostics", "", Open("diagnostics", {}, true));
-    push("developer", "Developer", "Accounts, email and channel check", Open("developer"));
+    if (diag_.active) push("accounts", "Accounts", "Manage member access", Open("accounts"));
 
     group("Maintenance");
     push("clear-cache", "Clear cache", "Artwork and catalogs",

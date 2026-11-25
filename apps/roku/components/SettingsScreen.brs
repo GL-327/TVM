@@ -21,9 +21,9 @@ sub init()
   m.rows = []
   m.col = 0
   m.seq = 0
-  m.ids = ["theme", "background", "account", "url", "token", "profiles", "realdebrid", "network", "display", "motion", "transparency", "hubdemo", "livetv", "computer", "restart", "channel", "services", "changelog", "updates"]
-  m.kinds = ["cycleTheme", "toggleBackground", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "toggleMotion", "toggleTransparency", "toggleHubDemo", "livePlaylist", "computerSettings", "restart", "channelInfo", "services", "changelog", "updates"]
-  labels = ["Theme", "Background", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Reduce Motion", "Reduce Transparency", "TVM Hub demo data", "Live TV playlist", "Manage on computer", "Reload Home", "This channel", "Streaming services", "What's new", "Check for updates"]
+  m.ids = ["theme", "background", "account", "url", "token", "profiles", "realdebrid", "network", "display", "motion", "transparency", "hubdemo", "livetv", "computer", "restart", "channel", "services", "changelog", "updates", "skip", "autoplay", "subtitleLanguages", "stats"]
+  m.kinds = ["cycleTheme", "toggleBackground", "signOut", "editUrl", "editToken", "profiles", "realdebrid", "network", "display", "toggleMotion", "toggleTransparency", "toggleHubDemo", "livePlaylist", "computerSettings", "restart", "channelInfo", "services", "changelog", "updates", "skipSegments", "autoplayNext", "subtitleLanguages", "stats"]
+  labels = ["Theme", "Background", "Account", "Core API URL", "Device access token", "Profiles", "Real-Debrid", "Network", "Display", "Reduce Motion", "Reduce Transparency", "TVM Hub demo data", "Live TV playlist", "Manage on computer", "Reload Home", "This channel", "Streaming services", "What's new", "Check for updates", "Skip intro, recap and credits", "Autoplay next episode", "Subtitle languages", "Your stats"]
   i = 0
   while i < labels.Count()
     btn = CreateObject("roSGNode", "FocusButton")
@@ -119,7 +119,7 @@ sub onHealth()
   setRowDetail("profiles", "TVM Stream only")
   setRowDetail("account", "Sign out of this TVM account")
   if standalone
-    setRowDetail("realdebrid", "Saved on this Roku")
+    setRowDetail("realdebrid", "Saved securely in your TVM account")
     setRowDetail("token", "Optional (only for a PC Core server)")
   else
     setRowDetail("realdebrid", "Saved securely by Core on your computer")
@@ -131,7 +131,7 @@ sub onHealth()
   setRowDetail("updates", "GitHub Releases")
   setRowDetail("diagnostics", "Core and this channel")
   setRowDetail("cache", "Artwork and catalogs")
-  setRowDetail("reset", "Including the Real-Debrid token")
+  setRowDetail("reset", "Profiles, history and local settings")
   setRowDetail("restart", "Reload Home")
 end sub
 
@@ -190,12 +190,6 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   if intent = "" then return false
   if intent = "back" then return false
   if intent = "info"
-    if m.ownerTaps = invalid then m.ownerTaps = 0
-    m.ownerTaps = m.ownerTaps + 1
-    if m.ownerTaps >= 7
-      m.ownerTaps = 0
-      emit("ownerDoor")
-    end if
     return true
   end if
   if intent = "home"
@@ -237,4 +231,19 @@ sub onRemoteIntent()
   if intent = invalid or intent = "" then return
   keyName = keyFromIntent(intent)
   if keyName <> "" then onKeyEvent(keyName, true)
+end sub
+
+sub paintExtrasPrefs()
+  prefs = m.top.extrasPrefs
+  if prefs = invalid then return
+  mode = asText(aaGet(prefs, "skipSegments", "button"))
+  label = "Button"
+  if mode = "off" then label = "Off"
+  if mode = "auto" then label = "Auto"
+  setRowDetail("skip", label)
+  label = "Off"
+  if aaGet(prefs, "autoplayNext", true) = true then label = "On"
+  setRowDetail("autoplay", label)
+  setRowDetail("subtitleLanguages", aaArray(prefs, "subtitleLanguages").Join(", "))
+  setRowDetail("stats", "Watch time and history, only on this Roku")
 end sub

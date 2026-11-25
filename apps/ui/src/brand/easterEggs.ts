@@ -68,9 +68,6 @@ export function bumpMarkEgg(count: number): number {
   const next = count + 1;
   if (next >= 7) {
     pulseEgg('mark');
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('tvm:secret-door'));
-    }
     return 0;
   }
   return next;

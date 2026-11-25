@@ -100,24 +100,6 @@ export async function signIn(input: { email: string; password: string }): Promis
   return fetchAccount();
 }
 
-/**
- * The dev account. The developer code is its password. Whoever was signed in
- * before is signed out, but only once the code has been accepted.
- */
-export async function signInDev(code: string): Promise<AccountState> {
-  const previous = readToken();
-  const result = await json<{ token: string }>('/api/account/dev', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code }),
-  });
-  startSession(result.token);
-  if (previous !== null && previous !== result.token) {
-    await apiFetch('/api/account/signout', { method: 'POST', headers: { Authorization: `Bearer ${previous}` } }).catch(() => undefined);
-  }
-  return fetchAccount();
-}
-
 export async function signOut(): Promise<void> {
   try {
     await json('/api/account/signout', { method: 'POST' });

@@ -118,6 +118,8 @@ struct Resolution {
     int hlsHeight = 0;
     int bestHeight = 0;
 
+    nlohmann::json subtitles = nlohmann::json::array();
+    nlohmann::json segments = nlohmann::json::object();
     bool ok() const { return !url.empty(); }
 };
 

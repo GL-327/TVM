@@ -76,6 +76,7 @@ sub buildActions()
 end sub
 
 sub resetForItem()
+  m.pendingCollectionId = ""
   m.zone = "actions"
   m.col = 0
   m.seasonCol = 0
@@ -112,6 +113,8 @@ sub onItem()
   idChanged = (newId <> m.itemId)
   if idChanged
     m.itemId = newId
+    m.collectionCol = 0
+    m.top.extras = {}
     m.reviewShown = false
     m.top.reviewPreview = {}
     resetForItem()
@@ -290,6 +293,12 @@ sub onRestoreKey()
   key = m.top.restoreKey
   if key = invalid or key = "" then return
   parsed = parseFocusKey(key)
+  if parsed.zone = "collection" then m.pendingCollectionId = parsed.a
+  if parsed.zone = "collection" and m.collectionRail <> invalid
+    for i = 0 to m.collectionItems.Count() - 1
+      if m.collectionItems[i].id = parsed.a then m.zone = "collection" : m.collectionCol = i : m.collectionRail.focusCol = i
+    end for
+  end if
   if parsed.zone = "actions"
     i = 0
     while i < m.actions.Count()
@@ -370,6 +379,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
   if intent = "" then return true
+  if handleCollectionIntent(intent) then return true
   if intent = "back"
     if m.zone = "episodes" or m.zone = "seasonsBack"
       onChildren()

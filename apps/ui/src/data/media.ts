@@ -104,6 +104,30 @@ export interface LiveCatalogPage {
 
 export type StreamTransport = 'direct' | 'hls-session' | 'hls' | 'ts-live' | 'file';
 
+export interface PlaybackSubtitle {
+  id?: string;
+  url: string;
+  language: string;
+  label: string;
+}
+
+export interface PlaybackSegmentWindow {
+  start: number;
+  end: number;
+}
+
+export interface PlaybackCreditsWindow {
+  start: number;
+  end: number | null;
+}
+
+export interface PlaybackSegments {
+  intro: PlaybackSegmentWindow | null;
+  recap: PlaybackSegmentWindow | null;
+  credits: PlaybackCreditsWindow | null;
+  source: 'theintrodb' | 'aniskip' | null;
+}
+
 export type PlaybackResult =
   | {
       kind: 'stream';
@@ -123,6 +147,8 @@ export type PlaybackResult =
       durationSeconds?: number;
       fallbackUrl?: string;
       fallbackEngine?: 'html5' | 'native';
+      subtitles?: PlaybackSubtitle[];
+      segments?: PlaybackSegments | null;
     }
   | { kind: 'unavailable'; reason: string };
 

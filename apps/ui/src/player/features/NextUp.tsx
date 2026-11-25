@@ -11,17 +11,20 @@ import {
   looksLikePack,
   sortEpisodes,
   type MediaItem,
+  type PlaybackSegments,
 } from '../../data/media';
 import { imdbIdFrom, playIdFor } from '../../data/playId';
+import { PREFS_CHANGED_EVENT, readPrefs } from '../../data/prefs';
 import { requestFocus } from '../../nav/focusEngine';
 import { useNavigate, useScopedFocusKey, useViewStack } from '../../nav/ViewStackContext';
 import { usePlayerSession, type PlayerOverlay } from '../PlayerRoot';
 import { isLivePlayback } from './LiveOverlay';
 
-/** Show in the last 30–60s when duration is known. Prefer 45s. */
+/** Show in the last 30 s when credits are unknown. */
 export const NEXT_UP_MIN_SECONDS = 30;
-export const NEXT_UP_MAX_SECONDS = 60;
-export const NEXT_UP_PREFERRED_SECONDS = 45;
+export const NEXT_UP_MAX_SECONDS = 30;
+export const NEXT_UP_PREFERRED_SECONDS = 30;
+export const NEXT_UP_COUNTDOWN_SECONDS = 10;
 
 const SHORT_TITLE_CAP = 0.2;
 const PLAY_FOCUS_ID = 'player-next-up';
@@ -35,6 +38,9 @@ export interface NextUpProps {
   title?: string;
   season?: number;
   episode?: number;
+  paused?: boolean;
+  segments?: PlaybackSegments | null;
+  autoplayNext?: boolean;
   video?: HTMLVideoElement | null;
   videoRef?: { readonly current: HTMLVideoElement | null };
   hidden?: boolean;
@@ -58,9 +64,15 @@ export function nextUpWindowSeconds(duration: number): number | null {
   return Math.min(preferred, Math.max(1, duration * SHORT_TITLE_CAP));
 }
 
-export function shouldShowNextUp(position: number, duration: number): boolean {
+export function shouldShowNextUp(position: number, duration: number, creditsStart?: number | null): boolean {
+  if (!Number.isFinite(position) || position < 0) return false;
+  if (typeof creditsStart === 'number' && Number.isFinite(creditsStart) && creditsStart > 0) {
+    if (duration <= 0 || creditsStart < duration - 0.5) {
+      return position >= creditsStart - 0.15 && (duration <= 0 || position <= duration + 0.25);
+    }
+  }
   const window = nextUpWindowSeconds(duration);
-  if (window === null || !Number.isFinite(position) || position < 0) return false;
+  if (window === null) return false;
   const remaining = duration - position;
   return remaining <= window && remaining >= -0.25;
 }
@@ -170,6 +182,8 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
   const episode = props.episode ?? session?.episode;
   const position = props.position ?? session?.position;
   const duration = props.duration ?? session?.duration;
+  const paused = props.paused ?? session?.paused ?? false;
+  const segments = props.segments !== undefined ? props.segments : session?.segments;
   const overlay = props.overlay ?? session?.overlay;
   const busy = props.busy ?? session?.busy;
   const error = props.error ?? session?.error ?? null;
@@ -185,6 +199,16 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
   const [domBlocked, setDomBlocked] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [next, setNext] = useState<MediaItem | null>(null);
+  const [prefAutoplay, setPrefAutoplay] = useState(() => readPrefs().autoplayNext);
+  const [countdown, setCountdown] = useState<number>(NEXT_UP_COUNTDOWN_SECONDS);
+
+  useEffect(() => {
+    const sync = (): void => setPrefAutoplay(readPrefs().autoplayNext);
+    window.addEventListener(PREFS_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(PREFS_CHANGED_EVENT, sync);
+  }, []);
+
+  const autoplayNext = props.autoplayNext ?? prefAutoplay;
 
   const entry = activeEntry(stack);
   const params = entry.name === 'player' ? entry.params : {};
@@ -215,6 +239,7 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
   useEffect(() => {
     setDismissed(false);
     setNext(null);
+    setCountdown(NEXT_UP_COUNTDOWN_SECONDS);
     jumping.current = false;
   }, [identity.playId]);
 
@@ -305,6 +330,7 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
         title: showTitle,
         ...(next.season !== undefined ? { season: next.season } : {}),
         ...(next.episode !== undefined ? { episode: next.episode } : {}),
+        ...(next.genres.length > 0 ? { genres: next.genres } : {}),
       },
     });
   }, [identity.showId, identity.title, navigate, next]);
@@ -315,24 +341,53 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
       if (next === null) return;
       playNext();
     };
+    const onEnded = (event: Event): void => {
+      if (next === null || identity.live || dismissed || !autoplayNext) return;
+      event.preventDefault();
+      playNext();
+    };
     window.addEventListener('tvm:media-intent', onIntent);
-    return () => window.removeEventListener('tvm:media-intent', onIntent);
-  }, [next, playNext]);
+    window.addEventListener('tvm:playback-ended', onEnded);
+    return () => {
+      window.removeEventListener('tvm:media-intent', onIntent);
+      window.removeEventListener('tvm:playback-ended', onEnded);
+    };
+  }, [autoplayNext, dismissed, identity.live, next, playNext]);
 
-  const inWindow = shouldShowNextUp(clock.position, clock.duration);
+  const creditsStart = segments?.credits?.start ?? null;
+  const inWindow = shouldShowNextUp(clock.position, clock.duration, creditsStart);
   const visible = !identity.live && !blocked && !dismissed && next !== null && inWindow;
 
   useEffect(() => {
-    if (!visible) return;
-    const timer = window.setTimeout(() => requestFocus(playFocusKey), 40);
-    return () => window.clearTimeout(timer);
+    if (!visible) {
+      setCountdown(NEXT_UP_COUNTDOWN_SECONDS);
+      return undefined;
+    }
+    const focusTimer = window.setTimeout(() => requestFocus(playFocusKey), 40);
+    return () => window.clearTimeout(focusTimer);
   }, [playFocusKey, visible]);
+
+  useEffect(() => {
+    if (!visible || !autoplayNext || paused) return undefined;
+    const timer = window.setInterval(() => {
+      setCountdown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          playNext();
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [autoplayNext, paused, playNext, visible]);
 
   if (!visible || next === null) return null;
 
-  const windowSeconds = nextUpWindowSeconds(clock.duration) ?? NEXT_UP_PREFERRED_SECONDS;
   const remaining = Math.max(0, clock.duration - clock.position);
-  const drain = Math.min(1, remaining / windowSeconds);
+  const drain = autoplayNext
+    ? Math.max(0, Math.min(1, countdown / NEXT_UP_COUNTDOWN_SECONDS))
+    : Math.min(1, remaining / (nextUpWindowSeconds(clock.duration) ?? NEXT_UP_PREFERRED_SECONDS));
   const code = episodeCode(next);
   const heading = episodeHeading(next);
   const showName = next.showTitle ?? (identity.title || next.title);
@@ -341,13 +396,15 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
   return (
     <div className="next-up-layer" data-next-up="true">
       <style>{NEXT_UP_STYLES}</style>
-      <aside className="next-up" aria-label="Next episode">
+      <aside className="next-up glass glass--sheet glass-appear" aria-label="Next episode">
         <span className="next-up__drain" style={{ transform: `scaleX(${drain})` }} aria-hidden="true" />
         <Artwork title={art} kind="backdrop" className="next-up__still" eager />
         <div className="next-up__body">
           <p className="next-up__kicker">
             Up next
-            <span className="next-up__remain">{formatRemain(remaining)}</span>
+            <span className="next-up__remain">
+              {autoplayNext ? `Playing in ${countdown} s` : formatRemain(remaining)}
+            </span>
           </p>
           <p className="next-up__show">{showName}</p>
           <p className="next-up__episode">
@@ -357,15 +414,14 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
           <div className="next-up__actions" data-wrap="row">
             <FocusButton id={PLAY_FOCUS_ID} variant="primary" className="next-up__play" onSelect={playNext}>
               <IconPlay className="next-up__play-icon" />
-              Play next
+              Play now
             </FocusButton>
             <FocusButton
               id={DISMISS_FOCUS_ID}
-              variant="quiet"
-              className="next-up__dismiss"
+              className="tvm-button--glass next-up__dismiss"
               onSelect={() => setDismissed(true)}
             >
-              Watch credits
+              Cancel
             </FocusButton>
           </div>
         </div>
@@ -384,29 +440,26 @@ const NEXT_UP_STYLES = `
 .next-up {
   pointer-events: auto;
   position: absolute;
-  right: var(--tvm-safe-x, 2.2rem);
+  right: var(--player-safe-x, 2.2rem);
   bottom: 7.2rem;
   display: flex;
   width: min(34rem, 46vw);
   overflow: hidden;
-  border: 1px solid var(--player-chip-border, color-mix(in srgb, var(--tvm-text, #fff) 16%, transparent));
-  border-radius: 1rem;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--player-chip, var(--tvm-bg, #101018)) 82%, transparent), color-mix(in srgb, #050508 88%, transparent));
-  box-shadow:
-    0 1.2rem 2.8rem rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  border-radius: 22px;
+  -webkit-backdrop-filter: var(--player-chip-filter, none);
+  backdrop-filter: var(--player-chip-filter, none);
   color: var(--player-ink, var(--tvm-text, #fff));
-  animation: next-up-in 420ms var(--tvm-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+  animation: next-up-in 360ms var(--tvm-glass27-spring, cubic-bezier(0.34, 1.36, 0.64, 1)) both;
 }
 .next-up__drain {
   position: absolute;
   inset: 0 auto auto 0;
   width: 100%;
-  height: 0.16rem;
+  height: 0.18rem;
   transform-origin: left center;
-  background: var(--player-fill, var(--tvm-accent-strong, var(--tvm-mark)));
-  box-shadow: 0 0 0.7rem var(--player-fill-glow, color-mix(in srgb, var(--tvm-accent-strong, var(--tvm-mark)) 70%, transparent));
+  background: var(--player-fill, var(--tvm-glass27-accent, #2f6bff));
+  box-shadow: 0 0 0.7rem var(--player-fill-glow, color-mix(in srgb, var(--tvm-glass27-accent, #2f6bff) 70%, transparent));
+  transition: transform 280ms linear;
 }
 .next-up__still {
   display: block;
@@ -435,15 +488,16 @@ const NEXT_UP_STYLES = `
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: 0.5rem;
   margin: 0;
   color: var(--player-fill, var(--tvm-accent-strong, var(--tvm-mark)));
   font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 .next-up__remain {
-  color: var(--tvm-text-muted, rgba(255, 255, 255, 0.7));
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.7));
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
 }
@@ -462,14 +516,14 @@ const NEXT_UP_STYLES = `
   gap: 0.45rem;
   margin: 0 0 0.45rem;
   overflow: hidden;
-  color: var(--tvm-text-muted, rgba(255, 255, 255, 0.72));
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.72));
   font-size: 0.92rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .next-up__code {
   flex: 0 0 auto;
-  color: var(--tvm-text, #fff);
+  color: var(--tvm-glass27-text, #fff);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -495,19 +549,36 @@ const NEXT_UP_STYLES = `
 .next-up__dismiss {
   min-height: 2.6rem;
 }
+@media (max-width: 650px) {
+  .next-up {
+    left: 1rem;
+    right: 1rem;
+    bottom: 8rem;
+    width: auto;
+  }
+  .next-up__still {
+    flex: 0 0 6.8rem;
+    width: 6.8rem;
+    min-height: 6.5rem;
+  }
+}
 @keyframes next-up-in {
   from {
     opacity: 0;
-    transform: translate3d(1.4rem, 0.35rem, 0);
+    transform: translateY(12px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translateY(0) scale(1);
   }
 }
 :root[data-motion='reduced'] .next-up,
 :root[data-perf='on'] .next-up {
   animation: none;
+}
+:root[data-motion='reduced'] .next-up__drain,
+:root[data-perf='on'] .next-up__drain {
+  transition: none;
 }
 `;
 

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="DetailsPanel" extends="Group">
   <interface>
+    <field id="extras" type="assocarray" onChange="onExtras" />
     <field id="reviewPreview" type="assocarray" onChange="onReviewPreview" />
     <field id="connectedServices" type="array" onChange="onServices" />
     <field id="item" type="assocarray" onChange="onItem" />
@@ -16,6 +17,7 @@
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="DetailsExtras.brs" />
   <script type="text/brightscript" uri="DetailsPanel.brs" />
   <children>
     <Poster id="backdrop" width="3840" height="2160" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
@@ -32,7 +34,9 @@
     <FocusButton id="save" translation="[1040, 830]" />
     <FocusButton id="watchOn" translation="[2200, 830]" visible="false" />
     <FocusButton id="back" translation="[1600, 830]" />
-    <Label id="synopsis" translation="[160, 1030]" width="2400" height="260" wrap="true" maxLines="3" color="0xD8D9E8FF" />
+    <Label id="synopsis" translation="[160, 1030]" width="2400" height="180" wrap="true" maxLines="2" color="0xD8D9E8FF" />
+    <Label id="comingUp" translation="[160, 1230]" width="3000" height="80" visible="false" />
+    <Group id="collectionHost" translation="[160, 1330]" />
     <Group id="reviewPopover" translation="[192, 980]" visible="false">
       <GlassPanel width="1900" height="1020" shape="panel" />
       <Label id="reviewText" translation="[64, 64]" width="1772" height="880" wrap="true" maxLines="14" />

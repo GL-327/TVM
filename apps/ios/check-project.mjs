@@ -704,14 +704,29 @@ check('scripts/fetch-packages.ps1 ships the IPA next to the other device package
   const accounts = read(join(ROOT, 'TVM', 'TVMAccounts.swift')) ?? '';
   const desktopLive = read(join(REPO, 'apps', 'core', 'src', 'providers', 'live.ts')) ?? '';
   const testUrl = /TEST_CHANNEL_URL = '([^']+)'/.exec(desktopLive)?.[1] ?? '';
-  check('the iPhone answers the dev account the same way the desktop does',
-    core.includes('"/api/account/dev"') && core.includes('TVMDevUnlock.verify(code)') &&
-    core.includes('plans.setDeveloper(true)') && core.includes('!accounts.devSignedIn()') &&
-    accounts.includes('func signInDev(') && accounts.includes('static let devAccountID = "acc_dev"'));
-  check('the dev can set Live TV, a Real-Debrid key and a verified address per account on the iPhone',
-    ['/api/admin/accounts/live-tv', '/api/admin/accounts/rd', '/api/admin/accounts/verify', '/api/admin/mail']
-      .every((route) => core.includes(`"${route}"`)) &&
-    core.includes('rd.useAccountToken(accounts.rdTokenFor('));
+  check('iPhone accounts are the private service: no local ledger, no password hashing, no developer code',
+    accounts.includes('tvmAccountsURL') && accounts.includes('/v1/signin') && accounts.includes('/v1/register') &&
+    accounts.includes('/v1/me/rd-token') && accounts.includes('/v1/me/terms') &&
+    !accounts.includes('CommonCrypto') && !accounts.includes('passwordHash') && !accounts.includes('accounts.json') &&
+    !accounts.includes('signInDev') && !core.includes('TVMDevUnlock'),
+    'TVMAccounts.swift must only talk to the accounts service');
+  const serviceUrl = /tvmAccountsURL = "([^"]+)"/.exec(accounts)?.[1] ?? '';
+  check('the accounts service address matches Core',
+    serviceUrl !== '' && (read(join(REPO, 'apps', 'core', 'src', 'config.ts')) ?? '').includes(`ACCOUNTS_URL = '${serviceUrl}'`));
+  check('the developer-code routes answer 410 moved and account admin routes answer 403 use_dashboard',
+    /"\/api\/account\/dev"[\s\S]{0,80}\.json\(410, \["error": "moved"\]\)/.test(core) &&
+    /"\/api\/dev\/unlock"[\s\S]{0,80}\.json\(410, \["error": "moved"\]\)/.test(core) &&
+    /"\/api\/admin\/accounts"[\s\S]{0,160}\.json\(403, \["error": "use_dashboard"\]\)/.test(core));
+  check('the session token is the only account data kept, in the device-only Keychain',
+    accounts.includes('final class TVMKeychainSessionVault') &&
+    /TVMKeychainSessionVault[\s\S]*kSecAttrAccessibleWhenUnlockedThisDeviceOnly/.test(accounts) &&
+    core.includes('TVMKeychainSessionVault()'));
+  const shipped = readdirSync(join(ROOT, 'TVM')).filter((name) => /\.(swift|json)$/.test(name) && name !== 'changelog.json');
+  check('no developer-code digest or salt is shipped',
+    !existsSync(join(ROOT, 'TVM', 'TVMDevUnlock.swift')) &&
+    !shipped.some((name) => /developer.?code|TVMDevUnlock|expected\s*:\s*\[UInt8\]/i.test(read(join(ROOT, 'TVM', name)) ?? '')) &&
+    !(read(join(ROOT, 'TVM.xcodeproj', 'project.pbxproj')) ?? '').includes('TVMDevUnlock'),
+    'a developer-code digest, salt or unlock helper is still in apps/ios');
   check('the iPhone plays the same DW News test channel as the desktop, through its proxy',
     testUrl !== '' && core.includes(`"${testUrl}"`) && core.includes('(testChannels() + liveChannels)'),
     'apps/core/src/providers/live.ts TEST_CHANNEL_URL and TVMLocalCore.testChannelURL must match');

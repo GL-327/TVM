@@ -185,11 +185,11 @@ TEST(an_info_page_field_hides_a_secret_and_goes_with_each_press) {
     tvm::ui::InfoScreen screen;
     screen.Layout(1920.0, 1080.0);
     tvm::ui::InfoView view;
-    view.heading = "Dev account";
+    view.heading = "Sign in";
     view.field = true;
     view.fieldSecret = true;
-    view.fieldPlaceholder = "Code, then press OK";
-    view.actions = {{{"info:dev-unlock", "Switch to dev account", true}}};
+    view.fieldPlaceholder = "Password, then press OK";
+    view.actions = {{{"info:account-signin", "Sign In", true}}};
     screen.SetView(view);
     screen.Type("ab");
     screen.Erase();
@@ -215,8 +215,7 @@ TEST(centered_liquid_glass_signin_card_draws_summaries_and_navigates_modes) {
     view.heading = "Sign in to TVM";
     view.filters = {
         {{"info:account-mode-signin", "Sign In", true},
-         {"info:account-mode-register", "Create Account"},
-         {"info:account-mode-dev", "Developer Access"}},
+         {"info:account-mode-register", "Create Account"}},
         {{"info:field-email", "Email", true}, {"info:field-password", "Password"}},
     };
     view.field = true;

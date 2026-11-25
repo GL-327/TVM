@@ -29,7 +29,6 @@ sub init()
   m.accountPassword = ""
   m.accountName = ""
   m.accountMode = "signin"
-  m.ownerDevToken = ""
   m.accountState = {}
   m.requestSeq = 0
   m.profileId = ""
@@ -205,6 +204,10 @@ sub navigate(kind as String, name as String, params as Object)
     m.stack = viewStackPop(m.stack)
   end if
   renderStack()
+  if kind = "pop"
+    restored = visibleScreen(m.stack)
+    if restored.name = "details" and activeEntry(m.stack).kind <> "modal" then loadDetails(restored.params)
+  end if
   updateBackHint()
   maybeShowReleaseCards()
   if kind = "push"
@@ -252,6 +255,7 @@ sub renderStack()
     m.settingsNode.visible = true
     m.settingsNode.coreUrl = m.coreUrl
     m.settingsNode.health = m.health
+    loadExtrasSettings()
     m.settingsNode.themeId = currentThemeId()
     if top.kind <> "modal" then m.settingsNode.setFocus(true)
   else if screen.name = "setup"
@@ -596,10 +600,13 @@ sub showPlayer(params as Object)
   panel.streamFormat = aaGet(params, "format", "mp4")
   panel.mediaId = aaGet(params, "mediaId", "")
   panel.mediaKind = aaGet(params, "mediaKind", "")
+  panel.mediaItem = m.playItem
+  panel.nextItem = m.nextPlayItem
   panel.coreUrl = m.coreUrl
   panel.coreToken = m.coreToken
   panel.accountToken = m.accountToken
   panel.profileId = m.profileId
+  panel.profileMaxAge = m.profileMaxAge
   panel.deviceCredential = m.deviceCredential
   recapEnd = aaGet(params, "recapEnd", 0)
   if recapEnd <> invalid then panel.recapEnd = recapEnd
@@ -758,7 +765,6 @@ end sub
 
 sub handleScreenAction(action as Object)
   kind = aaGet(action, "type", "")
-  if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
   if handleNavAction(action) then return
   if handleRibbonKind(action) then return
   if kind = "more" then loadMoreRail(action)
@@ -771,6 +777,8 @@ sub onSettingsAction()
   action = m.settingsNode.action
   if action = invalid then return
   kind = aaGet(action, "type", "")
+  if kind = "stats" then navigate("push", "stats", {})
+  if kind = "skipSegments" or kind = "autoplayNext" or kind = "subtitleLanguages" then changeExtrasSetting(kind)
   if kind = "home" then navigate("home", "home", {})
   if kind = "cycleTheme"
     delta = aaGet(action, "delta", 1)
@@ -848,7 +856,6 @@ sub onSettingsAction()
     navigate("home", "home", {})
     loadHome()
   end if
-  if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
 end sub
 
 sub onSetupAction()
@@ -872,13 +879,11 @@ sub onAccountAction()
     paintAccountGate(m.accountState)
   end if
   if kind = "submit" then submitAccount()
-  if kind = "dev" then showKeyboard("devCode", "Dev code", "", "Sign in")
   if kind = "recheck" then loadAccount(true)
   if kind = "signout" then signOutAccount()
   if kind = "agree" then agreeAccountTerms()
   if kind = "editEmailCode" then showKeyboard("emailCode", "Six-digit code", "", "Check")
   if kind = "resendCode" then resendEmailCode()
-  if kind = "ownerDoor" then showKeyboard("ownerCode", "", "", "OK")
 end sub
 
 sub onCatalogAction()
@@ -967,6 +972,7 @@ sub onDetailsAction()
   if kind = "reviews" then navigate("push", "reviews", { item: item })
   if kind = "watch-on" then navigate("push", "services", { title: asText(aaGet(item, "title", "")) })
   if kind = "save" then toggleWatchlist(item)
+  if kind = "collection-details" then navigate("push", "details", { item: item })
   if kind = "notice"
     navigate("modal", "notice", {
       title: aaGet(action, "title", "TVM")
@@ -1003,6 +1009,7 @@ sub onPlayerAction()
     return
   end if
   if kind = "next"
+    if isMediaItem(aaGet(action, "item", invalid)) then m.nextPlayItem = action.item
     playNextFromPlayer()
     return
   end if
@@ -1013,7 +1020,7 @@ sub playNextFromPlayer()
   item = m.nextPlayItem
   if not isMediaItem(item) then return
   navigate("pop", "", {})
-  startPlayback(item)
+  postPlayback(item)
 end sub
 
 sub onConfirmAction()
@@ -1032,6 +1039,7 @@ sub onConfirmAction()
     body = { id: m.editorProfile.id, pin: m.editorCurrentPin }
     m.editorTask = startApiRequest(joinCorePath(m.coreUrl, "/api/profiles/remove"), "POST", FormatJson(body), "onProfileEditorSaved")
   end if
+  if confirmId = "clear-stats" then clearYourStats()
   if confirmId = "sign-out"
     signOutAccount()
   else if confirmId = "clear-cache"
@@ -1077,7 +1085,7 @@ sub showKeyboard(mode as String, title as String, text as String, confirmLabel a
   dialog.title = title
   dialog.text = text
   dialog.buttons = [confirmLabel, "Cancel"]
-  if mode = "coreToken" or mode = "rdToken" or mode = "accountPassword" or mode = "ownerCode" or mode = "devCode"
+  if mode = "coreToken" or mode = "rdToken" or mode = "accountPassword"
     dialog.keyboardDomain = "password"
     dialog.textEditBox.secureMode = true
   end if
@@ -1105,6 +1113,11 @@ sub onKeyboardButton()
     return
   end if
 
+  if mode = "subtitleLanguages"
+    saveExtrasLanguages(text)
+    restoreScreenFocus()
+    return
+  end if
   if mode = "editorName"
     if text.Trim() <> "" then m.editorProfile.name = Left(text.Trim(), 24)
     paintProfileEditor()
@@ -1168,14 +1181,6 @@ sub onKeyboardButton()
   end if
   if mode = "emailCode"
     submitEmailCode(text)
-    return
-  end if
-  if mode = "ownerCode"
-    submitOwnerCode(text)
-    return
-  end if
-  if mode = "devCode"
-    submitDevSignIn(text)
     return
   end if
   restoreScreenFocus()
@@ -1295,6 +1300,10 @@ sub onAccountDone()
   json = task.json
   if json = invalid then json = {}
   if task.ok
+    if aaGet(json, "signedIn", false) <> true
+      m.accountToken = ""
+      saveAccountToken("")
+    end if
     usable = aaGet(json, "usable", {})
     if aaGet(usable, "ok", false) = true and m.accountWaitHome = true
       m.accountState = json
@@ -1305,7 +1314,8 @@ sub onAccountDone()
     return
   end if
   body = {}
-  body.signedIn = false
+  body.signedIn = isAccountToken(m.accountToken)
+  body.usable = { ok: false, reason: "unreachable" }
   body.error = task.error
   showAccountGate(body)
 end sub
@@ -1344,7 +1354,11 @@ sub paintAccountGate(json as Object)
   m.accountNode.signedAs = email
   m.accountNode.emailDetail = m.accountEmail
   err = asText(aaGet(json, "error", ""))
-  if signedIn = true and reason = "awaiting_activation"
+  if signedIn = true and reason = "unreachable"
+    m.accountNode.phase = "waiting"
+    m.accountNode.heading = "Accounts unavailable"
+    m.accountNode.lede = "Your sign-in is saved. Check your connection and choose Check again."
+  else if signedIn = true and reason = "awaiting_activation"
     m.accountNode.phase = "waiting"
     m.accountNode.heading = "Almost there"
     m.accountNode.lede = "Your account is signed in and waiting for activation."
@@ -1389,96 +1403,6 @@ sub submitAccount()
     return
   end if
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signin"), "POST", FormatJson(body), "onAccountSignInDone")
-end sub
-
-' The owner code signs in to the dev account just long enough to switch this
-' account on. The Roku itself stays signed in as whoever was here.
-sub submitOwnerCode(code as String)
-  text = code.Trim()
-  if text = ""
-    if m.accountNode <> invalid then m.accountNode.status = "Enter the dev code."
-    restoreScreenFocus()
-    return
-  end if
-  if m.accountNode <> invalid then m.accountNode.status = "Checking code..."
-  body = {}
-  body.code = text
-  m.ownerUnlockTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/dev"), "POST", FormatJson(body), "onOwnerUnlockDone")
-end sub
-
-' I'm a dev. Unlike the owner door, this session stays: the television is
-' the dev account until somebody signs out.
-sub submitDevSignIn(code as String)
-  text = code.Trim()
-  if text = ""
-    if m.accountNode <> invalid then m.accountNode.status = "Enter the dev code."
-    restoreScreenFocus()
-    return
-  end if
-  if m.accountNode <> invalid then m.accountNode.status = "Checking code..."
-  body = {}
-  body.code = text
-  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/dev"), "POST", FormatJson(body), "onAccountSignInDone")
-end sub
-
-sub onOwnerUnlockDone()
-  task = m.ownerUnlockTask
-  if task = invalid then return
-  devToken = asText(aaGet(task.json, "token", ""))
-  if not task.ok or not isAccountToken(devToken)
-    if m.accountNode <> invalid then m.accountNode.status = "That code is not valid."
-    restoreScreenFocus()
-    return
-  end if
-  m.ownerDevToken = devToken
-  usable = aaGet(m.accountState, "usable", {})
-  reason = asText(aaGet(usable, "reason", ""))
-  if aaGet(usable, "ok", false) = true or reason <> "awaiting_activation"
-    ownerSignOut()
-    loadAccount(true)
-    return
-  end if
-  account = aaGet(m.accountState, "account", {})
-  id = asText(aaGet(account, "id", ""))
-  if id = ""
-    ownerSignOut()
-    loadAccount(true)
-    return
-  end if
-  body = {}
-  body.id = id
-  body.tier = "stream-live"
-  m.ownerActivateTask = startApiAsDev(joinCorePath(m.coreUrl, "/api/admin/accounts/activate"), "POST", FormatJson(body), "onOwnerActivateDone")
-end sub
-
-' Sends one request as the dev account instead of this Roku's own account.
-function startApiAsDev(url as String, method as String, body as String, callback as String) as Object
-  saved = m.accountToken
-  m.accountToken = m.ownerDevToken
-  task = startApiRequest(url, method, body, callback)
-  m.accountToken = saved
-  return task
-end function
-
-' The dev session was only needed for one request. Left open, it would keep
-' the Core relaying live TV to the LAN until it expired.
-sub ownerSignOut()
-  if not isAccountToken(m.ownerDevToken) then return
-  m.ownerSignOutTask = startApiAsDev(joinCorePath(m.coreUrl, "/api/account/signout"), "POST", "{}", "onOwnerSignOutDone")
-  m.ownerDevToken = ""
-end sub
-
-sub onOwnerSignOutDone()
-end sub
-
-sub onOwnerActivateDone()
-  ownerSignOut()
-  if m.ownerActivateTask <> invalid and not m.ownerActivateTask.ok
-    if m.accountNode <> invalid then m.accountNode.status = asText(aaGet(m.ownerActivateTask.json, "error", "That account could not be switched on."))
-    restoreScreenFocus()
-    return
-  end if
-  loadAccount(true)
 end sub
 
 sub onAccountRegisterDone()
@@ -1536,7 +1460,6 @@ sub onAccountSignOutDone()
   m.accountPassword = ""
   m.accountName = ""
   m.accountMode = "signin"
-  m.ownerDevToken = ""
   body = {}
   body.signedIn = false
   showAccountGate(body)
@@ -1653,6 +1576,7 @@ sub onHomeDone(event as Object)
   payload = task.json
   m.homeSilent = false
   m.homeNode.payload = payload
+  loadHomeExtras(payload)
   if m.eventProfile <> m.profileId
     m.homeNode.event = {}
     loadEvents()
@@ -2065,6 +1989,7 @@ sub loadDetails(params as Object)
   id = asText(aaGet(item, "id", ""))
   ensureDetails()
   m.detailsNode.item = item
+  loadDetailsExtras(item)
   if id = "" then return
   m.detailsTask = startApiGet(joinCorePath(m.coreUrl, "/api/media?id=" + encodeQuery(id)), "onDetailsMedia")
   m.detailsChildrenTask = startApiGet(joinCorePath(m.coreUrl, "/api/media/children?id=" + encodeQuery(id)), "onDetailsChildren")
@@ -2073,7 +1998,11 @@ end sub
 sub onDetailsMedia()
   task = m.detailsTask
   if task = invalid or not task.ok then return
-  if m.detailsNode <> invalid then m.detailsNode.item = task.json
+  if m.detailsNode <> invalid
+    if asText(aaGet(m.detailsNode.item, "id", "")) <> asText(aaGet(task.json, "id", "")) then return
+    m.detailsNode.item = task.json
+    loadDetailsExtras(task.json)
+  end if
 end sub
 
 sub onDetailsChildren()
@@ -2734,7 +2663,7 @@ end sub
 sub startCodeSignIn()
   if m.coreUrl = ""
     if m.accountNode <> invalid
-      m.accountNode.status = "Sign in with a code requires a PC Core server in Settings. Use Email or I'm a dev on this Roku."
+      m.accountNode.status = "Sign in with a code requires a PC Core server in Settings. Use your email and password on this Roku."
     end if
     restoreScreenFocus()
     return

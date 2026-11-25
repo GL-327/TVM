@@ -30,7 +30,7 @@ export function Developer(_props: ScreenProps): React.JSX.Element {
   useEffect(() => {
     void fetchPlan().then((status) => {
       if (!status.developer) {
-        navigate.replace('developer-unlock');
+        navigate.home();
         return;
       }
       refresh(status);

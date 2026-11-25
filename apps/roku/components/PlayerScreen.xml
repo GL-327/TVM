@@ -9,6 +9,8 @@
     <field id="streamTitle" type="string" />
     <field id="streamFormat" type="string" />
     <field id="streamHeaders" type="assocarray" />
+    <field id="mediaItem" type="assocarray" />
+    <field id="nextItem" type="assocarray" />
     <field id="mediaId" type="string" />
     <field id="mediaKind" type="string" />
     <field id="recapEnd" type="float" value="0" />
@@ -22,6 +24,7 @@
     <field id="coreUrl" type="string" />
     <field id="coreToken" type="string" />
     <field id="accountToken" type="string" />
+    <field id="profileMaxAge" type="integer" value="18" />
     <field id="profileId" type="string" />
     <field id="deviceCredential" type="string" />
     <field id="playState" type="string" value="idle" />
@@ -35,6 +38,7 @@
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="PlayerQuality.brs" />
+  <script type="text/brightscript" uri="PlayerExtras.brs" />
   <script type="text/brightscript" uri="PlayerScreen.brs" />
   <children>
     <Rectangle width="3840" height="2160" color="0x000000FF" />
@@ -66,6 +70,15 @@
     </Group>
     <Label id="status" translation="[160, 1520]" width="3520" color="0xF5F5F5FF" />
     <FocusButton id="skipRecap" translation="[2320, 1864]" visible="false" />
+    <Group id="upCard" translation="[2660, 1240]" visible="false">
+      <GlassPanel width="1000" height="580" shape="panel" />
+      <Poster id="upImage" translation="[48, 48]" width="320" height="180" loadDisplayMode="scaleToZoom" />
+      <Label id="upTitle" translation="[400, 48]" width="550" height="180" wrap="true" maxLines="3" />
+      <Label id="upCountdown" translation="[48, 260]" width="900" height="80" />
+      <FocusButton id="upPlay" translation="[48, 390]" />
+      <FocusButton id="upCancel" translation="[480, 390]" />
+    </Group>
+    <Timer id="extrasTick" duration="1" repeat="true" />
     <OrbitLoader id="orbit" translation="[1400, 760]" />
     <Label translation="[192, 2050]" width="2800" height="60" text="Use the TV volume buttons" font="font:MediumSystemFont" color="0xFFFFFFAA" />
     <FeatureScreen id="qualityPanel" visible="false" />
