@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 type Handler = () => Promise<void> | void;
 
 let handler: Handler | null = null;
+let requested = false;
 
 /** index.ts registers the real shutdown; tests and embedded servers do not. */
 export function onRestartRequested(next: Handler | null): void {
@@ -21,6 +22,11 @@ export function onRestartRequested(next: Handler | null): void {
 }
 
 export function requestRestart(): void {
+  // One restart however many callers ask (the six-hourly check and the
+  // desktop window can apply the same update at once): two would start two
+  // replacements racing for the port.
+  if (requested) return;
+  requested = true;
   // Let the HTTP response that announced the update reach the client first.
   setTimeout(() => {
     if (handler === null) {

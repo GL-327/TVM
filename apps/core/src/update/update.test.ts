@@ -354,6 +354,30 @@ describe('update service: packaged install', () => {
     expect(service.status().kind).toBe('up_to_date');
   });
 
+  // The desktop window catches an older Core up while the six-hourly check may
+  // be applying the same build: both share one download and one unpack.
+  it('shares one apply between callers that ask at the same time', async () => {
+    const archive = packTarGz([{ name: 'core/index.js', data: Buffer.from('ok') }]);
+    let downloads = 0;
+    const service = createUpdateService({
+      dataDir: await dataDir(),
+      env: { TVM_ENV: 'production' },
+      install: PACKAGE,
+      currentCommit: OLD,
+      fetch: feed({
+        'desktop.json': Response.json(manifestFor(archive)),
+        'tvm-app.tar.gz': () => { downloads += 1; return new Response(archive); },
+      }),
+    });
+    const [first, second] = await Promise.all([service.apply(), service.apply()]);
+    expect(second).toBe(first);
+    expect(first).toMatchObject({ changed: true, restart: 'self' });
+    expect(downloads).toBe(1);
+    // And one that comes after, before the restart, finds nothing to do.
+    await expect(service.apply()).resolves.toMatchObject({ changed: false });
+    expect(downloads).toBe(1);
+  });
+
   it('does nothing when the published bundle is already running', async () => {
     const archive = packTarGz([{ name: 'core/index.js', data: Buffer.from('ok') }]);
     const seen: string[] = [];

@@ -25,4 +25,9 @@ std::string ResolveBindHost(const util::EnvLookup& env);
 
 bool IsIPv4(const std::string& text);
 
+// True when `running` is a dotted version (1.2.0) older than `wanted`. Anything
+// that is not a version, either side, is never "older": no update is forced on
+// a guess.
+bool VersionOlder(const std::string& running, const std::string& wanted);
+
 }  // namespace tvm::config

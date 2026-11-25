@@ -92,6 +92,10 @@ jobs:
           $env:TVM_DATA_DIR = Join-Path $env:RUNNER_TEMP 'tvm-native-smoke'
           New-Item -ItemType Directory -Force -Path $env:TVM_DATA_DIR | Out-Null
           '{"language":"en","autoUpdate":false}' | Set-Content (Join-Path $env:TVM_DATA_DIR 'prefs.json')
+          # The check signs up and signs in; it does so against a local stand-in,
+          # never the owner's live accounts service.
+          Start-Process node -ArgumentList 'native/tools/fake-accounts.mjs', '18787' -WindowStyle Hidden
+          $env:TVM_ACCOUNTS_URL = 'http://127.0.0.1:18787'
           native/package/tvm_core_check.exe $env:TVM_DATA_DIR 17346
           if ($LASTEXITCODE -ne 0) { throw 'Packaged native Core did not start' }
           $ui = Invoke-WebRequest http://127.0.0.1:17346/donate -UseBasicParsing

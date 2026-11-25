@@ -3,6 +3,23 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.3.1",
+      "date": "2026-11-25",
+      "title": "Sign-in fix for Windows",
+      "highlights": [
+        "On Windows, signing in works straight after TVM updates itself."
+      ],
+      "changes": [
+        {
+          "area": "Updates",
+          "text": "After TVM updates on Windows, it updates its engine too, so sign-in and new features work at once.",
+          "platforms": [
+            "windows"
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.3.0",
       "date": "2026-11-25",
       "title": "Simpler sign-in, account and plans",

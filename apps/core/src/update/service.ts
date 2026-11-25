@@ -412,6 +412,9 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     mkdirSync(dest, { recursive: true });
     extractTarGz(archive, dest);
     writeFileSync(currentPointer(dataDir), `${id}\n`, { encoding: 'utf8' });
+    // This process is on its way out; a later apply before it exits must not
+    // unpack the same build again under the replacement that is starting.
+    commitCache = manifest.commit;
 
     const entries = changesSince(manifest, from);
     writeChangelogFile(dataDir, {
@@ -543,6 +546,11 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     return { version: id, commit: state.remote, changed: true, restart: watching ? 'automatic' : 'manual' };
   };
 
+  // One apply at a time: a second caller (the desktop window catching its Core
+  // up while the six-hourly check applies the same build) shares the first
+  // one's result instead of unpacking over it.
+  let applying: Promise<ApplyResult> | null = null;
+
   return {
     status: snapshot,
 
@@ -550,8 +558,13 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       return kind === 'checkout' ? checkCheckout() : checkPackage();
     },
 
-    async apply(): Promise<ApplyResult> {
-      return kind === 'checkout' ? applyCheckout() : applyPackage();
+    apply(): Promise<ApplyResult> {
+      if (applying === null) {
+        applying = (kind === 'checkout' ? applyCheckout() : applyPackage()).finally(() => {
+          applying = null;
+        });
+      }
+      return applying;
     },
 
     changelog(): ChangelogRecord | null {

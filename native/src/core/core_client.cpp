@@ -369,6 +369,9 @@ nlohmann::json Client::Call(const std::string& path, const std::string& method, 
     if (path == "/api/desktop/runtime") options.timeoutMs = 1000;
     if (path == "/api/playback" || path == "/api/downloads/resolve") options.timeoutMs = 90000;
     if (path == "/api/desktop/mpv") options.timeoutMs = 180000;
+    // A Core update downloads and unpacks the new bundle before it answers.
+    if (path == "/api/update/check") options.timeoutMs = 30000;
+    if (path == "/api/update/apply") options.timeoutMs = 180000;
     {
         const std::lock_guard lock(mutex_);
         if (!token_.empty() && path != "/api/desktop/runtime") options.headers.emplace_back("Authorization", "Bearer " + token_);

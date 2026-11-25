@@ -1,5 +1,6 @@
 // Checks the actual packaged sidecar without opening the desktop window.
 #include "core/core_client.h"
+#include "core/util.h"
 #include "platform/core_host.h"
 #include <cstdio>
 #include <stdexcept>
@@ -8,6 +9,11 @@
 int main(int argc, char** argv) {
     if (argc != 3) { std::fprintf(stderr, "Usage: tvm_core_check DATA_DIR PORT\n"); return 2; }
     try {
+        // It registers an account, so it runs only against a local stand-in
+        // (native/tools/fake-accounts.mjs), never the live accounts service.
+        const auto accounts = tvm::util::ProcessEnvironment()(L"TVM_ACCOUNTS_URL");
+        if (!accounts || accounts->rfind(L"http://127.0.0.1:", 0) != 0)
+            throw std::runtime_error("Set TVM_ACCOUNTS_URL to a local stand-in (node native/tools/fake-accounts.mjs 18787).");
         tvm::coreapi::Client client(std::filesystem::path(argv[1]), static_cast<unsigned>(std::strtoul(argv[2], nullptr, 10)));
         tvm::platform::EnsureCore(client);
         const auto account = client.Status();

@@ -118,6 +118,21 @@ TEST(bind_host_rules) {
                               "TVM_CORE_BIND must be");
 }
 
+TEST(version_older_compares_dotted_versions) {
+    using tvm::config::VersionOlder;
+    REQUIRE(VersionOlder("1.1.0", "1.3.0"));
+    REQUIRE(VersionOlder("1.3", "1.3.1"));
+    REQUIRE(VersionOlder("1.9.0", "1.10.0"));
+    REQUIRE(!VersionOlder("1.3.0", "1.3.0"));
+    REQUIRE(!VersionOlder("1.3.0", "1.3"));
+    REQUIRE(!VersionOlder("1.4.0", "1.3.0"));
+    // Not versions: never treated as older, so no update is forced on a guess.
+    for (const char* odd : {"", "dev", "1.3.0-beta", "1..3", ".1", "1.", "v1.2.0"}) {
+        REQUIRE(!VersionOlder(odd, "1.3.0"));
+        REQUIRE(!VersionOlder("1.3.0", odd));
+    }
+}
+
 TEST(core_version_matches_package_json) {
     const fs::path manifest = fs::path(TVM_REPO_ROOT) / L"package.json";
     const auto text = tvm::util::ReadTextFile(manifest);

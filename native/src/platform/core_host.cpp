@@ -5,7 +5,9 @@
 #include <stdexcept>
 #include <map>
 #include <cwchar>
+#include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -34,6 +36,57 @@ bool SameCore(const coreapi::Client& client, const std::string& marker) {
         return runtime.value("protocol", 0) == 1 && runtime.value("instanceId", std::string()) == marker;
     } catch (...) { return false; }
 }
+
+std::string RunningVersion(const coreapi::Client& client) {
+    try { return client.Call("/api/health").value("version", std::string()); } catch (...) { return {}; }
+}
+
+// Set when this process started the Core: a fresh Core checks for updates as
+// it starts, so the window only steps in when that Core is older than itself.
+std::atomic<bool> startedCore{false};
+
+// The window and the Core update separately: the window from its own release
+// when it opens, the Core from its feed every six hours. The Core also keeps
+// running after the window closes. So an updated window can find an older Core
+// still running, and TVM 1.3.0 signed in through a 1.1.0 Core for hours. Once
+// per launch the window asks the Core it finds to update now: always when the
+// Core is older than the window, and otherwise when auto-update is on, so
+// opening TVM brings both halves up to date. It then waits for the new Core,
+// which keeps the same data-directory marker.
+void CatchUpCore(const coreapi::Client& client, const std::string& marker) {
+    static std::mutex mutex;
+    static bool checked = false;
+    const std::lock_guard lock(mutex);
+    if (checked) return;
+    checked = true;
+    const auto running = RunningVersion(client);
+    if (!config::VersionOlder(running, config::kCoreVersion)) {
+        if (startedCore.load()) return;
+        try {
+            if (!client.Call("/api/update/status").value("autoUpdate", false)) return;
+        } catch (...) { return; }
+    }
+    std::string applied;
+    try {
+        const auto status = client.Call("/api/update/check", "POST", nlohmann::json::object());
+        if (status.value("kind", std::string()) != "available" || !status.value("applyAllowed", false)) return;
+        const auto result = client.Call("/api/update/apply", "POST", nlohmann::json::object());
+        if (!result.value("changed", false) || result.value("restart", std::string()) != "self") return;
+        applied = result.value("commit", std::string());
+    } catch (...) {
+        return;  // Offline or refused: keep using the Core that is running.
+    }
+    // The Core exits and starts the new build; it is back once it reports that
+    // build's commit (the version can stay the same).
+    for (int attempt = 0; attempt < 240; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        if (!SameCore(client, marker)) continue;
+        try {
+            const auto now = client.Call("/api/update/status").value("currentCommit", std::string());
+            if (applied.empty() ? RunningVersion(client) != running : now == applied) return;
+        } catch (...) {}
+    }
+}
 }  // namespace
 
 void EnsureCore(const coreapi::Client& client) {
@@ -43,7 +96,11 @@ void EnsureCore(const coreapi::Client& client) {
         marker = util::Base64Encode(util::RandomBytes(24));
         util::WriteFileAtomically(markerPath, marker);
     }
-    if (SameCore(client, marker)) return;
+    if (SameCore(client, marker)) {
+        // A Core this launch did not start may predate the window's update.
+        CatchUpCore(client, marker);
+        if (SameCore(client, marker)) return;
+    }
     // A different server at this port must never receive an account password.
     if (http::Get(client.origin() + "/api/health", http::Options{1500}))
         throw std::runtime_error("Another or older Core is using the TVM port. Close that Core, then choose Retry.");
@@ -104,6 +161,7 @@ void EnsureCore(const coreapi::Client& client) {
     if (!CreateProcessW(node.c_str(), command.data(), nullptr, nullptr, FALSE,
                         CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, block.data(), entry.parent_path().c_str(), &startup, &process))
         throw std::runtime_error("TVM Core could not start.");
+    startedCore = true;
     CloseHandle(process.hThread);
     // The shared Core stays available to web/Roku when the native window closes.
     CloseHandle(process.hProcess);

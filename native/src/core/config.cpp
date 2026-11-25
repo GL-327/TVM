@@ -1,6 +1,8 @@
 #include "core/config.h"
 
+#include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 namespace tvm::config {
 
@@ -69,6 +71,40 @@ std::string ResolveBindHost(const util::EnvLookup& env) {
     if (host.empty()) return kCoreHost;
     if (host == kCoreHost || host == "0.0.0.0" || IsIPv4(host)) return host;
     throw std::runtime_error("TVM_CORE_BIND must be 127.0.0.1, 0.0.0.0, or an IPv4 address, received: " + *raw);
+}
+
+namespace {
+// "1.12.3" -> {1, 12, 3}; empty for anything else (a suffix, letters, a blank).
+std::vector<unsigned> VersionParts(const std::string& text) {
+    std::vector<unsigned> parts;
+    unsigned value = 0;
+    bool digits = false;
+    for (char c : text) {
+        if (c >= '0' && c <= '9') {
+            if (value > 100000) return {};
+            value = value * 10 + static_cast<unsigned>(c - '0');
+            digits = true;
+        } else if (c == '.' && digits) {
+            parts.push_back(value);
+            value = 0;
+            digits = false;
+        } else {
+            return {};
+        }
+    }
+    if (!digits) return {};
+    parts.push_back(value);
+    return parts;
+}
+}  // namespace
+
+bool VersionOlder(const std::string& running, const std::string& wanted) {
+    auto a = VersionParts(running);
+    auto b = VersionParts(wanted);
+    if (a.empty() || b.empty()) return false;
+    a.resize(std::max(a.size(), b.size()), 0);
+    b.resize(a.size(), 0);
+    return a < b;
 }
 
 }  // namespace tvm::config
