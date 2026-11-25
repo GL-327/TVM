@@ -14,7 +14,7 @@ inline constexpr char kCoreHost[] = "127.0.0.1";
 inline constexpr std::uint16_t kDefaultCorePort = 7345;
 
 // Kept equal to the root package.json version. config tests compare them.
-inline constexpr char kCoreVersion[] = "1.0.0";
+inline constexpr char kCoreVersion[] = "1.1.0";
 
 // Throws std::runtime_error for a value that is not a port, rather than
 // falling back to some other port nobody expects.
