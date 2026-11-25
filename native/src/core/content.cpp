@@ -26,7 +26,7 @@ const nlohmann::json* Level(const nlohmann::json& data, int age) {
 }
 bool Contains(const nlohmann::json& list, const std::string& text) {
     if (!list.is_array()) return false;
-    return std::any_of(list.begin(), list.end(), [&](const auto& entry) { return entry.is_string() && entry.get<std::string>() == text; });
+    return std::any_of(list.begin(), list.end(), [&](const nlohmann::json& entry) { return entry.is_string() && entry.get<std::string>() == text; });
 }
 }
 
