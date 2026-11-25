@@ -12,7 +12,10 @@ TVM pairs a shared local Core server (`apps/core`) with native and responsive br
   TVM_CORE_BIND=0.0.0.0
   TVM_LAN_TOKEN=<random token, at least 32 characters>
   ```
-- **Updates**: Windows, desktop, iOS, and Android check their GitHub update feeds automatically. Roku updates require uploading the latest `TVM-roku.zip` in developer mode.
+- **Free channels and services**: Live TV opens with free official channels (BBC channels play in the UK only). Sign in to Netflix, Disney+ and other services on their own pages, then open titles there from TVM. TVM never sees those passwords.
+- **Profiles**: kids profiles, age limits (by genre), 4-digit PIN locks and character profile pictures.
+- **Updates**: Windows, desktop, iOS, and Android check their GitHub update feeds automatically and show what changed once, in the corner of Home; every version's notes are in Settings > What's new. Roku checks `roku.json` and tells you when an update is out. To have it installed for you, pair it in Settings > Roku updates (Mac, Linux and browser app) with its address and developer password; Core then uploads each new `TVM-roku.zip` to it.
+- **Changelog rule**: every change a viewer can notice updates `packages/content/changelog.json`. See [CHANGELOG-RULES.md](CHANGELOG-RULES.md); `pnpm check` enforces it.
 
 ## Downloads
 
@@ -61,7 +64,7 @@ pnpm check
 - `apps/android/` - Kotlin Android app and on-device Core ([README](apps/android/README.md))
 - `apps/roku/` - BrightScript / SceneGraph Roku channel and on-device Core ([README](apps/roku/README.md))
 - `native/` - Windows C++20 / Direct2D desktop client and installer ([README](native/README.md))
-- `packages/` - Shared design tokens and navigation helpers
+- `packages/` - Shared design tokens, navigation helpers, and `packages/content` (changelog, release events, free channels, services, avatars, age limits) that every app ships with and refreshes from GitHub
 - `scripts/` - Launchers (`scripts/launchers/`), setup, packaging, and smoke helpers
 - `docs/` - Architecture, setup, and testing documentation
 - `.github/workflows/` - CI checks and platform release pipelines
