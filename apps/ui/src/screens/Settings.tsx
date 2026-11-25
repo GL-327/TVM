@@ -187,6 +187,9 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         <FocusButton id="streaming-services" className="settings-row" detail="Connect external services" onSelect={() => navigate.push('your-services')}>
           Streaming services
         </FocusButton>
+        <FocusButton id="roku-updates" className="settings-row" detail="Install new versions on your Roku" onSelect={() => navigate.push('roku-updates')}>
+          Roku updates
+        </FocusButton>
         <FocusButton id="realdebrid" className="settings-row" detail="Your token" onSelect={() => navigate.push('realdebrid')}>
           Real-Debrid
         </FocusButton>

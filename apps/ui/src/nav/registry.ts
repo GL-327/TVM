@@ -26,6 +26,7 @@ const Legal = lazy(() => import('../screens/Legal').then((m) => ({ default: m.Le
 const MailSettings = lazy(() => import('../screens/MailSettings').then((m) => ({ default: m.MailSettings })));
 const Profiles = lazy(() => import('../screens/Profiles').then((m) => ({ default: m.Profiles })));
 const RealDebrid = lazy(() => import('../screens/RealDebrid').then((m) => ({ default: m.RealDebrid })));
+const RokuUpdates = lazy(() => import('../screens/RokuUpdates').then((m) => ({ default: m.RokuUpdates })));
 const Recovery = lazy(() => import('../screens/Recovery').then((m) => ({ default: m.Recovery })));
 const SearchModal = lazy(() => import('../screens/SearchModal').then((m) => ({ default: m.SearchModal })));
 const Service = lazy(() => import('../screens/Service').then((m) => ({ default: m.Service })));
@@ -75,6 +76,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   updates: { component: Updates, defaultFocus: 'check' },
   'whats-new': { component: WhatsNew, defaultFocus: 'whats-new-back' },
   realdebrid: { component: RealDebrid, defaultFocus: 'token' },
+  'roku-updates': { component: RokuUpdates, defaultFocus: 'roku-host' },
   setup: { component: Setup, defaultFocus: 'token' },
   recovery: { component: Recovery, defaultFocus: 'settings' },
   diagnostics: { component: DiagnosticsModal, defaultFocus: 'close' },
