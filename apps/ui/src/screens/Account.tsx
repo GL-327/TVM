@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
@@ -63,9 +64,12 @@ export function Account(_props: ScreenProps): React.JSX.Element {
       <PageScene />
       <Ribbon active="profile" />
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">{dev ? 'Dev account' : 'Your account'}</p>
-          <h1 className="page__heading">{account?.displayName ?? 'Account'}</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="account-back" />
+          <div>
+            <p className="stage__kicker">{dev ? 'Dev account' : 'Your account'}</p>
+            <h1 className="page__heading">{account?.displayName ?? 'Account'}</h1>
+          </div>
         </div>
       </header>
       <p className="page__lede">

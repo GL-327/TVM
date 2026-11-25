@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { fetchChildren, type MediaItem } from '../data/media';
 import { downloadBridge, downloadHeaders, downloadsAvailable, type DownloadJob } from '../data/downloads';
 import { fetchPlan } from '../data/plan';
 import { playIdFor } from '../data/playId';
-import { useNavigate, useScopedFocusKey } from '../nav/ViewStackContext';
+import { useScopedFocusKey } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import './downloads.css';
 
@@ -46,7 +47,6 @@ function saveChoices(language: string, quality: string): void {
 }
 
 export function Downloads({ params }: ScreenProps): React.JSX.Element {
-  const navigate = useNavigate();
   const id = typeof params['id'] === 'string' ? params['id'] : '';
   const title = typeof params['title'] === 'string' ? params['title'] : 'Downloads';
   const series = params['series'] === true;
@@ -113,8 +113,12 @@ export function Downloads({ params }: ScreenProps): React.JSX.Element {
 
   return <main className="page downloads" data-scroll-nearest="" role="dialog" aria-modal="true" aria-label="Downloads">
     <div className="downloads__content">
-      <header className="downloads__header"><div><p className="downloads__eyebrow">YOUR OFFLINE LIBRARY</p><h1>{id ? 'Take it with you.' : 'Downloads'}</h1><p>{id ? title : 'Your downloads keep going while you browse.'}</p></div>
-        <FocusButton id="downloads-close" variant="quiet" onSelect={() => navigate.pop()}>Close</FocusButton></header>
+      <header className="downloads__header">
+        <div className="page__toolbar-lead">
+          <BackButton id="downloads-close" />
+          <div><p className="downloads__eyebrow">YOUR OFFLINE LIBRARY</p><h1>{id ? 'Take it with you.' : 'Downloads'}</h1><p>{id ? title : 'Your downloads keep going while you browse.'}</p></div>
+        </div>
+      </header>
       {id && <section className="downloads__card" aria-label="Download options">
         <div className="downloads__form">
           {series && <Choice id="download-scope" label="What to download" value={batch} change={setBatch}><option value="series">Full series · {episodes.length} episodes</option><option value="season">One season</option><option value="episode">One episode</option></Choice>}

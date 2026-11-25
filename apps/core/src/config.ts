@@ -15,7 +15,7 @@ export const CORE_HOST = '127.0.0.1' as const;
 export const DEFAULT_CORE_PORT = 7345;
 
 /** Kept in step with package.json by a test; see config.test.ts. */
-export const CORE_VERSION = '1.0.0';
+export const CORE_VERSION = '1.1.0';
 
 const IPV4 =
   /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})$/;

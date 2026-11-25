@@ -8,6 +8,7 @@ import { usePlayerSession, type PlayerEngine, type PlayerOverlay } from '../Play
 export const PLAYBACK_ERROR_RETRY_ID = 'player-retry';
 export const PLAYBACK_ERROR_BACK_ID = 'player-error-back';
 export const PLAYBACK_ERROR_PLANS_ID = 'player-error-plans';
+export const PLAYBACK_ERROR_NEXT_ID = 'player-error-next';
 
 /** Delay so html5 → native fallback is not painted as a dead error card. */
 const FALLBACK_GRACE_MS = 2_800;
@@ -51,6 +52,8 @@ export interface PlaybackErrorProps {
   overlay?: PlayerOverlay;
   retry?: () => void;
   close?: () => void;
+  nextChannel?: () => void;
+  nextChannelName?: string;
   onRetry?: () => void;
   onBack?: () => void;
 }
@@ -619,6 +622,11 @@ export function PlaybackError(props: PlaybackErrorProps): React.JSX.Element | nu
           <FocusButton id={PLAYBACK_ERROR_BACK_ID} onSelect={back}>
             Back
           </FocusButton>
+          {session.nextChannel !== undefined ? (
+            <FocusButton id={PLAYBACK_ERROR_NEXT_ID} className="tvm-button--glass" onSelect={session.nextChannel}>
+              {session.nextChannelName ? `Next channel · ${session.nextChannelName}` : 'Next channel'}
+            </FocusButton>
+          ) : null}
           {copy.showPlans ? (
             <FocusButton id={PLAYBACK_ERROR_PLANS_ID} onSelect={() => navigate.push('plans')}>
               View plans

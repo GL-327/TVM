@@ -487,12 +487,15 @@ export function startPointerInput(): () => void {
     if (performance.now() - tap.lastAt < 80) {
       if (tap.axis === 'x' && tap.rail !== null && tap.velocityX !== 0) {
         const panRail = tap.rail;
+        if (panRail.dataset.looping === 'true') wrapPointerScroll(panRail);
         animate(panRail, 'x', momentumTarget(panRail.scrollLeft, tap.velocityX), () => {
           wrapPointerScroll(panRail);
         });
       } else if (tap.axis === 'y' && tap.page !== null && tap.velocityY !== 0) {
         animate(tap.page, 'y', momentumTarget(tap.page.scrollTop, tap.velocityY));
       }
+    } else if (tap.axis === 'x' && tap.rail !== null && tap.rail.dataset.looping === 'true') {
+      wrapPointerScroll(tap.rail);
     }
     if (tap.axis !== null || tap.moved || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TOUCH_TAP_SLOP) return;
     if (tap.host === null) return;

@@ -783,10 +783,11 @@ test('volume slider sets a level and a speed pick does not scrub', async ({ page
   expect(Math.abs(after.time - before)).toBeLessThan(3);
 });
 
-test('Live TV asks for a login until configured, and Back returns Home', async ({ page }) => {
+test('Live TV shows Free channels first alongside inline login, and Back returns Home', async ({ page }) => {
   await pressUntil(page, 'live');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="live"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Free channels' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Enter your Live TV login' })).toBeVisible();
   await waitForFocus(page);
   await pressUntil(page, 'live-back');

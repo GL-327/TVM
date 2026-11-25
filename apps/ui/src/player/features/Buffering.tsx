@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { TvmMark } from '../../brand/TvmMark';
+import { OrbitLoader } from '../../components/OrbitLoader';
+import { attachedHls } from '../hlsBridge';
 
 /** HTMLMediaElement events that drive the indicator. */
 export const BUFFERING_EVENTS = ['waiting', 'playing', 'stalled', 'pause'] as const;
@@ -227,6 +228,7 @@ export function Buffering({
   const fromSession =
     active === true || busy === true || engine === 'loading';
   const shown = !blocked && (fromSession || latched || waiting);
+  const resolvedVideo = findVideo(video, videoRef, hostRef.current);
 
   return (
     <div
@@ -242,7 +244,13 @@ export function Buffering({
       <style href="tvm-player-buffering" precedence="player">
         {STYLES}
       </style>
-      <TvmMark size="md" animated loop className="tvm-buffering__brand" />
+      <OrbitLoader
+        video={resolvedVideo}
+        hls={attachedHls(resolvedVideo)}
+        stage={engine === 'loading' ? 'connecting' : 'buffering'}
+        size="md"
+        className="tvm-buffering__brand"
+      />
       <span className="tvm-buffering__label">{shown ? 'Loading' : ''}</span>
     </div>
   );

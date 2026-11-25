@@ -36,4 +36,15 @@ describe('SearchModal phone keyboard', () => {
     expect(block).toContain('transform: none');
     expect(block).toContain('[data-keyboard-fields]');
   });
+
+  it('keeps focus, IME state, ~250ms debounce, and stale-response guards when typing', () => {
+    const src = read('SearchModal.tsx');
+    const field = read('../components/FocusField.tsx');
+    expect(src).toContain('SEARCH_DEBOUNCE_MS = 250');
+    expect(src).toContain('searchSeqRef');
+    expect(src).toContain('SearchResultsStrip');
+    expect(src).not.toContain('afterPasteFocusId="open"');
+    expect(field).toContain('onCompositionStart');
+    expect(field).toContain('onCompositionEnd');
+  });
 });

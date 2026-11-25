@@ -75,7 +75,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
         title: stream.title,
         startAt: position,
         live: options.live,
-        initialVolume: options.initialVolume ?? 1,
+        initialVolume: Math.max(0, Math.min(1, options.initialVolume ?? 1)),
         initialMuted: options.initialMuted ?? false,
       });
     },
@@ -84,7 +84,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
     toggle: () => send(paused ? 'play' : 'pause'), // paused starts true so the first toggle plays
     seekBy: (delta) => send('seek', { seconds: Math.max(0, position + delta) }),
     seekTo: (seconds) => send('seek', { seconds }),
-    setVolume: (volume) => send('volume', { volume }),
+    setVolume: (volume) => send('volume', { volume: Math.max(0, Math.min(1, volume)) }),
     setMuted: (muted) => send('mute', { muted }),
     setRate: (rate) => send('rate', { rate }),
     position: () => position, duration: () => duration,

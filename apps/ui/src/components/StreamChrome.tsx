@@ -3,7 +3,7 @@ import { FocusButton } from './FocusButton';
 import { IconSearch } from './Icons';
 import { ProfileOrb } from './ProfileOrb';
 import { useNavigate } from '../nav/ViewStackContext';
-import type { Profile } from '../data/profiles';
+import { isKidsProfile, type Profile } from '../data/profiles';
 
 interface StreamChromeProps {
   profile: Profile | null;
@@ -21,7 +21,7 @@ export function StreamChrome({ profile, lane, onLane }: StreamChromeProps): Reac
         className="stream-chrome__avatar"
         onSelect={() => navigate.push('profiles', { params: { next: 'library' } })}
       >
-        <ProfileOrb name={profile?.name ?? 'Profile'} hue={profile?.hue ?? 220} />
+        <ProfileOrb name={profile?.name ?? 'Profile'} hue={profile?.hue ?? 220} avatar={profile?.avatar} locked={profile?.locked === true} />
       </FocusButton>
       <FocusButton id="stream-search" className="stream-chrome__link" onSelect={() => navigate.pushModal('search')}>
         <IconSearch className="stream-chrome__search" />
@@ -45,7 +45,9 @@ export function StreamChrome({ profile, lane, onLane }: StreamChromeProps): Reac
         Movies
       </FocusButton>
       <BrandLockup kind="wordmark" focusId="stream-mark" className="stream-chrome__mark-btn" />
-      <FocusButton id="stream-downloads" className="stream-chrome__link" onSelect={() => navigate.pushModal('downloads')}>Downloads</FocusButton>
+      {!isKidsProfile(profile) && (
+        <FocusButton id="stream-downloads" className="stream-chrome__link" onSelect={() => navigate.pushModal('downloads')}>Downloads</FocusButton>
+      )}
     </nav>
   );
 }

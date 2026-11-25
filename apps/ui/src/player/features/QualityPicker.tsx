@@ -3,6 +3,7 @@ import type Hls from 'hls.js';
 import { attachedHls, HLS_INSTANCE_CHANGE } from '../hlsBridge';
 import { FocusButton } from '../../components/FocusButton';
 import { FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../../data/plan';
+import { effectiveStreamMaxHeight, screenTargetHeight } from '../quality';
 import { requestFocus } from '../../nav/focusEngine';
 import { useScopedFocusKey } from '../../nav/ViewStackContext';
 
@@ -145,12 +146,18 @@ export function QualityPicker(props: QualityPickerProps): React.JSX.Element | nu
   const toggleKey = useScopedFocusKey(QUALITY_FOCUS_ID);
   const autoKey = useScopedFocusKey(QUALITY_AUTO_FOCUS_ID);
 
-  const maxHeight = props.maxHeight ?? plan.maxHeight;
+  const maxHeight = props.maxHeight ?? effectiveStreamMaxHeight(plan.maxHeight, screenTargetHeight());
   const video = resolveVideo(props);
   const hls = props.hls ?? attachedHls(video);
   const snapshot = useMemo(() => readSnapshot(hls, maxHeight), [hls, maxHeight, tick]);
   const chromeVisible = props.controlsVisible ?? true;
   const blocked = props.overlay === 'queue' || props.overlay === 'ad';
+  const bestOption = snapshot.options.reduce<QualityLevelOption | null>(
+    (winner, row) => (winner === null || row.height > winner.height || (row.height === winner.height && row.bitrate > winner.bitrate) ? row : winner),
+    null,
+  );
+  const bestLabel = bestOption !== null ? (resolutionLabel(bestOption.height) ?? bestOption.label) : resolutionLabel(maxHeight);
+  const autoTitle = bestLabel !== null ? `Auto (best: ${bestLabel})` : 'Auto';
 
   const refresh = useCallback((): void => {
     setTick((value) => value + 1);
@@ -286,7 +293,7 @@ export function QualityPicker(props: QualityPickerProps): React.JSX.Element | nu
             onSelect={() => pick(AUTO_LEVEL)}
             onArrowPress={onMenuArrow}
           >
-            Auto
+            {autoTitle}
           </FocusButton>
           {snapshot.options.map((row) => (
             <FocusButton

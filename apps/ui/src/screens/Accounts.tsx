@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { EmptyState } from '../components/EmptyState';
 import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
@@ -19,7 +20,6 @@ import {
   type AdminAccountView,
 } from '../data/account';
 import { bindKeyboardFields } from '../nav/pointerInput';
-import { useNavigate } from '../nav/ViewStackContext';
 import './billing.css';
 import './accounts.css';
 
@@ -47,7 +47,6 @@ function TierBadge({ account }: { account: AdminAccountView }): React.JSX.Elemen
 }
 
 export function Accounts(): React.JSX.Element {
-  const navigate = useNavigate();
   const [data, setData] = useState<AdminAccountsResponse | null>(null);
   const [search, setSearch] = useState('');
   const [state, setState] = useState<(typeof STATES)[number]['id']>('all');
@@ -94,16 +93,16 @@ export function Accounts(): React.JSX.Element {
       <Ribbon active="settings" />
 
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Developer</p>
-          <h1 className="page__heading">Accounts</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="accounts-back" />
+          <div>
+            <p className="stage__kicker">Developer</p>
+            <h1 className="page__heading">Accounts</h1>
+          </div>
         </div>
         <div className="hero__actions">
           <FocusButton id="accounts-refresh" variant="primary" disabled={busy} onSelect={() => void load()}>
             Refresh
-          </FocusButton>
-          <FocusButton id="accounts-back" className="tvm-button--glass" onSelect={() => navigate.pop()}>
-            Back
           </FocusButton>
         </div>
       </header>

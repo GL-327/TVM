@@ -1,4 +1,4 @@
-import { useEffect, type Ref } from 'react';
+import { useEffect, useRef, useState, type CompositionEvent, type Ref } from 'react';
 import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import { requestFocus } from '../nav/focusEngine';
 import { useScopedFocusKey } from '../nav/ViewStackContext';
@@ -88,6 +88,8 @@ export function FocusField({
 }: FocusFieldProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
   const saveKey = useScopedFocusKey(afterPasteFocusId ?? '');
+  const composingRef = useRef(false);
+  const [compositionDraft, setCompositionDraft] = useState<string | null>(null);
   const { ref, focused } = useFocusable<object, HTMLInputElement>({
     focusKey,
     onArrowPress: (direction) => {
@@ -115,6 +117,19 @@ export function FocusField({
     }, 0);
   };
 
+  const handleCompositionStart = (event: CompositionEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
+    composingRef.current = true;
+    setCompositionDraft(event.currentTarget.value);
+  };
+
+  const handleCompositionEnd = (event: CompositionEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
+    composingRef.current = false;
+    const finalValue = event.currentTarget.value;
+    setCompositionDraft(null);
+    onChange(finalValue);
+  };
+
+  const displayedValue = composingRef.current && compositionDraft !== null ? compositionDraft : value;
   const fieldRef = ref as unknown as Ref<HTMLTextAreaElement & HTMLInputElement>;
   const mode = inputMode ?? MODE_FOR_TYPE[type];
   const hint = enterKeyHint ?? HINT_FOR_TYPE[type];
@@ -125,18 +140,28 @@ export function FocusField({
         ref={fieldRef}
         autoComplete={autoComplete}
         spellCheck={false}
-        className="token-field__input token-field__input--area"
+        className="token-field__input token-field__input--area glass--well"
         tabIndex={-1}
         rows={5}
         name={name}
         data-focus-id={id}
         data-focused={focused ? 'true' : undefined}
-        value={value}
+        value={displayedValue}
         placeholder={placeholder}
         inputMode={mode}
         enterKeyHint={hint}
         autoCapitalize={autoCapitalize ?? 'off'}
-        onChange={(event) => onChange(event.currentTarget.value)}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          if (composingRef.current || event.nativeEvent instanceof InputEvent && event.nativeEvent.isComposing) {
+            composingRef.current = true;
+            setCompositionDraft(next);
+            return;
+          }
+          onChange(next);
+        }}
         onPaste={afterPaste}
       />
     );
@@ -149,17 +174,27 @@ export function FocusField({
       name={name}
       autoComplete={autoComplete}
       spellCheck={false}
-      className="token-field__input"
+      className="token-field__input glass--well"
       tabIndex={-1}
       data-focus-id={id}
       data-focused={focused ? 'true' : undefined}
-      value={value}
+      value={displayedValue}
       placeholder={placeholder}
       inputMode={mode}
       enterKeyHint={hint}
       autoCapitalize={autoCapitalize ?? 'off'}
       autoCorrect="off"
-      onChange={(event) => onChange(event.currentTarget.value)}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
+      onChange={(event) => {
+        const next = event.currentTarget.value;
+        if (composingRef.current || event.nativeEvent instanceof InputEvent && event.nativeEvent.isComposing) {
+          composingRef.current = true;
+          setCompositionDraft(next);
+          return;
+        }
+        onChange(next);
+      }}
       onPaste={afterPaste}
     />
   );

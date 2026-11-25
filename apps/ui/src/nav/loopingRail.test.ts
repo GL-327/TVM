@@ -6,9 +6,12 @@ import {
   cameraXForCard,
   canonicalFocusId,
   conveyorWrapDelta,
+  isFocusNearRailEnd,
   isLoopSeamJump,
+  isScrollNearRailEnd,
   isWrapAcross,
   loopPitch,
+  loopRepeatCopies,
   loopSetWidth,
   measureLoopSetWidth,
   normalizeLoopScroll,
@@ -22,11 +25,25 @@ import {
 const dir = dirname(fileURLToPath(import.meta.url));
 
 describe('looping rail', () => {
-  it('loops only when there is more than one card', () => {
+  it('loops across desktop and touch whenever there is more than one card', () => {
     expect(shouldLoopRail(0)).toBe(false);
     expect(shouldLoopRail(1)).toBe(false);
     expect(shouldLoopRail(2)).toBe(true);
-    expect(shouldLoopRail(20, true)).toBe(false);
+    expect(shouldLoopRail(20, true)).toBe(true);
+  });
+
+  it('repeats short sets to fill wide viewports without blank edges', () => {
+    expect(loopRepeatCopies(3000, 1920)).toBe(1);
+    expect(loopRepeatCopies(600, 1920)).toBe(4);
+    expect(normalizeLoopScroll(1100, 600, 1920, 4)).toBe(1700);
+    expect(normalizeLoopScroll(2100, 600, 1920, 4)).toBe(1500);
+  });
+
+  it('detects when focus or scroll approaches the loaded rail end', () => {
+    expect(isFocusNearRailEnd(27, 40)).toBe(false);
+    expect(isFocusNearRailEnd(28, 40)).toBe(true);
+    expect(isScrollNearRailEnd(0, 1000, 5000, 200)).toBe(false);
+    expect(isScrollNearRailEnd(2000, 1000, 5000, 200)).toBe(true);
   });
 
   it('treats the track as three equal copies', () => {

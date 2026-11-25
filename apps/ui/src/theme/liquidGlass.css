@@ -1,0 +1,1042 @@
+/*
+ * TVM Glass 27 — iOS 27 Liquid Glass material and physical spring motion.
+ *
+ * Variants:
+ * - .glass / .glass--chrome  Floating bars, pills, buttons (14px blur)
+ * - .glass--sheet            Sheets, dialogs, corner popovers (26px blur, 28px radius)
+ * - .glass--card             Cards and tiles (26px blur, 18px radius)
+ * - .glass--thumb            Active/selected thumb (white 22% wash, 70% rim, 40% specular)
+ * - .glass--tinted           Accent-tinted primary glass (#2f6bff at 55% by default)
+ * - .glass--well             Recessed text-field well (white 6%, 0 1px 3px inset shadow)
+ */
+
+:root,
+html[data-glass='default'],
+html[data-theme='dark'],
+html[data-theme='dark'][data-glass='default'] {
+  --tvm-glass27-accent: #2f6bff;
+  --tvm-glass27-blur-chrome: blur(14px) saturate(180%) brightness(1.08);
+  --tvm-glass27-blur-sheet: blur(26px) saturate(180%) brightness(1.08);
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.09);
+  --tvm-glass27-surface-sheet: rgba(16, 20, 30, 0.52);
+  --tvm-glass27-surface-tint: rgba(255, 255, 255, 0.09);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.28);
+  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.60);
+  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.50);
+  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.30);
+  --tvm-glass27-rim-bottom: rgba(255, 255, 255, 0.10);
+  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.22);
+  --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.22);
+  --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.70);
+  --tvm-glass27-thumb-specular: rgba(255, 255, 255, 0.40);
+  --tvm-glass27-well-tint: rgba(255, 255, 255, 0.06);
+  --tvm-glass27-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.20);
+  --tvm-glass27-shadow-lift: 0 18px 42px rgba(0, 0, 0, 0.36), 0 2px 4px rgba(0, 0, 0, 0.22);
+  --tvm-glass27-text: rgba(255, 255, 255, 0.95);
+  --tvm-glass27-text-secondary: rgba(255, 255, 255, 0.66);
+  --tvm-glass27-press-scale: 0.96;
+  --tvm-glass27-focus-scale: 1.05;
+  --tvm-glass27-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+
+  --tvm-glass-bg:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.05) 26%, transparent 45%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.06));
+  --tvm-glass-bg-elevated:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.06) 28%, transparent 46%),
+    var(--tvm-glass27-surface-sheet);
+  --tvm-glass-blur: var(--tvm-glass27-blur-chrome);
+  --tvm-glass-rim-light: inset 0 1px 0 var(--tvm-glass27-rim-top), inset 1px 0 0 var(--tvm-glass27-rim-side);
+  --tvm-glass-rim-chroma: inset 0 -1px 0 var(--tvm-glass27-rim-bottom), inset 0 0 0 1px var(--tvm-glass27-dark-inner);
+  --tvm-glass-shadow: var(--tvm-glass27-shadow);
+}
+
+html[data-glass='clear'],
+html[data-theme='dark'][data-glass='clear'] {
+  --tvm-glass27-blur-chrome: blur(10px) saturate(165%) brightness(1.06);
+  --tvm-glass27-blur-sheet: blur(18px) saturate(170%) brightness(1.06);
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.05);
+  --tvm-glass27-surface-sheet: rgba(12, 16, 24, 0.36);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.24);
+  --tvm-glass-bg:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.03) 26%, transparent 45%),
+    rgba(255, 255, 255, 0.05);
+  --tvm-glass-bg-elevated:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.04) 26%, transparent 45%),
+    var(--tvm-glass27-surface-sheet);
+}
+
+html[data-glass='tinted'],
+html[data-theme='dark'][data-glass='tinted'] {
+  --tvm-glass27-blur-chrome: blur(18px) saturate(185%) brightness(1.08);
+  --tvm-glass27-blur-sheet: blur(30px) saturate(190%) brightness(1.08);
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.14);
+  --tvm-glass27-surface-sheet: rgba(12, 18, 30, 0.72);
+  --tvm-glass-bg:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.08) 28%, transparent 48%),
+    linear-gradient(180deg, rgba(22, 30, 46, 0.56), rgba(14, 20, 32, 0.64));
+  --tvm-glass-bg-elevated:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.08) 28%, transparent 48%),
+    var(--tvm-glass27-surface-sheet);
+}
+
+html[data-theme='light'] {
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.56);
+  --tvm-glass27-surface-sheet: rgba(250, 249, 245, 0.78);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.52);
+  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.86);
+  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.90);
+  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.56);
+  --tvm-glass27-rim-bottom: rgba(18, 50, 74, 0.14);
+  --tvm-glass27-dark-inner: rgba(18, 50, 74, 0.12);
+  --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.82);
+  --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.96);
+  --tvm-glass27-well-tint: rgba(255, 255, 255, 0.58);
+  --tvm-glass27-shadow: 0 10px 28px rgba(18, 50, 74, 0.14), 0 1px 2px rgba(18, 50, 74, 0.08);
+  --tvm-glass27-shadow-lift: 0 18px 40px rgba(18, 50, 74, 0.18), 0 2px 4px rgba(18, 50, 74, 0.10);
+  --tvm-glass27-text: #12324a;
+  --tvm-glass27-text-secondary: #2a5a68;
+}
+
+html[data-theme='light'][data-glass='clear'] {
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.36);
+  --tvm-glass27-surface-sheet: rgba(255, 254, 250, 0.56);
+}
+
+html[data-theme='light'][data-glass='tinted'] {
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.72);
+  --tvm-glass27-surface-sheet: rgba(244, 248, 252, 0.88);
+}
+
+/* Base Liquid Glass surface */
+.glass {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid var(--tvm-glass27-rim-bottom);
+  border-top-color: var(--tvm-glass27-rim-top);
+  border-left-color: var(--tvm-glass27-rim-side);
+  background: var(--tvm-glass-bg);
+  -webkit-backdrop-filter: var(--tvm-glass27-blur-chrome);
+  backdrop-filter: var(--tvm-glass27-blur-chrome);
+  box-shadow:
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    var(--tvm-glass27-shadow);
+  color: var(--tvm-glass27-text);
+  transition:
+    transform 320ms var(--tvm-glass27-spring),
+    box-shadow 240ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.glass--sheet {
+  border-radius: 28px;
+  background: var(--tvm-glass-bg-elevated);
+  -webkit-backdrop-filter: var(--tvm-glass27-blur-sheet);
+  backdrop-filter: var(--tvm-glass27-blur-sheet);
+}
+
+.glass--card {
+  border-radius: 18px;
+  background: var(--tvm-glass-bg-elevated);
+  -webkit-backdrop-filter: var(--tvm-glass27-blur-sheet);
+  backdrop-filter: var(--tvm-glass27-blur-sheet);
+}
+
+.glass--chrome {
+  border-radius: 999px;
+  -webkit-backdrop-filter: var(--tvm-glass27-blur-chrome);
+  backdrop-filter: var(--tvm-glass27-blur-chrome);
+}
+
+/* Selected / active thumb — translucent brighter glass, never an opaque grey slab */
+.glass--thumb,
+.ribbon__icon--on,
+.tvm-button.gate-tab--active {
+  background:
+    radial-gradient(66% 2px at 50% 0%, rgba(255, 255, 255, 0.72) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-thumb-specular) 0%, rgba(255, 255, 255, 0.14) 32%, transparent 52%),
+    var(--tvm-glass27-thumb-tint);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--tvm-glass27-thumb-rim);
+  border-left-color: rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    0 6px 18px rgba(0, 0, 0, 0.22);
+  color: var(--tvm-glass27-text);
+  font-weight: 600;
+}
+
+/* Primary action — tinted glass (#2f6bff at 55% by default, or active event accent) */
+.glass--tinted,
+.tvm-button--primary {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--tvm-glass27-rim-top);
+  border-left-color: rgba(255, 255, 255, 0.36);
+  background:
+    radial-gradient(66% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.04) 28%, transparent 46%),
+    color-mix(in srgb, var(--tvm-glass27-primary, var(--tvm-glass27-accent, #2f6bff)) 55%, transparent);
+  -webkit-backdrop-filter: var(--tvm-glass27-blur-chrome);
+  backdrop-filter: var(--tvm-glass27-blur-chrome);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    var(--tvm-glass27-shadow);
+  color: #ffffff;
+  font-weight: 650;
+}
+
+.tvm-button--primary:hover,
+.tvm-button--primary:focus,
+.tvm-button--primary[data-focused='true'] {
+  background:
+    radial-gradient(66% 2px at 50% 0%, rgba(255, 255, 255, 0.78) 0%, transparent 100%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.08) 30%, transparent 48%),
+    color-mix(in srgb, var(--tvm-glass27-primary, var(--tvm-glass27-accent, #2f6bff)) 68%, transparent);
+  border-top-color: rgba(255, 255, 255, 0.75);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tvm-glass27-primary, var(--tvm-glass27-accent, #2f6bff)) 45%, #fff 25%),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    var(--tvm-glass27-shadow-lift);
+  color: #ffffff;
+}
+
+/* Recessed input well */
+.glass--well,
+.token-field__input {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.16), transparent 40%),
+    var(--tvm-glass27-well-tint);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.35),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.10);
+  color: var(--tvm-glass27-text);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.glass--well:focus,
+.glass--well[data-focused='true'],
+.token-field__input:focus,
+.token-field__input[data-focused='true'] {
+  outline: none;
+  border-color: var(--tvm-accent, #6ec8ff);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tvm-accent, #6ec8ff) 52%, transparent),
+    inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* 10% black legibility scrim over bright photography */
+.glass-scrim {
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 14px;
+}
+
+/* Secondary plain glass button upgrade */
+.tvm-button--glass {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid var(--tvm-glass27-rim-bottom);
+  border-top-color: var(--tvm-glass27-rim-top);
+  border-left-color: var(--tvm-glass27-rim-side);
+  background: var(--tvm-glass-bg);
+  -webkit-backdrop-filter: var(--tvm-glass27-blur-chrome);
+  backdrop-filter: var(--tvm-glass27-blur-chrome);
+  box-shadow:
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    var(--tvm-glass27-shadow);
+  color: var(--tvm-glass27-text);
+}
+
+/* One-shot specular sheen on focus/hover + tactile press spring */
+.glass::after,
+.tvm-button--glass::after,
+.tvm-button--primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    112deg,
+    transparent 24%,
+    rgba(255, 255, 255, 0.24) 48%,
+    rgba(255, 255, 255, 0.04) 56%,
+    transparent 74%
+  );
+  opacity: 0;
+  transform: translateX(-115%);
+}
+
+.glass:hover::after,
+.glass:focus-visible::after,
+.glass[data-focused='true']::after,
+.tvm-button--glass:hover::after,
+.tvm-button--glass:focus::after,
+.tvm-button--glass[data-focused='true']::after,
+.tvm-button--primary:hover::after,
+.tvm-button--primary:focus::after,
+.tvm-button--primary[data-focused='true']::after {
+  animation: glass-sheen-sweep 520ms cubic-bezier(0.2, 0.8, 0.2, 1) 1 forwards;
+}
+
+.tvm-button--glass:hover,
+.tvm-button--glass:focus,
+.tvm-button--glass[data-focused='true'] {
+  transform: translateZ(0) scale(var(--tvm-glass27-focus-scale, 1.05));
+  border-top-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    var(--tvm-glass27-shadow-lift);
+}
+
+.glass:active,
+.tvm-button--glass:active,
+.tvm-button--primary:active {
+  transform: translateZ(0) scale(var(--tvm-glass27-press-scale, 0.96)) !important;
+  transition-duration: 90ms !important;
+  transition-timing-function: ease-out !important;
+}
+
+.glass:active,
+.tvm-button--glass:active {
+  filter: brightness(1.12);
+}
+
+@keyframes glass-sheen-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-115%);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(115%);
+  }
+}
+
+/* Appear / disappear motion for sheets and popovers */
+@keyframes glass-sheet-appear {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.glass-appear {
+  animation: glass-sheet-appear 300ms var(--tvm-glass27-spring) both;
+}
+
+/* Sliding thumb segmented control */
+.glass-segment {
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  padding: 0.26rem;
+  gap: 0.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-top-color: rgba(255, 255, 255, 0.26);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.08)),
+    var(--tvm-glass27-well-tint);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.glass-segment__thumb {
+  position: absolute;
+  top: 0.26rem;
+  bottom: 0.26rem;
+  left: 0;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+  transform-origin: center;
+  transition:
+    transform 400ms var(--tvm-glass27-spring),
+    width 400ms var(--tvm-glass27-spring);
+}
+
+.tvm-button.glass-segment__option {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--tvm-glass27-text-secondary);
+  font-size: 0.86rem;
+  font-weight: 560;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.tvm-button.glass-segment__option--active {
+  color: var(--tvm-glass27-text);
+  font-weight: 600;
+}
+
+.tvm-button.glass-segment__option:focus,
+.tvm-button.glass-segment__option[data-focused='true'] {
+  outline: 2px solid var(--tvm-focus-ring-color, #9edcff);
+  outline-offset: 2px;
+  transform: none;
+}
+
+.settings-glass-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.72rem 1rem;
+  border-radius: 18px;
+  border: 1px solid var(--tvm-border-soft);
+  background: color-mix(in srgb, var(--tvm-surface) 88%, transparent);
+}
+
+.settings-glass-row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settings-glass-row__label strong {
+  font-size: 0.96rem;
+  font-weight: 650;
+  color: var(--tvm-text);
+}
+
+.settings-glass-row__label span {
+  font-size: 0.82rem;
+  color: var(--tvm-text-muted);
+}
+
+/* Reduced motion & performance mode overrides */
+:root[data-motion='reduced'] .glass,
+:root[data-motion='reduced'] .glass-appear,
+:root[data-motion='reduced'] .glass-segment__thumb,
+:root[data-perf='on'] .glass,
+:root[data-perf='on'] .glass-appear,
+:root[data-perf='on'] .glass-segment__thumb {
+  transition-duration: 120ms !important;
+  transition-timing-function: ease !important;
+  animation: none !important;
+}
+
+:root[data-motion='reduced'] .glass::after,
+:root[data-motion='reduced'] .tvm-button--glass::after,
+:root[data-motion='reduced'] .tvm-button--primary::after,
+:root[data-perf='on'] .glass::after,
+:root[data-perf='on'] .tvm-button--glass::after,
+:root[data-perf='on'] .tvm-button--primary::after {
+  display: none !important;
+}
+
+/* Circular Glass Back button (F2) */
+.tvm-button.back-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  justify-content: center;
+  align-items: center;
+  color: var(--tvm-glass27-text);
+}
+
+.back-btn__icon {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.page__toolbar-lead {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.details__back {
+  position: sticky;
+  top: calc(1.1rem + env(titlebar-area-height, 0px));
+  margin: calc(1.1rem + env(titlebar-area-height, 0px)) 0 0 var(--tvm-safe-x);
+  z-index: 4;
+}
+
+.service__back {
+  position: fixed;
+  top: calc(1.1rem + env(titlebar-area-height, 0px));
+  left: var(--tvm-safe-x);
+  z-index: 20;
+}
+
+/* F11 Release event hero spotlight */
+.stage--event {
+  overflow: visible;
+}
+
+.stage__event-glow {
+  position: absolute;
+  inset: -6% 10% auto -6%;
+  height: 78%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    56% 62% at 22% 52%,
+    color-mix(in srgb, var(--tvm-event-glow, #ff6a2a) 36%, transparent) 0%,
+    transparent 74%
+  );
+  filter: blur(42px);
+}
+
+.stage__event-kicker {
+  color: color-mix(in srgb, var(--tvm-event-accent, #e8a33d) 80%, #ffffff) !important;
+  font-weight: 700;
+}
+
+.stage__event-line {
+  display: inline-block;
+  margin: 0.45rem 0 0.9rem;
+  padding: 0.35rem 0.7rem;
+  max-width: 52ch;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+  line-height: 1.45;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+/* F7 Services cards & confirmation sheet */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  gap: 1rem;
+  margin-top: 1.15rem;
+}
+
+.service-card {
+  padding: 1.05rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.95rem;
+}
+
+.service-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.service-card__dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.service-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.service-card__name {
+  font-size: 1rem;
+  font-weight: 680;
+  color: var(--tvm-glass27-text);
+}
+
+.service-card__status {
+  font-size: 0.78rem;
+  color: var(--tvm-glass27-text-secondary);
+}
+
+.service-card__status--on {
+  color: var(--tvm-success, #59d69a);
+  font-weight: 600;
+}
+
+.service-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.service-confirm {
+  margin: 1rem 0 0.5rem;
+  padding: 1.15rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 34rem;
+}
+
+.service-confirm__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 720;
+}
+
+.details__watch-on {
+  margin-top: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.details__watch-on-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.7));
+}
+
+.details__watch-on-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.channel-card__mark--uk {
+  background: color-mix(in srgb, #2f6bff 70%, rgba(12, 18, 30, 0.85));
+  color: #ffffff;
+}
+
+.live-section {
+  margin-top: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.live-section__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 720;
+  color: var(--tvm-text);
+}
+
+.live-inline-card {
+  margin-top: 0.5rem;
+  padding: 1.25rem 1.35rem;
+  max-width: 40rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* F8 Profiles avatar orb, editor, and PIN pad */
+.profile-orb {
+  position: relative;
+  overflow: visible;
+}
+
+.profile-orb__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+.profile-orb__initial {
+  font-size: 1.45em;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.profile-orb__lock {
+  position: absolute;
+  right: -0.25rem;
+  bottom: -0.25rem;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 16, 28, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.profile-orb__lock svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.profile-tile__meta {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--tvm-text-muted);
+}
+
+.profile-tile__actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.profile-editor {
+  margin-top: 1.15rem;
+  padding: 1.35rem 1.45rem;
+  max-width: 56rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.profile-editor__top {
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+  flex-wrap: wrap;
+}
+
+.profile-editor__name {
+  flex: 1 1 16rem;
+}
+
+.profile-editor__block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.profile-editor__block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.profile-editor__block-head span {
+  font-size: 0.82rem;
+  color: var(--tvm-glass27-text-secondary);
+}
+
+.avatar-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.avatar-tab {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+}
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr));
+  gap: 0.65rem;
+  max-height: 17.5rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+
+.avatar-choice {
+  padding: 0.45rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+  min-height: 0;
+  border-radius: 16px;
+}
+
+.avatar-choice .tvm-button__label {
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.avatar-choice__img {
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.avatar-choice__name {
+  font-size: 0.72rem;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.avatar-choice--on {
+  box-shadow: 0 0 0 2px var(--tvm-accent, #6ec8ff), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.profile-editor__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* 4-digit PIN pad */
+.pin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.pin-sheet {
+  width: min(24rem, 100%);
+  padding: 1.45rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  text-align: center;
+}
+
+.pin-sheet__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 740;
+}
+
+.pin-dots {
+  display: flex;
+  gap: 0.85rem;
+  margin: 0.25rem 0;
+}
+
+.pin-dots--shake {
+  animation: pin-shake 360ms ease-in-out 1;
+}
+
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+
+.pin-dot {
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.48);
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.pin-dot--filled {
+  background: #ffffff;
+  border-color: #ffffff;
+  transform: scale(1.1);
+}
+
+.pin-sheet__error {
+  margin: 0;
+  color: var(--tvm-danger, #ff6b7d);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.pin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.pin-key {
+  min-height: 3.1rem;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+
+.pin-sheet__actions {
+  margin-top: 0.25rem;
+}
+
+/* F12 Home changelog corner card & What's new */
+.changelog-card {
+  position: fixed;
+  right: max(var(--tvm-safe-x, 1.5rem), 1.5rem);
+  bottom: max(var(--tvm-safe-y, 1.5rem), 1.5rem);
+  z-index: 15;
+  width: min(25rem, calc(100vw - 2rem));
+  padding: 1.05rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+html.phone-shell .changelog-card {
+  bottom: calc(5.2rem + env(safe-area-inset-bottom, 0px));
+}
+
+.changelog-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 720;
+  color: var(--tvm-glass27-text);
+}
+
+.changelog-card__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  font-size: 0.82rem;
+  line-height: 1.38;
+  color: var(--tvm-glass27-text-secondary);
+}
+
+.changelog-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.tvm-button.changelog-card__all {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.whats-new-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  margin-top: 1.1rem;
+  max-width: 58rem;
+}
+
+.whats-new-release {
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.whats-new-release__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.whats-new-release__title {
+  margin: 0.25rem 0 0;
+  font-size: 1.3rem;
+  font-weight: 740;
+}
+
+.whats-new-release__date {
+  font-size: 0.82rem;
+  color: var(--tvm-glass27-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.whats-new-release__highlights {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--tvm-glass27-text);
+  font-size: 0.92rem;
+}
+
+.whats-new-areas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.9rem 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.whats-new-area__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tvm-accent-strong, #9edcff);
+}
+
+.whats-new-area__list {
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--tvm-glass27-text-secondary);
+}
+
+/* F13 Mobile responsive polish */
+@media (max-width: 640px) {
+  .services-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .whats-new-areas {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-editor {
+    padding: 1rem;
+  }
+
+  .details__back {
+    margin-left: var(--tvm-safe-x, 1rem);
+  }
+}
+
+
+
+
+

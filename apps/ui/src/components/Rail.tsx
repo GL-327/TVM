@@ -1,17 +1,45 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   cancelLoopingTrack,
+  isFocusNearRailEnd,
   isLoopSeamJump,
+  isScrollNearRailEnd,
+  loopRepeatCopies,
   measureLoopSetWidth,
   normalizeLoopScroll,
-  oneSetFitsCamera,
   parkLoopScroll,
   readLoopSetWidth,
   shouldLoopRail,
 } from '../nav/loopingRail';
 import { isScrollAnimating, jumpAxis } from '../nav/scrollAnim';
 import { watchRailBitmaps } from './railBitmaps';
+
+export interface RailPagingState {
+  id: string;
+  hasMore: boolean;
+  onNearEnd: () => void;
+}
+
+const RailPagingContext = createContext<RailPagingState | null>(null);
+
+export function RailPaging({
+  railId,
+  hasMore,
+  onNearEnd,
+  children,
+}: {
+  railId: string;
+  hasMore: boolean;
+  onNearEnd: () => void;
+  children: ReactNode;
+}): React.JSX.Element {
+  return (
+    <RailPagingContext.Provider value={{ id: railId, hasMore, onNearEnd }}>
+      {children}
+    </RailPagingContext.Provider>
+  );
+}
 
 interface RailProps {
   title?: string;
@@ -23,39 +51,29 @@ interface RailProps {
    * Repeat the row endlessly.
    *
    * On by default so category carousels scroll in a continuous, infinite loop
-   * by keyboard/remote arrows, mouse wheel, trackpad, and drag. Finite personal
-   * shelves like Continue Watching can pass `loop={false}`.
+   * by keyboard/remote arrows, mouse wheel, trackpad, and touch drag. Finite
+   * personal shelves like Continue Watching can pass `loop={false}`.
    */
   loop?: boolean;
-}
-
-function showLoopClones(track: HTMLElement, show: boolean): void {
-  for (const node of track.querySelectorAll<HTMLElement>('[data-loop-clone="true"]')) {
-    node.hidden = !show;
-  }
+  hasMore?: boolean;
+  onNearEnd?: () => void;
 }
 
 function cameraBusy(track: HTMLElement): boolean {
   return track.dataset.wrapping === 'true' || isScrollAnimating(track);
 }
 
-const TOUCH_INPUT_QUERY = '(any-pointer: coarse)';
-function nativeTouchInput(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia(TOUCH_INPUT_QUERY).matches;
-}
-function watchTouchInput(change: () => void): () => void {
-  const query = window.matchMedia(TOUCH_INPUT_QUERY);
-  query.addEventListener('change', change);
-  return () => query.removeEventListener('change', change);
-}
-const serverTouchInput = (): boolean => false;
-
 function trackHasFocus(track: HTMLElement): boolean {
   const active = document.activeElement;
   return active instanceof HTMLElement && track.contains(active);
 }
 
-function syncConveyor(track: HTMLElement): void {
+function syncConveyor(
+  track: HTMLElement,
+  leadCopies: number,
+  setLeadCopies: (next: number) => void,
+  previousLoopState: { looping: boolean; scrollLeft: number },
+): void {
   if (cameraBusy(track)) return;
 
   const clone = track.querySelector<HTMLElement>('[data-loop-clone="true"]');
@@ -64,37 +82,32 @@ function syncConveyor(track: HTMLElement): void {
     return;
   }
 
-  const clonesHidden = clone.hidden === true;
-  if (clonesHidden) {
-    const saved = Number(track.dataset.loopSet ?? '0');
-    if (saved > track.clientWidth + 2) {
-      showLoopClones(track, true);
-      track.dataset.looping = 'true';
-      requestAnimationFrame(() => {
-        if (!track.isConnected || cameraBusy(track)) return;
-        const setWidth = measureLoopSetWidth(track);
-        track.dataset.loopSet = String(setWidth);
-        jumpAxis(track, 'x', setWidth > 1 ? setWidth : saved);
-      });
-    } else {
-      track.dataset.looping = 'false';
-    }
-    return;
-  }
-
+  track.dataset.loopLead = String(leadCopies);
   const setWidth = measureLoopSetWidth(track);
   track.dataset.loopSet = String(setWidth);
-  if (oneSetFitsCamera(track, setWidth)) {
-    track.dataset.looping = 'false';
-    showLoopClones(track, false);
-    jumpAxis(track, 'x', 0);
+
+  const desiredLead = loopRepeatCopies(setWidth, track.clientWidth);
+  if (desiredLead > leadCopies) {
+    setLeadCopies(desiredLead);
     return;
   }
 
   track.dataset.looping = 'true';
   if (setWidth <= 0) return;
+
+  if (!previousLoopState.looping) {
+    const target = normalizeLoopScroll(
+      previousLoopState.scrollLeft + leadCopies * setWidth,
+      setWidth,
+      track.clientWidth,
+      leadCopies,
+    );
+    jumpAxis(track, 'x', target);
+    return;
+  }
+
   if (track.scrollLeft < 1) {
-    jumpAxis(track, 'x', setWidth);
+    jumpAxis(track, 'x', leadCopies * setWidth);
     return;
   }
   if (trackHasFocus(track)) return;
@@ -102,70 +115,140 @@ function syncConveyor(track: HTMLElement): void {
   if (isLoopSeamJump(track.scrollLeft, next, setWidth)) jumpAxis(track, 'x', next);
 }
 
-function LoopingTrack({ children, loop }: { children: ReactNode; loop: boolean }): React.JSX.Element {
+function LoopingTrack({
+  children,
+  loop,
+  hasMore,
+  onNearEnd,
+}: {
+  children: ReactNode;
+  loop: boolean;
+  hasMore: boolean;
+  onNearEnd?: () => void;
+}): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
-  const nativeTouch = useSyncExternalStore(watchTouchInput, nativeTouchInput, serverTouchInput);
   const items = Children.toArray(children).filter(isValidElement);
-  // Native momentum must not race conveyor parking writes during a swipe.
-  const looping = loop && shouldLoopRail(items.length, nativeTouch);
+  const [leadCopies, setLeadCopies] = useState(1);
+  // Paging grows the row linearly until the source is exhausted, then flips to an endless ring.
+  const looping = loop && !hasMore && shouldLoopRail(items.length);
   const stamp = items.map((child, index) => String(child.key ?? index)).join('|');
+  const prevLoopRef = useRef<{ looping: boolean; scrollLeft: number }>({
+    looping,
+    scrollLeft: 0,
+  });
+
+  useEffect(() => {
+    setLeadCopies(1);
+  }, [looping]);
+
+  const paintCopy = (copyAttr: number, keyPrefix: string) =>
+    items.map((child, index) =>
+      cloneElement(child as ReactElement<{ loopCopy?: number }>, {
+        key: `${String(child.key ?? index)}-${keyPrefix}`,
+        loopCopy: copyAttr,
+      }),
+    );
 
   const painted = looping
-    ? [0, 1, 2].flatMap((copy) =>
-        items.map((child, index) =>
-          cloneElement(child as ReactElement<{ loopCopy?: number }>, {
-            key: `${String(child.key ?? index)}-${copy}`,
-            loopCopy: copy,
-          }),
-        ),
-      )
+    ? [
+        ...Array.from({ length: leadCopies }, (_, idx) => paintCopy(0, `pre-${idx}`)).flat(),
+        ...paintCopy(1, 'mid'),
+        ...Array.from({ length: leadCopies }, (_, idx) => paintCopy(2, `post-${idx}`)).flat(),
+      ]
     : items;
 
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el === null || !looping) {
-      if (el !== null) el.dataset.looping = 'false';
+    if (el === null) return;
+    const prev = prevLoopRef.current;
+    if (!looping) {
+      el.dataset.looping = 'false';
+      el.dataset.loopLead = '1';
+      prevLoopRef.current = { looping: false, scrollLeft: el.scrollLeft };
       return;
     }
-    syncConveyor(el);
-  }, [looping, stamp]);
+    syncConveyor(el, leadCopies, setLeadCopies, prev);
+    prevLoopRef.current = { looping: true, scrollLeft: el.scrollLeft };
+  }, [looping, leadCopies, stamp]);
 
   useEffect(() => {
     const el = ref.current;
-    if (el === null || !looping) return;
+    if (el === null) return undefined;
+
+    const checkNearEnd = (): void => {
+      if (!hasMore || onNearEnd === undefined || items.length === 0) return;
+      const pitch = el.scrollWidth > 0 ? el.scrollWidth / items.length : 220;
+      if (isScrollNearRailEnd(el.scrollLeft, el.clientWidth, el.scrollWidth, pitch)) {
+        onNearEnd();
+      }
+    };
+
+    checkNearEnd();
+
     let resizeRaf = 0;
     const resize = new ResizeObserver(() => {
       if (resizeRaf !== 0) return;
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0;
-        if (el.isConnected) syncConveyor(el);
+        if (!el.isConnected) return;
+        if (looping) {
+          syncConveyor(el, leadCopies, setLeadCopies, { looping: true, scrollLeft: el.scrollLeft });
+        }
+        checkNearEnd();
       });
     });
     resize.observe(el);
+
     let parkRaf = 0;
+    let idleTimer = 0;
+    const tryParkLoop = (forceOuter = false): void => {
+      if (!el.isConnected || el.dataset.looping !== 'true') return;
+      if (cameraBusy(el)) return;
+      if (!forceOuter && trackHasFocus(el)) return;
+      const setWidth = readLoopSetWidth(el);
+      const currentLead = Math.max(1, Number(el.dataset.loopLead ?? '1') || 1);
+      if (forceOuter) {
+        const minSafe = setWidth * 0.25;
+        const maxSafe = el.scrollWidth - el.clientWidth - setWidth * 0.25;
+        if (el.scrollLeft > minSafe && el.scrollLeft < maxSafe) return;
+      }
+      const next = normalizeLoopScroll(el.scrollLeft, setWidth, el.clientWidth, currentLead);
+      if (!isLoopSeamJump(el.scrollLeft, next, setWidth)) return;
+      jumpAxis(el, 'x', next);
+    };
+
     const onScroll = (): void => {
+      prevLoopRef.current = { looping, scrollLeft: el.scrollLeft };
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => tryParkLoop(true), 90);
       if (parkRaf !== 0) return;
       parkRaf = requestAnimationFrame(() => {
         parkRaf = 0;
         if (!el.isConnected) return;
-        if (el.dataset.looping !== 'true') return;
-        if (cameraBusy(el)) return;
-        if (trackHasFocus(el)) return;
-        const setWidth = readLoopSetWidth(el);
-        const next = normalizeLoopScroll(el.scrollLeft, setWidth, el.clientWidth);
-        if (!isLoopSeamJump(el.scrollLeft, next, setWidth)) return;
-        jumpAxis(el, 'x', next);
+        checkNearEnd();
+        if (el.dataset.looping === 'true') tryParkLoop(false);
       });
     };
+
+    const onFocusIn = (event: FocusEvent): void => {
+      if (!hasMore || onNearEnd === undefined || !(event.target instanceof HTMLElement)) return;
+      const cards = el.querySelectorAll<HTMLElement>('[data-focus-id]:not([data-loop-clone="true"])');
+      const idx = Array.prototype.indexOf.call(cards, event.target);
+      if (isFocusNearRailEnd(idx, items.length)) onNearEnd();
+    };
+
     el.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('focusin', onFocusIn);
     return () => {
       cancelLoopingTrack(el);
       resize.disconnect();
       el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('focusin', onFocusIn);
+      window.clearTimeout(idleTimer);
       if (resizeRaf !== 0) cancelAnimationFrame(resizeRaf);
       if (parkRaf !== 0) cancelAnimationFrame(parkRaf);
     };
-  }, [looping, stamp]);
+  }, [hasMore, items.length, leadCopies, looping, onNearEnd, stamp]);
 
   return (
     <div
@@ -173,14 +256,27 @@ function LoopingTrack({ children, loop }: { children: ReactNode; loop: boolean }
       className="rail__track"
       data-wrap="row"
       data-loop-count={looping ? String(items.length) : undefined}
+      data-loop-lead={looping ? String(leadCopies) : undefined}
     >
       {painted}
     </div>
   );
 }
 
-export function Rail({ title, children, action, id, bare = false, loop = true }: RailProps): React.JSX.Element {
+export function Rail({
+  title,
+  children,
+  action,
+  id,
+  bare = false,
+  loop = true,
+  hasMore,
+  onNearEnd,
+}: RailProps): React.JSX.Element {
   const railRef = useRef<HTMLElement>(null);
+  const paging = useContext(RailPagingContext);
+  const effectiveHasMore = hasMore ?? paging?.hasMore ?? false;
+  const effectiveOnNearEnd = onNearEnd ?? paging?.onNearEnd;
 
   useLayoutEffect(() => {
     const el = railRef.current;
@@ -189,14 +285,16 @@ export function Rail({ title, children, action, id, bare = false, loop = true }:
   }, []);
 
   return (
-    <section ref={railRef} className={`rail${bare ? ' rail--bare' : ''}`} data-rail={id}>
+    <section ref={railRef} className={`rail${bare ? ' rail--bare' : ''}`} data-rail={id ?? paging?.id}>
       {!bare && title !== undefined && title !== '' && (
         <header className="rail__header">
           <h2 className="rail__title">{title}</h2>
           {action}
         </header>
       )}
-      <LoopingTrack loop={loop}>{children}</LoopingTrack>
+      <LoopingTrack loop={loop} hasMore={effectiveHasMore} onNearEnd={effectiveOnNearEnd}>
+        {children}
+      </LoopingTrack>
     </section>
   );
 }

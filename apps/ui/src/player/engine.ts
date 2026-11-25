@@ -2,8 +2,11 @@ import type Hls from 'hls.js';
 import { catchUpTarget, driftFromLive, liveEdgeOf } from './liveEdge';
 import type { HlsConfig } from 'hls.js';
 import type { PlaybackResult } from '../data/media';
+import { applyBoostedVolume } from './audioGain';
+import { clampVolume } from './audioPrefs';
 import { publishHls } from './hlsBridge';
 import { createIOSPlayerEngine, nativePlaybackBridge } from './iosEngine';
+import { selectBestHlsLevelIndex } from './quality';
 
 /**
  * The one in-app playback engine.
@@ -113,7 +116,15 @@ export function preferNativeHls(userAgent: string): boolean {
 }
 
 export function hlsConfig(live: boolean, startAt: number): Partial<HlsConfig> {
-  const config: Partial<HlsConfig> = { enableWorker: true, maxBufferLength: 30, backBufferLength: 60, capLevelToPlayerSize: false };
+  const config: Partial<HlsConfig> = {
+    enableWorker: true,
+    maxBufferLength: 30,
+    backBufferLength: 60,
+    capLevelToPlayerSize: false,
+    abrEwmaDefaultEstimate: 25_000_000,
+    abrBandWidthUpFactor: 0.9,
+    abrBandWidthFactor: 0.9,
+  };
   // A growing server conversion looks live to HLS. Always start VOD at its
   // requested position, including zero, instead of chasing the produced edge.
   if (!live) Object.assign(config, {
@@ -344,16 +355,11 @@ export function createPlayerEngine(
       instance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (destroyed || failed || hls !== instance) return;
         const maxHeight = options.maxHeight ?? Infinity;
-        const allowed = instance.levels.map((level, index) => ({ level, index }))
-          .filter(({ level }) => level.height <= maxHeight);
-        const best = allowed.reduce<typeof allowed[number] | null>((winner, row) =>
-          winner === null || row.level.height > winner.level.height ||
-          (row.level.height === winner.level.height && row.level.bitrate > winner.level.bitrate)
-            ? row : winner, null);
-        instance.autoLevelCapping = best?.index ?? 0;
-        // Choose startup quality before allowing the first fragment request.
-        // ABR may still step down when bandwidth cannot sustain this level.
-        if (!live && best !== null) instance.startLevel = best.index;
+        const bestIndex = selectBestHlsLevelIndex(instance.levels, maxHeight);
+        instance.autoLevelCapping = bestIndex;
+        // Start on the best allowed quality for this screen unless bandwidth forces a step down.
+        instance.startLevel = bestIndex;
+        instance.nextLevel = -1;
         if (!live) instance.startLoad(isSession ? 0 : startPosition);
         tryPlay();
       });
@@ -665,7 +671,7 @@ export function createPlayerEngine(
     seekTo,
     setVolume(value) {
       if (!Number.isFinite(value)) return;
-      video.volume = Math.max(0, Math.min(1, value));
+      applyBoostedVolume(video, clampVolume(value), video.muted);
     },
     setMuted(muted) {
       video.muted = muted;

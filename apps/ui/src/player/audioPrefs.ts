@@ -19,9 +19,11 @@ export interface AudioPrefs {
   muted: boolean;
 }
 
-export function clampVolume(value: unknown): number {
+export const MAX_VOLUME = 2;
+
+export function clampVolume(value: unknown, maxVolume = MAX_VOLUME): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
-  return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+  return Math.max(0, Math.min(maxVolume, Math.round(value * 100) / 100));
 }
 
 /**

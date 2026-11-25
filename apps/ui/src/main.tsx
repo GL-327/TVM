@@ -12,6 +12,7 @@ import { startDeviceChrome } from './nav/deviceChrome';
 import { applyPlanClass, fetchPlan, themeUnlocked } from './data/plan';
 import { hydratePrefs } from './data/prefs';
 import { applyStoredTheme, applyTheme, readStoredTheme } from './theme/apply';
+import { applyStoredGlass } from './theme/glass';
 import { applyStoredMotionPreference, applyStoredPerformanceMode } from './theme/motion';
 import { applyStoredLanguage } from './i18n/locale';
 
@@ -22,6 +23,7 @@ startPhoneViewport();
 startDeviceChrome();
 applyStoredLanguage();
 applyStoredTheme();
+applyStoredGlass();
 applyStoredMotionPreference();
 applyStoredPerformanceMode();
 void hydratePrefs();

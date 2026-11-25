@@ -6,7 +6,7 @@ import { fieldValue, FocusField } from '../components/FocusField';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { mapRailPosters } from '../components/PosterCard';
-import { Rail } from '../components/Rail';
+import { Rail, RailPaging } from '../components/Rail';
 import { StreamChrome } from '../components/StreamChrome';
 import { preferBackdrop } from '../data/artwork';
 import { type Title } from '../data/catalog';
@@ -15,12 +15,15 @@ import {
   fetchHome,
   peekHome,
   saveRdToken,
+  toMediaItem,
   type CatalogRail,
   type RdStatus,
 } from '../data/media';
+import { filterItemsByAge } from '../data/parental';
+import { usePagedRails } from '../data/usePagedRails';
 import { openDetails } from '../data/openDetails';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
-import { fetchProfiles, type Profile } from '../data/profiles';
+import { effectiveProfileMaxAge, fetchProfiles, type Profile } from '../data/profiles';
 import { requestFocus } from '../nav/focusEngine';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
@@ -40,6 +43,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
   const [watching, setWatching] = useState<Title[]>(() => (cached?.continueWatching ?? []).map(asTitle));
   const [watchlist, setWatchlist] = useState<Title[]>(() => (cached?.watchlist ?? []).map(asTitle));
   const [rails, setRails] = useState<CatalogRail[]>(cached?.rails ?? []);
+  const { rails: pagedRails, loadMore: loadMoreRail } = usePagedRails(rails);
   const [featured, setFeatured] = useState<Title | null>(() =>
     cached?.featured !== null && cached?.featured !== undefined ? asTitle(cached.featured) : null,
   );
@@ -125,16 +129,24 @@ export function Library(_props: ScreenProps): React.JSX.Element {
     openDetails(navigate, title);
   };
 
+  const maxAge = effectiveProfileMaxAge(profile);
   const visibleRails = useMemo(() => {
-    return rails
+    return pagedRails
       .map((rail) => ({
         ...rail,
-        titles: rail.items.map(asTitle).filter((title) => inLane(title, lane)),
+        titles: filterItemsByAge(rail.items, maxAge).map(asTitle).filter((title) => inLane(title, lane)),
       }))
       .filter((rail) => rail.titles.length > 0);
-  }, [lane, rails]);
+  }, [lane, maxAge, pagedRails]);
 
-  const watchingLane = lane !== 'movies' ? watching : [];
+  const watchingLane = useMemo(
+    () => (lane !== 'movies' ? filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle) : []),
+    [lane, maxAge, watching],
+  );
+  const visibleWatchlist = useMemo(
+    () => filterItemsByAge(watchlist.map(toMediaItem), maxAge).map(asTitle).filter((title) => inLane(title, lane)),
+    [lane, maxAge, watchlist],
+  );
   const billboard = featured ?? watchingLane[0] ?? visibleRails[0]?.titles[0];
   const heroSrc = billboard === undefined ? '' : preferBackdrop(billboard.id, billboard.backdrop, billboard.poster);
 
@@ -214,10 +226,10 @@ export function Library(_props: ScreenProps): React.JSX.Element {
         </Rail>
       )}
 
-      {rdReady && !loading && watchlist.length > 0 && (
+      {rdReady && !loading && visibleWatchlist.length > 0 && (
         <Rail title="My List" loop={false}>
           {mapRailPosters(
-            watchlist.filter((title) => inLane(title, lane)),
+            visibleWatchlist,
             'liked',
             openTitle,
           )}
@@ -227,9 +239,11 @@ export function Library(_props: ScreenProps): React.JSX.Element {
       {rdReady &&
         !loading &&
         visibleRails.slice(0, plan.stream === 'basic' ? 2 : visibleRails.length).map((rail) => (
-          <Rail key={rail.id} title={rail.title}>
-            {mapRailPosters(rail.titles, rail.id, openTitle)}
-          </Rail>
+          <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => loadMoreRail(rail.id)}>
+            <Rail key={rail.id} title={rail.title}>
+              {mapRailPosters(rail.titles, rail.id, openTitle)}
+            </Rail>
+          </RailPaging>
         ))}
     </main>
   );

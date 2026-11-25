@@ -6,9 +6,32 @@ import { prefersReducedMotion } from '../theme/motion';
 export const LOOP_COPIES = 3;
 /** If wrap settle never fires, release the conveyor so D-pad is not frozen. */
 export const WRAP_UNLOCK_MS = 560;
+export const RAIL_NEAR_END_THRESHOLD = 12;
 
-export function shouldLoopRail(count: number, nativeTouch = false): boolean {
-  return count >= 2 && !nativeTouch;
+export function shouldLoopRail(count: number, _nativeTouch = false): boolean {
+  return count >= 2;
+}
+
+export function loopRepeatCopies(setWidth: number, viewWidth: number, margin = 360): number {
+  if (!Number.isFinite(setWidth) || !Number.isFinite(viewWidth) || setWidth <= 1 || viewWidth <= 0) return 1;
+  return Math.max(1, Math.min(8, Math.ceil((viewWidth + margin) / setWidth)));
+}
+
+export function isFocusNearRailEnd(index: number, total: number, threshold = RAIL_NEAR_END_THRESHOLD): boolean {
+  if (total <= 0 || index < 0) return false;
+  return index >= Math.max(0, total - threshold);
+}
+
+export function isScrollNearRailEnd(
+  scrollLeft: number,
+  clientWidth: number,
+  scrollWidth: number,
+  pitch: number,
+  threshold = RAIL_NEAR_END_THRESHOLD,
+): boolean {
+  if (scrollWidth <= 0 || pitch <= 1) return false;
+  const remaining = scrollWidth - (scrollLeft + clientWidth);
+  return remaining <= pitch * threshold;
 }
 
 export function loopSetWidth(scrollWidth: number, copies = LOOP_COPIES): number {
@@ -24,15 +47,17 @@ export function measureLoopSetWidth(track: HTMLElement): number {
   const copy0 = track.querySelector<HTMLElement>('[data-loop-copy="0"]');
   const copy1 = track.querySelector<HTMLElement>('[data-loop-copy="1"]');
   const copy2 = track.querySelector<HTMLElement>('[data-loop-copy="2"]');
+  const leadCopies = Math.max(1, Number(track.dataset?.loopLead ?? '1') || 1);
   if (copy0 !== null && copy1 !== null && copy0.offsetParent !== null) {
-    const width = copy1.offsetLeft - copy0.offsetLeft;
+    const width = (copy1.offsetLeft - copy0.offsetLeft) / leadCopies;
     if (width > 1) return width;
   }
   if (copy0 !== null && copy2 !== null && copy0.offsetParent !== null) {
-    const width = (copy2.offsetLeft - copy0.offsetLeft) / 2;
+    const width = (copy2.offsetLeft - copy0.offsetLeft) / (leadCopies + 1);
     if (width > 1) return width;
   }
-  return loopSetWidth(track.scrollWidth);
+  const copies = leadCopies * 2 + 1;
+  return loopSetWidth(track.scrollWidth, copies);
 }
 
 /** Prefer the last measured catalog width so scroll parking does not reflow. */
@@ -74,11 +99,12 @@ export function loopPitch(setWidth: number, count: number): number {
  * [0.5S, 1.5S) window assumed the viewport was as wide as one set, so a long
  * rail teleported onto copy-0 clones — visible titles that cannot take focus.
  */
-export function normalizeLoopScroll(scrollLeft: number, setWidth: number, viewWidth: number): number {
+export function normalizeLoopScroll(scrollLeft: number, setWidth: number, viewWidth: number, leadCopies = 1): number {
   if (setWidth <= 1) return scrollLeft;
+  const lead = Math.max(1, leadCopies);
   const half = Math.max(0, viewWidth) / 2;
-  const min = setWidth - half;
-  const max = setWidth * 2 - half;
+  const min = lead * setWidth - half;
+  const max = (lead + 1) * setWidth - half;
   if (max <= min) return scrollLeft;
   let x = scrollLeft;
   while (x < min) x += setWidth;
@@ -87,7 +113,8 @@ export function normalizeLoopScroll(scrollLeft: number, setWidth: number, viewWi
 }
 
 export function parkLoopScroll(track: HTMLElement, scrollLeft = track.scrollLeft): number {
-  return normalizeLoopScroll(scrollLeft, readLoopSetWidth(track), track.clientWidth);
+  const leadCopies = Math.max(1, Number(track.dataset?.loopLead ?? '1') || 1);
+  return normalizeLoopScroll(scrollLeft, readLoopSetWidth(track), track.clientWidth, leadCopies);
 }
 
 /** Wrap a pointer-driven scroll back into the middle set; returns the applied jump delta. */
@@ -95,8 +122,9 @@ export function wrapPointerScroll(track: HTMLElement): number {
   if (track.dataset.looping !== 'true') return 0;
   const setWidth = readLoopSetWidth(track);
   if (setWidth <= 1) return 0;
+  const leadCopies = Math.max(1, Number(track.dataset?.loopLead ?? '1') || 1);
   const current = track.scrollLeft;
-  const next = normalizeLoopScroll(current, setWidth, track.clientWidth);
+  const next = normalizeLoopScroll(current, setWidth, track.clientWidth, leadCopies);
   if (!isLoopSeamJump(current, next, setWidth)) return 0;
   track.scrollLeft = next;
   return next - current;

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { ChannelCard } from '../components/ChannelCard';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
 import { fieldValue, FocusField } from '../components/FocusField';
-import { LoadingScreen } from '../components/LoadingScreen';
 import { PageScene } from '../components/PageScene';
 import { Rail } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
+import { bundledFreeChannels, fetchFreeChannels, filterChannelsByAge, type LiveChannelWithMeta } from '../data/freeLive';
 import { fetchLive, saveXtream, type LiveChannel, type LiveStatus } from '../data/media';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
+import { fetchProfiles } from '../data/profiles';
 import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
@@ -30,8 +30,8 @@ const EMPTY: LiveStatus = {
   pickLimit: 48,
 };
 
-function groupedChannels(channels: LiveChannel[]): Array<{ name: string; channels: LiveChannel[] }> {
-  const map = new Map<string, LiveChannel[]>();
+function groupedChannels<T extends LiveChannel>(channels: readonly T[]): Array<{ name: string; channels: T[] }> {
+  const map = new Map<string, T[]>();
   for (const channel of channels) {
     const name = channel.group?.trim() || 'Live';
     const list = map.get(name) ?? [];
@@ -46,6 +46,8 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const scope = useFocusScope();
   const [status, setStatus] = useState<LiveStatus>(EMPTY);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
+  const [maxAge, setMaxAge] = useState<number>(18);
+  const [freeChannels, setFreeChannels] = useState<LiveChannelWithMeta[]>(() => bundledFreeChannels(18));
   const [loading, setLoading] = useState(true);
   const [group, setGroup] = useState<string | null>(null);
   const [host, setHost] = useState('');
@@ -54,16 +56,22 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const pageRef = useRef<HTMLElement>(null);
-  // The login form, until there is something to watch. The dev account's test
-  // channels count, so they can be played before any provider is added.
   const needsLogin = status.configured !== true && status.channels.length === 0;
 
   const load = (): void => {
     setLoading(true);
+    void fetchProfiles().then((registry) => {
+      const active = registry.profiles.find((p) => p.id === registry.activeId) ?? registry.profiles[0];
+      const profileWithMeta = active as (typeof active & { maxAge?: number; kind?: string }) | undefined;
+      const resolvedAge = profileWithMeta?.maxAge ?? (profileWithMeta?.kind === 'kids' ? 7 : 18);
+      setMaxAge(resolvedAge);
+      setFreeChannels(bundledFreeChannels(resolvedAge));
+      void fetchFreeChannels(resolvedAge).then((list) => setFreeChannels(list));
+    });
     void Promise.all([fetchLive(), fetchPlan()]).then(([next, nextPlan]) => {
       applyPlanClass(nextPlan);
       setPlan(nextPlan);
-      const statusBody = next ?? { ...EMPTY, error: 'unreachable', configured: true };
+      const statusBody = next ?? { ...EMPTY, error: 'unreachable', configured: false };
       setStatus(statusBody);
       setLoading(false);
     });
@@ -76,14 +84,14 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   useEffect(() => bindKeyboardFields(pageRef.current), []);
 
   useEffect(() => {
-    if (loading || busy) {
-      const timer = window.setTimeout(() => requestFocus(`${scope}/live-loading-back`), 0);
+    const firstFree = freeChannels[0];
+    if (firstFree !== undefined) {
+      const timer = window.setTimeout(() => requestFocus(`${scope}/${firstFree.id.replaceAll(':', '-')}`), 0);
       return () => window.clearTimeout(timer);
     }
-    const id = needsLogin ? 'host' : 'live-picks';
-    const timer = window.setTimeout(() => requestFocus(`${scope}/${id}`), 0);
+    const timer = window.setTimeout(() => requestFocus(`${scope}/live-back`), 0);
     return () => window.clearTimeout(timer);
-  }, [busy, loading, needsLogin, scope]);
+  }, [freeChannels, scope]);
 
   const connect = async (): Promise<void> => {
     const nextHost = (fieldValue('host') || host).trim();
@@ -110,9 +118,19 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
     }
   };
 
-  const channels = status.channels;
-  const gated = !loading && needsLogin;
-  const locked = !gated && !plan.liveTv && channels.length === 0 && (status.total ?? 0) === 0;
+  const freeGroups = useMemo(() => groupedChannels(freeChannels), [freeChannels]);
+  const freeQueue = useMemo(
+    () =>
+      freeChannels.map((ch) => ({
+        id: ch.id,
+        name: ch.name,
+        url: ch.url ?? '',
+        geo: ch.geo ?? null,
+      })),
+    [freeChannels],
+  );
+
+  const channels = useMemo(() => filterChannelsByAge(status.channels, maxAge), [maxAge, status.channels]);
   const groups = useMemo(() => groupedChannels(channels), [channels]);
   const visibleGroups = group === null ? groups : groups.filter((entry) => entry.name === group);
   const picked = status.picked ?? 0;
@@ -120,57 +138,105 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const pickLimit = status.pickLimit ?? 48;
 
   return (
-    <main ref={pageRef} className={`page page--library page--docked page--live home${gated ? ' page--setup' : ''}`} data-keyboard-fields="">
+    <main ref={pageRef} className="page page--library page--docked page--live home" data-keyboard-fields="">
       <PageScene />
       <Ribbon active="live" />
-      {!gated && !loading && !busy && (
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Live TV</p>
-          <h1 className="page__heading">{status.needsPicks === true ? 'Choose channels' : 'Your channels'}</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="live-back" />
+          <div>
+            <p className="stage__kicker">Live TV</p>
+            <h1 className="page__heading">{status.needsPicks === true ? 'Choose channels' : 'Live TV'}</h1>
+          </div>
         </div>
         <div className="hero__actions">
-          <FocusButton id="live-picks" variant="primary" onSelect={() => navigate.push('live-picks')}>
+          <FocusButton id="live-picks" className="tvm-button--glass" onSelect={() => navigate.push('live-picks')}>
             Choose channels
           </FocusButton>
           {plan.developer ? (
-          <FocusButton id="live-check" variant="quiet" onSelect={() => navigate.push('live-check')}>
-            Check channels
-          </FocusButton>
+            <FocusButton id="live-check" variant="quiet" onSelect={() => navigate.push('live-check')}>
+              Check channels
+            </FocusButton>
           ) : null}
           <FocusButton id="live-settings" variant="quiet" onSelect={() => navigate.push('live-xtream')}>
             Login
           </FocusButton>
         </div>
       </header>
-      )}
 
-      {loading || busy ? (
-        <LoadingScreen
-          eyebrow="Live TV"
-          title={busy ? 'Signing in…' : 'Loading Live TV…'}
-          body={
-            busy
-              ? 'Checking the login and loading your channels. This stays on this machine.'
-              : 'Checking whether a Live TV login or playlist is already on this machine.'
-          }
-          actions={
-            <FocusButton id="live-loading-back" className="tvm-button--glass" onSelect={() => navigate.pop()}>
-              Back
-            </FocusButton>
-          }
-        />
-      ) : gated ? (
-        <>
-          <div className="setup-scrim" aria-hidden="true" />
-          <section className="setup-card" role="dialog" aria-modal="true" aria-labelledby="live-setup-title">
-            <p className="stage__kicker">Live TV</p>
-            <h1 id="live-setup-title" className="page__heading">
+      <section className="live-section" aria-label="Free channels">
+        <h2 className="live-section__title">Free channels</h2>
+        <p className="page__lede">
+          Free official broadcasts that work right away with no login or playlist.
+        </p>
+        {freeGroups.length === 0 ? (
+          <p className="page__lede">No free channels match your current profile age limit.</p>
+        ) : (
+          <div className="live-shelf">
+            {freeGroups.map((entry) => (
+              <Rail
+                key={`free-${entry.name}`}
+                id={`live-free-${entry.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                title={entry.name}
+              >
+                {entry.channels.map((channel) => (
+                  <ChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    focusId={channel.id.replaceAll(':', '-')}
+                    onSelect={() =>
+                      navigate.pushModal('player', {
+                        params: {
+                          ...livePlayerParams(channel),
+                          link: channel.url ?? '',
+                          channelGeo: channel.geo ?? null,
+                          freeQueue,
+                        },
+                      })
+                    }
+                  />
+                ))}
+              </Rail>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="live-section" aria-label="Your channels">
+        <h2 className="live-section__title">Your playlist and login</h2>
+        {loading || busy ? (
+          <p className="page__lede">{busy ? 'Signing in and checking your channels…' : 'Checking saved Live TV login or playlist…'}</p>
+        ) : !plan.liveTv && channels.length === 0 && total === 0 ? (
+          <div className="live-inline-card glass glass--card">
+            <p className="page__lede">Add an M3U playlist or upgrade for your own Live TV login.</p>
+            <div className="hero__actions">
+              <FocusButton id="add-playlist" variant="primary" onSelect={() => navigate.push('live-playlist')}>
+                Add a playlist
+              </FocusButton>
+              <FocusButton id="live-upgrade" className="tvm-button--glass" onSelect={() => navigate.push('plans')}>
+                View plans
+              </FocusButton>
+            </div>
+          </div>
+        ) : status.error === 'unreachable' ? (
+          <div className="live-inline-card glass glass--card">
+            <p className="page__lede">Could not load your saved playlist right now. Free channels above are still available.</p>
+            <div className="hero__actions">
+              <FocusButton id="live-retry" variant="primary" onSelect={load}>
+                Retry playlist
+              </FocusButton>
+              <FocusButton id="add-playlist" className="tvm-button--glass" onSelect={() => navigate.push('live-playlist')}>
+                Edit playlist
+              </FocusButton>
+            </div>
+          </div>
+        ) : needsLogin ? (
+          <div className="live-inline-card glass glass--card" role="region" aria-labelledby="live-setup-title">
+            <h3 id="live-setup-title" className="live-section__title">
               Enter your Live TV login
-            </h1>
+            </h3>
             <p className="page__lede">
-              Paste the server, username and password for a live TV panel you are allowed to use, then press OK. Home
-              and the other apps stay open without this. It stays on this machine only.
+              Optional: paste your Xtream login or add an M3U playlist. Your credentials stay on this machine only.
             </p>
             {message !== null && <p className="page__message">{message}</p>}
             <label className="token-field">
@@ -215,133 +281,81 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
               <FocusButton id="save" variant="primary" disabled={busy} onSelect={() => void connect()}>
                 {busy ? 'Connecting…' : 'Continue'}
               </FocusButton>
-              <FocusButton id="live-back" className="tvm-button--glass" onSelect={() => navigate.pop()}>
-                Back
-              </FocusButton>
-            </div>
-          </section>
-        </>
-      ) : locked ? (
-        <EmptyState
-          eyebrow={plan.liveTvOptional ? 'Add-on' : 'Paid plans'}
-          title="Live TV is a paid add-on"
-          body={
-            plan.liveTvOptional
-              ? 'Live TV is billed separately: 3-month $39.99, 1-year $89.99, or lifetime $599. Choose a term at checkout. You can also paste an M3U playlist you are allowed to use.'
-              : 'Live TV is available on Basic and up, billed as 3-month, 1-year or lifetime. You can still add a playlist you are allowed to use.'
-          }
-          actions={
-            <>
-              {plan.liveTvOptional ? (
-                <FocusButton id="live-enable" variant="primary" onSelect={() => navigate.push('plans')}>
-                  Choose Live TV
-                </FocusButton>
-              ) : (
-                <FocusButton id="live-upgrade" variant="primary" onSelect={() => navigate.push('plans')}>
-                  View plans
-                </FocusButton>
-              )}
-              <FocusButton id="add-playlist" onSelect={() => navigate.push('live-playlist')}>
+              <FocusButton id="add-playlist" className="tvm-button--glass" onSelect={() => navigate.push('live-playlist')}>
                 Add a playlist
               </FocusButton>
-              <FocusButton id="back" onSelect={() => navigate.pop()}>
-                Back
-              </FocusButton>
-            </>
-          }
-        />
-      ) : status.error === 'unreachable' ? (
-        <ErrorState
-          title="Playlist could not be loaded"
-          body="TVM could not fetch the M3U address saved in Settings. Check the URL and the network, then retry."
-          onRetry={load}
-          onBack={() => navigate.pop()}
-        />
-      ) : status.needsPicks === true && channels.length === 0 ? (
-        <EmptyState
-          eyebrow={`${total} channels in playlist`}
-          title="Pick the channels you watch"
-          body={`This playlist is too large to show at once. Choose up to ${pickLimit} channels. The same lineup appears on this computer and on Roku.`}
-          actions={
-            <>
+            </div>
+          </div>
+        ) : status.needsPicks === true && channels.length === 0 ? (
+          <div className="live-inline-card glass glass--card">
+            <p className="page__lede">
+              Choose up to {pickLimit} channels from your {total}-channel playlist.
+            </p>
+            <div className="hero__actions">
               <FocusButton id="choose-channels" variant="primary" onSelect={() => navigate.push('live-picks')}>
                 Choose channels
               </FocusButton>
-              <FocusButton id="add-playlist" onSelect={() => navigate.push('live-playlist')}>
+              <FocusButton id="add-playlist" className="tvm-button--glass" onSelect={() => navigate.push('live-playlist')}>
                 Playlist
               </FocusButton>
-            </>
-          }
-        />
-      ) : channels.length === 0 ? (
-        <EmptyState
-          eyebrow="No live source connected"
-          title="Add a playlist you are allowed to use"
-          body="TVM plays channels from an M3U or M3U8 playlist you supply, plus a sample layout pack when Live TV is on your plan. It does not scrape BBC, Sky, or sports streams."
-          actions={
-            <>
+            </div>
+          </div>
+        ) : channels.length === 0 ? (
+          <div className="live-inline-card glass glass--card">
+            <p className="page__lede">Add an M3U or M3U8 playlist to show your own channels below the free channels.</p>
+            <div className="hero__actions">
               <FocusButton id="add-playlist" variant="primary" onSelect={() => navigate.push('live-playlist')}>
                 Add a playlist
               </FocusButton>
-              <FocusButton id="back" onSelect={() => navigate.pop()}>
-                Back
-              </FocusButton>
-            </>
-          }
-        />
-      ) : (
-        <>
-          <p className="page__lede">
-            {total > 0 ? `${picked || channels.length} of ${total} channels on Live TV.` : `${channels.length} channels.`}
-            {status.needsPicks === true ? ' Choose which channels to keep on this screen.' : ''}
-            {channels.some((channel) => channel.id.startsWith('live:test:'))
-              ? ' DW News is a test channel for the TVM proxy: a real broadcast, shown while the dev is signed in.'
-              : ''}
-            {channels.some((channel) => channel.id.startsWith('live:mock:'))
-              ? ' Sample tiles use demo streams for layout only. They are not Sky, TNT or USA Network.'
-              : ''}
-          </p>
-          {groups.length > 1 ? (
-            <div className="channel-chips" data-wrap="row" aria-label="Groups">
-              <FocusButton
-                id="live-group-all"
-                className={`channel-chip${group === null ? ' channel-chip--on' : ''}`}
-                onSelect={() => setGroup(null)}
-              >
-                All
-              </FocusButton>
-              {groups.map((entry) => (
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="page__lede">
+              {total > 0 ? `${picked || channels.length} of ${total} channels on Live TV.` : `${channels.length} channels.`}
+            </p>
+            {groups.length > 1 ? (
+              <div className="channel-chips" data-wrap="row" aria-label="Groups">
                 <FocusButton
-                  key={entry.name}
-                  id={`live-group-${entry.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-                  className={`channel-chip${group === entry.name ? ' channel-chip--on' : ''}`}
-                  onSelect={() => setGroup(entry.name)}
+                  id="live-group-all"
+                  className={`channel-chip${group === null ? ' channel-chip--on' : ''}`}
+                  onSelect={() => setGroup(null)}
                 >
-                  {entry.name}
+                  All
                 </FocusButton>
+                {groups.map((entry) => (
+                  <FocusButton
+                    key={entry.name}
+                    id={`live-group-${entry.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                    className={`channel-chip${group === entry.name ? ' channel-chip--on' : ''}`}
+                    onSelect={() => setGroup(entry.name)}
+                  >
+                    {entry.name}
+                  </FocusButton>
+                ))}
+              </div>
+            ) : null}
+            <div className="live-shelf">
+              {visibleGroups.map((entry) => (
+                <Rail
+                  key={entry.name}
+                  id={`live-${entry.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                  title={visibleGroups.length > 1 || group !== null ? entry.name : undefined}
+                >
+                  {entry.channels.map((channel) => (
+                    <ChannelCard
+                      key={channel.id}
+                      channel={channel}
+                      focusId={channel.id.replaceAll(':', '-')}
+                      onSelect={() => navigate.pushModal('player', { params: livePlayerParams(channel) })}
+                    />
+                  ))}
+                </Rail>
               ))}
             </div>
-          ) : null}
-          <div className="live-shelf">
-            {visibleGroups.map((entry) => (
-              <Rail
-                key={entry.name}
-                id={`live-${entry.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-                title={visibleGroups.length > 1 || group !== null ? entry.name : undefined}
-              >
-                {entry.channels.map((channel) => (
-                  <ChannelCard
-                    key={channel.id}
-                    channel={channel}
-                    focusId={channel.id.replaceAll(':', '-')}
-                    onSelect={() => navigate.pushModal('player', { params: livePlayerParams(channel) })}
-                  />
-                ))}
-              </Rail>
-            ))}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </section>
     </main>
   );
 }

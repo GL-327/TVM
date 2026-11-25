@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
@@ -12,7 +13,9 @@ import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import { GlassSegmented } from '../components/GlassSegmented';
 import { applyTheme, readStoredTheme } from '../theme/apply';
+import { applyGlassStyle, GLASS_STYLES, readStoredGlass, type GlassStyle } from '../theme/glass';
 import { THEMES, type ThemeId } from '../theme/registry';
 import { applyMotionPreference, applyPerformanceMode, readMotionPreference, readPerformanceMode } from '../theme/motion';
 
@@ -22,6 +25,7 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
   const [accessDetail, setAccessDetail] = useState('Loading…');
   const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
+  const [glassStyle, setGlassStyle] = useState<GlassStyle>(readStoredGlass);
   const [motion, setMotion] = useState(readMotionPreference);
   const [performance, setPerformance] = useState(readPerformanceMode);
   const [language, setLanguage] = useState(() => readPrefs().language);
@@ -81,9 +85,12 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
       <PageScene />
       <Ribbon active="settings" />
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Device and services</p>
-          <h1 className="page__heading">Settings</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="settings-back" />
+          <div>
+            <p className="stage__kicker">Device and services</p>
+            <h1 className="page__heading">Settings</h1>
+          </div>
         </div>
       </header>
       <div className="settings-list" data-wrap="y">
@@ -124,6 +131,19 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
             </FocusButton>
           );
         })}
+        <div className="settings-glass-row">
+          <div className="settings-glass-row__label">
+            <strong>Glass style</strong>
+            <span>Clear, balanced default, or richer tinted panels</span>
+          </div>
+          <GlassSegmented
+            idPrefix="glass"
+            ariaLabel="Glass style"
+            options={GLASS_STYLES}
+            value={glassStyle}
+            onChange={(next) => setGlassStyle(applyGlassStyle(next))}
+          />
+        </div>
         </section>
         <section className="settings-group">
           <h2 className="settings-group__title">Language</h2>
@@ -163,6 +183,9 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         ) : null}
         <FocusButton id="profiles" className="settings-row" detail="TVM Stream only" onSelect={() => navigate.push('profiles')}>
           Profiles
+        </FocusButton>
+        <FocusButton id="streaming-services" className="settings-row" detail="Connect external services" onSelect={() => navigate.push('your-services')}>
+          Streaming services
         </FocusButton>
         <FocusButton id="realdebrid" className="settings-row" detail="Your token" onSelect={() => navigate.push('realdebrid')}>
           Real-Debrid
@@ -204,6 +227,9 @@ export function Settings(_props: ScreenProps): React.JSX.Element {
         </FocusButton>
         <FocusButton id="updates" className="settings-row" detail="GLogic Studios" onSelect={() => navigate.push('updates')}>
           Updates
+        </FocusButton>
+        <FocusButton id="whats-new" className="settings-row" detail="Release notes" onSelect={() => navigate.push('whats-new')}>
+          What's new
         </FocusButton>
         <FocusButton
           id="auto-update"

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { FocusButton } from '../../components/FocusButton';
 import { IconVolume, IconVolumeMute } from '../../components/Icons';
+import { applyBoostedVolume, isMediaCorsLimited, MAX_BOOST_VOLUME } from '../audioGain';
 
 export const PLAYER_MUTE_ID = 'player-mute';
 export const VOLUME_STEP = 0.1;
 export const VOLUME_WHEEL_STEP = 0.05;
 export const OS_VOLUME_HINT = 'Use the TV volume buttons';
+export const CORS_VOLUME_LIMIT_HINT = 'Max for this stream';
 
 export type VolumeMode = 'programmable' | 'os' | 'pending';
 
@@ -107,11 +109,23 @@ const CSS = `
 .player-volume__track {
   position: relative;
   display: block;
-  width: 7.6rem;
+  width: 8.6rem;
   height: 0.42rem;
-  overflow: hidden;
+  overflow: visible;
   border-radius: var(--tvm-radius-pill, 999rem);
   background: var(--player-track, rgba(255, 255, 255, 0.22));
+  pointer-events: none;
+}
+
+.player-volume__tick {
+  position: absolute;
+  left: 50%;
+  top: -0.22rem;
+  bottom: -0.22rem;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.72);
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -168,9 +182,9 @@ function ensureStyles(): void {
   document.head.appendChild(style);
 }
 
-export function clampVolume(value: number): number {
+export function clampVolume(value: number, maxVolume = MAX_BOOST_VOLUME): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+  return Math.max(0, Math.min(maxVolume, Math.round(value * 100) / 100));
 }
 
 /**
@@ -195,12 +209,12 @@ export function canSetVideoVolume(media: HTMLMediaElement | null | undefined): b
   }
 }
 
-/** 0 at the left edge of the track, 1 at the right. */
-export function volumeFromClientX(clientX: number, rect: { left: number; width: number }): number {
+/** 0 at the left edge of the track, `maxVolume` at the right edge (default 2 = 200%). */
+export function volumeFromClientX(clientX: number, rect: { left: number; width: number }, maxVolume = MAX_BOOST_VOLUME): number {
   if (!Number.isFinite(clientX) || !Number.isFinite(rect.left) || !Number.isFinite(rect.width) || rect.width <= 0) {
     return 0;
   }
-  return clampVolume((clientX - rect.left) / rect.width);
+  return clampVolume(((clientX - rect.left) / rect.width) * maxVolume, maxVolume);
 }
 
 export function resolveVolumeMode(input: {
@@ -266,6 +280,8 @@ export function VolumeControl({
   const [found, setFound] = useState<HTMLVideoElement | null>(null);
   const [localVolume, setLocalVolume] = useState(1);
   const [localMuted, setLocalMuted] = useState(false);
+  const [corsLimited, setCorsLimited] = useState(false);
+  const logicalVolRef = useRef(1);
   const chromeVisible = controlsVisible ?? visible ?? true;
 
   const resolveVideo = useCallback(
@@ -289,8 +305,13 @@ export function VolumeControl({
   useEffect(() => {
     const node = resolveVideo();
     if (node === null) return;
+    setCorsLimited(isMediaCorsLimited(node));
     const sync = (): void => {
-      setLocalVolume(node.volume);
+      // Element.volume peaks at 1.0 even when Web Audio GainNode boosts above 100%.
+      if (!(logicalVolRef.current > 1 && node.volume >= 0.99)) {
+        logicalVolRef.current = node.volume;
+        setLocalVolume(node.volume);
+      }
       setLocalMuted(node.muted);
     };
     sync();
@@ -306,7 +327,11 @@ export function VolumeControl({
     programmable: setVolume !== undefined,
   });
 
-  const volume = clampVolume(volumeProp ?? localVolume);
+  const canBoost = engine !== 'native' && !nativeShell(hostRef.current);
+  const maxVolume = canBoost && !corsLimited ? MAX_BOOST_VOLUME : 1;
+  const maxPercent = Math.round(maxVolume * 100);
+  const volume = clampVolume(volumeProp ?? localVolume, maxVolume);
+  logicalVolRef.current = volume;
   const muted = mutedProp ?? localMuted;
   const silent = muted || volume === 0;
   const shown = Math.round((silent ? 0 : volume) * 100);
@@ -314,21 +339,30 @@ export function VolumeControl({
   const applyLevel = useCallback(
     (next: number): void => {
       if (mode !== 'programmable') return;
-      const value = clampVolume(next);
+      const requested = clampVolume(next, canBoost ? MAX_BOOST_VOLUME : 1);
       bumpActivity(showControls);
+      const media = resolveVideo();
+      let value = requested;
+      if (media !== null && canBoost) {
+        const res = applyBoostedVolume(media, requested, false, canBoost);
+        value = res.applied;
+        if (res.corsLimited) setCorsLimited(true);
+      }
+      logicalVolRef.current = value;
       if (setVolume !== undefined) {
         setVolume(value);
         return;
       }
-      const media = resolveVideo();
-      if (media !== null) {
-        media.volume = value;
+      if (media !== null && !canBoost) {
+        media.volume = Math.min(1, value);
+        media.muted = value === 0;
+      } else if (media !== null) {
         media.muted = value === 0;
       }
       setLocalVolume(value);
       setLocalMuted(value === 0);
     },
-    [mode, resolveVideo, setVolume, showControls],
+    [canBoost, mode, resolveVideo, setVolume, showControls],
   );
 
   const applyDelta = useCallback(
@@ -336,19 +370,33 @@ export function VolumeControl({
       if (mode !== 'programmable') return;
       bumpActivity(showControls);
       if (adjustVolume !== undefined) {
+        const media = resolveVideo();
+        const target = clampVolume(volume + delta, canBoost ? MAX_BOOST_VOLUME : 1);
+        if (media !== null && canBoost && target > 1) {
+          const res = applyBoostedVolume(media, target, false, canBoost);
+          if (res.corsLimited) {
+            setCorsLimited(true);
+            setVolume?.(1);
+            return;
+          }
+        }
         adjustVolume(delta);
         return;
       }
       const media = resolveVideo();
-      const next = clampVolume((media?.volume ?? volume) + delta);
+      const target = clampVolume(logicalVolRef.current + delta, canBoost ? MAX_BOOST_VOLUME : 1);
+      let applied = target;
       if (media !== null) {
-        media.volume = next;
+        const res = applyBoostedVolume(media, target, false, canBoost);
+        applied = res.applied;
+        if (res.corsLimited) setCorsLimited(true);
         media.muted = false;
       }
-      setLocalVolume(next);
+      logicalVolRef.current = applied;
+      setLocalVolume(applied);
       setLocalMuted(false);
     },
-    [adjustVolume, mode, resolveVideo, showControls, volume],
+    [adjustVolume, canBoost, mode, resolveVideo, setVolume, showControls, volume],
   );
 
   const toggleMute = useCallback((): void => {
@@ -429,7 +477,7 @@ export function VolumeControl({
         role="slider"
         aria-label="Volume"
         aria-valuemin={0}
-        aria-valuemax={100}
+        aria-valuemax={maxPercent}
         aria-valuenow={shown}
         aria-valuetext={silent ? 'Muted' : `${shown} percent`}
         onPointerDown={(event) => {
@@ -437,7 +485,7 @@ export function VolumeControl({
           event.preventDefault();
           event.stopPropagation();
           const track = event.currentTarget.querySelector('.player-volume__track') ?? event.currentTarget;
-          applyLevel(volumeFromClientX(event.clientX, track.getBoundingClientRect()));
+          applyLevel(volumeFromClientX(event.clientX, track.getBoundingClientRect(), maxVolume));
           try {
             event.currentTarget.setPointerCapture(event.pointerId);
           } catch {
@@ -449,7 +497,7 @@ export function VolumeControl({
           event.preventDefault();
           event.stopPropagation();
           const track = event.currentTarget.querySelector('.player-volume__track') ?? event.currentTarget;
-          applyLevel(volumeFromClientX(event.clientX, track.getBoundingClientRect()));
+          applyLevel(volumeFromClientX(event.clientX, track.getBoundingClientRect(), maxVolume));
         }}
         onPointerUp={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -460,11 +508,13 @@ export function VolumeControl({
         <span className="player-volume__track player__vol-track">
           <span
             className="player-volume__fill player__vol-fill"
-            style={{ transform: `scaleX(${shown / 100})` }}
+            style={{ transform: `scaleX(${Math.min(1, shown / maxPercent)})` }}
           />
+          {canBoost && !corsLimited && <span className="player-volume__tick" aria-hidden="true" title="100%" />}
         </span>
-        <span className="player-volume__pct">{shown}</span>
+        <span className="player-volume__pct">{shown}%</span>
       </button>
+      {corsLimited && <span className="player-volume__hint">{CORS_VOLUME_LIMIT_HINT}</span>}
     </div>
   );
 }

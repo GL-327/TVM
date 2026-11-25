@@ -1,8 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
+import { ImdbBadge } from '../components/ImdbBadge';
 import { mapRailPosters } from '../components/PosterCard';
-import { Rail } from '../components/Rail';
+import { Rail, RailPaging } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
 import { RailSkeletons } from '../components/Skeleton';
 import { BrandLockup } from '../components/BrandLockup';
@@ -11,8 +12,15 @@ import { HeroArt } from '../components/HeroArt';
 import { ART_REFERRER } from '../components/artFace';
 import { PageScene } from '../components/PageScene';
 import { ToastPill, useToast } from '../components/ToastPill';
+import { ChangelogCornerCard } from '../components/ChangelogCornerCard';
 import { preferBackdrop } from '../data/artwork';
 import { addWatchlist, asTitle, fetchHome, peekHome, removeWatchlist, toMediaItem, type CatalogRail } from '../data/media';
+import { filterItemsByAge } from '../data/parental';
+import { effectiveProfileMaxAge, fetchProfiles, peekActiveProfile, subscribeProfiles } from '../data/profiles';
+import { fetchActiveEvents, type ActiveEvent } from '../data/events';
+import { usePagedRails } from '../data/usePagedRails';
+import { requestFocus } from '../nav/focusEngine';
+import { focusKeyFor } from '../nav/railNav';
 import { applyPlanClass, fetchPlan } from '../data/plan';
 import { enterTvmStream } from '../data/profiles';
 import { launchTitle } from '../data/launchTitle';
@@ -48,21 +56,31 @@ function shelfTitle(title: string): string {
 
 const HomeShelves = memo(function HomeShelves({
   watching,
+  eventRail,
   watchlist,
   catalogRails,
   loading,
   openTitle,
+  onLoadMore,
 }: {
   watching: Title[];
+  eventRail: { id: string; title: string; titles: Title[] } | null;
   watchlist: Title[];
-  catalogRails: Array<{ id: string; title: string; titles: Title[] }>;
+  catalogRails: Array<{ id: string; title: string; more?: boolean; titles: Title[] }>;
   loading: boolean;
   openTitle: (title: Title) => void;
+  onLoadMore: (railId: string) => void;
 }): React.JSX.Element {
   return (
     <div className="home__shelf">
       {watching.length > 0 && (
         <Rail title={shelfTitle('Continue watching')} loop={false}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
+      )}
+
+      {eventRail !== null && eventRail.titles.length > 0 && (
+        <Rail id={eventRail.id} title={eventRail.title} loop={eventRail.titles.length >= 2}>
+          {mapRailPosters(eventRail.titles, eventRail.id, openTitle)}
+        </Rail>
       )}
 
       {watchlist.length > 0 && (
@@ -71,9 +89,11 @@ const HomeShelves = memo(function HomeShelves({
 
       {catalogRails.length > 0 ? (
         catalogRails.map((rail) => (
-          <Rail key={rail.id} title={shelfTitle(rail.title)}>
-            {mapRailPosters(rail.titles, rail.id, openTitle)}
-          </Rail>
+          <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
+            <Rail key={rail.id} title={shelfTitle(rail.title)}>
+              {mapRailPosters(rail.titles, rail.id, openTitle)}
+            </Rail>
+          </RailPaging>
         ))
       ) : loading ? (
         <Rail bare id="for-you-1">
@@ -93,6 +113,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   const [watching, setWatching] = useState<Title[]>(() => (cached?.continueWatching ?? []).map(asTitle));
   const [watchlist, setWatchlist] = useState<Title[]>(() => (cached?.watchlist ?? []).map(asTitle));
   const [rails, setRails] = useState<CatalogRail[]>(cached?.rails ?? []);
+  const [activeEvents, setActiveEvents] = useState<ActiveEvent[]>([]);
+  const [maxAge, setMaxAge] = useState(() => effectiveProfileMaxAge(peekActiveProfile()));
+  const { rails: pagedRails, loadMore: loadMoreRail } = usePagedRails(rails);
   const [featured, setFeatured] = useState<Title | null>(() =>
     cached?.featured !== null && cached?.featured !== undefined ? asTitle(cached.featured) : null,
   );
@@ -105,6 +128,8 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     void fetchPlan().then((status) => {
       applyPlanClass(status);
     });
+    void fetchProfiles().then(() => setMaxAge(effectiveProfileMaxAge(peekActiveProfile())));
+    return subscribeProfiles(() => setMaxAge(effectiveProfileMaxAge(peekActiveProfile())));
   }, []);
 
   useEffect(() => {
@@ -129,6 +154,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     };
 
     void load(peekHome() !== null);
+    void fetchActiveEvents().then((events) => {
+      if (!cancelled) setActiveEvents(events);
+    });
     const timer = window.setInterval(() => void load(true), 90_000);
     return () => {
       cancelled = true;
@@ -167,8 +195,12 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     }
   }, [displayHero, heroSaved, showToast, watchlistBusy]);
   const catalogRails = useMemo(
-    () => rails.filter(rail => rail.id !== 'anime-adapted').map((rail) => ({ ...rail, titles: rail.items.map(asTitle) })).filter((rail) => rail.titles.length > 0),
-    [rails],
+    () =>
+      pagedRails
+        .filter((rail) => rail.id !== 'anime-adapted')
+        .map((rail) => ({ ...rail, titles: filterItemsByAge(rail.items, maxAge).map(asTitle) }))
+        .filter((rail) => rail.titles.length > 0),
+    [maxAge, pagedRails],
   );
 
   /*
@@ -331,14 +363,64 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     );
   }
 
-  const hero = displayHero;
+  const liveEvent = activeEvents[0] ?? null;
+  const eventSpotlight = useMemo<Title | undefined>(() => {
+    if (liveEvent === null) return undefined;
+    const raw = liveEvent.spotlight ?? liveEvent.items.find((item) => item.backdrop !== '') ?? liveEvent.items[0];
+    if (raw !== undefined) {
+      const converted = asTitle(raw);
+      return converted.title !== '' ? converted : { ...converted, title: liveEvent.title };
+    }
+    return {
+      id: liveEvent.imdbId,
+      title: liveEvent.title,
+      year: 0,
+      kind: 'movie',
+      synopsis: liveEvent.line,
+      poster: '',
+      backdrop: '',
+      genres: [],
+      rating: '',
+      hue: 28,
+    };
+  }, [liveEvent]);
+
+  const eventRail = useMemo(() => {
+    if (liveEvent === null) return null;
+    const titles = liveEvent.items.map(asTitle);
+    if (titles.length === 0) return null;
+    return { id: liveEvent.rail.id, title: liveEvent.rail.title, titles };
+  }, [liveEvent]);
+
+  const hero = liveEvent !== null ? eventSpotlight : displayHero;
   const heroSrc = hero === undefined ? '' : preferBackdrop(hero.id, hero.backdrop, hero.poster);
+
+  const openEventRail = useCallback((): void => {
+    if (liveEvent === null) return;
+    const railEl = pageRef.current?.querySelector<HTMLElement>(`[data-rail="${liveEvent.rail.id}"]`);
+    if (railEl === null || railEl === undefined) {
+      if (eventSpotlight !== undefined) openTitle(eventSpotlight);
+      return;
+    }
+    railEl.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    const firstCard = railEl.querySelector<HTMLElement>('[data-focus-id]:not([data-loop-clone="true"])');
+    const key = firstCard !== null ? focusKeyFor(firstCard) : null;
+    if (key !== null) requestFocus(key);
+  }, [eventSpotlight, liveEvent, openTitle]);
+
+  const heroStyle = liveEvent !== null
+    ? ({
+        ['--tvm-glass27-primary' as string]: liveEvent.accent,
+        ['--tvm-event-accent' as string]: liveEvent.accent,
+        ['--tvm-event-glow' as string]: liveEvent.glow,
+      } as CSSProperties)
+    : undefined;
 
   return (
     <main className="home home--launcher" ref={pageRef}>
       <PageScene />
       <Ribbon active="home" />
-      <section className="stage stage--home">
+      <section className={`stage stage--home${liveEvent !== null ? ' stage--event' : ''}`} style={heroStyle}>
         {hero !== undefined ? (
           <HeroArt src={heroSrc} hue={hero.hue} />
         ) : loading ? (
@@ -348,52 +430,80 @@ export function Home(_props: ScreenProps): React.JSX.Element {
             </div>
           </div>
         ) : null}
+        {liveEvent !== null && <div className="stage__event-glow" aria-hidden="true" />}
         <div className="stage__vignette" aria-hidden="true" />
         <HomeClock />
         <div className="stage__copy">
           <p className="stage__kicker home__kicker">
             <span className="home__kicker-home">Home</span>
-            {hero !== undefined ? <span className="home__kicker-source">Featured on TVM Stream</span> : null}
+            {liveEvent !== null ? (
+              <span className="home__kicker-source stage__event-kicker">{liveEvent.kicker}</span>
+            ) : hero !== undefined ? (
+              <span className="home__kicker-source">Featured on TVM Stream</span>
+            ) : null}
+            {hero !== undefined && hero.rating !== '' && (
+              <ImdbBadge compact id="hero-imdb" mediaId={hero.id} rating={hero.rating} isSeries={hero.kind === 'series'} />
+            )}
           </p>
-          {hero !== undefined ? (
+          {liveEvent !== null ? (
+            <>
+              <h1 key={liveEvent.id} className="stage__title">{liveEvent.title}</h1>
+              <p className="stage__event-line glass-scrim">{liveEvent.line}</p>
+            </>
+          ) : hero !== undefined ? (
             <h1 key={hero.id} className={`stage__title${hero.wordmark === 'ember' ? ' stage__title--ember' : ''}`}>{hero.title}</h1>
           ) : (
             <h1 className="stage__title">Welcome</h1>
           )}
-          <p className="stage__watchline">
-            <FocusButton
-              id="hero-play"
-              className="stage__watchnow"
-              onSelect={() => (hero !== undefined ? openTitle(hero) : openStream())}
-            >
-              {hero !== undefined ? 'Watch' : 'TVM Stream'}
-            </FocusButton>
-            <span className="stage__watchline-rule" aria-hidden="true">
-              |
-            </span>
-            <BrandLockup focusId="hero-mark" />
-          </p>
-          <div className="stage__actions" data-wrap="row">
-            <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={openStream}>
-              Browse TVM Stream
-            </FocusButton>
-            {hero !== undefined && (
-              <FocusButton
-                id="hero-watchlist"
-                className="tvm-button--glass stage__watchlist"
-                disabled={watchlistBusy}
-                onSelect={() => void toggleHeroWatchlist()}
-              >
-                {heroSaved ? '✓ In My List' : '+ My List'}
+          {liveEvent !== null ? (
+            <div className="stage__actions" data-wrap="row">
+              <FocusButton id="hero-play" variant="primary" onSelect={openEventRail}>
+                {/catch up/i.test(liveEvent.line) ? 'Catch up' : 'Watch the saga'}
               </FocusButton>
-            )}
-          </div>
-          {heroes.length > 1 && (
-            <div className="stage__dots" aria-hidden="true">
-              {heroes.map((item, index) => (
-                <span key={item.id} className={`stage__dot${index === slide ? ' stage__dot--on' : ''}`} />
-              ))}
+              {eventSpotlight !== undefined && (
+                <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={() => openTitle(eventSpotlight)}>
+                  Details
+                </FocusButton>
+              )}
             </div>
+          ) : (
+            <>
+              <p className="stage__watchline">
+                <FocusButton
+                  id="hero-play"
+                  className="stage__watchnow"
+                  onSelect={() => (hero !== undefined ? openTitle(hero) : openStream())}
+                >
+                  {hero !== undefined ? 'Watch' : 'TVM Stream'}
+                </FocusButton>
+                <span className="stage__watchline-rule" aria-hidden="true">
+                  |
+                </span>
+                <BrandLockup focusId="hero-mark" />
+              </p>
+              <div className="stage__actions" data-wrap="row">
+                <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={openStream}>
+                  Browse TVM Stream
+                </FocusButton>
+                {hero !== undefined && (
+                  <FocusButton
+                    id="hero-watchlist"
+                    className="tvm-button--glass stage__watchlist"
+                    disabled={watchlistBusy}
+                    onSelect={() => void toggleHeroWatchlist()}
+                  >
+                    {heroSaved ? '✓ In My List' : '+ My List'}
+                  </FocusButton>
+                )}
+              </div>
+              {heroes.length > 1 && (
+                <div className="stage__dots" aria-hidden="true">
+                  {heroes.map((item, index) => (
+                    <span key={item.id} className={`stage__dot${index === slide ? ' stage__dot--on' : ''}`} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -401,12 +511,15 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       {launcher}
 
       <HomeShelves
-        watching={watching}
-        watchlist={watchlist}
+        watching={filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle)}
+        eventRail={eventRail !== null ? { ...eventRail, titles: filterItemsByAge(eventRail.titles.map(toMediaItem), maxAge).map(asTitle) } : null}
+        watchlist={filterItemsByAge(watchlist.map(toMediaItem), maxAge).map(asTitle)}
         catalogRails={catalogRails}
         loading={loading}
         openTitle={openTitle}
+        onLoadMore={loadMoreRail}
       />
+      <ChangelogCornerCard />
       <ToastPill message={toast} />
     </main>
   );

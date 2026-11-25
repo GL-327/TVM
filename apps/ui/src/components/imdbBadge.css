@@ -1,0 +1,156 @@
+.imdb-badge-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 4;
+}
+
+.imdb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.24rem 0.62rem 0.24rem 0.28rem;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(14, 18, 26, 0.72);
+  color: rgba(255, 255, 255, 0.96);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: transform 220ms var(--tvm-glass27-spring, ease), box-shadow 200ms ease;
+}
+
+.imdb-pill--compact {
+  padding: 0.16rem 0.48rem 0.16rem 0.22rem;
+  border-radius: 7px;
+  font-size: 0.76rem;
+}
+
+.imdb-pill:hover,
+.imdb-pill:focus-visible,
+.imdb-pill[data-focused='true'] {
+  outline: 2px solid #f5c518;
+  outline-offset: 2px;
+  transform: translateY(-1px) scale(1.04);
+}
+
+.imdb-pill__brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.12rem 0.42rem;
+  border-radius: 5px;
+  background: #f5c518;
+  color: #000000;
+  font-weight: 900;
+  font-size: 0.85em;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.imdb-pill__score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.08rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.imdb-pill__score strong {
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.imdb-pill__score span {
+  font-size: 0.78em;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.imdb-popover {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  left: 0;
+  width: min(23rem, calc(100vw - 2rem));
+  padding: 0.95rem 1.05rem;
+  border-radius: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  z-index: 30;
+  text-align: left;
+  text-shadow: none;
+}
+
+.imdb-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.imdb-popover__source {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.66));
+}
+
+.imdb-popover__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.imdb-popover__item {
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.imdb-popover__item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.imdb-popover__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--tvm-glass27-text, #ffffff);
+}
+
+.imdb-popover__stars {
+  color: #f5c518;
+  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+}
+
+.imdb-popover__text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.72));
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.imdb-popover__empty {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+.imdb-popover__more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-decoration: none;
+}

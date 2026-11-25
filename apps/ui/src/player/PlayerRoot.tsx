@@ -58,6 +58,8 @@ export interface PlayerSession {
   seekTo: (seconds: number) => void;
   close: () => void;
   retry: () => void;
+  nextChannel?: () => void;
+  nextChannelName?: string;
   showControls: () => void;
   adjustVolume: (delta: number) => void;
   setVolume: (volume: number) => void;

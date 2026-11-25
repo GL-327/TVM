@@ -44,6 +44,8 @@ export interface CatalogRail {
   id: string;
   title: string;
   items: MediaItem[];
+  more?: boolean;
+  page?: number;
 }
 
 export interface HomePayload {
@@ -343,6 +345,49 @@ export async function fetchMedia(id: string): Promise<MediaItem | null> {
   }
 }
 
+export function dedupeMediaItems(existing: readonly MediaItem[], incoming: readonly MediaItem[]): MediaItem[] {
+  const seen = new Set<string>();
+  const out: MediaItem[] = [];
+  for (const item of existing) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  for (const item of incoming) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+export async function fetchMoreRail(
+  railId: string,
+  skip: number,
+  page?: number,
+): Promise<{ items: MediaItem[]; more: boolean; page?: number }> {
+  try {
+    const params = new URLSearchParams({ id: railId, skip: String(skip) });
+    if (page !== undefined && Number.isFinite(page)) params.set('page', String(page));
+    const response = await apiFetch(`/api/rails/more?${params.toString()}`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return { items: [], more: false };
+    const body = (await response.json()) as { items?: MediaItem[]; more?: boolean; page?: number };
+    const items = Array.isArray(body.items) ? body.items : [];
+    const nextPage = typeof body.page === 'number' && Number.isFinite(body.page) ? body.page : undefined;
+    return {
+      items,
+      more: body.more === true && items.length > 0,
+      page: nextPage,
+    };
+  } catch {
+    return { items: [], more: false };
+  }
+}
+
 export async function searchLibrary(query: string, signal?: AbortSignal): Promise<MediaItem[]> {
   const timeout = AbortSignal.timeout(15_000);
   const response = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`, {
@@ -363,6 +408,7 @@ export async function requestPlayback(input: {
   episode?: number;
   startAt?: number;
   native?: boolean;
+  screenHeight?: number;
 }, signal?: AbortSignal): Promise<PlaybackResult> {
   const timeout = AbortSignal.timeout(PLAYBACK_RESOLVE_TIMEOUT_MS);
   try {

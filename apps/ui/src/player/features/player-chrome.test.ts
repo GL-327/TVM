@@ -66,7 +66,8 @@ describe('player watching chrome', () => {
     expect(progress).toContain("translate(-50%, -50%) scale(1.22)");
     expect(progress).toContain('var(--player-fill');
     expect(progress).not.toMatch(/\.tvm-progress__track \{[\s\S]*transition:\s*[^}]*height/);
-    expect(volume).toContain('scaleX(${shown / 100})');
+    expect(volume).toContain('scaleX(${Math.min(1, shown / maxPercent)})');
+    expect(volume).toContain('player-volume__tick');
     expect(volume).toContain('volumeFromClientX');
     expect(volume).toContain('role="slider"');
     expect(volume).toContain('setVolume');

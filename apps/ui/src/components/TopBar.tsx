@@ -1,4 +1,4 @@
-import { FocusButton } from './FocusButton';
+import { BackButton } from './BackButton';
 import { useCoreHealth } from '../useCoreHealth';
 import { useNavigate } from '../nav/ViewStackContext';
 
@@ -13,9 +13,7 @@ export function TopBar({ title = 'TVM' }: TopBarProps): React.JSX.Element {
 
   return (
     <header className="topbar">
-      <FocusButton id="top-back" variant="quiet" onSelect={() => navigate.pop()}>
-        Back
-      </FocusButton>
+      <BackButton id="top-back" onSelect={() => navigate.pop()} />
       <p className="topbar__brand">{title}</p>
       <span className={`status status--${health.status}`}>
         <span className="status__dot" aria-hidden="true" />

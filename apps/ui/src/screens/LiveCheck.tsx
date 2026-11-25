@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { EmptyState } from '../components/EmptyState';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
@@ -46,7 +47,7 @@ function transportLabel(check: ChannelCheck): string {
 }
 
 export function LiveCheck({ params }: ScreenProps): React.JSX.Element {
-  const navigate = useNavigate();
+  useNavigate();
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [report, setReport] = useState<LiveCheckSummary | null>(null);
   const [running, setRunning] = useState(false);
@@ -92,16 +93,16 @@ export function LiveCheck({ params }: ScreenProps): React.JSX.Element {
       <Ribbon active="live" />
 
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Live TV</p>
-          <h1 className="page__heading">Channel check</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="check-back" disabled={running} />
+          <div>
+            <p className="stage__kicker">Live TV</p>
+            <h1 className="page__heading">Channel check</h1>
+          </div>
         </div>
         <div className="hero__actions">
           <FocusButton id="run-check" variant="primary" disabled={running} onSelect={() => void run()}>
             {running ? 'Checking…' : 'Check channels now'}
-          </FocusButton>
-          <FocusButton id="check-back" className="tvm-button--glass" disabled={running} onSelect={() => navigate.pop()}>
-            Back
           </FocusButton>
         </div>
       </header>

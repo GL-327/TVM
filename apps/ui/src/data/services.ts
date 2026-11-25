@@ -1,7 +1,8 @@
 import { isMockApp } from './apps';
+import { getServicesContent, type ServiceEntry } from './content';
 import { openDetails } from './openDetails';
 import { APPS, MORE_APPS, type AppTile, type Title } from './catalog';
-import { looksLikePack, matchLibraryItems, sortEpisodes, type MediaItem } from './media';
+import { apiFetch, currentProfileId, looksLikePack, matchLibraryItems, sortEpisodes, type MediaItem } from './media';
 import type { Navigate } from '../nav/ViewStackContext';
 
 const NETWORK_TO_APP: Record<string, string> = {
@@ -151,4 +152,99 @@ export function performWatch(navigate: Navigate, action: WatchAction, title?: Ti
     return;
   }
   navigate.push('details', { params: { id: action.id } });
+}
+
+export type ConnectedServiceStatus = ServiceEntry & { connected: boolean };
+
+function connectedStorageKey(profileId = currentProfileId()): string {
+  return `tvm.services.connected.${profileId || 'default'}`;
+}
+
+function readLocalConnectedIds(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(connectedStorageKey());
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeLocalConnectedIds(ids: ReadonlySet<string>): void {
+  try {
+    window.localStorage.setItem(connectedStorageKey(), JSON.stringify([...ids]));
+  } catch {
+    // Ignore private mode / storage quota errors.
+  }
+}
+
+export function serviceUrlForTitle(service: Pick<ServiceEntry, 'search' | 'home'>, title: string): string {
+  if (service.search !== null && service.search !== '') {
+    return service.search.replace('{q}', encodeURIComponent(title));
+  }
+  return service.home;
+}
+
+export function openServiceExternal(url: string, service?: Pick<ServiceEntry, 'id' | 'ios' | 'android'>): Window | null {
+  if (typeof window === 'undefined') return null;
+  const nativeBridge = (
+    window as Window & {
+      tvmServices?: { openExternal?: (target: string, meta?: unknown) => boolean };
+    }
+  ).tvmServices;
+  if (typeof nativeBridge?.openExternal === 'function') {
+    if (nativeBridge.openExternal(url, service)) return null;
+  }
+  try {
+    return window.open(url, 'tvm-service', 'popup,width=1280,height=800');
+  } catch {
+    try {
+      return window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      return null;
+    }
+  }
+}
+
+export async function fetchServices(): Promise<ConnectedServiceStatus[]> {
+  const bundled = getServicesContent().services;
+  try {
+    const res = await apiFetch('/api/services', { signal: AbortSignal.timeout(10_000) });
+    if (res.ok) {
+      const body = (await res.json()) as { services?: Array<Partial<ServiceEntry> & { id: string; connected?: boolean }> };
+      if (Array.isArray(body.services) && body.services.length > 0) {
+        const connectedMap = new Map(body.services.map((entry) => [entry.id, entry.connected === true]));
+        return bundled.map((svc) => ({
+          ...svc,
+          connected: connectedMap.get(svc.id) === true,
+        }));
+      }
+    }
+  } catch {
+    // Fall back to local connected flags per profile.
+  }
+  const localIds = readLocalConnectedIds();
+  return bundled.map((svc) => ({ ...svc, connected: localIds.has(svc.id) }));
+}
+
+export async function setServiceConnected(id: string, connected: boolean): Promise<ConnectedServiceStatus[]> {
+  const local = readLocalConnectedIds();
+  if (connected) local.add(id);
+  else local.delete(id);
+  writeLocalConnectedIds(local);
+
+  try {
+    const res = await apiFetch('/api/services/connected', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, connected }),
+    });
+    if (res.ok) return fetchServices();
+  } catch {
+    // Older/mobile Core: local fallback already saved.
+  }
+  const bundled = getServicesContent().services;
+  return bundled.map((svc) => ({ ...svc, connected: local.has(svc.id) }));
 }

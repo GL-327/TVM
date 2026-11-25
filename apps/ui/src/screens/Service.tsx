@@ -1,26 +1,27 @@
 import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { BackButton } from '../components/BackButton';
 import { EmptyState } from '../components/EmptyState';
-import { FocusButton } from '../components/FocusButton';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { fetchAppHub, isHubApp, isMockApp, peekAppHub, type AppHubPayload } from '../data/apps';
 import { APPS, MORE_APPS } from '../data/catalog';
 import { openPlayback } from '../data/openDetails';
 import { applyPlanClass, fetchPlan } from '../data/plan';
+import { filterItemsByAge } from '../data/parental';
+import { effectiveProfileMaxAge, peekActiveProfile } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { ensureHubRootAttrs, resolveServiceSkin } from './service/skins';
 import './service.css';
 
 function ServiceLink({ url, name }: { url: string; name: string }): React.JSX.Element {
-  const navigate = useNavigate();
   const available = url.startsWith('https://');
   return (
     <main className="page page--library service-fallback">
+      <BackButton id="service-back" className="service__back" />
       <EmptyState eyebrow={name} title={name}
         body="Open the provider's website in your browser. Use your own subscription to sign in."
         actions={<>
           {available && <a className="btn btn--primary" href={url} target="_blank" rel="noopener noreferrer">Open {name}</a>}
-          <FocusButton id="close" onSelect={() => navigate.pop()}>Back</FocusButton>
         </>}
       />
     </main>
@@ -78,15 +79,21 @@ function ServiceHubScreen({ appId, name }: { appId: string; name: string }): Rea
   }
 
   const Skin = resolveServiceSkin(hub.layout || appId);
+  const maxAge = effectiveProfileMaxAge(peekActiveProfile());
+  const filteredRails = hub.rails
+    .map((rail) => ({ ...rail, items: filterItemsByAge(rail.items, maxAge) }))
+    .filter((rail) => rail.items.length > 0);
+  const filteredContinue = filterItemsByAge(hub.continueWatching, maxAge);
   return (
     <Suspense fallback={<ServiceHubFallback name={name} />}>
+      <BackButton id="service-back" className="service__back" />
       <HubHost key={appId}>
         <Skin
           appId={appId}
-          hub={hub}
+          hub={{ ...hub, rails: filteredRails, continueWatching: filteredContinue }}
           catalog={{
-            rails: hub.rails,
-            continueWatching: hub.continueWatching,
+            rails: filteredRails,
+            continueWatching: filteredContinue,
             hero: hub.hero,
           }}
           navigate={navigate}

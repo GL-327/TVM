@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { ChannelCard } from '../components/ChannelCard';
 import { FocusButton } from '../components/FocusButton';
 import { fieldValue, FocusField } from '../components/FocusField';
@@ -87,9 +88,12 @@ export function LivePicks(_props: ScreenProps): React.JSX.Element {
       <PageScene />
       <Ribbon active="live" />
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Live TV lineup</p>
-          <h1 className="page__heading">Choose channels</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="live-picks-back" />
+          <div>
+            <p className="stage__kicker">Live TV lineup</p>
+            <h1 className="page__heading">Choose channels</h1>
+          </div>
         </div>
       </header>
       <p className="page__lede">

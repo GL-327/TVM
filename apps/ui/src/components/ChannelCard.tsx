@@ -11,6 +11,7 @@ export interface ChannelCardData {
   group?: string;
   logo?: string;
   picked?: boolean;
+  geo?: string | null;
 }
 
 function hueFor(name: string): number {
@@ -66,6 +67,7 @@ function ChannelFace({
           <span className="channel-card__initial">{initial}</span>
         )}
         {picking ? <span className={`channel-card__mark${selected ? ' channel-card__mark--on' : ''}`}>{selected ? 'On' : 'Add'}</span> : null}
+        {!picking && channel.geo === 'GB' ? <span className="channel-card__mark channel-card__mark--uk">UK</span> : null}
         {!picking && channel.id.startsWith('live:mock:') ? <span className="channel-card__mark">Sample</span> : null}
         {!picking && channel.id.startsWith('live:test:') ? <span className="channel-card__mark">Test</span> : null}
       </span>

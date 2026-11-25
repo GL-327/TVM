@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { readAudioPrefs, restoredAudio, writeAudioPrefs } from '../player/audioPrefs';
+import { clampVolume, readAudioPrefs, restoredAudio, writeAudioPrefs } from '../player/audioPrefs';
+import { applyBoostedVolume } from '../player/audioGain';
+import { freeChannelErrorCopy } from '../data/freeLive';
 import { apiFetch, requestPlayback, saveProgress, type PlaybackResult } from '../data/media';
 import { FALLBACK_PLAN, fetchPlan, tickUsage, type PlanStatus } from '../data/plan';
 import { playbackErrorMessage } from '../data/playbackErrors';
 import { useNavigate } from '../nav/ViewStackContext';
 import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverlay';
 import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
-import { TvmMark } from '../brand/TvmMark';
+import { OrbitLoader } from '../components/OrbitLoader';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
 import { nativePlaybackBridge } from '../player/iosEngine';
+import { attachedHls } from '../player/hlsBridge';
 import { PlayerRoot, type PlayerSession } from '../player';
 import { playbackMaxHeight, readDeviceChrome } from '../nav/deviceChrome';
+import { effectiveStreamMaxHeight, screenTargetHeight } from '../player/quality';
 import { playerShellClass, readPlayerLayout } from '../player/playerLayout';
 import type { ScreenProps } from '../nav/registry';
 
@@ -53,10 +57,41 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [shell, setShell] = useState(() => playerShellClass(false, 'landscape'));
   audioRef.current = { volume, muted };
 
-  const id = typeof params['id'] === 'string' ? params['id'] : '';
+  const paramId = typeof params['id'] === 'string' ? params['id'] : '';
+  const paramLink = typeof params['link'] === 'string' ? params['link'] : '';
+  const paramTitle = typeof params['title'] === 'string' ? params['title'] : '';
+  const paramGeo = typeof params['channelGeo'] === 'string' ? params['channelGeo'] : null;
+  const freeQueue = useMemo(() => {
+    const raw = params['freeQueue'];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (item): item is { id: string; name: string; url: string; geo?: string | null } =>
+        typeof item === 'object' && item !== null && typeof item.id === 'string' && typeof item.url === 'string',
+    );
+  }, [params]);
+  const [channelOverride, setChannelOverride] = useState<{
+    id: string;
+    name: string;
+    url: string;
+    geo?: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    setChannelOverride(null);
+  }, [paramId, paramLink]);
+
+  const id = channelOverride?.id ?? paramId;
   const live = isLivePlayback(id);
-  const link = typeof params['link'] === 'string' ? params['link'] : '';
-  const playbackTitle = typeof params['title'] === 'string' ? params['title'] : '';
+  const link = channelOverride?.url ?? paramLink;
+  const playbackTitle = channelOverride?.name ?? paramTitle;
+  const channelGeo = channelOverride !== null ? (channelOverride.geo ?? null) : paramGeo;
+  const isFreeChannel = id.startsWith('live:free:');
+  const nextFreeChannel = useMemo(() => {
+    if (freeQueue.length === 0) return null;
+    const idx = freeQueue.findIndex((item) => item.id === id);
+    if (idx < 0 || freeQueue.length < 2) return freeQueue[0]?.id !== id ? (freeQueue[0] ?? null) : null;
+    return freeQueue[(idx + 1) % freeQueue.length] ?? null;
+  }, [freeQueue, id]);
   const playbackSeason = typeof params['season'] === 'number' ? params['season'] : undefined;
   const playbackEpisode = typeof params['episode'] === 'number' ? params['episode'] : undefined;
 
@@ -134,6 +169,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       episode: playbackEpisode,
       startAt: retryAt.current,
       native: !live && nativePlaybackBridge() !== undefined,
+      screenHeight: screenTargetHeight(),
     }, request.signal);
 
     const start = (stream: EngineStream): void => {
@@ -150,16 +186,21 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       setPlaybackEngine(native ? 'native' : 'html5');
       setError(null);
       if (video !== null) {
-        video.volume = audioRef.current.volume;
+        const res = applyBoostedVolume(video, audioRef.current.volume, audioRef.current.muted, !native);
+        if (res.applied !== audioRef.current.volume) {
+          audioRef.current.volume = res.applied;
+          setVolume(res.applied);
+        }
         video.muted = audioRef.current.muted;
       }
+      const planCap = playbackMaxHeight(planRef.current.maxHeight, readDeviceChrome().maxHeight);
       const engine = createPlayerEngine(
         video ?? document.createElement('video'),
         native ? { ...stream, engine: 'native' } : stream,
         {
           live,
           startAt: stream.startAt ?? 0,
-          maxHeight: playbackMaxHeight(planRef.current.maxHeight, readDeviceChrome().maxHeight),
+          maxHeight: effectiveStreamMaxHeight(planCap, screenTargetHeight()),
           initialVolume: audioRef.current.volume,
           initialMuted: audioRef.current.muted,
         },
@@ -235,7 +276,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
               return;
             }
             setBuffering(false);
-            setError(message);
+            setError(isFreeChannel ? freeChannelErrorCopy(playbackTitle, channelGeo) : message);
           },
         },
       );
@@ -256,16 +297,42 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       try {
         result = await playbackTask;
       } catch {
-        if (!cancelled) {
-          setOverlay(null);
-          setLoading(false);
-          setBuffering(false);
-          setError(playbackErrorMessage('network'));
+        if (isFreeChannel && link.startsWith('http')) {
+          result = {
+            kind: 'stream',
+            url: link,
+            title: playbackTitle || 'Live channel',
+            filename: 'live.m3u8',
+            mimeType: 'application/vnd.apple.mpegurl',
+            engine: nativePlaybackBridge() !== undefined ? 'native' : 'html5',
+            transport: 'hls',
+          };
+        } else {
+          if (!cancelled) {
+            setOverlay(null);
+            setLoading(false);
+            setBuffering(false);
+            setError(isFreeChannel ? freeChannelErrorCopy(playbackTitle, channelGeo) : playbackErrorMessage('network'));
+          }
+          return;
         }
-        return;
       }
       if (cancelled) return;
       if (result.kind !== 'stream') {
+        if (isFreeChannel && link.startsWith('http')) {
+          lastTick.current = Date.now();
+          start({
+            kind: 'stream',
+            url: link,
+            title: playbackTitle || 'Live channel',
+            filename: 'live.m3u8',
+            mimeType: 'application/vnd.apple.mpegurl',
+            engine: nativePlaybackBridge() !== undefined ? 'native' : 'html5',
+            transport: 'hls',
+          });
+          setOverlay(null);
+          return;
+        }
         if (!live && recoveries.current < 2 && ['network', 'timeout', 'empty', 'unsupported'].includes(result.reason)) {
           recoveries.current += 1;
           recoveryTimer = setTimeout(() => { if (!cancelled) setAttempt((value) => value + 1); }, 1000);
@@ -285,7 +352,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           });
           return;
         }
-        setError(playbackErrorMessage(result.reason));
+        setError(isFreeChannel ? freeChannelErrorCopy(playbackTitle, channelGeo) : playbackErrorMessage(result.reason));
         return;
       }
       lastTick.current = Date.now();
@@ -311,11 +378,14 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     const video = videoRef.current;
     if (video === null) return;
     const syncAudio = (): void => {
-      setVolume(video.volume);
+      // Preserve logical gain (> 100%) when element.volume saturates at 1.0.
+      const logical = !(audioRef.current.volume > 1 && video.volume >= 0.99)
+        ? video.volume
+        : audioRef.current.volume;
+      audioRef.current = { volume: logical, muted: video.muted };
+      setVolume(logical);
       setMuted(video.muted);
-      // volumechange is the one place the level has actually settled, whether
-      // it came from the remote, the slider, the keyboard or the OS.
-      writeAudioPrefs({ volume: video.volume, muted: video.muted });
+      writeAudioPrefs({ volume: logical, muted: video.muted });
     };
     const saveWhenHidden = (): void => {
       if (document.visibilityState === 'hidden') persist();
@@ -376,32 +446,48 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
 
   const applyVolume = useCallback(
     (value: number): void => {
-      const next = Math.max(0, Math.min(1, value));
+      const cap = playbackEngine === 'native' ? 1 : 2;
+      const next = clampVolume(value, cap);
       showControls();
-      setVolume(next);
-      engineRef.current?.setVolume(next);
-      if (next > 0) {
+      const video = videoRef.current;
+      let applied = next;
+      if (video !== null && playbackEngine !== 'native') {
+        applied = applyBoostedVolume(video, next, false, true).applied;
+      }
+      audioRef.current = { volume: applied, muted: applied === 0 ? true : false };
+      setVolume(applied);
+      writeAudioPrefs({ volume: applied, muted: applied === 0 });
+      engineRef.current?.setVolume(applied);
+      if (applied > 0) {
         setMuted(false);
         engineRef.current?.setMuted(false);
       }
     },
-    [showControls],
+    [playbackEngine, showControls],
   );
 
   const adjustVolume = useCallback(
     (delta: number): void => {
+      const cap = playbackEngine === 'native' ? 1 : 2;
       setVolume((current) => {
-        const next = Math.max(0, Math.min(1, current + delta));
+        const next = clampVolume(current + delta, cap);
         showControls();
-        engineRef.current?.setVolume(next);
-        if (next > 0) {
+        const video = videoRef.current;
+        let applied = next;
+        if (video !== null && playbackEngine !== 'native') {
+          applied = applyBoostedVolume(video, next, false, true).applied;
+        }
+        audioRef.current = { volume: applied, muted: applied === 0 };
+        writeAudioPrefs({ volume: applied, muted: applied === 0 });
+        engineRef.current?.setVolume(applied);
+        if (applied > 0) {
           setMuted(false);
           engineRef.current?.setMuted(false);
         }
-        return next;
+        return applied;
       });
     },
-    [showControls],
+    [playbackEngine, showControls],
   );
 
   const applyPlaybackRate = useCallback((rate: number): void => {
@@ -461,6 +547,21 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     return () => document.documentElement.classList.remove('tvm-native-playback');
   }, [playbackEngine]);
 
+  const switchNextChannel = useMemo(
+    () =>
+      nextFreeChannel !== null
+        ? () => {
+            setError(null);
+            setLoading(true);
+            setBuffering(true);
+            setHasFrame(false);
+            setChannelOverride(nextFreeChannel);
+            setAttempt((value) => value + 1);
+          }
+        : undefined,
+    [nextFreeChannel],
+  );
+
   const busy = loading || (buffering && !hasFrame);
   const session: PlayerSession = useMemo(
     () => ({
@@ -490,6 +591,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       seekTo,
       close,
       retry,
+      nextChannel: switchNextChannel,
+      nextChannelName: nextFreeChannel?.name,
       showControls,
       adjustVolume,
       setVolume: applyVolume,
@@ -549,10 +652,16 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       <PlayerRoot session={session} />
       {overlay === 'queue' && (
         <div className="player__queue" aria-live="polite">
-          <TvmMark size="lg" animated loop className="player__queue-mark" />
+          <OrbitLoader
+            video={videoRef.current}
+            hls={attachedHls(videoRef.current)}
+            stage={loading ? 'finding' : 'connecting'}
+            size="lg"
+            className="player__queue-mark"
+          />
           <p className="player__queue-kicker">TVM Cinema</p>
-          <h2>Getting your stream ready</h2>
-          <p>Checking the source and preparing playback. Press Back to cancel.</p>
+          <h2>{title !== 'Loading' ? title : 'Getting your stream ready'}</h2>
+          <p>Press Back to cancel.</p>
         </div>
       )}
       {overlay === 'ad' && (

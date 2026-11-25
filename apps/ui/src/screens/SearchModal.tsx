@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { AppCard } from '../components/AppCard';
 import { FocusButton } from '../components/FocusButton';
 import { fieldValue, FocusField } from '../components/FocusField';
@@ -10,6 +10,8 @@ import { appTileOpen, fallbackApps, fetchApps, prefetchAppHub, searchApps } from
 import type { AppTile } from '../data/catalog';
 import { isHttpUrl } from '../data/links';
 import { asTitle, currentProfileId, searchLibrary, type MediaItem } from '../data/media';
+import { filterItemsByAge } from '../data/parental';
+import { effectiveProfileMaxAge, peekActiveProfile } from '../data/profiles';
 import { clearRecentSearches, readRecentSearches, saveRecentSearch } from '../data/searchHistory';
 import { launchTitle } from '../data/launchTitle';
 import { enterTvmStream } from '../data/profiles';
@@ -18,6 +20,30 @@ import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+
+const SEARCH_DEBOUNCE_MS = 250;
+
+const SearchResultsStrip = memo(function SearchResultsStrip({
+  results,
+  onSelect,
+}: {
+  results: readonly MediaItem[];
+  onSelect: (item: MediaItem) => void;
+}): React.JSX.Element {
+  return (
+    <div className="search-results" aria-label="Search results">
+      {results.map((item, index) => (
+        <PosterCard
+          key={`${item.id}-${index}`}
+          title={asTitle(item)}
+          prefix="result"
+          index={index}
+          onSelect={() => onSelect(item)}
+        />
+      ))}
+    </div>
+  );
+});
 
 export function SearchModal({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
@@ -37,6 +63,10 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
   );
   const armed = useRef(false);
   const panelRef = useRef<HTMLElement>(null);
+  const appsRef = useRef(apps);
+  appsRef.current = apps;
+  const searchSeqRef = useRef(0);
+  const queryActiveBeforeRenderRef = useRef(false);
   const hint = fromHome ? 'Search films, series, and apps, or paste a hoster link.' : 'Search films and series, or paste a hoster link.';
   const setQuery = useCallback((value: string): void => {
     revision.current += 1;
@@ -47,7 +77,10 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
   const remember = useCallback((term: string): void => {
     setRecent(saveRecentSearch(currentProfileId(), term));
   }, []);
-  const visibleResults = resultQuery === query.trim() ? results : [];
+  const visibleResults = useMemo(
+    () => (resultQuery === query.trim() ? filterItemsByAge(results, effectiveProfileMaxAge(peekActiveProfile())) : []),
+    [query, resultQuery, results],
+  );
 
   useEffect(() => () => {
     revision.current += 1;
@@ -96,45 +129,58 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
   useEffect(() => {
     const trimmed = query.trim();
     const egg = searchEaster(trimmed);
+    const seq = ++searchSeqRef.current;
     if (egg !== null) {
       setResults([]);
       setSearching(false);
       setMessage(egg);
-      return;
+      return undefined;
     }
     if (trimmed.length < 2 || isHttpUrl(trimmed)) {
       setResults([]);
+      setResultQuery('');
       setSearching(false);
       setMessage(isHttpUrl(trimmed) ? 'Press Open to play this link.' : hint);
-      return;
+      return undefined;
     }
     const controller = new AbortController();
     setSearching(true);
     const timer = window.setTimeout(() => {
       void searchLibrary(trimmed, controller.signal)
         .then((items) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || seq !== searchSeqRef.current) return;
+          const queryInput = panelRef.current?.querySelector<HTMLInputElement>('[data-focus-id="query"]');
+          queryActiveBeforeRenderRef.current = queryInput !== null && document.activeElement === queryInput;
           setResults(items);
           setResultQuery(trimmed);
-          const appsMatched = fromHome ? searchApps(trimmed, { ribbon: apps, grid: apps }).length : 0;
+          const appsMatched = fromHome ? searchApps(trimmed, { ribbon: appsRef.current, grid: appsRef.current }).length : 0;
           if (items.length === 0 && appsMatched === 0) setMessage('Nothing matched that search.');
           else setMessage(`${items.length + appsMatched} matches`);
         })
         .catch(() => {
-          if (!controller.signal.aborted) {
+          if (!controller.signal.aborted && seq === searchSeqRef.current) {
             setResults([]);
             setMessage('Search is unavailable. Check your connection and try again.');
           }
         })
         .finally(() => {
-          if (!controller.signal.aborted) setSearching(false);
+          if (!controller.signal.aborted && seq === searchSeqRef.current) setSearching(false);
         });
-    }, 180);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [apps, fromHome, hint, query]);
+  }, [fromHome, hint, query]);
+
+  useLayoutEffect(() => {
+    if (!queryActiveBeforeRenderRef.current) return;
+    queryActiveBeforeRenderRef.current = false;
+    const queryInput = panelRef.current?.querySelector<HTMLInputElement>('[data-focus-id="query"]');
+    if (queryInput != null && document.activeElement !== queryInput) {
+      queryInput.focus({ preventScroll: true });
+    }
+  }, [resultQuery, results, searching]);
 
   const openApp = useCallback(
     (app: AppTile): void => {
@@ -202,7 +248,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
     >
       <section
         ref={panelRef}
-        className="search-pill__panel"
+        className="search-pill__panel glass glass--sheet"
         data-keyboard-fields=""
         onClick={(event) => event.stopPropagation()}
       >
@@ -220,7 +266,6 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
               value={query}
               onChange={setQuery}
               onConfirm={(value) => void open(value)}
-              afterPasteFocusId="open"
               placeholder={fromHome ? 'Title, app, or https://…' : 'Title or https://…'}
             />
           </label>
@@ -264,20 +309,13 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
           </div>
         )}
         {visibleResults.length > 0 && (
-          <div className="search-results" aria-label="Search results">
-            {visibleResults.map((item, index) => (
-              <PosterCard
-                key={`${item.id}-${index}`}
-                title={asTitle(item)}
-                prefix="result"
-                index={index}
-                onSelect={() => {
-                  remember(query);
-                  void launchTitle(navigate, asTitle(item));
-                }}
-              />
-            ))}
-          </div>
+          <SearchResultsStrip
+            results={visibleResults}
+            onSelect={(item) => {
+              remember(query);
+              void launchTitle(navigate, asTitle(item));
+            }}
+          />
         )}
       </section>
     </div>

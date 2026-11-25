@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppCard } from '../components/AppCard';
+import { BackButton } from '../components/BackButton';
+import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
 import { appTileOpen, fallbackApps, fetchApps, prefetchAppHub } from '../data/apps';
@@ -64,10 +66,18 @@ export function Apps(_props: ScreenProps): React.JSX.Element {
       <PageScene />
       <Ribbon active="apps" />
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Your apps</p>
-          <h1 className="page__heading">Apps</h1>
-          <p className="page__lede">Open a service hub or TVM Stream. Playback still uses this machine.</p>
+        <div className="page__toolbar-lead">
+          <BackButton id="apps-back" />
+          <div>
+            <p className="stage__kicker">Your apps</p>
+            <h1 className="page__heading">Apps</h1>
+            <p className="page__lede">Open a service hub or TVM Stream. Playback still uses this machine.</p>
+          </div>
+        </div>
+        <div className="hero__actions">
+          <FocusButton id="apps-services" className="tvm-button--glass" onSelect={() => navigate.push('your-services')}>
+            Services
+          </FocusButton>
         </div>
       </header>
       <div className="app-grid" data-wrap="grid" aria-label="Apps">

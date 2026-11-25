@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type WheelEvent } from 'react';
-import { enterTvmStream } from '../data/profiles';
+import { enterTvmStream, isKidsProfile, peekActiveProfile, subscribeProfiles } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
 import { usePhoneShell } from '../nav/usePhoneShell';
 import { FocusButton } from './FocusButton';
@@ -59,6 +59,14 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
   useLiquidLens(frostRef, { blur: 5 });
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
+  const [kids, setKids] = useState(() => isKidsProfile(peekActiveProfile()));
+
+  useEffect(() => {
+    setKids(isKidsProfile(peekActiveProfile()));
+    return subscribeProfiles(() => {
+      setKids(isKidsProfile(peekActiveProfile()));
+    });
+  }, []);
 
   const show = (): void => {
     window.clearTimeout(hideRef.current);
@@ -164,19 +172,32 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
         tabIndex={-1}
         onClick={() => setMore(false)}
       />
-      <div className="ribbon-sheet" role="menu" aria-label="More">
+      <div className="ribbon-sheet glass glass--sheet glass-appear" role="menu" aria-label="More">
         <span className="ribbon-sheet__grip" aria-hidden="true" />
         <FocusButton
-          id="more-profile"
-          className={`ribbon-sheet__row${active === 'profile' ? ' ribbon-sheet__row--on' : ''}`}
-          onSelect={openProfile}
+          id="more-profiles"
+          className="ribbon-sheet__row"
+          onSelect={go(() => navigate.push('profiles'))}
         >
           <span className="ribbon-sheet__glyph"><IconProfile /></span>
           <span className="ribbon-sheet__text">
-            <strong>Account</strong>
-            <span>Who is signed in, your access, and signing out</span>
+            <strong>Switch profile</strong>
+            <span>Choose who is watching</span>
           </span>
         </FocusButton>
+        {!kids && (
+          <FocusButton
+            id="more-profile"
+            className={`ribbon-sheet__row${active === 'profile' ? ' ribbon-sheet__row--on' : ''}`}
+            onSelect={openProfile}
+          >
+            <span className="ribbon-sheet__glyph"><IconProfile /></span>
+            <span className="ribbon-sheet__text">
+              <strong>Account</strong>
+              <span>Who is signed in, your access, and signing out</span>
+            </span>
+          </FocusButton>
+        )}
         <FocusButton
           id="more-library"
           className={`ribbon-sheet__row${active === 'library' ? ' ribbon-sheet__row--on' : ''}`}
@@ -199,17 +220,19 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
             <span>Studios and services</span>
           </span>
         </FocusButton>
-        <FocusButton
-          id="more-settings"
-          className={`ribbon-sheet__row${active === 'settings' ? ' ribbon-sheet__row--on' : ''}`}
-          onSelect={openSettings}
-        >
-          <span className="ribbon-sheet__glyph"><IconSettings /></span>
-          <span className="ribbon-sheet__text">
-            <strong>Settings</strong>
-            <span>Picture, sound, account and updates</span>
-          </span>
-        </FocusButton>
+        {!kids && (
+          <FocusButton
+            id="more-settings"
+            className={`ribbon-sheet__row${active === 'settings' ? ' ribbon-sheet__row--on' : ''}`}
+            onSelect={openSettings}
+          >
+            <span className="ribbon-sheet__glyph"><IconSettings /></span>
+            <span className="ribbon-sheet__text">
+              <strong>Settings</strong>
+              <span>Picture, sound, account and updates</span>
+            </span>
+          </FocusButton>
+        )}
       </div>
     </>
   );
@@ -245,17 +268,32 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
       </FocusButton>
       {tab('apps', 'Apps', <IconApps />, active === 'apps', () => navigate.push('apps'))}
       <span className="ribbon__spacer" aria-hidden="true" />
-      {tab('settings', 'Settings', <IconSettings />, active === 'settings', () => navigate.push('settings'))}
-      <FocusButton
-        id="profile"
-        className={`ribbon__icon${active === 'profile' ? ' ribbon__icon--on' : ''}`}
-        onSelect={() => navigate.push('profile')}
-      >
-        <span className="ribbon__avatar">
-          <IconProfile className="ribbon__avatar-svg" />
-        </span>
-        <span className="ribbon__label">Account</span>
-      </FocusButton>
+      {kids ? (
+        <FocusButton
+          id="switch-profile"
+          className="ribbon__icon"
+          onSelect={() => navigate.push('profiles')}
+        >
+          <span className="ribbon__avatar">
+            <IconProfile className="ribbon__avatar-svg" />
+          </span>
+          <span className="ribbon__label">Profiles</span>
+        </FocusButton>
+      ) : (
+        <>
+          {tab('settings', 'Settings', <IconSettings />, active === 'settings', () => navigate.push('settings'))}
+          <FocusButton
+            id="profile"
+            className={`ribbon__icon${active === 'profile' ? ' ribbon__icon--on' : ''}`}
+            onSelect={() => navigate.push('profile')}
+          >
+            <span className="ribbon__avatar">
+              <IconProfile className="ribbon__avatar-svg" />
+            </span>
+            <span className="ribbon__label">Account</span>
+          </FocusButton>
+        </>
+      )}
     </div>
   );
 
@@ -278,7 +316,7 @@ export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
         onWheel={passWheelToPage}
       >
         {phone && more ? moreSheet : null}
-        <div ref={frostRef} className="ribbon__frost">
+        <div ref={frostRef} className="ribbon__frost glass glass--chrome">
           {phone ? phoneBar : tvList}
         </div>
       </nav>

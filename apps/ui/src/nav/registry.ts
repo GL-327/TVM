@@ -34,6 +34,8 @@ const Setup = lazy(() => import('../screens/Setup').then((m) => ({ default: m.Se
 const SystemInfo = lazy(() => import('../screens/SystemInfo').then((m) => ({ default: m.SystemInfo })));
 const Updates = lazy(() => import('../screens/Updates').then((m) => ({ default: m.Updates })));
 const Changelog = lazy(() => import('../screens/ChangelogModal').then((m) => ({ default: m.ChangelogModal })));
+const YourServices = lazy(() => import('../screens/YourServices').then((m) => ({ default: m.YourServices })));
+const WhatsNew = lazy(() => import('../screens/WhatsNew').then((m) => ({ default: m.WhatsNew })));
 
 export interface ScreenProps {
   params: Readonly<Record<string, unknown>>;
@@ -56,6 +58,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   accounts: { component: Accounts, defaultFocus: 'accounts-search' },
   donate: { component: Donate, defaultFocus: 'donate-continue' },
   apps: { component: Apps, defaultFocus: 'app-tvm-stream' },
+  'your-services': { component: YourServices, defaultFocus: 'service-first' },
   service: { component: Service, defaultFocus: 'service-back' },
   profile: { component: Account, defaultFocus: 'realdebrid' },
   profiles: { component: Profiles, defaultFocus: 'profile-pick' },
@@ -70,6 +73,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   'mail-settings': { component: MailSettings, defaultFocus: 'mail-host' },
   'system-info': { component: SystemInfo, defaultFocus: 'back' },
   updates: { component: Updates, defaultFocus: 'check' },
+  'whats-new': { component: WhatsNew, defaultFocus: 'whats-new-back' },
   realdebrid: { component: RealDebrid, defaultFocus: 'token' },
   setup: { component: Setup, defaultFocus: 'token' },
   recovery: { component: Recovery, defaultFocus: 'settings' },

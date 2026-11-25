@@ -155,7 +155,7 @@ export function useLiquidLens(ref: RefObject<HTMLElement | null>, options: LensO
   const { blur = 4, saturate = 1.75 } = options;
   useEffect(() => {
     const element = ref.current;
-    if (element === null || !lensAllowed() || typeof ResizeObserver === 'undefined') return undefined;
+    if (element === null || element.closest('.gate') !== null || !lensAllowed() || typeof ResizeObserver === 'undefined') return undefined;
     lensCount += 1;
     const id = `tvm-lens-${lensCount}`;
     const svgNs = 'http://www.w3.org/2000/svg';

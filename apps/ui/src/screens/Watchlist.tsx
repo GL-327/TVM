@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackButton } from '../components/BackButton';
 import { EmptyState } from '../components/EmptyState';
 import { FocusButton } from '../components/FocusButton';
 import { LoadingScreen } from '../components/LoadingScreen';
@@ -50,9 +51,12 @@ export function Watchlist(_props: ScreenProps): React.JSX.Element {
       <PageScene />
       <Ribbon active="watchlist" />
       <header className="page__toolbar">
-        <div>
-          <p className="stage__kicker">Saved for later</p>
-          <h1 className="page__heading">Watchlist</h1>
+        <div className="page__toolbar-lead">
+          <BackButton id="watchlist-back" />
+          <div>
+            <p className="stage__kicker">Saved for later</p>
+            <h1 className="page__heading">Watchlist</h1>
+          </div>
         </div>
       </header>
       {!loading && items.length > 0 && (

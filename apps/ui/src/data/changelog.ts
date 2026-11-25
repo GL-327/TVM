@@ -1,3 +1,95 @@
+import { getChangelogContent, type ChangelogChange, type ChangelogRelease } from './content';
+
+export type ChangelogPlatform = 'web' | 'desktop' | 'ios' | 'android';
+
+export const CHANGELOG_SEEN_KEY = 'tvm.changelog.seen';
+
+export function currentAppVersion(): string {
+  return typeof __TVM_UI_VERSION__ === 'string' && __TVM_UI_VERSION__ !== '' ? __TVM_UI_VERSION__ : '1.1.0';
+}
+
+export function shortReleaseLabel(version: string): string {
+  const parts = version.trim().split('.');
+  if (parts.length === 3 && parts[2] === '0') {
+    return `${parts[0]}.${parts[1]}`;
+  }
+  return version.trim();
+}
+
+export function detectRuntimePlatform(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''): ChangelogPlatform {
+  if (/iPhone|iPad|iPod/i.test(userAgent)) return 'ios';
+  if (/Android/i.test(userAgent)) return 'android';
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('desktop-shell')) {
+    return 'desktop';
+  }
+  return 'web';
+}
+
+export function filterChangesForPlatform(
+  changes: readonly ChangelogChange[],
+  platform: ChangelogPlatform = detectRuntimePlatform(),
+): ChangelogChange[] {
+  return changes.filter((change) => change.platforms === undefined || change.platforms.includes(platform));
+}
+
+export function groupChangesByArea(
+  changes: readonly ChangelogChange[],
+): Array<{ area: string; items: ChangelogChange[] }> {
+  const map = new Map<string, ChangelogChange[]>();
+  for (const ch of changes) {
+    const area = ch.area.trim() || 'Other';
+    const list = map.get(area) ?? [];
+    list.push(ch);
+    map.set(area, list);
+  }
+  return [...map.entries()].map(([area, items]) => ({ area, items }));
+}
+
+export function readSeenReleaseVersion(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(CHANGELOG_SEEN_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function markReleaseChangelogSeen(version = currentAppVersion()): void {
+  try {
+    globalThis.localStorage?.setItem(CHANGELOG_SEEN_KEY, version);
+  } catch {
+    // Private browsing mode fallback
+  }
+}
+
+export function shouldShowReleaseCornerCard(
+  seenVersion: string | null,
+  installedVersion = currentAppVersion(),
+): boolean {
+  return seenVersion !== installedVersion;
+}
+
+export async function fetchReleaseChangelog(): Promise<{ current: string; releases: ChangelogRelease[] }> {
+  const bundled = getChangelogContent();
+  try {
+    const res = await fetch('/api/changelog', { signal: AbortSignal.timeout(8_000) });
+    if (res.ok) {
+      const body = (await res.json()) as { current?: string; releases?: ChangelogRelease[] };
+      if (Array.isArray(body.releases) && body.releases.length > 0) {
+        return {
+          current: typeof body.current === 'string' && body.current !== '' ? body.current : currentAppVersion(),
+          releases: body.releases,
+        };
+      }
+    }
+  } catch {
+    // Fall back gracefully to bundled changelog.json.
+  }
+  return {
+    current: currentAppVersion(),
+    releases: bundled.releases,
+  };
+}
+
 export interface ChangelogEntry {
   sha: string;
   title: string;

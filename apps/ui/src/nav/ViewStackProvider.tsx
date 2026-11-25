@@ -184,6 +184,50 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
   );
 
   const active = activeEntry(state);
+  const stackLengthRef = useRef(state.entries.length);
+  const historyDepthRef = useRef(state.entries.length);
+  const historySeqRef = useRef(0);
+  const fromPopstateRef = useRef(false);
+  stackLengthRef.current = state.entries.length;
+
+  useEffect(() => {
+    if (root === 'donate' || typeof window === 'undefined' || typeof window.history === 'undefined') return undefined;
+    const currentDepth = state.entries.length;
+    if (fromPopstateRef.current) {
+      fromPopstateRef.current = false;
+      historyDepthRef.current = currentDepth;
+      return undefined;
+    }
+    if (currentDepth > historyDepthRef.current) {
+      historySeqRef.current += 1;
+      try {
+        window.history.pushState({ tvmSeq: historySeqRef.current, depth: currentDepth }, '');
+      } catch {
+        // Ignore history restrictions in sandboxed viewers.
+      }
+      historyDepthRef.current = currentDepth;
+    } else if (currentDepth < historyDepthRef.current) {
+      try {
+        window.history.replaceState({ tvmSeq: historySeqRef.current, depth: currentDepth }, '');
+      } catch {
+        // Ignore history restrictions.
+      }
+      historyDepthRef.current = currentDepth;
+    }
+    return undefined;
+  }, [root, state.entries.length]);
+
+  useEffect(() => {
+    if (root === 'donate' || typeof window === 'undefined') return undefined;
+    const onPopState = (): void => {
+      if (stackLengthRef.current <= 1) return;
+      fromPopstateRef.current = true;
+      dispatch(viewStack.pop());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [root]);
+
   // Tells a native shell whether its Back button has anywhere to go in here,
   // or should leave the app — Android's Back is not a swipe the page can see.
   useEffect(() => {
@@ -296,10 +340,12 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
         // A focused text field owns typing, Space, and Backspace. OK/Enter
         // confirms so a remote can continue after a paste. The D-pad leaves
         // the field so Continue stays reachable.
-        if (isEditable(source.target)) {
+        if (isEditable(source.target) || isTextEntryTarget(source.target)) {
           if (intent === 'select' && (source.key === 'Enter' || source.key === 'NumpadEnter')) {
             source.preventDefault();
-            source.target.dispatchEvent(new CustomEvent('tvm:field-confirm', { bubbles: true }));
+            if (source.target instanceof HTMLElement) {
+              source.target.dispatchEvent(new CustomEvent('tvm:field-confirm', { bubbles: true }));
+            }
             return;
           }
           if (intent === 'select') {

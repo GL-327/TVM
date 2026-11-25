@@ -6,6 +6,7 @@ import { RdOnboardingModal } from './screens/RdOnboardingModal';
 import { ACCOUNT_CHANGED, fetchAccount, readToken, SIGNED_OUT, type AccountState } from './data/account';
 import { applyPlanClass, fetchPlan } from './data/plan';
 import { applyGithubUpdateOnLaunch } from './data/launchUpdate';
+import { startContentBackgroundRefresh } from './data/content';
 
 /**
  * The app, behind its door.
@@ -45,7 +46,10 @@ export function App(): React.JSX.Element {
   // Behind the door as well: a fresh install must still be able to pull a
   // new interface before anyone has signed in, which is how iOS auto-update
   // is tested. ViewStack used to start this, and that never mounts here.
-  useEffect(() => { void applyGithubUpdateOnLaunch(); }, []);
+  useEffect(() => {
+    void applyGithubUpdateOnLaunch();
+    startContentBackgroundRefresh();
+  }, []);
 
   const onChanged = useCallback((next: AccountState): void => {
     setAccount(next);

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Artwork } from '../components/Artwork';
+import { BackButton } from '../components/BackButton';
 import { Chip } from '../components/Chip';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
+import { ImdbBadge, openExternalUrl } from '../components/ImdbBadge';
 import { Skeleton } from '../components/Skeleton';
 import { ToastPill, useToast } from '../components/ToastPill';
 import { titleById, type Title } from '../data/catalog';
@@ -18,6 +20,8 @@ import {
   type MediaItem,
 } from '../data/media';
 import { titleFromDetailsParams } from '../data/openDetails';
+import { isKidsProfile, peekActiveProfile } from '../data/profiles';
+import { fetchServices, openServiceExternal, serviceUrlForTitle, type ConnectedServiceStatus } from '../data/services';
 import { certificateLabel, formatAired, imdbIdFrom, imdbScore, imdbTitleUrl, playIdFor, seriesGraphUrl } from '../data/playId';
 import { asSeason, episodesForSeason, seasonNumbers } from '../data/seasons';
 import { requestFocus } from '../nav/focusEngine';
@@ -70,7 +74,18 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const [season, setSeason] = useState<number | null>(null);
   const [loadingTitle, setLoadingTitle] = useState(snapshot === undefined && id !== '');
   const [attempt, setAttempt] = useState(0);
+  const [connectedServices, setConnectedServices] = useState<ConnectedServiceStatus[]>([]);
   const { message: toast, showToast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchServices().then((list) => {
+      if (!cancelled) setConnectedServices(list.filter((svc) => svc.connected));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,17 +183,13 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     if (loadingTitle) {
       return (
         <DetailsShell series={false}>
+          <BackButton id="back" className="details__back" />
           <div className="details__hero">
             <div className="details__poster-stage">
               <Skeleton className="details__poster" label="Loading artwork" />
             </div>
             <div className="details__copy">
               <Skeleton className="skeleton--hero" label="Loading title" />
-              <div className="hero__actions details__actions">
-                <FocusButton id="back" onSelect={() => navigate.pop()}>
-                  Back
-                </FocusButton>
-              </div>
             </div>
           </div>
         </DetailsShell>
@@ -242,6 +253,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
 
   return (
     <DetailsShell series={seriesLike} title={title}>
+      <BackButton id="back" className="details__back" />
       <div className="details__hero">
         <div className="details__poster-stage">
           <Artwork title={title} kind="poster" className="details__poster" eager />
@@ -250,7 +262,15 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
           <p className="stage__kicker">{seriesLike ? 'Series' : 'Film'}</p>
           <h1 className="stage__title">{title.title}</h1>
           <p className="stage__meta">
-            {score !== null && <span className="details__imdb">IMDb {score}</span>}
+            {(score !== null || imdbUrl !== null) && (
+              <ImdbBadge
+                id="details-imdb-badge"
+                mediaId={title.id}
+                rating={score}
+                isSeries={seriesLike}
+                onOpenExternal={(url) => openExternalUrl(url)}
+              />
+            )}
             {certificate !== null && <Chip>{certificate}</Chip>}
             {title.year > 0 && <span>{title.year}</span>}
             {title.runtime !== undefined && title.runtime !== '' && <span>{title.runtime}</span>}
@@ -267,9 +287,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                 {title.progress !== undefined ? 'Resume' : 'Play'}
               </FocusButton>
             )}
-            <FocusButton id="download" className="tvm-button--glass" onSelect={() => navigate.pushModal('downloads', { params: { id: title.id, title: title.title, series: seriesLike, episodes: files } })}>Download</FocusButton>
+            {!isKidsProfile(peekActiveProfile()) && (
+              <FocusButton id="download" className="tvm-button--glass" onSelect={() => navigate.pushModal('downloads', { params: { id: title.id, title: title.title, series: seriesLike, episodes: files } })}>Download</FocusButton>
+            )}
             {imdbUrl !== null && (
-              <FocusButton id="imdb" className="tvm-button--glass" onSelect={() => openWeb(imdbUrl, 'IMDb')}>
+              <FocusButton id="imdb" className="tvm-button--glass" onSelect={() => openExternalUrl(imdbUrl)}>
                 IMDb
               </FocusButton>
             )}
@@ -285,11 +307,25 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
             <FocusButton id="watchlist" className="tvm-button--glass" onSelect={toggleWatchlist}>
               {saved ? 'Remove from My List' : 'Add to My List'}
             </FocusButton>
-            <FocusButton id="back" className="tvm-button--glass" onSelect={() => navigate.pop()}>
-              Back
-            </FocusButton>
           </div>
           <p className="stage__synopsis">{title.synopsis}</p>
+          {connectedServices.length > 0 && (
+            <div className="details__watch-on" aria-label="Watch on connected services">
+              <span className="details__watch-on-label">Watch on</span>
+              <div className="details__watch-on-row" data-wrap="row">
+                {connectedServices.map((svc) => (
+                  <FocusButton
+                    key={svc.id}
+                    id={`watch-on-${svc.id}`}
+                    className="tvm-button--glass"
+                    onSelect={() => openServiceExternal(serviceUrlForTitle(svc, title.title), svc)}
+                  >
+                    Look for it on {svc.name}
+                  </FocusButton>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {seriesLike && (
