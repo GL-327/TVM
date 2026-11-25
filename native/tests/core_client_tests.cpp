@@ -151,3 +151,48 @@ TEST(native_realdebrid_prompt_gating_respects_account_key_configured_and_dismiss
     // Prompt only when usable, no remote rdKey, not configured locally, and not dismissed.
     REQUIRE(coreapi::ShouldPromptForRealDebrid(withoutRdKey, notConfigured, false));
 }
+
+TEST(account_copy_helpers_translate_statuses_validate_inputs_and_hide_raw_errors) {
+    coreapi::AccountState awaiting = coreapi::ParseAccount({
+        {"signedIn", true},
+        {"account", {{"role", "member"}, {"email", "wait@tvm.test"}, {"activated", false}, {"suspended", false}, {"createdAt", "2026-04-12T10:00:00Z"}}},
+        {"usable", {{"ok", false}, {"reason", "awaiting_activation"}}},
+    });
+    REQUIRE_EQ(coreapi::AccountStatusLabel(awaiting), std::string("Waiting for approval"));
+    REQUIRE_EQ(coreapi::ShortDateLabel(awaiting.createdAt), std::string("12 Apr 2026"));
+
+    coreapi::AccountState paused = coreapi::ParseAccount({
+        {"signedIn", true},
+        {"account", {{"role", "member"}, {"email", "paused@tvm.test"}, {"activated", true}, {"suspended", true}}},
+        {"usable", {{"ok", false}, {"reason", "suspended"}}},
+    });
+    REQUIRE_EQ(coreapi::AccountStatusLabel(paused), std::string("Paused by the owner"));
+
+    REQUIRE_EQ(coreapi::FriendlyPlanName("stream"), std::string("Stream"));
+    REQUIRE_EQ(coreapi::FriendlyPlanName("stream-live"), std::string("Stream + Live"));
+    REQUIRE_EQ(coreapi::FriendlyPlanName(""), std::string("No active plan"));
+
+    REQUIRE(coreapi::ValidateEmailInput("").has_value());
+    REQUIRE(coreapi::ValidateEmailInput("not-an-email").has_value());
+    REQUIRE(!coreapi::ValidateEmailInput("ada@tvm.test").has_value());
+    REQUIRE(coreapi::ValidatePasswordInput("short", true).has_value());
+    REQUIRE(!coreapi::ValidatePasswordInput("tencharpass", true).has_value());
+    REQUIRE(!coreapi::ValidatePasswordInput("short", false).has_value());
+
+    REQUIRE_EQ(coreapi::FriendlyAccountError("HTTP 429 rate_limited"), std::string("Too many tries. Wait a minute and try again."));
+    REQUIRE_EQ(coreapi::FriendlyAccountError("HTTP 401 invalid_credentials"),
+               std::string("That password doesn't match this email. Try again or ask the owner to reset it."));
+    REQUIRE(coreapi::FriendlyAccountError("HTTP 502 bad gateway").find("502") == std::string::npos);
+    REQUIRE(coreapi::FriendlyAccountError("awaiting_activation").find('_') == std::string::npos);
+
+    const auto tiers = coreapi::ParseTiersDocument({
+        {"route", "/pricing"},
+        {"streamMonthlyPence", 1000},
+        {"tiers", {
+            {{"id", "stream"}, {"name", "Stream"}, {"tag", "Movies & TV"}, {"monthlyPence", 1000}, {"yearlyPence", 9000}},
+            {{"id", "stream-live"}, {"name", "Stream + Live"}, {"tag", "Everything + Live TV"}, {"monthlyPence", 1700}, {"yearlyPence", 15000}, {"liveIncluded", true}},
+        }},
+    });
+    REQUIRE_EQ(tiers.tiers.size(), std::size_t{2});
+    REQUIRE_EQ(tiers.tiers[1].yearlyPence, 15000);
+}

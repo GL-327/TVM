@@ -155,3 +155,66 @@ export function IconForward({ className }: IconProps): React.JSX.Element {
     </svg>
   );
 }
+
+export function IconEye({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <path
+        d="M4.5 16s4.2-6.5 11.5-6.5S27.5 16 27.5 16s-4.2 6.5-11.5 6.5S4.5 16 4.5 16Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="16" cy="16" r="3.2" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+export function IconEyeOff({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <path
+        d="M5.5 5.5 26.5 26.5M12.5 10.1a10.7 10.7 0 0 1 3.5-.6c7.3 0 11.5 6.5 11.5 6.5a21 21 0 0 1-4.3 4.6M8.2 11.8A20.3 20.3 0 0 0 4.5 16s4.2 6.5 11.5 6.5c1.5 0 2.9-.3 4.2-.7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconCheck({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <path d="m7.5 16.5 5.5 5.5 11.5-12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconAlertCircle({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <circle cx="16" cy="16" r="10.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M16 10.8v6.2M16 21.2h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconClock({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <circle cx="16" cy="16" r="10.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M16 10.5V16l4 2.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconAccountPaused({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" overflow="hidden" aria-hidden="true">
+      <circle cx="16" cy="16" r="10.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M13.5 12v8M18.5 12v8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}

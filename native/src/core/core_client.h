@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <mutex>
 #include <optional>
-#include <string>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -12,6 +14,9 @@
 #include "core/paths.h"
 
 namespace tvm::coreapi {
+
+inline constexpr std::size_t kMinPasswordLength = 10;
+inline constexpr std::size_t kMaxPasswordLength = 200;
 
 class RequestError : public std::runtime_error {
 public:
@@ -26,8 +31,47 @@ struct AccountState {
     bool liveTv = false;
     bool canSendEmail = false;
     bool rdKey = false;
+    bool activated = false;
+    bool suspended = false;
+    bool emailCodeSent = false;
     std::string reason = "no_account";
-    std::string name, email, tier, termsVersion;
+    std::string name, email, tier, termsVersion, createdAt;
+};
+
+struct TermsSection {
+    std::string title;
+    std::string body;
+    bool operator==(const TermsSection&) const = default;
+};
+
+struct TermsDocument {
+    std::string version = "1.0";
+    std::string updated;
+    std::string intro;
+    std::vector<TermsSection> sections;
+    bool operator==(const TermsDocument&) const = default;
+};
+
+struct AccessTier {
+    std::string id;
+    std::string name;
+    std::string tag;
+    int monthlyPence = 0;
+    int yearlyPence = 0;
+    int liveAddOnMonthlyPence = 0;
+    int liveAddOnYearlyPence = 0;
+    bool orderable = true;
+    bool liveIncluded = false;
+    std::vector<std::string> bullets;
+    std::string finePrint;
+    bool operator==(const AccessTier&) const = default;
+};
+
+struct TiersDocument {
+    std::string route = "/pricing";
+    int streamMonthlyPence = 1000;
+    std::vector<AccessTier> tiers;
+    bool operator==(const TiersDocument&) const = default;
 };
 
 struct RealDebridStatus {
@@ -41,6 +85,16 @@ struct RealDebridStatus {
 };
 
 AccountState ParseAccount(const nlohmann::json& body);
+TermsDocument DefaultTermsDocument();
+TermsDocument ParseTermsDocument(const nlohmann::json& body);
+TiersDocument DefaultTiersDocument();
+TiersDocument ParseTiersDocument(const nlohmann::json& body);
+std::optional<std::string> ValidateEmailInput(const std::string& raw);
+std::optional<std::string> ValidatePasswordInput(const std::string& password, bool forSignup);
+std::string AccountStatusLabel(const AccountState& account);
+std::string FriendlyPlanName(const std::string& tier);
+std::string FriendlyAccountError(const std::string& raw);
+std::string ShortDateLabel(const std::string& iso);
 RealDebridStatus ParseRealDebridStatus(const nlohmann::json& body);
 bool ShouldPromptForRealDebrid(const AccountState& account, const RealDebridStatus& rdStatus, bool dismissed);
 admin::Account ParseAdminAccount(const nlohmann::json& body);
@@ -59,6 +113,12 @@ public:
     AccountState SignIn(const std::string& email, const std::string& password);
     void Register(const std::string& email, const std::string& password, const std::string& name);
     void SignOut();
+    TermsDocument Terms() const;
+    TiersDocument Tiers() const;
+    AccountState AcceptTerms();
+    void SendVerificationEmail();
+    AccountState VerifyEmailCode(const std::string& code);
+    std::string RecordPlanChoice(const std::string& tierId, const std::string& cadence) const;
     const std::string& origin() const { return origin_; }
     unsigned port() const { return port_; }
     const paths::fs::path& dataDir() const { return dataDir_; }

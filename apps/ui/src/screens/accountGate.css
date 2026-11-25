@@ -1,6 +1,12 @@
 /*
- * Liquid Glass sign-in gate. Centered frosted card floating over a layered
- * ambient backdrop, preserving safe-centering and keyboard-field scrolling.
+ * TVM Glass 27 sign-in, sign-up, waiting, and terms sheets.
+ *
+ * Rules:
+ * - One 440px glass sheet on desktop (full width minus 16px gutters on phone),
+ *   28px radius, 32px padding, 24px spacing between groups.
+ * - One primary filled #2f6bff glass button (48px tall, full width); all other
+ *   actions are quiet text links or equal-height plain glass buttons.
+ * - No backdrop-filter on the gate surface so Android's software GPU stays fast.
  */
 
 .gate {
@@ -8,65 +14,42 @@
   height: 100dvh;
   display: grid;
   place-items: safe center;
-  padding: max(1.25rem, env(safe-area-inset-top, 0px), var(--tvm-safe-y, 1.25rem))
-    clamp(1rem, 4vw, 3rem)
-    max(1.25rem, env(safe-area-inset-bottom, 0px), var(--tvm-safe-bottom, 1.25rem));
-  color: var(--tvm-text, #f5f5f7);
+  padding: max(20px, env(safe-area-inset-top, 0px), var(--tvm-safe-y, 20px))
+    max(16px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))
+    max(20px, env(safe-area-inset-bottom, 0px), var(--tvm-safe-bottom, 20px));
+  color: var(--tvm-glass27-text, #f5f7fc);
   overflow-y: auto;
   background:
-    radial-gradient(
-      95% 70% at 15% 8%,
-      color-mix(in srgb, var(--tvm-accent, #6ec8ff) 20%, transparent),
-      transparent 58%
-    ),
-    radial-gradient(
-      85% 65% at 85% 92%,
-      color-mix(in srgb, var(--tvm-mark, #4aa0e0) 24%, transparent),
-      transparent 60%
-    ),
-    radial-gradient(
-      110% 75% at 50% -10%,
-      color-mix(in srgb, var(--tvm-brand-violet, #7c5cff) 22%, transparent),
-      transparent 62%
-    ),
+    linear-gradient(180deg, rgba(4, 8, 18, 0.56) 0%, rgba(4, 8, 18, 0.72) 100%),
+    radial-gradient(90% 65% at 18% 12%, rgba(47, 107, 255, 0.22), transparent 58%),
+    radial-gradient(85% 65% at 84% 88%, rgba(74, 160, 224, 0.2), transparent 60%),
+    radial-gradient(100% 70% at 50% -10%, rgba(124, 92, 255, 0.16), transparent 62%),
     var(--tvm-bg-deep, #030710);
 }
 
 .gate__panel {
   position: relative;
-  width: min(30.5rem, 100%);
-  padding: clamp(1.35rem, 4vw, 2.15rem);
-  border-radius: 24px;
-  border: 1px solid color-mix(in srgb, #fff 18%, transparent);
-  background: var(
-    --tvm-glass-bg-elevated,
-    linear-gradient(155deg, rgba(22, 36, 58, 0.72), rgba(10, 18, 32, 0.84))
-  );
-  /*
-   * No backdrop-filter. Behind the card is only the gate's static gradient, so
-   * blurring it changes nothing you can see, but it costs a GPU render surface
-   * on the very first screen. On the Android emulator's software GPU that
-   * surface crashed the emulator within a minute of launch, and every phone
-   * build failed its install test until it went. The glass reads from the
-   * wash, the rim, the sheen and the shadow.
-   */
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: min(440px, 100%);
+  padding: 32px;
+  border-radius: 28px;
+  border: 1px solid var(--tvm-glass27-rim-bottom, rgba(255, 255, 255, 0.1));
+  border-top-color: var(--tvm-glass27-rim-top, rgba(255, 255, 255, 0.5));
+  border-left-color: var(--tvm-glass27-rim-side, rgba(255, 255, 255, 0.3));
+  background:
+    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc, rgba(255, 255, 255, 0.6)) 0%, transparent 100%),
+    linear-gradient(135deg, var(--tvm-glass27-specular-top-left, rgba(255, 255, 255, 0.28)) 0%, rgba(255, 255, 255, 0.05) 26%, transparent 45%),
+    linear-gradient(165deg, rgba(20, 28, 44, 0.86), rgba(10, 15, 28, 0.92));
   box-shadow:
-    var(--tvm-glass-rim-light, inset 0 1px 0.5px rgba(255, 255, 255, 0.34)),
-    var(--tvm-glass-rim-chroma, inset 0 -1px 1px rgba(110, 200, 255, 0.2)),
-    var(--tvm-glass-shadow, 0 24px 64px rgba(0, 0, 0, 0.55));
+    inset 0 0 0 1px var(--tvm-glass27-dark-inner, rgba(0, 0, 0, 0.22)),
+    var(--tvm-glass27-shadow, 0 10px 30px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.2));
   overflow: hidden;
 }
 
-.gate__panel::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: var(
-    --tvm-glass-sheen,
-    linear-gradient(132deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 34%, transparent 62%)
-  );
+.gate__panel--wide {
+  width: min(560px, 100%);
 }
 
 .gate__panel > * {
@@ -74,19 +57,12 @@
   z-index: 1;
 }
 
-.gate__panel--wide {
-  width: min(46rem, 100%);
-}
-
+/* Brand mark */
 .gate__brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.1rem;
-}
-
-.gate__mark {
-  display: block;
+  justify-content: flex-start;
+  margin-bottom: -8px;
 }
 
 .gate__mark-hit {
@@ -98,176 +74,396 @@
   cursor: default;
 }
 
-.gate__brand-pill {
-  padding: 0.24rem 0.7rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: var(--tvm-accent-strong, #9edcff);
-  border: 1px solid color-mix(in srgb, var(--tvm-accent, #6ec8ff) 32%, transparent);
-  background: color-mix(in srgb, var(--tvm-accent, #6ec8ff) 12%, transparent);
+.gate__mark.tvm-mark--md {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32);
 }
 
-.gate-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.28rem;
-  margin-bottom: 1.25rem;
-  padding: 0.28rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, #fff 14%, transparent);
-  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 52%, transparent);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.32);
-}
-
-.tvm-button.gate-tab {
-  min-width: 0;
-  min-height: 2.35rem;
-  justify-content: center;
-  padding: 0.35rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--tvm-text-muted);
-  font-size: 0.8rem;
-  font-weight: 650;
-  box-shadow: none;
-  white-space: nowrap;
-}
-
-.tvm-button.gate-tab .tvm-button__label {
-  justify-content: center;
-}
-
-.tvm-button.gate-tab--active {
-  background:
-    radial-gradient(66% 2px at 50% 0%, rgba(255, 255, 255, 0.72) 0%, transparent 100%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.40) 0%, rgba(255, 255, 255, 0.14) 34%, transparent 54%),
-    rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.24);
-  border-top-color: rgba(255, 255, 255, 0.70);
-  color: rgba(255, 255, 255, 0.98);
-  font-weight: 600;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.50),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.22),
-    0 4px 14px rgba(0, 0, 0, 0.26);
-}
-
-.tvm-button.gate-tab[data-focused='true'],
-.tvm-button.gate-tab:focus-visible {
-  outline: var(--tvm-focus-ring-width) solid var(--tvm-focus-ring-color);
-  outline-offset: 2px;
-  color: var(--tvm-text);
-  transform: none;
+/* Typography & headers */
+.gate__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .gate h1 {
-  margin: 0 0 0.4rem;
-  font-size: clamp(1.45rem, 4.5vw, 1.9rem);
-  font-weight: 780;
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 1.75rem);
+  font-weight: 740;
+  line-height: 1.16;
   letter-spacing: -0.025em;
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
 }
 
 .gate__lede {
-  margin: 0 0 1.25rem;
-  color: var(--tvm-text-muted);
+  margin: 0;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.66));
   font-size: 0.94rem;
   line-height: 1.5;
 }
 
 .gate__meta {
-  margin: -0.8rem 0 1rem;
+  margin: 0;
   font-size: 0.8rem;
-  color: var(--tvm-text-faint);
+  color: var(--tvm-text-faint, rgba(255, 255, 255, 0.52));
 }
 
-.gate__hint {
-  margin: 0 0 1rem;
-  font-size: 0.88rem;
-  color: var(--tvm-text-muted);
+.gate__meta--center {
+  text-align: center;
+  width: 100%;
 }
 
+/* Read-only email chip on Password step */
+.gate__chip-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.gate__email-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
+  font-size: 0.86rem;
+  font-weight: 560;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* Waiting / Paused hero state */
+.gate__state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.gate__state-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
+}
+
+.gate__state-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.gate__status-pill {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.84rem;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.66));
+}
+
+.gate__status-email {
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.gate__status-dot {
+  opacity: 0.6;
+}
+
+/* Notices & form errors */
 .gate__notice,
 .gate__error {
-  margin: 0 0 1rem;
-  padding: 0.72rem 0.95rem;
-  border-radius: 12px;
-  font-size: 0.88rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.875rem;
+  line-height: 1.45;
   border: 1px solid transparent;
 }
 
 .gate__notice {
-  background: color-mix(in srgb, var(--tvm-success) 16%, transparent);
-  border-color: color-mix(in srgb, var(--tvm-success) 42%, transparent);
+  background: color-mix(in srgb, var(--tvm-success, #59d69a) 14%, transparent);
+  border-color: color-mix(in srgb, var(--tvm-success, #59d69a) 38%, transparent);
+  color: var(--tvm-glass27-text, #f5f7fc);
 }
 
 .gate__error {
-  background: color-mix(in srgb, var(--tvm-danger) 16%, transparent);
-  border-color: color-mix(in srgb, var(--tvm-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--tvm-danger, #ff6b7d) 14%, transparent);
+  border-color: color-mix(in srgb, var(--tvm-danger, #ff6b7d) 40%, transparent);
+  color: #ffd9df;
+}
+
+/* Fields */
+.gate__form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.gate__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .gate__field {
-  display: block;
-  margin-bottom: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.gate__field > span {
+.gate__label {
   display: block;
-  margin-bottom: 0.35rem;
-  font-size: 0.8rem;
-  font-weight: 640;
-  letter-spacing: 0.02em;
-  color: var(--tvm-text-muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.66));
 }
 
 .gate .token-field__input {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 14px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.20), transparent 44%),
-    rgba(255, 255, 255, 0.06);
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 44%),
+    var(--tvm-glass27-well-tint, rgba(255, 255, 255, 0.06));
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
+  font-size: 1rem;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.gate .token-field__input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .gate .token-field__input:focus,
 .gate .token-field__input[data-focused='true'] {
   outline: none;
-  border-color: var(--tvm-accent-strong, #9edcff);
+  border-color: #2f6bff;
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 44%),
     rgba(255, 255, 255, 0.09);
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--tvm-accent, #6ec8ff) 48%, transparent),
+    0 0 0 2px color-mix(in srgb, #2f6bff 58%, transparent),
     inset 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
+.gate .token-field__input[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--tvm-danger, #ff6b7d) 78%, transparent);
+}
+
+/* Password field + integrated eye toggle */
+.gate__password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.gate .token-field__input.gate__password-input {
+  padding-right: 48px;
+}
+
+.tvm-button.gate__eye {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: center;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.66));
+  cursor: pointer;
+}
+
+.tvm-button.gate__eye:hover,
+.tvm-button.gate__eye:focus,
+.tvm-button.gate__eye[data-focused='true'] {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--tvm-glass27-text, #ffffff);
+  transform: translateY(-50%);
+  outline: 2px solid var(--tvm-focus-ring-color, #9edcff);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.gate__eye-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.gate__helper {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.66));
+}
+
+.gate__helper--center {
+  text-align: center;
+}
+
+.gate__field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: 0.825rem;
+  line-height: 1.35;
+  color: var(--tvm-danger, #ff6b7d);
+}
+
+.gate__field-error--empty {
+  display: none;
+}
+
+.gate__field-error-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+/* Terms checkbox in Create account */
+.gate__check-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tvm-button.gate__check {
+  min-height: 44px;
+  padding: 6px 4px 6px 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  justify-content: flex-start;
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tvm-button.gate__check:hover,
+.tvm-button.gate__check:focus,
+.tvm-button.gate__check[data-focused='true'] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  outline: 2px solid var(--tvm-focus-ring-color, #9edcff);
+  outline-offset: 2px;
+}
+
+.gate__checkbox-box {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.06);
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.gate__check--checked .gate__checkbox-box {
+  border-color: #2f6bff;
+  background: #2f6bff;
+  color: #ffffff;
+}
+
+.gate__checkbox-tick {
+  width: 14px;
+  height: 14px;
+}
+
+.gate__checkbox-label {
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+/* Primary & plain actions: always 48px tall, full width */
 .gate__actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  margin-top: 1.2rem;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gate__actions .tvm-button--primary,
+.gate__actions .gate__plain-full {
+  width: 100%;
+  min-height: 48px;
+  height: 48px;
+  padding: 0 20px;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.96rem;
+  font-weight: 640;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .gate__actions .tvm-button--primary {
-  flex: 1 1 auto;
-  justify-content: center;
-  min-height: 2.95rem;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   background:
-    radial-gradient(66% 2px at 50% 0%, rgba(255, 255, 255, 0.62) 0%, transparent 100%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.04) 30%, transparent 48%),
-    color-mix(in srgb, #2f6bff 62%, rgba(16, 26, 48, 0.65));
+    radial-gradient(66% 2px at 50% 0%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.04) 28%, transparent 46%),
+    color-mix(in srgb, #2f6bff 55%, rgba(16, 26, 48, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.5);
+  border-left-color: rgba(255, 255, 255, 0.32);
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.20);
-  border-top-color: rgba(255, 255, 255, 0.56);
-  border-left-color: rgba(255, 255, 255, 0.36);
   box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
     inset 0 0 0 1px rgba(0, 0, 0, 0.22),
-    0 10px 28px rgba(0, 0, 0, 0.32);
+    0 10px 26px rgba(0, 0, 0, 0.3);
+}
+
+.gate__actions .tvm-button--primary:hover,
+.gate__actions .tvm-button--primary:focus,
+.gate__actions .tvm-button--primary[data-focused='true'] {
+  background:
+    radial-gradient(66% 2px at 50% 0%, rgba(255, 255, 255, 0.78) 0%, transparent 100%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.08) 30%, transparent 48%),
+    color-mix(in srgb, #2f6bff 68%, rgba(16, 26, 48, 0.72));
+  transform: none;
+}
+
+.gate__actions .tvm-button--primary .tvm-button__label,
+.gate__actions .gate__plain-full .tvm-button__label {
+  justify-content: center;
 }
 
 .gate .tvm-button--glass {
@@ -275,115 +471,243 @@
   backdrop-filter: none;
 }
 
+/* Busy spinner inside primary button */
+.gate__btn-busy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.gate__spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-top-color: currentColor;
+  animation: gate-spin 720ms linear infinite;
+}
+
+@keyframes gate-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Quiet text links (no pill shapes) */
+.gate__links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.gate__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tvm-button.gate__link {
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  justify-content: center;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.72));
+  font-size: 0.875rem;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.tvm-button.gate__link--inline {
+  min-height: 32px;
+  padding: 4px 8px;
+  color: #9ec0ff;
+}
+
+.tvm-button.gate__link:hover,
+.tvm-button.gate__link:focus,
+.tvm-button.gate__link[data-focused='true'] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--tvm-glass27-text, #ffffff);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.tvm-button.gate__link:focus,
+.tvm-button.gate__link[data-focused='true'] {
+  outline: 2px solid var(--tvm-focus-ring-color, #9edcff);
+  outline-offset: 2px;
+}
+
 /* Scrollable terms document */
 .gate-terms {
-  max-height: min(46vh, 26rem);
+  max-height: min(46vh, 24rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1rem 1.1rem;
-  margin-bottom: 1rem;
-  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 55%, transparent);
-  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
-  border-radius: 14px;
-  font-size: 0.88rem;
+  padding: 16px 18px;
+  background: rgba(4, 8, 18, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  font-size: 0.875rem;
   line-height: 1.55;
 }
 
-.gate-terms h3 { margin: 1.2rem 0 0.4rem; font-size: 0.95rem; }
-.gate-terms section:first-of-type h3 { margin-top: 0; }
-.gate-terms p { margin: 0 0 0.55rem; color: var(--tvm-text-muted); }
-.gate-terms__intro { color: var(--tvm-text); }
-
-/* Collapsible plans drawer */
-.gate-plans {
-  margin-top: 1.35rem;
-  border-top: 1px solid color-mix(in srgb, #fff 12%, transparent);
-  padding-top: 0.85rem;
+/* Override mobile.css Dynamic Island padding when rendered inside the gate card */
+html.phone-shell .gate__panel .gate-terms {
+  padding: 16px 18px;
 }
 
-.gate-plans__toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  list-style: none;
-  cursor: pointer;
-  padding: 0.45rem 0.65rem;
-  border-radius: 10px;
-  font-size: 0.82rem;
-  font-weight: 650;
-  color: var(--tvm-text-muted);
-  transition: background-color 160ms ease, color 160ms ease;
+.gate-terms h3 {
+  margin: 18px 0 6px;
+  font-size: 0.94rem;
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.95));
 }
 
-.gate-plans__toggle::-webkit-details-marker {
-  display: none;
+.gate-terms section:first-of-type h3 {
+  margin-top: 0;
 }
 
-.gate-plans__toggle:hover {
-  background: color-mix(in srgb, #fff 8%, transparent);
-  color: var(--tvm-text);
+.gate-terms p {
+  margin: 0 0 8px;
+  color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.68));
 }
 
-.gate-plans[open] .gate-plans__chevron {
-  transform: rotate(180deg);
+.gate-terms__intro {
+  color: var(--tvm-glass27-text, rgba(255, 255, 255, 0.92)) !important;
 }
 
-.gate-plans__chevron {
-  transition: transform 180ms ease;
+/* Light theme adjustment */
+html[data-theme='light'] .gate {
+  background:
+    linear-gradient(180deg, rgba(16, 32, 48, 0.42) 0%, rgba(16, 32, 48, 0.56) 100%),
+    radial-gradient(90% 65% at 18% 12%, rgba(47, 107, 255, 0.18), transparent 58%),
+    #dbe7f0;
 }
 
-.gate-prices {
-  margin-top: 0.75rem;
-  padding: 0.9rem 1rem;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
-  background: color-mix(in srgb, var(--tvm-bg-deep, #050a14) 44%, transparent);
+html[data-theme='light'] .gate__panel {
+  background:
+    radial-gradient(64% 2px at 50% 0%, rgba(255, 255, 255, 0.88) 0%, transparent 100%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.16) 28%, transparent 48%),
+    rgba(248, 250, 253, 0.92);
+  color: #12324a;
 }
 
-.gate-prices h2 {
-  margin: 0 0 0.75rem;
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--tvm-text-faint);
+html[data-theme='light'] .gate h1,
+html[data-theme='light'] .gate__status-email,
+html[data-theme='light'] .gate__email-chip {
+  color: #12324a;
 }
 
-.gate-price { margin-bottom: 0.85rem; }
-.gate-price__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
-.gate-price__name { font-weight: 650; }
-.gate-price__amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 650; }
-.gate-price__amount span { font-size: 0.78rem; font-weight: 400; color: var(--tvm-text-faint); }
-
-.gate-price__plus {
-  display: block;
-  margin-top: 0.15rem;
-  text-align: right;
-  white-space: normal;
-  color: var(--tvm-text-muted);
+html[data-theme='light'] .gate__lede,
+html[data-theme='light'] .gate__label,
+html[data-theme='light'] .gate__helper,
+html[data-theme='light'] .gate__checkbox-label,
+html[data-theme='light'] .tvm-button.gate__link {
+  color: #2a5a68;
 }
 
-.gate-price__summary { margin: 0.15rem 0 0; font-size: 0.84rem; color: var(--tvm-text-muted); }
+html[data-theme='light'] .gate .token-field__input {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(18, 50, 74, 0.2);
+  color: #12324a;
+  box-shadow: inset 0 1px 2px rgba(18, 50, 74, 0.12);
+}
 
-.gate-price__terms { list-style: none; margin: 0.5rem 0 0; padding: 0; font-size: 0.82rem; }
-.gate-price__terms li { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.25rem 0; color: var(--tvm-text-muted); }
+html[data-theme='light'] .gate .token-field__input::placeholder {
+  color: rgba(18, 50, 74, 0.45);
+}
 
-.gate-prices__route {
-  margin: 0.9rem 0 0;
-  padding: 0.75rem 0.9rem;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--tvm-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tvm-accent) 32%, transparent);
-  font-size: 0.85rem;
-  line-height: 1.5;
+html[data-theme='light'] .gate__error {
+  color: #8f1d2c;
+}
+
+html[data-theme='light'] .gate__field-error {
+  color: #c4364a;
+}
+
+html[data-theme='light'] .gate__state-icon,
+html[data-theme='light'] .gate__status-pill,
+html[data-theme='light'] .gate__email-chip {
+  background: rgba(18, 50, 74, 0.06);
+  border-color: rgba(18, 50, 74, 0.16);
+  color: #12324a;
+}
+
+html[data-theme='light'] .gate__footer {
+  border-top-color: rgba(18, 50, 74, 0.12);
+}
+
+html[data-theme='light'] .gate-terms {
+  background: rgba(255, 255, 255, 0.64);
+  border-color: rgba(18, 50, 74, 0.14);
+}
+
+html[data-theme='light'] .gate-terms h3,
+html[data-theme='light'] .gate-terms__intro {
+  color: #12324a !important;
+}
+
+html[data-theme='light'] .gate-terms p {
+  color: #2a5a68;
+}
+
+html[data-theme='light'] .gate__checkbox-box {
+  border-color: rgba(18, 50, 74, 0.38);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+html[data-theme='light'] .tvm-button.gate__link--inline {
+  color: #1d4ed8;
+}
+
+/* Reduced motion & performance mode */
+:root[data-motion='reduced'] .gate__spinner,
+:root[data-perf='on'] .gate__spinner {
+  animation: none !important;
+  border-top-color: rgba(255, 255, 255, 0.85);
+}
+
+:root[data-motion='reduced'] .gate__actions .tvm-button--primary:hover,
+:root[data-motion='reduced'] .gate__actions .tvm-button--primary:focus,
+:root[data-motion='reduced'] .gate__actions .tvm-button--primary[data-focused='true'],
+:root[data-perf='on'] .gate__actions .tvm-button--primary:hover,
+:root[data-perf='on'] .gate__actions .tvm-button--primary:focus,
+:root[data-perf='on'] .gate__actions .tvm-button--primary[data-focused='true'] {
+  transform: none;
 }
 
 @media (max-width: 480px) {
-  .gate__panel { border-radius: 20px; }
-  .gate__actions .tvm-button { flex: 1 1 100%; min-height: 44px; }
-  .tvm-button.gate-tab { font-size: 0.74rem; padding-inline: 0.35rem; }
-}
+  .gate__panel {
+    padding: 24px 20px;
+    border-radius: 28px;
+  }
 
-.gate__form { display: contents; }
+  .gate__status-pill {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    border-radius: 14px;
+    padding: 10px 14px;
+  }
+
+  .gate__status-dot {
+    display: none;
+  }
+
+  .tvm-button.gate__link,
+  .tvm-button.gate__check {
+    min-height: 44px;
+  }
+}
 
 .gate__implicit-submit {
   position: absolute;
@@ -396,14 +720,4 @@
   border: 0;
   opacity: 0;
   pointer-events: none;
-}
-
-/*
- * The gate's glass buttons sit on the same static gradient as the card, so a
- * backdrop blur here is invisible too, and it is the first screen a phone
- * draws. See .gate__panel.
- */
-.gate .tvm-button--glass {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }

@@ -121,7 +121,13 @@ const requiredFiles = [
   "source/spatial.brs",
   "source/hub.brs",
   "source/hubCore.brs",
+  "source/qr.brs",
+  "source/accountCopy.brs",
   "source/data/hubFixture.json",
+  "components/QrCode.xml",
+  "components/QrCode.brs",
+  "components/PlansScreen.xml",
+  "components/PlansScreen.brs",
   "components/SpatialTabs.xml",
   "components/SpatialTabs.brs",
   "components/HubScreen.xml",
@@ -420,7 +426,7 @@ if (!/headers\["Authorization"\] = "Bearer " \+ m\.coreToken/.test(sceneBrs)) {
 const accountBrs = existsSync(join(rokuRoot, "components/AccountScreen.brs"))
   ? read(join(rokuRoot, "components/AccountScreen.brs"))
   : "";
-if (/ownerDoor|devCode|submitDevSignIn|\/api\/account\/dev/.test(sceneBrs + accountBrs)) {
+if (/ownerDoor|devCode|submitDevSignIn|\/api\/account\/dev\b/.test(sceneBrs + accountBrs)) {
   fail("Roku must not offer developer or owner-code sign-in");
 }
 const accountsBrs = read(join(rokuRoot, "source/accountsCore.brs"));
@@ -659,10 +665,16 @@ if (!/name = "hub"/.test(sceneBrs) || !/navigate\("push", "hub"/.test(sceneBrs) 
 if (!/sub initHubAgent\(/.test(sceneBrs) || !/sub onHubEffect\(/.test(sceneBrs) || !/sub hubInjectIntent\(/.test(sceneBrs) || !/hubFinishPlayCommand\(/.test(sceneBrs)) {
   fail("TVMScene must run the HubAgent and apply Hub commands");
 }
-if (!/sub startCodeSignIn\(/.test(sceneBrs) || !/hubPairPollNext\(/.test(sceneBrs) || !/"\/pair\/token"/.test(sceneBrs)) {
-  fail("TVMScene must sign in with a code and poll pair/token with slow_down handling");
+if (!/sub startDeviceSignIn\(/.test(sceneBrs) || !/"\/api\/account\/device\/start"/.test(sceneBrs) || !/"\/api\/account\/device\/poll"/.test(sceneBrs) || !/slow_down/.test(sceneBrs)) {
+  fail("TVMScene must start and poll the device sign-in endpoints with slow_down handling");
 }
-if (!/emit\("codeSignIn"\)/.test(fileText("components/AccountScreen.brs"))) fail("AccountScreen must offer Sign in with a code");
+const accountXml = fileText("components/AccountScreen.xml");
+const accountScreenBrs = fileText("components/AccountScreen.brs");
+if (!/<QrCode/.test(accountXml) || !/Use email and password instead/.test(accountXml) || !/emit\("switchToForm"\)/.test(accountScreenBrs)) {
+  fail("AccountScreen must show a QR code and offer Use email and password instead");
+}
+if (!/emit\("plans"\)/.test(fileText("components/ProfileScreen.brs"))) fail("ProfileScreen must open Plans");
+if (!/emit\("choosePlan"/.test(fileText("components/PlansScreen.brs"))) fail("PlansScreen must submit plan selection");
 if (!/id="playState"/.test(playerXml) || !/function applyRemote\(/.test(playerBrs)) fail("PlayerScreen must publish playState and apply remote commands");
 for (const base of ["HomeScreen", "SettingsScreen", "YouMenu", "PlayerScreen", "HubScreen", "ConfirmPanel", "NoticePanel"]) {
   if (!/id="remoteIntent"/.test(fileText(`components/${base}.xml`))) fail(`${base} must accept remote intents`);

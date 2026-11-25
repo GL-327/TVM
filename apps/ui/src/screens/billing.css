@@ -1,20 +1,6 @@
 /*
- * Shared chrome for the money-adjacent screens: Donate, Accounts, Live check,
- * the receipts summary and the legal page.
- *
- * Two things were wrong with this file.
- *
- * It was written for the old in-app checkout and never revisited, so every
- * colour was a literal from before TVM had a palette — a mint-and-steel set
- * that now sits directly beside violet buttons. Everything below is a theme
- * token, so these screens follow whichever theme is on instead of insisting on
- * one of their own.
- *
- * And it was imported by two screens while being used by five. Screens are
- * lazy-loaded, and a lazy chunk carries its own CSS, so Donate, Accounts and
- * Live check were rendering these classes with no rules at all — unless you
- * happened to open Legal first, at which point they silently changed
- * appearance. The screens that use these classes now import this file.
+ * Shared TVM Glass 27 styles for Account, Billing, Donate, Accounts, Live check,
+ * StripeCardPanel, and Legal.
  */
 
 .billing-page {
@@ -22,65 +8,127 @@
 }
 
 .billing-badge {
-  display: inline-block;
-  padding: var(--tvm-space-1) var(--tvm-space-2);
-  border: 1px solid color-mix(in srgb, var(--tvm-success) 55%, transparent);
-  border-radius: var(--tvm-radius-pill);
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--tvm-success) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tvm-success) 12%, transparent);
   color: var(--tvm-success);
-  font-size: var(--tvm-font-size-caption);
-  letter-spacing: 0.06em;
+  font-size: 0.76rem;
+  font-weight: 640;
+  letter-spacing: 0.03em;
 }
 
 .billing-panel {
   margin: var(--tvm-space-3) 0;
-  padding: var(--tvm-space-3);
-  border: 1px solid var(--tvm-border);
-  border-radius: var(--tvm-radius-lg);
-  background: var(--tvm-surface);
+  padding: 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--tvm-glass-bg-elevated, var(--tvm-surface));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 48rem;
+}
+
+.billing-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .billing-panel h2 {
-  margin: 0 0 var(--tvm-space-2);
+  margin: 0;
   font-size: var(--tvm-font-size-body-lg);
 }
 
 .billing-panel p {
+  margin: 0;
   line-height: var(--tvm-line-height-body);
 }
 
-/*
- * A chip in a row, not a stacked list item. Every remaining caller — donate
- * amounts, the account state filter, the two live-check toggles — puts several
- * of these side by side; the old `width: 100%` was left over from a list of
- * plans that no longer exists and would have stacked all four donate amounts
- * down the page.
- */
-.billing-option {
+.billing-rows {
   margin: 0;
 }
 
-/*
- * Which one is chosen.
- *
- * There was no rule for this at all, so the selected donate amount and the
- * selected account filter looked exactly like the others and the only way to
- * tell was to read the button underneath.
- *
- * The selector is doubled on purpose. Themes style buttons through
- * [data-theme=...] .tvm-button, which outweighs a single class, and this file
- * arrives in a lazily-loaded chunk whose position in the cascade is decided by
- * when the screen was opened. Three classes win outright and in every order,
- * which is worth more here than a tidier selector that works by luck.
- *
- * Repeated for the focused state because .tvm-button:focus repaints the
- * background, which would have erased the tint exactly while you were on it.
- */
+.billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.tvm-button.billing-btn {
+  min-height: 48px;
+  height: 48px;
+  padding: 0 20px;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.94rem;
+  font-weight: 620;
+}
+
+.tvm-button.billing-btn .tvm-button__label {
+  justify-content: center;
+}
+
+.tvm-button.billing-btn--danger {
+  color: var(--tvm-danger, #ff6b7d);
+  border-color: color-mix(in srgb, var(--tvm-danger, #ff6b7d) 42%, transparent);
+}
+
+.billing-footer {
+  padding-top: 6px;
+  border-top: 1px solid var(--tvm-border-soft);
+  display: flex;
+  align-items: center;
+}
+
+.tvm-button.billing-link {
+  min-height: 40px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tvm-text-muted);
+  font-size: 0.88rem;
+  font-weight: 580;
+}
+
+.tvm-button.billing-link:hover,
+.tvm-button.billing-link:focus,
+.tvm-button.billing-link[data-focused='true'] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--tvm-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.billing-option {
+  margin: 0;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  justify-content: center;
+}
+
+.billing-option .tvm-button__label {
+  justify-content: center;
+}
+
 .tvm-button.billing-option.billing-option--selected,
 .tvm-button.billing-option.billing-option--selected:focus,
 .tvm-button.billing-option.billing-option--selected[data-focused='true'] {
-  border-color: var(--tvm-accent);
-  background: color-mix(in srgb, var(--tvm-accent) 26%, var(--tvm-surface));
-  color: var(--tvm-text);
+  border-color: #2f6bff;
+  background: color-mix(in srgb, #2f6bff 34%, var(--tvm-surface));
+  color: #ffffff;
   font-weight: 640;
 }
 
@@ -113,9 +161,10 @@
 }
 
 .billing-message {
-  padding: var(--tvm-space-2);
-  border-radius: var(--tvm-radius-md);
+  padding: 12px 14px;
+  border-radius: 14px;
   background: var(--tvm-surface-hover);
+  font-size: 0.9rem;
 }
 
 .billing-message--error {
@@ -133,6 +182,9 @@
 .billing-receipts li {
   padding: var(--tvm-space-2) 0;
   border-top: 1px solid var(--tvm-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .legal-copy {
@@ -144,10 +196,6 @@
   margin-top: var(--tvm-space-4);
 }
 
-/*
- * Stripe mounts its card iframe here. It sizes itself, so this only needs to
- * give it room and keep it inside the panel's rhythm.
- */
 .stripe-element {
   margin: var(--tvm-space-2) 0;
   min-height: 12rem;
@@ -155,4 +203,171 @@
 
 .stripe-element iframe {
   max-width: 100%;
+}
+
+/* Account screen --------------------------------------------------------- */
+.account-shell {
+  width: min(40rem, 100%);
+}
+
+.account-card {
+  padding: 28px;
+  border-radius: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-avatar {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+  font-weight: 760;
+  color: #ffffff;
+  background: linear-gradient(145deg, #4b83ff, #1d4ed8);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.account-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-identity__name {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 740;
+  letter-spacing: -0.02em;
+  color: var(--tvm-glass27-text, var(--tvm-text));
+  overflow-wrap: anywhere;
+}
+
+.account-identity__email {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--tvm-glass27-text-secondary, var(--tvm-text-muted));
+  overflow-wrap: anywhere;
+}
+
+.account-rows {
+  gap: 8px;
+  max-width: none;
+}
+
+.tvm-button.settings-row.account-row {
+  min-height: 52px;
+  padding: 12px 16px;
+  border-radius: 16px;
+}
+
+.account-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--tvm-border-soft);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.account-info-row__label {
+  font-weight: 600;
+  color: var(--tvm-text);
+}
+
+.account-info-row__value {
+  color: var(--tvm-text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tvm-border-soft);
+}
+
+.tvm-button.account-signout {
+  min-height: 48px;
+  height: 48px;
+  padding: 0 24px;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.tvm-button.account-signout .tvm-button__label {
+  justify-content: center;
+}
+
+.tvm-button.account-footer__link {
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tvm-text-muted);
+  font-size: 0.88rem;
+  font-weight: 580;
+}
+
+.tvm-button.account-footer__link:hover,
+.tvm-button.account-footer__link:focus,
+.tvm-button.account-footer__link[data-focused='true'] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--tvm-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+html[data-theme='light'] .account-info-row {
+  background: rgba(255, 255, 255, 0.56);
+}
+
+@media (max-width: 540px) {
+  html.phone-shell .page.page--account {
+    padding-bottom: calc(var(--tvm-tabbar) + var(--tvm-keyboard-inset) + 1.5rem);
+  }
+
+  .account-card {
+    padding: 18px;
+    border-radius: 22px;
+    gap: 18px;
+  }
+
+  .account-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tvm-button.account-signout {
+    width: 100%;
+  }
+
+  .tvm-button.account-footer__link {
+    justify-content: center;
+  }
 }

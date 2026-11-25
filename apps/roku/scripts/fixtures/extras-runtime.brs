@@ -98,6 +98,27 @@ sub Main()
   check(ParseJson(m.http.body).version = "test-terms", "terms version submitted")
   m.response = { ok: false, status: 429 }
   check(lcSignInAccount(accountCtx).status = 429, "rate limit preserved")
+
+  ' Device sign-in flow endpoints (unauthenticated public device start & poll)
+  m.response = { ok: true, status: 200, json: { deviceCode: "abcdefghijklmnopqrstuvwxyz0123456789abcdefg", userCode: "ABCD-EFGH", verifyUrl: "https://tvm-accounts.tvm-accounts.workers.dev/link", verifyUrlComplete: "https://tvm-accounts.tvm-accounts.workers.dev/link?code=ABCD-EFGH", expiresIn: 600, interval: 5 } }
+  devStart = lcDeviceStart({ accountToken: "fixture-session", body: { client: "Living Room Roku" } })
+  check(devStart.status = 200 and devStart.json.userCode = "ABCD-EFGH", "device start returns codes")
+  check(m.http.url = "https://tvm-accounts.tvm-accounts.workers.dev/v1/device/start", "device start hits accounts worker")
+  check(not m.http.headers.DoesExist("Authorization"), "device start sends no bearer token")
+
+  pollCtx = { accountToken: "fixture-session", body: { deviceCode: "abcdefghijklmnopqrstuvwxyz0123456789abcdefg" } }
+  m.response = { ok: false, status: 428, json: { error: "pending" } }
+  pollPending = lcDevicePoll(pollCtx)
+  check(pollPending.status = 428 and pollPending.json.state = "pending", "device poll pending mapped")
+  m.response = { ok: false, status: 410, json: { error: "expired" } }
+  pollExpired = lcDevicePoll(pollCtx)
+  check(pollExpired.status = 410 and pollExpired.json.state = "expired", "device poll expired mapped")
+  m.response = { ok: false, status: 429, json: { error: "slow_down" } }
+  pollSlow = lcDevicePoll(pollCtx)
+  check(pollSlow.status = 429 and pollSlow.json.state = "slow_down", "device poll slow_down mapped")
+  m.response = { ok: true, status: 200, json: { session: "device-session", account: { id: "a1", status: "active", termsVersion: "test-terms", hasRdToken: false, liveTv: false } } }
+  pollOk = lcDevicePoll(pollCtx)
+  check(pollOk.status = 200 and pollOk.json.state = "approved" and pollOk.json.token = "device-session" and pollOk.json.usable.ok, "device poll approved")
   print "EXTRAS_RUNTIME_OK"
 end sub
 

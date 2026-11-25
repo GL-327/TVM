@@ -78,6 +78,18 @@ function lcRoute(ctx as Object) as Object
     return lcAcceptTerms(ctx)
   else if path = "/api/account/signout" and mth = "POST"
     return lcSignOut(ctx)
+  else if path = "/api/account/device/start" and mth = "POST"
+    return lcDeviceStart(ctx)
+  else if path = "/api/account/device/poll" and mth = "POST"
+    return lcDevicePoll(ctx)
+  else if path = "/api/terms" and mth = "GET"
+    return lcGetTerms()
+  else if path = "/api/tiers" and mth = "GET"
+    return lcGetTiers()
+  else if path = "/api/pricing/quote" and mth = "POST"
+    return lcPricingQuote(ctx)
+  else if path = "/api/pricing/accept" and mth = "POST"
+    return lcPricingAccept(ctx)
   else if path = "/api/account/email/verify" and mth = "POST"
     return { status: 404, json: { error: "not_supported" } }
   else if path = "/api/account/email/send" and mth = "POST"
@@ -351,14 +363,62 @@ end function
 
 ' ---- Accounts & Access ----
 
-function lcTermsVersion() as String
+function lcAccessDoc() as Object
   raw = ReadAsciiFile("pkg:/source/data/access.json")
   if raw <> invalid and raw <> ""
     parsed = ParseJson(raw)
-    v = lcAaText(parsed, "termsVersion", "")
-    if v <> "" then return v
+    if parsed <> invalid and GetInterface(parsed, "ifAssociativeArray") <> invalid then return parsed
   end if
+  return {}
+end function
+
+function lcTermsVersion() as String
+  doc = lcAccessDoc()
+  v = lcAaText(doc, "termsVersion", "")
+  if v <> "" then return v
   return "2026-09-15"
+end function
+
+function lcGetTerms() as Object
+  doc = lcAccessDoc()
+  terms = lcAaGet(doc, "terms", {})
+  return { status: 200, json: terms }
+end function
+
+function lcGetTiers() as Object
+  doc = lcAccessDoc()
+  return {
+    status: 200
+    json: {
+      tiers: lcAaGet(doc, "tiers", [])
+      route: lcAaGet(doc, "route", { headline: "Access is arranged with the app owner", detail: "There is no checkout here and nothing to buy in the app.", action: "Contact the app owner" })
+      streamMonthlyPence: lcAaInt(doc, "streamMonthlyPence", 1000)
+    }
+  }
+end function
+
+function lcPricingQuote(ctx as Object) as Object
+  if ctx.accountToken = "" then return { status: 401, json: { error: "account_required" } }
+  return {
+    status: 200
+    json: {
+      cadence: lcAaText(ctx.body, "cadence", "month")
+      liveTv: lcAaBool(ctx.body, "liveTv", false)
+    }
+  }
+end function
+
+function lcPricingAccept(ctx as Object) as Object
+  if ctx.accountToken = "" then return { status: 401, json: { error: "account_required" } }
+  doc = lcAccessDoc()
+  route = lcAaGet(doc, "route", {})
+  return {
+    status: 200
+    json: {
+      status: "manual_activation"
+      message: lcAaText(route, "detail", "There is no checkout here and nothing to buy in the app. Ask the owner to switch your account on.")
+    }
+  }
 end function
 
 ' ---- Profiles ----

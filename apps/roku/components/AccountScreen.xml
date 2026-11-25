@@ -2,37 +2,126 @@
 <component name="AccountScreen" extends="Group">
   <interface>
     <field id="phase" type="string" value="checking" onChange="onPhase" />
-    <field id="heading" type="string" onChange="onHeading" />
-    <field id="lede" type="string" onChange="onLede" />
-    <field id="status" type="string" onChange="onStatus" />
-    <field id="emailDetail" type="string" onChange="onEmailDetail" />
-    <field id="signedAs" type="string" onChange="onSignedAs" />
+    <field id="heading" type="string" onChange="onFieldChange" />
+    <field id="lede" type="string" onChange="onFieldChange" />
+    <field id="status" type="string" onChange="onFieldChange" />
+    <field id="fieldError" type="string" onChange="onFieldChange" />
+    <field id="busy" type="boolean" value="false" onChange="onFieldChange" />
+    <field id="emailDetail" type="string" onChange="onFieldChange" />
+    <field id="nameDetail" type="string" onChange="onFieldChange" />
+    <field id="passwordLength" type="integer" value="0" onChange="onFieldChange" />
+    <field id="passwordPlain" type="string" onChange="onFieldChange" />
+    <field id="showPassword" type="boolean" value="false" onChange="onFieldChange" />
+    <field id="termsAgreed" type="boolean" value="false" onChange="onFieldChange" />
+    <field id="signedAs" type="string" onChange="onFieldChange" />
+    <field id="verifyUrl" type="string" onChange="onFieldChange" />
+    <field id="verifyUrlComplete" type="string" onChange="onQrChange" />
+    <field id="userCode" type="string" onChange="onFieldChange" />
+    <field id="pollState" type="string" value="loading" onChange="onFieldChange" />
+    <field id="pollNote" type="string" onChange="onFieldChange" />
+    <field id="termsDoc" type="assocarray" onChange="onTermsDocChange" />
+    <field id="restoreKey" type="string" onChange="onRestoreKey" />
     <field id="focusKey" type="string" />
     <field id="action" type="assocarray" alwaysNotify="true" />
     <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/accountCopy.brs" />
   <script type="text/brightscript" uri="AccountScreen.brs" />
   <children>
     <Poster id="backdrop" width="3840" height="2160" uri="pkg:/images/lighthouse.jpg" loadWidth="96" loadHeight="54" opacity="0.22" />
-    <Rectangle width="3840" height="2160" color="0x081018BA" />
-    <GlassPanel id="card" shape="panel" width="1760" height="1566" translation="[1040, 297]" />
-    <Label id="brandLabel" text="TVM" translation="[1160, 369]" width="1520" color="0x9FE7FFFF" />
-    <Label id="headingLabel" translation="[1160, 445]" width="1520" wrap="true" maxLines="2" color="0xF5F5F5FF" />
-    <Label id="ledeLabel" translation="[1160, 565]" width="1520" wrap="true" maxLines="3" color="0xC4C4C4FF" />
-    <Label id="statusLabel" translation="[1160, 709]" width="1520" wrap="true" maxLines="2" color="0xFFBF69FF" />
-    <FocusButton id="codeSignIn" translation="[1160, 807]" />
-    <FocusButton id="name" translation="[1160, 807]" />
-    <FocusButton id="email" translation="[1160, 971]" />
-    <FocusButton id="password" translation="[1160, 1135]" />
-    <FocusButton id="submit" translation="[1160, 1299]" />
-    <FocusButton id="switchMode" translation="[1160, 1463]" />
-    <FocusButton id="recheck" translation="[1160, 807]" />
-    <FocusButton id="signout" translation="[1160, 971]" />
-    <FocusButton id="agree" translation="[1160, 807]" />
-    <FocusButton id="emailCode" translation="[1160, 807]" />
-    <FocusButton id="resendCode" translation="[1160, 971]" />
+    <Rectangle width="3840" height="2160" color="0x081018C8" />
+    <BrandLockup id="lockup" kind="stream" translation="[400, 148]" />
+    <GlassPanel id="card" shape="panel" width="3040" height="1540" translation="[400, 320]" />
+
+    <!-- Screen T1: Sign in with your phone (left QR/URL/code, right actions) -->
+    <Group id="phoneGroup" visible="false">
+      <Label id="phoneHeading" translation="[540, 412]" width="1360" wrap="true" maxLines="2" text="Sign in with your phone" />
+      <Label id="phoneLead" translation="[540, 522]" width="1360" wrap="true" maxLines="2" text="Scan with your phone's camera." />
+      <QrCode id="qrCode" quietModules="4" boxSize="560" translation="[540, 628]" visible="false" />
+      <GlassPanel id="qrLoading" shape="card" width="560" height="560" translation="[540, 628]" />
+      <Label id="qrLoadingLabel" translation="[570, 876]" width="500" horizAlign="center" text="Getting code..." />
+      <Label id="urlCaption" translation="[540, 1228]" width="1360" wrap="true" maxLines="2" />
+      <Label id="codeLabel" translation="[540, 1344]" width="1360" maxLines="1" />
+      <Group id="pollRow" translation="[540, 1500]">
+        <Poster id="pollSpinner" width="44" height="44" translation="[0, 10]" scaleRotateCenter="[22, 22]" uri="pkg:/images/glass/orbit-comet.png" />
+        <Rectangle id="pollDot" width="20" height="20" translation="[12, 22]" visible="false" />
+        <Label id="pollLabel" translation="[68, 0]" width="1292" wrap="true" maxLines="2" />
+      </Group>
+
+      <Rectangle id="phoneDivider" width="3" height="1220" translation="[1980, 440]" color="0xFFFFFF24" />
+      <Label id="phoneRightTitle" translation="[2100, 430]" width="1200" wrap="true" maxLines="2" text="No camera? Type on the TV" />
+      <Label id="phoneRightBody" translation="[2100, 524]" width="1200" wrap="true" maxLines="3" text="Sign in with your email and password instead, or get a fresh code whenever you need one." />
+      <FocusButton id="btnUseForm" variant="glassPill" pillWidth="1120" translation="[2100, 740]" label="Use email and password instead" />
+      <FocusButton id="btnNewCode" variant="glassPill" pillWidth="1120" quiet="true" translation="[2100, 924]" label="Get a new code" />
+      <FocusButton id="btnPhonePrivacy" variant="glassPill" pillWidth="1120" quiet="true" translation="[2100, 1108]" label="Privacy &amp; terms" />
+      <Label id="phoneError" translation="[2100, 1316]" width="1200" wrap="true" maxLines="3" />
+    </Group>
+
+    <!-- Single-column step & status shell for T3 form, waiting, paused, verify, terms, privacy -->
+    <Group id="cardGroup" visible="false">
+      <Label id="kickerLabel" translation="[1000, 392]" width="1840" />
+      <Label id="headingLabel" translation="[1000, 456]" width="1840" wrap="true" maxLines="2" />
+      <Label id="ledeLabel" translation="[1000, 578]" width="1840" wrap="true" maxLines="3" />
+
+      <!-- Email chip on password step -->
+      <Group id="emailChipRow" translation="[1000, 592]" visible="false">
+        <GlassPanel id="emailChipGlass" shape="pill" width="1180" height="104" />
+        <Label id="emailChipText" translation="[44, 22]" width="1092" maxLines="1" />
+        <FocusButton id="btnChipChange" variant="glassPill" pillWidth="460" quiet="true" translation="[1216, -20]" label="Change" />
+      </Group>
+
+      <!-- Recessed glass input well (Name / Email / Password step) -->
+      <Group id="wellGroup" translation="[1000, 704]" visible="false">
+        <Label id="wellCaption" translation="[0, 0]" width="1840" />
+        <GlassPanel id="wellGlass" shape="card" width="1840" height="148" translation="[0, 58]" />
+        <Poster id="wellRing" uri="pkg:/images/glass/focus-ring.9.png" width="1872" height="180" translation="[-16, 42]" visible="false" />
+        <Label id="wellValue" translation="[44, 98]" width="1420" maxLines="1" />
+        <Label id="wellHint" translation="[1460, 102]" width="340" horizAlign="right" text="OK to type" />
+        <Label id="wellHelper" translation="[0, 222]" width="1840" wrap="true" maxLines="2" />
+        <Label id="wellError" translation="[0, 222]" width="1840" wrap="true" maxLines="2" />
+      </Group>
+
+      <!-- Terms checkbox row on register_terms step -->
+      <Group id="checkGroup" translation="[1000, 728]" visible="false">
+        <GlassPanel id="checkGlass" shape="pill" width="1840" height="148" />
+        <Poster id="checkRing" uri="pkg:/images/glass/focus-ring.9.png" width="1872" height="180" translation="[-16, -16]" visible="false" />
+        <GlassPanel id="checkBox" shape="card" width="64" height="64" translation="[44, 42]" />
+        <Label id="checkMark" translation="[44, 42]" width="64" height="64" horizAlign="center" vertAlign="center" text="" />
+        <Label id="checkLabel" translation="[140, 42]" width="1656" text="I agree to the terms" />
+        <Label id="checkError" translation="[0, 168]" width="1840" wrap="true" maxLines="2" />
+      </Group>
+
+      <!-- Status pill for Waiting / Unreachable / Suspended -->
+      <Group id="statusPillRow" translation="[1000, 740]" visible="false">
+        <GlassPanel id="statusPillGlass" shape="pill" width="1840" height="120" />
+        <Rectangle id="statusDot" width="24" height="24" translation="[48, 48]" />
+        <Label id="statusPillText" translation="[96, 30]" width="1700" maxLines="1" />
+      </Group>
+
+      <!-- Reading well for Terms & Privacy -->
+      <Group id="readerGroup" translation="[840, 620]" visible="false">
+        <GlassPanel id="readerGlass" shape="card" width="2160" height="720" />
+        <Label id="readerBody" translation="[48, 40]" width="2064" height="584" wrap="true" />
+        <Label id="readerPageLabel" translation="[48, 646]" width="2064" horizAlign="right" />
+      </Group>
+
+      <Label id="bannerLabel" translation="[1000, 888]" width="1840" wrap="true" maxLines="3" />
+      <Label id="subNoteLabel" translation="[1000, 960]" width="1840" wrap="true" maxLines="2" />
+
+      <FocusButton id="btnPrimary" variant="glassPill" pillWidth="1840" visible="false" />
+      <FocusButton id="btnShowPass" variant="glassPill" pillWidth="896" quiet="true" visible="false" />
+      <FocusButton id="btnForgot" variant="glassPill" pillWidth="896" quiet="true" visible="false" label="Forgot password?" />
+      <FocusButton id="btnPrevPage" variant="glassPill" pillWidth="1056" quiet="true" visible="false" label="Previous page" />
+      <FocusButton id="btnNextPage" variant="glassPill" pillWidth="1056" quiet="true" visible="false" label="Next page" />
+      <FocusButton id="btnSecondary1" variant="glassPill" pillWidth="1840" quiet="true" visible="false" />
+      <FocusButton id="btnSecondary2" variant="glassPill" pillWidth="1840" quiet="true" visible="false" />
+      <FocusButton id="btnLink" variant="glassPill" pillWidth="1840" quiet="true" visible="false" label="Privacy &amp; terms" />
+    </Group>
+
+    <Timer id="spinnerTimer" duration="0.06" repeat="true" />
   </children>
 </component>

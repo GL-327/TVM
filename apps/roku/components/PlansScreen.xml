@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="PlansScreen" extends="Group">
+  <interface>
+    <field id="accountState" type="assocarray" onChange="onDataChange" />
+    <field id="tiersDoc" type="assocarray" onChange="onDataChange" />
+    <field id="status" type="string" onChange="onStatusChange" />
+    <field id="busy" type="boolean" value="false" onChange="onDataChange" />
+    <field id="restoreKey" type="string" onChange="onRestoreKey" />
+    <field id="focusKey" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/accountCopy.brs" />
+  <script type="text/brightscript" uri="PlansScreen.brs" />
+  <children>
+    <Poster width="3840" height="2160" uri="pkg:/images/lighthouse.jpg" loadWidth="96" loadHeight="54" opacity="0.14" />
+    <Rectangle width="3840" height="2160" color="0x081018C0" />
+
+    <!-- Header & Monthly / Yearly segmented toggle -->
+    <Label id="heading" translation="[320, 120]" width="2000" text="Choose your plan" />
+    <Label id="subhead" translation="[320, 224]" width="2100" wrap="true" maxLines="2" text="Nothing to buy inside the app — access is arranged with the app owner, and no card is taken here." />
+    <Label id="accountStatusLine" translation="[320, 324]" width="2100" maxLines="1" text="" />
+
+    <Group id="cadenceGroup" translation="[2440, 136]">
+      <GlassPanel id="cadenceTrack" shape="pill" width="1080" height="128" />
+      <GlassPanel id="cadenceThumb" shape="pill" width="520" height="104" translation="[12, 12]" active="true" accent="true" />
+      <Poster id="cadenceRing" uri="pkg:/images/glass/focus-ring.9.png" width="552" height="136" translation="[-4, -4]" visible="false" />
+      <Label id="cadenceMonthly" translation="[12, 12]" width="520" height="104" horizAlign="center" vertAlign="center" text="Monthly" />
+      <Label id="cadenceYearly" translation="[544, 12]" width="520" height="104" horizAlign="center" vertAlign="center" text="Yearly  ·  Save 25%" />
+      <Animation id="thumbAnim" duration="0.2" easeFunction="outCubic" optional="true">
+        <Vector2DFieldInterpolator id="thumbMove" key="[0.0, 1.0]" keyValue="[[12, 12], [544, 12]]" fieldToInterp="cadenceThumb.translation" />
+      </Animation>
+    </Group>
+    <Label id="feedbackBanner" translation="[2440, 286]" width="1080" wrap="true" maxLines="2" horizAlign="right" visible="false" />
+
+    <!-- Two plan cards -->
+    <Group id="streamCard" translation="[320, 404]">
+      <GlassPanel id="streamGlass" shape="panel" width="1540" height="780" />
+      <GlassPanel id="streamBadgeGlass" shape="pill" width="360" height="72" translation="[1116, 48]" active="true" accent="true" />
+      <Label id="streamBadgeLabel" translation="[1116, 48]" width="360" height="72" horizAlign="center" vertAlign="center" text="Most popular" />
+      <Label id="streamName" translation="[68, 52]" width="1000" text="Stream" />
+      <Label id="streamTagline" translation="[68, 134]" width="1400" wrap="true" maxLines="2" text="Movies, series and your private stream cache." />
+      <Label id="streamPrice" translation="[68, 224]" width="460" text="£10" />
+      <Label id="streamPeriod" translation="[320, 260]" width="1140" maxLines="2" text="/ month" />
+      <Rectangle width="1404" height="2" translation="[68, 344]" color="0xFFFFFF22" />
+      <Label id="streamFeatures" translation="[68, 368]" width="1404" height="220" wrap="true" text="✓  Movies and series&#10;✓  Fast link caching with your Real-Debrid&#10;✓  All devices &amp; offline lists&#10;✓  Stream profiles" />
+      <FocusButton id="btnStream" variant="glassPill" pillWidth="1404" hideDisabledHint="true" translation="[68, 600]" label="Choose Stream" />
+    </Group>
+
+    <Group id="liveCard" translation="[1980, 404]">
+      <GlassPanel id="liveGlass" shape="panel" width="1540" height="780" />
+      <GlassPanel id="liveBadgeGlass" shape="pill" width="380" height="72" translation="[1096, 48]" />
+      <Label id="liveBadgeLabel" translation="[1096, 48]" width="380" height="72" horizAlign="center" vertAlign="center" text="Coming soon" />
+      <Label id="liveName" translation="[68, 52]" width="980" text="Stream + Live" />
+      <Label id="liveTagline" translation="[68, 134]" width="1400" wrap="true" maxLines="2" text="Everything in Stream, plus live TV channels." />
+      <Label id="livePrice" translation="[68, 224]" width="460" text="£17" />
+      <Label id="livePeriod" translation="[320, 260]" width="1140" maxLines="2" text="/ month  (Stream £10 + Live TV £7)" />
+      <Rectangle width="1404" height="2" translation="[68, 344]" color="0xFFFFFF22" />
+      <Label id="liveFeatures" translation="[68, 368]" width="1404" height="220" wrap="true" text="✓  Everything in Stream&#10;✓  Live TV channels&#10;✓  Live TV guide &amp; recent channels&#10;✓  All devices" />
+      <FocusButton id="btnLive" variant="glassPill" pillWidth="1404" hideDisabledHint="true" translation="[68, 600]" label="Coming soon" />
+    </Group>
+
+    <!-- Compare everything table -->
+    <GlassPanel id="compareGlass" shape="panel" width="3200" height="516" translation="[320, 1220]" />
+    <Group id="compareRows" translation="[320, 1220]" />
+
+    <!-- Fenced Donate note + footer controls -->
+    <GlassPanel id="donateGlass" shape="card" width="2060" height="144" translation="[320, 1776]" />
+    <Label id="donateTitle" translation="[368, 1796]" width="1960" text="Donations (optional)" />
+    <Label id="donateBody" translation="[368, 1850]" width="1960" maxLines="1" text="Voluntary tips never unlock features or speed. Only give if you enjoy TVM." />
+    <FocusButton id="btnPrivacy" variant="glassPill" pillWidth="640" quiet="true" translation="[2440, 1776]" label="Privacy &amp; terms" />
+    <FocusButton id="btnBack" variant="glassPill" pillWidth="400" quiet="true" translation="[3120, 1776]" label="Back" />
+  </children>
+</component>

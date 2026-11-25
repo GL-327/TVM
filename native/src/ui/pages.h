@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "core/core_client.h"
 #include "motion/tween.h"
 #include "ui/button_focus.h"
 #include "ui/layout.h"
@@ -60,6 +61,7 @@ protected:
     virtual void PaintCustom(Painter& /*painter*/, const PageButton& /*button*/, const Box& /*box*/, bool /*focused*/) const {}
 
     double Rem(double rems) const { return rems * ViewportRem(width_, height_); }
+    double FocusAmount(const std::string& key) const { return buttonFocus_.Amount(key, clockMs_); }
     // The kicker, the heading and the lede, from the top of the page. Returns where the content below starts.
     double PaintHeader(Painter& painter, double top, const std::string& kicker, const std::string& heading,
                        const std::string& lede) const;
@@ -132,20 +134,52 @@ private:
 
 // ------------------------------------------------------------------ Plans
 
-// "What TVM costs": the two kinds of access with their prices, Live TV's terms, how access is arranged,
-// and, fenced off below, Donate. The copy is the Node core's ACCESS_TIERS and LIVE_TV_CATALOG.
+struct PlansView {
+    coreapi::AccountState account;
+    coreapi::TiersDocument tiers = coreapi::DefaultTiersDocument();
+    std::string cadence = "month";  // "month" or "year"
+    bool busy = false;
+    bool compareOpen = false;
+    std::string choiceNote;
+    std::string choiceError;
+
+    bool operator==(const PlansView&) const = default;
+};
+
+// "Plans": Monthly / Yearly toggle with sliding glass thumb, equal-height Plan cards, expandable
+// comparison table, and fenced-off Donate section.
 class PlansScreen final : public PageScreen {
 public:
     PlansScreen();
+    void SetView(PlansView view);
+    const PlansView& view() const { return view_; }
+    void Layout(double width, double height) override;
+    bool Tick(double nowMs) override;
+    bool Animating() const override;
 
 protected:
-    std::vector<PageButton> Buttons() const override;
+    std::vector<PageButton> Buttons() const override { return buttons_; }
     void PaintContent(Painter& painter, double scroll) const override;
-    double ContentHeight() const override;
+    double ContentHeight() const override { return contentHeight_; }
     std::optional<Command> Activate(const std::string& key) override;
+    void PaintCustom(Painter& painter, const PageButton& button, const Box& box, bool focused) const override;
 
 private:
-    double DonateTop() const;
+    void Arrange();
+    double ScaleRem() const;
+    std::string RecommendedTierId() const;
+    bool HasYearlyPricing() const;
+    int SavingsPercent() const;
+
+    PlansView view_;
+    std::vector<PageButton> buttons_;
+    std::vector<Box> cardBoxes_;
+    Box segmentedBox_{};
+    Box compareTableBox_{};
+    double donateTop_ = 0.0;
+    double contentHeight_ = 0.0;
+    double cadencePos_ = 0.0;  // 0.0 = month, 1.0 = year
+    std::optional<motion::Tween> cadenceTween_;
 };
 
 // ------------------------------------------------------------------ Updates
@@ -303,6 +337,118 @@ private:
     double ledeHeight_ = 0.0;
     double messageTop_ = 0.0;
     double fieldTop_ = 0.0;
+    double contentHeight_ = 0.0;
+};
+
+// ------------------------------------------------------------------ Account & Gate
+
+enum class AccountStep {
+    SignInEmail,
+    SignInPassword,
+    CreateAccount,
+    WaitingApproval,
+    Suspended,
+    TermsRequired,
+    EmailVerify,
+    SignedIn,
+};
+
+struct AccountView {
+    coreapi::AccountState account;
+    coreapi::RealDebridStatus realDebrid;
+    coreapi::TermsDocument terms = coreapi::DefaultTermsDocument();
+    bool busy = false;
+    std::string statusNote;
+    std::string error;
+    std::string errorField;  // "email", "password", "name", "terms", "code", or ""
+    std::optional<AccountStep> forceStep;
+    bool openPrivacy = false;
+
+    bool operator==(const AccountView&) const = default;
+};
+
+class AccountScreen final : public PageScreen {
+public:
+    AccountScreen();
+    void SetView(AccountView view);
+    const AccountView& view() const { return view_; }
+    AccountStep step() const { return step_; }
+    bool privacyOpen() const { return privacyOpen_; }
+    bool passwordVisible() const { return showPassword_; }
+    bool termsAccepted() const { return termsAccepted_; }
+    bool forgotOpen() const { return forgotOpen_; }
+    const std::string& activeField() const { return activeField_; }
+    const std::string& emailText() const { return email_; }
+    const std::string& passwordText() const { return password_; }
+    const std::string& nameText() const { return name_; }
+    const std::string& codeText() const { return code_; }
+
+    void SetFieldValue(const std::string& field, std::string value);
+    bool IsEditing() const;
+    void Type(const std::string& text);
+    void Erase(bool wholeWord = false);
+    void Paste(const std::string& text);
+    std::optional<Command> SubmitActiveField(double nowMs);
+    bool CycleField(bool backwards, double nowMs);
+
+    void Layout(double width, double height) override;
+    bool CloseOverlay(double nowMs) override;
+    void PressedElsewhere(const std::optional<std::string>& key, double nowMs) override;
+
+protected:
+    std::vector<PageButton> Buttons() const override { return buttons_; }
+    void PaintContent(Painter& painter, double scroll) const override;
+    double ContentHeight() const override { return contentHeight_; }
+    std::optional<Command> Activate(const std::string& key) override;
+    void PaintCustom(Painter& painter, const PageButton& button, const Box& box, bool focused) const override;
+
+private:
+    struct AccountRow {
+        std::string key;
+        std::string label;
+        std::string value;
+        bool clickable = false;
+        bool accentValue = false;
+        bool warnValue = false;
+        bool goodValue = false;
+    };
+
+    void Arrange();
+    double ScaleRem() const;
+    std::string* FieldStorage(const std::string& field);
+    const std::string* FieldStorage(const std::string& field) const;
+    void ClearErrors();
+    std::string ActiveError() const;
+    std::string ActiveErrorField() const;
+    std::optional<Command> TryContinueEmail();
+    std::optional<Command> TrySignIn();
+    std::optional<Command> TryRegister();
+    std::optional<Command> TryVerifyEmail();
+
+    AccountView view_;
+    AccountStep step_ = AccountStep::SignInEmail;
+    std::string email_;
+    std::string password_;
+    std::string name_;
+    std::string code_;
+    std::string activeField_ = "email";
+    bool editing_ = true;
+    bool showPassword_ = false;
+    bool termsAccepted_ = false;
+    bool forgotOpen_ = false;
+    bool privacyOpen_ = false;
+    std::string localError_;
+    std::string localErrorField_;
+
+    std::vector<PageButton> buttons_;
+    std::vector<AccountRow> signedInRows_;
+    Box cardBox_{};
+    Box dividerBox_{};
+    Box badgeBox_{};
+    Box emailChipBox_{};
+    Box summaryBox_{};
+    double innerX_ = 0.0;
+    double innerW_ = 0.0;
     double contentHeight_ = 0.0;
 };
 

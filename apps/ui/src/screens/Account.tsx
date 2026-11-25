@@ -13,22 +13,20 @@ import {
 import { fetchRdStatus, type RdStatus } from '../data/media';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import { accountStatusLabel, friendlyPlanName } from './accountCopy';
+import './billing.css';
 
 const EMPTY_RD: RdStatus = { configured: false, username: null, premium: false, error: null };
 
-function accessLabel(state: AccountState): string {
-  if (state.account?.tier === 'stream-live') return 'Movies, TV shows and Live TV';
-  if (state.account?.tier === 'stream') return 'Movies and TV shows';
-  return 'Not switched on';
+function rdDetail(rd: RdStatus): string {
+  if (!rd.configured) return 'Connect';
+  if (rd.error === 'needs-auth') return 'Key rejected · Connect';
+  return rd.username !== null ? `Connected · ${rd.username}` : 'Connected';
 }
 
-function rdLabel(rd: RdStatus): string {
-  if (!rd.configured) return 'Not connected';
-  if (rd.error === 'needs-auth') return 'Key rejected';
-  const who = rd.username ?? 'Connected';
-  if (rd.source === 'account') return `${who} · your key`;
-  if (rd.source === 'device') return `${who} · this machine's key`;
-  return who;
+function initialFor(name: string | undefined, email: string | undefined): string {
+  const source = (name ?? email ?? 'T').trim();
+  return (source[0] ?? 'T').toUpperCase();
 }
 
 /** Who is signed in, what they can use, and the way out. */
@@ -47,6 +45,8 @@ export function Account(_props: ScreenProps): React.JSX.Element {
 
   const account = state?.account ?? null;
   const dev = account?.role === 'dev';
+  const liveTvOn = dev || (account?.activated === true && account.tier === 'stream-live');
+  const statusText = state === null ? 'Loading…' : dev ? 'Active' : accountStatusLabel(state);
 
   const leave = async (): Promise<void> => {
     if (leaving) return;
@@ -67,94 +67,121 @@ export function Account(_props: ScreenProps): React.JSX.Element {
         <div className="page__toolbar-lead">
           <BackButton id="account-back" />
           <div>
-            <p className="stage__kicker">{dev ? 'Dev account' : 'Your account'}</p>
-            <h1 className="page__heading">{account?.displayName ?? 'Account'}</h1>
+            <h1 className="page__heading">Account</h1>
           </div>
         </div>
       </header>
-      <p className="page__lede">
-        {dev
-          ? 'Dev mode is on for as long as you are signed in here. Signing out turns it off.'
-          : account !== null
-            ? `Signed in as ${account.email}.`
-            : 'Loading your account…'}
-      </p>
 
-      {state !== null && account !== null && (
-        <dl className="panel__rows settings-summary">
-          {!dev && (
-            <div className="panel__row">
-              <dt>Email</dt>
-              <dd>{account.emailVerified ? 'Verified' : 'Not verified'}</dd>
+      <div className="account-shell">
+        <section className="glass glass--sheet account-card" aria-label="Account overview">
+          <div className="account-header">
+            <div className="account-avatar" aria-hidden="true">
+              {initialFor(account?.displayName, account?.email)}
             </div>
-          )}
-          <div className="panel__row">
-            <dt>Access</dt>
-            <dd>{dev ? 'Everything, with dev mode on' : accessLabel(state)}</dd>
+            <div className="account-identity">
+              <h2 className="account-identity__name">{account?.displayName ?? 'Account'}</h2>
+              <p className="account-identity__email">
+                {dev
+                  ? 'Developer mode is active for this session.'
+                  : account !== null
+                    ? account.email
+                    : 'Loading your account…'}
+              </p>
+            </div>
           </div>
-          {!dev && (
-            <div className="panel__row">
-              <dt>Member since</dt>
-              <dd>{shortDate(account.createdAt)}</dd>
-            </div>
-          )}
-        </dl>
-      )}
 
-      <div className="settings-list" data-wrap="y">
-        <FocusButton
-          id="realdebrid"
-          className="settings-row"
-          detail={rdLabel(rd)}
-          onSelect={() => navigate.push('realdebrid')}
-        >
-          Real-Debrid
-        </FocusButton>
-        <FocusButton
-          id="profiles"
-          className="settings-row"
-          detail="TVM Stream only"
-          onSelect={() => navigate.push('profiles')}
-        >
-          Stream profiles
-        </FocusButton>
-        {dev && (
-          <>
+          <div className="settings-list account-rows" data-wrap="y">
             <FocusButton
-              id="account-accounts"
-              className="settings-row"
-              detail="Switch people on, Live TV, keys"
-              onSelect={() => navigate.push('accounts')}
+              id="account-plan"
+              className="settings-row account-row"
+              detail={dev ? 'All features · Change' : `${friendlyPlanName(account?.tier)} · Change`}
+              onSelect={() => navigate.push('plans')}
             >
-              Accounts
+              Plan
             </FocusButton>
             <FocusButton
-              id="account-mail"
-              className="settings-row"
-              detail="Sends the sign-up codes"
-              onSelect={() => navigate.push('mail-settings')}
+              id="realdebrid"
+              className="settings-row account-row"
+              detail={rdDetail(rd)}
+              onSelect={() => navigate.push('realdebrid')}
             >
-              Email
+              Real-Debrid
             </FocusButton>
             <FocusButton
-              id="account-developer"
-              className="settings-row"
-              detail="Open"
-              onSelect={() => navigate.push('developer')}
+              id="account-livetv"
+              className="settings-row account-row"
+              detail={liveTvOn ? 'On' : 'Off'}
+              onSelect={() => navigate.push(liveTvOn ? 'live' : 'plans')}
             >
-              Developer
+              Live TV
             </FocusButton>
-          </>
-        )}
-        <FocusButton
-          id="account-signout"
-          className="settings-row"
-          detail={dev ? 'Turns dev mode off' : undefined}
-          disabled={leaving || account === null}
-          onSelect={() => void leave()}
-        >
-          {leaving ? 'Signing out…' : 'Sign out'}
-        </FocusButton>
+            <div className="account-info-row">
+              <span className="account-info-row__label">Status</span>
+              <span className="account-info-row__value">{statusText}</span>
+            </div>
+            {!dev && account !== null && (
+              <div className="account-info-row">
+                <span className="account-info-row__label">Member since</span>
+                <span className="account-info-row__value">{shortDate(account.createdAt)}</span>
+              </div>
+            )}
+            <FocusButton
+              id="profiles"
+              className="settings-row account-row"
+              detail="Manage"
+              onSelect={() => navigate.push('profiles')}
+            >
+              Stream profiles
+            </FocusButton>
+            {dev && (
+              <>
+                <FocusButton
+                  id="account-accounts"
+                  className="settings-row account-row"
+                  detail="Switch people on, Live TV, keys"
+                  onSelect={() => navigate.push('accounts')}
+                >
+                  Accounts
+                </FocusButton>
+                <FocusButton
+                  id="account-mail"
+                  className="settings-row account-row"
+                  detail="Sends the sign-up codes"
+                  onSelect={() => navigate.push('mail-settings')}
+                >
+                  Email
+                </FocusButton>
+                <FocusButton
+                  id="account-developer"
+                  className="settings-row account-row"
+                  detail="Open"
+                  onSelect={() => navigate.push('developer')}
+                >
+                  Developer
+                </FocusButton>
+              </>
+            )}
+          </div>
+
+          <footer className="account-footer">
+            <FocusButton
+              id="account-signout"
+              className="tvm-button--glass account-signout"
+              disabled={leaving || account === null}
+              onSelect={() => void leave()}
+            >
+              {leaving ? 'Signing out…' : 'Sign out'}
+            </FocusButton>
+            <FocusButton
+              id="account-privacy"
+              variant="quiet"
+              className="account-footer__link"
+              onSelect={() => navigate.push('legal')}
+            >
+              Privacy &amp; terms
+            </FocusButton>
+          </footer>
+        </section>
       </div>
     </main>
   );

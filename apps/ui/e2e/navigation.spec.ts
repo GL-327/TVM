@@ -625,7 +625,7 @@ test('Settings opens Plans', async ({ page }) => {
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose your plan' })).toBeVisible();
   await expect(page.getByText(/no card is taken here/i)).toBeVisible();
 });
 
@@ -637,8 +637,8 @@ test('Plans explains access without taking a card', async ({ page }) => {
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
-  await expect(page.locator('.page__lede')).toContainText('nothing to buy');
+  await expect(page.getByRole('heading', { name: 'Choose your plan' })).toBeVisible();
+  await expect(page.locator('.page__lede')).toContainText('Nothing to buy');
   await expect(page.locator('[data-focus-id="card-name"], [data-focus-id="pay"], [data-focus-id="checkout-consent"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Donate to the app owner' })).toBeVisible();
   await expect(page.getByText(/it gives you nothing/i)).toBeVisible();

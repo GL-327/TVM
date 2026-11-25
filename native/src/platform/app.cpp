@@ -284,12 +284,13 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         if (command.action) {
             if (command.name == "back" || command.name == "stream-home") return true;
             if (command.name.rfind("updates-", 0) == 0) return true;
-            if (command.name.rfind("info:account-", 0) == 0 || (pageName_ == "account" && command.name.rfind("info:field-", 0) == 0)) return true;
+            if (command.name.rfind("account-", 0) == 0 || command.name == "plans-choose") return true;
             if (command.name.rfind("info:", 0) == 0) return coreapi::AllowsRoute(account_, pageName_);
             return account_.usable;
         }
         if (coreapi::AllowsRoute(account_, command.name)) return true;
-        accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or admin role." : "Sign in with an active account to continue.";
+        accountMessage_ = account_.usable ? "This screen is not available on your current plan." : "Sign in with an active account to continue.";
+        accountMessageError_ = false;
         ui::Command door; door.name = "account";
         shell_->Execute(door, NowMs());
         return false;
@@ -391,6 +392,10 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             BuildWatchlistPage();
         } else if (command.name.rfind("profile-", 0) == 0) {
             ApplyProfileAction(command);
+        } else if (command.name.rfind("account-", 0) == 0) {
+            HandleAccountCommand(command);
+        } else if (command.name == "plans-choose") {
+            ChoosePlan(command);
         } else if (command.name.rfind("info:", 0) == 0) {
             ApplyInfoAction(command);
         } else if (command.name == "updates-check") {
@@ -554,7 +559,14 @@ int App::Run(int showCommand) {
         SyncPlayer();
         UpdateLiveBehind();
         const double now = NowMs();
-        if (!accountBusy_ && now - accountCheckedMs_ > 30000 && (account_.usable || shell_->ActiveScreenName() != "account")) RefreshAccount();
+        const bool onAccountScreen = shell_->ActiveScreenName() == "account";
+        const bool waitingAutoRecheck = onAccountScreen && account_.signedIn && !account_.usable && account_.reason == "awaiting_activation";
+        if (!accountBusy_ &&
+            ((waitingAutoRecheck && now - accountCheckedMs_ > 60000.0) ||
+             (!onAccountScreen && now - accountCheckedMs_ > 30000.0) ||
+             (onAccountScreen && account_.usable && now - accountCheckedMs_ > 30000.0))) {
+            RefreshAccount();
+        }
         if (usageTickMs_ > 0 && playerOpen_ && playerView_.started && !playerView_.paused && !playerView_.buffering && playerView_.phase == ui::PlayerView::Phase::Playing && !playerLive_) usageSeconds_ += std::clamp((now - usageTickMs_) / 1000.0, 0.0, 2.0);
         usageTickMs_ = now;
         if (usageSeconds_ >= 10 && account_.usable) {
@@ -726,6 +738,13 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             profiles != nullptr && profiles->Creating() && wParam >= 0x20 && wParam != 0x7F &&
             (wParam < 0xD800 || wParam > 0xDFFF)) {
             profiles->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
+            dirty_ = true;
+            return 0;
+        }
+        if (ui::AccountScreen* accountScreen = ActiveAccountScreen();
+            accountScreen != nullptr && accountScreen->IsEditing() && wParam >= 0x20 && wParam != 0x7F &&
+            (wParam < 0xD800 || wParam > 0xDFFF)) {
+            accountScreen->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
             dirty_ = true;
             return 0;
         }
@@ -2081,6 +2100,10 @@ ui::Scene* App::SearchScene() {
 bool App::IsEditingText() const {
     if (const auto* editor = dynamic_cast<const ui::ProfileEditor*>(&shell_->ActiveScreen())) return editor->Typing();
     if (SearchTyping()) return true;
+    if (const auto* accountScreen = dynamic_cast<const ui::AccountScreen*>(&shell_->ActiveScreen());
+        accountScreen != nullptr && accountScreen->IsEditing()) {
+        return true;
+    }
     if (const auto* page = dynamic_cast<const ui::InfoScreen*>(&shell_->ActiveScreen());
         page != nullptr && page->HasField()) {
         return true;
@@ -2141,9 +2164,9 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
                         ? (accountBusy_ ? "Connecting to your TVM account service\xE2\x80\xA6"
                                         : "Sign in to unlock your personal library, 4K streams, and continue watching across devices.")
                         : accountMessage_;
-        door.playLabel = "Sign In";
+        door.playLabel = "Sign in";
         door.playCommand = open("account", false);
-        door.infoLabel = "Plans & Access";
+        door.infoLabel = "Plans";
         door.infoCommand = open("plans", false);
         const double now = NowMs();
         scene.SetView(view, now);
@@ -2279,6 +2302,15 @@ void App::SyncPages() {
         profileEditId_.clear(); profileEditPin_.clear(); adultApprovalId_.clear(); adultApprovalPin_.clear();
     }
     if (dynamic_cast<ui::InfoScreen*>(&shell_->ActiveScreen()) != nullptr || name == "downloads") OpenInfoPage(entry);
+    if (name == "account") {
+        SyncAccountScreen();
+        if (!termsLoaded_ && !termsBusy_) RefreshTerms();
+        if (account_.usable && !rdStatusLoaded_ && !rdStatusChecking_) RefreshRdStatus();
+    }
+    if (name == "plans") {
+        SyncPlansScreen();
+        if (!tiersLoaded_ && !tiersBusy_) RefreshTiers();
+    }
     if (name == "service") {
         const auto id = entry.params.find("id");
         OpenServiceHub(id == entry.params.end() ? "" : id->second);
@@ -2752,6 +2784,34 @@ bool App::HandleSearchKey(WPARAM virtualKey) {
             return true;
         }
         return virtualKey == VK_SPACE || (virtualKey >= '0' && virtualKey <= 'Z');
+    }
+    if (ui::AccountScreen* accountScreen = ActiveAccountScreen()) {
+        if (virtualKey == VK_TAB && accountScreen->CycleField(KeyDown(VK_SHIFT), NowMs())) {
+            dirty_ = true;
+            return true;
+        }
+        if (accountScreen->IsEditing()) {
+            if (virtualKey == VK_BACK) {
+                accountScreen->Erase(KeyDown(VK_CONTROL));
+                dirty_ = true;
+                return true;
+            }
+            if (virtualKey == 'V' && KeyDown(VK_CONTROL)) {
+                accountScreen->Paste(util::Trim(ClipboardText(window_).value_or("")));
+                dirty_ = true;
+                return true;
+            }
+            if (virtualKey == VK_RETURN &&
+                accountScreen->FocusedKey().value_or("").rfind("field:", 0) == 0) {
+                if (const auto cmd = accountScreen->SubmitActiveField(NowMs())) shell_->Execute(*cmd, NowMs());
+                dirty_ = true;
+                return true;
+            }
+            if (accountScreen->FocusedKey().value_or("").rfind("field:", 0) == 0 &&
+                (virtualKey == VK_SPACE || (virtualKey >= '0' && virtualKey <= 'Z'))) {
+                return true;
+            }
+        }
     }
     if (ui::InfoScreen* page = TypingPage()) {
         // A page's field takes Backspace and a paste; letters arrive as characters.

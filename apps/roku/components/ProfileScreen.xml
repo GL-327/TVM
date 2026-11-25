@@ -1,20 +1,48 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="ProfileScreen" extends="Group">
   <interface>
+    <field id="accountState" type="assocarray" onChange="onAccountState" />
     <field id="rd" type="assocarray" onChange="onRd" />
+    <field id="restoreKey" type="string" onChange="onRestoreKey" />
+    <field id="focusKey" type="string" />
     <field id="action" type="assocarray" alwaysNotify="true" />
     <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/accountCopy.brs" />
   <script type="text/brightscript" uri="ProfileScreen.brs" />
   <children>
-    <Label translation="[160, 144]" color="0x8A8A8AFF" font="font:SmallSystemFont" text="Local profile" />
-    <Label translation="[160, 220]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" text="Household" />
-    <Label id="lede" translation="[160, 380]" width="2800" wrap="true" maxLines="3" color="0xC4C4C4FF" font="font:MediumSystemFont" text="TVM currently has one local household. Watch progress and settings belong to this device and are never uploaded by TVM." />
-    <Label id="account" translation="[160, 640]" width="2800" color="0xF5F5F5FF" font="font:MediumSystemFont" />
-    <Label id="premium" translation="[160, 740]" width="2800" color="0xC4C4C4FF" font="font:MediumSystemFont" />
-    <FocusButton id="manage" translation="[160, 920]" />
-    <FocusButton id="back" translation="[696, 920]" />
+    <Poster width="3840" height="2160" uri="pkg:/images/lighthouse.jpg" loadWidth="96" loadHeight="54" opacity="0.14" />
+    <Rectangle width="3840" height="2160" color="0x081018C0" />
+    <Label id="heading" translation="[680, 128]" width="2480" text="Account" />
+
+    <!-- Header identity glass card -->
+    <GlassPanel id="headerCard" shape="panel" width="2480" height="224" translation="[680, 256]" />
+    <GlassPanel id="avatarGlass" shape="pill" width="144" height="144" translation="[732, 296]" />
+    <Label id="avatarInitial" translation="[732, 296]" width="144" height="144" horizAlign="center" vertAlign="center" text="T" />
+    <Label id="nameLabel" translation="[912, 304]" width="1520" maxLines="1" text="Your account" />
+    <Label id="emailLabel" translation="[912, 384]" width="1520" maxLines="1" text="" />
+    <GlassPanel id="statusPill" shape="pill" width="560" height="84" translation="[2548, 326]" />
+    <Rectangle id="statusDot" width="22" height="22" translation="[2592, 357]" />
+    <Label id="statusPillText" translation="[2634, 340]" width="440" maxLines="1" text="Active" />
+
+    <!-- Focusable navigation rows -->
+    <Group id="rowsGroup" translation="[680, 520]" />
+
+    <!-- Read-only info bar: Status & Member since -->
+    <GlassPanel id="infoGlass" shape="card" width="2480" height="156" translation="[680, 1228]" />
+    <Rectangle width="2" height="96" translation="[1920, 1258]" color="0xFFFFFF24" />
+    <Label id="statusHeading" translation="[740, 1252]" width="1100" text="Status" />
+    <Label id="statusValue" translation="[740, 1308]" width="1100" text="Active" />
+    <Label id="sinceHeading" translation="[1980, 1252]" width="1100" text="Member since" />
+    <Label id="sinceValue" translation="[1980, 1308]" width="1100" text="—" />
+
+    <!-- Footer actions -->
+    <FocusButton id="btnSignOut" variant="glassPill" pillWidth="760" translation="[680, 1432]" label="Sign out" />
+    <FocusButton id="btnPrivacy" variant="glassPill" pillWidth="760" quiet="true" translation="[1480, 1432]" label="Privacy &amp; terms" />
+    <FocusButton id="btnBack" variant="glassPill" pillWidth="460" quiet="true" translation="[2700, 1432]" label="Back" />
   </children>
 </component>

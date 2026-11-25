@@ -10,6 +10,7 @@ import {
   type CheckoutRequest,
   type PaymentOrderView,
 } from '../data/plan';
+import { friendlyAccountError } from '../screens/accountCopy';
 import '../screens/billing.css';
 
 /**
@@ -168,7 +169,7 @@ export function StripeCardPanel({ order, mode, disabled = false, recurring = fal
           setReady(true);
         }
       } catch (caught) {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : 'Could not start the payment.');
+        if (!cancelled) setError(friendlyAccountError(caught, 'billing'));
       }
     })();
 
@@ -217,7 +218,7 @@ export function StripeCardPanel({ order, mode, disabled = false, recurring = fal
       if (settled.status === 'paid') onPaid(settled);
       else setError(settled.failureMessage ?? 'The payment has not completed yet. Give it a moment and try again.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The payment could not be completed.');
+      setError(friendlyAccountError(caught, 'billing'));
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -225,9 +226,9 @@ export function StripeCardPanel({ order, mode, disabled = false, recurring = fal
   };
 
   return (
-    <section className="billing-panel" data-stripe-mode={mode}>
+    <section className="glass glass--card billing-panel" data-stripe-mode={mode}>
       <p className="plan-current__kicker">Payment card</p>
-      <h2>{mode === 'live' ? 'Pay by card' : 'Pay by card'}</h2>
+      <h2>Pay by card</h2>
       <p>
         Your card will be charged
         {amountPence === null ? '' : ` ${formatBillingMoney(amountPence)}`}
@@ -243,17 +244,18 @@ export function StripeCardPanel({ order, mode, disabled = false, recurring = fal
       {!ready && error === null && <p role="status">Loading the secure card form…</p>}
       {error !== null && <p className="billing-message billing-message--error" role="alert">{error}</p>}
 
-      <div className="hero__actions">
+      <div className="billing-actions">
         <FocusButton
           id="pay"
           variant="primary"
+          className="billing-btn"
           disabled={disabled || busy || !ready}
           onSelect={() => void pay()}
         >
           {busy ? 'Taking payment…' : amountPence === null ? 'Pay' : `Pay ${formatBillingMoney(amountPence)}`}
         </FocusButton>
         {error !== null && (
-          <FocusButton id="stripe-retry" disabled={busy} onSelect={() => setAttempt((value) => value + 1)}>
+          <FocusButton id="stripe-retry" className="tvm-button--glass billing-btn" disabled={busy} onSelect={() => setAttempt((value) => value + 1)}>
             Start again
           </FocusButton>
         )}

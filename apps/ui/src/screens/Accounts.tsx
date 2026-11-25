@@ -3,6 +3,7 @@ import { BackButton } from '../components/BackButton';
 import { EmptyState } from '../components/EmptyState';
 import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
+import { GlassSegmented } from '../components/GlassSegmented';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
 import {
@@ -20,6 +21,7 @@ import {
   type AdminAccountView,
 } from '../data/account';
 import { bindKeyboardFields } from '../nav/pointerInput';
+import { friendlyAccountError } from './accountCopy';
 import './billing.css';
 import './accounts.css';
 
@@ -33,15 +35,15 @@ const STATES = [
   { id: 'all', label: 'Everyone' },
   { id: 'waiting', label: 'Waiting' },
   { id: 'active', label: 'Active' },
-  { id: 'suspended', label: 'Suspended' },
+  { id: 'suspended', label: 'Paused' },
 ] as const;
 
 function TierBadge({ account }: { account: AdminAccountView }): React.JSX.Element {
-  if (account.suspended) return <span className="acct-badge acct-badge--off">Suspended</span>;
-  if (!account.activated) return <span className="acct-badge acct-badge--wait">Waiting</span>;
+  if (account.suspended) return <span className="acct-badge acct-badge--off">Paused by the owner</span>;
+  if (!account.activated) return <span className="acct-badge acct-badge--wait">Waiting for approval</span>;
   return (
     <span className="acct-badge acct-badge--on">
-      {account.tier === 'stream-live' ? 'Movies, TV & Live' : 'Movies & TV'}
+      {account.tier === 'stream-live' ? 'Stream + Live' : 'Stream'}
     </span>
   );
 }
@@ -65,7 +67,7 @@ export function Accounts(): React.JSX.Element {
     try {
       setData(await fetchAdminAccounts({ search, state }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Accounts could not be loaded.');
+      setError(friendlyAccountError(caught, 'admin'));
     }
   }, [search, state]);
 
@@ -79,7 +81,7 @@ export function Accounts(): React.JSX.Element {
       await run();
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'That did not work.');
+      setError(friendlyAccountError(caught, 'admin'));
     } finally {
       setBusy(false);
     }
@@ -101,7 +103,7 @@ export function Accounts(): React.JSX.Element {
           </div>
         </div>
         <div className="hero__actions">
-          <FocusButton id="accounts-refresh" variant="primary" disabled={busy} onSelect={() => void load()}>
+          <FocusButton id="accounts-refresh" className="tvm-button--glass acct-btn" disabled={busy} onSelect={() => void load()}>
             Refresh
           </FocusButton>
         </div>
@@ -112,7 +114,7 @@ export function Accounts(): React.JSX.Element {
           <div><dt>Everyone</dt><dd>{data.summary.total}</dd></div>
           <div><dt>Waiting</dt><dd>{data.summary.waiting}</dd></div>
           <div><dt>Active</dt><dd>{data.summary.active}</dd></div>
-          <div><dt>Suspended</dt><dd>{data.summary.suspended}</dd></div>
+          <div><dt>Paused</dt><dd>{data.summary.suspended}</dd></div>
         </dl>
       )}
 
@@ -122,17 +124,13 @@ export function Accounts(): React.JSX.Element {
           <FocusField id="accounts-search" value={search} onChange={setSearch} onConfirm={setSearch} placeholder="Email or name" />
         </label>
         <div className="acct-filters">
-          {STATES.map((option) => (
-            <FocusButton
-              key={option.id}
-              id={`accounts-state-${option.id}`}
-              className={`billing-option${state === option.id ? ' billing-option--selected' : ''}`}
-              disabled={busy}
-              onSelect={() => setState(option.id)}
-            >
-              {option.label}
-            </FocusButton>
-          ))}
+          <GlassSegmented
+            idPrefix="accounts-state"
+            ariaLabel="Filter accounts"
+            options={STATES}
+            value={state}
+            onChange={setState}
+          />
         </div>
       </section>
 
@@ -145,7 +143,7 @@ export function Accounts(): React.JSX.Element {
       ) : (
         <ul className="acct-list">
           {data.accounts.map((account) => (
-            <li key={account.id} className={`acct-row${openId === account.id ? ' acct-row--open' : ''}`}>
+            <li key={account.id} className={`glass glass--card acct-row${openId === account.id ? ' acct-row--open' : ''}`}>
               <button
                 type="button"
                 className="acct-row__head"
@@ -188,6 +186,7 @@ export function Accounts(): React.JSX.Element {
                     {account.activated ? (
                       <FocusButton
                         id={`live-tv-${account.id}`}
+                        className="tvm-button--glass acct-btn"
                         disabled={busy}
                         onSelect={() => void act(() => setAccountLiveTv(account.id, account.tier !== 'stream-live'))}
                       >
@@ -198,23 +197,25 @@ export function Accounts(): React.JSX.Element {
                         <FocusButton
                           id={`grant-stream-${account.id}`}
                           variant="primary"
+                          className="acct-btn"
                           disabled={busy}
                           onSelect={() => void act(() => activateAccount({ id: account.id, tier: 'stream' as AccountTier, note: note || undefined }))}
                         >
-                          Switch on · Movies & TV
+                          Switch on · Stream
                         </FocusButton>
                         <FocusButton
                           id={`grant-live-${account.id}`}
-                          variant="primary"
+                          className="tvm-button--glass acct-btn"
                           disabled={busy}
                           onSelect={() => void act(() => activateAccount({ id: account.id, tier: 'stream-live' as AccountTier, note: note || undefined }))}
                         >
-                          Switch on · with Live TV
+                          Switch on · Stream + Live
                         </FocusButton>
                       </>
                     )}
                     <FocusButton
                       id={`verify-${account.id}`}
+                      className="tvm-button--glass acct-btn"
                       disabled={busy}
                       onSelect={() => void act(() => setAccountVerified(account.id, !account.emailVerified))}
                     >
@@ -222,10 +223,11 @@ export function Accounts(): React.JSX.Element {
                     </FocusButton>
                     <FocusButton
                       id={`suspend-${account.id}`}
+                      className="tvm-button--glass acct-btn"
                       disabled={busy}
                       onSelect={() => void act(() => suspendAccount(account.id, !account.suspended))}
                     >
-                      {account.suspended ? 'Restore' : 'Suspend'}
+                      {account.suspended ? 'Restore' : 'Pause'}
                     </FocusButton>
                   </div>
 
@@ -244,6 +246,7 @@ export function Accounts(): React.JSX.Element {
                   <div className="acct-actions">
                     <FocusButton
                       id={`rd-save-${account.id}`}
+                      className="tvm-button--glass acct-btn"
                       disabled={busy || rdKey.trim() === ''}
                       onSelect={() => void act(async () => { await setAccountRdKey(account.id, rdKey); setRdKey(''); })}
                     >
@@ -252,6 +255,7 @@ export function Accounts(): React.JSX.Element {
                     {account.rdKey && (
                       <FocusButton
                         id={`rd-remove-${account.id}`}
+                        className="tvm-button--glass acct-btn"
                         disabled={busy}
                         onSelect={() => void act(() => setAccountRdKey(account.id, ''))}
                       >
@@ -266,15 +270,30 @@ export function Accounts(): React.JSX.Element {
                     {confirmErase === account.id ? (
                       <>
                         <span className="acct-danger__ask">Erase {account.email} and everything held about them?</span>
-                        <FocusButton id={`erase-yes-${account.id}`} disabled={busy} onSelect={() => void act(async () => { await eraseAccount(account.id); setOpenId(null); setConfirmErase(null); })}>
+                        <FocusButton
+                          id={`erase-yes-${account.id}`}
+                          className="tvm-button--glass acct-btn acct-btn--danger"
+                          disabled={busy}
+                          onSelect={() => void act(async () => { await eraseAccount(account.id); setOpenId(null); setConfirmErase(null); })}
+                        >
                           Yes, erase permanently
                         </FocusButton>
-                        <FocusButton id={`erase-no-${account.id}`} disabled={busy} onSelect={() => setConfirmErase(null)}>
+                        <FocusButton
+                          id={`erase-no-${account.id}`}
+                          className="tvm-button--glass acct-btn"
+                          disabled={busy}
+                          onSelect={() => setConfirmErase(null)}
+                        >
                           Keep
                         </FocusButton>
                       </>
                     ) : (
-                      <FocusButton id={`erase-${account.id}`} disabled={busy} onSelect={() => setConfirmErase(account.id)}>
+                      <FocusButton
+                        id={`erase-${account.id}`}
+                        className="tvm-button--glass acct-btn acct-btn--danger"
+                        disabled={busy}
+                        onSelect={() => setConfirmErase(account.id)}
+                      >
                         Erase account (GDPR)
                       </FocusButton>
                     )}

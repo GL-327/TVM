@@ -11,10 +11,10 @@ sub lcPurgeLegacyAccounts()
   if changed then sec.Flush()
 end sub
 
-function lcAccountsHttp(ctx as Object, path as String, method = "GET" as String, body = invalid as Dynamic) as Object
+function lcAccountsHttp(ctx as Object, path as String, method = "GET" as String, body = invalid as Dynamic, sendAuth = true as Boolean) as Object
   headers = { Accept: "application/json" }
   token = lcAaText(ctx, "accountToken")
-  if token <> "" then headers.Authorization = "Bearer " + token
+  if sendAuth and token <> "" then headers.Authorization = "Bearer " + token
   payload = ""
   if body <> invalid
     headers["Content-Type"] = "application/json"
@@ -26,11 +26,13 @@ end function
 function lcAccountsError(res as Object) as Object
   code = res.status
   if code <= 0 then code = 503
-  message = "Accounts could not be reached. Try again."
-  if code = 401 then message = "Sign in again. Check your email and password."
+  message = "We couldn't reach TVM. Check your connection and try again."
+  if code = 401 then message = "Wrong email or password. Try again."
   if code = 400 then message = "Check your details. Passwords need 10 to 200 characters."
   if code = 403 then message = "This account is waiting for access or is unavailable."
-  if code = 429 then message = "Too many attempts. Please try again later."
+  if code = 409 then message = "An account with that email already exists. Try signing in instead."
+  if code = 410 then message = "Your code expired. Here is a new one."
+  if code = 429 then message = "Too many attempts. Wait a few minutes, then try again."
   return { status: code, json: { error: message } }
 end function
 
@@ -110,4 +112,60 @@ function lcSignOut(ctx as Object) as Object
   sec = lcReg() : sec.Delete("accountToken") : sec.Flush()
   if not res.ok and res.status <> 401 then return lcAccountsError(res)
   return { status: 200, json: { ok: true } }
+end function
+
+function lcSanitizeDeviceClient(raw as String) as String
+  clean = ""
+  for i = 1 to Len(raw)
+    ch = Mid(raw, i, 1)
+    code = Asc(ch)
+    if code >= 32 and code <> 127 then clean = clean + ch
+  end for
+  clean = clean.Trim()
+  if clean = "" then return "TVM Roku"
+  if Len(clean) > 200 then clean = Left(clean, 200).Trim()
+  if clean = "" then return "TVM Roku"
+  return clean
+end function
+
+function lcDeviceStart(ctx as Object) as Object
+  client = lcSanitizeDeviceClient(lcAaText(ctx.body, "client", "TVM Roku"))
+  res = lcAccountsHttp(ctx, "/v1/device/start", "POST", { client: client }, false)
+  if not res.ok or res.json = invalid
+    return lcAccountsError(res)
+  end if
+  return { status: 200, json: res.json }
+end function
+
+function lcDevicePoll(ctx as Object) as Object
+  deviceCode = lcAaText(ctx.body, "deviceCode", "").Trim()
+  if Len(deviceCode) <> 43
+    return { status: 400, json: { state: "error", error: "invalid" } }
+  end if
+  res = lcAccountsHttp(ctx, "/v1/device/poll", "POST", { deviceCode: deviceCode }, false)
+  if res.ok and res.json <> invalid
+    session = lcAaText(res.json, "session", "")
+    acc = lcAaGet(res.json, "account", invalid)
+    if session = "" or acc = invalid
+      return { status: 502, json: { state: "error", error: "unavailable" } }
+    end if
+    return {
+      status: 200
+      json: {
+        state: "approved"
+        token: session
+        account: lcPublicAccount(acc)
+        usable: lcAccountUsable(acc)
+      }
+    }
+  end if
+  code = res.status
+  if code <= 0 then code = 503
+  errCode = lcAaText(res.json, "error", "")
+  if errCode = ""
+    if code = 428 then errCode = "pending"
+    if code = 410 then errCode = "expired"
+    if code = 429 then errCode = "slow_down"
+  end if
+  return { status: code, json: { state: errCode, error: errCode } }
 end function

@@ -11,6 +11,8 @@
     <field id="accentColor" type="string" value="0x2F6BFF8C" onChange="paintGlassPill" />
     <field id="accent" type="boolean" onChange="onFocusStyle" />
     <field id="disabled" type="boolean" onChange="onFocusStyle" />
+    <field id="quiet" type="boolean" value="false" onChange="onFocusStyle" />
+    <field id="hideDisabledHint" type="boolean" value="false" onChange="onFocusStyle" />
     <field id="pressed" type="boolean" onChange="onPressed" />
     <field id="pillWidth" type="integer" value="0" onChange="layout" />
   </interface>

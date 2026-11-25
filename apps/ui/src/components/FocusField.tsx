@@ -13,9 +13,11 @@ export type FieldEnterHint = 'enter' | 'done' | 'go' | 'next' | 'previous' | 'se
 
 interface FocusFieldProps {
   id: string;
+  inputId?: string;
   value: string;
   onChange: (value: string) => void;
   onConfirm: (value: string) => void;
+  onBlur?: () => void;
   type?: FieldType;
   placeholder?: string;
   multiline?: boolean;
@@ -32,6 +34,11 @@ interface FocusFieldProps {
   name?: string;
   /** Proper nouns and email addresses want different capitalisation. */
   autoCapitalize?: 'off' | 'none' | 'sentences' | 'words' | 'characters';
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
+  disabled?: boolean;
+  tabIndex?: number;
+  className?: string;
 }
 
 /**
@@ -73,9 +80,11 @@ const HINT_FOR_TYPE: Readonly<Record<FieldType, FieldEnterHint>> = {
  */
 export function FocusField({
   id,
+  inputId,
   value,
   onChange,
   onConfirm,
+  onBlur,
   type = 'text',
   placeholder,
   multiline = false,
@@ -85,6 +94,11 @@ export function FocusField({
   autoComplete = 'off',
   name,
   autoCapitalize,
+  ariaDescribedBy,
+  ariaInvalid,
+  disabled = false,
+  tabIndex = -1,
+  className,
 }: FocusFieldProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
   const saveKey = useScopedFocusKey(afterPasteFocusId ?? '');
@@ -92,6 +106,7 @@ export function FocusField({
   const [compositionDraft, setCompositionDraft] = useState<string | null>(null);
   const { ref, focused } = useFocusable<object, HTMLInputElement>({
     focusKey,
+    focusable: !disabled,
     onArrowPress: (direction) => {
       if (direction === 'down' && afterPasteFocusId !== undefined) {
         requestFocus(saveKey);
@@ -133,17 +148,22 @@ export function FocusField({
   const fieldRef = ref as unknown as Ref<HTMLTextAreaElement & HTMLInputElement>;
   const mode = inputMode ?? MODE_FOR_TYPE[type];
   const hint = enterKeyHint ?? HINT_FOR_TYPE[type];
+  const extraClass = className ? ` ${className}` : '';
 
   if (multiline) {
     return (
       <textarea
         ref={fieldRef}
+        id={inputId}
         autoComplete={autoComplete}
         spellCheck={false}
-        className="token-field__input token-field__input--area glass--well"
-        tabIndex={-1}
+        className={`token-field__input token-field__input--area glass--well${extraClass}`}
+        tabIndex={tabIndex}
         rows={5}
         name={name}
+        disabled={disabled}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         data-focus-id={id}
         data-focused={focused ? 'true' : undefined}
         value={displayedValue}
@@ -151,6 +171,7 @@ export function FocusField({
         inputMode={mode}
         enterKeyHint={hint}
         autoCapitalize={autoCapitalize ?? 'off'}
+        onBlur={onBlur}
         onCompositionStart={handleCompositionStart}
         onCompositionEnd={handleCompositionEnd}
         onChange={(event) => {
@@ -170,12 +191,16 @@ export function FocusField({
   return (
     <input
       ref={ref}
+      id={inputId}
       type={type}
       name={name}
       autoComplete={autoComplete}
       spellCheck={false}
-      className="token-field__input glass--well"
-      tabIndex={-1}
+      className={`token-field__input glass--well${extraClass}`}
+      tabIndex={tabIndex}
+      disabled={disabled}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={ariaInvalid}
       data-focus-id={id}
       data-focused={focused ? 'true' : undefined}
       value={displayedValue}
@@ -184,6 +209,7 @@ export function FocusField({
       enterKeyHint={hint}
       autoCapitalize={autoCapitalize ?? 'off'}
       autoCorrect="off"
+      onBlur={onBlur}
       onCompositionStart={handleCompositionStart}
       onCompositionEnd={handleCompositionEnd}
       onChange={(event) => {

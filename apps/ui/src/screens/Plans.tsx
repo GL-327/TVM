@@ -1,96 +1,91 @@
 import { useEffect, useState } from 'react';
 import { FocusButton } from '../components/FocusButton';
+import { GlassSegmented } from '../components/GlassSegmented';
+import { IconCheck } from '../components/Icons';
+import { PageScene } from '../components/PageScene';
 import { TopBar } from '../components/TopBar';
-import { fetchAccount, fetchTiers, type AccountState, type TiersResponse } from '../data/account';
+import {
+  fetchAccount,
+  fetchTiers,
+  recordPlanChoice,
+  type AccessTierView,
+  type AccountState,
+  type TiersResponse,
+} from '../data/account';
 import { formatBillingMoney } from '../data/plan';
 import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+import { friendlyPlanName } from './accountCopy';
 import './plans.css';
 
-/**
- * What access costs, and how to get it.
- *
- * This used to be a shop: five tiers, a card form, a checkout. None of that
- * exists now — nothing is sold inside the app and there is no route from here
- * to a payment for access. The page answers two questions instead. What does
- * it cost, and who do I ask.
- *
- * The donate button sits at the bottom deliberately, well below the prices and
- * clearly separated, so it can never read as the way to pay for a plan. It
- * says three times over that it gives you nothing, because the one thing that
- * must not happen is somebody donating in the belief it will switch them on.
- */
+type BillingCadence = 'month' | 'year';
 
-function tierCard(
-  tier: TiersResponse['tiers'][number],
-  current: AccountState,
-): React.JSX.Element {
-  const mine = current.account?.tier === tier.id && current.account.activated;
-  /*
-   * The cheapest Live TV term, shown beside the monthly price.
-   *
-   * Both tiers cost the same 9.99 for the software, and the Live TV terms
-   * used to appear only in a list further down the card. Side by side, the
-   * two cards therefore showed the same headline price for plainly different
-   * things, which reads as a copy-and-paste mistake and understates what the
-   * larger tier costs. The list below still gives every term; this says, at
-   * the point where the eye compares them, that one of them costs more.
-   */
-  const fromTerm = tier.liveTvTerms.reduce<typeof tier.liveTvTerms[number] | null>(
-    (cheapest, term) => (cheapest === null || term.amountPence < cheapest.amountPence ? term : cheapest),
-    null,
-  );
-  return (
-    <section key={tier.id} className={`tier-card${mine ? ' tier-card--mine' : ''}`}>
-      <header className="tier-card__head">
-        <div>
-          <h2 className="tier-card__name">{tier.name}</h2>
-          <p className="tier-card__summary">{tier.summary}</p>
-        </div>
-        {tier.monthlyPence !== null && (
-          <p className="tier-card__price">
-            {formatBillingMoney(tier.monthlyPence)}<span>/month</span>
-            {fromTerm !== null && (
-              <span className="tier-card__price-note">
-                plus Live TV from {formatBillingMoney(fromTerm.amountPence)}
-              </span>
-            )}
-          </p>
-        )}
-      </header>
-
-      {mine && <p className="tier-card__mine">This is your access</p>}
-
-      <ul className="tier-card__list">
-        {tier.includes.map((line) => <li key={line}>{line}</li>)}
-      </ul>
-
-      {tier.liveTvTerms.length > 0 && (
-        <div className="tier-card__terms">
-          <h3>Live TV is priced separately</h3>
-          <ul>
-            {tier.liveTvTerms.map((term) => (
-              <li key={term.id}>
-                <span>{term.name}</span>
-                <span className="tier-card__term-price">{formatBillingMoney(term.amountPence)}</span>
-                <span className="tier-card__term-note">{term.blurb}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="tier-card__fineprint">
-            Live TV connects an IPTV subscription you supply and hold yourself. TVM does not
-            include one, and supplies no channels.
-          </p>
-        </div>
-      )}
-    </section>
-  );
+function formatCleanPrice(pence: number): string {
+  if (pence % 100 === 0) return `£${pence / 100}`;
+  return formatBillingMoney(pence);
 }
 
+function tierDisplayName(tier: AccessTierView): string {
+  return tier.id === 'stream-live' ? 'Stream + Live' : 'Stream';
+}
+
+function tierButtonLabel(tier: AccessTierView, mine: boolean, comingSoon: boolean): string {
+  if (mine) return 'Current plan';
+  if (comingSoon) return 'Coming soon';
+  return `Choose ${tierDisplayName(tier)}`;
+}
+
+function tierPricePence(tier: AccessTierView, cadence: BillingCadence): number | null {
+  if (cadence === 'year') {
+    if (typeof tier.yearlyPence !== 'number' || tier.yearlyPence <= 0) return null;
+    const addon = typeof tier.liveTvYearlyPence === 'number' ? tier.liveTvYearlyPence : 0;
+    return tier.yearlyPence + addon;
+  }
+  if (tier.monthlyPence === null) return null;
+  const addon = typeof tier.liveTvMonthlyPence === 'number' ? tier.liveTvMonthlyPence : 0;
+  return tier.monthlyPence + addon;
+}
+
+function yearlySavingsPercent(tiers: readonly AccessTierView[]): number {
+  const base = tiers[0];
+  if (!base || base.monthlyPence === null || base.monthlyPence <= 0 || typeof base.yearlyPence !== 'number' || base.yearlyPence <= 0) {
+    return 0;
+  }
+  const annualAtMonthly = base.monthlyPence * 12;
+  if (base.yearlyPence >= annualAtMonthly) return 0;
+  return Math.round(((annualAtMonthly - base.yearlyPence) / annualAtMonthly) * 100);
+}
+
+function isRecommendedTier(tier: AccessTierView, tiers: readonly AccessTierView[]): boolean {
+  const streamLive = tiers.find((item) => item.id === 'stream-live');
+  const liveOrderable = streamLive !== undefined && streamLive.orderable !== false && streamLive.availability !== 'Coming soon';
+  if (liveOrderable) return tier.id === 'stream-live';
+  return tier.id === 'stream';
+}
+
+const COMPARE_ROWS: ReadonlyArray<{ label: string; stream: string; live: string }> = [
+  { label: 'Films & series from your sources', stream: 'Included', live: 'Included' },
+  { label: '4K HDR & Dolby Atmos', stream: 'Included', live: 'Included' },
+  { label: 'Viewing profiles', stream: 'Up to 10', live: 'Up to 10' },
+  { label: 'No ads, no queue, no hour limits', stream: 'Included', live: 'Included' },
+  { label: 'Live TV (bring your IPTV)', stream: '—', live: 'Included' },
+  { label: 'Channel check & catch-up live', stream: '—', live: 'Included' },
+];
+
+/**
+ * Plans and access overview.
+ *
+ * TVM access is arranged directly with the app owner and no card is charged
+ * on this page. The donate block remains clearly fenced off below.
+ */
 export function Plans(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const [tiers, setTiers] = useState<TiersResponse | null>(null);
   const [account, setAccount] = useState<AccountState | null>(null);
+  const [cadence, setCadence] = useState<BillingCadence>('month');
+  const [showCompare, setShowCompare] = useState(false);
+  const [choiceNote, setChoiceNote] = useState<string | null>(null);
+  const [choosingId, setChoosingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,59 +94,215 @@ export function Plans(_props: ScreenProps): React.JSX.Element {
     return () => { cancelled = true; };
   }, []);
 
+  const tierList = tiers?.tiers ?? [];
+  const hasYearly = tierList.some((tier) => typeof tier.yearlyPence === 'number' && tier.yearlyPence > 0);
+  const savings = yearlySavingsPercent(tierList);
+  const cadenceOptions = [
+    { id: 'month' as const, label: 'Monthly' },
+    { id: 'year' as const, label: savings > 0 ? `Yearly · Save ${savings}%` : 'Yearly' },
+  ];
+
+  const chooseTier = async (tier: AccessTierView): Promise<void> => {
+    if (choosingId !== null) return;
+    const comingSoon = tier.orderable === false || tier.availability === 'Coming soon';
+    if (comingSoon) {
+      setChoiceNote(`${tierDisplayName(tier)} is coming soon. Ask the app owner when Live TV opens.`);
+      return;
+    }
+    setChoosingId(tier.id);
+    setChoiceNote(null);
+    try {
+      const recorded = account?.signedIn
+        ? await recordPlanChoice({ cadence, liveTv: tier.liveTv })
+        : null;
+      const emailPart = account?.account?.email ? ` for ${account.account.email}` : '';
+      const planLabel = tierDisplayName(tier);
+      if (recorded?.message) {
+        setChoiceNote(`${planLabel} (${cadence === 'year' ? 'Yearly' : 'Monthly'}) noted${emailPart}. ${recorded.message}`);
+      } else {
+        setChoiceNote(`${planLabel} (${cadence === 'year' ? 'Yearly' : 'Monthly'}) selected${emailPart}. Ask the owner to switch it on — no card is taken here.`);
+      }
+    } finally {
+      setChoosingId(null);
+    }
+  };
+
   return (
     <main className="page page--settings page--plans">
-      <TopBar title="Access" />
-      <p className="stage__kicker">Access</p>
-      <h1 className="page__heading">What TVM costs</h1>
-      <p className="page__lede">
-        Two kinds of access, arranged directly with the app owner. There is nothing to buy
-        in the app and no card is taken here.
-      </p>
+      <PageScene />
+      <TopBar title="Plans" />
 
-      {account?.account != null && (
-        <section className="tier-current">
-          <p className="plan-current__kicker">Your account</p>
-          <h2>{account.account.email}</h2>
-          <p>
-            {account.account.activated
-              ? `Active · ${account.account.tier === 'stream-live' ? 'Movies, TV shows and Live TV' : 'Movies and TV shows'}`
-              : 'Waiting to be switched on by the app owner'}
+      <div className="plans-shell">
+        <header className="plans-hero">
+          <h1 className="page__heading">Choose your plan</h1>
+          <p className="page__lede">
+            Nothing to buy inside the app — access is arranged with the app owner, and no card is taken here.
           </p>
+          {account?.account != null && (
+            <p className="plans-account-note">
+              Signed in as <strong>{account.account.email}</strong> ·{' '}
+              {account.account.activated
+                ? `Active (${friendlyPlanName(account.account.tier)})`
+                : 'Waiting for approval'}
+            </p>
+          )}
+          {hasYearly && (
+            <div className="plans-toggle">
+              <GlassSegmented
+                idPrefix="plans-cadence"
+                ariaLabel="Billing period"
+                options={cadenceOptions}
+                value={cadence}
+                onChange={setCadence}
+              />
+            </div>
+          )}
+        </header>
+
+        {tiers === null ? (
+          <p className="plans-loading" role="status">Loading plans…</p>
+        ) : (
+          <>
+            <div className="tier-grid" data-wrap="row">
+              {tierList.map((tier) => {
+                const mine = account?.account?.tier === tier.id && account.account.activated;
+                const comingSoon = tier.orderable === false || tier.availability === 'Coming soon';
+                const recommended = isRecommendedTier(tier, tierList);
+                const pricePence = tierPricePence(tier, cadence);
+                const fromTerm = tier.liveTvTerms.reduce<typeof tier.liveTvTerms[number] | null>(
+                  (cheapest, term) => (cheapest === null || term.amountPence < cheapest.amountPence ? term : cheapest),
+                  null,
+                );
+                const addonPence = cadence === 'year'
+                  ? (tier.liveTvYearlyPence ?? 0)
+                  : (tier.liveTvMonthlyPence ?? 0);
+                const isPrimary = recommended && !mine && !comingSoon;
+
+                return (
+                  <article
+                    key={tier.id}
+                    className={`glass glass--card tier-card${recommended ? ' tier-card--popular' : ''}${mine ? ' tier-card--mine' : ''}`}
+                  >
+                    <div className="tier-card__top">
+                      <div className="tier-card__badges">
+                        {recommended && <span className="tier-card__badge">Most popular</span>}
+                        {mine && <span className="tier-card__badge tier-card__badge--mine">Your plan</span>}
+                        {comingSoon && !mine && <span className="tier-card__badge tier-card__badge--muted">Coming soon</span>}
+                      </div>
+
+                      <h2 className="tier-card__name">{tierDisplayName(tier)}</h2>
+                      <p className="tier-card__summary">{tier.summary}</p>
+
+                      {pricePence !== null && (
+                        <div className="tier-card__pricing">
+                          <p className="tier-card__price">
+                            <span className="tier-card__amount">{formatCleanPrice(pricePence)}</span>
+                            <span className="tier-card__unit">per {cadence === 'year' ? 'year' : 'month'}</span>
+                          </p>
+                          {addonPence > 0 && (
+                            <p className="tier-card__price-note">
+                              Includes {formatCleanPrice(addonPence)} Live TV add-on
+                            </p>
+                          )}
+                          {addonPence === 0 && fromTerm !== null && (
+                            <p className="tier-card__price-note">
+                              Plus Live TV from {formatCleanPrice(fromTerm.amountPence)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <ul className="tier-card__list">
+                      {tier.includes.slice(0, 5).map((line) => (
+                        <li key={line}>
+                          <IconCheck className="tier-card__check" />
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="tier-card__action">
+                      <FocusButton
+                        id={`plan-choose-${tier.id}`}
+                        variant={isPrimary ? 'primary' : 'standard'}
+                        className={isPrimary ? 'tier-card__cta' : 'tvm-button--glass tier-card__cta'}
+                        disabled={mine || comingSoon || choosingId !== null}
+                        onSelect={() => void chooseTier(tier)}
+                      >
+                        {choosingId === tier.id ? 'Noting choice…' : tierButtonLabel(tier, mine, comingSoon)}
+                      </FocusButton>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {choiceNote !== null && (
+              <div className="glass glass--card tier-route" role="status" aria-live="polite">
+                <p>{choiceNote}</p>
+              </div>
+            )}
+
+            <div className="plans-meta">
+              <p className="plans-fineprint">
+                {tiers.route.detail} Taxes may apply.
+              </p>
+              <FocusButton
+                id="plans-compare"
+                variant="quiet"
+                className="plans-compare-link"
+                ariaExpanded={showCompare}
+                onSelect={() => setShowCompare((open) => !open)}
+              >
+                {showCompare ? 'Hide comparison' : 'Compare everything'}
+              </FocusButton>
+            </div>
+
+            {showCompare && (
+              <section className="glass glass--card plans-compare" aria-label="Compare plans">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Feature</th>
+                      <th scope="col">Stream</th>
+                      <th scope="col">Stream + Live</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {COMPARE_ROWS.map((row) => (
+                      <tr key={row.label}>
+                        <td>{row.label}</td>
+                        <td>{row.stream}</td>
+                        <td>{row.live}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
+          </>
+        )}
+
+        {/* Far below the plans, and fenced off from them. */}
+        <section className="tier-donate">
+          <h2>Donate to the app owner</h2>
+          <p className="tier-donate__lede">Optional, and it gives you nothing.</p>
+          <p className="tier-donate__detail">
+            A donation is a gift. It does not create an account, activate one, upgrade one or
+            extend one, and nothing in the app changes because you sent it. If you want
+            access, contact the owner — do not donate and expect it.
+          </p>
+          <div className="tier-donate__actions">
+            <FocusButton id="donate" className="tvm-button--glass tier-donate__btn" onSelect={() => navigate.push('donate')}>
+              Donate
+            </FocusButton>
+            <FocusButton id="plans-legal" variant="quiet" className="plans-compare-link" onSelect={() => navigate.push('legal')}>
+              Privacy &amp; terms
+            </FocusButton>
+          </div>
         </section>
-      )}
-
-      {tiers === null ? (
-        <p role="status">Loading…</p>
-      ) : (
-        <>
-          <div className="tier-grid">{tiers.tiers.map((tier) => tierCard(tier, account ?? { signedIn: false, account: null, usable: { ok: false, reason: null }, termsVersion: '' }))}</div>
-
-          <section className="tier-route">
-            <h2>{tiers.route.headline}</h2>
-            <p>{tiers.route.detail}</p>
-          </section>
-        </>
-      )}
-
-      {/* Far below the prices, and fenced off from them. */}
-      <section className="tier-donate">
-        <h2>Donate to the app owner</h2>
-        <p className="tier-donate__lede">Optional, and it gives you nothing.</p>
-        <p className="tier-donate__detail">
-          A donation is a gift. It does not create an account, activate one, upgrade one or
-          extend one, and nothing in the app changes because you sent it. If you want
-          access, contact the owner — do not donate and expect it.
-        </p>
-        <div className="hero__actions">
-          <FocusButton id="donate" onSelect={() => navigate.push('donate')}>
-            Donate
-          </FocusButton>
-          <FocusButton id="plans-legal" onSelect={() => navigate.push('legal')}>
-            Terms &amp; privacy
-          </FocusButton>
-        </div>
-      </section>
+      </div>
     </main>
   );
 }

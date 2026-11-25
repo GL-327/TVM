@@ -218,10 +218,6 @@ void App::OpenInfoPage(const nav::ViewEntry& entry) {
     if (pageName_ == "setup") fieldMode_ = "code";
     if (pageName_ == "extras-settings") fieldMode_ = "languages";
     if (pageName_ == "stats" || pageName_ == "extras-settings") LoadExtrasPage();
-    if (pageName_ == "account") {
-        fieldMode_ = account_.signedIn ? "emailcode" : "email";
-        if (!account_.signedIn) accountAuthMode_ = "signin";
-    }
     // The check opens the channels Live TV lists, so they are read when Live TV has not read them yet.
     if (pageName_ == "live-check" && !liveLoaded_) RefreshLiveTv();
     ShowInfoPage();
@@ -247,7 +243,6 @@ void App::ShowInfoPage() {
     ui::InfoView view;
     if (pageName_ == "stats") view = StatsView();
     else if (pageName_ == "extras-settings") view = ExtrasView();
-    else if (pageName_ == "account") view = AccountView();
     else if (pageName_ == "legal") view = LegalView();
     else if (pageName_ == "donate") view = DonateView();
     else if (pageName_ == "changelog") view = ChangelogView();
@@ -281,12 +276,7 @@ void App::ApplyInfoAction(const ui::Command& command) {
     if (verb.starts_with("extras-")) { ExtrasAction(verb.substr(7)); return; }
     if (verb.rfind("field-", 0) == 0) {
         // Moves the field to another of the page's inputs, with that input's text.
-        if (pageName_ == "account" && verb != "field-email" && verb != "field-password" && verb != "field-name" && verb != "field-emailcode") return;
         fieldMode_ = verb.substr(6);
-        if (pageName_ == "account") {
-            if (fieldMode_ == "name") accountAuthMode_ = "register";
-
-        }
         ShowInfoPage();
         if (ui::InfoScreen* screen = TypingPage()) screen->SetFieldText(value(fieldMode_));
         return;
@@ -304,7 +294,6 @@ void App::ApplyInfoAction(const ui::Command& command) {
         } catch (const std::exception& error) { say(error.what(), true); }
         ShowInfoPage(); return;
     }
-    if (verb.rfind("account-", 0) == 0) { AccountAction(verb.substr(8)); return; }
 
     if (verb.rfind("service-site-", 0) == 0) {
         try {

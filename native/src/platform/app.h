@@ -249,10 +249,16 @@ private:
     void OpenInfoPage(const nav::ViewEntry& entry);
     void ShowInfoPage();
     void ApplyInfoAction(const ui::Command& command);
-    ui::InfoView AccountView() const;
-    void AccountAction(const std::string& verb);
+    ui::AccountScreen* ActiveAccountScreen();
+    void SyncAccountScreen();
+    void SyncPlansScreen();
+    void HandleAccountCommand(const ui::Command& command);
+    void ChoosePlan(const ui::Command& command);
     void RefreshAccount();
-    void FinishAccount(const coreapi::AccountState& state, const std::string& message = "");
+    void RefreshTerms();
+    void RefreshTiers();
+    void FinishAccount(const coreapi::AccountState& state, const std::string& message = "",
+                       bool isError = false, std::string errorField = "");
     coreapi::RealDebridStatus CoreRealDebrid() const;
     std::optional<admin::MailSettings> CoreMail() const;
     playback::Resolution CorePlayback(const std::string& id, const std::string& title, int maxHeight = 0) const;
@@ -354,7 +360,14 @@ private:
     bool accountBusy_ = false;
     double accountCheckedMs_ = 0;
     std::string accountMessage_;
-    std::string accountAuthMode_ = "signin";
+    bool accountMessageError_ = false;
+    std::string accountErrorField_;
+    coreapi::TermsDocument termsDoc_ = coreapi::DefaultTermsDocument();
+    bool termsLoaded_ = false;
+    bool termsBusy_ = false;
+    ui::PlansView plansView_;
+    bool tiersLoaded_ = false;
+    bool tiersBusy_ = false;
     coreapi::RealDebridStatus rdStatus_;
     bool rdStatusLoaded_ = false;
     bool rdStatusChecking_ = false;

@@ -22,36 +22,55 @@ describe('the door', () => {
     expect(src).toContain('window.addEventListener(ACCOUNT_CHANGED, changed)');
   });
 
-  it('names the state someone is in rather than failing generically', () => {
+  it('names each state in plain human language with no raw codes', () => {
     const src = gate();
-    expect(src).toContain('Almost there');
-    expect(src).toContain('This account is switched off');
-    expect(src).toContain('Before you start');
     expect(src).toContain('Sign in to TVM');
-    expect(src).toContain('Check your email');
+    expect(src).toContain('Enter your password');
+    expect(src).toContain('Create your account');
+    expect(src).toContain("You're on the list");
+    expect(src).toContain('Your account is paused');
+    expect(src).toContain('Accept the terms to continue');
+    expect(src).toContain('Confirm your email to continue');
+    expect(src).toContain('accountStatusLabel(state)');
   });
 
   /*
    * Accounts live on the private account server and users with role === 'dev'
-   * sign in normally with their email and password.
+   * sign in normally with their email and password. No tabs, no dev code entry.
    */
-  it('offers sign-in and account request tabs without developer code entry', () => {
+  it('uses a two-step email-then-password flow without tab pills or developer code entry', () => {
     const src = gate();
-    const signedOut = src.slice(src.indexOf('// ---- Signed out'));
-    expect(signedOut).not.toContain('id="gate-dev"');
-    expect(signedOut).not.toContain("I'm a dev");
-    expect(signedOut).not.toContain("switchMode('dev')");
+    expect(src).not.toContain('gate-tabs');
+    expect(src).not.toContain('gate-tab');
+    expect(src).not.toContain('id="gate-dev"');
+    expect(src).not.toContain("I'm a dev");
+    expect(src).not.toContain("switchMode('dev')");
     expect(src).not.toContain('gate-dev-code');
     expect(src).not.toContain('signInDev');
     expect(src).not.toContain("addEventListener('tvm:secret-door'");
     expect(src).not.toContain('unlockDeveloper');
+    expect(src).toContain('New here? Create an account');
+    expect(src).toContain('I already have an account');
+    expect(src).toContain('id="gate-change-email"');
+    expect(src).toContain('id="gate-password-toggle"');
+    expect(src).toContain('id="gate-forgot"');
+    expect(src).toContain('Ask the owner to reset it.');
     expect(src).toContain("typed('gate-email', email).trim()");
     expect(src).toContain("typed('gate-password', password)");
   });
 
+  it('auto-rechecks waiting accounts every 60 seconds and on visibility change', () => {
+    const src = gate();
+    expect(src).toContain('RECHECK_INTERVAL_MS = 60_000');
+    expect(src).toContain('window.setInterval');
+    expect(src).toContain('visibilitychange');
+    expect(src).toContain('id="recheck"');
+    expect(src).toContain('Check again');
+  });
+
   it('asks for the emailed code before the account can go any further', () => {
     const src = gate();
-    const panel = src.slice(src.indexOf('// ---- The emailed code'), src.indexOf('// ---- Waiting on the dev'));
+    const panel = src.slice(src.indexOf('// ---- Email code verification'), src.indexOf('// ---- Waiting for approval'));
     expect(panel).toContain("reason === 'email_unverified'");
     expect(panel).toContain('id="gate-code"');
     expect(panel).toContain('autoComplete="one-time-code"');
@@ -76,14 +95,16 @@ describe('the door', () => {
    * Signing out once landed on the register form, filled in with the last
    * account's name and address under an old "Account created" notice.
    */
-  it('returns to the sign-in form when the session ends', () => {
+  it('returns to the clean email step when the session ends', () => {
     const src = gate();
     const reset = src.slice(src.indexOf('if (state.signedIn) return;'));
     expect(reset).toContain("setMode('signin')");
+    expect(reset).toContain("setStep('email')");
     expect(reset).toContain("setEmail('')");
     expect(reset).toContain("setPassword('')");
     expect(reset).toContain("setDisplayName('')");
     expect(reset).toContain("setEmailCode('')");
+    expect(reset).toContain('setAgreedTerms(false)');
     expect(reset).toContain('setNotice(null)');
     expect(reset).toContain('setMessage(null)');
     // Keyed on the session rather than the screen, so an expiry resets it too.
@@ -95,25 +116,35 @@ describe('the door', () => {
    * to the remote. Without its own handler nothing had focus and Enter after a
    * password did nothing.
    */
-  it('can be driven with a keyboard or a remote, and Enter signs in', () => {
+  it('can be driven with a keyboard or a remote, and Enter confirms or signs in', () => {
     const src = gate();
     expect(src).toContain('useGateRemote({');
-    // Sign-in and email code: both real forms that confirm on Enter.
-    expect(src.match(/<form\s+className="gate__form"/g)?.length).toBe(2);
-    expect(src.match(/onKeyDown={confirmFieldOnEnter}/g)?.length).toBe(2);
-    expect(src.match(/<button type="submit" className="gate__implicit-submit"/g)?.length).toBe(2);
-    // Enter in the email field moves on; in the password field it submits.
-    const email = src.slice(src.indexOf('id="gate-email"'), src.indexOf('id="gate-password"'));
-    expect(email).toContain("onConfirm={next('gate-password')}");
-    const password = src.slice(src.indexOf('id="gate-password"'), src.indexOf('id="gate-submit"'));
-    expect(password).toContain('onConfirm={() => void submit()}');
+    // Email, password, register, and email-code forms all confirm on Enter.
+    expect(src.match(/<form[\s\S]*?className="gate__form"/g)?.length).toBe(4);
+    expect(src.match(/onKeyDown={confirmFieldOnEnter}/g)?.length).toBe(4);
+    expect(src.match(/<button type="submit" className="gate__implicit-submit"/g)?.length).toBe(4);
+    // Enter in password submits; Enter on email advances to password.
+    expect(src).toContain('onConfirm={advanceToPassword}');
+    expect(src).toContain('onConfirm={() => void submitSignIn()}');
+    expect(src).toContain('onConfirm={() => void submitRegister()}');
     // A phone keyboard and a password manager both need to know what the fields are.
-    expect(email).toContain('inputMode="email"');
-    expect(password).toContain("'current-password'");
+    expect(src).toContain('inputMode="email"');
+    expect(src).toContain('autoComplete="current-password"');
+    expect(src).toContain('autoComplete="new-password"');
     // A double press must not send two requests.
     expect(src).toContain('inFlight.current');
-    // Back from register returns to signing in.
-    expect(src).toContain("mode !== 'signin' ? () => switchMode('signin') : undefined");
+    // Back from password returns to email, and from register returns to sign-in.
+    expect(src).toContain('backToEmail');
+    expect(src).toContain("() => switchMode('signin')");
+  });
+
+  it('announces inline field errors and keeps focus inside the invalid field', () => {
+    const src = gate();
+    expect(src).toContain('aria-live="polite"');
+    expect(src).toContain('ariaDescribedBy=');
+    expect(src).toContain('ariaInvalid=');
+    expect(src).toContain("focusInput('gate-email')");
+    expect(src).toContain("focusInput('gate-password')");
   });
 
   it('keeps the door itself free of anything that grants access on its own', () => {

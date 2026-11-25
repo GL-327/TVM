@@ -118,15 +118,58 @@ TEST(plans_page_lists_both_kinds_of_access_and_fences_off_donate) {
     screen.Layout(1920.0, 1080.0);
     TextPainter painter;
     screen.Paint(painter);
-    REQUIRE(painter.Has("What TVM costs"));
-    REQUIRE(painter.Has("Movies and TV shows"));
-    REQUIRE(painter.Has("Movies and TV shows + Live TV"));
-    REQUIRE(painter.Has("\xC2\xA3" "9.99/month"));
-    REQUIRE(painter.Has("\xC2\xA3" "599.00"));
+    REQUIRE(painter.Has("Choose your plan"));
+    REQUIRE(painter.Has("Stream"));
+    REQUIRE(painter.Has("Stream + Live"));
+    REQUIRE(painter.Has("\xC2\xA3" "10"));
+    REQUIRE(painter.Has("\xC2\xA3" "17"));
+    REQUIRE(painter.Has("/month"));
+    REQUIRE(painter.Has("inc \xC2\xA3" "7 Live TV add-on"));
+    REQUIRE(painter.Has("Most popular"));
     REQUIRE(painter.Has("Donate to the app owner"));
-    REQUIRE_EQ(screen.FocusedKey(), std::optional<std::string>("donate"));
-    REQUIRE(screen.Navigate(Direction::Right, 0.0));
-    REQUIRE_EQ(screen.Select(0.0)->name, std::string("legal"));
+
+    // Equal button heights across plan CTAs and Donate.
+    const auto streamBox = screen.BoxOf("plan:stream");
+    const auto liveBox = screen.BoxOf("plan:stream-live");
+    const auto donateBox = screen.BoxOf("donate");
+    REQUIRE(streamBox.has_value());
+    REQUIRE(liveBox.has_value());
+    REQUIRE(donateBox.has_value());
+    REQUIRE_EQ(streamBox->height, liveBox->height);
+    REQUIRE_EQ(streamBox->height, donateBox->height);
+
+    // Switching to Yearly updates prices and add-on breakdown.
+    REQUIRE(!screen.ActivateItem("cadence:year", 0.0).has_value());
+    TextPainter yearlyPainter;
+    screen.Paint(yearlyPainter);
+    REQUIRE(yearlyPainter.Has("\xC2\xA3" "90"));
+    REQUIRE(yearlyPainter.Has("\xC2\xA3" "150"));
+    REQUIRE(yearlyPainter.Has("/year"));
+    REQUIRE(yearlyPainter.Has("inc \xC2\xA3" "60 Live TV add-on"));
+
+    // Expanding Compare shows the feature table; activating a plan emits plans-choose.
+    REQUIRE(!screen.ActivateItem("plans:compare", 0.0).has_value());
+    TextPainter cmpPainter;
+    screen.Paint(cmpPainter);
+    REQUIRE(cmpPainter.Has("Offline downloads"));
+    const std::optional<Command> chosen = screen.ActivateItem("plan:stream-live", 0.0);
+    REQUIRE(chosen.has_value());
+    REQUIRE_EQ(chosen->name, std::string("plans-choose"));
+    REQUIRE_EQ(chosen->params.at("tier"), std::string("stream-live"));
+    REQUIRE_EQ(chosen->params.at("cadence"), std::string("year"));
+
+    // Signed-in users see "Your plan" badge and disabled "Current plan" button on their active tier.
+    tvm::ui::PlansView signedView = screen.view();
+    signedView.account.signedIn = true;
+    signedView.account.tier = "stream";
+    screen.SetView(signedView);
+    TextPainter ownedPainter;
+    screen.Paint(ownedPainter);
+    REQUIRE(ownedPainter.Has("Your plan"));
+    REQUIRE(!screen.ActivateItem("plan:stream", 0.0).has_value());
+    const std::optional<Command> legal = screen.ActivateItem("plans-legal", 0.0);
+    REQUIRE(legal.has_value());
+    REQUIRE_EQ(legal->name, std::string("legal"));
 }
 
 TEST(updates_page_offers_the_native_download_instead_of_an_electron_update) {
@@ -241,6 +284,123 @@ TEST(centered_liquid_glass_signin_card_draws_summaries_and_navigates_modes) {
     const std::optional<Command> cmd = screen.ActivateItem("info:account-signin", 0.0);
     REQUIRE(cmd.has_value());
     REQUIRE_EQ(cmd->name, std::string("info:account-signin"));
+}
+
+TEST(account_screen_flows_two_step_signin_create_waiting_paused_terms_and_signed_in) {
+    tvm::ui::AccountScreen screen;
+    screen.Layout(1920.0, 1080.0);
+
+    // Step 1: Invalid email stays on Email and shows inline validation error without emitting a command.
+    screen.Type("invalid-email");
+    REQUIRE(!screen.ActivateItem("account:continue", 0.0).has_value());
+    REQUIRE_EQ(screen.step(), tvm::ui::AccountStep::SignInEmail);
+    TextPainter emailErrPainter;
+    screen.Paint(emailErrPainter);
+    REQUIRE(emailErrPainter.Has("Sign in to TVM"));
+    REQUIRE(emailErrPainter.Has("Check the email address. It should look like name@example.com."));
+
+    // Valid email transitions cleanly to Step 2 (Password).
+    screen.SetFieldValue("email", "ada@tvm.test");
+    REQUIRE(!screen.ActivateItem("account:continue", 0.0).has_value());
+    REQUIRE_EQ(screen.step(), tvm::ui::AccountStep::SignInPassword);
+
+    // Eye toggle reveals/hides password; Forgot password shows guidance.
+    screen.Type("hunter2longpass");
+    TextPainter maskedPainter;
+    screen.Paint(maskedPainter);
+    REQUIRE(maskedPainter.Has("Enter your password"));
+    REQUIRE(maskedPainter.Has("ada@tvm.test"));
+    REQUIRE(!maskedPainter.Has("hunter2longpass"));
+
+    REQUIRE(!screen.ActivateItem("account:toggle-password", 0.0).has_value());
+    REQUIRE(screen.passwordVisible());
+    TextPainter unmaskedPainter;
+    screen.Paint(unmaskedPainter);
+    REQUIRE(unmaskedPainter.Has("hunter2longpass"));
+
+    REQUIRE(!screen.ActivateItem("account:forgot", 0.0).has_value());
+    TextPainter forgotPainter;
+    screen.Paint(forgotPainter);
+    REQUIRE(forgotPainter.Has("Ask the owner to reset it."));
+
+    const std::optional<Command> signin = screen.ActivateItem("account:signin", 0.0);
+    REQUIRE(signin.has_value());
+    REQUIRE_EQ(signin->name, std::string("account-signin"));
+    REQUIRE_EQ(signin->params.at("email"), std::string("ada@tvm.test"));
+    REQUIRE_EQ(signin->params.at("password"), std::string("hunter2longpass"));
+
+    // Privacy & terms sheet opens and closes via CloseOverlay.
+    REQUIRE(!screen.ActivateItem("account:privacy", 0.0).has_value());
+    REQUIRE(screen.privacyOpen());
+    TextPainter privacyPainter;
+    screen.Paint(privacyPainter);
+    REQUIRE(privacyPainter.Has("Privacy & terms"));
+    REQUIRE(screen.CloseOverlay(0.0));
+    REQUIRE(!screen.privacyOpen());
+
+    // Create account validates 10-char password & terms checkbox, then emits account-register.
+    REQUIRE(!screen.ActivateItem("account:change-email", 0.0).has_value());
+    REQUIRE(!screen.ActivateItem("account:to-register", 0.0).has_value());
+    REQUIRE_EQ(screen.step(), tvm::ui::AccountStep::CreateAccount);
+    screen.SetFieldValue("name", "Ada Lovelace");
+    screen.SetFieldValue("email", "ada@tvm.test");
+    screen.SetFieldValue("password", "short");
+    REQUIRE(!screen.ActivateItem("account:register", 0.0).has_value());
+    screen.SetFieldValue("password", "analytical10");
+    REQUIRE(!screen.ActivateItem("account:register", 0.0).has_value());  // Terms not checked yet.
+    REQUIRE(!screen.ActivateItem("account:toggle-terms", 0.0).has_value());
+    const std::optional<Command> reg = screen.ActivateItem("account:register", 0.0);
+    REQUIRE(reg.has_value());
+    REQUIRE_EQ(reg->name, std::string("account-register"));
+    REQUIRE_EQ(reg->params.at("name"), std::string("Ada Lovelace"));
+
+    // Waiting for approval never shows raw "awaiting_activation".
+    tvm::ui::AccountView waitView;
+    waitView.account.signedIn = true;
+    waitView.account.email = "ada@tvm.test";
+    waitView.account.reason = "awaiting_activation";
+    screen.SetView(waitView);
+    REQUIRE_EQ(screen.step(), tvm::ui::AccountStep::WaitingApproval);
+    TextPainter waitPainter;
+    screen.Paint(waitPainter);
+    REQUIRE(waitPainter.Has("You're on the list"));
+    REQUIRE(!waitPainter.Has("awaiting_activation"));
+
+    // Paused account never shows raw "suspended".
+    tvm::ui::AccountView pausedView;
+    pausedView.account.signedIn = true;
+    pausedView.account.email = "ada@tvm.test";
+    pausedView.account.suspended = true;
+    pausedView.account.reason = "suspended";
+    screen.SetView(pausedView);
+    REQUIRE_EQ(screen.step(), tvm::ui::AccountStep::Suspended);
+    TextPainter pausedPainter;
+    screen.Paint(pausedPainter);
+    REQUIRE(pausedPainter.Has("Your account is paused"));
+    REQUIRE(!pausedPainter.Has("suspended"));
+
+    // Signed-in overview lists Plan, Real-Debrid, Live TV, Status, Member since, Stream profiles, Sign out.
+    tvm::ui::AccountView activeView;
+    activeView.account.signedIn = true;
+    activeView.account.usable = true;
+    activeView.account.activated = true;
+    activeView.account.liveTv = true;
+    activeView.account.name = "Ada Lovelace";
+    activeView.account.email = "ada@tvm.test";
+    activeView.account.tier = "stream-live";
+    activeView.account.createdAt = "2026-04-12T10:00:00Z";
+    activeView.realDebrid.configured = true;
+    activeView.realDebrid.username = "ada_rd";
+    screen.SetView(activeView);
+    REQUIRE_EQ(screen.step(), tvm::ui::AccountStep::SignedIn);
+    TextPainter signedPainter;
+    screen.Paint(signedPainter);
+    REQUIRE(signedPainter.Has("Account"));
+    REQUIRE(signedPainter.Has("Ada Lovelace"));
+    REQUIRE(signedPainter.Has("Stream + Live \xC2\xB7 Change"));
+    REQUIRE(signedPainter.Has("Connected \xC2\xB7 ada_rd"));
+    REQUIRE(signedPainter.Has("Active"));
+    REQUIRE(signedPainter.Has("12 Apr 2026"));
 }
 
 TEST(pbkdf2_sha256_matches_the_published_vector) {

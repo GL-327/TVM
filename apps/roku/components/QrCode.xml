@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="QrCode" extends="Group">
+  <interface>
+    <field id="value" type="string" onChange="onValue" />
+    <field id="boxSize" type="integer" value="620" onChange="onValue" />
+    <field id="quietModules" type="integer" value="4" onChange="onValue" />
+    <field id="moduleColor" type="string" value="0x0A0F1CFF" onChange="onValue" />
+    <field id="plateColor" type="string" value="0xFFFFFFFF" onChange="onValue" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/qr.brs" />
+  <script type="text/brightscript" uri="QrCode.brs" />
+  <children>
+    <Rectangle id="plate" width="620" height="620" color="0xFFFFFFFF" />
+    <Group id="modulesHost" />
+  </children>
+</component>

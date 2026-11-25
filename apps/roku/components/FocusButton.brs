@@ -361,6 +361,12 @@ sub paintGlassPill()
   m.pillGlass.accent = accent
   m.pillGlass.accentColor = m.top.accentColor
   if accent or m.top.active then m.pillText.color = "0xFFFFFFFF"
+  if m.top.quiet = true and not focused and not accent and not m.top.active
+    m.pillGlass.visible = false
+    m.pillText.color = tvmMuted()
+  else
+    m.pillGlass.visible = true
+  end if
   m.pill.opacity = 1.0
   if disabled then m.pill.opacity = 0.4
   uri = m.top.iconUri
@@ -374,8 +380,9 @@ sub paintGlassPill()
     m.pillText.translation = [88, 0]
   end if
 
-  m.sub.visible = disabled
-  if disabled
+  showDisabledHint = disabled and not (m.top.hideDisabledHint = true)
+  m.sub.visible = showDisabledHint
+  if showDisabledHint
     m.sub.text = "Not available"
     m.sub.color = tvmFaint()
   end if

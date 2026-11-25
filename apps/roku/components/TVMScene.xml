@@ -13,6 +13,7 @@
   <script type="text/brightscript" uri="pkg:/source/theme.brs" />
   <script type="text/brightscript" uri="pkg:/source/themeGlass.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/accountCopy.brs" />
   <script type="text/brightscript" uri="pkg:/source/hub.brs" />
   <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
   <script type="text/brightscript" uri="TVMFeatures.brs" />

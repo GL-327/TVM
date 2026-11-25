@@ -28,8 +28,16 @@ sub init()
   m.accountEmail = ""
   m.accountPassword = ""
   m.accountName = ""
-  m.accountMode = "signin"
+  m.accountMode = "phone"
+  m.accountPasswordPlain = false
+  m.accountTermsAgreed = false
+  m.accountPrivacyReturnPhase = ""
+  m.accountFieldError = ""
+  m.accountBusy = false
+  m.accountSilentRefresh = false
   m.accountState = {}
+  m.termsDoc = {}
+  m.tiersDoc = {}
   m.requestSeq = 0
   m.profileId = ""
   m.keyboardMode = "coreUrl"
@@ -51,6 +59,9 @@ sub init()
   m.searchTask = invalid
   m.appsTask = invalid
   m.progressTask = invalid
+  m.termsTask = invalid
+  m.tiersTask = invalid
+  m.pricingTask = invalid
   m.homeNode = invalid
   m.settingsNode = invalid
   m.setupNode = invalid
@@ -60,6 +71,7 @@ sub init()
   m.livePicksNode = invalid
   m.profilesNode = invalid
   m.profileNode = invalid
+  m.plansNode = invalid
   m.appsNode = invalid
   m.infoNode = invalid
   m.detailsNode = invalid
@@ -67,6 +79,14 @@ sub init()
   m.serviceNode = invalid
   m.rdNode = invalid
   m.hubNode = invalid
+  m.device = invalid
+  m.deviceStartTask = invalid
+  m.devicePollTask = invalid
+  m.deviceTimer = invalid
+  m.deviceClock = invalid
+  m.deviceRefreshing = false
+  m.waitingTimer = invalid
+  m.waitingClock = invalid
   m.deviceCredential = ""
   m.hubPlayCmd = ""
   m.health = {}
@@ -161,6 +181,8 @@ function screenNode(name as String) as Object
   if name = "live-picks" then return m.livePicksNode
   if name = "profiles" then return m.profilesNode
   if name = "profile" then return m.profileNode
+  if name = "plans" then return m.plansNode
+  if name = "privacy" then return m.accountNode
   if name = "apps" then return m.appsNode
   if name = "info" then return m.infoNode
   if name = "details" then return m.detailsNode
@@ -207,6 +229,22 @@ sub navigate(kind as String, name as String, params as Object)
   if kind = "pop"
     restored = visibleScreen(m.stack)
     if restored.name = "details" and activeEntry(m.stack).kind <> "modal" then loadDetails(restored.params)
+    if restored.name = "profile" and activeEntry(m.stack).kind <> "modal"
+      if m.profileNode <> invalid
+        m.profileNode.accountState = m.accountState
+        m.profileNode.rd = m.rd
+      end if
+      loadRdStatus()
+      loadAccountSilent()
+    end if
+    if restored.name = "plans" and activeEntry(m.stack).kind <> "modal"
+      if m.plansNode <> invalid
+        m.plansNode.accountState = m.accountState
+        m.plansNode.tiersDoc = m.tiersDoc
+      end if
+      loadTiers()
+      loadAccountSilent()
+    end if
   end if
   updateBackHint()
   maybeShowReleaseCards()
@@ -224,7 +262,18 @@ sub navigate(kind as String, name as String, params as Object)
       m.profilesNext = aaGet(params, "next", "")
       loadProfiles(true)
     end if
-    if name = "profile" then loadRdStatus()
+    if name = "profile"
+      loadRdStatus()
+      loadAccountSilent()
+    end if
+    if name = "plans"
+      loadTiers()
+      loadAccountSilent()
+      if m.termsDoc.Count() = 0 then loadTerms()
+    end if
+    if name = "privacy"
+      if m.termsDoc.Count() = 0 then loadTerms()
+    end if
     if name = "realdebrid" then loadRdStatus()
     if name = "service" then loadService(params)
     if name = "details" then loadDetails(params)
@@ -265,6 +314,13 @@ sub renderStack()
     if top.kind <> "modal" then m.setupNode.setFocus(true)
   else if screen.name = "account"
     ensureAccount()
+    m.accountNode.termsDoc = m.termsDoc
+    m.accountNode.visible = true
+    if top.kind <> "modal" then m.accountNode.setFocus(true)
+  else if screen.name = "privacy"
+    ensureAccount()
+    m.accountNode.termsDoc = m.termsDoc
+    m.accountNode.phase = "privacy"
     m.accountNode.visible = true
     if top.kind <> "modal" then m.accountNode.setFocus(true)
   else if screen.name = "catalog"
@@ -287,9 +343,16 @@ sub renderStack()
     if top.kind <> "modal" then m.profilesNode.setFocus(true)
   else if screen.name = "profile"
     ensureProfile()
-    m.profileNode.visible = true
+    m.profileNode.accountState = m.accountState
     m.profileNode.rd = m.rd
+    m.profileNode.visible = true
     if top.kind <> "modal" then m.profileNode.setFocus(true)
+  else if screen.name = "plans"
+    ensurePlans()
+    m.plansNode.accountState = m.accountState
+    m.plansNode.tiersDoc = m.tiersDoc
+    m.plansNode.visible = true
+    if top.kind <> "modal" then m.plansNode.setFocus(true)
   else if screen.name = "apps"
     ensureApps()
     m.appsNode.visible = true
@@ -359,6 +422,7 @@ sub hideScreens()
   if m.livePicksNode <> invalid then m.livePicksNode.visible = false
   if m.profilesNode <> invalid then m.profilesNode.visible = false
   if m.profileNode <> invalid then m.profileNode.visible = false
+  if m.plansNode <> invalid then m.plansNode.visible = false
   if m.appsNode <> invalid then m.appsNode.visible = false
   if m.infoNode <> invalid then m.infoNode.visible = false
   if m.detailsNode <> invalid then m.detailsNode.visible = false
@@ -447,6 +511,14 @@ sub ensureProfile()
   node.observeField("action", "onProfileAction")
   m.screenHost.appendChild(node)
   m.profileNode = node
+end sub
+
+sub ensurePlans()
+  if m.plansNode <> invalid then return
+  node = CreateObject("roSGNode", "PlansScreen")
+  node.observeField("action", "onPlansAction")
+  m.screenHost.appendChild(node)
+  m.plansNode = node
 end sub
 
 sub ensureApps()
@@ -872,16 +944,100 @@ sub onAccountAction()
   kind = aaGet(action, "type", "")
   if kind = "editEmail" then showKeyboard("accountEmail", "Email", m.accountEmail, "Next")
   if kind = "editPassword" then showKeyboard("accountPassword", "Password", "", "Next")
-  if kind = "editName" then showKeyboard("accountName", "Your name", m.accountName, "Next")
-  if kind = "codeSignIn" then startCodeSignIn()
-  if kind = "switchMode"
-    if m.accountMode = "register" then m.accountMode = "signin" else m.accountMode = "register"
+  if kind = "editName" then showKeyboard("accountName", "Your name (optional)", m.accountName, "Next")
+  if kind = "codeSignIn" or kind = "backToPhone"
+    m.accountFieldError = ""
+    m.accountMode = "phone"
     paintAccountGate(m.accountState)
+    resumeDeviceSignInIfNeeded()
+    return
+  end if
+  if kind = "refreshCode"
+    m.deviceRefreshing = false
+    startDeviceSignIn()
+    return
+  end if
+  if kind = "switchToForm"
+    stopDevicePollTimer()
+    m.accountFieldError = ""
+    m.accountMode = "signin_email"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if kind = "startRegister"
+    stopDevicePollTimer()
+    m.accountFieldError = ""
+    m.accountPassword = ""
+    m.accountTermsAgreed = false
+    m.accountPasswordPlain = false
+    m.accountMode = "register_name"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if kind = "backToSignin" or kind = "backToEmail"
+    m.accountFieldError = ""
+    m.accountMode = "signin_email"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if kind = "prevStep"
+    m.accountFieldError = ""
+    if m.accountMode = "register_terms"
+      m.accountMode = "register_password"
+    else if m.accountMode = "register_password"
+      m.accountMode = "register_email"
+    else if m.accountMode = "register_email"
+      m.accountMode = "register_name"
+    end if
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if kind = "nextStep"
+    advanceAccountStep()
+    return
+  end if
+  if kind = "toggleShowPassword"
+    m.accountPasswordPlain = not m.accountPasswordPlain
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if kind = "toggleTermsAgree"
+    m.accountTermsAgreed = not m.accountTermsAgreed
+    m.accountFieldError = ""
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if kind = "openPrivacy"
+    stopDevicePollTimer()
+    m.accountPrivacyReturnPhase = m.accountNode.phase
+    if m.termsDoc.Count() = 0 then loadTerms()
+    m.accountNode.termsDoc = m.termsDoc
+    m.accountNode.phase = "privacy"
+    return
+  end if
+  if kind = "closePrivacy"
+    if visibleScreen(m.stack).name = "privacy"
+      navigate("pop", "", {})
+      return
+    end if
+    ret = m.accountPrivacyReturnPhase
+    if ret = "" or ret = "privacy" then ret = "phone"
+    m.accountNode.phase = ret
+    if ret = "phone" then resumeDeviceSignInIfNeeded()
+    return
   end if
   if kind = "submit" then submitAccount()
-  if kind = "recheck" then loadAccount(true)
+  if kind = "recheck"
+    m.accountBusy = true
+    paintAccountGate(m.accountState)
+    loadAccount(true)
+  end if
   if kind = "signout" then signOutAccount()
-  if kind = "agree" then agreeAccountTerms()
+  if kind = "agree"
+    m.accountBusy = true
+    paintAccountGate(m.accountState)
+    agreeAccountTerms()
+  end if
   if kind = "editEmailCode" then showKeyboard("emailCode", "Six-digit code", "", "Check")
   if kind = "resendCode" then resendEmailCode()
 end sub
@@ -935,7 +1091,24 @@ sub onProfileAction()
   kind = aaGet(action, "type", "")
   if kind = "home" then navigate("home", "home", {})
   if kind = "back" then navigate("pop", "", {})
+  if kind = "plans" then navigate("push", "plans", {})
   if kind = "realdebrid" then navigate("push", "realdebrid", {})
+  if kind = "live" then navigate("push", "live", {})
+  if kind = "profiles" then navigate("push", "profiles", {})
+  if kind = "privacy" then navigate("push", "privacy", {})
+  if kind = "signout" then signOutAccount()
+end sub
+
+sub onPlansAction()
+  action = m.plansNode.action
+  if action = invalid then return
+  kind = aaGet(action, "type", "")
+  if kind = "home" then navigate("home", "home", {})
+  if kind = "back" then navigate("pop", "", {})
+  if kind = "privacy" then navigate("push", "privacy", {})
+  if kind = "choosePlan"
+    choosePlanChoice(asText(aaGet(action, "tierId", "stream")), asText(aaGet(action, "cadence", "monthly")))
+  end if
 end sub
 
 sub onAppsAction()
@@ -1165,17 +1338,36 @@ sub onKeyboardButton()
   end if
   if mode = "accountEmail"
     m.accountEmail = text.Trim()
-    if m.accountNode <> invalid then m.accountNode.emailDetail = m.accountEmail
+    err = tvmAccountValidateEmail(m.accountEmail)
+    m.accountFieldError = err
+    if err = ""
+      if m.accountMode = "signin_email" then m.accountMode = "signin_password"
+      if m.accountMode = "register_email" then m.accountMode = "register_password"
+    end if
+    paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
   end if
   if mode = "accountPassword"
     m.accountPassword = text
+    isReg = (m.accountMode = "register_password")
+    err = tvmAccountValidatePassword(m.accountPassword, isReg)
+    m.accountFieldError = err
+    if err = "" and isReg
+      m.accountMode = "register_terms"
+    end if
+    paintAccountGate(m.accountState)
+    if m.accountMode = "signin_password" and err = "" and m.accountNode <> invalid
+      m.accountNode.restoreKey = "btnPrimary"
+    end if
     restoreScreenFocus()
     return
   end if
   if mode = "accountName"
     m.accountName = text.Trim()
+    m.accountFieldError = ""
+    if m.accountMode = "register_name" then m.accountMode = "register_email"
+    paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
   end if
@@ -1283,9 +1475,16 @@ sub onHealthDone()
   end if
 end sub
 
+sub loadAccountSilent()
+  m.accountSilentRefresh = true
+  loadAccount(false)
+end sub
+
 sub loadAccount(thenHome as Boolean)
   m.accountWaitHome = thenHome
   if m.coreUrl <> "" and not isValidCoreUrl(m.coreUrl)
+    m.accountSilentRefresh = false
+    m.accountBusy = false
     body = {}
     body.signedIn = false
     showAccountGate(body)
@@ -1297,22 +1496,36 @@ end sub
 sub onAccountDone()
   task = m.accountTask
   if task = invalid then return
+  silent = (m.accountSilentRefresh = true)
+  m.accountSilentRefresh = false
+  m.accountBusy = false
   json = task.json
   if json = invalid then json = {}
   if task.ok
     if aaGet(json, "signedIn", false) <> true
       m.accountToken = ""
       saveAccountToken("")
+      if silent
+        showAccountGate(json)
+        return
+      end if
     end if
     usable = aaGet(json, "usable", {})
+    m.accountState = json
+    if m.profileNode <> invalid then m.profileNode.accountState = json
+    if m.plansNode <> invalid then m.plansNode.accountState = json
+    if silent
+      if aaGet(usable, "ok", false) <> true then showAccountGate(json)
+      return
+    end if
     if aaGet(usable, "ok", false) = true and m.accountWaitHome = true
-      m.accountState = json
       enterHome()
       return
     end if
     showAccountGate(json)
     return
   end if
+  if silent then return
   body = {}
   body.signedIn = isAccountToken(m.accountToken)
   body.usable = { ok: false, reason: "unreachable" }
@@ -1321,6 +1534,8 @@ sub onAccountDone()
 end sub
 
 sub enterHome()
+  stopDeviceSignIn()
+  stopWaitingTimer()
   m.stack = createViewStack("home")
   renderStack()
   startHubAgent()
@@ -1338,6 +1553,7 @@ sub showAccountGate(json as Object)
   if json = invalid then json = {}
   m.accountState = json
   ensureAccount()
+  if m.termsDoc.Count() = 0 then loadTerms()
   paintAccountGate(json)
   m.stack = createViewStack("account")
   renderStack()
@@ -1351,53 +1567,176 @@ sub paintAccountGate(json as Object)
   reason = asText(aaGet(usable, "reason", "no_account"))
   account = aaGet(json, "account", {})
   email = asText(aaGet(account, "email", m.accountEmail))
+  err = tvmCleanAccountError(asText(aaGet(json, "error", "")), "")
+
   m.accountNode.signedAs = email
   m.accountNode.emailDetail = m.accountEmail
-  err = asText(aaGet(json, "error", ""))
-  if signedIn = true and reason = "unreachable"
-    m.accountNode.phase = "waiting"
-    m.accountNode.heading = "Accounts unavailable"
-    m.accountNode.lede = "Your sign-in is saved. Check your connection and choose Check again."
-  else if signedIn = true and reason = "awaiting_activation"
-    m.accountNode.phase = "waiting"
-    m.accountNode.heading = "Almost there"
-    m.accountNode.lede = "Your account is signed in and waiting for activation."
-  else if signedIn = true and reason = "email_unverified"
-    m.accountNode.phase = "verify"
-    m.accountNode.heading = "Check your email"
-    m.accountNode.lede = "Enter the six-digit code sent to " + email + "."
-  else if signedIn = true and reason = "suspended"
-    m.accountNode.phase = "suspended"
-    m.accountNode.heading = "Account paused"
-    m.accountNode.lede = "This account is currently unavailable."
-  else if signedIn = true and reason = "terms_required"
-    m.accountNode.phase = "terms"
-    m.accountNode.heading = "Before you start"
-    m.accountNode.lede = "Review and accept the current terms to continue."
-  else if m.accountMode = "register"
-    m.accountNode.phase = "register"
-    m.accountNode.heading = "Create an account"
-    m.accountNode.lede = "Enter your details below to get started on this television."
+  m.accountNode.nameDetail = m.accountName
+  m.accountNode.passwordLength = Len(m.accountPassword)
+  m.accountNode.showPassword = (m.accountPasswordPlain = true)
+  if m.accountPasswordPlain = true
+    m.accountNode.passwordPlain = m.accountPassword
   else
-    m.accountNode.phase = "signin"
-    m.accountNode.heading = "Welcome to TVM"
-    m.accountNode.lede = "Sign in with a code on your phone, or enter your account below."
+    m.accountNode.passwordPlain = ""
   end if
+  m.accountNode.termsAgreed = (m.accountTermsAgreed = true)
+  m.accountNode.termsDoc = m.termsDoc
+  m.accountNode.busy = (m.accountBusy = true)
+  m.accountNode.fieldError = m.accountFieldError
   m.accountNode.status = err
+
+  if m.device <> invalid
+    m.accountNode.verifyUrl = asText(aaGet(m.device, "verifyUrl", ""))
+    m.accountNode.verifyUrlComplete = asText(aaGet(m.device, "verifyUrlComplete", ""))
+    m.accountNode.userCode = asText(aaGet(m.device, "userCode", ""))
+    m.accountNode.pollState = asText(aaGet(m.device, "state", "loading"))
+    m.accountNode.pollNote = asText(aaGet(m.device, "note", ""))
+  else
+    m.accountNode.verifyUrl = ""
+    m.accountNode.verifyUrlComplete = ""
+    m.accountNode.userCode = ""
+    m.accountNode.pollState = "loading"
+    m.accountNode.pollNote = "Getting a code..."
+  end if
+
+  if signedIn = true and reason = "unreachable"
+    stopDeviceSignIn()
+    stopWaitingTimer()
+    m.accountNode.phase = "unreachable"
+  else if signedIn = true and reason = "awaiting_activation"
+    stopDeviceSignIn()
+    if m.waitingClock <> invalid and m.waitingClock.TotalSeconds() < 5
+      m.accountNode.pollNote = "Last checked just now  ·  checking automatically every minute"
+    else
+      m.accountNode.pollNote = "Checking automatically every minute"
+    end if
+    m.accountNode.phase = "waiting"
+    startWaitingTimer()
+  else if signedIn = true and reason = "email_unverified"
+    stopDeviceSignIn()
+    stopWaitingTimer()
+    m.accountNode.phase = "verify"
+  else if signedIn = true and reason = "suspended"
+    stopDeviceSignIn()
+    stopWaitingTimer()
+    m.accountNode.phase = "suspended"
+  else if signedIn = true and reason = "terms_required"
+    stopDeviceSignIn()
+    stopWaitingTimer()
+    m.accountNode.phase = "terms"
+  else
+    stopWaitingTimer()
+    if m.accountMode <> "signin_email" and m.accountMode <> "signin_password" and m.accountMode <> "register_name" and m.accountMode <> "register_email" and m.accountMode <> "register_password" and m.accountMode <> "register_terms"
+      m.accountMode = "phone"
+    end if
+    m.accountNode.phase = m.accountMode
+    if m.accountMode = "phone"
+      if m.device = invalid
+        startDeviceSignIn()
+      else
+        resumeDeviceSignInIfNeeded()
+      end if
+    end if
+  end if
+end sub
+
+sub advanceAccountStep()
+  m.accountFieldError = ""
+  if m.accountMode = "signin_email"
+    email = m.accountEmail.Trim()
+    if email = ""
+      showKeyboard("accountEmail", "Email", m.accountEmail, "Next")
+      return
+    end if
+    err = tvmAccountValidateEmail(email)
+    if err <> ""
+      m.accountFieldError = err
+      paintAccountGate(m.accountState)
+      return
+    end if
+    m.accountEmail = email
+    m.accountMode = "signin_password"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if m.accountMode = "register_name"
+    m.accountMode = "register_email"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if m.accountMode = "register_email"
+    email = m.accountEmail.Trim()
+    if email = ""
+      showKeyboard("accountEmail", "Email", m.accountEmail, "Next")
+      return
+    end if
+    err = tvmAccountValidateEmail(email)
+    if err <> ""
+      m.accountFieldError = err
+      paintAccountGate(m.accountState)
+      return
+    end if
+    m.accountEmail = email
+    m.accountMode = "register_password"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if m.accountMode = "register_password"
+    if m.accountPassword = ""
+      showKeyboard("accountPassword", "Password", "", "Next")
+      return
+    end if
+    err = tvmAccountValidatePassword(m.accountPassword, true)
+    if err <> ""
+      m.accountFieldError = err
+      paintAccountGate(m.accountState)
+      return
+    end if
+    m.accountMode = "register_terms"
+    paintAccountGate(m.accountState)
+    return
+  end if
 end sub
 
 sub submitAccount()
+  m.accountFieldError = ""
   email = m.accountEmail.Trim()
   password = m.accountPassword
-  if email = "" or password = ""
-    if m.accountNode <> invalid then m.accountNode.status = "Enter your email and password."
+  isReg = (m.accountMode = "register_terms" or m.accountMode = "register_password" or m.accountMode = "register_email" or m.accountMode = "register_name")
+
+  emailErr = tvmAccountValidateEmail(email)
+  if emailErr <> ""
+    m.accountFieldError = emailErr
+    if isReg then m.accountMode = "register_email" else m.accountMode = "signin_email"
+    paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
   end if
+
+  passErr = tvmAccountValidatePassword(password, isReg)
+  if passErr <> ""
+    m.accountFieldError = passErr
+    if isReg then m.accountMode = "register_password" else m.accountMode = "signin_password"
+    paintAccountGate(m.accountState)
+    restoreScreenFocus()
+    return
+  end if
+
+  if isReg and m.accountTermsAgreed <> true
+    m.accountFieldError = "Tick the box to say you agree to the terms"
+    m.accountMode = "register_terms"
+    paintAccountGate(m.accountState)
+    restoreScreenFocus()
+    return
+  end if
+
+  m.accountBusy = true
+  paintAccountGate(m.accountState)
+
   body = {}
   body.email = email
   body.password = password
-  if m.accountMode = "register"
+  if isReg
     body.displayName = m.accountName
     m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/register"), "POST", FormatJson(body), "onAccountRegisterDone")
     return
@@ -1409,8 +1748,16 @@ sub onAccountRegisterDone()
   task = m.accountTask
   if task = invalid then return
   if not task.ok
-    err = asText(aaGet(task.json, "error", "That account could not be created."))
-    if m.accountNode <> invalid then m.accountNode.status = err
+    m.accountBusy = false
+    raw = asText(aaGet(task.json, "error", task.error))
+    msg = tvmCleanAccountError(raw, "We couldn't create that account. Try again.")
+    if task.statusCode = 409
+      m.accountMode = "register_email"
+      m.accountFieldError = "An account with that email already exists. Try signing in instead."
+    else if m.accountNode <> invalid
+      m.accountNode.status = msg
+    end if
+    paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
   end if
@@ -1424,24 +1771,34 @@ sub onAccountSignInDone()
   task = m.accountTask
   if task = invalid then return
   if not task.ok
-    err = asText(aaGet(task.json, "error", "Sign in failed."))
-    if m.accountNode <> invalid then m.accountNode.status = err
+    m.accountBusy = false
+    raw = asText(aaGet(task.json, "error", task.error))
+    fallback = "Sign in failed. Try again."
+    if task.statusCode = 401 then fallback = "Wrong email or password. Try again."
+    err = tvmCleanAccountError(raw, fallback)
+    m.accountFieldError = err
+    paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
   end if
   json = task.json
   token = asText(aaGet(json, "token", ""))
   if not isAccountToken(token)
-    if m.accountNode <> invalid then m.accountNode.status = "Sign in did not return a session."
+    m.accountBusy = false
+    m.accountFieldError = "Sign in did not return a session."
+    paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
   end if
   if not saveAccountToken(token)
+    m.accountBusy = false
     navigate("modal", "notice", { title: "Could not save sign-in", body: "The Roku could not save its settings. Restart the channel and try again." })
     return
   end if
   m.accountToken = token
   m.accountPassword = ""
+  m.accountPasswordPlain = false
+  m.accountFieldError = ""
   ' The sign-in body is token, account and usable. It has no signedIn flag.
   ' Painting that as the gate made a successful sign-in look like the form
   ' again whenever a step was still left: the email code, activation or terms.
@@ -1449,6 +1806,8 @@ sub onAccountSignInDone()
 end sub
 
 sub signOutAccount()
+  stopDeviceSignIn()
+  stopWaitingTimer()
   hubSignOutQuiet()
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signout"), "POST", "{}", "onAccountSignOutDone")
 end sub
@@ -1459,7 +1818,12 @@ sub onAccountSignOutDone()
   m.accountEmail = ""
   m.accountPassword = ""
   m.accountName = ""
-  m.accountMode = "signin"
+  m.accountPasswordPlain = false
+  m.accountTermsAgreed = false
+  m.accountFieldError = ""
+  m.accountBusy = false
+  m.accountMode = "phone"
+  m.device = invalid
   body = {}
   body.signedIn = false
   showAccountGate(body)
@@ -1495,6 +1859,7 @@ sub agreeAccountTerms()
 end sub
 
 sub onAccountTermsDone()
+  m.accountBusy = false
   loadAccount(true)
 end sub
 
@@ -1514,7 +1879,7 @@ sub onEmailCodeDone()
   task = m.accountTask
   if task = invalid then return
   if not task.ok
-    err = asText(aaGet(task.json, "error", "That code was not accepted."))
+    err = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "That code was not accepted.")
     if m.accountNode <> invalid then m.accountNode.status = err
     return
   end if
@@ -1529,10 +1894,115 @@ sub onResendEmailCodeDone()
   task = m.accountTask
   if task = invalid or m.accountNode = invalid then return
   if not task.ok
-    m.accountNode.status = asText(aaGet(task.json, "error", "That code could not be sent. Try again in a minute."))
+    m.accountNode.status = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "That code could not be sent. Try again in a minute.")
     return
   end if
   m.accountNode.status = "A new code is on its way."
+end sub
+
+sub startWaitingTimer()
+  m.waitingClock = CreateObject("roTimespan")
+  m.waitingClock.Mark()
+  if m.waitingTimer = invalid
+    m.waitingTimer = CreateObject("roSGNode", "Timer")
+    m.waitingTimer.repeat = true
+    m.waitingTimer.observeField("fire", "onWaitingTick")
+  end if
+  m.waitingTimer.duration = 60
+  m.waitingTimer.control = "start"
+end sub
+
+sub stopWaitingTimer()
+  if m.waitingTimer <> invalid then m.waitingTimer.control = "stop"
+end sub
+
+sub onWaitingTick()
+  if m.accountNode = invalid or visibleScreen(m.stack).name <> "account" or m.accountNode.phase <> "waiting"
+    stopWaitingTimer()
+    return
+  end if
+  if m.waitingClock <> invalid then m.waitingClock.Mark()
+  loadAccount(true)
+end sub
+
+sub loadTerms()
+  m.termsTask = startApiGet(joinCorePath(m.coreUrl, "/api/terms"), "onTermsDone")
+end sub
+
+sub onTermsDone()
+  task = m.termsTask
+  if task = invalid or not task.ok or task.json = invalid then return
+  m.termsDoc = task.json
+  if m.accountNode <> invalid then m.accountNode.termsDoc = m.termsDoc
+end sub
+
+sub loadTiers()
+  m.tiersTask = startApiGet(joinCorePath(m.coreUrl, "/api/tiers"), "onTiersDone")
+end sub
+
+sub onTiersDone()
+  task = m.tiersTask
+  if task = invalid or not task.ok or task.json = invalid then return
+  m.tiersDoc = task.json
+  if m.plansNode <> invalid then m.plansNode.tiersDoc = m.tiersDoc
+end sub
+
+sub choosePlanChoice(tierId as String, cadence as String)
+  if m.plansNode = invalid then return
+  account = aaGet(m.accountState, "account", {})
+  ent = asText(aaGet(account, "entitlement", ""))
+  if (tierId = "stream" and ent = "stream") or (tierId = "stream-live" and (ent = "stream+live" or ent = "stream-live"))
+    m.plansNode.status = "You're already on " + tvmPlanName(ent) + "."
+    return
+  end if
+  liveOrderable = false
+  tiers = aaArray(m.tiersDoc, "tiers")
+  for each tier in tiers
+    if asText(aaGet(tier, "id", "")) = tierId and aaGet(tier, "orderable", false) = true then liveOrderable = true
+  end for
+  if tierId = "stream-live" and not liveOrderable
+    m.plansNode.status = "Stream + Live is coming soon."
+    return
+  end if
+  cApi = "month"
+  if cadence = "yearly" then cApi = "year"
+  m.pendingPlanChoice = { tierId: tierId, cadence: cadence, cApi: cApi }
+  m.plansNode.busy = true
+  m.plansNode.status = "Updating your choice..."
+  body = { cadence: cApi, liveTv: (tierId = "stream-live") }
+  m.pricingTask = startApiRequest(joinCorePath(m.coreUrl, "/api/pricing/quote"), "POST", FormatJson(body), "onPricingQuoteDone")
+end sub
+
+sub onPricingQuoteDone()
+  task = m.pricingTask
+  if task = invalid or m.plansNode = invalid or m.pendingPlanChoice = invalid then return
+  if not task.ok
+    m.plansNode.busy = false
+    m.plansNode.status = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "Could not reach pricing right now.")
+    return
+  end if
+  body = { cadence: m.pendingPlanChoice.cApi, liveTv: (m.pendingPlanChoice.tierId = "stream-live"), acceptManualActivation: true }
+  m.pricingTask = startApiRequest(joinCorePath(m.coreUrl, "/api/pricing/accept"), "POST", FormatJson(body), "onPricingAcceptDone")
+end sub
+
+sub onPricingAcceptDone()
+  task = m.pricingTask
+  if task = invalid or m.plansNode = invalid then return
+  m.plansNode.busy = false
+  if not task.ok
+    m.plansNode.status = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "Could not save that choice right now.")
+    return
+  end if
+  tierLabel = tvmPlanName(aaGet(m.pendingPlanChoice, "tierId", "stream"))
+  cadLabel = "Monthly"
+  if aaGet(m.pendingPlanChoice, "cadence", "monthly") = "yearly" then cadLabel = "Yearly"
+  msg = asText(aaGet(task.json, "message", ""))
+  if msg = ""
+    msg = "Saved choice: " + tierLabel + " (" + cadLabel + "). Ask the owner to activate it."
+  else
+    msg = tvmCleanAccountError(msg, "Saved choice: " + tierLabel + " (" + cadLabel + "). Ask the owner to activate it.")
+  end if
+  m.plansNode.status = msg
 end sub
 
 sub loadHome()
@@ -2655,151 +3125,212 @@ sub hubFinishPlayCommand(ok as Boolean)
   end if
 end sub
 
-' ---- Sign in with a code (RFC 8628 device flow against the Hub) ----
-' pair/start gives a short code; the user approves it on a signed-in device;
-' pair/token is polled at the server interval (slow_down adds 5 s). The result
-' is an account token and this Roku's device credential.
+' ---- Sign in with your phone (/v1/device/start + /v1/device/poll) ----
+' Starts a device authorization session on the private accounts service,
+' renders the QR code and short URL + code on AccountScreen, polls every interval
+' (backing off on slow_down and refreshing on expired), and stores only the session.
 
-sub startCodeSignIn()
-  if m.coreUrl = ""
-    if m.accountNode <> invalid
-      m.accountNode.status = "Sign in with a code requires a PC Core server in Settings. Use your email and password on this Roku."
-    end if
-    restoreScreenFocus()
-    return
-  end if
-  stopCodeSignIn()
-  m.pair = { userCode: "", uri: "", message: "Getting a code...", deviceCode: "", interval: 5, expiresIn: 600 }
-  navigate("modal", "codesignin", {})
+sub startDeviceSignIn()
+  stopDevicePollTimer()
+  refreshing = (m.deviceRefreshing = true)
+  noteText = "Getting a code..."
+  if refreshing then noteText = "Your code expired. Getting a new one..."
+  m.device = {
+    deviceCode: ""
+    userCode: ""
+    verifyUrl: ""
+    verifyUrlComplete: ""
+    interval: 5
+    expiresIn: 600
+    state: "loading"
+    note: noteText
+  }
+  syncDeviceToAccountNode()
+
   info = CreateObject("roDeviceInfo")
-  app = CreateObject("roAppInfo")
-  name = info.GetFriendlyName()
-  if name = invalid or name = "" then name = "Roku"
-  version = app.GetVersion()
-  if version = invalid or version = "" then version = "1.0.0"
-  body = { clientId: hubClientId(), platform: "roku", name: name, appVersion: version }
-  model = info.GetModelDisplayName()
-  if model <> invalid and model <> "" then body.model = model
-  m.pairStartTask = startApiRequest(hubUrl(m.coreUrl, "/pair/start"), "POST", FormatJson(body), "onPairStartDone")
+  clientName = info.GetFriendlyName()
+  if clientName = invalid or clientName = "" then clientName = "Roku TV"
+  body = { client: clientName }
+  m.deviceStartTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/device/start"), "POST", FormatJson(body), "onDeviceStartDone")
 end sub
 
-sub onPairStartDone()
-  task = m.pairStartTask
-  if task = invalid or m.pair = invalid then return
+sub resumeDeviceSignInIfNeeded()
+  if m.device = invalid
+    startDeviceSignIn()
+    return
+  end if
+  st = asText(aaGet(m.device, "state", ""))
+  if st = "error" or st = "approved" or asText(aaGet(m.device, "deviceCode", "")) = ""
+    startDeviceSignIn()
+    return
+  end if
+  if m.deviceClock <> invalid and m.deviceClock.TotalSeconds() >= (aaGet(m.device, "expiresIn", 600) - 2)
+    m.deviceRefreshing = true
+    startDeviceSignIn()
+    return
+  end if
+  syncDeviceToAccountNode()
+  startDevicePollTimer()
+end sub
+
+sub syncDeviceToAccountNode()
+  if m.accountNode = invalid or m.device = invalid then return
+  m.accountNode.verifyUrl = asText(aaGet(m.device, "verifyUrl", ""))
+  m.accountNode.userCode = asText(aaGet(m.device, "userCode", ""))
+  m.accountNode.pollState = asText(aaGet(m.device, "state", "loading"))
+  m.accountNode.pollNote = asText(aaGet(m.device, "note", ""))
+  m.accountNode.verifyUrlComplete = asText(aaGet(m.device, "verifyUrlComplete", ""))
+end sub
+
+sub onDeviceStartDone()
+  task = m.deviceStartTask
+  if task = invalid or m.device = invalid then return
+  if m.accountMode <> "phone" then return
   if not task.ok
-    kind = hubErrorKind(task.statusCode, task.error)
-    m.pair.message = "Could not get a code. " + hubErrorText(kind)
-    paintCodePanel()
+    m.deviceRefreshing = false
+    m.device.state = "error"
+    m.device.note = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "Couldn't get a code. Check your connection or use email and password.")
+    syncDeviceToAccountNode()
+    stopDevicePollTimer()
     return
   end if
   json = task.json
-  m.pair.userCode = asText(aaGet(json, "userCode", ""))
-  m.pair.deviceCode = asText(aaGet(json, "deviceCode", ""))
-  uri = asText(aaGet(json, "verificationUri", ""))
-  if uri = "" then uri = asText(aaGet(json, "verificationUriComplete", ""))
-  m.pair.uri = uri
-  interval = hubNum(aaGet(json, "interval", 5))
-  if interval < 1 then interval = 5
-  m.pair.interval = Int(interval)
-  expires = hubNum(aaGet(json, "expiresIn", 600))
+  m.device.deviceCode = asText(aaGet(json, "deviceCode", ""))
+  m.device.userCode = asText(aaGet(json, "userCode", ""))
+  m.device.verifyUrl = asText(aaGet(json, "verifyUrl", ""))
+  m.device.verifyUrlComplete = asText(aaGet(json, "verifyUrlComplete", ""))
+  interval = Int(hubNum(aaGet(json, "interval", 5)))
+  if interval < 2 then interval = 5
+  m.device.interval = interval
+  expires = Int(hubNum(aaGet(json, "expiresIn", 600)))
   if expires < 30 then expires = 600
-  m.pair.expiresIn = Int(expires)
-  m.pair.message = "Waiting for approval..."
-  paintCodePanel()
-  if m.pair.deviceCode = "" then return
-  m.pairClock = CreateObject("roTimespan")
-  m.pairClock.Mark()
-  if m.pairTimer = invalid
-    m.pairTimer = CreateObject("roSGNode", "Timer")
-    m.pairTimer.repeat = true
-    m.pairTimer.observeField("fire", "onPairTick")
+  m.device.expiresIn = expires
+  m.device.state = "waiting"
+  if m.deviceRefreshing = true
+    m.device.note = "Your code expired. Here is a new one."
+  else
+    m.device.note = "Waiting for you..."
   end if
-  m.pairTimer.duration = m.pair.interval
-  m.pairTimer.control = "start"
+  m.deviceRefreshing = false
+  syncDeviceToAccountNode()
+  if m.device.deviceCode = "" then return
+  m.deviceClock = CreateObject("roTimespan")
+  m.deviceClock.Mark()
+  startDevicePollTimer()
 end sub
 
-sub onPairTick()
-  if m.pair = invalid then return
-  if m.pairClock.TotalSeconds() > m.pair.expiresIn
-    stopPairPolling()
-    m.pair.message = hubPairStopText("expired")
-    paintCodePanel()
+sub startDevicePollTimer()
+  if m.device = invalid or asText(aaGet(m.device, "deviceCode", "")) = "" then return
+  if m.deviceTimer = invalid
+    m.deviceTimer = CreateObject("roSGNode", "Timer")
+    m.deviceTimer.repeat = true
+    m.deviceTimer.observeField("fire", "onDevicePollTick")
+  end if
+  m.deviceTimer.duration = aaGet(m.device, "interval", 5)
+  m.deviceTimer.control = "start"
+end sub
+
+sub stopDevicePollTimer()
+  if m.deviceTimer <> invalid then m.deviceTimer.control = "stop"
+end sub
+
+sub stopDeviceSignIn()
+  stopDevicePollTimer()
+  m.device = invalid
+  m.deviceRefreshing = false
+end sub
+
+sub onDevicePollTick()
+  if m.device = invalid or m.accountNode = invalid or visibleScreen(m.stack).name <> "account" or m.accountNode.phase <> "phone"
+    stopDevicePollTimer()
     return
   end if
-  if m.pairTokenTask <> invalid
-    if not m.pairTokenTask.done then return
+  if m.deviceClock <> invalid and m.deviceClock.TotalSeconds() >= (aaGet(m.device, "expiresIn", 600) - 2)
+    stopDevicePollTimer()
+    m.deviceRefreshing = true
+    startDeviceSignIn()
+    return
   end if
-  m.pairTokenTask = startApiRequest(hubUrl(m.coreUrl, "/pair/token"), "POST", FormatJson({ deviceCode: m.pair.deviceCode }), "onPairTokenDone")
+  if m.devicePollTask <> invalid
+    if not m.devicePollTask.done then return
+  end if
+  m.devicePollTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/device/poll"), "POST", FormatJson({ deviceCode: m.device.deviceCode }), "onDevicePollDone")
 end sub
 
-sub onPairTokenDone()
-  task = m.pairTokenTask
-  if task = invalid or m.pair = invalid then return
+sub onDevicePollDone()
+  task = m.devicePollTask
+  if task = invalid or m.device = invalid or m.accountMode <> "phone" then return
+  if visibleScreen(m.stack).name <> "account" then return
   if task.ok
-    finishCodeSignIn(task.json)
+    finishDeviceSignIn(task.json)
     return
   end if
-  pollNext = hubPairPollNext(m.pair.interval, task.error)
-  if pollNext.action = "wait"
-    if pollNext.interval <> m.pair.interval
-      m.pair.interval = pollNext.interval
-      m.pairTimer.duration = pollNext.interval
+  code = task.statusCode
+  err = LCase(asText(aaGet(task.json, "error", task.error)))
+  if code = 428 or err = "pending"
+    if m.device.note <> "Waiting for you..." and m.device.note <> "Your code expired. Here is a new one."
+      m.device.note = "Waiting for you..."
+      m.device.state = "waiting"
+      syncDeviceToAccountNode()
     end if
     return
-  end if
-  stopPairPolling()
-  m.pair.message = hubPairStopText(pollNext.reason)
-  paintCodePanel()
-end sub
-
-sub finishCodeSignIn(json as Object)
-  token = asText(aaGet(json, "accountToken", ""))
-  installation = aaGet(json, "installation", {})
-  id = asText(aaGet(installation, "id", ""))
-  secret = asText(aaGet(json, "deviceSecret", ""))
-  if not isAccountToken(token) or id = "" or secret = ""
-    stopPairPolling()
-    m.pair.message = hubPairStopText("error")
-    paintCodePanel()
+  else if code = 429 or err = "slow_down"
+    nextInt = aaGet(m.device, "interval", 5) + 5
+    if nextInt > 30 then nextInt = 30
+    m.device.interval = nextInt
+    if m.deviceTimer <> invalid then m.deviceTimer.duration = nextInt
+    m.device.state = "waiting"
+    m.device.note = "Waiting a little longer before checking again..."
+    syncDeviceToAccountNode()
+    return
+  else if code = 410 or err = "expired" or code = 400 or code = 404 or err = "invalid"
+    stopDevicePollTimer()
+    m.deviceRefreshing = true
+    startDeviceSignIn()
     return
   end if
-  saveAccountToken(token)
+  nextInt = aaGet(m.device, "interval", 5) + 5
+  if nextInt > 20 then nextInt = 20
+  m.device.interval = nextInt
+  if m.deviceTimer <> invalid then m.deviceTimer.duration = nextInt
+  m.device.state = "waiting"
+  m.device.note = "Trouble reaching sign-in right now. Still checking..."
+  syncDeviceToAccountNode()
+end sub
+
+sub finishDeviceSignIn(json as Object)
+  token = asText(aaGet(json, "token", ""))
+  if not isAccountToken(token)
+    m.device.state = "error"
+    m.device.note = "Sign in did not return a session. Choose Get a new code to try again."
+    stopDevicePollTimer()
+    syncDeviceToAccountNode()
+    return
+  end if
+  if not saveAccountToken(token)
+    navigate("modal", "notice", { title: "Could not save sign-in", body: "The Roku could not save its settings. Restart the channel and try again." })
+    return
+  end if
   m.accountToken = token
-  saveHubInstallation(id, secret)
-  stopCodeSignIn()
-  navigate("pop", "", {})
+  m.accountPassword = ""
+  m.accountPasswordPlain = false
+  m.accountFieldError = ""
+  stopDevicePollTimer()
+  m.device.state = "approved"
+  m.device.note = "You're in"
+  syncDeviceToAccountNode()
   loadAccount(true)
 end sub
 
-sub stopPairPolling()
-  if m.pairTimer <> invalid then m.pairTimer.control = "stop"
-end sub
-
-sub stopCodeSignIn()
-  stopPairPolling()
-  m.pair = invalid
+sub startCodeSignIn()
+  startDeviceSignIn()
 end sub
 
 sub showCodePanel()
-  panel = CreateObject("roSGNode", "CodeSignInPanel")
-  panel.observeField("action", "onCodeSignInAction")
-  m.overlayHost.appendChild(panel)
-  panel.setFocus(true)
-  paintCodePanel()
-end sub
-
-sub paintCodePanel()
-  if m.pair = invalid then return
-  if m.overlayHost.getChildCount() = 0 then return
-  panel = m.overlayHost.getChild(0)
-  if panel.subtype() <> "CodeSignInPanel" then return
-  panel.userCode = m.pair.userCode
-  panel.uri = m.pair.uri
-  panel.message = m.pair.message
+  navigate("pop", "", {})
 end sub
 
 sub onCodeSignInAction()
-  stopCodeSignIn()
   navigate("pop", "", {})
 end sub
 

@@ -1,5 +1,5 @@
 import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
-import type { ReactNode } from 'react';
+import type { AriaRole, ReactNode } from 'react';
 import { revealFocused } from '../nav/revealFocused';
 import { useScopedFocusKey } from '../nav/ViewStackContext';
 import './FocusButton.css';
@@ -20,6 +20,10 @@ interface FocusButtonProps {
   dataLoopCopy?: number;
   ariaLabel?: string;
   ariaExpanded?: boolean;
+  ariaPressed?: boolean;
+  ariaChecked?: boolean;
+  role?: AriaRole;
+  tabIndex?: number;
   title?: string;
 }
 
@@ -42,6 +46,10 @@ export function FocusButton({
   dataLoopCopy,
   ariaLabel,
   ariaExpanded,
+  ariaPressed,
+  ariaChecked,
+  role,
+  tabIndex = -1,
   title,
 }: FocusButtonProps): React.JSX.Element {
   const focusKey = useScopedFocusKey(id);
@@ -63,13 +71,16 @@ export function FocusButton({
     <button
       ref={ref}
       type="button"
+      role={role}
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
+      aria-pressed={ariaPressed}
+      aria-checked={ariaChecked}
       title={title}
       className={classes}
-      // Kept out of the tab order: the appliance is driven by a D-pad, and
-      // the focus engine moves focus itself.
-      tabIndex={-1}
+      // Kept out of the tab order by default: the appliance is driven by a D-pad,
+      // and the focus engine moves focus itself. Form screens may opt in with tabIndex={0}.
+      tabIndex={tabIndex}
       data-focus-id={id}
       data-focused={focused ? 'true' : undefined}
       data-loop-copy={dataLoopCopy !== undefined ? String(dataLoopCopy) : undefined}

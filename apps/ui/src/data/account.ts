@@ -161,6 +161,11 @@ export interface AccessTierView {
   summary: string;
   liveTv: boolean;
   monthlyPence: number | null;
+  yearlyPence?: number;
+  liveTvMonthlyPence?: number;
+  liveTvYearlyPence?: number;
+  orderable?: boolean;
+  availability?: string;
   liveTvTerms: LiveTvTermView[];
   includes: string[];
 }
@@ -174,6 +179,32 @@ export interface TiersResponse {
 export async function fetchTiers(): Promise<TiersResponse | null> {
   try {
     return await json<TiersResponse>('/api/tiers');
+  } catch {
+    return null;
+  }
+}
+
+export interface PlanChoiceResponse {
+  status: string;
+  message: string;
+}
+
+/**
+ * Records non-binding plan intent when signed in and the Core supports /api/pricing/*.
+ * Never takes payment and never treats acceptance as activation.
+ */
+export async function recordPlanChoice(input: { cadence: 'month' | 'year'; liveTv: boolean }): Promise<PlanChoiceResponse | null> {
+  try {
+    const quote = await json<Record<string, unknown>>('/api/pricing/quote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    return await json<PlanChoiceResponse>('/api/pricing/accept', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ quote }),
+    });
   } catch {
     return null;
   }

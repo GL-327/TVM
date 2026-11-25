@@ -34,6 +34,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/core_client.h"
 #include "core/paths.h"
 #include "core/util.h"
 #include "motion/preferences.h"
@@ -666,6 +667,99 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             if (screen == L"chooser-sheet") chooser->ActivateItem("pick:p2", 0.0);
         }
         if (auto* menu = dynamic_cast<tvm::ui::ProfileMenu*>(&shell.ActiveScreen())) menu->SetView(people);
+    }
+
+    // Account gate, overview, and plans snapshots.
+    if (screen == L"signin-email" || screen == L"signin-email-error" || screen == L"signin-password" ||
+        screen == L"signin-password-error" || screen == L"privacy-sheet" || screen == L"create-account" ||
+        screen == L"waiting-approval" || screen == L"paused-account" || screen == L"terms-required" ||
+        screen == L"account") {
+        tvm::ui::Command open;
+        open.name = "account";
+        shell.Execute(open, 0.0);
+        if (auto* acct = dynamic_cast<tvm::ui::AccountScreen*>(&shell.ActiveScreen())) {
+            tvm::ui::AccountView view;
+            view.terms = tvm::coreapi::DefaultTermsDocument();
+            if (screen == L"signin-email") {
+                view.forceStep = tvm::ui::AccountStep::SignInEmail;
+                acct->SetView(view);
+            } else if (screen == L"signin-email-error") {
+                view.forceStep = tvm::ui::AccountStep::SignInEmail;
+                view.errorField = "email";
+                view.error = "Check the email address. It should look like name@example.com.";
+                acct->SetFieldValue("email", "not-an-email");
+                acct->SetView(view);
+            } else if (screen == L"signin-password") {
+                view.forceStep = tvm::ui::AccountStep::SignInPassword;
+                acct->SetFieldValue("email", "ada@tvm.test");
+                acct->SetFieldValue("password", "analytical10");
+                acct->SetView(view);
+            } else if (screen == L"signin-password-error") {
+                view.forceStep = tvm::ui::AccountStep::SignInPassword;
+                view.errorField = "password";
+                view.error = "That password doesn't match this email. Try again or ask the owner to reset it.";
+                acct->SetFieldValue("email", "ada@tvm.test");
+                acct->SetFieldValue("password", "wrongpass123");
+                acct->SetView(view);
+            } else if (screen == L"privacy-sheet") {
+                view.forceStep = tvm::ui::AccountStep::SignInEmail;
+                view.openPrivacy = true;
+                acct->SetView(view);
+            } else if (screen == L"create-account") {
+                view.forceStep = tvm::ui::AccountStep::CreateAccount;
+                acct->SetFieldValue("name", "Ada Lovelace");
+                acct->SetFieldValue("email", "ada@tvm.test");
+                acct->SetFieldValue("password", "analytical10");
+                acct->SetView(view);
+                acct->ActivateItem("account:toggle-terms", 0.0);
+                acct->FocusItem("field:name", 0.0, false);
+            } else if (screen == L"waiting-approval") {
+                view.account.signedIn = true;
+                view.account.email = "ada@tvm.test";
+                view.account.tier = "stream-live";
+                view.account.reason = "awaiting_activation";
+                acct->SetView(view);
+            } else if (screen == L"paused-account") {
+                view.account.signedIn = true;
+                view.account.email = "ada@tvm.test";
+                view.account.suspended = true;
+                view.account.reason = "suspended";
+                acct->SetView(view);
+            } else if (screen == L"terms-required") {
+                view.account.signedIn = true;
+                view.account.email = "ada@tvm.test";
+                view.account.activated = true;
+                view.account.reason = "terms_required";
+                acct->SetView(view);
+            } else if (screen == L"account") {
+                view.account.signedIn = true;
+                view.account.usable = true;
+                view.account.activated = true;
+                view.account.liveTv = true;
+                view.account.name = "Ada Lovelace";
+                view.account.email = "ada@tvm.test";
+                view.account.tier = "stream-live";
+                view.account.createdAt = "2026-04-12T10:00:00Z";
+                view.realDebrid.configured = true;
+                view.realDebrid.username = "ada";
+                acct->SetView(view);
+            }
+        }
+    } else if (screen == L"plans-monthly" || screen == L"plans-yearly" || screen == L"plans-compare") {
+        tvm::ui::Command open;
+        open.name = "plans";
+        shell.Execute(open, 0.0);
+        if (auto* plans = dynamic_cast<tvm::ui::PlansScreen*>(&shell.ActiveScreen())) {
+            tvm::ui::PlansView view;
+            view.tiers = tvm::coreapi::DefaultTiersDocument();
+            view.account.signedIn = true;
+            view.account.usable = true;
+            view.account.email = "ada@tvm.test";
+            view.account.tier = "stream";
+            view.cadence = (screen == L"plans-monthly") ? "month" : "year";
+            view.compareOpen = (screen == L"plans-compare");
+            plans->SetView(view);
+        }
     }
 
     double nowMs = 0.0;

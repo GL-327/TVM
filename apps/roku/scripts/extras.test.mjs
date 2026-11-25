@@ -53,7 +53,7 @@ test('production BrightScript handles accounts, provider fixtures, skips and loc
     const source = [
       read('source/media.brs'),
       functions('source/localCore.brs', ['lcAaGet', 'lcAaText', 'lcAaInt', 'lcAaBool', 'lcMetaToItem']),
-      functions('source/accountsCore.brs', ['lcAccountsHttp', 'lcAccountsError', 'lcPublicAccount', 'lcAccountUsable', 'lcRegisterAccount', 'lcSignInAccount', 'lcAcceptTerms', 'lcGetAccount']),
+      functions('source/accountsCore.brs', ['lcAccountsHttp', 'lcAccountsError', 'lcPublicAccount', 'lcAccountUsable', 'lcRegisterAccount', 'lcSignInAccount', 'lcAcceptTerms', 'lcGetAccount', 'lcSanitizeDeviceClient', 'lcDeviceStart', 'lcDevicePoll']),
       functions('source/extrasCore.brs', ['lcExtrasImdb', 'lcExtrasEpisode', 'lcExtrasSegments', 'lcExtrasSubtitleUrl', 'lcExtrasSubtitles', 'lcExtrasCollection', 'lcExtrasUpcoming', 'lcExtrasNext', 'lcRecordWatch', 'lcExtrasStats']),
       functions('components/PlayerExtras.brs', ['playerSegment', 'extrasCreditsReached', 'measureWatchTime']),
       functions('components/PlayerScreen.brs', ['skipRecapAllowed', 'skipRecapTarget']),

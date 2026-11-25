@@ -122,7 +122,7 @@ test.describe('iPhone WebKit', () => {
     await expect(page.getByText('included with Premium, Ultra and MAX', { exact: false })).toBeVisible();
     await page.locator('[data-focus-id="mobile-plans"]').tap();
     await expect(page.locator('[data-screen="plans"]')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'What TVM costs' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Choose your plan' })).toBeVisible();
   });
   for (const size of [{ width: 568, height: 320 }, { width: 704, height: 396 }, { width: 800, height: 450 }]) {
     test(`Premium opens a usable 16:9 layout at ${size.width}`, async ({ page }) => {

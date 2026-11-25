@@ -1,5 +1,9 @@
 #include "core/core_client.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstdlib>
 #include <set>
 #include <stdexcept>
 
@@ -16,6 +20,27 @@ std::string Text(const nlohmann::json& body, const char* key) {
 bool Flag(const nlohmann::json& body, const char* key) {
     const auto it = body.find(key);
     return it != body.end() && it->is_boolean() && it->get<bool>();
+}
+int IntField(const nlohmann::json& body, const char* key, int fallback = 0) {
+    const auto it = body.find(key);
+    if (it == body.end() || !it->is_number()) return fallback;
+    return it->get<int>();
+}
+std::string Lower(std::string value) {
+    for (char& ch : value) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return value;
+}
+std::string Trim(std::string value) {
+    auto isSpace = [](unsigned char ch) { return std::isspace(ch) != 0; };
+    while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.erase(value.begin());
+    while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.pop_back();
+    return value;
+}
+bool ContainsAny(const std::string& haystack, std::initializer_list<const char*> needles) {
+    for (const char* needle : needles) {
+        if (haystack.find(needle) != std::string::npos) return true;
+    }
+    return false;
 }
 void ProfileHeader(const paths::fs::path& dataDir, http::Options& options) {
     const auto folder = profiles::ActiveFolder(dataDir);
@@ -36,14 +61,239 @@ AccountState ParseAccount(const nlohmann::json& body) {
     state.name = Text(*account, "displayName");
     state.email = Text(*account, "email");
     state.tier = Text(*account, "tier");
+    state.createdAt = Text(*account, "createdAt");
     // Core currently maps private-service admins to its historical role name.
     state.developer = Text(*account, "role") == "admin" || Text(*account, "role") == "dev";
     state.liveTv = Flag(*account, "liveTv") || state.tier == "stream-live";
     state.rdKey = (Flag(*account, "rdKey") || Flag(*account, "hasRdToken"));
     state.usable = usable != body.end() && usable->is_object() && Flag(*usable, "ok");
+    state.activated = account->contains("activated") ? Flag(*account, "activated") : state.usable;
+    state.suspended = Flag(*account, "suspended");
+    state.emailCodeSent = Flag(*account, "emailCodeSent");
     state.reason = usable != body.end() && usable->is_object() ? Text(*usable, "reason") : "no_account";
     if (!state.usable && state.reason.empty()) state.reason = "no_account";
     return state;
+}
+
+TermsDocument DefaultTermsDocument() {
+    TermsDocument doc;
+    doc.version = "1.0";
+    doc.updated = "2026-04-01";
+    doc.intro = "TVM is a personal media client. By creating or using an account, you agree to the terms below.";
+    doc.sections = {
+        {"What TVM stores", "TVM keeps your account email, chosen display name, active plan, and whether your account has been approved. Playback settings, watch progress, and watchlist items stay on this device."},
+        {"Your account and approval", "New accounts wait for the app owner to approve them before playback opens. The owner may also pause an account or update which plan it includes."},
+        {"Who can use the service", "Accounts are personal to you and your household profiles. Do not share your sign-in details or use TVM to host or redistribute content."},
+        {"Privacy and third-party services", "If you connect Real-Debrid or add a Live TV playlist, those requests go straight to the providers you configure using your own credentials."},
+        {"Stopping use or removal", "You can sign out at any time from your account page. Ask the app owner if you want your account removed."},
+    };
+    return doc;
+}
+
+TermsDocument ParseTermsDocument(const nlohmann::json& body) {
+    TermsDocument doc = DefaultTermsDocument();
+    if (!body.is_object()) return doc;
+    if (const auto version = Text(body, "version"); !version.empty()) doc.version = version;
+    if (const auto updated = Text(body, "updated"); !updated.empty()) doc.updated = updated;
+    if (const auto intro = Text(body, "intro"); !intro.empty()) doc.intro = intro;
+    if (const auto sections = body.find("sections"); sections != body.end() && sections->is_array() && !sections->empty()) {
+        doc.sections.clear();
+        for (const auto& entry : *sections) {
+            if (!entry.is_object()) continue;
+            TermsSection sec;
+            sec.title = Text(entry, "title");
+            sec.body = Text(entry, "body");
+            if (!sec.title.empty() || !sec.body.empty()) doc.sections.push_back(std::move(sec));
+        }
+        if (doc.sections.empty()) doc.sections = DefaultTermsDocument().sections;
+    }
+    return doc;
+}
+
+TiersDocument DefaultTiersDocument() {
+    TiersDocument doc;
+    doc.route = "/pricing";
+    doc.streamMonthlyPence = 1000;
+    AccessTier stream;
+    stream.id = "stream";
+    stream.name = "Stream";
+    stream.tag = "Movies & TV";
+    stream.monthlyPence = 1000;
+    stream.yearlyPence = 9000;
+    stream.orderable = true;
+    stream.liveIncluded = false;
+    stream.bullets = {
+        "Movies, TV series and personalised rails",
+        "Up to 10 household profiles",
+        "Real-Debrid playback & offline downloads",
+    };
+    stream.finePrint = "Arrange access with the app owner. No card is taken here.";
+
+    AccessTier streamLive;
+    streamLive.id = "stream-live";
+    streamLive.name = "Stream + Live";
+    streamLive.tag = "Everything + Live TV";
+    streamLive.monthlyPence = 1700;
+    streamLive.yearlyPence = 15000;
+    streamLive.liveAddOnMonthlyPence = 700;
+    streamLive.liveAddOnYearlyPence = 6000;
+    streamLive.orderable = true;
+    streamLive.liveIncluded = true;
+    streamLive.bullets = {
+        "Everything in Stream",
+        "Live UK channels & TV guide",
+        "Catch-up where available",
+    };
+    streamLive.finePrint = "Includes Live TV add-on. Arrange access with the app owner.";
+
+    doc.tiers = {std::move(stream), std::move(streamLive)};
+    return doc;
+}
+
+TiersDocument ParseTiersDocument(const nlohmann::json& body) {
+    TiersDocument doc = DefaultTiersDocument();
+    if (!body.is_object()) return doc;
+    if (const auto route = Text(body, "route"); !route.empty()) doc.route = route;
+    if (const int base = IntField(body, "streamMonthlyPence", 0); base > 0) doc.streamMonthlyPence = base;
+    const auto tiers = body.find("tiers");
+    if (tiers == body.end() || !tiers->is_array() || tiers->empty()) return doc;
+    std::vector<AccessTier> parsed;
+    for (const auto& entry : *tiers) {
+        if (!entry.is_object()) continue;
+        AccessTier tier;
+        tier.id = Text(entry, "id");
+        tier.name = Text(entry, "name");
+        tier.tag = Text(entry, "tag");
+        tier.monthlyPence = IntField(entry, "monthlyPence");
+        tier.yearlyPence = IntField(entry, "yearlyPence");
+        tier.liveAddOnMonthlyPence = IntField(entry, "liveAddOnMonthlyPence");
+        tier.liveAddOnYearlyPence = IntField(entry, "liveAddOnYearlyPence");
+        tier.orderable = entry.contains("orderable") ? Flag(entry, "orderable") : true;
+        tier.liveIncluded = Flag(entry, "liveIncluded") || tier.id == "stream-live";
+        tier.finePrint = Text(entry, "finePrint");
+        if (const auto bullets = entry.find("bullets"); bullets != entry.end() && bullets->is_array()) {
+            for (const auto& bullet : *bullets) {
+                if (bullet.is_string() && !bullet.get<std::string>().empty()) {
+                    tier.bullets.push_back(bullet.get<std::string>());
+                }
+            }
+        }
+        if (!tier.id.empty() && !tier.name.empty()) parsed.push_back(std::move(tier));
+    }
+    if (!parsed.empty()) doc.tiers = std::move(parsed);
+    return doc;
+}
+
+std::optional<std::string> ValidateEmailInput(const std::string& raw) {
+    const std::string trimmed = Trim(raw);
+    if (trimmed.empty()) return std::string("Enter your email address.");
+    if (trimmed.find_first_of(" \t\r\n") != std::string::npos) return std::string("Remove spaces from the email address.");
+    const std::size_t at = trimmed.find('@');
+    if (at == std::string::npos || at == 0 || trimmed.find('@', at + 1) != std::string::npos) {
+        return std::string("Check the email address. It should look like name@example.com.");
+    }
+    const std::string domain = trimmed.substr(at + 1);
+    const std::size_t dot = domain.find('.');
+    if (domain.empty() || dot == std::string::npos || dot == 0 || dot + 1 >= domain.size()) {
+        return std::string("Check the email address. It should look like name@example.com.");
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> ValidatePasswordInput(const std::string& password, bool forSignup) {
+    if (password.empty()) {
+        return forSignup ? std::string("Create a password to continue.") : std::string("Enter your password.");
+    }
+    if (forSignup && password.size() < kMinPasswordLength) {
+        return std::string("Use at least 10 characters.");
+    }
+    if (password.size() > kMaxPasswordLength) {
+        return std::string("That password is too long.");
+    }
+    return std::nullopt;
+}
+
+std::string AccountStatusLabel(const AccountState& account) {
+    if (!account.signedIn) return "Signed out";
+    if (account.reason == "suspended" || account.suspended) return "Paused by the owner";
+    if (account.reason == "terms_required") return "Accept the terms to continue";
+    if (account.reason == "email_unverified") return "Confirm your email to continue";
+    if (account.reason == "awaiting_activation" || !account.activated) return "Waiting for approval";
+    if (!account.usable && account.reason != "no_account" && !account.reason.empty()) return "Pending review";
+    return "Active";
+}
+
+std::string FriendlyPlanName(const std::string& tier) {
+    if (tier == "stream") return "Stream";
+    if (tier == "stream-live") return "Stream + Live";
+    return "No active plan";
+}
+
+std::string FriendlyAccountError(const std::string& raw) {
+    const std::string trimmed = Trim(raw);
+    if (trimmed.empty()) return "Something went wrong. Try again.";
+    const std::string lower = Lower(trimmed);
+    if (ContainsAny(lower, {"rate_limited", "rate limit", "too many", "slow_down", "429"})) {
+        return "Too many tries. Wait a minute and try again.";
+    }
+    if (ContainsAny(lower, {"invalid_credentials", "wrong password", "incorrect password", "invalid email or password", "401"})) {
+        return "That password doesn't match this email. Try again or ask the owner to reset it.";
+    }
+    if (ContainsAny(lower, {"email_taken", "already exists", "already registered", "409"})) {
+        return "An account with this email already exists. Try signing in instead.";
+    }
+    if (ContainsAny(lower, {"awaiting_activation"})) {
+        return "Your account is waiting for the owner to approve it.";
+    }
+    if (ContainsAny(lower, {"suspended"})) {
+        return "Your account is paused. Ask the owner to restore it.";
+    }
+    if (ContainsAny(lower, {"terms_required"})) {
+        return "Accept the terms to continue.";
+    }
+    if (ContainsAny(lower, {"email_unverified"})) {
+        return "Confirm your email to continue.";
+    }
+    if (ContainsAny(lower, {"authorization_pending", "428"})) {
+        return "Finish signing in on your phone or browser.";
+    }
+    if (ContainsAny(lower, {"expired_token", "expired", "410"})) {
+        return "That sign-in code has expired. Start a new one.";
+    }
+    if (ContainsAny(lower, {"password_too_short", "at least 10"})) {
+        return "Use at least 10 characters.";
+    }
+    if (ContainsAny(lower, {"password_too_long", "200 characters"})) {
+        return "That password is too long.";
+    }
+    if (ContainsAny(lower, {"password_too_common"})) {
+        return "Choose a less common password.";
+    }
+    if (ContainsAny(lower, {"invalid_email"})) {
+        return "Check the email address. It should look like name@example.com.";
+    }
+    if (ContainsAny(lower, {"unreachable", "timeout", "timed out", "connection", "could not reach", "couldn't reach", "failed to connect", "core is not running"})) {
+        return "We couldn't reach TVM right now. Check your connection and try again.";
+    }
+    if (ContainsAny(lower, {"http 5", "internal server", "502", "503", "504", "500"})) {
+        return "Something went wrong on our side. Try again in a moment.";
+    }
+    if (ContainsAny(lower, {"http ", "status ", "sqlite", "exception", "{", "<html"}) || lower.find('_') != std::string::npos) {
+        return "Something went wrong. Try again.";
+    }
+    return trimmed;
+}
+
+std::string ShortDateLabel(const std::string& iso) {
+    const std::string trimmed = Trim(iso);
+    if (trimmed.size() < 10 || trimmed[4] != '-' || trimmed[7] != '-') return trimmed;
+    const int year = std::atoi(trimmed.substr(0, 4).c_str());
+    const int month = std::atoi(trimmed.substr(5, 2).c_str());
+    const int day = std::atoi(trimmed.substr(8, 2).c_str());
+    static constexpr std::array<const char*, 12> kMonths = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    if (year <= 0 || month < 1 || month > 12 || day < 1 || day > 31) return trimmed;
+    return std::to_string(day) + " " + kMonths[static_cast<std::size_t>(month - 1)] + " " + std::to_string(year);
 }
 
 RealDebridStatus ParseRealDebridStatus(const nlohmann::json& body) {
@@ -176,6 +426,27 @@ void Client::SignOut() {
     try { Call("/api/account/signout", "POST"); }
     catch (...) { SaveToken(""); throw; }
     SaveToken("");
+}
+TermsDocument Client::Terms() const { return ParseTermsDocument(Call("/api/terms")); }
+TiersDocument Client::Tiers() const { return ParseTiersDocument(Call("/api/tiers")); }
+AccountState Client::AcceptTerms() {
+    Call("/api/account/terms", "POST", nlohmann::json::object());
+    return Status();
+}
+void Client::SendVerificationEmail() {
+    Call("/api/account/email/send", "POST", nlohmann::json::object());
+}
+AccountState Client::VerifyEmailCode(const std::string& code) {
+    Call("/api/account/email/verify", "POST", {{"code", code}});
+    return Status();
+}
+std::string Client::RecordPlanChoice(const std::string& tierId, const std::string& cadence) const {
+    const std::string normalizedCadence = cadence == "year" ? "year" : "month";
+    const bool liveTv = tierId == "stream-live";
+    const auto quote = Call("/api/pricing/quote", "POST", {{"cadence", normalizedCadence}, {"liveTv", liveTv}});
+    const auto accepted = Call("/api/pricing/accept", "POST", {{"quote", quote}});
+    if (const auto message = Text(accepted, "message"); !message.empty()) return message;
+    return "Choice recorded for " + FriendlyPlanName(tierId) + ". Ask the app owner to finish setting it up.";
 }
 
 }  // namespace tvm::coreapi
