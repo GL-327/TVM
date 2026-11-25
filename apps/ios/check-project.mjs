@@ -502,8 +502,9 @@ check('generate-app-icon.mjs writes AppIcon.png',
   (read(join(ROOT, 'generate-app-icon.mjs')) ?? '').includes('AppIcon.png'));
 check('generate-app-icon.mjs copies the brand PNG',
   (read(join(ROOT, 'generate-app-icon.mjs')) ?? '').includes("join(ROOT, '..', 'brand', 'tvm-icon.png')"));
-check('Info.plist user-visible version is 1.0.0',
-  (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes('<string>1.0.0</string>'));
+const RELEASE_VERSION = JSON.parse(read(join(ROOT, '..', '..', 'package.json')) ?? '{}').version;
+check(`Info.plist user-visible version is the release version (${RELEASE_VERSION})`,
+  (read(join(ROOT, 'TVM', 'Info.plist')) ?? '').includes(`<key>CFBundleShortVersionString</key><string>${RELEASE_VERSION}</string>`));
 check('TVMLiveReflector.swift exists',
   existsSync(join(ROOT, 'TVM', 'TVMLiveReflector.swift')));
 check('native VLC playback is wired for iPhone',

@@ -110,7 +110,8 @@ const detailsTsx = read(join(REPO, 'apps', 'ui', 'src', 'screens', 'Details.tsx'
 
 check('TVMMedia.swift exists', mediaSwift.includes('func play('));
 check('play() probes auth before Torrentio so a missing token is not empty',
-  mediaSwift.indexOf('if let blocked = await probeAuth()') < mediaSwift.indexOf('return await playFromTorrentio') &&
+  mediaSwift.indexOf('if let blocked = await probeAuth()') >= 0 &&
+  mediaSwift.indexOf('if let blocked = await probeAuth()') < mediaSwift.indexOf('await playFromTorrentio(') &&
   mediaSwift.includes('reason": "not-configured"') &&
   /func probeAuth[\s\S]*!rd\.configured\(\)[\s\S]*not-configured/.test(mediaSwift));
 check('playFromTorrentio searches Torrentio then unrestricts via playFromLink',

@@ -51,13 +51,37 @@ final class TVMStore {
     func profiles() -> (activeId: String, profiles: [ProfileRecord]) {
         if let object = readJSON("profiles.json") as? [String: Any],
            let list = object["profiles"] as? [[String: Any]] {
-            let profiles = list.compactMap { item -> ProfileRecord? in
-                guard let id = item["id"] as? String, let name = item["name"] as? String else { return nil }
-                return ProfileRecord(
-                    id: id,
-                    name: name,
-                    hue: item["hue"] as? Int ?? 220,
-                    created: item["created"] as? String ?? ISO8601DateFormatter().string(from: Date())
+            let knownKeys: Set<String> = ["id", "name", "hue", "created", "avatar", "kind", "maxAge", "pin", "locked"]
+            var profiles: [ProfileRecord] = []
+            for (index, item) in list.enumerated() {
+                guard let id = item["id"] as? String, let name = item["name"] as? String else { continue }
+                let kind = (item["kind"] as? String) == "kids" ? "kids" : "standard"
+                let maxAge = TVMParental.normalizeAge(item["maxAge"], kind: kind) ?? TVMParental.defaultAge(kind: kind)
+                let rawAvatar = (item["avatar"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let avatar = (rawAvatar != nil && TVMPins.isValidAvatar(rawAvatar!)) ? rawAvatar : nil
+                var parsedPin: ProfilePin? = nil
+                if let pinObj = item["pin"] as? [String: Any],
+                   let hash = pinObj["hash"] as? String, !hash.isEmpty,
+                   let salt = pinObj["salt"] as? String, !salt.isEmpty {
+                    let iter = JSONValue.int(pinObj["iter"]) ?? TVMPins.iterations
+                    parsedPin = ProfilePin(hash: hash, salt: salt, iter: max(1, iter))
+                }
+                var extra: [String: Any] = [:]
+                for (k, v) in item where !knownKeys.contains(k) {
+                    extra[k] = v
+                }
+                profiles.append(
+                    ProfileRecord(
+                        id: id,
+                        name: name,
+                        hue: JSONValue.int(item["hue"]) ?? hues[index % hues.count],
+                        created: item["created"] as? String ?? ISO8601DateFormatter().string(from: Date()),
+                        avatar: avatar,
+                        kind: kind,
+                        maxAge: maxAge,
+                        pin: parsedPin,
+                        extra: extra
+                    )
                 )
             }
             if let first = profiles.first {
@@ -79,9 +103,35 @@ final class TVMStore {
     func saveProfiles(activeId: String, profiles: [ProfileRecord]) {
         writeJSON("profiles.json", [
             "activeId": activeId,
-            "profiles": profiles.map { $0.json() },
+            "profiles": profiles.map { $0.storageJSON() },
         ])
         try? fileManager.createDirectory(at: profileDir(activeId), withIntermediateDirectories: true)
+    }
+
+    func contentCacheURL(_ name: String) -> URL {
+        root.appendingPathComponent("content-cache/\(name).json")
+    }
+
+    func connectedServices(for profileId: String) -> [String] {
+        let url = profileDir(profileId).appendingPathComponent("services.json")
+        guard let data = try? Data(contentsOf: url),
+              let doc = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let arr = doc["connected"] as? [Any] else { return [] }
+        var out: [String] = []
+        for raw in arr {
+            if let id = JSONValue.string(raw), !out.contains(id) { out.append(id) }
+        }
+        return out
+    }
+
+    func saveConnectedServices(_ connected: [String], profileId: String) {
+        try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
+        let url = profileDir(profileId).appendingPathComponent("services.json")
+        try? JSONValue.data(["connected": connected]).write(to: url, options: .atomic)
+    }
+
+    func removeProfileData(_ profileId: String) {
+        try? fileManager.removeItem(at: profileDir(profileId))
     }
 
     func profileDir(_ id: String) -> URL {

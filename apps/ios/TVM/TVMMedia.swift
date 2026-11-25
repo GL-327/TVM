@@ -5,14 +5,34 @@ final class TVMMedia {
     private let catalog: TVMCatalog
     private let rd: TVMRealDebrid
     private let plans: TVMPlans
+    private let content: TVMContent
+    let pinGuard: TVMPinGuard
     private var libraryCache: (at: Date, torrents: [RdTorrent], downloads: [RdDownload], items: [MediaItem])?
     private let lock = NSLock()
 
-    init(store: TVMStore, catalog: TVMCatalog, rd: TVMRealDebrid, plans: TVMPlans) {
+    init(
+        store: TVMStore,
+        catalog: TVMCatalog,
+        rd: TVMRealDebrid,
+        plans: TVMPlans,
+        content: TVMContent? = nil,
+        pinGuard: TVMPinGuard = TVMPinGuard()
+    ) {
         self.store = store
         self.catalog = catalog
         self.rd = rd
         self.plans = plans
+        self.content = content ?? TVMContent(store: store, enableRefresh: false)
+        self.pinGuard = pinGuard
+    }
+
+    func parentalLevels() -> [AgeLevel] {
+        TVMParental.levels(content: content)
+    }
+
+    func ageLevel() -> Int {
+        let registry = store.profiles()
+        return registry.profiles.first(where: { $0.id == registry.activeId })?.maxAge ?? 18
     }
 
     func activeProfile() -> String { store.profiles().activeId }
@@ -20,9 +40,10 @@ final class TVMMedia {
     func applyProfileHeader(_ value: String?) {
         guard let value, !value.isEmpty else { return }
         let registry = store.profiles()
-        if registry.profiles.contains(where: { $0.id == value }) {
-            store.saveProfiles(activeId: value, profiles: registry.profiles)
-        }
+        guard value != registry.activeId,
+              let target = registry.profiles.first(where: { $0.id == value }) else { return }
+        if target.locked && !pinGuard.isUnlocked(target.id) { return }
+        store.saveProfiles(activeId: value, profiles: registry.profiles)
     }
 
     func profilesJSON() -> [String: Any] {
@@ -30,46 +51,211 @@ final class TVMMedia {
         return ["activeId": registry.activeId, "profiles": registry.profiles.map { $0.json() }]
     }
 
-    func createProfile(_ name: String) throws -> [String: Any] {
+    func createProfile(
+        _ name: String,
+        hue: Int? = nil,
+        avatarRaw: Any? = nil,
+        kindRaw: String? = nil,
+        maxAgeRaw: Any? = nil,
+        pinRaw: Any? = nil
+    ) throws -> [String: Any] {
         var registry = store.profiles()
         if registry.profiles.count >= plans.profilesMax() {
             throw ClientError.message("TVM holds \(plans.profilesMax()) profiles.")
         }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kind: String
+        switch kindRaw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" {
+        case "", "standard": kind = "standard"
+        case "kids": kind = "kids"
+        default: throw ClientError.message("kind must be standard or kids")
+        }
+        let maxAge: Int
+        if maxAgeRaw == nil || maxAgeRaw is NSNull {
+            maxAge = TVMParental.defaultAge(kind: kind)
+        } else if let valid = TVMParental.normalizeAge(maxAgeRaw, kind: kind) {
+            maxAge = valid
+        } else {
+            throw ClientError.message("maxAge must be 7, 12, 15, or 18")
+        }
+        let avatar = try parseAvatarInput(avatarRaw)
+        let pin = try parseOptionalNewPin(pinRaw)
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        let palette = Self.profileHues
         let profile = ProfileRecord(
             id: "profile-\(UUID().uuidString)",
             name: trimmed.isEmpty ? "Profile \(registry.profiles.count + 1)" : trimmed,
-            hue: [350, 220, 140, 32, 280][registry.profiles.count % 5],
-            created: ISO8601DateFormatter().string(from: Date())
+            hue: hue ?? palette[registry.profiles.count % palette.count],
+            created: ISO8601DateFormatter().string(from: Date()),
+            avatar: avatar,
+            kind: kind,
+            maxAge: maxAge,
+            pin: pin
         )
         registry.profiles.append(profile)
         store.saveProfiles(activeId: profile.id, profiles: registry.profiles)
+        pinGuard.markUnlocked(profile.id)
+        return profilesJSON()
+    }
+
+    func updateProfile(_ body: [String: Any]) throws -> [String: Any] {
+        guard let id = JSONValue.string(body["id"]) else {
+            throw ClientError.message("id is required")
+        }
+        var registry = store.profiles()
+        guard let idx = registry.profiles.firstIndex(where: { $0.id == id }) else {
+            throw PinFailure(404, "not_found")
+        }
+        let existing = registry.profiles[idx]
+
+        let nextName: String
+        if let rawName = body["name"] {
+            guard !(rawName is NSNull), let str = rawName as? String else {
+                throw ClientError.message("name must be a non-empty string")
+            }
+            let trimmed = String(str.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+            guard !trimmed.isEmpty else { throw ClientError.message("name must be a non-empty string") }
+            nextName = trimmed
+        } else {
+            nextName = existing.name
+        }
+
+        let nextHue: Int
+        if let rawHue = body["hue"], !(rawHue is NSNull) {
+            guard let parsedHue = JSONValue.int(rawHue) else {
+                throw ClientError.message("hue must be an integer")
+            }
+            nextHue = parsedHue
+        } else {
+            nextHue = existing.hue
+        }
+
+        let nextAvatar: String? = body.keys.contains("avatar") ? try parseAvatarInput(body["avatar"]) : existing.avatar
+
+        let nextKind: String
+        if let rawKind = body["kind"], !(rawKind is NSNull) {
+            let trimmed = (rawKind as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed == "standard" || trimmed == "kids" else {
+                throw ClientError.message("kind must be standard or kids")
+            }
+            nextKind = trimmed!
+        } else {
+            nextKind = existing.kind
+        }
+
+        let nextMaxAge: Int
+        if let rawAge = body["maxAge"], !(rawAge is NSNull) {
+            guard let validAge = TVMParental.normalizeAge(rawAge, kind: nextKind) else {
+                throw ClientError.message("maxAge must be 7, 12, 15, or 18")
+            }
+            nextMaxAge = validAge
+        } else if body["kind"] != nil && nextKind != existing.kind {
+            nextMaxAge = TVMParental.defaultAge(kind: nextKind)
+        } else {
+            nextMaxAge = existing.maxAge
+        }
+
+        let currentPin = try extractPinCandidate(body, key: "currentPin")
+        let pinChangeRequested = body.keys.contains("pin")
+        let looseningKids = existing.kind == "kids" && (nextKind != "kids" || nextMaxAge > existing.maxAge)
+
+        if existing.pin != nil && (pinChangeRequested || looseningKids) {
+            try pinGuard.verify(profileId: existing.id, stored: existing.pin, candidate: currentPin)
+        } else if looseningKids {
+            let guardians = registry.profiles.filter { $0.id != existing.id && $0.kind == "standard" && $0.pin != nil }
+            if !guardians.isEmpty {
+                try pinGuard.verifyAny(guardians: guardians, candidate: currentPin)
+            }
+        }
+
+        let nextPin: ProfilePin? = pinChangeRequested ? try parseOptionalNewPin(body["pin"]) : existing.pin
+
+        var updated = existing
+        updated.name = nextName
+        updated.hue = nextHue
+        updated.avatar = nextAvatar
+        updated.kind = nextKind
+        updated.maxAge = nextMaxAge
+        updated.pin = nextPin
+        registry.profiles[idx] = updated
+        store.saveProfiles(activeId: registry.activeId, profiles: registry.profiles)
+        if nextPin == nil || pinChangeRequested {
+            pinGuard.markUnlocked(id)
+        }
         return profilesJSON()
     }
 
     func renameProfile(id: String, name: String) -> [String: Any] {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return profilesJSON() }
-        var registry = store.profiles()
-        registry.profiles = registry.profiles.map { $0.id == id ? ProfileRecord(id: $0.id, name: trimmed, hue: $0.hue, created: $0.created) : $0 }
-        store.saveProfiles(activeId: registry.activeId, profiles: registry.profiles)
-        return profilesJSON()
+        (try? updateProfile(["id": id, "name": name])) ?? profilesJSON()
     }
 
-    func removeProfile(_ id: String) throws -> [String: Any] {
+    func removeProfile(_ id: String, pin: String? = nil) throws -> [String: Any] {
         var registry = store.profiles()
         if registry.profiles.count <= 1 { throw ClientError.message("TVM needs at least one profile.") }
+        guard let target = registry.profiles.first(where: { $0.id == id }) else {
+            throw PinFailure(404, "not_found")
+        }
+        if let stored = target.pin {
+            try pinGuard.verify(profileId: target.id, stored: stored, candidate: pin)
+        }
         registry.profiles.removeAll { $0.id == id }
         let active = registry.activeId == id ? (registry.profiles.first?.id ?? id) : registry.activeId
+        pinGuard.forget(id)
+        store.removeProfileData(id)
         store.saveProfiles(activeId: active, profiles: registry.profiles)
         return profilesJSON()
     }
 
-    func switchProfile(_ id: String) throws -> [String: Any] {
+    func switchProfile(_ id: String, pin: String? = nil) throws -> [String: Any] {
         let registry = store.profiles()
-        guard registry.profiles.contains(where: { $0.id == id }) else { throw ClientError.message("Unknown profile.") }
+        guard let target = registry.profiles.first(where: { $0.id == id }) else {
+            throw PinFailure(404, "not_found")
+        }
+        if let stored = target.pin {
+            try pinGuard.verify(profileId: target.id, stored: stored, candidate: pin)
+            pinGuard.clearSessionUnlocks()
+            pinGuard.markUnlocked(target.id)
+        } else {
+            pinGuard.clearSessionUnlocks()
+        }
         store.saveProfiles(activeId: id, profiles: registry.profiles)
         return profilesJSON()
+    }
+
+    func verifyProfilePIN(id: String, pin: String?) throws -> [String: Any] {
+        let registry = store.profiles()
+        guard let target = registry.profiles.first(where: { $0.id == id }) else {
+            throw PinFailure(404, "not_found")
+        }
+        if target.pin == nil {
+            pinGuard.markUnlocked(target.id)
+            return ["ok": true]
+        }
+        try pinGuard.verify(profileId: target.id, stored: target.pin, candidate: pin)
+        return ["ok": true]
+    }
+
+    private func parseAvatarInput(_ raw: Any?) throws -> String? {
+        if raw == nil || raw is NSNull { return nil }
+        guard let str = raw as? String else { throw ClientError.message("avatar is invalid") }
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.isEmpty { return nil }
+        guard TVMPins.isValidAvatar(trimmed) else { throw ClientError.message("avatar is invalid") }
+        return trimmed
+    }
+
+    private func parseOptionalNewPin(_ raw: Any?) throws -> ProfilePin? {
+        if raw == nil || raw is NSNull { return nil }
+        guard let str = raw as? String else { throw PinFailure(400, "pin-invalid") }
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        return try TVMPins.makePin(trimmed)
+    }
+
+    private func extractPinCandidate(_ body: [String: Any], key: String) throws -> String? {
+        guard body.keys.contains(key) else { return nil }
+        guard let raw = body[key], !(raw is NSNull) else { return nil }
+        guard let str = raw as? String else { throw PinFailure(400, "pin-invalid") }
+        return str
     }
 
     func watchlist() -> [MediaItem] { store.watchlist(for: activeProfile()) }
@@ -122,13 +308,15 @@ final class TVMMedia {
             library = libraryCache?.items ?? []
             lock.unlock()
         }
+        let age = ageLevel()
+        let levels = parentalLevels()
         let progress = store.progress(for: activeProfile())
-        library = applyProgress(library, progress)
+        library = TVMParental.filterForLevel(applyProgress(library, progress), age, levels: levels)
         let bundle = await catalog.bundle()
-        let catalogItems = applyProgress(bundle.catalog, progress)
+        let catalogItems = TVMParental.filterForLevel(applyProgress(bundle.catalog, progress), age, levels: levels)
         let continueWatching = self.continueWatching(catalogItems + library)
-        let watchlist = self.watchlist()
-        var rails = await buildRails(bundle: bundle, watching: continueWatching, watchlist: watchlist)
+        let watchlist = TVMParental.filterForLevel(self.watchlist(), age, levels: levels)
+        var rails = await buildRails(bundle: bundle, watching: continueWatching, watchlist: watchlist, age: age, levels: levels)
         /*
          * Split deliberately, with explicit types at each step. As one chained
          * expression — four arrays concatenated, then filtered, then sorted by
@@ -166,13 +354,13 @@ final class TVMMedia {
             // comparator: same ordering, but O(n log n) comparisons instead of
             // O(n log n × |genres|), and a far smaller job for the type checker.
             var affinity: [String: Int] = [:]
-            for item in bundle.catalog where !watchedIds.contains(item.id) {
+            for item in catalogItems where !watchedIds.contains(item.id) {
                 let itemGenres = Set(item.genres)
                 affinity[item.id] = genres.reduce(into: 0) { total, genre in
                     if itemGenres.contains(genre) { total += 1 }
                 }
             }
-            let unwatched: [MediaItem] = bundle.catalog.filter { (item: MediaItem) -> Bool in
+            let unwatched: [MediaItem] = catalogItems.filter { (item: MediaItem) -> Bool in
                 !watchedIds.contains(item.id)
             }
             let candidates: [MediaItem] = unwatched.sorted { (left: MediaItem, right: MediaItem) -> Bool in
@@ -180,7 +368,7 @@ final class TVMMedia {
             }
             if !candidates.isEmpty {
                 let offset = adaptationGeneration % candidates.count
-                let adapted = Array((Array(candidates.dropFirst(offset)) + Array(candidates.prefix(offset))).prefix(16))
+                let adapted = Array((Array(candidates.dropFirst(offset)) + Array(candidates.prefix(offset))).prefix(Self.railLimit))
                 rails.insert(CatalogRail(id: "anime-adapted", title: "Adapted for you", items: adapted), at: 0)
             }
         }
@@ -243,7 +431,8 @@ final class TVMMedia {
         }
         var seen = Set<String>()
         // Cinemeta already ranked the remote hits; do not drop aliases like "lotr".
-        return (localHits + remote).filter { seen.insert($0.id).inserted }
+        let combined = (localHits + remote).filter { seen.insert($0.id).inserted }
+        return TVMParental.filterForLevel(combined, ageLevel(), levels: parentalLevels())
     }
 
     private func remember(_ item: MediaItem) -> MediaItem {
@@ -320,7 +509,16 @@ final class TVMMedia {
         return TVMTitle.progressRatio(progress).flatMap { _ in progress?.position }
     }
 
-    func play(id: String?, link: String?, title: String?, season: Int?, episode: Int?, download: TVMDownloadPrefs? = nil) async -> (Int, [String: Any]) {
+    func play(
+        id: String?,
+        link: String?,
+        title: String?,
+        season: Int?,
+        episode: Int?,
+        download: TVMDownloadPrefs? = nil,
+        screenHeight: Int? = nil,
+        maxHeight: Int? = nil
+    ) async -> (Int, [String: Any]) {
         guard plans.mobileAllowed() else { return (403, ["kind": "unavailable", "reason": "mobile-plan-required"]) }
         if plans.hoursBlocked(), let id, !id.hasPrefix("live:") {
             return (409, ["kind": "unavailable", "reason": "hours-cap"])
@@ -338,23 +536,35 @@ final class TVMMedia {
             return (409, ["kind": "unavailable", "reason": "not-in-library"])
         }
         let wanted = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var libraryCopy: (Int, [String: Any])? = nil
         if !wanted.isEmpty,
            let matched = await findLibraryPlayback(wanted, season: season, episode: episode),
            let owned = await resolveOwnedLink(matched) {
             let result = await playFromLink(owned, mediaId: id ?? matched)
-            if download == nil || downloadable(result, download!) { return result }
+            if result.0 == 200 && (download == nil || downloadable(result, download!)) {
+                let filename = result.1["filename"] as? String ?? ""
+                let cap = capFor(download: download, screenHeight: screenHeight, maxHeight: maxHeight)
+                if filename.isEmpty || rd.streamHeight(filename) <= cap {
+                    return result
+                }
+                libraryCopy = result
+            }
         }
         if let imdb = await resolveImdb(id: id, title: title) {
             let parsed = id.flatMap { TVMTitle.parsePlayId($0) }
             let extra = id.flatMap { TVMTitle.seasonEpisode(from: $0) }
-            return await playFromTorrentio(
+            let found = await playFromTorrentio(
                 imdb,
                 season: season ?? parsed?.season ?? extra?.season,
                 episode: episode ?? parsed?.episode ?? extra?.episode,
                 mediaId: id ?? imdb,
-                download: download
+                download: download,
+                screenHeight: screenHeight,
+                maxHeight: maxHeight
             )
+            if found.0 == 200 || libraryCopy == nil { return found }
         }
+        if let libraryCopy { return libraryCopy }
         return (409, ["kind": "unavailable", "reason": "not-in-library"])
     }
 
@@ -386,13 +596,17 @@ final class TVMMedia {
     func appHub(_ id: String) async -> [String: Any]? {
         let list = (appsList()["grid"] as? [[String: Any]] ?? [])
         guard let spec = list.first(where: { $0["id"] as? String == id }), id != "tvm-stream" else { return nil }
+        let age = ageLevel()
+        let levels = parentalLevels()
         let bundle = await catalog.bundle()
-        let movies = Array(bundle.moviesTop.prefix(16))
-        let shows = Array(bundle.seriesTop.prefix(16))
+        let movies = Array(TVMParental.filterForLevel(bundle.moviesTop, age, levels: levels).prefix(Self.railLimit))
+        let shows = Array(TVMParental.filterForLevel(bundle.seriesTop, age, levels: levels).prefix(Self.railLimit))
         let seeds = hubSeeds[id] ?? []
         var seeded: [MediaItem] = []
         for seed in seeds.prefix(8) {
-            if let meta = await catalog.meta(seed) { seeded.append(meta.item) }
+            if let meta = await catalog.meta(seed), TVMParental.allowedForLevel(meta.item, age, levels: levels) {
+                seeded.append(meta.item)
+            }
         }
         let pool = seeded.isEmpty ? (movies + shows) : seeded + movies
         let hero = pool.first { !$0.backdrop.isEmpty } ?? pool.first
@@ -409,9 +623,143 @@ final class TVMMedia {
             "rails": [
                 CatalogRail(id: "\(id)-films", title: "Popular films", items: movies).json(),
                 CatalogRail(id: "\(id)-shows", title: "Popular series", items: shows).json(),
-                CatalogRail(id: "\(id)-trending", title: "Trending now", items: Array(pool.prefix(16))).json(),
+                CatalogRail(id: "\(id)-trending", title: "Trending now", items: Array(pool.prefix(Self.railLimit))).json(),
             ],
         ]
+    }
+
+    func railMore(id: String, skipParam: Int = 0, pageParam: Int? = nil) async throws -> [String: Any] {
+        guard Self.isValidRailId(id) else {
+            throw ClientError.message("rail id is invalid")
+        }
+        let sources = Self.railSources(id)
+        if sources.isEmpty {
+            return ["items": [], "more": false]
+        }
+        let age = ageLevel()
+        let levels = parentalLevels()
+        var cursor = min(max(0, pageParam ?? skipParam), 5000)
+        var sawRaw = false
+        var collected: [MediaItem] = []
+
+        for _ in 0..<Self.maxPageAttempts {
+            let perSourceCursor = min(max(0, cursor / sources.count), 5000)
+            let perSourceLimit = sources.count > 1 ? max(10, Self.pageSize / sources.count) : Self.pageSize
+            var perSource: [[MediaItem]] = []
+            for src in sources {
+                let fetched = await catalog.page(kind: src.kind, list: src.list, genre: src.genre, skip: perSourceCursor)
+                if !fetched.isEmpty { sawRaw = true }
+                perSource.append(Array(fetched.prefix(perSourceLimit)))
+            }
+            var batch = Self.interleave(perSource)
+            if id == "new-films" {
+                batch = Self.filterNewFilms(batch)
+            }
+            collected = TVMParental.filterForLevel(batch, age, levels: levels)
+            cursor += Self.pageSize
+            if !collected.isEmpty || !sawRaw || cursor > 5000 { break }
+        }
+
+        let withProgress = applyProgress(collected, store.progress(for: activeProfile()))
+        let hasMore = sawRaw && cursor <= 5000 && !withProgress.isEmpty
+        return [
+            "items": withProgress.map { $0.json() },
+            "more": hasMore,
+            "page": cursor,
+        ]
+    }
+
+    func activeEvents(today: String = TVMMedia.localIsoDate()) async -> [String: Any] {
+        let doc = await content.fresh("events")
+        let rawEvents = doc?["events"] as? [[String: Any]] ?? []
+        let age = ageLevel()
+        let levels = parentalLevels()
+        let progress = store.progress(for: activeProfile())
+        var out: [[String: Any]] = []
+
+        for event in rawEvents {
+            guard let start = JSONValue.string(event["start"]),
+                  let end = JSONValue.string(event["end"]),
+                  today >= start, today <= end,
+                  let imdbId = JSONValue.string(event["imdbId"]) else { continue }
+
+            let release = JSONValue.string(event["release"]) ?? start
+            var spotlightRaw = await item(imdbId)
+            if spotlightRaw == nil {
+                spotlightRaw = await catalog.meta(imdbId)?.item
+            }
+            if let s = spotlightRaw, !TVMParental.allowedForLevel(s, age, levels: levels) {
+                continue
+            }
+            let spotlight = spotlightRaw.flatMap { applyProgress([$0], progress).first }
+
+            let railObj = event["rail"] as? [String: Any]
+            let railIds = (railObj?["items"] as? [Any] ?? []).compactMap { JSONValue.string($0) }.prefix(Self.railLimit)
+            var resolvedItems: [MediaItem] = []
+            for rid in railIds {
+                var resolved = await item(rid)
+                if resolved == nil {
+                    resolved = await catalog.meta(rid)?.item
+                }
+                if let resolved, TVMParental.allowedForLevel(resolved, age, levels: levels) {
+                    resolvedItems.append(resolved)
+                }
+            }
+            let itemsWithProgress = applyProgress(resolvedItems, progress)
+
+            var enriched = event
+            enriched["live"] = true
+            enriched["released"] = today >= release
+            enriched["kicker"] = Self.eventKicker(release: release, today: today)
+            enriched["spotlight"] = JSONValue.orNull(spotlight?.json())
+            enriched["featured"] = JSONValue.orNull(spotlight?.json())
+            enriched["items"] = itemsWithProgress.map { $0.json() }
+            out.append(enriched)
+        }
+        return ["events": out]
+    }
+
+    func servicesJSON() async -> [String: Any] {
+        let doc = await content.fresh("services")
+        let raw = doc?["services"] as? [[String: Any]] ?? []
+        let connected = Set(store.connectedServices(for: activeProfile()))
+        var out: [[String: Any]] = []
+        for row in raw {
+            guard let id = JSONValue.string(row["id"]) else { continue }
+            var copy = row
+            copy["connected"] = connected.contains(id)
+            out.append(copy)
+        }
+        return ["services": out]
+    }
+
+    func setServiceConnected(id: String, connected: Bool) async throws -> [String: Any] {
+        let doc = await content.fresh("services")
+        let raw = doc?["services"] as? [[String: Any]] ?? []
+        let validIds = Set(raw.compactMap { JSONValue.string($0["id"]) })
+        guard validIds.contains(id) else {
+            throw ClientError.message("Unknown service.")
+        }
+        let profileId = activeProfile()
+        var current = store.connectedServices(for: profileId)
+        if connected {
+            if !current.contains(id) { current.append(id) }
+        } else {
+            current.removeAll { $0 == id }
+        }
+        store.saveConnectedServices(current, profileId: profileId)
+        return ["connected": current]
+    }
+
+    func freeLiveJSON() async -> [String: Any] {
+        let doc = await content.fresh("free-channels")
+        let raw = doc?["channels"] as? [[String: Any]] ?? []
+        let age = ageLevel()
+        let levels = parentalLevels()
+        let filtered = raw.filter { row in
+            TVMParental.liveGroupAllowed(JSONValue.string(row["group"]), maxAge: age, levels: levels)
+        }
+        return ["channels": filtered]
     }
 
     func clearCache() {
@@ -504,7 +852,25 @@ final class TVMMedia {
         return TVMLanguage.ok(name, language: download.language) && rd.streamHeight(name) <= min(download.maxHeight, plans.maxHeight())
     }
 
-    private func playFromTorrentio(_ imdb: String, season: Int?, episode: Int?, mediaId: String?, download: TVMDownloadPrefs? = nil) async -> (Int, [String: Any]) {
+    private func capFor(download: TVMDownloadPrefs?, screenHeight: Int?, maxHeight: Int?) -> Int {
+        if let download {
+            return min(download.maxHeight, plans.maxHeight())
+        }
+        return min(
+            TVMDeviceChrome.playbackHeight(planMax: plans.maxHeight()),
+            Self.screenCapFor(screenHeight: screenHeight, maxHeight: maxHeight)
+        )
+    }
+
+    private func playFromTorrentio(
+        _ imdb: String,
+        season: Int?,
+        episode: Int?,
+        mediaId: String?,
+        download: TVMDownloadPrefs? = nil,
+        screenHeight: Int? = nil,
+        maxHeight: Int? = nil
+    ) async -> (Int, [String: Any]) {
         guard let token = rd.tokenValue() else {
             return (409, ["kind": "unavailable", "reason": "not-configured"])
         }
@@ -531,7 +897,7 @@ final class TVMMedia {
             return (409, ["kind": "unavailable", "reason": "empty"])
         }
         // A download takes the quality asked for (within the plan); playing takes this screen's.
-        let height = download.map { min($0.maxHeight, plans.maxHeight()) } ?? TVMDeviceChrome.playbackHeight(planMax: plans.maxHeight())
+        let height = capFor(download: download, screenHeight: screenHeight, maxHeight: maxHeight)
         // A source whose file is named as another episode, or as a commentary
         // edition or other extra, is not this episode (TVMEpisodeMatch). A
         // download's audio language is a must.
@@ -789,13 +1155,26 @@ final class TVMMedia {
             .map { $0 }
     }
 
-    private func buildRails(bundle: CatalogBundle, watching: [MediaItem], watchlist: [MediaItem]) async -> [CatalogRail] {
+    private func buildRails(
+        bundle: CatalogBundle,
+        watching: [MediaItem],
+        watchlist: [MediaItem],
+        age: Int,
+        levels: [AgeLevel]
+    ) async -> [CatalogRail] {
         var used = Set(watching.map(\.id) + watching.map(\.title) + watchlist.map(\.id) + watchlist.map(\.title))
         var rails: [CatalogRail] = []
         func take(_ source: [MediaItem], id: String, title: String) {
-            let items = source.filter { !used.contains($0.id) && !used.contains($0.title) }.prefix(16).map { $0 }
+            let items = source.filter {
+                !used.contains($0.id) &&
+                    !used.contains($0.title) &&
+                    TVMParental.allowedForLevel($0, age, levels: levels)
+            }.prefix(Self.railLimit).map { $0 }
             items.forEach { used.insert($0.id); used.insert($0.title) }
-            if !items.isEmpty { rails.append(CatalogRail(id: id, title: title, items: items)) }
+            if !items.isEmpty {
+                let more: Bool? = Self.railSources(id).isEmpty ? nil : true
+                rails.append(CatalogRail(id: id, title: title, items: items, more: more))
+            }
         }
         take(bundle.catalog, id: "for-you", title: "You might like")
         take(bundle.moviesTop, id: "films", title: "Popular films")
@@ -806,32 +1185,20 @@ final class TVMMedia {
         take(bundle.recentTv, id: "new-series", title: "Recently updated")
         if let first = watching.first {
             let because = bundle.catalog.filter { item in
-                !used.contains(item.id) && item.genres.contains(where: { first.genres.contains($0) })
-            }.prefix(12).map { $0 }
+                !used.contains(item.id) &&
+                    item.genres.contains(where: { first.genres.contains($0) }) &&
+                    TVMParental.allowedForLevel(item, age, levels: levels)
+            }.prefix(Self.railLimit).map { $0 }
             if !because.isEmpty {
                 rails.append(CatalogRail(id: "because", title: "Because you watched \(first.title)", items: because))
             }
         }
-        let genres: [(id: String, title: String, names: [String])] = [
-            ("action", "Action & Adventure", ["Action", "Adventure"]),
-            ("scifi", "Sci-Fi & Fantasy", ["Sci-Fi", "Fantasy"]),
-            ("comedy", "Comedy", ["Comedy"]),
-            ("thriller", "Thrillers", ["Thriller"]),
-            ("drama", "Critically Acclaimed Drama", ["Drama"]),
-            ("crime", "Crime & Mystery", ["Crime", "Mystery"]),
-            ("horror", "Horror", ["Horror"]),
-            ("animation", "Animation & Family", ["Animation", "Family"]),
-            ("romance", "Romance", ["Romance"]),
-            ("documentary", "Documentaries", ["Documentary"]),
-            ("anime", "Anime", ["Anime"]),
-            ("history", "History & Biography", ["History", "Biography"]),
-            ("mystery", "Mystery & Suspense", ["Mystery"]),
-        ]
-        for entry in genres {
+        for entry in Self.genreRails {
             var seenMovies = Set<String>()
             var movies: [MediaItem] = []
             for g in entry.names {
-                for item in await catalog.genre(kind: "movie", name: g) where seenMovies.insert(item.id).inserted {
+                for item in await catalog.genre(kind: "movie", name: g)
+                where TVMParental.allowedForLevel(item, age, levels: levels) && seenMovies.insert(item.id).inserted {
                     movies.append(item)
                 }
             }
@@ -839,23 +1206,136 @@ final class TVMMedia {
             var seenShows = Set<String>()
             var shows: [MediaItem] = []
             for g in seriesNames {
-                for item in await catalog.genre(kind: "series", name: g) where seenShows.insert(item.id).inserted {
+                for item in await catalog.genre(kind: "series", name: g)
+                where TVMParental.allowedForLevel(item, age, levels: levels) && seenShows.insert(item.id).inserted {
                     shows.append(item)
                 }
             }
             var mixed: [MediaItem] = []
             var i = 0
-            while mixed.count < 16, i < max(movies.count, shows.count) {
+            while mixed.count < Self.railLimit, i < max(movies.count, shows.count) {
                 if i < movies.count, !used.contains(movies[i].id) { mixed.append(movies[i]); used.insert(movies[i].id) }
-                if mixed.count >= 16 { break }
+                if mixed.count >= Self.railLimit { break }
                 if i < shows.count, !used.contains(shows[i].id) { mixed.append(shows[i]); used.insert(shows[i].id) }
                 i += 1
             }
-            if !mixed.isEmpty { rails.append(CatalogRail(id: entry.id, title: entry.title, items: mixed)) }
+            if !mixed.isEmpty { rails.append(CatalogRail(id: entry.id, title: entry.title, items: mixed, more: true)) }
         }
         if rails.isEmpty {
             take(catalog.fallbackItems(), id: "films", title: "Popular films")
         }
         return rails
+    }
+
+    struct RailSource: Equatable {
+        let kind: String
+        let list: String
+        let genre: String?
+        init(_ kind: String, _ list: String, _ genre: String? = nil) {
+            self.kind = kind
+            self.list = list
+            self.genre = genre
+        }
+    }
+
+    static let profileHues: [Int] = [221, 190, 145, 38, 315]
+    static let railLimit = 40
+    static let pageSize = 50
+    static let maxPageAttempts = 3
+    static let qualityLadder: [Int] = [480, 720, 1080, 1440, 2160]
+
+    static let genreRails: [(id: String, title: String, names: [String])] = [
+        ("action", "Action & Adventure", ["Action", "Adventure"]),
+        ("scifi", "Sci-Fi & Fantasy", ["Sci-Fi", "Fantasy"]),
+        ("comedy", "Comedy", ["Comedy"]),
+        ("thriller", "Thrillers", ["Thriller"]),
+        ("drama", "Critically Acclaimed Drama", ["Drama"]),
+        ("crime", "Crime & Mystery", ["Crime", "Mystery"]),
+        ("horror", "Horror", ["Horror"]),
+        ("animation", "Animation & Family", ["Animation", "Family"]),
+        ("romance", "Romance", ["Romance"]),
+        ("documentary", "Documentaries", ["Documentary"]),
+        ("anime", "Anime", ["Anime"]),
+        ("history", "History & Biography", ["History", "Biography"]),
+        ("mystery", "Mystery & Suspense", ["Mystery"]),
+    ]
+
+    private static let extraGenreAliases: [String: [String]] = [
+        "sci-fi": ["Sci-Fi", "Fantasy"],
+        "adventure": ["Adventure"],
+        "fantasy": ["Fantasy"],
+        "family": ["Family"],
+    ]
+
+    static func isValidRailId(_ id: String) -> Bool {
+        id.range(of: #"^[a-z0-9-]{1,40}$"#, options: .regularExpression) != nil
+    }
+
+    static func railSources(_ id: String) -> [RailSource] {
+        switch id {
+        case "films": return [RailSource("movie", "top")]
+        case "series": return [RailSource("series", "top")]
+        case "top-films": return [RailSource("movie", "imdbRating")]
+        case "top-series": return [RailSource("series", "imdbRating")]
+        case "new-films": return [RailSource("movie", "year")]
+        case "new-series": return [RailSource("series", "last-videos")]
+        default:
+            let names = genreRails.first(where: { $0.id == id })?.names ?? extraGenreAliases[id]
+            guard let names else { return [] }
+            let seriesNames = id == "anime" ? ["Animation"] : names
+            return names.map { RailSource("movie", "top", $0) } +
+                seriesNames.map { RailSource("series", "top", $0) }
+        }
+    }
+
+    static func interleave(_ lists: [[MediaItem]]) -> [MediaItem] {
+        var out: [MediaItem] = []
+        var seen = Set<String>()
+        let maxCount = lists.map(\.count).max() ?? 0
+        for i in 0..<maxCount {
+            for list in lists where i < list.count {
+                let item = list[i]
+                if seen.insert(item.id).inserted { out.append(item) }
+            }
+        }
+        return out
+    }
+
+    static func filterNewFilms(_ items: [MediaItem], currentYear: Int = Calendar.current.component(.year, from: Date())) -> [MediaItem] {
+        items.filter { $0.kind == "movie" && ($0.year ?? 0) >= currentYear - 1 }
+    }
+
+    static func screenCapFor(screenHeight: Int?, maxHeight: Int?) -> Int {
+        if let maxHeight, maxHeight >= 240 { return min(2160, maxHeight) }
+        if let screenHeight, screenHeight >= 240 {
+            return qualityLadder.first(where: { $0 >= screenHeight - 8 }) ?? 2160
+        }
+        return 2160
+    }
+
+    static func localIsoDate(_ date: Date = Date()) -> String {
+        let cal = Calendar(identifier: .gregorian)
+        let comps = cal.dateComponents([.year, .month, .day], from: date)
+        let y = comps.year ?? 1970
+        let m = comps.month ?? 1
+        let d = comps.day ?? 1
+        return String(format: "%04d-%02d-%02d", y, m, d)
+    }
+
+    static func formatReleaseDayMonth(_ isoDate: String) -> String {
+        let trimmed = isoDate.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyy-MM-dd"
+        guard let parsed = parser.date(from: trimmed) else { return isoDate }
+        let monthFmt = DateFormatter()
+        monthFmt.locale = Locale(identifier: "en_US")
+        monthFmt.dateFormat = "d MMMM"
+        return monthFmt.string(from: parsed)
+    }
+
+    static func eventKicker(release: String, today: String = TVMMedia.localIsoDate()) -> String {
+        if today >= release { return "In cinemas now" }
+        return "In cinemas \(formatReleaseDayMonth(release))"
     }
 }

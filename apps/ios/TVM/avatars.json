@@ -1,0 +1,494 @@
+{
+  "schema": 1,
+  "updated": "2026-11-25",
+  "note": "Character pictures for profiles. Images load from public metadata hosts at runtime, like posters. A profile stores \"<setId>/<avatarId>\". When an image fails, clients draw the profile colour with the first letter.",
+  "sets": [
+    {
+      "id": "sunrise-on-the-reaping",
+      "title": "Sunrise on the Reaping",
+      "kind": "movie",
+      "avatars": [
+        {
+          "id": "haymitch",
+          "name": "Haymitch Abernathy",
+          "actor": "Joseph Zada",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/Joseph_Zada_pour_la_promotion_d%27Hunger_Games_%C3%A0_Sydney.webp/330px-Joseph_Zada_pour_la_promotion_d%27Hunger_Games_%C3%A0_Sydney.webp?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "maysilee",
+          "name": "Maysilee Donner",
+          "actor": "Mckenna Grace",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/McKenna_Grace_at_WWD_Style_Awards_2026.jpg/330px-McKenna_Grace_at_WWD_Style_Awards_2026.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "plutarch",
+          "name": "Plutarch Heavensbee",
+          "actor": "Jesse Plemons",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Plemons_at_London_Bugonia_Premiere.jpg/330px-Plemons_at_London_Bugonia_Premiere.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "effie",
+          "name": "Effie Trinket",
+          "actor": "Elle Fanning",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0b/Elle_Fanning_by_Gage_Skidmore_2.jpg/330px-Elle_Fanning_by_Gage_Skidmore_2.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "snow",
+          "name": "President Snow",
+          "actor": "Ralph Fiennes",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/ConclaveBFILFF101024_%2816_of_44%29_%2854062064271%29_%28cropped%29.jpg/330px-ConclaveBFILFF101024_%2816_of_44%29_%2854062064271%29_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "caesar",
+          "name": "Caesar Flickerman",
+          "actor": "Kieran Culkin",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Kieran_Culkin_at_the_2024_New_York_Film_Festival_2_%28cropped_II%29.jpg/330px-Kieran_Culkin_at_the_2024_New_York_Film_Festival_2_%28cropped_II%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "drusilla",
+          "name": "Drusilla Sickle",
+          "actor": "Glenn Close",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Glenn_Close_TIFF_2025_%28cropped%29.jpg/330px-Glenn_Close_TIFF_2025_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        }
+      ]
+    },
+    {
+      "id": "marvel",
+      "title": "Avengers",
+      "kind": "movie",
+      "avatars": [
+        {
+          "id": "doom",
+          "name": "Doctor Doom",
+          "actor": "Robert Downey Jr.",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/RobertDowneyJr-byPhilipRomano7_%28cropped%29.jpg/330px-RobertDowneyJr-byPhilipRomano7_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "thor",
+          "name": "Thor",
+          "actor": "Chris Hemsworth",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Chris_Hemsworth_-_Crime_101.jpg/330px-Chris_Hemsworth_-_Crime_101.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "cap",
+          "name": "Sam Wilson / Captain America",
+          "actor": "Anthony Mackie",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5b/Anthony_Mackie_on_the_Green_Carpet_at_the_2025_Zurich_Film_Festival_03_%28cropped%29.jpg/330px-Anthony_Mackie_on_the_Green_Carpet_at_the_2025_Zurich_Film_Festival_03_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "yelena",
+          "name": "Yelena Belova",
+          "actor": "Florence Pugh",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Florence_Pugh_2026.jpg/330px-Florence_Pugh_2026.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "reed",
+          "name": "Mister Fantastic",
+          "actor": "Pedro Pascal",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/56/Pedro_Pascal_at_the_2026_New_York_Film_Festival-042.jpg/330px-Pedro_Pascal_at_the_2026_New_York_Film_Festival-042.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "spidey",
+          "name": "Spider-Man",
+          "actor": "Tom Holland",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/18/TomHolland-byPhilipRomano.jpg/330px-TomHolland-byPhilipRomano.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "strange",
+          "name": "Doctor Strange",
+          "actor": "Benedict Cumberbatch",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Benedict_Cumberbatch-67555.jpg/330px-Benedict_Cumberbatch-67555.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        },
+        {
+          "id": "shuri",
+          "name": "Shuri / Black Panther",
+          "actor": "Letitia Wright",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/20/Letitia_Wright_at_2025_SXSW_London_%28cropped%29.jpg/330px-Letitia_Wright_at_2025_SXSW_London_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+        }
+      ]
+    },
+    {
+      "id": "stranger-things",
+      "title": "Stranger Things",
+      "kind": "series",
+      "avatars": [
+        {
+          "id": "eleven",
+          "name": "Jane \"Eleven\" Hopper",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506071.jpg"
+        },
+        {
+          "id": "mike",
+          "name": "Mike Wheeler",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506088.jpg"
+        },
+        {
+          "id": "dustin",
+          "name": "Dustin Henderson",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506079.jpg"
+        },
+        {
+          "id": "max",
+          "name": "Maxine \"Max\" Mayfield",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/604/1512324.jpg"
+        },
+        {
+          "id": "joyce",
+          "name": "Joyce Byers",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506062.jpg"
+        },
+        {
+          "id": "hopper",
+          "name": "Chief Jim Hopper",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506096.jpg"
+        }
+      ]
+    },
+    {
+      "id": "wednesday",
+      "title": "Wednesday",
+      "kind": "series",
+      "avatars": [
+        {
+          "id": "wednesday",
+          "name": "Wednesday Addams",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/432/1082139.jpg"
+        },
+        {
+          "id": "enid",
+          "name": "Enid Sinclair",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/440/1100599.jpg"
+        },
+        {
+          "id": "thing",
+          "name": "Thing",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/432/1082158.jpg"
+        },
+        {
+          "id": "tyler",
+          "name": "Tyler Galpin",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/432/1082142.jpg"
+        },
+        {
+          "id": "morticia",
+          "name": "Morticia Addams",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/420/1051332.jpg"
+        },
+        {
+          "id": "gomez",
+          "name": "Gomez Addams",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/431/1079637.jpg"
+        }
+      ]
+    },
+    {
+      "id": "the-last-of-us",
+      "title": "The Last of Us",
+      "kind": "series",
+      "avatars": [
+        {
+          "id": "ellie",
+          "name": "Ellie Williams",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412483.jpg"
+        },
+        {
+          "id": "joel",
+          "name": "Joel Miller",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412482.jpg"
+        },
+        {
+          "id": "tommy",
+          "name": "Tommy Miller",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412484.jpg"
+        },
+        {
+          "id": "dina",
+          "name": "Dina",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412485.jpg"
+        },
+        {
+          "id": "jesse",
+          "name": "Jesse",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412486.jpg"
+        }
+      ]
+    },
+    {
+      "id": "house-of-the-dragon",
+      "title": "House of the Dragon",
+      "kind": "series",
+      "avatars": [
+        {
+          "id": "rhaenyra",
+          "name": "Princess Rhaenyra Targaryen",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565189.jpg"
+        },
+        {
+          "id": "daemon",
+          "name": "Prince Daemon Targaryen",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565190.jpg"
+        },
+        {
+          "id": "alicent",
+          "name": "Lady Alicent Hightower",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565193.jpg"
+        },
+        {
+          "id": "aemond",
+          "name": "Prince Aemond Targaryen",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565199.jpg"
+        },
+        {
+          "id": "aegon",
+          "name": "Prince Aegon Targaryen",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565203.jpg"
+        },
+        {
+          "id": "corlys",
+          "name": "Lord Corlys Velaryon",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565184.jpg"
+        }
+      ]
+    },
+    {
+      "id": "squid-game",
+      "title": "Squid Game",
+      "kind": "series",
+      "avatars": [
+        {
+          "id": "gi-hun",
+          "name": "Sung Gi Hun",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/572/1431002.jpg"
+        },
+        {
+          "id": "front-man",
+          "name": "Front Man",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/572/1431004.jpg"
+        },
+        {
+          "id": "joon-ho",
+          "name": "Hwang Joon Ho",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/550/1376197.jpg"
+        },
+        {
+          "id": "sang-woo",
+          "name": "Jo Sang Woo",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/550/1375998.jpg"
+        },
+        {
+          "id": "sae-byuk",
+          "name": "Kang Sae Byuk",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/352/881327.jpg"
+        },
+        {
+          "id": "il-nam",
+          "name": "Oh Il Nam",
+          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/550/1376001.jpg"
+        }
+      ]
+    },
+    {
+      "id": "jujutsu-kaisen",
+      "title": "Jujutsu Kaisen",
+      "kind": "anime",
+      "avatars": [
+        {
+          "id": "gojo",
+          "name": "Satoru Gojo",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b127691-9zqh1xpIubn7.png"
+        },
+        {
+          "id": "yuji",
+          "name": "Yuji Itadori",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b127212-FVm2tD0erQ5B.png"
+        },
+        {
+          "id": "megumi",
+          "name": "Megumi Fushiguro",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b126635-L0y3I92JSUkN.png"
+        },
+        {
+          "id": "nobara",
+          "name": "Nobara Kugisaki",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b133700-f6sOO3TcgLV6.png"
+        },
+        {
+          "id": "sukuna",
+          "name": "Ryomen Sukuna",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b133701-rCQuDpHr3UZL.png"
+        },
+        {
+          "id": "nanami",
+          "name": "Kento Nanami",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b133704-8wLTGjc234q2.png"
+        }
+      ]
+    },
+    {
+      "id": "demon-slayer",
+      "title": "Demon Slayer",
+      "kind": "anime",
+      "avatars": [
+        {
+          "id": "tanjiro",
+          "name": "Tanjiro Kamado",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b126071-BTNEc1nRIv68.png"
+        },
+        {
+          "id": "nezuko",
+          "name": "Nezuko Kamado",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b127518-NRlq1CQ1v1ro.png"
+        },
+        {
+          "id": "zenitsu",
+          "name": "Zenitsu Agatsuma",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b129131-FZrQ7lSlxmEr.png"
+        },
+        {
+          "id": "inosuke",
+          "name": "Inosuke Hashibira",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/n129130-SJC0Kn1DU39E.jpg"
+        },
+        {
+          "id": "rengoku",
+          "name": "Kyoujurou Rengoku",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b129133-VlTPowwt68rJ.png"
+        },
+        {
+          "id": "muzan",
+          "name": "Muzan Kibutsuji",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b129132-4nIZakUZ1o8W.jpg"
+        }
+      ]
+    },
+    {
+      "id": "one-piece",
+      "title": "One Piece",
+      "kind": "anime",
+      "avatars": [
+        {
+          "id": "luffy",
+          "name": "Monkey D. Luffy",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b40-MNypXsxSRb1R.png"
+        },
+        {
+          "id": "zoro",
+          "name": "Roronoa Zoro",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b62-S7oAeA9WInjV.png"
+        },
+        {
+          "id": "nami",
+          "name": "Nami",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b723-vp5hPptgnNEC.png"
+        },
+        {
+          "id": "sanji",
+          "name": "Sanji",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b305-6lisPmHtCnLT.png"
+        },
+        {
+          "id": "chopper",
+          "name": "Tony Tony Chopper",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b309-H64NhbJ2ywIQ.jpg"
+        },
+        {
+          "id": "robin",
+          "name": "Nico Robin",
+          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b61-ywXUyyocEEqt.png"
+        }
+      ]
+    },
+    {
+      "id": "hunger-games",
+      "title": "The Hunger Games",
+      "kind": "movie",
+      "avatars": [
+        {
+          "id": "katniss",
+          "name": "Katniss Everdeen",
+          "actor": "Jennifer Lawrence",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/01/Jennifer_Lawrence%2C_Cannes_Film_Festival_2025.jpg/330px-Jennifer_Lawrence%2C_Cannes_Film_Festival_2025.jpg"
+        },
+        {
+          "id": "peeta",
+          "name": "Peeta Mellark",
+          "actor": "Josh Hutcherson",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3e/Josh_Hutcherson_by_Gage_Skidmore_2.jpg/330px-Josh_Hutcherson_by_Gage_Skidmore_2.jpg"
+        },
+        {
+          "id": "gale",
+          "name": "Gale Hawthorne",
+          "actor": "Liam Hemsworth",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Independence_Day-_Resurgence_Japan_Premiere-_Liam_Hemsworth_%26_Jeff_Goldblum_%2828453569402%29_%28cropped%29.jpg/330px-Independence_Day-_Resurgence_Japan_Premiere-_Liam_Hemsworth_%26_Jeff_Goldblum_%2828453569402%29_%28cropped%29.jpg"
+        },
+        {
+          "id": "effie",
+          "name": "Effie Trinket",
+          "actor": "Elizabeth Banks",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d9/Elizabeth_Banks_during_interview_in_2019.png/330px-Elizabeth_Banks_during_interview_in_2019.png"
+        },
+        {
+          "id": "haymitch",
+          "name": "Haymitch Abernathy",
+          "actor": "Woody Harrelson",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3a/Woody_Harrelson_191020-N-NU281-1028_%28cropped%29.jpg/330px-Woody_Harrelson_191020-N-NU281-1028_%28cropped%29.jpg"
+        },
+        {
+          "id": "snow",
+          "name": "President Coriolanus Snow",
+          "actor": "Donald Sutherland",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1d/Donald_Sutherland_%28cropped%29.JPG/330px-Donald_Sutherland_%28cropped%29.JPG"
+        },
+        {
+          "id": "lucy-gray",
+          "name": "Lucy Gray Baird",
+          "actor": "Rachel Zegler",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/RachelZegler-byPhilipRomano4crop.jpg/330px-RachelZegler-byPhilipRomano4crop.jpg"
+        }
+      ]
+    },
+    {
+      "id": "dune",
+      "title": "Dune",
+      "kind": "movie",
+      "avatars": [
+        {
+          "id": "paul",
+          "name": "Paul Atreides",
+          "actor": "Timothée Chalamet",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5c/Timoth%C3%A9e_Chalamet-63482_%28cropped%29.jpg/330px-Timoth%C3%A9e_Chalamet-63482_%28cropped%29.jpg"
+        },
+        {
+          "id": "jessica",
+          "name": "Lady Jessica",
+          "actor": "Rebecca Ferguson",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Rebecca_Ferguson_A_House_of_Dynamite-67_%28cropped2%29.jpg/330px-Rebecca_Ferguson_A_House_of_Dynamite-67_%28cropped2%29.jpg"
+        },
+        {
+          "id": "chani",
+          "name": "Chani",
+          "actor": "Zendaya",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5a/Zendaya-byPhilipRomano.jpg/330px-Zendaya-byPhilipRomano.jpg"
+        },
+        {
+          "id": "stilgar",
+          "name": "Stilgar",
+          "actor": "Javier Bardem",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Javier_Bardem_-_Bunker_-_TIFF_2026-12.jpg/330px-Javier_Bardem_-_Bunker_-_TIFF_2026-12.jpg"
+        },
+        {
+          "id": "gurney",
+          "name": "Gurney Halleck",
+          "actor": "Josh Brolin",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/Josh_Brolin_TIFF_2025_%28cropped%29.jpg/330px-Josh_Brolin_TIFF_2025_%28cropped%29.jpg"
+        },
+        {
+          "id": "baron",
+          "name": "Baron Harkonnen",
+          "actor": "Stellan Skarsgård",
+          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Stellan_Skarsg%C3%A5rd-9707_%28cropped%29.jpg/330px-Stellan_Skarsg%C3%A5rd-9707_%28cropped%29.jpg"
+        }
+      ]
+    }
+  ]
+}

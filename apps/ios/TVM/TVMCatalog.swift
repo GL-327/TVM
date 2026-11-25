@@ -20,6 +20,7 @@ final class TVMCatalog {
     private let session: URLSession
     private var memory: (at: Date, data: CatalogBundle)?
     private var genreMem: [String: (at: Date, items: [MediaItem])] = [:]
+    private var pageMem: [String: (at: Date, items: [MediaItem])] = [:]
     private var metaMem: [String: (at: Date, data: TitleMeta)] = [:]
     private let fallback: [MediaItem]
     private let lock = NSLock()
@@ -44,6 +45,7 @@ final class TVMCatalog {
         lock.lock()
         memory = nil
         genreMem.removeAll()
+        pageMem.removeAll()
         metaMem.removeAll()
         lock.unlock()
         store.clearCacheFiles()
@@ -148,6 +150,38 @@ final class TVMCatalog {
                 return g == lower || (lower == "sci-fi" && g == "science fiction")
             }
         }
+    }
+
+    func page(kind: String, list: String, genre: String? = nil, skip: Int = 0) async -> [MediaItem] {
+        let clamped = min(max(0, skip), 5000)
+        let cleanGenre = genre?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let genreValue = (cleanGenre != nil && !cleanGenre!.isEmpty) ? cleanGenre! : nil
+        let key = "\(kind):\(list):\(genreValue ?? ""):\(clamped)"
+        lock.lock()
+        if let hit = pageMem[key], Date().timeIntervalSince(hit.at) < 20 * 60 {
+            let items = hit.items
+            lock.unlock()
+            return items
+        }
+        lock.unlock()
+
+        var extraParts: [String] = []
+        if let g = genreValue {
+            let encoded = g.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? g
+            extraParts.append("genre=\(encoded)")
+        }
+        if clamped > 0 {
+            extraParts.append("skip=\(clamped)")
+        }
+        let suffix = extraParts.isEmpty ? "" : "/\(extraParts.joined(separator: "&"))"
+        let items = await fetchCatalog("/catalog/\(kind)/\(list)\(suffix).json", kind: kind)
+        if !items.isEmpty {
+            lock.lock()
+            if pageMem.count >= 500 { pageMem.removeAll() }
+            pageMem[key] = (Date(), items)
+            lock.unlock()
+        }
+        return items
     }
 
     func meta(_ id: String) async -> TitleMeta? {

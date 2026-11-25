@@ -56,4 +56,13 @@ writeFileSync(
   'Production build of apps/ui, served by the on-device TVM core. Not a web clip.\n',
 );
 
+// Keep bundled shared content JSONs synchronized with packages/content/.
+const CONTENT_SRC = join(REPO, 'packages', 'content');
+for (const name of ['avatars.json', 'changelog.json', 'events.json', 'free-channels.json', 'parental.json', 'services.json']) {
+  const from = join(CONTENT_SRC, name);
+  if (existsSync(from)) {
+    cpSync(from, join(ROOT, 'TVM', name));
+  }
+}
+
 console.log(`bundled UI -> ${DEST}`);

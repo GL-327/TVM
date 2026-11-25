@@ -5,7 +5,9 @@ final class TVMLocalCore {
     let catalog: TVMCatalog
     let rd: TVMRealDebrid
     let plans: TVMPlans
+    let content: TVMContent
     let media: TVMMedia
+    let reviews: TVMReviews
     let accounts: TVMAccounts
     /// Films and episodes saved on the iPhone (TVMDownloads).
     let downloads: TVMDownloads
@@ -34,14 +36,17 @@ final class TVMLocalCore {
             configuration.httpAdditionalHeaders = ["Accept-Language": TVMPrefs.acceptLanguage(TVMPrefs.load(store).language)]
             self.session = URLSession(configuration: configuration)
         }
+        content = TVMContent(store: store, session: self.session)
         catalog = TVMCatalog(store: store, session: self.session)
         rd = TVMRealDebrid(session: self.session)
         plans = TVMPlans(store: store)
-        media = TVMMedia(store: store, catalog: catalog, rd: rd, plans: plans)
+        let pinGuard = TVMPinGuard()
+        let mediaInstance = TVMMedia(store: store, catalog: catalog, rd: rd, plans: plans, content: content, pinGuard: pinGuard)
+        media = mediaInstance
+        reviews = TVMReviews(itemLookup: { id in await mediaInstance.item(id) }, session: self.session)
         accounts = TVMAccounts(store: store)
-        let player = media
         downloads = TVMDownloads(store: store) { id, language, height in
-            await player.download(id: id, language: language, maxHeight: height)
+            await mediaInstance.download(id: id, language: language, maxHeight: height)
         }
         liveReflector = TVMLiveReflector(session: self.session)
         if let saved = store.readJSON("live.json") as? [String: Any] {
@@ -148,26 +153,110 @@ final class TVMLocalCore {
             do { return .json(200, rdStatusJSON(try await media.setToken(token))) }
             catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "token rejected"]) }
         }
+        if path == "/api/changelog" && method == "GET" {
+            return .json(200, content.changelogPayload())
+        }
+        if path.hasPrefix("/api/content/") && method == "GET" {
+            let name = String(path.dropFirst("/api/content/".count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard TVMContent.contentNames.contains(name) else {
+                return .json(404, ["error": "not_found"])
+            }
+            let payload: [String: Any]? = TVMContent.refreshable[name] != nil ? await content.fresh(name) : content.load(name)
+            if let payload { return .json(200, payload) }
+            return .json(404, ["error": "not_found"])
+        }
         if path == "/api/profiles" && method == "GET" { return .json(200, media.profilesJSON()) }
         if path == "/api/profiles" && method == "POST" {
-            do { return .json(200, try media.createProfile(json["name"] as? String ?? "")) }
-            catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "profile rejected"]) }
+            do {
+                return .json(200, try media.createProfile(
+                    json["name"] as? String ?? "",
+                    hue: json["hue"] is NSNull ? nil : JSONValue.int(json["hue"]),
+                    avatarRaw: json.keys.contains("avatar") ? json["avatar"] : nil,
+                    kindRaw: json["kind"] as? String,
+                    maxAgeRaw: json["maxAge"],
+                    pinRaw: json["pin"]
+                ))
+            } catch {
+                return profileErrorReply(error)
+            }
         }
         if path == "/api/profiles" && method == "PUT" {
-            guard let id = json["id"] as? String, let name = json["name"] as? String else {
-                return .json(400, ["error": "id and name are required"])
+            do {
+                return .json(200, try media.updateProfile(json))
+            } catch {
+                return profileErrorReply(error)
             }
-            return .json(200, media.renameProfile(id: id, name: name))
         }
         if path == "/api/profiles/active" && method == "POST" {
             guard let id = json["id"] as? String else { return .json(400, ["error": "id must be a string"]) }
-            do { return .json(200, try media.switchProfile(id)) }
-            catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "profile rejected"]) }
+            do {
+                let pin = try extractPin(json, key: "pin")
+                return .json(200, try media.switchProfile(id, pin: pin))
+            } catch {
+                return profileErrorReply(error)
+            }
+        }
+        if path == "/api/profiles/verify-pin" && method == "POST" {
+            guard let id = json["id"] as? String else { return .json(400, ["error": "id must be a string"]) }
+            do {
+                let pin = try extractPin(json, key: "pin")
+                return .json(200, try media.verifyProfilePIN(id: id, pin: pin))
+            } catch let pinError as PinFailure {
+                if pinError.errorCode == "pin-wrong" || pinError.errorCode == "pin-required" {
+                    return .json(200, ["ok": false, "error": pinError.errorCode])
+                }
+                return .json(pinError.httpStatus, pinError.json())
+            } catch {
+                return profileErrorReply(error)
+            }
         }
         if path == "/api/profiles/remove" && method == "POST" {
             guard let id = json["id"] as? String else { return .json(400, ["error": "id must be a string"]) }
-            do { return .json(200, try media.removeProfile(id)) }
-            catch { return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "profile rejected"]) }
+            do {
+                let pin = try extractPin(json, key: "pin")
+                return .json(200, try media.removeProfile(id, pin: pin))
+            } catch {
+                return profileErrorReply(error)
+            }
+        }
+        if path == "/api/events/active" && method == "GET" {
+            return .json(200, await media.activeEvents())
+        }
+        if path == "/api/services" && method == "GET" {
+            return .json(200, await media.servicesJSON())
+        }
+        if path == "/api/services/connected" && method == "POST" {
+            guard let id = JSONValue.string(json["id"]) else {
+                return .json(400, ["error": "id must be a string"])
+            }
+            guard let connected = json["connected"] as? Bool else {
+                return .json(400, ["error": "connected must be a boolean"])
+            }
+            do {
+                return .json(200, try await media.setServiceConnected(id: id, connected: connected))
+            } catch {
+                return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "service rejected"])
+            }
+        }
+        if path == "/api/rails/more" && method == "GET" {
+            let railId = (query["id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard TVMMedia.isValidRailId(railId) else {
+                return .json(400, ["error": "rail id is invalid"])
+            }
+            let skip = Int(query["skip"] ?? "") ?? 0
+            let page = query["page"].flatMap(Int.init)
+            do {
+                return .json(200, try await media.railMore(id: railId, skipParam: skip, pageParam: page))
+            } catch {
+                return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "rail rejected"])
+            }
+        }
+        if path == "/api/reviews" && method == "GET" {
+            let rawId = (query["id"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard TVMReviews.isValidImdbId(rawId), let payload = await reviews.get(rawId) else {
+                return .json(400, ["error": "id must be an IMDb id"])
+            }
+            return .json(200, payload.json())
         }
         if path == "/api/apps" && method == "GET" { return .json(200, media.appsList()) }
         if path.hasPrefix("/api/apps/") && method == "GET" {
@@ -237,7 +326,9 @@ final class TVMLocalCore {
                 link: JSONValue.string(json["link"]),
                 title: JSONValue.string(json["title"]),
                 season: JSONValue.int(json["season"]),
-                episode: JSONValue.int(json["episode"])
+                episode: JSONValue.int(json["episode"]),
+                screenHeight: JSONValue.int(json["screenHeight"]),
+                maxHeight: JSONValue.int(json["maxHeight"])
             )
             return .json(result.0, result.1)
         }
@@ -495,6 +586,7 @@ final class TVMLocalCore {
             return .json(200, ["ok": true])
         }
         if path == "/api/live" && method == "GET" { return .json(200, liveStatus()) }
+        if path == "/api/live/free" && method == "GET" { return .json(200, await media.freeLiveJSON()) }
         if path == "/api/live" && method == "PUT" {
             let text = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let url = (json["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -621,10 +713,42 @@ final class TVMLocalCore {
         return out
     }
 
+    private func extractPin(_ json: [String: Any], key: String) throws -> String? {
+        guard json.keys.contains(key) else { return nil }
+        guard let raw = json[key], !(raw is NSNull) else { return nil }
+        guard let str = raw as? String else { throw PinFailure(400, "pin-invalid") }
+        return str
+    }
+
+    private func profileErrorReply(_ error: Error) -> HTTPReply {
+        if let pin = error as? PinFailure {
+            return .json(pin.httpStatus, pin.json())
+        }
+        return .json(400, ["error": (error as? LocalizedError)?.errorDescription ?? "profile rejected"])
+    }
+
     // Native VLC handles HLS, raw MPEG-TS and extensionless provider streams.
     private func playLive(_ id: String) async -> HTTPReply {
-        guard plans.status()["liveTv"] as? Bool == true else { return .json(409, ["kind": "unavailable", "reason": "Live TV requires the Live TV add-on."]) }
-        guard let channel = (testChannels() + liveChannels).first(where: { $0["id"] as? String == id }),
+        let channel: [String: Any]?
+        if id.hasPrefix("live:free:") {
+            let targetId = String(id.dropFirst("live:free:".count))
+            let doc = await content.fresh("free-channels")
+            let rawList = doc?["channels"] as? [[String: Any]] ?? []
+            guard let freeChannel = rawList.first(where: {
+                let rid = $0["id"] as? String ?? ""
+                return rid == targetId || "live:free:\(rid)" == id
+            }) else {
+                return .json(409, ["kind": "unavailable", "reason": "not-in-library"])
+            }
+            guard TVMParental.liveGroupAllowed(freeChannel["group"] as? String, maxAge: media.ageLevel(), levels: media.parentalLevels()) else {
+                return .json(403, ["kind": "unavailable", "reason": "parental-blocked"])
+            }
+            channel = freeChannel
+        } else {
+            guard plans.status()["liveTv"] as? Bool == true else { return .json(409, ["kind": "unavailable", "reason": "Live TV requires the Live TV add-on."]) }
+            channel = (testChannels() + liveChannels).first(where: { $0["id"] as? String == id })
+        }
+        guard let channel,
               let raw = channel["url"] as? String, let url = URL(string: raw),
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
             return .json(409, ["kind": "unavailable", "reason": "not-in-library"])
@@ -635,6 +759,14 @@ final class TVMLocalCore {
     }
 
     private func liveStatus() -> [String: Any] {
+        let age = media.ageLevel()
+        let levels = media.parentalLevels()
+        let allowedTests = testChannels().filter {
+            TVMParental.liveGroupAllowed($0["group"] as? String, maxAge: age, levels: levels)
+        }
+        let allowedLive = liveChannels.filter {
+            TVMParental.liveGroupAllowed($0["group"] as? String, maxAge: age, levels: levels)
+        }
         let groups = Dictionary(grouping: liveChannels) { ($0["group"] as? String) ?? "Other" }
             .map { ["name": $0.key, "count": $0.value.count, "picked": $0.value.filter { livePicks.contains($0["id"] as? String ?? "") }.count] }
         return [
@@ -642,7 +774,7 @@ final class TVMLocalCore {
             "host": JSONValue.orNull(liveHost),
             "username": JSONValue.orNull(liveUser),
             "configured": liveURL != nil || liveHost != nil,
-            "channels": (testChannels() + Array(liveChannels.prefix(48))).map { channel in
+            "channels": (allowedTests + Array(allowedLive.prefix(48))).map { channel in
                 var card = channel
                 card["picked"] = livePicks.contains(channel["id"] as? String ?? "")
                 card.removeValue(forKey: "url")
@@ -650,15 +782,19 @@ final class TVMLocalCore {
             },
             "error": JSONValue.orNull(liveChannels.isEmpty && liveURL != nil ? "The playlist had no channels this phone can list." : nil),
             "picked": livePicks.count,
-            "total": liveChannels.count,
+            "total": allowedLive.count,
             "groups": groups,
-            "needsPicks": livePicks.isEmpty && liveChannels.count > 48,
+            "needsPicks": livePicks.isEmpty && allowedLive.count > 48,
             "pickLimit": 48,
         ]
     }
 
     private func liveCatalog(q: String, group: String, offset: Int) -> [String: Any] {
-        var items = liveChannels
+        let age = media.ageLevel()
+        let levels = media.parentalLevels()
+        var items = liveChannels.filter {
+            TVMParental.liveGroupAllowed($0["group"] as? String, maxAge: age, levels: levels)
+        }
         if !q.isEmpty {
             items = items.filter { ($0["name"] as? String ?? "").localizedCaseInsensitiveContains(q) }
         }

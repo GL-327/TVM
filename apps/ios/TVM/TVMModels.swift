@@ -3,7 +3,7 @@ import Foundation
 enum StandalonePolicy {
     static let requiresLANToken = false
     static let bundledLANToken: String? = nil
-    static let version = "1.0.0"
+    static let version = "1.1.0"
     /// What this build's native code provides to the interface. Bump it, and
     /// scripts/native-api.json, when the interface starts relying on a new
     /// native route; an interface that needs more is never applied here.
@@ -102,8 +102,13 @@ struct CatalogRail {
     var id: String
     var title: String
     var items: [MediaItem]
+    var more: Bool? = nil
+    var page: Int? = nil
     func json() -> [String: Any] {
-        ["id": id, "title": title, "items": items.map { $0.json() }]
+        var out: [String: Any] = ["id": id, "title": title, "items": items.map { $0.json() }]
+        if let more { out["more"] = more }
+        if let page { out["page"] = page }
+        return out
     }
 }
 
@@ -122,13 +127,68 @@ struct RdStatus {
     }
 }
 
+struct ProfilePin: Equatable {
+    var hash: String
+    var salt: String
+    var iter: Int = TVMPins.iterations
+
+    func json() -> [String: Any] {
+        ["hash": hash, "salt": salt, "iter": iter]
+    }
+}
+
 struct ProfileRecord: Equatable {
     var id: String
     var name: String
     var hue: Int
     var created: String
+    var avatar: String? = nil
+    var kind: String = "standard"
+    var maxAge: Int = 18
+    var pin: ProfilePin? = nil
+    var extra: [String: Any] = [:]
+
+    var locked: Bool { pin != nil }
+
+    static func == (lhs: ProfileRecord, rhs: ProfileRecord) -> Bool {
+        lhs.id == rhs.id &&
+            lhs.name == rhs.name &&
+            lhs.hue == rhs.hue &&
+            lhs.created == rhs.created &&
+            lhs.avatar == rhs.avatar &&
+            lhs.kind == rhs.kind &&
+            lhs.maxAge == rhs.maxAge &&
+            lhs.pin == rhs.pin
+    }
+
     func json() -> [String: Any] {
-        ["id": id, "name": name, "hue": hue, "created": created]
+        [
+            "id": id,
+            "name": name,
+            "hue": hue,
+            "created": created,
+            "avatar": JSONValue.orNull(avatar),
+            "kind": kind,
+            "maxAge": maxAge,
+            "locked": locked,
+        ]
+    }
+
+    func storageJSON() -> [String: Any] {
+        var out = extra
+        out["id"] = id
+        out["name"] = name
+        out["hue"] = hue
+        out["created"] = created
+        out["avatar"] = JSONValue.orNull(avatar)
+        out["kind"] = kind
+        out["maxAge"] = maxAge
+        if let pin {
+            out["pin"] = pin.json()
+        } else {
+            out.removeValue(forKey: "pin")
+        }
+        return out
     }
 }
 
