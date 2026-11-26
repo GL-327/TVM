@@ -46,8 +46,8 @@ describe('Home as the launcher in front of TVM Stream', () => {
       events: Array<{ id: string; rail: { items: string[] } }>;
     };
     const event = events.events.find((entry) => entry.id === 'sunrise-on-the-reaping');
-    expect(src).toContain('home__story-grid');
-    expect(src).toContain('The Hunger Games · story order');
+    expect(src).toContain('rail--numbered');
+    expect(src).not.toContain('home__story');
     expect(event?.rail.items.slice(0, 2)).toEqual(['tt10545296', 'tt32558705']);
   });
 
@@ -135,8 +135,7 @@ describe('Home rails keep pictures', () => {
     expect(art).toContain('src={original}');
     expect(home).toContain('memo(function HomeShelves');
     expect(home).toContain('requestAnimationFrame(apply)');
-    expect(home).toContain('home__story-grid');
-    expect(home).toContain('aria-label="The Hunger Games films in story order"');
+    expect(home).toContain('rail--numbered');
   });
 
   it('keeps channel logos and app tile icon imgs', () => {
@@ -199,7 +198,7 @@ describe('Home category rails do not skip titles', () => {
     const poster = readFileSync(join(dir, '../components/PosterCard.tsx'), 'utf8');
     const hop = readFileSync(join(dir, '../nav/hopQueue.ts'), 'utf8');
     const css = readFileSync(join(dir, '../app.css'), 'utf8');
-    expect(home).toContain('<Rail title={rail.title} loop={rail.loop}>');
+    expect(home).toContain('<Rail title={rail.title} loop={rail.loop}');
     expect(home).toContain('mapRailPosters(rail.titles');
     expect(rail).toContain('shouldLoopRail');
     expect(rail).toContain('className="rail__title"');

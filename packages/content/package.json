@@ -7,6 +7,7 @@
   "exports": {
     "./changelog.json": "./changelog.json",
     "./events.json": "./events.json",
+    "./intros.json": "./intros.json",
     "./free-channels.json": "./free-channels.json",
     "./services.json": "./services.json",
     "./avatars.json": "./avatars.json",

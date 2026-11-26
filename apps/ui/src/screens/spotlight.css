@@ -3,6 +3,9 @@
 .spotlight,
 .home--launcher .spotlight.stage--home {
   position: relative;
+  /* `.home` is a fixed-height flex column; without this the hero shrinks to its
+     min-height and the copy rises over the wordmark. */
+  flex: 0 0 auto;
   isolation: isolate;
   overflow: hidden;
   min-height: clamp(500px, 68vh, 740px);
@@ -86,7 +89,6 @@
     color-mix(in srgb, var(--spotlight-accent, var(--tvm-accent)) 14%, transparent) 42%,
     transparent 74%
   );
-  filter: blur(42px);
   animation: spotlight-breathe 7.2s ease-in-out infinite alternate;
 }
 
@@ -427,10 +429,10 @@ html body .spotlight__actions .tvm-button.spotlight__mute {
 }
 
 @media (max-width: 700px) {
-  .spotlight,
-  .home--launcher .spotlight.stage--home {
-    min-height: 430px;
-    padding: 76px var(--tvm-gutter) 28px;
+  html body .home--launcher .spotlight.stage--home,
+  html.phone-shell body .home--launcher .spotlight.stage--home {
+    min-height: 460px;
+    padding: calc(var(--tvm-safe-y, 0px) + 72px) var(--tvm-gutter) 28px;
   }
 
   .spotlight__scrim {
@@ -443,4 +445,30 @@ html body .spotlight__actions .tvm-button.spotlight__mute {
         var(--tvm-bg) 100%
       );
   }
+}
+
+/* Scrolling up under the fixed nav: the copy fades out before it can cross the
+   wordmark, and the nav gets a soft top shade so rails never fight it. */
+.spotlight__copy {
+  opacity: clamp(0, calc(1 - var(--spotlight-scroll, 0) * 7), 1);
+}
+
+html body .ribbon.polish-nav {
+  border-radius: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tvm-bg) 78%, transparent), transparent);
+}
+
+/* Off screen (scrolled past, tab hidden, another screen on top): nothing in the
+   hero animates, and the decorative layers are not painted at all. */
+.spotlight[data-active='false'] .spotlight__particles,
+.spotlight[data-active='false'] .spotlight__glow {
+  display: none;
+}
+
+.spotlight[data-active='false'] :is(.spotlight__logo, .spotlight__logo::after, .spotlight__copy > *, .stage__pictures) {
+  animation-play-state: paused;
+}
+
+.spotlight[data-active='false'] .spotlight__media {
+  will-change: auto;
 }

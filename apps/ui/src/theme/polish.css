@@ -43,13 +43,6 @@ html {
   --tvm-material-shadow-lift: 0 14px 34px rgb(0 0 0 / .38);
   --tvm-surface-2: var(--tvm-bg-elevated, #1a1d25);
   --tvm-surface-3: var(--tvm-surface-hover, #232733);
-  --tvm-glass-bg: var(--tvm-material-tint);
-  --tvm-glass-bg-elevated: var(--tvm-material-sheet-tint);
-  --tvm-glass-blur: var(--tvm-material-diffusion);
-  --tvm-glass27-blur-chrome: var(--tvm-material-diffusion);
-  --tvm-glass27-blur-sheet: var(--tvm-material-sheet);
-  --tvm-glass-ink: var(--tvm-text, #f5f7fa);
-  --tvm-glass-ink-muted: var(--tvm-text-muted, #a9b0bc);
 }
 html[data-font='inter'] { --tvm-font-family: Inter, system-ui, sans-serif; }
 html[data-font='system'] { --tvm-font-family: system-ui, sans-serif; }
@@ -79,94 +72,22 @@ html[data-theme='light'] {
   --tvm-material-shadow: 0 10px 30px rgb(18 50 74 / .14);
   --tvm-material-shadow-sm: 0 4px 14px rgb(18 50 74 / .10);
   --tvm-material-shadow-lift: 0 14px 34px rgb(18 50 74 / .18);
-  --tvm-glass-ink: #12324a;
-  --tvm-glass-ink-muted: #2a5a68;
 }
 body { font-weight: 450; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
 .page .page__heading, .home .page__heading { font-size: var(--tvm-font-size-h1); font-weight: 700; letter-spacing: -.02em; }
 .page .rail__title, .home .rail__title { font-size: var(--tvm-font-size-h2); font-weight: 650; letter-spacing: -.015em; text-transform: none; }
 
-/* Clear Liquid Glass material (spec 3.1) and 1.4 control geometry (spec 3.4) */
+/* 1.4 control geometry: rounded rectangles, 44px targets. The glass material itself
+   (blur, wash, rim, shadow, spring) is the 1.3.2 one in liquidGlass.css. */
 html .glass,
 html body .tvm-button.tvm-button--glass {
-  position: relative;
-  border: 0;
   border-radius: 12px;
   min-height: 44px;
-  background:
-    radial-gradient(120px circle at var(--glass-x, 16%) var(--glass-y, 0%), var(--glass-light, rgb(255 255 255 / .10)), transparent 100%),
-    linear-gradient(180deg, var(--tvm-top-glow, rgb(255 255 255 / .065)) 0%, rgb(255 255 255 / .015) 18%, transparent 30%),
-    var(--tvm-material-tint);
-  -webkit-backdrop-filter: var(--tvm-material-diffusion);
-  backdrop-filter: var(--tvm-material-diffusion);
-  box-shadow: var(--tvm-material-rim), var(--tvm-material-shadow);
-  color: var(--tvm-glass-ink, var(--tvm-text));
-  transition:
-    transform 240ms var(--tvm-spring-snappy),
-    box-shadow 200ms var(--tvm-spring-gentle),
-    background-color 180ms ease,
-    color 180ms ease;
 }
-
-/* Crisp 1 px directional specular rim: 75% upper-left, 15% around, 35% lower-right counter-highlight */
-html .glass::before,
-html body .tvm-button.tvm-button--glass::before,
-html .polish-nav .polish-nav__capsule::before,
-html body .glass-segment::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    135deg,
-    var(--tvm-rim-ul) 0%,
-    var(--tvm-rim-mid) 38%,
-    var(--tvm-rim-mid) 64%,
-    var(--tvm-rim-lr) 100%
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  z-index: 2;
-}
-
 html .glass--card,
-html .glass--sheet {
-  border-radius: 16px;
-  background:
-    radial-gradient(120px circle at var(--glass-x, 16%) var(--glass-y, 0%), var(--glass-light, rgb(255 255 255 / .10)), transparent 100%),
-    linear-gradient(180deg, var(--tvm-top-glow, rgb(255 255 255 / .065)) 0%, rgb(255 255 255 / .015) 18%, transparent 30%),
-    var(--tvm-material-sheet-tint);
-  -webkit-backdrop-filter: var(--tvm-material-sheet);
-  backdrop-filter: var(--tvm-material-sheet);
-  color: var(--tvm-text);
-}
-
+html .glass--sheet { border-radius: 16px; }
 html .glass--chrome,
-html body .tvm-button.back-btn {
-  border-radius: 999px;
-  box-shadow: var(--tvm-material-rim), var(--tvm-material-shadow-sm);
-}
-
-/* Hover / focus reaction: lifts 2 px and brightens the rim ~20% */
-html body .tvm-button.tvm-button--glass:is(:hover, :focus-visible, [data-focused='true']),
-html body button.glass:is(:hover, :focus-visible, [data-focused='true']) {
-  --glass-light: rgb(255 255 255 / .14);
-  --tvm-rim-ul: rgb(255 255 255 / .90);
-  --tvm-rim-mid: rgb(255 255 255 / .22);
-  --tvm-rim-lr: rgb(255 255 255 / .44);
-  transform: translateY(-2px);
-  box-shadow: var(--tvm-material-rim), var(--tvm-material-shadow-lift);
-}
-
-/* Press reaction: scales to 0.97 and springs back (420/32) */
-html body .tvm-button.tvm-button--glass:active:not(:disabled),
-html body button.glass:active:not(:disabled) {
-  transform: scale(.97) !important;
-  transition-duration: 95ms !important;
-}
+html body .tvm-button.back-btn { border-radius: 999px; }
 
 html body .tvm-button--primary {
   min-height: 44px;
@@ -195,34 +116,18 @@ html body .tvm-button--glass:is(.tvm-button--quiet, .tvm-button--sm) {
   box-shadow: var(--tvm-material-rim), var(--tvm-material-shadow-sm);
 }
 
-/* Reduce transparency: swap every glass surface for a solid surface with the same rim and shadow */
+/* Reduce transparency: every glass surface becomes a solid one */
 html[data-transparency='reduced'] {
-  --tvm-material-diffusion: none;
-  --tvm-material-sheet: none;
+  --tvm-glass-bg: var(--tvm-surface-2, #1a1d25);
+  --tvm-glass-bg-elevated: var(--tvm-surface, #12141a);
   --tvm-material-tint: var(--tvm-surface-2, #1a1d25);
   --tvm-material-sheet-tint: var(--tvm-surface, #12141a);
-  --tvm-glass-ink: var(--tvm-text);
-  --tvm-glass-ink-muted: var(--tvm-text-muted);
 }
-html[data-transparency='reduced'] body :is([data-lens], .glass, .tvm-button--glass, .glass-segment, .player-frost),
-html[data-perf='on'] body [data-lens] {
+html[data-transparency='reduced'] body :is([data-lens], .glass, .tvm-button--glass, .glass-segment, .player-frost, .tvm-scene) {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-@media (prefers-reduced-transparency: reduce) {
-  html {
-    --tvm-material-diffusion: none;
-    --tvm-material-sheet: none;
-    --tvm-material-tint: var(--tvm-surface-2, #1a1d25);
-    --tvm-material-sheet-tint: var(--tvm-surface, #12141a);
-    --tvm-glass-ink: var(--tvm-text);
-    --tvm-glass-ink-muted: var(--tvm-text-muted);
-  }
-  html body :is([data-lens], .glass, .tvm-button--glass, .glass-segment, .player-frost) {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-}
+html[data-transparency='reduced'] .tvm-scene { display: none; }
 
 html .tvm-button:not(.tvm-switch):focus-visible,
 html .tvm-button:not(.tvm-switch)[data-focused='true'] { outline: 2px solid var(--tvm-accent); outline-offset: 2px; }
@@ -259,19 +164,10 @@ html body .tvm-button.tvm-switch[data-focused='true'] { outline: 2px solid var(-
 html body .glass-segment {
   position: relative;
   padding: 3px; gap: 2px; border-radius: 12px; border: 0;
-  background:
-    linear-gradient(180deg, var(--tvm-top-glow, rgb(255 255 255 / .05)) 0%, transparent 32%),
-    color-mix(in srgb, var(--tvm-surface-2, #1a1d25) 86%, transparent);
-  -webkit-backdrop-filter: var(--tvm-material-diffusion);
-  backdrop-filter: var(--tvm-material-diffusion);
-  box-shadow: var(--tvm-material-rim), var(--tvm-material-shadow-sm);
 }
 html[data-theme='light'] body .glass-segment {
   background: rgb(18 50 74 / .09);
   box-shadow: inset 0 1px 2px rgb(18 50 74 / .12), 0 0 0 1px rgb(18 50 74 / .10);
-}
-html[data-transparency='reduced'] body .glass-segment {
-  background: var(--tvm-surface-2);
 }
 html body .glass-segment__thumb {
   top: 3px; bottom: 3px; border-radius: 9px; opacity: 0; transition: none;
@@ -448,10 +344,10 @@ html body .rail .channel-card[data-focused='true'] .channel-card__art {
   box-shadow: 0 10px 18px rgb(0 0 0 / .65);
 }
 @media (hover: hover) {
-  html body main:has(:is(.poster, .channel-card):hover) :is(.poster, .channel-card):not(:hover)[data-focused='true'] :is(.poster__art, .channel-card__art) {
+  html[data-card-hover] body :is(.poster, .channel-card):not(:hover)[data-focused='true'] :is(.poster__art, .channel-card__art) {
     transform: none; outline: none; box-shadow: none; filter: none;
   }
-  html body main:has(:is(.poster, .channel-card):hover) .poster--landscape:not(:hover)[data-focused='true'] .poster__meta {
+  html[data-card-hover] body .poster--landscape:not(:hover)[data-focused='true'] .poster__meta {
     opacity: 0;
   }
   html body .rail :is(.poster, .channel-card):hover { z-index: 3; position: relative; }

@@ -1,6 +1,3 @@
-import { ensureLiquidGlassRuntime } from '../components/liquidLens';
-import { migrateStoredGlass } from './glass';
-
 export type FontChoice = 'geist' | 'inter' | 'system';
 export type AccentChoice = 'default' | 'indigo' | 'coral' | 'amber' | 'emerald';
 
@@ -39,9 +36,7 @@ export function readTransparency(): boolean {
 }
 
 export function applyTransparency(reduced = readTransparency()): void {
-  migrateStoredGlass();
   document.documentElement.dataset.transparency = reduced ? 'reduced' : 'clear';
   save('tvm.reduceTransparency', reduced ? 'on' : 'off');
-  ensureLiquidGlassRuntime();
   window.dispatchEvent(new CustomEvent('tvm:appearance'));
 }

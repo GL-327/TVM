@@ -92,6 +92,22 @@ for (const service of services?.services ?? []) {
   if (!hex(service.accent)) fail(`${where}: accent`);
 }
 
+const intros = load('intros.json');
+if (intros?.schema !== 1 || !Array.isArray(intros?.intros) || intros.intros.length === 0) fail('intros.json: schema 1 with intros');
+unique(intros?.intros ?? [], 'intros.json');
+const eventIds = new Set((events?.events ?? []).map((event) => event.id));
+for (const intro of intros?.intros ?? []) {
+  const where = `intros.json ${intro.id}`;
+  if (!eventIds.has(intro.event)) fail(`${where}: event ${intro.event} not in events.json`);
+  if (!['mockingjay', 'doom'].includes(intro.style)) fail(`${where}: style`);
+  if (!Array.isArray(intro.imdbIds) || intro.imdbIds.length === 0 || !intro.imdbIds.every(imdb)) fail(`${where}: imdbIds are IMDb ids`);
+  if (new Set(intro.imdbIds).size !== intro.imdbIds.length) fail(`${where}: duplicate imdbIds`);
+  try { new RegExp(intro.titlePattern, 'i'); } catch { fail(`${where}: titlePattern is not a valid regex`); }
+  if (!hex(intro.accent) || !hex(intro.glow)) fail(`${where}: accent/glow colours`);
+  if (!Number.isInteger(intro.durationMs) || intro.durationMs < 2500 || intro.durationMs > 4000) fail(`${where}: durationMs 2500 to 4000`);
+  for (const key of Object.keys(intro.titles ?? {})) if (!intro.imdbIds.includes(key)) fail(`${where}: title for ${key} which is not in imdbIds`);
+}
+
 const parental = load('parental.json');
 const ages = (parental?.levels ?? []).map((level) => level.maxAge);
 if (parental?.schema !== 1 || ages.join(',') !== '7,12,15,18') fail('parental.json: levels 7, 12, 15, 18');

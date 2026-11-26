@@ -8,7 +8,7 @@ import './scene.css';
 import './motion.css';
 import './liquidGlass.css';
 import './mobile.css';
-
+import { applyStoredGlass } from './glass';
 
 export const THEME_STORAGE_KEY = 'tvm.theme';
 export { THEME_DEFAULT_BOOT };
@@ -54,6 +54,7 @@ export function applyTheme(id: ThemeId | string): ThemeId {
 }
 
 export function applyStoredTheme(): ThemeId {
+  applyStoredGlass();
   const store = storage();
   if (store !== null && store.getItem(THEME_DEFAULT_BOOT) !== '1') {
     try {

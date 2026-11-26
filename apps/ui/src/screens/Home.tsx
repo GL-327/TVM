@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openModals, visibleScreen } from '@tvm/nav';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
-import { mapRailPosters, PosterCard } from '../components/PosterCard';
+import { mapRailPosters } from '../components/PosterCard';
 import { Rail, RailPaging } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
 import { RailSkeletons } from '../components/Skeleton';
@@ -39,29 +39,13 @@ import { updateRequired, useReleaseConfig } from '../data/releaseConfig';
 import { openDetails } from '../data/openDetails';
 import { prefersReducedMotion, subscribeMotionPreference } from '../theme/motion';
 
-type Shelf = { id: string; title: string; more?: boolean; titles: Title[]; loop?: boolean };
+type Shelf = { id: string; title: string; more?: boolean; titles: Title[]; loop?: boolean; numbered?: boolean };
 const HomeShelves = memo(function HomeShelves({ shelves, loading, openTitle, onLoadMore }: {
   shelves: Shelf[]; loading: boolean; openTitle: (title: Title) => void; onLoadMore: (id: string) => void;
 }): React.JSX.Element {
   return <div className="home__shelf">
-    {shelves.map((rail) => rail.id === 'event-sunrise-on-the-reaping' ? (
-      <section className="home__story" key={rail.id} aria-labelledby="home-story-title">
-        <div className="home__story-copy">
-          <p className="home__story-kicker">The Hunger Games · story order</p>
-          <h2 id="home-story-title">{rail.title}</h2>
-          <p>Start with the 10th Games, then follow Haymitch and Katniss.</p>
-        </div>
-        <ol className="poster-grid home__story-grid" data-wrap="grid" aria-label="The Hunger Games films in story order">
-          {rail.titles.filter((title, index, titles) => titles.findIndex((item) => item.id === title.id) === index).map((title, index) => (
-            <li className="home__story-card" key={`${rail.id}-${title.id}-${index}`}>
-              <span className="home__story-number" aria-hidden="true">{index + 1}</span>
-              <PosterCard title={title} prefix={rail.id} index={index} onSelect={openTitle} />
-            </li>
-          ))}
-        </ol>
-      </section>
-    ) : <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
-      <Rail title={rail.title} loop={rail.loop}>
+    {shelves.map((rail) => <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
+      <Rail title={rail.title} loop={rail.loop} className={rail.numbered ? 'rail--numbered' : undefined}>
         {mapRailPosters(rail.titles, rail.id, openTitle, rail.id === 'continue' ? { layout: 'landscape' } : undefined)}
       </Rail>
     </RailPaging>)}
@@ -234,8 +218,12 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     const apply = (): void => {
       raf = 0;
       const height = stage.offsetHeight;
-      stage.style.setProperty('--hero-fade', String(heroScrollFade(page.scrollTop, height)));
-      stage.style.setProperty('--spotlight-scroll', String(Math.min(1, page.scrollTop / Math.max(1, height))));
+      // Once the hero is fully past the top its look cannot change; stop restyling it on every scroll frame.
+      const pastHero = height > 0 && page.scrollTop >= height;
+      if (!pastHero || stage.style.getPropertyValue('--spotlight-scroll') !== '1') {
+        stage.style.setProperty('--hero-fade', String(heroScrollFade(page.scrollTop, height)));
+        stage.style.setProperty('--spotlight-scroll', String(Math.min(1, page.scrollTop / Math.max(1, height))));
+      }
       const scrolledOut = height > 0 && page.scrollTop > height * 0.35;
       setHeroScrolledOut((prev) => (prev === scrolledOut ? prev : scrolledOut));
     };
@@ -322,9 +310,10 @@ export function Home(_props: ScreenProps): React.JSX.Element {
 
   const eventRail = useMemo(() => {
     if (liveEvent === null) return null;
-    const titles = liveEvent.items.map(asTitle);
+    const titles = liveEvent.items.map(asTitle).filter((title, index, all) => all.findIndex((item) => item.id === title.id) === index);
     if (titles.length === 0) return null;
-    return { id: liveEvent.rail.id, title: liveEvent.rail.title, titles };
+    // Story order is finite and numbered, so it does not loop.
+    return { id: liveEvent.rail.id, title: liveEvent.rail.title, titles, loop: false, numbered: true };
   }, [liveEvent]);
 
   const upcomingTitles = useMemo<Title[]>(() => {

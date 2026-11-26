@@ -72,12 +72,10 @@ describe('appearance preferences (spec 2, 3.1, 3.2)', () => {
     expect(document.documentElement.dataset.accent).toBeUndefined();
   });
 
-  it('toggles Reduce Transparency and silently removes legacy tvm.glass preference', () => {
-    store.set('tvm.glass', 'tinted');
+  it('toggles Reduce Transparency without touching the glass style', () => {
     applyTransparency(true);
     expect(document.documentElement.dataset.transparency).toBe('reduced');
     expect(readTransparency()).toBe(true);
-    expect(store.has('tvm.glass')).toBe(false);
 
     applyTransparency(false);
     expect(document.documentElement.dataset.transparency).toBe('clear');

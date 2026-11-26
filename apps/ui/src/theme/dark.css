@@ -5,18 +5,18 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  --tvm-bg: #07080b;
-  --tvm-bg-deep: #07080b;
-  --tvm-bg-elevated: #1a1d25;
-  --tvm-surface: #12141a;
-  --tvm-surface-hover: #232733;
+  --tvm-bg: #071018;
+  --tvm-bg-deep: #000000;
+  --tvm-bg-elevated: #0c1a2c;
+  --tvm-surface: #102238;
+  --tvm-surface-hover: #163048;
   --tvm-surface-glass: rgba(8, 18, 32, 0.84);
   --tvm-border: #2a5080;
-  --tvm-border-soft: rgba(255, 255, 255, .08);
+  --tvm-border-soft: rgba(140, 180, 220, 0.16);
 
-  --tvm-text: #f5f7fa;
-  --tvm-text-muted: #a9b0bc;
-  --tvm-text-faint: #6e7684;
+  --tvm-text: #e8f0f8;
+  --tvm-text-muted: #9bb0c8;
+  --tvm-text-faint: #6a8298;
 
   --tvm-accent: #6ec8ff;
   --tvm-accent-strong: #9edcff;

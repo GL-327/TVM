@@ -2,6 +2,7 @@
 // player-chrome.css), and the TVM Stream page's chrome and billboard (Library.tsx, StreamChrome.tsx).
 // Sizes are at 1080p, where a rem is 16 px.
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -640,7 +641,7 @@ TEST(timeline_markers_explain_segments_and_chapters_on_legend_and_hover) {
     REQUIRE_EQ(player.MarkerLabelAt(120.0), std::string("Intro"));
     REQUIRE_EQ(player.MarkerLabelAt(30.0), std::string("Recap"));
     REQUIRE_EQ(player.MarkerLabelAt(1400.0), std::string("Credits"));
-    REQUIRE_EQ(player.MarkerLabelAt(485.0), std::string("Chapter \xC2\xB7 New arrivals"));
+    REQUIRE_EQ(player.MarkerLabelAt(485.0), std::string("Chapter: New arrivals"));
 
     player.Hover(120.0 / view.duration);
     TextPainter hoveredIntro;
@@ -650,5 +651,50 @@ TEST(timeline_markers_explain_segments_and_chapters_on_legend_and_hover) {
     player.Hover(480.0 / view.duration);
     TextPainter hoveredChapter;
     player.Paint(hoveredChapter);
-    REQUIRE(hoveredChapter.Has("8:00 \xC2\xB7 Chapter \xC2\xB7 New arrivals"));
+    REQUIRE(hoveredChapter.Has("8:00 \xC2\xB7 Chapter: New arrivals"));
+}
+
+TEST(timeline_legend_lists_only_the_mark_types_present) {
+    using tvm::ui::TimelineMarksPresent;
+    using Marks = std::array<bool, 4>;
+
+    PlayerView none = Playing();
+    none.duration = 1480.0;
+    none.segments = {};
+    none.chapters = {};
+    REQUIRE(TimelineMarksPresent(none) == (Marks{false, false, false, false}));
+
+    PlayerView intro = none;
+    intro.segments[0] = tvm::extras::Segment{95.0, 152.0};
+    REQUIRE(TimelineMarksPresent(intro) == (Marks{true, false, false, false}));
+
+    // Credits that run open-ended, and a chapter inside the title; an empty recap is not drawn.
+    PlayerView mixed = none;
+    mixed.segments[1] = tvm::extras::Segment{30.0, 30.0};
+    mixed.segments[2] = tvm::extras::Segment{1372.0, 0.0, true};
+    mixed.chapters = {{480.0, "New arrivals"}};
+    REQUIRE(TimelineMarksPresent(mixed) == (Marks{false, false, true, true}));
+
+    // A chapter at the very start or past the end is not a tick; nothing shows without a length or when live.
+    PlayerView edge = none;
+    edge.chapters = {{0.0, "Start"}, {1480.0, "End"}};
+    REQUIRE(TimelineMarksPresent(edge) == (Marks{false, false, false, false}));
+    PlayerView live = mixed;
+    live.live = true;
+    REQUIRE(TimelineMarksPresent(live) == (Marks{false, false, false, false}));
+    PlayerView unknown = mixed;
+    unknown.duration = 0.0;
+    REQUIRE(TimelineMarksPresent(unknown) == (Marks{false, false, false, false}));
+
+    // The legend paints only what is present.
+    PlayerView view = intro;
+    PlayerScreen player = Player(view);
+    player.ShowChrome(0.0);
+    player.Tick(200.0);
+    TextPainter painted;
+    player.Paint(painted);
+    REQUIRE(painted.Has("Intro"));
+    REQUIRE(!painted.Has("Recap"));
+    REQUIRE(!painted.Has("Credits"));
+    REQUIRE(!painted.Has("Chapter"));
 }

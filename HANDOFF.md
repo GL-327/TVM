@@ -1,4 +1,4 @@
-# Handoff: TVM 1.4.5 (test build)
+# Handoff: TVM 1.4.6 (test build)
 
 Written 2026-11-26 by Claude on the owner's laptop, continuing the 1.4 polish that the desktop session could not
 finish. **Read this before changing anything.** Delete this file once everything below is done, and remove the
@@ -7,6 +7,21 @@ pointer to it at the top of `CLAUDE.md`.
 The contract is still `docs/1.4/spec.md`. Each builder's report is in `docs/1.4/report-*.md`; the 1.4.3 ones end
 in `-143.md`. 1.4.3 was built by Claude (lead, web audit, Core, integration), OpenAI Codex (phone engines, Roku,
 web extras), Gemini in Antigravity (Liquid Glass) and a Claude Sonnet helper (Windows Settings).
+
+## Update: 1.4.6 (desktop session, 2026-11-26 night)
+
+- **Web look reset:** the owner found 1.4.5 laggy and generated-looking, so apps/ui went back to the **1.3.2 glass,
+  liquid lens and backdrop** (theme/glass.ts, liquidLens.ts, liquidGlass.css, scene.css, SceneField.tsx). The
+  1.4 fixes stayed: centred nav and magnifier, one lit card, no hover clipping, Settings, guide, sync, patch notes.
+  The event row is a plain row again, and the kicker no longer covers the wordmark. Report: `docs/1.4/report-ui-restore.md`.
+- **Hover lag fixed:** two `main:has(...:hover)` rules in polish.css re-styled about 700 elements per hover; they are
+  replaced by an attribute on `<html>` (`components/hoverYield.ts`), and the poster placeholders no longer
+  shimmer. Arrow keys across a row: 5-11 fps went to 30-72 fps on first use, 75 fps warm. Report: `docs/1.4/report-hover-lag.md`.
+- **Franchise intros (web, desktop, phones):** `apps/ui/src/intros/**` and `packages/content/intros.json` (6
+  Hunger Games ids, 74 Marvel/X-Men ids, regex fallback). Each is 3.8 s over loading, skippable, has an Extras
+  switch, and plays once per title per session. **Not on Windows or Roku yet.**
+- **Still wanted by the owner:** the full iOS 26/27 Liquid Glass and a cinematic, less "database" streaming look.
+  The brief is in `docs/1.4/brief-glass2.md`. Do this next, then bring the look and intros to Windows.
 
 ## Update: 1.4.4 and 1.4.5 (desktop session, 2026-11-26 evening)
 

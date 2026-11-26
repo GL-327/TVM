@@ -21,6 +21,7 @@ export const EXTRA_OPTIONS = [
   ['shortcutsOverlay', true, 'Keyboard shortcuts', 'Press ? in the player to see shortcuts.', 'Desktop and web'],
   ['webhook', false, 'Playback webhook', 'Send play, pause, stop and finish events to your URL.'],
   ['announcements', true, 'Announcements', 'Show announcements from TVM on Home.'],
+  ['franchiseIntros', true, 'Franchise intros', 'Play a short animated intro when a Hunger Games or Marvel film starts.'],
 ] as const;
 
 export type ExtraId = typeof EXTRA_OPTIONS[number][0];

@@ -58,7 +58,7 @@ writeFileSync(
 
 // Keep bundled shared content JSONs synchronized with packages/content/.
 const CONTENT_SRC = join(REPO, 'packages', 'content');
-for (const name of ['avatars.json', 'changelog.json', 'events.json', 'free-channels.json', 'parental.json', 'services.json']) {
+for (const name of ['avatars.json', 'changelog.json', 'events.json', 'free-channels.json', 'intros.json', 'parental.json', 'services.json']) {
   const from = join(CONTENT_SRC, name);
   if (existsSync(from)) {
     cpSync(from, join(ROOT, 'TVM', name));

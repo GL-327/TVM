@@ -13,6 +13,7 @@ import {
   shouldLoopRail,
 } from '../nav/loopingRail';
 import { isScrollAnimating, jumpAxis } from '../nav/scrollAnim';
+import { installHoverYield } from './hoverYield';
 import { watchRailBitmaps } from './railBitmaps';
 
 export interface RailPagingState {
@@ -55,6 +56,7 @@ interface RailProps {
    * personal shelves like Continue Watching can pass `loop={false}`.
    */
   loop?: boolean;
+  className?: string;
   hasMore?: boolean;
   onNearEnd?: () => void;
 }
@@ -270,6 +272,7 @@ export function Rail({
   id,
   bare = false,
   loop = true,
+  className,
   hasMore,
   onNearEnd,
 }: RailProps): React.JSX.Element {
@@ -281,11 +284,12 @@ export function Rail({
   useLayoutEffect(() => {
     const el = railRef.current;
     if (el === null) return undefined;
+    installHoverYield();
     return watchRailBitmaps(el);
   }, []);
 
   return (
-    <section ref={railRef} className={`rail${bare ? ' rail--bare' : ''}`} data-rail={id ?? paging?.id}>
+    <section ref={railRef} className={`rail${bare ? ' rail--bare' : ''}${className ? ` ${className}` : ''}`} data-rail={id ?? paging?.id}>
       {!bare && title !== undefined && title !== '' && (
         <header className="rail__header">
           <h2 className="rail__title">{title}</h2>

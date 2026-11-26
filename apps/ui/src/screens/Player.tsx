@@ -12,6 +12,8 @@ import { useNavigate } from '../nav/ViewStackContext';
 import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverlay';
 import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
 import { OrbitLoader } from '../components/OrbitLoader';
+import { extraEnabled } from '../data/polishPrefs';
+import { FranchiseIntro, introSkippedForAutomation, markIntroPlayed, planIntro, type IntroPick } from '../intros';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
 import { nativePlaybackBridge } from '../player/iosEngine';
 import { attachedHls } from '../player/hlsBridge';
@@ -59,6 +61,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   const [badges, setBadges] = useState<string[]>([]);
   const [segments, setSegments] = useState<ExtrasSegments | null>(null);
   const [streamSubtitles, setStreamSubtitles] = useState<PlaybackSubtitle[]>([]);
+  const [intro, setIntro] = useState<IntroPick | null>(null);
+  const introGate = useRef<(() => void) | null>(null);
   const [shell, setShell] = useState(() => playerShellClass(false, 'landscape'));
   audioRef.current = { volume, muted };
 
@@ -161,6 +165,18 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     setHasFrame(false);
     setError(null);
     setOverlay('queue');
+    // A franchise film plays its intro over this loading phase; the stream starts once it ends.
+    let introReady: Promise<void> = Promise.resolve();
+    const introPick = planIntro({
+      id, title: playbackTitle, live,
+      enabled: extraEnabled('franchiseIntros'), automation: introSkippedForAutomation(),
+    });
+    if (introPick !== null) {
+      introReady = new Promise<void>((resolve) => { introGate.current = resolve; });
+      setIntro((prev) => (prev?.titleKey === introPick.titleKey ? prev : introPick));
+    } else {
+      introGate.current = null;
+    }
     setSegments(null);
     setStreamSubtitles([]);
     const key = `${id}|${link}`;
@@ -422,12 +438,15 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
         }
       }
 
+      await introReady;
+      if (cancelled) return;
       start(result);
       setOverlay(null);
     })();
 
     return () => {
       cancelled = true;
+      introGate.current?.();
       request.abort();
       billableRef.current = false;
       persist();
@@ -628,6 +647,21 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     [nextFreeChannel],
   );
 
+  const releaseIntro = useCallback((): void => {
+    setIntro((current) => {
+      if (current !== null) markIntroPlayed(current.titleKey);
+      return current;
+    });
+    introGate.current?.();
+  }, []);
+  const closeIntro = useCallback((): void => setIntro(null), []);
+  // A failed start must not sit behind a running intro.
+  useEffect(() => {
+    if (error === null) return;
+    introGate.current?.();
+    setIntro(null);
+  }, [error]);
+
   const busy = loading || (buffering && !hasFrame);
   const session: PlayerSession = useMemo(
     () => ({
@@ -733,6 +767,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           <p>Press Back to cancel.</p>
         </div>
       )}
+      {intro !== null && <FranchiseIntro key={intro.titleKey} pick={intro} onRelease={releaseIntro} onDone={closeIntro} />}
       {overlay === 'ad' && (
         <div className="player__ad" aria-live="polite">
           <p className="player__queue-kicker">A short break</p>

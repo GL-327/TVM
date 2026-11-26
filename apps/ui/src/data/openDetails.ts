@@ -3,8 +3,16 @@ import type { Navigate } from '../nav/ViewStackContext';
 import { fetchChildren, fetchMedia } from './media';
 import { imdbIdFrom, playIdFor } from './playId';
 
+const prefetchedAt = new Map<string, number>();
+const PREFETCH_TTL_MS = 60_000;
+
+/** At most once per id per minute; hovering back and forth costs nothing. */
 export function prefetchDetails(id: string, kind: Title['kind']): void {
   if (id === '') return;
+  const now = Date.now();
+  const last = prefetchedAt.get(id);
+  if (last !== undefined && now - last < PREFETCH_TTL_MS) return;
+  prefetchedAt.set(id, now);
   void fetchMedia(id);
   if (kind === 'series') void fetchChildren(imdbIdFrom(id) ?? id);
 }

@@ -13,6 +13,7 @@
 // The app owns playback and hands its state over with SetView. The screen's buttons return action
 // commands, which the app carries out.
 
+#include <array>
 #include <optional>
 #include <map>
 #include <string>
@@ -128,6 +129,10 @@ struct PlayerView {
 
 // The playback speeds the speed menu offers, as PlaybackSpeed.tsx lists them.
 inline constexpr double kPlaybackSpeeds[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0};
+
+// Which mark types the seek bar draws for `view`, in legend order: intro, recap, credits, chapter. The legend lists
+// only these. A segment counts once it has length inside the title; a chapter once one lies strictly inside it.
+std::array<bool, 4> TimelineMarksPresent(const PlayerView& view);
 
 // The seconds before the end at which Next Up shows: 45, but never more than a fifth of a short title.
 double NextUpWindowSeconds(double duration);

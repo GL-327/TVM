@@ -14,7 +14,7 @@ export const SYNC_EXTRAS = [
   'onlineSubtitles', 'trailers', 'trailerBackdrops', 'collections', 'comingUp', 'watchStats',
   'animeTitles', 'ratings', 'qualityBadges', 'versionPicker', 'chapters', 'seekPreviews',
   'themeSongs', 'spoilerBlur', 'surpriseMe', 'autoCollections', 'sleepTimer', 'nightMode',
-  'pauseOnMinimize', 'shortcutsOverlay', 'webhook', 'announcements',
+  'pauseOnMinimize', 'shortcutsOverlay', 'webhook', 'announcements', 'franchiseIntros',
 ] as const;
 
 export const SYNC_PREFS = [

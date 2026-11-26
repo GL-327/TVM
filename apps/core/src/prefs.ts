@@ -14,6 +14,7 @@ export const EXTRA_DEFAULTS = {
   versionPicker: true, chapters: true, seekPreviews: true, themeSongs: false,
   spoilerBlur: false, surpriseMe: true, autoCollections: true, sleepTimer: true,
   nightMode: false, pauseOnMinimize: true, shortcutsOverlay: true, webhook: false, announcements: true,
+  franchiseIntros: true,
 };
 type Extras = typeof EXTRA_DEFAULTS;
 export type Quality = 'original' | '2160' | '1080' | '720' | 'saver';

@@ -11,6 +11,7 @@
 #include "catalog/live.h"
 #include "catalog/live_channel.h"
 #include "harness.h"
+#include "ui/controls.h"
 #include "motion/preferences.h"
 #include "nav/focus_tree.h"
 #include "ui/live_tv_view.h"
@@ -429,6 +430,20 @@ TEST(shell_opens_the_channel_screen_and_takes_a_view_on_its_scene) {
     // OK on a channel plays it over the screen, as a modal.
     shell.Select(0.0);
     REQUIRE_EQ(shell.ActiveScreenName(), std::string("player"));
+}
+
+TEST(live_tv_back_button_is_the_shared_glass_back_button) {
+    MemoryStore store;
+    Shell shell(std::make_unique<LiveTvLauncher>(), store);
+    shell.Layout(1920.0, 1080.0);
+    shell.Select(0.0);
+    REQUIRE_EQ(shell.ActiveScreenName(), std::string("live-tv"));
+    // The same box the guide and the other screens use: hit-testing its centre reaches the shell's Back.
+    const auto back = tvm::ui::controls::BackButtonBox(1920.0, 1080.0);
+    REQUIRE_EQ(back.width, back.height);
+    shell.MouseDown(back.CenterX(), back.CenterY(), 0.0);
+    shell.MouseUp(back.CenterX(), back.CenterY(), 10.0);
+    REQUIRE(shell.ActiveScreenName() != std::string("live-tv"));
 }
 
 }  // namespace

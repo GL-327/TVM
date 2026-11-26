@@ -220,6 +220,22 @@ double NextUpWindowSeconds(double duration) {
     return std::min(45.0, std::max(1.0, duration * 0.2));
 }
 
+std::array<bool, 4> TimelineMarksPresent(const PlayerView& view) {
+    std::array<bool, 4> present{};
+    if (view.live || view.duration <= 0.0) return present;
+    for (std::size_t i = 0; i < view.segments.size() && i < 3; ++i) {
+        const auto& segment = view.segments[i];
+        if (!segment) continue;
+        const double start = std::clamp(segment->start / view.duration, 0.0, 1.0);
+        const double end = segment->openEnd ? 1.0 : std::clamp(segment->end / view.duration, 0.0, 1.0);
+        if (end > start) present[i] = true;
+    }
+    for (const auto& chapter : view.chapters) {
+        if (chapter.time > 0.0 && chapter.time < view.duration) present[3] = true;
+    }
+    return present;
+}
+
 double CreditsWindowSeconds(double duration) {
     if (!std::isfinite(duration) || duration <= 0.0) return 0.0;
     return std::min(std::min(18.0, std::max(8.0, duration * 0.06)), duration * 0.35);
@@ -283,7 +299,7 @@ std::string PlayerScreen::MarkerLabelAt(double seconds) const {
         }
     }
     if (nearest == nullptr) return "";
-    return nearest->title.empty() ? "Chapter" : "Chapter \xC2\xB7 " + nearest->title;
+    return nearest->title.empty() ? "Chapter" : "Chapter: " + nearest->title;
 }
 
 std::optional<double> PlayerScreen::PreviewSeconds() const {
@@ -1310,7 +1326,7 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                                     GradientStop{1.0, WithAlpha(kBrandEnd, opacity)}});
     }
     if (!view_.live) {
-        std::array<bool, kTimelineMarkers.size()> visible{};
+        const std::array<bool, kTimelineMarkers.size()> visible = TimelineMarksPresent(view_);
         if (view_.duration > 0.0) {
             for (std::size_t i = 0; i < view_.segments.size(); ++i) {
                 const auto& segment = view_.segments[i];
@@ -1318,13 +1334,11 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                 const double start = std::clamp(segment->start / view_.duration, 0.0, 1.0);
                 const double end = segment->openEnd ? 1.0 : std::clamp(segment->end / view_.duration, 0.0, 1.0);
                 if (end <= start) continue;
-                visible[i] = true;
                 painter.FillRoundRect({bar.x + bar.width * start, bar.y, bar.width * (end - start), bar.height},
                                       bar.height / 2.0, WithAlpha(kTimelineMarkers[i].second, opacity));
             }
             for (const auto& chapter : view_.chapters) {
                 if (chapter.time <= 0 || chapter.time >= view_.duration) continue;
-                visible.back() = true;
                 const double x = bar.x + bar.width * chapter.time / view_.duration;
                 painter.FillRoundRect({x - 1, bar.y - 2, 2, bar.height + 4}, 1,
                                       WithAlpha(kTimelineMarkers.back().second, opacity));

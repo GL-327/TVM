@@ -3,6 +3,75 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.6",
+      "date": "2026-11-26",
+      "title": "Franchise intros and a smoother Home (test build)",
+      "highlights": [
+        "Hunger Games, Marvel and X-Men films open with their own animated intro while the film gets ready.",
+        "Home is back on the smoother 1.3.2 glass, and hovering across rows no longer lags.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Player",
+          "text": "Hunger Games, Marvel and X-Men films open with a short animated intro. Turn it off in Settings, Extras.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "The glass and moving backdrop are back to the 1.3.2 look, with the 1.4 fixes kept.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Scrolling and hovering across rows of films and shows is smooth again.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The Hunger Games row is a normal row again, and In cinemas now no longer covers the TVM logo.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "The seek bar legend lists only the kinds of marks the video has.",
+          "platforms": [
+            "windows"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "The full iOS-style Liquid Glass and cinematic streaming redesign is still to come.",
+        "Franchise intros are not on Windows or Roku yet."
+      ]
+    },
+    {
       "version": "1.4.5",
       "date": "2026-11-26",
       "title": "Sync across devices and quicker Details (test build)",
