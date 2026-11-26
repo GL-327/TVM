@@ -149,7 +149,7 @@ check('Swift tests include mocked Torrentio, catalog slug, search and continue w
   testsSwift.includes('https://cdn.example/fight-club.mp4') &&
   testsSwift.includes('MockPlaybackProtocol'));
 check('Continue watching and search use the same play path as catalog titles',
-  homeTsx.includes('launchTitle(navigate, title)') &&
+  /launchTitle\(navigate, title(?:, \w+)?\)/.test(homeTsx) &&
   searchTsx.includes('launchTitle') &&
   detailsTsx.includes('playIdFor') &&
   detailsTsx.includes("pushModal('player'") &&
