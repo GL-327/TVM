@@ -9,6 +9,7 @@ import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 import java.util.Locale
+import kotlin.concurrent.thread
 
 /**
  * The on-device API, port of apps/ios/TVM/TVMLocalCore.swift.
@@ -35,6 +36,7 @@ class TvmLocalCore(
     accountsHttp: TvmAccountsHttp = TvmAccountsHttp.Default,
     sessionVault: TvmSessionVault = MemorySessionVault(),
     adminVault: TvmSessionVault = MemorySessionVault(),
+    guideCacheDir: File = store.file("cache/guide"),
 ) {
     private val accounts = TvmAccounts(bundledAccess, accountsHttp, sessionVault, adminVault = adminVault)
 
@@ -91,6 +93,8 @@ class TvmLocalCore(
     private var liveChannels: MutableList<JSONObject> = mutableListOf()
     private var livePicks: MutableSet<String> = mutableSetOf()
     private val liveReflector = TvmLiveReflector()
+    private val liveGuide = TvmLiveGuide(guideCacheDir)
+    private var liveGuideUrls: List<String> = emptyList()
 
     companion object {
         private val ADMIN_ACCOUNT_PATH = Regex("^/api/admin/accounts/[A-Za-z0-9_-]{1,128}/(?:sessions|profile|password|tier)$|^/api/admin/accounts/[A-Za-z0-9_-]{1,128}/sessions/[A-Za-z0-9_-]{1,128}$")
@@ -111,6 +115,7 @@ class TvmLocalCore(
             accountsHttp: TvmAccountsHttp = TvmAccountsHttp.Default,
             sessionVault: TvmSessionVault = MemorySessionVault(),
             adminVault: TvmSessionVault = MemorySessionVault(),
+            guideCacheDir: File = File(root, "cache/guide"),
         ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
@@ -122,7 +127,7 @@ class TvmLocalCore(
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans, content, pinGuard)
             val reviews = TvmReviews(media::item)
-            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault)
+            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault, guideCacheDir)
         }
     }
 
@@ -132,11 +137,26 @@ class TvmLocalCore(
             liveUrl = Json.string(saved.opt("url"))
             liveHost = Json.string(saved.opt("host"))
             liveUser = Json.string(saved.opt("username"))
+            liveGuideUrls = Json.strings(saved.opt("guideUrls"))
             livePicks = Json.strings(saved.opt("picks")).toMutableSet()
             val channels = saved.optJSONArray("channels")
             if (channels != null) {
                 for (i in 0 until channels.length()) {
                     channels.optJSONObject(i)?.let { liveChannels.add(it) }
+                }
+            }
+        }
+        // Older installs saved the channel rows without the playlist's EPG header.
+        val previousUrl = liveUrl
+        if (saved != null && !saved.has("guideUrls") && liveHost.isNullOrEmpty() && previousUrl?.startsWith("http") == true) {
+            thread(name = "tvm-guide-playlist", isDaemon = true) {
+                val text = fetchText(previousUrl, 20_000)
+                if (text != null && text.contains("#EXTM3U")) synchronized(lock) {
+                    if (liveUrl == previousUrl && liveHost.isNullOrEmpty()) {
+                        val channels = parseM3u(text)
+                        if (channels.isNotEmpty()) liveChannels = channels.toMutableList()
+                        persistLive()
+                    }
                 }
             }
         }
@@ -436,13 +456,15 @@ class TvmLocalCore(
             }
             val id = Json.string(json.opt("id"))
             // A title downloaded to this phone plays from the file, offline.
-            val offline = if (id != null && !id.startsWith("live:")) dl?.offlineCopy(id) else null
+            val offline = if (id != null && !id.startsWith("live:") && Json.string(json.opt("versionId")) == null) dl?.offlineCopy(id) else null
             if (offline != null) {
                 val reply = Json.obj(
                     "kind" to "stream", "url" to offline.first, "title" to (Json.string(json.opt("title")) ?: offline.second),
                     "filename" to offline.second, "mimeType" to "application/octet-stream", "engine" to "native", "transport" to "file",
                 )
                 media.resumePosition(id!!)?.let { reply.put("startAt", it) }
+                media.withPlaybackDetails(reply)
+                media.playbackStarted(id, reply)
                 return HttpReply.json(200, reply)
             }
             if (id != null && id.startsWith("live:")) return playLive(id)
@@ -455,8 +477,19 @@ class TvmLocalCore(
                 screenHeight = Json.int(json.opt("screenHeight")),
                 maxHeight = Json.int(json.opt("maxHeight")),
                 versionId = Json.string(json.opt("versionId")),
+                client = PlaybackClient.parse(json.optJSONObject("client")),
             )
+            if (status == 200) {
+                media.withPlaybackDetails(payload)
+                media.playbackStarted(id, payload)
+            }
             return HttpReply.json(status, payload)
+        }
+
+        if (path == "/api/playback/event" && method == "POST") {
+            val event = TvmWebhook.parseEvent(json) ?: return HttpReply.json(400, Json.obj("error" to "invalid playback event"))
+            media.playbackEvent(event)
+            return HttpReply.json(200, Json.obj("ok" to true))
         }
 
         if ((path == "/api/playback/versions" || path == "/api/versions") && method == "GET") {
@@ -733,6 +766,17 @@ class TvmLocalCore(
         }
 
         if (path == "/api/live" && method == "GET") return HttpReply.json(200, liveStatus())
+        if (path == "/api/live/guide" && method == "GET") {
+            val window = GuideWindow.parse(query["start"], query["hours"])
+                ?: return HttpReply.json(400, Json.obj("error" to "invalid guide window"))
+            val free = content.fresh("free-channels")?.let { JSONObject(it.toString()) } ?: JSONObject()
+            val rows = free.optJSONArray("channels") ?: JSONArray()
+            val allowed = (0 until rows.length()).mapNotNull { index -> rows.optJSONObject(index)?.apply { put("number", index + 1) } }
+                .filter { TvmParental.liveGroupAllowed(it.text("group"), media.ageLevel(), media.parentalLevels()) }
+            free.put("channels", Json.array(allowed))
+            val provider = synchronized(lock) { if (plans.status().optBoolean("liveTv")) liveChannels.filter { TvmParental.liveGroupAllowed(it.text("group"), media.ageLevel(), media.parentalLevels()) } else emptyList() }
+            return HttpReply.json(200, liveGuide.guide(window, query["group"]?.trim()?.ifEmpty { null }, free, provider, liveGuideUrls, liveHost, liveUser, XtreamKeychain.read()))
+        }
         if (path == "/api/live/free" && method == "GET") return HttpReply.json(200, media.freeLiveJson())
         if (path == "/api/live" && method == "PUT") {
             val text = Json.string(json.opt("text")) ?: ""
@@ -871,19 +915,14 @@ class TvmLocalCore(
         val path = runCatching { URI(raw).path ?: "" }.getOrDefault("")
         val hls = path.substringAfterLast('.', "").lowercase(Locale.US) == "m3u8"
         val reflected = liveReflector.publish(raw)
-        return HttpReply.json(
-            200,
-            Json.obj(
-                "kind" to "stream",
-                "url" to reflected,
-                "title" to (Json.string(channel.opt("name")) ?: "Live TV"),
+        val reply = Json.obj(
+                "kind" to "stream", "url" to reflected, "title" to channel.text("name", "Live TV"),
                 "filename" to path.substringAfterLast('/', ""),
                 "mimeType" to if (hls) "application/vnd.apple.mpegurl" else "video/mp2t",
-                "engine" to "html5",
-                "transport" to if (hls) "hls" else "ts-live",
-                "isLive" to true,
-            ),
+                "engine" to "html5", "transport" to if (hls) "hls" else "ts-live", "isLive" to true,
         )
+        media.playbackStarted(id, reply)
+        return HttpReply.json(200, reply)
     }
 
     private fun groupSummary(): JSONArray {
@@ -1009,6 +1048,9 @@ class TvmLocalCore(
     }
 
     private fun setPlaylist(value: String) {
+        liveHost = null
+        liveUser = null
+        XtreamKeychain.clear()
         if (value.startsWith("http")) {
             val text = fetchText(value, 20_000)
             synchronized(lock) {
@@ -1045,16 +1087,21 @@ class TvmLocalCore(
     private val logoPattern = Regex("""tvg-logo="([^"]*)"""")
 
     private fun parseM3u(text: String): List<JSONObject> {
+        liveGuideUrls = Regex("""(?:url-tvg|x-tvg-url)\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .findAll(text.lineSequence().firstOrNull { it.trim().startsWith("#EXTM3U") }.orEmpty())
+            .flatMap { it.groupValues[1].split(',', ' ').asSequence() }.filter { TvmXmlTv.safeUrl(it) }.distinct().take(12).toList()
         val channels = mutableListOf<JSONObject>()
         var pendingName = "Channel"
         var pendingGroup = "Other"
         var pendingLogo = ""
+        var pendingId = ""
         for (raw in text.lineSequence()) {
             val line = raw.trim()
             if (line.startsWith("#EXTINF")) {
                 pendingName = line.substringAfterLast(',', "").ifEmpty { "Channel" }
                 pendingGroup = groupPattern.find(line)?.groupValues?.getOrNull(1)?.ifEmpty { "Other" } ?: "Other"
                 pendingLogo = logoPattern.find(line)?.groupValues?.getOrNull(1) ?: ""
+                pendingId = Regex("""tvg-id\s*=\s*["']([^"']*)["']""").find(line)?.groupValues?.getOrNull(1) ?: ""
             } else if (line.startsWith("http")) {
                 channels.add(
                     Json.obj(
@@ -1063,6 +1110,7 @@ class TvmLocalCore(
                         "url" to line,
                         "group" to pendingGroup,
                         "logo" to pendingLogo,
+                        "epgId" to pendingId,
                     ),
                 )
                 if (channels.size >= MAX_CHANNELS) break
@@ -1079,6 +1127,7 @@ class TvmLocalCore(
                     "url" to (liveUrl ?: ""),
                     "host" to (liveHost ?: ""),
                     "username" to (liveUser ?: ""),
+                    "guideUrls" to JSONArray(liveGuideUrls),
                     "picks" to JSONArray(livePicks.toList()),
                     "channels" to Json.array(liveChannels),
                 ),

@@ -109,8 +109,8 @@ class TvmWebhook(
             val id = json.opt("id") as? String ?: return null
             if (!isValidProgressId(id)) return null
             val title = (json.opt("title") as? String)?.trim()?.take(300)?.ifEmpty { null }
-            val pos = Json.double(json.opt("position"))?.takeIf { it.isFinite() && it >= 0.0 }
-            val dur = Json.double(json.opt("duration"))?.takeIf { it.isFinite() && it >= 0.0 }
+            val pos = (json.opt("position") as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
+            val dur = (json.opt("duration") as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
             return PlaybackEventRecord(event = event, id = id, title = title, position = pos, duration = dur)
         }
 

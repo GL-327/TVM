@@ -248,6 +248,14 @@ export async function markChangelogSeen(): Promise<void> {
   }
 }
 
+async function hasWrittenNotes(version = currentAppVersion()): Promise<boolean> {
+  try {
+    return (await fetchReleaseChangelog()).releases.some((release) => release.version === version);
+  } catch {
+    return false;
+  }
+}
+
 let presentInflight: Promise<boolean> | null = null;
 
 export async function presentPendingChangelog(pushModal: (name: string, options?: { params?: Record<string, unknown> }) => void): Promise<boolean> {
@@ -256,6 +264,13 @@ export async function presentPendingChangelog(pushModal: (name: string, options?
     const pending = await loadPendingChangelog();
     if (pending === null) return false;
     if (changelogShownThisSession(pending.version)) return false;
+    // The written release notes (patch-notes pop-up or corner card) already cover this
+    // version; a second sheet of raw commit titles on top of them was just noise.
+    if (await hasWrittenNotes()) {
+      markChangelogShownThisSession(pending.version);
+      void markChangelogSeen();
+      return false;
+    }
     markChangelogShownThisSession(pending.version);
     pushModal('changelog', {
       params: {

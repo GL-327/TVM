@@ -180,6 +180,11 @@ private:
     void RefreshRdStatus();
     void MaybePromptRealDebrid();
     void UpdateSettingsDiagnostics();
+    // Settings' playback, subtitle, Home and Extras rows: read from Core when Settings opens, and written back to it
+    // one partial PUT /api/prefs per change.
+    void LoadSettingsPrefs();
+    void SavePrefsPatch(const nlohmann::json& patch);
+    unsigned prefsSaveSeq_ = 0;
 
     // Live TV login. Asking the panel happens on workers, as for Real-Debrid. The screen is
     // rebuilt from the answer each time, so no part of it is changed on a worker.
@@ -205,6 +210,9 @@ private:
     guide::View guide_;
     guide::Time guideLoadedStart_ = 0, guideLoadedEnd_ = 0, guideClock_ = 0;
     double guideTuneAt_ = 0, guideRetryAt_ = 0;
+    // Core was still downloading a feed at the last answer, so the guide asks again (see guide::ShouldRepoll).
+    bool guideRepoll_ = false;
+    int guideRepolls_ = 0;
     bool guideVisible_ = true, guideFetching_ = false, guideSearch_ = false;
     std::string guideDigits_;
     void RefreshLiveTv();

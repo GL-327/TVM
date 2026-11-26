@@ -351,6 +351,19 @@ object TvmVersions {
         return hex.toString()
     }
 
+    /** Capabilities supplied by the page can narrow the phone's decoders, never widen them. */
+    fun rankForPhone(streams: List<RdStream>, prefs: TvmPrefs, originalLanguage: String?, runtime: Double?, maxHeight: Int, client: PlaybackClient?, caps: DecoderCaps): List<RankedVersion> {
+        val phone = PlaybackClient("exoplayer", maxHeight, caps.hevc, caps.hevc10 || caps.dolbyVision, true)
+        val safe = streams.filter { stream ->
+            val version = describeVersion(stream, runtime)
+            val label = "${stream.name} ${stream.title} ${stream.details}"
+            val needs = TvmPlaybackChoice.needs(label, version.height ?: 1080)
+            TvmPlaybackChoice.videoPlayable(needs, caps) && TvmPlaybackChoice.audioPlayable(needs, caps) &&
+                supportsVersion(version, label + " " + stream.url, client)
+        }
+        return rankVersions(safe, prefs, originalLanguage, runtime, maxHeight, phone)
+    }
+
     fun rankVersions(
         streams: List<RdStream>,
         prefs: TvmPrefs,

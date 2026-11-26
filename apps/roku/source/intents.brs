@@ -32,6 +32,13 @@ function keyFromIntent(intent as String) as String
   if intent = "right" then return "right"
   if intent = "select" then return "OK"
   if intent = "back" then return "back"
+  if intent = "previous" then return "replay"
+  if intent = "rewind" then return "rewind"
+  if intent = "fastForward" then return "fastforward"
+  if intent = "play" then return "play"
+  if intent = "pause" then return "pause"
+  if intent = "stop" then return "stop"
+  if intent = "info" then return "info"
   return ""
 end function
 

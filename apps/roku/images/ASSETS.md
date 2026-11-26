@@ -21,3 +21,9 @@ The antialiased glass, masks and glyphs are deterministic UI primitives produced
 Inter Regular, SemiBold and Bold are distributed under the SIL Open Font License 1.1. `fonts/OFL.txt` contains the licence. SemiBold comes from the official rsms/inter 3.19 release tag. `scripts/sync-assets.mjs` pins its source and SHA-256 `8c1990b6012254ea2b487161697d107357dd0ee55811cfd91c8c11227bbef457`.
 
 The existing TVM app-logo rasters are resized to 512 ? 512 and 128 ? 128 to fit their actual display roles and keep the package budget.
+
+The 1.4.3 rim uses an upper-left highlight, a weaker lower-right reflection,
+and a 20% brighter focus stroke. Rebuild it with `node apps/roku/scripts/make-glass.mjs`.
+Art-backed GlassPanel sheets decode the existing backdrop at 96 x 54 and stretch
+it behind an inset mask and dark tint. This approximates diffusion on Roku;
+it does not sample or blur the framebuffer. Reduce transparency hides the art.

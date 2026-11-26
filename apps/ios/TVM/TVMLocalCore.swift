@@ -22,6 +22,8 @@ final class TVMLocalCore {
     private var liveChannels: [[String: Any]] = []
     private var livePicks = Set<String>()
     private let liveReflector: TVMLiveReflector
+    private let liveGuide: TVMLiveGuide
+    private var liveGuideURLs: [String] = []
 
     init(
         session: URLSession? = nil,
@@ -59,12 +61,17 @@ final class TVMLocalCore {
             await mediaInstance.download(id: id, language: language, maxHeight: height)
         }
         liveReflector = TVMLiveReflector(session: self.session)
+        liveGuide = TVMLiveGuide(session: self.session)
         if let saved = store.readJSON("live.json") as? [String: Any] {
             liveURL = saved["url"] as? String
             liveHost = saved["host"] as? String
             liveUser = saved["username"] as? String
+            liveGuideURLs = saved["guideUrls"] as? [String] ?? []
             livePicks = Set(saved["picks"] as? [String] ?? [])
             liveChannels = saved["channels"] as? [[String: Any]] ?? []
+            if saved["guideUrls"] == nil, (liveHost ?? "").isEmpty, let previousURL = liveURL, previousURL.hasPrefix("http") {
+                Task.detached { [weak self] in await self?.restorePlaylistGuide(previousURL) }
+            }
         }
     }
 
@@ -124,9 +131,9 @@ final class TVMLocalCore {
             prefs.save(store)
             return .json(200, prefs.json())
         }
-        // The version picker needs the ranking engine wired to this phone's sources; until then the interface sees "no choices".
-        if path == "/api/playback/versions" && method == "GET" {
-            return .json(200, ["originalLanguage": NSNull(), "versions": [Any]()])
+        if (path == "/api/playback/versions" || path == "/api/versions") && method == "GET" {
+            guard let id = query["id"], !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .json(400, ["error": "id is required"]) }
+            return .json(200, await media.versions(id: id, season: query["season"].flatMap(Int.init), episode: query["episode"].flatMap(Int.init)))
         }
         if path == "/api/config" && method == "GET" {
             return .json(200, await accounts.config())
@@ -364,11 +371,13 @@ final class TVMLocalCore {
             guard plans.mobileAllowed() else { return .json(403, ["kind": "unavailable", "reason": "mobile-plan-required"]) }
             if let id = json["id"] as? String, id.hasPrefix("live:") { return await playLive(id) }
             // A title downloaded to this phone plays from the file, offline.
-            if let id = JSONValue.string(json["id"]), let copy = downloads.offlineCopy(id) {
+            if JSONValue.string(json["versionId"]) == nil, let id = JSONValue.string(json["id"]), let copy = downloads.offlineCopy(id) {
                 var reply: [String: Any] = ["kind": "stream", "url": copy.url.absoluteString,
                                             "title": JSONValue.string(json["title"]) ?? copy.name, "filename": copy.name,
                                             "mimeType": "application/octet-stream", "engine": "native", "transport": "file"]
                 if let startAt = media.resumePosition(id) { reply["startAt"] = startAt }
+                reply = media.withPlaybackDetails(reply)
+                media.playbackStarted(id: id, payload: reply)
                 return .json(200, reply)
             }
             let result = await media.play(
@@ -378,9 +387,18 @@ final class TVMLocalCore {
                 season: JSONValue.int(json["season"]),
                 episode: JSONValue.int(json["episode"]),
                 screenHeight: JSONValue.int(json["screenHeight"]),
-                maxHeight: JSONValue.int(json["maxHeight"])
+                maxHeight: JSONValue.int(json["maxHeight"]),
+                versionId: JSONValue.string(json["versionId"]),
+                client: PlaybackClient.parse(json["client"])
             )
-            return .json(result.0, result.1)
+            let payload = result.0 == 200 ? media.withPlaybackDetails(result.1) : result.1
+            if result.0 == 200 { media.playbackStarted(id: JSONValue.string(json["id"]), payload: payload) }
+            return .json(result.0, payload)
+        }
+        if path == "/api/playback/event" && method == "POST" {
+            guard let event = TVMWebhook.parseEvent(json) else { return .json(400, ["error": "invalid playback event"]) }
+            media.playbackEvent(event)
+            return .json(200, ["ok": true])
         }
         if path == "/api/progress" && method == "POST" {
             guard let id = json["id"] as? String,
@@ -631,6 +649,18 @@ final class TVMLocalCore {
             return .json(200, ["ok": true])
         }
         if path == "/api/live" && method == "GET" { return .json(200, liveStatus()) }
+        if path == "/api/live/guide" && method == "GET" {
+            guard let window = GuideWindow.parse(start: query["start"], hours: query["hours"]) else { return .json(400, ["error": "invalid guide window"]) }
+            var free = await content.fresh("free-channels") ?? [:]
+            let age = media.ageLevel(), levels = media.parentalLevels()
+            free["channels"] = (free["channels"] as? [[String: Any]] ?? []).enumerated().compactMap { i, channel -> [String: Any]? in
+                guard TVMParental.liveGroupAllowed(channel["group"] as? String, maxAge: age, levels: levels) else { return nil }
+                var row = channel; row["number"] = i + 1; return row
+            }
+            let provider = plans.status()["liveTv"] as? Bool == true ? liveChannels.filter { TVMParental.liveGroupAllowed($0["group"] as? String, maxAge: age, levels: levels) } : []
+            let group = query["group"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .json(200, await liveGuide.guide(window: window, group: group?.isEmpty == true ? nil : group, free: free, iptv: provider, urls: liveGuideURLs, host: liveHost, user: liveUser, password: XtreamKeychain.read()))
+        }
         if path == "/api/live/free" && method == "GET" { return .json(200, await media.freeLiveJSON()) }
         if path == "/api/live" && method == "PUT" {
             let text = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -798,7 +828,9 @@ final class TVMLocalCore {
         }
         let hls = url.pathExtension.lowercased() == "m3u8"
         let reflected = liveReflector.publish(url)
-        return .json(200, ["kind": "stream", "url": reflected, "title": channel["name"] as? String ?? "Live TV", "filename": url.lastPathComponent, "mimeType": hls ? "application/vnd.apple.mpegurl" : "video/mp2t", "engine": "html5", "transport": hls ? "hls" : "ts-live", "isLive": true])
+        let reply: [String: Any] = ["kind": "stream", "url": reflected, "title": channel["name"] as? String ?? "Live TV", "filename": url.lastPathComponent, "mimeType": hls ? "application/vnd.apple.mpegurl" : "video/mp2t", "engine": "html5", "transport": hls ? "hls" : "ts-live", "isLive": true]
+        media.playbackStarted(id: id, payload: reply)
+        return .json(200, reply)
     }
 
     private func liveStatus() -> [String: Any] {
@@ -865,6 +897,7 @@ final class TVMLocalCore {
     }
 
     private func setPlaylist(_ value: String) async {
+        liveHost = nil; liveUser = nil; XtreamKeychain.clear()
         if value.hasPrefix("http"), let url = URL(string: value) {
             liveURL = value
             if let (data, _) = try? await session.data(from: url), let text = String(data: data, encoding: .utf8) {
@@ -879,13 +912,39 @@ final class TVMLocalCore {
         persistLive()
     }
 
+    private func restorePlaylistGuide(_ expectedURL: String) async {
+        guard let url = URL(string: expectedURL), let (data, response) = try? await session.data(from: url),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let text = String(data: data, encoding: .utf8), text.contains("#EXTM3U") else { return }
+        applyPlaylistGuide(text, expectedURL: expectedURL)
+    }
+
+    private func applyPlaylistGuide(_ text: String, expectedURL: String) {
+        lock.lock(); defer { lock.unlock() }
+        guard liveURL == expectedURL, (liveHost ?? "").isEmpty else { return }
+        let channels = parseM3U(text)
+        if !channels.isEmpty { liveChannels = channels }
+        persistLive()
+    }
+
     private func parseM3U(_ text: String) -> [[String: Any]] {
+        let header = text.components(separatedBy: .newlines).first { $0.hasPrefix("#EXTM3U") } ?? ""
+        let regex = try? NSRegularExpression(pattern: #"(?:url-tvg|x-tvg-url)\s*=\s*["']([^"']+)["']"#, options: .caseInsensitive)
+        liveGuideURLs = Array((regex?.matches(in: header, range: NSRange(header.startIndex..., in: header)) ?? []).flatMap { match -> [String] in
+            guard let range = Range(match.range(at: 1), in: header) else { return [] }
+            return header[range].split { $0 == "," || $0.isWhitespace }.map(String.init).filter { TVMXmlTv.safeURL($0) != nil }
+        }.prefix(12))
         var channels: [[String: Any]] = []
         var pendingName = "Channel"
         var pendingGroup = "Other"
         var pendingLogo = ""
+        var pendingId = ""
         for line in text.split(whereSeparator: \.isNewline).map({ $0.trimmingCharacters(in: .whitespaces) }) {
             if line.hasPrefix("#EXTINF") {
+                pendingGroup = "Other"; pendingLogo = ""; pendingId = ""
+                if let regex = try? NSRegularExpression(pattern: #"tvg-id\s*=\s*["']([^"']*)["']"#),
+                   let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+                   let range = Range(match.range(at: 1), in: line) { pendingId = String(line[range]) }
                 pendingName = line.split(separator: ",").last.map(String.init) ?? "Channel"
                 if let group = line.range(of: #"group-title="([^"]+)""#, options: .regularExpression) {
                     pendingGroup = String(line[group]).replacingOccurrences(of: "group-title=", with: "").replacingOccurrences(of: "\"", with: "")
@@ -900,6 +959,7 @@ final class TVMLocalCore {
                     "url": line,
                     "group": pendingGroup,
                     "logo": pendingLogo,
+                    "epgId": pendingId,
                 ])
                 if channels.count >= 2000 { break }
             }
@@ -912,6 +972,7 @@ final class TVMLocalCore {
             "url": liveURL ?? "",
             "host": liveHost ?? "",
             "username": liveUser ?? "",
+            "guideUrls": liveGuideURLs,
             "picks": Array(livePicks),
             "channels": liveChannels,
         ])

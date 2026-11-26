@@ -33,6 +33,8 @@ export interface Guide {
   end: string;
   groups: string[];
   channels: GuideChannel[];
+  /** True while a feed this answer needed is still downloading: ask again shortly. */
+  refreshing?: boolean;
 }
 export type GuideWindow = Pick<Guide, 'now' | 'start' | 'end'>;
 export interface EpgFeed { id: string; url: string }
@@ -329,7 +331,10 @@ export function createGuideCache(dataDir: string, fetchImpl: typeof fetch = fetc
       return out;
     });
   };
-  return { xml, short };
+  // A first visit gets an empty answer while feeds download in the background, so
+  // clients need to know a fuller one is coming rather than show "No guide information".
+  const busy = (): boolean => refreshing.size > 0;
+  return { xml, short, busy };
 }
 
 export function epgFeeds(raw: unknown): EpgFeed[] {

@@ -131,7 +131,9 @@ for (const [shape, w, h, radius] of [
     if (d > 0) return [];
     const depth = -d;
     const light = clamp(1 - (x / w * 0.42 + y / h * 0.58));
-    const stroke = (focus ? 0.55 + 0.4 * light : 0.1 + 0.4 * light) * (1 - smooth(2, 3.5, depth));
+    const counter = 0.2 * smooth(0.65, 1, (x / w + y / h) / 2);
+    const highlight = 0.15 + 0.6 * light + counter;
+    const stroke = Math.min(1, highlight * (focus ? 1.2 : 1)) * (1 - smooth(2, 3.5, depth));
     const dark = 0.22 * smooth(2.5, 3.5, depth) * (1 - smooth(4.5, 5.5, depth));
     const refraction = 0.08 * Math.exp(-(((depth - 8) / 6) ** 2)) * smooth(0.55, 1, y / h);
     return [white(refraction), black(dark), white(stroke)];

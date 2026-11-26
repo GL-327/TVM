@@ -96,8 +96,18 @@ void App::SyncReleaseNotice(double nowMs) {
         strings(release.value("highlights", nlohmann::json::array()), notes.highlights);
         if (release.contains("changes") && release["changes"].is_array())
             for (const auto& change : release["changes"]) {
-                if (change.is_string()) notes.changes.push_back(change.get<std::string>());
-                else if (change.is_object() && change.contains("text") && change["text"].is_string()) notes.changes.push_back(change["text"].get<std::string>());
+                ui::Shell::PatchChange entry;
+                if (change.is_string()) {
+                    entry.text = change.get<std::string>();
+                } else if (change.is_object() && change.contains("text") && change["text"].is_string()) {
+                    entry.text = change["text"].get<std::string>();
+                    entry.area = change.value("area", "");
+                    if (change.contains("platforms") && change["platforms"].is_array())
+                        for (const auto& platform : change["platforms"]) if (platform.is_string()) entry.platforms.push_back(platform.get<std::string>());
+                } else {
+                    continue;
+                }
+                notes.changes.push_back(std::move(entry));
             }
         strings(release.value("knownIssues", nlohmann::json::array()), notes.knownIssues);
         shell_->SetReleaseCard(std::nullopt);

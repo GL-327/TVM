@@ -1234,6 +1234,14 @@ sub onPlayerAction()
     postPlayback(m.playItem)
     return
   end if
+  if kind = "version"
+    m.selectedVersionId = asText(action.versionId)
+    m.selectedQuality = 0
+    m.qualityResume = aaGet(action, "position", 0)
+    navigate("pop", "", {})
+    postPlayback(m.playItem)
+    return
+  end if
   if kind = "pickVersion"
     position = aaGet(action, "position", 0)
     navigate("pop", "", {})
@@ -2214,6 +2222,7 @@ sub onRokuPublicConfigDone()
   m.publicConfig = cfg
   flags = aaGet(cfg, "flags", {})
   if GetInterface(flags, "ifAssociativeArray") <> invalid then m.global.remoteFlags = flags
+  m.patchNotesConfigLoaded = true
   maybeShowPatchNotes(flags)
   if m.homeNode <> invalid
     m.homeNode.announcement = aaGet(cfg, "announcement", invalid)
@@ -2362,8 +2371,17 @@ sub onLiveDone(event as Object)
 end sub
 
 sub loadGuide(start as String)
+  if start = ""
+    dt = CreateObject("roDateTime")
+    seconds = dt.AsSeconds() - 10800
+    dt.FromSeconds(seconds - (seconds mod 1800))
+    start = dt.ToISOString()
+  end if
   query = "/api/live/guide?hours=24"
   if start <> "" then query = query + "&start=" + encodeQuery(start)
+  m.guideQuery = query
+  m.guideRefreshes = 0
+  if m.guideRefreshTimer <> invalid then m.guideRefreshTimer.control = "stop"
   m.guideTask = startApiGet(joinCorePath(m.coreUrl, query), "onGuideDone")
 end sub
 
@@ -2371,6 +2389,23 @@ sub onGuideDone(event as Object)
   task = event.GetRoSGNode()
   if task <> m.guideTask or task.profileId <> m.profileId or not task.ok then return
   if m.liveNode <> invalid then m.liveNode.guide = task.json
+  ' The first visit races the Core's feed download and gets "No guide information"
+  ' blocks; ask again every 4 s (up to 2 min) while it says a fuller answer is coming.
+  if aaGet(task.json, "refreshing", false) = true and m.guideRefreshes < 30
+    if m.guideRefreshTimer = invalid
+      m.guideRefreshTimer = CreateObject("roSGNode", "Timer")
+      m.guideRefreshTimer.duration = 4
+      m.guideRefreshTimer.repeat = false
+      m.guideRefreshTimer.observeField("fire", "onGuideRefreshFire")
+    end if
+    m.guideRefreshTimer.control = "start"
+  end if
+end sub
+
+sub onGuideRefreshFire()
+  if m.liveNode = invalid or m.liveNode.visible <> true or m.guideQuery = invalid then return
+  m.guideRefreshes = m.guideRefreshes + 1
+  m.guideTask = startApiGet(joinCorePath(m.coreUrl, m.guideQuery), "onGuideDone")
 end sub
 
 sub onFreeLiveDone(event as Object)

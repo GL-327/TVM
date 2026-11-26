@@ -124,4 +124,30 @@ void FilePreferenceStore::SaveChooseProfileOnLaunch(bool on) {
     SaveUiJson(std::move(json));
 }
 
+std::string FilePreferenceStore::SleepTimerDefault() const {
+    const nlohmann::ordered_json& json = UiJson();
+    const auto value = json.find("sleepTimerDefault");
+    if (value == json.end() || !value->is_string()) return "off";
+    const std::string text = value->get<std::string>();
+    return text == "15" || text == "30" || text == "45" || text == "60" || text == "end" ? text : "off";
+}
+
+void FilePreferenceStore::SaveSleepTimerDefault(const std::string& value) {
+    auto json = UiJson();
+    json["sleepTimerDefault"] = value;
+    SaveUiJson(std::move(json));
+}
+
+bool FilePreferenceStore::SpotlightEvents() const {
+    const nlohmann::ordered_json& json = UiJson();
+    const auto value = json.find("spotlightEvents");
+    return value == json.end() || !value->is_boolean() || value->get<bool>();
+}
+
+void FilePreferenceStore::SaveSpotlightEvents(bool on) {
+    auto json = UiJson();
+    json["spotlightEvents"] = on;
+    SaveUiJson(std::move(json));
+}
+
 }  // namespace tvm::ui

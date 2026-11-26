@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AvatarPicker" extends="Group">
+  <interface>
+    <field id="heading" type="string" onChange="paintAvatars" />
+    <field id="rows" type="array" onChange="onSets" />
+    <field id="selectedAvatar" type="string" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="focusKey" type="string" />
+    <field id="restoreKey" type="string" onChange="restoreAvatarFocus" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="AvatarPicker.brs" />
+  <children>
+    <Rectangle id="background" width="3840" height="2160" />
+    <Group id="content" translation="[160, 160]" />
+  </children>
+</component>

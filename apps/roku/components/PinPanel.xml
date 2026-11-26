@@ -5,6 +5,7 @@
     <field id="message" type="string" onChange="paint" />
     <field id="cooldown" type="integer" onChange="onCooldown" />
     <field id="wrong" type="boolean" alwaysNotify="true" onChange="onWrong" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
     <field id="action" type="assocarray" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
@@ -16,7 +17,6 @@
     <Group id="panel" translation="[1120, 240]">
       <GlassPanel width="1600" height="1700" shape="panel" />
       <Label id="heading" translation="[100, 80]" width="1400" height="150" />
-      <Label id="dots" translation="[100, 260]" width="1400" height="120" />
       <Label id="message" translation="[100, 390]" width="1400" height="180" wrap="true" />
       <Group id="keys" translation="[140, 620]" />
     </Group>

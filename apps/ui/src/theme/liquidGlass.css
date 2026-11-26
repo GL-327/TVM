@@ -13,55 +13,57 @@
 :root,
 html[data-theme='dark'] {
   --tvm-glass27-accent: #6ec8ff;
-  --tvm-glass27-blur-chrome: blur(3px) saturate(160%) brightness(1.06);
-  --tvm-glass27-blur-sheet: blur(7px) saturate(160%) brightness(1.06);
+  --tvm-glass27-blur-chrome: blur(3px) saturate(165%) brightness(1.05);
+  --tvm-glass27-blur-sheet: blur(7px) saturate(165%) brightness(1.05);
   --tvm-glass27-surface: rgba(255, 255, 255, 0.05);
-  --tvm-glass27-surface-sheet: rgba(7, 8, 11, 0.66);
+  --tvm-glass27-surface-sheet: rgba(12, 14, 20, 0.30);
   --tvm-glass27-surface-tint: rgba(255, 255, 255, 0.05);
-  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.24);
-  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.60);
-  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.56);
-  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.20);
-  --tvm-glass27-rim-bottom: rgba(255, 255, 255, 0.24);
-  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.24);
-  --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.22);
-  --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.70);
-  --tvm-glass27-thumb-specular: rgba(255, 255, 255, 0.40);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.75);
+  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.75);
+  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.75);
+  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.15);
+  --tvm-glass27-rim-bottom: rgba(255, 255, 255, 0.35);
+  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.23);
+  --tvm-glass27-thumb-tint: rgba(245, 247, 250, 0.92);
+  --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.85);
+  --tvm-glass27-thumb-specular: rgba(255, 255, 255, 0.45);
   --tvm-glass27-well-tint: rgba(255, 255, 255, 0.05);
-  --tvm-glass27-shadow: 0 10px 30px rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.20);
-  --tvm-glass27-shadow-lift: 0 18px 42px rgba(0, 0, 0, 0.38), 0 2px 4px rgba(0, 0, 0, 0.22);
+  --tvm-glass27-shadow: 0 10px 30px rgba(0, 0, 0, 0.30);
+  --tvm-glass27-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.24);
+  --tvm-glass27-shadow-lift: 0 14px 34px rgba(0, 0, 0, 0.36);
   --tvm-glass27-text: #f5f7fa;
   --tvm-glass27-text-secondary: #a9b0bc;
-  --tvm-glass27-press-scale: 0.96;
-  --tvm-glass27-focus-scale: 1.05;
-  --tvm-glass27-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --tvm-glass27-press-scale: 0.97;
+  --tvm-glass27-focus-scale: 1.0;
+  --tvm-glass27-spring: cubic-bezier(0.22, 1.24, 0.36, 1);
 
   --tvm-glass-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065) 0%, rgba(255, 255, 255, 0.015) 18%, transparent 30%),
     var(--tvm-glass27-surface);
   --tvm-glass-bg-elevated:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065) 0%, rgba(255, 255, 255, 0.015) 18%, transparent 30%),
     var(--tvm-glass27-surface-sheet);
   --tvm-glass-blur: var(--tvm-glass27-blur-chrome);
-  --tvm-glass-rim-light: inset 0 1px 0 var(--tvm-glass27-rim-top), inset 1px 0 0 var(--tvm-glass27-rim-side);
-  --tvm-glass-rim-chroma: inset 0 -1px 0 var(--tvm-glass27-rim-bottom), 0 0 0 1px var(--tvm-glass27-dark-inner);
+  --tvm-glass-rim-light: inset 1px 1px 0 var(--tvm-glass27-rim-top), inset 0 0 0 1px var(--tvm-glass27-rim-side);
+  --tvm-glass-rim-chroma: inset -1px -1px 0 var(--tvm-glass27-rim-bottom), 0 0 0 1px var(--tvm-glass27-dark-inner);
   --tvm-glass-shadow: var(--tvm-glass27-shadow);
 }
 
 html[data-theme='light'] {
   --tvm-glass27-surface: rgba(248, 249, 252, 0.64);
-  --tvm-glass27-surface-sheet: rgba(248, 249, 252, 0.82);
-  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.52);
-  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.86);
-  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.90);
-  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.56);
-  --tvm-glass27-rim-bottom: rgba(18, 50, 74, 0.14);
-  --tvm-glass27-dark-inner: rgba(18, 50, 74, 0.12);
-  --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.82);
-  --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.96);
-  --tvm-glass27-well-tint: rgba(255, 255, 255, 0.58);
-  --tvm-glass27-shadow: 0 10px 28px rgba(18, 50, 74, 0.14), 0 1px 2px rgba(18, 50, 74, 0.08);
-  --tvm-glass27-shadow-lift: 0 18px 40px rgba(18, 50, 74, 0.18), 0 2px 4px rgba(18, 50, 74, 0.10);
+  --tvm-glass27-surface-sheet: rgba(248, 249, 252, 0.84);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.88);
+  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.92);
+  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.92);
+  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.48);
+  --tvm-glass27-rim-bottom: rgba(18, 50, 74, 0.18);
+  --tvm-glass27-dark-inner: rgba(18, 50, 74, 0.16);
+  --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.94);
+  --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.98);
+  --tvm-glass27-well-tint: rgba(255, 255, 255, 0.62);
+  --tvm-glass27-shadow: 0 10px 30px rgba(18, 50, 74, 0.14);
+  --tvm-glass27-shadow-sm: 0 4px 14px rgba(18, 50, 74, 0.10);
+  --tvm-glass27-shadow-lift: 0 14px 34px rgba(18, 50, 74, 0.18);
   --tvm-glass27-text: #12324a;
   --tvm-glass27-text-secondary: #2a5a68;
 }
@@ -71,19 +73,18 @@ html[data-theme='light'] {
   position: relative;
   overflow: hidden;
   border-radius: 12px;
-  border: 1px solid var(--tvm-glass27-rim-bottom);
-  border-top-color: var(--tvm-glass27-rim-top);
-  border-left-color: var(--tvm-glass27-rim-side);
+  border: 0;
   background: var(--tvm-glass-bg);
   -webkit-backdrop-filter: var(--tvm-glass27-blur-chrome);
   backdrop-filter: var(--tvm-glass27-blur-chrome);
   box-shadow:
-    inset 0 0 0 1px var(--tvm-glass27-dark-inner),
+    var(--tvm-glass-rim-light),
+    var(--tvm-glass-rim-chroma),
     var(--tvm-glass27-shadow);
   color: var(--tvm-glass27-text);
   transition:
-    transform 320ms var(--tvm-glass27-spring),
-    box-shadow 240ms ease,
+    transform 240ms var(--tvm-glass27-spring),
+    box-shadow 220ms ease,
     border-color 180ms ease,
     background-color 180ms ease;
 }

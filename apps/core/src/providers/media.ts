@@ -367,6 +367,15 @@ export function applyProgress(items: readonly MediaItem[], progress: ReturnType<
   });
 }
 
+/** Adds the active profile's finished state to episode lists; progress alone hides finished ones. */
+export function markWatched(items: readonly MediaItem[], progress: ReturnType<typeof readProgress>): MediaItem[] {
+  return items.map((item) => {
+    const entry = Object.hasOwn(progress, item.id) ? progress[item.id] : undefined;
+    const watched = isFinished(entry) || !!entry?.completedAt;
+    return item.watched === watched ? item : { ...item, watched };
+  });
+}
+
 function markUsed(used: Set<string>, items: readonly MediaItem[]): void {
   for (const item of items) {
     used.add(item.id);
@@ -1078,9 +1087,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const parsed = parsePlayId(id);
       if (parsed !== null) {
         const meta = await catalog.meta(parsed.imdb);
-        if (meta !== null) return meta.children;
+        if (meta !== null) return markWatched(meta.children, readProgress(scope()));
       }
-      return loadChildren(id);
+      return markWatched(await loadChildren(id), readProgress(scope()));
     },
 
     async surprise() {

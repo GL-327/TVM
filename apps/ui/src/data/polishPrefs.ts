@@ -91,6 +91,7 @@ export function storePolishPrefs(prefs: PolishPrefs): void {
 
 export function applyRemoteFlags(flags: Record<string, boolean>): void {
   remoteFlags = flags;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('tvm:extra-flags'));
 }
 
 export function extraEnabled(id: ExtraId, prefs = readPolishPrefs()): boolean {

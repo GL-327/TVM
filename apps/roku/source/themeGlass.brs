@@ -1,22 +1,4 @@
-' Liquid-glass look for Roku when the theme id is "glass".
-' SceneGraph cannot blur the framebuffer. Frost is a few static
-' rectangles: fill, hairline rim, optional top highlight. No sheen
-' animation and no stacked edge lights — cheaper on the compositor.
-'
-' Wire from a theme apply once a sibling stores a theme id:
-'   <script type="text/brightscript" uri="pkg:/source/themeGlass.brs" />
-'   if tvmIsGlassTheme(themeId) then applyGlassTheme(m.top)
-'   if not tvmIsGlassTheme(themeId) then clearGlassTheme(m.top)
-'
-' If no theme router exists yet, include the same script on TVMScene and call:
-'   applyGlassTheme(m.top)
-' That applies glass unless root.themeId / root.theme / GetGlobalAA().tvmThemeId
-' is set to something other than glass.
-'
-' Screens can frost a local panel without a full theme pass:
-'   panel = tvmMakeGlassOverlay(1960, 840, 36, "panel")
-'   paintGlassChrome(ribbonBar)
-
+' Legacy theme entry points share GlassPanel's generated rim and solid fallback.
 function tvmIsGlassTheme(themeId as Dynamic) as Boolean
   key = tvmThemeKey(themeId)
   if key = "glass" then return true
@@ -104,50 +86,22 @@ end sub
 
 sub paintGlassOverlay(overlay as Object)
   if overlay = invalid then return
-  fill = overlay.findNode("fill")
-  if fill = invalid
-    paintGlassWash(overlay)
-    return
-  end if
-
-  ensureGlassLayers(overlay)
-  hideGlassExtras(overlay)
-
-  variant = tvmThemeKey(overlay.variant)
-  if variant = "" then variant = "panel"
-
   width = glassDim(overlay.panelWidth, overlay.width, 960)
   height = glassDim(overlay.panelHeight, overlay.height, 540)
-  radius = glassDim(overlay.radius, 36, 36)
-  if variant = "wash" then radius = 0
-  if variant = "pill" and radius < 64 then radius = Int(height / 2)
-
-  overlay.width = width
-  overlay.height = height
-  overlay.focusable = false
-
-  fillColor = tvmGlassPanel()
-  showRim = true
-  showHi = true
-  if variant = "wash"
-    fillColor = tvmGlassWash()
-    showRim = false
-    showHi = false
-  else if variant = "chrome"
-    fillColor = tvmGlassChrome()
-    showHi = false
-  else if variant = "pill"
-    fillColor = tvmGlassFillStrong()
+  overlay.width = width : overlay.height = height : overlay.focusable = false
+  material = overlay.findNode("material")
+  if material = invalid then return
+  wash = tvmThemeKey(overlay.variant) = "wash"
+  fill = overlay.findNode("fill")
+  fill.visible = wash : material.visible = not wash
+  if wash
+    fill.width = width : fill.height = height : fill.color = tvmGlassWash()
+    return
   end if
-
-  paintGlassRect(overlay.findNode("rim"), showRim, width, height, [0, 0], radius, tvmGlassEdge())
-  paintGlassRect(overlay.findNode("fill"), true, width, height, [0, 0], radius, fillColor)
-
-  specH = 6
-  if height < 120 then specH = 4
-  hiW = width - 32
-  if hiW < 8 then hiW = width
-  paintGlassRect(overlay.findNode("highlight"), showHi, hiW, specH, [16, 4], 4, tvmGlassHighlight())
+  material.width = width : material.height = height
+  material.shape = "panel"
+  if tvmThemeKey(overlay.variant) = "pill" then material.shape = "pill"
+  material.backdropUri = overlay.backdropUri
 end sub
 
 function tvmMakeGlassOverlay(width as Integer, height as Integer, radius as Integer, variant as String) as Object

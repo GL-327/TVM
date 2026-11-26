@@ -10,6 +10,10 @@ import { Rail } from '../components/Rail';
 import { Skeleton } from '../components/Skeleton';
 import { ToastPill, useToast } from '../components/ToastPill';
 import { TrailerModal } from '../components/TrailerModal';
+import { DetailsMedia } from '../components/DetailsMedia';
+import { QualityBadges } from '../components/QualityBadges';
+import { useVersions, VersionSelect } from '../components/VersionSelect';
+import { episodeIsWatched, uiExtraEnabled, useExtraPrefs } from '../data/uiExtras';
 import { titleById, type Title } from '../data/catalog';
 import { episodeHeading } from '../data/episodes';
 import {
@@ -43,7 +47,7 @@ import { fetchServices, openServiceExternal, serviceUrlForTitle, type ConnectedS
 import { certificateLabel, formatAired, imdbIdFrom, imdbScore, imdbTitleUrl, playIdFor, seriesGraphUrl } from '../data/playId';
 import { asSeason, episodesForSeason, seasonNumbers } from '../data/seasons';
 import { requestFocus } from '../nav/focusEngine';
-import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
+import { useFocusScope, useNavigate, useViewStack } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import './details.css';
 
@@ -60,11 +64,13 @@ function DetailsShell({
   series,
   title,
   overlay,
+  media,
   children,
 }: {
   series: boolean;
   title?: Title;
   overlay?: ReactNode;
+  media?: ReactNode;
   children: ReactNode;
 }): React.JSX.Element {
   const blocked = overlay !== undefined && overlay !== null;
@@ -72,6 +78,7 @@ function DetailsShell({
     <main className={`details${series ? ' details--series' : ''}`}>
       <div className="details__stage" aria-hidden="true">
         {title !== undefined && <Artwork title={title} kind="backdrop" className="details__backdrop" eager />}
+        {media}
         <div className="details__vignette" />
       </div>
       <div className="details__body" inert={blocked}>{children}</div>
@@ -83,6 +90,8 @@ function DetailsShell({
 export function Details({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const scope = useFocusScope();
+  const stack = useViewStack();
+  const prefs = useExtraPrefs();
   const id = typeof params['id'] === 'string' ? params['id'] : '';
   const catalog = titleById(id);
   const snapshot = titleFromDetailsParams(params, catalog);
@@ -102,6 +111,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const [collection, setCollection] = useState<ExtrasCollection | null>(null);
   const [upcoming, setUpcoming] = useState<ExtrasUpcomingEpisode | null>(null);
   const [animeInfo, setAnimeInfo] = useState<ExtrasAnimeTitle | null>(null);
+  const [versionEpisode, setVersionEpisode] = useState('');
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
   const { message: toast, showToast } = useToast();
 
   useEffect(() => {
@@ -190,6 +201,10 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   }, [files]);
 
   const visibleFiles = useMemo(() => episodesForSeason(files, season), [files, season]);
+  const versionFile = visibleFiles.find((file) => file.id === versionEpisode) ?? visibleFiles[0] ?? files[0];
+  const versionIdentity = { id: seriesLike && versionFile ? playIdFor(versionFile.id || id, versionFile.season, versionFile.episode) : playIdFor(id),
+    season: seriesLike ? versionFile?.season : undefined, episode: seriesLike ? versionFile?.episode : undefined };
+  const versions = useVersions(versionIdentity, uiExtraEnabled('versionPicker', prefs) || uiExtraEnabled('qualityBadges', prefs));
 
   useEffect(() => {
     setTrailers([]);
@@ -339,6 +354,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     <DetailsShell
       series={seriesLike}
       title={title}
+      media={<DetailsMedia id={imdbIdFrom(title.id) ?? title.id} trailerId={trailers[0]?.youtubeId}
+        active={stack.entries.at(-1)?.key === scope && !trailerOpen} />}
       overlay={
         trailerOpen && trailers.length > 0 ? (
           <TrailerModal
@@ -381,6 +398,17 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
               <Chip key={genre}>{genre}</Chip>
             ))}
           </p>
+          <QualityBadges info={versions[0] ?? title} />
+          {uiExtraEnabled('versionPicker', prefs) && versions.length > 0 && <div className="details__versions">
+            {seriesLike && <label className="extras-select">Episode
+              <select aria-label="Version for episode" onKeyDown={(event) => event.stopPropagation()} value={versionFile?.id ?? ''} onChange={(event) => setVersionEpisode(event.target.value)}>
+                {(visibleFiles.length ? visibleFiles : files).map((file) => <option key={file.id} value={file.id}>
+                  {formatEpisodeCode(file.season ?? 1, file.episode ?? 1)} · {episodeHeading(file)}
+                </option>)}
+              </select>
+            </label>}
+            <VersionSelect identity={versionIdentity} versions={versions} />
+          </div>}
           {seriesLike && upcomingDate !== null && upcoming !== null && (
             <p className="details__coming-up">
               <span className="details__coming-up-badge glass glass--chrome">Coming up</span>
@@ -497,6 +525,8 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                     : 'Episode';
                 const episodeScore = imdbScore(file.rating);
                 const aired = file.aired !== undefined ? formatAired(file.aired) : null;
+                const hideSpoilers = uiExtraEnabled('spoilerBlur', prefs) && !episodeIsWatched(file);
+                const hideSummary = hideSpoilers && !revealed.has(file.id);
                 return (
                   <div key={file.id} className="episode-download-row">
                   <FocusButton
@@ -505,7 +535,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                     className="episode-item"
                     onSelect={() => playItem(file)}
                   >
-                    <span className="episode-item__still" aria-hidden="true">
+                    <span className={`episode-item__still${hideSpoilers ? ' episode-item__still--blurred' : ''}`} aria-hidden="true">
                       {file.poster !== '' && (
                         <img src={file.poster} alt="" loading="lazy" decoding="async" />
                       )}
@@ -519,9 +549,10 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                           {aired !== null && <span>{aired}</span>}
                         </span>
                       )}
-                      {file.synopsis !== '' && <span className="episode-item__synopsis">{file.synopsis}</span>}
+                      {file.synopsis !== '' && !hideSummary && <span className="episode-item__synopsis">{file.synopsis}</span>}
                     </span>
                   </FocusButton>
+                  {hideSummary && file.synopsis !== '' && <FocusButton id={`summary-${file.id}`} className="episode-download-row__action" onSelect={() => setRevealed((current) => new Set([...current, file.id]))}>Show summary</FocusButton>}
                   <FocusButton id={`download-ep-${file.id}`} className="episode-download-row__action" onSelect={() => navigate.pushModal('downloads', { params: { id: title.id, title: title.title, series: true, episodes: files, season: file.season, episode: file.episode, episodeId: file.id } })}>Download</FocusButton>
                   </div>
                 );

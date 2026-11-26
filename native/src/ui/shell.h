@@ -35,11 +35,33 @@ class Shell {
 public:
     struct ReleaseCard { std::string version, title; std::vector<std::string> highlights; };
     void SetReleaseCard(std::optional<ReleaseCard> card) { releaseCard_ = std::move(card); }
-    // The patch notes pop-up: a modal sheet over the whole app, closed with "Got it", Enter or Esc.
-    struct PatchNotes { std::string version, title; std::vector<std::string> highlights, changes, knownIssues; };
-    void SetPatchNotes(std::optional<PatchNotes> notes) { patchNotes_ = std::move(notes); }
+    // The patch notes pop-up: a modal sheet over the whole app, closed with "Got it", Enter or Esc. Its body scrolls
+    // when the notes are longer than the sheet (wheel, Up and Down, Page Up and Page Down).
+    struct PatchChange {
+        std::string area, text;
+        // Platform ids as in changelog.json ("windows", "ios", ...). Empty means every app.
+        std::vector<std::string> platforms;
+    };
+    struct PatchNotes {
+        std::string version, title;
+        std::vector<std::string> highlights;
+        std::vector<PatchChange> changes;
+        std::vector<std::string> knownIssues;
+    };
+    void SetPatchNotes(std::optional<PatchNotes> notes) {
+        patchNotes_ = std::move(notes);
+        patchScroll_ = 0.0;
+    }
     bool HasPatchNotes() const { return patchNotes_.has_value(); }
     Box PatchButtonBox() const;
+    // The part of the sheet the notes scroll in.
+    Box PatchBodyBox() const;
+    // Scrolls the notes by `deltaPx` (positive is down), kept inside the notes. True when they moved.
+    bool ScrollPatchNotes(double deltaPx);
+    double PatchScroll() const { return patchScroll_; }
+    double PatchMaxScroll() const;
+    // The shown name of a changelog platform id ("ios" is "iPhone"); an unknown id is shown as it is.
+    static std::string PlatformLabel(const std::string& id);
     // `root` is the home screen. It is the bottom of the stack and is never removed.
     Shell(std::unique_ptr<Screen> root, PreferenceStore& store);
 
@@ -95,6 +117,10 @@ public:
     void SetPlayerView(const PlayerView& view, double nowMs);
     // Updates Developer Diagnostics on any open Settings screen.
     void SetDeveloperDiagnostics(const DeveloperDiagnostics& diag);
+    // Hands every Settings screen, open now or opened later, the Core preferences it shows.
+    void SetCoreSettings(const CoreSettings& settings);
+    // Where Settings sends each preference change, as a partial /api/prefs body.
+    void SetPrefsSink(PrefsSink sink);
     // The player on top, when the user is on one.
     PlayerScreen* ActivePlayer();
     // Closes every screen down to Home, as the stream chrome's Home link does.
@@ -129,6 +155,13 @@ private:
     Box ReleaseBox() const;
     std::optional<ReleaseCard> releaseCard_;
     std::optional<PatchNotes> patchNotes_;
+    double patchScroll_ = 0.0;
+    enum class PatchItem { Highlight, Area, Change, IssuesHeading, Issue };
+    // Lays the notes out from the top of the body, calling `emit` for each item with its top and height (before
+    // scrolling). Returns the height of everything, so the same walk paints and measures.
+    double WalkPatch(const std::function<void(PatchItem, double, double, const PatchChange&)>& emit) const;
+    CoreSettings coreSettings_;
+    PrefsSink prefsSink_;
     bool backFocused_ = false;
 
     nav::ViewStackState stack_;

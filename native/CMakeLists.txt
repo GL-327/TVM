@@ -272,6 +272,7 @@ add_executable(tvm_tests
   tests/playback_tests.cpp
   tests/player_tests.cpp
   tests/pages_tests.cpp
+  tests/settings_143_tests.cpp
 )
 target_link_libraries(tvm_tests PRIVATE tvm_engine ws2_32)
 target_compile_definitions(tvm_tests PRIVATE

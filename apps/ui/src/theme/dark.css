@@ -116,9 +116,11 @@ html[data-theme='dark'] {
   color: #e8f0f8;
 }
 
+/* Held darker through the text column: on pale art (fog, snow, white sets) the old
+   28% at a third of the width left the grey meta line and synopsis unreadable. */
 [data-theme='dark'] .details__vignette {
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg) 86%, transparent) 0%, color-mix(in srgb, var(--tvm-bg) 28%, transparent) 34%, transparent 68%),
+    linear-gradient(90deg, color-mix(in srgb, var(--tvm-bg) 90%, transparent) 0%, color-mix(in srgb, var(--tvm-bg) 72%, transparent) 30%, color-mix(in srgb, var(--tvm-bg) 36%, transparent) 50%, transparent 70%),
     linear-gradient(180deg, transparent 0%, transparent 38%, color-mix(in srgb, var(--tvm-bg) 52%, transparent) 68%, var(--tvm-bg) 94%, var(--tvm-bg) 100%);
 }
 

@@ -124,7 +124,8 @@ function Webhook({ url, onSave }: { url: string | null; onSave: (url: string | n
 
 export function extraRows(prefs: AppPrefs, save: Save): SettingsRow[] {
   const phoneApp = /TVM-iOS|TVM-Android/.test(navigator.userAgent);
-  const rows = EXTRA_OPTIONS.filter(([id]) => isExtraAllowed(id) &&
+  // Seek previews need a second mpv, which only the Windows app has, so this UI never offers it.
+  const rows = EXTRA_OPTIONS.filter(([id]) => isExtraAllowed(id) && id !== 'seekPreviews' &&
     (!phoneApp || !['trailerBackdrops', 'themeSongs', 'pauseOnMinimize', 'shortcutsOverlay'].includes(id)))
     .map(([id, , name, detail, platform]) =>
       toggle('extra-' + id, name, platform ? detail + ' ' + platform + '.' : detail, extraEnabled(id, prefs),

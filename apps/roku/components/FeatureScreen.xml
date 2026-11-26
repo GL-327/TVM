@@ -12,6 +12,7 @@
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/textPages.brs" />
   <script type="text/brightscript" uri="FeatureScreen.brs" />
   <children>
     <Rectangle width="3840" height="2160" color="0x090D17FF" />
@@ -19,7 +20,7 @@
     <Group id="rows" translation="[192, 420]" />
     <GlassPanel shape="panel" translation="[1420, 420]" width="2228" height="1510" />
     <Poster id="preview" translation="[1500, 500]" width="260" height="260" loadDisplayMode="scaleToFit" />
-    <Label id="body" translation="[1500, 500]" width="2040" height="1320" wrap="true" maxLines="19" color="0xF2F2F2FF" />
+    <Label id="body" translation="[1500, 500]" width="2040" height="1320" wrap="false" maxLines="19" color="0xF2F2F2FF" />
     <Label id="hint" translation="[1500, 1830]" width="2040" height="70" color="0xFFFFFFAA" text="Left / Right: read more    Back: return" />
   </children>
 </component>

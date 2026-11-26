@@ -347,6 +347,7 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         shell_->Execute(door, NowMs());
         return false;
     });
+    shell_->SetPrefsSink([this](const nlohmann::json& patch) { SavePrefsPatch(patch); });
     shell_->SetActionHandler([this](const ui::Command& command) {
         const auto id = command.params.find("id");
         if (command.name == "watchlist" && id != command.params.end()) {
@@ -729,6 +730,22 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         // The patch notes pop-up takes every key and click until it is closed.
         if (message == WM_KEYDOWN) {
             if (wParam == VK_RETURN || wParam == VK_SPACE || wParam == VK_ESCAPE || wParam == VK_BROWSER_BACK) { DismissReleaseNotice(NowMs() + 1200); }
+            // The notes scroll when they are longer than the sheet.
+            const double line = shell_->PatchBodyBox().height * 0.14;
+            const double page = shell_->PatchBodyBox().height * 0.85;
+            if (wParam == VK_DOWN) shell_->ScrollPatchNotes(line);
+            else if (wParam == VK_UP) shell_->ScrollPatchNotes(-line);
+            else if (wParam == VK_NEXT) shell_->ScrollPatchNotes(page);
+            else if (wParam == VK_PRIOR) shell_->ScrollPatchNotes(-page);
+            else if (wParam == VK_HOME) shell_->ScrollPatchNotes(-1e9);
+            else if (wParam == VK_END) shell_->ScrollPatchNotes(1e9);
+            dirty_ = true;
+            return 0;
+        }
+        if (message == WM_MOUSEWHEEL) {
+            const double notches = static_cast<double>(GET_WHEEL_DELTA_WPARAM(wParam)) / kWheelUnitsPerNotch;
+            shell_->ScrollPatchNotes(-notches * shell_->PatchBodyBox().height * 0.2);
+            dirty_ = true;
             return 0;
         }
         if (message == WM_LBUTTONUP) {
@@ -738,7 +755,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         if (message == WM_XBUTTONUP) { DismissReleaseNotice(NowMs() + 1200); return TRUE; }
-        if (message == WM_CHAR || message == WM_LBUTTONDOWN || message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL ||
+        if (message == WM_CHAR || message == WM_LBUTTONDOWN || message == WM_MOUSEHWHEEL ||
             message == WM_RBUTTONDOWN || message == WM_RBUTTONUP || message == WM_XBUTTONDOWN || message == WM_MOUSEMOVE) return 0;
     }
     if (shell_ && releaseNotice_ && !shell_->HasPatchNotes()) {
@@ -851,6 +868,14 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         if (auto* editor = dynamic_cast<ui::ProfileEditor*>(&shell_->ActiveScreen()); editor && editor->Typing() && wParam >= 0x20 && wParam != 0x7F) {
             editor->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
+            dirty_ = true;
+            return 0;
+        }
+        // Settings' search field takes the letters while it has the focus.
+        if (auto* settings = dynamic_cast<ui::SettingsScreen*>(&shell_->ActiveScreen());
+            settings != nullptr && settings->Typing() && wParam >= 0x20 && wParam != 0x7F &&
+            (wParam < 0xD800 || wParam > 0xDFFF)) {
+            settings->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
             dirty_ = true;
             return 0;
         }
@@ -2297,6 +2322,7 @@ ui::Scene* App::SearchScene() {
 
 bool App::IsEditingText() const {
     if (const auto* editor = dynamic_cast<const ui::ProfileEditor*>(&shell_->ActiveScreen())) return editor->Typing();
+    if (const auto* settings = dynamic_cast<const ui::SettingsScreen*>(&shell_->ActiveScreen()); settings != nullptr && settings->Typing()) return true;
     if (SearchTyping()) return true;
     if (const auto* accountScreen = dynamic_cast<const ui::AccountScreen*>(&shell_->ActiveScreen());
         accountScreen != nullptr && accountScreen->IsEditing()) {
@@ -2443,7 +2469,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
             view.rails.push_back(std::move(rail));
         }
         if (root && streamLane_ != "movies" && !upcomingRail_.cards.empty()) view.rails.push_back(upcomingRail_);
-        if (root && streamLane_ == "all") {
+        if (root && streamLane_ == "all" && store_->SpotlightEvents()) {
             for (const auto& eventRail : eventRails_) view.rails.push_back(eventRail);
         }
         if (!listLane.empty()) {
@@ -2469,7 +2495,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         for (const catalog::ProgressItem& entry : watchingLane) laneWatching.push_back(entry.item);
         std::vector<ui::HeroData> candidates = HeroTitles(laneWatching, catalogRails);
         // Home turns through its titles. The stream page shows one billboard.
-        if (root && streamLane_ == "all" && !eventHeroes_.empty()) {
+        if (root && streamLane_ == "all" && !eventHeroes_.empty() && store_->SpotlightEvents()) {
             heroes.push_back(eventHeroes_.front());
             auto& hero = heroes.front();
             const auto cached = titles_.find(hero.itemId);
@@ -2528,6 +2554,7 @@ void App::SyncPages() {
     }
     if (name == "settings") {
         UpdateSettingsDiagnostics();
+        LoadSettingsPrefs();
         if (account_.usable && !rdStatusLoaded_ && !rdStatusChecking_) RefreshRdStatus();
     }
 }
@@ -2960,6 +2987,16 @@ void App::SyncSearch() {
 }
 
 bool App::HandleSearchKey(WPARAM virtualKey) {
+    if (auto* settings = dynamic_cast<ui::SettingsScreen*>(&shell_->ActiveScreen()); settings != nullptr && settings->Typing()) {
+        // The search field: Backspace edits it (never Back), a paste goes in, letters arrive as characters.
+        if (virtualKey == VK_BACK) { settings->Erase(); dirty_ = true; return true; }
+        if (virtualKey == 'V' && KeyDown(VK_CONTROL)) {
+            settings->Type(util::Trim(ClipboardText(window_).value_or("")));
+            dirty_ = true;
+            return true;
+        }
+        return virtualKey == VK_SPACE || (virtualKey >= '0' && virtualKey <= 'Z');
+    }
     if (auto* editor = dynamic_cast<ui::ProfileEditor*>(&shell_->ActiveScreen())) {
         if (virtualKey == VK_BACK && editor->Typing()) { editor->Erase(); dirty_ = true; return true; }
         if (virtualKey == VK_RETURN && editor->Typing()) {
@@ -3560,6 +3597,20 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
     playerView_.canShowShortcuts = playerPrefs_.Enabled("shortcutsOverlay");
     playerView_.sleepTimer = playerPrefs_.Enabled("sleepTimer");
     playerView_.sleepAtEnd = sleepAtEnd_;
+    if (playerView_.sleepTimer && !playerLive_ && playerTrailerUrl_.empty() && playerRecoveries_ == 0 && !sleepDeadline_ && !sleepAtEnd_) {
+        // Settings' "Sleep timer default" starts each video with that timer running.
+        const std::string preset = store_->SleepTimerDefault();
+        if (preset == "end") {
+            sleepAtEnd_ = true;
+            playerView_.sleepAtEnd = true;
+        } else if (preset != "off") {
+            const int minutes = std::atoi(preset.c_str());
+            if (minutes > 0) {
+                sleepDeadline_ = NowMs() + minutes * 60000.0;
+                playerView_.sleepMinutes = minutes;
+            }
+        }
+    }
     playerView_.nightAvailable = true;
     playerView_.nightMode = playerPrefs_.Enabled("nightMode");
     playerAudioLanguage_ = playerPrefs_.audioLanguage == "original" ? resolution.originalLanguage : playerPrefs_.audioLanguage;

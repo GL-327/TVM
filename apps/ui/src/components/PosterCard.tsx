@@ -5,6 +5,7 @@ import { revealFocused } from '../nav/revealFocused';
 import { useScopedFocusKey } from '../nav/ViewStackContext';
 import { Artwork } from './Artwork';
 import { LoopClone } from './LoopClone';
+import { QualityBadges } from './QualityBadges';
 
 interface PosterCardProps {
   title: Title;
@@ -45,6 +46,7 @@ const PosterFace = memo(function PosterFace({
         <span className="poster__network">{title.network}</span>
       )}
       {title.episodeLabel !== undefined && <span className="poster__episode">{title.episodeLabel}</span>}
+      <QualityBadges info={title} poster />
       {progress !== undefined && (
         <span className="poster__progress" aria-hidden="true">
           <span className="poster__progress-bar" style={{ width: `${Math.round(progress * 100)}%` }} />
@@ -86,7 +88,7 @@ function sameTitleFace(a: Title, b: Title): boolean {
     a.episodeLabel === b.episodeLabel &&
     a.year === b.year &&
     a.hue === b.hue &&
-    a.kind === b.kind
+    a.kind === b.kind && a.height === b.height && a.hdr === b.hdr && a.audio?.atmos === b.audio?.atmos
   );
 }
 

@@ -15,7 +15,12 @@ bool App::GuideActive() const {
 }
 
 void App::TickGuide(double now) {
-    if (!GuideActive()) return;
+    if (!GuideActive()) {
+        // Closing the guide ends the waiting for a feed; the next visit starts counting again.
+        guideRepoll_ = false;
+        guideRepolls_ = 0;
+        return;
+    }
     const auto utc = static_cast<guide::Time>(std::time(nullptr));
     if (utc / 60 != guideClock_ / 60) dirty_ = true;
     guideClock_ = utc;
@@ -25,11 +30,12 @@ void App::TickGuide(double now) {
     }
     const auto start = guide_.start();
     if (!guideFetching_ && now >= guideRetryAt_ &&
-        (start == 0 || start < guideLoadedStart_ || guide_.end() > guideLoadedEnd_)) RefreshGuide();
+        (start == 0 || start < guideLoadedStart_ || guide_.end() > guideLoadedEnd_ || guideRepoll_)) RefreshGuide();
 }
 
 void App::RefreshGuide() {
     guideFetching_ = true;
+    guideRepoll_ = false;
     const auto visible = guide_.start() == 0 ? guide::FloorHalfHour(guideClock_) : guide_.start();
     const auto start = visible - 2 * 3600;
     const auto end = start + 12 * 3600;
@@ -67,6 +73,15 @@ void App::RefreshGuide() {
             guideLoadedStart_ = received ? data.start : start;
             guideLoadedEnd_ = received ? data.end : end;
             guideRetryAt_ = NowMs() + 1000;
+            // Core answers while it is still downloading a feed, with channels but few programmes. Ask again in a
+            // few seconds; SetSchedule keeps the focused channel and time, so the cell the viewer is on stays put.
+            if (received && guide::ShouldRepoll(data.refreshing, guideRepolls_)) {
+                ++guideRepolls_;
+                guideRepoll_ = true;
+                guideRetryAt_ = NowMs() + guide::kRepollMs;
+            } else if (received && !data.refreshing) {
+                guideRepolls_ = 0;
+            }
             guide_.SetSchedule(std::move(data), visible);
             dirty_ = true;
         });

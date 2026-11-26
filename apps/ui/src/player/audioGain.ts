@@ -8,6 +8,13 @@
  */
 
 export const MAX_BOOST_VOLUME = 2;
+export const TEMPORARY_VOLUME_EVENT = 'tvm:temporary-player-volume';
+
+/** Sleep fades must not change stored volume or unmute the native player. */
+export function applyTemporaryVolume(media: HTMLMediaElement | null, volume: number, muted: boolean, native: boolean): void {
+  if (native) window.dispatchEvent(new CustomEvent(TEMPORARY_VOLUME_EVENT, { detail: { volume } }));
+  else if (media) applyBoostedVolume(media, volume, muted);
+}
 
 export interface VolumeGainSplit {
   elementVolume: number;
@@ -35,6 +42,34 @@ export function volumeGainSplit(volume: number, muted: boolean, canBoost: boolea
 interface GainEntry {
   context: AudioContext;
   gain: GainNode;
+  compressor?: DynamicsCompressorNode;
+  nightMode?: boolean;
+}
+
+/** Reuse the boost graph: a media element may only have one Web Audio source. */
+export function applyNightMode(media: HTMLMediaElement, enabled: boolean): boolean {
+  const entry = enabled ? ensureGainNode(media) : gainByVideo.get(media);
+  if (!entry || typeof entry.context.createDynamicsCompressor !== 'function') return false;
+  if (entry.nightMode !== enabled) {
+    if (enabled && !entry.compressor) {
+      const compressor = entry.context.createDynamicsCompressor();
+      compressor.threshold.value = -26;
+      compressor.knee.value = 24;
+      compressor.ratio.value = 8;
+      compressor.attack.value = 0.005;
+      compressor.release.value = 0.25;
+      entry.compressor = compressor;
+    }
+    entry.gain.disconnect();
+    entry.compressor?.disconnect();
+    if (enabled && entry.compressor) {
+      entry.gain.connect(entry.compressor);
+      entry.compressor.connect(entry.context.destination);
+    } else entry.gain.connect(entry.context.destination);
+    entry.nightMode = enabled;
+  }
+  if (enabled && entry.context.state === 'suspended') void entry.context.resume().catch(() => undefined);
+  return enabled;
 }
 
 const gainByVideo = new WeakMap<HTMLMediaElement, GainEntry>();

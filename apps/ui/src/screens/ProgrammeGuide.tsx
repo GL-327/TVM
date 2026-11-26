@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { IconSearch } from '../components/Icons';
-import { fetchGuide, GUIDE_HOURS, guideStart, HALF_HOUR, MINUTE, programmeAt, type GuideChannel, type GuideData, type Programme } from '../data/guide';
+import { fetchGuide, GUIDE_HOURS, GUIDE_REFRESH_LIMIT, GUIDE_REFRESH_MS, guideStart, HALF_HOUR, MINUTE, programmeAt, type GuideChannel, type GuideData, type Programme } from '../data/guide';
 import { filterChannelsByAge } from '../data/freeLive';
 import { requestFocus } from '../nav/focusEngine';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
@@ -41,12 +41,24 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchGuide(start, controller.signal).then((next) => {
-      if (controller.signal.aborted) return;
-      setData(next);
-      setOffset(next ? asTime(next.now) - Date.now() : 0);
-    });
-    return () => controller.abort();
+    let timer = 0;
+    // The first visit races Core's feed download; keep asking while it says a fuller
+    // answer is on the way, so listings replace "No guide information" by themselves.
+    const load = (attempt: number): void => {
+      void fetchGuide(start, controller.signal).then((next) => {
+        if (controller.signal.aborted) return;
+        if (next || attempt === 0) {
+          setData(next);
+          setOffset(next ? asTime(next.now) - Date.now() : 0);
+        }
+        if (next?.refreshing && attempt < GUIDE_REFRESH_LIMIT) timer = window.setTimeout(() => load(attempt + 1), GUIDE_REFRESH_MS);
+      });
+    };
+    load(0);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
   }, [start]);
 
   useEffect(() => {
@@ -224,7 +236,7 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
       {!visible.length && <p className="guide__empty">{group === 'favourites' ? 'Save a channel as a favourite to see it here.' : 'No matching channels.'}</p>}
     </div>
     {row && active && <section className="guide__info" aria-label="Selected programme">
-      {active.image || row.logo ? <img className="guide__info-art" alt="" src={active.image ?? row.logo} /> : null}
+      <GuideInfoArt key={(active.image ?? '') + '|' + (row.logo ?? '')} sources={[active.image, row.logo]} />
       <div className="guide__summary">
         <h2>{active.title}</h2>
         <div className="guide__meta">{isNow && active.title !== 'No guide information' && <b>Now</b>}
@@ -244,4 +256,12 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
       <FocusButton id="guide-xtream" variant="quiet" tabIndex={0} onSelect={() => navigate.push('live-xtream')}>Xtream login</FocusButton>
     </footer>
   </section>;
+}
+
+/** Programme stills from listing feeds often refuse hotlinking; fall back to the channel logo, then to nothing. */
+function GuideInfoArt({ sources }: { sources: Array<string | null | undefined> }): React.JSX.Element | null {
+  const urls = sources.filter((url): url is string => typeof url === 'string' && url !== '');
+  const [index, setIndex] = useState(0);
+  const url = urls[index];
+  return url ? <img className="guide__info-art" alt="" src={url} onError={() => setIndex(index + 1)} /> : null;
 }

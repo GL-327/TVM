@@ -30,7 +30,15 @@ struct Schedule {
     Time start = 0, end = 0;
     std::vector<Channel> channels;
     std::vector<std::string> groups;
+    // Core is still downloading a feed, so channels and programmes may be missing for now.
+    bool refreshing = false;
 };
+
+// While Core says it is still downloading a guide feed, the app asks again every few seconds, at most this many
+// times, so the first visit does not stay on empty "No guide information" blocks.
+inline constexpr int kMaxRepolls = 30;
+inline constexpr double kRepollMs = 4000.0;
+inline bool ShouldRepoll(bool refreshing, int repollsSoFar) { return refreshing && repollsSoFar < kMaxRepolls; }
 
 Schedule ParseSchedule(const nlohmann::json& body, Time start, Time end);
 

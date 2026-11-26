@@ -18,7 +18,9 @@ export type PlayerKeyboardAction =
   | 'skipRecap'
   | 'showChrome'
   | 'volumeUp'
-  | 'volumeDown';
+  | 'volumeDown'
+  | 'stats'
+  | 'shortcuts';
 
 /** Raw lookup before chrome / focus / menu rules resolve Up/Down. */
 export type PlayerKeyBinding =
@@ -44,7 +46,26 @@ export const PLAYER_KEY_MAP: Readonly<Record<string, PlayerKeyBinding>> = {
   S: 'skipRecap',
   ArrowUp: 'showChromeOrVolumeUp',
   ArrowDown: 'showChromeOrVolumeDown',
+  i: 'stats',
+  I: 'stats',
+  '?': 'shortcuts',
 };
+
+const SHORTCUT_DESCRIPTIONS: Partial<Record<PlayerKeyBinding, string>> = {
+  playPause: 'Play / pause (when no control is selected)', seekBack: 'Seek back 10 seconds (with controls hidden)',
+  seekForward: 'Seek forward 10 seconds (with controls hidden)', fullscreen: 'Toggle fullscreen', back: 'Close a sheet / back',
+  skipRecap: 'Skip intro / recap when available', showChromeOrVolumeUp: 'Show controls / volume up when volume is focused',
+  showChromeOrVolumeDown: 'Show controls / volume down when volume is focused', stats: 'Toggle playback stats', shortcuts: 'Toggle this sheet',
+};
+
+export function playerShortcutRows(): [string, string][] {
+  const seen = new Set<PlayerKeyBinding>();
+  return Object.entries(PLAYER_KEY_MAP).flatMap(([key, action]) => {
+    if (seen.has(action)) return [];
+    seen.add(action);
+    return [[key === ' ' ? 'Space' : key.replace('Arrow', ''), SHORTCUT_DESCRIPTIONS[action] ?? action] as [string, string]];
+  });
+}
 
 export const PLAYER_KEYBOARD_FOCUS_IDS = {
   skipRecap: ['player-skip-recap', 'skip-recap'],
@@ -102,7 +123,7 @@ export function isSeekFocusId(_id: string | null | undefined): boolean {
 
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true;
-  return target instanceof HTMLElement && target.isContentEditable;
+  return target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'SELECT');
 }
 
 export function fullscreenAvailable(): boolean {
@@ -240,6 +261,7 @@ export function playerActionFromKey(
 ): PlayerKeyboardAction | null {
   const binding = playerBindingFromKey(event);
   if (binding === null) return null;
+  if (context.root?.querySelector('.playback-extra-sheet') && binding !== 'stats' && binding !== 'shortcuts') return null;
   if (shouldYieldToRemote(binding, context)) return null;
 
   let action: PlayerKeyboardAction;
@@ -359,6 +381,11 @@ export function performPlayerKeyboardAction(
   const root = playerRootOf(context.root);
   const seekStep = options.seekStepSeconds ?? DEFAULT_SEEK_STEP_SECONDS;
   const volumeStep = options.volumeStep ?? DEFAULT_VOLUME_STEP;
+
+  if (action === 'stats' || action === 'shortcuts') {
+    dispatchPlayerMediaIntent(action);
+    return;
+  }
 
   if (action === 'playPause') {
     if (handlers.playPause !== undefined) handlers.playPause();

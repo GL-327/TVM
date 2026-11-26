@@ -15,7 +15,14 @@ export interface GuideChannel extends Omit<LiveChannel, 'url'> {
   source: 'free' | 'm3u' | 'xtream';
   programmes: Programme[];
 }
-export interface GuideData { now: string; start: string; end: string; groups: string[]; channels: GuideChannel[] }
+export interface GuideData {
+  now: string; start: string; end: string; groups: string[]; channels: GuideChannel[];
+  /** Core is still downloading a feed this answer needed; a fuller answer follows. */
+  refreshing?: boolean;
+}
+/** How often, and for how long, the guide asks again while Core reports `refreshing`. */
+export const GUIDE_REFRESH_MS = 4_000;
+export const GUIDE_REFRESH_LIMIT = 30;
 export const MINUTE = 60_000;
 export const HALF_HOUR = 30 * MINUTE;
 export const GUIDE_HOURS = 8;

@@ -9,12 +9,17 @@
     <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/textPages.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="NoticePanel.brs" />
   <children>
     <Rectangle width="3840" height="2160" color="0x000000CC" />
-    <Rectangle id="card" width="1960" height="840" translation="[940, 660]" color="0x161616FF" cornerRadius="36" />
+    <GlassPanel id="card" width="1960" height="840" translation="[940, 660]" />
     <Label id="heading" translation="[1060, 740]" width="1720" wrap="true" maxLines="2" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
-    <Label id="lede" translation="[1060, 920]" width="1720" wrap="true" maxLines="4" lineSpacing="6" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+    <Label id="lede" translation="[1060, 920]" width="1720" height="300" wrap="false" maxLines="4" lineSpacing="6" color="0xC4C4C4FF" font="font:MediumSystemFont" />
+    <Label id="pageHint" translation="[1640, 1260]" width="1100" height="80" color="0xA9B0BCFF" />
     <FocusButton id="close" translation="[1060, 1240]" />
   </children>
 </component>

@@ -275,3 +275,30 @@ After sideload:
 - Roku plays HLS / DASH / MP4 when Core returns a direct URL. Many other
   containers need ffmpeg on the Core host; without it, Core only serves
   MP4/WebM and some H.264 MKV. mpv is the desktop player, not the Roku path.
+
+## Roku 1.4 remote checks
+
+From the repository root, run `node --test apps/roku/scripts/`, then
+`node apps/roku/scripts/package.mjs` and `node apps/roku/scripts/check.mjs`.
+Compile from `apps/roku` with
+`npx --yes brighterscript@0.73.5 --project bsconfig.json`.
+There is no Roku-local package.json. The fixture tests also need the pinned
+`brs@0.45.0` npm package in the npm cache or network access to fetch it.
+
+Settings starts in the category list. Up reaches Search settings; OK opens the
+Roku keyboard. Right or OK enters a panel. Up/Down selects a row; OK toggles a
+switch or opens a value list, and Left/Right changes a segmented choice. Back
+returns to categories; another Back leaves Settings. In Home screen settings,
+Left/Right moves the selected row up/down and OK changes its visibility.
+
+The guide uses Rewind/FastForward for eight-channel jumps. Options focuses the
+bottom Watch button; Up returns to the programme grid. Left at the first visible
+programme moves back half an hour and fetches more history when needed.
+Channels opens the old list; Back from that list returns to Guide.
+
+Profile pictures have a horizontal set row and circular characters below it.
+Down or OK enters the characters, Up/Back returns to sets, and OK chooses a
+character. Back from the sets returns to the editor. PIN entry uses four boxes
+and a remote keypad. Release-note sheets use Up/Down to page and OK/Back to close.
+The in-player version list uses Up/Down and OK; Back returns to the player menu
+while the current video keeps playing.

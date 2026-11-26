@@ -4,6 +4,8 @@ sub init()
   m.shadow = m.top.findNode("shadow")
   m.glow = m.top.findNode("glow")
   m.tint = m.top.findNode("tint")
+  m.blurMask = m.top.findNode("blurMask")
+  m.blurArt = m.top.findNode("blurArt")
   m.bodyGradient = m.top.findNode("bodyGradient")
   m.rim = m.top.findNode("rim")
   m.sheen = m.top.findNode("sheen")
@@ -30,6 +32,10 @@ sub layout()
     layer.width = w
     layer.height = h
   end for
+  m.blurMask.translation = [18, 18]
+  m.blurMask.maskSize = [w - 36, h - 36]
+  m.blurArt.width = w - 36 : m.blurArt.height = h - 36
+  m.blurArt.uri = m.top.backdropUri
   m.shadow.translation = [-72, -72]
   m.shadow.width = w + 144
   m.shadow.height = h + 144
@@ -46,7 +52,11 @@ sub paint()
   if m.top.active then tint = "0xFFFFFF38"
   if m.top.tintColor <> "" then tint = m.top.tintColor
   if m.top.accent then tint = m.top.accentColor
+  if tvmReduceTransparency() then tint = Left(tint, 8) + "FF"
   m.tint.blendColor = tint
+  m.blurMask.visible = m.top.backdropUri <> "" and not tvmReduceTransparency()
+  m.tint.opacity = 1.0
+  if m.blurMask.visible then m.tint.opacity = 0.82
   m.rim.uri = "pkg:/images/glass/" + m.shape + ".9.png"
   m.rim.blendColor = "0xF2F9FFFF"
   if m.top.focused
@@ -67,6 +77,6 @@ sub paint()
   end if
   m.shadow.opacity = 0.85
   if m.top.focused then m.shadow.opacity = 1.0
-  m.bodyGradient.visible = false
+  m.bodyGradient.visible = m.blurMask.visible
   m.sheen.visible = false
 end sub

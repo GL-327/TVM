@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="ControlCentre" extends="Group">
   <interface>
+    <field id="backdropUri" type="string" onChange="onBackdrop" />
     <field id="coreUrl" type="string" />
     <field id="coreToken" type="string" />
     <field id="accountToken" type="string" />

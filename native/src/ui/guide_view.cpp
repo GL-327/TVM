@@ -81,6 +81,9 @@ Schedule ParseSchedule(const nlohmann::json& body, Time start, Time end) {
     Schedule data;
     data.start = ParseTime(Text(body, "start")).value_or(start);
     data.end = ParseTime(Text(body, "end")).value_or(end);
+    if (const auto refreshing = body.find("refreshing"); body.is_object() && refreshing != body.end() && refreshing->is_boolean()) {
+        data.refreshing = refreshing->get<bool>();
+    }
     if (const auto groups = body.find("groups"); groups != body.end() && groups->is_array()) {
         for (const auto& group : *groups) if (group.is_string()) data.groups.push_back(group.get<std::string>());
     }

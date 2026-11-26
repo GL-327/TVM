@@ -55,9 +55,12 @@
   background:
     linear-gradient(
       90deg,
-      color-mix(in srgb, var(--tvm-bg) 88%, transparent) 0%,
-      color-mix(in srgb, var(--tvm-bg) 28%, transparent) 32%,
-      transparent 64%
+      /* Held darker through the text column: on pale art (fog, snow, white sets)
+         the old 28% at a third of the width left grey meta text unreadable. */
+      color-mix(in srgb, var(--tvm-bg) 90%, transparent) 0%,
+      color-mix(in srgb, var(--tvm-bg) 72%, transparent) 30%,
+      color-mix(in srgb, var(--tvm-bg) 36%, transparent) 50%,
+      transparent 70%
     ),
     linear-gradient(
       180deg,
@@ -487,3 +490,14 @@
   z-index: 1;
   padding: 0.5rem 0 2rem;
 }
+
+.details__versions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .85rem; max-width: 40rem; }
+.details__versions .extras-select { flex: 1 1 14rem; }
+.details .quality-badges { margin-top: .55rem; }
+.episode-item__still--blurred img { filter: blur(14px); transform: scale(1.15); }
+.details__trailer-backdrop { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity 800ms ease; }
+.details__trailer-backdrop[data-loaded='true'] { opacity: 1; }
+.details__trailer-backdrop :is(iframe, video) { position: absolute; top: 50%; left: 50%; width: max(100vw, 177.78vh); height: max(100vh, 56.25vw); transform: translate(-50%, -50%); border: 0; pointer-events: none; object-fit: cover; }
+/* YouTube draws its title and channel bar over the top of an embed; overscan crops it off. */
+.details__trailer-backdrop--embed iframe { transform: translate(-50%, -50%) scale(1.32); }
+:root[data-motion='reduced'] .details__trailer-backdrop { display: none; }

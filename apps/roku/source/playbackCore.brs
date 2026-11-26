@@ -154,12 +154,15 @@ function lcReleaseDetails(stream as Object, runtime as Integer) as Object
   if CreateObject("roRegex", "(?:^|[^a-z0-9])av1(?:$|[^a-z0-9])", "i").IsMatch(text) then codec = "av1"
   if CreateObject("roRegex", "(?:^|[^a-z0-9])vp9(?:$|[^a-z0-9])", "i").IsMatch(text) then codec = "vp9"
   if CreateObject("roRegex", "(?:^|[^a-z0-9])vp8(?:$|[^a-z0-9])", "i").IsMatch(text) then codec = "vp8"
+  if CreateObject("roRegex", "(?:^|[^a-z0-9])(?:xvid|divx|h[ ._-]?263|mpeg[ ._-]?2|mpeg[ ._-]?4[ ._-]?asp)(?:$|[^a-z0-9])", "i").IsMatch(text) then codec = "unsupported"
   hints = lcAaGet(stream, "behaviorHints", {})
   file = LCase(lcAaText(hints, "filename"))
   streamUrl = LCase(lcAaText(stream, "url"))
   container = "mp4"
   if Right(file, 4) = ".mkv" or Instr(1, text, ".mkv") > 0 or source >= 4 then container = "mkv"
-  if Right(file, 4) = ".avi" or Right(file, 4) = ".wmv" or Right(file, 5) = ".webm" or Right(file, 4) = ".mov" then container = "unsupported"
+  if CreateObject("roRegex", "[.](?:mp4|m4v|mov)(?:$|[ ?])", "i").IsMatch(file + " " + text) then container = "mp4"
+  if Right(file, 5) = ".webm" then container = "mkv"
+  if CreateObject("roRegex", "[.](?:avi|wmv)(?:$|[ ?])", "i").IsMatch(file + " " + text) then container = "unsupported"
   if CreateObject("roRegex", "\.m3u8(?:\?|$)", "i").IsMatch(streamUrl) then container = "unsupported"
   size = lcStreamSize(stream)
   height = lcStreamHeight(stream)
@@ -168,6 +171,7 @@ function lcReleaseDetails(stream as Object, runtime as Integer) as Object
   sound = ""
   if Instr(1, text, "truehd") > 0 or Instr(1, text, "true-hd") > 0 then sound = "TrueHD"
   if Instr(1, text, "dts") > 0 then sound = "DTS"
+  if CreateObject("roRegex", "(?:^|[^a-z])(?:ac3|ac-3|dd)(?:$|[^a-z])", "i").IsMatch(text) then sound = "Dolby Digital"
   if Instr(1, text, "ddp") > 0 or Instr(1, text, "eac3") > 0 or Instr(1, text, "dd+") > 0 then sound = "Dolby Digital Plus"
   if Instr(1, text, "aac") > 0 then sound = "AAC"
   channels = ""
@@ -199,7 +203,12 @@ function lcReleaseDetails(stream as Object, runtime as Integer) as Object
 end function
 
 function LocGradeIndex(pattern as String) as Integer
-  return ["hdtv", "web[ ._-]?rip", "web[ ._-]?dl", "blu[ ._-]?ray|bdrip|brrip", "remux"].IndexOf(pattern) + 1
+  ' A plain loop: roArray has no IndexOf on every Roku OS, and a missing method stops the channel.
+  grades = ["hdtv", "web[ ._-]?rip", "web[ ._-]?dl", "blu[ ._-]?ray|bdrip|brrip", "remux"]
+  for i = 0 to grades.Count() - 1
+    if grades[i] = pattern then return i + 1
+  end for
+  return 0
 end function
 
 function lcStreamHash(stream as Object) as Object
@@ -275,18 +284,18 @@ function lcRankVersions(streams as Object, original as String, runtime as Intege
   for each stream in streams
     row = lcReleaseDetails(stream, runtime)
     v = row.version
-    rawTitle = LCase(lcAaText(stream, "title"))
+    rawTitle = LCase(row.rawText)
     capHeight = v.height
     if capHeight <= 0 then capHeight = 1080
     both = CreateObject("roRegex", "(?:^|[^a-z])(?:multi|dual)(?:$|[^a-z])", "i").IsMatch(rawTitle)
     explicitDub = CreateObject("roRegex", "(?:^|[^a-z])(?:dub(?:bed)?|fandub)(?:$|[^a-z])", "i").IsMatch(rawTitle) and not both
-    dubOnly = original <> "" and prefLang = "original" and ((v.languages.Count() > 0 and not lcIncludes(v.languages, original) and not both) or (v.languages.Count() = 0 and explicitDub))
+    dubOnly = original <> "" and prefLang = "original" and ((v.languages.Count() > 0 and not lcIncludes(v.languages, original)) or (v.languages.Count() = 0 and explicitDub))
     row.languageMatch = preferred <> "" and lcIncludes(v.languages, preferred)
     native = (v.codec <> "hevc" or lcAaBool(client, "hevc", true)) and (row.container <> "mkv" or lcAaBool(client, "mkv", true))
-    if v.id <> "" and not seen.DoesExist(v.id) and capHeight <= cap and not row.lowQuality and not dubOnly and native and row.container <> "unsupported" and not ((skipUpscale or quality = "original") and v.upscaled)
+    if v.id <> "" and not seen.DoesExist(v.id) and capHeight <= cap and not row.lowQuality and not dubOnly and native and v.codec <> "unsupported" and row.container <> "unsupported" and not ((skipUpscale or quality = "original") and v.upscaled)
       codec = v.codec
       if v.hdr <> invalid then codec = codec + " 10bit"
-      if lcRokuHdrSupported(v.hdr, client) and lcCodecSupported(codec, capHeight, row.container)
+      if lcRokuHdrSupported(v.hdr, client) and lcCodecSupported(codec, capHeight, row.container) and lcAudioSupported(v.audio.codec, row.container)
         index = 0
         while index < ranked.Count()
           if lcVersionBefore(row, ranked[index], quality = "saver") then exit while
@@ -388,3 +397,12 @@ sub lcInsert(items as Object, index as Integer, value as Dynamic)
   end for
   items[index] = value
 end sub
+
+function lcAudioSupported(sound as String, container = "mp4" as String) as Boolean
+  if sound = "" then return true
+  if sound = "TrueHD" then return false
+  codecs = { AAC: "aac", "Dolby Digital": "ac3", "Dolby Digital Plus": "eac3", DTS: "dts" }
+  if not codecs.DoesExist(sound) then return false
+  result = CreateObject("roDeviceInfo").CanDecodeAudio({ codec: codecs[sound], container: container })
+  return lcAaBool(result, "result", false)
+end function

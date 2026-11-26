@@ -33,6 +33,7 @@ export function CinemaControls({ session, progress, volume, tools, actions, full
     });
     const onBack = (event: KeyboardEvent): void => {
       if (!['Escape', 'Backspace', 'BrowserBack', 'GoBack'].includes(event.key)) return;
+      if (document.querySelector('.playback-extra-sheet')) return;
       if (settingsPanel.current?.querySelector('[data-player-menu]')) return;
       event.preventDefault();
       event.stopImmediatePropagation();

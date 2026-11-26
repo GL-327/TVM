@@ -2,13 +2,15 @@
  * Fallback browse catalog used when live Cinemeta rails have not loaded yet.
  * TVM Stream play goes through Cinemeta + Torrentio + Real-Debrid.
  */
+import type { QualityInfo } from './playbackVersions';
+
 const TMDB = 'https://image.tmdb.org/t/p';
 
 function art(size: 'w500' | 'w780' | 'w1280' | 'original', path: string): string {
   return `${TMDB}/${size}${path}`;
 }
 
-export interface Title {
+export interface Title extends QualityInfo {
   id: string;
   title: string;
   year: number;

@@ -2,7 +2,18 @@ sub init()
   m.top.focusable = true
   m.pin = "" : m.col = 0 : m.seq = 0 : m.busy = false
   m.heading = m.top.findNode("heading") : m.heading.font = tvmFontTitle()
-  m.dots = m.top.findNode("dots") : m.dots.font = tvmFontTitle()
+  m.boxes = []
+  for i = 0 to 3
+    pinBox = CreateObject("roSGNode", "GlassPanel")
+    pinBox.width = 160 : pinBox.height = 140 : pinBox.translation = [320 + i * 210, 260]
+    m.top.findNode("panel").appendChild(pinBox)
+    value = CreateObject("roSGNode", "Label")
+    value.font = tvmFontTitle() : value.width = 160 : value.height = 140
+    value.horizAlign = "center" : value.vertAlign = "center" : value.translation = pinBox.translation
+    value.color = tvmText()
+    m.top.findNode("panel").appendChild(value)
+    m.boxes.Push({ pinBox: pinBox, value: value })
+  end for
   m.message = m.top.findNode("message") : m.message.font = tvmFontBody()
   m.keys = [] : m.labels = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Delete", "0", "Done"]
   for i = 0 to 11
@@ -39,11 +50,11 @@ sub paint()
   m.heading.text = m.top.heading
   m.message.text = m.top.message
   if m.remaining <> invalid and m.remaining > 0 then m.message.text = "Try again in " + StrI(m.remaining).Trim() + " seconds"
-  dots = ""
-  for i = 1 to 4
-    if i <= Len(m.pin) then dots = dots + "●  " else dots = dots + "○  "
+  for i = 0 to 3
+    m.boxes[i].value.text = ""
+    if i < Len(m.pin) then m.boxes[i].value.text = Chr(8226)
+    m.boxes[i].pinBox.focused = (i = Len(m.pin) or (Len(m.pin) = 4 and i = 3))
   end for
-  m.dots.text = dots
   for i = 0 to 11
     m.keys[i].hasFocusStyle = (i = m.col)
   end for
@@ -79,3 +90,8 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
   paint()
   return true
 end function
+
+sub onRemoteIntent()
+  key = keyFromIntent(m.top.remoteIntent)
+  if key <> "" then onKeyEvent(key, true)
+end sub

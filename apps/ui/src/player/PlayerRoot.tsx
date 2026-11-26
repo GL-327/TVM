@@ -24,6 +24,7 @@ import './features/player-chrome.css';
 import './features/perf.css';
 import './cinema-controls.css';
 import { useNavigate } from '../nav/ViewStackContext';
+import { usePlaybackExtras } from './PlaybackExtras';
 
 export type PlayerEngine = 'loading' | 'html5' | 'native';
 export type PlayerOverlay = 'queue' | 'ad' | null;
@@ -238,8 +239,9 @@ function FullscreenControl(): React.JSX.Element | null {
 export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps): React.JSX.Element {
   const navigate = useNavigate();
   const session = sourceSession;
+  const extras = usePlaybackExtras(session);
   const idle = useIdleChrome({
-    paused: session.paused,
+    paused: session.paused || extras.holdChrome,
     buffering: session.buffering,
     busy: session.busy,
     error: session.error,
@@ -289,10 +291,10 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
             volumeBy={session.adjustVolume}
           />
         </Slot>
-        <CinemaControls session={visibleSession}
+        <div inert={extras.holdChrome || undefined}><CinemaControls session={visibleSession}
           progress={<Slot><ProgressBar {...visibleSession} /></Slot>}
           volume={<Slot><VolumeControl {...visibleSession} /></Slot>}
-          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot></>}
+          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot>{extras.tools}</>}
           fullscreen={<FullscreenControl />}
           actions={<>
             {!session.live && <FocusButton id="player-download" ariaLabel="Download" title="Download" onSelect={() => {
@@ -301,7 +303,7 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
             }}><PlayerGlyph name="download" /></FocusButton>}
             <Slot><WatchlistAction {...visibleSession} /></Slot>
           </>}
-        />
+        /></div>
         <Slot>
           <LiveOverlay {...session} />
         </Slot>
@@ -321,11 +323,12 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
           <SkipRecap {...session} />
         </Slot>
         <Slot>
-          <NextUp {...session} />
+          {extras.stopNextUp || extras.holdChrome ? null : <NextUp {...session} />}
         </Slot>
         <Slot>
           <RemoteHints {...visibleSession} />
         </Slot>
+        {extras.overlays}
         {children}
       </div>
     </PlayerSessionContext.Provider>

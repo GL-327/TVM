@@ -266,6 +266,7 @@ class MainActivity : AppCompatActivity() {
                     bundledContent = { name -> readAsset("content/$name.json") },
                     sessionVault = EncryptedSessionVault(applicationContext),
                     adminVault = EncryptedSessionVault(applicationContext, "admin_key"),
+                    guideCacheDir = java.io.File(cacheDir, "guide"),
                 )
                 // An interface staged on the last run goes live now; one left
                 // over from a different app build is dropped.

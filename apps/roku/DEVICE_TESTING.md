@@ -173,3 +173,33 @@ Without Core, do steps 1 to 4 with demo data (Settings > TVM Hub demo data).
 
 These checks require Roku hardware; compiler and off-device fixture tests do
 not establish firmware playback or remote-focus acceptance.
+
+## 1.4.3 focus and decoder acceptance
+
+- [ ] Settings: visit every category including About and the admin-only Developer
+  category. Search with the keyboard, cancel, search with no results, clear the
+  search, open a value list and Back twice. Toggle a switch and move segments
+  both ways. Reorder/hide Home rows and check that focus follows the moved row.
+- [ ] Guide: try no channels, a filter with no matches, and channels with no EPG.
+  Keep one time position while moving Up/Down and jumping eight channels with
+  Rewind/FastForward. Move Left through the start of the loaded window, tune
+  with OK, focus Watch with Options, then return with Up. Open Channels and Back.
+  Leave while entering a channel number: the old tune timer must not fire later.
+- [ ] Profiles: toggle Kids, change age both ways, browse all set/character
+  windows, choose the colour/initial, enter/delete four PIN digits, and cancel.
+  Check missing character images, selected rings and long character names.
+- [ ] New release: arrive at Settings before config returns, then return Home.
+  Notes must appear once, after any existing modal closes. Read all pages of a
+  long release (including known issues), then close with OK and with Back.
+- [ ] Player: Options, Control Centre, Sleep timer, Back to Playback, Audio and
+  subtitles, then Versions. Back from Versions keeps video running and returns
+  to the menu. Choose another version and verify resume position. Play/Pause
+  must work with each panel open. Test remote-injected keys as well as the handset.
+- [ ] Compare HD and 4K devices, SDR/HDR output, and a receiver with/without DTS.
+  Check original-language/native-resolution selection and reject known cam,
+  upscale, AVI/Xvid and TrueHD-only examples. Confirm the original RD download is
+  used. Assign an RD key after opening TVM without one; retry without restarting.
+- [ ] Reduce transparency makes art-backed panels opaque. Check generated rims
+  on nav, buttons, Settings, guide, notices and player panels at 720p and 1080p.
+
+These additions have only been traced statically; none is a hardware pass.

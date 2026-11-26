@@ -713,7 +713,9 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     if handleUpNextKey(intent) then return true
   end if
   if m.qualityOpen
+    if intent = "play" or intent = "pause" then togglePlayback() : return true
     if intent = "back" then closeQuality() : return true
+    m.qualityPanel.remoteIntent = intent
     return true
   end if
   if m.video.state = "error" and intent = "select" and Left(m.top.mediaId, 5) = "live:"
@@ -721,6 +723,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     return true
   end if
   holdFocus()
+  if intent = "play" or intent = "pause" then togglePlayback() : return true
   if m.ccOpen = true and (isDirectional(intent) or intent = "select" or intent = "back" or intent = "info")
     m.cc.callFunc("handleIntent", intent)
     return true
@@ -852,11 +855,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     end if
     return true
   end if
-  if intent = "select" or intent = "play" or intent = "pause"
-    if intent = "play" or intent = "pause"
-      togglePlayback()
-      return true
-    end if
+  if intent = "select"
     if isVideoFocused() or progressFocused()
       togglePlayback()
       return true
@@ -938,6 +937,7 @@ sub openCC()
   m.hideTimer.control = "stop"
   showChrome()
   dimForCC(true)
+  m.cc.backdropUri = preferHeroUri(m.top.mediaItem)
   m.cc.coreUrl = m.top.coreUrl
   m.cc.coreToken = m.top.coreToken
   m.cc.accountToken = m.top.accountToken
@@ -1021,8 +1021,7 @@ sub onCCAction()
   else if kind = "sleep"
     applySleepTimer(asText(aaGet(action, "mode", "off")), true)
   else if kind = "openVersions"
-    saveProgress(true)
-    emit("pickVersion", { position: m.position })
+    openPlayerVersions()
   else if kind = "audio"
     id = asText(aaGet(action, "trackId", ""))
     if id <> "" and m.video.hasField("audioTrack")

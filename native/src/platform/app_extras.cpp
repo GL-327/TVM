@@ -398,4 +398,45 @@ void App::ExtrasAction(const std::string& verb) {
         });
     });
 }
+void App::LoadSettingsPrefs() {
+    if (!account_.usable) return;
+    const auto seq = prefsSaveSeq_;
+    background_->Run([this, seq] {
+        nlohmann::json data;
+        try { data = core_->Call("/api/prefs"); } catch (...) {}
+        background_->PostToUi([this, seq, data] {
+            // A change made while this was in flight is newer than what Core answered.
+            if (seq != prefsSaveSeq_ || !data.is_object()) return;
+            extrasPrefs_ = extras::ParsePreferences(data);
+            shell_->SetCoreSettings(ui::CoreSettings::FromJson(data));
+            dirty_ = true;
+        });
+    });
+}
+
+void App::SavePrefsPatch(const nlohmann::json& patch) {
+    // The two choices Core has no field for were saved by the screen; only the Home rows need rebuilding.
+    if (patch.contains("spotlightEvents")) { RebuildHome(); dirty_ = true; }
+    nlohmann::json body = patch;
+    body.erase("spotlightEvents");
+    body.erase("sleepTimerDefault");
+    if (body.empty() || !account_.usable) return;
+    const auto seq = ++prefsSaveSeq_;
+    background_->Run([this, seq, body] {
+        nlohmann::json data; bool saved = false;
+        try { data = core_->Call("/api/prefs", "PUT", body); saved = data.is_object(); } catch (...) {}
+        if (!saved) try { data = core_->Call("/api/prefs"); } catch (...) {}
+        background_->PostToUi([this, seq, data, saved] {
+            if (!data.is_object()) return;
+            // Only the newest answer is shown, so a quick run of toggles does not flick back to an older one.
+            if (seq != prefsSaveSeq_) return;
+            extrasPrefs_ = extras::ParsePreferences(data);
+            shell_->SetCoreSettings(ui::CoreSettings::FromJson(data));
+            // Home's extra rows read the preferences again soon after a change.
+            if (saved) extrasHomeCheckedMs_ = -600000;
+            dirty_ = true;
+        });
+    });
+}
+
 } // namespace tvm::platform

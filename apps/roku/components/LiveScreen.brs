@@ -2,6 +2,7 @@ sub init()
   m.top.focusable = true
   m.guide = m.top.findNode("guideGrid")
   m.guide.observeField("action", "onGuideAction")
+  m.top.observeField("visible", "onLiveVisibility")
   m.listMode = false
   m.top.observeField("focusedChild", "onLiveFocus")
   m.ribbon = m.top.findNode("ribbon")
@@ -184,4 +185,8 @@ sub onGuideAction()
   else
     emit(action.type, action)
   end if
+end sub
+
+sub onLiveVisibility()
+  if m.guide <> invalid then m.guide.visible = m.top.visible and not m.listMode
 end sub

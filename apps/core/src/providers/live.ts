@@ -972,7 +972,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         }
       }
       return { ...window, groups: [...new Set(channels.map(row => row.group))],
-        channels: group ? channels.filter(row => row.group === group) : channels };
+        channels: group ? channels.filter(row => row.group === group) : channels, refreshing: guideCache.busy() };
     },
 
     async catalog(query: LiveCatalogQuery): Promise<LiveCatalogPage> {

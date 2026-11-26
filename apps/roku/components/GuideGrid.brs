@@ -16,9 +16,9 @@ sub init()
   m.window = 10800
   m.x = 640 : m.width = 3040 : m.height = 128
   m.now = CreateObject("roDateTime").AsSeconds()
-  m.start = m.now - (m.now mod 1800)
+  m.start = m.now - (m.now mod 1800) - 10800
   m.end = m.start + 86400
-  m.left = m.start
+  m.left = m.start + 10800
   m.anchor = m.now
   m.rows = [] : m.groups = [] : m.data = []
   m.clock = m.top.findNode("clock")
@@ -32,6 +32,7 @@ end sub
 
 sub onVisibility()
   if m.top.visible then m.clock.control = "start" else m.clock.control = "stop"
+  if not m.top.visible then m.tune.control = "stop" : m.digits = ""
 end sub
 
 sub onClock()
@@ -104,6 +105,7 @@ sub onFilter()
 end sub
 
 function guideClamp(value as Integer, low as Integer, high as Integer) as Integer
+  if high < low then return low
   if value < low then return low
   if value > high then return high
   return value
@@ -276,9 +278,13 @@ sub paintGuide()
 end sub
 
 sub drawGuideInfo(channel as Object, block as Object)
+  panel = CreateObject("roSGNode", "GlassPanel")
+  panel.backdropUri = asText(aaGet(block.meta, "image", ""))
+  panel.width = 3520 : panel.height = 390 : panel.tintColor = tvmSurface()
+  m.info.appendChild(panel)
   guideRect(m.info, 0, 0, 3520, 2, "0xFFFFFF22")
   guideLogo(m.info, asText(aaGet(channel, "logo", "")), 12, 96, 300, 180)
-  guideLabel(m.info, block.title, 350, 28, 2660, 98, tvmFont("bold", 72), tvmText())
+  guideLabel(m.info, block.title, 350, 28, 2580, 98, tvmFont("bold", 72), tvmText())
   range = clockText(block.from) + " – " + clockText(block.until)
   if m.now >= block.from and m.now < block.until and block.meta <> invalid then range = "NOW  ·  " + range
   category = asText(aaGet(block.meta, "category", ""))
@@ -287,7 +293,7 @@ sub drawGuideInfo(channel as Object, block as Object)
   desc = asText(aaGet(block.meta, "description", guideChannelName(channel)))
   description = guideLabel(m.info, desc, 350, 194, 2500, 160, tvmFontSecondary(), tvmMuted())
   description.wrap = true : description.maxLines = 2
-  guideButton(m.info, 3000, 94, 520, "Watch", false)
+  guideButton(m.info, 3000, 94, 520, "Watch", m.zone = "info")
 end sub
 
 sub guideEmit(kind as String, data = {} as Object)
@@ -305,8 +311,8 @@ sub guideDay(delta as Integer)
   m.day = m.day + delta
   if m.day > 1 then m.day = -1
   if m.day < -1 then m.day = 1
-  m.start = m.now - (m.now mod 1800) + m.day * 86400
-  m.end = m.start + 86400 : m.left = m.start : m.anchor = m.start
+  m.start = m.now - (m.now mod 1800) + m.day * 86400 - 10800
+  m.end = m.start + 86400 : m.left = m.start + 10800 : m.anchor = m.left
   guideEmit("guideWindow", { start: iso(m.start) })
 end sub
 
@@ -315,6 +321,10 @@ sub guideHorizontal(direction as Integer)
   selected = guideFocused(guideProgrammes(m.rows[m.row]))
   if direction < 0
     if selected.from <= m.left
+      if m.left - 1800 < m.start
+        m.start = m.start - 1800 : m.end = m.start + 86400
+        guideEmit("guideWindow", { start: iso(m.start) })
+      end if
       m.left = guideClamp(m.left - 1800, m.start, m.end - m.window)
       m.anchor = m.left
     else
@@ -322,6 +332,10 @@ sub guideHorizontal(direction as Integer)
     end if
   else
     if selected.until >= m.left + m.window
+      if m.left + m.window + 1800 > m.end
+        m.end = m.end + 1800 : m.start = m.end - 86400
+        guideEmit("guideWindow", { start: iso(m.start) })
+      end if
       m.left = guideClamp(m.left + 1800, m.start, m.end - m.window)
       m.anchor = m.left + m.window - 1
     else
@@ -370,10 +384,21 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
       if m.tool = 3 then guideEmit("channels")
       if m.tool = 4 then guideEmit("playlist")
     end if
+  else if m.zone = "info" and m.rows.Count() > 0
+    if intent = "up" then m.zone = "grid"
+    if intent = "select" or intent = "play" then watchChannel(m.rows[m.row])
   else
+    if m.rows.Count() = 0
+      m.row = 0 : m.zone = "tools"
+      paintGuide()
+      return true
+    end if
     if intent = "up" and m.row = 0 then m.zone = "tools"
     if intent = "up" and m.row > 0 then m.row = m.row - 1
-    if intent = "down" then m.row = guideClamp(m.row + 1, 0, m.rows.Count() - 1)
+    if intent = "down"
+      if m.row < m.rows.Count() - 1 then m.row = m.row + 1 else m.zone = "info"
+    end if
+    if intent = "info" then m.zone = "info"
     if intent = "rewind" or key = "channelup" or LCase(key) = "pageup" then m.row = guideClamp(m.row - 8, 0, m.rows.Count() - 1)
     if intent = "fastForward" or key = "channeldown" or LCase(key) = "pagedown" then m.row = guideClamp(m.row + 8, 0, m.rows.Count() - 1)
     if intent = "left" then guideHorizontal(-1)

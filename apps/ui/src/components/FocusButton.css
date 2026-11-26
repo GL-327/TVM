@@ -1,5 +1,5 @@
 /*
- * FocusButton paint path: outline + compositor scale only.
+ * FocusButton paint path: outline + physical spring (420/32) transform.
  * Blur drop-shadows on focus inflate the paint rect on every D-pad hop.
  */
 
@@ -7,9 +7,14 @@
   contain: layout style;
   backface-visibility: hidden;
   transition:
-    transform var(--tvm-motion-fast) cubic-bezier(0.22, 1.2, 0.36, 1),
+    transform 240ms var(--tvm-spring-snappy, cubic-bezier(0.22, 1.24, 0.36, 1)),
+    box-shadow 200ms var(--tvm-motion-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
     background-color var(--tvm-motion-fast) var(--tvm-motion-ease),
     border-color var(--tvm-motion-fast) var(--tvm-motion-ease);
+}
+
+.tvm-button:active:not(:disabled) {
+  transform: translateZ(0) scale(0.97);
 }
 
 .tvm-button:focus,
@@ -68,4 +73,3 @@
   transform: none;
   will-change: auto;
 }
-

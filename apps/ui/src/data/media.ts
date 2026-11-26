@@ -5,10 +5,12 @@ import { normalizeTitle, titlesMatch } from './matchTitle';
 import { asSeason } from './seasons';
 import { createRequestCache } from './requestCache';
 import { readToken } from './sessionToken';
+import { chosenVersion, rememberPlaybackInfo, type Version, type QualityInfo } from './playbackVersions';
+import { extraEnabled, isExtraAllowed } from './polishPrefs';
 
 export { normalizeTitle };
 
-export interface MediaItem {
+export interface MediaItem extends QualityInfo {
   id: string;
   title: string;
   year: number | null;
@@ -21,6 +23,7 @@ export interface MediaItem {
   runtime?: string;
   playable: boolean;
   progress?: number;
+  watched?: boolean;
   filename?: string;
   hue: number;
   mimeType?: string;
@@ -149,6 +152,8 @@ export type PlaybackResult =
       fallbackEngine?: 'html5' | 'native';
       subtitles?: PlaybackSubtitle[];
       segments?: PlaybackSegments | null;
+      version?: Version;
+      sizeBytes?: number;
     }
   | { kind: 'unavailable'; reason: string };
 
@@ -166,6 +171,9 @@ export function toMediaItem(title: Title): MediaItem {
     runtime: title.runtime,
     playable: title.playable === true,
     hue: title.hue,
+    height: title.height,
+    hdr: title.hdr,
+    audio: title.audio,
   };
 }
 
@@ -187,6 +195,9 @@ export function asTitle(item: MediaItem): Title {
     progress: item.progress,
     playable: item.playable,
     episodeLabel,
+    height: item.height,
+    hdr: item.hdr,
+    audio: item.audio,
   };
   const names = [item.title, item.showTitle ?? '', item.filename ?? ''];
   let match: Title | undefined;
@@ -435,13 +446,15 @@ export async function requestPlayback(input: {
   startAt?: number;
   native?: boolean;
   screenHeight?: number;
+  versionId?: string;
 }, signal?: AbortSignal): Promise<PlaybackResult> {
   const timeout = AbortSignal.timeout(PLAYBACK_RESOLVE_TIMEOUT_MS);
   try {
     const response = await apiFetch('/api/playback', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...(isExtraAllowed('versionPicker') && extraEnabled('versionPicker')
+        ? { versionId: input.versionId ?? chosenVersion(input) } : { versionId: undefined }) }),
       signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
     });
     const body = (await response.json()) as {
@@ -451,6 +464,8 @@ export async function requestPlayback(input: {
     } & Partial<Omit<Extract<PlaybackResult, { kind: 'stream' }>, 'kind'>>;
     if (response.ok && body.kind === 'stream' && typeof body.url === 'string' && body.url !== '' &&
       typeof body.mimeType === 'string' && typeof body.title === 'string') {
+      rememberPlaybackInfo(input, { version: body.version, mimeType: body.mimeType,
+        filename: body.filename, sizeBytes: body.sizeBytes, durationSeconds: body.durationSeconds });
       return body as Extract<PlaybackResult, { kind: 'stream' }>;
     }
     if (body.kind === 'unavailable') {

@@ -100,6 +100,7 @@ sub onExtrasSettings(event as Object)
   if m.settingsNode <> invalid then m.settingsNode.extrasPrefs = task.json
   if m.homeNode <> invalid
     m.homeNode.callFunc("refreshHomePrefs")
+    if m.settingsNode <> invalid then m.settingsNode.homeRows = m.homeNode.callFunc("settingsHomeRows")
     if tvmExtraEnabled("surpriseMe") and m.homeNode.surpriseItem = invalid then m.homeSurpriseTask = startApiGet("local:/api/extras/surprise", "onHomeSurprise")
     if aaGet(previous, "spotlightEvents", true) <> aaGet(task.json, "spotlightEvents", true) then loadEvents()
   end if

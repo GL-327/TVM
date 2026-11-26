@@ -3,6 +3,275 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.3",
+      "date": "2026-11-26",
+      "title": "Settings, the TV guide and extras everywhere (test build)",
+      "highlights": [
+        "Settings has real switches for playback, audio, subtitles, Home and every extra, with a search box.",
+        "The TV guide fills in by itself while listings download, and phones have it too.",
+        "Pick a version of a film on Details, and press I in the player for Stats.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Settings",
+          "text": "Windows Settings has Playback, Audio & subtitles, Home screen and Extras pages with real switches.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Search settings box and an icon for every category on Windows.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Back in Settings goes to the category list first, then out.",
+          "platforms": [
+            "windows",
+            "roku"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Roku Settings works fully with the remote, including search, switches and reordering Home rows.",
+          "platforms": [
+            "roku"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "The settings search box shows its magnifier, and a new category opens at its top.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Seek previews only appear in Settings on Windows, the one app that has them.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "The TV guide fills in by itself once listings download, instead of showing No guide information."
+        },
+        {
+          "area": "Live TV",
+          "text": "Phones have the TV guide, with listings for free channels and your IPTV list.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "A programme without a picture shows the channel logo instead of a broken image.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "Phones pick the best copy in the original language and skip upscales and cams.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "iPhone keeps 4K MKV and TrueHD copies, which it can play, instead of smaller files.",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "Choose a version on Details or in the player, labelled like 4K · Dolby Vision · REMUX.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "Press I in the player for Stats: resolution, bitrate, dropped frames and the version playing.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "Sleep timer in the player menu: 15 to 60 minutes, or the end of the episode.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "Night mode evens out loud and quiet sounds.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "The player pauses when you hide the window, and ? shows the keyboard shortcuts.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "Playback webhooks now send play, pause, stop and finish events from phones too.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Quality badges for 4K, HDR, Dolby Vision and Atmos on Details, and on posters when known.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Spoiler blur hides stills and summaries of episodes you have not watched yet.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Trailer backdrops play a muted trailer behind Details after three seconds.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Theme songs, off by default, play quietly on Details.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Details text stays readable over pale artwork.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The Home spotlight no longer rides up under the top bar on 720p windows.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "The selected tab in the top bar, and in two-to-five-way choices, is highlighted again.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "Glass is clearer, with a sharp rim, a lift on hover and edges that bend the picture behind.",
+          "platforms": [
+            "web",
+            "desktop",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "Roku glass panels pick up a soft copy of the artwork behind them.",
+          "platforms": [
+            "roku"
+          ]
+        },
+        {
+          "area": "Profiles",
+          "text": "The profile editor has a Kids switch, age choices, and avatar sets as tiles with names.",
+          "platforms": [
+            "windows",
+            "roku"
+          ]
+        },
+        {
+          "area": "Profiles",
+          "text": "PIN entry on Roku shows four boxes.",
+          "platforms": [
+            "roku"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "Long release notes scroll in the pop-up on Windows and page with Up and Down on Roku.",
+          "platforms": [
+            "windows",
+            "roku"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "After an update the written notes show once, without a second list of raw commit titles.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet."
+      ]
+    },
+    {
       "version": "1.4.2",
       "date": "2026-11-26",
       "title": "Phone layout fixes (test build)",

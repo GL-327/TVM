@@ -1,4 +1,5 @@
 import type { EngineEvents, EngineOptions, EngineStream, PlayerEngine } from './engine';
+import { TEMPORARY_VOLUME_EVENT } from './audioGain';
 
 type NativeMessage = { id: string; command: string; [key: string]: unknown };
 type NativeBridge = { postMessage(message: NativeMessage): void };
@@ -46,6 +47,10 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
   const send = (command: string, payload: Record<string, unknown> = {}): void => {
     if (!destroyed) bridge.postMessage({ id, command, ...payload });
   };
+  const temporaryVolume = (raw: Event): void => {
+    const volume = (raw as CustomEvent<{ volume?: number }>).detail?.volume;
+    if (typeof volume === 'number' && Number.isFinite(volume)) send('volume', { volume: Math.max(0, Math.min(1, volume)) });
+  };
   const receive = (event: Event): void => {
     const data = (event as CustomEvent<NativeMessage>).detail;
     if (destroyed || data?.id !== id) return;
@@ -70,6 +75,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
       if (attached || destroyed) return;
       attached = true;
       window.addEventListener('tvm:native-player', receive);
+      window.addEventListener(TEMPORARY_VOLUME_EVENT, temporaryVolume);
       send('open', {
         url: new URL(stream.url, window.location.href).href,
         title: stream.title,
@@ -79,7 +85,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
         initialMuted: options.initialMuted ?? false,
       });
     },
-    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); },
+    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); window.removeEventListener(TEMPORARY_VOLUME_EVENT, temporaryVolume); },
     play: () => send('play'), pause: () => send('pause'),
     toggle: () => send(paused ? 'play' : 'pause'), // paused starts true so the first toggle plays
     seekBy: (delta) => send('seek', { seconds: Math.max(0, position + delta) }),

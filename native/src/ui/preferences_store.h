@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <optional>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -38,6 +39,13 @@ public:
     // Whether "Who's watching?" shows each time TVM opens. On unless the viewer turns it off.
     virtual bool ChooseProfileOnLaunch() const { return true; }
     virtual void SaveChooseProfileOnLaunch(bool /*on*/) {}
+
+    // Choices Core does not keep: the player's starting sleep timer ("off", "15", "30", "45", "60" or "end"), and
+    // whether Home features the big film and TV release events. They live in ui-prefs.json on this PC.
+    virtual std::string SleepTimerDefault() const { return "off"; }
+    virtual void SaveSleepTimerDefault(const std::string& /*value*/) {}
+    virtual bool SpotlightEvents() const { return true; }
+    virtual void SaveSpotlightEvents(bool /*on*/) {}
 };
 
 // The real store. UI preferences live in ui-prefs.json. Core preferences use
@@ -65,6 +73,11 @@ public:
 
     bool ChooseProfileOnLaunch() const override;
     void SaveChooseProfileOnLaunch(bool on) override;
+
+    std::string SleepTimerDefault() const override;
+    void SaveSleepTimerDefault(const std::string& value) override;
+    bool SpotlightEvents() const override;
+    void SaveSpotlightEvents(bool on) override;
 
 private:
     // ui-prefs.json, read once and kept in memory. The shell asks for the look and the motion every frame, so the

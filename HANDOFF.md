@@ -1,62 +1,53 @@
-# Handoff: TVM 1.4.2 (test build)
+# Handoff: TVM 1.4.3 (test build)
 
-Written 2026-11-26 around 05:00 UK by Claude on the owner's desktop, for whoever picks this up next (the
-owner's laptop session). **Read this before changing anything.** Delete this file once everything below is
-done, and remove the pointer to it at the top of `CLAUDE.md`.
+Written 2026-11-26 by Claude on the owner's laptop, continuing the 1.4 polish that the desktop session could not
+finish. **Read this before changing anything.** Delete this file once everything below is done, and remove the
+pointer to it at the top of `CLAUDE.md`.
 
-## What happened
+The contract is still `docs/1.4/spec.md`. Each builder's report is in `docs/1.4/report-*.md`; the 1.4.3 ones end
+in `-143.md`. 1.4.3 was built by Claude (lead, web audit, Core, integration), OpenAI Codex (phone engines, Roku,
+web extras), Gemini in Antigravity (Liquid Glass) and a Claude Sonnet helper (Windows Settings).
 
-The owner asked for a big polish pass. The full list and the design are in `docs/1.4/spec.md`, which is
-the contract every builder worked from. Codex and Gemini each ran out of usage within about 15 minutes of
-starting six parallel builders. Claude Sonnet helpers then made every area build and pass its tests.
-The owner asked for a push before morning **even if unfinished**, so 1.4.0 went out as a test build, 1.4.1 added the Windows Settings redesign, and 1.4.2 fixed phone-layout regressions that the CI "responsive-web" Playwright job caught in 1.4.0 (see `docs/1.4/report-ui-mobile-fix.md`). On GitHub, 1.4.0 built and published every app, and the iPhone app compiled in CI. Its
-patch notes (a pop-up this time) list the known issues, and so does the section below.
+## State
 
-Each area's own report, from the builder that last touched it, is in `docs/1.4/report-*.md`.
-
-## State when pushed
-
-Every check passed locally before the push:
-- typecheck
-- Core tests (688)
-- UI tests (518) and build
-- Roku: BrighterScript, tests (446), package, check
+Checks run locally before committing:
+- Core typecheck and tests (695+)
+- web UI typecheck, tests (546+) and build
+- Playwright `mobile.spec.ts` and `responsive.spec.ts`
+- Roku BrighterScript (0 errors), tests (451, including a BrightScript runtime test), package and check
 - Android and iOS project checks
-- Android unit tests and assembleDebug
-- content and changelog
-- the Windows build with ctest
+- content and changelog checks
+- Windows build and `tvm_tests.exe` (600)
 
-Nothing was tried on a real device.
+Android/Kotlin and iOS/Swift cannot be compiled on the laptop (no Android SDK, no Swift); **CI is their first
+compile**. Nothing was tried on a real phone, Roku or TV.
 
-| Area | Done | Not done / unverified |
+| Area | Done in 1.4.3 | Still open |
 |---|---|---|
-| Windows (`native/`) | Geist font. Centred solid nav with a magnifier search button. Hero without the glass box. One lit card in looping rails, no hover clipping. Rounded-rectangle buttons. Click to pause, double-click for fullscreen. Controls on mouse move in fullscreen. Client caps and original-language audio. RD status refresh. TV guide (Guide button on Live TV). Patch-notes pop-up. **1.4.1:** two-pane Settings with switches and segmented controls (`native/src/ui/controls.*`); profile editor Kids switch and age segmented control. | Settings search, category icons, a Home screen category and switches for each extra (spec sections 7 and 8). Phone-width Settings layout. Avatar set tiles in the profile editor. The full Liquid Glass rework (section 3.1; only partly done). Hero particles/glow not confirmed on screen. Trailer clip via Media Foundation unverified. Guide not tried with real IPTV. The pop-up body clips instead of scrolling. |
-| Core (`apps/core`) | RD key cache fix. `/api/config` with flags. `/api/announcement`. Ranking (original language, highest native resolution, no upscales or cams). `/api/playback/versions`. Extras prefs. | `/api/live/guide` has no dedicated test. Hero clip and theme songs need real yt-dlp/ffmpeg runs. Free-channel EPG ids not reviewed one by one. The bitrate cause: check `docs/1.4/report-core.md`. |
-| Web/phone UI (`apps/ui`) | Nav with magnifier, no double selection, no hover clipping, Geist, click to pause, double-click fullscreen, patch-notes pop-up. | Only the sign-in screen was seen in a browser. Guide, Settings redesign, Stats overlay, version picker and extras switches not audited or not done. Controls in fullscreen not verified. |
-| Roku (`apps/roku`) | Fixed all BrighterScript errors. Patch-notes dialog. | Not run on a TV. The redesign items in `docs/1.4/report-roku.md` need a remote-navigation pass. |
-| Android | Builds and passes tests. `/api/config`, announcement, RD fix, prefs, verify/forgot, versions. | `/api/live/guide`. The webhook is not called. Default version auto-pick still uses the old ordering. |
-| iPhone | Project check passes, and it compiled and built the IPA in CI for 1.4.0. | Never run on a phone. Versions not wired to playback. No guide endpoint. |
+| Windows | Settings: Playback, Audio & subtitles, Home screen, Extras (22 switches), search, icons, Back to list. Guide re-polls while Core says `refreshing`. Patch-notes pop-up scrolls with platform tags. Profile editor avatar-set tiles. | Liquid Glass rework to the web recipe (Gemini job `report-glass-native-143.md`; check whether it landed). Home row order. Webhook URL, volume boost, accent and poster titles rows. |
+| Web / desktop / phone UI | Audited in a browser. Fixed hero overlapping the nav at 720p, Settings search icon / scroll / top fade, guide auto-refresh and logo fallback, Details legibility, duplicate commit-list modal. Codex: Stats (I), version picker, quality badges, sleep timer, night mode, pause when hidden, shortcuts (?), spoiler blur, trailer backdrops (now Core's clean clip first, YouTube fallback cropped), theme songs. Gemini: Liquid Glass per spec 3.1 (lens, rim, adaptive tint, droplet; nav highlight bug fixed). | Phones: Stats / sleep timer / night mode do not draw over the native video surfaces. Spoiler blur on phones needs `watched` on episodes from the phone engines. |
+| Core | Guide `refreshing` flag + first guide tests. Episodes carry `watched`. Hero clip verified end to end (H.264 1080p, ~38 s, muted, Range). | Theme songs: lookup works, YouTube refused the audio download during testing. |
+| Roku | Settings/guide/profile/patch-notes remote paths, AvatarPicker, 4-box PIN, glass rims + soft art behind panels, ranking fixes, guide re-poll, manifest 1.4.3. `IndexOf` calls replaced (not on every Roku OS). | Not run on a TV. |
+| Android | Live guide (XmlPullParser), webhook events, default auto-pick uses the 1.4 ranking, client caps, version/originalLanguage in responses. | Compile in CI. Device test. |
+| iPhone | Live guide (XMLParser), versions wired, webhook. Lead fix: ranking keeps MKV/TrueHD/DTS because the iPhone plays through VLC. | Compile in CI. Device test. |
 
-## Accounts service (private repo GL-327/TVM-accounts, already deployed)
+## Owner item 6 (bitrate)
 
-- **Dashboard:** `/admin` has the TVM look, with Accounts, Activity, Announcements and Settings.
-- **Real-Debrid keys:** keys can be tested and saved. Real-Debrid refuses requests from Cloudflare, so a save still works when the check can't reach it.
-- **Universal Real-Debrid key:** Settings → Real-Debrid. Hand-approved accounts without their own key use it. Open sign-ups never get it.
-- **Email:** verification and password-reset links are live (Brevo), sent from the TVM Gmail address.
-- **Settings:** patch-notes pop-up switch (on), open sign-ups (off), minimum version, flags.
-- **Declined by Claude:** giving the owner's Real-Debrid key to every open sign-up with an ad-gated daily quota. It risks the owner's Real-Debrid account and is legally risky. Open sign-ups means bring your own key.
+Windows (mpv), Android and Roku play Real-Debrid's original `unrestrict` download link; the web path only
+transcodes when the browser cannot decode the codec, at quality-based CRF 20. The low bitrate came from the old
+ranking letting small encodes win. The 1.4 ranking (original language, highest native resolution, REMUX > BluRay >
+WEB-DL, higher bitrate, no upscales/cams) fixes it on every platform. Verify with Stats (I) on a real title.
 
 ## Next, in order
 
-1. Test 1.4.0 on Windows, a phone and Roku. Fix anything that blocks watching first.
-2. Settings redesign on web/phones and Roku (spec section 8; Windows is done, see `docs/1.4/report-native-settings.md`), a switch for every extra (section 7) everywhere, and the profile editor controls off Windows (section 3.4).
-3. Live TV guide on web/phones (UI), phone engines and Roku (section 6).
-4. The Liquid Glass rework to the iOS 27 standard (section 3.1) on Windows and web.
-5. Hero trailer clip and theme songs end to end (section 4 and section 7).
-6. iPhone: fix whatever the first CI compile reports, then wire versions and original language.
-7. When this is done: update the 1.4.x notes, delete this file and the CLAUDE.md pointer.
+1. Watch CI for the Android and iPhone compile; fix what it reports.
+2. Test 1.4.3 on Windows, a phone and Roku; fix anything that blocks watching first.
+3. Windows Liquid Glass: integrate or finish Gemini's native job.
+4. Phones: draw Stats / sleep timer / night mode in the native players; send `watched` on episodes.
+5. When done: update the notes, delete this file and the CLAUDE.md pointer.
 
 ## Lessons for whoever runs builders
 
-Six heavy parallel agents burn a 5-hour allowance in about 15 minutes on these plans (Codex and Gemini
-both did). Run two or three at a time, and check usage often.
+- Give each builder its own folders; five ran at once without conflicts this way.
+- Antigravity needs "Always allow" (or turbo) before a headless Gemini run, or it waits forever on the first read.
+- Codex's sandbox cannot fetch npm packages or delete temp folders; rerun its network-dependent tests yourself.

@@ -1,0 +1,3 @@
+.quality-badges { display: inline-flex; flex-wrap: wrap; gap: .3rem; vertical-align: middle; }
+.quality-badges > span { padding: .16rem .35rem; border: 1px solid #ffffff60; border-radius: 4px; background: #111820d9; color: #fff; font-size: .65rem; font-weight: 650; line-height: 1.2; letter-spacing: .02em; }
+.quality-badges--poster { position: absolute; top: .55rem; left: .55rem; right: .55rem; z-index: 2; pointer-events: none; }

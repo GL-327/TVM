@@ -71,6 +71,8 @@ export interface MediaItem {
   runtime?: string;
   playable: boolean;
   progress?: number;
+  /** Episodes only: finished (over 96%, or marked watched) by the active profile. Spoiler blur reads it. */
+  watched?: boolean;
   filename?: string;
   hue: number;
   mimeType?: string;

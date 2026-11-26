@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   detectRuntimePlatform,
   filterChangesForPlatform,
+  currentAppVersion,
   pendingChangelog,
   parseChangelogRecord,
+  presentPendingChangelog,
   rememberPendingChangelog,
   shortReleaseLabel,
   shouldShowReleaseCornerCard,
@@ -57,5 +59,31 @@ describe('changelog', () => {
     expect(webChanges.some((c) => c.area === 'Look')).toBe(true);
     expect(detectRuntimePlatform('Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)')).toBe('ios');
     expect(detectRuntimePlatform('Mozilla/5.0 (Linux; Android 14; Pixel 8)')).toBe('android');
+  });
+});
+
+describe('pending commit list after an interface update', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const respond = (releases: Array<{ version: string }>) => vi.fn(async (url: string) => {
+    if (url === '/api/update/changelog') {
+      return new Response(JSON.stringify({ pending: true, version: 'abc1234', appliedAt: '', entries: [{ title: 'Tidy rails' }] }));
+    }
+    if (url === '/api/changelog') return new Response(JSON.stringify({ current: currentAppVersion(), releases }));
+    return new Response('{}');
+  });
+
+  it('is skipped when written notes exist for the installed version', async () => {
+    vi.stubGlobal('fetch', respond([{ version: currentAppVersion() }]));
+    const push = vi.fn();
+    expect(await presentPendingChangelog(push)).toBe(false);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('still shows when there are no written notes for this version', async () => {
+    vi.stubGlobal('fetch', respond([{ version: '0.0.1' }]));
+    const push = vi.fn();
+    expect(await presentPendingChangelog(push)).toBe(true);
+    expect(push).toHaveBeenCalledWith('changelog', expect.objectContaining({ params: expect.objectContaining({ version: 'abc1234' }) }));
   });
 });

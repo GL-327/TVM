@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 struct PlaybackEventRecord {
     var event: String
@@ -65,8 +66,13 @@ final class TVMWebhook {
               let id = json["id"] as? String, isValidProgressId(id) else { return nil }
         let titleRaw = (json["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = titleRaw.flatMap { $0.isEmpty ? nil : String($0.prefix(300)) }
-        let pos = ((json["position"] as? NSNumber)?.doubleValue).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
-        let dur = ((json["duration"] as? NSNumber)?.doubleValue).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+        func seconds(_ value: Any?) -> Double? {
+            guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+            let seconds = number.doubleValue
+            return seconds.isFinite && seconds >= 0 ? seconds : nil
+        }
+        let pos = seconds(json["position"])
+        let dur = seconds(json["duration"])
         return PlaybackEventRecord(event: event, id: id, title: title, position: pos, duration: dur)
     }
 

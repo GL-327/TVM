@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPlayerEngine, type EngineStream } from './engine';
+import { applyTemporaryVolume } from './audioGain';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -34,6 +35,9 @@ describe('iOS native playback', () => {
     expect(postMessage).toHaveBeenLastCalledWith({ id: open['id'], command: 'seek', seconds: 151 });
     engine.setVolume(0.4);
     expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'volume', volume: 0.4 }));
+    applyTemporaryVolume(null, 0.2, true, true);
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'volume', volume: 0.2 }));
+    expect(postMessage.mock.calls.some(([message]) => message.command === 'mute')).toBe(false);
     engine.setRate(2);
     expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'rate', rate: 2 }));
     emit({ id: open['id'], command: 'closed' });
@@ -41,6 +45,9 @@ describe('iOS native playback', () => {
     expect(events.onEnded).not.toHaveBeenCalled();
     engine.destroy();
     expect(postMessage).toHaveBeenLastCalledWith({ id: open['id'], command: 'stop' });
+    const sent = postMessage.mock.calls.length;
+    applyTemporaryVolume(null, 0.1, true, true);
+    expect(postMessage).toHaveBeenCalledTimes(sent);
     emit(state);
     expect(events.onTime).toHaveBeenCalledTimes(2);
   });

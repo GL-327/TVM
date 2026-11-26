@@ -1,7 +1,7 @@
 sub initQuality()
   m.manualQuality = m.top.chosenQuality
   m.variants = [] : m.variantIndex = 0 : m.playUrl = ""
-  m.qualityOpen = false
+  m.qualityOpen = false : m.versionPanel = false
   m.qualityPanel = m.top.findNode("qualityPanel")
   m.qualityPanel.observeField("action", "onQualityAction")
   m.orbit = m.top.findNode("orbit")
@@ -106,6 +106,7 @@ sub restartVariant()
 end sub
 
 sub openQuality()
+  m.versionPanel = false
   m.hideTimer.control = "stop"
   rows = []
   best = m.qualityCap
@@ -135,14 +136,38 @@ sub openQuality()
   m.qualityPanel.setFocus(true)
 end sub
 
+sub openPlayerVersions()
+  rows = []
+  for each version in aaArray(m.top, "versions")
+    rows.Push({ id: version.id, label: version.label, body: version.label + Chr(10) + "OK: play this version    Back: player menu", version: version })
+  end for
+  if rows.Count() = 0 then rows.Push({ id: "none", label: "No versions available", body: "This source has no other compatible versions. Back returns to the player menu." })
+  m.versionPanel = true
+  m.hideTimer.control = "stop"
+  m.qualityPanel.heading = "Choose version" : m.qualityPanel.rows = rows
+  m.qualityPanel.visible = true : m.qualityOpen = true
+  m.qualityPanel.setFocus(true)
+end sub
+
 sub closeQuality()
+  returnToMenu = m.versionPanel
+  m.versionPanel = false
   m.qualityPanel.visible = false : m.qualityOpen = false
   claimOverlayFocus()
+  if returnToMenu then openCC()
 end sub
 
 sub onQualityAction()
+  if aaGet(m.qualityPanel.action, "type", "") <> "select" then return
   row = aaGet(m.qualityPanel.action, "row", {})
   id = asText(aaGet(row, "id", ""))
+  if m.versionPanel
+    if aaGet(row, "version", invalid) = invalid then closeQuality() : return
+    m.versionPanel = false
+    saveProgress(true)
+    emit("version", { versionId: row.id, position: m.position })
+    return
+  end if
   if id = "volume" then return
   closeQuality()
   if id = "control-centre" then openCC() : return

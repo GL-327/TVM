@@ -161,6 +161,10 @@ sub settingPlate(parent as Object, x as Integer, y as Integer, w as Integer, h a
   node.uri = "pkg:/images/glass/" + shape + "-fill.9.png"
   node.width = w : node.height = h : node.translation = [x, y] : node.blendColor = tint
   parent.appendChild(node)
+  rim = CreateObject("roSGNode", "Poster")
+  rim.uri = "pkg:/images/glass/" + shape + ".9.png"
+  rim.width = w : rim.height = h : rim.translation = [x, y]
+  parent.appendChild(rim)
 end sub
 
 sub settingsIcon(parent as Object, name as String, x as Integer, y as Integer, color as String)
@@ -189,7 +193,9 @@ sub paintSettings()
   settingsLabel(m.nav, search, 105, 158, 817, 112, tvmFontLabel(), tvmText())
   first = 0
   if m.category > 11 then first = m.category - 11
-  for i = first to m.sections.Count() - 1
+  lastCategory = first + 11
+  if lastCategory >= m.sections.Count() then lastCategory = m.sections.Count() - 1
+  for i = first to lastCategory
     y = 310 + (i - first) * 125
     color = tvmMuted()
     if i = m.category
@@ -220,6 +226,11 @@ sub paintSettings()
     section = m.sections[m.category]
     heading = section.name : description = section.description : rows = section.rows
   end if
+  if m.movedSection <> invalid
+    for i = 0 to rows.Count() - 1
+      if aaGet(rows[i], "section", "") = m.movedSection then m.row = i
+    end for
+  end if
   m.rows = rows
   if m.row >= rows.Count() then m.row = 0
   settingsLabel(m.panel, heading, 0, 0, 2410, 108, tvmFontScreenTitle(), tvmText())
@@ -233,6 +244,7 @@ sub paintSettings()
   last = first + 7
   if last >= rows.Count() then last = rows.Count() - 1
   card = CreateObject("roSGNode", "GlassPanel")
+  if m.global <> invalid then card.backdropUri = asText(m.global.trendingHeroUri)
   card.width = 2420 : card.height = (last - first + 1) * 176 : card.translation = [0, 252]
   m.panel.appendChild(card)
   for i = first to last
@@ -253,9 +265,11 @@ sub paintSetting(row as Object, y as Integer, focused as Boolean, divider as Boo
   label = row.label
   if row.area <> invalid and m.top.query <> "" then label = row.area + "  ·  " + label
   settingsLabel(m.panel, label, 56, y + 16, 1420, 74, tvmFontLabel(), tvmText())
-  settingsLabel(m.panel, row.body, 56, y + 87, 1530, 70, tvmFontMeta(), tvmMuted())
+  description = settingsLabel(m.panel, row.body, 56, y + 80, 1530, 90, tvmFont("regular", 36), tvmMuted())
+  description.wrap = true : description.maxLines = 2
   value = activeSetting(row)
   if row.type = "switch" or row.type = "extra" or row.type = "deviceSwitch" or row.type = "home"
+    if row.type = "home" then settingsLabel(m.panel, "< Up    Down >", 1620, y + 46, 550, 88, tvmFontMeta(), tvmMuted())
     track = tvmSurfaceHover()
     if value = true then track = tvmAccentBlue()
     settingPlate(m.panel, 2180, y + 50, 138, 76, track, "pill")
@@ -323,6 +337,7 @@ sub changeSetting(row as Object, direction as Integer, selectKey as Boolean)
   control = row.type
   if control = "home"
     if selectKey then direction = 0
+    m.movedSection = row.section
     settingsEmit("homeSection", { id: row.section, delta: direction })
   else if control = "action" or control = "deviceSwitch"
     if selectKey or row.id = "cycleTheme" then settingsEmit(row.id, { delta: direction })
@@ -333,8 +348,8 @@ sub changeSetting(row as Object, direction as Integer, selectKey as Boolean)
   else if control = "device"
     index = settingIndex(row.values, activeSetting(row))
     settingsEmit("font", { family: row.values[(index + direction + row.values.Count()) mod row.values.Count()] })
-  else if (control = "select" or control = "style") and selectKey
-    settingsEmit("prefOptions", { row: row })
+  else if control = "select" or control = "style"
+    if selectKey then settingsEmit("prefOptions", { row: row })
   else
     index = settingIndex(row.values, activeSetting(row))
     scope = ""
@@ -346,12 +361,18 @@ end sub
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
+  if intent = "up" or intent = "down" or intent = "back" then m.movedSection = invalid
   if intent = "back"
     if m.focusSide then return false
     m.focusSide = true
   else if m.focusSide
-    if intent = "up" and m.category > -1 then m.category = m.category - 1 : m.row = 0
-    if intent = "down" and m.category < m.sections.Count() - 1 then m.category = m.category + 1 : m.row = 0
+    if intent = "up" and m.category > -1
+      m.category = m.category - 1 : m.row = 0
+      if m.category >= 0 then m.top.query = ""
+    end if
+    if intent = "down" and m.category < m.sections.Count() - 1
+      m.category = m.category + 1 : m.row = 0 : m.top.query = ""
+    end if
     if intent = "select" and m.category = -1
       settingsEmit("settingsSearch")
     else if (intent = "right" or intent = "select") and m.rows.Count() > 0

@@ -1,4 +1,7 @@
-.spotlight {
+/* The second selector out-ranks the older `.home--launcher .stage--home` height
+   (50vh), which squeezed the hero on 720p windows until its copy rose into the nav. */
+.spotlight,
+.home--launcher .spotlight.stage--home {
   position: relative;
   isolation: isolate;
   overflow: hidden;

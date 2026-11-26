@@ -135,15 +135,25 @@ TEST(settings_lists_the_web_rows_in_order) {
     const std::vector<std::string> expected = {
         "Sign in and access", "Your account", "Privacy & terms", "Plan", "Services", "Streaming services",
         "Profiles", "Profiles", "Choose profile on launch",
-        "Playback", "TVM Extras", "Your stats",
-        "Languages", "Audio and subtitle languages",
+        "Quality", "Quality", "Skip upscaled releases", "Audio language",
+        "Watching", "Autoplay next episode", "Skip intro & credits", "Sleep timer default",
+        "Subtitles", "Subtitle mode", "Preferred subtitle languages", "Size", "Colour", "Background", "Preview",
+        "Sound", "Night mode",
         "Picture", "Performance mode", "Look", "Theme", "Font", "Reduce transparency", "Reduce motion",
         "Language", "App language",
+        "Home", "Hero previews", "Spotlight events",
+        "Playback", "Online subtitles", "Chapters", "Seek previews", "Version picker", "Sleep timer", "Night mode",
+        "Pause when hidden", "Keyboard shortcuts",
+        "Details pages", "Trailers", "Trailer backdrops", "Collections", "IMDb ratings", "Quality badges",
+        "English anime titles", "Theme songs", "Spoiler blur",
+        "Home and activity", "Coming up", "Surprise me", "Automatic collections", "Announcements", "Watch stats",
+        "Playback webhook",
         "Live TV", "Live TV login", "Live TV playlist",
         "Real-Debrid", "Real-Debrid",
         "Downloads", "Downloads",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
         "Updates", "Updates", "Check for updates on launch", "What's new",
+        "Your stats", "Your stats",
         "This device", "Network", "Display", "Diagnostics",
         "Maintenance", "Clear cache", "Fully reset", "Restart",
     };
@@ -300,9 +310,12 @@ TEST(settings_language_list_closes_on_back_and_on_a_click_outside) {
     // Back closes the list and keeps the page.
     REQUIRE(settings.CloseOverlay(0.0));
     REQUIRE(!settings.LanguageList().IsOpen());
+    // The next Back leaves the rows for the category list, and the one after that leaves Settings.
+    REQUIRE(settings.CloseOverlay(0.0));
     REQUIRE(!settings.CloseOverlay(0.0));
     REQUIRE(store.core_.language == "en");
     // Opened again, a click on a row picks it; a click elsewhere closes it.
+    settings.FocusItem("language", 0.0, false);
     settings.Select(0.0);
     const tvm::ui::Box row = *settings.LanguageList().RowBox(1);
     const std::optional<std::string> key = settings.ItemAt(row.CenterX(), row.CenterY());

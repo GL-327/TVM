@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="GlassPanel" extends="Group">
   <interface>
+    <field id="backdropUri" type="string" onChange="layout" />
     <field id="width" type="float" value="800" onChange="layout" />
     <field id="height" type="float" value="400" onChange="layout" />
     <field id="shape" type="string" value="panel" onChange="layout" />
@@ -16,6 +17,9 @@
   <children>
     <Poster id="shadow" />
     <Poster id="glow" visible="false" />
+    <MaskGroup id="blurMask" maskUri="pkg:/images/glass/mask-wide.png" visible="false">
+      <Poster id="blurArt" loadWidth="96" loadHeight="54" loadDisplayMode="scaleToFill" />
+    </MaskGroup>
     <Poster id="tint" />
     <Poster id="bodyGradient" visible="false" />
     <Poster id="sheen" visible="false" />

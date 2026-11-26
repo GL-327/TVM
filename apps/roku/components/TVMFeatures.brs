@@ -15,7 +15,9 @@ end function
 
 sub ensureFeature(name as String)
   if m.featureNodes.DoesExist(name) then return
-  node = CreateObject("roSGNode", "FeatureScreen")
+  component = "FeatureScreen"
+  if name = "avatar-sets" then component = "AvatarPicker"
+  node = CreateObject("roSGNode", component)
   node.observeField("action", "onFeatureAction")
   m.screenHost.appendChild(node)
   m.featureNodes[name] = node
@@ -28,6 +30,7 @@ sub loadFeature(name as String, params as Object)
     return
   end if
   node = m.featureNodes[name]
+  if name = "avatar-sets" then paintAvatarSets() : return
   node.rows = [{ id: "loading", label: "Loading", body: "Loading…" }]
   if name = "stats"
     node.heading = "Your stats"
@@ -243,15 +246,13 @@ sub paintProfileEditor()
   kids = "Off"
   if aaGet(p, "kind", "standard") = "kids" then kids = "On"
   age = aaGet(p, "maxAge", 18)
-  ageLabel = "No limit"
-  if age < 18 then ageLabel = "Up to " + asText(age)
   pinLabel = "Set PIN"
   if aaGet(p, "locked", false) = true then pinLabel = "Change PIN"
   rows = [
     { id: "name", label: "Name: " + p.name, body: "Choose the name shown on the profile chooser." }
     { id: "avatar", label: "Character picture", body: "Pick a character, or keep the colour and initial." }
-    { id: "kids", label: "Kids: " + kids, body: "Kids profiles start at Up to 7. Settings and Account are hidden. Switching profile stays available." }
-    { id: "age", label: ageLabel, body: "Filters by genre. Choose Up to 7, Up to 12, Up to 15 or No limit. These are genre filters, not official age certificates." }
+    { id: "kids", label: "Kids profile", control: "switch", value: kids = "On", body: "Kids profiles start at Up to 7. Settings and Account are hidden. Switching profile stays available." }
+    { id: "age", label: "Age limit", control: "segments", value: age, values: [7, 12, 15, 18], labels: ["Up to 7", "12", "15", "No limit"], body: "Filters by genre. Choose Up to 7, Up to 12, Up to 15 or No limit. These are genre filters, not official age certificates." }
     { id: "pin", label: pinLabel, body: "Four digits protect switching to and editing this profile. Five wrong PINs pause entry for 60 seconds." }
     { id: "remove-pin", label: "Remove PIN", body: "Removes the lock when you save this profile." }
     { id: "save-profile", label: "Save profile", body: "Save the changes on this Roku, or on the paired Core when one is in use." }
@@ -278,6 +279,7 @@ sub paintAvatarSets()
     end if
   end for
   m.featureNodes["avatar-sets"].heading = "Avatar sets"
+  m.featureNodes["avatar-sets"].selectedAvatar = asText(aaGet(m.editorProfile, "avatar", ""))
   m.featureNodes["avatar-sets"].rows = rows
 end sub
 
@@ -322,6 +324,7 @@ sub onFeatureAction(event as Object)
   row = aaGet(action, "row", {})
   id = asText(aaGet(row, "id", ""))
   name = visibleScreen(m.stack).name
+  if aaGet(action, "type", "") = "options" and name <> "services" then return
   if name = "setting-options"
     scope = ""
     if row.scope = "style" then scope = "subtitleStyle"
@@ -341,7 +344,10 @@ sub onFeatureAction(event as Object)
       launchService(service, m.servicesTitle)
     end if
   else if name = "avatar-sets"
-    if id = "initial"
+    if aaGet(action, "type", "") = "avatar"
+      m.editorProfile.avatar = id
+      navigate("pop", "", {}) : paintProfileEditor()
+    else if id = "initial"
       m.editorProfile.avatar = invalid
       navigate("pop", "", {}) : paintProfileEditor()
     else
@@ -378,7 +384,8 @@ sub onFeatureAction(event as Object)
       for i = 0 to 3
         if ages[i] = aaGet(m.editorProfile, "maxAge", 18) then index = i
       end for
-      m.editorProfile.maxAge = ages[(index + 1) mod 4]
+      delta = aaGet(action, "delta", 1)
+      m.editorProfile.maxAge = ages[(index + delta + 4) mod 4]
       paintProfileEditor()
     end if
     if id = "pin"

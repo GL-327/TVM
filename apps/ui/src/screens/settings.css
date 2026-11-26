@@ -1,21 +1,32 @@
 html body .polish-settings.page {
   container-type: inline-size;
   padding: 94px var(--tvm-gutter) 38px;
+  /* No flex gap: the scene and the scrim band below would each add 32px and make a
+     short category scroll, which slid the sticky sidebar up under the nav. */
+  row-gap: 0;
   background: var(--tvm-bg);
 }
 .polish-settings > .home__scene { opacity: .18; }
+/* The nav floats, so rows scrolled up under it showed through around the capsule and
+   between the icon buttons. A sticky band fades them out like the Apple TV app does. */
+.polish-settings::before {
+  content: ''; position: sticky; top: 0; z-index: 5; display: block; flex: none; height: 94px;
+  margin: -94px calc(var(--tvm-gutter) * -1) 0; pointer-events: none;
+  background: linear-gradient(180deg, var(--tvm-bg) 0 58%, color-mix(in srgb, var(--tvm-bg) 0%, transparent) 100%);
+}
 .settings-layout {
   position: relative; display: grid; grid-template-columns: 240px minmax(0, 1fr);
   gap: clamp(24px, 4.5vw, 80px); width: min(100%, 1240px); margin-inline: auto; align-items: start;
 }
 .settings-sidebar {
-  display: grid; gap: 14px; position: sticky; top: 94px; max-height: calc(100vh - 118px); overflow-y: auto; scrollbar-width: thin;
+  display: grid; gap: 14px; position: sticky; top: 94px; max-height: calc(100vh - 132px); overflow-y: auto; scrollbar-width: thin;
 }
 .settings-sidebar__title { display: flex; align-items: center; gap: 12px; }
 .settings-sidebar__title h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.015em; }
 .settings-search { position: relative; }
-.settings-search > svg { position: absolute; top: 15px; left: 13px; width: 18px; height: 18px; pointer-events: none; color: var(--tvm-text-muted); }
-html body .settings-search .token-field__input { width: 100%; padding-left: 39px; }
+/* z-index: the filled input is positioned too and would paint over the magnifier. */
+.settings-search > svg { position: absolute; z-index: 1; top: 15px; left: 13px; width: 18px; height: 18px; pointer-events: none; color: var(--tvm-text-muted); }
+html body .settings-search .token-field__input { width: 100%; padding-left: 39px; text-align: start; }
 .settings-categories { display: grid; gap: 2px; padding-block-end: 4px; }
 html body .tvm-button.settings-category {
   width: 100%; min-height: 40px; padding: 0 12px; border-radius: 10px; text-align: left;

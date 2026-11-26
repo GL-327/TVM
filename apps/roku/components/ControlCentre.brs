@@ -396,8 +396,8 @@ sub activateRow()
       emit("sleep", { mode: mode })
       refreshRows()
     else if id = "versions"
-      emit("openVersions", {})
       closePanel("versions")
+      emit("openVersions", {})
     else
       emit("playback", { id: id })
     end if
@@ -751,4 +751,8 @@ end sub
 
 sub onPressDone()
   if m.top.isOpen then paintPlate()
+end sub
+
+sub onBackdrop()
+  m.top.findNode("glass").backdropUri = m.top.backdropUri
 end sub

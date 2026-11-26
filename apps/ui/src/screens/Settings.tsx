@@ -102,7 +102,12 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
     return () => window.removeEventListener(PREFS_CHANGED_EVENT, update);
   }, []);
   useEffect(() => bindKeyboardFields(page.current), []);
-  useEffect(() => { if (panel.current) panel.current.scrollTop = 0; }, [category, query]);
+  // The page is the scroller on desktop (the sidebar is sticky), so a new category
+  // must reset it too or its title stays hidden under the nav.
+  useEffect(() => {
+    if (panel.current) panel.current.scrollTop = 0;
+    if (page.current) page.current.scrollTop = 0;
+  }, [category, query]);
 
   const save = (patch: Partial<AppPrefs>): void => { void savePrefs(patch).then(setPrefs); };
   const jump = (screen: string): (() => void) => () => navigate.push(screen);

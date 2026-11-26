@@ -15,7 +15,7 @@ struct PlaybackClient: Equatable {
               let player = obj["player"] as? String,
               validPlayers.contains(player) else { return nil }
         let mh: Int?
-        if let n = (obj["maxHeight"] as? NSNumber)?.doubleValue, n.isFinite, n > 0 {
+        if let n = (obj["maxHeight"] as? NSNumber)?.doubleValue, n.isFinite, n >= 1, n < Double(Int.max) {
             mh = Int(floor(n))
         } else {
             mh = nil
@@ -327,6 +327,23 @@ enum TVMVersions {
         )
     }
 
+    /// The iPhone plays the original file through libVLC (TVMVideoEngine), which opens Matroska and decodes DTS,
+    /// TrueHD and Opus itself, so those stay eligible: excluding them pushed phones onto smaller encodes. The
+    /// "avplayer" profile still keeps AV1/VP9/WebM out, since libVLC would decode those in software.
+    static func phoneClient(_ client: PlaybackClient?, maxHeight: Int) -> PlaybackClient {
+        PlaybackClient(player: "avplayer", maxHeight: min(maxHeight, client?.maxHeight ?? maxHeight),
+                       hevc: client?.hevc ?? true, hdr: client?.hdr ?? false, mkv: client?.mkv ?? true)
+    }
+
+    static func rankForPhone(_ streams: [RdStream], prefs: TVMPrefs, originalLanguage: String?, runtime: Double?, maxHeight: Int, client: PlaybackClient? = nil) -> [RankedVersion] {
+        let safe = streams.filter { stream in
+            let version = describeVersion(stream, seconds: runtime)
+            let filename = "\(stream.title) \(stream.details) \(stream.url)"
+            return supportsVersion(version, filename: filename, client: phoneClient(client, maxHeight: maxHeight))
+        }
+        return rankVersions(safe, prefs: prefs, originalLanguage: originalLanguage, runtime: runtime, maxHeight: maxHeight, client: phoneClient(client, maxHeight: maxHeight))
+    }
+
     static func rankVersions(
         _ streams: [RdStream],
         prefs: TVMPrefs,
@@ -351,7 +368,7 @@ enum TVMVersions {
             }
             let v = describeVersion(stream, seconds: runtime)
             if (v.height ?? 1080) > cap || (v.upscaled && (prefs.skipUpscaled || prefs.quality == "original")) { continue }
-            if !supportsVersion(v, filename: "\(stream.title) \(stream.url)", client: client) { continue }
+            if !supportsVersion(v, filename: "\(stream.title) \(stream.details) \(stream.url)", client: client) { continue }
             if let originalLanguage, prefs.audioLanguage == "original",
                (!v.languages.isEmpty && !v.languages.contains(originalLanguage)) ||
                 (v.languages.isEmpty && matches(combinedTitle, #"\b(?:dub(?:bed)?|fandub)\b"#) && !matches(combinedTitle, #"\b(?:dual|multi)\b"#)) {
@@ -384,7 +401,7 @@ enum TVMVersions {
                 let bb = b.bitrateMbps ?? (b.sizeBytes.map { Double($0) } ?? 0)
                 if ba != bb { return bb < ba }
             }
-            if a.cached != b.cached { return b.cached && !a.cached }
+            if a.cached != b.cached { return a.cached && !b.cached }
             return false
         }
         if !eligible.isEmpty { eligible[0].version.recommended = true }

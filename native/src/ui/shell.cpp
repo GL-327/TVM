@@ -135,34 +135,155 @@ void Shell::Paint(Painter& painter) const {
         painter.FillRoundRect({x, sheet.y + 1.6 * rem, 9 * rem, 1.8 * rem}, 0.9 * rem, Rgb(0x2F6BFF, 0.35));
         painter.Text({x + 0.8 * rem, sheet.y + 1.6 * rem, 8 * rem, 1.8 * rem}, "TVM " + patchNotes_->version, {0.9 * rem, true, 650}, Rgb(0xFFFFFF, 0.95));
         painter.Paragraph({x, sheet.y + 3.8 * rem, w, 3.4 * rem}, patchNotes_->title, {1.7 * rem, true, 700}, Rgb(0xFFFFFF, 0.97));
-        double y = sheet.y + 7.4 * rem;
-        const double limit = button.y - 1 * rem;
-        painter.PushClip({sheet.x, sheet.y, sheet.width, limit - sheet.y});
-        const auto lines = [&](const std::vector<std::string>& rows, const TextStyle& style, Color color, const std::string& bullet) {
-            for (const std::string& row : rows) {
-                if (y + 1.6 * rem > limit) return;
-                painter.Paragraph({x, y, w, 2.8 * rem}, bullet + row, style, color);
-                y += (row.size() * style.sizePx * 0.5 > w ? 3.0 : 1.9) * rem * (style.sizePx > rem ? 1.0 : 1.0);
+
+        // The body: highlights, then the changes under their area, then the known issues. It scrolls inside its box.
+        const Box body = PatchBodyBox();
+        constexpr std::uint32_t kWarn = 0xFFC857;
+        painter.PushClip(body);
+        // Where the text runs on past an edge it fades out, so it is clear there is more. The fade is per item,
+        // by how far its first lines are from the edge, since the sheet is glass and has no flat colour to fade to.
+        const double fade = 2.6 * rem;
+        const bool fadeTop = patchScroll_ > 1.0, fadeBottom = patchScroll_ < PatchMaxScroll() - 1.0;
+        WalkPatch([&](PatchItem item, double top, double height, const PatchChange& change) {
+            const double y = body.y + top - patchScroll_;
+            if (y + height < body.y - 2 * rem || y > body.Bottom() + 2 * rem) return;
+            const double lead = std::min(height, 1.5 * rem);
+            double alpha = 1.0;
+            if (fadeTop) alpha = std::min(alpha, std::clamp((y + height - lead - body.y + 0.5 * rem) / fade, 0.0, 1.0));
+            if (fadeBottom) alpha = std::min(alpha, std::clamp((body.Bottom() - (y + lead * 0.5)) / fade, 0.0, 1.0));
+            if (alpha <= 0.01) return;
+            struct Layer {
+                Painter& painter; bool on;
+                Layer(Painter& p, double a) : painter(p), on(a < 0.995) { if (on) painter.PushOpacity(a); }
+                ~Layer() { if (on) painter.PopOpacity(); }
+            } layer(painter, alpha);
+            const TextStyle small{0.88 * rem, false};
+            switch (item) {
+            case PatchItem::Highlight:
+                painter.Paragraph({body.x, y, body.width, height}, change.text, {1.0 * rem, true, 650}, Rgb(0xFFFFFF, 0.95));
+                break;
+            case PatchItem::Area:
+                painter.Text({body.x, y, body.width, height}, change.area, {0.78 * rem, true, 700, 0.06}, Rgb(0x9DBDFF, 0.9));
+                break;
+            case PatchItem::IssuesHeading:
+                painter.Text({body.x, y, body.width, height}, "Known issues", {0.95 * rem, true, 700}, Rgb(kWarn));
+                break;
+            case PatchItem::Change:
+            case PatchItem::Issue: {
+                const bool issue = item == PatchItem::Issue;
+                const Color ink = issue ? Rgb(kWarn, 0.9) : Rgb(0xFFFFFF, 0.72);
+                const double dot = 0.34 * rem;
+                painter.FillRoundRect({body.x + 0.15 * rem, y + 0.55 * rem, dot, dot}, dot / 2, issue ? Rgb(kWarn) : Rgb(0x9DBDFF, 0.8));
+                const double tagsHeight = change.platforms.empty() ? 0.0 : 1.55 * rem;
+                painter.Paragraph({body.x + 1.1 * rem, y, body.width - 1.1 * rem, height - tagsHeight}, change.text, small, ink);
+                // The platforms the line is for, as small tags under it.
+                double tagX = body.x + 1.1 * rem;
+                for (const std::string& id : change.platforms) {
+                    const std::string label = PlatformLabel(id);
+                    const TextStyle tag{0.7 * rem, true, 650};
+                    const double tagW = painter.MeasureText(label, tag) + 1.0 * rem;
+                    const Box pill{tagX, y + height - tagsHeight + 0.2 * rem, tagW, 1.2 * rem};
+                    painter.FillRoundRect(pill, pill.height / 2, Rgb(0xFFFFFF, 0.1));
+                    painter.Text({pill.x + 0.5 * rem, pill.y, tagW, pill.height}, label, tag, Rgb(0xFFFFFF, 0.7));
+                    tagX += tagW + 0.4 * rem;
+                }
+                break;
             }
-        };
-        lines(patchNotes_->highlights, {1.0 * rem, true, 650}, Rgb(0xFFFFFF, 0.95), "");
-        if (!patchNotes_->changes.empty()) {
-            y += 0.5 * rem;
-            lines(patchNotes_->changes, {0.88 * rem, false}, Rgb(0xFFFFFF, 0.7), "- ");
-        }
-        if (!patchNotes_->knownIssues.empty()) {
-            y += 0.7 * rem;
-            if (y + 1.6 * rem <= limit) {
-                painter.Text({x, y, w, 1.8 * rem}, "Known issues", {0.95 * rem, true, 700}, Rgb(0xFFC857));
-                y += 2.0 * rem;
-                lines(patchNotes_->knownIssues, {0.88 * rem, false}, Rgb(0xFFC857, 0.9), "! ");
             }
-        }
+        });
         painter.PopClip();
+
+        // A slim bar at the right edge shows where the body is.
+        if (PatchMaxScroll() > 0.0) {
+            const double content = PatchMaxScroll() + body.height;
+            const double barH = std::max(2.0 * rem, body.height * body.height / content);
+            const double barY = body.y + (body.height - barH) * (patchScroll_ / PatchMaxScroll());
+            painter.FillRoundRect({sheet.Right() - 0.9 * rem, barY, 0.3 * rem, barH}, 0.15 * rem, Rgb(0xFFFFFF, 0.28));
+        }
+
         painter.FillRoundRect(button, button.height / 2, Rgb(0xFFFFFF, 0.94));
         painter.StrokeRoundRect(button, button.height / 2, 2.0, Rgb(0x9DBDFF, 0.9));
         painter.Text({button.x + button.width / 2 - 1.5 * rem, button.y + button.height * 0.2, button.width, button.height * 0.6}, "Got it", {1.0 * rem, true, 700}, Rgb(0x0B0F17));
     }
+}
+
+std::string Shell::PlatformLabel(const std::string& id) {
+    if (id == "windows") return "Windows";
+    if (id == "web") return "Web";
+    if (id == "desktop") return "Desktop";
+    if (id == "ios") return "iPhone";
+    if (id == "android") return "Android";
+    if (id == "roku") return "Roku";
+    return id;
+}
+
+Box Shell::PatchBodyBox() const {
+    const double rem = ViewportRem(width_, height_);
+    const double sheetW = std::min(width_ - 3 * rem, 720.0);
+    const double sheetH = std::min(height_ - 3 * rem, 40 * rem);
+    const double left = (width_ - sheetW) / 2, top = (height_ - sheetH) / 2;
+    const Box button = PatchButtonBox();
+    const double y = top + 7.4 * rem;
+    return {left + 1.8 * rem, y, sheetW - 3.6 * rem, std::max(0.0, button.y - 1.0 * rem - y)};
+}
+
+double Shell::WalkPatch(const std::function<void(PatchItem, double, double, const PatchChange&)>& emit) const {
+    if (!patchNotes_) return 0.0;
+    const double rem = ViewportRem(width_, height_);
+    const double width = PatchBodyBox().width;
+    // The painter wraps by words; this counts lines from the character count. Text in this face averages about
+    // 0.45 em a character (a little more in bold), so 0.5 leaves room for words that wrap early.
+    const auto lines = [](const std::string& text, double size, double room, double em = 0.5) {
+        const double perLine = std::max(1.0, room / (size * em));
+        return std::max(1.0, std::ceil(static_cast<double>(text.size()) / perLine));
+    };
+    double y = 0.0;
+    for (const std::string& line : patchNotes_->highlights) {
+        const double height = lines(line, 1.0 * rem, width, 0.54) * 1.42 * rem;
+        emit(PatchItem::Highlight, y, height, PatchChange{"", line, {}});
+        y += height + 0.55 * rem;
+    }
+    std::string area;
+    bool first = true;
+    for (const PatchChange& change : patchNotes_->changes) {
+        if (first || change.area != area) {
+            area = change.area;
+            y += first ? 0.5 * rem : 0.3 * rem;
+            if (!area.empty()) {
+                emit(PatchItem::Area, y, 1.5 * rem, change);
+                y += 1.7 * rem;
+            }
+            first = false;
+        }
+        const double tags = change.platforms.empty() ? 0.0 : 1.55 * rem;
+        const double height = lines(change.text, 0.88 * rem, width - 1.1 * rem) * 1.42 * 0.88 * rem + tags;
+        emit(PatchItem::Change, y, height, change);
+        y += height + 0.55 * rem;
+    }
+    if (!patchNotes_->knownIssues.empty()) {
+        y += 0.8 * rem;
+        emit(PatchItem::IssuesHeading, y, 1.8 * rem, PatchChange{});
+        y += 2.0 * rem;
+        for (const std::string& issue : patchNotes_->knownIssues) {
+            const double height = lines(issue, 0.88 * rem, width - 1.1 * rem) * 1.42 * 0.88 * rem;
+            emit(PatchItem::Issue, y, height, PatchChange{"", issue, {}});
+            y += height + 0.5 * rem;
+        }
+    }
+    return y;
+}
+
+double Shell::PatchMaxScroll() const {
+    const double content = WalkPatch([](PatchItem, double, double, const PatchChange&) {});
+    return std::max(0.0, content - PatchBodyBox().height);
+}
+
+bool Shell::ScrollPatchNotes(double deltaPx) {
+    if (!patchNotes_) return false;
+    const double next = std::clamp(patchScroll_ + deltaPx, 0.0, PatchMaxScroll());
+    if (next == patchScroll_) return false;
+    patchScroll_ = next;
+    return true;
 }
 
 Box Shell::PatchButtonBox() const {
@@ -280,6 +401,22 @@ void Shell::SetDeveloperDiagnostics(const DeveloperDiagnostics& diag) {
     }
 }
 
+void Shell::SetCoreSettings(const CoreSettings& settings) {
+    coreSettings_ = settings;
+    for (auto& [key, screen] : screens_) {
+        auto* page = dynamic_cast<SettingsScreen*>(screen.get());
+        if (page != nullptr) page->SetCoreSettings(settings);
+    }
+}
+
+void Shell::SetPrefsSink(PrefsSink sink) {
+    prefsSink_ = std::move(sink);
+    for (auto& [key, screen] : screens_) {
+        auto* page = dynamic_cast<SettingsScreen*>(screen.get());
+        if (page != nullptr) page->SetPrefsSink(prefsSink_);
+    }
+}
+
 PlayerScreen* Shell::ActivePlayer() {
     return dynamic_cast<PlayerScreen*>(&Top());
 }
@@ -390,7 +527,10 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
                                                title == entry.params.end() ? "" : title->second);
     }
     if (entry.name == "settings") {
-        return std::make_unique<SettingsScreen>(store_, motion_);
+        auto settings = std::make_unique<SettingsScreen>(store_, motion_);
+        settings->SetCoreSettings(coreSettings_);
+        settings->SetPrefsSink(prefsSink_);
+        return settings;
     }
     if (entry.name == "realdebrid") {
         return std::make_unique<RealDebridScreen>();

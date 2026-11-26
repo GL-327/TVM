@@ -8,6 +8,7 @@ sub initReleaseFeatures()
   m.installedVersion = CreateObject("roAppInfo").GetVersion()
   m.releasePending = registrySection().Read("lastSeenVersion") <> m.installedVersion
   m.releaseClock = invalid : m.updateClock = invalid
+  m.patchNotesFlags = {} : m.patchNotesShown = false : m.patchNotesConfigLoaded = false
   m.rokuUpdate = {} : m.updateDismissed = false
   m.eventsTask = invalid : m.eventProfile = "" : m.eventDate = ""
   m.global.observeField("inputSerial", "onReleaseInput")
@@ -99,8 +100,10 @@ end sub
 sub maybeShowReleaseCards()
   if m.stack = invalid or m.homeNode = invalid then return
   if visibleScreen(m.stack).name <> "home" or activeEntry(m.stack).kind = "modal" then return
-  if m.homeNode.mode <> "ready" then return
-  if m.releasePending
+  if m.homeNode.mode <> "ready" and m.homeNode.mode <> "empty" then return
+  maybeShowPatchNotes(m.patchNotesFlags)
+  if activeEntry(m.stack).kind = "modal" then return
+  if m.releasePending and aaGet(m.patchNotesFlags, "patchNotesPopup", false) <> true
     for each release in aaArray(uiContent("changelog"), "releases")
       if release.version = m.installedVersion
         m.releaseCard.title = "Updated to " + m.installedVersion
@@ -129,8 +132,8 @@ sub onReleaseInput()
 end sub
 
 sub dismissReleaseCards()
-  if m.releaseClock <> invalid and m.releasePending
-    if m.releaseClock.TotalMilliseconds() >= 1200
+  if m.releaseClock <> invalid and m.releasePending and m.patchNotesConfigLoaded = true
+    if m.releaseClock.TotalMilliseconds() >= 1200 and aaGet(m.patchNotesFlags, "patchNotesPopup", false) <> true
       m.releaseCard.visible = false : m.releasePending = false
       if m.homeNode <> invalid then m.homeNode.releaseShortcut = false
       section = registrySection()
@@ -149,19 +152,27 @@ end sub
 ' keeps working as before.
 sub maybeShowPatchNotes(flags as Dynamic)
   if GetInterface(flags, "ifAssociativeArray") = invalid then return
+  m.patchNotesFlags = flags
   if aaGet(flags, "patchNotesPopup", false) <> true then return
+  m.releaseClock = invalid
+  m.releaseCard.visible = false
+  if m.homeNode <> invalid then m.homeNode.releaseShortcut = false
   if not m.releasePending or m.patchNotesShown = true then return
   if m.stack = invalid then return
   if visibleScreen(m.stack).name <> "home" or activeEntry(m.stack).kind = "modal" then return
-  releases = aaArray(uiContent("changelog"), "releases")
-  if releases.Count() = 0 then return
+  if m.homeNode = invalid then return
+  if m.homeNode.mode <> "ready" and m.homeNode.mode <> "empty" then return
+  release = invalid
+  for each candidate in aaArray(uiContent("changelog"), "releases")
+    if candidate.version = m.installedVersion then release = candidate
+  end for
+  if release = invalid then return
   m.patchNotesShown = true
   m.releasePending = false
   m.releaseCard.visible = false
   if m.homeNode <> invalid then m.homeNode.releaseShortcut = false
   section = registrySection()
   section.Write("lastSeenVersion", m.installedVersion) : section.Flush()
-  release = releases[0]
   navigate("modal", "notice", {
     title: "What's new in TVM " + asText(aaGet(release, "version", m.installedVersion)) + ": " + asText(aaGet(release, "title", ""))
     body: patchNotesBody(release)
@@ -178,10 +189,13 @@ function patchNotesBody(release as Object) as String
   changes = aaArray(release, "changes")
   if changes.Count() > 0
     lines.Push("") : lines.Push("Changes")
-    shown = 0
     for each change in changes
-      if shown >= 8 then exit for
-      lines.Push("- " + asText(aaGet(change, "text", change))) : shown = shown + 1
+      platforms = aaArray(change, "platforms")
+      forRoku = platforms.Count() = 0
+      for each platform in platforms
+        if asText(platform) = "roku" then forRoku = true
+      end for
+      if forRoku then lines.Push("- " + asText(aaGet(change, "text", change)))
     end for
   end if
   issues = aaArray(release, "knownIssues")

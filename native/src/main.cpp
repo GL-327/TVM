@@ -390,7 +390,15 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             auto& editor = dynamic_cast<tvm::ui::ProfileEditor&>(shell.ActiveScreen());
             tvm::ui::ProfileEntry person{"visual-check", "Alex", 221};
             person.locked = true;
-            editor.SetProfile(person, content.Read("avatars"), "");
+            // The cover and character pictures load from the web at run time; the snapshot uses its own art, and the
+            // profile wears the second character of the eighth set so the sets row opens scrolled to it.
+            auto avatars = content.Read("avatars");
+            if (avatars.contains("sets") && !avatars["sets"].empty()) {
+                for (auto& set : avatars["sets"]) for (auto& avatar : set["avatars"]) avatar["image"] = art;
+                const auto& pick = avatars["sets"][std::min<std::size_t>(7, avatars["sets"].size() - 1)];
+                person.avatar = pick.value("id", "") + "/" + pick["avatars"][1].value("id", "");
+            }
+            editor.SetProfile(person, avatars, "");
             if (screen == L"pin-pad") { editor.Challenge(person.id, person.name); editor.Type("12"); }
         } else if (screen == L"services") {
             tvm::ui::Command open; open.name = "services";
@@ -448,9 +456,20 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
                 for (const auto& line : release["highlights"]) if (line.is_string() && card.highlights.size() < 4) card.highlights.push_back(line.get<std::string>());
                 if (GetEnvironmentVariableW(L"TVM_SNAPSHOT_PATCH_POPUP", nullptr, 0) > 0) {
                     tvm::ui::Shell::PatchNotes pop; pop.version = release.value("version", ""); pop.title = card.title; pop.highlights = card.highlights;
-                    for (const auto& change : release["changes"]) if (change.contains("text") && change["text"].is_string()) pop.changes.push_back(change["text"].get<std::string>());
+                    for (const auto& change : release["changes"]) if (change.contains("text") && change["text"].is_string()) {
+                        tvm::ui::Shell::PatchChange entry; entry.text = change["text"].get<std::string>(); entry.area = change.value("area", "");
+                        if (change.contains("platforms") && change["platforms"].is_array()) for (const auto& platform : change["platforms"]) if (platform.is_string()) entry.platforms.push_back(platform.get<std::string>());
+                        pop.changes.push_back(std::move(entry));
+                    }
                     pop.knownIssues = {"Subtitles can lag a second behind on some films.", "The live guide may be empty while channels load."};
+                    // TVM_SNAPSHOT_PATCH_LONG=1 uses the release's own known issues, enough to need scrolling.
+                    if (GetEnvironmentVariableW(L"TVM_SNAPSHOT_PATCH_LONG", nullptr, 0) > 0 && release.contains("knownIssues")) {
+                        pop.knownIssues.clear();
+                        for (const auto& issue : release["knownIssues"]) if (issue.is_string()) pop.knownIssues.push_back(issue.get<std::string>());
+                    }
                     shell.SetPatchNotes(pop);
+                    // TVM_SNAPSHOT_PATCH_SCROLL=1 shows the sheet scrolled to the end of the notes.
+                    if (GetEnvironmentVariableW(L"TVM_SNAPSHOT_PATCH_SCROLL", nullptr, 0) > 0) shell.ScrollPatchNotes(1e9);
                 } else shell.SetReleaseCard(card);
             }
         }
@@ -460,7 +479,7 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         std::printf("wrote %ls\n", path.c_str());
         return 0;
     }
-    const bool settings = screen == L"settings" || screen == L"settings-language";
+    const bool settings = screen.rfind(L"settings", 0) == 0;
     if (screen.rfind(L"downloads", 0) == 0) {
         // Downloads over a title's page: "downloads" with a series and its downloads, "downloads-empty" for a film with
         // none, "downloads-list" for the list alone, "downloads-open" with the quality list open.
@@ -654,6 +673,29 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         auto& page = dynamic_cast<tvm::ui::SettingsScreen&>(shell.ActiveScreen());
         page.FocusItem("language", 0.0, true);
         page.Select(0.0);
+    }
+    // Settings on one category: "settings-playback", "-audio", "-home", "-extras" and so on. "-select" has the Quality
+    // list open, "-search" has a query typed into the search field, and "-nomatch" a query that matches nothing.
+    if (screen.size() > 9 && screen.rfind(L"settings-", 0) == 0 && screen != L"settings-language") {
+        auto& page = dynamic_cast<tvm::ui::SettingsScreen&>(shell.ActiveScreen());
+        nlohmann::json body = {{"quality", "2160"}, {"skipSegments", "auto"}, {"subtitleStyle", {{"size", "l"}, {"color", "yellow"}, {"background", "box"}}},
+                               {"extras", {{"themeSongs", true}, {"nightMode", true}, {"trailers", false}}},
+                               {"subtitleLanguages", {"eng", "fra"}}};
+        page.SetCoreSettings(tvm::ui::CoreSettings::FromJson(body));
+        std::string id;
+        for (const wchar_t c : screen.substr(9)) id.push_back(static_cast<char>(c & 0x7F));
+        if (id == "select") {
+            page.ActivateItem("cat:playback", 0.0);
+            page.FocusItem("quality", 0.0, true);
+            page.Select(0.0);
+        } else if (id == "search" || id == "nomatch") {
+            page.ActivateItem("search", 0.0);
+            page.Type(id == "search" ? "sub" : "zzzz");
+        } else {
+            page.ActivateItem("cat:" + id, 0.0);
+        }
+        // `--keys` then moves the focus from there.
+        if (id != "search" && id != "nomatch" && id != "select") page.Navigate(tvm::nav::Direction::Right, 0.0);
     }
     // "Who's watching?" (with `-edit` in edit mode, `-sheet` with a profile's sheet open) and the orb's menu, over
     // Home, with four sample profiles.
