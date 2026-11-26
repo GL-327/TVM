@@ -8,6 +8,7 @@
 
 #include "motion/camera.h"
 #include "nav/wrap.h"
+#include "ui/controls.h"
 #include "ui/glass_styles.h"
 
 namespace tvm::ui {
@@ -20,14 +21,17 @@ constexpr double kSafeYRem = 1.5;
 // One column of slim rows at a comfortable desktop width: the name at the left (with a short second line only for
 // the switches and choices that have one), and the value, switch or chevron at the right. Section headings stay.
 constexpr double kRowWidthRem = 52.0;
-constexpr double kRowHeightRem = 3.1;
-constexpr double kTallRowHeightRem = 3.7;
+constexpr double kRowHeightRem = 3.2;
+constexpr double kTallRowHeightRem = 3.9;
 constexpr double kRowGapRem = 0.45;
 constexpr double kGroupGapRem = 1.6;
 constexpr double kGroupTitleRem = 0.95;
 constexpr double kHeaderRem = 8.0;
 constexpr double kEnsureVisiblePadRem = 4.0;
-constexpr double kRowRadiusRem = 0.85;
+constexpr double kRowRadiusRem = 0.75;
+constexpr double kCardRadiusRem = 1.0;
+constexpr double kCatRowHeightRem = 2.7;
+constexpr double kCatRowStepRem = 3.0;
 constexpr Color kDanger = Rgb(0xFF6B63);
 
 Color WithAlpha(Color color, double alpha) {
@@ -93,8 +97,43 @@ Command Confirm(std::string title, std::string body, std::string confirmLabel, s
                 true);
 }
 
-// The copy here is taken from Settings.tsx so the wording matches the web app.
 
+struct CategoryDef {
+    const char* id;
+    const char* title;
+    const char* description;
+};
+
+// The left pane, in order. A category with no rows (Home screen has none yet) is left out of the list.
+constexpr std::array<CategoryDef, 12> kCategories = {{
+    {"account", "Account", "Sign in, your plan and your services."},
+    {"profiles", "Profiles", "Who watches, and how TVM opens."},
+    {"playback", "Playback", "Skipping, autoplay and your watch history."},
+    {"audio", "Audio & subtitles", "Languages for sound and subtitles."},
+    {"appearance", "Appearance", "Theme, font, motion and the app's language."},
+    {"home", "Home screen", "What the Home screen shows."},
+    {"livetv", "Live TV", "Your Live TV server and playlist."},
+    {"realdebrid", "Real-Debrid", "The token TVM uses to find streams."},
+    {"downloads", "Downloads", "Titles saved on this device."},
+    {"updates", "Updates", "Keep TVM current and read what is new."},
+    {"about", "About", "This device, diagnostics and maintenance."},
+    {"developer", "Developer", "Tools for admin accounts."},
+}};
+
+enum Cat {
+    kAccount,
+    kProfiles,
+    kPlayback,
+    kAudio,
+    kAppearance,
+    kHome,
+    kLiveTv,
+    kRealDebrid,
+    kDownloads,
+    kUpdates,
+    kAbout,
+    kDeveloper
+};
 
 }  // namespace
 
@@ -106,52 +145,76 @@ SettingsScreen::SettingsScreen(PreferenceStore& store, motion::MotionSettings mo
 
 void SettingsScreen::BuildRows() {
     rows_.clear();
-    auto group = [this](std::string title) {
-        rows_.push_back(Row{RowKind::Group, "", std::move(title), "", {}, 0.0, 0.0});
+    int cat = kAccount;
+    auto group = [this, &cat](std::string title) {
+        rows_.push_back(Row{RowKind::Group, "", std::move(title), "", {}, 0.0, 0.0, 0, 0.0, 0.0, cat});
     };
-    auto row = [this](RowKind kind, std::string key, std::string label, std::string detail = "", Command command = {}) {
-        rows_.push_back(Row{kind, std::move(key), std::move(label), std::move(detail), std::move(command), 0.0, 0.0});
+    auto row = [this, &cat](RowKind kind, std::string key, std::string label, std::string detail = "", Command command = {}) {
+        rows_.push_back(
+            Row{kind, std::move(key), std::move(label), std::move(detail), std::move(command), 0.0, 0.0, 0, 0.0, 0.0, cat});
     };
     auto push = [&row](std::string key, std::string label, std::string detail, Command command) {
         row(RowKind::Push, std::move(key), std::move(label), std::move(detail), std::move(command));
     };
 
+    cat = kAccount;
+    group("Sign in and access");
+    push("account", "Your account", "Sign in, email verification and access", Open("account"));
+    push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
+    push("plan", "Plan", "Access and pricing", Open("plans"));
+    group("Services");
+    push("services", "Streaming services", "Sign in to your services", Open("services"));
+
+    cat = kProfiles;
+    group("Profiles");
+    push("profiles", "Profiles", "Switch, add, rename or remove", Open("chooser"));
+    row(RowKind::ChooseProfile, "choose-profile", "Choose profile on launch");
+
+    cat = kPlayback;
+    group("Playback");
+    push("extras-settings", "TVM Extras", "Skipping, autoplay and subtitle languages", Open("extras-settings"));
+    push("stats", "Your stats", "Watch time and history", Open("stats"));
+
+    cat = kAudio;
+    group("Languages");
+    push("audio-subtitles", "Audio and subtitle languages", "Preferred languages and subtitle behaviour",
+         Open("extras-settings"));
+
+    cat = kAppearance;
     group("Picture");
     row(RowKind::Performance, "performance", "Performance mode");
-
     group("Look");
     row(RowKind::Theme, "themes", "Theme");
     row(RowKind::Glass, "font", "Font");
     row(RowKind::Glass, "reduce-transparency", "Reduce transparency");
     row(RowKind::Motion, "motion", "Reduce motion");
-
     group("Language");
     row(RowKind::Language, "language", "App language");
 
-    group("Playback");
-    push("extras-settings", "TVM Extras", "Skipping, autoplay and subtitle languages", Open("extras-settings"));
-    push("stats", "Your stats", "Watch time and history", Open("stats"));
-
-    group("Account");
-    push("account", "Your account", "Sign in, email verification and access", Open("account"));
-    push("privacy", "Privacy & terms", "Terms, data export and deletion", Open("legal"));
-    push("plan", "Plan", "Access and pricing", Open("plans"));
-    push("profiles", "Profiles", "Switch, add, rename or remove", Open("chooser"));
-    row(RowKind::ChooseProfile, "choose-profile", "Choose profile on launch");
-    push("services", "Streaming services", "Sign in to your services", Open("services"));
-    push("realdebrid", "Real-Debrid", "Your token", Open("realdebrid"));
-
-    group("Device");
-    push("network", "Network", "Connected or offline", Open("system-info", {{"section", "network"}}));
-    push("display", "Display", "Panel, window and stream cap", Open("system-info", {{"section", "display"}}));
+    cat = kLiveTv;
+    group("Live TV");
     push("livetv", "Live TV login", "Server, username and password", Open("live-xtream"));
     push("live-playlist", "Live TV playlist", "M3U / M3U8", Open("live-playlist"));
+
+    cat = kRealDebrid;
+    group("Real-Debrid");
+    push("realdebrid", "Real-Debrid", "Your token", Open("realdebrid"));
+
+    cat = kDownloads;
+    group("Downloads");
+    push("downloads", "Downloads", "Saved titles and their progress", Open("downloads"));
+
+    cat = kUpdates;
+    group("Updates");
     push("updates", "Updates", "GLogic Studios", Open("updates"));
     row(RowKind::AutoUpdate, "auto-update", "Check for updates on launch");
     push("changelog", "What's new", "Release notes for TVM", Open("changelog", {}, true));
-    push("diagnostics", "Diagnostics", "", Open("diagnostics", {}, true));
-    if (diag_.active) push("accounts", "Accounts", "Manage member access", Open("accounts"));
 
+    cat = kAbout;
+    group("This device");
+    push("network", "Network", "Connected or offline", Open("system-info", {{"section", "network"}}));
+    push("display", "Display", "Panel, window and stream cap", Open("system-info", {{"section", "display"}}));
+    push("diagnostics", "Diagnostics", "", Open("diagnostics", {}, true));
     group("Maintenance");
     push("clear-cache", "Clear cache", "Artwork and catalogs",
          Confirm("Clear cache?",
@@ -165,6 +228,9 @@ void SettingsScreen::BuildRows() {
          Confirm("Restart TVM?", "The interface reloads. Nothing on disk is changed.", "Restart", "restart"));
 
     if (diag_.active) {
+        cat = kDeveloper;
+        group("Accounts");
+        push("accounts", "Accounts", "Manage member access", Open("accounts"));
         group("Developer Diagnostics");
         row(RowKind::Info, "dev-build", "Build info", diag_.buildVersion);
         row(RowKind::Info, "dev-rd-source", "RD token source", diag_.rdTokenSource);
@@ -174,14 +240,42 @@ void SettingsScreen::BuildRows() {
     }
 
     RefreshDetails();
+    const std::vector<int> present = PresentCategories();
+    if (std::find(present.begin(), present.end(), category_) == present.end()) category_ = kAccount;
+    categoryFocus_ = category_;
+    focus_ = FirstFocusable();
+}
 
-    // Focus starts on the first row that can take it.
-    for (std::size_t i = 0; i < rows_.size(); ++i) {
-        if (Focusable(rows_[i])) {
-            focus_ = i;
-            break;
+std::vector<int> SettingsScreen::PresentCategories() const {
+    std::vector<int> present;
+    for (int c = 0; c < static_cast<int>(kCategories.size()); ++c) {
+        for (const Row& row : rows_) {
+            if (row.category == c && row.kind != RowKind::Group) {
+                present.push_back(c);
+                break;
+            }
         }
     }
+    return present;
+}
+
+std::optional<std::size_t> SettingsScreen::FirstFocusable() const {
+    for (std::size_t i = 0; i < rows_.size(); ++i) {
+        if (Focusable(rows_[i])) return i;
+    }
+    return std::nullopt;
+}
+
+void SettingsScreen::SelectCategory(int category, bool resetScroll) {
+    category_ = category;
+    categoryFocus_ = category;
+    if (resetScroll) {
+        camera_.Cancel();
+        pageScroll_ = 0.0;
+    }
+    if (width_ > 0.0 && height_ > 0.0) Arrange();
+    pageScroll_ = std::clamp(pageScroll_, 0.0, MaxPageScroll());
+    focus_ = FirstFocusable();
 }
 
 void SettingsScreen::SetDeveloperDiagnostics(DeveloperDiagnostics diag) {
@@ -231,7 +325,50 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
 }
 
 bool SettingsScreen::Focusable(const Row& row) const {
-    return row.kind != RowKind::Group && row.kind != RowKind::Info;
+    return row.kind != RowKind::Group && row.kind != RowKind::Info && row.category == category_;
+}
+
+bool SettingsScreen::SwitchRow(const Row& row) const {
+    return row.kind == RowKind::Motion || row.kind == RowKind::Performance || row.kind == RowKind::AutoUpdate ||
+           row.kind == RowKind::ChooseProfile || (row.kind == RowKind::Glass && row.key == "reduce-transparency");
+}
+
+bool SettingsScreen::SegmentedRow(const Row& row) const {
+    return row.kind == RowKind::Theme || (row.kind == RowKind::Glass && row.key == "font");
+}
+
+std::vector<std::string> SettingsScreen::SegmentLabels(const Row& row) const {
+    if (row.kind == RowKind::Theme) return {"Dark", "Light"};
+    return {"Geist", "Inter", "System"};
+}
+
+std::size_t SettingsScreen::SegmentIndex(const Row& row) const {
+    if (row.kind == RowKind::Theme) return store_.Look() == Theme::Light ? 1 : 0;
+    const UiFont font = store_.Font();
+    return font == UiFont::Geist ? 0 : font == UiFont::Inter ? 1 : 2;
+}
+
+void SettingsScreen::SetSegment(const Row& row, std::size_t index) {
+    if (row.kind == RowKind::Theme) {
+        store_.SaveLook(index == 1 ? Theme::Light : Theme::Dark);
+    } else {
+        store_.SetFont(index == 0 ? UiFont::Geist : index == 1 ? UiFont::Inter : UiFont::System);
+    }
+    RefreshDetails();
+}
+
+std::string SettingsScreen::Caption(const Row& row) const {
+    if (row.kind == RowKind::Push) return row.detail;
+    if (row.kind == RowKind::Info) return "";
+    std::string words = SplitDetail(row.detail).second;
+    if (!words.empty()) {
+        words[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(words[0])));
+        return words;
+    }
+    if (row.kind == RowKind::Theme) return "Dark or light colours across the app";
+    if (row.kind == RowKind::Language) return "Language of menus and labels";
+    if (row.key == "font") return "The typeface used across TVM";
+    return "";
 }
 
 std::vector<std::string> SettingsScreen::RowLabels() const {
@@ -256,34 +393,40 @@ void SettingsScreen::Layout(double width, double height) {
 }
 
 void SettingsScreen::Arrange() {
-    // One column, centred at a comfortable width. Positions are in page coordinates.
-    const double safe = metrics_.Rem(kSafeXRem);
-    const double content = std::min(width_ - 2.0 * safe, metrics_.Rem(kRowWidthRem));
-    const double left = std::max(safe, (width_ - content) / 2.0);
+    // Two panes. The left one (categories) stays put; the right one scrolls. Row positions are in page coordinates.
     const bool compact = CompactViewport(width_, height_);
+    const double safe = metrics_.Rem(compact ? 1.0 : kSafeXRem);
+    paneLeft_ = safe;
+    paneWidth_ = metrics_.Rem(compact ? 8.0 : 17.0);
+    contentLeft_ = paneLeft_ + paneWidth_ + metrics_.Rem(compact ? 1.0 : 2.5);
+    contentWidth_ = std::max(metrics_.Rem(12.0), std::min(width_ - contentLeft_ - safe, metrics_.Rem(46.0)));
     const double titleHeight = metrics_.Rem(kGroupTitleRem) * 1.6;
-    double y = metrics_.Rem(kSafeYRem) + metrics_.Rem(kHeaderRem);
+    double y = metrics_.Rem(kSafeYRem) + metrics_.Rem(5.6);
+    cards_.clear();
     bool first = true;
     for (Row& row : rows_) {
+        row.column = 0;
+        row.left = contentLeft_;
+        row.width = contentWidth_;
+        if (row.category != category_) continue;
         if (row.kind == RowKind::Group) {
             if (!first) y += metrics_.Rem(kGroupGapRem);
             row.top = y;
             row.height = titleHeight;
-            y += row.height + metrics_.Rem(0.35);
+            y += row.height + metrics_.Rem(0.3);
+            cards_.push_back(CardBox{y, 0.0});
         } else {
-            // A row with a second line (a switch's or a choice's explanation) is a little taller.
-            const bool tall = !SplitDetail(row.detail).second.empty() && row.kind != RowKind::Push;
+            // A row with a description under its name is a little taller.
+            const bool tall = !Caption(row).empty();
             const double height = metrics_.Rem(tall ? kTallRowHeightRem : kRowHeightRem);
             row.top = y;
             row.height = compact ? std::max(56.0, height) : height;
-            y += row.height + metrics_.Rem(kRowGapRem);
+            y += row.height;
+            if (!cards_.empty()) cards_.back().height += row.height;
         }
-        row.column = 0;
-        row.left = left;
-        row.width = content;
         first = false;
     }
-    contentBottom_ = y - metrics_.Rem(kRowGapRem);
+    contentBottom_ = y;
 }
 
 double SettingsScreen::MaxPageScroll() const {
@@ -292,6 +435,17 @@ double SettingsScreen::MaxPageScroll() const {
 
 Box SettingsScreen::ScreenBox(const Row& row) const {
     return Box{row.left, row.top - pageScroll_, row.width, row.height};
+}
+
+Box SettingsScreen::CategoryBox(std::size_t slot) const {
+    return Box{paneLeft_,
+               metrics_.Rem(kSafeYRem) + metrics_.Rem(3.6) + static_cast<double>(slot) * metrics_.Rem(kCatRowStepRem),
+               paneWidth_, metrics_.Rem(kCatRowHeightRem)};
+}
+
+Box SettingsScreen::SegmentTrack(const Row& row) const {
+    const Box box = ScreenBox(row);
+    return controls::SegmentedBox(SegmentLabels(row), box.Right() - metrics_.Rem(1.2), box.CenterY(), metrics_.rem);
 }
 
 std::optional<std::size_t> SettingsScreen::FocusedIndex() const {
@@ -326,8 +480,50 @@ void SettingsScreen::EnsureVisible(const Row& row, double nowMs) {
 bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
     // An open list takes the arrows.
     if (language_.IsOpen()) return language_.Navigate(direction, nowMs);
-    if (direction != nav::Direction::Up && direction != nav::Direction::Down) return false;
+
+    if (pane_ == Pane::Categories) {
+        const std::vector<int> present = PresentCategories();
+        const auto at = std::find(present.begin(), present.end(), categoryFocus_);
+        if (at == present.end()) return false;
+        if (direction == nav::Direction::Down && at + 1 != present.end()) {
+            SelectCategory(*(at + 1), true);
+            return true;
+        }
+        if (direction == nav::Direction::Up && at != present.begin()) {
+            SelectCategory(*(at - 1), true);
+            return true;
+        }
+        if (direction == nav::Direction::Right && focus_.has_value()) {
+            pane_ = Pane::Content;
+            return true;
+        }
+        return false;
+    }
+
     if (!focus_.has_value()) return false;
+    const Row& current = rows_[*focus_];
+    if (direction == nav::Direction::Left || direction == nav::Direction::Right) {
+        if (SegmentedRow(current)) {
+            const std::size_t count = SegmentLabels(current).size();
+            const std::size_t index = SegmentIndex(current);
+            if (direction == nav::Direction::Right && index + 1 < count) {
+                SetSegment(current, index + 1);
+                return true;
+            }
+            if (direction == nav::Direction::Left && index > 0) {
+                SetSegment(current, index - 1);
+                return true;
+            }
+        }
+        if (direction == nav::Direction::Left) {
+            // Back to the list of categories, on the one being shown.
+            pane_ = Pane::Categories;
+            categoryFocus_ = category_;
+            return true;
+        }
+        return false;
+    }
+    if (direction != nav::Direction::Up && direction != nav::Direction::Down) return false;
     // The nearest focusable row above or below. Headings and info rows are skipped.
     std::optional<std::size_t> next;
     if (direction == nav::Direction::Down) {
@@ -349,6 +545,10 @@ std::optional<Command> SettingsScreen::Select(double nowMs) {
     clockMs_ = std::max(clockMs_, nowMs);
     if (language_.IsOpen()) {
         PickLanguage(language_.Highlighted(), nowMs);
+        return std::nullopt;
+    }
+    if (pane_ == Pane::Categories) {
+        if (focus_.has_value()) pane_ = Pane::Content;
         return std::nullopt;
     }
     const std::optional<std::size_t> index = FocusedIndex();
@@ -426,6 +626,7 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
 }
 
 std::optional<std::string> SettingsScreen::FocusedKey() const {
+    if (pane_ == Pane::Categories) return std::string("cat:") + kCategories[static_cast<std::size_t>(categoryFocus_)].id;
     if (!focus_.has_value()) return std::nullopt;
     return rows_[*focus_].key;
 }
@@ -450,9 +651,25 @@ bool SettingsScreen::FocusItem(const std::string& key, double nowMs, bool withCa
         language_.Hover(std::stoul(key.substr(5)), nowMs);
         return true;
     }
+    if (key.rfind("cat:", 0) == 0) {
+        const std::string id = key.substr(4);
+        for (std::size_t c = 0; c < kCategories.size(); ++c) {
+            if (id != kCategories[c].id) continue;
+            if (pane_ == Pane::Categories && categoryFocus_ == static_cast<int>(c)) return false;
+            pane_ = Pane::Categories;
+            categoryFocus_ = static_cast<int>(c);
+            return true;
+        }
+        return false;
+    }
+    const std::string base = key.substr(0, key.find('#'));
     for (std::size_t i = 0; i < rows_.size(); ++i) {
-        if (!Focusable(rows_[i]) || rows_[i].key != key) continue;
-        if (focus_ == std::optional<std::size_t>(i)) return false;
+        const Row& candidate = rows_[i];
+        if (candidate.kind == RowKind::Group || candidate.kind == RowKind::Info || candidate.key != base) continue;
+        const bool sameCategory = candidate.category == category_;
+        if (sameCategory && pane_ == Pane::Content && focus_ == std::optional<std::size_t>(i)) return false;
+        if (!sameCategory) SelectCategory(candidate.category, true);
+        pane_ = Pane::Content;
         focus_ = i;
         if (withCamera) EnsureVisible(rows_[i], nowMs);
         return true;
@@ -467,10 +684,27 @@ std::optional<std::string> SettingsScreen::ItemAt(double x, double y) const {
         if (language_.Contains(x, y)) return std::nullopt;
         return std::string("lang-dismiss");
     }
+    const std::vector<int> present = PresentCategories();
+    for (std::size_t slot = 0; slot < present.size(); ++slot) {
+        const Box box = CategoryBox(slot);
+        if (x >= box.x && x < box.Right() && y >= box.y && y < box.Bottom()) {
+            return std::string("cat:") + kCategories[static_cast<std::size_t>(present[slot])].id;
+        }
+    }
+    if (x < contentLeft_ - metrics_.Rem(0.5)) return std::nullopt;
     for (const Row& row : rows_) {
         if (!Focusable(row)) continue;
         const Box box = ScreenBox(row);
-        if (x >= box.x && x < box.Right() && y >= box.y && y < box.Bottom()) return row.key;
+        if (x >= box.x && x < box.Right() && y >= box.y && y < box.Bottom()) {
+            if (SegmentedRow(row)) {
+                const Box track = SegmentTrack(row);
+                if (const std::optional<std::size_t> segment =
+                        controls::SegmentAt(track, SegmentLabels(row).size(), x, y)) {
+                    return row.key + "#" + std::to_string(*segment);
+                }
+            }
+            return row.key;
+        }
     }
     return std::nullopt;
 }
@@ -483,6 +717,27 @@ std::optional<Command> SettingsScreen::ActivateItem(const std::string& key, doub
     }
     if (key.rfind("lang:", 0) == 0) {
         PickLanguage(std::stoul(key.substr(5)), nowMs);
+        return std::nullopt;
+    }
+    if (key.rfind("cat:", 0) == 0) {
+        const std::string id = key.substr(4);
+        for (std::size_t c = 0; c < kCategories.size(); ++c) {
+            if (id == kCategories[c].id) {
+                SelectCategory(static_cast<int>(c), true);
+                pane_ = Pane::Categories;
+            }
+        }
+        return std::nullopt;
+    }
+    if (const std::size_t hash = key.find('#'); hash != std::string::npos) {
+        // A click on one segment of a choice sets it directly.
+        const std::string base = key.substr(0, hash);
+        FocusItem(base, nowMs, true);
+        for (const Row& row : rows_) {
+            if (row.key != base || !SegmentedRow(row)) continue;
+            const std::size_t index = std::stoul(key.substr(hash + 1));
+            if (index < SegmentLabels(row).size()) SetSegment(row, index);
+        }
         return std::nullopt;
     }
     if (!FocusItem(key, nowMs, true) && FocusedKey() != std::optional<std::string>(key)) return std::nullopt;
@@ -515,116 +770,117 @@ void SettingsScreen::AnimateScroll(const ScrollSurface& surface, double target, 
     if (start == motion::CameraStart::Landed) pageScroll_ = camera_.position();
 }
 
+
 void SettingsScreen::Paint(Painter& painter) const {
     painter.Clear(tokens::kBackground);
     // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
     painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
 
-    const double left = rows_.empty() ? metrics_.Rem(kSafeXRem) : rows_.front().left;
-    const double textWidth = width_ - left - metrics_.Rem(kSafeXRem);
-    const double headerY = metrics_.Rem(kSafeYRem) - pageScroll_;
-    if (headerY + metrics_.Rem(kHeaderRem) > 0.0) {
-        painter.Text(Box{left, headerY, textWidth, metrics_.Rem(1.1)}, "Device and services",
-                     TextStyle{metrics_.Rem(0.875), true, 600}, tokens::kTextFaint);
-        // 48px Bold Screen Title at 1080p (3.0rem).
-        painter.Text(Box{left, headerY + metrics_.Rem(1.1), textWidth, metrics_.Rem(3.5)}, "Settings",
-                     TextStyle{metrics_.Rem(3.0), true, 700}, tokens::kText);
-        painter.Text(Box{left, headerY + metrics_.Rem(4.7), textWidth, metrics_.Rem(1.5)},
-                     "Picture, appearance, account and this device", TextStyle{metrics_.Rem(1.05), false, 450},
-                     tokens::kTextMuted);
+    const double rem = metrics_.rem;
+    const bool showFocus = !focusHidden_;
+
+    // Left pane: the title and the categories. It does not scroll.
+    painter.Text(Box{paneLeft_, metrics_.Rem(kSafeYRem), paneWidth_, metrics_.Rem(2.4)}, "Settings", type::H2(rem),
+                 tokens::kText);
+    const std::vector<int> present = PresentCategories();
+    for (std::size_t slot = 0; slot < present.size(); ++slot) {
+        const int c = present[slot];
+        const Box box = CategoryBox(slot);
+        const bool selected = c == category_;
+        const bool focused = showFocus && pane_ == Pane::Categories && categoryFocus_ == c;
+        if (selected) painter.FillRoundRect(box, metrics_.Rem(kRowRadiusRem), tokens::kSurfaceHover);
+        if (focused) painter.StrokeRoundRect(box, metrics_.Rem(kRowRadiusRem), 2.0, tokens::kFocusRing);
+        painter.Text(Box{box.x + metrics_.Rem(1.0), box.y, box.width - metrics_.Rem(1.2), box.height},
+                     kCategories[static_cast<std::size_t>(c)].title, TextStyle{0.9375 * rem, true, selected ? 650 : 520},
+                     selected || focused ? tokens::kText : tokens::kTextMuted);
     }
 
+    // Right pane: title, one line about it, then the cards.
+    const CategoryDef& def = kCategories[static_cast<std::size_t>(category_)];
+    const double headY = metrics_.Rem(kSafeYRem) - pageScroll_;
+    painter.Text(Box{contentLeft_, headY, contentWidth_, metrics_.Rem(3.2)}, def.title, type::H1(rem), tokens::kText);
+    painter.Text(Box{contentLeft_, headY + metrics_.Rem(3.3), contentWidth_, metrics_.Rem(1.6)}, def.description,
+                 type::Body(rem), tokens::kTextMuted);
+
+    for (const CardBox& card : cards_) {
+        const Box box{contentLeft_, card.top - pageScroll_, contentWidth_, card.height};
+        if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
+        painter.FillRoundRect(box, metrics_.Rem(kCardRadiusRem), tokens::kSurface);
+        painter.StrokeRoundRect(box, metrics_.Rem(kCardRadiusRem), 1.0, tokens::kBorderSoft);
+    }
+
+    bool afterRow = false;
     for (std::size_t i = 0; i < rows_.size(); ++i) {
         const Row& row = rows_[i];
+        if (row.category != category_) continue;
         const Box box = ScreenBox(row);
-        // Rows off the page are not drawn.
-        if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
         if (row.kind == RowKind::Group) {
+            afterRow = false;
+            if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
             std::string title = row.label;
             for (char& c : title) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            painter.Text(Box{box.x + metrics_.Rem(1.1), box.y, box.width, box.height}, title,
-                         TextStyle{metrics_.Rem(kGroupTitleRem) * 0.82, true, 750}, tokens::kTextFaint);
+            painter.Text(Box{box.x + metrics_.Rem(0.4), box.y, box.width, box.height}, title,
+                         TextStyle{metrics_.Rem(kGroupTitleRem) * 0.8, true, 700, 0.06}, tokens::kTextFaint);
             continue;
         }
-        PaintRow(painter, row, !focusHidden_ && focus_ == std::optional<std::size_t>(i));
+        const bool visible = !(box.Bottom() < -20.0 || box.y > height_ + 20.0);
+        if (visible) {
+            if (afterRow) {
+                painter.FillRoundRect(Box{box.x + metrics_.Rem(1.2), box.y, box.width - metrics_.Rem(2.4), 1.0}, 0.0,
+                                      tokens::kBorderSoft);
+            }
+            PaintRow(painter, row, showFocus && pane_ == Pane::Content && focus_ == std::optional<std::size_t>(i));
+        }
+        afterRow = true;
     }
     language_.Paint(painter, clockMs_);
 }
 
 void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) const {
     const Box box = ScreenBox(row);
-    const double radius = metrics_.Rem(kRowRadiusRem);
-    // The nav pill's glass: the resting capsule material for every row, and its hover plate softly under the
-    // focused one. No outer rings, no metallic rim.
-    painter.Glass(box, radius, glass::NavCapsule());
+    const double rem = metrics_.rem;
     if (focused) {
-        painter.FillRoundRect(box, radius, WithAlpha(tokens::kText, 0.06));
-        GlassStyle hover = glass::NavHover(0.32);
-        painter.Glass(box, radius, hover);
+        const Box inset{box.x + 4.0, box.y + 3.0, box.width - 8.0, box.height - 6.0};
+        painter.FillRoundRect(inset, metrics_.Rem(kRowRadiusRem), WithAlpha(tokens::kText, 0.06));
+        painter.StrokeRoundRect(inset, metrics_.Rem(kRowRadiusRem), 2.0, tokens::kFocusRing);
     }
 
     const bool danger = row.key == "factory-reset" || row.key == "clear-cache";
-    const Color labelColor = danger ? kDanger : (focused ? tokens::kText : Mix(tokens::kTextMuted, tokens::kText, 0.75));
-    const Color muted = tokens::kTextMuted;
-    const bool toggle = row.kind != RowKind::Push && row.kind != RowKind::Info;
-    const auto [value, words] = toggle ? SplitDetail(row.detail) : std::pair<std::string, std::string>{"", row.detail};
+    const Color labelColor = danger ? kDanger : tokens::kText;
+    double right = box.Right() - metrics_.Rem(1.2);
 
-    // At the right: a switch, a value (with a chevron for a list), or the way in.
-    double right = box.Right() - metrics_.Rem(1.1);
-    if (row.kind == RowKind::Push) {
-        const double chev = metrics_.Rem(0.85);
-        painter.Path(Box{right - chev, box.CenterY() - chev / 2.0, chev, chev}, 32.0, "m12 7 9 9-9 9",
-                     PathStyle{Color{0, 0, 0, 0}, focused ? tokens::kText : muted, 2.8, false});
-        right -= chev + metrics_.Rem(0.7);
-        if (!words.empty()) {
-            // The row's short description reads as its value, quietly, before the chevron.
-            const TextStyle style{metrics_.Rem(0.88), false, 450};
-            const double width = std::min(painter.MeasureText(words, style), box.width * 0.45);
-            painter.Text(Box{right - width, box.y, width + 2.0, box.height}, words, style, tokens::kTextFaint);
-            right -= width + metrics_.Rem(0.8);
-        }
-    } else if (toggle && (value == "On" || value == "Off")) {
-        const bool on = value == "On";
-        const double trackWidth = metrics_.Rem(2.6);
-        const double trackHeight = metrics_.Rem(1.5);
-        const Box track{right - trackWidth, box.CenterY() - trackHeight / 2.0, trackWidth, trackHeight};
-        painter.FillRoundRect(track, trackHeight / 2.0, on ? tokens::kAccentStrong : WithAlpha(tokens::kText, 0.18));
-        const double knob = trackHeight - metrics_.Rem(0.3);
-        const double knobX = on ? track.Right() - metrics_.Rem(0.15) - knob : track.x + metrics_.Rem(0.15);
-        painter.FillRoundRect(Box{knobX, track.CenterY() - knob / 2.0, knob, knob}, knob / 2.0, Rgb(0xFFFFFF));
+    // At the right: a switch, a segmented choice, a value with a chevron, or the way in.
+    if (SwitchRow(row)) {
+        const Box track = controls::SwitchBox(right, box.CenterY(), rem);
+        controls::PaintSwitch(painter, track, SplitDetail(row.detail).first == "On", false);
         right = track.x - metrics_.Rem(0.8);
-    } else if (toggle && !value.empty()) {
-        const bool list = row.kind == RowKind::Language;
-        if (list) {
-            // App language opens a list: a small chevron after its value.
-            const double chev = metrics_.Rem(0.8);
-            painter.Path(Box{right - chev, box.CenterY() - chev / 2.0, chev, chev}, 24.0, "M6 9l6 6 6-6",
-                         PathStyle{Color{0, 0, 0, 0}, focused ? tokens::kText : muted, 2.4, false});
-            right -= chev + metrics_.Rem(0.5);
-        }
-        const TextStyle style{metrics_.Rem(0.95), true, 600};
-        const double width = painter.MeasureText(value, style);
-        painter.Text(Box{right - width, box.y, width + 2.0, box.height}, value, style,
-                     focused ? tokens::kText : tokens::kTextMuted);
-        right -= width + metrics_.Rem(0.8);
+    } else if (SegmentedRow(row)) {
+        const Box track = SegmentTrack(row);
+        controls::PaintSegmented(painter, track, SegmentLabels(row), SegmentIndex(row), false, rem);
+        right = track.x - metrics_.Rem(0.8);
+    } else if (row.kind == RowKind::Language) {
+        right = controls::PaintValueChevron(painter, right, box, row.detail, focused, rem) - metrics_.Rem(0.8);
+    } else if (row.kind == RowKind::Push) {
+        right = controls::PaintValueChevron(painter, right, box, "", focused, rem, true) - metrics_.Rem(0.8);
     } else if (row.kind == RowKind::Info && !row.detail.empty()) {
-        const TextStyle style{metrics_.Rem(0.95), true, 600};
+        const TextStyle style{0.9375 * rem, true, 600};
         const double width = std::min(painter.MeasureText(row.detail, style), box.width * 0.52);
         painter.Text(Box{right - width, box.y, width + 2.0, box.height}, row.detail, style, tokens::kAccentStrong);
         right -= width + metrics_.Rem(0.8);
     }
 
-    // The name, with a short second line for the switches and choices that explain themselves.
+    // The name, with its description under it in caption size.
     const double textX = box.x + metrics_.Rem(1.2);
     const double textWidth = std::max(0.0, right - textX);
-    const TextStyle labelStyle{metrics_.Rem(1.0), true, focused ? 620 : 540};
-    if (words.empty() || row.kind == RowKind::Push || row.kind == RowKind::Info) {
+    const std::string caption = Caption(row);
+    const TextStyle labelStyle{0.9375 * rem, true, 600};
+    if (caption.empty()) {
         painter.Text(Box{textX, box.y, textWidth, box.height}, row.label, labelStyle, labelColor);
         return;
     }
-    painter.Text(Box{textX, box.y + box.height * 0.12, textWidth, box.height * 0.44}, row.label, labelStyle, labelColor);
-    painter.Text(Box{textX, box.y + box.height * 0.52, textWidth, box.height * 0.34}, words,
-                 TextStyle{metrics_.Rem(0.8), false, 450}, tokens::kTextFaint);
+    painter.Text(Box{textX, box.y + box.height * 0.12, textWidth, box.height * 0.42}, row.label, labelStyle, labelColor);
+    painter.Text(Box{textX, box.y + box.height * 0.52, textWidth, box.height * 0.34}, caption, type::Caption(rem),
+                 tokens::kTextMuted);
 }
 
 }  // namespace tvm::ui

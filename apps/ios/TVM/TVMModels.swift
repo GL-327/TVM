@@ -3,7 +3,7 @@ import Foundation
 enum StandalonePolicy {
     static let requiresLANToken = false
     static let bundledLANToken: String? = nil
-    static let version = "1.4.0"
+    static let version = "1.4.1"
     /// What this build's native code provides to the interface. Bump it, and
     /// scripts/native-api.json, when the interface starts relying on a new
     /// native route; an interface that needs more is never applied here.

@@ -3,6 +3,49 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.1",
+      "date": "2026-11-26",
+      "title": "Settings redesign on Windows (test build)",
+      "highlights": [
+        "Settings on Windows now has two panes: categories on the left, grouped settings on the right.",
+        "On/off settings use switches, and short choices use segmented buttons instead of pills.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Settings",
+          "text": "Settings is split into categories such as Playback, Appearance and Live TV, each with grouped cards.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Switches and segmented buttons replace the old pill buttons in Settings.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Profiles",
+          "text": "In the profile editor, Kids profile is a switch and the age limit is a segmented choice.",
+          "platforms": [
+            "windows"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "The Settings redesign is on Windows only; web, phones and Roku still have the old layout.",
+        "Settings has no search yet, and there is no switch for each extra feature yet.",
+        "The TV guide is only on Windows, and it has not been tried with a real IPTV list yet.",
+        "The moving trailer on the Home spotlight and theme songs may not play yet.",
+        "Liquid Glass is only partly redone; the full Apple-style rework is still to come.",
+        "This iPhone build has not been tested on a phone yet, and Roku has not been tried on a TV.",
+        "Picking another version of a film may not be available everywhere yet.",
+        "The profile editor on web, phones and Roku still uses the old pill buttons."
+      ]
+    },
+    {
       "version": "1.4.0",
       "date": "2026-11-26",
       "title": "New look, smarter playback and a TV guide (test build)",

@@ -133,13 +133,18 @@ TEST(settings_lists_the_web_rows_in_order) {
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
     const std::vector<std::string> expected = {
-        "Picture", "Performance mode",
-        "Look", "Theme", "Font", "Reduce transparency", "Reduce motion",
+        "Sign in and access", "Your account", "Privacy & terms", "Plan", "Services", "Streaming services",
+        "Profiles", "Profiles", "Choose profile on launch",
+        "Playback", "TVM Extras", "Your stats",
+        "Languages", "Audio and subtitle languages",
+        "Picture", "Performance mode", "Look", "Theme", "Font", "Reduce transparency", "Reduce motion",
         "Language", "App language",
-        "Playback", "TVM Extras", "Your stats", "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Choose profile on launch", "Streaming services", "Real-Debrid",
+        "Live TV", "Live TV login", "Live TV playlist",
+        "Real-Debrid", "Real-Debrid",
+        "Downloads", "Downloads",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
-        "Device", "Network", "Display", "Live TV login", "Live TV playlist", "Updates", "Check for updates on launch",
-        "What's new", "Diagnostics",
+        "Updates", "Updates", "Check for updates on launch", "What's new",
+        "This device", "Network", "Display", "Diagnostics",
         "Maintenance", "Clear cache", "Fully reset", "Restart",
     };
     REQUIRE(settings.RowLabels() == expected);
@@ -172,7 +177,7 @@ TEST(settings_focus_starts_on_first_row) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("account"));
 }
 
 TEST(settings_motion_toggles_between_auto_and_reduced_and_saves) {
@@ -195,7 +200,7 @@ TEST(settings_performance_mode_toggles_and_saves) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
+    REQUIRE(settings.FocusItem("performance", 0.0, false));
     (void)settings.Select(0.0);
     REQUIRE(store.motion_.performanceMode);
     REQUIRE(settings.DetailOf("performance") == "On · simpler effects and motion");
@@ -205,6 +210,7 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
+    REQUIRE(settings.FocusItem("performance", 0.0, false));  // Appearance is the category with the most rows.
 
     REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Skips the Look heading.
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
@@ -227,6 +233,39 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
     REQUIRE(!settings.Navigate(Direction::Up, 0.0));  // Nothing above the first row.
+}
+
+TEST(settings_two_panes_move_between_categories_and_content) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(1920.0, 1080.0);
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("account"));
+    REQUIRE(settings.Navigate(Direction::Left, 0.0));  // To the category list, on Account.
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("cat:account"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Profiles
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("cat:profiles"));
+    REQUIRE(settings.Navigate(Direction::Right, 0.0));  // Into its first row.
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("profiles"));
+    // A click on a category shows it.
+    settings.ActivateItem("cat:appearance", 0.0);
+    REQUIRE(settings.Navigate(Direction::Right, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
+}
+
+TEST(settings_segmented_choices_and_switches_work_by_arrow_and_click) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(1920.0, 1080.0);
+    REQUIRE(settings.FocusItem("themes", 0.0, false));
+    REQUIRE(settings.Navigate(Direction::Right, 0.0));  // Dark -> Light
+    REQUIRE(store.theme_ == tvm::ui::Theme::Light);
+    REQUIRE(settings.Navigate(Direction::Left, 0.0));  // Light -> Dark
+    REQUIRE(store.theme_ == tvm::ui::Theme::Dark);
+    settings.ActivateItem("font#2", 0.0);
+    REQUIRE(store.font_ == tvm::ui::UiFont::System);
+    REQUIRE(settings.FocusItem("reduce-transparency", 0.0, false));
+    (void)settings.Select(0.0);
+    REQUIRE(store.reduceTransparency_);
 }
 
 TEST(settings_language_opens_a_list_and_saves_the_pick) {
@@ -362,14 +401,14 @@ TEST(settings_destructive_rows_open_a_confirmation_dialog) {
 TEST(settings_scrolls_the_page_to_reach_the_last_row) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
-    settings.Layout(1920.0, 720.0);
+    settings.Layout(1920.0, 300.0);
     REQUIRE(settings.FocusItem("restart", 0.0, true));
     double now = 0.0;
     while (settings.Animating()) {
         now += 16.0;
         settings.Tick(now);
     }
-    const auto surface = settings.SurfaceAt(100.0, 300.0, Axis::Y);
+    const auto surface = settings.SurfaceAt(100.0, 100.0, Axis::Y);
     REQUIRE(surface.has_value());
     REQUIRE(surface->scroll > 0.0);
     REQUIRE(surface->canPan);
@@ -448,8 +487,8 @@ TEST(shell_opens_settings_and_a_motion_change_reaches_the_home_screen) {
     shell.Select(0.0);
     REQUIRE(Names(shell) == (std::vector<std::string>{"home", "settings"}));
 
-    // Down four times walks from Performance mode to Reduce motion, then OK toggles it.
-    for (int i = 0; i < 4; ++i) shell.Navigate(Direction::Down, 0.0);
+    // Reduce motion lives under Appearance; focusing it switches to that category.
+    REQUIRE(shell.ActiveScreen().FocusItem("motion", 0.0, false));
     shell.Select(0.0);
     REQUIRE(store.motion_.preference == MotionPreference::Reduced);
     REQUIRE(root->received.preference == MotionPreference::Reduced);

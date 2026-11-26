@@ -78,9 +78,29 @@ private:
         int column = 0;
         double left = 0.0;
         double width = 0.0;
+        // The category it belongs to, an index into the fixed list in the .cpp.
+        int category = 0;
     };
 
+    struct CardBox {
+        double top = 0.0;
+        double height = 0.0;
+    };
+
+    enum class Pane { Content, Categories };
+
     void BuildRows();
+    std::vector<int> PresentCategories() const;
+    void SelectCategory(int category, bool resetScroll);
+    std::optional<std::size_t> FirstFocusable() const;
+    bool SegmentedRow(const Row& row) const;
+    bool SwitchRow(const Row& row) const;
+    std::vector<std::string> SegmentLabels(const Row& row) const;
+    std::size_t SegmentIndex(const Row& row) const;
+    void SetSegment(const Row& row, std::size_t index);
+    Box SegmentTrack(const Row& row) const;
+    Box CategoryBox(std::size_t slot) const;
+    std::string Caption(const Row& row) const;
     void RefreshDetails();
     std::string DetailFor(const Row& row) const;
     void Arrange();
@@ -102,6 +122,14 @@ private:
     std::optional<std::size_t> focus_;
     double pageScroll_ = 0.0;
     double contentBottom_ = 0.0;
+    int category_ = 0;
+    int categoryFocus_ = 0;
+    Pane pane_ = Pane::Content;
+    std::vector<CardBox> cards_;
+    double paneLeft_ = 0.0;
+    double paneWidth_ = 0.0;
+    double contentLeft_ = 0.0;
+    double contentWidth_ = 0.0;
     motion::CameraTween camera_;
     // App language's list, which opens over the page.
     Dropdown language_;

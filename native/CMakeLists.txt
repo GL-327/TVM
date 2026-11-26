@@ -158,6 +158,8 @@ add_library(tvm_engine STATIC
   src/ui/xtream_screen.h
   src/ui/screen.h
   src/ui/screen_base.h
+  src/ui/controls.cpp
+  src/ui/controls.h
   src/ui/settings_screen.cpp
   src/ui/settings_screen.h
   src/ui/shell.cpp

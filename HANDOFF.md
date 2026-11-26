@@ -1,4 +1,4 @@
-# Handoff: TVM 1.4.0 (test build)
+# Handoff: TVM 1.4.1 (test build)
 
 Written 2026-11-26 around 05:00 UK by Claude on the owner's desktop, for whoever picks this up next (the
 owner's laptop session). **Read this before changing anything.** Delete this file once everything below is
@@ -9,7 +9,7 @@ done, and remove the pointer to it at the top of `CLAUDE.md`.
 The owner asked for a big polish pass. The full list and the design are in `docs/1.4/spec.md`, which is
 the contract every builder worked from. Codex and Gemini each ran out of usage within about 15 minutes of
 starting six parallel builders. Claude Sonnet helpers then made every area build and pass its tests.
-The owner asked for a push before morning **even if unfinished**, so 1.4.0 went out as a test build. Its
+The owner asked for a push before morning **even if unfinished**, so 1.4.0 went out as a test build, and 1.4.1 added the Windows Settings redesign. Its
 patch notes (a pop-up this time) list the known issues, and so does the section below.
 
 Each area's own report, from the builder that last touched it, is in `docs/1.4/report-*.md`.
@@ -30,7 +30,7 @@ Nothing was tried on a real device.
 
 | Area | Done | Not done / unverified |
 |---|---|---|
-| Windows (`native/`) | Geist font. Centred solid nav with a magnifier search button. Hero without the glass box. One lit card in looping rails, no hover clipping. Rounded-rectangle buttons. Click to pause, double-click for fullscreen. Controls on mouse move in fullscreen. Client caps and original-language audio. RD status refresh. TV guide (Guide button on Live TV). Patch-notes pop-up. | Settings redesign (spec section 8) and its controls. Profile editor controls. The full Liquid Glass rework (section 3.1; only partly done). Hero particles/glow not confirmed on screen. Trailer clip via Media Foundation unverified. Guide not tried with real IPTV. The pop-up body clips instead of scrolling. |
+| Windows (`native/`) | Geist font. Centred solid nav with a magnifier search button. Hero without the glass box. One lit card in looping rails, no hover clipping. Rounded-rectangle buttons. Click to pause, double-click for fullscreen. Controls on mouse move in fullscreen. Client caps and original-language audio. RD status refresh. TV guide (Guide button on Live TV). Patch-notes pop-up. **1.4.1:** two-pane Settings with switches and segmented controls (`native/src/ui/controls.*`); profile editor Kids switch and age segmented control. | Settings search, category icons, a Home screen category and switches for each extra (spec sections 7 and 8). Phone-width Settings layout. Avatar set tiles in the profile editor. The full Liquid Glass rework (section 3.1; only partly done). Hero particles/glow not confirmed on screen. Trailer clip via Media Foundation unverified. Guide not tried with real IPTV. The pop-up body clips instead of scrolling. |
 | Core (`apps/core`) | RD key cache fix. `/api/config` with flags. `/api/announcement`. Ranking (original language, highest native resolution, no upscales or cams). `/api/playback/versions`. Extras prefs. | `/api/live/guide` has no dedicated test. Hero clip and theme songs need real yt-dlp/ffmpeg runs. Free-channel EPG ids not reviewed one by one. The bitrate cause: check `docs/1.4/report-core.md`. |
 | Web/phone UI (`apps/ui`) | Nav with magnifier, no double selection, no hover clipping, Geist, click to pause, double-click fullscreen, patch-notes pop-up. | Only the sign-in screen was seen in a browser. Guide, Settings redesign, Stats overlay, version picker and extras switches not audited or not done. Controls in fullscreen not verified. |
 | Roku (`apps/roku`) | Fixed all BrighterScript errors. Patch-notes dialog. | Not run on a TV. The redesign items in `docs/1.4/report-roku.md` need a remote-navigation pass. |
@@ -49,7 +49,7 @@ Nothing was tried on a real device.
 ## Next, in order
 
 1. Test 1.4.0 on Windows, a phone and Roku. Fix anything that blocks watching first.
-2. Settings redesign everywhere (spec section 8), with a switch for every extra (section 7), and the profile editor controls (section 3.4).
+2. Settings redesign on web/phones and Roku (spec section 8; Windows is done, see `docs/1.4/report-native-settings.md`), a switch for every extra (section 7) everywhere, and the profile editor controls off Windows (section 3.4).
 3. Live TV guide on web/phones (UI), phone engines and Roku (section 6).
 4. The Liquid Glass rework to the iOS 27 standard (section 3.1) on Windows and web.
 5. Hero trailer clip and theme songs end to end (section 4 and section 7).

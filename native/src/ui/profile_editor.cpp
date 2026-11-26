@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "ui/controls.h"
 #include "ui/glass_styles.h"
 #include "ui/profile_chooser.h"
 
@@ -55,10 +56,11 @@ std::vector<PageButton> ProfileEditor::Buttons() const {
     }
     const double left = Rem(5.5), width = std::min(width_ - left * 2, Rem(58));
     buttons.push_back({"name", "", {left, Rem(10.2), width, Rem(3.2)}, 0, false, false, true});
-    buttons.push_back({"kids", profile_.kind == "kids" ? "Kids profile: On" : "Kids profile: Off", {left, Rem(15), Rem(16), Rem(2.8)}, 1});
+    // Kids profile is a switch on a row; the age limit is one segmented control (four buttons side by side).
+    buttons.push_back({"kids", "", {left, Rem(14.4), Rem(20), Rem(3.2)}, 1, false, false, true});
     const int ages[]{7, 12, 15, 18};
     for (int i = 0; i < 4; ++i) buttons.push_back({"age:" + std::to_string(ages[i]), i == 3 ? "No limit" : "Up to " + std::to_string(ages[i]),
-                                                {left + i * Rem(8.2), Rem(20), Rem(7.8), Rem(2.8)}, 2, profile_.maxAge == ages[i]});
+                                                {left + Rem(0.25) + i * Rem(7.2), Rem(20.25), Rem(7.2), Rem(2.5)}, 2, profile_.maxAge == ages[i], false, true});
     buttons.push_back({"pin", "", {left, Rem(26), Rem(16), Rem(3)}, 3, false, false, true});
     buttons.push_back({"remove-pin", "Remove PIN", {left + Rem(17), Rem(26), Rem(11), Rem(3)}, 3, false, !profile_.locked && !pinChanged_});
     for (std::size_t i = 0; i < sets_.size(); ++i) buttons.push_back({"set:" + std::to_string(i), sets_[i].value("title", "Avatars"),
@@ -95,9 +97,29 @@ void ProfileEditor::PaintContent(Painter& painter, double scroll) const {
     }
     PaintHeader(painter, Rem(2.5) - scroll, "Profiles", profile_.id.empty() ? "Add profile" : "Edit profile", message_);
     const auto label = [&](double y, const std::string& text) { painter.Text({left, Rem(y) - scroll, Rem(58), Rem(1.8)}, text, {Rem(1), false}, tokens::kTextMuted); };
+    {
+        // The segmented track under the four age buttons.
+        const Box track{left, Rem(20), Rem(7.2) * 4 + Rem(0.5), Rem(3.0)};
+        painter.FillRoundRect(track, Rem(0.75), Rgb(0xFFFFFF, 0.08));
+    }
     label(8.2, "Name"); label(18, "Age limit · Filters by genre"); label(23.8, "Profile lock · 4-digit PIN"); label(29.8, "Choose an avatar set");
 }
 void ProfileEditor::PaintCustom(Painter& painter, const PageButton& button, const Box& box, bool focused) const {
+    if (button.key == "kids") {
+        // A row: the name and what it does at the left, an iOS-style switch at the right.
+        painter.Text({box.x, box.y, box.width - Rem(4), box.height * 0.55}, "Kids profile", {Rem(1), true, 600}, tokens::kText);
+        painter.Text({box.x, box.y + box.height * 0.5, box.width - Rem(4), box.height * 0.45}, "Limits what this profile can watch", {Rem(0.8), false}, tokens::kTextMuted);
+        controls::PaintSwitch(painter, controls::SwitchBox(box.Right(), box.CenterY(), Rem(1)), profile_.kind == "kids", focused);
+        return;
+    }
+    if (button.key.rfind("age:", 0) == 0) {
+        if (button.primary) painter.FillRoundRect(box, Rem(0.6), tokens::kAccentStrong);
+        const TextStyle style{Rem(0.875), true, 600};
+        const double width = painter.MeasureText(button.label, style);
+        painter.Text({box.CenterX() - width / 2 - 1, box.y, width + 4, box.height}, button.label, style, button.primary ? tokens::kAccentInk : tokens::kTextMuted);
+        if (focused) painter.StrokeRoundRect(box, Rem(0.6), 2, tokens::kFocusRing);
+        return;
+    }
     if (button.key == "name" || button.key == "pin") {
         painter.FillRoundRect({box.x, box.y + 1, box.width, box.height}, Rem(0.75), Rgb(0, 0.35));
         painter.FillRoundRect(box, Rem(0.75), Rgb(0xFFFFFF, 0.06));
