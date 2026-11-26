@@ -148,6 +148,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
     })), [channels, freeChannels, status.configured]);
 
   if (showGuide) return <main className="page page--guide">
+    <PageScene />
     <Ribbon active="live" />
     <ProgrammeGuide fallback={fallback} maxAge={maxAge} onChannels={() => setShowGuide(false)} watch={(channel) => {
       const free = freeChannels.find((item) => item.id === channel.id);

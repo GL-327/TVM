@@ -261,6 +261,66 @@
             "ios",
             "android"
           ]
+        },
+        {
+          "area": "Home",
+          "text": "The Hunger Games films now appear in story order in a numbered collection.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Long poster titles wrap when selected, and the full title is available on hover.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "The browse backdrop uses one static color wash instead of six moving layers.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Episode cards show longer titles and summaries without squeezing the episode number.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Navigation",
+          "text": "Back buttons expand to show their label on hover or focus.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "The chapter setting now explains that markers depend on metadata from the video source.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
         }
       ],
       "knownIssues": [

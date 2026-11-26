@@ -229,6 +229,7 @@ async function stubReady(page: Page): Promise<void> {
     }),
   );
   await page.route('**/api/home', (route) => route.fulfill({ json: HOME }));
+  await page.route('**/api/events/active', (route) => route.fulfill({ json: { events: [] } }));
   await page.route('**/api/plan', (route) => route.fulfill({ json: E2E_PLAN }));
   await page.route('**/api/billing/checkout', (route) =>
     route.fulfill({ json: { ...E2E_PLAN, id: 'free', name: 'TVM Free', price: 'Free', mocks: false } }),

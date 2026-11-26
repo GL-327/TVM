@@ -27,17 +27,17 @@ describe('theme apply imports', () => {
 
   });
 
-  it('does not cover chrome with a cinematic wash or island blobs', () => {
+  it('uses a light static backdrop without extra island or grain layers', () => {
     const scene = readFileSync(join(dir, 'scene.css'), 'utf8');
     expect(scene).not.toContain('tvm-isle-drift');
     expect(scene).not.toContain('tvm-isle-tide');
     expect(scene).not.toContain('--tvm-scene-land');
-    expect(scene).toContain('--tvm-scene-sea');
+    expect(scene).toContain('--tvm-scene-sky');
     expect(scene).toContain('.tvm-scene');
     expect(scene).toContain('display: none');
     expect(scene).not.toContain('z-index: -1');
-    expect(scene).toContain('--tvm-scene-noise');
-    expect(scene).toContain(":root[data-motion='reduced']");
+    expect(scene).toContain(':root[data-perf=\'on\']');
+    expect(scene).toContain('prefers-reduced-transparency');
     expect(scene).not.toContain('@media (prefers-reduced-motion');
   });
 

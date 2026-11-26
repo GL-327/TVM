@@ -40,6 +40,17 @@ describe('Home as the launcher in front of TVM Stream', () => {
     expect(library).not.toContain('home--launcher');
   });
 
+  it('presents the Hunger Games as a numbered story collection in chronological order', () => {
+    const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
+    const events = JSON.parse(readFileSync(join(dir, '../../../../packages/content/events.json'), 'utf8')) as {
+      events: Array<{ id: string; rail: { items: string[] } }>;
+    };
+    const event = events.events.find((entry) => entry.id === 'sunrise-on-the-reaping');
+    expect(src).toContain('home__story-grid');
+    expect(src).toContain('The Hunger Games · story order');
+    expect(event?.rail.items.slice(0, 2)).toEqual(['tt10545296', 'tt32558705']);
+  });
+
   it('runs profile, plan and Real-Debrid checks before opening a title', () => {
     const src = readFileSync(join(dir, '../data/launchTitle.ts'), 'utf8');
     const profiles = readFileSync(join(dir, 'Profiles.tsx'), 'utf8');
@@ -124,6 +135,8 @@ describe('Home rails keep pictures', () => {
     expect(art).toContain('src={original}');
     expect(home).toContain('memo(function HomeShelves');
     expect(home).toContain('requestAnimationFrame(apply)');
+    expect(home).toContain('home__story-grid');
+    expect(home).toContain('aria-label="The Hunger Games films in story order"');
   });
 
   it('keeps channel logos and app tile icon imgs', () => {

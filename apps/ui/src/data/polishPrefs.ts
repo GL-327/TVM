@@ -9,7 +9,7 @@ export const EXTRA_OPTIONS = [
   ['ratings', true, 'IMDb ratings', 'Show IMDb scores on Home and Details.'],
   ['qualityBadges', true, 'Quality badges', 'Show resolution, HDR and Atmos where known.'],
   ['versionPicker', true, 'Version picker', 'Choose a source on Details or during playback.'],
-  ['chapters', true, 'Chapters', 'Show chapter markers when the player exposes them.'],
+  ['chapters', true, 'Chapters', 'Chapter markers depend on metadata provided by the video source.'],
   ['seekPreviews', true, 'Seek previews', 'Show a thumbnail while scrubbing.', 'Native mpv only'],
   ['themeSongs', false, 'Theme songs', 'Play a theme quietly on Details.', 'Desktop and web'],
   ['spoilerBlur', false, 'Spoiler blur', 'Hide stills and summaries for unwatched episodes.'],

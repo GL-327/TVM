@@ -118,6 +118,7 @@ const PosterFocusable = memo(function PosterFocusable({
       ref={ref}
       type="button"
       aria-label={title.title}
+      title={title.title}
       className={`poster poster--${layout}`}
       tabIndex={-1}
       data-focus-id={id}

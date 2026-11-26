@@ -85,6 +85,12 @@
   align-items: flex-end;
   gap: 1.6rem;
   padding: calc(2.6rem + env(titlebar-area-height, 0px)) var(--tvm-safe-x) 1.35rem;
+  animation: details-enter 380ms var(--tvm-motion-ease) both;
+}
+
+@keyframes details-enter {
+  from { opacity: 0; transform: translateY(0.65rem); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .details__poster-stage {
@@ -375,9 +381,9 @@
 }
 
 .episode-item__still {
-  flex: 0 0 7rem;
-  width: 7rem;
-  height: 3.95rem;
+  flex: 0 0 8.25rem;
+  width: 8.25rem;
+  height: 4.65rem;
   overflow: hidden;
   border-radius: 0.4rem;
   background: linear-gradient(145deg, #1c1c1f, #101012);
@@ -398,13 +404,36 @@
   gap: 0.12rem;
 }
 
+.episode-item__num {
+  flex: 0 0 auto;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--tvm-accent-strong) 45%, transparent);
+  border-radius: 0.45rem;
+  color: var(--tvm-accent-strong);
+  font-size: 0.76rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.episode-item__name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .episode-item__synopsis {
+  display: -webkit-box;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.58);
   font-size: 0.78rem;
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .details .tvm-button.episode-item[data-focused='true'] {
@@ -454,7 +483,11 @@
 .episode-download-row { display: flex; align-items: center; gap: .8rem; width: min(58rem, 100%); }
 .details .episode-download-row .episode-item { min-width: 0; flex: 1; width: auto; }
 .episode-download-row__action { flex: 0 0 auto; font-size: .78rem; min-height: 2.7rem; padding: .6rem .9rem; }
-@media (max-width: 650px) { .episode-download-row { flex-wrap: wrap; gap: .4rem; padding-bottom: .8rem; } .details .episode-download-row .episode-item { flex-basis: 100%; } }
+@media (max-width: 650px) {
+  .episode-download-row { flex-wrap: wrap; gap: .4rem; padding-bottom: .8rem; }
+  .details .episode-download-row .episode-item { flex-basis: 100%; }
+  .episode-item__still { flex-basis: 6.25rem; width: 6.25rem; height: 3.55rem; }
+}
 
 .details__anime-subtitle {
   margin: 0.35rem 0 0;

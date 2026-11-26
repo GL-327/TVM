@@ -56,6 +56,16 @@ describe('nested TopBar', () => {
   });
 });
 
+describe('back button hover treatment', () => {
+  it('reveals a label when the shared back button is hovered or focused', () => {
+    const component = read('../components/BackButton.tsx');
+    const css = read('../theme/liquidGlass.css');
+    expect(component).toContain('back-btn__label');
+    expect(css).toContain('.tvm-button.back-btn:is(:hover, :focus-visible, [data-focused=\'true\'])');
+    expect(css).toContain('max-width: 6rem');
+  });
+});
+
 describe('Settings list movement', () => {
   it('moves Settings rows as a column without trapping the D-pad', () => {
     expect(read('Settings.tsx')).toContain('data-wrap="y"');

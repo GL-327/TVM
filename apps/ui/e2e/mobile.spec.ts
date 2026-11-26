@@ -17,6 +17,7 @@ async function ready(page: Page, paid: boolean): Promise<void> {
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
   }, THEME_DEFAULT_BOOT);
   await page.route('**/api/plan', (route) => route.fulfill({ json: plan }));
+  await page.route('**/api/events/active', (route) => route.fulfill({ json: { events: [] } }));
   // Several rails, as a real Home has. With one, the whole page fitted on a
   // 390×844 screen once the tab bar became a single row, and a test about
   // vertical panning had nothing to pan.

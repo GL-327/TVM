@@ -1,4 +1,4 @@
-html body .page.page--guide { padding: 90px var(--tvm-gutter) 18px; background: var(--tvm-bg); }
+html body .page.page--guide { padding: 90px var(--tvm-gutter) 18px; background: transparent; }
 .guide {
   --guide-channel: 212px;
   --guide-half-hour: clamp(126px, 13.25vw, 251px);

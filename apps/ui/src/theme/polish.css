@@ -463,9 +463,10 @@ html body .rail .channel-card[data-focused='true'] .channel-card__art {
   }
   html body .poster--landscape:hover .poster__meta { opacity: 1; }
 }
-html body .rail .poster__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .875rem; }
-html body .rail .poster[data-focused='true'] .poster__title,
-html body .rail .poster:hover .poster__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+html body .poster__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .875rem; }
+html body .poster:is(:hover, [data-focused='true']) { z-index: 4; }
+html body .poster:is(:hover, [data-focused='true']) .poster__title { overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+html body .poster:is(:hover, [data-focused='true']) .poster__meta { overflow: visible; }
 html[data-poster-titles='off'] .poster__meta { display: none; }
 
 /* Profile editor & 4-digit PIN boxes */

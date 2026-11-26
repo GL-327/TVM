@@ -34,6 +34,7 @@ export function BackButton({
       onSelect={onSelect ?? (() => navigate.pop())}
     >
       <IconChevronLeft className="back-btn__icon" />
+      <span className="back-btn__label">{ariaLabel}</span>
     </FocusButton>
   );
 }

@@ -133,7 +133,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     if (id === '') return () => {
       cancelled = true;
     };
-    setLoadingTitle(true);
+    if (snapshot === undefined) setLoadingTitle(true);
     void fetchMedia(id).then((item) => {
       if (cancelled || item === null) return;
       const incoming = asTitle(item);

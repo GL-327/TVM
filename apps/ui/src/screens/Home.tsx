@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openModals, visibleScreen } from '@tvm/nav';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
-import { mapRailPosters } from '../components/PosterCard';
+import { mapRailPosters, PosterCard } from '../components/PosterCard';
 import { Rail, RailPaging } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
 import { RailSkeletons } from '../components/Skeleton';
@@ -44,7 +44,23 @@ const HomeShelves = memo(function HomeShelves({ shelves, loading, openTitle, onL
   shelves: Shelf[]; loading: boolean; openTitle: (title: Title) => void; onLoadMore: (id: string) => void;
 }): React.JSX.Element {
   return <div className="home__shelf">
-    {shelves.map((rail) => <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
+    {shelves.map((rail) => rail.id === 'event-sunrise-on-the-reaping' ? (
+      <section className="home__story" key={rail.id} aria-labelledby="home-story-title">
+        <div className="home__story-copy">
+          <p className="home__story-kicker">The Hunger Games · story order</p>
+          <h2 id="home-story-title">{rail.title}</h2>
+          <p>Start with the 10th Games, then follow Haymitch and Katniss.</p>
+        </div>
+        <ol className="poster-grid home__story-grid" data-wrap="grid" aria-label="The Hunger Games films in story order">
+          {rail.titles.filter((title, index, titles) => titles.findIndex((item) => item.id === title.id) === index).map((title, index) => (
+            <li className="home__story-card" key={`${rail.id}-${title.id}-${index}`}>
+              <span className="home__story-number" aria-hidden="true">{index + 1}</span>
+              <PosterCard title={title} prefix={rail.id} index={index} onSelect={openTitle} />
+            </li>
+          ))}
+        </ol>
+      </section>
+    ) : <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
       <Rail title={rail.title} loop={rail.loop}>
         {mapRailPosters(rail.titles, rail.id, openTitle, rail.id === 'continue' ? { layout: 'landscape' } : undefined)}
       </Rail>
