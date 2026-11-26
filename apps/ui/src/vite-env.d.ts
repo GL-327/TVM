@@ -2,3 +2,4 @@
 
 declare const __TVM_UI_VERSION__: string;
 declare const __TVM_CORE_ORIGIN__: string;
+declare const __TVM_COMMIT__: string;

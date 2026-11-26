@@ -37,6 +37,7 @@ const SystemInfo = lazy(() => import('../screens/SystemInfo').then((m) => ({ def
 const Updates = lazy(() => import('../screens/Updates').then((m) => ({ default: m.Updates })));
 const Changelog = lazy(() => import('../screens/ChangelogModal').then((m) => ({ default: m.ChangelogModal })));
 const YourServices = lazy(() => import('../screens/YourServices').then((m) => ({ default: m.YourServices })));
+const TrailerModal = lazy(() => import('../screens/TrailerModal').then((m) => ({ default: m.TrailerModal })));
 const WhatsNew = lazy(() => import('../screens/WhatsNew').then((m) => ({ default: m.WhatsNew })));
 
 export interface ScreenProps {
@@ -84,6 +85,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   diagnostics: { component: DiagnosticsModal, defaultFocus: 'close' },
   confirm: { component: ConfirmModal, defaultFocus: 'confirm' },
   notice: { component: NoticeModal, defaultFocus: 'close' },
+  trailer: { component: TrailerModal, defaultFocus: 'close' },
   changelog: { component: Changelog, defaultFocus: 'close' },
   search: { component: SearchModal, defaultFocus: 'query' },
   player: { component: Player, defaultFocus: 'player-play' },

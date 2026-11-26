@@ -3,6 +3,57 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.9",
+      "date": "2026-11-27",
+      "title": "The TVM trailer (test build)",
+      "highlights": [
+        "Watch the TVM trailer from Settings, About: a minute on how two friends built TVM.",
+        "The Developer menu gains diagnostics, cache clearing, intro replays and a layout grid."
+      ],
+      "changes": [
+        {
+          "area": "Settings",
+          "text": "Settings, About has a Watch the TVM trailer row.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Developer",
+          "text": "Developer tools: copy diagnostics, clear local caches, replay the franchise intros, show a layout grid.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Developer",
+          "text": "Developers can force the patch notes pop-up and watch the trailer from the Developer menu.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "The full iOS-style Liquid Glass and cinematic streaming redesign is still to come.",
+        "Franchise intros are not on Windows or Roku yet."
+      ]
+    },
+    {
       "version": "1.4.8",
       "date": "2026-11-26",
       "title": "A Hub to start from, and better picture (test build)",

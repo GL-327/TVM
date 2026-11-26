@@ -226,6 +226,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
     stats: [action('your-stats', 'Watch history & stats', 'Review watch time, genres and recent titles.', jump('stats'))],
     about: [
       action('whats-new', "What's new", 'Read the release notes.', jump('whats-new'), currentAppVersion()),
+      action('trailer', 'Watch the TVM trailer', 'How two friends and a lot of AI built TVM.', () => navigate.pushModal('trailer')),
       action('network', 'Network', 'Connection details for this device.', () => navigate.push('system-info', { params: { section: 'network' } })),
       action('display', 'Display', 'Device resolution and playback limits.', () => navigate.push('system-info', { params: { section: 'display' } })),
       action('diagnostics', 'Diagnostics', 'Inspect the running Core.', () => navigate.pushModal('diagnostics')),

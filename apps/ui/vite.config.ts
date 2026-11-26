@@ -1,6 +1,12 @@
 import react from '@vitejs/plugin-react';
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import pkg from './package.json' with { type: 'json' };
+
+// Short commit for the Developer diagnostics. Read-only; 'unknown' outside a checkout.
+function readCommit(): string {
+  try { return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'unknown'; } catch { return 'unknown'; }
+}
 
 const CORE_PORT = process.env['TVM_CORE_PORT'] ?? '7345';
 
@@ -11,6 +17,7 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __TVM_UI_VERSION__: JSON.stringify(pkg.version),
+    __TVM_COMMIT__: JSON.stringify(readCommit()),
     __TVM_CORE_ORIGIN__: JSON.stringify(`http://127.0.0.1:${CORE_PORT}`),
   },
   server: {

@@ -17,6 +17,7 @@ import './theme/polish.css';
 import './theme/browse.css';
 import { applyStoredMotionPreference, applyStoredPerformanceMode } from './theme/motion';
 import { applyStoredLanguage } from './i18n/locale';
+import { restoreLayoutGrid } from './data/devTools';
 
 startTvStage();
 startDesktopShell();
@@ -30,6 +31,7 @@ applyFont();
 applyTransparency();
 applyStoredMotionPreference();
 applyStoredPerformanceMode();
+restoreLayoutGrid();
 void hydratePrefs();
 void fetchPlan().then((plan) => {
   applyPlanClass(plan);
