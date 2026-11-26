@@ -3,6 +3,36 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.7",
+      "date": "2026-11-26",
+      "title": "Tablet fix (test build)",
+      "highlights": [
+        "On tablets, the top bar buttons respond again while the Home spotlight is showing.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Home",
+          "text": "The Home spotlight no longer blocks taps on the top bar buttons on tablet-sized screens.",
+          "platforms": [
+            "web",
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "The full iOS-style Liquid Glass and cinematic streaming redesign is still to come.",
+        "Franchise intros are not on Windows or Roku yet."
+      ]
+    },
+    {
       "version": "1.4.6",
       "date": "2026-11-26",
       "title": "Franchise intros and a smoother Home (test build)",

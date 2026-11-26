@@ -472,3 +472,14 @@ html body .ribbon.polish-nav {
 .spotlight[data-active='false'] .spotlight__media {
   will-change: auto;
 }
+
+/* The hero must never swallow taps meant for the top bar: on tablets the bar sits in a zero-height, pass-through
+   zone and the hero can end up above it. Only the hero's own copy and controls take pointer input; their events
+   still bubble to the section, so the pointer parallax keeps working. */
+.spotlight {
+  pointer-events: none;
+}
+
+.spotlight :is(.spotlight__copy, .spotlight__actions, .spotlight__mute, .spotlight__announcement, a, button) {
+  pointer-events: auto;
+}

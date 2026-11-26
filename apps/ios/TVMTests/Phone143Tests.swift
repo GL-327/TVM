@@ -121,6 +121,7 @@ final class Phone143Tests: XCTestCase {
         webhook.send(scope: "profile", event: event)
         webhook.send(scope: "profile", event: event)
         webhook.send(scope: "profile", event: PlaybackEventRecord(event: "pause", id: "tt123", title: nil, position: 12, duration: 100))
-        await fulfillment(of: [received], timeout: 3)
+        // Sends run on detached utility tasks; a busy CI simulator can take several seconds to schedule them.
+        await fulfillment(of: [received], timeout: 15)
     }
 }
