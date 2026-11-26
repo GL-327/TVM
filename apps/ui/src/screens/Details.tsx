@@ -256,12 +256,17 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     [collection, title],
   );
 
+  const hasTitle = title !== undefined;
+  const firstSeason = seasons[0];
   useEffect(() => {
-    if (title === undefined || season !== null) return;
-    const next = seriesLike && seasons[0] !== undefined ? `season-${seasons[0]}` : seriesLike ? 'back' : 'play';
+    if (!hasTitle || season !== null) return;
+    // Episode data may arrive after the viewer has already moved to a control.
+    if (seriesLike && firstSeason !== undefined && document.activeElement?.closest('[data-focus-scope]')?.getAttribute('data-focus-scope') === scope
+      && document.activeElement.getAttribute('data-focus-id') !== 'back') return;
+    const next = seriesLike && firstSeason !== undefined ? `season-${firstSeason}` : seriesLike ? 'back' : 'play';
     const timer = window.setTimeout(() => requestFocus(`${scope}/${next}`), 0);
     return () => window.clearTimeout(timer);
-  }, [scope, seriesLike, seasons, season, title]);
+  }, [scope, seriesLike, firstSeason, season, hasTitle]);
 
   useEffect(() => {
     if (season === null) return;
@@ -377,7 +382,9 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
         <div className="details__copy">
           <p className="stage__kicker">{seriesLike ? 'Series' : 'Film'}</p>
           <h1 className="stage__title">{title.title}</h1>
-          {englishSubtitle !== null && <p className="details__anime-subtitle">{englishSubtitle}</p>}
+          {(isAnimeTitle || englishSubtitle !== null) && (
+            <p className="details__anime-subtitle" aria-hidden={englishSubtitle === null}>{englishSubtitle}</p>
+          )}
           <p className="stage__meta">
             {(score !== null || imdbUrl !== null) && (
               <ImdbBadge
@@ -398,35 +405,10 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
               <Chip key={genre}>{genre}</Chip>
             ))}
           </p>
-          <QualityBadges info={versions[0] ?? title} />
-          {uiExtraEnabled('versionPicker', prefs) && versions.length > 0 && <div className="details__versions">
-            {seriesLike && <label className="extras-select">Episode
-              <select aria-label="Version for episode" onKeyDown={(event) => event.stopPropagation()} value={versionFile?.id ?? ''} onChange={(event) => setVersionEpisode(event.target.value)}>
-                {(visibleFiles.length ? visibleFiles : files).map((file) => <option key={file.id} value={file.id}>
-                  {formatEpisodeCode(file.season ?? 1, file.episode ?? 1)} · {episodeHeading(file)}
-                </option>)}
-              </select>
-            </label>}
-            <VersionSelect identity={versionIdentity} versions={versions} />
-          </div>}
-          {seriesLike && upcomingDate !== null && upcoming !== null && (
-            <p className="details__coming-up">
-              <span className="details__coming-up-badge glass glass--chrome">Coming up</span>
-              <span>
-                New episode {upcomingDate}
-                {upcoming.name !== '' ? ` · ${formatEpisodeCode(upcoming.season, upcoming.episode)} ${upcoming.name}` : ''}
-              </span>
-            </p>
-          )}
           <div className="hero__actions details__actions">
             {!seriesLike && (
               <FocusButton id="play" variant="primary" onSelect={playFilm}>
                 {title.progress !== undefined ? 'Resume' : 'Play'}
-              </FocusButton>
-            )}
-            {trailers.length > 0 && (
-              <FocusButton id="trailer" className="tvm-button--glass" onSelect={() => setTrailerOpen(true)}>
-                Trailer
               </FocusButton>
             )}
             {!isKidsProfile(peekActiveProfile()) && (
@@ -449,8 +431,33 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
             <FocusButton id="watchlist" className="tvm-button--glass" onSelect={toggleWatchlist}>
               {saved ? 'Remove from My List' : 'Add to My List'}
             </FocusButton>
+            {trailers.length > 0 && (
+              <FocusButton id="trailer" className="tvm-button--glass" onSelect={() => setTrailerOpen(true)}>
+                Trailer
+              </FocusButton>
+            )}
           </div>
-          <p className="stage__synopsis">{title.synopsis}</p>
+          <p className="stage__synopsis" aria-hidden={!title.synopsis}>{title.synopsis}</p>
+          <QualityBadges info={versions[0] ?? title} />
+          {uiExtraEnabled('versionPicker', prefs) && versions.length > 0 && <div className="details__versions">
+            {seriesLike && <label className="extras-select">Episode
+              <select aria-label="Version for episode" onKeyDown={(event) => event.stopPropagation()} value={versionFile?.id ?? ''} onChange={(event) => setVersionEpisode(event.target.value)}>
+                {(visibleFiles.length ? visibleFiles : files).map((file) => <option key={file.id} value={file.id}>
+                  {formatEpisodeCode(file.season ?? 1, file.episode ?? 1)} · {episodeHeading(file)}
+                </option>)}
+              </select>
+            </label>}
+            <VersionSelect identity={versionIdentity} versions={versions} />
+          </div>}
+          {seriesLike && upcomingDate !== null && upcoming !== null && (
+            <p className="details__coming-up">
+              <span className="details__coming-up-badge glass glass--chrome">Coming up</span>
+              <span>
+                New episode {upcomingDate}
+                {upcoming.name !== '' ? ` · ${formatEpisodeCode(upcoming.season, upcoming.episode)} ${upcoming.name}` : ''}
+              </span>
+            </p>
+          )}
           {connectedServices.length > 0 && (
             <div className="details__watch-on" aria-label="Watch on connected services">
               <span className="details__watch-on-label">Watch on</span>

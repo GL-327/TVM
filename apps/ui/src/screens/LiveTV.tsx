@@ -88,14 +88,9 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
 
   useEffect(() => {
     if (showGuide) return;
-    const firstFree = freeChannels[0];
-    if (firstFree !== undefined) {
-      const timer = window.setTimeout(() => requestFocus(`${scope}/${firstFree.id.replaceAll(':', '-')}`), 0);
-      return () => window.clearTimeout(timer);
-    }
-    const timer = window.setTimeout(() => requestFocus(`${scope}/live-back`), 0);
+    const timer = window.setTimeout(() => requestFocus(`${scope}/show-guide`), 0);
     return () => window.clearTimeout(timer);
-  }, [freeChannels, scope, showGuide]);
+  }, [scope, showGuide]);
 
   const connect = async (): Promise<void> => {
     const nextHost = (fieldValue('host') || host).trim();
@@ -162,13 +157,10 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
     <main ref={pageRef} className="page page--library page--docked page--live home" data-keyboard-fields="">
       <PageScene />
       <Ribbon active="live" />
-      <header className="page__toolbar">
+      <header className="page__toolbar live-channels-toolbar">
         <div className="page__toolbar-lead">
           <BackButton id="live-back" />
-          <div>
-            <p className="stage__kicker">Live TV</p>
-            <h1 className="page__heading">{status.needsPicks === true ? 'Choose channels' : 'Live TV'}</h1>
-          </div>
+          <h1 className="page__heading live-heading">{status.needsPicks === true ? 'Choose channels' : 'Live TV'}</h1>
         </div>
         <div className="hero__actions">
           <FocusButton id="show-guide" className="tvm-button--glass" onSelect={() => setShowGuide(true)}>Guide</FocusButton>

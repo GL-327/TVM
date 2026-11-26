@@ -44,6 +44,14 @@ public:
     // whether Home features the big film and TV release events. They live in ui-prefs.json on this PC.
     virtual std::string SleepTimerDefault() const { return "off"; }
     virtual void SaveSleepTimerDefault(const std::string& /*value*/) {}
+    virtual std::string Accent() const { return "default"; }
+    virtual void SaveAccent(const std::string& /*value*/) {}
+    virtual int VolumeBoostMax() const { return 200; }
+    virtual void SaveVolumeBoostMax(int /*value*/) {}
+    virtual bool PosterTitles() const { return true; }
+    virtual void SavePosterTitles(bool /*on*/) {}
+    virtual bool ShowFps() const { return false; }
+    virtual void SaveShowFps(bool /*on*/) {}
     virtual bool SpotlightEvents() const { return true; }
     virtual void SaveSpotlightEvents(bool /*on*/) {}
 };
@@ -76,6 +84,14 @@ public:
 
     std::string SleepTimerDefault() const override;
     void SaveSleepTimerDefault(const std::string& value) override;
+    std::string Accent() const override;
+    void SaveAccent(const std::string& value) override;
+    int VolumeBoostMax() const override;
+    void SaveVolumeBoostMax(int value) override;
+    bool PosterTitles() const override;
+    void SavePosterTitles(bool on) override;
+    bool ShowFps() const override;
+    void SaveShowFps(bool on) override;
     bool SpotlightEvents() const override;
     void SaveSpotlightEvents(bool on) override;
 

@@ -219,7 +219,7 @@ void App::RefreshContent() {
                 if (!id.is_string()) continue;
                 const auto item = catalog_->Meta(id.get<std::string>());
                 if (!item || !content::Allows(parental_, age, item->item.genres) || !ids.insert(item->item.id).second) continue;
-                rail.cards.push_back(ui::CardData{item->item.id, item->item.title, item->item.poster, std::nullopt});
+                rail.cards.push_back(ui::CardFromMedia(item->item));
             }
             if (!rail.cards.empty()) rails.push_back(std::move(rail));
         }

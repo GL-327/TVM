@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <utility>
 
 #include "motion/camera.h"
@@ -107,7 +108,7 @@ struct PrefDef {
     const char* fallback;
 };
 
-constexpr std::array<PrefDef, 12> kCorePrefs = {{
+constexpr std::array<PrefDef, 17> kCorePrefs = {{
     {"quality", "original"},
     {"skipUpscaled", "1"},
     {"audioLanguage", "original"},
@@ -120,6 +121,11 @@ constexpr std::array<PrefDef, 12> kCorePrefs = {{
     {"heroPreviews", "1"},
     {"sleepTimerDefault", "off"},
     {"spotlightEvents", "1"},
+    {"webhookUrl", ""},
+    {"volumeBoostMax", "200"},
+    {"posterTitles", "1"},
+    {"accent", "default"},
+    {"showFps", "0"},
 }};
 
 // The switch extras, in the order and with the wording of EXTRA_OPTIONS in apps/ui/src/data/polishPrefs.ts.
@@ -171,7 +177,9 @@ const char* FallbackOf(const std::string& pref) {
     return nullptr;
 }
 
-bool NativeOnly(const std::string& pref) { return pref == "sleepTimerDefault" || pref == "spotlightEvents"; }
+bool NativeOnly(const std::string& pref) {
+    return pref == "sleepTimerDefault" || pref == "spotlightEvents" || pref == "accent" || pref == "showFps";
+}
 
 // The text a preference holds in a /api/prefs body, or nothing when it is absent or the wrong type.
 std::optional<std::string> ReadPref(const nlohmann::json& body, const std::string& pref) {
@@ -187,6 +195,9 @@ std::optional<std::string> ReadPref(const nlohmann::json& body, const std::strin
         if (dot == std::string::npos) break;
         rest = rest.substr(dot + 1);
     }
+    if (pref == "volumeBoostMax" && node->is_number())
+        return std::to_string(static_cast<int>(std::clamp(node->get<double>(), 100.0, 300.0)));
+    if (pref == "webhookUrl" && node->is_null()) return "";
     if (node->is_boolean()) return node->get<bool>() ? "1" : "0";
     if (node->is_string() && !node->get<std::string>().empty()) return node->get<std::string>();
     return std::nullopt;
@@ -283,6 +294,7 @@ CoreSettings CoreSettings::FromJson(const nlohmann::json& body) {
         }
         if (!codes.empty()) settings.subtitleLanguages = std::move(codes);
     }
+    settings.homeSections = ReadHomeSections(body);
     return settings;
 }
 
@@ -304,6 +316,8 @@ bool CoreSettings::IsSwitch(const std::string& pref) {
 
 nlohmann::json CoreSettings::Patch(const std::string& pref, const std::string& value) {
     nlohmann::json leaf = IsSwitch(pref) ? nlohmann::json(value == "1") : nlohmann::json(value);
+    if (pref == "webhookUrl" && value.empty()) leaf = nullptr;
+    if (pref == "volumeBoostMax") leaf = std::clamp(std::atoi(value.c_str()), 100, 300);
     // "extras.trailers" nests as {"extras": {"trailers": ...}}.
     std::vector<std::string> parts;
     std::string rest = pref;
@@ -382,8 +396,11 @@ void SettingsScreen::BuildRows() {
     group("Watching");
     pref(Ctl::Switch, "autoplay-next", "Autoplay next episode", "Start the next episode after the countdown.",
          "autoplayNext");
-    pref(Ctl::Segmented, "skip-segments", "Skip intro & credits", "Includes recaps when a skip point is available.",
+    pref(Ctl::Segmented, "skip-segments", "Skip intro, recap & credits",
+         "Seek bar markers highlight intros, recaps, credits and chapters. Button lets you jump past skipped segments. Automatic skips them for you.",
          "skipSegments", {{"off", "Off"}, {"button", "Button"}, {"auto", "Automatic"}});
+    pref(Ctl::Slider, "volume-boost", "Volume boost maximum", "Limit how far you can turn up player volume.",
+         "volumeBoostMax");
     pref(Ctl::Select, "sleep-default", "Sleep timer default", "Start each video with this timer.", "sleepTimerDefault",
          {{"off", "Off"}, {"15", "15 minutes"}, {"30", "30 minutes"}, {"45", "45 minutes"}, {"60", "60 minutes"},
           {"end", "End of episode"}});
@@ -420,6 +437,9 @@ void SettingsScreen::BuildRows() {
     row(RowKind::Glass, "font", "Font");
     row(RowKind::Glass, "reduce-transparency", "Reduce transparency");
     row(RowKind::Motion, "motion", "Reduce motion");
+    pref(Ctl::Select, "accent", "Accent colour", "Highlight colour for active controls.", "accent",
+         {{"default", "Ice blue"}, {"indigo", "Indigo"}, {"coral", "Coral"}, {"amber", "Amber"}, {"emerald", "Emerald"}});
+    pref(Ctl::Switch, "poster-titles", "Poster titles", "Show names below poster artwork.", "posterTitles");
     group("Language");
     row(RowKind::Language, "language", "App language");
 
@@ -428,6 +448,23 @@ void SettingsScreen::BuildRows() {
     pref(Ctl::Switch, "hero-previews", "Hero previews", "Play a muted clip when one is available.", "heroPreviews");
     pref(Ctl::Switch, "spotlight-events", "Spotlight events", "Feature film and TV releases at the top of Home.",
          "spotlightEvents");
+    group("Home rows");
+    homeRows_.clear();
+    const auto appendSection = [&](const HomeSection& section) {
+        const auto label = std::find_if(homeLabels_.begin(), homeLabels_.end(), [&](const auto& choice) { return choice.first == section.id; });
+        if (label == homeLabels_.end()) return;
+        homeRows_.push_back(section);
+        row(RowKind::HomeSection, "home-row-" + section.id, label->second);
+        rows_.back().pref = section.id;
+    };
+    for (const auto& section : settings_.homeSections) appendSection(section);
+    const auto automatic = std::find_if(settings_.homeSections.begin(), settings_.homeSections.end(),
+                                        [](const auto& section) { return section.id == "automatic"; });
+    for (const auto& [id, label] : homeLabels_) {
+        if (std::none_of(homeRows_.begin(), homeRows_.end(), [&](const auto& section) { return section.id == id; })) {
+            appendSection({id, id != "because" || automatic == settings_.homeSections.end() || automatic->visible});
+        }
+    }
 
     cat = kExtrasCat;
     {
@@ -440,6 +477,9 @@ void SettingsScreen::BuildRows() {
                 if (extra.platform[0] != '\0') desc += std::string(" ") + extra.platform + ".";
                 pref(Ctl::Switch, std::string("extra-") + extra.id, extra.name, std::move(desc),
                      std::string("extras.") + extra.id);
+                if (std::string_view(extra.id) == "webhook") {
+                    pref(Ctl::Text, "webhook-url", "Webhook URL", "Enter to save. Leave blank to remove the URL.", "webhookUrl");
+                }
             }
         }
     }
@@ -492,6 +532,7 @@ void SettingsScreen::BuildRows() {
         row(RowKind::Info, "dev-build", "Build info", diag_.buildVersion);
         row(RowKind::Info, "dev-rd-source", "RD token source", diag_.rdTokenSource);
         row(RowKind::Info, "dev-glass", "Glass mode");
+        pref(Ctl::Switch, "show-fps", "Show FPS", "Show the Windows frame rate and frame time in a corner.", "showFps");
         push("dev-refresh-cache", "Quick cache refresh", "Reload catalog and artwork",
              Command{false, "dev-refresh-cache", {}, true});
     }
@@ -517,6 +558,7 @@ std::vector<int> SettingsScreen::PresentCategories() const {
 }
 
 bool SettingsScreen::Shown(const Row& row) const {
+    if (row.key == "accent" && store_.Look() != Theme::Dark) return false;
     if (term_.empty()) return row.category == category_;
     // A search lists the rows that match, across every category, without the groups' own headings.
     return row.kind != RowKind::Group && row.haystack.find(term_) != std::string::npos;
@@ -544,17 +586,33 @@ void SettingsScreen::SelectCategory(int category, bool resetScroll) {
 void SettingsScreen::SetDeveloperDiagnostics(DeveloperDiagnostics diag) {
     if (diag_ == diag) return;
     diag_ = std::move(diag);
-    const std::optional<std::string> prevFocus = FocusedKey();
+    RebuildRowsKeepingFocus();
+}
+
+void SettingsScreen::RebuildRowsKeepingFocus() {
+    const auto previous = FocusedKey();
+    if (select_.IsOpen()) select_.Close(clockMs_);
+    selectRow_.reset();
     BuildRows();
     if (width_ > 0.0 && height_ > 0.0) Arrange();
-    if (prevFocus.has_value()) FocusItem(*prevFocus, clockMs_, false);
+    pageScroll_ = std::clamp(pageScroll_, 0.0, MaxPageScroll());
+    if (previous && pane_ == Pane::Content) {
+        const auto found = std::find_if(rows_.begin(), rows_.end(), [&](const auto& row) { return row.key == *previous; });
+        if (found != rows_.end() && Focusable(*found)) focus_ = static_cast<std::size_t>(found - rows_.begin());
+    }
 }
 
 void SettingsScreen::SetCoreSettings(CoreSettings settings) {
+    const bool homeChanged = settings.homeSections != settings_.homeSections;
     settings_ = std::move(settings);
-    RefreshDetails();
-    // A search that matched on a value's words may match differently now.
-    if (width_ > 0.0 && height_ > 0.0) Arrange();
+    if (homeChanged) RebuildRowsKeepingFocus();
+    else RefreshDetails();
+}
+
+void SettingsScreen::SetHomeSectionLabels(HomeSectionLabels labels) {
+    if (labels == homeLabels_) return;
+    homeLabels_ = std::move(labels);
+    RebuildRowsKeepingFocus();
 }
 
 void SettingsScreen::RefreshDetails() {
@@ -568,6 +626,10 @@ void SettingsScreen::RefreshDetails() {
 
 std::string SettingsScreen::PrefValue(const std::string& pref) const {
     if (pref == "sleepTimerDefault") return store_.SleepTimerDefault();
+    if (pref == "accent") return store_.Accent();
+    if (pref == "showFps") return store_.ShowFps() ? "1" : "0";
+    if (pref == "volumeBoostMax" && !settings_.values.contains(pref)) return std::to_string(store_.VolumeBoostMax());
+    if (pref == "posterTitles" && !settings_.values.contains(pref)) return store_.PosterTitles() ? "1" : "0";
     if (pref == "spotlightEvents") return store_.SpotlightEvents() ? "1" : "0";
     return settings_.Get(pref);
 }
@@ -584,11 +646,17 @@ void SettingsScreen::SetPref(const std::string& pref, const std::string& value) 
         store_.SaveSleepTimerDefault(value);
     } else if (pref == "spotlightEvents") {
         store_.SaveSpotlightEvents(value == "1");
+    } else if (pref == "accent") {
+        store_.SaveAccent(value);
+    } else if (pref == "showFps") {
+        store_.SaveShowFps(value == "1");
     } else {
+        if (pref == "volumeBoostMax") store_.SaveVolumeBoostMax(std::atoi(value.c_str()));
+        if (pref == "posterTitles") store_.SavePosterTitles(value == "1");
         settings_.values[pref] = value;
     }
     RefreshDetails();
-    if (sink_) sink_(CoreSettings::Patch(pref, value));
+    if (sink_ && pref != "accent" && pref != "showFps") sink_(CoreSettings::Patch(pref, value));
 }
 
 std::string SettingsScreen::DetailFor(const Row& row) const {
@@ -611,6 +679,8 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
                                               : "Off \xC2\xB7 open the last profile";
     case RowKind::Pref:
         if (row.ctl == Ctl::Switch) return PrefValue(row.pref) == "1" ? "On" : "Off";
+        if (row.ctl == Ctl::Text) return PrefValue(row.pref).empty() ? "" : "URL saved";
+        if (row.ctl == Ctl::Slider) return PrefValue(row.pref) + "%";
         return OptionLabel(row, PrefValue(row.pref));
     case RowKind::Push:
         if (row.key == "subtitle-languages") {
@@ -627,6 +697,7 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
             return store_.ReduceTransparency() ? "Solid surfaces" : "Liquid Glass";
         }
         return row.detail;
+    case RowKind::HomeSection:
     case RowKind::Preview:
     case RowKind::Group:
         break;
@@ -677,12 +748,18 @@ std::size_t SettingsScreen::SegmentIndex(const Row& row) const {
 }
 
 void SettingsScreen::SetSegment(const Row& row, std::size_t index) {
+    const std::size_t previous = SegmentIndex(row);
+    if (index == previous) return;
+    changedSegment_ = row.key;
+    previousSegment_ = previous;
+    segmentChangedAt_ = clockMs_;
     if (row.kind == RowKind::Pref) {
         if (index < row.options.size()) SetPref(row.pref, row.options[index].id);
         return;
     }
     if (row.kind == RowKind::Theme) {
         store_.SaveLook(index == 1 ? Theme::Light : Theme::Dark);
+        if (width_ > 0.0 && height_ > 0.0) Arrange();
     } else {
         store_.SetFont(index == 0 ? UiFont::Geist : index == 1 ? UiFont::Inter : UiFont::System);
     }
@@ -692,7 +769,7 @@ void SettingsScreen::SetSegment(const Row& row, std::size_t index) {
 std::string SettingsScreen::Caption(const Row& row) const {
     if (row.kind == RowKind::Pref || row.kind == RowKind::Preview) return row.desc;
     if (row.kind == RowKind::Push) return row.desc.empty() ? row.detail : row.desc;
-    if (row.kind == RowKind::Info) return "";
+    if (row.kind == RowKind::Info || row.kind == RowKind::HomeSection) return "";
     std::string words = SplitDetail(row.detail).second;
     if (!words.empty()) {
         words[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(words[0])));
@@ -792,7 +869,8 @@ void SettingsScreen::Arrange() {
             }
             // A row with a description under its name is a little taller.
             const bool tall = !Caption(row).empty();
-            const double height = metrics_.Rem(row.kind == RowKind::Preview ? kPreviewHeightRem
+            const double height = metrics_.Rem(row.ctl == Ctl::Text || row.key == "skip-segments" ? 6.8
+                                               : row.kind == RowKind::Preview ? kPreviewHeightRem
                                                : tall                       ? kTallRowHeightRem
                                                                             : kRowHeightRem);
             row.top = y;
@@ -825,7 +903,8 @@ Box SettingsScreen::SearchBox() const {
 
 Box SettingsScreen::SegmentTrack(const Row& row) const {
     const Box box = ScreenBox(row);
-    return controls::SegmentedBox(SegmentLabels(row), box.Right() - metrics_.Rem(1.2), box.CenterY(), metrics_.rem);
+    const double y = row.key == "skip-segments" ? box.Bottom() - metrics_.Rem(1.7) : box.CenterY();
+    return controls::SegmentedBox(SegmentLabels(row), box.Right() - metrics_.Rem(1.2), y, metrics_.rem);
 }
 
 std::optional<std::size_t> SettingsScreen::FocusedIndex() const {
@@ -833,16 +912,18 @@ std::optional<std::size_t> SettingsScreen::FocusedIndex() const {
 }
 
 bool SettingsScreen::Tick(double nowMs) {
+    const bool segmentWasAnimating = !changedSegment_.empty();
     clockMs_ = nowMs;
     const bool reduced = motion::PrefersReducedMotion(motion_);
-    if (!camera_.active()) return select_.Animating(nowMs);
+    if (nowMs - segmentChangedAt_ >= (reduced ? controls::kDropletFadeMs : controls::kDropletMs)) changedSegment_.clear();
+    if (!camera_.active()) return select_.Animating(nowMs) || segmentWasAnimating;
     const motion::CameraStep step = camera_.Step(nowMs, reduced);
     pageScroll_ = step.position;
     return true;
 }
 
 bool SettingsScreen::Animating() const {
-    return camera_.active() || select_.Animating(clockMs_);
+    return camera_.active() || select_.Animating(clockMs_) || !changedSegment_.empty();
 }
 
 void SettingsScreen::EnsureVisible(const Row& row, double nowMs) {
@@ -868,10 +949,17 @@ void SettingsScreen::ChangeQuery(double /*nowMs*/) {
 }
 
 void SettingsScreen::Type(const std::string& text) {
-    if (pane_ != Pane::Search) return;
+    if (!Typing()) return;
     std::string clean;
     for (const char c : text) {
         if (static_cast<unsigned char>(c) >= 0x20 && static_cast<unsigned char>(c) != 0x7F) clean += c;
+    }
+    if (webhookDraft_) {
+        if (clean.empty() || (webhookSelected_ ? 0 : webhookDraft_->size()) + clean.size() > 2048) return;
+        if (webhookSelected_) webhookDraft_->clear();
+        webhookSelected_ = webhookInvalid_ = false;
+        *webhookDraft_ += clean;
+        return;
     }
     if (clean.empty() || query_.size() + clean.size() > kQueryMax) return;
     query_ += clean;
@@ -879,16 +967,25 @@ void SettingsScreen::Type(const std::string& text) {
 }
 
 void SettingsScreen::Erase() {
-    if (query_.empty()) return;
-    std::size_t cut = query_.size() - 1;
-    while (cut > 0 && (static_cast<unsigned char>(query_[cut]) & 0xC0) == 0x80) --cut;
-    query_.erase(cut);
-    ChangeQuery(clockMs_);
+    std::string& field = webhookDraft_ ? *webhookDraft_ : query_;
+    if (webhookDraft_ && webhookSelected_) {
+        field.clear();
+        webhookSelected_ = webhookInvalid_ = false;
+        return;
+    }
+    if (field.empty()) return;
+    std::size_t cut = field.size() - 1;
+    while (cut > 0 && (static_cast<unsigned char>(field[cut]) & 0xC0) == 0x80) --cut;
+    field.erase(cut);
+    if (webhookDraft_) webhookInvalid_ = false;
+    else ChangeQuery(clockMs_);
 }
 
 // ------------------------------------------------------------------------------------------------- input
 
 bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
+    clockMs_ = std::max(clockMs_, nowMs);
+    if (webhookDraft_) return false;
     // An open list takes the arrows.
     if (select_.IsOpen()) return select_.Navigate(direction, nowMs);
 
@@ -946,6 +1043,21 @@ bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
     contentUsed_ = true;
     const Row& current = rows_[*focus_];
     if (direction == nav::Direction::Left || direction == nav::Direction::Right) {
+        if (current.kind == RowKind::HomeSection) {
+            const int step = direction == nav::Direction::Left ? -1 : 1;
+            for (int control = homeControl_ + step; control >= 0 && control < 3; control += step) {
+                if (!HomeControlEnabled(current, control)) continue;
+                homeControl_ = control;
+                return true;
+            }
+            if (step > 0) return false;
+        }
+        if (current.ctl == Ctl::Slider) {
+            const int value = std::atoi(PrefValue(current.pref).c_str());
+            const int step = direction == nav::Direction::Left ? -10 : 10;
+            SetPref(current.pref, std::to_string(std::clamp(value + step, 100, 300)));
+            return true;
+        }
         if (SegmentedRow(current)) {
             const std::size_t count = SegmentLabels(current).size();
             const std::size_t index = SegmentIndex(current);
@@ -988,12 +1100,17 @@ bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
         return false;
     }
     focus_ = next;
+    if (!HomeControlEnabled(rows_[*next], homeControl_)) homeControl_ = 2;
     EnsureVisible(rows_[*next], nowMs);
     return true;
 }
 
 std::optional<Command> SettingsScreen::Select(double nowMs) {
     clockMs_ = std::max(clockMs_, nowMs);
+    if (webhookDraft_) {
+        SaveWebhook();
+        return std::nullopt;
+    }
     if (select_.IsOpen()) {
         PickOption(select_.Highlighted(), nowMs);
         return std::nullopt;
@@ -1073,8 +1190,7 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
         return std::nullopt;
 
     case RowKind::Theme:
-        store_.SaveLook(store_.Look() == Theme::Dark ? Theme::Light : Theme::Dark);
-        RefreshDetails();
+        SetSegment(row, store_.Look() == Theme::Dark ? 1 : 0);
         return std::nullopt;
 
     case RowKind::Glass:
@@ -1106,9 +1222,18 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
             SetSegment(row, (SegmentIndex(row) + 1) % std::max<std::size_t>(row.options.size(), 1));
         } else if (row.ctl == Ctl::Select) {
             OpenSelect(index);
+        } else if (row.ctl == Ctl::Text) {
+            webhookDraft_ = PrefValue(row.pref);
+            webhookInvalid_ = false;
+            webhookSelected_ = !webhookDraft_->empty();
         }
         return std::nullopt;
 
+    case RowKind::HomeSection: {
+        const std::string id = row.pref;
+        EditHomeSection(id, homeControl_);
+        return std::nullopt;
+    }
     case RowKind::Push:
         return row.command;
 
@@ -1145,6 +1270,10 @@ void SettingsScreen::PickOption(std::size_t index, double nowMs) {
 }
 
 bool SettingsScreen::CloseOverlay(double nowMs) {
+    if (webhookDraft_) {
+        webhookDraft_.reset();
+        return true;
+    }
     if (select_.IsOpen()) {
         select_.Close(nowMs);
         selectRow_.reset();
@@ -1172,6 +1301,7 @@ bool SettingsScreen::CloseOverlay(double nowMs) {
 }
 
 void SettingsScreen::PressedElsewhere(const std::optional<std::string>& key, double /*nowMs*/) {
+    if (webhookDraft_ && key != std::optional<std::string>("webhook-url")) webhookDraft_.reset();
     // Clicking away from the search field ends the typing, as a desktop text box loses its caret.
     if (pane_ == Pane::Search && key != std::optional<std::string>("search")) {
         pane_ = Pane::Categories;
@@ -1184,8 +1314,8 @@ bool SettingsScreen::FocusItem(const std::string& key, double nowMs, bool withCa
         select_.Hover(std::stoul(key.substr(5)), nowMs);
         return true;
     }
-    // The search field takes the focus (and the typing) on a click only, not on a hover.
-    if (key == "search") return false;
+    // Text fields take the focus for editing on click, not on hover.
+    if (key == "search" || webhookDraft_) return false;
     if (key.rfind("cat:", 0) == 0) {
         const std::string id = key.substr(4);
         for (std::size_t c = 0; c < kCategories.size(); ++c) {
@@ -1211,6 +1341,11 @@ bool SettingsScreen::FocusItem(const std::string& key, double nowMs, bool withCa
         if (term_.empty() && !sameCategory) SelectCategory(candidate.category, true);
         pane_ = Pane::Content;
         focus_ = i;
+        homeControl_ = 2;
+        if (candidate.kind == RowKind::HomeSection && key.size() == base.size() + 2) {
+            const int control = key.back() - '0';
+            if (HomeControlEnabled(candidate, control)) homeControl_ = control;
+        }
         if (withCamera) EnsureVisible(rows_[i], nowMs);
         return true;
     }
@@ -1238,6 +1373,22 @@ std::optional<std::string> SettingsScreen::ItemAt(double x, double y) const {
         if (!Focusable(row)) continue;
         const Box box = ScreenBox(row);
         if (x >= box.x && x < box.Right() && y >= box.y && y < box.Bottom()) {
+            if (row.kind == RowKind::HomeSection) {
+                const auto boxes = HomeControls(row);
+                for (std::size_t i = 0; i < boxes.size(); ++i) {
+                    const auto& control = boxes[i];
+                    if (x >= control.x && x < control.Right() && y >= control.y && y < control.Bottom())
+                        return row.key + "#" + std::to_string(i);
+                }
+                return std::nullopt;
+            }
+            if (row.ctl == Ctl::Slider) {
+                const Box track = controls::SliderBox(box.Right() - metrics_.Rem(1.2), box.CenterY(), metrics_.rem);
+                if (x >= track.x - metrics_.Rem(0.6) && y >= track.y && y < track.Bottom()) {
+                    const int value = 100 + 10 * static_cast<int>(std::lround(20 * controls::SliderRatio(track, x, metrics_.rem)));
+                    return row.key + "#" + std::to_string(value);
+                }
+            }
             if (SegmentedRow(row)) {
                 const Box track = SegmentTrack(row);
                 if (const std::optional<std::size_t> segment =
@@ -1279,13 +1430,25 @@ std::optional<Command> SettingsScreen::ActivateItem(const std::string& key, doub
         }
         return std::nullopt;
     }
+    if (webhookDraft_ && key == "webhook-url") return std::nullopt;
     if (const std::size_t hash = key.find('#'); hash != std::string::npos) {
         // A click on one segment of a choice sets it directly.
         const std::string base = key.substr(0, hash);
         FocusItem(base, nowMs, true);
         contentUsed_ = true;
         for (const Row& row : rows_) {
-            if (row.key != base || !SegmentedRow(row) || !Shown(row)) continue;
+            if (row.key != base || !Shown(row)) continue;
+            if (row.ctl == Ctl::Slider) {
+                SetPref(row.pref, std::to_string(std::clamp(std::atoi(key.c_str() + hash + 1), 100, 300)));
+                return std::nullopt;
+            }
+            if (row.kind == RowKind::HomeSection) {
+                const std::string id = row.pref;
+                homeControl_ = key.back() - '0';
+                EditHomeSection(id, homeControl_);
+                return std::nullopt;
+            }
+            if (!SegmentedRow(row)) continue;
             const std::size_t index = std::stoul(key.substr(hash + 1));
             if (index < SegmentLabels(row).size()) SetSegment(row, index);
         }
@@ -1463,9 +1626,94 @@ void SettingsScreen::PaintPreview(Painter& painter, const Row& row) const {
     painter.Text(text, sample, style, ink);
 }
 
+std::array<Box, 3> SettingsScreen::HomeControls(const Row& row) const {
+    const Box box = ScreenBox(row);
+    const double rem = metrics_.rem;
+    const Box toggle = controls::SwitchBox(box.Right() - 1.2 * rem, box.CenterY(), rem);
+    const double size = 2.0 * rem;
+    const Box down{toggle.x - 0.8 * rem - size, box.CenterY() - size / 2.0, size, size};
+    const Box up{down.x - 0.35 * rem - size, down.y, size, size};
+    return {up, down, toggle};
+}
+
+bool SettingsScreen::HomeControlEnabled(const Row& row, int control) const {
+    if (row.kind != RowKind::HomeSection || control < 0 || control > 2) return false;
+    if (control == 2) return true;
+    const auto at = std::find_if(homeRows_.begin(), homeRows_.end(), [&](const auto& section) { return section.id == row.pref; });
+    if (at == homeRows_.end()) return false;
+    return control == 0 ? at != homeRows_.begin() : std::next(at) != homeRows_.end();
+}
+
+void SettingsScreen::EditHomeSection(const std::string& id, int control) {
+    const auto row = std::find_if(rows_.begin(), rows_.end(), [&](const auto& item) { return item.pref == id && item.kind == RowKind::HomeSection; });
+    if (row == rows_.end() || !HomeControlEnabled(*row, control)) return;
+    auto at = std::find_if(homeRows_.begin(), homeRows_.end(), [&](const auto& section) { return section.id == id; });
+    if (control == 2) at->visible = !at->visible;
+    else std::iter_swap(at, at + (control == 0 ? -1 : 1));
+
+    auto ordered = homeRows_;
+    // Keep rows from other clients and inactive releases in the device's preference.
+    for (const auto& saved : settings_.homeSections) {
+        if (std::none_of(ordered.begin(), ordered.end(), [&](const auto& known) { return known.id == saved.id; }))
+            ordered.push_back(saved);
+    }
+    const auto patch = HomeSectionsPatch(ordered);
+    settings_.homeSections = std::move(ordered);
+    RebuildRowsKeepingFocus();
+    if (focus_) {
+        const Row& moved = rows_[*focus_];
+        if (!HomeControlEnabled(moved, homeControl_)) homeControl_ = 2;
+        EnsureVisible(moved, clockMs_);
+    }
+    if (sink_) sink_(patch);
+}
+
+Box SettingsScreen::WebhookField(const Row& row) const {
+    const Box box = ScreenBox(row);
+    const double rem = metrics_.rem;
+    return {box.x + 1.2 * rem, box.Bottom() - 3.55 * rem, box.width - 2.4 * rem, 3.0 * rem};
+}
+
+void SettingsScreen::SaveWebhook() {
+    std::string value = Trimmed(*webhookDraft_);
+    if (!value.empty()) {
+        const std::string scheme = Lower(value.substr(0, value.find(':')));
+        const std::size_t start = scheme.size() + 3;
+        const std::string host = start <= value.size() ? value.substr(start, value.find_first_of("/?#", start) - start) : "";
+        const bool valid = (scheme == "http" || scheme == "https") && value.compare(scheme.size(), 3, "://") == 0 &&
+                           !host.empty() && host.find('@') == std::string::npos && value.find_first_of(" \t\r\n\\") == std::string::npos;
+        if (!valid) {
+            webhookInvalid_ = true;
+            return;
+        }
+    }
+    webhookDraft_.reset();
+    SetPref("webhookUrl", value);
+}
+
 void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) const {
     const Box box = ScreenBox(row);
     const double rem = metrics_.rem;
+    if (row.kind == RowKind::HomeSection) {
+        const auto boxes = HomeControls(row);
+        const auto current = std::find_if(homeRows_.begin(), homeRows_.end(), [&](const auto& item) { return item.id == row.pref; });
+        const double x = box.x + 1.2 * rem;
+        painter.Text({x, box.y, std::max(0.0, boxes[0].x - x - 0.8 * rem), box.height},
+                     row.label, type::Label(rem), tokens::kText);
+        for (int i = 0; i < 2; ++i) {
+            const Box& button = boxes[static_cast<std::size_t>(i)];
+            const bool enabled = HomeControlEnabled(row, i);
+            const bool active = enabled && focused && homeControl_ == i;
+            painter.FillRoundRect(button, 0.625 * rem, enabled ? tokens::kSurfaceHover : tokens::kSurface);
+            if (active) painter.StrokeRoundRect(button, 0.625 * rem, 2.0, tokens::kFocusRing);
+            const double pad = 0.38 * rem;
+            painter.Path({button.x + pad, button.y + pad, button.width - 2.0 * pad, button.height - 2.0 * pad}, 24.0,
+                         i == 0 ? "M6 14l6-6 6 6" : "M6 10l6 6 6-6",
+                         {Rgb(0, 0.0), enabled ? tokens::kText : tokens::kTextFaint, 2.0});
+        }
+        controls::PaintSwitch(painter, boxes[2], current != homeRows_.end() && current->visible, focused && homeControl_ == 2);
+        return;
+    }
     if (focused) {
         const Box inset{box.x + 4.0, box.y + 3.0, box.width - 8.0, box.height - 6.0};
         painter.FillRoundRect(inset, metrics_.Rem(kRowRadiusRem), WithAlpha(tokens::kText, 0.06));
@@ -1476,8 +1724,35 @@ void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) co
     const Color labelColor = danger ? kDanger : tokens::kText;
     double right = box.Right() - metrics_.Rem(1.2);
 
+    if (row.ctl == Ctl::Text || row.key == "skip-segments") {
+        const double x = box.x + 1.2 * rem;
+        const double width = box.width - 2.4 * rem;
+        painter.Text({x, box.y + 0.35 * rem, width, 1.4 * rem}, row.label, type::Label(rem), labelColor);
+        if (row.ctl == Ctl::Text) {
+            const bool editing = webhookDraft_.has_value();
+            const bool error = editing && webhookInvalid_;
+            painter.Text({x, box.y + 1.75 * rem, width, 1.35 * rem},
+                         error ? "Enter an HTTP or HTTPS URL without a username or password." : row.desc,
+                         type::Caption(rem), error ? kDanger : tokens::kTextMuted);
+            const std::string value = editing ? *webhookDraft_ : (row.detail.empty() ? "https://" : row.detail);
+            controls::PaintTextField(painter, WebhookField(row), value, editing, editing && webhookSelected_, rem);
+        } else {
+            painter.Paragraph({x, box.y + 1.85 * rem, width, 2.2 * rem}, row.desc, type::Caption(rem), tokens::kTextMuted);
+            const auto change = changedSegment_ == row.key
+                                    ? std::optional(controls::SegmentChange{previousSegment_, clockMs_ - segmentChangedAt_})
+                                    : std::nullopt;
+            controls::PaintSegmented(painter, SegmentTrack(row), SegmentLabels(row), SegmentIndex(row), false, rem, change);
+        }
+        return;
+    }
+
     // At the right: a switch, a segmented choice, a value with a chevron, or the way in.
-    if (row.kind == RowKind::Preview) {
+    if (row.ctl == Ctl::Slider) {
+        const Box track = controls::SliderBox(right, box.CenterY(), rem);
+        const double ratio = (std::atoi(PrefValue(row.pref).c_str()) - 100) / 200.0;
+        controls::PaintSlider(painter, track, ratio, row.detail, rem);
+        right = track.x - rem;
+    } else if (row.kind == RowKind::Preview) {
         PaintPreview(painter, row);
         right = box.Right() - 15.0 * rem - 2.0 * rem;
     } else if (SwitchRow(row)) {
@@ -1486,7 +1761,10 @@ void SettingsScreen::PaintRow(Painter& painter, const Row& row, bool focused) co
         right = track.x - metrics_.Rem(0.8);
     } else if (SegmentedRow(row)) {
         const Box track = SegmentTrack(row);
-        controls::PaintSegmented(painter, track, SegmentLabels(row), SegmentIndex(row), false, rem);
+        const auto change = changedSegment_ == row.key
+                                ? std::optional(controls::SegmentChange{previousSegment_, clockMs_ - segmentChangedAt_})
+                                : std::nullopt;
+        controls::PaintSegmented(painter, track, SegmentLabels(row), SegmentIndex(row), false, rem, change);
         right = track.x - metrics_.Rem(0.8);
     } else if (SelectRow(row)) {
         right = controls::PaintValueChevron(painter, right, box, row.detail, focused, rem) - metrics_.Rem(0.8);

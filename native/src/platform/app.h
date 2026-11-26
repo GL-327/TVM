@@ -43,6 +43,7 @@
 #include "platform/mpv_player.h"
 #include "platform/overlay_window.h"
 #include "ui/catalog_view.h"
+#include "ui/details_screen.h"
 #include "ui/intro.h"
 #include "ui/downloads_screen.h"
 #include "ui/logo_reveal.h"
@@ -96,6 +97,8 @@ private:
     bool SkipIntro();
     void Resize();
     void Render();
+    double meterFrameMs_ = 0.0;
+    double meterLastFrame_ = -1.0;
     POINT ClientPoint(LPARAM lParam) const;
 
     // The catalogue. Fetching runs on workers; the results are applied here.
@@ -159,9 +162,12 @@ private:
     // Appends frame-time statistics to frame-times.log (TVM_FRAME_LOG=1).
     void WriteFrameLog(std::vector<double> gaps) const;
     void QueueRailArtwork(const std::vector<ui::RailData>& rails);
-    // Keeps the details for the title on top in step with the shell.
+    // Keeps the details for the title on top in step with the shell, and prefetches hovered or focused cards.
     void SyncDetails();
+    void SyncDetailsPrefetch(double nowMs);
     void ShowTitle(const std::string& id);
+    void PrefetchTitle(const std::string& id, const std::string& posterUrl, const std::string& backdropUrl);
+    void FetchTitle(const std::string& id);
     void FinishTitle(const std::string& id, const ui::TitleInfo& info);
     void QueueTitleArtwork(const ui::TitleInfo& info);
     // Saves the title on the details screen, or takes it off the watchlist.
@@ -184,7 +190,13 @@ private:
     // one partial PUT /api/prefs per change.
     void LoadSettingsPrefs();
     void SavePrefsPatch(const nlohmann::json& patch);
+    bool ApplySettingsPrefs(const nlohmann::json& data);
+    void FlushSettingsPrefs();
+    void ApplyVolumeCap();
     unsigned prefsSaveSeq_ = 0;
+    nlohmann::json pendingPrefs_ = nlohmann::json::object();
+    bool prefsSaving_ = false;
+    std::vector<ui::HomeSection> homeSections_;
 
     // Live TV login. Asking the panel happens on workers, as for Real-Debrid. The screen is
     // rebuilt from the answer each time, so no part of it is changed on a worker.
@@ -476,6 +488,7 @@ private:
     std::map<std::string, ui::TitleInfo> titles_;
     std::set<std::string> titlesInFlight_;
     std::optional<std::string> shownTitle_;
+    ui::DetailsPrefetchTracker detailsPrefetch_;
     // The Real-Debrid answer as last applied, and whether the screen has been opened for this visit.
     ui::RealDebridView realDebridView_;
     bool realDebridOpened_ = false;

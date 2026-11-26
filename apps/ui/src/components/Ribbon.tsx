@@ -58,12 +58,12 @@ export function Ribbon({ active = 'home', onLane }: {
   ] as const;
 
   return (
-    <nav className="ribbon ribbon--open polish-nav" aria-label="TVM">
+    <nav className="ribbon ribbon--open polish-nav" aria-label="TVM" data-wrap={phone ? undefined : 'row'}>
       <FocusButton id="tvm-home" className="polish-nav__brand" ariaLabel="TVM Home" onSelect={() => navigate.home()}>
         TVM
       </FocusButton>
       <div className="ribbon__frost polish-nav__capsule">
-        <div className="ribbon__list polish-nav__items" ref={track} data-wrap="row">
+        <div className="ribbon__list polish-nav__items" ref={track} data-wrap={phone ? 'row' : 'none'}>
           <SelectionDroplet track={track} selected={tabs.find((item) => item[1] === active)?.[0] ?? ''}
             className="polish-nav__droplet" history={lastSelection} />
           {tabs.map(([id, tab, title, select]) => (
@@ -73,7 +73,7 @@ export function Ribbon({ active = 'home', onLane }: {
           {!phone && searchButton}
         </div>
       </div>
-      <div className="polish-nav__side" data-wrap="row">
+      <div className="polish-nav__side" data-wrap={phone ? 'row' : 'none'}>
         {phone && searchButton}
         {!kids && <FocusButton id="settings" className="polish-nav__icon polish-nav__settings" title="Settings"
           ariaLabel="Settings" tabIndex={0} onSelect={() => navigate.push('settings')}><IconSettings /></FocusButton>}
@@ -84,7 +84,7 @@ export function Ribbon({ active = 'home', onLane }: {
       </div>
       {more && <>
         <button className="polish-nav__dismiss" type="button" aria-label="Close menu" onClick={() => setMore(false)} />
-        <div ref={sheet} className="polish-nav__menu glass glass--sheet" aria-label="Profile and more">
+        <div ref={sheet} className="polish-nav__menu glass glass--sheet" aria-label="Profile and more" data-wrap="y">
           {menu.filter(([, , screen]) => !kids || screen !== 'profile' && screen !== 'settings').map(([id, label, screen]) => (
             <FocusButton key={id} id={id} tabIndex={0} className="polish-nav__menu-item" onSelect={() => {
               setMore(false);

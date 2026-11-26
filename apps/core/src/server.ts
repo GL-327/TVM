@@ -14,7 +14,7 @@ import { createBillingProbe, type BillingProbe } from './providers/billingProbe.
 import { isAccountTier, accountSessionToken, publicAccount, type AccountRecord } from './providers/accounts.ts';
 import { createMailService, type MailService } from './providers/mail.ts';
 import { createRemoteAccountsService, AccountsError, DEFAULT_ACCOUNTS_CONFIG, type CoreAccountsService } from './providers/remoteAccounts.ts';
-import { currentAccount, setCurrentAccount, currentSessionToken, runForSession } from './requestContext.ts';
+import { currentAccount, setCurrentAccount, currentSessionToken, runForSession, setSyncDirectory } from './requestContext.ts';
 import { entitlementForTier, accessTiers, ACCESS_TIERS, ACCESS_ROUTE } from './providers/accessTiers.ts';
 import { createFeatureFlags } from './providers/featureFlags.ts';
 import { requireCapability } from './providers/entitlementGate.ts';
@@ -54,6 +54,8 @@ import { createStreamer, type StreamerService } from './providers/streamer.ts';
 import { serveExactStatic, serveStatic } from './static.ts';
 import { resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
+import { createAccountSync, type AccountSync } from './sync/accounts.ts';
+import { SYNC_DISABLED } from './sync/engine.ts';
 import { readPrefs, type CorePrefs } from './prefs.ts';
 import { extrasRoute, writeExtrasPrefs } from './providers/extras.ts';
 import { guideWindow } from './providers/liveGuide.ts';
@@ -555,6 +557,7 @@ async function handleApi(
   content: ContentService,
   reviews: ReviewsService,
   roku: RokuUpdater,
+  sync: AccountSync | undefined,
 ): Promise<boolean> {
   const accountsAdmin = path === '/api/admin/accounts'
     || path.startsWith('/api/admin/accounts/')
@@ -574,13 +577,42 @@ async function handleApi(
     || path === '/api/account/signout'
     || path === '/api/account/password/forgot'
     || (path === '/api/account/verify/resend' && !currentSessionToken());
-  const requestAccount = publicEntry ? null : await accounts.resolve(currentSessionToken());
+  const token = currentSessionToken();
+  let requestAccount: AccountRecord | null = null;
+  let offline = false;
+  if (!publicEntry && token) {
+    const offlineAllowed = !/^\/api\/(admin|dev)(\/|$)/.test(path);
+    if (offlineAllowed) requestAccount = sync?.deferredAccount(token) ?? null;
+    if (requestAccount) offline = true;
+    else {
+      try {
+        requestAccount = await accounts.resolve(token);
+      } catch (error) {
+        if (!(error instanceof AccountsError) || error.status !== 503 || !offlineAllowed) throw error;
+        requestAccount = sync?.beginOffline(token) ?? null;
+        if (!requestAccount) throw error;
+        offline = true;
+      }
+    }
+    if (sync) {
+      if (requestAccount) setSyncDirectory(dataDir, sync.bind(token, publicAccount(requestAccount), offline ? 'offline' : 'verified'));
+      else sync.detach(token);
+    }
+  }
   setCurrentAccount(requestAccount);
+  if (path === '/api/sync/status' && request.method === 'GET') {
+    sendJson(response, 200, sync?.status(token) ?? SYNC_DISABLED);
+    return true;
+  }
+  if (path === '/api/sync/now' && request.method === 'POST') {
+    sendJson(response, 200, (await sync?.syncNow(token)) ?? SYNC_DISABLED);
+    return true;
+  }
   const devRequest = (): boolean => requestAccount?.role === 'dev';
   // Existing media providers read synchronously. Fill the bounded memory cache
   // before entering them, and never fall back to a device's saved RD key.
-  if ('cachedRdTokenFor' in accounts && requestAccount?.activated
-    && !/^\/api\/(account|admin|dev)(\/|$)/.test(path)
+  if ('cachedRdTokenFor' in accounts && requestAccount?.activated && !offline
+    && !/^\/api\/(account|admin|dev|profiles|prefs|progress|watchlist|privacy)(\/|$)/.test(path)
     && path !== '/api/rd/status' && path !== '/api/rd/configured') {
     await accounts.rdTokenFor(currentSessionToken());
   }
@@ -1465,6 +1497,7 @@ async function handleApi(
     }
     streamer.sessions.stopAll();
     developer.lock();
+    sync?.clear();
     media.factoryReset();
     // Empty encrypted markers prevent environment credentials from reconnecting after erasure.
     writeSecret(rdTokenPath(dataDir), '');
@@ -1689,7 +1722,9 @@ async function handleApi(
         sendJson(response, 429, { error: 'rate_limited' });
         return true;
       }
-      sendJson(response, 200, await accounts.signIn({ ...body, client: clientLabel() }));
+      const signedIn = await accounts.signIn({ ...body, client: clientLabel() });
+      sync?.bind(signedIn.token, signedIn.account, 'signin');
+      sendJson(response, 200, signedIn);
     } catch (error) {
       accountFailure(error, 401, 'Sign in failed.');
     }
@@ -1698,7 +1733,13 @@ async function handleApi(
 
   if (path === '/api/account/signout' && request.method === 'POST') {
     const token = bearer();
-    if (token !== undefined) await accounts.signOut(token);
+    if (token !== undefined) {
+      sync?.detach(token);
+      try { await accounts.signOut(token); }
+      catch (error) {
+        if (!sync || !(error instanceof AccountsError) || error.status !== 503) throw error;
+      }
+    }
     developer.lock();
     plans.clearOverrides();
     sendJson(response, 200, { ok: true });
@@ -2044,7 +2085,7 @@ async function handleApi(
       await forwardAdmin(`accounts/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sid)}`, 'DELETE');
       return true;
     }
-    const actionMatch = /^\/api\/admin\/accounts\/([^/]+)\/(profile|password|tier)$/.exec(path);
+    const actionMatch = /^\/api\/admin\/accounts\/([^/]+)\/(profile|password|tier|clear-sync)$/.exec(path);
     if (actionMatch && request.method === 'POST') {
       if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
       const id = safeSegment(actionMatch[1]!);
@@ -2383,6 +2424,10 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       continueWatching: async () => (await media.home()).continueWatching,
     });
 
+  const sync = 'getSyncPage' in accounts
+    ? createAccountSync({ dataDir, origin: accounts.syncOrigin, transport: accounts,
+      reloadProfiles: directory => media.reloadSyncedProfiles?.(directory) })
+    : undefined;
   const allowSignIn = createSignInLimiter();
   const lanSessions = createLanSessions(env);
   const allowPairing = createUnlockLimiter();
@@ -2439,7 +2484,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
       const handled = await runForSession(sessionToken, () => handleApi(
         path, request, response, update, media, live, session, apps, plans, developer, listenPort, artwork,
         dataDir, streamer, env, payments, subscriptions, billingProbe, accounts, donations, mail, allowSignIn,
-        content, reviews, roku,
+        content, reviews, roku, sync,
       ));
       if (handled) return;
 
@@ -2486,6 +2531,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
   server.requestTimeout = 30_000;
   server.headersTimeout = 15_000;
   server.on('close', () => {
+    sync?.clear();
     streamer.sessions.stopAll();
     artwork.clear();
   });

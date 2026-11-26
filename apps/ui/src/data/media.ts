@@ -238,6 +238,7 @@ let lastHome: HomePayload | null = null;
 let activeProfileId = '';
 let homeGeneration = 0;
 const homeRequests = createRequestCache(1);
+const detailsRequests = createRequestCache();
 
 export function currentProfileId(): string { return activeProfileId; }
 
@@ -249,6 +250,7 @@ export function invalidateHome(): void {
   lastHome = null;
   homeGeneration += 1;
   homeRequests.clear();
+  detailsRequests.clear();
 }
 
 export function setActiveProfileId(id: string): void {
@@ -374,9 +376,10 @@ export async function fetchLibrary(): Promise<MediaItem[]> {
 
 export async function fetchMedia(id: string): Promise<MediaItem | null> {
   try {
-    const response = await apiFetch(`/api/media?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) return null;
-    return (await response.json()) as MediaItem;
+    return await detailsRequests.load(`media/${id}`, async () => {
+      const response = await apiFetch(`/api/media?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
+      return response.ok ? await response.json() as MediaItem : null;
+    });
   } catch {
     return null;
   }
@@ -491,18 +494,21 @@ export async function saveProgress(id: string, position: number, duration: numbe
 
 export async function fetchChildren(id: string): Promise<MediaItem[]> {
   try {
-    const response = await apiFetch(`/api/media/children?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) return [];
-    const body = (await response.json()) as { items?: MediaItem[] };
-    return (body.items ?? []).map((item) => {
-      const season = asSeason(item.season);
-      const episode = asSeason(item.episode);
-      return {
-        ...item,
-        ...(season !== undefined ? { season } : {}),
-        ...(episode !== undefined ? { episode } : {}),
-      };
+    const items = await detailsRequests.load(`children/${id}`, async () => {
+      const response = await apiFetch(`/api/media/children?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) return null;
+      const body = await response.json() as { items?: MediaItem[] };
+      return (body.items ?? []).map((item) => {
+        const season = asSeason(item.season);
+        const episode = asSeason(item.episode);
+        return {
+          ...item,
+          ...(season !== undefined ? { season } : {}),
+          ...(episode !== undefined ? { episode } : {}),
+        };
+      });
     });
+    return items ?? [];
   } catch {
     return [];
   }
@@ -617,12 +623,12 @@ export async function setLiveGroupPicks(group: string, picked: boolean): Promise
 
 export async function clearCache(): Promise<void> {
   await apiFetch('/api/maintenance/clear-cache', { method: 'POST' });
-  lastHome = null;
+  invalidateHome();
 }
 
 export async function factoryReset(): Promise<void> {
   await apiFetch('/api/maintenance/factory-reset', { method: 'POST' });
-  lastHome = null;
+  invalidateHome();
   activeProfileId = '';
 }
 

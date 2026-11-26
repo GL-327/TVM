@@ -1,17 +1,18 @@
 html body .polish-settings.page {
+  --tvm-settings-scrim: 90px;
   container-type: inline-size;
-  padding: 94px var(--tvm-gutter) 38px;
-  /* No flex gap: the scene and the scrim band below would each add 32px and make a
-     short category scroll, which slid the sticky sidebar up under the nav. */
+  padding: 90px var(--tvm-gutter) 38px;
+  /* No flex gap: the scene and the scrim band below would each add 32px. */
   row-gap: 0;
   background: var(--tvm-bg);
 }
 .polish-settings > .home__scene { opacity: .18; }
 /* The nav floats, so rows scrolled up under it showed through around the capsule and
-   between the icon buttons. A sticky band fades them out like the Apple TV app does. */
+   between the icon buttons. Pin the scrim across 0..padding-top so sticky clamping
+   inside the padded scroller never pushes it down over the panel heading. */
 .polish-settings::before {
-  content: ''; position: sticky; top: 0; z-index: 5; display: block; flex: none; height: 94px;
-  margin: -94px calc(var(--tvm-gutter) * -1) 0; pointer-events: none;
+  content: ''; position: fixed; inset: 0 0 auto; z-index: 5; height: var(--tvm-settings-scrim);
+  pointer-events: none;
   background: linear-gradient(180deg, var(--tvm-bg) 0 58%, color-mix(in srgb, var(--tvm-bg) 0%, transparent) 100%);
 }
 .settings-layout {
@@ -83,6 +84,7 @@ html body .tvm-button.settings-open {
 
 @media (max-width: 700px) {
   html body .polish-settings.page {
+    --tvm-settings-scrim: max(62px, calc(var(--tvm-safe-y) + 46px));
     padding: max(62px, calc(var(--tvm-safe-y) + 46px)) var(--tvm-gutter) 84px;
   }
   .settings-layout {

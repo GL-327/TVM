@@ -618,3 +618,37 @@ TEST(the_control_glass_shows_only_on_hover_as_the_nav_pills_hover_glass) {
     for (const auto& [box, style] : pressed.glasses) squeezed = squeezed || (style.kind == tvm::ui::GlassKind::Tab && style.pressAmount > 0.5);
     REQUIRE(squeezed);
 }
+
+TEST(timeline_markers_explain_segments_and_chapters_on_legend_and_hover) {
+    PlayerView view = Playing();
+    view.duration = 1480.0;
+    view.position = 890.0;
+    view.segments = {tvm::extras::Segment{95.0, 152.0}, tvm::extras::Segment{0.0, 65.0},
+                     tvm::extras::Segment{1372.0, 0.0, true}};
+    view.chapters = {{480.0, "New arrivals"}, {780.0, "The harbour"}};
+    PlayerScreen player = Player(view);
+    player.ShowChrome(0.0);
+    player.Tick(200.0);
+
+    TextPainter rest;
+    player.Paint(rest);
+    REQUIRE(rest.Has("Intro"));
+    REQUIRE(rest.Has("Recap"));
+    REQUIRE(rest.Has("Credits"));
+    REQUIRE(rest.Has("Chapter"));
+
+    REQUIRE_EQ(player.MarkerLabelAt(120.0), std::string("Intro"));
+    REQUIRE_EQ(player.MarkerLabelAt(30.0), std::string("Recap"));
+    REQUIRE_EQ(player.MarkerLabelAt(1400.0), std::string("Credits"));
+    REQUIRE_EQ(player.MarkerLabelAt(485.0), std::string("Chapter \xC2\xB7 New arrivals"));
+
+    player.Hover(120.0 / view.duration);
+    TextPainter hoveredIntro;
+    player.Paint(hoveredIntro);
+    REQUIRE(hoveredIntro.Has("2:00 \xC2\xB7 Intro"));
+
+    player.Hover(480.0 / view.duration);
+    TextPainter hoveredChapter;
+    player.Paint(hoveredChapter);
+    REQUIRE(hoveredChapter.Has("8:00 \xC2\xB7 Chapter \xC2\xB7 New arrivals"));
+}

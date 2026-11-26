@@ -42,7 +42,9 @@
 #include "platform/app.h"
 #include "platform/graphics.h"
 #include "platform/snapshot.h"
+#include "ui/controls.h"
 #include "ui/details_screen.h"
+#include "ui/guide_view.h"
 #include "ui/downloads_screen.h"
 #include "ui/logo_reveal.h"
 #include "ui/profile_chooser.h"
@@ -370,9 +372,89 @@ void SettleMotion(tvm::ui::Shell& shell, double& nowMs) {
     }
 }
 
+tvm::guide::Schedule SnapshotGuide(tvm::guide::Time start) {
+    const std::vector<std::pair<std::string, std::vector<std::string>>> listings{
+        {"BBC One", {"Breakfast", "Morning Live", "Homes Under the Hammer", "BBC News"}},
+        {"BBC Two", {"Saturday Kitchen", "Gardeners' World", "Coast", "BBC News"}},
+        {"ITV1", {"Good Morning Britain", "Lorraine", "This Morning", "Loose Women"}},
+        {"Channel 4", {"Frasier", "Sunday Brunch", "A Place in the Sun", "Channel 4 News"}},
+        {"Channel 5", {"Milkshake!", "Jeremy Vine", "News at Lunchtime", "Home and Away"}},
+        {"BBC Four", {"The Sky at Night", "Storyville", "Arena", "Talking Pictures"}},
+        {"Film4", {"Film4 Preview", "The Railway Children", "Local Hero", "The Ladykillers"}},
+        {"More4", {"Great Canal Journeys", "A New Life in the Sun", "Grand Designs", "Location, Location, Location"}},
+        {"Dave", {"Car SOS", "Top Gear", "Would I Lie to You?", "Taskmaster"}},
+        {"Yesterday", {"Abandoned Engineering", "Secrets of the Transport Museum", "Bangers & Cash", "War Factories"}}
+    };
+    tvm::guide::Schedule result;
+    result.start = start;
+    result.end = start + tvm::guide::kVisible;
+    result.groups = {"Entertainment", "Films"};
+    const std::array<tvm::guide::Time, 5> minutes{0, 30, 75, 135, 180};
+    int number = 0;
+    for (const auto& [channel, programmes] : listings) {
+        tvm::guide::Channel row;
+        row.id = std::to_string(++number);
+        row.number = row.id;
+        row.name = channel;
+        row.group = channel == "Film4" ? "Films" : "Entertainment";
+        row.source = "free";
+        for (std::size_t i = 0; i < programmes.size(); ++i) {
+            tvm::guide::Programme programme;
+            programme.start = start + minutes[i] * 60;
+            programme.end = start + minutes[i + 1] * 60;
+            programme.title = programmes[i];
+            programme.category = "Lifestyle";
+            if (number == 1 && i == 1)
+                programme.description = "The team brings you conversations, practical advice and stories from across the UK.";
+            row.programmes.push_back(std::move(programme));
+        }
+        result.channels.push_back(std::move(row));
+    }
+    return result;
+}
+
 int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const std::wstring& keys,
                 tvm::ui::Theme theme, const std::wstring& screen, const std::string& art, tvm::ui::GlassClarity glass) {
     tvm::platform::Graphics graphics;
+    if (screen == L"guide" || screen == L"glass") {
+        tvm::platform::SnapshotWriter writer(graphics, width, height);
+        writer.Save([&](tvm::ui::Painter& painter) {
+            using namespace tvm::ui;
+            const ThemeScope look(theme, glass == GlassClarity::Tinted);
+            if (screen == L"guide") {
+                const auto start = tvm::guide::ParseTime("2026-11-26T09:00:00Z").value();
+                tvm::guide::View guide;
+                guide.Layout(width, height);
+                guide.SetSchedule(SnapshotGuide(start), start);
+                guide.Navigate(tvm::guide::View::Move::Right);
+                guide.Paint(painter, start + 46 * 60);
+                return;
+            }
+            const Box viewport{0, 0, static_cast<double>(width), static_cast<double>(height)};
+            painter.Clear(tokens::kBackground);
+            painter.SetBackdrop(viewport, art, 0.5, 0.5);
+            painter.Image(viewport, art, 0.0);
+            GlassStyle material;
+            material.kind = GlassKind::Panel;
+            material.adaptiveInk = true;
+            const Box sheet{width * 0.31, height * 0.27, width * 0.38, height * 0.30};
+            painter.Glass(sheet, 28.0, material);
+            const auto ink = painter.GlassInk(tokens::kText);
+            const TextStyle title = type::H2(16.0);
+            const std::string sample = "TVM";
+            const double textWidth = painter.MeasureText(sample, title);
+            painter.Text({sheet.CenterX() - textWidth / 2.0, sheet.y, textWidth + 4.0, sheet.height}, sample, title, ink);
+            const Box button{sheet.CenterX() - 76.0, sheet.Bottom() + 26.0, 152.0, 44.0};
+            material.kind = GlassKind::Pill;
+            painter.Glass(button, 12.0, material);
+            const auto label = type::Label(16.0);
+            const double labelWidth = painter.MeasureText("Details", label);
+            painter.Text({button.CenterX() - labelWidth / 2.0, button.y, labelWidth + 4.0, button.height},
+                         "Details", label, painter.GlassInk(tokens::kText));
+        }, path);
+        std::printf("wrote %ls\n", path.c_str());
+        return 0;
+    }
     // Deterministic 1.1 visual fixtures use the production screens and bundled content, without an account or network.
     if (screen == L"home-1.1" || screen == L"rail-seam" || screen == L"profile-editor" || screen == L"pin-pad" ||
         screen == L"live-free" || screen == L"services") {
@@ -622,8 +704,18 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             view.nextShow = "Northward"; view.nextEpisode = "S1 E2 - The Long Road"; view.nextStill = art;
             player->SetView(view, 0);
         }
+        if (screen == L"player-markers" || screen == L"player-markers-hover") {
+            auto view = player->view();
+            view.duration = 1480.0;
+            view.position = 890.0;
+            view.segments = {tvm::extras::Segment{95, 152}, tvm::extras::Segment{0, 65}, tvm::extras::Segment{1372, 0, true}};
+            view.chapters = {{480, "New arrivals"}, {780, "The harbour"}, {1050, "A late departure"}};
+            player->SetView(view, 0.0);
+            if (screen == L"player-markers-hover") player->Hover(120.0 / view.duration);
+        }
         player->Tick(100.0);
-        if (screen.size() > 7 && screen != L"player-loading" && screen != L"player-volume" && screen != L"player-extras") {
+        if (screen.size() > 7 && screen != L"player-loading" && screen != L"player-volume" && screen != L"player-extras" &&
+            screen != L"player-markers" && screen != L"player-markers-hover" && screen != L"player-fps") {
             const std::wstring menu = screen.substr(7);
             std::string key;
             for (const wchar_t c : menu) key.push_back(static_cast<char>(c & 0x7F));
@@ -636,6 +728,7 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             painter.ImageFaded(tvm::ui::Box{0.0, 0.0, static_cast<double>(width), static_cast<double>(height)}, art, 0.0,
                                1.0, 0.5, 0.5);
             player->Paint(painter);
+            if (screen == L"player-fps") tvm::ui::controls::PaintFrameMeter(painter, width, height, 16.67);
         }, path, false);
         std::printf("wrote %ls\n", path.c_str());
         return 0;
@@ -684,6 +777,14 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
         page.SetCoreSettings(tvm::ui::CoreSettings::FromJson(body));
         std::string id;
         for (const wchar_t c : screen.substr(9)) id.push_back(static_cast<char>(c & 0x7F));
+        if (id == "home") {
+            auto core = tvm::ui::CoreSettings::FromJson(body);
+            core.homeSections = {{"continue", true}, {"for-you", true}, {"my-list", true}, {"upcoming", false}};
+            page.SetCoreSettings(std::move(core));
+        } else if (id == "developer") {
+            page.SetDeveloperDiagnostics({true, "TVM 1.4.4", "Not connected", "Liquid Glass"});
+            store.SaveShowFps(true);
+        }
         if (id == "select") {
             page.ActivateItem("cat:playback", 0.0);
             page.FocusItem("quality", 0.0, true);

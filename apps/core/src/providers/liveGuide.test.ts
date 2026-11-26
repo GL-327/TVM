@@ -61,7 +61,7 @@ describe('guide windows', () => {
 
 describe('createGuideCache', () => {
   const dirs: string[] = [];
-  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
   it('answers at once, says it is refreshing, then serves the downloaded feed', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tvm-guide-'));
@@ -69,15 +69,16 @@ describe('createGuideCache', () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const fetchImpl = vi.fn(async () => { await gate; return new Response(XML); }) as unknown as typeof fetch;
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
     const cache = createGuideCache(dir, fetchImpl);
 
-    const first = await cache.xml('https://example.com/epg.xml', [{ id: 'BBCOne.uk' }]);
+    const first = await cache.xml('https://192.0.2.1/epg.xml', [{ id: 'BBCOne.uk' }]);
     expect(first.size).toBe(0);
     expect(cache.busy()).toBe(true);
 
     release();
     await vi.waitFor(() => expect(cache.busy()).toBe(false));
-    const second = await cache.xml('https://example.com/epg.xml', [{ id: 'BBCOne.uk' }]);
+    const second = await cache.xml('https://192.0.2.1/epg.xml', [{ id: 'BBCOne.uk' }]);
     expect(matchGuide(second, { id: 'BBCOne.uk' }).map((row) => row.title)).toContain('Morning Live');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });

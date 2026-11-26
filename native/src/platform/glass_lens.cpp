@@ -48,17 +48,16 @@ constexpr double kMaxBevel = 18.0;
 constexpr double kShiftPerBevel = 1.95;
 // Dispersion: red bends a little less and blue a little more. Apple's glass shows almost none, so it is kept to a
 // few percent of the shift, which only colours the strongly bent rim on high-contrast edges.
-constexpr double kChroma = 0.014;
+constexpr double kMaxDispersion = 0.65;
 // Light falls from the upper left, steeper than 45 degrees, so top edges catch more of it than the sides.
 constexpr double kLightX = -0.50;
 constexpr double kLightY = -0.866;
 // The specular glint: a neutral white line about a pixel wide at the silhouette with a faint bleed four times as
 // wide, strongest where the edge faces the light and half as strong where it faces directly away (light reflected
 // inside the glass). iOS 27 made it brighter.
-constexpr double kGlint = 1.0;
-constexpr double kGlintWidth = 1.2;
-constexpr double kGlintBleed = 0.12;
-constexpr double kFarSide = 0.41;
+constexpr double kGlintWidth = 1.0;
+constexpr double kGlintBleed = 0.06;
+constexpr double kFarSide = 0.20;
 // A faint white veil over the outer few pixels, where the bezel turns to grazing and reflects more than it passes.
 constexpr double kRimVeil = 0.12;
 constexpr double kRimVeilWidth = 3.0;
@@ -68,7 +67,7 @@ constexpr double kContourWidth = 1.0;
 constexpr double kContourBleed = 0.30;
 constexpr double kContourDirectionality = 0.85;
 // Colour behind the glass is lifted a little, as Apple's material does after it diffuses the picture.
-constexpr float kVibrancySaturation = 1.6f;
+constexpr float kVibrancySaturation = 1.65f;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
 // for the first time always measures, so a still frame adapts at once.
 constexpr int kMeasuresPerFrame = 3;
@@ -107,19 +106,20 @@ D2D1_MATRIX_5X4_F KeepChannel(int channel) {
 
 D2D1_MATRIX_5X4_F SaturationMatrix(float s) {
     const float inv = 1.0f - s;
-    const float lr = 0.2126f * inv;
-    const float lg = 0.7152f * inv;
-    const float lb = 0.0722f * inv;
+    constexpr float brightness = 1.05f;
+    const float lr = 0.2126f * inv * brightness;
+    const float lg = 0.7152f * inv * brightness;
+    const float lb = 0.0722f * inv * brightness;
     D2D1_MATRIX_5X4_F m{};
-    m.m[0][0] = (lr + s) * 1.035f;
+    m.m[0][0] = lr + s * brightness;
     m.m[1][0] = lg;
     m.m[2][0] = lb;
     m.m[0][1] = lr;
-    m.m[1][1] = (lg + s) * 1.035f;
+    m.m[1][1] = lg + s * brightness;
     m.m[2][1] = lb;
     m.m[0][2] = lr;
     m.m[1][2] = lg;
-    m.m[2][2] = (lb + s) * 1.035f;
+    m.m[2][2] = lb + s * brightness;
     m.m[3][3] = 1.0f;
     return m;
 }
@@ -256,18 +256,17 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
             // nothing at the inner end of the bezel and the full shift at the rim, where the face is vertical. The
             // ray leans inward, so each rim pixel shows the picture a little further inside.
             const double rimward = std::clamp(1.0 - d / bevel, 0.0, 1.0);
-            const double shift = amount * rimward * rimward * (1.0 + 0.35 * (1.0 - rimward));
+            const double shift = amount * (1.0 - std::sqrt(std::max(0.0, 1.0 - rimward * rimward)));
             shiftX[i] = -shift * nx;
             shiftY[i] = -shift * ny;
             maxShift = std::max({maxShift, std::fabs(shiftX[i]), std::fabs(shiftY[i])});
 
             // How squarely this stretch of rim faces the light (1), faces away from it (-1) or runs across it (0).
             const double facing = nx * lx + ny * ly;
-            const double lobe = 0.15 + (facing > 0.0 ? 0.80 * facing : kFarSide * -facing);
-
-            const double glint = kGlint * lobe *
-                                 (std::clamp(1.0 - d / kGlintWidth, 0.0, 1.0) +
-                                  kGlintBleed * std::clamp(1.0 - d / (4.0 * kGlintWidth), 0.0, 1.0));
+            const double lobe = 0.15 + (facing > 0.0 ? 0.60 * facing : kFarSide * -facing);
+            const double coverage = std::clamp(1.0 + kGlintWidth * 0.5 - d, 0.0, 1.0);
+            const double glint = lobe * coverage +
+                                 kGlintBleed * std::clamp(1.0 - d / (4.0 * kGlintWidth), 0.0, 1.0);
             const double grazing = std::clamp(1.0 - d / kRimVeilWidth, 0.0, 1.0);
             const double veil = kRimVeil * grazing * grazing * (0.5 + 0.5 * lobe);
             const double white = std::clamp(glint + veil, 0.0, 0.96);
@@ -390,8 +389,8 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     }
 
     const float scale = static_cast<float>(2.0 * kernel->maxShift);
-    const float channelScale[3] = {scale * static_cast<float>(1.0 - kChroma), scale,
-                                   scale * static_cast<float>(1.0 + kChroma)};
+    const float dispersion = static_cast<float>(std::min(kMaxDispersion, 0.014 * kernel->maxShift));
+    const float channelScale[3] = {scale - 2.0f * dispersion, scale, scale + 2.0f * dispersion};
     ID2D1Effect* scatter = frosted ? frost_.Get() : soften_.Get();
     const double sigma = frosted ? std::clamp(kernel->half * 0.10, 6.0, 8.0)
                                  : std::clamp(kernel->half * 0.12, 2.0, 4.0);

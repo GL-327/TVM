@@ -1,6 +1,7 @@
-import { memo, useCallback, type ReactElement, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useRef, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import type { Title } from '../data/catalog';
+import { prefetchDetails } from '../data/openDetails';
 import { revealFocused } from '../nav/revealFocused';
 import { useScopedFocusKey } from '../nav/ViewStackContext';
 import { Artwork } from './Artwork';
@@ -22,6 +23,24 @@ interface PosterCardProps {
 function posterFocusId(prefix: string, titleId: string, index: number, loopCopy: number): string {
   const base = `${prefix}-${titleId}-${index}`;
   return loopCopy !== 1 ? `${base}--${loopCopy}` : base;
+}
+
+function useDetailsPrefetch({ id, kind }: Title, focused = false) {
+  const pointerTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(pointerTimer.current), [id, kind]);
+  useEffect(() => {
+    if (!focused) return;
+    const timer = window.setTimeout(() => prefetchDetails(id, kind), 150);
+    return () => window.clearTimeout(timer);
+  }, [focused, id, kind]);
+  return {
+    onPointerEnter: (event: PointerEvent): void => {
+      if (event.pointerType === 'touch') return;
+      window.clearTimeout(pointerTimer.current);
+      pointerTimer.current = window.setTimeout(() => prefetchDetails(id, kind), 150);
+    },
+    onPointerLeave: (): void => window.clearTimeout(pointerTimer.current),
+  };
 }
 
 const PosterFace = memo(function PosterFace({
@@ -70,8 +89,9 @@ function PosterClone({
   loopCopy = 0,
 }: PosterCardProps): ReactElement {
   const id = posterFocusId(prefix, title.id, index, loopCopy);
+  const prefetch = useDetailsPrefetch(title);
   return (
-    <LoopClone className={`poster poster--${layout}`} focusId={id} loopCopy={loopCopy} onClick={() => onSelect(title)}>
+    <LoopClone className={`poster poster--${layout}`} focusId={id} loopCopy={loopCopy} onClick={() => onSelect(title)} {...prefetch}>
       <PosterFace title={title} layout={layout} decorative />
     </LoopClone>
   );
@@ -112,6 +132,7 @@ const PosterFocusable = memo(function PosterFocusable({
   const onClick = useCallback(() => {
     onSelect(title);
   }, [onSelect, title]);
+  const prefetch = useDetailsPrefetch(title, focused);
 
   return (
     <button
@@ -125,6 +146,7 @@ const PosterFocusable = memo(function PosterFocusable({
       data-focused={focused ? 'true' : undefined}
       data-loop-copy="1"
       onClick={onClick}
+      {...prefetch}
     >
       <PosterFace title={title} layout={layout} decorative={false} />
     </button>

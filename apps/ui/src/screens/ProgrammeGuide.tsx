@@ -165,7 +165,7 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
   const x = (time: number): number => Math.min(100, Math.max(0, 100 * (time - start) / (end - start)));
   return <section className="guide" aria-label="Live TV programme guide" onKeyDownCapture={keyboard}>
     <header className="guide__toolbar">
-      <div className="guide__title"><BackButton id="live-back" /><h1>Guide</h1></div>
+      <div className="page__toolbar-lead"><BackButton id="live-back" /><h1 className="live-heading">Guide</h1></div>
       <div className="guide__filters">
         <select className="polish-select" aria-label="Guide day" value={day} onChange={(event) => {
           const next = Number(event.currentTarget.value); setDay(next); changeStart(guideStart(now, next));
@@ -203,7 +203,7 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
         </div>
         {visible.map((channel) => <div className="guide__row" key={channel.id}>
           <div className="guide__channel"><b>{channel.number}</b>
-            {channel.logo ? <img alt="" src={channel.logo} loading="lazy" /> : <span className="guide__fallback-logo">{channel.name.slice(0, 2)}</span>}
+            <GuideChannelLogo key={channel.logo ?? ''} name={channel.name} logo={channel.logo} />
             <span>{channel.name}</span>
           </div>
           <div className="guide__programmes">
@@ -217,6 +217,7 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
                 '--guide-elapsed': Math.max(0, Math.min(100, (serverNow - Math.max(start, from)) / (to - Math.max(start, from)) * 100)) + '%',
               } as CSSProperties}>
                 <FocusButton id={cellId(channel, i)} ariaPressed={selectedCell} tabIndex={selectedCell ? 0 : -1}
+                  ariaLabel={`${channel.name}, ${programme.title}`}
                   className={'guide__cell' + (airing ? ' guide__cell--now' : to <= serverNow ? ' guide__cell--past' : '')}
                   title={programme.title} onArrowPress={(direction) => {
                     const key = 'Arrow' + direction[0]?.toUpperCase() + direction.slice(1);
@@ -256,6 +257,13 @@ export function ProgrammeGuide({ fallback, maxAge, onChannels, watch }: {
       <FocusButton id="guide-xtream" variant="quiet" tabIndex={0} onSelect={() => navigate.push('live-xtream')}>Xtream login</FocusButton>
     </footer>
   </section>;
+}
+
+function GuideChannelLogo({ name, logo }: { name: string; logo?: string | null }): React.JSX.Element {
+  const [failed, setFailed] = useState(false);
+  return logo && !failed
+    ? <img alt="" src={logo} loading="lazy" onError={() => setFailed(true)} />
+    : <span className="guide__fallback-logo" aria-hidden="true">{name.slice(0, 2)}</span>;
 }
 
 /** Programme stills from listing feeds often refuse hotlinking; fall back to the channel logo, then to nothing. */

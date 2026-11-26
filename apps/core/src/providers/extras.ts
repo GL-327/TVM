@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSy
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { createPreviewMedia } from './previewMedia.ts';
+import { currentSyncDirectory } from '../requestContext.ts';
 import { readPrefs, writePrefs } from '../prefs.ts';
 import { readPrivateJson } from './privateJson.ts';
 import { isFinished, readProgress, type ProgressEntry } from './progress.ts';
@@ -476,6 +477,7 @@ export function createCoreExtras(options: CoreExtrasOptions) {
     if (known.size > 512) known.delete(known.keys().next().value!);
   };
   const languages = (scope = options.scope()): string[] => {
+    if (currentSyncDirectory(options.dataDir)) return prefs().subtitleLanguages;
     try {
       const saved = readPrivateJson<{ language: string }>(scope, join(scope, 'extras-subtitle.json'));
       return saved?.language ? [...new Set([saved.language, ...readPrefs(options.dataDir).subtitleLanguages])] : readPrefs(options.dataDir).subtitleLanguages;
@@ -485,7 +487,10 @@ export function createCoreExtras(options: CoreExtrasOptions) {
     const scope = options.scope();
     // Reuse preference validation/normalization, but keep the actual choice per profile.
     const valid = /^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(language);
-    if (valid) writeSealed(scope, join(scope, 'extras-subtitle.json'), { language });
+    if (!valid) return;
+    if (currentSyncDirectory(options.dataDir)) {
+      writePrefs(options.dataDir, { subtitleLanguages: [...new Set([language, ...prefs().subtitleLanguages])] });
+    } else writeSealed(scope, join(scope, 'extras-subtitle.json'), { language });
   };
   async function metadata(ids: string[]): Promise<MediaItem[]> {
     const found = new Map<string, MediaItem>();
@@ -635,6 +640,6 @@ export async function extrasRoute(extras: CoreExtras, path: string, method: stri
 /** Profile selection is remembered when the preferred list is changed. */
 export function writeExtrasPrefs(dataDir: string, extras: CoreExtras | undefined, patch: Parameters<typeof writePrefs>[1]) {
   const prefs = writePrefs(dataDir, patch);
-  if (patch.subtitleLanguages?.[0]) extras?.saveLanguage(prefs.subtitleLanguages[0] ?? 'eng');
+  if (!currentSyncDirectory(dataDir) && patch.subtitleLanguages?.[0]) extras?.saveLanguage(prefs.subtitleLanguages[0] ?? 'eng');
   return prefs;
 }

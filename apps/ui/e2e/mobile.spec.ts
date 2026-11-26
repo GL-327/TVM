@@ -126,7 +126,7 @@ test.describe('iPhone WebKit', () => {
     await expect(page.getByRole('heading', { name: 'Choose your plan' })).toBeVisible();
   });
   for (const size of [{ width: 568, height: 320 }, { width: 704, height: 396 }, { width: 800, height: 450 }]) {
-    test(`Premium opens a usable 16:9 layout at ${size.width}`, async ({ page }) => {
+    test(`Premium opens a usable 16:9 layout at ${size.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(size);
       await ready(page, true);
       await expect(page.locator('.home__shelf')).toBeVisible();
@@ -138,13 +138,13 @@ test.describe('iPhone WebKit', () => {
       expect(frame!.width).toBeLessThanOrEqual(size.width);
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
       await expect(page.locator('.rt-set')).toHaveCount(0);
-      await page.screenshot({ path: `../../cache/ios-home-webkit-${size.width}.png` });
+      await page.screenshot({ path: testInfo.outputPath('ios-home-webkit.png') });
       const rail = page.locator('.rail__track').first();
       await rail.scrollIntoViewIfNeeded();
       const beforeScroll = await rail.evaluate((el) => el.scrollLeft);
       await rail.evaluate((el) => { el.scrollLeft += 200; });
       await expect.poll(() => rail.evaluate((el) => el.scrollLeft)).toBeGreaterThan(beforeScroll);
-      await page.screenshot({ path: `../../cache/ios-webkit-${size.width}.png` });
+      await page.screenshot({ path: testInfo.outputPath('ios-webkit.png') });
     });
   }
 
@@ -199,7 +199,7 @@ test.describe('iPhone WebKit', () => {
   });
 
   for (const size of [{ width: 375, height: 667 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
-    test(`fits the full iOS viewport without sideways document scrolling at ${size.width}`, async ({ page }) => {
+    test(`fits the full iOS viewport without sideways document scrolling at ${size.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(size);
       await ready(page, true);
       await expect(page.locator('.home__shelf')).toBeVisible();
@@ -238,7 +238,7 @@ test.describe('iPhone WebKit', () => {
         await expect(row).toBeVisible();
         expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       }
-      await page.screenshot({ path: `../../cache/ios-fit-${size.width}.png` });
+      await page.screenshot({ path: testInfo.outputPath('ios-fit.png') });
     });
   }
 });

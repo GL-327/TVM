@@ -38,6 +38,9 @@ constexpr double kTimelineGapRem = 0.9;    // the timeline's margin over the tra
 constexpr double kTimeWidthRem = 3.4;
 constexpr double kTimeGapRem = 0.8;
 constexpr double kVolumeGapRem = 0.3;
+constexpr std::array<std::pair<const char*, Color>, 4> kTimelineMarkers{{
+    {"Intro", Rgb(0xFDCB65)}, {"Recap", Rgb(0xC5A3FF)}, {"Credits", Rgb(0x71E1B2)}, {"Chapter", Rgb(0xF5F7FA)}
+}};
 constexpr double kVolumeMeterRem = 5.5;
 constexpr double kVolumeTrackRem = 5.0;
 constexpr double kVolumeTrackHeightRem = 0.18;
@@ -257,6 +260,30 @@ void PlayerScreen::HoldPreview(double seconds, double nowMs) {
     holdSeconds_ = seconds;
     holdUntilMs_ = nowMs + kHoldPreviewMs;
     ShowChrome(nowMs);
+}
+
+std::string PlayerScreen::MarkerLabelAt(double seconds) const {
+    if (view_.duration <= 0.0 || view_.live || view_.phase != PlayerView::Phase::Playing) return "";
+    for (std::size_t i = 0; i < view_.segments.size(); ++i) {
+        const auto& segment = view_.segments[i];
+        if (!segment) continue;
+        const double start = std::max(0.0, segment->start);
+        const double end = segment->openEnd ? view_.duration : std::min(segment->end, view_.duration);
+        if (end > start && seconds >= start && seconds <= end) return kTimelineMarkers[i].first;
+    }
+    const double hitWindow = std::max(10.0, view_.duration * 0.015);
+    const mpv::Chapter* nearest = nullptr;
+    double best = hitWindow;
+    for (const auto& chapter : view_.chapters) {
+        if (chapter.time <= 0.0 || chapter.time >= view_.duration) continue;
+        const double delta = std::abs(chapter.time - seconds);
+        if (delta <= best) {
+            best = delta;
+            nearest = &chapter;
+        }
+    }
+    if (nearest == nullptr) return "";
+    return nearest->title.empty() ? "Chapter" : "Chapter \xC2\xB7 " + nearest->title;
 }
 
 std::optional<double> PlayerScreen::PreviewSeconds() const {
@@ -615,7 +642,7 @@ std::optional<double> PlayerScreen::VolumeAt(double x, double y) const {
 
 double PlayerScreen::VolumeAtX(double x) const {
     const Box volume = VolumeTrackBox();
-    return std::clamp((x - volume.x) / std::max(1.0, volume.width), 0.0, 1.0) * kSliderVolume;
+    return std::clamp((x - volume.x) / std::max(1.0, volume.width), 0.0, 1.0) * view_.volumeCap;
 }
 
 Box PlayerScreen::VolumeTrackBox() const {
@@ -955,7 +982,8 @@ void PlayerScreen::PaintPreview(Painter& painter, double opacity) const {
     const Box track = TrackBox();
     const double share = view_.duration > 0.0 ? *seconds / view_.duration : 0.0;
     const double centerX = track.x + track.width * share;
-    const std::string at = FormatClock(*seconds);
+    const std::string marker = MarkerLabelAt(*seconds);
+    const std::string at = marker.empty() ? FormatClock(*seconds) : FormatClock(*seconds) + " \xC2\xB7 " + marker;
     const TextStyle bubbleStyle{Rem(0.72), true, 600};
     const double bubbleWidth = painter.MeasureText(at, bubbleStyle) + Rem(1.0);
     const double bubbleX = std::clamp(centerX - bubbleWidth / 2.0, 0.0, width_ - bubbleWidth);
@@ -1282,10 +1310,46 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                                     GradientStop{1.0, WithAlpha(kBrandEnd, opacity)}});
     }
     if (!view_.live) {
-        if (view_.duration > 0) for (const auto& chapter : view_.chapters) {
-            if (chapter.time <= 0 || chapter.time >= view_.duration) continue;
-            const double x = bar.x + bar.width * chapter.time / view_.duration;
-            painter.FillRoundRect({x - 1, bar.y - 2, 2, bar.height + 4}, 1, Rgb(0xF5F7FA, 0.85 * opacity));
+        std::array<bool, kTimelineMarkers.size()> visible{};
+        if (view_.duration > 0.0) {
+            for (std::size_t i = 0; i < view_.segments.size(); ++i) {
+                const auto& segment = view_.segments[i];
+                if (!segment) continue;
+                const double start = std::clamp(segment->start / view_.duration, 0.0, 1.0);
+                const double end = segment->openEnd ? 1.0 : std::clamp(segment->end / view_.duration, 0.0, 1.0);
+                if (end <= start) continue;
+                visible[i] = true;
+                painter.FillRoundRect({bar.x + bar.width * start, bar.y, bar.width * (end - start), bar.height},
+                                      bar.height / 2.0, WithAlpha(kTimelineMarkers[i].second, opacity));
+            }
+            for (const auto& chapter : view_.chapters) {
+                if (chapter.time <= 0 || chapter.time >= view_.duration) continue;
+                visible.back() = true;
+                const double x = bar.x + bar.width * chapter.time / view_.duration;
+                painter.FillRoundRect({x - 1, bar.y - 2, 2, bar.height + 4}, 1,
+                                      WithAlpha(kTimelineMarkers.back().second, opacity));
+            }
+        }
+        if (!preview && std::any_of(visible.begin(), visible.end(), [](bool on) { return on; })) {
+            const TextStyle label{Rem(0.72), false, 550};
+            const double height = Rem(1.25);
+            const double y = track.y - height;
+            double right = bar.Right();
+            for (std::size_t i = visible.size(); i-- > 0;) {
+                if (!visible[i]) continue;
+                const auto& [name, colour] = kTimelineMarkers[i];
+                const double text = painter.MeasureText(name, label) + 3.0;
+                right -= text;
+                painter.Text({right, y, text, height}, name, label, ink);
+                right -= Rem(0.35);
+                const bool chapter = i + 1 == visible.size();
+                const double swatchW = chapter ? 2.0 : Rem(0.72);
+                const double swatchH = chapter ? Rem(0.65) : Rem(0.22);
+                right -= swatchW;
+                painter.FillRoundRect({right, y + (height - swatchH) / 2.0, swatchW, swatchH},
+                                      chapter ? 1.0 : swatchH / 2.0, WithAlpha(colour, opacity));
+                right -= Rem(0.75);
+            }
         }
         const bool big = dragging || preview.has_value() || ShowsFocus(focused_, "timeline");
         const double thumb = Rem(kSeekThumbRem) * (big ? 1.3 : 1.0);
@@ -1388,12 +1452,12 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     painter.FillRoundRect(Box{volumeBar.x, volumeBar.y + 1.0, volumeBar.width, volumeBar.height}, volumeHeight / 2.0,
                           Rgb(0x000000, 0.28 * opacity));
     painter.FillRoundRect(volumeBar, volumeHeight / 2.0, Rgb(0xFFFFFF, 0.24 * opacity));
-    const double level = silent ? 0.0 : std::clamp(view_.volume / kSliderVolume, 0.0, 1.0);
+    const double level = silent ? 0.0 : std::clamp(view_.volume / view_.volumeCap, 0.0, 1.0);
     if (level > 0.0) {
         painter.FillRoundRect(Box{volumeBar.x, volumeBar.y, volumeBar.width * level, volumeBar.height},
                               volumeHeight / 2.0, ink);
     }
-    const double unityX = volumeBar.x + volumeBar.width / 2.0;
+    const double unityX = volumeBar.x + volumeBar.width / view_.volumeCap;
     painter.FillRoundRect(Box{unityX - 0.5, volumeBar.CenterY() - Rem(0.36), 1.0, Rem(0.72)}, 0.5,
                           Rgb(0xFFFFFF, 0.66 * opacity));
     const double knob = Rem(volumeDragging_ ? 0.95 : 0.75);

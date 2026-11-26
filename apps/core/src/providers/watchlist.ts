@@ -1,3 +1,4 @@
+import { isSyncProfileDirectory, syncStoreChanged } from '../sync/storeEvents.ts';
 import { watchlistPath } from '../update/paths.ts';
 import { readPrivateJson } from './privateJson.ts';
 import { writeSealed } from './vault.ts';
@@ -39,7 +40,8 @@ export function readWatchlist(dataDir: string): WatchlistItem[] {
 }
 
 function persist(dataDir: string, items: WatchlistItem[]): WatchlistItem[] {
-  writeSealed(dataDir, watchlistPath(dataDir), items.slice(0, MAX_ITEMS));
+  writeSealed(dataDir, watchlistPath(dataDir), isSyncProfileDirectory(dataDir) ? items : items.slice(0, MAX_ITEMS));
+  syncStoreChanged(dataDir);
   return items;
 }
 

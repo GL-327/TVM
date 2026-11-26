@@ -53,6 +53,21 @@ struct TitleInfo {
     std::vector<std::pair<std::string, std::string>> services;
 };
 
+struct HomeSection {
+    std::string id;
+    bool visible = true;
+    bool operator==(const HomeSection&) const = default;
+};
+
+using HomeSectionLabels = std::vector<std::pair<std::string, std::string>>;
+HomeSectionLabels HomeSections();
+std::vector<HomeSection> ReadHomeSections(const nlohmann::json& body);
+nlohmann::json HomeSectionsPatch(const std::vector<HomeSection>& sections);
+void ApplyHomeSections(std::vector<RailData>& rails, const std::vector<HomeSection>& sections);
+
+// Convert one media item into a poster card.
+CardData CardFromMedia(const catalog::MediaItem& item);
+
 // Home's rails as the scene shows them.
 std::vector<RailData> RailsFromCatalog(const std::vector<catalog::HomeRail>& rails);
 

@@ -3,6 +3,7 @@ import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { profileDir, profilesPath, progressPath, watchlistPath } from '../update/paths.ts';
 import { readPrivateJson } from './privateJson.ts';
 import { writeSealed } from './vault.ts';
+import { syncStoreChanged } from '../sync/storeEvents.ts';
 import { isAgeLimit, type AgeLimit } from './parental.ts';
 
 export const MAX_PROFILES = 10;
@@ -145,7 +146,7 @@ export interface ProfileRegistry {
  */
 const HUES = [221, 190, 145, 38, 315];
 
-function defaultProfile(index = 0): Profile {
+export function defaultProfile(index = 0): Profile {
   return {
     id: `profile-${index + 1}`,
     name: `Profile ${index + 1}`,
@@ -154,7 +155,7 @@ function defaultProfile(index = 0): Profile {
   };
 }
 
-function persist(dataDir: string, registry: ProfileRegistry): ProfileRegistry {
+export function writeProfileRegistry(dataDir: string, registry: ProfileRegistry): ProfileRegistry {
   mkdirSync(dataDir, { recursive: true });
   writeSealed(dataDir, profilesPath(dataDir), registry);
   mkdirSync(profileDir(dataDir, registry.activeId), { recursive: true });
@@ -172,7 +173,7 @@ function migrateLegacy(dataDir: string, profileId: string): void {
   if (existsSync(oldWatchlist) && !existsSync(nextWatchlist)) renameSync(oldWatchlist, nextWatchlist);
 }
 
-export function loadProfiles(dataDir: string): ProfileRegistry {
+export function loadProfiles(dataDir: string, max = MAX_PROFILES): ProfileRegistry {
   try {
     const parsed = readPrivateJson<ProfileRegistry>(dataDir, profilesPath(dataDir));
     if (parsed === null) throw new Error('profiles missing');
@@ -182,7 +183,7 @@ export function loadProfiles(dataDir: string): ProfileRegistry {
         : parsed.profiles[0]?.id;
       if (active !== undefined) {
         mkdirSync(profileDir(dataDir, active), { recursive: true });
-        return { activeId: active, profiles: parsed.profiles.slice(0, MAX_PROFILES) };
+        return { activeId: active, profiles: parsed.profiles.slice(0, max) };
       }
     }
   } catch {
@@ -190,11 +191,11 @@ export function loadProfiles(dataDir: string): ProfileRegistry {
   }
   const first = defaultProfile(0);
   migrateLegacy(dataDir, first.id);
-  return persist(dataDir, { activeId: first.id, profiles: [first] });
+  return writeProfileRegistry(dataDir, { activeId: first.id, profiles: [first] });
 }
 
-export function createProfileService(dataDir: string, now: () => number = Date.now) {
-  let registry = loadProfiles(dataDir);
+export function createProfileService(dataDir: string, now: () => number = Date.now, max = MAX_PROFILES) {
+  let registry = loadProfiles(dataDir, max);
   // Wrong PINs per profile, kept in memory: a restart forgives, a running Core does not.
   const tries = new Map<string, { count: number; until: number }>();
 
@@ -221,7 +222,9 @@ export function createProfileService(dataDir: string, now: () => number = Date.n
   };
 
   const save = (next: ProfileRegistry): ProfileRegistry => {
-    registry = persist(dataDir, next);
+    const changed = next.profiles !== registry.profiles;
+    registry = writeProfileRegistry(dataDir, next);
+    if (changed) syncStoreChanged(dataDir);
     return registry;
   };
 
@@ -320,7 +323,7 @@ export function createProfileService(dataDir: string, now: () => number = Date.n
       return save({ ...registry, activeId: id });
     },
     reload(): ProfileRegistry {
-      registry = loadProfiles(dataDir);
+      registry = loadProfiles(dataDir, max);
       return registry;
     },
   };

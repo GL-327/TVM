@@ -82,15 +82,9 @@
 
 .details__hero {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 1.6rem;
   padding: calc(2.6rem + env(titlebar-area-height, 0px)) var(--tvm-safe-x) 1.35rem;
-  animation: details-enter 380ms var(--tvm-motion-ease) both;
-}
-
-@keyframes details-enter {
-  from { opacity: 0; transform: translateY(0.65rem); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .details__poster-stage {
@@ -149,6 +143,7 @@
 
 .details__copy {
   flex: 1;
+  min-width: 0;
   max-width: 46rem;
   padding-bottom: 0.15rem;
 }
@@ -177,6 +172,7 @@
 .details .stage__meta {
   gap: 0.5rem 0.7rem;
   margin-top: 0.7rem;
+  min-block-size: 1.75rem;
 }
 
 /*
@@ -198,6 +194,7 @@
   color: rgba(245, 245, 247, 0.92);
   text-shadow: 0 0.08rem 0.4rem rgba(0, 0, 0, 0.72);
   -webkit-line-clamp: 3;
+  min-block-size: 3lh;
 }
 
 /* The same column, the same problem: year, runtime and genres sit on artwork. */
@@ -247,7 +244,6 @@
 }
 
 .details--series .details__hero {
-  align-items: flex-end;
   padding-bottom: 0.85rem;
 }
 
@@ -263,6 +259,7 @@
 
 .details--series .stage__synopsis {
   -webkit-line-clamp: 2;
+  min-block-size: 2lh;
 }
 
 .episode-picker {
@@ -491,6 +488,7 @@
 
 .details__anime-subtitle {
   margin: 0.35rem 0 0;
+  min-block-size: 1lh;
   color: var(--tvm-glass27-text-secondary, rgba(255, 255, 255, 0.72));
   font-size: clamp(1rem, 1.8vw, 1.35rem);
   font-weight: 560;

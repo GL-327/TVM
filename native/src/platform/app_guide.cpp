@@ -139,7 +139,12 @@ bool App::HandleGuideKey(WPARAM key) {
 }
 
 bool App::HandleGuideMouse(UINT message, WPARAM buttons, LPARAM point) {
-    if (message == WM_LBUTTONUP) {
+    if (message == WM_MOUSEMOVE) {
+        const auto cursor = ClientPoint(point);
+        dirty_ = guide_.Hover(cursor.x, cursor.y) || dirty_;
+    } else if (message == WM_MOUSELEAVE) {
+        dirty_ = guide_.Hover(-1, -1) || dirty_;
+    } else if (message == WM_LBUTTONUP) {
         const auto cursor = ClientPoint(point);
         const auto action = guide_.Click(cursor.x, cursor.y, guideClock_);
         if (action == "@search") { guideSearch_ = true; guide_.Search(""); }

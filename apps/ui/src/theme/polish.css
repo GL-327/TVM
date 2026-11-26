@@ -356,7 +356,7 @@ html[data-theme='light'] .polish-nav__droplet {
 }
 html body .polish-nav .polish-nav__tab {
   position: relative; z-index: 1; min-height: 40px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px;
-  display: grid; place-items: center; transform: none; background: transparent; color: var(--tvm-text-muted);
+  display: grid; place-items: center; place-content: center; transform: none; background: transparent; color: var(--tvm-text-muted);
   box-shadow: none; font-size: .875rem; font-weight: 550; white-space: nowrap;
 }
 html body .polish-nav .polish-nav__tab[aria-pressed='true'] { color: #0e1015; font-weight: 600; }
@@ -381,7 +381,7 @@ html body .polish-nav .polish-nav__brand {
   font-size: 1.45rem; font-weight: 750; letter-spacing: -.09em;
 }
 html body .polish-nav .polish-nav__icon {
-  display: grid; place-items: center; border-radius: 50%; width: 40px; height: 40px; padding: 0;
+  display: grid; place-items: center; place-content: center; border-radius: 50%; width: 40px; height: 40px; padding: 0;
   border: 1px solid var(--tvm-border-soft);
   box-shadow: var(--tvm-material-shadow-sm);
 }

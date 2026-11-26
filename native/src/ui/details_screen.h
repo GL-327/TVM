@@ -19,10 +19,25 @@
 
 namespace tvm::ui {
 
+inline constexpr double kDetailsPrefetchMs = 150.0;
+
+// Tracks focused or hovered cards and fires once after hovering or holding focus for kDetailsPrefetchMs.
+class DetailsPrefetchTracker {
+public:
+    std::optional<std::string> Update(const std::optional<std::string>& candidateId, double nowMs);
+    std::optional<double> NextDueMs() const;
+    void Reset();
+
+private:
+    std::optional<std::string> candidateId_;
+    double sinceMs_ = 0.0;
+    bool triggered_ = false;
+};
+
 class DetailsScreen final : public ScreenBase {
 public:
-    // `title` is what the opened card showed, used until the catalogue answers.
-    DetailsScreen(std::string id, std::string title);
+    // `title`, `poster`, and `backdrop` come from the opened card so the first paint has art right away.
+    DetailsScreen(std::string id, std::string title, std::string poster = {}, std::string backdrop = {});
 
     void Layout(double width, double height) override;
     void Paint(Painter& painter) const override;
@@ -49,6 +64,7 @@ public:
 
     const std::string& id() const { return id_; }
     const TitleInfo& info() const { return info_; }
+    std::optional<catalog::MediaItem> FocusedCollectionItem() const;
     bool IsSeries() const;
     // The seasons, in order, and the season whose episodes show.
     std::vector<int> Seasons() const;
@@ -83,6 +99,8 @@ private:
 
     std::string id_;
     std::string title_;
+    std::string poster_;
+    std::string backdrop_;
     TitleInfo info_;
     std::string focused_ = "play";
     int season_ = 0;

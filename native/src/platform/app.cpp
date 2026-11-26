@@ -29,6 +29,7 @@
 #include "nav/intents.h"
 #include "nav/pointer.h"
 #include "platform/d2d_painter.h"
+#include "ui/controls.h"
 #include "platform/video_texture.h"
 
 namespace tvm::platform {
@@ -665,6 +666,7 @@ int App::Run(int showCommand) {
             shell_->Navigate(*hop, now);
             dirty_ = true;
         }
+        SyncDetailsPrefetch(now);
         if (chooserCloseAtMs_.has_value() && now >= *chooserCloseAtMs_) {
             chooserCloseAtMs_.reset();
             if (shell_->ActiveScreenName() == "chooser") shell_->Back(now);
@@ -674,9 +676,21 @@ int App::Run(int showCommand) {
         intro_->Tick(now);
         streamIntro_->Tick(now);
         // Pictures still being read keep the frames coming, so each one appears as soon as it is ready.
-        const bool animating = shell_->Tick(now) || intro_->Animating() || streamIntro_->Animating() || images_->Busy();
+        const bool measure = account_.usable && account_.developer && store_->ShowFps() &&
+                             IsWindowVisible(window_) && !IsIconic(window_);
+        const bool animating = shell_->Tick(now) || intro_->Animating() || streamIntro_->Animating() || images_->Busy() || measure;
         const double frameStartMs = NowMs();
+        if (!measure) {
+            meterLastFrame_ = -1.0;
+            meterFrameMs_ = 0.0;
+        }
         if (dirty_ || animating) {
+            if (measure) {
+                const double elapsed = frameStartMs - meterLastFrame_;
+                if (meterLastFrame_ >= 0.0 && elapsed > 0.0)
+                    meterFrameMs_ = meterFrameMs_ > 0.0 ? std::lerp(meterFrameMs_, elapsed, 0.15) : elapsed;
+                meterLastFrame_ = frameStartMs;
+            }
             Render();
             dirty_ = false;
             if (frameLog) {
@@ -704,6 +718,9 @@ int App::Run(int showCommand) {
             if (artworkRetryDueMs_ > 0.0) due = std::min(due, std::max(0.0, artworkRetryDueMs_ - now));
             // A search waits for a short pause in typing; the loop wakes when the pause is over.
             if (searchPending_) due = std::min(due, std::max(0.0, searchTypedMs_ + kSearchDebounceMs - now));
+            if (const auto prefetchAt = detailsPrefetch_.NextDueMs()) {
+                due = std::min(due, std::max(0.0, *prefetchAt - now));
+            }
             due = videoClicks_.Wait(now, due);
             MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::ceil(due)), QS_ALLINPUT);
         }
@@ -1249,6 +1266,7 @@ void App::Render() {
             overlayImages_->BeginFrame();
             D2dPainter painter(target, graphics_, artwork_.get(), overlayImages_.get());
             player->Paint(painter);
+            if (meterLastFrame_ >= 0.0) ui::controls::PaintFrameMeter(painter, width, height, meterFrameMs_);
         });
         return;
     }
@@ -1261,11 +1279,17 @@ void App::Render() {
     D2dPainter painter(target_.Get(), graphics_, artwork_.get(), images_.get(), lens_.get());
     // A sting that covers the window hides the screen under it, so that screen is not drawn while it lasts.
     if (!intro_->Covers() && !streamIntro_->Covers()) {
-        if (GuideActive()) guide_.Paint(painter, guideClock_);
-        else shell_->Paint(painter);
+        if (GuideActive()) {
+            const ui::ThemeScope theme(ui::Theme::Dark, store_->ReduceTransparency() || store_->Motion().performanceMode);
+            const ui::FontScope font(store_->Font());
+            guide_.Paint(painter, guideClock_);
+        } else {
+            shell_->Paint(painter);
+        }
     }
     intro_->Paint(painter, static_cast<double>(width), static_cast<double>(height));
     streamIntro_->Paint(painter, static_cast<double>(width), static_cast<double>(height));
+    if (meterLastFrame_ >= 0.0) ui::controls::PaintFrameMeter(painter, width, height, meterFrameMs_);
     const HRESULT result = target_->EndDraw();
     if (result == D2DERR_RECREATE_TARGET) {
         // The device was lost. Rebuild the target and draw again next frame. The
@@ -1453,7 +1477,35 @@ void App::SyncDetails() {
     if (!top.has_value() && homeStale_) RebuildHome();
     if (top == shownTitle_) return;
     shownTitle_ = top;
-    if (top.has_value()) ShowTitle(*top);
+    if (top.has_value()) {
+        const auto& params = nav::ActiveEntry(shell_->stack()).params;
+        if (const auto poster = params.find("poster"); poster != params.end()) QueueArtwork(poster->second, true);
+        if (const auto backdrop = params.find("backdrop"); backdrop != params.end()) QueueArtwork(backdrop->second, true);
+        ShowTitle(*top);
+    }
+}
+
+void App::SyncDetailsPrefetch(double nowMs) {
+    std::optional<std::string> candidateId;
+    std::string poster;
+    std::string backdrop;
+    if (const auto* scene = dynamic_cast<const ui::Scene*>(&shell_->ActiveScreen())) {
+        if (const ui::Card* card = scene->FocusedDetailsCard()) {
+            candidateId = card->itemId();
+            poster = card->detailsPosterUrl();
+            backdrop = card->backdropUrl();
+        }
+    } else if (const auto* details = dynamic_cast<const ui::DetailsScreen*>(&shell_->ActiveScreen())) {
+        if (const auto item = details->FocusedCollectionItem()) {
+            candidateId = item->id;
+            poster = item->poster;
+            backdrop = item->backdrop;
+        }
+    }
+    if (candidateId == shownTitle_) candidateId.reset();
+    if (const std::optional<std::string> id = detailsPrefetch_.Update(candidateId, nowMs)) {
+        PrefetchTitle(*id, poster, backdrop);
+    }
 }
 
 void App::ShowTitle(const std::string& id) {
@@ -1465,6 +1517,17 @@ void App::ShowTitle(const std::string& id) {
         QueueTitleArtwork(info);
         return;
     }
+    FetchTitle(id);
+}
+
+void App::PrefetchTitle(const std::string& id, const std::string& posterUrl, const std::string& backdropUrl) {
+    QueueArtwork(posterUrl);
+    QueueArtwork(backdropUrl);
+    if (titles_.contains(id) || titlesInFlight_.contains(id)) return;
+    FetchTitle(id);
+}
+
+void App::FetchTitle(const std::string& id) {
     // The details screen shows its loading state until the answer comes back.
     if (!titlesInFlight_.insert(id).second) return;
 
@@ -2474,6 +2537,7 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         }
         if (!listLane.empty()) {
             ui::RailData rail = ui::WatchlistRail(listLane);
+            rail.id = "my-list";
             rail.title = "My List";
             view.rails.push_back(std::move(rail));
         }
@@ -2502,6 +2566,13 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
             ApplyHeroEvent(hero, content_->Read("events"), contentDate_, cached == titles_.end() ? nullptr : &cached->second.media);
         } else if (root && streamLane_ != "all") heroes = candidates;
         else if (!candidates.empty()) heroes.push_back(candidates.front());
+        if (root && streamLane_ == "all") {
+            auto choices = ui::HomeSections();
+            for (auto at = eventRails_.rbegin(); at != eventRails_.rend(); ++at)
+                choices.insert(choices.begin() + 2, {at->id, at->title});
+            shell_->SetHomeSectionLabels(std::move(choices));
+            ui::ApplyHomeSections(view.rails, homeSections_);
+        }
         if (view.rails.empty() && heroes.empty()) view.status = "Nothing on this lane yet.";
     }
 
@@ -2988,7 +3059,12 @@ void App::SyncSearch() {
 
 bool App::HandleSearchKey(WPARAM virtualKey) {
     if (auto* settings = dynamic_cast<ui::SettingsScreen*>(&shell_->ActiveScreen()); settings != nullptr && settings->Typing()) {
-        // The search field: Backspace edits it (never Back), a paste goes in, letters arrive as characters.
+        // Backspace edits the field, and characters arrive through WM_CHAR.
+        if (virtualKey == 'A' && KeyDown(VK_CONTROL) && settings->EditingWebhook()) {
+            settings->SelectAll();
+            dirty_ = true;
+            return true;
+        }
         if (virtualKey == VK_BACK) { settings->Erase(); dirty_ = true; return true; }
         if (virtualKey == 'V' && KeyDown(VK_CONTROL)) {
             settings->Type(util::Trim(ClipboardText(window_).value_or("")));
@@ -3508,6 +3584,7 @@ void App::StartPlayback() {
     if (const std::optional<playback::PlayId> play = playback::ParsePlayId(playerId_); play && play->season) {
         playerView_.episode = "S" + std::to_string(*play->season) + " \xC2\xB7 E" + std::to_string(*play->episode);
     }
+    playerView_.volumeCap = store_->VolumeBoostMax() / 100.0;
     playerView_.volume = playerVolume_;
     playerView_.muted = playerMuted_;
     shell_->SetPlayerView(playerView_, NowMs());
@@ -3823,11 +3900,26 @@ void App::ChangeVolume(double delta) {
     SetVolume(playerVolume_ + delta);
 }
 
+void App::ApplyVolumeCap() {
+    const double cap = store_->VolumeBoostMax() / 100.0;
+    if (cap == playerView_.volumeCap && playerVolume_ <= cap) return;
+    playerView_.volumeCap = cap;
+    if (playerVolume_ > cap) {
+        playerVolume_ = cap;
+        if (mpv_) mpv_->SetAudio(playerVolume_, playerMuted_);
+        SaveAudio();
+    }
+    playerView_.volume = playerVolume_;
+    shell_->SetPlayerView(playerView_, NowMs());
+    dirty_ = true;
+}
+
 void App::SetVolume(double level, bool save) {
     // Steps land on whole percents, so ten presses up from 100% read 200%, not 199.99%.
-    playerVolume_ = std::clamp(std::round(level * 100.0) / 100.0, 0.0, ui::kMaxVolume);
+    playerVolume_ = std::clamp(std::round(level * 100.0) / 100.0, 0.0, store_->VolumeBoostMax() / 100.0);
     if (playerVolume_ > 0.0) playerMuted_ = false;
     mpv_->SetAudio(playerVolume_, playerMuted_);
+    playerView_.volumeCap = store_->VolumeBoostMax() / 100.0;
     playerView_.volume = playerVolume_;
     playerView_.muted = playerMuted_;
     shell_->SetPlayerView(playerView_, NowMs());
@@ -3841,7 +3933,7 @@ void App::LoadAudio() {
     const nlohmann::json stored = nlohmann::json::parse(*text, nullptr, false);
     if (!stored.is_object()) return;
     if (stored.contains("volume") && stored["volume"].is_number()) {
-        playerVolume_ = std::clamp(stored["volume"].get<double>(), 0.0, ui::kMaxVolume);
+        playerVolume_ = std::clamp(stored["volume"].get<double>(), 0.0, store_->VolumeBoostMax() / 100.0);
     }
     if (stored.contains("muted") && stored["muted"].is_boolean()) playerMuted_ = stored["muted"].get<bool>();
 }

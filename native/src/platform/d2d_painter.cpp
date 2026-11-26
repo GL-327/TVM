@@ -214,7 +214,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                 FillRoundRect(box, radius, black(dim));
                 FillRoundRect(box, radius, white(lift));
                 if (style.adaptiveInk) {
-                    const double shown = std::min(1.0, behind * 1.035) * (1.0 - dim) * (1.0 - lift) + lift;
+                    const double shown = std::min(1.0, behind * 1.05) * (1.0 - dim) * (1.0 - lift) + lift;
                     glassInk_ = shown >= 0.46 ? Rgb(0x000000) : Rgb(0xFFFFFF);
                 } else if (sheet) {
                     // Sheets keep their themed labels and use a restrained surface wash over artwork.

@@ -3,7 +3,8 @@ import { SceneField } from './theme/SceneField';
 import { ViewStackProvider } from './nav/ViewStackProvider';
 import { AccountGate } from './screens/AccountGate';
 import { RdOnboardingModal } from './screens/RdOnboardingModal';
-import { ACCOUNT_CHANGED, fetchAccount, readToken, SIGNED_OUT, type AccountState } from './data/account';
+import { FpsOverlay } from './components/FpsOverlay';
+import { ACCOUNT_CHANGED, fetchAccount, isDevAccount, readToken, SIGNED_OUT, type AccountState } from './data/account';
 import { applyPlanClass, fetchPlan } from './data/plan';
 import { applyGithubUpdateOnLaunch } from './data/launchUpdate';
 import { startContentBackgroundRefresh } from './data/content';
@@ -72,6 +73,7 @@ export function App(): React.JSX.Element {
       <SceneField />
       <ViewStackProvider />
       <RdOnboardingModal account={account} />
+      {isDevAccount(account) && <FpsOverlay />}
     </>
   );
 }

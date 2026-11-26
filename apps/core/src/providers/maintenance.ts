@@ -61,4 +61,5 @@ export function factoryResetDir(dataDir: string): void {
   remove(tmdbKeyPath(dataDir));
   remove(masterKeyPath(dataDir));
   removeTree(join(dataDir, 'profiles'));
+  removeTree(join(dataDir, 'sync'));
 }

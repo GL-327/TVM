@@ -16,6 +16,10 @@ const CHROME = new Set([
   'library',
   'search',
   'home-dock',
+  'tvm-home',
+  'more',
+  'movies',
+  'series',
   'settings',
   'apps',
   'profile',
@@ -162,6 +166,12 @@ async function enterTvmStream(page: Page): Promise<void> {
   await waitForFocus(page);
 }
 
+async function enterAccountSettingsRows(page: Page): Promise<void> {
+  await expect.poll(() => focusedId(page)).toBe('settings-category-account');
+  await tap(page, 'ArrowRight');
+  await expect.poll(() => focusedId(page)).toBe('account');
+}
+
 async function tap(page: Page, key: string): Promise<void> {
   await page.keyboard.press(key);
   // navigateByDirection is async; firing the next key before it settles
@@ -293,6 +303,8 @@ async function stubReady(page: Page): Promise<void> {
   await page.route('**/api/live', (route) =>
     route.fulfill({ json: { url: null, host: null, username: null, configured: false, channels: [], error: null } }),
   );
+  // Leave the built-in free channels in the grid without fetching external listings.
+  await page.route('**/api/live/guide?**', (route) => route.fulfill({ status: 404, json: {} }));
   await page.route('**/api/update/check', (route) =>
     route.fulfill({
       json: {
@@ -537,15 +549,36 @@ test('Back leaves TVM Stream without a token and returns Home', async ({ page })
   await waitForFocus(page);
 });
 
-test('a film poster opens the title page with an IMDb score before Play', async ({ page }) => {
+test('a film poster paints title and art before Details data and shows the IMDb score', async ({ page }) => {
   await enterTvmStream(page);
-  await pressUntil(page, 'films-tt0816692-0');
-  await page.keyboard.press('Enter');
+  const id = 'films-tt0816692-0';
+  const fetchDetails = '**/api/media?id=tt0816692';
+  let requests = 0;
+  let releaseDetails!: () => void;
+  const ready = new Promise<void>((resolve) => { releaseDetails = resolve; });
+  await page.route(fetchDetails, async (route) => {
+    requests += 1;
+    await ready;
+    await route.fulfill({ json: { ...SAMPLE, synopsis: 'The spice must flow.' } });
+  });
+  await pressUntil(page, id);
+  try {
+    await expect.poll(() => requests).toBe(1); // Focus alone starts the request.
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('heading', { name: 'Dune', exact: true })).toBeVisible();
+    await expect(page.locator('.details__poster')).toBeVisible();
+    await expect(page.locator('.details__backdrop')).toBeVisible();
+    await expect(page.getByText('The spice must flow.')).toHaveCount(0);
+  } finally {
+    releaseDetails();
+  }
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
   await expect(page.locator('[data-screen="player"]')).toHaveCount(0);
-  await expect(page.getByText('IMDb 8.4')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'IMDb 8.4 out of 10. Open IMDb or view reviews.' })).toBeVisible();
+  await expect(page.getByText('The spice must flow.')).toBeVisible();
   await expect(page.locator('[data-focus-id="play"]')).toBeVisible();
   await expect.poll(async () => focusedId(page)).toBe('play');
+  expect(requests).toBe(1);
 });
 
 test('Play with a rejected token opens the Real-Debrid notice', async ({ page }) => {
@@ -588,7 +621,7 @@ test('a series poster opens seasons, then an episode plays with tt:s:e', async (
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
   await expect(page.locator('[data-screen="player"]')).toHaveCount(0);
-  await expect(page.getByText('IMDb 8.7')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'IMDb 8.7 out of 10. Open IMDb or view reviews.' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Seasons' })).toBeVisible();
   await expect(page.getByText('Series Graph')).toBeVisible();
   await expect(page.locator('[data-focus-id="play"]')).toHaveCount(0);
@@ -609,11 +642,14 @@ test('a series poster opens seasons, then an episode plays with tt:s:e', async (
 });
 
 test('Settings opens Plans', async ({ page }) => {
-  await pressUntil(page, 'settings');
+  await pressUntil(page, 'search');
+  await tap(page, 'ArrowRight');
+  await expect.poll(() => focusedId(page)).toBe('settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
   await expect(page.locator('[data-focus-id="developer"]')).toHaveCount(0);
-  await waitForFocus(page);
+  await expect(page.getByRole('switch', { name: 'Show FPS' })).toHaveCount(0);
+  await enterAccountSettingsRows(page);
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
@@ -625,7 +661,7 @@ test('Plans explains access without taking a card', async ({ page }) => {
   await pressUntil(page, 'settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
-  await waitForFocus(page);
+  await enterAccountSettingsRows(page);
   await pressUntil(page, 'plan');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="plans"]')).toBeVisible();
@@ -641,12 +677,22 @@ test('Retired themes fall back to Dark; privacy and motion are reachable', async
   await page.reload();
   await waitForFocus(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await pressUntil(page, 'settings'); await page.keyboard.press('Enter'); await waitForFocus(page);
+  await pressUntil(page, 'settings'); await page.keyboard.press('Enter');
+  await expect(page.locator('[data-screen="settings"]')).toBeVisible();
+  await expect.poll(() => focusedId(page)).toBe('settings-category-account');
+  for (let row = 0; row < 4; row += 1) await tap(page, 'ArrowDown');
+  await expect.poll(() => focusedId(page)).toBe('settings-category-appearance');
+  await tap(page, 'ArrowRight');
+  await expect.poll(() => focusedId(page)).toBe('font');
   await expect(page.locator('[data-focus-id^="theme-"]')).toHaveCount(2);
   await expect(page.locator('[data-focus-id="theme-light"]')).toBeVisible();
   await expect(page.locator('[data-focus-id="theme-dark"]')).toBeVisible();
   await pressUntil(page, 'motion'); await page.keyboard.press('Enter');
   await expect(page.locator('html')).toHaveAttribute('data-motion', 'reduced');
+  await tap(page, 'ArrowLeft');
+  await expect.poll(() => focusedId(page)).toBe('settings-category-appearance');
+  await pressUntil(page, 'settings-category-account');
+  await enterAccountSettingsRows(page);
   await pressUntil(page, 'privacy'); await page.keyboard.press('Enter'); await waitForFocus(page);
   await expect(page.getByRole('heading', { name: 'Your data. Your sources.' })).toBeVisible();
   await expect(page.locator('[data-focus-id="privacy-export"]')).toBeVisible();
@@ -656,7 +702,7 @@ test('Retired themes fall back to Dark; privacy and motion are reachable', async
   await expect(page.getByText(/This removes all TVM profiles/)).toHaveCount(0);
 });
 
-test('MAX shows the mock live pack', async ({ page }) => {
+test('MAX shows the mock live pack in the programme guide', async ({ page }) => {
   await page.unroute('**/api/plan');
   await page.unroute('**/api/live');
   await page.route('**/api/plan', (route) =>
@@ -695,6 +741,7 @@ test('MAX shows the mock live pack', async ({ page }) => {
   await pressUntil(page, 'live');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="live"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Guide', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Sky Sports/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /TNT Sports/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /beIN Sports/ })).toBeVisible();
@@ -709,11 +756,33 @@ test('clicking a film opens the title instead of only jumping the row', async ({
   await expect(page.getByRole('heading', { name: 'Dune' })).toBeVisible();
 });
 
-test('volume slider sets a level and a speed pick does not scrub', async ({ page }) => {
+test('volume and speed work without scrubbing, and playback markers have a legend', async ({ page }, testInfo) => {
   const sample = readFileSync(new URL('./sample.mp4', import.meta.url));
-  await page.route('**/e2e-sample.mp4', (route) =>
-    route.fulfill({ status: 200, contentType: 'video/mp4', body: sample }),
-  );
+  await page.route('**/e2e-sample.mp4', (route) => {
+    const range = route.request().headers()['range'];
+    const match = range?.match(/^bytes=(\d+)-(\d*)$/);
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] ? Math.min(sample.length - 1, Number(match[2])) : sample.length - 1;
+      const chunk = sample.subarray(start, end + 1);
+      return route.fulfill({
+        status: 206,
+        contentType: 'video/mp4',
+        headers: {
+          'accept-ranges': 'bytes',
+          'content-range': `bytes ${start}-${end}/${sample.length}`,
+          'content-length': String(chunk.length),
+        },
+        body: chunk,
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'video/mp4',
+      headers: { 'accept-ranges': 'bytes', 'content-length': String(sample.length) },
+      body: sample,
+    });
+  });
   await page.unroute('**/api/playback');
   await page.route('**/api/playback', (route) =>
     route.fulfill({
@@ -726,6 +795,12 @@ test('volume slider sets a level and a speed pick does not scrub', async ({ page
         engine: 'html5',
         transport: 'file',
         durationSeconds: 2,
+        segments: {
+          source: null,
+          recap: { start: 0, end: 0.2 },
+          intro: { start: 0.25, end: 0.6 },
+          credits: { start: 1.5, end: null },
+        },
       },
     }),
   );
@@ -738,40 +813,61 @@ test('volume slider sets a level and a speed pick does not scrub', async ({ page
   await expect(page.locator('[data-screen="player"]')).toBeVisible();
   await expect(page.locator('[data-player-volume="programmable"]')).toBeVisible();
   await expect(page.locator('[data-focus-id="player-fullscreen"]')).toBeVisible();
+  await expect(page.locator('[data-focus-id="player-progress"]')).toBeEnabled();
+  const video = page.locator('video.player__video');
+  await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.readyState)).toBeGreaterThanOrEqual(2);
+  await video.evaluate(async (node: HTMLVideoElement) => {
+    node.pause();
+    const sought = new Promise<void>((resolve) => node.addEventListener('seeked', () => resolve(), { once: true }));
+    node.currentTime = node.duration * 0.45;
+    await sought;
+    const chapter = node.addTextTrack('chapters');
+    chapter.addCue(new VTTCue(0.8, 1.5, 'Chapter 2'));
+    node.dataset.seekCount = '0';
+    node.addEventListener('seeking', () => { node.dataset.seekCount = String(Number(node.dataset.seekCount) + 1); });
+  });
+  const legend = page.getByRole('list', { name: 'Timeline markers' });
+  await expect(legend.getByRole('listitem')).toHaveText(['Intro', 'Recap', 'Credits', 'Chapter']);
+  await expect(page.locator('.tvm-progress__marker')).toHaveCount(4);
+  await page.screenshot({ path: testInfo.outputPath('player-markers.png') });
 
   const track = page.locator('.player-volume__track');
   const box = await track.boundingBox();
   if (box === null) throw new Error('Volume track has no box');
   await page.mouse.click(box.x + box.width * 0.25, box.y + box.height / 2);
-  const volume = await page.locator('video').evaluate((node: HTMLVideoElement) => node.volume);
+  const volume = await video.evaluate((node: HTMLVideoElement) => node.volume);
   expect(volume).toBeGreaterThan(0.15);
   expect(volume).toBeLessThan(0.85);
 
-  await expect(page.locator('[data-focus-id="player-progress"]')).toBeEnabled();
-  const before = await page.locator('video').evaluate((node: HTMLVideoElement) => node.currentTime);
+  const before = await video.evaluate((node: HTMLVideoElement) => node.currentTime);
+  expect(before).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Playback settings' }).click();
   await page.locator('[data-focus-id="player-speed"]').click();
   await page.locator('[data-focus-id="player-speed-2"]').click();
-  const after = await page.locator('video').evaluate((node: HTMLVideoElement) => ({
-    time: node.currentTime,
-    rate: node.playbackRate,
-  }));
-  expect(after.rate).toBe(2);
-  expect(Math.abs(after.time - before)).toBeLessThan(3);
+  await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.playbackRate)).toBe(2);
+  await expect(video).toHaveAttribute('data-seek-count', '0');
+  expect(await video.evaluate((node: HTMLVideoElement) => node.currentTime)).toBeCloseTo(before);
 });
 
-test('Live TV shows Free channels first alongside inline login, and Back returns Home', async ({ page }) => {
+test('Live TV opens the guide with free channels and setup, and Back returns Home', async ({ page }) => {
   await pressUntil(page, 'live');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="live"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Guide', exact: true })).toBeVisible();
+  await expect(page.locator('.guide__cell').first()).toHaveAccessibleName(/No guide information/);
+  await expect(page.getByRole('button', { name: 'Xtream login' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'M3U playlist' })).toBeVisible();
+  await page.getByRole('button', { name: 'Channels', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Free channels' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Enter your Live TV login' })).toBeVisible();
+  await page.getByRole('button', { name: 'Guide', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Guide', exact: true })).toBeVisible();
   await waitForFocus(page);
   await pressUntil(page, 'live-back');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
 });
 
-test('a cold first video request recovers and idle chrome stays hidden', async ({ page }) => {
+test('a cold first video request recovers and idle chrome stays hidden', async ({ page }, testInfo) => {
   let requests = 0;
   const sample = readFileSync(new URL('./sample.mp4', import.meta.url));
   await page.route('**/cold-video.mp4', (route) => {
@@ -800,29 +896,39 @@ test('a cold first video request recovers and idle chrome stays hidden', async (
   await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'hidden');
   await expect(page.locator('.player-error')).toHaveCount(0);
   await expect(page.locator('.player-remote-hints')).not.toBeVisible();
-  await page.screenshot({ path: '../../cache/player-idle-fixed.png' });
+  await page.screenshot({ path: testInfo.outputPath('player-idle.png') });
   await page.mouse.move(660, 340);
   await expect(page.locator('[data-player-root]')).toHaveAttribute('data-controls', 'visible');
   await page.locator('[data-focus-id="player-play"]').click();
   await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'true');
   await expect.poll(() => page.locator('.cinema-chrome').evaluate((node) => Number(getComputedStyle(node).opacity))).toBe(1);
   await page.waitForTimeout(350); // Let the entrance fade finish for visual review.
-  await page.screenshot({ path: '../../cache/player-controls-fixed.png' });
+  await page.screenshot({ path: testInfo.outputPath('player-controls.png') });
   const titleSize = await page.locator('.cinema-chrome__now').evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
   expect(titleSize).toBeLessThan(40);
   await page.locator('[data-focus-id="player-exit"]').click();
   await expect(page.locator('[data-screen="details"]')).toBeVisible();
 });
 
-test('downloads select a full series or one episode with language, quality and folder', async ({ page }) => {
+test('downloads select a full series or one episode with language, quality and folder', async ({ page }, testInfo) => {
+  const requests: Array<{ id: string; preferences: { language: string; maxHeight: number } }> = [];
+  await page.route('**/api/downloads/resolve', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { browserUrl: '/api/stream/direct/sample', filename: 'episode.mp4' } });
+  });
+  await page.route('**/api/stream/direct/sample', (route) => route.fulfill({ body: 'fixture video' }));
   await page.evaluate(() => {
-    const captured: unknown[] = [];
-    (window as unknown as { capturedDownloads: unknown[] }).capturedDownloads = captured;
-    window.tvmDownloads = {
-      chooseFolder: async () => 'D:\\My movies', list: async () => [], onChanged: () => () => {},
-      enqueue: async (input) => { captured.push(input); return input.items.map((item, index) => ({ id: String(index), title: item.title, state: 'queued', bytes: 0, total: 0 })); },
-      cancel: async () => {}, show: async () => {},
-    };
+    const saved = new Set<string>();
+    Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: async () => ({
+      name: 'My movies',
+      async getFileHandle(name: string, options?: { create?: boolean }) {
+        if (!options?.create && !saved.has(name)) throw new DOMException('File not found', 'NotFoundError');
+        return { createWritable: async () => ({
+          write: async () => {}, close: async () => { saved.add(name); }, abort: async () => {},
+        }) };
+      },
+      removeEntry: async (name: string) => { saved.delete(name); },
+    }) });
   });
   await enterTvmStream(page);
   await page.locator('[data-focus-id="shows-tt1230051-0"]').click();
@@ -833,24 +939,22 @@ test('downloads select a full series or one episode with language, quality and f
   await page.locator('[data-focus-id="download-language"]').selectOption('ja');
   await page.locator('[data-focus-id="download-quality"]').selectOption('720');
   await page.locator('[data-focus-id="download-folder"]').click();
-  await expect(page.getByText('D:\\My movies')).toBeVisible();
+  await expect(page.getByText('My movies', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Take it with you.' })).toBeInViewport();
   await expect.poll(() => page.locator('[data-screen="downloads"] .screen-content').evaluate((node) => Number(getComputedStyle(node).opacity))).toBe(1);
-  await page.screenshot({ path: '../../cache/download-options-fixed.png' });
+  await page.screenshot({ path: testInfo.outputPath('download-options.png') });
   await page.locator('[data-focus-id="download-start"]').click();
-  const inputs = await page.evaluate(() => (window as unknown as { capturedDownloads: Array<{ items: Array<{ id: string }>; directory: string; preferences: unknown }> }).capturedDownloads);
-  expect(inputs[0]?.items.map((item) => item.id)).toEqual(['tt1230051:1:1', 'tt1230051:1:2', 'tt1230051:2:1']);
-  expect(inputs[0]?.preferences).toEqual({ language: 'ja', maxHeight: 720 });
-  expect(inputs[0]?.directory).toBe('D:\\My movies');
+  await expect.poll(() => requests.map((item) => item.id)).toEqual(['tt1230051:1:1', 'tt1230051:1:2', 'tt1230051:2:1']);
+  for (const request of requests) expect(request.preferences).toEqual({ language: 'ja', maxHeight: 720 });
+  await expect(page.getByText('Complete', { exact: true })).toHaveCount(3);
   await page.locator('[data-focus-id="downloads-close"]').click();
   await page.locator('[data-focus-id="season-1"]').click();
   await page.locator('[data-focus-id="download-ep-tt1230051:1:2"]').click();
   await expect(page.locator('[data-focus-id="download-scope"]')).toHaveValue('episode');
   await expect(page.locator('[data-focus-id="download-episode"]')).toHaveValue('tt1230051:1:2');
-  await page.locator('[data-focus-id="download-folder"]').click();
+  await expect(page.getByText('My movies', { exact: true })).toBeVisible();
   await page.locator('[data-focus-id="download-start"]').click();
-  const episode = await page.evaluate(() => (window as unknown as { capturedDownloads: Array<{ items: Array<{ id: string }> }> }).capturedDownloads[1]?.items);
-  expect(episode?.map((item) => item.id)).toEqual(['tt1230051:1:2']);
+  await expect.poll(() => requests.slice(3)).toEqual([{ id: 'tt1230051:1:2', preferences: { language: 'ja', maxHeight: 720 } }]);
 });
 
 test('focused poster artwork leaves room for its label', async ({ page }) => {
@@ -875,33 +979,37 @@ test('focused poster artwork leaves room for its label', async ({ page }) => {
   }
 });
 
-test('desktop recovery preserves position, never labels an unknown film Live, and hides parked controls', async ({ page }) => {
+test('native bridge recovery preserves position, never labels an unknown film Live, and hides parked controls', async ({ page }, testInfo) => {
   const requests: Array<{ native?: boolean; startAt?: number }> = [];
-  // A browser fixture has no mpv window behind the transparent document.
+  // The browser fixture has no native video surface under the transparent UI.
   await page.addStyleTag({ content: 'html.tvm-native-playback { background: #04050a !important; }' });
   await page.evaluate(() => {
-    const listeners = new Set<(event: TvmNativePlayerEvent) => void>();
-    const state = { starts: [] as number[], seeks: [] as number[], position: 73, paused: false, duration: 0, timer: 0 };
+    const state = { starts: [] as number[], seeks: [] as number[], position: 73, paused: false, duration: 0 };
     (window as unknown as { nativeRegression: typeof state }).nativeRegression = state;
-    const emit = (): void => { listeners.forEach((listener) => listener({ type: 'state', paused: state.paused, buffering: false, position: state.position, duration: state.duration })); };
-    window.tvmDesktop = { nativePlayback: true };
-    window.tvmNativePlayer = {
-      async start(input) {
-        state.starts.push(input.startAt ?? 0); state.position = input.startAt ?? 73; state.paused = false;
-        window.setTimeout(emit, 30);
-        if (state.starts.length === 1) window.setTimeout(() => listeners.forEach((listener) => listener({ type: 'error', message: 'Temporary source failure' })), 650);
-        else {
-          state.timer = window.setInterval(() => { if (!state.paused) state.position += .25; emit(); }, 250);
-          window.setTimeout(() => { state.duration = 3600; emit(); }, 1000);
+    let running = 0;
+    let timeout = 0;
+    Object.defineProperty(window, 'tvmPlayer', { configurable: true, value: {
+      send(payload: string) {
+        const { id, command, startAt, seconds } = JSON.parse(payload);
+        const emit = (event: Record<string, unknown>): void => {
+          window.dispatchEvent(new CustomEvent('tvm:native-player', { detail: { id, ...event } }));
+        };
+        const update = (): void => emit({ command: 'state', paused: state.paused, buffering: false, position: state.position, duration: state.duration });
+        if (command === 'open') {
+          state.starts.push(startAt); state.position = startAt; state.paused = false;
+          window.setTimeout(update, 30);
+          if (state.starts.length === 1) {
+            timeout = window.setTimeout(() => emit({ command: 'error', message: 'Temporary source failure' }), 650);
+          } else {
+            running = window.setInterval(() => { if (!state.paused) state.position += .25; update(); }, 250);
+            timeout = window.setTimeout(() => { state.duration = 3600; update(); }, 1000);
+          }
         }
-        return { ok: true };
+        if (command === 'pause' || command === 'play') { state.paused = command === 'pause'; update(); }
+        if (command === 'seek') { state.seeks.push(seconds); state.position = seconds; update(); }
+        if (command === 'stop') { window.clearInterval(running); window.clearTimeout(timeout); }
       },
-      async command(command) { if (command === 'pause') state.paused = true; if (command === 'play') state.paused = false; emit(); },
-      async seekTo(value) { state.seeks.push(value); state.position = value; emit(); },
-      async stop() { window.clearInterval(state.timer); },
-      async setVolume() {}, async setMuted() {}, async setRate() {},
-      onEvent(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    };
+    } });
   });
   await page.unroute('**/api/playback');
   await page.route('**/api/playback', async (route) => {
@@ -933,7 +1041,7 @@ test('desktop recovery preserves position, never labels an unknown film Live, an
   await play.click();
   await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'true');
   await page.waitForTimeout(350);
-  await page.screenshot({ path: '../../cache/player-cinema-redesign.png' });
+  await page.screenshot({ path: testInfo.outputPath('player-native-1280.png') });
   await play.click();
   await expect(page.locator('[data-player-root]')).toHaveAttribute('data-paused', 'false');
   expect(await page.evaluate(() => (window as unknown as { nativeRegression: { seeks: number[] } }).nativeRegression.seeks)).toEqual([]);
@@ -942,23 +1050,19 @@ test('desktop recovery preserves position, never labels an unknown film Live, an
   for (const viewport of [{ width: 900, height: 600 }, { width: 375, height: 667 }]) {
     await page.setViewportSize(viewport);
     await expect(page.locator('.cinema-chrome')).toHaveCSS('opacity', '1');
-    const tools = page.locator(`[data-focus-id="player-play"], [data-focus-id="player-seek-back"], [data-focus-id="player-seek-fwd"], [data-focus-id="player-mute"], [data-focus-id="${viewport.width === 375 ? 'player-settings' : 'player-speed'}"], [data-focus-id="player-fullscreen"]`);
+    const tools = page.locator('[data-focus-id="player-play"], [data-focus-id="player-seek-back"], [data-focus-id="player-seek-fwd"], [data-focus-id="player-mute"], [data-focus-id="player-settings"], [data-focus-id="player-fullscreen"]');
     await expect.poll(async () => tools.evaluateAll((nodes) => nodes.every((node) => {
       const box = node.getBoundingClientRect(); return box.width > 0 && box.left >= 0 && box.right <= window.innerWidth + 1 && box.top >= 0 && box.bottom <= window.innerHeight + 1;
     }))).toBe(true);
-    if (viewport.width === 375) {
-      await expect(page.locator('.cinema-chrome__back svg')).toBeVisible();
-      await page.locator('[data-focus-id="player-settings"]').click();
-      await expect(page.locator('[data-focus-id="player-speed"]')).toBeVisible();
-      const settingsBox = await page.locator('.cinema-chrome__settings-panel').boundingBox();
-      expect(settingsBox && settingsBox.x >= 0 && settingsBox.x + settingsBox.width <= viewport.width + 1).toBeTruthy();
-    }
-    await page.screenshot({ path: `../../cache/player-cinema-${viewport.width}.png` });
-    if (viewport.width === 375) {
-      await page.keyboard.press('Escape');
-      await expect(page.locator('.cinema-chrome__settings-panel')).not.toBeVisible();
-      await expect(page.locator('[data-player-root]')).toHaveCount(1);
-    }
+    await expect(page.locator('.cinema-chrome__back svg')).toBeVisible();
+    await page.locator('[data-focus-id="player-settings"]').click();
+    await expect(page.locator('[data-focus-id="player-speed"]')).toBeVisible();
+    const settingsBox = await page.locator('.cinema-chrome__settings-panel').boundingBox();
+    expect(settingsBox && settingsBox.x >= 0 && settingsBox.x + settingsBox.width <= viewport.width + 1).toBeTruthy();
+    await page.screenshot({ path: testInfo.outputPath('player-native-' + viewport.width + '.png') });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.cinema-chrome__settings-panel')).not.toBeVisible();
+    await expect(page.locator('[data-player-root]')).toHaveCount(1);
   }
 });
 

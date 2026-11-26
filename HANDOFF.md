@@ -1,4 +1,4 @@
-# Handoff: TVM 1.4.3 (test build)
+# Handoff: TVM 1.4.5 (test build)
 
 Written 2026-11-26 by Claude on the owner's laptop, continuing the 1.4 polish that the desktop session could not
 finish. **Read this before changing anything.** Delete this file once everything below is done, and remove the
@@ -8,7 +8,27 @@ The contract is still `docs/1.4/spec.md`. Each builder's report is in `docs/1.4/
 in `-143.md`. 1.4.3 was built by Claude (lead, web audit, Core, integration), OpenAI Codex (phone engines, Roku,
 web extras), Gemini in Antigravity (Liquid Glass) and a Claude Sonnet helper (Windows Settings).
 
-## State
+## Update: 1.4.4 and 1.4.5 (desktop session, 2026-11-26 evening)
+
+- **1.4.4:** merged the Copilot cloud agent branch (Hunger Games order, wrapping poster titles, static backdrop,
+  episode cards, back-button labels, navigation test updates) and deleted the branch. Fixed the two phone CI
+  failures (Android guide parser accepted unclosed XMLTV; iPhone refused MKV although it plays through VLC).
+- **1.4.5 (Codex, then Gemini, then the lead):**
+  - **Account sync is live** on the accounts service (migration 0005, `GET/PUT /v1/me/data`, strict per-kind
+    schemas, no keys or passwords, 20,000 items per account) and in Core (pull on sign-in and every 60 s, push
+    3 s after a change, last writer wins, first-sync merge, offline backoff, `/api/sync/status`, `/api/sync/now`).
+    **Phones and Roku do not sync yet**: their engines need the same client.
+  - Web: all 48 Playwright tests pass (navigation fixed: product bugs vs stale tests are listed in
+    `docs/1.4/report-web-144.md`); Details prefetch after 150 ms hover/focus; seek-bar mark legend and
+    tooltips; Live TV/guide Back button unified; Show FPS switch; small polish.
+  - Windows: Show FPS, Home row order from `homeSections`, webhook/volume boost/poster-title Settings rows,
+    Details prefetch. **Not done on Windows:** seek-bar mark legend, Live TV Back button style, and checking or
+    finishing the native Liquid Glass job (the Gemini run stopped partway).
+  - iPhone: webhook events were dropped when the webhook object was released; fixed.
+- Checks before the 1.4.5 push: typecheck, Core 707, UI 553 and build, Playwright 48/48, accounts 53,
+  Windows build and tests (608), content and changelog. Android unit tests passed locally on 1.4.4.
+
+## State (from 1.4.3)
 
 Checks run locally before committing:
 - Core typecheck and tests (695+)
@@ -40,7 +60,8 @@ WEB-DL, higher bitrate, no upscales/cams) fixes it on every platform. Verify wit
 
 ## Next, in order
 
-1. Watch CI for the Android and iPhone compile; fix what it reports.
+1. Phones and Roku: join account sync (same client as Core: `apps/core/src/providers` sync module; API in the accounts README).
+1a. Windows: seek-bar mark legend, Live TV Back button style, native Liquid Glass (spec section 3.1).
 2. Test 1.4.3 on Windows, a phone and Roku; fix anything that blocks watching first.
 3. Windows Liquid Glass: integrate or finish Gemini's native job.
 4. Phones: draw Stats / sleep timer / night mode in the native players; send `watched` on episodes.

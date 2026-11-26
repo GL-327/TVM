@@ -3,6 +3,97 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.5",
+      "date": "2026-11-26",
+      "title": "Sync across devices and quicker Details (test build)",
+      "highlights": [
+        "Your profiles, Continue Watching, watchlist and preferences now follow your account to every computer.",
+        "Details opens straight away with the poster and title while the rest loads.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Accounts",
+          "text": "Profiles, progress, watchlist and preferences sync through your TVM account. Keys and passwords never do.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Resting on a card for a moment loads its page in advance, so it opens without a wait.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "The seek bar explains its marks: coloured bars for intros, recaps and credits, white ticks for chapters.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "The Back button on Live TV and the guide matches the rest of the app.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Developer settings have a Show FPS switch, so you can check how smooth TVM runs on your device.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Home rows follow the order and on/off choices under Settings, Home screen.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Settings gains rows for the webhook URL, maximum volume boost and titles under posters.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Phones",
+          "text": "On iPhone, webhook events are no longer dropped.",
+          "platforms": [
+            "ios"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "On Windows, the seek-bar mark legend and the new Live TV Back button style are not done yet."
+      ]
+    },
+    {
       "version": "1.4.4",
       "date": "2026-11-26",
       "title": "Polish and phone fixes (test build)",

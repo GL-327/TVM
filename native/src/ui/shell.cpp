@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "ui/details_screen.h"
+#include "ui/controls.h"
 #include "ui/downloads_screen.h"
 #include "ui/pending_screen.h"
 #include "ui/profile_chooser.h"
@@ -84,7 +85,8 @@ bool Shell::Animating() const {
 
 void Shell::Paint(Painter& painter) const {
     const ThemeScope theme(ActiveScreenName() == "player" ? Theme::Dark : store_.Look(),
-                           store_.ReduceTransparency() || motion_.performanceMode, motion::PrefersReducedMotion(motion_));
+                           store_.ReduceTransparency() || motion_.performanceMode, motion::PrefersReducedMotion(motion_),
+                           store_.Accent(), store_.PosterTitles());
     const FontScope font(store_.Font());
     tokens::pointer = pointer_;
     struct ResetPointer {
@@ -102,13 +104,7 @@ void Shell::Paint(Painter& painter) const {
     for (const nav::ViewEntry& modal : nav::OpenModals(stack_)) {
         screens_.at(modal.key)->Paint(painter);
     }
-    if (const auto back = BackBox()) {
-        painter.Glass(*back, back->height / 2, backFocused_ ? glass::NavSelected() : glass::NavCapsule());
-        const double inset = back->width * 0.24;
-        const Color chevronInk = painter.GlassInk(Rgb(0xFFFFFF, 0.95));
-        painter.Path({back->x + inset, back->y + inset, back->width - 2 * inset, back->height - 2 * inset}, 24,
-                     "M15 5l-7 7 7 7", {{0, 0, 0, 0}, chevronInk, 2.3, false});
-    }
+    if (const auto back = BackBox()) controls::PaintBackButton(painter, *back, backFocused_);
     if (releaseCard_ && ActiveScreenName() == "home") {
         const Box card = ReleaseBox();
         const double rem = ViewportRem(width_, height_);
@@ -297,9 +293,7 @@ Box Shell::PatchButtonBox() const {
 std::optional<Box> Shell::BackBox() const {
     const auto name = ActiveScreenName();
     if (!nav::CanGoBack(stack_) || name == "player" || name == "details" || name == "profile-menu") return std::nullopt;
-    const double rem = ViewportRem(width_, height_);
-    const double side = std::max(44.0, 2.75 * rem);
-    return Box{1.0 * rem, 0.5 * rem, side, side};
+    return controls::BackButtonBox(width_, height_);
 }
 Box Shell::ReleaseBox() const {
     const double rem = ViewportRem(width_, height_);
@@ -398,6 +392,14 @@ void Shell::SetDeveloperDiagnostics(const DeveloperDiagnostics& diag) {
     for (auto& [key, screen] : screens_) {
         auto* settings = dynamic_cast<SettingsScreen*>(screen.get());
         if (settings != nullptr) settings->SetDeveloperDiagnostics(diag);
+    }
+}
+
+void Shell::SetHomeSectionLabels(HomeSectionLabels labels) {
+    if (labels == homeLabels_) return;
+    homeLabels_ = std::move(labels);
+    for (auto& [key, screen] : screens_) {
+        if (auto* page = dynamic_cast<SettingsScreen*>(screen.get())) page->SetHomeSectionLabels(homeLabels_);
     }
 }
 
@@ -521,13 +523,15 @@ void Shell::Reconcile() {
 
 std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
     if (entry.name == "details") {
-        const auto id = entry.params.find("id");
-        const auto title = entry.params.find("title");
-        return std::make_unique<DetailsScreen>(id == entry.params.end() ? "" : id->second,
-                                               title == entry.params.end() ? "" : title->second);
+        const auto find = [&entry](const char* key) {
+            const auto it = entry.params.find(key);
+            return it == entry.params.end() ? std::string{} : it->second;
+        };
+        return std::make_unique<DetailsScreen>(find("id"), find("title"), find("poster"), find("backdrop"));
     }
     if (entry.name == "settings") {
         auto settings = std::make_unique<SettingsScreen>(store_, motion_);
+        settings->SetHomeSectionLabels(homeLabels_);
         settings->SetCoreSettings(coreSettings_);
         settings->SetPrefsSink(prefsSink_);
         return settings;

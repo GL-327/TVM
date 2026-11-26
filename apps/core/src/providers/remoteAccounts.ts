@@ -3,6 +3,7 @@ import { resolveAccountsUrl } from '../config.ts';
 import { currentSessionToken } from '../requestContext.ts';
 import { accountUsable, publicAccount, type AccountRecord, type AccountTier, type AdminAccount, type AccountsService } from './accounts.ts';
 import { deleteSecret } from './secrets.ts';
+import type { SyncItem } from '../sync/schema.ts';
 import { readSealed, writeSealed } from './vault.ts';
 
 interface ServiceAccount {
@@ -103,13 +104,13 @@ export function createRemoteAccountsService(options: {
     if (keep) tokens.push(token);
     writeSealed(dataDir, sessionPath, { origin, tokens });
   };
-  const exchange = async (path: string, method = 'GET', body?: unknown, bearer?: string, accept = 'application/json'): Promise<Response> => {
+  const exchange = async (path: string, method = 'GET', body?: unknown, bearer?: string, accept = 'application/json', ifMatch?: string): Promise<Response> => {
     let response: Response;
     try {
       response = await fetchImpl(`${origin}${path}`, {
         method, redirect: 'error', signal: AbortSignal.timeout(15_000),
         headers: { accept, ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
+          ...(ifMatch ? { 'if-match': ifMatch } : {}), ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch { throw new AccountsError(503); }
@@ -173,6 +174,15 @@ export function createRemoteAccountsService(options: {
   };
   return {
     termsVersion,
+    syncOrigin: origin,
+    async getSyncPage(token: string, query: URLSearchParams, generation: string | null) {
+      const response = await exchange(`/v1/me/data?${query}`, 'GET', undefined, token, 'application/json', generation ?? undefined);
+      try { return { body: await response.json() as unknown, generation: response.headers.get('etag') }; }
+      catch { throw new AccountsError(503); }
+    },
+    async putSyncItems(token: string, items: SyncItem[], generation: string): Promise<void> {
+      await exchange('/v1/me/data', 'PUT', { items }, token, 'application/json', generation);
+    },
     config(): Promise<AccountsConfig> {
       if (now() < configExpires) return Promise.resolve(config);
       if (configPending) return configPending;

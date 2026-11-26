@@ -171,6 +171,12 @@ public:
 
     const std::string& itemId() const { return itemId_; }
     const std::string& posterUrl() const { return posterUrl_; }
+    void SetDetailsArtwork(std::string backdrop, std::string poster) {
+        backdropUrl_ = std::move(backdrop);
+        detailsPosterUrl_ = std::move(poster);
+    }
+    const std::string& backdropUrl() const { return backdropUrl_.empty() ? posterUrl_ : backdropUrl_; }
+    const std::string& detailsPosterUrl() const { return detailsPosterUrl_.empty() ? posterUrl_ : detailsPosterUrl_; }
     std::optional<double> progress() const { return progress_; }
 
     const std::string& focusKey() const { return focusKey_; }
@@ -196,6 +202,8 @@ private:
     std::string focusKey_;
     std::string itemId_;
     std::string posterUrl_;
+    std::string backdropUrl_;
+    std::string detailsPosterUrl_;
     std::optional<double> progress_;
     double focusAmount_ = 0.0;
     bool focused_ = false;

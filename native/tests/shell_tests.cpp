@@ -2,16 +2,19 @@
 // details screens through the shell, with a memory preference store, so no
 // test touches the real data folder.
 
+#include <chrono>
 #include <cmath>
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "harness.h"
 #include "motion/preferences.h"
 #include "nav/focus_tree.h"
 #include "nav/pointer.h"
+#include "ui/catalog_view.h"
 #include "ui/details_screen.h"
 #include "ui/downloads_screen.h"
 #include "ui/pending_screen.h"
@@ -58,6 +61,14 @@ public:
     void SetFont(tvm::ui::UiFont font) override { font_ = font; ++fontSaves; }
     bool ReduceTransparency() const override { return reduceTransparency_; }
     void SetReduceTransparency(bool on) override { reduceTransparency_ = on; ++reduceTransparencySaves; }
+    std::string Accent() const override { return accent_; }
+    void SaveAccent(const std::string& value) override { accent_ = value; ++accentSaves; }
+    int VolumeBoostMax() const override { return volumeBoostMax_; }
+    void SaveVolumeBoostMax(int value) override { volumeBoostMax_ = value; }
+    bool PosterTitles() const override { return posterTitles_; }
+    void SavePosterTitles(bool on) override { posterTitles_ = on; }
+    bool ShowFps() const override { return showFps_; }
+    void SaveShowFps(bool on) override { showFps_ = on; }
 
     MotionSettings motion_;
     tvm::prefs::CorePrefs core_;
@@ -69,6 +80,11 @@ public:
     int fontSaves = 0;
     bool reduceTransparency_ = false;
     int reduceTransparencySaves = 0;
+    std::string accent_ = "default";
+    int accentSaves = 0;
+    int volumeBoostMax_ = 200;
+    bool posterTitles_ = true;
+    bool showFps_ = false;
 };
 
 // A root screen whose OK opens Settings. It records the motion it is given, so
@@ -132,22 +148,26 @@ TEST(settings_lists_the_web_rows_in_order) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
-    const std::vector<std::string> expected = {
+    std::vector<std::string> expected = {
         "Sign in and access", "Your account", "Privacy & terms", "Plan", "Services", "Streaming services",
         "Profiles", "Profiles", "Choose profile on launch",
         "Quality", "Quality", "Skip upscaled releases", "Audio language",
-        "Watching", "Autoplay next episode", "Skip intro & credits", "Sleep timer default",
+        "Watching", "Autoplay next episode", "Skip intro, recap & credits", "Volume boost maximum", "Sleep timer default",
         "Subtitles", "Subtitle mode", "Preferred subtitle languages", "Size", "Colour", "Background", "Preview",
         "Sound", "Night mode",
         "Picture", "Performance mode", "Look", "Theme", "Font", "Reduce transparency", "Reduce motion",
+        "Accent colour", "Poster titles",
         "Language", "App language",
-        "Home", "Hero previews", "Spotlight events",
+        "Home", "Hero previews", "Spotlight events", "Home rows",
+    };
+    for (const auto& [id, label] : tvm::ui::HomeSections()) expected.push_back(label);
+    const std::vector<std::string> tail = {
         "Playback", "Online subtitles", "Chapters", "Seek previews", "Version picker", "Sleep timer", "Night mode",
         "Pause when hidden", "Keyboard shortcuts",
         "Details pages", "Trailers", "Trailer backdrops", "Collections", "IMDb ratings", "Quality badges",
         "English anime titles", "Theme songs", "Spoiler blur",
         "Home and activity", "Coming up", "Surprise me", "Automatic collections", "Announcements", "Watch stats",
-        "Playback webhook",
+        "Playback webhook", "Webhook URL",
         "Live TV", "Live TV login", "Live TV playlist",
         "Real-Debrid", "Real-Debrid",
         "Downloads", "Downloads",
@@ -157,6 +177,7 @@ TEST(settings_lists_the_web_rows_in_order) {
         "This device", "Network", "Display", "Diagnostics",
         "Maintenance", "Clear cache", "Fully reset", "Restart",
     };
+    expected.insert(expected.end(), tail.begin(), tail.end());
     REQUIRE(settings.RowLabels() == expected);
 }
 
@@ -173,9 +194,13 @@ TEST(settings_surfaces_developer_diagnostics_when_dev_account_active) {
 
     const std::vector<std::string> labels = settings.RowLabels();
     REQUIRE(std::find(labels.begin(), labels.end(), "Developer Diagnostics") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Show FPS") != labels.end());
     REQUIRE_EQ(settings.DetailOf("dev-build"), std::string("v1.0.0 · Native Windows"));
     REQUIRE_EQ(settings.DetailOf("dev-rd-source"), std::string("account"));
     REQUIRE_EQ(settings.DetailOf("dev-glass"), std::string("Liquid Glass"));
+
+    settings.ActivateItem("show-fps", 0.0);
+    REQUIRE(store.showFps_);
 
     const std::optional<Command> refresh = settings.ActivateItem("dev-refresh-cache", 0.0);
     REQUIRE(refresh.has_value());
@@ -231,7 +256,15 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
     REQUIRE(settings.Navigate(Direction::Down, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("motion"));
     REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("accent"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("poster-titles"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("language"));
+    REQUIRE(settings.Navigate(Direction::Up, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("poster-titles"));
+    REQUIRE(settings.Navigate(Direction::Up, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("accent"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("motion"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
@@ -994,4 +1027,218 @@ TEST(shell_navigation_guard_blocks_screens_and_actions_before_dispatch) {
     command.action = false; command.name = "account";
     shell.Execute(command, 0);
     REQUIRE_EQ(shell.ActiveScreenName(), "account");
+}
+
+namespace {
+
+class ArtRecordingPainter final : public tvm::ui::Painter {
+public:
+    void SetBackdrop(const tvm::ui::Box& /*box*/, const std::string& url, double /*focusX*/,
+                     double /*focusY*/) override {
+        backdrops.push_back(url);
+    }
+    void Clear(tvm::ui::Color /*color*/) override {}
+    void FillRoundRect(const tvm::ui::Box& /*box*/, double /*radius*/, tvm::ui::Color /*color*/) override {}
+    void StrokeRoundRect(const tvm::ui::Box& /*box*/, double /*radius*/, double /*width*/,
+                         tvm::ui::Color /*color*/) override {}
+    bool Image(const tvm::ui::Box& /*box*/, const std::string& url, double /*radius*/) override {
+        images.push_back(url);
+        return true;
+    }
+    void Paragraph(const tvm::ui::Box& /*box*/, std::string_view text, const tvm::ui::TextStyle& /*style*/,
+                   tvm::ui::Color /*color*/) override {
+        texts.emplace_back(text);
+    }
+    void Text(const tvm::ui::Box& /*box*/, std::string_view text, const tvm::ui::TextStyle& /*style*/,
+              tvm::ui::Color /*color*/) override {
+        texts.emplace_back(text);
+    }
+    void PushClip(const tvm::ui::Box& /*box*/) override {}
+    void PopClip() override {}
+
+    bool HasText(std::string_view value) const {
+        return std::find(texts.begin(), texts.end(), value) != texts.end();
+    }
+    bool HasImage(std::string_view value) const {
+        return std::find(images.begin(), images.end(), value) != images.end();
+    }
+    bool HasBackdrop(std::string_view value) const {
+        return std::find(backdrops.begin(), backdrops.end(), value) != backdrops.end();
+    }
+
+    std::vector<std::string> texts;
+    std::vector<std::string> images;
+    std::vector<std::string> backdrops;
+};
+
+}  // namespace
+
+TEST(details_opens_immediately_with_card_art_then_fills_details) {
+    MemoryStore store;
+    tvm::ui::SceneView view;
+    tvm::ui::CardData card;
+    card.itemId = "tt900";
+    card.title = "Northward";
+    card.posterUrl = "file:poster.jpg";
+    card.backdropUrl = "file:backdrop.jpg";
+    card.detailsPosterUrl = "file:poster.jpg";
+    view.rails = {tvm::ui::RailData{"for-you", "You might like", {card}}};
+    auto home = std::make_unique<Scene>(std::vector<RailSpec>{}, store.Motion());
+    home->Layout(1920.0, 1080.0);
+    home->SetView(view, 0.0);
+    home->FocusItem("card:0:0", 0.0, false);
+
+    Shell shell(std::move(home), store);
+    shell.Layout(1920.0, 1080.0);
+    shell.Select(0.0);
+    REQUIRE_EQ(shell.ActiveScreenName(), std::string("details"));
+
+    // First paint before SetTitleInfo already has the card's title, poster, and backdrop.
+    ArtRecordingPainter first;
+    shell.Paint(first);
+    REQUIRE(first.HasText("Northward"));
+    REQUIRE(first.HasImage("file:poster.jpg"));
+    REQUIRE(first.HasImage("file:backdrop.jpg"));
+    REQUIRE(first.HasBackdrop("file:backdrop.jpg"));
+    REQUIRE(!first.HasBackdrop("asset:lighthouse.jpg"));
+
+    // Catalogue answer fills the rest, while preserving card art if Meta omits a field.
+    tvm::ui::TitleInfo ready;
+    ready.id = "tt900";
+    ready.state = tvm::ui::TitleInfo::State::Ready;
+    ready.title = "Northward";
+    ready.synopsis = "A harbour town waits out the winter.";
+    shell.SetTitleInfo("tt900", ready);
+    ArtRecordingPainter updated;
+    shell.Paint(updated);
+    REQUIRE(updated.HasText("A harbour town waits out the winter."));
+    REQUIRE(updated.HasImage("file:poster.jpg"));
+    REQUIRE(updated.HasBackdrop("file:backdrop.jpg"));
+}
+
+TEST(details_prefetch_waits_150ms_and_tracks_focus_and_hover) {
+    tvm::ui::DetailsPrefetchTracker tracker;
+    REQUIRE(!tracker.Update(std::string("tt1"), 0.0).has_value());
+    REQUIRE_NEAR(*tracker.NextDueMs(), 150.0, 1e-9);
+    REQUIRE(!tracker.Update(std::string("tt1"), 149.0).has_value());
+    const std::optional<std::string> hit = tracker.Update(std::string("tt1"), 150.0);
+    REQUIRE_EQ(hit, std::optional<std::string>("tt1"));
+    REQUIRE(!tracker.NextDueMs().has_value());
+    // Staying on the same card does not trigger again; moving resets the 150 ms timer.
+    REQUIRE(!tracker.Update(std::string("tt1"), 400.0).has_value());
+    REQUIRE(!tracker.Update(std::string("tt2"), 400.0).has_value());
+    REQUIRE(!tracker.Update(std::string("tt2"), 540.0).has_value());
+    REQUIRE_EQ(tracker.Update(std::string("tt2"), 550.0), std::optional<std::string>("tt2"));
+    REQUIRE(!tracker.Update(std::nullopt, 600.0).has_value());
+    REQUIRE(!tracker.NextDueMs().has_value());
+
+    // Focused or hovered cards expose their details metadata; browse tiles do not.
+    Scene scene(std::vector<RailSpec>{}, MotionSettings{});
+    scene.Layout(1920.0, 1080.0);
+    tvm::ui::SceneView view;
+    tvm::ui::CardData c1;
+    c1.itemId = "tt1";
+    c1.title = "One";
+    c1.posterUrl = "p1.jpg";
+    c1.backdropUrl = "b1.jpg";
+    tvm::ui::CardData c2;
+    c2.itemId = "browse:drama";
+    c2.title = "Drama";
+    view.rails = {tvm::ui::RailData{"for-you", "You might like", {c1, c2}}};
+    scene.SetView(view, 0.0);
+    const tvm::ui::Box firstCard = scene.CardBox(0, 0);
+    scene.ShowFocus(10.0);
+    // ShowFocus already lands on the first card, and FocusItem reports false for an item that is already focused.
+    scene.FocusItem("card:0:0", 10.0, false);
+    REQUIRE(scene.FocusedDetailsCard() != nullptr);
+    REQUIRE_EQ(scene.FocusedDetailsCard()->itemId(), std::string("tt1"));
+    REQUIRE(scene.FocusItem("card:0:1", 20.0, false));
+    REQUIRE(scene.FocusedDetailsCard() == nullptr);
+    REQUIRE(firstCard.width > 0.0);
+}
+
+TEST(details_open_to_first_paint_benchmark) {
+    constexpr int kRuns = 5;
+    double beforeTotalUs = 0.0;
+    double afterImmediateTotalUs = 0.0;
+    double afterPrefetchTotalUs = 0.0;
+
+    for (int i = 0; i < kRuns; ++i) {
+        // Before: waiting for metadata fetch before Details can paint title, poster, and backdrop.
+        const auto t0 = std::chrono::steady_clock::now();
+        MemoryStore store;
+        Shell shell(MakeScene(SmallRails()), store);
+        shell.Layout(1920.0, 1080.0);
+        Command open;
+        open.name = "details";
+        open.params = {{"id", "tt777"}};
+        shell.Execute(open, 0.0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
+        tvm::ui::TitleInfo fetched;
+        fetched.id = "tt777";
+        fetched.state = tvm::ui::TitleInfo::State::Ready;
+        fetched.title = "Harbour Lights";
+        fetched.posterUrl = "file:poster.jpg";
+        fetched.backdropUrl = "file:backdrop.jpg";
+        shell.SetTitleInfo("tt777", fetched);
+        ArtRecordingPainter painter;
+        shell.Paint(painter);
+        const auto t1 = std::chrono::steady_clock::now();
+        REQUIRE(painter.HasImage("file:poster.jpg"));
+        beforeTotalUs += std::chrono::duration<double, std::micro>(t1 - t0).count();
+    }
+
+    for (int i = 0; i < kRuns; ++i) {
+        // After (card params): open Details immediately with poster, title, and backdrop already shown.
+        const auto t0 = std::chrono::steady_clock::now();
+        MemoryStore store;
+        Shell shell(MakeScene(SmallRails()), store);
+        shell.Layout(1920.0, 1080.0);
+        Command open;
+        open.name = "details";
+        open.params = {{"id", "tt777"}, {"title", "Harbour Lights"}, {"poster", "file:poster.jpg"},
+                       {"backdrop", "file:backdrop.jpg"}};
+        shell.Execute(open, 0.0);
+        ArtRecordingPainter painter;
+        shell.Paint(painter);
+        const auto t1 = std::chrono::steady_clock::now();
+        REQUIRE(painter.HasText("Harbour Lights"));
+        REQUIRE(painter.HasImage("file:poster.jpg"));
+        REQUIRE(painter.HasBackdrop("file:backdrop.jpg"));
+        afterImmediateTotalUs += std::chrono::duration<double, std::micro>(t1 - t0).count();
+    }
+
+    tvm::ui::TitleInfo prefetched;
+    prefetched.id = "tt777";
+    prefetched.state = tvm::ui::TitleInfo::State::Ready;
+    prefetched.title = "Harbour Lights";
+    prefetched.posterUrl = "file:poster.jpg";
+    prefetched.backdropUrl = "file:backdrop.jpg";
+    prefetched.synopsis = "Ready from 150 ms prefetch cache.";
+    for (int i = 0; i < kRuns; ++i) {
+        // After (150 ms prefetch hit): full details ready on open without network wait.
+        const auto t0 = std::chrono::steady_clock::now();
+        MemoryStore store;
+        Shell shell(MakeScene(SmallRails()), store);
+        shell.Layout(1920.0, 1080.0);
+        Command open;
+        open.name = "details";
+        open.params = {{"id", "tt777"}, {"title", "Harbour Lights"}, {"poster", "file:poster.jpg"},
+                       {"backdrop", "file:backdrop.jpg"}};
+        shell.Execute(open, 0.0);
+        shell.SetTitleInfo("tt777", prefetched);
+        ArtRecordingPainter painter;
+        shell.Paint(painter);
+        const auto t1 = std::chrono::steady_clock::now();
+        REQUIRE(painter.HasText("Ready from 150 ms prefetch cache."));
+        afterPrefetchTotalUs += std::chrono::duration<double, std::micro>(t1 - t0).count();
+    }
+
+    const double beforeAvgMs = (beforeTotalUs / kRuns) / 1000.0;
+    const double immediateAvgMs = (afterImmediateTotalUs / kRuns) / 1000.0;
+    const double prefetchAvgMs = (afterPrefetchTotalUs / kRuns) / 1000.0;
+    std::printf("BENCH details_open_to_first_paint: before=%.3f ms, after_immediate=%.3f ms, after_prefetched=%.3f ms\n",
+                beforeAvgMs, immediateAvgMs, prefetchAvgMs);
+    REQUIRE(immediateAvgMs < beforeAvgMs);
+    REQUIRE(prefetchAvgMs < beforeAvgMs);
 }

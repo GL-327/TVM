@@ -1,3 +1,4 @@
+import { syncStoreChanged } from '../sync/storeEvents.ts';
 import { progressPath } from '../update/paths.ts';
 import { readPrivateJson } from './privateJson.ts';
 import { writeSealed } from './vault.ts';
@@ -25,16 +26,21 @@ export function readProgress(dataDir: string): ProgressMap {
 
 export function writeProgress(dataDir: string, id: string, position: number, duration: number): ProgressMap {
   const all = readProgress(dataDir);
-  const previous = all[id];
+  const previous = Object.hasOwn(all, id) ? all[id] : undefined;
   const updated = new Date().toISOString();
   const finished = isFinished({ position, duration });
   const firstCrossing = finished && !isFinished(previous);
-  all[id] = { ...previous, position, duration, updated, hiddenFromContinueWatching: false,
+  Object.defineProperty(all, id, { configurable: true, enumerable: true, writable: true, value: { ...previous, position, duration, updated, hiddenFromContinueWatching: false,
     ...(finished ? { completedAt: firstCrossing ? updated : previous?.completedAt ?? updated } : {}),
     completions: (previous?.completions ?? (previous?.completedAt || isFinished(previous) ? 1 : 0)) + (firstCrossing ? 1 : 0),
-  };
-  writeSealed(dataDir, progressPath(dataDir), all);
+  } });
+  save(dataDir, all);
   return all;
+}
+
+function save(dataDir: string, progress: ProgressMap): void {
+  writeSealed(dataDir, progressPath(dataDir), progress);
+  syncStoreChanged(dataDir);
 }
 
 export function removeContinueWatching(dataDir: string, id: string): void {
@@ -43,10 +49,11 @@ export function removeContinueWatching(dataDir: string, id: string): void {
   for (const [key, entry] of Object.entries(all)) {
     if ((key === id || key.startsWith(id + ':')) && !entry.hiddenFromContinueWatching && !isFinished(entry)) {
       entry.hiddenFromContinueWatching = true;
+      entry.updated = new Date().toISOString();
       changed = true;
     }
   }
-  if (changed) writeSealed(dataDir, progressPath(dataDir), all);
+  if (changed) save(dataDir, all);
 }
 
 export function setWatched(dataDir: string, id: string, watched: boolean): void {
@@ -59,7 +66,7 @@ export function setWatched(dataDir: string, id: string, watched: boolean): void 
   } else if (old) {
     const { completedAt: _at, completedTitle: _title, completedYear: _year, ...history } = old;
     all[id] = { ...history, position: 0, updated: new Date().toISOString() };
-    writeSealed(dataDir, progressPath(dataDir), all);
+    save(dataDir, all);
   }
 }
 
@@ -101,6 +108,7 @@ export function pickContinueWatching<T extends { id: string; title: string; show
 
 /** Preserve names after catalog rotation; only confirmed completed entries can be archived. */
 export function finishedTitles(dataDir: string, items: readonly { id: string; title: string; year: number | null }[], progress: ProgressMap): Array<{ id: string; title: string; year: number | null }> {
+  const current = readProgress(dataDir);
   let changed = false;
   const byId = new Map(items.map(item => [item.id, item]));
   for (const [id, entry] of Object.entries(progress)) {
@@ -110,12 +118,14 @@ export function finishedTitles(dataDir: string, items: readonly { id: string; ti
     const item = byId.get(key);
     if (!item) continue;
     const episode = id.slice(key.length).replace(/^:/, '');
-    entry.completedTitle = episode ? `${item.title} · episode ${episode}` : item.title;
-    entry.completedYear = item.year;
-    entry.completedAt ??= entry.updated;
+    const latest = Object.hasOwn(current, id) ? current[id] : undefined;
+    if (!latest || JSON.stringify(latest) !== JSON.stringify(entry)) continue;
+    entry.completedTitle = latest.completedTitle = episode ? `${item.title} · episode ${episode}` : item.title;
+    entry.completedYear = latest.completedYear = item.year;
+    entry.completedAt = latest.completedAt = entry.completedAt ?? entry.updated;
     changed = true;
   }
-  if (changed) writeSealed(dataDir, progressPath(dataDir), progress);
+  if (changed) save(dataDir, current);
   return Object.entries(progress).filter(([,entry]) => !!entry.completedTitle && (isFinished(entry) || !!entry.completedAt))
     .sort(([,a],[,b]) => (b.completedAt ?? b.updated).localeCompare(a.completedAt ?? a.updated))
     .map(([id,entry]) => ({ id, title: entry.completedTitle!, year: entry.completedYear ?? null }));

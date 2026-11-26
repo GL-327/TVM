@@ -1656,7 +1656,7 @@ void App::ShowServiceHub(const hubs::Hub& hub) {
         ui::RailData data;
         data.id = rail.id;
         data.title = rail.title;
-        for (const catalog::MediaItem& item : rail.items) if (Allowed(item)) data.cards.push_back(ui::CardData{item.id, item.title, item.poster, std::nullopt});
+        for (const catalog::MediaItem& item : rail.items) if (Allowed(item)) data.cards.push_back(ui::CardFromMedia(item));
         view.rails.push_back(std::move(data));
     }
     if (view.rails.empty()) view.status = "Nothing in " + hub.name + " yet. Check this PC is online, then open it again.";

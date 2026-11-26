@@ -117,23 +117,31 @@ void App::RefreshExtrasHome() {
     if (!account_.usable || extrasHomeBusy_ || NowMs() - extrasHomeCheckedMs_ < 300000) return;
     extrasHomeBusy_ = true; extrasHomeCheckedMs_ = NowMs();
     const auto epoch = extrasEpoch_;
-    background_->Run([this, epoch, prefs = extrasPrefs_]() mutable {
-        ui::RailData rail; rail.id = "extras-upcoming"; rail.title = "New episodes this week";
-        try { prefs = extras::ParsePreferences(core_->Call("/api/prefs")); } catch (...) {}
+    const auto prefsSeq = prefsSaveSeq_;
+    background_->Run([this, epoch, prefsSeq, prefs = extrasPrefs_]() mutable {
+        ui::RailData rail; rail.id = "upcoming"; rail.title = "New episodes this week";
+        nlohmann::json data;
+        try {
+            data = core_->Call("/api/prefs");
+            prefs = extras::ParsePreferences(data);
+        } catch (...) {}
         if (prefs.Enabled("comingUp")) try {
             const auto body = core_->Call("/api/extras/upcoming/home");
             if (body.contains("items") && body["items"].is_array()) for (const auto& entry : body["items"]) {
                 if (!entry.is_object() || !entry.contains("item")) continue;
                 const auto item = catalog::FromJson(entry["item"]);
                 if (!item) continue;
-                ui::CardData card{item->id, item->title, item->poster, std::nullopt};
+                ui::CardData card = ui::CardFromMedia(*item);
                 card.subtitle = extras::UpcomingLabel(entry.value("next", nlohmann::json()));
                 rail.cards.push_back(std::move(card));
             }
         } catch (...) {}
-        background_->PostToUi([this, epoch, rail, prefs] {
+        background_->PostToUi([this, epoch, prefsSeq, rail, data = std::move(data)] {
             if (epoch != extrasEpoch_) return;
-            extrasHomeBusy_ = false; upcomingRail_ = rail; extrasPrefs_ = prefs;
+            extrasHomeBusy_ = false;
+            if (prefsSeq != prefsSaveSeq_ || prefsSaving_) return;
+            ApplySettingsPrefs(data);
+            upcomingRail_ = rail;
             QueueRailArtwork({rail}); RebuildHome(); dirty_ = true;
         });
     });
@@ -144,6 +152,8 @@ void App::LoadPlayerExtras(int generation, const playback::Resolution& resolutio
     const auto query = Query(playerId_, playerView_.title);
     if (query.empty()) return;
     playerSegments_ = extras::ParseSegments(resolution.segments);
+    playerView_.segments = playerSegments_;
+    shell_->SetPlayerView(playerView_, NowMs());
     const auto known = titles_.find(SaveId());
     bool anime = false;
     if (known != titles_.end()) for (const auto& genre : known->second.genres) if (genre == "Anime" || genre == "anime" || genre == "Animation" || genre == "animation") anime = true;
@@ -156,6 +166,9 @@ void App::LoadPlayerExtras(int generation, const playback::Resolution& resolutio
             extrasPrefs_ = prefs;
             LoadPreferredSubtitle();
             for (std::size_t i = 0; i < segments.size(); ++i) if (segments[i]) playerSegments_[i] = segments[i];
+            playerView_.segments = playerSegments_;
+            shell_->SetPlayerView(playerView_, NowMs());
+            dirty_ = true;
         });
     });
     if (!playerPrefs_.Enabled("onlineSubtitles")) return;
@@ -398,43 +411,71 @@ void App::ExtrasAction(const std::string& verb) {
         });
     });
 }
+bool App::ApplySettingsPrefs(const nlohmann::json& data) {
+    if (!data.is_object()) return false;
+    extrasPrefs_ = extras::ParsePreferences(data);
+    const auto settings = ui::CoreSettings::FromJson(data);
+    if (data.contains("volumeBoostMax") && data["volumeBoostMax"].is_number()) {
+        const int cap = static_cast<int>(std::clamp(data["volumeBoostMax"].get<double>(), 100.0, 300.0));
+        if (cap != store_->VolumeBoostMax()) store_->SaveVolumeBoostMax(cap);
+        ApplyVolumeCap();
+    }
+    if (data.contains("posterTitles") && data["posterTitles"].is_boolean()) {
+        const bool enabled = data["posterTitles"].get<bool>();
+        if (enabled != store_->PosterTitles()) store_->SavePosterTitles(enabled);
+    }
+    shell_->SetCoreSettings(settings);
+    const bool homeChanged = homeSections_ != settings.homeSections;
+    homeSections_ = settings.homeSections;
+    dirty_ = true;
+    return homeChanged;
+}
+
 void App::LoadSettingsPrefs() {
-    if (!account_.usable) return;
+    if (!account_.usable || prefsSaving_) return;
     const auto seq = prefsSaveSeq_;
-    background_->Run([this, seq] {
+    const auto epoch = extrasEpoch_;
+    background_->Run([this, seq, epoch] {
         nlohmann::json data;
         try { data = core_->Call("/api/prefs"); } catch (...) {}
-        background_->PostToUi([this, seq, data] {
-            // A change made while this was in flight is newer than what Core answered.
-            if (seq != prefsSaveSeq_ || !data.is_object()) return;
-            extrasPrefs_ = extras::ParsePreferences(data);
-            shell_->SetCoreSettings(ui::CoreSettings::FromJson(data));
-            dirty_ = true;
+        background_->PostToUi([this, seq, epoch, data = std::move(data)] {
+            if (seq != prefsSaveSeq_ || epoch != extrasEpoch_ || prefsSaving_) return;
+            if (ApplySettingsPrefs(data)) RebuildHome();
         });
     });
 }
 
 void App::SavePrefsPatch(const nlohmann::json& patch) {
-    // The two choices Core has no field for were saved by the screen; only the Home rows need rebuilding.
-    if (patch.contains("spotlightEvents")) { RebuildHome(); dirty_ = true; }
+    if (patch.contains("volumeBoostMax")) ApplyVolumeCap();
+    if (patch.contains("homeSections")) homeSections_ = ui::ReadHomeSections(patch);
+    if (patch.contains("spotlightEvents") || patch.contains("homeSections")) { RebuildHome(); dirty_ = true; }
     nlohmann::json body = patch;
     body.erase("spotlightEvents");
     body.erase("sleepTimerDefault");
     if (body.empty() || !account_.usable) return;
-    const auto seq = ++prefsSaveSeq_;
-    background_->Run([this, seq, body] {
-        nlohmann::json data; bool saved = false;
-        try { data = core_->Call("/api/prefs", "PUT", body); saved = data.is_object(); } catch (...) {}
-        if (!saved) try { data = core_->Call("/api/prefs"); } catch (...) {}
-        background_->PostToUi([this, seq, data, saved] {
-            if (!data.is_object()) return;
-            // Only the newest answer is shown, so a quick run of toggles does not flick back to an older one.
-            if (seq != prefsSaveSeq_) return;
-            extrasPrefs_ = extras::ParsePreferences(data);
-            shell_->SetCoreSettings(ui::CoreSettings::FromJson(data));
-            // Home's extra rows read the preferences again soon after a change.
-            if (saved) extrasHomeCheckedMs_ = -600000;
-            dirty_ = true;
+    ++prefsSaveSeq_;
+    // Send one PUT at a time. A slow earlier response must not overwrite a newer row order on disk.
+    pendingPrefs_.update(body, true);
+    FlushSettingsPrefs();
+}
+
+void App::FlushSettingsPrefs() {
+    if (prefsSaving_ || pendingPrefs_.empty()) return;
+    prefsSaving_ = true;
+    const auto seq = prefsSaveSeq_;
+    const auto epoch = extrasEpoch_;
+    auto body = std::exchange(pendingPrefs_, nlohmann::json::object());
+    background_->Run([this, seq, epoch, body = std::move(body)] {
+        nlohmann::json data;
+        try { data = core_->Call("/api/prefs", "PUT", body); } catch (...) {}
+        if (!data.is_object()) try { data = core_->Call("/api/prefs"); } catch (...) {}
+        background_->PostToUi([this, seq, epoch, data = std::move(data)] {
+            prefsSaving_ = false;
+            if (seq == prefsSaveSeq_ && epoch == extrasEpoch_) {
+                extrasHomeCheckedMs_ = -600000;
+                if (ApplySettingsPrefs(data)) RebuildHome();
+            }
+            FlushSettingsPrefs();
         });
     });
 }

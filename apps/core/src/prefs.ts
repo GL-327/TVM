@@ -1,4 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { currentSyncDirectory } from './requestContext.ts';
+import { readSealed, writeSealed } from './providers/vault.ts';
+import { SYNC_PREFS } from './sync/schema.ts';
+import { syncStoreChanged } from './sync/storeEvents.ts';
 import { prefsPath } from './update/paths.ts';
 
 const LANGUAGES = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh']);
@@ -99,7 +104,7 @@ function normalizePrefs(raw: PrefsPatch, current: CorePrefs): CorePrefs {
   };
 }
 
-export function readPrefs(dataDir: string): CorePrefs {
+export function readDevicePrefs(dataDir: string): CorePrefs {
   try {
     const raw = JSON.parse(readFileSync(prefsPath(dataDir), 'utf8')) as Partial<CorePrefs>;
     return normalizePrefs(raw, DEFAULT_PREFS);
@@ -108,11 +113,63 @@ export function readPrefs(dataDir: string): CorePrefs {
   }
 }
 
+export function syncPrefValues(prefs: CorePrefs): Record<string, unknown> {
+  return Object.fromEntries(SYNC_PREFS.map(key => [key, key.startsWith('extras.')
+    ? prefs.extras[key.slice(7) as keyof Extras] : prefs[key as keyof CorePrefs]]));
+}
+
+export function syncPrefsPath(scope: string): string {
+  return join(scope, 'sync-prefs.enc');
+}
+
+export function readSyncPrefs(scope: string): Record<string, unknown> {
+  return readSealed<Record<string, unknown>>(scope, syncPrefsPath(scope)) ?? {};
+}
+
+export function saveSyncPrefs(scope: string, values: Record<string, unknown>): void {
+  writeSealed(scope, syncPrefsPath(scope), values);
+}
+
+export function readPrefs(dataDir: string): CorePrefs {
+  const device = readDevicePrefs(dataDir);
+  const scope = currentSyncDirectory(dataDir);
+  if (!scope) return device;
+  const synced = { ...syncPrefValues(DEFAULT_PREFS), ...readSyncPrefs(scope) };
+  const extras = { ...EXTRA_DEFAULTS };
+  for (const id of Object.keys(extras) as (keyof Extras)[]) {
+    const value = synced['extras.' + id];
+    if (typeof value === 'boolean') extras[id] = value;
+  }
+  return normalizePrefs({ ...synced as PrefsPatch, extras }, { ...device, subtitleLanguages: DEFAULT_PREFS.subtitleLanguages });
+}
+
 export function writePrefs(dataDir: string, patch: PrefsPatch): CorePrefs {
+  const scope = currentSyncDirectory(dataDir);
   const current = readPrefs(dataDir);
   const next = normalizePrefs(patch, current);
+  const device = scope ? readDevicePrefs(dataDir) : next;
+  if (scope) {
+    const values = readSyncPrefs(scope);
+    const before = syncPrefValues(current);
+    const after = syncPrefValues(next);
+    let changed = false;
+    for (const key of SYNC_PREFS) {
+      if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+      values[key] = after[key];
+      changed = true;
+    }
+    if (changed) {
+      saveSyncPrefs(scope, values);
+      syncStoreChanged(scope);
+    }
+    // Use the original device values for account fields so another account never inherits this patch.
+    Object.assign(device, {
+      language: next.language, autoUpdate: next.autoUpdate, heroPreviews: next.heroPreviews, quality: next.quality,
+      skipUpscaled: next.skipUpscaled, subtitleMode: next.subtitleMode, webhookUrl: next.webhookUrl,
+    });
+  }
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(prefsPath(dataDir), JSON.stringify(next));
+  writeFileSync(prefsPath(dataDir), JSON.stringify(device));
   return next;
 }
 

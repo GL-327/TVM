@@ -21,6 +21,14 @@ inline constexpr TextStyle Overline(double rem) { return {0.6875 * rem, true, 60
 
 enum class UiFont { Geist, Inter, System };
 
+constexpr std::uint32_t AccentColour(std::string_view accent) {
+    if (accent == "indigo") return 0xB6C2FF;
+    if (accent == "coral") return 0xFFB0A6;
+    if (accent == "amber") return 0xFFD07A;
+    if (accent == "emerald") return 0x7BE8B3;
+    return 0x9EDCFF;
+}
+
 constexpr UiFont ParseUiFont(std::string_view id) {
     return id == "inter" ? UiFont::Inter : id == "system" ? UiFont::System : UiFont::Geist;
 }
@@ -88,6 +96,7 @@ inline const Color& kPrimary = palette.primary;
 inline const Color& kOnPrimary = palette.onPrimary;
 inline bool reduceTransparency = false;
 inline bool reduceMotion = false;
+inline bool posterTitles = true;
 inline UiFont font = UiFont::Geist;
 inline std::optional<Point> pointer;
 }  // namespace tokens
@@ -105,11 +114,18 @@ private:
 class ThemeScope {
 public:
     explicit ThemeScope(Theme theme, bool reducedTransparency = tokens::reduceTransparency,
-                        bool reducedMotion = tokens::reduceMotion)
+                        bool reducedMotion = tokens::reduceMotion,
+                        std::string_view accent = "default", bool posterTitles = tokens::posterTitles)
         : previous_(tokens::palette),
           prevReduceTransparency_(tokens::reduceTransparency),
-          prevReduceMotion_(tokens::reduceMotion) {
+          prevReduceMotion_(tokens::reduceMotion),
+          prevPosterTitles_(tokens::posterTitles) {
         tokens::palette = theme == Theme::Light ? kLightPalette : kDarkPalette;
+        if (theme == Theme::Dark) {
+            tokens::palette.accentStrong = Rgb(AccentColour(accent));
+            tokens::palette.focusRing = tokens::palette.accentStrong;
+        }
+        tokens::posterTitles = posterTitles;
         tokens::reduceTransparency = reducedTransparency;
         tokens::reduceMotion = reducedMotion;
     }
@@ -117,6 +133,7 @@ public:
         tokens::palette = previous_;
         tokens::reduceTransparency = prevReduceTransparency_;
         tokens::reduceMotion = prevReduceMotion_;
+        tokens::posterTitles = prevPosterTitles_;
     }
     ThemeScope(const ThemeScope&) = delete;
     ThemeScope& operator=(const ThemeScope&) = delete;
@@ -124,6 +141,7 @@ private:
     Palette previous_;
     bool prevReduceTransparency_ = false;
     bool prevReduceMotion_ = false;
+    bool prevPosterTitles_ = true;
 };
 
 }  // namespace tvm::ui

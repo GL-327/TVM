@@ -124,10 +124,12 @@ final class TVMWebhook {
             if let duration = event.duration { payload["duration"] = duration }
         }
         let body = JSONValue.data(payload)
+        // Hold the sender itself, not just a weak self: Swift may release the webhook right after this call,
+        // and an event that was accepted must still go out.
+        let sender = self.sender
         Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
-            await self.sender(url, body)
-            self.finishOne()
+            await sender(url, body)
+            self?.finishOne()
         }
     }
 

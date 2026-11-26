@@ -226,7 +226,7 @@ export function wrapGroupOf(element: HTMLElement): HTMLElement | null {
     const match = node.closest<HTMLElement>(WRAP_GROUP_SELECTOR);
     if (match === null) return null;
     // Tiles like `.app-card--grid` match the wildcard; they are not hosts.
-    if (!match.hasAttribute('data-focus-id')) return match;
+    if (!match.hasAttribute('data-focus-id') && match.dataset.wrap !== 'none') return match;
     node = match.parentElement;
   }
   return null;
@@ -252,7 +252,9 @@ export function wrapGroupRecord(group: HTMLElement): WrapGroupRecord {
     return { group, items: hit.items, kind: hit.kind, columns: hit.columns };
   }
 
-  const items = focusablesIn(group);
+  let items = focusablesIn(group);
+  // The capsule and side controls share the desktop row. The popup has its own vertical list.
+  if (group.classList.contains('polish-nav')) items = items.filter((item) => wrapGroupOf(item) === group);
   const inferred = inferWrapKind(group.className, group.getAttribute('data-wrap'));
   let kind: WrapAxis;
   let columns: number;

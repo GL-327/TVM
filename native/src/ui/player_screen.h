@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "motion/tween.h"
+#include "core/extras.h"
 #include "core/mpv.h"
 #include "ui/button_focus.h"
 #include "ui/layout.h"
@@ -71,6 +72,7 @@ struct PlayerView {
     bool hideDownloads = false;
     // From 0 to kMaxVolume, where 1 is 100%.
     double volume = 1.0;
+    double volumeCap = kMaxVolume;
     bool muted = false;
     bool fullscreen = false;
     std::string errorTitle;
@@ -83,6 +85,7 @@ struct PlayerView {
     std::vector<PlayerOption> qualities;
     std::vector<PlayerOption> versions;
     std::vector<mpv::Chapter> chapters;
+    extras::Segments segments;
     std::vector<std::pair<std::string, std::string>> stats;
     bool showStats = false, showShortcuts = false, canShowShortcuts = true;
     bool sleepTimer = true, sleepAtEnd = false, nightAvailable = false, nightMode = false;
@@ -218,6 +221,8 @@ public:
     void HoldPreview(double seconds, double nowMs);
     // The time the trickplay preview shows: under a drag, a hover, or a held arrow. Nothing when none.
     std::optional<double> PreviewSeconds() const;
+    // The intro, recap, credits, or chapter label at `seconds` on the seek bar, if any.
+    std::string MarkerLabelAt(double seconds) const;
 
 private:
     std::vector<std::string> Items() const;

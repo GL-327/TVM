@@ -6,7 +6,7 @@ import type { AccountRecord } from './providers/accounts.ts';
  * that has no other way to know. Real-Debrid uses it to pick the account's own
  * key instead of threading an account through every media call.
  */
-const current = new AsyncLocalStorage<{ sessionToken: string | undefined; account?: AccountRecord | null }>();
+const current = new AsyncLocalStorage<{ sessionToken: string | undefined; account?: AccountRecord | null; syncDirectory?: { base: string; path: string } }>();
 
 export function runForSession<T>(sessionToken: string | undefined, work: () => T): T {
   return current.run({ sessionToken }, work);
@@ -19,6 +19,16 @@ export function currentSessionToken(): string | undefined {
 export function setCurrentAccount(account: AccountRecord | null): void {
   const context = current.getStore();
   if (context) context.account = account;
+}
+
+export function setSyncDirectory(base: string, path: string): void {
+  const context = current.getStore();
+  if (context) context.syncDirectory = { base, path };
+}
+
+export function currentSyncDirectory(base: string): string | undefined {
+  const directory = current.getStore()?.syncDirectory;
+  return directory?.base === base ? directory.path : undefined;
 }
 
 export function currentAccount(): AccountRecord | null {

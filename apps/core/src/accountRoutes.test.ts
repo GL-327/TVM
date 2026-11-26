@@ -110,6 +110,7 @@ describe('remote account HTTP compatibility', () => {
     expect(rd.body).toMatchObject({ rdKey: true, rdKeyHint: '\u2022'.repeat(4) });
     expect(JSON.stringify(rd.body)).not.toContain('fixture-rd-secret');
     expect((await post('suspend', { suspended: true })).body.suspended).toBe(true);
+    expect((await f.call(`/api/admin/accounts/${f.member.id}/clear-sync`, { token: 'admin-session', body: {} })).status).toBe(200);
     expect((await post('erase', {})).body).toMatchObject({ ok: true, summary: expect.any(Object) });
     const calls = f.api.mock.calls.filter(([url]) => String(url).includes('/v1/admin/'));
     for (const [, init] of calls) expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fixture-admin-key');

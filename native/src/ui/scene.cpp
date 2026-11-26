@@ -1,5 +1,7 @@
 #include "ui/scene.h"
 
+#include "ui/controls.h"
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -20,7 +22,7 @@ constexpr double kEmphasisInMs = 150.0;
 constexpr double kEmphasisOutMs = 220.0;
 constexpr double kPressInMs = 70.0;
 constexpr double kPressOutMs = 320.0;
-constexpr double kIndicatorMs = 380.0;
+constexpr double kIndicatorMs = controls::kDropletMs;
 // The focus highlight starts just after the plate brightens and crosses in under a second.
 constexpr double kSweepDelayMs = 90.0;
 constexpr double kSweepMs = 850.0;
@@ -128,11 +130,6 @@ bool IsHeroKey(const std::string& key) {
 Color Faded(Color color, double amount) {
     color.a *= std::clamp(amount, 0.0, 1.0);
     return color;
-}
-
-Box LerpBox(const Box& from, const Box& to, double t) {
-    return Box{from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, from.width + (to.width - from.width) * t,
-               from.height + (to.height - from.height) * t};
 }
 
 // The box grown or shrunk by `scale` about its centre.
@@ -406,15 +403,7 @@ std::optional<Box> Scene::TabIndicatorBox() const {
     if (!activeTab_.has_value() || *activeTab_ >= tops_.size() || !Streamy()) return std::nullopt;
     const Box to = TopBoxScreen(*activeTab_);
     if (!indicatorMove_.has_value() || indicatorMove_->Done(clockMs_) || indicatorCrossFade_) return to;
-    const double elapsed = indicatorMove_->Value(clockMs_) * kIndicatorMs;
-    const double t = std::clamp(motion::SpringProgress(elapsed), 0.0, 1.0);
-    Box box = LerpBox(indicatorFrom_, to, t);
-    // The glass stretches a little along its path, like a drop of liquid, and settles back as it arrives.
-    const double travel = std::fabs(to.CenterX() - indicatorFrom_.CenterX());
-    const double stretch = std::min(box.width * 0.25, travel * 0.16) * std::sin(kPi * t);
-    box.x -= stretch / 2.0;
-    box.width += stretch;
-    return box;
+    return controls::DropletBox(indicatorFrom_, to, indicatorMove_->Value(clockMs_) * kIndicatorMs);
 }
 
 double Scene::EmphasisOf(const std::string& key) const {
@@ -648,6 +637,7 @@ void Scene::Build(const std::vector<RailData>& rails) {
             const CardData& data = spec.cards[i];
             const std::string key = CardKey(r, i);
             auto card = std::make_unique<Card>(data.title, key, data.itemId, data.posterUrl, data.progress);
+            card->SetDetailsArtwork(data.backdropUrl, data.detailsPosterUrl);
             if (data.logo) card->SetLogo(data.subtitle);
             else if (data.feature) card->SetFeature(data.subtitle);
             else if (data.category) card->SetCategory();
@@ -1257,6 +1247,16 @@ std::optional<std::string> Scene::FocusedItemId() const {
     const std::optional<std::string> focused = focus_.Focused();
     if (!focused.has_value() || !cardByKey_.contains(*focused)) return std::nullopt;
     return cards_[cardByKey_.at(*focused)].card->itemId();
+}
+
+const Card* Scene::FocusedDetailsCard() const {
+    if (focusHidden_ || cardAction_ != CardAction::Details) return nullptr;
+    const auto key = focus_.Focused();
+    if (!key) return nullptr;
+    const auto found = cardByKey_.find(*key);
+    if (found == cardByKey_.end()) return nullptr;
+    const Card* card = cards_[found->second].card;
+    return card->itemId().empty() || card->itemId().starts_with("browse:") ? nullptr : card;
 }
 
 bool Scene::FocusTitle(const std::string& itemId, double nowMs) {
@@ -2363,6 +2363,7 @@ std::optional<Command> Scene::Select(double nowMs) {
             command.name = "details";
             command.params["id"] = hero.itemId;
             command.params["title"] = hero.title;
+            command.params["backdrop"] = hero.backdropUrl;
         } else {
             command.name = "tvm-stream";
         }
@@ -2385,6 +2386,8 @@ std::optional<Command> Scene::Select(double nowMs) {
         command.name = "details";
         command.params["id"] = card.card->itemId();
         command.params["title"] = card.card->title();
+        command.params["poster"] = card.card->detailsPosterUrl();
+        command.params["backdrop"] = card.card->backdropUrl();
         return command;
     case CardAction::Play:
         // A channel plays over the screen, as the Node core's player does.

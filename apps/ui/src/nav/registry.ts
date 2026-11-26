@@ -1,4 +1,5 @@
 import { lazy, type ComponentType } from 'react';
+import { Details } from '../screens/Details';
 import { ConfirmModal } from '../screens/ConfirmModal';
 import { Home } from '../screens/Home';
 import { NoticeModal } from '../screens/NoticeModal';
@@ -8,7 +9,6 @@ const Account = lazy(() => import('../screens/Account').then((m) => ({ default: 
 const Accounts = lazy(() => import('../screens/Accounts').then((m) => ({ default: m.Accounts })));
 const Apps = lazy(() => import('../screens/Apps').then((m) => ({ default: m.Apps })));
 const Donate = lazy(() => import('../screens/Donate').then((m) => ({ default: m.Donate })));
-const Details = lazy(() => import('../screens/Details').then((m) => ({ default: m.Details })));
 const Downloads = lazy(() => import('../screens/Downloads').then((m) => ({ default: m.Downloads })));
 const Developer = lazy(() => import('../screens/Developer').then((m) => ({ default: m.Developer })));
 const DiagnosticsModal = lazy(() => import('../screens/DiagnosticsModal').then((m) => ({ default: m.DiagnosticsModal })));
@@ -51,7 +51,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   home: { component: Home, defaultFocus: 'hero-play' },
   library: { component: Library, defaultFocus: 'stream-search' },
   watchlist: { component: Watchlist, defaultFocus: 'watchlist' },
-  live: { component: LiveTV, defaultFocus: 'host' },
+  live: { component: LiveTV, defaultFocus: 'live-back' },
   'live-xtream': { component: LiveXtream, defaultFocus: 'host' },
   'live-playlist': { component: LivePlaylist, defaultFocus: 'url' },
   'live-picks': { component: LivePicks, defaultFocus: 'query' },
@@ -65,7 +65,7 @@ const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
   profiles: { component: Profiles, defaultFocus: 'profile-pick' },
   details: { component: Details, defaultFocus: 'back' },
   downloads: { component: Downloads, defaultFocus: 'downloads-close' },
-  settings: { component: Settings, defaultFocus: 'performance' },
+  settings: { component: Settings, defaultFocus: (params) => params.category ? 'settings-category-back' : 'settings-category-account' },
   stats: { component: Stats, defaultFocus: 'stats-back' },
   plans: { component: Plans, defaultFocus: 'plan-free' },
   legal: { component: Legal, defaultFocus: 'legal-back' },

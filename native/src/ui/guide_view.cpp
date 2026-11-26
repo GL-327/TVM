@@ -1,5 +1,7 @@
 #include "ui/guide_view.h"
 
+#include "ui/controls.h"
+
 #include <algorithm>
 #include <cctype>
 #include <charconv>
@@ -232,15 +234,36 @@ std::string View::Tune(const std::string& number) {
     return {};
 }
 
+bool View::Hover(double x, double y) {
+    const auto back = ui::controls::BackButtonBox(width_, height_);
+    const bool inside = x >= back.x && x < back.Right() && y >= back.y && y < back.Bottom();
+    return std::exchange(backHovered_, inside) != inside;
+}
+
+std::array<ui::Box, 6> View::Toolbar() const {
+    const auto back = ui::controls::BackButtonBox(width_, height_);
+    const double available = width_ - (back.Right() + 132.0) - 124.0;
+    const double scale = std::clamp(available / 698.0, 0.43, 1.0);
+    double x = back.Right() + 132.0;
+    std::array<ui::Box, 6> boxes{};
+    constexpr std::array<double, 6> widths{44.0, 106.0, 44.0, 208.0, 154.0, 100.0};
+    for (std::size_t i = 0; i < boxes.size(); ++i) {
+        boxes[i] = {x, back.CenterY() - 22.0, widths[i] * scale, 44.0};
+        x = boxes[i].Right() + (i < 2 ? 2.0 : 12.0) * scale;
+    }
+    return boxes;
+}
+
 std::string View::Click(double x, double y, Time now) {
-    if (y >= 36 && y < 80) {
-        if (x >= 144 && x < 188) SelectDay(-1, now);
-        if (x >= 188 && x < 298) SelectDay(0, now);
-        if (x >= 298 && x < 342) SelectDay(1, now);
-        if (x >= 355 && x < 563) CycleGroup();
-        if (x >= 576 && x < 730) return "@search";
-        if (x >= 742 && x < 842) return "@channels";
-        if (x >= 855 && x < 955) return "@back";
+    const auto back = ui::controls::BackButtonBox(width_, height_);
+    if (x >= back.x && x < back.Right() && y >= back.y && y < back.Bottom()) return "@back";
+    const auto tools = Toolbar();
+    for (std::size_t i = 0; i < tools.size(); ++i) {
+        const auto& box = tools[i];
+        if (x < box.x || x >= box.Right() || y < box.y || y >= box.Bottom()) continue;
+        if (i < 3) SelectDay(static_cast<int>(i) - 1, now);
+        else if (i == 3) CycleGroup();
+        else return i == 4 ? "@search" : "@channels";
         return {};
     }
     if (y >= height_ - 72 && y < height_ - 24 && x >= width_ - 165 && x < width_ - kEdge) return SelectedId();
@@ -263,20 +286,22 @@ void View::Paint(ui::Painter& p, Time now) const {
     const double right = width_ - kEdge, xGrid = kEdge + ChannelWidth();
     const double bottom = ListBottom();
     p.Clear(kBackground);
-    p.Text({kEdge, 30, 105, 54}, "Guide", {34, true}, kWhite);
+    const auto back = ui::controls::BackButtonBox(width_, height_);
+    ui::controls::PaintBackButton(p, back, backHovered_);
+    p.Text({back.Right() + 15.0, back.y, 105, back.height}, "Guide", {34, true}, kWhite);
     const auto button = [&](const Box& box, std::string text, bool primary = false) {
         p.FillRoundRect(box, 12, primary ? kWhite : kCell);
         const double offset = std::max(10.0, (box.width - p.MeasureText(text, {15, true})) / 2);
         p.Text({box.x + offset, box.y, box.width - offset - 8, box.height}, text, {15, true}, primary ? kBackground : kWhite);
     };
-    button({144, 36, 44, 44}, "‹");
-    button({190, 36, 106, 44}, Local(start_, "%Y-%m-%d") == Local(now, "%Y-%m-%d") ? "Today" : Local(start_, "%a %d %b"));
-    button({298, 36, 44, 44}, "›");
-    button({355, 36, 208, 44}, GroupLabel() + "  ▾");
-    button({576, 36, 154, 44}, query_.empty() ? "Search" : query_);
-    button({742, 36, 100, 44}, "Channels");
-    button({855, 36, 100, 44}, "Back");
-    p.Text({right - 65, 36, 65, 44}, Local(now), {21, true}, kWhite);
+    const auto tools = Toolbar();
+    button(tools[0], "‹");
+    button(tools[1], Local(start_, "%Y-%m-%d") == Local(now, "%Y-%m-%d") ? "Today" : Local(start_, "%a %d %b"));
+    button(tools[2], "›");
+    button(tools[3], GroupLabel() + "  ▾");
+    button(tools[4], query_.empty() ? "Search" : query_);
+    button(tools[5], "Channels");
+    p.Text({right - 65, back.y, 65, back.height}, Local(now), {21, true, 0, 0.0, true}, kWhite);
 
     p.FillRoundRect({kEdge, 91, right - kEdge, 34}, 8, kSurface);
     p.Text({kEdge + 12, 91, ChannelWidth() - 24, 34}, "Channel", {14, true}, kMuted);

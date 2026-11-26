@@ -4,8 +4,40 @@ import {
   BAR_NUDGE_MIN_SECONDS,
   barNudgeSeconds,
   clampTime,
+  markerAtTime,
   nudgeTime,
+  timelineMarkers,
 } from './ProgressBar';
+
+describe('timeline markers', () => {
+  it('clips ranges to the programme and keeps distinct, in-range chapter starts', () => {
+    expect(timelineMarkers(90, {
+      source: null,
+      intro: { start: 1, end: 9 },
+      recap: { start: -4, end: 0 },
+      credits: { start: 82, end: null },
+    }, [0, 30, 30, 90, -1, NaN])).toEqual([
+      { kind: 'intro', start: 1, end: 9 },
+      { kind: 'credits', start: 82, end: 90 },
+      { kind: 'chapter', start: 30, end: 30 },
+    ]);
+    expect(timelineMarkers(0, null, [30])).toEqual([]);
+  });
+
+  it('identifies the marker under the hovered or scrubbed timestamp', () => {
+    const markers = timelineMarkers(120, {
+      source: null,
+      intro: { start: 5, end: 18 },
+      recap: { start: 0, end: 4 },
+      credits: { start: 105, end: 120 },
+    }, [45]);
+    expect(markerAtTime(markers, 2, 120)).toBe('recap');
+    expect(markerAtTime(markers, 12, 120)).toBe('intro');
+    expect(markerAtTime(markers, 45.5, 120)).toBe('chapter');
+    expect(markerAtTime(markers, 70, 120)).toBeNull();
+    expect(markerAtTime(markers, 112, 120)).toBe('credits');
+  });
+});
 
 describe('bar scrub math', () => {
   it('nudges by a slice of duration, never a 10s skip on a long title', () => {

@@ -6,6 +6,7 @@
 // answered (SetCoreSettings), and every change comes back out as a partial PUT /api/prefs body through the sink.
 // The other rows open their native pages.
 
+#include <array>
 #include <functional>
 #include <map>
 #include <string>
@@ -14,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "motion/camera.h"
+#include "ui/catalog_view.h"
 #include "ui/dropdown.h"
 #include "ui/preferences_store.h"
 #include "ui/screen_base.h"
@@ -35,6 +37,7 @@ struct DeveloperDiagnostics {
 struct CoreSettings {
     std::map<std::string, std::string, std::less<>> values;
     std::vector<std::string> subtitleLanguages{"eng"};
+    std::vector<HomeSection> homeSections;
 
     // Reads a GET /api/prefs body. Anything missing or of the wrong type keeps its default.
     static CoreSettings FromJson(const nlohmann::json& body);
@@ -76,10 +79,13 @@ public:
     void SetDeveloperDiagnostics(DeveloperDiagnostics diag);
     // The answer of GET /api/prefs, for the playback, subtitle, Home and Extras rows.
     void SetCoreSettings(CoreSettings settings);
+    void SetHomeSectionLabels(HomeSectionLabels labels);
     void SetPrefsSink(PrefsSink sink) { sink_ = std::move(sink); }
 
     // The search field takes typing while it has the focus.
-    bool Typing() const { return pane_ == Pane::Search; }
+    bool Typing() const { return pane_ == Pane::Search || webhookDraft_.has_value(); }
+    bool EditingWebhook() const { return webhookDraft_.has_value(); }
+    void SelectAll() { if (webhookDraft_) webhookSelected_ = true; }
     void Type(const std::string& text);
     void Erase();
     const std::string& Query() const { return query_; }
@@ -110,9 +116,10 @@ private:
         Pref,
         // The subtitle sample: it only shows the chosen style.
         Preview,
+        HomeSection,
     };
 
-    enum class Ctl { None, Switch, Segmented, Select };
+    enum class Ctl { None, Switch, Segmented, Select, Slider, Text };
 
     struct Option {
         std::string id;
@@ -188,11 +195,20 @@ private:
     void PaintRow(Painter& painter, const Row& row, bool focused) const;
     void PaintSearch(Painter& painter, bool focused) const;
     void PaintPreview(Painter& painter, const Row& row) const;
+    Box WebhookField(const Row& row) const;
+    std::array<Box, 3> HomeControls(const Row& row) const;
+    bool HomeControlEnabled(const Row& row, int control) const;
+    void EditHomeSection(const std::string& id, int control);
+    void RebuildRowsKeepingFocus();
+    void SaveWebhook();
 
     PreferenceStore& store_;
     prefs::CorePrefs core_;
     CoreSettings settings_;
     PrefsSink sink_;
+    HomeSectionLabels homeLabels_ = HomeSections();
+    std::vector<HomeSection> homeRows_;
+    int homeControl_ = 2;
     DeveloperDiagnostics diag_;
     Metrics metrics_;
     double width_ = 0.0;
@@ -208,6 +224,9 @@ private:
     // after opening Settings, or after only hovering, leaves Settings.
     bool contentUsed_ = false;
     std::string query_;
+    std::optional<std::string> webhookDraft_;
+    bool webhookSelected_ = false;
+    bool webhookInvalid_ = false;
     // The query trimmed and lower-cased, what the rows are matched against. Empty when nothing is being searched.
     std::string term_;
     std::vector<CardBox> cards_;
@@ -222,6 +241,9 @@ private:
     Dropdown select_;
     std::optional<std::size_t> selectRow_;
     double clockMs_ = 0.0;
+    std::string changedSegment_;
+    std::size_t previousSegment_ = 0;
+    double segmentChangedAt_ = 0.0;
     void PickOption(std::size_t index, double nowMs);
 };
 

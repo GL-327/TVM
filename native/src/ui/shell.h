@@ -119,6 +119,7 @@ public:
     void SetDeveloperDiagnostics(const DeveloperDiagnostics& diag);
     // Hands every Settings screen, open now or opened later, the Core preferences it shows.
     void SetCoreSettings(const CoreSettings& settings);
+    void SetHomeSectionLabels(HomeSectionLabels labels);
     // Where Settings sends each preference change, as a partial /api/prefs body.
     void SetPrefsSink(PrefsSink sink);
     // The player on top, when the user is on one.
@@ -161,6 +162,7 @@ private:
     // scrolling). Returns the height of everything, so the same walk paints and measures.
     double WalkPatch(const std::function<void(PatchItem, double, double, const PatchChange&)>& emit) const;
     CoreSettings coreSettings_;
+    HomeSectionLabels homeLabels_ = HomeSections();
     PrefsSink prefsSink_;
     bool backFocused_ = false;
 

@@ -24,9 +24,9 @@ describe('Settings picture group', () => {
     expect(src).toContain('settings-item');
   });
 
-  it('opens Settings on Performance so the row is on screen', () => {
+  it('opens Settings on the Account category in the two-pane layout', () => {
     const registry = readFileSync(join(dir, '../nav/registry.ts'), 'utf8');
-    expect(registry).toContain("settings: { component: Settings, defaultFocus: 'performance' }");
+    expect(registry).toContain("settings: { component: Settings, defaultFocus: (params) => params.category ? 'settings-category-back' : 'settings-category-account' }");
   });
 });
 

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { FocusField } from '../components/FocusField';
+import { useShowFps } from '../components/FpsOverlay';
 import { IconSearch } from '../components/Icons';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
@@ -14,7 +15,9 @@ import { PREFS_CHANGED_EVENT, readPrefs, savePrefs, type AppPrefs } from '../dat
 import { useReleaseConfig } from '../data/releaseConfig';
 import { LANGUAGES } from '../i18n/locale';
 import { bindKeyboardFields } from '../nav/pointerInput';
-import { useNavigate } from '../nav/ViewStackContext';
+import { requestFocus } from '../nav/focusEngine';
+import { focusKeyFor } from '../nav/railNav';
+import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { applyTheme, readStoredTheme } from '../theme/apply';
 import { applyAccent, applyFont, applyTransparency, readAccent, readFont, readTransparency } from '../theme/appearance';
@@ -75,8 +78,10 @@ function useCompactSettings(): boolean {
 
 export function Settings({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
+  const scope = useFocusScope();
   const page = useRef<HTMLElement>(null);
   const panel = useRef<HTMLElement>(null);
+  const enterPanel = useRef(false);
   const compact = useCompactSettings();
   const pushed = CATEGORIES.find(([id]) => params.category === id)?.[0];
   const [category, setCategory] = useState<Category>(pushed ?? 'account');
@@ -89,6 +94,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
   const [motion, setMotion] = useState(() => readMotionPreference() === 'reduced');
   const [performance, setPerformance] = useState(readPerformanceMode);
   const [admin, setAdmin] = useState(false);
+  const [showFps, setShowFps] = useShowFps();
   const [rd, setRd] = useState('Connect or manage your key');
   const [stats, setStats] = useState(true);
   useReleaseConfig();
@@ -107,6 +113,10 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
   useEffect(() => {
     if (panel.current) panel.current.scrollTop = 0;
     if (page.current) page.current.scrollTop = 0;
+    if (enterPanel.current) {
+      enterPanel.current = false;
+      focusPanel();
+    }
   }, [category, query]);
 
   const save = (patch: Partial<AppPrefs>): void => { void savePrefs(patch).then(setPrefs); };
@@ -114,6 +124,30 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
   const display = CATEGORIES.filter(([id]) => id !== 'developer' || admin)
     .filter(([id]) => id !== 'stats' || stats && isExtraAllowed('watchStats') && prefs.extras.watchStats !== false);
   const active = display.find(([id]) => id === category) ?? CATEGORIES[0];
+  function focusPanel(): void {
+    const first = panel.current?.querySelector<HTMLElement>('.settings-item [data-focus-id]:not(:disabled)');
+    const key = first ? focusKeyFor(first) : null;
+    if (key) requestFocus(key);
+  }
+  const navigatePanes = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (compact || !(event.target instanceof HTMLElement)) return;
+    const target = event.target;
+    if (event.key === 'ArrowRight' && target.matches('.settings-category')) {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = display.find(([id]) => target.dataset.focusId === 'settings-category-' + id)?.[0];
+      if (!id) return;
+      if (id === category) focusPanel();
+      else {
+        enterPanel.current = true;
+        setCategory(id);
+      }
+    } else if (event.key === 'ArrowLeft' && target.matches('.settings-open, [role="switch"], select.polish-select') && panel.current?.contains(target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      requestFocus(`${scope}/settings-category-${active[0]}`);
+    }
+  };
   const sections = [
     ['continue', 'Continue watching'], ['my-list', 'My List'], ['upcoming', 'New episodes this week'], ['automatic', 'Automatic collections'],
     ...(peekHome()?.rails ?? []).map((rail) => [rail.id, rail.title]),
@@ -205,7 +239,10 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
         title: 'Fully reset TVM?', body: 'This removes local profiles, progress, My List, playlists, caches and your saved Real-Debrid key.', confirmLabel: 'Fully reset', action: 'factory-reset',
       } })),
     ],
-    developer: admin ? [action('developer', 'Developer menu', 'Accounts, announcements, flags and diagnostics.', jump('developer'))] : [],
+    developer: admin ? [
+      action('developer', 'Developer menu', 'Accounts, announcements, flags and diagnostics.', jump('developer')),
+      toggle('show-fps', 'Show FPS', 'Show the interface frame rate on this device.', showFps, setShowFps),
+    ] : [],
   };
   const term = query.trim().toLowerCase();
   const results = term ? display.map(([id, name]) => ({ id, name, rows: rows[id].filter(({ title, detail }) =>
@@ -219,10 +256,11 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
   </section>;
 
   return (
-    <main ref={page} className="page page--settings page--docked polish-settings" data-keyboard-fields="">
+    <main ref={page} className="page page--settings page--docked polish-settings" data-keyboard-fields="" data-scroll-nearest="">
       <PageScene />
       <Ribbon active="settings" />
-      <div className="settings-layout" data-category={pushed ? 'open' : 'index'} data-search={term ? 'active' : undefined}>
+      <div className="settings-layout" data-category={pushed ? 'open' : 'index'} data-search={term ? 'active' : undefined}
+        onKeyDownCapture={navigatePanes}>
         <aside className="settings-sidebar" aria-label="Settings categories">
           <div className="settings-sidebar__title"><BackButton id="settings-back" /><h2>Settings</h2></div>
           <div className="settings-search"><IconSearch /><FocusField id="settings-search" type="search" value={query}

@@ -1,0 +1,18 @@
+.fps-overlay {
+  position: fixed;
+  right: max(.75rem, env(safe-area-inset-right));
+  bottom: max(.75rem, env(safe-area-inset-bottom));
+  z-index: 1000;
+  padding: .25rem .55rem;
+  border: 1px solid #ffffff2e;
+  border-radius: .45rem;
+  background: #12141a;
+  color: #f5f7fa;
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+html.phone-shell .fps-overlay {
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}

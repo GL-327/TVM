@@ -138,6 +138,57 @@ void FilePreferenceStore::SaveSleepTimerDefault(const std::string& value) {
     SaveUiJson(std::move(json));
 }
 
+std::string FilePreferenceStore::Accent() const {
+    const auto& json = UiJson();
+    const auto value = json.find("accent");
+    if (value == json.end() || !value->is_string()) return "default";
+    const std::string accent = value->get<std::string>();
+    return AccentColour(accent) == AccentColour("default") ? "default" : accent;
+}
+
+void FilePreferenceStore::SaveAccent(const std::string& value) {
+    auto json = UiJson();
+    json["accent"] = value;
+    SaveUiJson(std::move(json));
+}
+
+int FilePreferenceStore::VolumeBoostMax() const {
+    const auto& json = UiJson();
+    const auto value = json.find("volumeBoostMax");
+    if (value == json.end() || !value->is_number()) return 200;
+    return static_cast<int>(std::clamp(value->get<double>(), 100.0, 300.0));
+}
+
+void FilePreferenceStore::SaveVolumeBoostMax(int value) {
+    auto json = UiJson();
+    json["volumeBoostMax"] = value;
+    SaveUiJson(std::move(json));
+}
+
+bool FilePreferenceStore::PosterTitles() const {
+    const auto& json = UiJson();
+    const auto value = json.find("posterTitles");
+    return value == json.end() || !value->is_boolean() || value->get<bool>();
+}
+
+void FilePreferenceStore::SavePosterTitles(bool on) {
+    auto json = UiJson();
+    json["posterTitles"] = on;
+    SaveUiJson(std::move(json));
+}
+
+bool FilePreferenceStore::ShowFps() const {
+    const auto& json = UiJson();
+    const auto value = json.find("showFps");
+    return value != json.end() && value->is_boolean() && value->get<bool>();
+}
+
+void FilePreferenceStore::SaveShowFps(bool on) {
+    auto json = UiJson();
+    json["showFps"] = on;
+    SaveUiJson(std::move(json));
+}
+
 bool FilePreferenceStore::SpotlightEvents() const {
     const nlohmann::ordered_json& json = UiJson();
     const auto value = json.find("spotlightEvents");

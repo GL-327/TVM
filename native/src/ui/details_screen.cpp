@@ -63,9 +63,41 @@ Color WithAlpha(Color color, double alpha) {
 
 }  // namespace
 
-DetailsScreen::DetailsScreen(std::string id, std::string title) : id_(std::move(id)), title_(std::move(title)) {
+std::optional<std::string> DetailsPrefetchTracker::Update(const std::optional<std::string>& candidateId, double nowMs) {
+    if (!candidateId.has_value() || candidateId->empty()) {
+        Reset();
+        return std::nullopt;
+    }
+    if (candidateId_ != candidateId) {
+        candidateId_ = candidateId;
+        sinceMs_ = nowMs;
+        triggered_ = false;
+        return std::nullopt;
+    }
+    if (!triggered_ && nowMs - sinceMs_ >= kDetailsPrefetchMs) {
+        triggered_ = true;
+        return candidateId_;
+    }
+    return std::nullopt;
+}
+
+std::optional<double> DetailsPrefetchTracker::NextDueMs() const {
+    if (!candidateId_.has_value() || triggered_) return std::nullopt;
+    return sinceMs_ + kDetailsPrefetchMs;
+}
+
+void DetailsPrefetchTracker::Reset() {
+    candidateId_.reset();
+    sinceMs_ = 0.0;
+    triggered_ = false;
+}
+
+DetailsScreen::DetailsScreen(std::string id, std::string title, std::string poster, std::string backdrop)
+    : id_(std::move(id)), title_(std::move(title)), poster_(std::move(poster)), backdrop_(std::move(backdrop)) {
     info_.id = id_;
     info_.title = title_;
+    info_.posterUrl = poster_;
+    info_.backdropUrl = backdrop_;
 }
 
 void DetailsScreen::Layout(double width, double height) {
@@ -104,6 +136,8 @@ void DetailsScreen::SetInfo(TitleInfo info) {
     const bool first = info_.state != TitleInfo::State::Ready && info.state == TitleInfo::State::Ready;
     info_ = std::move(info);
     if (info_.title.empty()) info_.title = title_;
+    if (info_.posterUrl.empty()) info_.posterUrl = poster_;
+    if (info_.backdropUrl.empty()) info_.backdropUrl = backdrop_;
     const std::vector<int> seasons = Seasons();
     // The first answer opens on the first numbered season (Specials, season 0, come last). Later answers keep the
     // season shown, while it is still there.
@@ -133,6 +167,13 @@ std::vector<std::string> DetailsScreen::ActionKeys() const {
     if (info_.state == TitleInfo::State::Ready) for (const auto& service : info_.services) keys.push_back("watch:" + service.first);
     if (keys.empty()) keys.push_back(kBackKey);
     return keys;
+}
+
+std::optional<catalog::MediaItem> DetailsScreen::FocusedCollectionItem() const {
+    if (!StartsWith(focused_, "collection:")) return std::nullopt;
+    const auto index = std::stoul(focused_.substr(11));
+    if (index >= info_.collection.size()) return std::nullopt;
+    return info_.collection[index];
 }
 
 std::vector<std::string> DetailsScreen::CollectionKeys() const {
@@ -701,7 +742,13 @@ std::optional<Command> DetailsScreen::Activate(const std::string& key) {
     if (StartsWith(key, "collection:")) {
         const auto index = std::stoul(key.substr(11));
         if (index >= info_.collection.size()) return std::nullopt;
-        Command command; command.name = "details"; command.params = {{"id", info_.collection[index].id}, {"title", info_.collection[index].title}}; return command;
+        Command command;
+        command.name = "details";
+        command.params = {{"id", info_.collection[index].id},
+                          {"title", info_.collection[index].title},
+                          {"poster", info_.collection[index].poster},
+                          {"backdrop", info_.collection[index].backdrop}};
+        return command;
     }
     if (key == "imdb" || key == "reviews-link") {
         Command command; command.name = "imdb-open"; command.action = true; command.params["id"] = id_; return command;

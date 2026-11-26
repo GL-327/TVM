@@ -1,6 +1,13 @@
 import type { Title } from './catalog';
 import type { Navigate } from '../nav/ViewStackContext';
-import { playIdFor } from './playId';
+import { fetchChildren, fetchMedia } from './media';
+import { imdbIdFrom, playIdFor } from './playId';
+
+export function prefetchDetails(id: string, kind: Title['kind']): void {
+  if (id === '') return;
+  void fetchMedia(id);
+  if (kind === 'series') void fetchChildren(imdbIdFrom(id) ?? id);
+}
 
 export function detailsParams(title: Title): Record<string, unknown> {
   return {

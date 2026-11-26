@@ -23,8 +23,8 @@ type Save = (patch: Partial<AppPrefs>) => void;
 export function Choice<T extends string>({ id, label, options, value, onChange }: {
   id: string; label: string; options: readonly SegmentedOption<T>[]; value: T; onChange: (value: T) => void;
 }): React.JSX.Element {
-  const { ref } = useFocusable<object, HTMLSelectElement>({ focusKey: useScopedFocusKey(id) });
-  return <select ref={ref} data-focus-id={id} className="polish-select" aria-label={label}
+  const { ref, focused } = useFocusable<object, HTMLSelectElement>({ focusKey: useScopedFocusKey(id) });
+  return <select ref={ref} data-focus-id={id} data-focused={focused ? 'true' : undefined} className="polish-select" aria-label={label}
     value={value} onChange={(event) => onChange(event.currentTarget.value as T)}>
     {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
   </select>;
@@ -57,7 +57,7 @@ export function playbackRows(prefs: AppPrefs, save: Save): SettingsRow[] {
     select('audio-language', 'Audio language', 'Choose the audio track used when playback starts.', prefs.audioLanguage,
       [{ id: 'original', label: 'Original language' }, ...languageOptions], (audioLanguage) => save({ audioLanguage })),
     toggle('autoplay-next', 'Autoplay next episode', 'Start the next episode after the countdown.', prefs.autoplayNext, (autoplayNext) => save({ autoplayNext })),
-    segment('skip-segments', 'Skip intro & credits', 'Includes recaps when a skip point is available.', prefs.skipSegments,
+    segment('skip-segments', 'Skip intros, recaps & credits', 'Coloured bars mark intros, recaps and credits. White ticks mark chapter starts. Skip jumps to the end of a marked section. Choose Button to skip yourself or Automatic to skip for you.', prefs.skipSegments,
       [{ id: 'off', label: 'Off' }, { id: 'button', label: 'Button' }, { id: 'auto', label: 'Automatic' }],
       (skipSegments) => save({ skipSegments })),
     { id: 'volume-boost', title: 'Volume boost max', detail: 'Limit how far the player volume can be boosted.',

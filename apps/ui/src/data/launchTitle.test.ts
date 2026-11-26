@@ -9,10 +9,12 @@ const fetchProfiles = vi.hoisted(() => vi.fn());
 const fetchPlan = vi.hoisted(() => vi.fn());
 const applyPlanClass = vi.hoisted(() => vi.fn());
 const fetchRdStatus = vi.hoisted(() => vi.fn());
+const currentProfileId = vi.hoisted(() => vi.fn());
+const peekHome = vi.hoisted(() => vi.fn());
 
 vi.mock('./profiles', () => ({ fetchProfiles }));
 vi.mock('./plan', () => ({ fetchPlan, applyPlanClass }));
-vi.mock('./media', () => ({ fetchRdStatus }));
+vi.mock('./media', () => ({ currentProfileId, fetchRdStatus, peekHome }));
 
 import { launchTitle, RD_NOTICE, runLaunchChecks } from './launchTitle';
 
@@ -76,6 +78,8 @@ beforeEach(() => {
   fetchPlan.mockReset();
   applyPlanClass.mockReset();
   fetchRdStatus.mockReset();
+  currentProfileId.mockReset().mockReturnValue('');
+  peekHome.mockReset().mockReturnValue(null);
   fetchProfiles.mockResolvedValue(PROFILE);
   fetchPlan.mockResolvedValue(PLAN);
   fetchRdStatus.mockResolvedValue(RD_OK);
@@ -102,6 +106,17 @@ describe('runLaunchChecks', () => {
 });
 
 describe('launchTitle', () => {
+  it('opens synchronously when Home already has a profile and working source', async () => {
+    currentProfileId.mockReturnValue('p1');
+    peekHome.mockReturnValue({ rd: RD_OK });
+    const { navigate, calls } = fakeNavigate();
+    const result = launchTitle(navigate, movie);
+    expect(calls.map(({ op, name }) => [op, name])).toEqual([['home', undefined], ['push', 'details']]);
+    expect(fetchProfiles).not.toHaveBeenCalled();
+    expect(fetchPlan).not.toHaveBeenCalled();
+    expect(fetchRdStatus).not.toHaveBeenCalled();
+    await result;
+  });
   it('sends a viewer without a profile to Who\'s watching, then that title', async () => {
     fetchProfiles.mockResolvedValue({ activeId: '', profiles: [] });
     const { navigate, calls } = fakeNavigate();

@@ -135,6 +135,7 @@ let corePoll: ReturnType<typeof setInterval> | null = null;
 const coreChanged = (): void => { coreSubscribers.forEach((listener) => listener()); };
 
 const browserBridge: DownloadBridge = {
+  async currentFolder() { return folder?.name ?? null; },
   async chooseFolder() {
     const picker = (window as unknown as { showDirectoryPicker?: (options: { mode: string; id: string }) => Promise<FolderHandle> }).showDirectoryPicker;
     if (!picker) throw new Error('Open TVM Desktop, Chrome or Edge to choose a download folder.');

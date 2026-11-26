@@ -49,6 +49,8 @@ struct CardData {
     bool feature = false;
     // A Browse tile on Search (a genre). OK sends `search-browse` with its title as the genre, not Details.
     bool category = false;
+    std::string backdropUrl;
+    std::string detailsPosterUrl;
 };
 
 struct RailData {
@@ -162,6 +164,7 @@ public:
     void SetQuery(std::string query) { query_ = std::move(query); }
     // The catalogue title of the focused card, or nothing when no card has focus.
     std::optional<std::string> FocusedItemId() const;
+    const Card* FocusedDetailsCard() const;
     // Focuses the first card for a catalogue title, moving the cameras to it. False when no card shows it.
     bool FocusTitle(const std::string& itemId, double nowMs);
     // Replaces the status line, the rails, the top buttons and the card action. The viewer's

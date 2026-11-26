@@ -20,7 +20,7 @@ android {
         // Android and launchers such as Samsung One UI treat an installed update as new
         // and refresh cached resources like the app icon. A local build stays at 4.
         versionCode = 4 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
-        versionName = "1.4.4"
+        versionName = "1.4.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

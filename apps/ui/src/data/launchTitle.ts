@@ -1,6 +1,6 @@
 import type { Title } from './catalog';
 import type { Navigate } from '../nav/ViewStackContext';
-import { fetchRdStatus, type RdStatus } from './media';
+import { currentProfileId, fetchRdStatus, peekHome, type RdStatus } from './media';
 import { detailsParams } from './openDetails';
 import { applyPlanClass, fetchPlan, type PlanStatus } from './plan';
 import { fetchProfiles, type ProfileRegistry } from './profiles';
@@ -40,13 +40,20 @@ export const RD_NOTICE = {
  * resolved stream; a series still needs a season pick first.
  */
 export async function launchTitle(navigate: Navigate, title: Title): Promise<void> {
+  const params = detailsParams(title);
+  // Home already checked this viewer. In particular, don't wait for another
+  // Real-Debrid status call before opening a title that is already on screen.
+  if (currentProfileId() !== '' && peekHome()?.rd.configured === true) {
+    navigate.home();
+    navigate.push('details', { params });
+    return;
+  }
   let checks: LaunchChecks;
   try {
     checks = await runLaunchChecks();
   } catch {
     checks = EMPTY_CHECKS;
   }
-  const params = detailsParams(title);
   navigate.home();
   if (!checks.profileActive) {
     navigate.push('profiles', { params: { next: 'details', nextParams: params } });

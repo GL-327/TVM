@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -57,6 +58,7 @@ public:
     const std::string& query() const { return query_; }
     void SetFavorites(std::vector<std::string> favorites);
     std::string Click(double x, double y, Time now);
+    bool Hover(double x, double y);
     std::string Tune(const std::string& number);
     std::string SelectedId() const;
     std::string GroupLabel() const;
@@ -75,6 +77,7 @@ private:
     double ListBottom() const;
     double ChannelWidth() const;
     double GridWidth() const;
+    std::array<ui::Box, 6> Toolbar() const;
     double TimeX(Time time) const;
     Time TimeAt(double x) const;
 
@@ -85,6 +88,7 @@ private:
     int row_ = 0, top_ = 0, group_ = 0;
     std::string query_;
     bool selectedByClick_ = false;
+    bool backHovered_ = false;
     double width_ = 1280, height_ = 720;
 };
 

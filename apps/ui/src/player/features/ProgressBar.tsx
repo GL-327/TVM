@@ -2,11 +2,15 @@ import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import {
   useCallback,
   useEffect,
+  useId,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react';
+import type { PlaybackSegments } from '../../data/media';
+import { uiExtraEnabled, useExtraPrefs } from '../../data/uiExtras';
 import { revealFocused } from '../../nav/revealFocused';
 import { useScopedFocusKey } from '../../nav/ViewStackContext';
 
@@ -37,6 +41,7 @@ export interface ProgressBarProps {
   seekBy?: (deltaSeconds: number) => void;
   engine?: string;
   live?: boolean;
+  segments?: PlaybackSegments | null;
   disabled?: boolean;
   stepSeconds?: number;
   className?: string;
@@ -46,6 +51,68 @@ interface Clock {
   time: number;
   duration: number;
   buffered: number;
+}
+
+const MARKER_LABELS = { intro: 'Intro', recap: 'Recap', credits: 'Credits', chapter: 'Chapter' } as const;
+export type MarkerKind = keyof typeof MARKER_LABELS;
+export type TimelineMarker = { kind: MarkerKind; start: number; end: number };
+
+/** Return the marker kind under a timeline position, prioritizing span segments over chapter ticks. */
+export function markerAtTime(markers: readonly TimelineMarker[], seconds: number, duration: number): MarkerKind | null {
+  if (!Number.isFinite(seconds) || !isSeekableDuration(duration)) return null;
+  for (const marker of markers) {
+    if (marker.kind !== 'chapter' && seconds >= marker.start && seconds <= marker.end) return marker.kind;
+  }
+  const chapterSnap = Math.min(5, Math.max(1.5, duration * 0.008));
+  for (const marker of markers) {
+    if (marker.kind === 'chapter' && Math.abs(seconds - marker.start) <= chapterSnap) return 'chapter';
+  }
+  return null;
+}
+
+export function timelineMarkers(duration: number, segments?: PlaybackSegments | null, chapters: readonly number[] = []): TimelineMarker[] {
+  if (!isSeekableDuration(duration)) return [];
+  const markers: TimelineMarker[] = [];
+  for (const kind of ['intro', 'recap', 'credits'] as const) {
+    const segment = segments?.[kind];
+    if (!segment) continue;
+    const end = Math.min(segment.end ?? duration, duration);
+    const start = Math.max(0, segment.start);
+    if (Number.isFinite(segment.start) && Number.isFinite(end) && end > start) markers.push({ kind, start, end });
+  }
+  for (const start of new Set(chapters)) {
+    if (Number.isFinite(start) && start > 0 && start < duration) markers.push({ kind: 'chapter', start, end: start });
+  }
+  return markers;
+}
+
+function useChapterStarts(resolveVideo: () => HTMLVideoElement | null, enabled: boolean): number[] {
+  const [starts, setStarts] = useState<number[]>([]);
+  useEffect(() => {
+    const video = enabled ? resolveVideo() : null;
+    if (!video) return;
+    const sync = (): void => {
+      const chapters = Array.from(video.textTracks).filter((track) => track.kind === 'chapters');
+      for (const track of chapters) {
+        // Hidden loads chapter cues without drawing them as subtitles.
+        if (track.mode === 'disabled') track.mode = 'hidden';
+      }
+      setStarts(chapters.flatMap((track) => Array.from(track.cues ?? [], (cue) => cue.startTime)));
+    };
+    sync();
+    video.addEventListener('load', sync, true);
+    video.addEventListener('loadedmetadata', sync);
+    video.textTracks.addEventListener('addtrack', sync);
+    video.textTracks.addEventListener('removetrack', sync);
+    return () => {
+      video.removeEventListener('load', sync, true);
+      video.removeEventListener('loadedmetadata', sync);
+      video.textTracks.removeEventListener('addtrack', sync);
+      video.textTracks.removeEventListener('removetrack', sync);
+      setStarts([]);
+    };
+  }, [enabled, resolveVideo]);
+  return starts;
 }
 
 const STYLE_ID = 'tvm-progress-css';
@@ -136,6 +203,42 @@ const CSS = `
   transform-origin: left center;
   transition: transform 400ms linear;
 }
+
+.tvm-progress__marker,
+.tvm-progress__legend-key {
+  background: var(--marker-color);
+}
+.tvm-progress [data-marker='intro'] { --marker-color: #fdcb65; }
+.tvm-progress [data-marker='recap'] { --marker-color: #c5a3ff; }
+.tvm-progress [data-marker='credits'] { --marker-color: #71e1b2; }
+.tvm-progress [data-marker='chapter'] { --marker-color: #fff; }
+.tvm-progress__marker {
+  position: absolute;
+  inset-block: 0;
+  min-width: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.tvm-progress__marker[data-marker='chapter'] {
+  inset-block: -3px;
+  box-shadow: 0 0 0 1px #1119;
+}
+.tvm-progress__legend {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .85rem;
+  margin: -.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: #fff;
+  font-size: .75rem;
+  text-shadow: 0 1px 4px #000;
+  pointer-events: none;
+}
+.tvm-progress__legend li { display: inline-flex; align-items: center; gap: .3rem; }
+.tvm-progress__legend-key { width: .7rem; height: .2rem; border-radius: 2px; }
+.tvm-progress__legend-key[data-marker='chapter'] { width: 2px; height: .65rem; }
 
 .tvm-progress__control[data-scrubbing='true'] .tvm-progress__played { transition: none; }
 
@@ -377,6 +480,7 @@ export function ProgressBar({
   seekTo,
   engine,
   live = false,
+  segments,
   disabled = false,
   className,
 }: ProgressBarProps): React.JSX.Element {
@@ -436,6 +540,14 @@ export function ProgressBar({
     (): HTMLVideoElement | null => unwrapVideo(video ?? videoRef) ?? findPlayerVideo(rootRef.current),
     [video, videoRef],
   );
+  const prefs = useExtraPrefs();
+  const chaptersEnabled = seekable && uiExtraEnabled('chapters', prefs);
+  const chapters = useChapterStarts(resolveVideo, chaptersEnabled);
+  const markers = useMemo(() => seekable
+    ? timelineMarkers(length, segments, chaptersEnabled ? chapters : undefined) : [],
+  [chapters, chaptersEnabled, length, seekable, segments]);
+  const markerKinds = new Set(markers.map(({ kind }) => kind));
+  const legendId = useId();
 
   const seekAbsolute = useCallback(
     (seconds: number): number =>
@@ -570,7 +682,8 @@ export function ProgressBar({
   const bubbleLeft = `${(hover !== null && seekable ? hover / length : playedRatio) * 100}%`;
   const showBubble = focused || hover !== null || scrub !== null;
   const classes = ['tvm-progress', 'player-progress', className].filter(Boolean).join(' ');
-  const bubbleLabel = formatPlayerTime(bubbleTime);
+  const activeMarker = seekable ? markerAtTime(markers, bubbleTime, length) : null;
+  const bubbleLabel = activeMarker ? `${formatPlayerTime(bubbleTime)} · ${MARKER_LABELS[activeMarker]}` : formatPlayerTime(bubbleTime);
 
   return (
     <div ref={rootRef} className={classes} data-seek-track="true">
@@ -587,6 +700,7 @@ export function ProgressBar({
         disabled={!seekable}
         role="slider"
         aria-label="Playback position"
+        aria-describedby={markers.length > 0 ? legendId : undefined}
         aria-valuemin={0}
         aria-valuemax={seekable ? Math.floor(length) : 0}
         aria-valuenow={Math.floor(display)}
@@ -610,6 +724,10 @@ export function ProgressBar({
         <span className="tvm-progress__track" ref={trackRef}>
           <span className="tvm-progress__buffered" style={{ transform: `scaleX(${bufferedRatio})` }} />
           <span className="tvm-progress__played" style={{ transform: `scaleX(${playedRatio})` }} />
+          {markers.map(({ kind, start, end }) => (
+            <span key={`${kind}-${start}`} className="tvm-progress__marker" data-marker={kind} aria-hidden="true"
+              style={{ left: `${start / length * 100}%`, width: `${(end - start) / length * 100}%` }} />
+          ))}
           <span className="tvm-progress__knob" style={{ left: `${playedRatio * 100}%` }} />
           {showBubble && seekable && (
             <span className="tvm-progress__bubble" style={{ left: bubbleLeft }}>
@@ -625,6 +743,13 @@ export function ProgressBar({
         </span>
       ) : (
         <span className="tvm-progress__live">{resolvedLive ? 'Live' : '—:—'}</span>
+      )}
+      {markers.length > 0 && (
+        <ul className="tvm-progress__legend" id={legendId} aria-label="Timeline markers">
+          {Array.from(markerKinds, (kind) => (
+            <li key={kind}><span className="tvm-progress__legend-key" data-marker={kind} aria-hidden="true" />{MARKER_LABELS[kind]}</li>
+          ))}
+        </ul>
       )}
     </div>
   );

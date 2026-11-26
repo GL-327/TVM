@@ -393,6 +393,7 @@ void Card::PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) c
         return;
     }
 
+    if (hasArt && !tokens::posterTitles && !focused) return;
     const Box label{box_.x, box_.y + artHeight + metrics.Rem(kCardLabelGapRem), box_.width,
                     metrics.Rem(kCardLabelHeightRem)};
     const TextStyle titleStyle{metrics.Rem(kCardTitleRem), false};

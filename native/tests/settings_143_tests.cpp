@@ -9,7 +9,10 @@
 #include <nlohmann/json.hpp>
 
 #include "harness.h"
+#include "ui/catalog_view.h"
+#include "ui/controls.h"
 #include "ui/guide_view.h"
+#include "ui/painter.h"
 #include "ui/profile_editor.h"
 #include "ui/settings_screen.h"
 #include "ui/shell.h"
@@ -30,14 +33,29 @@ public:
         if (patch.language.has_value()) core_.language = *patch.language;
         if (patch.autoUpdate.has_value()) core_.autoUpdate = *patch.autoUpdate;
     }
+    tvm::ui::Theme Look() const override { return theme_; }
+    void SaveLook(tvm::ui::Theme theme) override { theme_ = theme; }
     std::string SleepTimerDefault() const override { return sleep_; }
     void SaveSleepTimerDefault(const std::string& value) override { sleep_ = value; }
+    std::string Accent() const override { return accent_; }
+    void SaveAccent(const std::string& value) override { accent_ = value; }
+    int VolumeBoostMax() const override { return volumeBoostMax_; }
+    void SaveVolumeBoostMax(int value) override { volumeBoostMax_ = value; }
+    bool PosterTitles() const override { return posterTitles_; }
+    void SavePosterTitles(bool on) override { posterTitles_ = on; }
+    bool ShowFps() const override { return showFps_; }
+    void SaveShowFps(bool on) override { showFps_ = on; }
     bool SpotlightEvents() const override { return spotlight_; }
     void SaveSpotlightEvents(bool on) override { spotlight_ = on; }
 
     MotionSettings motion_;
     tvm::prefs::CorePrefs core_;
+    tvm::ui::Theme theme_ = tvm::ui::Theme::Dark;
     std::string sleep_ = "off";
+    std::string accent_ = "default";
+    int volumeBoostMax_ = 200;
+    bool posterTitles_ = true;
+    bool showFps_ = false;
     bool spotlight_ = true;
 };
 
@@ -96,10 +114,11 @@ TEST(settings_playback_rows_follow_the_spec) {
     Page page;
     page.screen.ActivateItem("cat:playback", 0.0);
     REQUIRE((page.screen.ShownKeys() == std::vector<std::string>{"quality", "skip-upscaled", "audio-language", "autoplay-next",
-                                                                  "skip-segments", "sleep-default"}));
+                                                                  "skip-segments", "volume-boost", "sleep-default"}));
     REQUIRE_EQ(page.screen.ValueOf("quality"), std::string("Original \xE2\x80\x93 best available"));
     REQUIRE_EQ(page.screen.ValueOf("audio-language"), std::string("Original language"));
     REQUIRE_EQ(page.screen.ValueOf("skip-segments"), std::string("Button"));
+    REQUIRE_EQ(page.screen.ValueOf("volume-boost"), std::string("200%"));
     REQUIRE_EQ(page.screen.ValueOf("skip-upscaled"), std::string("On"));
 }
 
@@ -169,7 +188,9 @@ TEST(the_sleep_timer_default_and_spotlight_events_stay_on_this_pc) {
     REQUIRE(page.patches.back() == nlohmann::json::parse(R"({"sleepTimerDefault":"30"})"));
 
     page.screen.ActivateItem("cat:home", 0.0);
-    REQUIRE((page.screen.ShownKeys() == std::vector<std::string>{"hero-previews", "spotlight-events"}));
+    std::vector<std::string> expectedHome{"hero-previews", "spotlight-events"};
+    for (const auto& [id, label] : tvm::ui::HomeSections()) expectedHome.push_back("home-row-" + id);
+    REQUIRE(page.screen.ShownKeys() == expectedHome);
     page.screen.FocusItem("spotlight-events", 0.0, false);
     (void)page.screen.Select(0.0);
     REQUIRE(!page.store.spotlight_);
@@ -202,7 +223,8 @@ TEST(the_extras_page_has_a_switch_for_every_extra_with_its_note) {
     Page page;
     page.screen.ActivateItem("cat:extras", 0.0);
     const std::vector<std::string> keys = page.screen.ShownKeys();
-    REQUIRE_EQ(keys.size(), std::size_t{22});
+    REQUIRE_EQ(keys.size(), std::size_t{23});
+    REQUIRE(Has(keys, "webhook-url"));
     for (const char* id : {"onlineSubtitles", "trailers", "trailerBackdrops", "collections", "comingUp", "watchStats",
                            "animeTitles", "ratings", "qualityBadges", "versionPicker", "chapters", "seekPreviews",
                            "themeSongs", "spoilerBlur", "surpriseMe", "autoCollections", "sleepTimer", "nightMode",
@@ -320,8 +342,10 @@ TEST(the_guide_asks_again_while_core_is_still_downloading_a_feed) {
     REQUIRE(ShouldRepoll(true, tvm::guide::kMaxRepolls - 1));
     REQUIRE(!ShouldRepoll(true, tvm::guide::kMaxRepolls));
     REQUIRE(!ShouldRepoll(false, 0));
-    REQUIRE_NEAR(tvm::guide::kRepollMs, 4000.0, 1e-9);
-    REQUIRE_EQ(tvm::guide::kMaxRepolls, 30);
+    double repollMs = tvm::guide::kRepollMs;
+    int maxRepolls = tvm::guide::kMaxRepolls;
+    REQUIRE_NEAR(repollMs, 4000.0, 1e-9);
+    REQUIRE_EQ(maxRepolls, 30);
 
     const auto body = nlohmann::json::parse(R"({"start":"2026-11-26T12:00:00Z","end":"2026-11-26T18:00:00Z","refreshing":true,"channels":[]})");
     REQUIRE(tvm::guide::ParseSchedule(body, 0, 0).refreshing);
@@ -480,4 +504,109 @@ TEST(the_profile_editor_lays_avatar_sets_in_a_scrolling_row_above_the_characters
     const auto saved = editor.ActivateItem("save", 0.0);
     REQUIRE(saved.has_value());
     REQUIRE(saved->params.at("patch").find("set11/a3") != std::string::npos);
+}
+
+TEST(settings_volume_boost_accent_poster_titles_and_webhook_work_and_validate) {
+    Page page;
+    page.screen.ActivateItem("cat:playback", 0.0);
+    REQUIRE(page.screen.FocusItem("volume-boost", 0.0, false));
+    REQUIRE(page.screen.Navigate(Direction::Left, 0.0));
+    REQUIRE_EQ(page.store.volumeBoostMax_, 190);
+    REQUIRE_EQ(page.screen.ValueOf("volume-boost"), std::string("190%"));
+    REQUIRE(page.patches.back() == nlohmann::json::parse(R"({"volumeBoostMax":190})"));
+
+    page.screen.ActivateItem("cat:appearance", 0.0);
+    REQUIRE(Has(page.screen.ShownKeys(), "accent"));
+    REQUIRE(Has(page.screen.ShownKeys(), "poster-titles"));
+    page.screen.FocusItem("accent", 0.0, false);
+    (void)page.screen.Select(0.0);
+    REQUIRE(page.screen.LanguageList().IsOpen());
+    page.screen.Navigate(Direction::Down, 0.0);
+    (void)page.screen.Select(0.0);
+    REQUIRE_EQ(page.store.accent_, std::string("indigo"));
+    page.screen.ActivateItem("themes#1", 0.0);
+    REQUIRE(!Has(page.screen.ShownKeys(), "accent"));
+
+    page.screen.FocusItem("poster-titles", 0.0, false);
+    (void)page.screen.Select(0.0);
+    REQUIRE(!page.store.posterTitles_);
+    REQUIRE(page.patches.back() == nlohmann::json::parse(R"({"posterTitles":false})"));
+
+    page.screen.ActivateItem("cat:extras", 0.0);
+    page.screen.ActivateItem("webhook-url", 0.0);
+    page.screen.Type("not-a-url");
+    (void)page.screen.Select(0.0);
+    REQUIRE_EQ(page.patches.back().contains("webhookUrl"), false);
+    for (int i = 0; i < 12; ++i) page.screen.Erase();
+    page.screen.Type("https://hooks.tvm.test/play");
+    (void)page.screen.Select(0.0);
+    REQUIRE(page.patches.back() == nlohmann::json::parse(R"({"webhookUrl":"https://hooks.tvm.test/play"})"));
+
+    page.screen.ActivateItem("webhook-url", 0.0);
+    page.screen.SelectAll();
+    page.screen.Erase();
+    (void)page.screen.Select(0.0);
+    REQUIRE(page.patches.back() == nlohmann::json::parse(R"({"webhookUrl":null})"));
+}
+
+TEST(settings_home_rows_reorder_toggle_and_apply_to_home) {
+    Page page;
+    page.screen.ActivateItem("cat:home", 0.0);
+    page.screen.ActivateItem("home-row-my-list#2", 0.0);
+    const nlohmann::json toggledPatch = page.patches.back();
+    const auto saved = tvm::ui::ReadHomeSections(toggledPatch);
+    const auto hidden = std::find_if(saved.begin(), saved.end(), [](const auto& s) { return s.id == "my-list"; });
+    REQUIRE(hidden != saved.end());
+    REQUIRE(!hidden->visible);
+
+    page.screen.ActivateItem("home-row-for-you#0", 0.0);
+    const auto reordered = tvm::ui::ReadHomeSections(page.patches.back());
+    std::vector<tvm::ui::RailData> rails{
+        tvm::ui::RailData{"continue", "Continue watching", {}},
+        tvm::ui::RailData{"my-list", "My List", {}},
+        tvm::ui::RailData{"for-you", "You might like", {}},
+        tvm::ui::RailData{"because", "Because you watched Dune", {}},
+    };
+    tvm::ui::ApplyHomeSections(rails, reordered);
+    std::vector<std::string> ids;
+    for (const auto& rail : rails) ids.push_back(rail.id);
+    REQUIRE((ids == std::vector<std::string>{"continue", "for-you", "because"}));
+}
+
+TEST(developer_show_fps_switch_and_frame_meter_paint) {
+    class FpsPainter final : public tvm::ui::Painter {
+    public:
+        void Clear(tvm::ui::Color) override {}
+        void FillRoundRect(const tvm::ui::Box&, double, tvm::ui::Color) override {}
+        void StrokeRoundRect(const tvm::ui::Box&, double, double, tvm::ui::Color) override {}
+        bool Image(const tvm::ui::Box&, const std::string&, double) override { return false; }
+        void Paragraph(const tvm::ui::Box&, std::string_view text, const tvm::ui::TextStyle&, tvm::ui::Color) override {
+            texts.emplace_back(text);
+        }
+        void Text(const tvm::ui::Box&, std::string_view text, const tvm::ui::TextStyle&, tvm::ui::Color) override {
+            texts.emplace_back(text);
+        }
+        void PushClip(const tvm::ui::Box&) override {}
+        void PopClip() override {}
+        std::vector<std::string> texts;
+    };
+
+    Page page;
+    page.screen.SetDeveloperDiagnostics({true, "TVM 1.4.4", "account", "Liquid Glass"});
+    page.screen.ActivateItem("cat:developer", 0.0);
+    REQUIRE(Has(page.screen.ShownKeys(), "show-fps"));
+    const std::size_t patchesBefore = page.patches.size();
+    page.screen.ActivateItem("show-fps", 0.0);
+    REQUIRE(page.store.showFps_);
+    REQUIRE_EQ(page.patches.size(), patchesBefore);
+
+    FpsPainter painter;
+    tvm::ui::controls::PaintFrameMeter(painter, 1920.0, 1080.0, 16.67);
+    bool hasFps = false, hasMs = false;
+    for (const std::string& line : painter.texts) {
+        if (line.find("FPS") != std::string::npos) hasFps = true;
+        if (line.find("ms") != std::string::npos) hasMs = true;
+    }
+    REQUIRE(hasFps);
+    REQUIRE(hasMs);
 }

@@ -51,6 +51,7 @@ import type { CatalogRail, HomePayload, MediaItem, PlaybackResolution, RdStatus 
 import { addWatchlist, readWatchlist, removeWatchlist, type WatchlistItem } from './watchlist.ts';
 import { downloadLanguageMatches, type DownloadPreferences } from './downloadPreferences.ts';
 import { createPlaybackWebhook, type PlaybackEvent } from './playbackWebhook.ts';
+import { currentSyncDirectory } from '../requestContext.ts';
 import { readPrefs } from '../prefs.ts';
 import { describeVersion, languageCode, qualityCap, rankVersions, runtimeSeconds, supportsVersion, type PlaybackClient, type Version } from './versions.ts';
 import { createCoreExtras, type CoreExtras, type ExtrasPlaybackResolution } from './extras.ts';
@@ -91,6 +92,7 @@ export interface MediaService {
   addToWatchlist(item: unknown): WatchlistItem[];
   removeFromWatchlist(id: string): WatchlistItem[];
   profiles(): PublicRegistry;
+  reloadSyncedProfiles?(directory: string): void;
   createProfile(name: string, extra?: Omit<ProfileChanges, 'name'>): PublicRegistry;
   renameProfile(id: string, name: string): PublicRegistry;
   updateProfile(id: string, changes: ProfileChanges, currentPin?: unknown): PublicRegistry;
@@ -386,10 +388,22 @@ function markUsed(used: Set<string>, items: readonly MediaItem[]): void {
 export function createMediaService(options: MediaServiceOptions): MediaService {
   const fetchImpl = options.fetch ?? fetch;
   const { dataDir, rd } = options;
-  let profiles: ProfileService = createProfileService(dataDir);
+  let localProfiles = createProfileService(dataDir);
+  const accountProfiles = new Map<string, ProfileService>();
+  const profileDirectory = () => currentSyncDirectory(dataDir);
+  const profiles = (): ProfileService => {
+    const directory = profileDirectory();
+    if (!directory) return localProfiles;
+    let service = accountProfiles.get(directory);
+    if (!service) {
+      service = createProfileService(directory, Date.now, Infinity);
+      accountProfiles.set(directory, service);
+    }
+    return service;
+  };
   const catalog: CatalogService = createCatalogService({ dataDir, fetch: fetchImpl });
   const artwork = createLibraryArtwork(dataDir, fetchImpl);
-  const scope = (): string => profiles.scope();
+  const scope = (): string => profiles().scope();
   const certificates = createCertificateService({ dataDir, fetch: fetchImpl });
   const certOf = (id: string) => certificates.get(id);
   const sendWebhook = createPlaybackWebhook(dataDir, fetchImpl);
@@ -398,11 +412,17 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     if (level.maxAge < 18) await certificates.prime(items.map((item) => item.id));
   };
   // Locked profiles opened with their PIN since Core started.
-  const unlocked = new Set<string>();
+  const unlocked = new Map<string, string>();
+  const unlockKey = (id: string) => join(profileDirectory() ?? dataDir, id);
+  const pinVersion = (id: string) => JSON.stringify(profiles().find(id)?.pin ?? null);
+  const isUnlocked = (id: string): boolean => unlocked.has(unlockKey(id))
+    && unlocked.get(unlockKey(id)) === pinVersion(id);
+  const rememberUnlock = (id: string) => unlocked.set(unlockKey(id), pinVersion(id));
   const ageLevel = (): AgeLevel => {
-    const active = profiles.active();
+    const active = profiles().active();
     const levels = parseLevels(options.content?.get('parental')['levels']);
-    return levelFor(active === undefined ? 18 : profileMaxAge(active), levels);
+    const needsPin = profileDirectory() && active?.pin && !isUnlocked(active.id);
+    return levelFor(needsPin ? 7 : active === undefined ? 18 : profileMaxAge(active), levels);
   };
   const extras = createCoreExtras({
     dataDir, scope, fetch: fetchImpl, env: options.env,
@@ -1107,36 +1127,37 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     watchlist: () => readWatchlist(scope()),
     addToWatchlist: (item) => addWatchlist(scope(), item),
     removeFromWatchlist: (id) => removeWatchlist(scope(), id),
-    profiles: () => publicRegistry(profiles.list()),
-    createProfile: (name, extra) => publicRegistry(profiles.create(name, options.plan?.().profilesMax ?? MAX_PROFILES, extra)),
-    renameProfile: (id, name) => publicRegistry(profiles.update(id, { name }, undefined)),
+    profiles: () => publicRegistry(profiles().list()),
+    reloadSyncedProfiles: directory => { accountProfiles.get(directory)?.reload(); },
+    createProfile: (name, extra) => publicRegistry(profiles().create(name, options.plan?.().profilesMax ?? MAX_PROFILES, extra)),
+    renameProfile: (id, name) => publicRegistry(profiles().update(id, { name }, undefined)),
     updateProfile: (id, changes, currentPin) => {
-      const next = publicRegistry(profiles.update(id, changes, currentPin));
-      unlocked.add(id);
+      const next = publicRegistry(profiles().update(id, changes, currentPin));
+      rememberUnlock(id);
       return next;
     },
     removeProfile: (id, pin) => {
-      profiles.unlock(id, pin);
-      unlocked.delete(id);
-      return publicRegistry(profiles.remove(id));
+      profiles().unlock(id, pin);
+      unlocked.delete(unlockKey(id));
+      return publicRegistry(profiles().remove(id));
     },
     switchProfile: (id, pin) => {
-      if (profiles.activeId() !== id || !unlocked.has(id)) {
-        if (!unlocked.has(id)) profiles.unlock(id, pin);
+      if (profiles().activeId() !== id || !isUnlocked(id)) {
+        if (!isUnlocked(id)) profiles().unlock(id, pin);
       }
-      unlocked.add(id);
-      return publicRegistry(profiles.switchTo(id));
+      rememberUnlock(id);
+      return publicRegistry(profiles().switchTo(id));
     },
     followProfileHeader: (id) => {
-      const target = profiles.find(id);
-      if (target === undefined || target.id === profiles.activeId()) return;
-      if (target.pin && !unlocked.has(id)) return;
-      profiles.switchTo(id);
+      const target = profiles().find(id);
+      if (target === undefined || target.id === profiles().activeId()) return;
+      if (target.pin && !isUnlocked(id)) return;
+      profiles().switchTo(id);
     },
     verifyPin: (id, pin) => {
       try {
-        profiles.unlock(id, pin);
-        unlocked.add(id);
+        profiles().unlock(id, pin);
+        rememberUnlock(id);
         return true;
       } catch (error) {
         if (error instanceof Error && error.name === 'PinError') throw error;
@@ -1304,7 +1325,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       this.clearCache();
       factoryResetDir(dataDir);
       caches.clear();
-      profiles = createProfileService(dataDir);
+      accountProfiles.clear();
+      unlocked.clear();
+      localProfiles = createProfileService(dataDir);
     },
   };
 }
