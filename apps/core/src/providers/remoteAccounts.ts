@@ -87,6 +87,8 @@ export function createRemoteAccountsService(options: {
       const result = await request<{ account: ServiceAccount }>('/v1/me', 'GET', undefined, token);
       const a = record(result.account);
       if (a.suspended || !result.account.hasRdToken || !a.activated) forgetRd(token);
+      // A key the owner just set must not wait out a cached "no key".
+      else if (rdCache.get(token)?.token === null) forgetRd(token);
       return a.suspended ? null : a;
     } catch (error) {
       forgetRd(token);
@@ -174,9 +176,11 @@ export function createRemoteAccountsService(options: {
       forgetRd(token);
       try {
         const result = await request<{ token: string | null }>('/v1/me/rd-token', 'GET', undefined, token);
-        const timer = setTimeout(() => forgetRd(token), 10 * 60_000);
+        // Keep a real key for 10 minutes, but recheck a missing one after 30 seconds.
+        const ttl = result.token === null ? 30_000 : 10 * 60_000;
+        const timer = setTimeout(() => forgetRd(token), ttl);
         timer.unref();
-        rdCache.set(token, { token: result.token, expires: now() + 10 * 60_000, timer });
+        rdCache.set(token, { token: result.token, expires: now() + ttl, timer });
         return result.token;
       } catch (error) {
         if (error instanceof AccountsError && [401, 403].includes(error.status)) return null;

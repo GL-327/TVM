@@ -3,6 +3,148 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.3.2",
+      "date": "2026-11-26",
+      "title": "Character avatars and Real-Debrid fix",
+      "highlights": [
+        "Profile pictures now show the characters from each show and film, not the actors.",
+        "A Real-Debrid key set for your account now works within seconds."
+      ],
+      "changes": [
+        {
+          "area": "Profiles",
+          "text": "Every avatar set now uses pictures of the characters, cropped to their faces."
+        },
+        {
+          "area": "Real-Debrid",
+          "text": "A key the owner sets for your account no longer takes up to 10 minutes to start working.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.3.1",
+      "date": "2026-11-25",
+      "title": "Sign-in fix for Windows",
+      "highlights": [
+        "On Windows, signing in works straight after TVM updates itself."
+      ],
+      "changes": [
+        {
+          "area": "Updates",
+          "text": "After TVM updates on Windows, it updates its engine too, so sign-in and new features work at once.",
+          "platforms": [
+            "windows"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-11-25",
+      "title": "Simpler sign-in, account and plans",
+      "highlights": [
+        "Signing in is one step at a time: email, then password, with one clear button.",
+        "On Roku, scan a QR code with your phone to sign in. No typing on the remote.",
+        "Waiting for approval now says so plainly and checks again by itself.",
+        "The account and plans pages are tidier, with one recommended plan."
+      ],
+      "changes": [
+        {
+          "area": "Sign in",
+          "text": "Email first, then password, with a show-password button and clear messages when something is wrong."
+        },
+        {
+          "area": "Sign in",
+          "text": "Create account is a link under the sign-in box instead of a row of tabs."
+        },
+        {
+          "area": "Sign in",
+          "text": "Roku shows a QR code and a short code. Approve it on your phone and the TV signs itself in.",
+          "platforms": [
+            "roku"
+          ]
+        },
+        {
+          "area": "Accounts",
+          "text": "\"Waiting for approval\" replaces codes like awaiting_activation, and it rechecks every minute."
+        },
+        {
+          "area": "Account",
+          "text": "Account is a short list: plan, Real-Debrid, Live TV and status, with Sign out at the bottom."
+        },
+        {
+          "area": "Plans",
+          "text": "Two plan cards side by side, the popular one marked, one button each."
+        }
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-11-25",
+      "title": "Skip intros, subtitles, and private accounts",
+      "highlights": [
+        "Skip intros, recaps and credits, with an Up next countdown when the credits roll.",
+        "Subtitles in your languages, trailers, film collections and new-episode dates.",
+        "Accounts now live on TVM's own private server. Members need to sign up again.",
+        "Your stats: hours watched, streak and top genres, with history you can clear."
+      ],
+      "changes": [
+        {
+          "area": "Player",
+          "text": "Skip intro, recap and credits. Choose Off, a Skip button, or skip automatically in Settings."
+        },
+        {
+          "area": "Player",
+          "text": "Up next counts down to the next episode when the credits start. Autoplay can be turned off."
+        },
+        {
+          "area": "Player",
+          "text": "Subtitles from OpenSubtitles in your preferred languages, remembered per profile."
+        },
+        {
+          "area": "Details",
+          "text": "Trailers, the rest of a film collection in order, and the date of a show's next episode."
+        },
+        {
+          "area": "Details",
+          "text": "Anime shows its English title when there is one."
+        },
+        {
+          "area": "Home",
+          "text": "A New episodes this week row for shows you are watching or saved."
+        },
+        {
+          "area": "Home",
+          "text": "Optional muted trailer previews on the big title at the top, on computers.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Your stats: hours watched, finished titles, streak and top genres. Clear history any time."
+        },
+        {
+          "area": "Accounts",
+          "text": "Sign-ins and Real-Debrid tokens moved to TVM's private accounts server, encrypted there."
+        },
+        {
+          "area": "Accounts",
+          "text": "Members need to sign up again once. The owner switches each account on."
+        },
+        {
+          "area": "Accounts",
+          "text": "Developer codes are gone. The owner manages accounts from a private web dashboard."
+        }
+      ]
+    },
+    {
       "version": "1.1.0",
       "date": "2026-11-25",
       "title": "Glass, longer rows, and your other services",

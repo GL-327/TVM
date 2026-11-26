@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updated": "2026-11-25",
-  "note": "Character pictures for profiles. Images load from public metadata hosts at runtime, like posters. A profile stores \"<setId>/<avatarId>\". When an image fails, clients draw the profile colour with the first letter.",
+  "updated": "2026-11-26",
+  "note": "Character pictures for profiles: each one shows the character as they appear in that film or series (anime sets use the anime art). Images load from public fan-wiki image hosts at runtime, like posters. A profile stores \"<setId>/<avatarId>\". When an image fails, clients draw the profile colour with the first letter.",
   "sets": [
     {
       "id": "sunrise-on-the-reaping",
@@ -12,43 +12,43 @@
           "id": "haymitch",
           "name": "Haymitch Abernathy",
           "actor": "Joseph Zada",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/Joseph_Zada_pour_la_promotion_d%27Hunger_Games_%C3%A0_Sydney.webp/330px-Joseph_Zada_pour_la_promotion_d%27Hunger_Games_%C3%A0_Sydney.webp?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/f/ff/SOTR-Haymitch-MP.png/revision/latest/scale-to-width-down/400?cb=20261104165656&format=original"
         },
         {
           "id": "maysilee",
           "name": "Maysilee Donner",
           "actor": "Mckenna Grace",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/McKenna_Grace_at_WWD_Style_Awards_2026.jpg/330px-McKenna_Grace_at_WWD_Style_Awards_2026.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/f/f1/Maysilee_Donner_SOTR.jpg/revision/latest/scale-to-width-down/400?cb=20261123094834&format=original"
         },
         {
           "id": "plutarch",
           "name": "Plutarch Heavensbee",
           "actor": "Jesse Plemons",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Plemons_at_London_Bugonia_Premiere.jpg/330px-Plemons_at_London_Bugonia_Premiere.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/3/3a/PlutarchSOTR.jpeg/revision/latest/scale-to-width-down/400?cb=20261122180213&format=original"
         },
         {
           "id": "effie",
           "name": "Effie Trinket",
           "actor": "Elle Fanning",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0b/Elle_Fanning_by_Gage_Skidmore_2.jpg/330px-Elle_Fanning_by_Gage_Skidmore_2.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/5/53/EffieSOTR.jpeg/revision/latest/scale-to-width-down/400?cb=20261124010656&format=original"
         },
         {
           "id": "snow",
           "name": "President Snow",
           "actor": "Ralph Fiennes",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/ConclaveBFILFF101024_%2816_of_44%29_%2854062064271%29_%28cropped%29.jpg/330px-ConclaveBFILFF101024_%2816_of_44%29_%2854062064271%29_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/6/63/SnowSOTR.jpeg/revision/latest/scale-to-width-down/400?cb=20261122180215&format=original"
         },
         {
           "id": "caesar",
           "name": "Caesar Flickerman",
           "actor": "Kieran Culkin",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Kieran_Culkin_at_the_2024_New_York_Film_Festival_2_%28cropped_II%29.jpg/330px-Kieran_Culkin_at_the_2024_New_York_Film_Festival_2_%28cropped_II%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/a/af/CaesarSOTR.jpeg/revision/latest/scale-to-width-down/400?cb=20261122180217&format=original"
         },
         {
           "id": "drusilla",
           "name": "Drusilla Sickle",
           "actor": "Glenn Close",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Glenn_Close_TIFF_2025_%28cropped%29.jpg/330px-Glenn_Close_TIFF_2025_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/e/e7/Production_Still_1_Glenn_Close_Drusilla.jpeg/revision/latest/window-crop-fixed/width/400/height/400/x-offset/423/y-offset/458/window-width/518/window-height/518?format=original"
         }
       ]
     },
@@ -61,49 +61,49 @@
           "id": "doom",
           "name": "Doctor Doom",
           "actor": "Robert Downey Jr.",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/RobertDowneyJr-byPhilipRomano7_%28cropped%29.jpg/330px-RobertDowneyJr-byPhilipRomano7_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/0/07/Doctor_Doom_Infobox.png/revision/latest/scale-to-width-down/400?cb=20261121011738&format=original"
         },
         {
           "id": "thor",
           "name": "Thor",
           "actor": "Chris Hemsworth",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Chris_Hemsworth_-_Crime_101.jpg/330px-Chris_Hemsworth_-_Crime_101.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/2/2b/Thor_Infobox.jpg/revision/latest/window-crop-fixed/width/400/height/400/x-offset/285/y-offset/13/window-width/240/window-height/240?format=original"
         },
         {
           "id": "cap",
           "name": "Sam Wilson / Captain America",
           "actor": "Anthony Mackie",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5b/Anthony_Mackie_on_the_Green_Carpet_at_the_2025_Zurich_Film_Festival_03_%28cropped%29.jpg/330px-Anthony_Mackie_on_the_Green_Carpet_at_the_2025_Zurich_Film_Festival_03_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/9/9d/Captain_America_Infobox.jpg/revision/latest/scale-to-width-down/400?cb=20261124063745&format=original"
         },
         {
           "id": "yelena",
           "name": "Yelena Belova",
           "actor": "Florence Pugh",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Florence_Pugh_2026.jpg/330px-Florence_Pugh_2026.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/b/bc/Yelena_TB_Promo.jpg/revision/latest/window-crop-fixed/width/400/height/400/x-offset/292/y-offset/140/window-width/497/window-height/497?format=original"
         },
         {
           "id": "reed",
           "name": "Mister Fantastic",
           "actor": "Pedro Pascal",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/56/Pedro_Pascal_at_the_2026_New_York_Film_Festival-042.jpg/330px-Pedro_Pascal_at_the_2026_New_York_Film_Festival-042.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/9/9f/Mister_Fantastic_Infobox.png/revision/latest/scale-to-width-down/400?cb=20261123172424&format=original"
         },
         {
           "id": "spidey",
           "name": "Spider-Man",
           "actor": "Tom Holland",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/18/TomHolland-byPhilipRomano.jpg/330px-TomHolland-byPhilipRomano.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/4/41/Spider-Man_Infobox.jpg/revision/latest/scale-to-width-down/400?cb=20261016004855&format=original"
         },
         {
           "id": "strange",
           "name": "Doctor Strange",
           "actor": "Benedict Cumberbatch",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Benedict_Cumberbatch-67555.jpg/330px-Benedict_Cumberbatch-67555.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/b/b2/Doctor_Strange_MoM_Profile.jpeg/revision/latest/scale-to-width-down/400?cb=20231021153337&format=original"
         },
         {
           "id": "shuri",
           "name": "Shuri / Black Panther",
           "actor": "Letitia Wright",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/20/Letitia_Wright_at_2025_SXSW_London_%28cropped%29.jpg/330px-Letitia_Wright_at_2025_SXSW_London_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
+          "image": "https://static.wikia.nocookie.net/marvelcinematicuniverse/images/9/99/Shuri_%28Wakanda_Forever%29.jpg/revision/latest/window-crop-fixed/width/400/height/400/x-offset/672/y-offset/149/window-width/512/window-height/512?format=original"
         }
       ]
     },
@@ -115,32 +115,32 @@
         {
           "id": "eleven",
           "name": "Jane \"Eleven\" Hopper",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506071.jpg"
+          "image": "https://static.wikia.nocookie.net/strangerthings8338/images/e/e2/Eleven_-_Sorcerer.png/revision/latest/scale-to-width-down/400?cb=20260313155200&format=original"
         },
         {
           "id": "mike",
           "name": "Mike Wheeler",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506088.jpg"
+          "image": "https://static.wikia.nocookie.net/strangerthings8338/images/9/97/Mike_Wheeler_Finale.png/revision/latest/scale-to-width-down/400?cb=20260313155900&format=original"
         },
         {
           "id": "dustin",
           "name": "Dustin Henderson",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506079.jpg"
+          "image": "https://static.wikia.nocookie.net/strangerthings8338/images/4/4f/Dustin_Henderson_1989.png/revision/latest/scale-to-width-down/400?cb=20260313155936&format=original"
         },
         {
           "id": "max",
           "name": "Maxine \"Max\" Mayfield",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/604/1512324.jpg"
+          "image": "https://static.wikia.nocookie.net/strangerthings8338/images/2/2a/1989.png/revision/latest/scale-to-width-down/400?cb=20260313154711&format=original"
         },
         {
           "id": "joyce",
           "name": "Joyce Byers",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506062.jpg"
+          "image": "https://static.wikia.nocookie.net/strangerthings8338/images/1/15/Joyce_Byers_1989.png/revision/latest/scale-to-width-down/400?cb=20260313155324&format=original"
         },
         {
           "id": "hopper",
           "name": "Chief Jim Hopper",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/602/1506096.jpg"
+          "image": "https://static.wikia.nocookie.net/strangerthings8338/images/e/ed/Jim_Hopper_Finale.png/revision/latest/scale-to-width-down/400?cb=20260313155702&format=original"
         }
       ]
     },
@@ -152,32 +152,32 @@
         {
           "id": "wednesday",
           "name": "Wednesday Addams",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/432/1082139.jpg"
+          "image": "https://static.wikia.nocookie.net/addamsfamily/images/8/88/Wednesday_Addams_-_Character_Poster_%282022%29_002.jpg/revision/latest/scale-to-width-down/400?cb=20221017081052&format=original"
         },
         {
           "id": "enid",
           "name": "Enid Sinclair",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/440/1100599.jpg"
+          "image": "https://static.wikia.nocookie.net/addamsfamily/images/0/0b/Enid_Sinclair_%282022%29_001.jpg/revision/latest/scale-to-width-down/400?cb=20231107202042&format=original"
         },
         {
           "id": "thing",
           "name": "Thing",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/432/1082158.jpg"
+          "image": "https://static.wikia.nocookie.net/addamsfamily/images/5/55/Thing_%282022%29_001.jpg/revision/latest/scale-to-width-down/400?cb=20230104232009&format=original"
         },
         {
           "id": "tyler",
           "name": "Tyler Galpin",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/432/1082142.jpg"
+          "image": "https://static.wikia.nocookie.net/addamsfamily/images/4/4b/Tyler_Galpin_%282022%29_001.jpg/revision/latest/scale-to-width-down/400?cb=20221125025603&format=original"
         },
         {
           "id": "morticia",
           "name": "Morticia Addams",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/420/1051332.jpg"
+          "image": "https://static.wikia.nocookie.net/addamsfamily/images/4/43/Morticia_Addams_%282023%29_001.jpg/revision/latest/scale-to-width-down/400?cb=20250912220952&format=original"
         },
         {
           "id": "gomez",
           "name": "Gomez Addams",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/431/1079637.jpg"
+          "image": "https://static.wikia.nocookie.net/addamsfamily/images/6/60/Gomez_Addams_%282022%29_001.jpg/revision/latest/scale-to-width-down/400?cb=20230123210852&format=original"
         }
       ]
     },
@@ -189,27 +189,27 @@
         {
           "id": "ellie",
           "name": "Ellie Williams",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412483.jpg"
+          "image": "https://static.wikia.nocookie.net/thelastofus/images/0/0d/HBO_S2_Ellie_Williams_infobox.png/revision/latest/scale-to-width-down/400?cb=20250604033621&format=original"
         },
         {
           "id": "joel",
           "name": "Joel Miller",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412482.jpg"
+          "image": "https://static.wikia.nocookie.net/thelastofus/images/1/12/HBO_S2_Joel_Miller_infobox.png/revision/latest/scale-to-width-down/400?cb=20250604034050&format=original"
         },
         {
           "id": "tommy",
           "name": "Tommy Miller",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412484.jpg"
+          "image": "https://static.wikia.nocookie.net/thelastofus/images/0/0b/HBO_S2_Tommy_Miller_infobox.png/revision/latest/scale-to-width-down/400?cb=20250604034303&format=original"
         },
         {
           "id": "dina",
           "name": "Dina",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412485.jpg"
+          "image": "https://static.wikia.nocookie.net/thelastofus/images/3/32/HBO_S2_Dina_infobox.png/revision/latest/scale-to-width-down/400?cb=20250604033459&format=original"
         },
         {
           "id": "jesse",
           "name": "Jesse",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/564/1412486.jpg"
+          "image": "https://static.wikia.nocookie.net/thelastofus/images/7/7c/HBO_S2_Jesse_infobox.png/revision/latest/scale-to-width-down/400?cb=20250604033931&format=original"
         }
       ]
     },
@@ -221,32 +221,32 @@
         {
           "id": "rhaenyra",
           "name": "Princess Rhaenyra Targaryen",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565189.jpg"
+          "image": "https://static.wikia.nocookie.net/gameofthrones/images/9/97/Rhaenyra-110-Portrait.jpg/revision/latest/scale-to-width-down/400?cb=20231212095855&format=original"
         },
         {
           "id": "daemon",
           "name": "Prince Daemon Targaryen",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565190.jpg"
+          "image": "https://static.wikia.nocookie.net/gameofthrones/images/d/d5/Daemon_S3_Profile.png/revision/latest/scale-to-width-down/400?cb=20260702220100&format=original"
         },
         {
           "id": "alicent",
           "name": "Lady Alicent Hightower",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565193.jpg"
+          "image": "https://static.wikia.nocookie.net/gameofthrones/images/1/18/AlicentASfASInfobox.PNG/revision/latest/scale-to-width-down/400?cb=20260802193803&format=original"
         },
         {
           "id": "aemond",
           "name": "Prince Aemond Targaryen",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565199.jpg"
+          "image": "https://static.wikia.nocookie.net/gameofthrones/images/6/63/Aemond_Targaryen-301.jpg/revision/latest/scale-to-width-down/400?cb=20260728150824&format=original"
         },
         {
           "id": "aegon",
           "name": "Prince Aegon Targaryen",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565203.jpg"
+          "image": "https://static.wikia.nocookie.net/gameofthrones/images/d/da/Aegon_302_Profile.jpg/revision/latest/scale-to-width-down/400?cb=20260802193229&format=original"
         },
         {
           "id": "corlys",
           "name": "Lord Corlys Velaryon",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/626/1565184.jpg"
+          "image": "https://static.wikia.nocookie.net/gameofthrones/images/5/5a/Corlys_Velaryon_S2.jpg/revision/latest/scale-to-width-down/400?cb=20240606091353&format=original"
         }
       ]
     },
@@ -258,32 +258,32 @@
         {
           "id": "gi-hun",
           "name": "Sung Gi Hun",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/572/1431002.jpg"
+          "image": "https://static.wikia.nocookie.net/thesquidgame/images/4/4e/Seong_Gi-hun_Season_2_Photobooth_MP.png/revision/latest/scale-to-width-down/400?cb=20261015043941&format=original"
         },
         {
           "id": "front-man",
           "name": "Front Man",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/572/1431004.jpg"
+          "image": "https://static.wikia.nocookie.net/thesquidgame/images/9/98/Hwang_In-ho_2025_MP.png/revision/latest/scale-to-width-down/400?cb=20261031033312&format=original"
         },
         {
           "id": "joon-ho",
           "name": "Hwang Joon Ho",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/550/1376197.jpg"
+          "image": "https://static.wikia.nocookie.net/thesquidgame/images/7/76/HwanJun-ho2025.png/revision/latest/scale-to-width-down/400?cb=20250701014453&format=original"
         },
         {
           "id": "sang-woo",
           "name": "Jo Sang Woo",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/550/1375998.jpg"
+          "image": "https://static.wikia.nocookie.net/thesquidgame/images/0/00/Screenshot_2026-08-15_105237.png/revision/latest/scale-to-width-down/400?cb=20260815175258&format=original"
         },
         {
           "id": "sae-byuk",
           "name": "Kang Sae Byuk",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/352/881327.jpg"
+          "image": "https://static.wikia.nocookie.net/thesquidgame/images/f/f8/Sae-byeok_player_MP.png/revision/latest/scale-to-width-down/400?cb=20261001020226&format=original"
         },
         {
           "id": "il-nam",
           "name": "Oh Il Nam",
-          "image": "https://static.tvmaze.com/uploads/images/medium_portrait/550/1376001.jpg"
+          "image": "https://static.wikia.nocookie.net/thesquidgame/images/2/29/Oh-ll-nam_2020.png/revision/latest/scale-to-width-down/400?cb=20250126120528&format=original"
         }
       ]
     },
@@ -295,32 +295,32 @@
         {
           "id": "gojo",
           "name": "Satoru Gojo",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b127691-9zqh1xpIubn7.png"
+          "image": "https://static.wikia.nocookie.net/jujutsu-kaisen/images/e/ef/Satoru_Gojo_%28Anime_2%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/72/y-offset/0/window-width/574/window-height/574?format=original"
         },
         {
           "id": "yuji",
           "name": "Yuji Itadori",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b127212-FVm2tD0erQ5B.png"
+          "image": "https://static.wikia.nocookie.net/jujutsu-kaisen/images/3/35/Yuji_Itadori_%28Anime_4%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/96/y-offset/0/window-width/208/window-height/208?format=original"
         },
         {
           "id": "megumi",
           "name": "Megumi Fushiguro",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b126635-L0y3I92JSUkN.png"
+          "image": "https://static.wikia.nocookie.net/jujutsu-kaisen/images/6/6e/Megumi_Fushiguro_%28Anime_4%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/133/y-offset/0/window-width/208/window-height/208?format=original"
         },
         {
           "id": "nobara",
           "name": "Nobara Kugisaki",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b133700-f6sOO3TcgLV6.png"
+          "image": "https://static.wikia.nocookie.net/jujutsu-kaisen/images/d/dd/Nobara_Kugisaki_%28Anime_2%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/464/y-offset/0/window-width/464/window-height/464?format=original"
         },
         {
           "id": "sukuna",
           "name": "Ryomen Sukuna",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b133701-rCQuDpHr3UZL.png"
+          "image": "https://static.wikia.nocookie.net/jujutsu-kaisen/images/f/fb/Sukuna_%28Anime%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/72/y-offset/0/window-width/259/window-height/259?format=original"
         },
         {
           "id": "nanami",
           "name": "Kento Nanami",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b133704-8wLTGjc234q2.png"
+          "image": "https://static.wikia.nocookie.net/jujutsu-kaisen/images/b/b0/Kento_Nanami_%28Anime%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/191/y-offset/0/window-width/423/window-height/423?format=original"
         }
       ]
     },
@@ -332,32 +332,32 @@
         {
           "id": "tanjiro",
           "name": "Tanjiro Kamado",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b126071-BTNEc1nRIv68.png"
+          "image": "https://static.wikia.nocookie.net/kimetsu-no-yaiba/images/0/05/Tanjiro_anime_right_face.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/177/y-offset/0/window-width/341/window-height/341?format=original"
         },
         {
           "id": "nezuko",
           "name": "Nezuko Kamado",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b127518-NRlq1CQ1v1ro.png"
+          "image": "https://static.wikia.nocookie.net/kimetsu-no-yaiba/images/0/0e/Nezuko_anime_right_face.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/272/y-offset/1/window-width/345/window-height/345?format=original"
         },
         {
           "id": "zenitsu",
           "name": "Zenitsu Agatsuma",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b129131-FZrQ7lSlxmEr.png"
+          "image": "https://static.wikia.nocookie.net/kimetsu-no-yaiba/images/4/4f/Zenitsu_anime_right_face.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/237/y-offset/0/window-width/222/window-height/222?format=original"
         },
         {
           "id": "inosuke",
           "name": "Inosuke Hashibira",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/n129130-SJC0Kn1DU39E.jpg"
+          "image": "https://static.wikia.nocookie.net/kimetsu-no-yaiba/images/d/d4/Inosuke_anime.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/181/y-offset/129/window-width/361/window-height/361?format=original"
         },
         {
           "id": "rengoku",
           "name": "Kyoujurou Rengoku",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b129133-VlTPowwt68rJ.png"
+          "image": "https://static.wikia.nocookie.net/kimetsu-no-yaiba/images/d/de/Kyojuro_anime_right_face.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/322/y-offset/0/window-width/200/window-height/200?format=original"
         },
         {
           "id": "muzan",
           "name": "Muzan Kibutsuji",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b129132-4nIZakUZ1o8W.jpg"
+          "image": "https://static.wikia.nocookie.net/kimetsu-no-yaiba/images/0/0e/Muzan_Kibutsuji_Full_Body_%28Anime%29.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/213/y-offset/0/window-width/532/window-height/532?format=original"
         }
       ]
     },
@@ -369,32 +369,32 @@
         {
           "id": "luffy",
           "name": "Monkey D. Luffy",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b40-MNypXsxSRb1R.png"
+          "image": "https://static.wikia.nocookie.net/onepiece/images/6/6d/Monkey_D._Luffy_Anime_Post_Timeskip_Infobox.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/207/y-offset/0/window-width/273/window-height/273?format=original"
         },
         {
           "id": "zoro",
           "name": "Roronoa Zoro",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b62-S7oAeA9WInjV.png"
+          "image": "https://static.wikia.nocookie.net/onepiece/images/5/52/Roronoa_Zoro_Anime_Post_Timeskip_Infobox.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/223/y-offset/0/window-width/455/window-height/455?format=original"
         },
         {
           "id": "nami",
           "name": "Nami",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b723-vp5hPptgnNEC.png"
+          "image": "https://static.wikia.nocookie.net/onepiece/images/6/68/Nami_Anime_Post_Timeskip_Infobox.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/391/y-offset/0/window-width/365/window-height/365?format=original"
         },
         {
           "id": "sanji",
           "name": "Sanji",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b305-6lisPmHtCnLT.png"
+          "image": "https://static.wikia.nocookie.net/onepiece/images/b/b6/Sanji_Anime_Post_Timeskip_Infobox.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/209/y-offset/0/window-width/551/window-height/551?format=original"
         },
         {
           "id": "chopper",
           "name": "Tony Tony Chopper",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b309-H64NhbJ2ywIQ.jpg"
+          "image": "https://static.wikia.nocookie.net/onepiece/images/a/af/Tony_Tony_Chopper_Anime_Post_Timeskip_Infobox.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/82/y-offset/54/window-width/381/window-height/381?format=original"
         },
         {
           "id": "robin",
           "name": "Nico Robin",
-          "image": "https://s4.anilist.co/file/anilistcdn/character/medium/b61-ywXUyyocEEqt.png"
+          "image": "https://static.wikia.nocookie.net/onepiece/images/b/bc/Nico_Robin_Anime_Post_Timeskip_Infobox.png/revision/latest/window-crop-fixed/width/400/height/400/x-offset/118/y-offset/3/window-width/353/window-height/353?format=original"
         }
       ]
     },
@@ -407,43 +407,43 @@
           "id": "katniss",
           "name": "Katniss Everdeen",
           "actor": "Jennifer Lawrence",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/01/Jennifer_Lawrence%2C_Cannes_Film_Festival_2025.jpg/330px-Jennifer_Lawrence%2C_Cannes_Film_Festival_2025.jpg"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/d/da/KatnissD13Portrait.jpg/revision/latest/scale-to-width-down/400?cb=20190306042858&format=original"
         },
         {
           "id": "peeta",
           "name": "Peeta Mellark",
           "actor": "Josh Hutcherson",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3e/Josh_Hutcherson_by_Gage_Skidmore_2.jpg/330px-Josh_Hutcherson_by_Gage_Skidmore_2.jpg"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/1/1e/PeetaCC.jpg/revision/latest/scale-to-width-down/400?cb=20231107225452&format=original"
         },
         {
           "id": "gale",
           "name": "Gale Hawthorne",
           "actor": "Liam Hemsworth",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Independence_Day-_Resurgence_Japan_Premiere-_Liam_Hemsworth_%26_Jeff_Goldblum_%2828453569402%29_%28cropped%29.jpg/330px-Independence_Day-_Resurgence_Japan_Premiere-_Liam_Hemsworth_%26_Jeff_Goldblum_%2828453569402%29_%28cropped%29.jpg"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/d/d6/GaleD13Portrait.jpg/revision/latest/scale-to-width-down/400?cb=20190306042858&format=original"
         },
         {
           "id": "effie",
           "name": "Effie Trinket",
           "actor": "Elizabeth Banks",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d9/Elizabeth_Banks_during_interview_in_2019.png/330px-Elizabeth_Banks_during_interview_in_2019.png"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/7/7d/Effie_trinket_promo.jpg/revision/latest/scale-to-width-down/400?cb=20120405064654&format=original"
         },
         {
           "id": "haymitch",
           "name": "Haymitch Abernathy",
           "actor": "Woody Harrelson",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3a/Woody_Harrelson_191020-N-NU281-1028_%28cropped%29.jpg/330px-Woody_Harrelson_191020-N-NU281-1028_%28cropped%29.jpg"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/8/80/HaymitchMJ.png/revision/latest/scale-to-width-down/400?cb=20231107224727&format=original"
         },
         {
           "id": "snow",
           "name": "President Coriolanus Snow",
           "actor": "Donald Sutherland",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1d/Donald_Sutherland_%28cropped%29.JPG/330px-Donald_Sutherland_%28cropped%29.JPG"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/7/7b/SnowCapitolCouture.jpg/revision/latest/scale-to-width-down/400?cb=20231107225829&format=original"
         },
         {
           "id": "lucy-gray",
           "name": "Lucy Gray Baird",
           "actor": "Rachel Zegler",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/RachelZegler-byPhilipRomano4crop.jpg/330px-RachelZegler-byPhilipRomano4crop.jpg"
+          "image": "https://static.wikia.nocookie.net/thehungergames/images/0/0f/LucyGray-Poster.jpeg/revision/latest/window-crop-fixed/width/400/height/400/x-offset/322/y-offset/120/window-width/527/window-height/527?format=original"
         }
       ]
     },
@@ -456,37 +456,37 @@
           "id": "paul",
           "name": "Paul Atreides",
           "actor": "Timothée Chalamet",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5c/Timoth%C3%A9e_Chalamet-63482_%28cropped%29.jpg/330px-Timoth%C3%A9e_Chalamet-63482_%28cropped%29.jpg"
+          "image": "https://static.wikia.nocookie.net/dune/images/0/03/Dune3_Paul_Textless.jpeg/revision/latest/scale-to-width-down/400?cb=20260317031646&format=original"
         },
         {
           "id": "jessica",
           "name": "Lady Jessica",
           "actor": "Rebecca Ferguson",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Rebecca_Ferguson_A_House_of_Dynamite-67_%28cropped2%29.jpg/330px-Rebecca_Ferguson_A_House_of_Dynamite-67_%28cropped2%29.jpg"
+          "image": "https://static.wikia.nocookie.net/dune/images/0/0d/Dune3_Jessica_Textless.jpeg/revision/latest/scale-to-width-down/400?cb=20260317031316&format=original"
         },
         {
           "id": "chani",
           "name": "Chani",
           "actor": "Zendaya",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5a/Zendaya-byPhilipRomano.jpg/330px-Zendaya-byPhilipRomano.jpg"
+          "image": "https://static.wikia.nocookie.net/dune/images/f/f3/Dune3_Chani_Textless.jpeg/revision/latest/scale-to-width-down/400?cb=20260317031407&format=original"
         },
         {
           "id": "stilgar",
           "name": "Stilgar",
           "actor": "Javier Bardem",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Javier_Bardem_-_Bunker_-_TIFF_2026-12.jpg/330px-Javier_Bardem_-_Bunker_-_TIFF_2026-12.jpg"
+          "image": "https://static.wikia.nocookie.net/dune/images/1/1c/Dune3_Stilgar_Textless.jpeg/revision/latest/scale-to-width-down/400?cb=20260317031437&format=original"
         },
         {
           "id": "gurney",
           "name": "Gurney Halleck",
           "actor": "Josh Brolin",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/Josh_Brolin_TIFF_2025_%28cropped%29.jpg/330px-Josh_Brolin_TIFF_2025_%28cropped%29.jpg"
+          "image": "https://static.wikia.nocookie.net/dune/images/b/ba/DunePartIIGurneyTextlessPoster.jpeg/revision/latest/scale-to-width-down/400?cb=20231203190425&format=original"
         },
         {
           "id": "baron",
           "name": "Baron Harkonnen",
           "actor": "Stellan Skarsgård",
-          "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Stellan_Skarsg%C3%A5rd-9707_%28cropped%29.jpg/330px-Stellan_Skarsg%C3%A5rd-9707_%28cropped%29.jpg"
+          "image": "https://static.wikia.nocookie.net/dune/images/9/90/BaronTextless.jpeg/revision/latest/scale-to-width-down/400?cb=20240417233918&format=original"
         }
       ]
     }

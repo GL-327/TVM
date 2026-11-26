@@ -3,6 +3,30 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.3.2",
+      "date": "2026-11-26",
+      "title": "Character avatars and Real-Debrid fix",
+      "highlights": [
+        "Profile pictures now show the characters from each show and film, not the actors.",
+        "A Real-Debrid key set for your account now works within seconds."
+      ],
+      "changes": [
+        {
+          "area": "Profiles",
+          "text": "Every avatar set now uses pictures of the characters, cropped to their faces."
+        },
+        {
+          "area": "Real-Debrid",
+          "text": "A key the owner sets for your account no longer takes up to 10 minutes to start working.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.3.1",
       "date": "2026-11-25",
       "title": "Sign-in fix for Windows",

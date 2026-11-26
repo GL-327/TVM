@@ -59,6 +59,19 @@ describe('private accounts provider', () => {
     await expect(f.accounts.rdTokenFor('member-session')).rejects.toMatchObject({ status: 503, message: 'accounts_unavailable' });
     expect(f.accounts.cachedRdTokenFor('member-session')).toBeNull();
   });
+  it('picks up a key the owner sets remotely without waiting out a cached missing key', async () => {
+    const f = fixture(); f.member.status = 'active'; f.member.hasRdToken = false;
+    expect(await f.accounts.rdTokenFor('member-session')).toBeNull();
+    // Set on the dashboard: the service now reports a key.
+    f.rd.set(f.member.id, 'owner-set-rd'); f.member.hasRdToken = true;
+    await f.accounts.resolve('member-session');
+    expect(await f.accounts.rdTokenFor('member-session')).toBe('owner-set-rd');
+    // Even without a resolve, a missing key is rechecked after 30 seconds.
+    const g = fixture(); g.member.status = 'active'; g.member.hasRdToken = true;
+    expect(await g.accounts.rdTokenFor('member-session')).toBeNull();
+    g.rd.set(g.member.id, 'later-rd'); g.advance(30_000);
+    expect(await g.accounts.rdTokenFor('member-session')).toBe('later-rd');
+  });
   it('invalidates cached tokens after own changes, admin changes, revocation and signout', async () => {
     const f = fixture(); f.member.status = 'active'; f.member.hasRdToken = true; f.rd.set(f.member.id, 'first');
     await f.accounts.rdTokenFor('member-session');
