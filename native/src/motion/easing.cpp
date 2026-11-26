@@ -5,6 +5,13 @@
 
 namespace tvm::motion {
 
+double SpringProgress(double elapsedMs, double stiffness, double damping) {
+    const double t = elapsedMs * 0.001;
+    const double decay = damping / 2.0;
+    const double frequency = std::sqrt(stiffness - decay * decay);
+    return 1.0 - std::exp(-decay * t) * (std::cos(frequency * t) + decay / frequency * std::sin(frequency * t));
+}
+
 double CubicBezier::SampleX(double t) const {
     const double ax = 1.0 - 3.0 * x2_ + 3.0 * x1_;
     const double bx = 3.0 * x2_ - 6.0 * x1_;

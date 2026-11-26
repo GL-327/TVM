@@ -83,6 +83,11 @@ releases.forEach((release, index) => {
       else for (const platform of change.platforms) if (!PLATFORMS.has(platform)) fail(`${spot}: unknown platform "${platform}"`);
     }
   });
+  // Optional: what may be broken or unfinished in this release, shown in a "Known issues" block.
+  if (release.knownIssues !== undefined) {
+    if (!Array.isArray(release.knownIssues) || release.knownIssues.length === 0) fail(`${where}: knownIssues must be a non-empty list when present`);
+    else release.knownIssues.forEach((line, at) => copyProblems(line, `${where} knownIssues[${at}]`));
+  }
 });
 
 if (releases[0]?.version !== pkg.version) {

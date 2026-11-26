@@ -60,6 +60,9 @@ sub init()
   m.readerGlass = m.top.findNode("readerGlass")
   m.readerBody = m.top.findNode("readerBody")
   m.readerPageLabel = m.top.findNode("readerPageLabel")
+  m.resetQr = m.top.findNode("resetQr")
+  m.resetUrlLabel = m.top.findNode("resetUrlLabel")
+  m.verifyPlainStatus = m.top.findNode("verifyPlainStatus")
 
   m.bannerLabel = m.top.findNode("bannerLabel")
   m.subNoteLabel = m.top.findNode("subNoteLabel")
@@ -146,6 +149,14 @@ sub styleText()
   m.readerBody.color = tvmText()
   m.readerPageLabel.font = tvmFontMeta()
   m.readerPageLabel.color = tvmMuted()
+  if m.resetUrlLabel <> invalid
+    m.resetUrlLabel.font = tvmFontLabel()
+    m.resetUrlLabel.color = tvmText()
+  end if
+  if m.verifyPlainStatus <> invalid
+    m.verifyPlainStatus.font = tvmFontSecondary()
+    m.verifyPlainStatus.color = tvmText()
+  end if
 
   m.bannerLabel.font = tvmFontMeta()
   m.bannerLabel.color = tvmDanger()
@@ -182,6 +193,10 @@ sub onQrChange()
     m.qrCode.visible = false
     m.qrLoading.visible = true
     m.qrLoadingLabel.visible = true
+  end if
+  if m.resetQr <> invalid
+    resetUrl = asText(m.top.resetUrl)
+    if resetUrl <> "" then m.resetQr.value = resetUrl
   end if
   paint()
 end sub
@@ -244,6 +259,9 @@ sub hideAllCardControls()
   m.checkGroup.visible = false
   m.statusPillRow.visible = false
   m.readerGroup.visible = false
+  if m.resetQr <> invalid then m.resetQr.visible = false
+  if m.resetUrlLabel <> invalid then m.resetUrlLabel.visible = false
+  if m.verifyPlainStatus <> invalid then m.verifyPlainStatus.visible = false
   m.bannerLabel.text = ""
   m.bannerLabel.visible = false
   m.subNoteLabel.text = ""
@@ -280,7 +298,8 @@ function focusGrid() as Object
   if phase = "register_terms" then return [["check"], ["btnLink"], ["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"]]
   if phase = "waiting" or phase = "unreachable" then return [["btnPrimary"], ["btnSecondary1"], ["btnLink"]]
   if phase = "suspended" then return [["btnSecondary1"], ["btnLink"]]
-  if phase = "verify" then return [["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"], ["btnLink"]]
+  if phase = "check_inbox" or phase = "verify" then return [["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"], ["btnLink"]]
+  if phase = "forgot" then return [["btnPrimary"], ["btnSecondary1"]]
   if phase = "terms"
     if m.termsPages.Count() > 1 then return [["btnPrevPage", "btnNextPage"], ["btnPrimary"], ["btnSecondary1"]]
     return [["btnPrimary"], ["btnSecondary1"]]
@@ -497,22 +516,33 @@ sub paintSingleCardPhase(phase as String, busy as Boolean)
     m.headingLabel.text = "You're on the list"
     m.ledeLabel.text = "The owner checks new accounts by hand. You can close TVM; we'll let you in as soon as yours is switched on."
     m.statusPillRow.visible = true
-    m.statusPillRow.translation = [innerX, 764]
+    m.statusPillRow.translation = [innerX, 748]
     m.statusDot.color = tvmWarning()
     m.statusPillText.text = pillWithEmail(signedAs, "Waiting for approval")
+    if m.verifyPlainStatus <> invalid
+      m.verifyPlainStatus.visible = true
+      m.verifyPlainStatus.translation = [innerX, 892]
+      if m.top.emailVerified = true
+        m.verifyPlainStatus.text = "Email verified"
+        m.verifyPlainStatus.color = tvmSuccess()
+      else
+        m.verifyPlainStatus.text = "Not verified yet"
+        m.verifyPlainStatus.color = tvmMuted()
+      end if
+    end if
     chkLbl = "Check again"
     if busy then chkLbl = "Checking..."
-    placeButton(m.btnPrimary, innerX, 944, innerW, chkLbl, true, busy)
+    placeButton(m.btnPrimary, innerX, 972, innerW, chkLbl, true, busy)
     m.subNoteLabel.visible = true
-    m.subNoteLabel.translation = [innerX, 1112]
+    m.subNoteLabel.translation = [innerX, 1136]
     m.subNoteLabel.width = innerW
     note = asText(m.top.pollNote)
     if note = "" then note = "Checking automatically every minute"
     m.subNoteLabel.text = note
-    paintBanner(banner, innerX, 1176, innerW, true)
-    placeButton(m.btnSecondary1, innerX, 1260, innerW, "Sign out", false, false)
-    placeButton(m.btnLink, innerX, 1432, innerW, "Privacy & terms", false, false)
-    cardH = 1320
+    paintBanner(banner, innerX, 1200, innerW, true)
+    placeButton(m.btnSecondary1, innerX, 1280, innerW, "Sign out", false, false)
+    placeButton(m.btnLink, innerX, 1452, innerW, "Privacy & terms", false, false)
+    cardH = 1340
     cardY = 320
   else if phase = "unreachable"
     m.kickerLabel.text = "CONNECTION"
@@ -543,16 +573,50 @@ sub paintSingleCardPhase(phase as String, busy as Boolean)
     placeButton(m.btnLink, innerX, 1164, innerW, "Privacy & terms", false, false)
     cardH = 1040
     cardY = 320
-  else if phase = "verify"
+  else if phase = "check_inbox" or phase = "verify"
+    addr = signedAs
+    if addr = "" then addr = email
     m.kickerLabel.text = "EMAIL CHECK"
-    m.headingLabel.text = "Check your email"
-    m.ledeLabel.text = "Enter the six-digit code sent to " + signedAs + "."
-    paintBanner(banner, innerX, 720, innerW, true)
-    placeButton(m.btnPrimary, innerX, 820, innerW, "Enter 6-digit code", true, busy)
-    placeButton(m.btnSecondary1, innerX, 996, innerW, "Resend code", false, false)
-    placeButton(m.btnSecondary2, innerX, 1168, innerW, "Sign out", false, false)
+    m.headingLabel.text = "Check your inbox"
+    m.ledeLabel.text = "We sent a verification link to " + addr + ". Open the link in your email; TVM checks automatically every 5 seconds."
+    cooldown = m.top.resendCooldown
+    resendLbl = "Resend email"
+    if cooldown > 0 then resendLbl = "Resend email (" + StrI(cooldown).Trim() + "s)"
+    paintBanner(banner, innerX, 736, innerW, true)
+    placeButton(m.btnPrimary, innerX, 824, innerW, resendLbl, true, busy or cooldown > 0)
+    placeButton(m.btnSecondary1, innerX, 996, innerW, "Use a different email", false, busy)
+    placeButton(m.btnSecondary2, innerX, 1168, innerW, "Sign out", false, busy)
     placeButton(m.btnLink, innerX, 1340, innerW, "Privacy & terms", false, false)
     cardH = 1240
+    cardY = 320
+  else if phase = "forgot"
+    addr = email
+    if addr = "" then addr = signedAs
+    linkDisplay = tvmFormatVerifyUrl(asText(m.top.resetUrl))
+    if linkDisplay = "" then linkDisplay = "tvm-accounts.tvm-accounts.workers.dev/link"
+    m.kickerLabel.text = "PASSWORD RESET"
+    m.headingLabel.text = "Check your inbox"
+    m.ledeLabel.text = "If " + addr + " has an account, we sent a password reset link. Open the email link or visit the link page on your phone:"
+    if m.resetQr <> invalid
+      resetVal = asText(m.top.resetUrl)
+      if resetVal = "" then resetVal = "https://tvm-accounts.tvm-accounts.workers.dev/link"
+      m.resetQr.value = resetVal
+      m.resetQr.translation = [innerX, 744]
+      m.resetQr.visible = true
+    end if
+    if m.resetUrlLabel <> invalid
+      m.resetUrlLabel.visible = true
+      m.resetUrlLabel.translation = [innerX + 388, 796]
+      m.resetUrlLabel.width = innerW - 388
+      m.resetUrlLabel.text = linkDisplay + Chr(10) + "Scan with your phone's camera or check your email."
+    end if
+    cooldown = m.top.resendCooldown
+    resendLbl = "Resend reset link"
+    if cooldown > 0 then resendLbl = "Resend reset link (" + StrI(cooldown).Trim() + "s)"
+    paintBanner(banner, innerX, 1108, innerW, true)
+    placeButton(m.btnPrimary, innerX, 1192, innerW, resendLbl, true, busy or cooldown > 0)
+    placeButton(m.btnSecondary1, innerX, 1368, innerW, "Back to sign in", false, false)
+    cardH = 1280
     cardY = 320
   else if phase = "terms"
     m.kickerLabel.text = "BEFORE YOU START"
@@ -838,8 +902,7 @@ sub activateFocused(focusedId as String, phase as String)
   if focusedId = "check" then emit("toggleTermsAgree")
   if focusedId = "btnShowPass" then emit("toggleShowPassword")
   if focusedId = "btnForgot"
-    m.forgotNoteVisible = true
-    paint()
+    emit("forgotPassword")
   end if
   if focusedId = "btnPrevPage" and m.pageIndex > 0
     m.pageIndex = m.pageIndex - 1
@@ -856,8 +919,10 @@ sub activateFocused(focusedId as String, phase as String)
       emit("submit")
     else if phase = "waiting" or phase = "unreachable"
       emit("recheck")
-    else if phase = "verify"
-      emit("editEmailCode")
+    else if phase = "check_inbox" or phase = "verify"
+      emit("resendVerify")
+    else if phase = "forgot"
+      emit("forgotPassword")
     else if phase = "terms"
       emit("agree")
     else if phase = "privacy"
@@ -873,8 +938,10 @@ sub activateFocused(focusedId as String, phase as String)
       emit("prevStep")
     else if phase = "waiting" or phase = "unreachable" or phase = "suspended" or phase = "terms"
       emit("signout")
-    else if phase = "verify"
-      emit("resendCode")
+    else if phase = "check_inbox" or phase = "verify"
+      emit("differentEmail")
+    else if phase = "forgot"
+      emit("backToPassword")
     end if
   end if
   if focusedId = "btnSecondary2"
@@ -884,7 +951,7 @@ sub activateFocused(focusedId as String, phase as String)
       emit("backToPhone")
     else if phase = "register_email" or phase = "register_terms"
       emit("backToSignin")
-    else if phase = "verify"
+    else if phase = "check_inbox" or phase = "verify"
       emit("signout")
     end if
   end if

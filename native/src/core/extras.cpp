@@ -24,6 +24,31 @@ Segments ParseSegments(const nlohmann::json& body) {
     }
     return result;
 }
+namespace {
+constexpr std::pair<std::string_view, bool> kSwitchDefaults[] = {
+    {"onlineSubtitles", true}, {"trailers", true}, {"trailerBackdrops", true}, {"collections", true},
+    {"comingUp", true}, {"watchStats", true}, {"animeTitles", true}, {"ratings", true},
+    {"qualityBadges", true}, {"versionPicker", true}, {"chapters", true}, {"seekPreviews", true},
+    {"themeSongs", false}, {"spoilerBlur", false}, {"surpriseMe", true}, {"autoCollections", true},
+    {"sleepTimer", true}, {"nightMode", false}, {"pauseOnMinimize", true}, {"shortcutsOverlay", true},
+    {"webhook", false}, {"announcements", true},
+};
+
+void ReadChoice(const nlohmann::json& body, const char* key, std::string& out,
+                std::initializer_list<std::string_view> allowed = {}) {
+    const auto value = body.find(key);
+    if (value == body.end() || !value->is_string()) return;
+    const auto& text = value->get_ref<const std::string&>();
+    if (!text.empty() && (allowed.size() == 0 || std::find(allowed.begin(), allowed.end(), text) != allowed.end())) out = text;
+}
+}
+
+bool Preferences::Enabled(std::string_view id) const {
+    if (const auto choice = switches.find(id); choice != switches.end()) return choice->second;
+    for (const auto& [key, enabled] : kSwitchDefaults) if (key == id) return enabled;
+    return false;
+}
+
 Preferences ParsePreferences(const nlohmann::json& body) {
     Preferences prefs;
     if (!body.is_object()) return prefs;
@@ -41,6 +66,20 @@ Preferences ParsePreferences(const nlohmann::json& body) {
                 std::find(languages.begin(), languages.end(), language) == languages.end()) languages.push_back(language);
         }
         if (!languages.empty()) prefs.languages = std::move(languages);
+    }
+    ReadChoice(body, "language", prefs.language);
+    ReadChoice(body, "audioLanguage", prefs.audioLanguage);
+    ReadChoice(body, "subtitleMode", prefs.subtitleMode, {"off", "foreign", "always"});
+    if (const auto style = body.find("subtitleStyle"); style != body.end() && style->is_object()) {
+        ReadChoice(*style, "size", prefs.subtitleSize, {"s", "m", "l", "xl"});
+        ReadChoice(*style, "color", prefs.subtitleColor, {"white", "yellow", "cyan"});
+        ReadChoice(*style, "background", prefs.subtitleBackground, {"shadow", "box", "none"});
+    }
+    if (const auto switches = body.find("extras"); switches != body.end() && switches->is_object()) {
+        for (const auto& [key, enabled] : kSwitchDefaults) {
+            const auto value = switches->find(key);
+            if (value != switches->end() && value->is_boolean()) prefs.switches.emplace(key, value->get<bool>());
+        }
     }
     return prefs;
 }

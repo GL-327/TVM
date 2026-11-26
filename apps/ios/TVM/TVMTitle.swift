@@ -208,10 +208,19 @@ enum TVMTitle {
         )
     }
 
-    static func progressRatio(_ entry: ProgressEntry?) -> Double? {
+    static func rawProgressRatio(_ entry: ProgressEntry?) -> Double? {
         guard let entry, entry.duration >= 60, entry.position >= 30 else { return nil }
         let value = entry.position / entry.duration
         if value >= 0.96 { return nil }
         return min(1, max(0, value))
+    }
+
+    static func progressRatio(_ entry: ProgressEntry?) -> Double? {
+        guard let entry, !entry.hiddenFromContinueWatching else { return nil }
+        return rawProgressRatio(entry)
+    }
+
+    static func resumePosition(_ entry: ProgressEntry?) -> Double? {
+        rawProgressRatio(entry) == nil ? nil : entry?.position
     }
 }

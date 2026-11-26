@@ -36,6 +36,8 @@ describe('ffprobe parsing', () => {
       videoBitDepth: 10,
       audioCodec: 'opus',
       audioChannels: 6,
+      audioLanguages: [],
+      hdr: false,
     });
   });
 

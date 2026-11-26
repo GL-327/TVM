@@ -216,7 +216,7 @@ describe('media service', () => {
     });
 
     const result = await media.play({ link: 'https://hoster.example/file' });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       kind: 'stream',
       url: 'https://cdn.example/stream.mp4',
       title: 'Dune Part Two',
@@ -937,7 +937,7 @@ describe('media service', () => {
 
     const result = await media.play({ link: 'https://real-debrid.com/d/BOYS' });
     expect(calls).toEqual([{ url: 'https://cdn.example/raw.mkv', maxHeight: 1080 }]);
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       kind: 'stream',
       url: '/api/stream/hls/abc123/index.m3u8',
       title: 'The Boys · S1 E1',

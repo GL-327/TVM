@@ -95,6 +95,43 @@ export function ccPlaybackRows(state) {
   rows.push(ccRow('forward', `Forward ${delta} seconds`, 'forward', 'none', !live, liveReason));
   rows.push(ccRow('restart', 'Start over', 'restart', 'none', !live, liveReason));
   if (aaGet(state, 'hasNext', false) === true) rows.push(ccRow('next', 'Next episode', 'forward', 'chevron', true, asText(aaGet(state, 'nextTitle', ''))));
+  if (!live && aaGet(state, 'hasVersions', false) === true) {
+    rows.push(ccRow('versions', 'Versions', 'apps', 'chevron', true, asText(aaGet(state, 'versionLabel', ''))));
+  }
+  if (aaGet(state, 'sleepEnabled', false) === true) {
+    const detail = asText(aaGet(state, 'sleepLabel', 'Off')) || 'Off';
+    rows.push(ccRow('sleep', 'Sleep timer', '', 'chevron', true, detail));
+  }
+  return rows;
+}
+
+export function ccSleepLabel(mode, remaining = 0) {
+  if (mode === 'end') return 'End of episode';
+  if (remaining > 0) {
+    const mins = Math.floor((remaining + 59) / 60);
+    return mins <= 1 ? '1 min left' : `${mins} min left`;
+  }
+  if (['15', '30', '45', '60'].includes(mode)) return `${mode} min`;
+  return 'Off';
+}
+
+export function ccSleepRows(currentMode, isSeries = false) {
+  const rows = [ccHeader('hdr:sleep', 'Sleep timer', 'Stop playback automatically')];
+  const opts = [
+    { id: 'off', label: 'Off', detail: 'Do not stop automatically' },
+    { id: '15', label: '15 minutes', detail: '' },
+    { id: '30', label: '30 minutes', detail: '' },
+    { id: '45', label: '45 minutes', detail: '' },
+    { id: '60', label: '60 minutes', detail: '' },
+  ];
+  if (isSeries) opts.push({ id: 'end', label: 'End of episode', detail: 'Stop when this episode finishes' });
+  for (const opt of opts) {
+    const chosen = opt.id === currentMode;
+    const r = ccRow(`sleep:${opt.id}`, opt.label, '', chosen ? 'check' : 'none', true, opt.detail);
+    r.checked = chosen;
+    rows.push(r);
+  }
+  rows.push(ccRow('sleep:back', 'Back', 'back', 'none', true, ''));
   return rows;
 }
 
@@ -365,3 +402,33 @@ for (const c of cases.handoffBody) test(`handoffBody: ${c.name}`, () => assert.d
 for (const c of cases.moveFocus) test(`moveFocus: ${c.name}`, () => assert.deepEqual(ccMoveFocus(c.rows, c.index, c.intent), c.expected));
 for (const c of cases.indexOfId) test(`indexOfId: ${c.name}`, () => assert.equal(ccIndexOfId(c.rows, c.id), c.expected));
 for (const c of cases.autoClose) test(`autoClose: ${c.idleMs}/${c.phase}`, () => assert.equal(ccShouldAutoClose(c.idleMs, c.phase), c.expected));
+
+test('playbackRows with versions and sleep timer enabled', () => {
+  const rows = ccPlaybackRows({
+    playing: true,
+    hasNext: false,
+    live: false,
+    hasVersions: true,
+    versionLabel: '4K · REMUX',
+    sleepEnabled: true,
+    sleepLabel: '30 min left',
+  });
+  assert.ok(rows.some((r) => r.id === 'versions' && r.detail === '4K · REMUX' && r.trailing === 'chevron'));
+  assert.ok(rows.some((r) => r.id === 'sleep' && r.detail === '30 min left' && r.trailing === 'chevron'));
+  const liveRows = ccPlaybackRows({ playing: true, live: true, hasVersions: true, sleepEnabled: true, sleepLabel: 'Off' });
+  assert.ok(!liveRows.some((r) => r.id === 'versions'));
+  assert.ok(liveRows.some((r) => r.id === 'sleep' && r.detail === 'Off'));
+});
+
+test('sleep timer labels and option rows', () => {
+  assert.equal(ccSleepLabel('off', 0), 'Off');
+  assert.equal(ccSleepLabel('30', 0), '30 min');
+  assert.equal(ccSleepLabel('30', 725), '13 min left');
+  assert.equal(ccSleepLabel('15', 30), '1 min left');
+  assert.equal(ccSleepLabel('end', 0), 'End of episode');
+  const movieRows = ccSleepRows('30', false);
+  assert.equal(movieRows.some((r) => r.id === 'sleep:end'), false);
+  assert.equal(movieRows.find((r) => r.id === 'sleep:30')?.checked, true);
+  const seriesRows = ccSleepRows('end', true);
+  assert.equal(seriesRows.find((r) => r.id === 'sleep:end')?.checked, true);
+});

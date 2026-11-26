@@ -7,7 +7,7 @@ import { LoadingScreen } from '../components/LoadingScreen';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { mapRailPosters } from '../components/PosterCard';
 import { Rail, RailPaging } from '../components/Rail';
-import { StreamChrome } from '../components/StreamChrome';
+import { Ribbon } from '../components/Ribbon';
 import { preferBackdrop } from '../data/artwork';
 import { type Title } from '../data/catalog';
 import {
@@ -36,7 +36,7 @@ function inLane(title: Title, lane: 'all' | 'shows' | 'movies'): boolean {
   return title.kind !== 'series';
 }
 
-export function Library(_props: ScreenProps): React.JSX.Element {
+export function Library({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const scope = useFocusScope();
   const cached = peekHome();
@@ -50,7 +50,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
   const [rd, setRd] = useState<RdStatus>(cached?.rd ?? RD_EMPTY);
   const rdReady = rd.configured && rd.error !== 'needs-auth';
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [lane, setLane] = useState<'all' | 'shows' | 'movies'>('all');
+  const [lane, setLane] = useState<'all' | 'shows' | 'movies'>(() => params.lane === 'movies' || params.lane === 'shows' ? params.lane : 'all');
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -153,7 +153,7 @@ export function Library(_props: ScreenProps): React.JSX.Element {
   return (
     <main className={`home stream-page stream-page--${plan.stream}`}>
       {!introDone && <TvmIntro variant="stream" pending={loading} onDone={() => setIntroDone(true)} />}
-      <StreamChrome profile={profile} lane={lane} onLane={setLane} />
+      <Ribbon active={lane === 'all' ? 'library' : lane} onLane={setLane} />
 
       {loading && introDone ? (
         <LoadingScreen

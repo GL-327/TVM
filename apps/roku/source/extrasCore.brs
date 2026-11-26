@@ -11,6 +11,15 @@ function lcExtrasRoute(ctx as Object) as Dynamic
     return { status: 200, json: lcExtrasPrefs(ctx) }
   end if
   data = {}
+  gates = {
+    "/api/extras/subtitles": "onlineSubtitles", "/api/extras/collection": "collections"
+    "/api/extras/upcoming": "comingUp", "/api/extras/upcoming/home": "comingUp"
+    "/api/extras/anime-title": "animeTitles", "/api/extras/progress": "watchStats"
+    "/api/extras/surprise": "surpriseMe"
+  }
+  gate = lcAaText(gates, path)
+  if gate <> "" and not lcAaBool(lcExtrasPrefs(ctx).extras, gate, true) then return { status: 404, json: {} }
+  if path = "/api/extras/hero-clip" or path = "/api/extras/theme" or path = "/api/extras/ytdlp" then return { status: 404, json: {} }
   if path = "/api/extras/next" then data = lcExtrasNext(ctx)
   if path = "/api/extras/segments" then data = lcExtrasSegments(ctx.query)
   if path = "/api/extras/subtitles" then data = { subtitles: lcExtrasSubtitles(ctx) }
@@ -18,6 +27,7 @@ function lcExtrasRoute(ctx as Object) as Dynamic
   if path = "/api/extras/upcoming" then data = lcExtrasUpcoming(lcAaText(ctx.query, "id"))
   if path = "/api/extras/upcoming/home" then data = lcExtrasHome(ctx)
   if path = "/api/extras/anime-title" then data = lcExtrasAnime(lcAaText(ctx.query, "title"))
+  if path = "/api/extras/surprise" then data = lcExtrasSurprise(ctx)
   if path = "/api/extras/stats" then data = lcExtrasStats(ctx)
   if path = "/api/extras/stats/clear" and ctx.method = "POST"
     all = lcReadRegJson("extrasStats", {})
@@ -31,19 +41,61 @@ function lcExtrasRoute(ctx as Object) as Dynamic
   return { status: 200, json: data }
 end function
 
+function lcExtraDefaults() as Object
+  return {
+    onlineSubtitles: true, trailers: false, trailerBackdrops: false, collections: true, comingUp: true
+    watchStats: true, animeTitles: true, ratings: true, qualityBadges: true, versionPicker: true
+    chapters: false, seekPreviews: false, themeSongs: false, spoilerBlur: false, surpriseMe: true
+    autoCollections: true, sleepTimer: true, nightMode: false, pauseOnMinimize: false
+    shortcutsOverlay: false, webhook: false, announcements: true
+  }
+end function
+
 function lcExtrasPrefs(ctx as Object) as Object
   all = lcReadRegJson("extrasPrefs", {})
   prefs = lcAaGet(all, lcActiveProfileId(ctx), {})
   mode = lcAaText(prefs, "skipSegments", "button")
   if mode <> "off" and mode <> "auto" then mode = "button"
-  return { skipSegments: mode, autoplayNext: lcAaBool(prefs, "autoplayNext", true), subtitleLanguages: lcAaGet(prefs, "subtitleLanguages", ["eng"]), subtitleLanguage: lcAaText(prefs, "subtitleLanguage", "eng") }
+  extras = lcExtraDefaults()
+  given = lcAaGet(prefs, "extras", {})
+  for each key in extras
+    extras[key] = lcAaBool(given, key, extras[key])
+  end for
+  return {
+    skipSegments: mode, autoplayNext: lcAaBool(prefs, "autoplayNext", true)
+    subtitleLanguages: lcAaGet(prefs, "subtitleLanguages", ["eng"]), subtitleLanguage: lcAaText(prefs, "subtitleLanguage", "eng")
+    quality: lcAaText(prefs, "quality", "original"), audioLanguage: lcAaText(prefs, "audioLanguage", "original")
+    skipUpscaled: lcAaBool(prefs, "skipUpscaled", true), subtitleMode: lcAaText(prefs, "subtitleMode", "foreign")
+    subtitleStyle: lcAaGet(prefs, "subtitleStyle", { size: "m", color: "white", background: "shadow" })
+    extras: extras, sleepDefault: lcAaText(prefs, "sleepDefault", "off")
+    spotlightEvents: lcAaBool(prefs, "spotlightEvents", true), homeSections: lcAaGet(prefs, "homeSections", [])
+    webhookUrl: invalid, heroPreviews: false
+  }
 end function
 
 sub lcSaveExtrasPrefs(ctx as Object)
   prefs = lcExtrasPrefs(ctx)
-  for each key in ["skipSegments", "autoplayNext", "subtitleLanguages", "subtitleLanguage"]
-    if ctx.body.DoesExist(key) then prefs[key] = ctx.body[key]
+  body = ctx.body
+  for each key in ["skipSegments", "autoplayNext", "subtitleLanguages", "subtitleLanguage", "quality", "audioLanguage", "skipUpscaled", "subtitleMode", "sleepDefault", "spotlightEvents"]
+    previous = prefs[key]
+    incoming = lcAaGet(body, key, previous)
+    if Type(incoming) = Type(previous) then prefs[key] = incoming
   end for
+  if not lcIncludes(["original", "2160", "1080", "720", "saver"], prefs.quality) then prefs.quality = "original"
+  if not lcIncludes(["foreign", "always", "off"], prefs.subtitleMode) then prefs.subtitleMode = "foreign"
+  if not lcIncludes(["off", "15", "30", "45", "60", "end"], prefs.sleepDefault) then prefs.sleepDefault = "off"
+  style = lcAaGet(body, "subtitleStyle", {})
+  for each key in ["size", "color", "background"]
+    allowed = { size: ["s", "m", "l", "xl"], color: ["white", "yellow", "cyan"], background: ["shadow", "box", "none"] }
+    choice = lcAaText(style, key)
+    if lcIncludes(allowed[key], choice) then prefs.subtitleStyle[key] = choice
+  end for
+  extras = lcAaGet(body, "extras", {})
+  for each key in prefs.extras
+    prefs.extras[key] = lcAaBool(extras, key, prefs.extras[key])
+  end for
+  sections = lcAaGet(body, "homeSections", invalid)
+  if Type(sections) = "roArray" and sections.Count() <= 30 then prefs.homeSections = sections
   all = lcReadRegJson("extrasPrefs", {})
   all[lcActiveProfileId(ctx)] = prefs
   lcWriteRegJson("extrasPrefs", all)
@@ -406,4 +458,17 @@ function lcExtrasStats(ctx as Object) as Object
   end for
   topGenres.SortBy("seconds", "r")
   return { week: week, month: month, all: lcAaInt(stats, "all"), finished: lcAaGet(stats, "finished", {}).Count(), streakDays: streak, topGenres: topGenres, history: lcAaGet(stats, "history", []) }
+end function
+
+function lcExtrasSurprise(ctx as Object) as Object
+  pid = lcActiveProfileId(ctx)
+  candidates = []
+  candidates.Append(lcGetWatchlist(pid))
+  bundle = lcCatalogBundle()
+  candidates.Append(lcAaGet(bundle, "trending", []))
+  candidates.Append(lcAaGet(bundle, "all", []))
+  filtered = lcFilterItems(lcDedupeItems(candidates), ctx)
+  if filtered.Count() = 0 then return { item: invalid }
+  pick = filtered[Rnd(filtered.Count()) - 1]
+  return { item: pick }
 end function

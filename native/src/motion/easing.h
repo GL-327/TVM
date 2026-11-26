@@ -38,6 +38,9 @@ inline constexpr CubicBezier kEaseInOut{0.42, 0.0, 0.58, 1.0};
 // --tvm-motion-ease in packages/design/src/tokens.css.
 inline constexpr CubicBezier kMotionEase{0.22, 1.0, 0.36, 1.0};
 
+// Analytic, damped step response. Time is in milliseconds; stiffness and damping assume unit mass.
+double SpringProgress(double elapsedMs, double stiffness = 420.0, double damping = 32.0);
+
 struct Keyframe {
     double offset;  // Position in the animation, 0 to 1, ascending.
     double value;

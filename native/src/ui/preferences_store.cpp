@@ -18,7 +18,10 @@ nlohmann::ordered_json ReadUiJson(const paths::fs::path& path) {
 
 }  // namespace
 
-FilePreferenceStore::FilePreferenceStore(paths::fs::path dataDir) : dataDir_(std::move(dataDir)) {}
+FilePreferenceStore::FilePreferenceStore(paths::fs::path dataDir) : dataDir_(std::move(dataDir)) {
+    auto json = UiJson();
+    if (json.erase("glass") != 0) SaveUiJson(std::move(json));
+}
 
 const nlohmann::ordered_json& FilePreferenceStore::UiJson() const {
     const auto now = std::chrono::steady_clock::now();
@@ -85,16 +88,27 @@ void FilePreferenceStore::SaveLook(Theme theme) {
     SaveUiJson(std::move(json));
 }
 
-GlassClarity FilePreferenceStore::Glass() const {
-    const nlohmann::ordered_json& json = UiJson();
-    const auto value = json.find("glass");
-    return value != json.end() && value->is_string() ? ParseGlassClarity(value->get<std::string>())
-                                                     : GlassClarity::Default;
+UiFont FilePreferenceStore::Font() const {
+    const auto& json = UiJson();
+    const auto value = json.find("font");
+    return value != json.end() && value->is_string() ? ParseUiFont(value->get<std::string>()) : UiFont::Geist;
 }
 
-void FilePreferenceStore::SaveGlass(GlassClarity clarity) {
+void FilePreferenceStore::SetFont(UiFont font) {
     auto json = UiJson();
-    json["glass"] = GlassClarityId(clarity);
+    json["font"] = UiFontId(font);
+    SaveUiJson(std::move(json));
+}
+
+bool FilePreferenceStore::ReduceTransparency() const {
+    const auto& json = UiJson();
+    const auto value = json.find("reduceTransparency");
+    return value != json.end() && value->is_boolean() && value->get<bool>();
+}
+
+void FilePreferenceStore::SetReduceTransparency(bool on) {
+    auto json = UiJson();
+    json["reduceTransparency"] = on;
     SaveUiJson(std::move(json));
 }
 

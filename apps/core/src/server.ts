@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { stat as statFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Readable } from 'node:stream';
@@ -11,7 +13,7 @@ import { createSubscriptionService, type SubscriptionService } from './providers
 import { createBillingProbe, type BillingProbe } from './providers/billingProbe.ts';
 import { isAccountTier, accountSessionToken, publicAccount, type AccountRecord } from './providers/accounts.ts';
 import { createMailService, type MailService } from './providers/mail.ts';
-import { createRemoteAccountsService, AccountsError, type CoreAccountsService } from './providers/remoteAccounts.ts';
+import { createRemoteAccountsService, AccountsError, DEFAULT_ACCOUNTS_CONFIG, type CoreAccountsService } from './providers/remoteAccounts.ts';
 import { currentAccount, setCurrentAccount, currentSessionToken, runForSession } from './requestContext.ts';
 import { entitlementForTier, accessTiers, ACCESS_TIERS, ACCESS_ROUTE } from './providers/accessTiers.ts';
 import { createFeatureFlags } from './providers/featureFlags.ts';
@@ -54,6 +56,9 @@ import { resolveDataDir } from './update/paths.ts';
 import { createUpdateService, restartAfterApply, type UpdateService } from './update/service.ts';
 import { readPrefs, type CorePrefs } from './prefs.ts';
 import { extrasRoute, writeExtrasPrefs } from './providers/extras.ts';
+import { guideWindow } from './providers/liveGuide.ts';
+import { playbackEvent, progressId } from './providers/playbackWebhook.ts';
+import { parsePlaybackClient } from './providers/versions.ts';
 import { validDownloadPreferences } from './providers/downloadPreferences.ts';
 import { desktopRuntime } from './desktopRuntime.ts';
 import { ensureWindowsMpv } from './providers/mpvInstall.ts';
@@ -239,11 +244,9 @@ function streamFileType(name: string): string {
 }
 
 async function sendStreamFile(response: ServerResponse, path: string, name: string): Promise<void> {
-  const { createReadStream } = await import('node:fs');
-  const { stat } = await import('node:fs/promises');
   let size = 0;
   try {
-    size = (await stat(path)).size;
+    size = (await statFile(path)).size;
   } catch {
     sendJson(response, 404, { error: 'not_found' });
     return;
@@ -258,6 +261,77 @@ async function sendStreamFile(response: ServerResponse, path: string, name: stri
     await pipeline(createReadStream(path), response);
   } catch {
     // Player dropped the request (seek or close) — nothing to clean up.
+  }
+}
+
+async function sendPreviewFile(
+  request: IncomingMessage,
+  response: ServerResponse,
+  path: string,
+  contentType: string,
+  method: string,
+): Promise<void> {
+  let size = 0;
+  try {
+    size = (await statFile(path)).size;
+  } catch {
+    sendJson(response, 404, { error: 'unavailable' });
+    return;
+  }
+  if (size <= 0) {
+    sendJson(response, 404, { error: 'unavailable' });
+    return;
+  }
+  const range = incomingHeader(request.headers.range);
+  const baseHeaders = {
+    'content-type': contentType,
+    'accept-ranges': 'bytes',
+    'cache-control': 'no-store',
+    ...PROXY_CORS,
+  };
+  let start = 0;
+  let end = size - 1;
+  let status = 200;
+  if (range !== '') {
+    const match = /^bytes=(\d*)-(\d*)$/i.exec(range.trim());
+    if (!match || (match[1] === '' && match[2] === '')) {
+      response.writeHead(416, { ...baseHeaders, 'content-range': `bytes */${size}` });
+      response.end();
+      return;
+    }
+    if (match[1] === '') {
+      const suffix = Number(match[2]);
+      if (!Number.isFinite(suffix) || suffix <= 0) {
+        response.writeHead(416, { ...baseHeaders, 'content-range': `bytes */${size}` });
+        response.end();
+        return;
+      }
+      start = Math.max(0, size - suffix);
+      end = size - 1;
+    } else {
+      start = Number(match[1]);
+      end = match[2] === '' ? size - 1 : Math.min(size - 1, Number(match[2]));
+    }
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= size || end < start) {
+      response.writeHead(416, { ...baseHeaders, 'content-range': `bytes */${size}` });
+      response.end();
+      return;
+    }
+    status = 206;
+  }
+  response.writeHead(status, {
+    ...baseHeaders,
+    'content-length': end - start + 1,
+    ...(status === 206 ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
+  });
+  if (method === 'HEAD') {
+    response.end();
+    return;
+  }
+  try {
+    await pipeline(createReadStream(path, { start, end }), response);
+  } catch {
+    // Viewer navigated away or aborted range read.
   }
 }
 
@@ -482,19 +556,32 @@ async function handleApi(
   reviews: ReviewsService,
   roku: RokuUpdater,
 ): Promise<boolean> {
-  const accountsAdmin = path === '/api/admin/accounts' || path.startsWith('/api/admin/accounts/');
+  const accountsAdmin = path === '/api/admin/accounts'
+    || path.startsWith('/api/admin/accounts/')
+    || path === '/api/admin/accounts.csv'
+    || path === '/api/admin/config'
+    || path === '/api/admin/rd/test'
+    || path === '/api/admin/audit';
   if (accountsAdmin && (!('hasAdminKey' in accounts) || !accounts.hasAdminKey())) {
     sendJson(response, 403, { error: 'admin_required' });
     return true;
   }
-  const publicEntry = path === '/api/health' || path === '/api/account/register' || path === '/api/account/signin' || path === '/api/account/signout';
+  const publicEntry = path === '/api/health'
+    || path === '/api/config'
+    || path === '/api/announcement'
+    || path === '/api/account/register'
+    || path === '/api/account/signin'
+    || path === '/api/account/signout'
+    || path === '/api/account/password/forgot'
+    || (path === '/api/account/verify/resend' && !currentSessionToken());
   const requestAccount = publicEntry ? null : await accounts.resolve(currentSessionToken());
   setCurrentAccount(requestAccount);
   const devRequest = (): boolean => requestAccount?.role === 'dev';
   // Existing media providers read synchronously. Fill the bounded memory cache
   // before entering them, and never fall back to a device's saved RD key.
   if ('cachedRdTokenFor' in accounts && requestAccount?.activated
-    && !/^\/api\/(account|admin|dev)(\/|$)/.test(path)) {
+    && !/^\/api\/(account|admin|dev)(\/|$)/.test(path)
+    && path !== '/api/rd/status' && path !== '/api/rd/configured') {
     await accounts.rdTokenFor(currentSessionToken());
   }
   const accountFailure = (error: unknown, fallback: number, message: string): void => {
@@ -613,6 +700,45 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/config' && request.method === 'GET') {
+    const config = 'config' in accounts ? await accounts.config() : DEFAULT_ACCOUNTS_CONFIG;
+    sendJson(response, 200, config);
+    return true;
+  }
+
+  if (path === '/api/announcement' && request.method === 'GET') {
+    const config = 'config' in accounts ? await accounts.config() : DEFAULT_ACCOUNTS_CONFIG;
+    sendJson(response, 200, { announcement: config.announcement, minVersion: config.minVersion, flags: config.flags });
+    return true;
+  }
+
+  if (path === '/api/extras/surprise' && request.method === 'GET') {
+    sendJson(response, 200, { item: (await media.surprise?.()) ?? null });
+    return true;
+  }
+
+  if (path === '/api/extras/hero-clip.mp4' || path === '/api/extras/theme.m4a') {
+    const method = request.method ?? 'GET';
+    if (method === 'OPTIONS') {
+      response.writeHead(204, PROXY_CORS);
+      response.end();
+      return true;
+    }
+    if ((method === 'GET' || method === 'HEAD') && media.extras) {
+      const hero = path === '/api/extras/hero-clip.mp4';
+      const id = new URL(request.url ?? '/', `http://${CORE_HOST}`).searchParams.get('id') ?? '';
+      const prefs = media.extras.prefs();
+      const allowed = (hero ? prefs.heroPreviews : prefs.extras.themeSongs) && await media.extras.canPreview(id);
+      const file = allowed ? await media.extras.previews.file(hero ? 'hero' : 'theme', id) : null;
+      if (!file) {
+        sendJson(response, 404, { error: 'unavailable' });
+        return true;
+      }
+      await sendPreviewFile(request, response, file, hero ? 'video/mp4' : 'audio/mp4', method);
+      return true;
+    }
+  }
+
   // TVM Extras routes stay together; all use the profile selected above.
   if (path.startsWith('/api/extras/') && media.extras) {
     const result = await extrasRoute(media.extras, path, request.method ?? 'GET', new URL(request.url ?? '/', 'http://localhost').searchParams);
@@ -648,9 +774,12 @@ async function handleApi(
   }
 
   if (path === '/api/rd/status' && request.method === 'GET') {
-    const status = await media.status();
+    const fresh = new URL(request.url ?? '/', `http://${CORE_HOST}`).searchParams.get('fresh') === '1';
+    const own = ('forgetRdToken' in accounts
+      ? await accounts.rdTokenFor(currentSessionToken(), fresh)
+      : await accounts.rdTokenFor(currentSessionToken())) !== null;
+    const status = await media.status(fresh);
     // Keep the existing source field; signed-in keys now belong to the service.
-    const own = await accounts.rdTokenFor(currentSessionToken()) !== null;
     sendJson(response, 200, { ...status, source: own ? 'account' : status.configured ? 'device' : null });
     return true;
   }
@@ -807,6 +936,29 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/live/guide' && request.method === 'GET') {
+    const params = searchParams();
+    const window = guideWindow(params.get('start'), params.get('hours'));
+    if (window === null) {
+      sendJson(response, 400, { error: 'invalid guide window' });
+      return true;
+    }
+    const groupRaw = params.get('group')?.trim() ?? '';
+    const group = groupRaw !== '' ? groupRaw : null;
+    const includeIptv = requireCapability('liveTv', {
+      liveTv: plans.status().liveTv,
+      liveTvHealthy: createFeatureFlags({ dataDir, env }).get()['liveTv.healthy'],
+      dev: requestAccount?.role === 'dev',
+    }).ok;
+    const level = media.ageLevel();
+    const free = await content.fresh('free-channels');
+    const guide = live.guide
+      ? await live.guide(window, group, free, includeIptv, (name) => liveGroupAllowed(name, level))
+      : { ...window, groups: [], channels: [] };
+    sendJson(response, 200, guide);
+    return true;
+  }
+
   if (path === '/api/services' && request.method === 'GET') {
     const connected = new Set(media.connectedServices());
     sendJson(response, 200, {
@@ -879,6 +1031,10 @@ async function handleApi(
   }
 
   if (path === '/api/rd/configured' && request.method === 'GET') {
+    const fresh = searchParams().get('fresh') === '1';
+    if ('cachedRdTokenFor' in accounts && (fresh || requestAccount?.activated)) {
+      await (accounts.rdTokenFor as (token: string | undefined, fresh?: boolean) => unknown)(currentSessionToken(), fresh);
+    }
     sendJson(response, 200, { configured: media.configured() });
     return true;
   }
@@ -896,8 +1052,9 @@ async function handleApi(
         await accounts.setOwnRdToken(body.token);
         if (record.activated) await accounts.rdTokenFor(currentSessionToken());
       } else await accounts.setRdToken(record.id, body.token);
-      const status = await media.status();
-      sendJson(response, 200, { ...status, source: body.token.trim() !== '' ? 'account' : null });
+      const status = await media.status(true);
+      const hasAccountKey = body.token.trim() !== '' || (await accounts.rdTokenFor(currentSessionToken())) !== null;
+      sendJson(response, 200, { ...status, source: hasAccountKey ? 'account' : null });
     } catch (error) {
       accountFailure(error, 400, 'token rejected');
     }
@@ -1167,6 +1324,24 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/playback/versions' && request.method === 'GET') {
+    const params = searchParams();
+    const id = params.get('id')?.trim() ?? '';
+    if (id === '') {
+      sendJson(response, 400, { error: 'id is required' });
+      return true;
+    }
+    const intParam = (raw: string | null): number | undefined => {
+      const t = raw?.trim() ?? '';
+      return /^\d+$/.test(t) ? Number(t) : undefined;
+    };
+    const result = media.versions
+      ? await media.versions(id, intParam(params.get('season')), intParam(params.get('episode')))
+      : { originalLanguage: null, versions: [] };
+    sendJson(response, 200, result);
+    return true;
+  }
+
   if (path === '/api/playback' && request.method === 'POST') {
     const body = (await readJson(request)) as {
       id?: unknown;
@@ -1176,6 +1351,8 @@ async function handleApi(
       episode?: unknown;
       startAt?: unknown;
       native?: unknown;
+      client?: unknown;
+      versionId?: unknown;
       screenHeight?: unknown;
       maxHeight?: unknown;
     };
@@ -1185,6 +1362,7 @@ async function handleApi(
       sendJson(response, 409, { kind: 'unavailable', reason: 'hours-cap' });
       return true;
     }
+    const versionId = typeof body.versionId === 'string' && body.versionId.trim() !== '' ? body.versionId.trim() : undefined;
     const result =
       id !== undefined && id.startsWith('live:')
         ? await live.play(id)
@@ -1196,13 +1374,30 @@ async function handleApi(
             episode: typeof body.episode === 'number' ? body.episode : undefined,
             startAt: typeof body.startAt === 'number' && Number.isFinite(body.startAt) ? Math.max(0, body.startAt) : undefined,
             native: body.native === true,
+            client: parsePlaybackClient(body.client),
+            versionId,
             screenHeight: typeof body.screenHeight === "number" ? body.screenHeight : undefined,
             maxHeight: typeof body.maxHeight === "number" ? body.maxHeight : undefined,
           });
+    if (result.kind === 'stream' && progressId(id ?? '')) {
+      media.playbackEvent?.({ event: 'play', id: id!, title: result.title });
+    }
     // Routing Real-Debrid media through Core re-buffers every byte in Node and
     // was the desktop play→buffer loop. Live channels already come back as
     // /api/live/proxy/... from the reflector; on-demand keeps its upstream URL.
     sendJson(response, result.kind === 'stream' ? 200 : 409, withPublicUrl(request, result, listenPort));
+    return true;
+  }
+
+  if (path === '/api/playback/event' && request.method === 'POST') {
+    const body = (await readJson(request)) as Record<string, unknown>;
+    const event = playbackEvent(body);
+    if (event === null) {
+      sendJson(response, 400, { error: 'invalid playback event' });
+      return true;
+    }
+    media.playbackEvent?.(event);
+    sendJson(response, 200, { ok: true });
     return true;
   }
 
@@ -1213,6 +1408,36 @@ async function handleApi(
       return true;
     }
     media.saveProgress(body.id, body.position, body.duration);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (path === '/api/progress/remove' && request.method === 'POST') {
+    const body = (await readJson(request)) as { id?: unknown };
+    if (!progressId(body.id)) {
+      sendJson(response, 400, { error: 'invalid progress id' });
+      return true;
+    }
+    media.removeProgress?.(body.id);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (path === '/api/progress/watched' && request.method === 'POST') {
+    const body = (await readJson(request)) as { id?: unknown; season?: unknown; episode?: unknown; watched?: unknown };
+    if (!progressId(body.id) || typeof body.watched !== 'boolean') {
+      sendJson(response, 400, { error: 'invalid progress' });
+      return true;
+    }
+    const hasEpisode = Number.isInteger(body.season) && (body.season as number) >= 0
+      && Number.isInteger(body.episode) && (body.episode as number) >= 1
+      && !/:\d+:\d+$/.test(body.id);
+    const targetId = hasEpisode ? `${body.id}:${body.season}:${body.episode}` : body.id;
+    if (!progressId(targetId)) {
+      sendJson(response, 400, { error: 'invalid progress id' });
+      return true;
+    }
+    media.watched?.(targetId, body.watched);
     sendJson(response, 200, { ok: true });
     return true;
   }
@@ -1531,6 +1756,48 @@ async function handleApi(
     return true;
   }
 
+  if (path === '/api/account/verify/resend' && request.method === 'POST') {
+    if (!('resendVerification' in accounts)) {
+      sendJson(response, 503, { error: 'accounts_unavailable' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { email?: unknown };
+      if (body.email !== undefined) {
+        if (typeof body.email !== 'string' || body.email.trim() === '') {
+          sendJson(response, 400, { error: 'email must be a string' });
+          return true;
+        }
+        await accounts.resendVerification(body.email.trim());
+      } else {
+        await accounts.resendVerification();
+      }
+      sendJson(response, 202, { ok: true });
+    } catch (error) {
+      accountFailure(error, 400, 'Verification email could not be sent.');
+    }
+    return true;
+  }
+
+  if (path === '/api/account/password/forgot' && request.method === 'POST') {
+    if (!('forgotPassword' in accounts)) {
+      sendJson(response, 503, { error: 'accounts_unavailable' });
+      return true;
+    }
+    try {
+      const body = (await readJson(request)) as { email?: unknown };
+      if (typeof body.email !== 'string' || body.email.trim() === '') {
+        sendJson(response, 400, { error: 'email must be a string' });
+        return true;
+      }
+      await accounts.forgotPassword(body.email.trim());
+      sendJson(response, 202, { ok: true });
+    } catch (error) {
+      accountFailure(error, 400, 'Reset email could not be sent.');
+    }
+    return true;
+  }
+
   if ((path === '/api/account/email/send' || path === '/api/account/email/verify') && request.method === 'POST') {
     sendJson(response, 410, { error: 'moved' });
     return true;
@@ -1686,6 +1953,107 @@ async function handleApi(
     return true;
   }
 
+  const safeSegment = (raw: string): string | null => {
+    try {
+      const decoded = decodeURIComponent(raw);
+      return decoded === '' || decoded === '.' || decoded === '..' || /[/\\]/.test(decoded) ? null : decoded;
+    } catch { return null; }
+  };
+  const forwardAdmin = async (mirrorPath: string, method: string, body?: unknown): Promise<void> => {
+    if (!('mirrorAdmin' in accounts)) {
+      sendJson(response, 501, { error: 'not_supported' });
+      return;
+    }
+    try {
+      const upstream = await accounts.mirrorAdmin(mirrorPath, method, body);
+      if (upstream.status === 204) {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+      const contentType = upstream.headers.get('content-type') ?? '';
+      if (contentType.includes('text/csv') || mirrorPath === 'accounts.csv') {
+        const disposition = upstream.headers.get('content-disposition');
+        response.writeHead(upstream.status, {
+          'content-type': 'text/csv; charset=utf-8',
+          ...(disposition ? { 'content-disposition': disposition } : {}),
+        });
+        response.end(await upstream.text());
+        return;
+      }
+      const text = await upstream.text();
+      if (text.trim() === '') {
+        sendJson(response, upstream.status, { ok: upstream.ok });
+        return;
+      }
+      sendJson(response, upstream.status, JSON.parse(text) as unknown);
+    } catch (error) {
+      accountFailure(error, 502, 'Admin request failed.');
+    }
+  };
+
+  if (path === '/api/admin/config' && (request.method === 'GET' || request.method === 'PUT')) {
+    if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+    await forwardAdmin('config', request.method, request.method === 'PUT' ? await readJson(request) : undefined);
+    return true;
+  }
+
+  if (path === '/api/admin/rd/test' && request.method === 'POST') {
+    if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+    await forwardAdmin('rd/test', 'POST', await readJson(request));
+    return true;
+  }
+
+  if (path === '/api/admin/audit' && request.method === 'GET') {
+    if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+    const params = searchParams();
+    const query = new URLSearchParams();
+    if (params.get('offset')) query.set('offset', params.get('offset')!);
+    if (params.get('type')) query.set('type', params.get('type')!);
+    await forwardAdmin(`audit${query.size > 0 ? `?${query}` : ''}`, 'GET');
+    return true;
+  }
+
+  if (path === '/api/admin/accounts.csv' && request.method === 'GET') {
+    if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+    await forwardAdmin('accounts.csv', 'GET');
+    return true;
+  }
+
+  if (path === '/api/admin/accounts/bulk' && request.method === 'POST') {
+    if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+    await forwardAdmin('accounts/bulk', 'POST', await readJson(request));
+    return true;
+  }
+
+  {
+    const sessionMatch = /^\/api\/admin\/accounts\/([^/]+)\/sessions$/.exec(path);
+    if (sessionMatch && request.method === 'GET') {
+      if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+      const id = safeSegment(sessionMatch[1]!);
+      if (id === null) { sendJson(response, 400, { error: 'invalid account id' }); return true; }
+      await forwardAdmin(`accounts/${encodeURIComponent(id)}/sessions`, 'GET');
+      return true;
+    }
+    const revokeMatch = /^\/api\/admin\/accounts\/([^/]+)\/sessions\/([^/]+)$/.exec(path);
+    if (revokeMatch && request.method === 'DELETE') {
+      if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+      const id = safeSegment(revokeMatch[1]!);
+      const sid = safeSegment(revokeMatch[2]!);
+      if (id === null || sid === null) { sendJson(response, 400, { error: 'invalid session id' }); return true; }
+      await forwardAdmin(`accounts/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sid)}`, 'DELETE');
+      return true;
+    }
+    const actionMatch = /^\/api\/admin\/accounts\/([^/]+)\/(profile|password|tier)$/.exec(path);
+    if (actionMatch && request.method === 'POST') {
+      if (!devRequest()) { sendJson(response, 403, { error: 'admin_required' }); return true; }
+      const id = safeSegment(actionMatch[1]!);
+      if (id === null) { sendJson(response, 400, { error: 'invalid account id' }); return true; }
+      await forwardAdmin(`accounts/${encodeURIComponent(id)}/${actionMatch[2]}`, 'POST', await readJson(request));
+      return true;
+    }
+  }
+
   // Mail settings. Loopback only (see accessError), because they hold a password.
   if (path === '/api/admin/mail' || path === '/api/admin/mail/test') {
     if (!devRequest()) {
@@ -1710,6 +2078,10 @@ async function handleApi(
     }
     if (path === '/api/admin/mail/test' && request.method === 'POST') {
       const body = (await readJson(request)) as { to?: unknown };
+      if (!mail.status().configured && 'mirrorAdmin' in accounts && accounts.hasAdminKey()) {
+        await forwardAdmin('mail/test', 'POST', body);
+        return true;
+      }
       const to = typeof body.to === 'string' ? body.to.trim().toLowerCase() : '';
       try {
         await mail.sendTest(to !== '' ? to : mail.status().from ?? '');
@@ -1991,7 +2363,14 @@ export function createCoreServer(options: CoreOptions = {}): Server {
     createMediaService({
       content,
       dataDir,
-      rd: createRealDebrid({ dataDir, env, accountToken: () => 'cachedRdTokenFor' in accounts ? accounts.cachedRdTokenFor(currentSessionToken()) : accounts.rdTokenFor(currentSessionToken()) }),
+      rd: createRealDebrid({
+        dataDir,
+        env,
+        accountToken: () => 'cachedRdTokenFor' in accounts ? accounts.cachedRdTokenFor(currentSessionToken()) : accounts.rdTokenFor(currentSessionToken()),
+        onUnauthorized: (rejected) => {
+          if ('forgetRdToken' in accounts) accounts.forgetRdToken(currentSessionToken(), rejected);
+        },
+      }),
       streamer,
       plan: () => plans.status(),
       poolToken: () => plans.poolToken(),

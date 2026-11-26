@@ -1,4 +1,5 @@
 import { applyLanguage, DEFAULT_LANGUAGE, isLanguageId, readStoredLanguage } from '../i18n/locale';
+import { mergePolishPrefs, readPolishPrefs, storePolishPrefs, type PolishPrefs } from './polishPrefs';
 import { apiFetch } from './media';
 
 export const AUTO_UPDATE_STORAGE_KEY = 'tvm.autoUpdate';
@@ -74,7 +75,7 @@ const LANG_ALIASES: Readonly<Record<string, string>> = {
   tur: 'tur',
 };
 
-export interface AppPrefs {
+export interface AppPrefs extends PolishPrefs {
   language: string;
   autoUpdate: boolean;
   skipSegments: SkipSegmentsMode;
@@ -238,6 +239,7 @@ export function saveProfileSubtitleLanguage(profileId: string, language: string 
 
 export function readPrefs(): AppPrefs {
   return {
+    ...readPolishPrefs(),
     language: readStoredLanguage(),
     autoUpdate: readAutoUpdate(),
     skipSegments: readSkipSegments(),
@@ -256,6 +258,7 @@ function broadcastPrefs(prefs: AppPrefs): void {
 export async function savePrefs(patch: Partial<AppPrefs>): Promise<AppPrefs> {
   const current = readPrefs();
   const next: AppPrefs = {
+    ...mergePolishPrefs(current, patch),
     language: patch.language !== undefined && isLanguageId(patch.language) ? patch.language : current.language,
     autoUpdate: patch.autoUpdate ?? current.autoUpdate,
     skipSegments: patch.skipSegments !== undefined && isSkipSegmentsMode(patch.skipSegments) ? patch.skipSegments : current.skipSegments,
@@ -269,12 +272,13 @@ export async function savePrefs(patch: Partial<AppPrefs>): Promise<AppPrefs> {
   applyAutoplayNext(next.autoplayNext);
   applySubtitleLanguages(next.subtitleLanguages);
   applyHeroPreviews(next.heroPreviews);
+  storePolishPrefs(next);
   broadcastPrefs(next);
   try {
     await apiFetch('/api/prefs', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(next),
+      body: JSON.stringify(patch),
     });
   } catch {
     // on-device core may be restarting; localStorage already holds the choice
@@ -287,6 +291,7 @@ export async function hydratePrefs(): Promise<AppPrefs> {
     const response = await apiFetch('/api/prefs');
     if (response.ok) {
       const body = (await response.json()) as Partial<AppPrefs>;
+      storePolishPrefs(mergePolishPrefs(readPolishPrefs(), body));
       if (typeof body.language === 'string' && isLanguageId(body.language)) applyLanguage(body.language);
       else applyLanguage(DEFAULT_LANGUAGE);
       if (typeof body.autoUpdate === 'boolean') applyAutoUpdate(body.autoUpdate);

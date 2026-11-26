@@ -314,10 +314,12 @@ std::vector<std::string> PlayerScreen::ToolKeys() const {
     if (view_.audios.size() > 1) keys.push_back(kAudioKey);
     if (!view_.qualities.empty()) keys.push_back(kQualityKey);
     if (!view_.live) keys.push_back(kSpeedKey);
+    keys.push_back("more");
     return keys;
 }
 
 std::string PlayerScreen::ToolLabel(const std::string& key) const {
+    if (key == "more") return "Menu";
     if (key == kSubtitlesKey) return "CC";
     if (key == kAudioKey) return "Audio";
     if (key == kQualityKey) return view_.qualityLabel.empty() ? "Quality" : view_.qualityLabel;
@@ -326,6 +328,27 @@ std::string PlayerScreen::ToolLabel(const std::string& key) const {
 }
 
 std::vector<PlayerOption> PlayerScreen::MenuOptions(const std::string& menu) const {
+    if (menu == "versions") return view_.versions;
+    if (menu == "sleep") {
+        std::vector<PlayerOption> options{{"0", "Off", "", !view_.sleepAtEnd && view_.sleepMinutes == 0}};
+        for (const int minutes : {15, 30, 45, 60}) {
+            options.push_back({std::to_string(minutes), std::to_string(minutes) + " minutes", "", view_.sleepMinutes == minutes});
+        }
+        if (!view_.live) options.push_back({"end", "End of episode", "", view_.sleepAtEnd});
+        return options;
+    }
+    if (menu == "more") {
+        std::vector<PlayerOption> options{{"stats", "Stats", "I", view_.showStats}};
+        if (!view_.versions.empty()) options.push_back({"versions", "Versions", "", false});
+        if (!view_.chapters.empty()) {
+            options.push_back({"chapter-previous", "Previous chapter", "[", false});
+            options.push_back({"chapter-next", "Next chapter", "]", false});
+        }
+        if (view_.sleepTimer) options.push_back({"sleep", "Sleep timer", "", view_.sleepAtEnd || view_.sleepMinutes > 0});
+        if (view_.nightAvailable) options.push_back({"night", "Night mode", "", view_.nightMode});
+        if (view_.canShowShortcuts) options.push_back({"shortcuts", "Keyboard shortcuts", "?", view_.showShortcuts});
+        return options;
+    }
     if (menu == kSubtitlesKey) return view_.subtitles;
     if (menu == kAudioKey) return view_.audios;
     if (menu == kQualityKey) return view_.qualities;
@@ -342,7 +365,7 @@ std::vector<PlayerOption> PlayerScreen::MenuOptions(const std::string& menu) con
 
 std::size_t PlayerScreen::MenuRowsShown(const std::string& menu) const {
     const std::size_t count = MenuOptions(menu).size();
-    const std::optional<Box> button = BoxOf(menu);
+    const std::optional<Box> button = BoxOf(menu == "versions" || menu == "sleep" ? "more" : menu);
     std::size_t fits = kMenuRowsMost;
     if (button.has_value()) {
         // As many rows as fit between the top of the window and the timeline, never fewer than three.
@@ -383,7 +406,7 @@ std::optional<Box> PlayerScreen::MenuBox() const {
 
 std::optional<Box> PlayerScreen::MenuBoxFor(const std::string& menu) const {
     if (menu.empty()) return std::nullopt;
-    const std::optional<Box> button = BoxOf(menu);
+    const std::optional<Box> button = BoxOf(menu == "versions" || menu == "sleep" ? "more" : menu);
     if (!button.has_value()) return std::nullopt;
     const std::vector<PlayerOption> options = MenuOptions(menu);
     const std::size_t rows = MenuRowsShown(menu);
@@ -426,6 +449,11 @@ std::optional<double> PlayerScreen::EndScrub() {
     scrub_.reset();
     if (view_.duration <= 0.0) return std::nullopt;
     return share * view_.duration;
+}
+
+void PlayerScreen::FlashPlayback(bool paused, double nowMs) {
+    flashPaused_ = paused;
+    flashUntilMs_ = nowMs + 550;
 }
 
 void PlayerScreen::ShowChrome(double nowMs) {
@@ -495,6 +523,7 @@ bool PlayerScreen::Tick(double nowMs) {
 }
 
 bool PlayerScreen::Animating() const {
+    if (clockMs_ < flashUntilMs_) return true;
     if (buttonFocus_.Animating(clockMs_)) return true;
     if (!press_.Done(clockMs_)) return true;
     if (!sweepKey_.empty() && clockMs_ - sweepStartMs_ < kSweepDelayMs + kSweepMs) return true;
@@ -720,6 +749,38 @@ void PlayerScreen::Paint(Painter& painter) const {
     if (view_.nextUp) PaintNextUp(painter);
     PaintEndActions(painter);
     PaintHints(painter);
+    if (view_.showStats || view_.showShortcuts) PaintPlayerInfo(painter);
+    if (clockMs_ < flashUntilMs_) {
+        const double alpha = std::clamp((flashUntilMs_ - clockMs_) / 180.0, 0.0, 1.0);
+        const double side = Rem(4.4);
+        const Box badge{(width_ - side) / 2, (height_ - side) / 2, side, side};
+        painter.FillRoundRect(badge, side / 2, Rgb(0x12141A, alpha * 0.88));
+        painter.Path({badge.x + side * 0.28, badge.y + side * 0.28, side * 0.44, side * 0.44}, 32,
+                     flashPaused_ ? kAndroidPausePath : kAndroidPlayPath, PathStyle{Rgb(0xFFFFFF, alpha)});
+    }
+}
+
+void PlayerScreen::PaintPlayerInfo(Painter& painter) const {
+    static const std::vector<std::pair<std::string, std::string>> shortcuts = {
+        {"Play or pause", "Space / Click"}, {"Fullscreen", "F / Double-click"}, {"Seek 10 seconds", "Left / Right"},
+        {"Volume", "Up / Down"}, {"Mute", "M"}, {"Previous / next chapter", "[ / ]"}, {"Stats", "I"},
+        {"Close this panel", "? / Esc"},
+    };
+    const auto& rows = view_.showShortcuts ? shortcuts : view_.stats;
+    const double x = Rem(1.5), y = Rem(4.4), w = std::min(Rem(29), width_ - 2 * x);
+    const double row = Rem(1.55);
+    const Box panel{x, y, w, Rem(3.2) + row * static_cast<double>(rows.size())};
+    painter.FillRoundRect(panel, 16, Rgb(0x12141A, 0.97));
+    painter.StrokeRoundRect(panel, 16, 1, Rgb(0xFFFFFF, 0.14));
+    painter.Text({x + Rem(1.2), y + Rem(0.5), w - Rem(2.4), Rem(2)},
+                 view_.showShortcuts ? "Keyboard shortcuts" : "Playback stats", {Rem(1.1), true, 650}, Rgb(0xF5F7FA));
+    double top = y + Rem(2.6);
+    for (const auto& [label, value] : rows) {
+        const double divider = w * 0.40;
+        painter.Text({x + Rem(1.2), top, divider - Rem(1.5), row}, label, {Rem(0.82), false}, Rgb(0xA9B0BC));
+        painter.Text({x + divider, top, w - divider - Rem(1.2), row}, value, {Rem(0.85), false, 550}, Rgb(0xF5F7FA));
+        top += row;
+    }
 }
 
 void PlayerScreen::PaintGoLive(Painter& painter, double opacity) const {
@@ -924,19 +985,22 @@ void PlayerScreen::PaintPreview(Painter& painter, double opacity) const {
 }
 
 void PlayerScreen::PaintEndActions(Painter& painter) const {
-    // `.cinema-chrome__recap .tvm-button`: frosted glass pills for Skip recap, Skip credits, and Watch credits.
+    const double radius = Rem(0.75);
     const auto light = [&](const char* key, const std::string& label) {
         const Box box = *BoxOf(key);
         const bool focused = ShowsFocus(focused_, key);
         GlassStyle glass;
-        glass.kind = GlassKind::Pill;
+        glass.kind = GlassKind::Card;
         glass.focused = focused;
-        glass.activeTab = true;
+        glass.selected = true;
         glass.focusAmount = focused ? 1.0 : 0.0;
         glass.reduceTransparency = tokens::reduceTransparency;
-        glass.tint = focused ? Rgb(0xFFFFFF) : Rgb(0xF5F5F5, 0.92);
-        painter.Glass(box, box.height / 2.0, glass);
-        CenteredText(painter, box, label, TextStyle{Rem(0.85), true, 700}, Rgb(0x14171C));
+        glass.tint = focused ? Rgb(0xFFFFFF) : Rgb(0xF5F5F5, 0.94);
+        glass.ringWidth = 2.0;
+        glass.ringOutset = 3.0;
+        glass.ringColor = tokens::kFocusRing;
+        painter.Glass(box, radius, glass);
+        CenteredText(painter, box, label, TextStyle{Rem(0.88), true, 700}, Rgb(0x14171C));
     };
     if (view_.recap) light(kRecapKey, view_.skipLabel);
     if (view_.credits) {
@@ -947,13 +1011,16 @@ void PlayerScreen::PaintEndActions(Painter& painter) const {
         const Box watch = *BoxOf(kCreditsWatchKey);
         const bool watchFocused = ShowsFocus(focused_, kCreditsWatchKey);
         GlassStyle watchGlass;
-        watchGlass.kind = GlassKind::Pill;
+        watchGlass.kind = GlassKind::Card;
         watchGlass.focused = watchFocused;
         watchGlass.focusAmount = watchFocused ? 1.0 : 0.0;
         watchGlass.reduceTransparency = tokens::reduceTransparency;
-        watchGlass.tint = watchFocused ? Rgb(0x1E2631, 0.88) : Rgb(0x141A22, 0.72);
-        painter.Glass(watch, watch.height / 2.0, watchGlass);
-        CenteredText(painter, watch, "Watch credits", TextStyle{Rem(0.85), true, 600}, kInk);
+        watchGlass.tint = watchFocused ? Rgb(0x1E2631, 0.92) : Rgb(0x141A22, 0.80);
+        watchGlass.ringWidth = 2.0;
+        watchGlass.ringOutset = 3.0;
+        watchGlass.ringColor = tokens::kFocusRing;
+        painter.Glass(watch, radius, watchGlass);
+        CenteredText(painter, watch, "Watch credits", TextStyle{Rem(0.86), true, 600}, kInk);
     }
 }
 
@@ -986,7 +1053,10 @@ void PlayerScreen::PaintMenu(Painter& painter) const {
     const std::string heading = menu == kSubtitlesKey ? "Subtitles"
                                 : menu == kAudioKey   ? "Audio"
                                 : menu == kQualityKey ? "Quality"
-                                                      : "Playback speed";
+                                : menu == "versions"  ? "Versions"
+                                : menu == "sleep"     ? "Sleep timer"
+                                : menu == "more"      ? "Playback menu"
+                                                       : "Playback speed";
     const double x = panel.x + Rem(kMenuPadRem);
     const double width = panel.width - 2.0 * Rem(kMenuPadRem);
     painter.Text(Box{x + Rem(0.85), panel.y + Rem(kMenuPadRem), width, Rem(kMenuHeadingRem)}, heading,
@@ -1075,20 +1145,26 @@ void PlayerScreen::PaintNextUp(Painter& painter) const {
     painter.Text(Box{x, card.y + Rem(1.55), width, Rem(1.3)}, view_.nextShow, TextStyle{Rem(0.85), false, 550}, kInkMuted);
     painter.Text(Box{x, card.y + Rem(2.75), width, Rem(1.5)}, view_.nextEpisode, TextStyle{Rem(1.0), true, 700}, kInk);
 
-    const Metrics metrics{ViewportRem(width_, height_)};
-    DrawButton(painter, metrics, *BoxOf(kNextPlayKey), "Play now",
-               ButtonLook{true, ShowsFocus(focused_, kNextPlayKey), ShowsFocus(focused_, kNextPlayKey) ? 1.0 : 0.0});
+    const Box play = *BoxOf(kNextPlayKey);
+    const bool playFocused = ShowsFocus(focused_, kNextPlayKey);
+    const double radius = Rem(0.75);
+    painter.FillRoundRect(play, radius, playFocused ? Rgb(0xFFFFFF) : Rgb(0xF5F7FA, 0.96));
+    if (playFocused) painter.StrokeRoundRect(play, radius, 2.0, tokens::kFocusRing);
+    CenteredText(painter, play, "Play now", TextStyle{Rem(0.88), true, 700}, Rgb(0x0B1018));
+
     const Box dismiss = *BoxOf(kNextDismissKey);
-    if (ShowsFocus(focused_, kNextDismissKey)) {
-        GlassStyle dismissGlass;
-        dismissGlass.kind = GlassKind::Pill;
-        dismissGlass.focused = true;
-        dismissGlass.focusAmount = 1.0;
-        dismissGlass.reduceTransparency = tokens::reduceTransparency;
-        dismissGlass.tint = kHover;
-        painter.Glass(dismiss, dismiss.height / 2.0, dismissGlass);
-    }
-    CenteredText(painter, dismiss, "Cancel", TextStyle{Rem(0.8), true, 600}, kInkMuted);
+    const bool dismissFocused = ShowsFocus(focused_, kNextDismissKey);
+    GlassStyle dismissGlass;
+    dismissGlass.kind = GlassKind::Card;
+    dismissGlass.focused = dismissFocused;
+    dismissGlass.focusAmount = dismissFocused ? 1.0 : 0.0;
+    dismissGlass.reduceTransparency = tokens::reduceTransparency;
+    dismissGlass.tint = dismissFocused ? kHover : Rgb(0xFFFFFF, 0.08);
+    dismissGlass.ringWidth = 2.0;
+    dismissGlass.ringOutset = 3.0;
+    dismissGlass.ringColor = tokens::kFocusRing;
+    painter.Glass(dismiss, radius, dismissGlass);
+    CenteredText(painter, dismiss, "Cancel", TextStyle{Rem(0.84), true, 600}, dismissFocused ? kInk : kInkMuted);
 }
 
 void PlayerScreen::PaintQueue(Painter& painter) const {
@@ -1206,6 +1282,11 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
                                     GradientStop{1.0, WithAlpha(kBrandEnd, opacity)}});
     }
     if (!view_.live) {
+        if (view_.duration > 0) for (const auto& chapter : view_.chapters) {
+            if (chapter.time <= 0 || chapter.time >= view_.duration) continue;
+            const double x = bar.x + bar.width * chapter.time / view_.duration;
+            painter.FillRoundRect({x - 1, bar.y - 2, 2, bar.height + 4}, 1, Rgb(0xF5F7FA, 0.85 * opacity));
+        }
         const bool big = dragging || preview.has_value() || ShowsFocus(focused_, "timeline");
         const double thumb = Rem(kSeekThumbRem) * (big ? 1.3 : 1.0);
         const double cx = bar.x + bar.width * share;
@@ -1514,6 +1595,14 @@ std::optional<Command> PlayerScreen::Activate(const std::string& key) {
         const std::vector<PlayerOption> options = MenuOptions(menu_);
         const std::size_t index = std::stoul(key.substr(sizeof(kMenuPrefix) - 1));
         if (index >= options.size()) return std::nullopt;
+        if (menu_ == "more" && (options[index].id == "versions" || options[index].id == "sleep")) {
+            menu_ = options[index].id;
+            menuShown_ = menu_;
+            menuIndex_ = 0;
+            menuFirst_ = 0;
+            MoveMenuHighlight(0, true);
+            return std::nullopt;
+        }
         Command command = Action("player-pick");
         command.params["kind"] = menu_;
         command.params["id"] = options[index].id;

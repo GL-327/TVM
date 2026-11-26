@@ -39,7 +39,7 @@ std::vector<std::string> BuildArgs(const LaunchOptions& options) {
         "--no-terminal",
         "--really-quiet",
         "--no-config",
-        "--ytdl=no",
+        options.ytdlpPath.empty() ? "--ytdl=no" : "--ytdl=yes",
         "--force-window=yes",
         "--keep-open=no",
         "--hwdec=auto-copy",
@@ -68,11 +68,16 @@ std::vector<std::string> BuildArgs(const LaunchOptions& options) {
         "--volume-max=100",
         "--af=" + BoostFilter(options.boost),
     };
+    if (!options.ytdlpPath.empty()) {
+        args.push_back("--script-opts-append=ytdl_hook-ytdl_path=" + options.ytdlpPath);
+    }
+    if (!options.audioLanguage.empty()) args.push_back("--alang=" + options.audioLanguage);
     if (options.startAt.has_value() && std::isfinite(*options.startAt) && *options.startAt > 0.0) {
         std::ostringstream start;
         start << "--start=" << *options.startAt;
         args.push_back(start.str());
     }
+    args.push_back("--");
     args.push_back(options.url);
     return args;
 }
@@ -135,6 +140,45 @@ std::optional<std::filesystem::path> FindMpvExecutable(const util::EnvLookup& en
     return std::nullopt;
 }
 
+VideoClicks::Action VideoClicks::Click(double now, int x, int y, int toleranceX, int toleranceY) {
+    if (deadline_ && now < *deadline_ && std::abs(x - x_) <= toleranceX && std::abs(y - y_) <= toleranceY) {
+        Cancel();
+        return Action::Fullscreen;
+    }
+    const bool previous = deadline_.has_value();
+    x_ = x;
+    y_ = y;
+    deadline_ = now + delayMs_;
+    return previous ? Action::Pause : Action::None;
+}
+
+VideoClicks::Action VideoClicks::Tick(double now) {
+    if (!deadline_ || now < *deadline_) return Action::None;
+    Cancel();
+    return Action::Pause;
+}
+
+double VideoClicks::Wait(double now, double otherwise) const {
+    return deadline_ ? std::min(otherwise, std::max(0.0, *deadline_ - now)) : otherwise;
+}
+
+std::optional<double> AdjacentChapter(const std::vector<Chapter>& chapters, double position, int direction) {
+    if (direction > 0) {
+        for (const auto& chapter : chapters) if (chapter.time > position + 0.25) return chapter.time;
+    } else {
+        for (auto chapter = chapters.rbegin(); chapter != chapters.rend(); ++chapter)
+            if (chapter->time < position - 3.0) return chapter->time;
+        if (!chapters.empty() && position > 0) return chapters.front().time;
+    }
+    return std::nullopt;
+}
+
+bool SameLanguage(const std::string& left, const std::string& right) {
+    if (left.empty() || right.empty()) return false;
+    const auto name = LanguageName(left);
+    return left == right || (!name.empty() && name == LanguageName(right));
+}
+
 State InitialState(std::optional<double> startAt) {
     State state;
     if (startAt.has_value() && std::isfinite(*startAt) && *startAt > 0.0) state.position = *startAt;
@@ -161,6 +205,31 @@ State ApplyProperty(State state, const std::string& name, const nlohmann::json& 
         state.cacheSeconds = std::max(0.0, data.get<double>());
     } else if (name == "cache-buffering-state" && data.is_number()) {
         state.bufferPercent = std::clamp(data.get<double>(), 0.0, 100.0);
+    } else if (name == "chapter-list" && data.is_array()) {
+        state.chapters.clear();
+        for (const auto& row : data) {
+            if (!row.is_object() || !row.contains("time") || !row["time"].is_number()) continue;
+            const double time = row["time"].get<double>();
+            if (!std::isfinite(time) || time < 0) continue;
+            const auto title = row.find("title");
+            state.chapters.push_back({time, title != row.end() && title->is_string() ? title->get<std::string>() : ""});
+        }
+        std::stable_sort(state.chapters.begin(), state.chapters.end(), [](const Chapter& a, const Chapter& b) { return a.time < b.time; });
+    } else if (name == "video-params" && data.is_object()) {
+        state.width = data.value("w", 0);
+        state.height = data.value("h", 0);
+        const auto gamma = data.value("gamma", std::string());
+        state.hdr = gamma == "pq" ? "PQ (HDR)" : gamma == "hlg" ? "HLG" : "SDR";
+    } else if (name == "video-format" && data.is_string()) {
+        state.codec = data.get<std::string>();
+    } else if (name == "file-format" && data.is_string()) {
+        state.container = data.get<std::string>();
+    } else if (name == "file-size" && data.is_number()) {
+        state.fileBytes = data.get<double>();
+    } else if (name == "video-bitrate" && data.is_number()) {
+        state.bitrate = data.get<double>();
+    } else if (name == "frame-drop-count" && data.is_number_integer()) {
+        state.droppedFrames = data.get<int>();
     } else if (name == "track-list" && data.is_array()) {
         state.tracks.clear();
         for (const nlohmann::json& raw : data) {

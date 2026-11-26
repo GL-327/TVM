@@ -44,6 +44,10 @@ struct TitleInfo {
     bool saved = false;
     bool hideDownloads = false;
     std::string trailerUrl, collectionName, upcoming, englishTitle;
+    std::string versionTarget;
+    std::vector<std::pair<std::string, std::string>> versions;
+    std::vector<std::string> qualityBadges, watchedEpisodes;
+    bool showRatings = true, spoilerBlur = false;
     std::vector<catalog::MediaItem> collection;
     nlohmann::json reviews = nlohmann::json::object();
     std::vector<std::pair<std::string, std::string>> services;

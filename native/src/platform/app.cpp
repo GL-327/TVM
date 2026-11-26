@@ -4,6 +4,7 @@
 #include <timeapi.h>
 
 #include <algorithm>
+#include <chrono>
 #include <iterator>
 #include <cmath>
 #include <cstddef>
@@ -28,6 +29,7 @@
 #include "nav/intents.h"
 #include "nav/pointer.h"
 #include "platform/d2d_painter.h"
+#include "platform/video_texture.h"
 
 namespace tvm::platform {
 
@@ -127,7 +129,7 @@ constexpr char kClearedMessage[] = "Token cleared. TVM Stream will ask for it ag
 constexpr char kNotStoredMessage[] = "The token was not stored.";
 
 // The Home hero turns to its next title this often, as the web Home does.
-constexpr double kHeroTurnMs = 8000.0;
+constexpr double kHeroTurnMs = 60000.0;
 // A search starts once typing pauses for this long, or at once on Enter.
 constexpr double kSearchDebounceMs = 250.0;
 // The most titles the hero turns through.
@@ -135,12 +137,8 @@ constexpr std::size_t kHeroLimit = 4;
 
 std::string HeroMetaLine(const catalog::MediaItem& item) {
     std::vector<std::string> parts;
-    if (item.kind == "series") parts.push_back("Series");
-    else if (item.kind == "movie") parts.push_back("Movie");
-    if (!item.genres.empty()) parts.push_back(item.genres.front());
-    if (item.runtime.has_value() && !item.runtime->empty()) parts.push_back(*item.runtime);
-    else if (item.year.has_value()) parts.push_back(std::to_string(*item.year));
-    parts.push_back("4K");
+    if (item.year) parts.push_back(std::to_string(*item.year));
+    for (std::size_t i = 0; i < std::min<std::size_t>(2, item.genres.size()); ++i) parts.push_back(item.genres[i]);
     std::string line;
     for (std::size_t i = 0; i < parts.size(); ++i) {
         if (i > 0) line += " \xC2\xB7 ";
@@ -153,7 +151,10 @@ std::string HeroMetaLine(const catalog::MediaItem& item) {
 // picture. A title is listed once, by its id and by its name, as the web Home lists them.
 std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watching,
                                      const std::vector<catalog::HomeRail>& rails) {
-    std::vector<catalog::MediaItem> candidates = watching;
+    std::vector<catalog::MediaItem> candidates;
+    for (const auto& rail : rails) {
+        if (rail.id == "for-you") candidates.insert(candidates.end(), rail.items.begin(), rail.items.end());
+    }
     for (const catalog::HomeRail& rail : rails) {
         if (rail.id == "anime-adapted") continue;
         for (const catalog::MediaItem& item : rail.items) {
@@ -161,6 +162,7 @@ std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watc
         }
     }
 
+    candidates.insert(candidates.end(), watching.begin(), watching.end());
     std::set<std::string> seen;
     std::vector<ui::HeroData> heroes;
     for (const catalog::MediaItem& item : candidates) {
@@ -173,6 +175,8 @@ std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watc
         hero.title = item.title;
         hero.meta = HeroMetaLine(item);
         hero.rating = item.rating;
+        const auto imdb = catalog::ImdbIdFrom(item.id);
+        if (!imdb.empty()) hero.logoUrl = "https://images.metahub.space/logo/medium/" + imdb + "/img";
         hero.backdropUrl = catalog::PreferBackdrop(item.id, item.backdrop, item.poster);
         if (hero.backdropUrl.empty()) hero.backdropUrl = "asset:lighthouse.jpg";
         hero.hue = item.hue;
@@ -185,6 +189,54 @@ std::vector<ui::HeroData> HeroTitles(const std::vector<catalog::MediaItem>& watc
 std::string XtreamFailureMessage(const std::string& error) {
     if (error == "needs-auth") return "That login was rejected. Check the server, username and password.";
     return "TVM could not reach that server. Check the address and the network.";
+}
+
+void RefreshSystemMotion() {
+    BOOL animations = TRUE;
+    if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0))
+        motion::SetSystemReducedMotion(animations == FALSE);
+}
+
+std::optional<std::chrono::sys_days> HeroDate(const std::string& value) {
+    if (value.size() != 10 || value[4] != '-' || value[7] != '-') return std::nullopt;
+    try {
+        using namespace std::chrono;
+        const year_month_day date{year(std::stoi(value.substr(0, 4))),
+                                  month(static_cast<unsigned>(std::stoi(value.substr(5, 2)))),
+                                  day(static_cast<unsigned>(std::stoi(value.substr(8, 2))))};
+        if (date.ok()) return sys_days(date);
+    } catch (const std::exception&) {}
+    return std::nullopt;
+}
+
+void ApplyHeroEvent(ui::HeroData& hero, const nlohmann::json& events, const std::string& today,
+                    const catalog::MediaItem* item) {
+    if (!events.contains("events") || !events["events"].is_array()) return;
+    for (const auto& event : events["events"]) {
+        if (!event.is_object() || event.value("imdbId", std::string{}) != hero.itemId ||
+            !content::EventLive(event, today)) continue;
+        hero.eventKicker = "In cinemas now";
+        const auto date = HeroDate(today);
+        const auto release = HeroDate(event.value("release", std::string{}));
+        if (date && release && *release > *date) {
+            const auto days = (*release - *date).count();
+            hero.eventKicker = "In cinemas in " + std::to_string(days) + (days == 1 ? " day" : " days");
+        }
+        const auto glow = event.value("glow", std::string{});
+        if (glow.size() == 7 && glow.front() == '#') {
+            try { hero.glow = ui::Rgb(static_cast<std::uint32_t>(std::stoul(glow.substr(1), nullptr, 16))); }
+            catch (const std::exception&) {}
+        }
+        hero.effect = ui::ParseHeroEffect(event.value("effect", std::string{}));
+        hero.meta = item ? HeroMetaLine(*item) : release ? std::to_string(static_cast<int>(std::chrono::year_month_day(*release).year())) : "";
+        const auto rail = event.find("rail");
+        if (rail != event.end() && rail->is_object() && rail->contains("items") && (*rail)["items"].is_array()) {
+            if (!hero.meta.empty()) hero.meta += " · ";
+            const auto count = (*rail)["items"].size();
+            hero.meta += std::to_string(count) + (count == 1 ? " film" : " films");
+        }
+        return;
+    }
 }
 
 // What the Live TV playlist screen says about the playlist it was given. The copy follows the web screen.
@@ -206,14 +258,14 @@ void ShowPlaylist(ui::LivePlaylistView& view, const live::Catalog& catalog) {
     }
 }
 
+}  // namespace
+
 void PrepareMpv(coreapi::Client& client) {
     if (!mpv::FindMpvExecutable(util::ProcessEnvironment())) {
         try { client.Call("/api/desktop/mpv", "POST", nlohmann::json::object()); }
         catch (...) { /* FinishResolve retains the manual setup option. */ }
     }
 }
-
-}  // namespace
 
 App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
     // Measure in device pixels, so text and cards stay sharp on scaled displays.
@@ -301,8 +353,7 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             ToggleWatchlist(id->second);
         } else if (command.name == "trailer-open" && id != command.params.end()) {
             const auto title = titles_.find(id->second);
-            if (title != titles_.end() && !title->second.trailerUrl.empty())
-                ShellExecuteW(window_, L"open", util::ToWide(title->second.trailerUrl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            if (title != titles_.end()) OpenTrailer(title->second.trailerUrl, title->second.title);
         } else if (command.name == "event-rail") {
             for (const auto& rail : eventRails_) if (!rail.cards.empty()) { home_->FocusTitle(rail.cards.front().itemId, NowMs()); break; }
             dirty_ = true;
@@ -320,6 +371,10 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             SaveXtream();
         } else if (command.name == "xtream-disconnect") {
             ForgetXtream();
+        } else if (command.name == "show-guide") {
+            guideVisible_ = true;
+            guideRetryAt_ = 0;
+            dirty_ = true;
         } else if (command.name == "live-toggle-pick" && id != command.params.end()) {
             ToggleLivePick(id->second);
         } else if (command.name == "live-choose") {
@@ -456,7 +511,7 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         // The title played to its end: it counts as watched, and the player closes, as Player.tsx does.
         if (!playerOpen_) return;
         // An episode with a next one goes straight on to it, as Next Up does when its time runs out.
-        if (nextEpisode_.has_value() && !nextDismissed_ && !playerLive_ && extrasPrefs_.autoplay) {
+        if (nextEpisode_.has_value() && !nextDismissed_ && !playerLive_ && !sleepAtEnd_ && playerPrefs_.autoplay) {
             playerView_.position = playerView_.duration;
             SavePlayerProgress(true);
             PlayNextEpisode();
@@ -512,6 +567,8 @@ double App::NowMs() const {
 }
 
 int App::Run(int showCommand) {
+    RefreshSystemMotion();
+    VideoTexture preview(core_->origin());
     ShowWindow(window_, showCommand);
     UpdateWindow(window_);
     Resize();
@@ -559,6 +616,14 @@ int App::Run(int showCommand) {
         SyncPlayer();
         UpdateLiveBehind();
         const double now = NowMs();
+        TickPlaybackTools(now);
+        TickGuide(now);
+        const bool homeShown = shell_->ActiveScreenName() == "home" && streamLane_ == "all";
+        if ((homeShown && !rdHomeShown_) || extras::RdRefreshDue(account_.usable, rdStatus_.configured, rdStatusChecking_, now, rdCheckedMs_)) {
+            RefreshAccount();
+            RefreshRdStatus();
+        }
+        rdHomeShown_ = homeShown;
         const bool onAccountScreen = shell_->ActiveScreenName() == "account";
         const bool waitingAutoRecheck = onAccountScreen && account_.signedIn && !account_.usable && account_.reason == "awaiting_activation";
         if (!accountBusy_ &&
@@ -580,6 +645,16 @@ int App::Run(int showCommand) {
             });
         }
         TurnHero(now);
+        const bool showingHome = shell_->ActiveScreenName() == "home" && streamLane_ == "all" &&
+                                 IsWindowVisible(window_) && !IsIconic(window_) && !playerOpen_ &&
+                                 !intro_->Covers() && !streamIntro_->Covers();
+        const bool supportedMotion = !motion::PrefersReducedMotion(store_->Motion());
+        home_->SetSpotlightRunning(showingHome);
+        const std::string clipId = streamLane_ == "all" ? catalog::ImdbIdFrom(home_->HeroClipId()) : "";
+        const bool wasPlaying = home_->HeroClipPlaying();
+        preview.Update(clipId, showingHome && home_->HeroOnscreen() && supportedMotion, home_->HeroMuted());
+        home_->SetHeroClip(preview.Ready(), preview.HasAudio(), now);
+        dirty_ = dirty_ || wasPlaying != home_->HeroClipPlaying();
         SyncReleaseNotice(now);
         if (now - updatesCheckedMs_ >= 21600000.0 && store_->CorePrefs().autoUpdate) CheckForUpdates();
         PageRails();
@@ -628,6 +703,7 @@ int App::Run(int showCommand) {
             if (artworkRetryDueMs_ > 0.0) due = std::min(due, std::max(0.0, artworkRetryDueMs_ - now));
             // A search waits for a short pause in typing; the loop wakes when the pause is over.
             if (searchPending_) due = std::min(due, std::max(0.0, searchTypedMs_ + kSearchDebounceMs - now));
+            due = videoClicks_.Wait(now, due);
             MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::ceil(due)), QS_ALLINPUT);
         }
     }
@@ -649,7 +725,23 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 }
 
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
-    if (shell_ && releaseNotice_) {
+    if (shell_ && shell_->HasPatchNotes()) {
+        // The patch notes pop-up takes every key and click until it is closed.
+        if (message == WM_KEYDOWN) {
+            if (wParam == VK_RETURN || wParam == VK_SPACE || wParam == VK_ESCAPE || wParam == VK_BROWSER_BACK) { DismissReleaseNotice(NowMs() + 1200); }
+            return 0;
+        }
+        if (message == WM_LBUTTONUP) {
+            const POINT point = ClientPoint(lParam);
+            const ui::Box button = shell_->PatchButtonBox();
+            if (point.x >= button.x && point.x < button.Right() && point.y >= button.y && point.y < button.Bottom()) DismissReleaseNotice(NowMs() + 1200);
+            return 0;
+        }
+        if (message == WM_XBUTTONUP) { DismissReleaseNotice(NowMs() + 1200); return TRUE; }
+        if (message == WM_CHAR || message == WM_LBUTTONDOWN || message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL ||
+            message == WM_RBUTTONDOWN || message == WM_RBUTTONUP || message == WM_XBUTTONDOWN || message == WM_MOUSEMOVE) return 0;
+    }
+    if (shell_ && releaseNotice_ && !shell_->HasPatchNotes()) {
         bool input = message == WM_KEYDOWN || message == WM_CHAR || message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL ||
                      message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_SIZE || message == WM_POINTERDOWN ||
                      message == WM_XBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN;
@@ -671,12 +763,32 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (GET_APPCOMMAND_LPARAM(lParam) == APPCOMMAND_BROWSER_BACKWARD) { shell_->Back(NowMs()); dirty_ = true; return TRUE; }
         break;
     case WM_DPICHANGED: {
-        const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+        RECT bounds = *reinterpret_cast<const RECT*>(lParam);
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        if (fullscreen_ && GetMonitorInfoW(MonitorFromRect(&bounds, MONITOR_DEFAULTTONEAREST), &monitor))
+            bounds = monitor.rcMonitor;
+        const RECT* suggested = &bounds;
         SetWindowPos(window_, nullptr, suggested->left, suggested->top,
                      suggested->right - suggested->left, suggested->bottom - suggested->top,
                      SWP_NOACTIVATE | SWP_NOZORDER);
+        if (overlay_) overlay_->ResetZOrder();
         dirty_ = true;
         return 0;
+    }
+    case WM_MOVE:
+        // The player's chrome is a window of its own, so it follows this one.
+        if (overlay_ && overlay_->Visible()) overlay_->ResetZOrder();
+        dirty_ = true;
+        return 0;
+    case WM_DISPLAYCHANGE: {
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        if (fullscreen_ && GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor)) {
+            const RECT& area = monitor.rcMonitor;
+            SetWindowPos(window_, HWND_TOP, area.left, area.top, area.right - area.left, area.bottom - area.top,
+                         SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        }
+        if (overlay_) { overlay_->ResetZOrder(); dirty_ = true; }
+        break;
     }
     case WM_MOUSELEAVE:
         trackingLeave_ = false;
@@ -689,16 +801,32 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         // Switching to another window ends any hover: the pointer is no longer ours to track.
         if (LOWORD(wParam) == WA_INACTIVE && shell_) {
             shell_->MouseLeave(NowMs());
+            videoPressed_ = false;
+            videoClicks_.Cancel();
+            dirty_ = true;
+            if (overlay_) overlay_->SetForeground(false);
+        } else if (shell_) {
+            RefreshAccount();
+            RefreshRdStatus();
             dirty_ = true;
         }
         break;
+    case WM_SETTINGCHANGE:
+        RefreshSystemMotion();
+        dirty_ = true;
+        break;
     case WM_SIZE:
+        if (mpv_ && mpv_->Active()) {
+            if (wParam == SIZE_MINIMIZED && playerPrefs_.Enabled("pauseOnMinimize") && !playerView_.paused) {
+                minimizePaused_ = true;
+                mpv_->SetPaused(true);
+            } else if (wParam != SIZE_MINIMIZED && minimizePaused_) {
+                minimizePaused_ = false;
+                if (!sleepDeadline_ || NowMs() < *sleepDeadline_) mpv_->SetPaused(false);
+            }
+        }
         Resize();
         if (mpv_) mpv_->Resize();
-        return 0;
-    case WM_MOVE:
-        // The player's chrome is a window of its own, so it follows this one.
-        dirty_ = true;
         return 0;
     case WM_PAINT: {
         PAINTSTRUCT paint{};
@@ -714,6 +842,13 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (HandleKey(wParam, lParam)) return 0;
         break;
     case WM_CHAR:
+        if (GuideActive()) {
+            if (guideSearch_ && wParam >= 32 && wParam != 127) {
+                guide_.Search(guide_.query() + util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
+                dirty_ = true;
+            }
+            return 0;
+        }
         if (auto* editor = dynamic_cast<ui::ProfileEditor*>(&shell_->ActiveScreen()); editor && editor->Typing() && wParam >= 0x20 && wParam != 0x7F) {
             editor->Type(util::ToUtf8(std::wstring(1, static_cast<wchar_t>(wParam))));
             dirty_ = true;
@@ -822,9 +957,11 @@ bool App::HandleKey(WPARAM virtualKey, LPARAM flags) {
     const double now = NowMs();
     // Any remote press hides the cursor, as it does in the web app.
     shell_->KeyPressed();
+    if (ui::PlayerScreen* player = shell_->ActivePlayer()) { player->ShowChrome(now); dirty_ = true; }
 
     // While the open sting is on screen, OK, Enter, Escape and Space end it and do nothing else.
     if ((virtualKey == VK_RETURN || virtualKey == VK_ESCAPE || virtualKey == VK_SPACE) && SkipIntro()) return true;
+    if (GuideActive() && HandleGuideKey(virtualKey)) return true;
     if (virtualKey == VK_BACK) {
         if (IsEditingText()) HandleSearchKey(virtualKey);
         else shell_->Back(now);
@@ -918,6 +1055,7 @@ POINT App::ClientPoint(LPARAM lParam) const {
 }
 
 bool App::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam) {
+    if (GuideActive()) return HandleGuideMouse(message, wParam, lParam);
     const double now = NowMs();
     ui::PlayerScreen* player = shell_->ActivePlayer();
     switch (message) {
@@ -946,6 +1084,9 @@ bool App::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam) {
         const POINT point = ClientPoint(lParam);
         if (player != nullptr) player->ShowChrome(now);
         if (HandleScrub(message, point)) return true;
+        videoPressed_ = player && playerView_.started && !player->MenuOpen() && !player->ItemAt(point.x, point.y);
+        if (videoPressed_) return true;
+        videoClicks_.Cancel();
         shell_->MouseDown(point.x, point.y, now);
         dirty_ = true;
         return true;
@@ -955,6 +1096,12 @@ bool App::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam) {
         if (SkipIntro()) return true;
         const POINT point = ClientPoint(lParam);
         if (HandleScrub(message, point)) return true;
+        if (std::exchange(videoPressed_, false) && player && !player->ItemAt(point.x, point.y)) {
+            VideoClickAction(videoClicks_.Click(now, point.x, point.y, GetSystemMetrics(SM_CXDOUBLECLK) / 2,
+                                               GetSystemMetrics(SM_CYDOUBLECLK) / 2));
+            dirty_ = true;
+            return true;
+        }
         shell_->MouseUp(point.x, point.y, now);
         dirty_ = true;
         return true;
@@ -1050,6 +1197,7 @@ void App::Resize() {
     if (width == 0 || height == 0) return;
 
     shell_->Layout(width, height);
+    guide_.Layout(width, height);
     if (target_) {
         target_->Resize(D2D1::SizeU(width, height));
     }
@@ -1087,13 +1235,17 @@ void App::Render() {
     if (!lens_) lens_ = std::make_unique<GlassLens>(target_.Get());
     D2dPainter painter(target_.Get(), graphics_, artwork_.get(), images_.get(), lens_.get());
     // A sting that covers the window hides the screen under it, so that screen is not drawn while it lasts.
-    if (!intro_->Covers() && !streamIntro_->Covers()) shell_->Paint(painter);
+    if (!intro_->Covers() && !streamIntro_->Covers()) {
+        if (GuideActive()) guide_.Paint(painter, guideClock_);
+        else shell_->Paint(painter);
+    }
     intro_->Paint(painter, static_cast<double>(width), static_cast<double>(height));
     streamIntro_->Paint(painter, static_cast<double>(width), static_cast<double>(height));
     const HRESULT result = target_->EndDraw();
     if (result == D2DERR_RECREATE_TARGET) {
         // The device was lost. Rebuild the target and draw again next frame. The
         // bitmaps belong to the old target, so they are decoded again.
+        if (auto* preview = VideoTexture::Current()) preview->ClearBitmap();
         lens_.reset();
         target_.Reset();
         images_->Clear();
@@ -1292,20 +1444,32 @@ void App::ShowTitle(const std::string& id) {
     if (!titlesInFlight_.insert(id).second) return;
 
     const auto epoch = extrasEpoch_;
-    background_->Run([this, id, epoch] {
+    const auto profile = profiles::ActiveFolder(dataDir_);
+    background_->Run([this, id, epoch, prefs = extrasPrefs_, profile]() mutable {
+        try { prefs = extras::ParsePreferences(core_->Call("/api/prefs")); } catch (...) {}
         ui::TitleInfo info;
         try { info = ui::InfoFromMeta(id, catalog_->Meta(id)); }
         catch (...) { info = ui::InfoFromMeta(id, std::nullopt); }
         const auto publish = [this, id, epoch](const ui::TitleInfo& value) {
             background_->PostToUi([this, id, epoch, value] { if (epoch == extrasEpoch_) FinishTitle(id, value); });
         };
+        info.showRatings = prefs.Enabled("ratings");
+        info.spoilerBlur = prefs.Enabled("spoilerBlur");
+        if (profile && info.spoilerBlur) {
+            const auto progress = catalog::ReadProgress(*profile);
+            if (progress.is_object()) for (const auto& [key, value] : progress.items()) {
+                if (value.is_object() && value.value("completed", false)) info.watchedEpisodes.push_back(key);
+                else if (value.is_object() && value.value("duration", 0.0) > 0 &&
+                         value.value("position", 0.0) >= value.value("duration", 0.0) * 0.9) info.watchedEpisodes.push_back(key);
+            }
+        }
         publish(info);
         if (info.state != ui::TitleInfo::State::Ready) return;
-        try { info.trailerUrl = extras::YoutubeUrl(core_->Call("/api/extras/trailers?id=" + js::EncodeUriComponent(id))); } catch (...) {}
+        if (prefs.Enabled("trailers")) try { info.trailerUrl = extras::YoutubeUrl(core_->Call("/api/extras/trailers?id=" + js::EncodeUriComponent(id))); } catch (...) {}
         publish(info);
         if (info.kind == "series") {
-            try { info.upcoming = extras::UpcomingLabel(core_->Call("/api/extras/upcoming?id=" + js::EncodeUriComponent(id)).value("next", nlohmann::json())); } catch (...) {}
-        } else {
+            if (prefs.Enabled("comingUp")) try { info.upcoming = extras::UpcomingLabel(core_->Call("/api/extras/upcoming?id=" + js::EncodeUriComponent(id)).value("next", nlohmann::json())); } catch (...) {}
+        } else if (prefs.Enabled("collections")) {
             try {
                 const auto collection = core_->Call("/api/extras/collection?id=" + js::EncodeUriComponent(id));
                 if (collection.contains("name") && collection["name"].is_string()) info.collectionName = collection["name"].get<std::string>();
@@ -1316,7 +1480,7 @@ void App::ShowTitle(const std::string& id) {
         publish(info);
         bool anime = false;
         for (const auto& genre : info.genres) if (genre == "Anime" || genre == "anime" || genre == "Animation" || genre == "animation") anime = true;
-        if (anime) {
+        if (anime && prefs.Enabled("animeTitles")) {
             try {
                 const auto title = core_->Call("/api/extras/anime-title?title=" + js::EncodeUriComponent(info.title));
                 if (title.contains("english") && title["english"].is_string()) info.englishTitle = title["english"].get<std::string>();
@@ -1324,7 +1488,32 @@ void App::ShowTitle(const std::string& id) {
             } catch (...) {}
             publish(info);
         }
-        if (info.kind != "series") {
+        if (prefs.Enabled("versionPicker") || prefs.Enabled("qualityBadges")) {
+            std::string query = "?id=" + js::EncodeUriComponent(id);
+            info.versionTarget = id;
+            if (info.kind == "series" && !info.children.empty()) {
+                const auto& first = info.children.front();
+                const auto season = std::to_string(first.season.value_or(1)), episode = std::to_string(first.episode.value_or(1));
+                query += "&season=" + season + "&episode=" + episode;
+                info.versionTarget = id + ":" + season + ":" + episode;
+            }
+            try {
+                const auto result = core_->Call("/api/playback/versions" + query);
+                if (result.contains("versions") && result["versions"].is_array()) for (const auto& version : result["versions"]) {
+                    if (!version.is_object() || !version.contains("id") || !version["id"].is_string()) continue;
+                    if (info.qualityBadges.empty() && prefs.Enabled("qualityBadges")) {
+                        if (version.value("height", 0) >= 2000) info.qualityBadges.push_back("4K");
+                        if (version.contains("hdr") && version["hdr"].is_string())
+                            info.qualityBadges.push_back(version["hdr"] == "dv" ? "Dolby Vision" : "HDR");
+                        if (version.contains("audio") && version["audio"].is_object() && version["audio"].value("atmos", false))
+                            info.qualityBadges.push_back("Atmos");
+                    }
+                    if (prefs.Enabled("versionPicker")) info.versions.emplace_back(version["id"].get<std::string>(), playback::VersionLabel(version));
+                }
+            } catch (...) {}
+            publish(info);
+        }
+        if (info.kind != "series" && prefs.Enabled("ratings")) {
             try { info.reviews = core_->Call("/api/reviews?id=" + js::EncodeUriComponent(id)); } catch (...) {}
             publish(info);
         }
@@ -1341,7 +1530,7 @@ void App::FinishTitle(const std::string& id, const ui::TitleInfo& info) {
         shown.children.clear();
     }
     std::erase_if(shown.collection, [this](const auto& item) { return !Allowed(item); });
-    if (shown.state != ui::TitleInfo::State::Ready) { shown.collection.clear(); shown.trailerUrl.clear(); shown.upcoming.clear(); shown.englishTitle.clear(); }
+    if (shown.state != ui::TitleInfo::State::Ready) { shown.collection.clear(); shown.trailerUrl.clear(); shown.upcoming.clear(); shown.englishTitle.clear(); shown.versions.clear(); shown.qualityBadges.clear(); }
     shown.services.clear();
     const auto connected = ConnectedServices();
     const auto services = content_->Read("services");
@@ -1455,6 +1644,7 @@ void App::SyncRealDebrid() {
     realDebridOpened_ = true;
     // Each visit starts without the message the last visit left.
     realDebridView_.message.clear();
+    RefreshAccount();
     RefreshRealDebrid();
 }
 
@@ -1463,10 +1653,9 @@ void App::RefreshRealDebrid() {
     shell_->SetRealDebridView(realDebridView_);
     dirty_ = true;
 
-    background_->Run([this] {
-        const coreapi::RealDebridStatus status = CoreRealDebrid();
-        background_->PostToUi([this, status] { FinishRealDebrid(status, ""); });
-    });
+    RefreshRdStatus();
+    if (!rdStatusChecking_) FinishRealDebrid(rdStatus_, "");
+
 }
 
 void App::SaveRealDebridToken() {
@@ -1493,6 +1682,7 @@ void App::ClearRealDebridToken() {
 }
 
 void App::ChangeRealDebridToken(std::string token, bool clearing) {
+    realDebridChanging_ = true;
     realDebridView_.busy = true;
     realDebridView_.message.clear();
     shell_->SetRealDebridView(realDebridView_);
@@ -1509,7 +1699,7 @@ void App::ChangeRealDebridToken(std::string token, bool clearing) {
         const coreapi::RealDebridStatus status = CoreRealDebrid();
         std::string message = kNotStoredMessage;
         if (stored) message = clearing ? kClearedMessage : SavedMessage(status);
-        background_->PostToUi([this, status, message] { FinishRealDebrid(status, message); });
+        background_->PostToUi([this, status, message] { realDebridChanging_ = false; FinishRealDebrid(status, message); });
     });
 }
 
@@ -1522,6 +1712,7 @@ void App::FinishRealDebrid(const coreapi::RealDebridStatus& status, const std::s
     realDebridView_.configured = status.configured;
     realDebridView_.username = status.username;
     realDebridView_.premium = status.premium;
+    realDebridView_.source = status.source;
     realDebridView_.error = status.error;
     realDebridView_.busy = false;
     realDebridView_.message = message;
@@ -1533,7 +1724,9 @@ void App::FinishRealDebrid(const coreapi::RealDebridStatus& status, const std::s
 void App::RefreshRdStatus() {
     if (rdStatusChecking_ || !account_.usable) return;
     rdStatusChecking_ = true;
-    background_->Run([this] {
+    rdCheckedMs_ = NowMs();
+    const auto epoch = extrasEpoch_;
+    background_->Run([this, epoch] {
         coreapi::RealDebridStatus status;
         bool ok = false;
         try {
@@ -1541,15 +1734,16 @@ void App::RefreshRdStatus() {
             status = coreapi::ParseRealDebridStatus(core_->Call("/api/rd/status"));
             ok = true;
         } catch (...) {}
-        background_->PostToUi([this, status, ok] {
+        background_->PostToUi([this, status, ok, epoch] {
+            if (epoch != extrasEpoch_) return;
             rdStatusChecking_ = false;
             if (ok) {
-                rdStatus_ = status;
-                rdStatusLoaded_ = true;
-                streamStatus_ = ToCatalogRdStatus(status);
-                streamStatusLoaded_ = true;
-                UpdateSettingsDiagnostics();
+                if (!realDebridChanging_) FinishRealDebrid(status, realDebridView_.message);
                 MaybePromptRealDebrid();
+            } else if (!realDebridChanging_ && realDebridView_.busy) {
+                realDebridView_.busy = false;
+                realDebridView_.message = "Could not check Real-Debrid. TVM will try again.";
+                shell_->SetRealDebridView(realDebridView_);
             }
             dirty_ = true;
         });
@@ -1580,7 +1774,7 @@ void App::UpdateSettingsDiagnostics() {
         } else {
             diag.rdTokenSource = account_.rdKey ? "account" : "Checking\xE2\x80\xA6";
         }
-        diag.glassMode = store_->Glass() == ui::GlassClarity::Frosted ? "Frosted" : "Clear";
+        diag.glassMode = store_->ReduceTransparency() ? "Solid surfaces" : "Liquid Glass";
     }
     shell_->SetDeveloperDiagnostics(diag);
 }
@@ -1758,6 +1952,7 @@ void App::SyncLiveTv() {
 
 void App::RefreshLiveTv() {
     liveLoaded_ = false;
+    guideLoadedEnd_ = 0; guideRetryAt_ = 0;
     liveMessage_.clear();
     ApplyLiveTv();
 
@@ -1800,6 +1995,8 @@ void App::ApplyLiveTv() {
     state.picks = livePicks_;
     state.message = liveMessage_;
     ui::SceneView view = ui::LiveTvView(state);
+    view.topButtons.insert(view.topButtons.begin(), ui::TopButton{"Guide", ui::Command{false, "show-guide", {}, true}, false});
+    guide_.SetFavorites(livePicks_);
     // "Check channels" is a developer tool; other accounts would only be turned back at the door.
     if (!coreapi::AllowsRoute(account_, "live-check")) {
         std::erase_if(view.topButtons, [](const ui::TopButton& button) { return button.command.name == "live-check"; });
@@ -2012,6 +2209,7 @@ void App::SetStreamLane(const std::string& lane) {
 }
 
 void App::OpenStreamTab(const std::string& lane) {
+    if (lane == "live" && streamLane_ != "live") guideVisible_ = true;
     if (lane == "live" && !coreapi::AllowsRoute(account_, "live-tv")) {
         accountMessage_ = account_.usable ? "This screen requires the appropriate account tier or admin role."
                                           : "Sign in with an active account to continue.";
@@ -2271,8 +2469,12 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
         for (const catalog::ProgressItem& entry : watchingLane) laneWatching.push_back(entry.item);
         std::vector<ui::HeroData> candidates = HeroTitles(laneWatching, catalogRails);
         // Home turns through its titles. The stream page shows one billboard.
-        if (root && streamLane_ == "all" && !eventHeroes_.empty()) heroes = eventHeroes_;
-        else if (root) heroes = candidates;
+        if (root && streamLane_ == "all" && !eventHeroes_.empty()) {
+            heroes.push_back(eventHeroes_.front());
+            auto& hero = heroes.front();
+            const auto cached = titles_.find(hero.itemId);
+            ApplyHeroEvent(hero, content_->Read("events"), contentDate_, cached == titles_.end() ? nullptr : &cached->second.media);
+        } else if (root && streamLane_ != "all") heroes = candidates;
         else if (!candidates.empty()) heroes.push_back(candidates.front());
         if (view.rails.empty() && heroes.empty()) view.status = "Nothing on this lane yet.";
     }
@@ -3190,6 +3392,12 @@ void App::SyncPlayer() {
     const auto titleParam = entry.params.find("title");
     playerTitleHint_ = titleParam == entry.params.end() ? "" : titleParam->second;
     playerRetryAt_.reset();
+    playerVersionId_ = entry.params.contains("versionId") ? entry.params.at("versionId") : "";
+    playerTrailerUrl_ = entry.params.contains("trailer") ? entry.params.at("trailer") : "";
+    playerYtdlpPath_ = entry.params.contains("ytdlp") ? entry.params.at("ytdlp") : "";
+    playerPrefs_ = extrasPrefs_;
+    sleepDeadline_.reset();
+    sleepAtEnd_ = false;
     playerRecoveries_ = 0;
     streamChoices_.clear();
     playerManualHeight_ = 0;
@@ -3211,25 +3419,24 @@ void App::StartPlayback() {
     display.dmSize = sizeof(display);
     if (GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor) &&
         EnumDisplaySettingsW(monitor.szDevice, ENUM_CURRENT_SETTINGS, &display))
-        playerScreenHeight_ = playback::ScreenClass(static_cast<int>(display.dmPelsHeight));
+        playerScreenHeight_ = static_cast<int>(display.dmPelsHeight);
     playerHlsSwitching_ = false; playerStallSince_ = 0; playerHealthySince_ = 0;
     const int generation = ++playerGeneration_;
     playerSegments_ = {}; segmentSession_ = {}; pendingSubtitles_.clear(); externalSubtitles_.clear();
-    subtitlePreferenceApplied_ = false; subtitleChoice_.clear(); nextCountdown_ = {};
-    if (const auto folder = profiles::ActiveFolder(dataDir_)) {
-        const auto text = util::ReadTextFile(*folder / "native-subtitle-language");
-        if (text) subtitleChoice_ = util::Trim(*text);
-    }
+    subtitlePreferenceApplied_ = false; pendingAudioTrackId_.reset(); pendingAudioWaitTicks_ = 0;
+    subtitleChoice_.clear(); nextCountdown_ = {};
+    audioPreferenceApplied_ = false; playerStyleApplied_ = false; playerNightInitialized_ = false;
+    videoClicks_.Cancel(); videoPressed_ = false; minimizePaused_ = false;
     mpv_->Stop();
     overlay_->Show(false);
 
     // A live channel plays from its own address. A title is looked up through Real-Debrid.
     const auto channel = std::find_if(liveCatalog_.channels.begin(), liveCatalog_.channels.end(),
                                       [this](const catalog::LiveChannel& entry) { return entry.id == playerId_; });
-    playerLive_ = channel != liveCatalog_.channels.end();
+    playerLive_ = playerId_.starts_with("live:");
     if (playerLive_) playerPlanHeight_ = 2160;
     if (playerLive_ && playerId_.rfind("live:free:", 0) != 0 && !account_.liveTv) { ShowPlayerError("Live TV access", "Live TV requires the appropriate account tier."); return; }
-    std::string title = playerLive_ ? channel->name : "";
+    std::string title = channel != liveCatalog_.channels.end() ? channel->name : "";
     // The catalogue's own title, never a file name: the title's details if they were opened, the series for an
     // episode, the title Details passed along, or the show found for a previous episode.
     if (const auto known = titles_.find(playerId_); known != titles_.end() && title.empty()) title = known->second.title;
@@ -3237,14 +3444,14 @@ void App::StartPlayback() {
     if (title.empty() && playId.has_value()) {
         if (const auto series = titles_.find(playId->imdb); series != titles_.end()) title = series->second.title;
     }
-    if (title.empty() && !playerLive_) title = playerTitleHint_;
+    if (title.empty()) title = playerTitleHint_;
     if (title.empty() && playId.has_value() && playId->season.has_value()) title = showTitle_;
 
     playerView_ = ui::PlayerView{};
     playerView_.title = title.empty() ? "Loading" : title;
     playerView_.live = playerLive_;
     playerView_.hideDownloads = kidsProfile_;
-    if (playerLive_ && !content::AllowsLive(parental_, profileMaxAge_, live::GroupOf(*channel))) { ShowPlayerError("Channel unavailable", "This channel is outside this profile's age limit."); return; }
+    if (channel != liveCatalog_.channels.end() && !content::AllowsLive(parental_, profileMaxAge_, live::GroupOf(*channel))) { ShowPlayerError("Channel unavailable", "This channel is outside this profile's age limit."); return; }
     playerView_.fullscreen = fullscreen_;
     // My List saves the title, or the series for an episode. A Real-Debrid file or a channel is not on it.
     const std::string saveId = SaveId();
@@ -3269,6 +3476,24 @@ void App::StartPlayback() {
     shell_->SetPlayerView(playerView_, NowMs());
     dirty_ = true;
 
+    if (!playerTrailerUrl_.empty()) {
+        playback::Resolution trailer;
+        trailer.url = playerTrailerUrl_;
+        trailer.transport = "Trailer";
+        trailer.ytdlpPath = playerYtdlpPath_;
+        FinishResolve(generation, trailer);
+        return;
+    }
+
+    if (playerLive_ && channel == liveCatalog_.channels.end()) {
+        background_->Run([this, generation, id = playerId_, title] {
+            PrepareMpv(*core_);
+            auto resolved = CorePlayback(id, title, 0);
+            background_->PostToUi([this, generation, resolved] { FinishResolve(generation, resolved); });
+        });
+        return;
+    }
+
     if (playerLive_) {
         playback::Resolution resolution;
         resolution.title = channel->name;
@@ -3288,10 +3513,9 @@ void App::StartPlayback() {
         return;
     }
 
-    background_->Run([this, generation, id = playerId_, title, height = playerManualHeight_ > 0 ? playerManualHeight_ : playerScreenHeight_] {
+    background_->Run([this, generation, id = playerId_, title, height = playerManualHeight_ > 0 ? playerManualHeight_ : playerScreenHeight_, version = playerVersionId_] {
         PrepareMpv(*core_);
-        playback::Resolution resolution = CorePlayback(id, title, height);
-        PrepareHls(resolution, height);
+        playback::Resolution resolution = CorePlayback(id, title, height, version, true);
         background_->PostToUi([this, generation, resolution] { FinishResolve(generation, resolution); });
     });
 }
@@ -3325,13 +3549,29 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
 
     // A part-watched title starts where the viewer left it, unless a retry asked for its own place.
     std::optional<double> startAt = playerRetryAt_;
-    if (!startAt.has_value() && !playerLive_) {
+    if (!startAt.has_value() && !playerLive_ && playerTrailerUrl_.empty()) {
         if (const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_)) {
             const catalog::ProgressMap progress = catalog::ReadProgress(*folder);
             if (progress.is_object() && progress.contains(playerId_)) startAt = catalog::ResumePosition(progress[playerId_]);
         }
     }
 
+    if (!resolution.preferences.is_null()) playerPrefs_ = extras::ParsePreferences(resolution.preferences);
+    playerView_.canShowShortcuts = playerPrefs_.Enabled("shortcutsOverlay");
+    playerView_.sleepTimer = playerPrefs_.Enabled("sleepTimer");
+    playerView_.sleepAtEnd = sleepAtEnd_;
+    playerView_.nightAvailable = true;
+    playerView_.nightMode = playerPrefs_.Enabled("nightMode");
+    playerAudioLanguage_ = playerPrefs_.audioLanguage == "original" ? resolution.originalLanguage : playerPrefs_.audioLanguage;
+    playerTransport_ = resolution.transport.empty() ? playback::PlaybackTransport(resolution.url, "", "") : resolution.transport;
+    playerVersionLabel_ = playback::VersionLabel(resolution.version);
+    const auto current = resolution.version.is_object() ? resolution.version.value("id", playerVersionId_) : playerVersionId_;
+    playerView_.versions.clear();
+    if (playerPrefs_.Enabled("versionPicker")) for (const auto& version : resolution.versions) {
+        if (!version.is_object() || !version.contains("id") || !version["id"].is_string()) continue;
+        const auto id = version["id"].get<std::string>();
+        if (!id.empty()) playerView_.versions.push_back({id, playback::VersionLabel(version), "", id == current});
+    }
     if (resolution.bestHeight > 0) playerPlanHeight_ = resolution.bestHeight;
     playerBestHeight_ = std::min(playerScreenHeight_, playerPlanHeight_);
     if (!resolution.hlsSource.empty()) {
@@ -3367,7 +3607,7 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
         ++thumbnailSession_;
     }
     pendingSubtitles_.clear(); externalSubtitles_.clear(); subtitlePreferenceApplied_ = false;
-    if (mpv_->Start(*executable, resolution.url, startAt, playerVolume_, playerMuted_)) {
+    if (mpv_->Start(*executable, resolution.url, startAt, playerVolume_, playerMuted_, resolution.ytdlpPath, playerAudioLanguage_)) {
         overlay_->Show(true);
         LoadPlayerExtras(generation, resolution);
     }
@@ -3377,12 +3617,13 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
 void App::OnPlayerState(const mpv::State& state) {
     if (!playerOpen_) return;
     playerView_.position = state.position;
+    UpdatePlaybackTools(state);
     if (state.duration > 0.0) playerView_.duration = state.duration;
     playerView_.paused = state.paused;
     playerView_.started = state.started;
     playerView_.buffering = mpv::Buffering(state);
     playerView_.speed = state.speed;
-    if (!playerHlsSource_.empty() && !playerHlsSwitching_ && playerManualHeight_ == 0 && state.started && !state.paused) {
+    if (playerLive_ && !playerHlsSource_.empty() && !playerHlsSwitching_ && playerManualHeight_ == 0 && state.started && !state.paused) {
         const double now = NowMs();
         if (state.pausedForCache) {
             playerHealthySince_ = 0;
@@ -3428,12 +3669,12 @@ void App::OnPlayerState(const mpv::State& state) {
                 ui::PlayerOption{std::to_string(track.id), mpv::TrackLabel(track), mpv::AudioDetail(track), track.selected});
         } else if (track.type == "video" && track.selected && track.height > 0) {
             playerView_.qualityLabel = track.height >= 2000 ? "4K" : std::to_string(track.height) + "p";
-            // HDR on the badge only when the release playing says so (its tags read "HDR", "HDR10+" or
-            // "Dolby Vision"); mpv's track list does not report it.
-            if (streamChosen_ < streamChoices_.size()) {
-                const std::string& tags = streamChoices_[streamChosen_].detail;
-                if (tags.find("Dolby Vision") != std::string::npos) playerView_.qualityLabel += " DV";
-                else if (tags.find("HDR") != std::string::npos) playerView_.qualityLabel += " HDR";
+            std::string hdrHint = state.hdr + " " + playerVersionLabel_;
+            if (streamChosen_ < streamChoices_.size()) hdrHint += " " + streamChoices_[streamChosen_].detail;
+            if (hdrHint.find("Dolby Vision") != std::string::npos || hdrHint.find(" DV") != std::string::npos) {
+                playerView_.qualityLabel += " DV";
+            } else if (hdrHint.find("HDR") != std::string::npos) {
+                playerView_.qualityLabel += " HDR";
             }
         }
     }
@@ -3446,7 +3687,7 @@ void App::OnPlayerState(const mpv::State& state) {
     }
 
     ApplyExtrasState(state);
-    if (playerView_.nextUp && extrasPrefs_.autoplay && playerView_.nextRemaining <= 0 && !state.paused && !mpv::Buffering(state)) {
+    if (!sleepAtEnd_ && playerView_.nextUp && playerPrefs_.autoplay && playerView_.nextRemaining <= 0 && !state.paused && !mpv::Buffering(state)) {
         PlayNextEpisode(); return;
     }
     // A picture means the stream works, so the retries start again from nothing.
@@ -3468,7 +3709,7 @@ void App::OnPlayerError(const std::string& message) {
     }
     // A stream that fails is found again at the same place, twice, before the viewer is told.
     const bool missing = message.find("not installed") != std::string::npos;
-    if (!playerLive_ && !missing && playerRecoveries_ < 2) {
+    if (!playerLive_ && playerTrailerUrl_.empty() && !missing && playerRecoveries_ < 2) {
         ++playerRecoveries_;
         playerRetryAt_ = playerView_.position > 0.0 ? std::optional<double>(playerView_.position) : playerRetryAt_;
         StartPlayback();
@@ -3490,7 +3731,7 @@ void App::ShowPlayerError(const std::string& title, const std::string& body) {
 
 void App::SavePlayerProgress(bool force) {
     // Progress is saved every ten seconds while the title plays, and whenever it stops, as Player.tsx saves it.
-    if (playerLive_ || playerId_.empty() || playerView_.duration <= 0.0 || !playerView_.started) return;
+    if (playerLive_ || !playerTrailerUrl_.empty() || playerId_.empty() || playerView_.duration <= 0.0 || !playerView_.started) return;
     const double now = NowMs();
     if (!force && now - lastProgressSaveMs_ < 10000.0) return;
     lastProgressSaveMs_ = now;
@@ -3517,6 +3758,9 @@ void App::StopPlayback() {
     mpv_->Stop();
     overlay_->Show(false);
     playerOpen_ = false;
+    videoClicks_.Cancel();
+    videoPressed_ = false;
+    if (fullscreen_) ToggleFullscreen();
     playerView_ = ui::PlayerView{};
     // Continue watching follows what was just watched.
     if (homeStale_) RebuildHome();
@@ -3582,6 +3826,8 @@ void App::ToggleFullscreen() {
     }
     playerView_.fullscreen = fullscreen_;
     shell_->SetPlayerView(playerView_, NowMs());
+    if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->ShowChrome(NowMs());
+    if (overlay_) overlay_->ResetZOrder();
     dirty_ = true;
 }
 
@@ -3611,6 +3857,7 @@ void App::ApplyPlayerAction(const ui::Command& command) {
         // The new state shows at once, before mpv confirms it, as the web engine flips it first.
         playerView_.paused = !playerView_.paused;
         mpv_->SetPaused(playerView_.paused);
+        if (auto* player = shell_->ActivePlayer()) player->FlashPlayback(playerView_.paused, now);
         SavePlayerProgress(true);
     } else if (command.name == "player-seek") {
         const auto delta = command.params.find("delta");
@@ -3680,7 +3927,29 @@ void App::ApplyPlayerAction(const ui::Command& command) {
 }
 
 void App::PickPlayerOption(const std::string& kind, const std::string& id) {
-    if (kind == "cc") {
+    if (kind == "versions") {
+        playerVersionId_ = id;
+        playerManualHeight_ = 0;
+        playerRetryAt_ = playerView_.position;
+        playerRecoveries_ = 0;
+        StartPlayback();
+    } else if (kind == "sleep") {
+        sleepAtEnd_ = id == "end";
+        const int minutes = sleepAtEnd_ ? 0 : std::stoi(id);
+        sleepDeadline_ = minutes > 0 ? std::optional(NowMs() + minutes * 60000.0) : std::nullopt;
+        playerView_.sleepAtEnd = sleepAtEnd_;
+        playerView_.sleepMinutes = minutes;
+    } else if (kind == "more") {
+        if (id == "stats") { playerView_.showStats = !playerView_.showStats; playerView_.showShortcuts = false; }
+        else if (id == "shortcuts") { playerView_.showShortcuts = !playerView_.showShortcuts; playerView_.showStats = false; }
+        else if (id == "night") {
+            playerView_.nightMode = !playerView_.nightMode;
+            mpv_->SetNightMode(playerView_.nightMode);
+        } else if (id.starts_with("chapter-")) {
+            if (const auto time = mpv::AdjacentChapter(playerView_.chapters, playerView_.position, id == "chapter-next" ? 1 : -1))
+                mpv_->SeekTo(*time);
+        }
+    } else if (kind == "cc") {
         if (id.starts_with("external:")) {
             const auto index = std::stoul(id.substr(9));
             if (index < externalSubtitles_.size()) {
@@ -3700,7 +3969,12 @@ void App::PickPlayerOption(const std::string& kind, const std::string& id) {
             if (const auto folder = profiles::ActiveFolder(dataDir_)) try { util::WriteFileAtomically(*folder / "native-subtitle-language", language); } catch (...) {}
         }
     } else if (kind == "audio") {
-        mpv_->SetProperty("aid", std::stoi(id));
+        audioPreferenceApplied_ = true;
+        subtitlePreferenceApplied_ = false;
+        const int trackId = std::stoi(id);
+        pendingAudioTrackId_ = trackId;
+        pendingAudioWaitTicks_ = 12;
+        mpv_->SetProperty("aid", trackId);
     } else if (kind == "speed") {
         playerView_.speed = std::stod(id);
         mpv_->SetProperty("speed", playerView_.speed);
@@ -3758,7 +4032,7 @@ void App::SwitchStream(std::size_t choice) {
 
 void App::SyncThumbnail() {
     ui::PlayerScreen* player = shell_->ActivePlayer();
-    if (player == nullptr || playerUrl_.empty()) return;
+    if (player == nullptr || playerUrl_.empty() || !playerPrefs_.Enabled("seekPreviews") || !playerTrailerUrl_.empty()) return;
     const std::optional<double> seconds = player->PreviewSeconds();
     if (!seconds.has_value()) return;
     // One picture per ten-second stretch, taken from its middle.
@@ -3954,6 +4228,24 @@ bool App::HandlePlayerKey(WPARAM virtualKey, LPARAM flags) {
     ui::PlayerScreen* player = shell_->ActivePlayer();
     if (player == nullptr || player->view().phase != ui::PlayerView::Phase::Playing) return false;
     const double now = NowMs();
+    const char* tool = nullptr;
+    if (virtualKey == 'I') tool = "stats";
+    else if (virtualKey == VK_OEM_2 && KeyDown(VK_SHIFT) && playerView_.canShowShortcuts) tool = "shortcuts";
+    else if (virtualKey == VK_OEM_4 && !playerView_.chapters.empty()) tool = "chapter-previous";
+    else if (virtualKey == VK_OEM_6 && !playerView_.chapters.empty()) tool = "chapter-next";
+    if (tool) {
+        if (!(flags & (1 << 30))) {
+            player->CloseMenu();
+            ApplyPlayerAction(ui::Command{false, "player-pick", {{"kind", "more"}, {"id", tool}}, true});
+        }
+        return true;
+    }
+    if (virtualKey == VK_ESCAPE && (playerView_.showShortcuts || playerView_.showStats)) {
+        playerView_.showShortcuts = false;
+        playerView_.showStats = false;
+        shell_->SetPlayerView(playerView_, now);
+        return true;
+    }
     if (player->MenuOpen()) {
         // Back closes an open menu rather than the player. Every other key is the menu's, through the shell.
         if (virtualKey == VK_ESCAPE || virtualKey == VK_BROWSER_BACK) {

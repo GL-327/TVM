@@ -51,6 +51,21 @@ sub loadHomeExtras(payload as Object)
   candidates.Append(aaArray(payload, "continueWatching"))
   candidates.Append(aaArray(payload, "watchlist"))
   m.homeExtrasTask = startApiRequest("local:/api/extras/upcoming/home", "POST", FormatJson({ items: candidates }), "onHomeExtras")
+  if tvmExtraEnabled("surpriseMe")
+    m.homeSurpriseTask = startApiGet("local:/api/extras/surprise", "onHomeSurprise")
+  else if m.homeNode <> invalid
+    m.homeNode.surpriseItem = invalid
+  end if
+end sub
+
+sub onHomeSurprise(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.homeSurpriseTask or m.homeNode = invalid or task.profileId <> m.profileId then return
+  if task.ok
+    m.homeNode.surpriseItem = aaGet(task.json, "item", invalid)
+  else
+    m.homeNode.surpriseItem = invalid
+  end if
 end sub
 
 sub onHomeExtras(event as Object)
@@ -68,14 +83,30 @@ sub onHomeExtras(event as Object)
 end sub
 
 sub loadExtrasSettings()
+  if m.prefsWrite <> invalid and not m.prefsWrite.done then return
   m.extrasSettingsTask = startApiGet("local:/api/prefs", "onExtrasSettings")
 end sub
 
 sub onExtrasSettings(event as Object)
   task = event.GetRoSGNode()
-  if not task.ok or task.profileId <> m.profileId then return
+  if task <> m.extrasSettingsTask or task.profileId <> m.profileId then return
+  if not task.ok
+    m.settingsPrefsDeferred = invalid
+    return
+  end if
+  previous = m.rokuExtrasPrefs
   m.rokuExtrasPrefs = task.json
+  m.global.rokuPrefs = task.json
   if m.settingsNode <> invalid then m.settingsNode.extrasPrefs = task.json
+  if m.homeNode <> invalid
+    m.homeNode.callFunc("refreshHomePrefs")
+    if tvmExtraEnabled("surpriseMe") and m.homeNode.surpriseItem = invalid then m.homeSurpriseTask = startApiGet("local:/api/extras/surprise", "onHomeSurprise")
+    if aaGet(previous, "spotlightEvents", true) <> aaGet(task.json, "spotlightEvents", true) then loadEvents()
+  end if
+  if m.settingsPrefsDeferred <> invalid
+    pending = m.settingsPrefsDeferred : m.settingsPrefsDeferred = invalid
+    saveRokuPreference(pending)
+  end if
 end sub
 
 sub changeExtrasSetting(kind as String)
@@ -94,7 +125,7 @@ sub changeExtrasSetting(kind as String)
     showKeyboard("subtitleLanguages", "Subtitle languages (e.g. eng,spa,fra)", aaArray(prefs, "subtitleLanguages").Join(","), "Save")
     return
   end if
-  m.extrasSettingsTask = startApiRequest("local:/api/prefs", "PUT", FormatJson(body), "onExtrasSettings")
+  saveRokuPreference(body)
 end sub
 
 sub saveExtrasLanguages(text as String)
@@ -104,7 +135,7 @@ sub saveExtrasLanguages(text as String)
     if languages.Count() >= 8 then exit for
   end for
   if languages.Count() = 0 then languages = ["eng"]
-  m.extrasSettingsTask = startApiRequest("local:/api/prefs", "PUT", FormatJson({ subtitleLanguages: languages, subtitleLanguage: languages[0] }), "onExtrasSettings")
+  saveRokuPreference({ subtitleLanguages: languages, subtitleLanguage: languages[0] })
 end sub
 
 sub loadYourStats()
@@ -136,4 +167,70 @@ end sub
 
 sub clearYourStats()
   m.statsTask = startApiRequest("local:/api/extras/stats/clear", "POST", "{}", "onYourStats")
+end sub
+
+sub saveRokuPreference(body as Object)
+  if m.prefsWrite <> invalid and not m.prefsWrite.done
+    if m.settingsPrefsDeferred = invalid then m.settingsPrefsDeferred = {}
+    for each key in body
+      if (key = "extras" or key = "subtitleStyle") and m.settingsPrefsDeferred.DoesExist(key)
+        for each name in body[key]
+          m.settingsPrefsDeferred[key][name] = body[key][name]
+        end for
+      else
+        m.settingsPrefsDeferred[key] = body[key]
+      end if
+    end for
+    return
+  end if
+  m.prefsWrite = startApiRequest("local:/api/prefs", "PUT", FormatJson(body), "onExtrasSettings")
+  m.extrasSettingsTask = m.prefsWrite
+  if m.coreUrl <> "" then m.pairedPrefsWrite = startApiRequest(joinCorePath(m.coreUrl, "/api/prefs"), "PUT", FormatJson(body), "onPairedPrefs")
+end sub
+
+sub onPairedPrefs()
+end sub
+
+sub choosePreference(row as Object)
+  choices = []
+  for i = 0 to row.values.Count() - 1
+    choices.Push({ id: row.id, label: row.labels[i], body: row.body, value: row.values[i], scope: row.type })
+  end for
+  navigate("push", "setting-options", { heading: row.label, rows: choices })
+end sub
+
+sub setPreferenceFromAction(action as Object)
+  key = asText(aaGet(action, "key", ""))
+  if key = "" then return
+  value = action.value
+  fields = {} : fields[key] = value
+  scope = asText(aaGet(action, "scope", ""))
+  if scope = "extras" or scope = "subtitleStyle"
+    body = {} : body[scope] = fields
+    saveRokuPreference(body)
+  else
+    saveRokuPreference(fields)
+  end if
+end sub
+
+sub changeHomeSection(id as String, delta as Integer)
+  rows = m.settingsNode.homeRows
+  saved = {}
+  for each row in aaArray(m.rokuExtrasPrefs, "homeSections")
+    saved[row.id] = aaGet(row, "visible", true)
+  end for
+  flags = [] : index = -1
+  for each row in rows
+    if row.id = id then index = flags.Count()
+    flags.Push({ id: row.id, visible: aaGet(saved, row.id, true) })
+  end for
+  if index < 0 then return
+  if delta = 0
+    flags[index].visible = not flags[index].visible
+  else
+    target = index + delta
+    if target < 0 or target >= flags.Count() then return
+    value = flags[target] : flags[target] = flags[index] : flags[index] = value
+  end if
+  saveRokuPreference({ homeSections: flags })
 end sub

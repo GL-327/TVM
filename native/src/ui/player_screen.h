@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "motion/tween.h"
+#include "core/mpv.h"
 #include "ui/button_focus.h"
 #include "ui/layout.h"
 #include "ui/orbit.h"
@@ -80,6 +81,12 @@ struct PlayerView {
     std::vector<PlayerOption> subtitles;
     std::vector<PlayerOption> audios;
     std::vector<PlayerOption> qualities;
+    std::vector<PlayerOption> versions;
+    std::vector<mpv::Chapter> chapters;
+    std::vector<std::pair<std::string, std::string>> stats;
+    bool showStats = false, showShortcuts = false, canShowShortcuts = true;
+    bool sleepTimer = true, sleepAtEnd = false, nightAvailable = false, nightMode = false;
+    int sleepMinutes = 0;
     double speed = 1.0;
     // The quality button's word, such as "1080p", from the picture mpv is drawing.
     std::string qualityLabel;
@@ -162,6 +169,7 @@ public:
     const PlayerView& view() const { return view_; }
     // Any input brings the chrome back and restarts its timer.
     void ShowChrome(double nowMs);
+    void FlashPlayback(bool paused, double nowMs);
     // The chrome's opacity, from 0 when it has faded out to 1.
     double ChromeOpacity(double nowMs) const;
     bool ChromeHidden(double nowMs) const { return ChromeOpacity(nowMs) <= 0.0; }
@@ -263,6 +271,9 @@ private:
     void PaintTitleOverlay(Painter& painter, double opacity) const;
     void PaintEndActions(Painter& painter) const;
     void PaintPreview(Painter& painter, double opacity) const;
+    void PaintPlayerInfo(Painter& painter) const;
+    double flashUntilMs_ = 0;
+    bool flashPaused_ = false;
     std::string focused_ = "play";
     ButtonFocusSet buttonFocus_;
     // The nav pill's hover motion on the control glass: the light that sweeps across once a control is lit, and the

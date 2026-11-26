@@ -19,8 +19,9 @@ void Check(HRESULT result, const char* what) {
     }
 }
 
-// Loads Inter privately from packaged assets when available.
-ComPtr<IDWriteFontCollection> LoadPrivateInter(IDWriteFactory* factory) {
+// Packaged fonts are private to TVM and require no installation.
+ComPtr<IDWriteFontCollection> LoadPrivateFont(IDWriteFactory* factory, const char* family,
+                                             std::initializer_list<const char*> weights) {
     ComPtr<IDWriteFactory5> factory5;
     if (FAILED(factory->QueryInterface(IID_PPV_ARGS(&factory5)))) return nullptr;
 
@@ -28,8 +29,8 @@ ComPtr<IDWriteFontCollection> LoadPrivateInter(IDWriteFactory* factory) {
     if (FAILED(factory5->CreateFontSetBuilder(&builder))) return nullptr;
 
     int added = 0;
-    for (const char* file : {"fonts/Inter-Regular.otf", "fonts/Inter-SemiBold.otf", "fonts/Inter-Bold.otf"}) {
-        const auto path = AssetFile(file);
+    for (const char* weight : weights) {
+        const auto path = AssetFile(std::string("fonts/") + family + "-" + weight + ".otf");
         if (!path.has_value()) continue;
         ComPtr<IDWriteFontFile> fontFile;
         if (SUCCEEDED(factory5->CreateFontFileReference(path->c_str(), nullptr, &fontFile)) &&
@@ -47,11 +48,11 @@ ComPtr<IDWriteFontCollection> LoadPrivateInter(IDWriteFactory* factory) {
 
     UINT32 index = 0;
     BOOL exists = FALSE;
-    if (FAILED(collection1->FindFamilyName(L"Inter", &index, &exists)) || !exists) return nullptr;
+    if (FAILED(collection1->FindFamilyName(util::ToWide(family).c_str(), &index, &exists)) || !exists) return nullptr;
     return collection1;
 }
 
-// The design tokens name Inter first (privately loaded), then Segoe UI Variable Display, then Segoe UI.
+// Use the Windows UI family when the system font is requested.
 std::wstring ChooseFamily(IDWriteFactory* factory) {
     ComPtr<IDWriteFontCollection> collection;
     if (FAILED(factory->GetSystemFontCollection(&collection, FALSE))) return L"Segoe UI";
@@ -72,8 +73,9 @@ Graphics::Graphics() {
           "DirectWrite");
     Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic_)),
           "Windows Imaging Component");
-    fontCollection_ = LoadPrivateInter(dwrite_.Get());
-    family_ = fontCollection_ ? L"Inter" : ChooseFamily(dwrite_.Get());
+    bundledFonts_[0] = LoadPrivateFont(dwrite_.Get(), "Geist", {"Regular", "Medium", "SemiBold", "Bold"});
+    bundledFonts_[1] = LoadPrivateFont(dwrite_.Get(), "Inter", {"Regular", "SemiBold", "Bold"});
+    systemFamily_ = ChooseFamily(dwrite_.Get());
 }
 
 ComPtr<ID2D1HwndRenderTarget> Graphics::CreateHwndTarget(HWND window, UINT width, UINT height) {
@@ -114,23 +116,44 @@ IDWriteTextFormat* Graphics::ParagraphFormat(double sizePx, int weight) {
     return CachedFormat(sizePx, weight, true);
 }
 
-double Graphics::MeasureText(std::string_view text, double sizePx, int weight) {
+ComPtr<IDWriteTextLayout> Graphics::TextLayout(std::wstring_view text, const ui::TextStyle& style, int weight,
+                                                float width, float height, bool wrap) {
+    ComPtr<IDWriteTextLayout> layout;
+    auto* format = CachedFormat(style.sizePx, weight, wrap);
+    if (FAILED(dwrite_->CreateTextLayout(text.data(), static_cast<UINT32>(text.size()), format, width, height, &layout)))
+        return nullptr;
+    if (style.trackingEm != 0.0 && text.size() > 1) {
+        ComPtr<IDWriteTextLayout1> spacing;
+        if (SUCCEEDED(layout.As(&spacing))) {
+            // Apply tracking between adjacent characters only so negative tracking does not shift
+            // the first glyph left of the origin where CLIP would clip it.
+            const DWRITE_TEXT_RANGE inner{0, static_cast<UINT32>(text.size() - 1)};
+            spacing->SetCharacterSpacing(0.0f, static_cast<float>(style.trackingEm * style.sizePx), 0.0f, inner);
+        }
+    }
+    const DWRITE_TEXT_RANGE range{0, static_cast<UINT32>(text.size())};
+    if (style.tabular) {
+        ComPtr<IDWriteTypography> typography;
+        if (SUCCEEDED(dwrite_->CreateTypography(&typography))) {
+            typography->AddFontFeature({DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES, 1});
+            layout->SetTypography(typography.Get(), range);
+        }
+    }
+    return layout;
+}
+
+double Graphics::MeasureText(std::string_view text, const ui::TextStyle& style, int weight) {
     if (text.empty()) return 0.0;
-    const long sizeKey = std::lround(sizePx * 10.0);
-    const auto key = std::make_tuple(std::string(text), sizeKey, weight);
+    const auto key = std::make_tuple(ui::tokens::font, std::string(text), std::lround(style.sizePx * 10.0), weight,
+                                     style.trackingEm, style.tabular);
     const auto found = measuredText_.find(key);
     if (found != measuredText_.end()) return found->second;
 
-    const std::wstring wide = util::ToWide(std::string(text));
-    IDWriteTextFormat* format = TextFormat(sizePx, weight);
-    ComPtr<IDWriteTextLayout> layout;
+    const auto layout = TextLayout(util::ToWide(std::string(text)), style, weight, 100000.0f, 1000.0f, false);
     DWRITE_TEXT_METRICS metrics{};
-    double width = static_cast<double>(text.size()) * 0.56 * sizePx;
-    if (SUCCEEDED(dwrite_->CreateTextLayout(wide.c_str(), static_cast<UINT32>(wide.size()), format, 100000.0f, 1000.0f,
-                                            &layout)) &&
-        SUCCEEDED(layout->GetMetrics(&metrics))) {
-        width = metrics.widthIncludingTrailingWhitespace;
-    }
+    const double width = layout && SUCCEEDED(layout->GetMetrics(&metrics))
+                             ? metrics.widthIncludingTrailingWhitespace
+                             : static_cast<double>(text.size()) * 0.56 * style.sizePx;
     if (measuredText_.size() > 4096) measuredText_.clear();
     measuredText_.emplace(key, width);
     return width;
@@ -139,12 +162,22 @@ double Graphics::MeasureText(std::string_view text, double sizePx, int weight) {
 IDWriteTextFormat* Graphics::CachedFormat(double sizePx, int weight, bool wrap) {
     // Whole pixels for the key: sizes that differ only past a tenth of a pixel
     // look identical on screen.
-    const long key = std::lround(sizePx * 10.0);
-    const auto found = formats_.find({key, weight, wrap});
+    const auto font = ui::tokens::font;
+    const auto key = std::make_tuple(font, std::lround(sizePx * 10.0), weight, wrap);
+    const auto found = formats_.find(key);
     if (found != formats_.end()) return found->second.Get();
 
+    IDWriteFontCollection* collection = nullptr;
+    const wchar_t* family = systemFamily_.c_str();
+    if (font == ui::UiFont::Geist && bundledFonts_[0]) {
+        family = L"Geist";
+        collection = bundledFonts_[0].Get();
+    } else if (font != ui::UiFont::System && bundledFonts_[1]) {
+        family = L"Inter";
+        collection = bundledFonts_[1].Get();
+    }
     ComPtr<IDWriteTextFormat> format;
-    Check(dwrite_->CreateTextFormat(family_.c_str(), fontCollection_.Get(), static_cast<DWRITE_FONT_WEIGHT>(weight),
+    Check(dwrite_->CreateTextFormat(family, collection, static_cast<DWRITE_FONT_WEIGHT>(weight),
                                     DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
                                     static_cast<FLOAT>(sizePx), L"en-us", &format),
           "DirectWrite text format");
@@ -167,7 +200,7 @@ IDWriteTextFormat* Graphics::CachedFormat(double sizePx, int weight, bool wrap) 
     }
 
     IDWriteTextFormat* raw = format.Get();
-    formats_.emplace(std::make_tuple(key, weight, wrap), std::move(format));
+    formats_.emplace(key, std::move(format));
     return raw;
 }
 

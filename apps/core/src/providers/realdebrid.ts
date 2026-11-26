@@ -65,6 +65,7 @@ export interface RealDebridOptions {
   fetch?: typeof fetch;
   /** Authoritative account key. When provided, machine/environment keys are ignored. */
   accountToken?: () => string | null;
+  onUnauthorized?: (rejected: string) => void;
 }
 
 function redact(value: string): string {
@@ -105,7 +106,8 @@ export function createRealDebrid(options: RealDebridOptions): RealDebrid {
     headers.set('User-Agent', 'tvm-core');
     log('tvm-core: rd', init.method ?? 'GET', path);
 
-    const response = await fetchImpl(`${RD_API}${path}`, { ...init, headers });
+    const response = await fetchImpl(`${RD_API}${path}`, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(15_000), redirect: 'error' });
+    if (response.status === 401) options.onUnauthorized?.(secret);
     if (response.status === 401 || response.status === 403) {
       const error = new Error('needs-auth');
       error.name = 'RdAuth';

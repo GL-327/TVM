@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { fieldValue, FocusField } from '../components/FocusField';
+import { Switch } from '../components/Switch';
 import { GlassSegmented } from '../components/GlassSegmented';
 import { PinPadModal } from '../components/PinPadModal';
 import { ProfileOrb } from '../components/ProfileOrb';
@@ -76,7 +77,10 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
   const [draftPin, setDraftPin] = useState<string | null | undefined>(undefined);
   const [avatarTab, setAvatarTab] = useState<string>('initial');
 
-  // PIN pad + lockout state
+  // PIN pad + inline 4-digit PIN boxes + lockout state
+  const [pinBoxesOpen, setPinBoxesOpen] = useState(false);
+  const [pinDigits, setPinDigits] = useState(['', '', '', '']);
+  const pinInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pinPrompt, setPinPrompt] = useState<PinPromptState | null>(null);
   const [lockout, setLockout] = useState<PinLockoutState>({ wrongCount: 0, lockedUntilMs: 0 });
   const [cooldownSec, setCooldownSec] = useState(0);
@@ -406,7 +410,7 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
             <div className="avatar-tabs" data-wrap="row" role="tablist" aria-label="Avatar sets">
               <FocusButton
                 id="avatar-tab-initial"
-                className={`tvm-button--glass avatar-tab${avatarTab === 'initial' ? ' glass--thumb' : ''}`}
+                className={`tvm-button--glass avatar-tab${avatarTab === 'initial' ? ' avatar-tab--selected' : ''}`}
                 onSelect={() => {
                   setAvatarTab('initial');
                   setDraftAvatar(null);
@@ -418,10 +422,11 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
                 <FocusButton
                   key={set.id}
                   id={`avatar-tab-${set.id}`}
-                  className={`tvm-button--glass avatar-tab${avatarTab === set.id ? ' glass--thumb' : ''}`}
+                  className={`tvm-button--glass avatar-tab${avatarTab === set.id ? ' avatar-tab--selected' : ''}`}
                   onSelect={() => setAvatarTab(set.id)}
                 >
-                  {set.title}
+                  {set.avatars[0] && <img src={set.avatars[0].image} alt="" loading="lazy" />}
+                  <span>{set.title}</span>
                 </FocusButton>
               ))}
             </div>
@@ -434,11 +439,11 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
                     <FocusButton
                       key={key}
                       id={`avatar-${activeAvatarSet.id}-${av.id}`}
-                      className={`avatar-choice glass glass--card${selected ? ' avatar-choice--on' : ''}`}
+                      className={`avatar-choice${selected ? ' avatar-choice--on' : ''}`}
                       onSelect={() => setDraftAvatar(key)}
-                      title={av.actor ? `${av.name} (${av.actor})` : av.name}
+                      title={av.name}
                     >
-                      <img src={av.image} alt={av.name} className="avatar-choice__img" loading="lazy" referrerPolicy="no-referrer" />
+                      <img src={av.image} alt="" className="avatar-choice__img" loading="lazy" referrerPolicy="no-referrer" />
                       <span className="avatar-choice__name">{av.name}</span>
                     </FocusButton>
                   );
@@ -452,13 +457,7 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
               <strong>Kids profile</strong>
               <p className="page__lede">Defaults age limit to Up to 7 and hides Settings, Account and Downloads.</p>
             </div>
-            <FocusButton
-              id="profile-kids-toggle"
-              className={`tvm-button--glass${draftKind === 'kids' ? ' glass--thumb' : ''}`}
-              onSelect={toggleKidsMode}
-            >
-              {draftKind === 'kids' ? 'Kids: On' : 'Kids: Off'}
-            </FocusButton>
+            <Switch id="profile-kids-toggle" label="Kids profile" checked={draftKind === 'kids'} onChange={toggleKidsMode} />
           </div>
 
           <div className="profile-editor__row">
@@ -478,29 +477,77 @@ export function Profiles({ params }: ScreenProps): React.JSX.Element {
           <div className="profile-editor__row">
             <div>
               <strong>Profile PIN lock</strong>
-              <p className="page__lede">Require a 4-digit PIN to open or edit this profile.</p>
+              <p className="page__lede">
+                {typeof draftPin === 'string' && /^\d{4}$/.test(draftPin)
+                  ? '4-digit PIN ready to save.'
+                  : 'Require a 4-digit PIN to open or edit this profile.'}
+              </p>
             </div>
             <div className="hero__actions" data-wrap="row">
-              <FocusButton
-                id="profile-pin-set"
-                className="tvm-button--glass"
-                onSelect={() => {
-                  setPinPrompt({
-                    title: currentLocked ? 'Set new 4-digit PIN' : 'Set 4-digit PIN',
-                    subtitle: 'Choose 4 digits for locking this profile.',
-                    targetProfileId: mode.kind === 'edit' ? mode.profile.id : 'new',
-                    error: null,
-                    shakeKey: 0,
-                    onVerified: (newPin) => {
-                      setDraftPin(newPin);
-                    },
-                  });
-                }}
-              >
-                {currentLocked ? 'Change PIN' : 'Set 4-digit PIN'}
-              </FocusButton>
+              {pinBoxesOpen ? (
+                <div className="profile-pin-inputs" aria-label="4-digit profile PIN">
+                  {pinDigits.map((digit, idx) => (
+                    <input
+                      key={idx}
+                      ref={(el) => { pinInputRefs.current[idx] = el; }}
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={1}
+                      aria-label={`PIN digit ${idx + 1}`}
+                      className="profile-pin-digit"
+                      value={digit}
+                      onChange={(event) => {
+                        const cleaned = event.currentTarget.value.replace(/\D/g, '');
+                        if (cleaned.length > 1) {
+                          const chars = cleaned.slice(0, 4).split('');
+                          const next = ['', '', '', ''].map((_, i) => chars[i] ?? '');
+                          setPinDigits(next);
+                          if (next.every((c) => /^\d$/.test(c))) {
+                            setDraftPin(next.join(''));
+                            setPinBoxesOpen(false);
+                          }
+                          return;
+                        }
+                        const ch = cleaned.slice(-1);
+                        const next = [...pinDigits];
+                        next[idx] = ch;
+                        setPinDigits(next);
+                        if (ch !== '' && idx < 3) {
+                          pinInputRefs.current[idx + 1]?.focus();
+                        }
+                        if (next.every((c) => /^\d$/.test(c))) {
+                          setDraftPin(next.join(''));
+                          setPinBoxesOpen(false);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Backspace' && pinDigits[idx] === '' && idx > 0) {
+                          pinInputRefs.current[idx - 1]?.focus();
+                        } else if (event.key === 'Escape') {
+                          setPinBoxesOpen(false);
+                        }
+                      }}
+                    />
+                  ))}
+                  <FocusButton id="profile-pin-cancel" className="tvm-button--quiet" onSelect={() => setPinBoxesOpen(false)}>
+                    Cancel
+                  </FocusButton>
+                </div>
+              ) : (
+                <FocusButton
+                  id="profile-pin-set"
+                  className="tvm-button--glass"
+                  onSelect={() => {
+                    setPinDigits(['', '', '', '']);
+                    setPinBoxesOpen(true);
+                    window.requestAnimationFrame(() => pinInputRefs.current[0]?.focus());
+                  }}
+                >
+                  {currentLocked ? 'Change PIN' : 'Set 4-digit PIN'}
+                </FocusButton>
+              )}
               {currentLocked && (
-                <FocusButton id="profile-pin-remove" className="tvm-button--glass" onSelect={() => setDraftPin(null)}>
+                <FocusButton id="profile-pin-remove" className="tvm-button--glass" onSelect={() => { setPinBoxesOpen(false); setDraftPin(null); }}>
                   Remove PIN
                 </FocusButton>
               )}

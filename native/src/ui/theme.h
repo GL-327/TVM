@@ -8,7 +8,30 @@ namespace tvm::ui {
 
 enum class Theme { Dark, Light };
 
-// How see-through the Liquid Glass is: clear shows the picture behind 1:1, frosted scatters it into a soft blur.
+namespace type {
+inline constexpr TextStyle Display(double rem) { return {3.25 * rem, true, 700, -0.025}; }
+inline constexpr TextStyle H1(double rem) { return {2.25 * rem, true, 700, -0.02}; }
+inline constexpr TextStyle H2(double rem) { return {1.5 * rem, true, 650, -0.015}; }
+inline constexpr TextStyle Title(double rem) { return {1.125 * rem, true, 600, -0.01}; }
+inline constexpr TextStyle Body(double rem) { return {0.9375 * rem, false, 450}; }
+inline constexpr TextStyle Label(double rem) { return {0.875 * rem, false, 550}; }
+inline constexpr TextStyle Caption(double rem) { return {0.8125 * rem, false, 450, 0.005}; }
+inline constexpr TextStyle Overline(double rem) { return {0.6875 * rem, true, 600, 0.08}; }
+}  // namespace type
+
+enum class UiFont { Geist, Inter, System };
+
+constexpr UiFont ParseUiFont(std::string_view id) {
+    return id == "inter" ? UiFont::Inter : id == "system" ? UiFont::System : UiFont::Geist;
+}
+constexpr std::string_view UiFontId(UiFont font) {
+    return font == UiFont::Inter ? "inter" : font == UiFont::System ? "system" : "geist";
+}
+constexpr std::string_view UiFontName(UiFont font) {
+    return font == UiFont::Inter ? "Inter" : font == UiFont::System ? "System" : "Geist";
+}
+
+// Kept for the existing snapshot command-line fixtures.
 enum class GlassClarity { Clear, Default, Tinted, Frosted = Tinted };
 
 constexpr GlassClarity ParseGlassClarity(std::string_view id) {
@@ -29,17 +52,17 @@ struct Palette {
 };
 
 inline constexpr Palette kDarkPalette{
-    Rgb(0x071018), Rgb(0x102238), Rgb(0x163048), Rgb(0x8CB4DC, 0.16),
-    Rgb(0xFFFFFF, 0.95), Rgb(0xFFFFFF, 0.66), Rgb(0xFFFFFF, 0.44), Rgb(0x9EDCFF),
-    Rgb(0x000000), Rgb(0x0C1A2C), Rgb(0x9EDCFF), Rgb(0x000000),
+    Rgb(0x07080B), Rgb(0x12141A), Rgb(0x1A1D25), Rgb(0xFFFFFF, 0.08),
+    Rgb(0xF5F7FA), Rgb(0xA9B0BC), Rgb(0x6E7684), Rgb(0x9EDCFF),
+    Rgb(0x000000), Rgb(0x232733), Rgb(0x9EDCFF), Rgb(0x000000),
     Rgb(0xFFFFFF, 0.06), Rgb(0xFFFFFF, 0.22), Rgb(0xFFFFFF, 0.10),
-    Rgb(0x2F6BFF, 0.55), Rgb(0xFFFFFF)};
+    Rgb(0x2F6BFF), Rgb(0xFFFFFF)};
 inline constexpr Palette kLightPalette{
     Rgb(0xF4F1E4), Rgb(0xFFFDF6), Rgb(0xE7FFF6), Rgb(0x124856, 0.16),
     Rgb(0x12324A), Rgb(0x2A5A68), Rgb(0x4A7A82), Rgb(0x0EA884),
     Rgb(0xEFE8D4), Rgb(0xFFFAF0), Rgb(0x0EA884), Rgb(0xF4F1E4),
     Rgb(0xFFFFFF, 0.50), Rgb(0x124856, 0.16), Rgb(0xFFFFFF, 0.62),
-    Rgb(0x2F6BFF, 0.55), Rgb(0xFFFFFF)};
+    Rgb(0x2F6BFF), Rgb(0xFFFFFF)};
 
 namespace tokens {
 // Painting is immediate and confined to the window thread. A scoped palette lets
@@ -65,24 +88,18 @@ inline const Color& kPrimary = palette.primary;
 inline const Color& kOnPrimary = palette.onPrimary;
 inline bool reduceTransparency = false;
 inline bool reduceMotion = false;
-// Settings > Look > Liquid Glass.
-inline bool frostedGlass = false;
-inline bool clearGlass = false;
+inline UiFont font = UiFont::Geist;
+inline std::optional<Point> pointer;
 }  // namespace tokens
 
-// Applies the viewer's glass clarity while a frame is painted.
-class GlassScope {
+class FontScope {
 public:
-    explicit GlassScope(GlassClarity clarity) : previous_(tokens::frostedGlass), previousClear_(tokens::clearGlass) {
-        tokens::frostedGlass = clarity == GlassClarity::Tinted;
-        tokens::clearGlass = clarity == GlassClarity::Clear;
-    }
-    ~GlassScope() { tokens::frostedGlass = previous_; tokens::clearGlass = previousClear_; }
-    GlassScope(const GlassScope&) = delete;
-    GlassScope& operator=(const GlassScope&) = delete;
+    explicit FontScope(UiFont font) : previous_(tokens::font) { tokens::font = font; }
+    ~FontScope() { tokens::font = previous_; }
+    FontScope(const FontScope&) = delete;
+    FontScope& operator=(const FontScope&) = delete;
 private:
-    bool previous_;
-    bool previousClear_;
+    UiFont previous_;
 };
 
 class ThemeScope {

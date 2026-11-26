@@ -182,7 +182,7 @@ object TvmDeviceCodecs {
     val screenHeight: Int by lazy {
         val metrics = Resources.getSystem().displayMetrics
         val short = minOf(metrics.widthPixels, metrics.heightPixels)
-        if (short >= 2000 && (caps.hevc4k || caps.avc4k)) 2160 else 1080
+        if (short >= 1440 && (caps.hevc4k || caps.avc4k)) 2160 else 1080
     }
 
     private fun read(): DecoderCaps {

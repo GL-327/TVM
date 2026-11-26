@@ -327,6 +327,7 @@ sub layoutGlassPill()
   m.top.scaleRotateCenter = [w / 2, h / 2]
   m.pill.visible = true
   m.pill.scaleRotateCenter = [w / 2, h / 2]
+  m.pillGlass.shape = "card"
   m.pillGlass.width = w
   m.pillGlass.height = h
   m.pillGlyph.width = 56

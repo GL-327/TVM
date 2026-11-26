@@ -14,13 +14,15 @@
   <children>
     <Poster id="backdrop" width="3840" height="2160" uri="pkg:/images/lighthouse.jpg" loadWidth="96" loadHeight="54" opacity="0.22" />
     <Rectangle width="3840" height="2160" color="0x081018BA" />
-    <GlassPanel id="card" shape="panel" width="1840" height="960" translation="[1000, 600]" />
-    <Label id="kicker" translation="[1120, 680]" width="1600" color="0x9FE7FFFF" text="TVM Stream" />
-    <Label id="heading" translation="[1120, 756]" width="1600" color="0xF5F5F5FF" text="Connect Real-Debrid" />
-    <Label id="lede" translation="[1120, 888]" width="1600" wrap="true" maxLines="4" color="0xC4C4C4FF" text="Paste your Real-Debrid API key to stream cached titles and your cloud library. Your key is saved permanently on this device." />
-    <Label id="account" translation="[1120, 1100]" width="1600" color="0xF5F5F5FF" />
-    <Label id="premium" translation="[1120, 1180]" width="1600" color="0xC4C4C4FF" />
-    <FocusButton id="paste" translation="[1120, 1320]" />
-    <FocusButton id="back" translation="[1700, 1320]" />
+    <GlassPanel id="card" shape="panel" width="1840" height="1120" translation="[1000, 520]" />
+    <Label id="kicker" translation="[1120, 600]" width="1600" color="0x9FE7FFFF" text="TVM Stream" />
+    <Label id="heading" translation="[1120, 676]" width="1600" color="0xF5F5F5FF" text="Real-Debrid" />
+    <Label id="lede" translation="[1120, 808]" width="1600" wrap="true" maxLines="4" color="0xC4C4C4FF" text="Each person uses their own Real-Debrid account. Paste a key from real-debrid.com/apitoken to stream cached titles and your cloud library." />
+    <Label id="account" translation="[1120, 1020]" width="1600" color="0xF5F5F5FF" />
+    <Label id="premium" translation="[1120, 1100]" width="1600" color="0xC4C4C4FF" />
+    <FocusButton id="paste" translation="[1120, 1240]" />
+    <FocusButton id="back" translation="[1700, 1240]" />
+    <FocusButton id="overrideBtn" translation="[1120, 1416]" visible="false" />
+    <FocusButton id="removeBtn" translation="[1700, 1416]" visible="false" />
   </children>
 </component>

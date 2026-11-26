@@ -13,6 +13,8 @@ struct CatalogBundle {
 struct TitleMeta {
     var item: MediaItem
     var children: [MediaItem]
+    var originalLanguage: String? = nil
+    var tmdbId: Int? = nil
 }
 
 final class TVMCatalog {
@@ -22,6 +24,7 @@ final class TVMCatalog {
     private var genreMem: [String: (at: Date, items: [MediaItem])] = [:]
     private var pageMem: [String: (at: Date, items: [MediaItem])] = [:]
     private var metaMem: [String: (at: Date, data: TitleMeta)] = [:]
+    private var originalLanguageMem: [Int: (until: Date, value: String?)] = [:]
     private let fallback: [MediaItem]
     private let lock = NSLock()
     private var popularityMem: [String: (at: Date, value: Double)] = [:]
@@ -47,6 +50,7 @@ final class TVMCatalog {
         genreMem.removeAll()
         pageMem.removeAll()
         metaMem.removeAll()
+        originalLanguageMem.removeAll()
         lock.unlock()
         store.clearCacheFiles()
     }
@@ -217,10 +221,42 @@ final class TVMCatalog {
                   let raw = body["meta"] as? [String: Any],
                   let item = mapMeta(raw, kind: kind) else { return nil }
             let children = kind == "series" ? mapVideos(show: item, videos: raw["videos"]) : []
-            return TitleMeta(item: item, children: children)
+            let origLang = (raw["original_language"] as? String) ?? (raw["originalLanguage"] as? String)
+            let tmdbId = JSONValue.int(raw["moviedb_id"]).flatMap { $0 > 0 ? $0 : nil }
+            return TitleMeta(item: item, children: children, originalLanguage: origLang, tmdbId: tmdbId)
         } catch {
             return nil
         }
+    }
+
+    func originalLanguageFor(_ meta: TitleMeta?) async -> String? {
+        guard let meta else { return nil }
+        if let declared = TVMVersions.languageCode(meta.originalLanguage) { return declared }
+        guard let tmdbId = meta.tmdbId else { return nil }
+        let current = Date()
+        lock.lock()
+        let hit = originalLanguageMem[tmdbId]
+        lock.unlock()
+        if let hit, current < hit.until { return hit.value }
+        let kind = meta.item.kind == "series" ? "tv" : "movie"
+        guard let url = URL(string: "https://www.themoviedb.org/\(kind)/\(tmdbId)?language=en-US") else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 2.5
+        var fetched: String? = nil
+        if let (data, response) = try? await session.data(for: req),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           let html = String(data: data, encoding: .utf8),
+           let regex = try? NSRegularExpression(pattern: #"Original Language</bdi>\s*</strong>\s*([^<]+)"#, options: .caseInsensitive),
+           let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+           let range = Range(match.range(at: 1), in: html) {
+            fetched = TVMVersions.languageCode(String(html[range]))
+        }
+        let ttl: TimeInterval = fetched != nil ? 7 * 86_400 : 60
+        lock.lock()
+        if originalLanguageMem.count >= 512 { originalLanguageMem.removeAll() }
+        originalLanguageMem[tmdbId] = (Date().addingTimeInterval(ttl), fetched)
+        lock.unlock()
+        return fetched
     }
 
     /// A title's Stremio popularity (or Trakt watchers when that is all there is), kept for a day.

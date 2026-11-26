@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="GuideGrid" extends="Group">
+  <interface>
+    <field id="guide" type="assocarray" onChange="onGuide" />
+    <field id="channels" type="array" onChange="onChannels" />
+    <field id="query" type="string" onChange="onFilter" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="GuideGrid.brs" />
+  <children>
+    <Rectangle id="background" width="3840" height="2160" />
+    <NavStrip id="nav" activeId="live" />
+    <Group id="controls" translation="[160, 282]" />
+    <Group id="timeline" translation="[640, 510]" />
+    <Group id="grid" translation="[160, 590]" />
+    <Group id="nowMarker" />
+    <Group id="info" translation="[160, 1660]" />
+    <Timer id="clock" duration="30" repeat="true" />
+    <Timer id="tune" duration="1.5" repeat="false" />
+  </children>
+</component>

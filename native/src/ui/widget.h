@@ -71,20 +71,36 @@ private:
     std::vector<Size> desired_;
 };
 
+class Card;
+
 // A horizontal row of cards that scrolls inside its own viewport. The scroll
 // offset is set by the scene's camera, and Arrange clamps it to the content.
 class Rail : public Widget {
 public:
     Rail(double spacingRem, double insetRem) : spacingRem_(spacingRem), insetRem_(insetRem) {}
 
-    void Add(std::unique_ptr<Widget> child);
-    const std::vector<std::unique_ptr<Widget>>& children() const { return children_; }
+    void Add(std::unique_ptr<Card> child);
+    const std::vector<std::unique_ptr<Card>>& children() const { return children_; }
 
     static constexpr double kRingOrigin = 10000000.0;
     void SetLoop(bool loop) { loop_ = loop; if (loop_) scrollX_ = kRingOrigin; }
     bool Loop() const { return loop_; }
     double Period() const;
+    struct Slot {
+        std::size_t index;
+        std::int64_t turn;
+        bool operator==(const Slot&) const = default;
+    };
+    std::optional<Slot> SlotAt(double x) const;
     std::optional<std::size_t> IndexAt(double x) const;
+    Slot NearestSlot(std::size_t index, std::optional<double> anchor = std::nullopt) const;
+    double ContentLeftOf(Slot slot) const;
+    void SetFocusSlot(std::optional<Slot> slot) {
+        if (focusSlot_ != slot) {
+            if (focusSlot_) fadingSlot_ = focusSlot_;
+            focusSlot_ = slot;
+        }
+    }
     void SetScroll(double scrollX) { scrollX_ = scrollX; }
     double scroll() const { return scrollX_; }
     double ContentWidth() const { return loop_ ? box_.width + Period() : contentWidth_; }
@@ -102,7 +118,9 @@ private:
     double insetRem_;
     double scrollX_ = 0.0;
     double contentWidth_ = 0.0;
-    std::vector<std::unique_ptr<Widget>> children_;
+    std::vector<std::unique_ptr<Card>> children_;
+    std::optional<Slot> focusSlot_;
+    std::optional<Slot> fadingSlot_;
     std::vector<Size> desired_;
     std::vector<double> contentLeft_;
 };
@@ -163,6 +181,7 @@ public:
     // Whether the card has focus. The outline follows this at once, and the scale follows the amount.
     bool focused() const { return focused_; }
     void SetFocused(bool focused) { focused_ = focused; }
+    void PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) const;
 
     Size Measure(double availableWidth, const Metrics& metrics) override;
     void Arrange(const Box& box, const Metrics& metrics) override;
@@ -200,12 +219,12 @@ inline constexpr double kCardLabelGapRem = 0.75;
 inline constexpr double kCardLabelHeightRem = 1.75;
 // Poster and card focus tokens from DECISIONS.md and WINDOWS-VISUAL-SPEC.md:
 // scale 1.04, lift 6px (0.375rem at 1080p), directional glass rim and outer focus glow.
-inline constexpr double kPosterFocusScale = 1.08;
+inline constexpr double kPosterFocusScale = 1.06;
 inline constexpr double kPosterLiftRem = 0.375;
-inline constexpr double kPosterRingWidthRem = 0.16;
+inline constexpr double kPosterRingWidthRem = 0.125;
 inline constexpr double kPosterRingOffsetRem = 0.18;
 inline constexpr Color kPosterRing = Rgb(0xFFFFFF);
-inline constexpr double kButtonLabelRem = 1.0625;
+inline constexpr double kButtonLabelRem = 0.875;
 inline constexpr double kButtonPadRem = 1.2;
 
 // What a button looks like at a moment. `focusAmount` is the eased focus, 0 to 1: it scales the
@@ -214,9 +233,13 @@ struct ButtonLook {
     bool primary = false;
     bool focused = false;
     double focusAmount = 0.0;
+    double pressAmount = 0.0;
+    double opacity = 1.0;
+    std::string_view glyph;
+    std::optional<Color> fill;
 };
 
-// A pill button with its label. The pill's radius is half its height, as `--tvm-radius-pill` gives.
+// A rectangular button with its label. The pill's radius is half its height, as `--tvm-radius-pill` gives.
 void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const std::string& label, const ButtonLook& look);
 
 }  // namespace tvm::ui

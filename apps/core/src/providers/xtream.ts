@@ -126,6 +126,9 @@ function streamRow(entry: unknown, groups: Map<string, string>): LiveChannel | n
     name,
     url: '',
   };
+  if (typeof row['epg_channel_id'] === 'string' && row['epg_channel_id'].trim()) channel.epgId = row['epg_channel_id'].trim();
+  const number = Number(row['num']);
+  if (Number.isSafeInteger(number) && number > 0) channel.number = number;
   const group = groups.get(groupKey);
   if (group !== undefined) channel.group = group;
   if (typeof icon === 'string') {

@@ -275,7 +275,7 @@ end function
 function lcFreeChannels(ctx as Object) as Object
   out = []
   for each ch in lcAaGet(lcContent("free-channels"), "channels", [])
-    out.Push({ id: "live:free:" + ch.id, title: ch.name, name: ch.name, group: ch.group, logo: ch.logo, url: ch.url, geo: ch.geo, source: "free", kind: "live", playable: true })
+    out.Push({ id: "live:free:" + ch.id, title: ch.name, name: ch.name, group: ch.group, logo: ch.logo, url: ch.url, geo: ch.geo, source: "free", epgId: lcAaText(ch, "epgId"), number: lcAaInt(ch, "number"), kind: "live", playable: true })
   end for
   return lcFilterItems(out, ctx)
 end function

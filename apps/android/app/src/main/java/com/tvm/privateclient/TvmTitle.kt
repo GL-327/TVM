@@ -247,7 +247,7 @@ object TvmTitle {
         )
     }
 
-    fun progressRatio(entry: ProgressEntry?): Double? {
+    fun rawProgressRatio(entry: ProgressEntry?): Double? {
         if (entry == null) return null
         // Swift's `guard` rejects a NaN duration because `NaN >= 60` is false.
         // `!(x >= y)` keeps that; the plain `x < y` would have let NaN through.
@@ -257,4 +257,12 @@ object TvmTitle {
         if (value >= 0.96) return null
         return minOf(1.0, maxOf(0.0, value))
     }
+
+    fun progressRatio(entry: ProgressEntry?): Double? {
+        if (entry == null || entry.hiddenFromContinueWatching) return null
+        return rawProgressRatio(entry)
+    }
+
+    fun resumePosition(entry: ProgressEntry?): Double? =
+        if (rawProgressRatio(entry) != null) entry?.position else null
 }

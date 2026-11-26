@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <optional>
+#include <map>
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -13,7 +14,17 @@ struct Preferences {
     std::string skip = "button";
     bool autoplay = true;
     std::vector<std::string> languages{"eng"};
+    std::string language = "en";
+    std::string audioLanguage = "original";
+    std::string subtitleMode = "foreign";
+    std::string subtitleSize = "m", subtitleColor = "white", subtitleBackground = "shadow";
+    std::map<std::string, bool, std::less<>> switches;
+    bool Enabled(std::string_view id) const;
 };
+inline constexpr double kRdRetryMs = 60000;
+inline bool RdRefreshDue(bool usable, bool configured, bool busy, double now, double checked) {
+    return usable && !configured && !busy && now - checked >= kRdRetryMs;
+}
 Preferences ParsePreferences(const nlohmann::json& body);
 struct Skip { std::string label; double target = 0; bool visible = false, automatic = false; };
 class SegmentSession {

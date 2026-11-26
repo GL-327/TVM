@@ -82,7 +82,26 @@ function lcGetAccount(ctx as Object) as Object
     return lcAccountsError(res)
   end if
   acc = lcAaGet(res.json, "account", invalid)
-  return { status: 200, json: { signedIn: true, account: lcPublicAccount(acc), usable: lcAccountUsable(acc), canSendEmail: false, standalone: true } }
+  return { status: 200, json: { signedIn: true, account: lcPublicAccount(acc), usable: lcAccountUsable(acc), canSendEmail: true, standalone: true } }
+end function
+
+function lcResendVerify(ctx as Object) as Object
+  token = lcAaText(ctx, "accountToken")
+  if token <> ""
+    res = lcAccountsHttp(ctx, "/v1/me/verify/resend", "POST", {})
+  else
+    email = lcAaText(ctx.body, "email").Trim().LCase()
+    res = lcAccountsHttp(ctx, "/v1/verify/resend", "POST", { email: email }, false)
+  end if
+  if not res.ok and res.status <> 202 then return lcAccountsError(res)
+  return { status: 202, json: { ok: true } }
+end function
+
+function lcForgotPassword(ctx as Object) as Object
+  email = lcAaText(ctx.body, "email").Trim()
+  res = lcAccountsHttp(ctx, "/v1/password/forgot", "POST", { email: email }, false)
+  if not res.ok and res.status <> 202 then return lcAccountsError(res)
+  return { status: 202, json: { ok: true, linkUrl: "https://tvm-accounts.tvm-accounts.workers.dev/link" } }
 end function
 
 function lcRegisterAccount(ctx as Object) as Object
@@ -126,6 +145,23 @@ function lcSanitizeDeviceClient(raw as String) as String
   if Len(clean) > 200 then clean = Left(clean, 200).Trim()
   if clean = "" then return "TVM Roku"
   return clean
+end function
+
+function lcGetPublicConfig(ctx as Object) as Object
+  fallback = { announcement: invalid, minVersion: invalid, flags: {}, openSignups: false, mail: false }
+  cached = lcReadTmpJson("tvm_public_config.json", 60)
+  if cached <> invalid then return { status: 200, json: cached }
+  res = lcAccountsHttp(ctx, "/v1/config", "GET", invalid, false)
+  if not res.ok or res.json = invalid then return { status: 200, json: fallback }
+  cfg = {
+    announcement: lcAaGet(res.json, "announcement", invalid)
+    minVersion: lcAaGet(res.json, "minVersion", invalid)
+    flags: lcAaGet(res.json, "flags", {})
+    openSignups: lcAaBool(res.json, "openSignups", false)
+    mail: lcAaBool(res.json, "mail", false)
+  }
+  lcWriteTmpJson("tvm_public_config.json", cfg)
+  return { status: 200, json: cfg }
 end function
 
 function lcDeviceStart(ctx as Object) as Object

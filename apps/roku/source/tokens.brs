@@ -67,11 +67,11 @@ function tvmDanger() as String
 end function
 
 function tvmSuccess() as String
-  return "0x59D69AFF"
+  return "0x3DD68CFF"
 end function
 
 function tvmWarning() as String
-  return "0xFFBF69FF"
+  return "0xF5A524FF"
 end function
 
 function tvmImdb() as String
@@ -95,7 +95,7 @@ function tvmFocusScale() as Float
 end function
 
 function tvmPosterFocusScale() as Float
-  return 1.04
+  return 1.06
 end function
 
 function tvmAppBrand(id as String) as Object
@@ -251,23 +251,27 @@ end function
 ' Type scale in canvas units: hero 72 / screen title 48 / primary 30 /
 ' secondary 24 / caption 22 (1080p px) x 2.
 function tvmTypeHero() as Integer
-  return 144
+  return 156
 end function
 
 function tvmTypeScreen() as Integer
-  return 96
+  return 108
 end function
 
 function tvmTypePrimary() as Integer
-  return 60
+  return 54
 end function
 
 function tvmTypeSecondary() as Integer
   return 48
 end function
 
+function tvmTypeMeta() as Integer
+  return 42
+end function
+
 function tvmTypeCaption() as Integer
-  return 44
+  return 39
 end function
 
 ' Smallest legible device px. 20 px at 1080p, never under 18 device px at 720p.

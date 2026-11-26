@@ -2,31 +2,174 @@ import CommonCrypto
 import Foundation
 import zlib
 
+struct SubtitleStylePref: Equatable {
+    var size: String = "m"
+    var color: String = "white"
+    var background: String = "shadow"
+
+    func json() -> [String: Any] {
+        ["size": size, "color": color, "background": background]
+    }
+}
+
+struct HomeSectionPref: Equatable {
+    var id: String
+    var visible: Bool
+
+    func json() -> [String: Any] {
+        ["id": id, "visible": visible]
+    }
+}
+
 struct TVMPrefs {
     static let defaultLanguage = "en"
     static let languages: Set<String> = ["en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh"]
+    static let skipModes: Set<String> = ["off", "button", "auto"]
+    static let qualities: Set<String> = ["original", "2160", "1080", "720", "saver"]
+    static let subtitleModes: Set<String> = ["off", "foreign", "always"]
+    static let subtitleSizes: Set<String> = ["s", "m", "l", "xl"]
+    static let subtitleColors: Set<String> = ["white", "yellow", "cyan"]
+    static let subtitleBackgrounds: Set<String> = ["shadow", "box", "none"]
+    static let extraDefaults: [String: Bool] = [
+        "onlineSubtitles": true,
+        "trailers": true,
+        "trailerBackdrops": true,
+        "collections": true,
+        "comingUp": true,
+        "watchStats": true,
+        "animeTitles": true,
+        "ratings": true,
+        "qualityBadges": true,
+        "versionPicker": true,
+        "chapters": true,
+        "seekPreviews": true,
+        "themeSongs": false,
+        "spoilerBlur": false,
+        "surpriseMe": true,
+        "autoCollections": true,
+        "sleepTimer": true,
+        "nightMode": false,
+        "pauseOnMinimize": true,
+        "shortcutsOverlay": true,
+        "webhook": false,
+        "announcements": true,
+    ]
 
-    var language: String
-    var autoUpdate: Bool
+    var language: String = TVMPrefs.defaultLanguage
+    var autoUpdate: Bool = true
+    var skipSegments: String = "button"
+    var autoplayNext: Bool = true
+    var subtitleLanguages: [String] = ["eng"]
+    var heroPreviews: Bool = true
+    var quality: String = "original"
+    var audioLanguage: String = "original"
+    var skipUpscaled: Bool = true
+    var subtitleMode: String = "foreign"
+    var subtitleStyle: SubtitleStylePref = SubtitleStylePref()
+    var extras: [String: Bool] = TVMPrefs.extraDefaults
+    var webhookUrl: String? = nil
+    var homeSections: [HomeSectionPref] = []
 
     static func load(_ store: TVMStore) -> TVMPrefs {
         let object = store.readJSON("prefs.json") as? [String: Any] ?? [:]
-        let language = object["language"] as? String
-        let allowed = language.flatMap { languages.contains($0) ? $0 : nil } ?? defaultLanguage
-        let auto: Bool
-        if let flag = object["autoUpdate"] as? Bool {
-            auto = flag
-        } else {
-            auto = true
+        var prefs = TVMPrefs()
+        prefs.merge(object)
+        return prefs
+    }
+
+    @discardableResult
+    mutating func merge(_ raw: [String: Any]) -> TVMPrefs {
+        if let lang = raw["language"] as? String, Self.languages.contains(lang) { language = lang }
+        if let auto = raw["autoUpdate"] as? Bool { autoUpdate = auto }
+        if let skip = raw["skipSegments"] as? String, Self.skipModes.contains(skip) { skipSegments = skip }
+        if let autoNext = raw["autoplayNext"] as? Bool { autoplayNext = autoNext }
+        if let subs = raw["subtitleLanguages"] as? [Any] {
+            var cleaned: [String] = []
+            var seen = Set<String>()
+            for entry in subs {
+                guard let code = entry as? String,
+                      code.range(of: #"^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$"#, options: .regularExpression) != nil else { continue }
+                if seen.insert(code).inserted {
+                    cleaned.append(code)
+                    if cleaned.count >= 20 { break }
+                }
+            }
+            if !cleaned.isEmpty { subtitleLanguages = cleaned }
         }
-        return TVMPrefs(language: allowed, autoUpdate: auto)
+        if let hero = raw["heroPreviews"] as? Bool { heroPreviews = hero }
+        if let q = raw["quality"] as? String, Self.qualities.contains(q) { quality = q }
+        if let audio = raw["audioLanguage"] as? String,
+           audio.range(of: #"^(?:original|[a-z]{3})$"#, options: .regularExpression) != nil {
+            audioLanguage = audio
+        }
+        if let skipUp = raw["skipUpscaled"] as? Bool { skipUpscaled = skipUp }
+        if let mode = raw["subtitleMode"] as? String, Self.subtitleModes.contains(mode) { subtitleMode = mode }
+        if let style = raw["subtitleStyle"] as? [String: Any] {
+            if let s = style["size"] as? String, Self.subtitleSizes.contains(s) { subtitleStyle.size = s }
+            if let c = style["color"] as? String, Self.subtitleColors.contains(c) { subtitleStyle.color = c }
+            if let b = style["background"] as? String, Self.subtitleBackgrounds.contains(b) { subtitleStyle.background = b }
+        }
+        if let rawExtras = raw["extras"] as? [String: Any] {
+            for key in Self.extraDefaults.keys {
+                if let val = rawExtras[key] as? Bool { extras[key] = val }
+            }
+        }
+        if raw.keys.contains("webhookUrl") {
+            let val = raw["webhookUrl"]
+            if val == nil || val is NSNull {
+                webhookUrl = nil
+            } else if let str = val as? String {
+                if str.isEmpty {
+                    webhookUrl = nil
+                } else if str.utf8.count <= 2048,
+                          let parsed = URL(string: str),
+                          let scheme = parsed.scheme?.lowercased(), scheme == "http" || scheme == "https",
+                          let host = parsed.host, !host.isEmpty,
+                          parsed.user == nil, parsed.password == nil {
+                    webhookUrl = parsed.absoluteString
+                }
+            }
+        }
+        if let sectionsRaw = raw["homeSections"] as? [Any] {
+            var order: [String] = []
+            var visibleMap: [String: Bool] = [:]
+            for item in sectionsRaw.prefix(100) {
+                guard let row = item as? [String: Any],
+                      let id = row["id"] as? String,
+                      let visible = row["visible"] as? Bool,
+                      id.range(of: #"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$"#, options: .regularExpression) != nil else { continue }
+                if visibleMap[id] == nil { order.append(id) }
+                visibleMap[id] = visible
+            }
+            homeSections = order.compactMap { id in visibleMap[id].map { HomeSectionPref(id: id, visible: $0) } }
+        }
+        return self
     }
 
     func save(_ store: TVMStore) {
-        store.writeJSON("prefs.json", ["language": language, "autoUpdate": autoUpdate])
+        store.writeJSON("prefs.json", json())
     }
 
-    func json() -> [String: Any] { ["language": language, "autoUpdate": autoUpdate] }
+    func json() -> [String: Any] {
+        var fullExtras: [String: Bool] = [:]
+        for (k, def) in Self.extraDefaults { fullExtras[k] = extras[k] ?? def }
+        return [
+            "language": language,
+            "autoUpdate": autoUpdate,
+            "skipSegments": skipSegments,
+            "autoplayNext": autoplayNext,
+            "subtitleLanguages": subtitleLanguages,
+            "heroPreviews": heroPreviews,
+            "quality": quality,
+            "audioLanguage": audioLanguage,
+            "skipUpscaled": skipUpscaled,
+            "subtitleMode": subtitleMode,
+            "subtitleStyle": subtitleStyle.json(),
+            "extras": fullExtras,
+            "webhookUrl": JSONValue.orNull(webhookUrl),
+            "homeSections": homeSections.map { $0.json() },
+        ]
+    }
 
     static func acceptLanguage(_ code: String) -> String {
         let language = languages.contains(code) ? code : defaultLanguage

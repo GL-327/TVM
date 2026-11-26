@@ -446,7 +446,12 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
                 const auto& release = notes["releases"][0];
                 tvm::ui::Shell::ReleaseCard card; card.version = "1.1"; card.title = release.value("title", "");
                 for (const auto& line : release["highlights"]) if (line.is_string() && card.highlights.size() < 4) card.highlights.push_back(line.get<std::string>());
-                shell.SetReleaseCard(card);
+                if (GetEnvironmentVariableW(L"TVM_SNAPSHOT_PATCH_POPUP", nullptr, 0) > 0) {
+                    tvm::ui::Shell::PatchNotes pop; pop.version = release.value("version", ""); pop.title = card.title; pop.highlights = card.highlights;
+                    for (const auto& change : release["changes"]) if (change.contains("text") && change["text"].is_string()) pop.changes.push_back(change["text"].get<std::string>());
+                    pop.knownIssues = {"Subtitles can lag a second behind on some films.", "The live guide may be empty while channels load."};
+                    shell.SetPatchNotes(pop);
+                } else shell.SetReleaseCard(card);
             }
         }
         for (double now = 0; now <= 1400; now += 16) shell.Tick(now);

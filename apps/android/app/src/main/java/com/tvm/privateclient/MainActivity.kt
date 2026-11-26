@@ -196,7 +196,14 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         nativePlayer?.onHostStart()
-        val away = if (stoppedAt > 0) SystemClock.elapsedRealtime() - stoppedAt else 0L
+        val wasBackgrounded = stoppedAt > 0
+        val away = if (wasBackgrounded) SystemClock.elapsedRealtime() - stoppedAt else 0L
+        if (wasBackgrounded) {
+            core?.onForeground()
+            if (pageReady && active == null) {
+                webView.evaluateJavascript("window.dispatchEvent(new Event('tvm:account-changed'));", null)
+            }
+        }
         if (pageReady && !freshLaunch && !cinema.active && (sessionEnded || away >= NEW_SESSION_AFTER_MS)) {
             sessionEnded = false
             webView.evaluateJavascript(RESUME_SESSION_SCRIPT, null)
@@ -258,6 +265,7 @@ class MainActivity : AppCompatActivity() {
                     { readAsset("Access.json") },
                     bundledContent = { name -> readAsset("content/$name.json") },
                     sessionVault = EncryptedSessionVault(applicationContext),
+                    adminVault = EncryptedSessionVault(applicationContext, "admin_key"),
                 )
                 // An interface staged on the last run goes live now; one left
                 // over from a different app build is dropped.

@@ -3,9 +3,7 @@
 // Motion preferences and performance mode, ported from
 // apps/ui/src/theme/motion.ts and motion.css.
 //
-// Reduced motion comes only from Settings (or Performance mode). The operating
-// system's reduced-motion flag does not switch the UI's motion off, because on
-// some GPUs it is set by default.
+// Auto follows the window system's animation preference. Reduced motion and performance mode always reduce it.
 
 #include <string_view>
 
@@ -29,7 +27,9 @@ struct MotionSettings {
     bool operator==(const MotionSettings&) const = default;
 };
 
-// True only for Reduced motion or Performance mode.
+void SetSystemReducedMotion(bool reduced);
+
+// Includes the operating system setting when the viewer uses Auto.
 bool PrefersReducedMotion(const MotionSettings& settings);
 
 // The --tvm-motion-* durations in milliseconds. Reduced motion resolves them

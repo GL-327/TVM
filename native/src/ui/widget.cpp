@@ -11,8 +11,9 @@ namespace {
 // Line height of headings, as a multiple of the font size.
 constexpr double kHeadingLineHeight = 1.4;
 constexpr double kCardTitleRem = 1.0625;
-constexpr double kPosterRadiusRem = 1.125;  // 18px at 1080p (36 Roku canvas units)
-constexpr double kRailClipPaddingRem = 1.25;
+constexpr double kPosterRadiusRem = 0.75;
+constexpr double kLandscapeRadiusRem = 0.875;
+constexpr double kRailClipPaddingRem = 2.5;
 // The bar showing how much of a title is watched, inset inside the foot of the card.
 constexpr double kProgressBarRem = 0.25;
 constexpr double kProgressInsetXRem = 1.0;
@@ -62,7 +63,7 @@ void Stack::Paint(Painter& painter, const Metrics& metrics) const {
 
 // ------------------------------------------------------------------- Rail
 
-void Rail::Add(std::unique_ptr<Widget> child) {
+void Rail::Add(std::unique_ptr<Card> child) {
     children_.push_back(std::move(child));
 }
 
@@ -75,20 +76,38 @@ double Rail::Period() const {
     return contentWidth_ - 2.0 * (contentLeft_.empty() ? 0.0 : contentLeft_.front()) +
            (desired_.size() > 1 ? contentLeft_[1] - contentLeft_[0] - desired_[0].width : box_.height * 0.06);
 }
-double Rail::ContentLeftOf(std::size_t index) const {
-    const double base = contentLeft_.at(index);
-    const double period = Period();
-    if (!loop_ || period <= 0.0) return base;
-    const double centre = scrollX_ + box_.width / 2.0 - desired_[index].width / 2.0;
-    return base + kRingOrigin + std::round((centre - base - kRingOrigin) / period) * period;
+double Rail::ContentLeftOf(Slot slot) const {
+    const double base = contentLeft_.at(slot.index);
+    return loop_ && Period() > 0.0 ? base + kRingOrigin + static_cast<double>(slot.turn) * Period() : base;
 }
-std::optional<std::size_t> Rail::IndexAt(double x) const {
+
+Rail::Slot Rail::NearestSlot(std::size_t index, std::optional<double> anchor) const {
+    if (!loop_ || Period() <= 0.0) return {index, 0};
+    const double centre = anchor.value_or(scrollX_ + box_.width / 2.0);
+    const double baseCentre = contentLeft_.at(index) + kRingOrigin + desired_.at(index).width / 2.0;
+    return {index, std::llround((centre - baseCentre) / Period())};
+}
+
+double Rail::ContentLeftOf(std::size_t index) const {
+    return ContentLeftOf(NearestSlot(index));
+}
+
+std::optional<Rail::Slot> Rail::SlotAt(double x) const {
+    const double position = x - box_.x + scrollX_;
+    const double period = Period();
+    const bool loops = loop_ && period > 0.0;
     for (std::size_t i = 0; i < children_.size(); ++i) {
-        double local = x - box_.x + scrollX_ - contentLeft_[i];
-        if (loop_ && Period() > 0.0) local -= kRingOrigin + std::floor((local - kRingOrigin) / Period()) * Period();
-        if (local >= 0.0 && local < desired_[i].width) return i;
+        const double relative = position - contentLeft_[i] - (loops ? kRingOrigin : 0.0);
+        const auto turn = loops ? static_cast<std::int64_t>(std::floor(relative / period)) : 0;
+        const double local = relative - static_cast<double>(turn) * period;
+        if (local >= 0.0 && local < desired_[i].width) return Slot{i, turn};
     }
     return std::nullopt;
+}
+
+std::optional<std::size_t> Rail::IndexAt(double x) const {
+    const auto slot = SlotAt(x);
+    return slot ? std::optional(slot->index) : std::nullopt;
 }
 
 Size Rail::Measure(double availableWidth, const Metrics& metrics) {
@@ -121,29 +140,49 @@ void Rail::Arrange(const Box& box, const Metrics& metrics) {
 }
 
 void Rail::Paint(Painter& painter, const Metrics& metrics) const {
-    // The clip is the rail's width, but taller: the focused poster grows and
-    // its ring sits just outside it, and neither may be cut off.
     const double pad = metrics.Rem(kRailClipPaddingRem);
-    painter.PushClip(Box{box_.x, box_.y - pad, box_.width, box_.height + 2.0 * pad});
-    for (const auto& child : children_) {
-        const Box& cb = child->box();
-        if (!loop_ || Period() <= 0.0) {
-            if (cb.Right() < box_.x - pad || cb.x > box_.Right() + pad) continue;
-            child->Paint(painter, metrics);
-            continue;
+    const Box painted{box_.x - pad, box_.y - pad, box_.width + 2.0 * pad, box_.height + 2.0 * pad};
+    painter.PushClip(painted);
+    const double period = Period();
+    const bool loops = loop_ && period > 0.0;
+    std::optional<Box> focusBox;
+    std::optional<Box> fadingBox;
+    for (std::size_t i = 0; i < children_.size(); ++i) {
+        Card& child = *children_[i];
+        const Box original = child.box();
+        const double base = box_.x + ContentLeftOf(Slot{i, 0}) - scrollX_;
+        const auto first = loops ? static_cast<std::int64_t>(std::ceil((painted.x - base - original.width) / period)) : 0;
+        const auto last = loops ? static_cast<std::int64_t>(std::floor((painted.Right() - base) / period)) : 0;
+        for (auto turn = first; turn <= last; ++turn) {
+            const Box copy{base + static_cast<double>(turn) * period, original.y, original.width, original.height};
+            if (copy.Right() < painted.x || copy.x > painted.Right()) continue;
+            if (focusSlot_ == Slot{i, turn} && child.focused()) {
+                focusBox = copy;
+                continue;
+            }
+            if (fadingSlot_ == Slot{i, turn} && !child.focused() && child.focusAmount() > 0.0) {
+                fadingBox = copy;
+                continue;
+            }
+            child.Arrange(copy, metrics);
+            child.PaintCopy(painter, metrics, false);
         }
-        const Box original = cb;
-        const double period = Period();
-        const double first = std::floor((box_.x - pad - original.Right()) / period);
-        const double last = std::ceil((box_.Right() + pad - original.x) / period);
-        for (double copy = first; copy <= last; copy += 1.0) {
-            Box repeated = original;
-            repeated.x += copy * period;
-            if (repeated.Right() < box_.x - pad || repeated.x > box_.Right() + pad) continue;
-            child->Arrange(repeated, metrics);
-            child->Paint(painter, metrics);
-        }
-        child->Arrange(original, metrics);
+        child.Arrange(original, metrics);
+    }
+    if (fadingBox && fadingSlot_ && fadingSlot_->index < children_.size()) {
+        Card& child = *children_[fadingSlot_->index];
+        const Box original = child.box();
+        child.Arrange(*fadingBox, metrics);
+        child.PaintCopy(painter, metrics, true);
+        child.Arrange(original, metrics);
+    }
+    // A grown card and its shadow sit over its neighbours, including at the viewport edges.
+    if (focusBox && focusSlot_) {
+        Card& child = *children_[focusSlot_->index];
+        const Box original = child.box();
+        child.Arrange(*focusBox, metrics);
+        child.PaintCopy(painter, metrics, true);
+        child.Arrange(original, metrics);
     }
     painter.PopClip();
 }
@@ -201,7 +240,12 @@ Box SnappedArt(const Box& box, double focus) {
 }  // namespace
 
 void Card::Paint(Painter& painter, const Metrics& metrics) const {
-    const double focus = std::clamp(focusAmount_, 0.0, 1.0);
+    PaintCopy(painter, metrics, true);
+}
+
+void Card::PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) const {
+    const double focus = ownsFocus ? std::clamp(focusAmount_, 0.0, 1.0) : 0.0;
+    const bool focused = ownsFocus && focused_;
     if (logo_) {
         // The channel tile grows from its foot and lifts as a poster does, over a dark plate that keeps any logo
         // (white, black or coloured) readable, with the existing card glass for its rim and focus.
@@ -235,7 +279,7 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
         }
         GlassStyle glass;
         glass.kind = GlassKind::Card;
-        glass.focused = focused_;
+        glass.focused = focused;
         glass.focusAmount = focus;
         glass.reduceTransparency = tokens::reduceTransparency;
         glass.rimOnly = true;
@@ -257,9 +301,9 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
     const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
     const bool landscape = progress_.has_value() || feature_ || category_;
     const double artHeight = landscape ? box_.height : metrics.Rem(kPosterHeightRem);
-    const double radius = metrics.Rem(kPosterRadiusRem);
+    const double radius = metrics.Rem(landscape ? kLandscapeRadiusRem : kPosterRadiusRem);
 
-    // Focus grows the card by 1.04 from its bottom edge and lifts it 6px (0.375rem at 1080p).
+    // Keep the title anchored when its artwork grows and lifts.
     const double scale = 1.0 + (kPosterFocusScale - 1.0) * motionFocus;
     const double width = box_.width * scale;
     const double height = artHeight * scale;
@@ -276,7 +320,7 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
 
     GlassStyle glass;
     glass.kind = GlassKind::Card;
-    glass.focused = focused_;
+    glass.focused = focused;
     glass.focusAmount = focus;
     glass.reduceTransparency = tokens::reduceTransparency;
     glass.rimOnly = hasArt;
@@ -351,8 +395,14 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
 
     const Box label{box_.x, box_.y + artHeight + metrics.Rem(kCardLabelGapRem), box_.width,
                     metrics.Rem(kCardLabelHeightRem)};
-    painter.Text(label, title_, TextStyle{metrics.Rem(kCardTitleRem), false},
-                 Mix(tokens::kTextMuted, tokens::kText, focus));
+    const TextStyle titleStyle{metrics.Rem(kCardTitleRem), false};
+    const Color titleInk = Mix(tokens::kTextMuted, tokens::kText, focus);
+    if (focused && subtitle_.empty() && painter.MeasureText(title_, titleStyle) > label.width) {
+        painter.Paragraph(Box{label.x, label.y, label.width, metrics.Rem(kCardLabelHeightRem * 1.9)},
+                          title_, titleStyle, titleInk);
+    } else {
+        painter.Text(label, title_, titleStyle, titleInk);
+    }
     if (!subtitle_.empty()) {
         painter.Text(Box{label.x, label.Bottom() - metrics.Rem(0.15), label.width, metrics.Rem(kCardLabelHeightRem) * 0.8},
                      subtitle_, TextStyle{metrics.Rem(kCardTitleRem * 0.82), false, 450}, tokens::kTextFaint);
@@ -360,37 +410,44 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
 }
 
 void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const std::string& label, const ButtonLook& look) {
-    // The button scales about its centre (1.06 on focus), and its glass rim and outer glow wrap the scaled shape.
     const double focus = std::clamp(look.focusAmount, 0.0, 1.0);
-    const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
-    const double scale = 1.0 + (kFocusScale - 1.0) * motionFocus;
+    const double scale = tokens::reduceMotion ? 1.0 : 1.0 - 0.03 * look.pressAmount;
     const double width = box.width * scale;
     const double height = box.height * scale;
-    const Box shape{box.CenterX() - width / 2.0, box.CenterY() - height / 2.0, width, height};
-    const double radius = shape.height / 2.0;
-
-    Color fill = tokens::kSurface;
-    if (look.primary) {
-        fill = tokens::kPrimary;
-    } else if (look.focused) {
-        fill = tokens::kSurfaceHover;
-    }
-
+    const double lift = tokens::reduceMotion ? 0.0 : metrics.Rem(0.125) * focus * (1.0 - look.pressAmount);
+    const Box shape{box.CenterX() - width / 2.0, box.CenterY() - height / 2.0 - lift, width, height};
+    const double radius = metrics.Rem(box.height < metrics.Rem(2.5) ? 0.625 : 0.75);
     GlassStyle glass;
-    glass.kind = GlassKind::Pill;
     glass.focused = look.focused;
-    glass.selected = look.primary;
     glass.focusAmount = focus;
-    glass.reduceTransparency = tokens::reduceTransparency;
-    glass.tint = fill;
+    glass.pressAmount = look.pressAmount;
+    glass.opacity = look.opacity;
+    glass.adaptiveInk = !look.primary;
+    if (look.primary) {
+        glass.solid = true;
+        glass.tint = look.fill.value_or(tokens::kPrimary);
+    }
     glass.ringWidth = metrics.Rem(kFocusRingWidthRem);
     glass.ringOutset = metrics.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
     glass.ringColor = tokens::kFocusRing;
     painter.Glass(shape, radius, glass);
 
-    const double pad = metrics.Rem(kButtonPadRem);
-    painter.Text(Box{shape.x + pad, shape.y, shape.width - 2.0 * pad, shape.height}, label,
-                 TextStyle{metrics.Rem(kButtonLabelRem), true}, look.primary ? tokens::kOnPrimary : tokens::kText);
+    const TextStyle style = type::Label(metrics.rem);
+    const double glyph = look.glyph.empty() ? 0.0 : metrics.Rem(1.1);
+    const double gap = glyph > 0.0 ? metrics.Rem(0.50) : 0.0;
+    const double available = std::max(1.0, shape.width - metrics.Rem(1.1) - glyph - gap);
+    const double textWidth = std::min(available, painter.MeasureText(label, style));
+    const double x = shape.CenterX() - (glyph + gap + textWidth) / 2.0;
+    Color ink = painter.GlassInk(look.primary ? tokens::kOnPrimary : tokens::kText);
+    if (look.primary && glass.tint) {
+        const Color fill = *glass.tint;
+        if (0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b >= 0.46) ink = Rgb(0x07080B);
+    }
+    ink.a *= look.opacity;
+    if (glyph > 0.0)
+        painter.Path(Box{x, shape.CenterY() - glyph / 2.0, glyph, glyph}, 32.0, look.glyph,
+                     PathStyle{ink, Rgb(0x000000, 0.0), 0.0});
+    painter.Text(Box{x + glyph + gap, shape.y, textWidth + 2.0, shape.height}, label, style, ink);
 }
 
 }  // namespace tvm::ui

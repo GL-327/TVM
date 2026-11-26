@@ -1,3 +1,4 @@
+import { languageCode } from './versions.ts';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -21,6 +22,8 @@ export interface MediaProbe {
   videoBitDepth: number;
   audioCodec: string | null;
   audioChannels: number;
+  audioLanguages?: string[];
+  hdr?: boolean;
 }
 
 export type PlaybackDecision =
@@ -118,6 +121,8 @@ function num(value: unknown): number {
 interface FfprobeStream {
   codec_type?: string;
   codec_name?: string;
+  color_transfer?: string;
+  tags?: { language?: string };
   height?: number;
   channels?: number;
   bits_per_raw_sample?: string;
@@ -159,6 +164,9 @@ export function parseProbeOutput(json: string): MediaProbe | null {
     videoBitDepth: video === undefined ? 8 : bitDepthOf(video),
     audioCodec: audio?.codec_name?.toLowerCase() ?? null,
     audioChannels: num(audio?.channels),
+    audioLanguages: [...new Set(streams.filter(s => s.codec_type === 'audio')
+      .map(s => languageCode(s.tags?.language)).filter((code): code is string => !!code && code !== 'und'))],
+    hdr: /^(smpte2084|arib-std-b67)$/.test(video?.color_transfer ?? ''),
   };
 }
 

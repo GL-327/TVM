@@ -22,6 +22,7 @@
 #include "motion/timeline.h"
 #include "motion/tween.h"
 #include "nav/focus_tree.h"
+#include "ui/hero_particles.h"
 #include "ui/screen.h"
 #include "ui/widget.h"
 
@@ -114,6 +115,9 @@ struct HeroData {
     std::string infoLabel;
     std::optional<Command> playCommand;
     std::optional<Command> infoCommand;
+    std::string eventKicker;
+    std::optional<Color> glow;
+    HeroEffect effect = HeroEffect::None;
 };
 
 // What a scene other than Home shows: its status line, its rails, its top buttons, and
@@ -173,6 +177,12 @@ public:
     void ShowHero(std::size_t index, double nowMs);
     std::size_t HeroIndex() const { return heroIndex_; }
     std::size_t HeroCount() const { return heroes_.size(); }
+    std::string HeroClipId() const;
+    bool HeroOnscreen() const { return HeroActive() && HeroBox().Bottom() > ChromeHeight(); }
+    void SetSpotlightRunning(bool running) { spotlightRunning_ = running; }
+    void SetHeroClip(bool hasFrame, bool canUnmute, double nowMs);
+    bool HeroMuted() const { return heroMuted_; }
+    bool HeroClipPlaying() const { return clipStartedAt_.has_value(); }
     void SetImageReady(std::function<bool(const std::string&)> ready) { imageReady_ = std::move(ready); }
     double ViewportHeight() const { return viewportHeight_; }
 
@@ -260,6 +270,7 @@ private:
         Box learn;
         Box dots;
         Box body;
+        Box mute;
     };
 
     bool Streamy() const { return style_ == SceneStyle::Stream; }
@@ -295,6 +306,10 @@ private:
     double MaxPageScroll() const;
     bool HeroActive() const { return !heroes_.empty(); }
     Box HeroBox() const;
+    bool Spotlight() const;
+    Box SpotlightMediaBox() const;
+    Box ParallaxCopy(Box box) const;
+    void PaintSpotlight(Painter& painter) const;
     double HeroFade() const;
     HeroBoxes HeroLayout() const;
     std::optional<Box> HeroRatingBox() const;
@@ -343,6 +358,8 @@ private:
     // Each arrow fades out when its side runs out (and back in), instead of vanishing mid-glide.
     motion::Tween arrowSide_[2];
     void PaintRailArrows(Painter& painter) const;
+    std::optional<std::pair<std::size_t, Rail::Slot>> focusedSlot_;
+    std::optional<std::pair<std::size_t, Rail::Slot>> pointerSlot_;
     std::vector<CardRef> cards_;
     std::unordered_map<std::string, std::size_t> cardByKey_;
 
@@ -360,6 +377,12 @@ private:
     std::size_t heroIndex_ = 0;
     std::string heroTitleId_;
     double heroHeight_ = 0.0;
+    double spotlightStartMs_ = 0.0;
+    double spotlightElapsedMs_ = 0.0;
+    bool spotlightRunning_ = true;
+    std::optional<double> clipStartedAt_;
+    bool clipCanUnmute_ = false;
+    bool heroMuted_ = true;
     std::string artCurrent_;
     std::string artPrevious_;
     std::string artPending_;
@@ -397,9 +420,12 @@ private:
     std::map<std::string, double> focusStart_;
     std::string pressKey_;
     motion::Tween press_;
+    std::optional<double> pressReleasedAt_;
+    double releaseDepth_ = 0.0;
     // The selected tab's glass slides from `indicatorFrom_` to the selected tab while `indicatorMove_` runs.
     std::optional<std::size_t> activeTab_;
     Box indicatorFrom_{};
+    bool indicatorCrossFade_ = false;
     std::optional<motion::Tween> indicatorMove_;
     bool chromeEntrancePending_ = false;
     // Set the first time the chrome is painted after PlayChromeEntrance, so the entrance starts when it is seen.

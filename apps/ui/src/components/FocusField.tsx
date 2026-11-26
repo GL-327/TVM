@@ -16,7 +16,7 @@ interface FocusFieldProps {
   inputId?: string;
   value: string;
   onChange: (value: string) => void;
-  onConfirm: (value: string) => void;
+  onConfirm?: (value: string) => void;
   onBlur?: () => void;
   type?: FieldType;
   placeholder?: string;
@@ -34,6 +34,7 @@ interface FocusFieldProps {
   name?: string;
   /** Proper nouns and email addresses want different capitalisation. */
   autoCapitalize?: 'off' | 'none' | 'sentences' | 'words' | 'characters';
+  ariaLabel?: string;
   ariaDescribedBy?: string;
   ariaInvalid?: boolean;
   disabled?: boolean;
@@ -94,6 +95,7 @@ export function FocusField({
   autoComplete = 'off',
   name,
   autoCapitalize,
+  ariaLabel,
   ariaDescribedBy,
   ariaInvalid,
   disabled = false,
@@ -119,7 +121,7 @@ export function FocusField({
   useEffect(() => {
     const node = ref.current;
     if (node === null) return;
-    const confirm = (): void => onConfirm(node.value);
+    const confirm = (): void => onConfirm?.(node.value);
     node.addEventListener('tvm:field-confirm', confirm);
     return () => node.removeEventListener('tvm:field-confirm', confirm);
   }, [onConfirm, ref]);
@@ -162,6 +164,7 @@ export function FocusField({
         rows={5}
         name={name}
         disabled={disabled}
+        aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
         data-focus-id={id}
@@ -199,6 +202,7 @@ export function FocusField({
       className={`token-field__input glass--well${extraClass}`}
       tabIndex={tabIndex}
       disabled={disabled}
+      aria-label={ariaLabel}
       aria-describedby={ariaDescribedBy}
       aria-invalid={ariaInvalid}
       data-focus-id={id}

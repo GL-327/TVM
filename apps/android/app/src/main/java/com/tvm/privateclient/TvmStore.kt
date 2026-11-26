@@ -202,12 +202,30 @@ class TvmStore(private val root: File) {
                     position = position,
                     duration = duration,
                     updated = entry.opt("updated") as? String ?: "",
+                    hiddenFromContinueWatching = entry.optBoolean("hiddenFromContinueWatching", false),
                     completedAt = entry.opt("completedAt") as? String,
                     completions = (entry.opt("completions") as? Number)?.toInt() ?: 0,
                 )
             }
             return out
         }
+    }
+
+    private fun saveProgressMap(profileId: String, all: Map<String, ProgressEntry>) {
+        val body = JSONObject()
+        for ((key, entry) in all) {
+            val value = Json.obj(
+                "position" to entry.position,
+                "duration" to entry.duration,
+                "updated" to entry.updated,
+                "completions" to entry.completions,
+            )
+            if (entry.hiddenFromContinueWatching) value.put("hiddenFromContinueWatching", true)
+            entry.completedAt?.let { value.put("completedAt", it) }
+            body.put(key, value)
+        }
+        profileDir(profileId).mkdirs()
+        writeAtomic(File(profileDir(profileId), "progress.json"), serialize(body))
     }
 
     fun writeProgress(profileId: String, id: String, position: Double, duration: Double) {
@@ -223,23 +241,50 @@ class TvmStore(private val root: File) {
                 position = position,
                 duration = duration,
                 updated = now,
+                hiddenFromContinueWatching = false,
                 completedAt = if (newlyFinished) now else (previous?.completedAt ?: if (finished) now else null),
                 completions = maxOf(previous?.completions ?: 0, if (previousFinished) 1 else 0) +
                     (if (newlyFinished) 1 else 0),
             )
-            val body = JSONObject()
-            for ((key, entry) in all) {
-                val value = Json.obj(
-                    "position" to entry.position,
-                    "duration" to entry.duration,
-                    "updated" to entry.updated,
-                    "completions" to entry.completions,
-                )
-                entry.completedAt?.let { value.put("completedAt", it) }
-                body.put(key, value)
+            saveProgressMap(profileId, all)
+        }
+    }
+
+    fun removeContinueWatching(profileId: String, id: String) {
+        if (id.isEmpty()) return
+        synchronized(monitor) {
+            val all = LinkedHashMap(progress(profileId))
+            var changed = false
+            for ((key, entry) in all.entries.toList()) {
+                if ((key == id || key.startsWith("$id:")) && !entry.hiddenFromContinueWatching && !entry.isFinished) {
+                    all[key] = entry.copy(hiddenFromContinueWatching = true)
+                    changed = true
+                }
             }
-            profileDir(profileId).mkdirs()
-            writeAtomic(File(profileDir(profileId), "progress.json"), serialize(body))
+            if (changed) saveProgressMap(profileId, all)
+        }
+    }
+
+    fun setWatched(profileId: String, id: String, watched: Boolean) {
+        if (id.isEmpty()) return
+        synchronized(monitor) {
+            val all = LinkedHashMap(progress(profileId))
+            val old = all[id]
+            if (watched) {
+                if (old?.isFinished == true) return
+                val duration = if (old != null && old.duration > 0) old.duration else 1.0
+                writeProgress(profileId, id, duration, duration)
+            } else if (old != null) {
+                all[id] = ProgressEntry(
+                    position = 0.0,
+                    duration = old.duration,
+                    updated = isoNow(),
+                    hiddenFromContinueWatching = old.hiddenFromContinueWatching,
+                    completedAt = null,
+                    completions = old.completions,
+                )
+                saveProgressMap(profileId, all)
+            }
         }
     }
 

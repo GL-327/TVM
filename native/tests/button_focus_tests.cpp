@@ -121,7 +121,7 @@ TEST(button_focus_ignores_a_repeat_of_the_focus_it_has) {
 
 // ------------------------------------------------------------- how a button is drawn
 
-TEST(button_at_rest_is_a_pill_on_the_surface_colour_with_no_ring) {
+TEST(button_at_rest_is_a_rounded_rectangle_with_no_ring) {
     ShapePainter painter;
     const Metrics metrics{};
     DrawButton(painter, metrics, Box{100.0, 100.0, 200.0, 50.0}, "Add to My List", ButtonLook{});
@@ -132,28 +132,30 @@ TEST(button_at_rest_is_a_pill_on_the_surface_colour_with_no_ring) {
     REQUIRE_NEAR(fill.box.x, 100.0, 1e-9);
     REQUIRE_NEAR(fill.box.width, 200.0, 1e-9);
     REQUIRE_NEAR(fill.box.height, 50.0, 1e-9);
-    // The pill's radius is half its height.
-    REQUIRE_NEAR(fill.radius, 25.0, 1e-9);
-    REQUIRE(SameColor(fill.color, tvm::ui::tokens::kSurface));
+    // Buttons use a 12px (0.75rem) radius for standard height and 10px (0.625rem) for compact rows.
+    REQUIRE_NEAR(fill.radius, 12.0, 1e-9);
 
     REQUIRE_EQ(painter.shapes[1].kind, std::string("text"));
     REQUIRE(SameColor(painter.shapes[1].color, tvm::ui::tokens::kText));
+
+    ShapePainter compact;
+    DrawButton(compact, metrics, Box{100.0, 100.0, 160.0, 36.0}, "Play", ButtonLook{});
+    REQUIRE_NEAR(compact.shapes[0].radius, 10.0, 1e-9);
 }
 
-TEST(focused_button_scales_about_its_centre_and_rings_the_scaled_shape) {
+TEST(focused_button_lifts_without_expanding_and_rings_the_shape) {
     ShapePainter painter;
     const Metrics metrics{};
     DrawButton(painter, metrics, Box{100.0, 100.0, 200.0, 50.0}, "Play", ButtonLook{false, true, 1.0});
     REQUIRE_EQ(painter.shapes.size(), std::size_t(3));
 
-    // 1.05 times the box, with the centre kept at (200, 125).
+    // Width and height stay fixed on focus; the shape lifts by 2px (0.125rem at 1080p).
     const ShapePainter::Shape& fill = painter.shapes[0];
-    REQUIRE_NEAR(fill.box.width, 210.0, 1e-9);
-    REQUIRE_NEAR(fill.box.height, 52.5, 1e-9);
+    REQUIRE_NEAR(fill.box.width, 200.0, 1e-9);
+    REQUIRE_NEAR(fill.box.height, 50.0, 1e-9);
     REQUIRE_NEAR(fill.box.CenterX(), 200.0, 1e-9);
-    REQUIRE_NEAR(fill.box.CenterY(), 125.0, 1e-9);
-    REQUIRE_NEAR(fill.radius, 26.25, 1e-9);
-    REQUIRE(SameColor(fill.color, tvm::ui::tokens::kSurfaceHover));
+    REQUIRE_NEAR(fill.box.CenterY(), 123.0, 1e-9);
+    REQUIRE_NEAR(fill.radius, 12.0, 1e-9);
 
     // The ring is the focus outline: 0.14 rem beyond the edge, plus half its own 0.18 rem width.
     const ShapePainter::Shape& ring = painter.shapes[1];
@@ -164,12 +166,17 @@ TEST(focused_button_scales_about_its_centre_and_rings_the_scaled_shape) {
     REQUIRE(SameColor(ring.color, tvm::ui::tokens::kFocusRing));
 }
 
-TEST(a_button_part_way_through_its_ease_is_part_way_scaled) {
+TEST(a_button_part_way_through_its_ease_is_part_way_lifted_and_press_shrinks) {
     ShapePainter painter;
     const Metrics metrics{};
     DrawButton(painter, metrics, Box{100.0, 100.0, 200.0, 50.0}, "Play", ButtonLook{false, true, 0.5});
-    REQUIRE_NEAR(painter.shapes[0].box.width, 205.0, 1e-9);
-    REQUIRE_NEAR(painter.shapes[0].box.height, 51.25, 1e-9);
+    REQUIRE_NEAR(painter.shapes[0].box.width, 200.0, 1e-9);
+    REQUIRE_NEAR(painter.shapes[0].box.CenterY(), 124.0, 1e-9);
+
+    ShapePainter pressed;
+    DrawButton(pressed, metrics, Box{100.0, 100.0, 200.0, 50.0}, "Play", ButtonLook{false, true, 1.0, 1.0});
+    REQUIRE_NEAR(pressed.shapes[0].box.width, 194.0, 1e-9);
+    REQUIRE_NEAR(pressed.shapes[0].box.height, 48.5, 1e-9);
 }
 
 TEST(primary_button_is_white_with_dark_ink_and_stays_white_when_focused) {

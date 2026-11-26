@@ -14,6 +14,9 @@
     <field id="showPassword" type="boolean" value="false" onChange="onFieldChange" />
     <field id="termsAgreed" type="boolean" value="false" onChange="onFieldChange" />
     <field id="signedAs" type="string" onChange="onFieldChange" />
+    <field id="emailVerified" type="boolean" value="false" onChange="onFieldChange" />
+    <field id="resendCooldown" type="integer" value="0" onChange="onFieldChange" />
+    <field id="resetUrl" type="string" onChange="onQrChange" />
     <field id="verifyUrl" type="string" onChange="onFieldChange" />
     <field id="verifyUrlComplete" type="string" onChange="onQrChange" />
     <field id="userCode" type="string" onChange="onFieldChange" />
@@ -108,6 +111,10 @@
         <Label id="readerBody" translation="[48, 40]" width="2064" height="584" wrap="true" />
         <Label id="readerPageLabel" translation="[48, 646]" width="2064" horizAlign="right" />
       </Group>
+
+      <QrCode id="resetQr" quietModules="4" boxSize="340" translation="[1000, 740]" visible="false" />
+      <Label id="resetUrlLabel" translation="[1390, 810]" width="1440" wrap="true" maxLines="3" visible="false" />
+      <Label id="verifyPlainStatus" translation="[1000, 904]" width="1840" maxLines="1" visible="false" />
 
       <Label id="bannerLabel" translation="[1000, 888]" width="1840" wrap="true" maxLines="3" />
       <Label id="subNoteLabel" translation="[1000, 960]" width="1840" wrap="true" maxLines="2" />

@@ -30,8 +30,10 @@ public:
     virtual Theme Look() const { return Theme::Dark; }
     virtual void SaveLook(Theme /*theme*/) {}
 
-    virtual GlassClarity Glass() const { return GlassClarity::Default; }
-    virtual void SaveGlass(GlassClarity /*clarity*/) {}
+    virtual UiFont Font() const { return UiFont::Geist; }
+    virtual void SetFont(UiFont /*font*/) {}
+    virtual bool ReduceTransparency() const { return false; }
+    virtual void SetReduceTransparency(bool /*on*/) {}
 
     // Whether "Who's watching?" shows each time TVM opens. On unless the viewer turns it off.
     virtual bool ChooseProfileOnLaunch() const { return true; }
@@ -53,8 +55,13 @@ public:
     Theme Look() const override;
     void SaveLook(Theme theme) override;
 
-    GlassClarity Glass() const override;
-    void SaveGlass(GlassClarity clarity) override;
+    UiFont Font() const override;
+    void SetFont(UiFont font) override;
+    bool ReduceTransparency() const override;
+    void SetReduceTransparency(bool on) override;
+
+    // Legacy snapshot CLI. The fixture's tinted flag now exercises solid surfaces.
+    void SaveGlass(GlassClarity fixture) { SetReduceTransparency(fixture == GlassClarity::Tinted); }
 
     bool ChooseProfileOnLaunch() const override;
     void SaveChooseProfileOnLaunch(bool on) override;

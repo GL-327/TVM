@@ -166,9 +166,12 @@ sub paint()
 
   rd = m.top.rd
   rdText = "Connect"
-  if rd <> invalid and rd.connected = true
+  if rd <> invalid and (rd.configured = true or rd.connected = true)
+    own = (aaGet(rd, "ownKey", false) = true) or (asText(aaGet(rd, "source", "")) = "device")
     user = asText(rd.username)
-    if user <> ""
+    if not own
+      rdText = "Connected through your TVM account"
+    else if user <> ""
       rdText = "Connected  ·  " + user
     else
       rdText = "Connected"

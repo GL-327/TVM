@@ -1,4 +1,5 @@
-import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, type CatalogService } from './cinemeta.ts';
+import { createHash, randomInt } from 'node:crypto';
+import { createCatalogService, dedupeItems, GENRE_RAILS, seriesGenresForRail, type CatalogService, type TitleMeta } from './cinemeta.ts';
 import { createLibraryArtwork } from './libraryArtwork.ts';
 import { clearCacheDir, factoryResetDir } from './maintenance.ts';
 import {
@@ -16,7 +17,7 @@ import type { ContentService } from './content.ts';
 import { createCertificateService } from './certificates.ts';
 import { filterForLevel, levelFor, parseLevels, type AgeLevel } from './parental.ts';
 import { filterNewFilms } from './cinemeta.ts';
-import { finishedTitles, isFinished, pickContinueWatching, ratio, readProgress, resumePosition, writeProgress } from './progress.ts';
+import { finishedTitles, isFinished, pickContinueWatching, ratio, readProgress, removeContinueWatching, resumePosition, setWatched, writeProgress } from './progress.ts';
 import type { RdDownload, RdTorrent, RealDebrid } from './realdebrid.ts';
 import type { StreamerService } from './streamer.ts';
 import { adaptedForYou, becauseYouWatched, interleaveUnused, pickYouMightLike, takeUnused } from './recommend.ts';
@@ -49,12 +50,16 @@ import {
 import type { CatalogRail, HomePayload, MediaItem, PlaybackResolution, RdStatus } from './types.ts';
 import { addWatchlist, readWatchlist, removeWatchlist, type WatchlistItem } from './watchlist.ts';
 import { downloadLanguageMatches, type DownloadPreferences } from './downloadPreferences.ts';
+import { createPlaybackWebhook, type PlaybackEvent } from './playbackWebhook.ts';
+import { readPrefs } from '../prefs.ts';
+import { describeVersion, languageCode, qualityCap, rankVersions, runtimeSeconds, supportsVersion, type PlaybackClient, type Version } from './versions.ts';
 import { createCoreExtras, type CoreExtras, type ExtrasPlaybackResolution } from './extras.ts';
 
 export interface MediaService {
   extras?: CoreExtras;
   configured(): boolean;
-  status(): Promise<RdStatus>;
+  status(fresh?: boolean): Promise<RdStatus>;
+  versions?(id: string, season?: number, episode?: number): Promise<{ originalLanguage: string | null; versions: Version[] }>;
   setToken(token: string): Promise<RdStatus>;
   home(): Promise<HomePayload & { trending?: MediaItem[] }>;
   library(): Promise<MediaItem[]>;
@@ -70,12 +75,18 @@ export interface MediaService {
     download?: DownloadPreferences;
     startAt?: number;
     native?: boolean;
+    client?: PlaybackClient;
+    versionId?: string;
     /** Physical pixel height of the screen: sources taller than it are skipped. */
     screenHeight?: number;
     /** A quality the viewer picked (e.g. 720): the best source at or under it. */
     maxHeight?: number;
   }): Promise<ExtrasPlaybackResolution>;
   saveProgress(id: string, position: number, duration: number): void;
+  removeProgress?(id: string): void;
+  watched?(id: string, watched: boolean): void;
+  surprise?(): Promise<MediaItem | null>;
+  playbackEvent?(event: PlaybackEvent): void;
   watchlist(): WatchlistItem[];
   addToWatchlist(item: unknown): WatchlistItem[];
   removeFromWatchlist(id: string): WatchlistItem[];
@@ -212,6 +223,7 @@ export function liveEvents<T extends { start: string; end: string }>(events: rea
 
 export interface MediaServiceOptions {
   dataDir: string;
+  env?: NodeJS.ProcessEnv;
   rd: RealDebrid;
   streamer?: StreamerService;
   fetch?: typeof fetch;
@@ -339,7 +351,7 @@ export function applyProgress(items: readonly MediaItem[], progress: ReturnType<
   // Index ancestor IDs once. Previously every card scanned the entire watch history.
   const descendants = new Map<string, number>();
   for (const [id, entry] of Object.entries(progress)) {
-    const value = ratio(entry);
+    const value = entry.hiddenFromContinueWatching ? undefined : ratio(entry);
     if (value === undefined) continue;
     let separator = id.lastIndexOf(':');
     while (separator > 0) {
@@ -349,7 +361,8 @@ export function applyProgress(items: readonly MediaItem[], progress: ReturnType<
     }
   }
   return items.map((item) => {
-    const value = ratio(progress[item.id]) ?? descendants.get(item.id);
+    const entry = progress[item.id];
+    const value = (entry?.hiddenFromContinueWatching ? undefined : ratio(entry)) ?? descendants.get(item.id);
     return item.progress === value ? item : { ...item, progress: value };
   });
 }
@@ -370,6 +383,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   const scope = (): string => profiles.scope();
   const certificates = createCertificateService({ dataDir, fetch: fetchImpl });
   const certOf = (id: string) => certificates.get(id);
+  const sendWebhook = createPlaybackWebhook(dataDir, fetchImpl);
   /** Looks up certificates for a limited profile; adults never wait for it. */
   const primeFor = async (level: AgeLevel, items: readonly { id: string }[]): Promise<void> => {
     if (level.maxAge < 18) await certificates.prime(items.map((item) => item.id));
@@ -382,7 +396,11 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     return levelFor(active === undefined ? 18 : profileMaxAge(active), levels);
   };
   const extras = createCoreExtras({
-    dataDir, scope, fetch: fetchImpl,
+    dataDir, scope, fetch: fetchImpl, env: options.env,
+    title: async id => {
+      const meta = await catalog.meta(id);
+      return meta ? { tmdbId: meta.tmdbId, series: meta.item.kind === 'series' } : null;
+    },
     item: async (id) => (await catalog.meta(id))?.item ?? null,
     filter: () => {
       const level = ageLevel();
@@ -407,7 +425,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   const caches = new Map<string, RdCache>();
   const playbackPending = new Map<string, Promise<PlaybackResolution>>();
   const cacheFor = (): RdCache => {
-    const key = rd.tokenValue() ?? '';
+    const token = rd.tokenValue();
+    const key = token ? createHash('sha256').update(token).digest('hex') : '';
     let entry = caches.get(key);
     if (entry === undefined) {
       if (caches.size >= 16) caches.clear();
@@ -467,13 +486,16 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     return promise;
   };
 
-  const cachedStatus = async (): Promise<RdStatus> => {
+  const cachedStatus = async (fresh = false): Promise<RdStatus> => {
     const cache = cacheFor();
-    if (cache.status !== null && Date.now() - cache.status.at < STATUS_TTL_MS) return cache.status.value;
-    if (cache.statusPending !== null) return cache.statusPending;
+    if (!fresh && cache.status !== null && Date.now() - cache.status.at < STATUS_TTL_MS) return cache.status.value;
+    if (!fresh && cache.statusPending !== null) return cache.statusPending;
     const version = generation;
     const promise = rd.status().then((value) => {
-      if (version === generation) cache.status = { at: Date.now(), value };
+      if (version === generation && cache.statusPending === promise && value.error !== 'needs-auth') {
+        cache.status = { at: Date.now(), value };
+      }
+      if (value.error === 'needs-auth') { cache.status = null; cache.library = null; }
       return value;
     }).finally(() => {
       if (cache.statusPending === promise) cache.statusPending = null;
@@ -487,7 +509,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     const cache = cacheFor();
     cache.status = null;
     const status = await rd.status();
-    cache.status = { at: Date.now(), value: status };
+    if (status.error !== 'needs-auth') cache.status = { at: Date.now(), value: status };
+    else cache.library = null;
     if (status.error === 'needs-auth') return { kind: 'unavailable', reason: 'needs-auth' };
     if (status.error === null && !status.premium) return { kind: 'unavailable', reason: 'needs-auth' };
     return null;
@@ -600,6 +623,31 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
    * direct / remux / transcode; nothing is guessed from filenames, and the
    * player never sees an upstream URL (Range proxy or local HLS only).
    */
+  const originalLanguageCache = new Map<number, { until: number; value: Promise<string | null> }>();
+  const originalLanguageFor = (meta: TitleMeta | null): Promise<string | null> => {
+    const declared = languageCode(meta?.originalLanguage);
+    if (declared || !meta?.tmdbId) return Promise.resolve(declared);
+    const id = meta.tmdbId;
+    const cached = originalLanguageCache.get(id);
+    if (cached && cached.until > Date.now()) return cached.value;
+    if (originalLanguageCache.size >= 512) originalLanguageCache.delete(originalLanguageCache.keys().next().value!);
+    const kind = meta.item.kind === 'series' ? 'tv' : 'movie';
+    const read = async () => {
+      // Cinemeta supplies the TMDB identifier but usually omits the language.
+      // Read the canonical title's Original Language field, never infer it from country.
+      const response = await fetchImpl(`https://www.themoviedb.org/${kind}/${id}?language=en-US`, {
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!response.ok) return null;
+      const raw = (await response.text()).match(/Original Language<\/bdi>\s*<\/strong>\s*([^<]+)/i)?.[1];
+      return languageCode(raw);
+    };
+    const entry = { until: Date.now() + 7 * 86_400_000, value: read().catch(() => null) };
+    void entry.value.then(value => { if (value === null) entry.until = Date.now() + 60_000; });
+    originalLanguageCache.set(id, entry);
+    return entry.value;
+  };
+
   const resolveFileStream = async (
     downloadUrl: string,
     filename: string,
@@ -607,6 +655,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     startAt: number | undefined,
     download?: DownloadPreferences,
     native = false,
+    client?: PlaybackClient,
+    cap?: number,
   ): Promise<PlaybackResolution> => {
     if (download !== undefined) {
       const limit = Math.min(download.maxHeight, options.plan?.().maxHeight ?? 2160);
@@ -615,10 +665,21 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       }
       return { kind: 'stream', url: downloadUrl, title, filename, mimeType: 'application/octet-stream', engine: 'html5', transport: 'file' };
     }
+    const prefs = readPrefs(dataDir);
+    const maxHeight = Math.min(options.plan?.().maxHeight ?? 2160, cap ?? Infinity, client?.maxHeight ?? Infinity, qualityCap(prefs.quality));
+    const version = describeVersion({ url: downloadUrl, title: filename, quality: 0, cached: true }, null);
+    if (client && (!supportsVersion(version, filename, client) || (version.height ?? 0) > maxHeight)) {
+      return { kind: 'unavailable', reason: 'unsupported' };
+    }
     // Desktop mpv decodes the original file and owns its finite timeline.
     // Converting an HEVC film to a growing "live" playlist first adds a
     // second decoder, a cold encoder startup and live-edge corrections.
-    if (native) return { kind: 'stream', url: downloadUrl, title, filename, mimeType: 'application/octet-stream', engine: 'native', transport: 'file', startAt };
+    if (client ? client.player !== 'html5' : native) {
+      const mimeType = !client ? 'application/octet-stream' : /\.mkv$/i.test(filename) ? 'video/x-matroska' : /\.webm$/i.test(filename) ? 'video/webm' :
+        /\.m(?:p4|4v|ov)$/i.test(filename) ? 'video/mp4' : 'application/octet-stream';
+      return { kind: 'stream', url: downloadUrl, title, filename, mimeType,
+        engine: client?.player === 'mpv' || native ? 'native' : 'html5', transport: 'file', startAt };
+    }
     const streamer = options.streamer;
     if (streamer === undefined) {
       const mime = /\.webm(\?|$)/i.test(filename) ? 'video/webm' : 'video/mp4';
@@ -627,8 +688,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         ...(startAt !== undefined ? { startAt } : {}),
       };
     }
-    const maxHeight = options.plan?.().maxHeight ?? 2160;
-    const resolved = await streamer.resolveFile(downloadUrl, { maxHeight, filename, ...(startAt !== undefined ? { startAt } : {}) });
+    const resolved = await streamer.resolveFile(downloadUrl, { maxHeight, filename, client, ...(startAt !== undefined ? { startAt } : {}) });
     if (resolved === null) return { kind: 'unavailable', reason: streamer.ready() ? 'unsupported' : 'needs-converter' };
     console.log(`tvm-core: play transport=${resolved.transport} mime=${resolved.mimeType} file=${filename}`);
     return {
@@ -641,6 +701,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       transport: resolved.transport,
       ...(resolved.sessionId !== undefined ? { sessionId: resolved.sessionId } : {}),
       ...(resolved.timeOffset !== undefined ? { timeOffset: resolved.timeOffset } : {}),
+      ...(resolved.audioLanguages ? { audioLanguages: resolved.audioLanguages } : {}),
       ...(resolved.durationSeconds !== undefined && resolved.durationSeconds > 0
         ? { durationSeconds: resolved.durationSeconds }
         : {}),
@@ -648,12 +709,14 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     };
   };
 
-  const playFromLink = async (link: string, mediaId?: string, download?: DownloadPreferences, requestedStart?: number, native = false): Promise<PlaybackResolution> => {
+  const playFromLink = async (link: string, mediaId?: string, download?: DownloadPreferences, requestedStart?: number, native = false, client?: PlaybackClient, cap?: number): Promise<PlaybackResolution> => {
     if (!isHttpUrl(link)) return { kind: 'unavailable', reason: 'unsupported' };
     try {
       const startAt = requestedStart ?? (mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]));
       if (!needsUnrestrict(link)) {
-        const filename = link.split('/').pop()?.split('?')[0] ?? 'stream';
+        const tail = new URL(link).pathname.split('/').pop() || 'stream';
+        let filename = tail;
+        try { filename = decodeURIComponent(tail); } catch { /* Keep the original name. */ }
         if (download !== undefined && !downloadLanguageMatches(filename, download.language)) return { kind: 'unavailable', reason: 'empty' };
         if (/\.m3u8(\?|$)/i.test(link)) {
           return {
@@ -667,7 +730,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             ...(startAt !== undefined ? { startAt } : {}),
           };
         }
-        return resolveFileStream(link, filename, parseFilename(filename).title, startAt, download, native);
+        return resolveFileStream(link, filename, parseFilename(filename).title, startAt, download, native, client, cap);
       }
       const unrestricted = await rd.unrestrict(link);
       if (unrestricted.download === undefined || unrestricted.download === '') {
@@ -680,11 +743,27 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       if (download !== undefined && !downloadLanguageMatches(unrestricted.filename, download.language)) {
         return { kind: 'unavailable', reason: 'empty' };
       }
-      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt, download, native);
+      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt, download, native, client, cap);
     } catch (error) {
       if (error instanceof Error && error.name === 'RdAuth') return { kind: 'unavailable', reason: 'needs-auth' };
       return { kind: 'unavailable', reason: 'unsupported' };
     }
+  };
+
+  const torrentioCandidates = async (
+    imdb: string, season: number | undefined, episode: number | undefined, token: string,
+  ) => {
+    const meta = await catalog.meta(imdb);
+    if (meta?.item.kind === 'series' && (season === undefined || episode === undefined)) {
+      season ??= meta.children[0]?.season;
+      episode ??= meta.children.find(child => child.season === season)?.episode;
+    }
+    const [streams, originalLanguage] = await Promise.all([
+      fetchTorrentioStreams(token, imdb, season, episode, fetchImpl), originalLanguageFor(meta),
+    ]);
+    const episodeMeta = meta?.children.find(child => child.season === season && child.episode === episode);
+    const runtime = runtimeSeconds(episodeMeta?.runtime ?? meta?.item.runtime);
+    return { streams, originalLanguage, runtime, season, episode };
   };
 
   const playFromTorrentio = async (
@@ -696,40 +775,37 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     requestedStart?: number,
     native = false,
     screenCap = 2160,
+    client?: PlaybackClient,
+    versionId?: string,
   ): Promise<PlaybackResolution> => {
     try {
       const personal = rd.tokenValue();
       const pooled = options.plan?.().id === 'free' ? options.poolToken?.() ?? null : null;
       const token = personal ?? pooled;
       if (token === null) return { kind: 'unavailable', reason: 'not-configured' };
-      let seasonNo = season;
-      let episodeNo = episode;
-      if (seasonNo === undefined || episodeNo === undefined) {
-        const meta = await catalog.meta(imdb);
-        if (meta?.item.kind === 'series') {
-          const first = meta.children[0];
-          seasonNo = seasonNo ?? first?.season;
-          episodeNo = episodeNo ?? first?.episode;
-        }
-      }
-      const streams = await fetchTorrentioStreams(token, imdb, seasonNo, episodeNo, fetchImpl);
-      if (streams.length === 0) return { kind: 'unavailable', reason: 'empty' };
-      // The best source that fits the screen, unless the viewer picked a quality (screenCap carries that too).
+      const { streams, originalLanguage, runtime, season: seasonNo, episode: episodeNo } =
+        await torrentioCandidates(imdb, season, episode, token);
       const height = Math.min(options.plan?.().maxHeight ?? 2160, download?.maxHeight ?? 2160, screenCap);
-      const eligible = download === undefined ? streams : streams.filter((stream) =>
-        downloadLanguageMatches(stream.description ?? stream.title, download.language) && streamHeight(stream.description ?? stream.title) <= height);
-      const ranked = capStreamsToHeight(rankDebridStreams(eligible), height).slice(0, PLAYABLE_STREAM_LIMIT);
+      const ranked = download === undefined
+        ? rankVersions(streams, { prefs: readPrefs(dataDir), originalLanguage, runtime, maxHeight: height, client })
+          .filter(row => versionId === undefined || row.version.id === versionId).slice(0, PLAYABLE_STREAM_LIMIT)
+        : capStreamsToHeight(rankDebridStreams(streams.filter(stream =>
+          downloadLanguageMatches(stream.description ?? stream.title, download.language) &&
+          streamHeight(stream.description ?? stream.title) <= height)), height)
+          .slice(0, PLAYABLE_STREAM_LIMIT).map(stream => ({ stream, version: undefined }));
       if (ranked.length === 0) return { kind: 'unavailable', reason: 'empty' };
       const id =
         mediaId ?? (seasonNo !== undefined && episodeNo !== undefined ? `${imdb}:${seasonNo}:${episodeNo}` : imdb);
       let last: PlaybackResolution = { kind: 'unavailable', reason: 'empty' };
-      for (const stream of ranked) {
+      for (const { stream, version } of ranked) {
         const resolved = await resolveTorrentioUrl(stream.url, fetchImpl);
-        if (resolved === null || isTorrentioHost(resolved)) continue;
+        if (resolved === null || isTorrentioHost(resolved) || /\.m3u8(?:\?|$)/i.test(resolved)) continue;
         // Language was checked against the release metadata, which also
         // describes multilingual files whose hoster filename omits it.
-        const result = await playFromLink(resolved, id, download === undefined ? undefined : { ...download, language: 'original' }, requestedStart, native);
-        if (result.kind === 'stream') return result;
+        const result = await playFromLink(resolved, id, download === undefined ? undefined : { ...download, language: 'original' }, requestedStart, native, client, height);
+        if (result.kind === 'stream') return version ? {
+          ...result, version, originalLanguage, audioLanguages: result.audioLanguages?.length ? result.audioLanguages : version.languages,
+        } : result;
         last = result;
         if (result.reason === 'needs-auth') return result;
       }
@@ -769,7 +845,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     paged('new-films', 'New films', takeUnused(fit(bundle.newFilms), used, RAIL_LIMIT));
     paged('new-series', 'Recently updated', takeUnused(fit(bundle.recentTv), used, RAIL_LIMIT));
 
-    const because = becauseYouWatched(watching[0], pool, used, 24);
+    const autoCollections = readPrefs(dataDir).extras.autoCollections;
+    const because = autoCollections ? becauseYouWatched(watching[0], pool, used, 24) : [];
     markUsed(used, because);
     if (because.length > 0 && watching[0] !== undefined) {
       rails.push({ id: 'because', title: `Because you watched ${watching[0].title}`, items: because });
@@ -797,6 +874,16 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     );
     for (const { rail, movies, shows } of genreLists) {
       paged(rail.id, rail.title, interleaveUnused(movies, shows, used, RAIL_LIMIT));
+    }
+    if (autoCollections) {
+      const rated = fit(dedupeItems([...bundle.moviesRated, ...bundle.seriesRated]));
+      const preferredGenre = history[0]?.genres[0] ?? 'Drama';
+      const inGenre = rated.filter(item => item.genres.includes(preferredGenre)).slice(0, 18);
+      if (inGenre.length >= 4) rails.push({ id: 'top-rated-genre', title: `Top rated ${preferredGenre.toLowerCase()}`, items: inGenre });
+      for (const decade of [1990, 2000, 2010]) {
+        const items = rated.filter(item => item.year !== null && item.year >= decade && item.year < decade + 10).slice(0, 16);
+        if (items.length >= 4) rails.push({ id: `decade-${decade}`, title: `From the ${decade}s`, items });
+      }
     }
     return rails;
   };
@@ -868,7 +955,20 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
   return {
     extras,
     configured: () => rd.configured(),
-    status: () => cachedStatus(),
+    status: cachedStatus,
+    async versions(id, season, episode) {
+      const imdb = extractImdb(id);
+      const token = rd.tokenValue();
+      if (!imdb || !token) return { originalLanguage: null, versions: [] };
+      const tail = parseSeasonEpisode(id);
+      const { streams, originalLanguage, runtime } =
+        await torrentioCandidates(imdb, season ?? tail?.season, episode ?? tail?.episode, token);
+      return {
+        originalLanguage,
+        versions: rankVersions(streams, { prefs: readPrefs(dataDir), originalLanguage, runtime,
+          maxHeight: options.plan?.().maxHeight ?? 2160 }).map(row => row.version),
+      };
+    },
     async setToken(token) {
       generation += 1;
       caches.clear();
@@ -983,6 +1083,18 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       return loadChildren(id);
     },
 
+    async surprise() {
+      if (!readPrefs(dataDir).extras.surpriseMe) return null;
+      const profileScope = scope();
+      const level = ageLevel();
+      const watchlist = readWatchlist(profileScope);
+      const catalogItems = await catalog.bundle().then(bundle => bundle.catalog).catch(() => []);
+      await primeFor(level, [...watchlist, ...catalogItems]);
+      const allowed = filterForLevel(watchlist, level, certOf);
+      const recommendations = pickYouMightLike(filterForLevel(catalogItems, level, certOf), allowed, new Set(), 24);
+      const candidates = dedupeItems([...allowed, ...recommendations]);
+      return candidates.length ? candidates[randomInt(candidates.length)]! : null;
+    },
     watchlist: () => readWatchlist(scope()),
     addToWatchlist: (item) => addWatchlist(scope(), item),
     removeFromWatchlist: (id) => removeWatchlist(scope(), id),
@@ -1058,6 +1170,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       download?: DownloadPreferences;
       startAt?: number;
       native?: boolean;
+      client?: PlaybackClient;
+      versionId?: string;
       screenHeight?: number;
       maxHeight?: number;
     }): Promise<ExtrasPlaybackResolution> {
@@ -1065,7 +1179,11 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       // rather than start competing probes and conversions for one film.
       const plan = options.plan?.();
       const profileScope = scope();
-      const key = JSON.stringify([rd.tokenValue(), scope(), plan?.id, plan?.maxHeight, input]);
+      const token = rd.tokenValue();
+      const prefs = readPrefs(dataDir);
+      const cap = screenCapFor(input.screenHeight, input.maxHeight);
+      const key = JSON.stringify([token ? createHash('sha256').update(token).digest('hex') : null,
+        profileScope, plan?.id, plan?.maxHeight, prefs.quality, prefs.audioLanguage, prefs.skipUpscaled, input]);
       const pending = playbackPending.get(key);
       if (pending) return pending;
       const resolve = async (): Promise<PlaybackResolution> => {
@@ -1075,11 +1193,11 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
 
         let mediaId = input.id;
         let link = input.link?.trim() ?? '';
-        if (link !== '') return playFromLink(link, mediaId, input.download, input.startAt, input.native);
+        if (link !== '' && input.versionId === undefined) return playFromLink(link, mediaId, input.download, input.startAt, input.native, input.client, cap);
 
-        if (mediaId !== undefined && mediaId.startsWith('rd:')) {
+        if (mediaId !== undefined && mediaId.startsWith('rd:') && input.versionId === undefined) {
           const owned = await resolveOwnedLink(mediaId);
-          if (owned !== null) return playFromLink(owned, mediaId, input.download, input.startAt, input.native);
+          if (owned !== null) return playFromLink(owned, mediaId, input.download, input.startAt, input.native, input.client, cap);
         }
 
         const parsed = mediaId !== undefined ? parsePlayId(mediaId) : null;
@@ -1092,7 +1210,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             input.download,
             input.startAt,
             input.native,
-            screenCapFor(input.screenHeight, input.maxHeight),
+            cap, input.client, input.versionId,
           );
         }
 
@@ -1102,7 +1220,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         const episode = input.episode ?? tail?.episode;
 
         if (imdb !== null) {
-          return playFromTorrentio(imdb, season, episode, mediaId, input.download, input.startAt, input.native, screenCapFor(input.screenHeight, input.maxHeight));
+          return playFromTorrentio(imdb, season, episode, mediaId, input.download, input.startAt, input.native, cap, input.client, input.versionId);
         }
 
         if (mediaId !== undefined && mediaId.startsWith('rd:')) {
@@ -1110,17 +1228,17 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         }
 
         const wanted = input.title?.trim() ?? '';
-        if (wanted !== '') {
+        if (wanted !== '' && input.versionId === undefined) {
           const matchedId = await findLibraryPlayback(wanted, season, episode);
           if (matchedId !== null) {
             const owned = await resolveOwnedLink(matchedId);
-            if (owned !== null) return playFromLink(owned, matchedId, input.download, input.startAt, input.native);
+            if (owned !== null) return playFromLink(owned, matchedId, input.download, input.startAt, input.native, input.client, cap);
           }
           try {
             const hits = await catalog.search(wanted);
             const hit = hits.find((item) => item.kind === (season !== undefined ? 'series' : item.kind)) ?? hits[0];
             if (hit !== undefined) {
-              return playFromTorrentio(hit.id, season, episode, hit.id, input.download, input.startAt, input.native, screenCapFor(input.screenHeight, input.maxHeight));
+              return playFromTorrentio(hit.id, season, episode, hit.id, input.download, input.startAt, input.native, cap, input.client, input.versionId);
             }
           } catch {
             // Fall through to not-in-library.
@@ -1136,19 +1254,32 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         if (result.kind !== 'stream') return result;
         const parsed = input.id ? parsePlayId(input.id) : null;
         const id = parsed?.imdb ?? (input.id ? extractImdb(input.id) : null);
-        if (!id) return result;
+        if (input.download) return result;
+        const version = result.version ?? describeVersion({ url: result.url, title: result.filename, quality: 0, cached: true },
+          result.durationSeconds || null);
+        const enriched = { ...result, version, originalLanguage: result.originalLanguage ?? (id ? await originalLanguageFor(await catalog.meta(id)) : null),
+          audioLanguages: result.audioLanguages?.length ? result.audioLanguages : version.languages };
+        if (!id) return enriched;
         const season = input.season ?? parsed?.season;
         const episode = input.episode ?? parsed?.episode;
-        return extras.enrichPlayback(result, { id, season, episode, title: input.title }, profileScope);
+        return extras.enrichPlayback(enriched, { id, season, episode, title: input.title }, profileScope);
       }).finally(() => { if (playbackPending.get(key) === task) playbackPending.delete(key); });
       playbackPending.set(key, task);
       return task;
     },
 
     saveProgress(id, position, duration) {
-      extras.recordProgress(id, position, duration, readProgress(scope())[id]);
-      writeProgress(scope(), id, position, duration);
+      const profileScope = scope();
+      const previous = readProgress(profileScope)[id];
+      extras.recordProgress(id, position, duration, previous);
+      writeProgress(profileScope, id, position, duration);
+      if (isFinished({ position, duration }) && !isFinished(previous)) {
+        sendWebhook(profileScope, { event: 'finish', id, position, duration });
+      }
     },
+    removeProgress: id => removeContinueWatching(scope(), id),
+    watched: (id, watched) => setWatched(scope(), id, watched),
+    playbackEvent: event => sendWebhook(scope(), event),
 
     clearCache() {
       generation += 1;
@@ -1156,6 +1287,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       caches.clear();
       artwork.clear();
       catalog.clear();
+      originalLanguageCache.clear();
       clearCacheDir(dataDir);
     },
 

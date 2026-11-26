@@ -1,3 +1,4 @@
+import { createGuideCache, epgFeeds, matchGuide, programmeWindow, type Guide, type GuideChannel, type GuideWindow } from './liveGuide.ts';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { liveChecksPath, livePicksPath, livePlaylistPath, xtreamPath } from '../update/paths.ts';
@@ -34,6 +35,7 @@ import {
   fetchXtreamLive,
   normalizeXtreamHost,
   xtreamStreamId,
+  xtreamPlayerApiUrl,
   xtreamStreamUrl,
   type XtreamAccount,
 } from './xtream.ts';
@@ -101,6 +103,8 @@ export interface LiveCheckSummary extends LiveCheckReport {
 
 export interface LiveService {
   status(): Promise<LiveStatus>;
+  guide?(window: GuideWindow, group: string | null, free: Record<string, unknown>, includeIptv: boolean,
+    allowsGroup: (group: string) => boolean): Promise<Guide>;
   catalog(query: LiveCatalogQuery): Promise<LiveCatalogPage>;
   setPlaylist(url: string): Promise<LiveStatus>;
   setXtream(input: { host: string; username: string; password: string }): Promise<LiveStatus>;
@@ -228,11 +232,23 @@ function attribute(line: string, name: string): string | undefined {
   return match?.[1];
 }
 
+export function m3uGuideUrls(text: string, base?: string): string[] {
+  const header = text.trimStart().split(/\r?\n/, 1)[0] ?? '';
+  if (!/^#EXTM3U(?:\s|$)/i.test(header)) return [];
+  return [...new Set(['url-tvg', 'x-tvg-url'].flatMap(key => (attribute(header, key) ?? '').split(',')).flatMap(raw => {
+    if (!raw.trim()) return [];
+    try {
+      const url = new URL(raw.trim(), base);
+      return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? [url.href] : [];
+    } catch { return []; }
+  }))].slice(0, 8);
+}
+
 export function parseM3u(text: string): LiveChannel[] {
   const lines = text.split(/\r?\n/);
   const channels: LiveChannel[] = [];
   const used = new Set<string>();
-  let pending: { name: string; group?: string; logo?: string } | null = null;
+  let pending: Pick<LiveChannel, 'name' | 'group' | 'logo' | 'epgId' | 'number'> | null = null;
   let groupHint: string | undefined;
   // Headers a panel asks for between #EXTINF and its URL. Ignoring them is
   // why a channel plays in VLC and answers 403 here.
@@ -255,7 +271,9 @@ export function parseM3u(text: string): LiveChannel[] {
       const group = attribute(line, 'group-title') ?? groupHint;
       const logoRaw = attribute(line, 'tvg-logo');
       const logo = logoRaw !== undefined ? httpAssetUrl(logoRaw) : undefined;
-      pending = { name: (named !== undefined && named !== '' ? named : title) || 'Channel', group, logo };
+      pending = { name: (named !== undefined && named !== '' ? named : title) || 'Channel', group, logo,
+        epgId: attribute(line, 'tvg-id')?.trim(),
+        number: Number(attribute(line, 'tvg-chno') ?? attribute(line, 'channel-number')) };
       hints = { id: '' };
       continue;
     }
@@ -284,6 +302,8 @@ export function parseM3u(text: string): LiveChannel[] {
     };
     if (pending?.group !== undefined && pending.group !== '') channel.group = pending.group;
     if (pending?.logo !== undefined) channel.logo = pending.logo;
+    if (pending?.epgId) channel.epgId = pending.epgId;
+    if (Number.isSafeInteger(pending?.number) && pending!.number! > 0) channel.number = pending!.number;
     if (pending !== null && hasAnyHeader(hints)) channel.profile = { ...hints, id };
     channels.push(channel);
     pending = null;
@@ -651,7 +671,8 @@ function cardFor(channel: LiveChannel, picked: Set<string> | boolean): LiveChann
 export function createLiveService(options: LiveServiceOptions): LiveService {
   const fetchImpl = options.fetch ?? fetch;
   const { dataDir } = options;
-  let cache: { url: string; channels: LiveChannel[] } | null = null;
+  let cache: { url: string; channels: LiveChannel[]; guideUrls?: string[]; guideOrigin?: string } | null = null;
+  const guideCache = createGuideCache(dataDir, fetchImpl);
 
   const mockChannels = (): LiveChannel[] => (options.includeMock?.() === true ? [...MOCK_LIVE_CHANNELS] : []);
 
@@ -712,7 +733,8 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
       if (stored.text.length > MAX_PLAYLIST_BYTES) return { playlistUrl: stored.url, channels: [], error: 'invalid' };
       const channels = parseM3u(stored.text);
       if (channels.length === 0) return { playlistUrl: stored.url ?? 'local:playlist', channels: [], error: 'invalid' };
-      cache = { url: cacheKey, channels };
+      cache = { url: cacheKey, channels, guideUrls: m3uGuideUrls(stored.text, stored.url ?? undefined),
+        guideOrigin: stored.url ? new URL(stored.url).origin : undefined };
       return { playlistUrl: stored.url ?? 'local:playlist', channels, error: null };
     }
     const url = stored.url;
@@ -732,7 +754,7 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
         channels = [{ id: liveChannelId(url), name: 'Live stream', url }];
       }
       if (channels.length === 0) return { playlistUrl: url, channels: [], error: 'invalid' };
-      cache = { url, channels };
+      cache = { url, channels, guideUrls: m3uGuideUrls(text, response.url || url), guideOrigin: new URL(url).origin };
       return { playlistUrl: url, channels, error: null };
     } catch {
       return { playlistUrl: url, channels: [], error: 'unreachable' };
@@ -896,6 +918,62 @@ export function createLiveService(options: LiveServiceOptions): LiveService {
 
   return {
     status: () => compose(),
+
+    async guide(window, group, free, includeIptv, allowsGroup) {
+      const feeds = epgFeeds(free.epgFeeds);
+      const freeRows: Array<GuideChannel & { epgId?: string; epgFeed?: string }> =
+        (Array.isArray(free.channels) ? free.channels : []).flatMap((row, index) => {
+          if (typeof row?.id !== 'string' || typeof row.name !== 'string' || typeof row.group !== 'string' || !allowsGroup(row.group)) return [];
+          return [{ id: `live:free:${row.id}`, number: index + 1, name: row.name, group: row.group,
+            logo: typeof row.logo === 'string' ? httpAssetUrl(row.logo) ?? null : null, source: 'free' as const,
+            programmes: [], epgId: typeof row.epgId === 'string' ? row.epgId : undefined,
+            epgFeed: typeof row.epgFeed === 'string' ? row.epgFeed : undefined }];
+        });
+      const freeSchedules = await Promise.all(feeds.map(async feed => {
+        const wants = freeRows.filter(row => row.epgFeed === feed.id && row.epgId).map(row => ({ id: row.epgId }));
+        return [feed.id, wants.length ? await guideCache.xml(feed.url, wants) : new Map()] as const;
+      }));
+      const byFeed = new Map(freeSchedules);
+      const channels: GuideChannel[] = freeRows.map(({ epgId, epgFeed, ...channel }) => {
+        const schedule = epgFeed ? byFeed.get(epgFeed) : undefined;
+        return { ...channel, programmes: programmeWindow(schedule ? matchGuide(schedule, { id: epgId }) : [], window) };
+      });
+
+      if (includeIptv) {
+        const account = readXtream(dataDir);
+        const { channels: loaded } = await loadCatalog();
+        const rows = loaded.filter(row => allowsGroup(channelGroup(row)));
+        const wants = rows.map(row => ({ id: row.epgId, name: row.name }));
+        const xmlUrls = account
+          ? [xtreamPlayerApiUrl(account).replace('/player_api.php?', '/xmltv.php?')]
+          : cache?.guideUrls ?? [];
+        const origin = account ? new URL(account.host).origin : cache?.guideOrigin;
+        const schedules = await Promise.all(xmlUrls.map(url => guideCache.xml(url, wants, origin)));
+        const fallbackCandidates = account ? rows.filter(row => (!group || channelGroup(row) === group) &&
+          !schedules.some(schedule => matchGuide(schedule, { id: row.epgId, name: row.name }).length > 0)) : [];
+        const fallback = new Map<string, import('./liveGuide.ts').Programme[]>();
+        // Keep each batch key stable as viewers switch groups and bound panel concurrency.
+        if (account) {
+          const ids = new Set(fallbackCandidates.map(row => row.id));
+          for (let offset = 0; offset < rows.length; offset += 48) {
+            const batch = rows.slice(offset, offset + 48);
+            if (!batch.some(row => ids.has(row.id))) continue;
+            for (const [id, programmes] of await guideCache.short(account, batch.filter(row => ids.has(row.id)))) fallback.set(id, programmes);
+            // Start with the first relevant batch. Large catalogs supply their full listings through XMLTV.
+            break;
+          }
+        }
+        for (const [index, row] of rows.entries()) {
+          const programmes = schedules.map(schedule => matchGuide(schedule, { id: row.epgId, name: row.name }))
+            .find(list => list.length) ?? fallback.get(row.id) ?? [];
+          channels.push({ id: row.id, number: row.number ?? freeRows.length + index + 1,
+            name: row.name, logo: row.logo ?? null, group: channelGroup(row), source: account ? 'xtream' : 'm3u',
+            programmes: programmeWindow(programmes, window) });
+        }
+      }
+      return { ...window, groups: [...new Set(channels.map(row => row.group))],
+        channels: group ? channels.filter(row => row.group === group) : channels };
+    },
 
     async catalog(query: LiveCatalogQuery): Promise<LiveCatalogPage> {
       const loaded = await loadCatalog();

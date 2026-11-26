@@ -1,6 +1,7 @@
 #include "catalog/playback.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cctype>
 #include <map>
 #include <regex>
@@ -15,6 +16,51 @@
 #include "core/util.h"
 
 namespace tvm::playback {
+
+std::string VersionLabel(const nlohmann::json& version) {
+    if (!version.is_object()) return {};
+    const auto text = [&](const char* key) {
+        const auto field = version.find(key);
+        return field != version.end() && field->is_string() ? field->get<std::string>() : std::string();
+    };
+    if (const auto label = text("label"); !label.empty()) return label;
+    std::string result;
+    const auto append = [&](const std::string& part) {
+        if (part.empty()) return;
+        if (!result.empty()) result += " · ";
+        result += part;
+    };
+    const auto height = version.find("height");
+    if (height != version.end() && height->is_number_integer() && *height > 0) {
+        const int pixels = height->get<int>();
+        append(pixels >= 2000 ? "4K" : std::to_string(pixels) + "p");
+    }
+    const auto hdr = text("hdr");
+    if (hdr == "dv") append("Dolby Vision");
+    if (hdr == "hdr10+") append("HDR10+");
+    if (hdr == "hdr10") append("HDR10");
+    if (hdr == "hlg") append("HLG");
+    const auto source = text("source");
+    if (source == "remux") append("REMUX");
+    if (source == "bluray") append("Blu-ray");
+    if (source == "web-dl") append("WEB-DL");
+    if (source == "webrip") append("WEBRip");
+    if (source == "hdtv") append("HDTV");
+    if (const auto bitrate = version.find("bitrateMbps"); bitrate != version.end() && bitrate->is_number() && *bitrate > 0) {
+        char formatted[32]{};
+        std::snprintf(formatted, sizeof(formatted), "%.3g Mb/s", bitrate->get<double>());
+        append(formatted);
+    }
+    return result.empty() ? "Version" : result;
+}
+
+std::string PlaybackTransport(const std::string& url, const std::string& engine, const std::string& transport) {
+    if (url.find("/api/stream/hls/") != std::string::npos) return "Core HLS";
+    if (transport == "hls" || url.find(".m3u8") != std::string::npos) return "Upstream HLS";
+    if (url.find("/api/stream/direct/") != std::string::npos) return "Core direct proxy";
+    if (engine == "native" && transport == "file") return "Original file";
+    return "Direct source";
+}
 
 namespace {
 

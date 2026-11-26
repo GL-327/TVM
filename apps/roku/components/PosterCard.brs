@@ -14,6 +14,8 @@ sub init()
   m.caption = m.top.findNode("caption")
   m.progressTrack = m.top.findNode("progressTrack")
   m.progressFill = m.top.findNode("progressFill")
+  m.badgeBg = m.top.findNode("badgeBg")
+  m.badgeText = m.top.findNode("badgeText")
   m.body = m.top.findNode("body")
   m.focusAnim = m.top.findNode("focusAnim")
   m.scaleInterp = m.top.findNode("scaleInterp")
@@ -21,6 +23,10 @@ sub init()
   m.opacityInterp = m.top.findNode("opacityInterp")
   m.maskInterp = m.top.findNode("maskInterp")
   m.caption.font = tvmFontMeta()
+  if m.badgeText <> invalid then m.badgeText.font = tvmFont("semibold", 26)
+  if m.global <> invalid and m.global.hasField("posterTitles") then m.global.observeField("posterTitles", "onFocusStyle")
+  if m.global <> invalid and m.global.hasField("rokuPrefs") then m.global.observeField("rokuPrefs", "onItem")
+  if m.global <> invalid and m.global.hasField("remoteFlags") then m.global.observeField("remoteFlags", "onItem")
   m.landscape = false
   applyLayout()
 end sub
@@ -72,7 +78,9 @@ sub applyLayout()
   m.progressFill.height = 8
   m.progressFill.translation = [32, h - 40]
   m.caption.width = w
-  m.caption.height = 60
+  m.caption.height = 88
+  m.caption.wrap = true
+  m.caption.maxLines = 2
   m.caption.translation = [0, h + 20]
 end sub
 
@@ -87,29 +95,37 @@ sub onItem()
   if episodeName <> "" then title = episodeName
   season = aaGet(item, "season", invalid)
   ep = aaGet(item, "episode", invalid)
-  year = aaGet(item, "year", invalid)
-  if season <> invalid and ep <> invalid
-    title = "S" + asText(season) + " E" + asText(ep) + "  " + title
+  progress = aaGet(item, "progress", invalid)
+  ratio = cardProgressRatio(progress)
+  watched = (aaGet(item, "watched", false) = true) or (ratio > 0)
+  isEpisode = (season <> invalid and ep <> invalid)
+  spoilerHidden = isEpisode and not watched and tvmExtraEnabled("spoilerBlur", false)
+  if isEpisode
+    if spoilerHidden
+      title = "S" + asText(season) + " E" + asText(ep) + "  ·  Unwatched"
+    else
+      title = "S" + asText(season) + " E" + asText(ep) + "  " + title
+    end if
   end if
   m.caption.text = title
   m.fallbackTitle.text = title
+  if spoilerHidden then m.fallbackTitle.text = "S" + asText(season) + " E" + asText(ep) + Chr(10) + "Spoiler hidden"
   m.fallbackTitle.visible = true
 
   poster = preferCardUri(item, m.landscape)
-  if poster <> ""
+  if poster <> "" and not spoilerHidden
     m.art.uri = poster
     m.art.visible = true
   else
     m.art.uri = ""
     m.art.visible = false
   end if
-  m.fallbackTitle.visible = (poster = "" or m.art.loadStatus <> "ready")
+  m.fallbackTitle.visible = (spoilerHidden or poster = "" or m.art.loadStatus <> "ready")
+  paintQualityBadge(item, spoilerHidden)
+  onFocusStyle()
 
-  progress = aaGet(item, "progress", invalid)
-  if progress <> invalid
-    ratio = progress
+  if ratio > 0
     if ratio > 1 then ratio = 1
-    if ratio < 0 then ratio = 0
     m.progressTrack.visible = true
     m.progressFill.visible = true
     m.progressFill.width = Int((m.artW - 64) * ratio)
@@ -117,6 +133,57 @@ sub onItem()
     m.progressTrack.visible = false
     m.progressFill.visible = false
   end if
+end sub
+
+function cardProgressRatio(progress as Dynamic) as Float
+  if progress = invalid then return 0.0
+  if GetInterface(progress, "ifAssociativeArray") <> invalid
+    r = aaGet(progress, "ratio", invalid)
+    if r <> invalid then return r * 1.0
+    position = aaGet(progress, "position", 0)
+    dur = aaGet(progress, "duration", 0)
+    if dur > 0 then return (position * 1.0) / (dur * 1.0)
+    return 0.0
+  end if
+  return progress * 1.0
+end function
+
+sub paintQualityBadge(item as Object, spoilerHidden as Boolean)
+  if m.badgeBg = invalid or m.badgeText = invalid then return
+  if spoilerHidden or not tvmExtraEnabled("qualityBadges")
+    m.badgeBg.visible = false : m.badgeText.visible = false : return
+  end if
+  badge = asText(aaGet(item, "qualityBadge", ""))
+  if badge = ""
+    parts = []
+    q = aaGet(item, "resolution", aaGet(item, "height", 0))
+    if q = 2160
+      parts.Push("4K")
+    else if q = 1080 or q = 720
+      parts.Push(StrI(q).Trim() + "p")
+    else
+      qStr = asText(aaGet(item, "quality", ""))
+      if qStr <> "" then parts.Push(UCase(qStr))
+    end if
+    hdr = LCase(asText(aaGet(item, "hdr", "")))
+    if hdr = "dv" then parts.Push("DV")
+    if hdr = "hdr10+" then parts.Push("HDR10+")
+    if hdr = "hdr10" or hdr = "hdr" then parts.Push("HDR")
+    if aaGet(item, "atmos", false) = true then parts.Push("Atmos")
+    badge = parts.Join(" · ")
+  end if
+  if badge = ""
+    m.badgeBg.visible = false : m.badgeText.visible = false : return
+  end if
+  bw = Int(Len(badge) * 18) + 32
+  if bw < 84 then bw = 84
+  if bw > m.artW - 40 then bw = m.artW - 40
+  m.badgeBg.width = bw : m.badgeBg.height = 44
+  m.badgeBg.translation = [m.artW - bw - 18, 18]
+  m.badgeText.width = bw - 16 : m.badgeText.height = 44
+  m.badgeText.translation = [m.artW - bw - 10, 18]
+  m.badgeText.text = badge
+  m.badgeBg.visible = true : m.badgeText.visible = true
 end sub
 
 sub onArtLoad()
@@ -141,7 +208,10 @@ sub onFocusStyle()
 
   m.glow.visible = focused
   m.ring.visible = focused
-  m.caption.visible = focused
+  m.caption.visible = focused or loadFlag("posterTitles")
+  m.caption.wrap = focused
+  m.caption.maxLines = 1
+  if focused then m.caption.maxLines = 2
   if focused
     if not tvmReduceMotion()
       toScale = [tvmPosterFocusScale(), tvmPosterFocusScale()]
@@ -149,6 +219,14 @@ sub onFocusStyle()
     end if
   else if dimmed
     toOp = 0.5
+  end if
+  if not focused
+    m.focusAnim.control = "stop"
+    m.body.scale = toScale
+    m.body.translation = toLift
+    m.body.opacity = toOp
+    m.mask.maskSize = [m.artW * tvmUiScale(), m.artH * tvmUiScale()]
+    return
   end if
   animateFocus(fromScale, toScale, fromLift, toLift, fromOp, toOp)
 end sub

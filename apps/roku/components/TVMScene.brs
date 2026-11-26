@@ -2,6 +2,9 @@ sub init()
   applyCanvasScale()
   m.global.addFields({
     reduceMotion: loadReduceMotion()
+    rokuPrefs: {}
+    remoteFlags: {}
+    posterTitles: loadFlag("posterTitles")
     reduceTransparency: loadReduceTransparency()
     background: loadBackground()
     trendingHeroUri: ""
@@ -15,6 +18,10 @@ sub init()
   m.pageTasks = {}
   m.kidsProfile = false
   m.profileMaxAge = 18
+  m.selectedVersionId = ""
+  m.versionResume = 0
+  m.playVersions = []
+  m.publicConfig = {}
   m.screenHost = m.top.findNode("screenHost")
   m.overlayHost = m.top.findNode("overlayHost")
   m.bootLabel = m.top.findNode("bootLabel")
@@ -36,6 +43,9 @@ sub init()
   m.accountBusy = false
   m.accountSilentRefresh = false
   m.accountState = {}
+  m.justRegistered = false
+  m.resendCooldownSec = 0
+  m.resendCooldownTimer = invalid
   m.termsDoc = {}
   m.tiersDoc = {}
   m.requestSeq = 0
@@ -165,6 +175,7 @@ sub onBoot()
     return
   end if
   refreshRokuContent()
+  loadRokuPublicConfig()
   loadAccount(true)
 end sub
 
@@ -304,6 +315,8 @@ sub renderStack()
     m.settingsNode.visible = true
     m.settingsNode.coreUrl = m.coreUrl
     m.settingsNode.health = m.health
+    m.settingsNode.admin = isRokuAdmin()
+    if m.homeNode <> invalid then m.settingsNode.homeRows = m.homeNode.callFunc("settingsHomeRows")
     loadExtrasSettings()
     m.settingsNode.themeId = currentThemeId()
     if top.kind <> "modal" then m.settingsNode.setFocus(true)
@@ -346,6 +359,7 @@ sub renderStack()
     m.profileNode.accountState = m.accountState
     m.profileNode.rd = m.rd
     m.profileNode.visible = true
+    loadRdStatus()
     if top.kind <> "modal" then m.profileNode.setFocus(true)
   else if screen.name = "plans"
     ensurePlans()
@@ -382,6 +396,7 @@ sub renderStack()
     m.rdNode.firstLoad = (aaGet(screen.params, "firstLoad", false) = true)
     m.rdNode.status = m.rd
     m.rdNode.visible = true
+    loadRdStatus()
     if top.kind <> "modal" then m.rdNode.setFocus(true)
   else if screen.name = "hub"
     ensureHub()
@@ -652,6 +667,8 @@ sub showNotice(params as Object)
   if params <> invalid
     if params.DoesExist("title") then panel.title = params.title
     if params.DoesExist("body") then panel.body = params.body
+    if params.DoesExist("buttonLabel") then panel.buttonLabel = params.buttonLabel
+    if params.DoesExist("tall") then panel.tall = params.tall
   end if
   panel.observeField("action", "onNoticeAction")
   m.overlayHost.appendChild(panel)
@@ -688,6 +705,13 @@ sub showPlayer(params as Object)
     if params.DoesExist("showNext") then panel.showNext = params.showNext
     if params.DoesExist("nextTitle") then panel.nextTitle = params.nextTitle
     if params.DoesExist("nextMediaId") then panel.nextMediaId = params.nextMediaId
+    if params.DoesExist("versions") then panel.versions = params.versions
+    if params.DoesExist("versionLabel") then panel.versionLabel = params.versionLabel
+    if params.DoesExist("originalLanguage") then panel.originalLanguage = params.originalLanguage
+    if params.DoesExist("audioLanguage") then panel.audioLanguage = params.audioLanguage
+    if params.DoesExist("audioLanguages") then panel.audioLanguages = params.audioLanguages
+    if params.DoesExist("subtitleMode") then panel.subtitleMode = params.subtitleMode
+    if params.DoesExist("sleepDefault") then panel.sleepDefault = params.sleepDefault
   end if
   panel.message = "Starting..."
   panel.streamHeaders = aaGet(params, "headers", {})
@@ -850,6 +874,23 @@ sub onSettingsAction()
   if action = invalid then return
   kind = aaGet(action, "type", "")
   if kind = "stats" then navigate("push", "stats", {})
+  if kind = "settingsSearch" then showKeyboard("settingsSearch", "Search settings", m.settingsNode.query, "Search")
+  if kind = "changePreference" then setPreferenceFromAction(action)
+  if kind = "prefOptions" then choosePreference(action.row)
+  if kind = "homeSection" then changeHomeSection(action.id, action.delta)
+  if kind = "font"
+    section = registrySection()
+    section.Write("fontFamily", action.family) : section.Flush()
+    tvmApplyFonts(m.top)
+  end if
+  if kind = "posterTitles"
+    enabled = not loadFlag("posterTitles")
+    saveFlag("posterTitles", enabled) : m.global.posterTitles = enabled
+  end if
+  if kind = "openGuide" then navigate("push", "live", {})
+  if kind = "livePicks" then navigate("push", "live-picks", {})
+  if kind = "xtream" then showKeyboard("xtreamServer", "Xtream server URL", "", "Next")
+  if kind = "reloadContent" and isRokuAdmin() then refreshRokuContent()
   if kind = "skipSegments" or kind = "autoplayNext" or kind = "subtitleLanguages" then changeExtrasSetting(kind)
   if kind = "home" then navigate("home", "home", {})
   if kind = "cycleTheme"
@@ -1039,7 +1080,27 @@ sub onAccountAction()
     agreeAccountTerms()
   end if
   if kind = "editEmailCode" then showKeyboard("emailCode", "Six-digit code", "", "Check")
-  if kind = "resendCode" then resendEmailCode()
+  if kind = "resendCode" or kind = "resendVerify" then resendEmailCode()
+  if kind = "forgotPassword" then requestForgotPassword()
+  if kind = "backToPassword"
+    m.accountFieldError = ""
+    m.accountMode = "signin_password"
+    paintAccountGate(m.accountState)
+  end if
+  if kind = "differentEmail"
+    m.justRegistered = false
+    stopWaitingTimer()
+    stopResendCooldown()
+    m.accountToken = ""
+    saveAccountToken("")
+    m.accountPassword = ""
+    m.accountPasswordPlain = false
+    m.accountTermsAgreed = false
+    m.accountFieldError = ""
+    m.accountMode = "register_email"
+    body = { signedIn: false }
+    showAccountGate(body)
+  end if
 end sub
 
 sub onCatalogAction()
@@ -1062,6 +1123,8 @@ sub onLiveAction()
   if handleRibbonKind(action) then return
   if kind = "home" then navigate("home", "home", {})
   if kind = "retry" then loadLive()
+  if kind = "guideWindow" then loadGuide(asText(aaGet(action, "start", "")))
+  if kind = "guideSearch" then showKeyboard("guideSearch", "Search guide", m.liveNode.guideQuery, "Search")
   if kind = "playlist" then showLiveKeyboard()
   if kind = "picks" then navigate("push", "live-picks", {})
   if kind = "play" then startPlayback(aaGet(action, "item", {}))
@@ -1141,6 +1204,7 @@ sub onDetailsAction()
   if not isMediaItem(item) and m.detailsNode <> invalid then item = m.detailsNode.item
   if kind = "close" then navigate("pop", "", {})
   if kind = "play" then startPlayback(item)
+  if kind = "versions" then openVersionPicker(item, 0)
   if kind = "review-preview" then loadReviewPreview(item)
   if kind = "reviews" then navigate("push", "reviews", { item: item })
   if kind = "watch-on" then navigate("push", "services", { title: asText(aaGet(item, "title", "")) })
@@ -1168,6 +1232,12 @@ sub onPlayerAction()
     m.qualityResume = aaGet(action, "position", 0)
     navigate("pop", "", {})
     postPlayback(m.playItem)
+    return
+  end if
+  if kind = "pickVersion"
+    position = aaGet(action, "position", 0)
+    navigate("pop", "", {})
+    openVersionPicker(m.playItem, position, m.playVersions)
     return
   end if
   if kind = "next-channel" then playNextChannel() : return
@@ -1325,6 +1395,23 @@ sub onKeyboardButton()
   if mode = "liveUrl"
     saveLiveUrl(text.Trim())
     return
+  end if
+  if mode = "settingsSearch" then m.settingsNode.query = text
+  if mode = "guideSearch" then m.liveNode.guideQuery = text
+  if mode = "xtreamServer" and isHttpUrl(text)
+    m.xtreamDraft = { server: text }
+    showKeyboard("xtreamUser", "Xtream username", "", "Next")
+    return
+  end if
+  if mode = "xtreamUser" and text <> "" and m.xtreamDraft <> invalid
+    m.xtreamDraft.username = text
+    showKeyboard("xtreamPass", "Xtream password", "", "Save")
+    return
+  end if
+  if mode = "xtreamPass" and text <> "" and m.xtreamDraft <> invalid
+    m.xtreamDraft.password = text
+    m.liveSaveTask = startApiRequest(joinCorePath(m.coreUrl, "/api/live"), "PUT", FormatJson(m.xtreamDraft), "onLiveSaveDone")
+    m.xtreamDraft = invalid
   end if
   if mode = "liveSearch"
     m.livePicksQuery = text.Trim()
@@ -1542,11 +1629,15 @@ sub enterHome()
   loadHealth(false)
   loadHome()
   loadProfiles(false)
+  loadExtrasSettings()
+  loadRokuPublicConfig()
   account = aaGet(m.accountState, "account", {})
   if aaGet(account, "rdKey", false) <> true and m.rdPromptedOnce <> true
     m.rdBootCheck = true
     loadRdStatus()
   end if
+  m.justRegistered = false
+  stopResendCooldown()
 end sub
 
 sub showAccountGate(json as Object)
@@ -1584,6 +1675,9 @@ sub paintAccountGate(json as Object)
   m.accountNode.busy = (m.accountBusy = true)
   m.accountNode.fieldError = m.accountFieldError
   m.accountNode.status = err
+  m.accountNode.emailVerified = (aaGet(account, "emailVerified", false) = true)
+  m.accountNode.resendCooldown = m.resendCooldownSec
+  m.accountNode.resetUrl = "https://tvm-accounts.tvm-accounts.workers.dev/link"
 
   if m.device <> invalid
     m.accountNode.verifyUrl = asText(aaGet(m.device, "verifyUrl", ""))
@@ -1599,10 +1693,20 @@ sub paintAccountGate(json as Object)
     m.accountNode.pollNote = "Getting a code..."
   end if
 
-  if signedIn = true and reason = "unreachable"
+  emailVerified = (aaGet(account, "emailVerified", false) = true)
+  mailOn = (aaGet(m.publicConfig, "mail", true) <> false)
+  if m.accountMode = "forgot"
+    stopDeviceSignIn()
+    stopWaitingTimer()
+    m.accountNode.phase = "forgot"
+  else if signedIn = true and reason = "unreachable"
     stopDeviceSignIn()
     stopWaitingTimer()
     m.accountNode.phase = "unreachable"
+  else if signedIn = true and (reason = "email_unverified" or (m.justRegistered = true and not emailVerified and mailOn and reason = "awaiting_activation"))
+    stopDeviceSignIn()
+    m.accountNode.phase = "check_inbox"
+    startWaitingTimer(5)
   else if signedIn = true and reason = "awaiting_activation"
     stopDeviceSignIn()
     if m.waitingClock <> invalid and m.waitingClock.TotalSeconds() < 5
@@ -1611,11 +1715,7 @@ sub paintAccountGate(json as Object)
       m.accountNode.pollNote = "Checking automatically every minute"
     end if
     m.accountNode.phase = "waiting"
-    startWaitingTimer()
-  else if signedIn = true and reason = "email_unverified"
-    stopDeviceSignIn()
-    stopWaitingTimer()
-    m.accountNode.phase = "verify"
+    startWaitingTimer(60)
   else if signedIn = true and reason = "suspended"
     stopDeviceSignIn()
     stopWaitingTimer()
@@ -1741,6 +1841,7 @@ sub submitAccount()
     m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/register"), "POST", FormatJson(body), "onAccountRegisterDone")
     return
   end if
+  m.justRegistered = false
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signin"), "POST", FormatJson(body), "onAccountSignInDone")
 end sub
 
@@ -1761,6 +1862,8 @@ sub onAccountRegisterDone()
     restoreScreenFocus()
     return
   end if
+  m.justRegistered = true
+  startResendCooldown(60)
   body = {}
   body.email = m.accountEmail.Trim()
   body.password = m.accountPassword
@@ -1813,6 +1916,10 @@ sub signOutAccount()
 end sub
 
 sub onAccountSignOutDone()
+  saveRdOwnFlag(false)
+  m.rd = {}
+  m.justRegistered = false
+  stopResendCooldown()
   m.accountToken = ""
   saveAccountToken("")
   m.accountEmail = ""
@@ -1886,21 +1993,78 @@ sub onEmailCodeDone()
   loadAccount(true)
 end sub
 
+sub startResendCooldown(seconds = 60 as Integer)
+  m.resendCooldownSec = seconds
+  if m.accountNode <> invalid then m.accountNode.resendCooldown = m.resendCooldownSec
+  if m.resendCooldownTimer = invalid
+    m.resendCooldownTimer = CreateObject("roSGNode", "Timer")
+    m.resendCooldownTimer.duration = 1
+    m.resendCooldownTimer.repeat = true
+    m.resendCooldownTimer.observeField("fire", "onResendCooldownTick")
+  end if
+  m.resendCooldownTimer.control = "stop"
+  if seconds > 0 then m.resendCooldownTimer.control = "start"
+end sub
+
+sub stopResendCooldown()
+  m.resendCooldownSec = 0
+  if m.resendCooldownTimer <> invalid then m.resendCooldownTimer.control = "stop"
+  if m.accountNode <> invalid then m.accountNode.resendCooldown = 0
+end sub
+
+sub onResendCooldownTick()
+  if m.resendCooldownSec > 0
+    m.resendCooldownSec = m.resendCooldownSec - 1
+    if m.accountNode <> invalid then m.accountNode.resendCooldown = m.resendCooldownSec
+  end if
+  if m.resendCooldownSec <= 0 then stopResendCooldown()
+end sub
+
 sub resendEmailCode()
-  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/email/send"), "POST", "{}", "onResendEmailCodeDone")
+  if m.resendCooldownSec > 0 then return
+  startResendCooldown(60)
+  m.resendFallbackUsed = false
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/verify/resend"), "POST", FormatJson({ email: m.accountEmail.Trim() }), "onResendEmailCodeDone")
 end sub
 
 sub onResendEmailCodeDone()
   task = m.accountTask
   if task = invalid or m.accountNode = invalid then return
-  if not task.ok
-    m.accountNode.status = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "That code could not be sent. Try again in a minute.")
+  if not task.ok and m.coreUrl <> "" and m.resendFallbackUsed <> true
+    m.resendFallbackUsed = true
+    m.accountTask = startApiRequest("local:/api/account/verify/resend", "POST", FormatJson({ email: m.accountEmail.Trim() }), "onResendEmailCodeDone")
     return
   end if
-  m.accountNode.status = "A new code is on its way."
+  if not task.ok
+    m.accountNode.status = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "That email could not be sent. Try again in a minute.")
+    return
+  end if
+  m.accountNode.status = "Verification email sent. Check your inbox."
 end sub
 
-sub startWaitingTimer()
+sub requestForgotPassword()
+  if m.accountMode = "forgot" and m.resendCooldownSec > 0 then return
+  m.accountMode = "forgot"
+  startResendCooldown(60)
+  m.forgotFallbackUsed = false
+  m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/password/forgot"), "POST", FormatJson({ email: m.accountEmail.Trim() }), "onForgotPasswordDone")
+  paintAccountGate(m.accountState)
+end sub
+
+sub onForgotPasswordDone()
+  task = m.accountTask
+  if task = invalid or m.accountNode = invalid then return
+  if not task.ok and m.coreUrl <> "" and m.forgotFallbackUsed <> true
+    m.forgotFallbackUsed = true
+    m.accountTask = startApiRequest("local:/api/account/password/forgot", "POST", FormatJson({ email: m.accountEmail.Trim() }), "onForgotPasswordDone")
+    return
+  end if
+  if not task.ok
+    m.accountNode.status = tvmCleanAccountError(asText(aaGet(task.json, "error", task.error)), "Could not send a reset link right now. You can use the link page on your phone.")
+  end if
+end sub
+
+sub startWaitingTimer(interval = 60 as Integer)
   m.waitingClock = CreateObject("roTimespan")
   m.waitingClock.Mark()
   if m.waitingTimer = invalid
@@ -1908,7 +2072,7 @@ sub startWaitingTimer()
     m.waitingTimer.repeat = true
     m.waitingTimer.observeField("fire", "onWaitingTick")
   end if
-  m.waitingTimer.duration = 60
+  m.waitingTimer.duration = interval
   m.waitingTimer.control = "start"
 end sub
 
@@ -1917,7 +2081,12 @@ sub stopWaitingTimer()
 end sub
 
 sub onWaitingTick()
-  if m.accountNode = invalid or visibleScreen(m.stack).name <> "account" or m.accountNode.phase <> "waiting"
+  if m.accountNode = invalid or visibleScreen(m.stack).name <> "account"
+    stopWaitingTimer()
+    return
+  end if
+  ph = asText(m.accountNode.phase)
+  if ph <> "waiting" and ph <> "check_inbox" and ph <> "verify"
     stopWaitingTimer()
     return
   end if
@@ -2023,7 +2192,59 @@ sub onHomePoll()
   if m.homeNode.mode <> "ready" then return
   m.homeSilent = true
   loadHome()
+  loadRokuPublicConfig()
+  loadRdStatus()
 end sub
+
+sub loadRokuPublicConfig()
+  m.configFallbackUsed = false
+  m.publicConfigTask = startApiGet(joinCorePath(m.coreUrl, "/api/config"), "onRokuPublicConfigDone")
+end sub
+
+sub onRokuPublicConfigDone()
+  task = m.publicConfigTask
+  if task = invalid then return
+  if not task.ok and m.coreUrl <> "" and m.configFallbackUsed <> true
+    m.configFallbackUsed = true
+    m.publicConfigTask = startApiGet("local:/api/config", "onRokuPublicConfigDone")
+    return
+  end if
+  if not task.ok or task.json = invalid then return
+  cfg = task.json
+  m.publicConfig = cfg
+  flags = aaGet(cfg, "flags", {})
+  if GetInterface(flags, "ifAssociativeArray") <> invalid then m.global.remoteFlags = flags
+  maybeShowPatchNotes(flags)
+  if m.homeNode <> invalid
+    m.homeNode.announcement = aaGet(cfg, "announcement", invalid)
+    m.homeNode.callFunc("refreshHomePrefs")
+  end if
+  if m.settingsNode <> invalid then m.settingsNode.extrasPrefs = m.rokuExtrasPrefs
+  minVer = asText(aaGet(cfg, "minVersion", ""))
+  if minVer <> "" and tvmVersionBelow(m.installedVersion, minVer) and m.minVersionNotified <> minVer
+    m.minVersionNotified = minVer
+    navigate("modal", "notice", {
+      title: "Update required"
+      body: "TVM " + minVer + " or newer is required to continue (installed: " + m.installedVersion + "). Install the latest TVM-roku.zip package from your computer."
+    })
+  end if
+end sub
+
+function tvmVersionBelow(current as String, minimum as String) as Boolean
+  if current = "" or minimum = "" then return false
+  curClean = current.Split("-")[0].Split("+")[0]
+  minClean = minimum.Split("-")[0].Split("+")[0]
+  cParts = curClean.Split(".")
+  mParts = minClean.Split(".")
+  for i = 0 to 2
+    cv = 0 : mv = 0
+    if i < cParts.Count() then cv = Int(Val(cParts[i]))
+    if i < mParts.Count() then mv = Int(Val(mParts[i]))
+    if cv < mv then return true
+    if cv > mv then return false
+  end for
+  return false
+end function
 
 sub onHomeDone(event as Object)
   task = event.GetRoSGNode()
@@ -2137,6 +2358,19 @@ sub onLiveDone(event as Object)
   m.liveFailed = not task.ok
   if task.ok then m.liveRemoteData = task.json
   paintLiveChannels()
+  loadGuide("")
+end sub
+
+sub loadGuide(start as String)
+  query = "/api/live/guide?hours=24"
+  if start <> "" then query = query + "&start=" + encodeQuery(start)
+  m.guideTask = startApiGet(joinCorePath(m.coreUrl, query), "onGuideDone")
+end sub
+
+sub onGuideDone(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.guideTask or task.profileId <> m.profileId or not task.ok then return
+  if m.liveNode <> invalid then m.liveNode.guide = task.json
 end sub
 
 sub onFreeLiveDone(event as Object)
@@ -2353,9 +2587,31 @@ sub onCreateProfileDone()
   restoreScreenFocus()
 end sub
 
+function rdOwnKeyPrefName() as String
+  acc = aaGet(m.accountState, "account", {})
+  id = asText(aaGet(acc, "id", ""))
+  if id = "" then id = "default"
+  return "rdOwnKey_" + id
+end function
+
+function loadRdOwnFlag() as Boolean
+  return registrySection().Read(rdOwnKeyPrefName()) = "1"
+end function
+
+sub saveRdOwnFlag(own as Boolean)
+  sec = registrySection()
+  if own
+    sec.Write(rdOwnKeyPrefName(), "1")
+  else
+    sec.Delete(rdOwnKeyPrefName())
+  end if
+  sec.Flush()
+end sub
+
 sub saveRdToken(token as String)
   body = {}
   body.token = token
+  m.pendingRdOwnToken = (token.Trim() <> "")
   m.mutateTask = startApiRequest(joinCorePath(m.coreUrl, "/api/rd/token"), "PUT", FormatJson(body), "onRdTokenDone")
 end sub
 
@@ -2367,18 +2623,24 @@ sub onRdTokenDone()
     navigate("modal", "notice", { title: "Token not stored", body: "Core rejected the token. Check it and try again." })
     return
   end if
+  saveRdOwnFlag(m.pendingRdOwnToken = true)
   if task.json <> invalid
     m.rd = task.json
+    m.rd.ownKey = loadRdOwnFlag()
     if m.rdNode <> invalid then m.rdNode.status = m.rd
     if m.profileNode <> invalid then m.profileNode.rd = m.rd
   end if
   loadHome()
-  if visibleScreen(m.stack).name = "realdebrid" and aaGet(m.rd, "configured", false) = true
-    navigate("pop", "", {})
+  if m.pendingRdOwnToken = true
+    if visibleScreen(m.stack).name = "realdebrid" and aaGet(m.rd, "configured", false) = true
+      navigate("pop", "", {})
+    end if
+    where = "on your TVM account"
+    if m.coreUrl <> "" then where = "on the computer"
+    navigate("modal", "notice", { title: "Real-Debrid", body: "Your key is stored securely " + where + ". Home will refresh with your account." })
+  else
+    navigate("modal", "notice", { title: "Real-Debrid", body: "Your personal key override was removed." })
   end if
-  where = "on this Roku"
-  if m.coreUrl <> "" then where = "on the computer"
-  navigate("modal", "notice", { title: "Real-Debrid", body: "The token is stored " + where + ". Home will refresh with that account." })
 end sub
 
 sub saveLiveUrl(url as String)
@@ -2441,6 +2703,7 @@ sub onRdStatusDone()
     return
   end if
   m.rd = task.json
+  if m.rd <> invalid then m.rd.ownKey = loadRdOwnFlag()
   if m.profileNode <> invalid then m.profileNode.rd = m.rd
   if m.rdNode <> invalid then m.rdNode.status = m.rd
   if m.rdBootCheck = true
@@ -2595,6 +2858,7 @@ end sub
 
 sub startPlayback(item as Object)
   m.selectedQuality = 0
+  m.selectedVersionId = ""
   m.qualityResume = invalid
   if item = invalid
     navigate("modal", "notice", { title: "Nothing to play", body: "This card has no title." })
@@ -2633,8 +2897,17 @@ sub postPlayback(item as Object)
     end if
   end if
   m.playItem = item
-  body = ParseJson(playbackBody(item))
-  if m.selectedQuality <> invalid then body.quality = m.selectedQuality
+  reqItem = item
+  if m.selectedVersionId <> ""
+    reqItem = {}
+    for each k in item
+      reqItem[k] = item[k]
+    end for
+    reqItem.versionId = m.selectedVersionId
+    m.selectedVersionId = ""
+  end if
+  body = ParseJson(playbackBody(reqItem))
+  if m.selectedQuality <> invalid and m.selectedQuality > 0 then body.quality = m.selectedQuality
   navigate("modal", "loading", {})
   url = joinCorePath(m.coreUrl, "/api/playback")
   if aaGet(item, "source", "") = "free" and m.liveFailed = true
@@ -2693,6 +2966,9 @@ sub onPlayDone(event as Object)
       nextTitle = asText(aaGet(nextItem, "title", ""))
       nextMediaId = asText(aaGet(nextItem, "id", ""))
     end if
+    m.playVersions = aaArray(json, "versions")
+    activeVer = aaGet(json, "version", invalid)
+    verLabel = asText(aaGet(activeVer, "label", ""))
     navigate("modal", "player", {
       url: url
       title: title
@@ -2707,6 +2983,13 @@ sub onPlayDone(event as Object)
       nextMediaId: nextMediaId
       qualities: aaGet(json, "qualities", [])
       resolution: aaGet(json, "resolution", 0)
+      versions: m.playVersions
+      versionLabel: verLabel
+      originalLanguage: asText(aaGet(json, "originalLanguage", ""))
+      audioLanguage: asText(aaGet(json, "audioLanguage", ""))
+      audioLanguages: aaArray(json, "audioLanguages")
+      subtitleMode: asText(aaGet(json, "subtitleMode", ""))
+      sleepDefault: asText(aaGet(m.rokuExtrasPrefs, "sleepDefault", "off"))
       geo: aaGet(json, "geo", aaGet(m.playItem, "geo", ""))
       chosenQuality: m.selectedQuality
     })
@@ -2937,6 +3220,7 @@ sub onRdScreenAction()
   if kind = "home" then navigate("home", "home", {})
   if kind = "back" then navigate("pop", "", {})
   if kind = "paste" then showRdKeyboard()
+  if kind = "clearRd" then saveRdToken("")
 end sub
 
 sub loadLibrary()
@@ -3397,3 +3681,8 @@ sub playNextChannel()
   navigate("pop", "", {})
   if nextItem <> invalid then startPlayback(nextItem)
 end sub
+
+function isRokuAdmin() as Boolean
+  role = asText(aaGet(aaGet(m.accountState, "account", {}), "role", ""))
+  return role = "admin" or role = "owner"
+end function

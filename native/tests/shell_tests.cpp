@@ -54,8 +54,10 @@ public:
     }
     tvm::ui::Theme Look() const override { return theme_; }
     void SaveLook(tvm::ui::Theme theme) override { theme_ = theme; ++themeSaves; }
-    tvm::ui::GlassClarity Glass() const override { return glass_; }
-    void SaveGlass(tvm::ui::GlassClarity clarity) override { glass_ = clarity; ++glassSaves; }
+    tvm::ui::UiFont Font() const override { return font_; }
+    void SetFont(tvm::ui::UiFont font) override { font_ = font; ++fontSaves; }
+    bool ReduceTransparency() const override { return reduceTransparency_; }
+    void SetReduceTransparency(bool on) override { reduceTransparency_ = on; ++reduceTransparencySaves; }
 
     MotionSettings motion_;
     tvm::prefs::CorePrefs core_;
@@ -63,8 +65,10 @@ public:
     int coreSaves = 0;
     tvm::ui::Theme theme_ = tvm::ui::Theme::Dark;
     int themeSaves = 0;
-    tvm::ui::GlassClarity glass_ = tvm::ui::GlassClarity::Clear;
-    int glassSaves = 0;
+    tvm::ui::UiFont font_ = tvm::ui::UiFont::Geist;
+    int fontSaves = 0;
+    bool reduceTransparency_ = false;
+    int reduceTransparencySaves = 0;
 };
 
 // A root screen whose OK opens Settings. It records the motion it is given, so
@@ -129,8 +133,8 @@ TEST(settings_lists_the_web_rows_in_order) {
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
     const std::vector<std::string> expected = {
-        "Picture", "Motion", "Performance mode",
-        "Look", "Theme", "Liquid Glass",
+        "Picture", "Performance mode",
+        "Look", "Theme", "Font", "Reduce transparency", "Reduce motion",
         "Language", "App language",
         "Playback", "TVM Extras", "Your stats", "Account", "Your account", "Privacy & terms", "Plan", "Profiles", "Choose profile on launch", "Streaming services", "Real-Debrid",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
@@ -150,14 +154,13 @@ TEST(settings_surfaces_developer_diagnostics_when_dev_account_active) {
     diag.active = true;
     diag.buildVersion = "v1.0.0 · Native Windows";
     diag.rdTokenSource = "account";
-    diag.glassMode = "Clear";
     settings.SetDeveloperDiagnostics(diag);
 
     const std::vector<std::string> labels = settings.RowLabels();
     REQUIRE(std::find(labels.begin(), labels.end(), "Developer Diagnostics") != labels.end());
     REQUIRE_EQ(settings.DetailOf("dev-build"), std::string("v1.0.0 · Native Windows"));
     REQUIRE_EQ(settings.DetailOf("dev-rd-source"), std::string("account"));
-    REQUIRE_EQ(settings.DetailOf("dev-glass"), std::string("Clear"));
+    REQUIRE_EQ(settings.DetailOf("dev-glass"), std::string("Liquid Glass"));
 
     const std::optional<Command> refresh = settings.ActivateItem("dev-refresh-cache", 0.0);
     REQUIRE(refresh.has_value());
@@ -165,22 +168,23 @@ TEST(settings_surfaces_developer_diagnostics_when_dev_account_active) {
     REQUIRE(refresh->action);
 }
 
-TEST(settings_focus_starts_on_motion) {
+TEST(settings_focus_starts_on_first_row) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("motion"));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
 }
 
 TEST(settings_motion_toggles_between_auto_and_reduced_and_saves) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
+    REQUIRE(settings.FocusItem("motion", 0.0, false));
 
-    REQUIRE(settings.DetailOf("motion") == "Auto · UI animates");
+    REQUIRE(settings.DetailOf("motion") == "Off · full animation");
     REQUIRE(!settings.Select(0.0).has_value());
     REQUIRE(store.motion_.preference == MotionPreference::Reduced);
-    REQUIRE(settings.DetailOf("motion") == "Reduced · freeze decorative loops");
+    REQUIRE(settings.DetailOf("motion") == "On · simpler animation");
 
     (void)settings.Select(0.0);
     REQUIRE(store.motion_.preference == MotionPreference::Auto);
@@ -191,7 +195,7 @@ TEST(settings_performance_mode_toggles_and_saves) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
-    REQUIRE(settings.FocusItem("performance", 0.0, false));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
     (void)settings.Select(0.0);
     REQUIRE(store.motion_.performanceMode);
     REQUIRE(settings.DetailOf("performance") == "On · simpler effects and motion");
@@ -202,22 +206,26 @@ TEST(settings_navigation_skips_groups_and_information_rows) {
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920.0, 1080.0);
 
-    REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Motion -> Performance
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
     REQUIRE(settings.Navigate(Direction::Down, 0.0));  // Skips the Look heading.
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
     REQUIRE(settings.Navigate(Direction::Down, 0.0));
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("glass"));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("font"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("reduce-transparency"));
+    REQUIRE(settings.Navigate(Direction::Down, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("motion"));
     REQUIRE(settings.Navigate(Direction::Down, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("language"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("glass"));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("motion"));
+    REQUIRE(settings.Navigate(Direction::Up, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("reduce-transparency"));
+    REQUIRE(settings.Navigate(Direction::Up, 0.0));
+    REQUIRE(settings.FocusedKey() == std::optional<std::string>("font"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("themes"));
     REQUIRE(settings.Navigate(Direction::Up, 0.0));
     REQUIRE(settings.FocusedKey() == std::optional<std::string>("performance"));
-    REQUIRE(settings.Navigate(Direction::Up, 0.0));
-    REQUIRE(settings.FocusedKey() == std::optional<std::string>("motion"));
     REQUIRE(!settings.Navigate(Direction::Up, 0.0));  // Nothing above the first row.
 }
 
@@ -280,22 +288,30 @@ TEST(settings_automatic_updates_toggle_and_save) {
     REQUIRE(settings.DetailOf("auto-update") == "Off · check from Updates");
 }
 
-TEST(settings_cycles_clear_default_and_tinted_glass) {
+TEST(settings_cycles_fonts_and_toggles_reduce_transparency) {
     MemoryStore store;
     SettingsScreen settings(store, MotionSettings{});
     settings.Layout(1920, 1080);
-    REQUIRE(settings.FocusItem("glass", 0, false));
-    REQUIRE(settings.DetailOf("glass").starts_with("Clear"));
+
+    REQUIRE(settings.FocusItem("font", 0, false));
+    REQUIRE_EQ(settings.DetailOf("font"), std::string("Geist"));
     (void)settings.Select(0);
-    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Default);
-    REQUIRE(settings.DetailOf("glass").starts_with("Default"));
+    REQUIRE(store.font_ == tvm::ui::UiFont::Inter);
+    REQUIRE_EQ(settings.DetailOf("font"), std::string("Inter"));
     (void)settings.Select(0);
-    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Tinted);
+    REQUIRE(store.font_ == tvm::ui::UiFont::System);
     SettingsScreen reopened(store, MotionSettings{});
-    REQUIRE(reopened.DetailOf("glass").starts_with("Tinted"));
+    REQUIRE_EQ(reopened.DetailOf("font"), std::string("System"));
     (void)settings.Select(0);
-    REQUIRE(store.glass_ == tvm::ui::GlassClarity::Clear);
-    REQUIRE_EQ(store.glassSaves, 3);
+    REQUIRE(store.font_ == tvm::ui::UiFont::Geist);
+    REQUIRE_EQ(store.fontSaves, 3);
+
+    REQUIRE(settings.FocusItem("reduce-transparency", 0, false));
+    REQUIRE_EQ(settings.DetailOf("reduce-transparency"), std::string("Off · Liquid Glass"));
+    (void)settings.Select(0);
+    REQUIRE(store.reduceTransparency_);
+    REQUIRE_EQ(settings.DetailOf("reduce-transparency"), std::string("On · solid surfaces"));
+    REQUIRE_EQ(store.reduceTransparencySaves, 1);
 }
 
 TEST(settings_switches_the_saved_theme_and_keeps_it_on_reopen) {
@@ -432,7 +448,8 @@ TEST(shell_opens_settings_and_a_motion_change_reaches_the_home_screen) {
     shell.Select(0.0);
     REQUIRE(Names(shell) == (std::vector<std::string>{"home", "settings"}));
 
-    // Motion is the first focusable row, so OK changes it.
+    // Down four times walks from Performance mode to Reduce motion, then OK toggles it.
+    for (int i = 0; i < 4; ++i) shell.Navigate(Direction::Down, 0.0);
     shell.Select(0.0);
     REQUIRE(store.motion_.preference == MotionPreference::Reduced);
     REQUIRE(root->received.preference == MotionPreference::Reduced);

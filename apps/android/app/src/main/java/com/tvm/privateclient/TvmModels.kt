@@ -295,6 +295,7 @@ data class ProgressEntry(
     val position: Double,
     val duration: Double,
     val updated: String,
+    val hiddenFromContinueWatching: Boolean = false,
     val completedAt: String? = null,
     val completions: Int = 0,
 ) {

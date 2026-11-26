@@ -60,6 +60,8 @@ struct TextStyle {
     bool bold = false;
     // A font weight such as the sting's 750 or 800. Zero means the weight `bold` picks.
     int weight = 0;
+    double trackingEm = 0.0;
+    bool tabular = false;
 };
 
 // How a vector glyph is drawn. A colour with no alpha draws nothing, so a glyph can be filled, stroked or both.
@@ -80,7 +82,7 @@ enum class GlassKind {
     Orb,
 };
 
-// Parameters for an Apple TV (tvOS 26) optical glass surface.
+// Material and interaction state for an optical glass surface.
 struct GlassStyle {
     GlassKind kind = GlassKind::Pill;
     bool focused = false;
@@ -91,8 +93,10 @@ struct GlassStyle {
     bool reduceTransparency = false;
     bool warm = false;
     bool rimOnly = false;
-    // Always diffuse the picture behind as frosted glass does, whatever the viewer's Liquid Glass setting: menus and
-    // sheets that hold rows of text over artwork, as Apple's own menus are.
+    bool solid = false;
+    // The caller reads GlassInk immediately after drawing this surface.
+    bool adaptiveInk = false;
+    // Legacy sheet callers request the larger sheet's diffusion radius.
     bool frosted = false;
     // Hover or focus emphasis and press depth, each eased from 0 to 1 by callers that animate them. A bool
     // `focused` or `pressed` with a zero amount counts as fully on.
@@ -147,6 +151,7 @@ public:
         return static_cast<double>(text.size()) * 0.56 * style.sizePx;
     }
 
+    virtual Color GlassInk(Color fallback) const { return fallback; }
     virtual void Clear(Color color) = 0;
     virtual void FillRoundRect(const Box& box, double radius, Color color) = 0;
     virtual void StrokeRoundRect(const Box& box, double radius, double width, Color color) = 0;
@@ -167,6 +172,14 @@ public:
     // The whole picture, scaled to fit inside `box` and centred, as a logo is shown. A painter that cannot fit a
     // picture draws it as Image does.
     virtual bool ImageContain(const Box& box, const std::string& url) { return Image(box, url, 0.0); }
+
+    virtual bool HeroVideo(const Box& /*box*/, double /*opacity*/, double /*focusX*/, double /*focusY*/) { return false; }
+
+    virtual bool SpotlightLogo(const Box& box, const std::string& url, double /*opacity*/, double /*blur*/,
+                               double /*sweep*/) { return ImageContain(box, url); }
+
+    virtual void BeginLightParticles() {}
+    virtual void EndLightParticles() {}
 
     // Fills the box with a gradient along the line from (x0, y0) to (x1, y1), in window pixels.
     virtual void FillLinearGradient(const Box& /*box*/, double /*x0*/, double /*y0*/, double /*x1*/, double /*y1*/,

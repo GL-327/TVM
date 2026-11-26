@@ -52,6 +52,7 @@ for (const event of events?.events ?? []) {
   if (!day(event.start) || !day(event.end) || !day(event.release)) fail(`${where}: start/end/release dates`);
   if (event.start > event.end) fail(`${where}: start after end`);
   if (!hex(event.accent) || !hex(event.glow)) fail(`${where}: accent/glow colours`);
+  if (event.effect !== undefined && !['embers', 'sparks', 'snow', 'dust', 'stars', 'none'].includes(event.effect)) fail(`${where}: effect`);
   if (typeof event.title !== 'string' || typeof event.line !== 'string') fail(`${where}: title and line`);
   if (!Array.isArray(event.rail?.items) || event.rail.items.length === 0 || !event.rail.items.every(imdb)) fail(`${where}: rail items are IMDb ids`);
   if (event.avatarSet !== null && event.avatarSet !== undefined && !setIds.has(event.avatarSet)) fail(`${where}: avatarSet ${event.avatarSet} not in avatars.json`);
@@ -60,11 +61,23 @@ for (const event of events?.events ?? []) {
 const channels = load('free-channels.json');
 if (channels?.schema !== 1 || !Array.isArray(channels?.channels) || channels.channels.length === 0) fail('free-channels.json: schema 1 with channels');
 unique(channels?.channels ?? [], 'free-channels.json');
+const guideFeeds = channels?.epgFeeds;
+if (!Array.isArray(guideFeeds) || !guideFeeds.length) fail('free-channels.json: epgFeeds must contain public HTTPS feeds');
+unique(guideFeeds ?? [], 'free-channels.json epgFeeds');
+const guideFeedIds = new Set((guideFeeds ?? []).map(feed => feed.id));
+for (const feed of guideFeeds ?? []) {
+  if (!https(feed.url)) fail(`free-channels.json epgFeeds ${feed.id}: HTTPS URL required`);
+}
 for (const channel of channels?.channels ?? []) {
   const where = `free-channels.json ${channel.id}`;
   if (!https(channel.url) || !/\.m3u8(\?|$)/.test(new URL(channel.url).pathname + (new URL(channel.url).search ? '?' : ''))) fail(`${where}: https .m3u8 url`);
   if (typeof channel.name !== 'string' || typeof channel.group !== 'string') fail(`${where}: name and group`);
   if (channel.logo !== null && channel.logo !== undefined && !https(channel.logo)) fail(`${where}: logo must be https`);
+  if (channel.epgId !== undefined || channel.epgFeed !== undefined) {
+    if (typeof channel.epgId !== 'string' || !channel.epgId.trim() || channel.epgId.length > 256 || !guideFeedIds.has(channel.epgFeed)) {
+      fail(`${where}: epgId must identify a channel in a listed epgFeed`);
+    }
+  }
   if (channel.geo !== null && !/^[A-Z]{2}$/.test(String(channel.geo))) fail(`${where}: geo is a country code or null`);
 }
 

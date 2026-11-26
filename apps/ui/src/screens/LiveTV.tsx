@@ -9,11 +9,13 @@ import { Ribbon } from '../components/Ribbon';
 import { bundledFreeChannels, fetchFreeChannels, filterChannelsByAge, type LiveChannelWithMeta } from '../data/freeLive';
 import { fetchLive, saveXtream, type LiveChannel, type LiveStatus } from '../data/media';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
-import { fetchProfiles } from '../data/profiles';
+import { effectiveProfileMaxAge, fetchProfiles, peekActiveProfile } from '../data/profiles';
 import { requestFocus } from '../nav/focusEngine';
 import { bindKeyboardFields } from '../nav/pointerInput';
 import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import { livePlayerParams } from '../player/features/LiveOverlay';
+import { ProgrammeGuide } from './ProgrammeGuide';
+import type { GuideChannel } from '../data/guide';
 import type { ScreenProps } from '../nav/registry';
 
 const EMPTY: LiveStatus = {
@@ -44,10 +46,11 @@ function groupedChannels<T extends LiveChannel>(channels: readonly T[]): Array<{
 export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const scope = useFocusScope();
+  const [showGuide, setShowGuide] = useState(true);
   const [status, setStatus] = useState<LiveStatus>(EMPTY);
   const [plan, setPlan] = useState<PlanStatus>(FALLBACK_PLAN);
-  const [maxAge, setMaxAge] = useState<number>(18);
-  const [freeChannels, setFreeChannels] = useState<LiveChannelWithMeta[]>(() => bundledFreeChannels(18));
+  const [maxAge, setMaxAge] = useState<number>(() => effectiveProfileMaxAge(peekActiveProfile()));
+  const [freeChannels, setFreeChannels] = useState<LiveChannelWithMeta[]>(() => bundledFreeChannels(effectiveProfileMaxAge(peekActiveProfile())));
   const [loading, setLoading] = useState(true);
   const [group, setGroup] = useState<string | null>(null);
   const [host, setHost] = useState('');
@@ -81,9 +84,10 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
     load();
   }, []);
 
-  useEffect(() => bindKeyboardFields(pageRef.current), []);
+  useEffect(() => bindKeyboardFields(pageRef.current), [showGuide]);
 
   useEffect(() => {
+    if (showGuide) return;
     const firstFree = freeChannels[0];
     if (firstFree !== undefined) {
       const timer = window.setTimeout(() => requestFocus(`${scope}/${firstFree.id.replaceAll(':', '-')}`), 0);
@@ -91,7 +95,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
     }
     const timer = window.setTimeout(() => requestFocus(`${scope}/live-back`), 0);
     return () => window.clearTimeout(timer);
-  }, [freeChannels, scope]);
+  }, [freeChannels, scope, showGuide]);
 
   const connect = async (): Promise<void> => {
     const nextHost = (fieldValue('host') || host).trim();
@@ -137,6 +141,22 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
   const total = status.total ?? 0;
   const pickLimit = status.pickLimit ?? 48;
 
+  const fallback = useMemo<GuideChannel[]>(() =>
+    [...freeChannels, ...channels].map((channel, i) => ({
+      ...channel, number: i + 1, programmes: [],
+      source: i < freeChannels.length ? 'free' : status.configured ? 'xtream' : 'm3u',
+    })), [channels, freeChannels, status.configured]);
+
+  if (showGuide) return <main className="page page--guide">
+    <Ribbon active="live" />
+    <ProgrammeGuide fallback={fallback} maxAge={maxAge} onChannels={() => setShowGuide(false)} watch={(channel) => {
+      const free = freeChannels.find((item) => item.id === channel.id);
+      navigate.pushModal('player', { params: { ...livePlayerParams(channel),
+        ...(free ? { link: free.url ?? '', channelGeo: free.geo ?? null, freeQueue } : {}),
+      } });
+    }} />
+  </main>;
+
   return (
     <main ref={pageRef} className="page page--library page--docked page--live home" data-keyboard-fields="">
       <PageScene />
@@ -150,6 +170,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
           </div>
         </div>
         <div className="hero__actions">
+          <FocusButton id="show-guide" className="tvm-button--glass" onSelect={() => setShowGuide(true)}>Guide</FocusButton>
           <FocusButton id="live-picks" className="tvm-button--glass" onSelect={() => navigate.push('live-picks')}>
             Choose channels
           </FocusButton>

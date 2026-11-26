@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="HomeScreen" extends="Group">
   <interface>
+    <function name="refreshHomePrefs" />
+    <function name="settingsHomeRows" />
     <field id="releaseShortcut" type="boolean" value="false" />
     <field id="event" type="assocarray" onChange="onEvent" />
+    <field id="announcement" type="assocarray" onChange="onAnnouncement" />
+    <field id="surpriseItem" type="assocarray" onChange="onSurpriseItem" />
     <field id="appendPage" type="assocarray" alwaysNotify="true" onChange="onAppendPage" />
     <field id="mode" type="string" value="loading" onChange="onMode" />
     <field id="payload" type="assocarray" onChange="onPayload" />
@@ -21,22 +25,26 @@
   <script type="text/brightscript" uri="pkg:/source/focus.brs" />
   <script type="text/brightscript" uri="HomeScreen.brs" />
   <children>
+    <Group id="heroMedia">
     <Poster id="heroFallback" width="3840" height="2160" loadWidth="1280" loadHeight="720" loadDisplayMode="scaleToZoom" />
     <Poster id="heroArt" width="3840" height="2160" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" />
     <Poster id="heroArtB" width="3840" height="2160" loadDisplayMode="scaleToZoom" loadWidth="1920" loadHeight="1080" opacity="0" />
+    </Group>
     <Poster id="heroVignetteLeft" width="2200" height="2160" uri="pkg:/images/chrome/hero-vignette-left.png" />
     <Poster id="heroVignetteBottom" width="3840" height="1100" translation="[0, 1060]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
     <Poster id="eventGlow" width="1800" height="1800" uri="pkg:/images/glass/orb-halo.png" translation="[-300, -100]" opacity="0.2" visible="false" />
     <Rectangle id="railScrim" width="3840" height="2160" color="0x000000B8" visible="false" />
-    <Group id="heroCopy" translation="[160, 320]">
-      <Poster id="eventLogo" width="1800" height="320" loadDisplayMode="scaleToFit" visible="false" />
-      <Label id="eventLine" translation="[0, 420]" width="2400" height="140" wrap="true" maxLines="2" visible="false" />
+    <Group id="heroCopy" translation="[160, 332]">
+      <Label id="heroKicker" translation="[0, -62]" width="1500" height="56" />
+      <Poster id="eventLogo" width="1680" height="320" loadDisplayMode="scaleToFit" visible="false" />
+      <Label id="eventLine" translation="[0, 430]" width="1840" height="140" wrap="true" maxLines="2" visible="false" />
       <Poster id="heroRatingBadge" translation="[1300, 340]" width="480" height="72" uri="pkg:/images/glass/chip-fill.9.png" blendColor="0xF5C518FF" visible="false" />
       <Label id="heroRating" translation="[1320, 344]" width="440" height="64" horizAlign="center" color="0x000000FF" />
-      <Label id="heroTitle" width="2500" height="320" wrap="true" maxLines="2" vertAlign="bottom" color="0xF5F5F5FF" />
+      <Label id="heroTitle" width="1780" height="320" wrap="true" maxLines="2" vertAlign="bottom" color="0xF5F5F5FF" />
       <Label id="heroMeta" translation="[0, 344]" width="1200" height="64" color="0xD8D9E8FF" />
       <FocusButton id="playBtn" translation="[0, 456]" />
       <FocusButton id="detailsBtn" translation="[460, 456]" />
+      <FocusButton id="surpriseBtn" translation="[860, 456]" visible="false" />
       <Group id="dots" translation="[0, 654]">
         <Poster id="dot0" uri="pkg:/images/glass/dot.png" width="16" height="16" blendColor="0xFFFFFFFF" />
         <Poster id="dot1" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[32, 0]" blendColor="0xFFFFFF59" />
@@ -45,14 +53,30 @@
       </Group>
     </Group>
     <Group id="rails" translation="[0, 1160]" />
+    <Group id="announceBar" translation="[160, 188]" visible="false">
+      <GlassPanel id="announceGlass" shape="pill" width="1600" height="72" />
+      <Poster id="announceDot" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[28, 28]" />
+      <Label id="announceText" translation="[64, 8]" width="1500" height="56" vertAlign="center" maxLines="1" color="0xF5F7FAFF" />
+    </Group>
     <NavStrip id="nav" translation="[0, 0]" />
     <Group id="status" translation="[0, 700]" visible="false">
       <ErrorState id="error" />
       <EmptyState id="empty" translation="[0, 0]" />
       <Label id="loading" text="Loading..." color="0xC4C4C4FF" translation="[160, 80]" />
     </Group>
+    <Animation id="heroMotion" duration="40" repeat="true" easeFunction="inOutQuad">
+      <Vector2DFieldInterpolator key="[0.0, 0.5, 1.0]" keyValue="[[1.0, 1.0], [1.08, 1.08], [1.0, 1.0]]" fieldToInterp="heroMedia.scale" />
+      <Vector2DFieldInterpolator key="[0.0, 0.5, 1.0]" keyValue="[[0.0, 0.0], [-124.0, -94.0], [0.0, 0.0]]" fieldToInterp="heroMedia.translation" />
+    </Animation>
+    <Animation id="glowMotion" duration="6" repeat="true" easeFunction="inOutQuad">
+      <FloatFieldInterpolator key="[0.0, 0.5, 1.0]" keyValue="[0.22, 0.38, 0.22]" fieldToInterp="eventGlow.opacity" />
+    </Animation>
+    <Animation id="heroEntrance" duration="0.9" easeFunction="outCubic">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroCopy.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[160.0, 356.0], [160.0, 332.0]]" fieldToInterp="heroCopy.translation" />
+    </Animation>
     <Timer id="heroDebounce" duration="0.3" repeat="false" />
-    <Timer id="heroTimer" duration="8" repeat="true" />
+    <Timer id="heroTimer" duration="24" repeat="true" />
     <Animation id="heroFade" duration="0.55" easeFunction="inOutQuad" optional="true">
       <FloatFieldInterpolator id="heroFadeA" key="[0.0, 1.0]" keyValue="[1.0, 0.0]" fieldToInterp="heroArt.opacity" />
       <FloatFieldInterpolator id="heroFadeB" key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroArtB.opacity" />

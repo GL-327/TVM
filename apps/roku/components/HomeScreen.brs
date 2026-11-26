@@ -7,6 +7,14 @@
 ' not loop; only rows near focus keep live cards.
 sub init()
   m.top.focusable = true
+  m.motionActive = false
+  m.glowActive = false
+  m.heroMotion = m.top.findNode("heroMotion")
+  m.glowMotion = m.top.findNode("glowMotion")
+  m.heroEntrance = m.top.findNode("heroEntrance")
+  m.top.observeField("visible", "syncHeroMotion")
+  if m.global.hasField("reduceMotion") then m.global.observeField("reduceMotion", "syncHeroMotion")
+  m.top.findNode("heroKicker").font = tvmFontMeta()
   m.heroArt = m.top.findNode("heroArt")
   m.heroArtB = m.top.findNode("heroArtB")
   m.heroFallback = m.top.findNode("heroFallback")
@@ -19,6 +27,11 @@ sub init()
   m.railsInterp = m.top.findNode("railsInterp")
   m.playBtn = m.top.findNode("playBtn")
   m.detailsBtn = m.top.findNode("detailsBtn")
+  m.surpriseBtn = m.top.findNode("surpriseBtn")
+  m.announceBar = m.top.findNode("announceBar")
+  m.announceGlass = m.top.findNode("announceGlass")
+  m.announceDot = m.top.findNode("announceDot")
+  m.announceText = m.top.findNode("announceText")
   m.dots = m.top.findNode("dots")
   m.nav = m.top.findNode("nav")
   m.railsGroup = m.top.findNode("rails")
@@ -37,6 +50,7 @@ sub init()
   ]
 
   m.event = invalid
+  m.top.findNode("eventLine").color = "0xD8D9E8FF"
   m.top.findNode("eventLine").font = tvmFontBody()
   m.top.findNode("heroRating").font = tvmFontMeta()
   m.top.findNode("eventLogo").observeField("loadStatus", "onEventLogo")
@@ -55,6 +69,14 @@ sub init()
   m.detailsBtn.label = "Details"
   m.detailsBtn.itemId = "hero-info"
   m.detailsBtn.translation = [460, 456]
+  if m.surpriseBtn <> invalid
+    m.surpriseBtn.variant = "glassPill"
+    m.surpriseBtn.pillWidth = 380
+    m.surpriseBtn.label = "Surprise me"
+    m.surpriseBtn.itemId = "hero-surprise"
+    m.surpriseBtn.visible = false
+  end if
+  if m.announceText <> invalid then m.announceText.font = tvmFontMeta()
 
   m.nav.activeId = "home"
   m.nav.focusCol = 0
@@ -161,7 +183,7 @@ sub onPayload()
     renderHero()
   end if
 
-  newRails = homeContentRails(payload)
+  newRails = chooseHomeRows(homeContentRails(payload), true)
   for each incoming in newRails
     for each existing in m.rails
       if incoming.id = existing.id and existing.items.Count() > incoming.items.Count()
@@ -247,6 +269,7 @@ sub renderHero()
     showHeroFallback()
     m.playBtn.visible = false
     m.detailsBtn.visible = false
+    if m.surpriseBtn <> invalid then m.surpriseBtn.visible = false
     paintDots()
     return
   end if
@@ -287,12 +310,15 @@ sub paintHeroCopy(item as Object)
     m.heroTitle.color = tvmText()
   end if
   m.heroMeta.text = homeHeroMeta(item)
-  score = imdbScoreText(asText(aaGet(item, "imdbRating", aaGet(item, "rating", ""))))
+  score = ""
+  if tvmExtraEnabled("ratings") then score = imdbScoreText(asText(aaGet(item, "imdbRating", aaGet(item, "rating", ""))))
   m.top.findNode("heroRating").text = ""
   m.top.findNode("heroRatingBadge").visible = score <> ""
   if score <> "" then m.top.findNode("heroRating").text = "IMDb " + score + " /10"
   m.top.findNode("eventLine").visible = false
-  m.top.findNode("eventLogo").visible = false
+  m.top.findNode("heroKicker").text = ""
+  m.top.findNode("eventLogo").uri = asText(aaGet(item, "logo", ""))
+  onEventLogo()
   m.top.findNode("eventGlow").visible = false
   m.playBtn.pillWidth = 420
   m.playBtn.translation = [0, 456] : m.detailsBtn.translation = [460, 456]
@@ -300,21 +326,25 @@ sub paintHeroCopy(item as Object)
   m.playBtn.accent = true
   if m.event <> invalid and asText(aaGet(item, "id", "")) = m.event.imdbId
     m.heroTitle.text = m.event.title
-    m.heroMeta.text = m.event.kicker
+    m.top.findNode("heroKicker").text = UCase(asText(aaGet(m.event, "kicker", "")))
+    m.top.findNode("heroKicker").color = "0x" + Mid(m.event.accent, 2) + "FF"
+    m.heroMeta.text = m.heroMeta.text + "  ·  " + StrI(m.event.items.Count()).Trim() + " titles"
     m.top.findNode("eventLine").visible = true
     m.top.findNode("eventLine").text = m.event.line
-    m.top.findNode("eventLogo").uri = asText(aaGet(item, "logo", ""))
-    onEventLogo()
     m.top.findNode("eventGlow").visible = true
-    m.top.findNode("eventGlow").blendColor = "0x" + Mid(m.event.accent, 2) + "FF"
-    m.playBtn.accentColor = "0x" + Mid(m.event.accent, 2) + "8C"
+    m.top.findNode("eventGlow").blendColor = "0x" + Mid(asText(aaGet(m.event, "glow", m.event.accent)), 2) + "FF"
+    m.playBtn.accentColor = "0x" + Mid(m.event.accent, 2) + "FF"
     m.playBtn.pillWidth = 640
     m.playBtn.translation = [0, 620] : m.detailsBtn.translation = [680, 620]
     m.dots.translation = [0, 820]
     m.playBtn.label = "Watch the saga"
+    syncSurpriseButton()
+    syncHeroMotion()
     return
   end if
-  m.playBtn.accentColor = "0x2F6BFF8C"
+  syncSurpriseButton()
+  syncHeroMotion()
+  m.playBtn.accentColor = "0x2F6BFFFF"
   if hasProgress(item)
     m.playBtn.label = "Resume"
   else
@@ -384,6 +414,10 @@ sub onHeroArtLoad()
   m.heroFallback.visible = false
   m.heroFallback.uri = ""
   m.global.trendingHeroUri = m.shownUri
+  if m.top.visible and m.zone <> "rails" and not tvmReduceMotion()
+    m.heroEntrance.control = "stop"
+    m.heroEntrance.control = "start"
+  end if
   if first or tvmReduceMotion()
     m.heroArt.opacity = 0
     m.heroArtB.opacity = 0
@@ -500,7 +534,9 @@ sub applyFocusKey(key as String)
   else if parsed.zone = "hero"
     m.zone = "hero"
     m.heroCol = Int(Val(parsed.a))
-    if m.heroCol < 0 or m.heroCol > 1 then m.heroCol = 0
+    maxCol = 1
+    if m.surpriseBtn <> invalid and m.surpriseBtn.visible then maxCol = 2
+    if m.heroCol < 0 or m.heroCol > maxCol then m.heroCol = 0
   else if parsed.zone = "nav"
     m.zone = "nav"
     m.navCol = Int(Val(parsed.a))
@@ -531,20 +567,17 @@ sub paintFocus()
   m.nav.activeId = "home"
   m.playBtn.hasFocusStyle = (m.zone = "hero" and m.heroCol = 0)
   m.detailsBtn.hasFocusStyle = (m.zone = "hero" and m.heroCol = 1)
+  if m.surpriseBtn <> invalid then m.surpriseBtn.hasFocusStyle = (m.zone = "hero" and m.heroCol = 2)
+  if m.announceBar <> invalid then paintAnnouncementBar()
 
   inRails = (m.zone = "rails")
   anchor = 0
   if inRails then anchor = m.railRow
-  r = 0
-  while r < m.railNodes.Count()
+  for r = 0 to m.railNodes.Count() - 1
+    if not inRails or r <> m.railRow then m.railNodes[r].focusCol = -1
     m.railNodes[r].live = railRowLive(r, anchor)
-    if inRails and r = m.railRow
-      m.railNodes[r].focusCol = m.railCol
-    else
-      m.railNodes[r].focusCol = -1
-    end if
-    r = r + 1
-  end while
+  end for
+  if inRails and m.railRow < m.railNodes.Count() then m.railNodes[m.railRow].focusCol = m.railCol
 
   m.error.hasFocusStyle = (m.zone = "error")
   m.heroCopy.visible = (m.top.mode = "ready" and not inRails)
@@ -556,6 +589,7 @@ sub paintFocus()
     slideRails(1160)
   end if
 
+  syncHeroMotion()
   rememberFocus()
 end sub
 
@@ -639,7 +673,9 @@ sub moveFocus(intent as String)
     end if
   else if m.zone = "hero"
     if intent = "left" or intent = "right"
-      m.heroCol = heroStep(m.heroCol, intent)
+      heroCount = 2
+      if m.surpriseBtn <> invalid and m.surpriseBtn.visible then heroCount = 3
+      m.heroCol = heroStep(m.heroCol, intent, heroCount)
     else if intent = "up"
       m.zone = "nav"
     else if intent = "down" and m.railNodes.Count() > 0
@@ -731,9 +767,12 @@ sub activate()
     if m.heroCol = 0
       m.playBtn.pressed = true
       emit("play", { item: item })
-    else
+    else if m.heroCol = 1
       m.detailsBtn.pressed = true
       emit("details", { item: item })
+    else if m.heroCol = 2 and m.surpriseBtn <> invalid and m.surpriseBtn.visible and isMediaItem(m.top.surpriseItem)
+      m.surpriseBtn.pressed = true
+      emit("details", { item: m.top.surpriseItem })
     end if
     return
   end if
@@ -798,7 +837,113 @@ end sub
 
 sub onEventLogo()
   logo = m.top.findNode("eventLogo")
-  show = (m.event <> invalid and logo.loadStatus = "ready" and logo.uri <> "")
+  show = (logo.loadStatus = "ready" and logo.uri <> "")
   logo.visible = show
   m.heroTitle.visible = not show
 end sub
+
+sub syncHeroMotion()
+  if m.heroMotion = invalid then return
+  moving = m.top.visible and m.top.mode = "ready" and m.zone <> "rails" and not tvmReduceMotion()
+  if moving <> m.motionActive
+    m.motionActive = moving
+    if moving
+      m.heroMotion.control = "start"
+    else
+      m.heroMotion.control = "stop"
+      m.heroEntrance.control = "stop"
+      m.top.findNode("heroMedia").scale = [1.0, 1.0]
+      m.top.findNode("heroMedia").translation = [0, 0]
+      m.heroCopy.opacity = 1.0
+      m.heroCopy.translation = [160, 332]
+    end if
+  end if
+  glow = m.top.findNode("eventGlow")
+  breathing = moving and glow.visible
+  if breathing <> m.glowActive
+    m.glowActive = breathing
+    if breathing
+      m.glowMotion.control = "start"
+    else
+      m.glowMotion.control = "stop"
+      glow.opacity = 0.22
+    end if
+  end if
+end sub
+
+sub refreshHomePrefs()
+  m.railsSig = ""
+  if m.top.payload <> invalid then onPayload()
+  if isMediaItem(m.heroItem) then paintHeroCopy(m.heroItem)
+  syncSurpriseButton()
+  paintAnnouncementBar()
+end sub
+
+sub onAnnouncement()
+  paintAnnouncementBar()
+end sub
+
+sub onSurpriseItem()
+  syncSurpriseButton()
+end sub
+
+sub syncSurpriseButton()
+  if m.surpriseBtn = invalid then return
+  show = (m.top.mode = "ready" and m.zone <> "rails" and tvmExtraEnabled("surpriseMe") and isMediaItem(m.top.surpriseItem))
+  m.surpriseBtn.visible = show
+  if show and m.detailsBtn <> invalid
+    dx = m.detailsBtn.translation[0] + m.detailsBtn.pillWidth + 40
+    dy = m.detailsBtn.translation[1]
+    m.surpriseBtn.translation = [dx, dy]
+  else if m.heroCol > 1
+    m.heroCol = 1
+  end if
+end sub
+
+sub paintAnnouncementBar()
+  if m.announceBar = invalid or m.announceText = invalid then return
+  ann = m.top.announcement
+  text = asText(aaGet(ann, "text", "")).Trim()
+  show = (m.top.mode = "ready" and m.zone <> "rails" and tvmExtraEnabled("announcements") and ann <> invalid and text <> "")
+  m.announceBar.visible = show
+  if not show then return
+  level = LCase(asText(aaGet(ann, "level", "info")))
+  dotColor = tvmAccentBlue()
+  if level = "warning" then dotColor = tvmWarning()
+  if level = "critical" then dotColor = tvmDanger()
+  if m.announceDot <> invalid then m.announceDot.blendColor = dotColor
+  if m.announceText <> invalid then m.announceText.color = tvmText()
+  m.announceText.text = text
+end sub
+
+function settingsHomeRows() as Object
+  data = []
+  for each row in chooseHomeRows(homeContentRails(m.top.payload), false)
+    data.Push({ id: row.id, title: row.title })
+  end for
+  return data
+end function
+
+function chooseHomeRows(rows as Object, hide as Boolean) as Object
+  saved = aaArray(m.global.rokuPrefs, "homeSections")
+  output = [] : seen = {}
+  for each choice in saved
+    for each row in rows
+      if row.id = choice.id
+        seen[row.id] = true
+        if not hide or aaGet(choice, "visible", true) = true then output.Push(row)
+        exit for
+      end if
+    end for
+  end for
+  for each row in rows
+    if not seen.DoesExist(row.id) then output.Push(row)
+  end for
+  if not hide then return output
+  result = []
+  for each row in output
+    auto = Left(row.id, 5) = "auto-" or row.id = "for-you" or Left(row.id, 6) = "genre-"
+    if not (auto and not tvmExtraEnabled("autoCollections")) and not (row.id = "new-episodes" and not tvmExtraEnabled("comingUp")) then result.Push(row)
+  end for
+  return result
+end function

@@ -2,6 +2,12 @@
 
 namespace tvm::motion {
 
+namespace {
+bool systemReducedMotion = false;
+}
+
+void SetSystemReducedMotion(bool reduced) { systemReducedMotion = reduced; }
+
 MotionPreference ParseMotionPreference(std::string_view value) {
     if (value == "full") return MotionPreference::Full;
     if (value == "reduced") return MotionPreference::Reduced;
@@ -21,7 +27,8 @@ std::string_view ToString(MotionPreference preference) {
 }
 
 bool PrefersReducedMotion(const MotionSettings& settings) {
-    return settings.performanceMode || settings.preference == MotionPreference::Reduced;
+    return settings.performanceMode || settings.preference == MotionPreference::Reduced ||
+           (settings.preference == MotionPreference::Auto && systemReducedMotion);
 }
 
 MotionTokens ResolveMotionTokens(const MotionSettings& settings) {

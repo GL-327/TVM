@@ -10,10 +10,13 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <map>
 #include <tuple>
 #include <string>
 #include <utility>
+
+#include "ui/theme.h"
 
 namespace tvm::platform {
 
@@ -34,7 +37,9 @@ public:
     // Wrapped text, top aligned, for paragraphs.
     IDWriteTextFormat* ParagraphFormat(double sizePx, int weight);
     // Cached single-line text width measurement in pixels.
-    double MeasureText(std::string_view text, double sizePx, int weight);
+    double MeasureText(std::string_view text, const ui::TextStyle& style, int weight);
+    ComPtr<IDWriteTextLayout> TextLayout(std::wstring_view text, const ui::TextStyle& style, int weight,
+                                        float width, float height, bool wrap);
 
     ID2D1Factory* d2d() const { return d2d_.Get(); }
     // Vector glyphs parsed once and kept: a path's geometry is in its own units and drawn through a transform, so it
@@ -49,11 +54,11 @@ public:
 private:
     ComPtr<ID2D1Factory> d2d_;
     ComPtr<IDWriteFactory> dwrite_;
-    ComPtr<IDWriteFontCollection> fontCollection_;
+    std::array<ComPtr<IDWriteFontCollection>, 2> bundledFonts_;
     ComPtr<IWICImagingFactory> wic_;
-    std::wstring family_;
-    std::map<std::tuple<long, int, bool>, ComPtr<IDWriteTextFormat>> formats_;
-    std::map<std::tuple<std::string, long, int>, double> measuredText_;
+    std::wstring systemFamily_;
+    std::map<std::tuple<ui::UiFont, long, int, bool>, ComPtr<IDWriteTextFormat>> formats_;
+    std::map<std::tuple<ui::UiFont, std::string, long, int, double, bool>, double> measuredText_;
     std::map<std::string, ComPtr<ID2D1PathGeometry>> paths_;
     ComPtr<ID2D1StrokeStyle> roundStroke_;
     IDWriteTextFormat* CachedFormat(double sizePx, int weight, bool wrap);

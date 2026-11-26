@@ -1,3 +1,4 @@
+import type { Version } from './versions.ts';
 import type { HeaderProfile } from '../Server Side Live/headers.ts';
 
 export type ProviderId = string;
@@ -39,6 +40,9 @@ export type PlaybackResolution =
       fallbackEngine?: 'html5' | 'native';
       headers?: Record<string, string>;
       subtitles?: Subtitle[];
+      version?: Version;
+      originalLanguage?: string | null;
+      audioLanguages?: string[];
     }
   | {
       kind: 'unavailable';
@@ -117,6 +121,8 @@ export interface LiveChannel {
    * upstream; never part of anything sent to a client.
    */
   profile?: HeaderProfile;
+  epgId?: string;
+  number?: number;
 }
 
 export interface LiveGroup {

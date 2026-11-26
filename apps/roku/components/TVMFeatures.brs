@@ -1,5 +1,6 @@
 ' Scene-owned feature navigation. All I/O still runs on ApiTask.
 function featureName(name as String) as Boolean
+  if name = "setting-options" or name = "versions" then return true
   return name = "stats" or name = "services" or name = "changelog" or name = "reviews" or name = "profile-edit" or name = "avatar-sets" or name = "avatars" or name = "adult-profiles"
 end function
 
@@ -21,6 +22,11 @@ sub ensureFeature(name as String)
 end sub
 
 sub loadFeature(name as String, params as Object)
+  if name = "setting-options" or name = "versions"
+    m.featureNodes[name].heading = params.heading
+    m.featureNodes[name].rows = params.rows
+    return
+  end if
   node = m.featureNodes[name]
   node.rows = [{ id: "loading", label: "Loading", body: "Loading…" }]
   if name = "stats"
@@ -316,7 +322,14 @@ sub onFeatureAction(event as Object)
   row = aaGet(action, "row", {})
   id = asText(aaGet(row, "id", ""))
   name = visibleScreen(m.stack).name
-  if name = "stats"
+  if name = "setting-options"
+    scope = ""
+    if row.scope = "style" then scope = "subtitleStyle"
+    setPreferenceFromAction({ key: id, value: row.value, scope: scope })
+    navigate("pop", "", {})
+  else if name = "versions"
+    playPickedVersion(id)
+  else if name = "stats"
     if id = "clear-history" then navigate("modal", "confirm", { title: "Clear history?", body: "Remove watch history and statistics for this profile on this Roku.", confirmLabel: "Clear history", confirmId: "clear-stats" })
   else if name = "services"
     if id = "retry-services" then loadFeature("services", {}) : return
@@ -402,4 +415,74 @@ sub onPreviewReviewDone()
   if m.detailsNode = invalid or m.previewReviewTask = invalid then return
   if asText(aaGet(m.detailsNode.item, "id", "")) <> m.previewReviewId then return
   if m.previewReviewTask.ok then m.detailsNode.reviewPreview = m.previewReviewTask.json
+end sub
+
+sub openVersionPicker(item as Object, resumePos = 0.0 as Float, knownVersions = invalid as Dynamic)
+  if item = invalid then return
+  m.versionPickItem = item
+  m.versionResume = resumePos
+  m.versionPickId = asText(aaGet(item, "id", ""))
+  navigate("push", "versions", { heading: "Choose version", rows: [{ id: "loading", label: "Finding available releases", body: "Checking cached and direct sources for this TV..." }] })
+  if knownVersions <> invalid and knownVersions.Count() > 0
+    paintVersionRows(knownVersions)
+    return
+  end if
+  query = "?id=" + encodeQuery(m.versionPickId)
+  season = aaGet(item, "season", invalid)
+  ep = aaGet(item, "episode", invalid)
+  if season <> invalid and ep <> invalid then query = query + "&season=" + encodeQuery(asText(season)) + "&episode=" + encodeQuery(asText(ep))
+  m.versionsTask = startApiGet(joinCorePath(m.coreUrl, "/api/playback/versions" + query), "onVersionsLoaded")
+end sub
+
+sub onVersionsLoaded()
+  task = m.versionsTask
+  if task = invalid or not m.featureNodes.DoesExist("versions") then return
+  if not task.ok
+    m.featureNodes.versions.rows = [{ id: "none", label: "Could not load versions", body: "Press OK to go back." }]
+    return
+  end if
+  paintVersionRows(aaArray(task.json, "versions"))
+end sub
+
+sub paintVersionRows(versions as Object)
+  rows = []
+  for each v in versions
+    vLabel = asText(aaGet(v, "label", "Version"))
+    if aaGet(v, "recommended", false) = true then vLabel = vLabel + "  (Recommended)"
+    details = []
+    if aaGet(v, "cached", false) = true then details.Push("RD+ cached")
+    codec = asText(aaGet(v, "codec", ""))
+    if codec <> "" then details.Push(UCase(codec))
+    audio = aaGet(v, "audio", {})
+    audioParts = []
+    if asText(aaGet(audio, "codec", "")) <> "" then audioParts.Push(asText(aaGet(audio, "codec", "")))
+    if asText(aaGet(audio, "channels", "")) <> "" then audioParts.Push(asText(aaGet(audio, "channels", "")))
+    if aaGet(audio, "atmos", false) = true then audioParts.Push("Atmos")
+    if audioParts.Count() > 0 then details.Push(audioParts.Join(" "))
+    langs = aaArray(v, "languages")
+    if langs.Count() > 0 then details.Push(langs.Join(", "))
+    body = details.Join("  ·  ")
+    if body <> "" then body = body + Chr(10)
+    body = body + "OK: play this version"
+    rows.Push({ id: asText(aaGet(v, "id", "")), label: vLabel, body: body, version: v })
+  end for
+  if rows.Count() = 0 then rows.Push({ id: "none", label: "No compatible versions found", body: "Try lowering Upscale or Quality limits in Settings. Press OK to go back." })
+  m.featureNodes.versions.rows = rows
+end sub
+
+sub playPickedVersion(id as String)
+  if id = "loading" then return
+  if id = "none"
+    navigate("pop", "", {})
+    return
+  end if
+  item = m.versionPickItem
+  if item = invalid then navigate("pop", "", {}) : return
+  m.selectedVersionId = id
+  m.selectedQuality = 0
+  m.qualityResume = invalid
+  if m.versionResume <> invalid and m.versionResume > 0 then m.qualityResume = m.versionResume
+  m.versionResume = 0
+  navigate("pop", "", {})
+  postPlayback(item)
 end sub

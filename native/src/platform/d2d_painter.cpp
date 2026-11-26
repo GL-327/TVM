@@ -1,5 +1,9 @@
 ﻿#include "platform/d2d_painter.h"
 
+#include <d2d1effects.h>
+
+#include "platform/video_texture.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -60,6 +64,7 @@ D2dPainter::D2dPainter(ID2D1RenderTarget* target, Graphics& graphics, ArtworkSto
     : target_(target), graphics_(graphics), artwork_(artwork), images_(images),
       lens_(lens != nullptr && lens->ok() ? lens : nullptr) {
     if (lens_ != nullptr) lens_->BeginFrame();
+    target_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
     if (FAILED(target_->CreateSolidColorBrush(D2D1::ColorF(0, 1.0f), &solidBrush_))) {
         throw std::runtime_error("could not create a brush");
     }
@@ -123,367 +128,142 @@ void D2dPainter::SetBackdrop(const ui::Box& box, const std::string& url, double 
 }
 
 void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& style) {
-    if (box.width <= 0.0 || box.height <= 0.0) return;
+    using ui::Color;
+    using ui::GradientStop;
+    using ui::Rgb;
+    namespace tokens = ui::tokens;
+
+    glassInk_.reset();
     const double alpha = std::clamp(style.opacity * (style.disabled ? 0.40 : 1.0), 0.0, 1.0);
-    if (alpha <= 0.0) return;
-    const double clampedRadius = std::clamp(radius, 0.0, std::min(box.width, box.height) * 0.5);
-    const bool isLight = (ui::tokens::kBackground.r + ui::tokens::kBackground.g + ui::tokens::kBackground.b) > 1.5;
-    const auto white = [alpha](double a) { return ui::Rgb(0xFFFFFF, std::clamp(a, 0.0, 1.0) * alpha); };
-    const auto black = [alpha](double a) { return ui::Rgb(0x000000, std::clamp(a, 0.0, 1.0) * alpha); };
-
-    // 1. Reduce Transparency: an opaque ink fill and a contrast-safe rim, with no backdrop at all.
-    if (style.reduceTransparency || ui::tokens::reduceTransparency) {
-        if (!style.rimOnly) {
-            ui::Color fill = style.activeTab ? ui::tokens::kPrimary
-                             : style.focused ? ui::tokens::kSurfaceHover
-                                             : style.tint.value_or(ui::tokens::kSurface);
-            fill.a *= alpha;
-            FillRoundRect(box, clampedRadius, fill);
-        }
-        ui::Color rim = style.focused ? ui::tokens::kFocusRing : ui::tokens::kBorderSoft;
-        rim.a *= alpha;
-        StrokeRoundRect(box, clampedRadius, style.focused ? 2.0 : 1.25, rim);
-        return;
-    }
-
-    // How much the surface is lit by hover or focus, and how far it is held down, both from 0 to 1. Callers that
-    // animate pass the eased amounts; a plain `focused` or `pressed` counts as fully on.
-    const double emphasis =
-        std::clamp(style.focusAmount > 0.0 ? style.focusAmount : (style.focused ? 1.0 : 0.0), 0.0, 1.0);
+    if (alpha <= 0.0 || box.width <= 0.0 || box.height <= 0.0) return;
+    radius = std::clamp(radius, 0.0, std::min(box.width, box.height) / 2.0);
+    const bool light = tokens::kBackground.r > 0.5;
+    const bool solid = style.solid || style.reduceTransparency || tokens::reduceTransparency;
+    const bool card = style.kind == ui::GlassKind::Card;
+    const bool sheet = style.kind == ui::GlassKind::Panel || style.frosted;
+    const bool hoverPlate = style.focusPlate && style.kind == ui::GlassKind::Tab;
+    const double focus = std::clamp(style.focusAmount > 0.0 ? style.focusAmount : (style.focused ? 1.0 : 0.0), 0.0, 1.0);
     const double press = std::clamp(style.pressAmount > 0.0 ? style.pressAmount : (style.pressed ? 1.0 : 0.0), 0.0, 1.0);
-    const bool cardOrPanel = style.kind == ui::GlassKind::Card || style.kind == ui::GlassKind::Panel;
+    const auto white = [alpha](double a) { return Rgb(0xFFFFFF, a * alpha); };
+    const auto black = [alpha](double a) { return Rgb(0x000000, a * alpha); };
 
-    // A vertical gradient filling the rounded shape.
-    const auto fillVertical = [&](const ui::Box& area, double r, std::vector<ui::GradientStop> stops) {
-        const ComPtr<ID2D1GradientStopCollection> collection = Stops(stops);
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(area.x), static_cast<FLOAT>(area.y)),
-            D2D1::Point2F(static_cast<FLOAT>(area.x), static_cast<FLOAT>(area.Bottom())));
-        ComPtr<ID2D1LinearGradientBrush> brush;
-        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, collection.Get(), &brush))) {
-            target_->FillRoundedRectangle(ToRounded(area, r), brush.Get());
+    if (card && style.rimOnly && !style.focused) {
+        Color border = style.border.value_or(tokens::kBorderSoft);
+        border.a *= alpha;
+        StrokeRoundRect(box, radius, 1.0, border);
+        return;
+    }
+
+    if (!hoverPlate && !style.activeTab) {
+        const double depth = (0.30 + 0.19 * focus) * (1.0 - 0.35 * press);
+        // Card shadows are clipped by their rail viewport. Keep those in the padded rail rather than
+        // allocating a displacement map as each poster grows.
+        if (card || !lens_ || !lens_->DrawShadow(box, radius, depth * alpha, 2.0 * focus)) {
+            for (const double spread : {9.0, 5.0, 2.0}) {
+                const ui::Box shadow{box.x - spread, box.y - spread + 4.0, box.width + 2.0 * spread,
+                                     box.height + 2.0 * spread};
+                if (style.rimOnly) StrokeRoundRect(shadow, radius + spread, 2.0 * spread / 3.0, black(depth * 0.20));
+                else FillRoundRect(shadow, radius + spread, black(depth * 0.20));
+            }
         }
-    };
-    // A ring of `width` pixels drawn wholly outside the shape, `gap` pixels out, shaded top to bottom.
-    const auto outerRing = [&](double gap, double width, ui::Color top, ui::Color bottom) {
-        const double outset = gap + width / 2.0;
+    }
+
+    if (!style.rimOnly) {
+        if (style.activeTab || (style.selected && !style.solid)) {
+            Color fill = style.activeTab ? Rgb(0xF5F7FA, 0.94) : style.tint.value_or(tokens::kPrimary);
+            fill.a *= alpha;
+            FillRoundRect(box, radius, fill);
+            if (style.activeTab) glassInk_ = Rgb(0x111318);
+        } else if (hoverPlate) {
+            FillRoundRect(box, radius, light ? black(0.10) : white(0.11));
+        } else if (card) {
+            const double h = static_cast<double>(std::max(0, style.hue));
+            FillRoundRectLinear(box, radius, box.Right(), box.y, box.x, box.Bottom(),
+                                {{0.0, solid || light ? tokens::kSurfaceHover : CinemaHsl(h, 0.44, 0.18, alpha)},
+                                 {1.0, solid || light ? tokens::kSurface : CinemaHsl(h + 12.0, 0.48, 0.055, alpha)}});
+        } else if (solid) {
+            Color fill = style.tint.value_or(tokens::kSurface);
+            fill.a = style.solid ? fill.a * alpha : alpha;
+            FillRoundRect(box, radius, fill);
+        } else {
+            double behind = -1.0;
+            const bool captured = lens_ && clipDepth_ == 0 && opacityLayers_.empty() &&
+                                  lens_->DrawRefraction(box, radius, alpha, sheet, &behind);
+            if (!captured) {
+                // The artwork source supplies the optical fallback for bitmap targets and the video overlay.
+                if (backdropBrush_) {
+                    const auto base = D2D1::Matrix3x2F::Scale(static_cast<float>(backdropScale_), static_cast<float>(backdropScale_)) *
+                                      D2D1::Matrix3x2F::Translation(static_cast<float>(backdropOffsetX_), static_cast<float>(backdropOffsetY_));
+                    const auto centre = D2D1::Point2F(static_cast<float>(box.CenterX()), static_cast<float>(box.CenterY()));
+                    backdropBrush_->SetOpacity(static_cast<float>(0.55 * alpha));
+                    backdropBrush_->SetTransform(base * D2D1::Matrix3x2F::Scale(1.07f, 1.12f, centre));
+                    target_->FillRoundedRectangle(ToRounded(box, radius), backdropBrush_.Get());
+                    const double bezel = std::min(14.0, 0.22 * std::min(box.width, box.height));
+                    const ui::Box core{box.x + bezel, box.y + bezel, box.width - 2.0 * bezel, box.height - 2.0 * bezel};
+                    backdropBrush_->SetTransform(base);
+                    target_->FillRoundedRectangle(ToRounded(core, std::max(0.0, radius - bezel)), backdropBrush_.Get());
+                }
+                // Video in mpv's separate window can't be sampled. Give its controls a readable wash.
+                Color fallback = style.tint.value_or(tokens::kSurface);
+                fallback.a = alpha * (backdropBrush_ ? (sheet ? 0.64 : 0.48) : (sheet ? 0.86 : 0.68));
+                FillRoundRect(box, radius, fallback);
+            } else if (behind >= 0.0) {
+                const double bright = std::clamp((behind - 0.26) / 0.42, 0.0, 1.0);
+                const double dim = 0.20 * bright;
+                const double lift = 0.05 * (1.0 - bright);
+                FillRoundRect(box, radius, black(dim));
+                FillRoundRect(box, radius, white(lift));
+                if (style.adaptiveInk) {
+                    const double shown = std::min(1.0, behind * 1.035) * (1.0 - dim) * (1.0 - lift) + lift;
+                    glassInk_ = shown >= 0.46 ? Rgb(0x000000) : Rgb(0xFFFFFF);
+                } else if (sheet) {
+                    // Sheets keep their themed labels and use a restrained surface wash over artwork.
+                    Color tint = tokens::kSurface;
+                    tint.a = alpha * (light ? 0.52 : 0.34 * bright);
+                    FillRoundRect(box, radius, tint);
+                }
+            }
+        }
+    }
+
+    if (!card && !hoverPlate && !style.activeTab) {
+        FillRoundRectLinear(box, radius, box.x, box.y, box.x, box.Bottom(),
+                            {{0.0, white(0.065)}, {0.30, white(0.0)}, {1.0, white(0.0)}});
+        if (tokens::pointer && !tokens::reduceMotion && !solid && focus > 0.001) {
+            const auto point = *tokens::pointer;
+            const auto stops = Stops({{0.0, white(0.10 * focus)}, {1.0, white(0.0)}});
+            const auto props = D2D1::RadialGradientBrushProperties(
+                D2D1::Point2F(static_cast<float>(point.x), static_cast<float>(point.y)), D2D1::Point2F(), 120.0f, 120.0f);
+            ComPtr<ID2D1RadialGradientBrush> bloom;
+            if (SUCCEEDED(target_->CreateRadialGradientBrush(props, stops.Get(), &bloom)))
+                target_->FillRoundedRectangle(ToRounded(box, radius), bloom.Get());
+        }
+    }
+    if (!hoverPlate && !card && !style.activeTab) {
+        const double rim = alpha * (0.80 + 0.16 * focus) * (1.0 - 0.15 * press);
+        const ui::Box contour{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
+        StrokeRoundRect(contour, radius + 0.5, 1.0, black(0.22));
+        if (lens_ && clipDepth_ == 0) {
+            lens_->DrawRim(box, radius, rim, 0.23 * alpha);
+        } else {
+            const auto stops = Stops({{0.0, white(0.75 * rim)}, {0.46, white(0.15 * rim)},
+                                      {0.62, white(0.15 * rim)}, {1.0, white(0.35 * rim)}});
+            const auto props = D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(static_cast<float>(box.x), static_cast<float>(box.y)),
+                D2D1::Point2F(static_cast<float>(box.Right()), static_cast<float>(box.Bottom())));
+            ComPtr<ID2D1LinearGradientBrush> edge;
+            if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &edge)))
+                target_->DrawRoundedRectangle(ToRounded(box, radius), edge.Get(), 1.0f);
+        }
+    }
+    if (style.focused && style.ringColor) {
+        const double width = style.ringWidth > 0.0 ? style.ringWidth : 2.0;
+        const double outset = style.ringOutset;
         const ui::Box ring{box.x - outset, box.y - outset, box.width + 2.0 * outset, box.height + 2.0 * outset};
-        const ComPtr<ID2D1GradientStopCollection> collection =
-            Stops({ui::GradientStop{0.0, top}, ui::GradientStop{1.0, bottom}});
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(ring.x), static_cast<FLOAT>(ring.y)),
-            D2D1::Point2F(static_cast<FLOAT>(ring.x), static_cast<FLOAT>(ring.Bottom())));
-        ComPtr<ID2D1LinearGradientBrush> brush;
-        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, collection.Get(), &brush))) {
-            target_->DrawRoundedRectangle(ToRounded(ring, clampedRadius + outset), brush.Get(),
-                                          static_cast<FLOAT>(width));
-        }
-    };
-    // The thin specular edge where there is no lens to draw one: lit from the upper left like the lens rim, quiet
-    // along the sides, with a weaker neutral bounce on the lower right. Glass reflects white light, never a tint.
-    const auto edge = [&](double strength) {
-        const double lit = strength * (1.0 - 0.22 * press);
-        const ComPtr<ID2D1GradientStopCollection> collection = Stops({
-            ui::GradientStop{0.00, white((0.62 + 0.28 * emphasis) * lit)},
-            ui::GradientStop{0.26, white((0.20 + 0.12 * emphasis) * lit)},
-            ui::GradientStop{0.55, white((0.07 + 0.05 * emphasis) * lit)},
-            ui::GradientStop{0.80, white((0.14 + 0.10 * emphasis) * lit)},
-            ui::GradientStop{1.00, white((0.34 + 0.18 * emphasis) * lit)},
-        });
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y)),
-            D2D1::Point2F(static_cast<FLOAT>(box.Right()), static_cast<FLOAT>(box.Bottom())));
-        ComPtr<ID2D1LinearGradientBrush> brush;
-        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, collection.Get(), &brush)) && box.width > 2.0 &&
-            box.height > 2.0) {
-            const ui::Box rim{box.x + 0.5, box.y + 0.5, box.width - 1.0, box.height - 1.0};
-            target_->DrawRoundedRectangle(ToRounded(rim, std::max(0.0, clampedRadius - 0.5)), brush.Get(), 1.0f);
-        }
-    };
-    // The top gloss: light from above caught in the upper face of the glass, fading out before the middle, with a
-    // faint neutral return at the bottom where light leaves through the far bevel.
-    const auto drawCaustic = [&](double sheenStrength) {
-        if (sheenStrength <= 0.0) return;
-        const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-            ui::GradientStop{0.00, white(sheenStrength)},
-            ui::GradientStop{0.38, white(sheenStrength * 0.22)},
-            ui::GradientStop{0.62, white(0.0)},
-            ui::GradientStop{1.00, white(sheenStrength * 0.30)},
-        });
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(box.x + box.width * 0.18), static_cast<FLOAT>(box.y)),
-            D2D1::Point2F(static_cast<FLOAT>(box.x + box.width * 0.50), static_cast<FLOAT>(box.Bottom())));
-        ComPtr<ID2D1LinearGradientBrush> brush;
-        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
-            target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
-        }
-    };
-    // A soft slanted highlight sweeping once across a newly focused surface.
-    const auto drawSweep = [&](double plate) {
-        if (style.sweep < 0.0 || style.sweep > 1.0 || ui::tokens::reduceMotion) return;
-        const double band = std::max(box.height * 1.35, box.width * 0.38);
-        const double centre = box.x - band + (box.width + 2.0 * band) * style.sweep;
-        const double strength = 0.62 * std::sin(kSweepPi * style.sweep) * (plate > 0.0 ? 1.0 : 0.55);
-        const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-            ui::GradientStop{0.00, white(0.0)},
-            ui::GradientStop{0.28, white(strength * 0.22)},
-            ui::GradientStop{0.50, isLight || plate > 0.0 ? ui::Rgb(0xFFFFFF, strength * alpha) : white(strength * 0.75)},
-            ui::GradientStop{0.72, white(strength * 0.22)},
-            ui::GradientStop{1.00, white(0.0)},
-        });
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(centre - band / 2.0), static_cast<FLOAT>(box.y)),
-            D2D1::Point2F(static_cast<FLOAT>(centre + band / 2.0), static_cast<FLOAT>(box.y + box.height * 0.40)));
-        ComPtr<ID2D1LinearGradientBrush> brush;
-        if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
-            target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
-        }
-    };
-
-    // 2. Poster cards whose artwork already fills the shape: a faint top gloss, an inner hairline and the edge.
-    if (style.rimOnly && !style.focused) {
-        drawCaustic(0.09);
-        if (box.width > 6.0 && box.height > 6.0) {
-            const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
-            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.5), 1.0, white(0.06));
-        }
-        edge(0.95);
-        return;
+        Color ink = *style.ringColor;
+        ink.a *= alpha * (card ? 1.0 : 0.72);
+        StrokeRoundRect(ring, radius + outset, width, ink);
     }
-
-    // 3. A soft, diffuse shadow a little below the surface, deeper as it lifts under focus and shallower as it is
-    // pressed. Where there is no lens to draw it, two faint rings stand in.
-    const double shadowScale = (isLight ? 0.50 : 1.0) * alpha * (1.0 - 0.35 * press);
-    const double liftScale = 1.0 + 0.45 * emphasis;
-    const double shadowDepth = style.kind == ui::GlassKind::Panel ? 0.62 : (style.kind == ui::GlassKind::Card ? 0.30 : 0.44);
-    const double lifted = std::min(box.width, box.height) * 0.14 * emphasis * (1.0 - press);
-    if (lens_ == nullptr || !lens_->DrawShadow(box, clampedRadius, shadowDepth * shadowScale * liftScale, lifted)) {
-        outerRing(0.0, 2.0, black(0.03 * shadowScale), black((0.16 + 0.10 * emphasis) * shadowScale));
-        outerRing(1.5, cardOrPanel ? 9.0 : 6.5, black(0.015 * shadowScale),
-                  black((0.10 + 0.08 * emphasis) * shadowScale * liftScale));
-    }
-
-    // 4. Hover and focus light the surface from within and add a restrained outer glow, not a thick ring. A surface
-    // that turns into the bright focus plate needs none: as on Apple TV the plate, the lift and the deeper shadow
-    // say it is focused, and a glow around it only greys the picture into an outline.
-    if (emphasis > 0.0 && !style.focusPlate) {
-        const ui::Color glow = isLight ? ui::tokens::kFocusRing : ui::Rgb(0xFFFFFF);
-        outerRing(1.0, 2.0, ui::Color{glow.r, glow.g, glow.b, 0.20 * emphasis * alpha},
-                  ui::Color{glow.r, glow.g, glow.b, 0.14 * emphasis * alpha});
-        outerRing(3.0, 4.0, ui::Color{glow.r, glow.g, glow.b, 0.06 * emphasis * alpha},
-                  ui::Color{glow.r, glow.g, glow.b, 0.04 * emphasis * alpha});
-    }
-
-    // 5. Liquid Glass: the pixels already drawn beneath, diffused a little, seen undistorted through the flat middle
-    // and bent at the bezel. The wash adapts to what is behind, as Apple's regular glass does: a neutral grey (dark)
-    // or white (light) that thickens over bright pictures in dark mode and over dark pictures in light mode, so
-    // labels stay legible without the glass losing the colour behind it. Frosted glass (Settings > Look) scatters
-    // the picture much further and carries a thicker wash, like Apple's tinted setting.
-    const bool lensKind = style.kind != ui::GlassKind::Card;
-    const bool frosted = ui::tokens::frostedGlass || style.frosted || style.kind == ui::GlassKind::Panel;
-    double behind = -1.0;
-    if (!style.rimOnly && lensKind && lens_ != nullptr &&
-        lens_->DrawRefraction(box, clampedRadius, alpha, frosted, &behind)) {
-        // 0 over a dark picture, 1 over a bright one.
-        const double bright = behind < 0.0 ? 0.5 : std::clamp((behind - 0.30) / 0.45, 0.0, 1.0);
-        const double plate = style.focusPlate ? emphasis * 0.18 : 0.0;
-        if (style.activeTab) {
-            FillRoundRect(box, clampedRadius, white(0.22 + 0.12 * press));
-        } else if (isLight) {
-            const double wash = cardOrPanel ? 0.55 : 0.22 + 0.18 * (1.0 - bright);
-            FillRoundRect(box, clampedRadius,
-                          ui::Rgb(0xFDFCFD, std::clamp(wash + (frosted ? 0.22 : 0.0) + 0.08 * emphasis - 0.05 * press,
-                                                       0.0, 1.0) * alpha));
-        } else {
-            const double wash = 0.10 * bright;
-            FillRoundRect(box, clampedRadius,
-                          ui::Rgb(0x000000, std::clamp(wash + (frosted ? 0.12 : 0.0) + 0.06 * press, 0.0, 1.0) * alpha));
-            // Light scattered inside the glass: a breath of white, milkier when frosted, brighter under focus.
-            FillRoundRect(box, clampedRadius, white((ui::tokens::frostedGlass ? 0.16 : 0.09) + 0.10 * emphasis + 0.12 * press));
-        }
-        if (style.tint.has_value() && !style.activeTab) {
-            ui::Color tint = *style.tint;
-            tint.a = (style.selected ? 0.55 : std::min(0.04, tint.a)) * alpha;
-            FillRoundRect(box, clampedRadius, tint);
-        }
-        // iOS 27's dark contour gives depth on any backdrop: stronger in dark mode, faint on light glass, gone under
-        // a bright plate. The glint brightens under focus and dims as the surface is pressed.
-        const double contour = (cardOrPanel ? (isLight ? 0.30 : 0.60) : (isLight ? 0.18 : 0.40)) *
-                               (style.activeTab ? 0.5 : 1.0) * (1.0 - plate) * alpha;
-        lens_->DrawRim(box, clampedRadius,
-                       alpha * (1.0 + 0.3 * emphasis) * (1.0 - 0.3 * press) * (style.activeTab ? 0.6 : 1.0) *
-                           (1.0 - 0.7 * plate),
-                       contour);
-        // Focus as on Apple TV: the glass fills with a bright plate, a touch brighter at the top.
-        if (plate > 0.0) {
-            const double top = 0.22 + 0.12 * press;
-            fillVertical(box, clampedRadius,
-                         {ui::GradientStop{0.0, white(top * plate)}, ui::GradientStop{1.0, white((top - 0.12) * plate)}});
-        }
-        // The top gloss and, on a newly focused surface, one soft sweep of light. The lens has drawn the rim.
-        const double sheen = ((style.activeTab ? 0.10 : 0.07) + 0.05 * emphasis - 0.03 * press) * (1.0 - plate);
-        drawCaustic(sheen);
-        drawSweep(plate);
-        const ui::Box darkRim{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
-        StrokeRoundRect(darkRim, std::max(0.0, clampedRadius - 1.0), 1.0, black(0.22));
-        FillRoundRectLinear(box, clampedRadius, box.x, box.y, box.Right(), box.Bottom(),
-                           {{0.0, white(style.activeTab ? 0.40 : 0.28)}, {0.45, white(0.0)}, {1.0, white(0.0)}});
-        if (style.activeTab || plate > 0.5) {
-            const ui::Box inner{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
-            StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.0), 1.0, white(0.30));
-        }
-        if (isLight && !style.activeTab) {
-            // On a pale page a white edge alone vanishes, so a hairline of shade defines the shape.
-            const ui::Box rimBox{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
-            StrokeRoundRect(rimBox, clampedRadius + 0.5, 1.0, black(0.07));
-        }
-        return;
-    }
-
-    if (!style.rimOnly) {
-        // 5. The picture behind, blurred, seen through the glass. A slightly magnified pass under the outer bevel
-        // and an unmagnified core inside it read as the edge of a lens bending the light.
-        const bool sampled = backdropBrush_ != nullptr && !style.activeTab;
-        if (sampled) {
-            const D2D1::Matrix3x2F base =
-                D2D1::Matrix3x2F::Scale(static_cast<FLOAT>(backdropScale_), static_cast<FLOAT>(backdropScale_)) *
-                D2D1::Matrix3x2F::Translation(static_cast<FLOAT>(backdropOffsetX_), static_cast<FLOAT>(backdropOffsetY_));
-            const D2D1_POINT_2F centre =
-                D2D1::Point2F(static_cast<FLOAT>(box.CenterX()), static_cast<FLOAT>(box.CenterY()));
-            const FLOAT lens = cardOrPanel ? 1.015f : 1.03f;
-            backdropBrush_->SetTransform(base * D2D1::Matrix3x2F::Scale(lens, lens, centre));
-            backdropBrush_->SetOpacity(static_cast<FLOAT>(alpha));
-            target_->FillRoundedRectangle(ToRounded(box, clampedRadius), backdropBrush_.Get());
-            const double bevel = std::min({2.5, box.width * 0.10, box.height * 0.10});
-            if (bevel >= 1.0) {
-                const ui::Box core{box.x + bevel, box.y + bevel, box.width - 2.0 * bevel, box.height - 2.0 * bevel};
-                backdropBrush_->SetTransform(base);
-                target_->FillRoundedRectangle(ToRounded(core, std::max(0.0, clampedRadius - bevel)),
-                                              backdropBrush_.Get());
-            }
-            backdropBrush_->SetOpacity(1.0f);
-        }
-
-        // Cards with no picture yet keep their generated cinema canvas.
-        if (style.kind == ui::GlassKind::Card && style.hue >= 0 && !isLight) {
-            const double h = static_cast<double>(style.hue);
-            const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-                ui::GradientStop{0.0, CinemaHsl(h + 18.0, 0.64, 0.19, 0.72 * alpha)},
-                ui::GradientStop{0.55, CinemaHsl(h, 0.58, 0.11, 0.82 * alpha)},
-                ui::GradientStop{1.0, ui::Rgb(0x060B14, 0.88 * alpha)},
-            });
-            const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES props = D2D1::LinearGradientBrushProperties(
-                D2D1::Point2F(static_cast<FLOAT>(box.x), static_cast<FLOAT>(box.y)),
-                D2D1::Point2F(static_cast<FLOAT>(box.Right()), static_cast<FLOAT>(box.Bottom())));
-            ComPtr<ID2D1LinearGradientBrush> brush;
-            if (SUCCEEDED(target_->CreateLinearGradientBrush(props, stops.Get(), &brush))) {
-                target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
-            }
-            const ComPtr<ID2D1GradientStopCollection> radStops = Stops({
-                ui::GradientStop{0.0, CinemaHsl(h - 14.0, 0.78, 0.42, (0.24 + 0.10 * emphasis) * alpha)},
-                ui::GradientStop{0.65, CinemaHsl(h, 0.65, 0.24, 0.10 * alpha)},
-                ui::GradientStop{1.0, ui::Rgb(0x000000, 0.0)},
-            });
-            const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES radProps = D2D1::RadialGradientBrushProperties(
-                D2D1::Point2F(static_cast<FLOAT>(box.x + 0.72 * box.width),
-                              static_cast<FLOAT>(box.y + 0.26 * box.height)),
-                D2D1::Point2F(0.0f, 0.0f), static_cast<FLOAT>(box.width * 0.78), static_cast<FLOAT>(box.height * 0.68));
-            ComPtr<ID2D1RadialGradientBrush> radBrush;
-            if (SUCCEEDED(target_->CreateRadialGradientBrush(radProps, radStops.Get(), &radBrush))) {
-                target_->FillRoundedRectangle(ToRounded(box, clampedRadius), radBrush.Get());
-            }
-        }
-
-        // 6. A neutral veil keeps text legible over bright and dark pictures alike without tinting the glass.
-        // The selected tab is its own lighter piece of glass, so dark text reads on it.
-        if (style.activeTab) {
-            if (backdropBrush_) {
-                backdropBrush_->SetTransform(
-                    D2D1::Matrix3x2F::Scale(static_cast<FLOAT>(backdropScale_), static_cast<FLOAT>(backdropScale_)) *
-                    D2D1::Matrix3x2F::Translation(static_cast<FLOAT>(backdropOffsetX_),
-                                                  static_cast<FLOAT>(backdropOffsetY_)));
-                backdropBrush_->SetOpacity(static_cast<FLOAT>(alpha));
-                target_->FillRoundedRectangle(ToRounded(box, clampedRadius), backdropBrush_.Get());
-                backdropBrush_->SetOpacity(1.0f);
-            }
-            FillRoundRect(box, clampedRadius, white(0.22 + 0.12 * press));
-        } else if (isLight) {
-            const double base = sampled ? (cardOrPanel ? 0.62 : 0.34) : (cardOrPanel ? 0.86 : 0.70);
-            FillRoundRect(box, clampedRadius, white(base + 0.10 * emphasis - 0.06 * press));
-        } else {
-            const double dim = sampled ? 0.10 : (cardOrPanel ? 0.42 : 0.14);
-            FillRoundRect(box, clampedRadius, ui::Rgb(0x0B0D12, std::clamp(dim + 0.08 * press, 0.0, 1.0) * alpha));
-            FillRoundRect(box, clampedRadius, white(0.07 + 0.06 * emphasis - 0.03 * press));
-        }
-        // A caller's tint only colours the glass faintly, so it can echo the brand but never muddy the material.
-        if (style.tint.has_value() && !style.activeTab) {
-            ui::Color tint = *style.tint;
-            tint.a = (style.selected ? 0.55 : std::min(0.06, tint.a)) * alpha;
-            FillRoundRect(box, clampedRadius, tint);
-        }
-
-        // Apple TV focus on the frosted path too, so a darkened label always sits on a bright plate.
-        if (style.focusPlate && emphasis > 0.0 && !style.activeTab) {
-            const double top = 0.22 + 0.12 * press;
-            fillVertical(box, clampedRadius,
-                         {ui::GradientStop{0.0, white(top * emphasis)},
-                          ui::GradientStop{1.0, white((top - 0.12) * emphasis)}});
-        }
-
-        // 7. The top gloss and focus sweep on glass drawn without a lens (player controls over video, cards).
-        const double plate = style.focusPlate ? emphasis * 0.18 : 0.0;
-        const double sheen = ((style.activeTab ? 0.18 : (cardOrPanel ? 0.09 : 0.14)) + 0.06 * emphasis - 0.04 * press) *
-                             (1.0 - 0.7 * plate);
-        drawCaustic(sheen);
-        drawSweep(plate);
-
-        // The orb's small internal reflection, up and to the left.
-        if (style.kind == ui::GlassKind::Orb) {
-            const ComPtr<ID2D1GradientStopCollection> stops = Stops({
-                ui::GradientStop{0.0, white(0.18 + 0.06 * emphasis)},
-                ui::GradientStop{1.0, white(0.0)},
-            });
-            const D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES props = D2D1::RadialGradientBrushProperties(
-                D2D1::Point2F(static_cast<FLOAT>(box.x + 0.34 * box.width),
-                              static_cast<FLOAT>(box.y + 0.26 * box.height)),
-                D2D1::Point2F(0.0f, 0.0f), static_cast<FLOAT>(box.width * 0.36),
-                static_cast<FLOAT>(box.height * 0.26));
-            ComPtr<ID2D1RadialGradientBrush> brush;
-            if (SUCCEEDED(target_->CreateRadialGradientBrush(props, stops.Get(), &brush))) {
-                target_->FillRoundedRectangle(ToRounded(box, clampedRadius), brush.Get());
-            }
-        }
-    }
-
-    // 8. An inner hairline of light caught in the glass's thickness, brighter where it faces the light, then the
-    // specular outer edge, so controls drawn without a lens still read as thick glass.
-    if (box.width > 6.0 && box.height > 6.0 && !style.rimOnly) {
-        const ui::Box inner{box.x + 1.5, box.y + 1.5, box.width - 3.0, box.height - 3.0};
-        const ComPtr<ID2D1GradientStopCollection> innerStops = Stops({
-            ui::GradientStop{0.00, white(style.activeTab ? 0.34 : 0.12 + 0.06 * emphasis)},
-            ui::GradientStop{0.50, white(style.activeTab ? 0.14 : 0.04 + 0.03 * emphasis)},
-            ui::GradientStop{1.00, white(style.activeTab ? 0.24 : 0.08 + 0.05 * emphasis)},
-        });
-        const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES innerProps = D2D1::LinearGradientBrushProperties(
-            D2D1::Point2F(static_cast<FLOAT>(inner.x), static_cast<FLOAT>(inner.y)),
-            D2D1::Point2F(static_cast<FLOAT>(inner.Right()), static_cast<FLOAT>(inner.Bottom())));
-        ComPtr<ID2D1LinearGradientBrush> innerBrush;
-        if (SUCCEEDED(target_->CreateLinearGradientBrush(innerProps, innerStops.Get(), &innerBrush))) {
-            target_->DrawRoundedRectangle(ToRounded(inner, std::max(0.0, clampedRadius - 1.5)), innerBrush.Get(), 1.15f);
-        }
-    }
-    if (isLight && !style.activeTab) {
-        // On a pale page a white edge alone vanishes, so a hairline of shade defines the shape.
-        const ui::Box rim{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
-        StrokeRoundRect(rim, clampedRadius + 0.5, 1.0, black(0.08));
-    }
-    if (!style.rimOnly) {
-        const ui::Box inner{box.x + 1.0, box.y + 1.0, box.width - 2.0, box.height - 2.0};
-        StrokeRoundRect(inner, std::max(0.0, clampedRadius - 1.0), 1.0, black(0.22));
-        FillRoundRectLinear(box, clampedRadius, box.x, box.y, box.Right(), box.Bottom(),
-                           {{0.0, white(style.activeTab ? 0.40 : 0.28)}, {0.45, white(0.0)}, {1.0, white(0.0)}});
-    }
-    edge(style.activeTab ? 1.15 : 1.05);
 }
 
 void D2dPainter::FillRoundRect(const ui::Box& box, double radius, ui::Color color) {
@@ -540,6 +320,74 @@ bool D2dPainter::ImageContain(const ui::Box& box, const std::string& url) {
         static_cast<FLOAT>(box.CenterX() - width / 2.0), static_cast<FLOAT>(box.CenterY() - height / 2.0),
         static_cast<FLOAT>(box.CenterX() + width / 2.0), static_cast<FLOAT>(box.CenterY() + height / 2.0));
     target_->DrawBitmap(bitmap, destination, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    return true;
+}
+
+bool D2dPainter::HeroVideo(const ui::Box& box, double opacity, double focusX, double focusY) {
+    if (auto* preview = VideoTexture::Current()) return preview->Draw(target_, box, opacity, focusX, focusY);
+    return false;
+}
+
+void D2dPainter::BeginLightParticles() {
+    if (FAILED(target_->QueryInterface(IID_PPV_ARGS(&particleContext_)))) return;
+    previousParticleBlend_ = particleContext_->GetPrimitiveBlend();
+    particleContext_->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_ADD);
+}
+
+void D2dPainter::EndLightParticles() {
+    if (particleContext_) particleContext_->SetPrimitiveBlend(previousParticleBlend_);
+    particleContext_.Reset();
+}
+
+bool D2dPainter::SpotlightLogo(const ui::Box& box, const std::string& url, double opacity, double blur, double sweep) {
+    if (!images_) return false;
+    const auto file = ResolveFile(url);
+    ID2D1Bitmap* bitmap = file ? images_->Get(target_, file->wstring()) : nullptr;
+    if (!bitmap) return false;
+    if (opacity <= 0.0) return true;
+    const auto size = bitmap->GetSize();
+    if (size.width <= 0.0f || size.height <= 0.0f) return false;
+    const double scale = std::min(box.width / size.width, box.height / size.height);
+    const double width = size.width * scale;
+    const double height = size.height * scale;
+    const ui::Box image{box.x, box.CenterY() - height / 2.0, width, height};
+    bool blurred = false;
+    if (blur > 0.15) {
+        ComPtr<ID2D1DeviceContext> dc;
+        ComPtr<ID2D1Effect> diffusion;
+        if (SUCCEEDED(target_->QueryInterface(IID_PPV_ARGS(&dc))) &&
+            SUCCEEDED(dc->CreateEffect(CLSID_D2D1GaussianBlur, &diffusion))) {
+            diffusion->SetInput(0, bitmap);
+            diffusion->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, static_cast<float>(blur / scale));
+            D2D1_MATRIX_3X2_F old;
+            dc->GetTransform(&old);
+            PushOpacity(opacity);
+            const auto transform = D2D1::Matrix3x2F::Scale(static_cast<float>(scale), static_cast<float>(scale)) *
+                                   D2D1::Matrix3x2F::Translation(static_cast<float>(image.x), static_cast<float>(image.y));
+            dc->SetTransform(transform);
+            dc->DrawImage(diffusion.Get(), D2D1::Point2F(0.0f, 0.0f));
+            dc->SetTransform(old);
+            PopOpacity();
+            blurred = true;
+        }
+    }
+    if (!blurred) target_->DrawBitmap(bitmap, ToRect(image), static_cast<float>(opacity), D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    if (sweep > 0.0 && sweep < 1.0) {
+        const double x = image.x + image.width * (1.5 * sweep - 0.24);
+        const float band = static_cast<float>(std::max(28.0, image.width * 0.18));
+        const auto from = D2D1::Point2F(static_cast<float>(x) - band, static_cast<float>(image.y));
+        const auto to = D2D1::Point2F(static_cast<float>(x) + band, static_cast<float>(image.y + image.height * 0.32));
+        const auto stops = Stops({{0.0, ui::Rgb(0xFFFFFF, 0.0)}, {0.52, ui::Rgb(0xFFFFFF, 0.51 * opacity)},
+                                  {1.0, ui::Rgb(0xFFFFFF, 0.0)}});
+        ComPtr<ID2D1LinearGradientBrush> light;
+        if (SUCCEEDED(target_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(from, to), stops.Get(), &light))) {
+            const auto prior = target_->GetAntialiasMode();
+            target_->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+            const D2D1_RECT_F dest = ToRect(image);
+            target_->FillOpacityMask(bitmap, light.Get(), D2D1_OPACITY_MASK_CONTENT_GRAPHICS, &dest);
+            target_->SetAntialiasMode(prior);
+        }
+    }
     return true;
 }
 
@@ -640,22 +488,35 @@ void D2dPainter::FillRadialGradient(const ui::Box& box, double cx, double cy, do
     target_->FillRectangle(ToRect(box), brush.Get());
 }
 
-void D2dPainter::Paragraph(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color) {
+void D2dPainter::DrawLabel(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color,
+                            bool wrap) {
+    if (text.empty() || color.a <= 0.0 || box.width <= 0.0 || box.height <= 0.0) return;
     const std::wstring wide = util::ToWide(std::string(text));
-    IDWriteTextFormat* format = graphics_.ParagraphFormat(style.sizePx, WeightOf(style));
-    target_->DrawTextW(wide.c_str(), static_cast<UINT32>(wide.size()), format, ToRect(box), Brush(color),
+    const int weight = WeightOf(style);
+    const ui::Box snapped{std::round(box.x), std::round(box.y), box.width, box.height};
+    if (style.trackingEm != 0.0 || style.tabular) {
+        const auto layout = graphics_.TextLayout(wide, style, weight, static_cast<float>(box.width),
+                                                  static_cast<float>(box.height), wrap);
+        if (layout) target_->DrawTextLayout(D2D1::Point2F(static_cast<float>(snapped.x), static_cast<float>(snapped.y)),
+                                            layout.Get(), Brush(color), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+        return;
+    }
+    IDWriteTextFormat* format = wrap ? graphics_.ParagraphFormat(style.sizePx, weight)
+                                    : graphics_.TextFormat(style.sizePx, weight);
+    target_->DrawTextW(wide.c_str(), static_cast<UINT32>(wide.size()), format, ToRect(snapped), Brush(color),
                        D2D1_DRAW_TEXT_OPTIONS_CLIP, DWRITE_MEASURING_MODE_NATURAL);
+}
+
+void D2dPainter::Paragraph(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color) {
+    DrawLabel(box, text, style, color, true);
 }
 
 void D2dPainter::Text(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color) {
-    const std::wstring wide = util::ToWide(std::string(text));
-    IDWriteTextFormat* format = graphics_.TextFormat(style.sizePx, WeightOf(style));
-    target_->DrawTextW(wide.c_str(), static_cast<UINT32>(wide.size()), format, ToRect(box), Brush(color),
-                       D2D1_DRAW_TEXT_OPTIONS_CLIP, DWRITE_MEASURING_MODE_NATURAL);
+    DrawLabel(box, text, style, color, false);
 }
 
 double D2dPainter::MeasureText(std::string_view text, const ui::TextStyle& style) {
-    return graphics_.MeasureText(text, style.sizePx, WeightOf(style));
+    return graphics_.MeasureText(text, style, WeightOf(style));
 }
 
 void D2dPainter::Path(const ui::Box& box, double viewBox, std::string_view data, const ui::PathStyle& style) {

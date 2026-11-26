@@ -1,6 +1,10 @@
 import SwiftUI
 import WebKit
 
+extension Notification.Name {
+    static let tvmWillEnterForeground = Notification.Name("tvm.willEnterForeground")
+}
+
 /// Keyboard overlap published into the page. WKWebView often reports a late
 /// or missing visualViewport resize; keyboard-frame notifications fill in.
 enum TVMKeyboardLayout {
@@ -356,7 +360,12 @@ struct TVMWebView: UIViewControllerRepresentable {
                 self?.backgroundedAt = Date()
             })
             keyboardObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
-                guard let self, let away = self.backgroundedAt else { return }
+                guard let self else { return }
+                NotificationCenter.default.post(name: .tvmWillEnterForeground, object: nil)
+                if self.parent.session.isStandalone {
+                    self.webView?.evaluateJavaScript("window.dispatchEvent(new Event('tvm:account-changed'));")
+                }
+                guard let away = self.backgroundedAt else { return }
                 self.backgroundedAt = nil
                 if Date().timeIntervalSince(away) >= Self.newSessionAfter, self.engine == nil, !self.freshLaunch {
                     self.webView?.evaluateJavaScript("(function(){try{if(window.tvmaFreshLaunch)window.tvmaFreshLaunch('resume')}catch(e){}})()")

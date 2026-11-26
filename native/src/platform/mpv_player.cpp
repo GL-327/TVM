@@ -77,7 +77,7 @@ MpvPlayer::~MpvPlayer() {
 }
 
 bool MpvPlayer::Start(const std::filesystem::path& executable, const std::string& url, std::optional<double> startAt,
-                      double volume, bool muted) {
+                      double volume, bool muted, const std::string& ytdlpPath, const std::string& audioLanguage) {
     Stop();
     volume_ = volume;
     muted_ = muted;
@@ -97,6 +97,8 @@ bool MpvPlayer::Start(const std::filesystem::path& executable, const std::string
     const std::wstring pipeName =
         L"\\\\.\\pipe\\tvm-mpv-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
     mpv::LaunchOptions launch;
+    launch.ytdlpPath = ytdlpPath;
+    launch.audioLanguage = audioLanguage;
     launch.url = url;
     launch.windowId = std::to_string(reinterpret_cast<std::uintptr_t>(host_));
     launch.ipcPath = util::ToUtf8(pipeName);
@@ -156,6 +158,11 @@ void MpvPlayer::Stop() {
     if (stop_ != nullptr) CloseHandle(stop_);
     stop_ = nullptr;
     if (host_ != nullptr) ShowWindow(host_, SW_HIDE);
+}
+
+void MpvPlayer::SetNightMode(bool enabled) {
+    if (enabled) Write(nlohmann::json::array({"af", "add", "@tvmnight:lavfi=[dynaudnorm=f=150:g=9:p=0.90:m=3]"}));
+    else Write(nlohmann::json::array({"af", "remove", "@tvmnight"}));
 }
 
 void MpvPlayer::AddSubtitle(const std::string& file, const std::string& label, const std::string& language, bool select) {
@@ -271,7 +278,8 @@ void MpvPlayer::ReadLoop(std::wstring pipeName, std::shared_ptr<std::atomic<bool
     Write(nlohmann::json::array({"set_property", "mute", false}));
     Write(nlohmann::json::array({"set_property", "volume", 100}));
     SetAudio(volume_, muted_);
-    for (const char* property : mpv::kObservedProperties) Write(nlohmann::json::array({"observe_property", 1, property}));
+    int observation = 0;
+    for (const char* property : mpv::kObservedProperties) Write(nlohmann::json::array({"observe_property", ++observation, property}));
 
     mpv::State state = mpv::InitialState(std::nullopt);
     double lastSentMs = 0.0;

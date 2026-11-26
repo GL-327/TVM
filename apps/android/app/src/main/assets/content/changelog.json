@@ -3,6 +3,120 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.0",
+      "date": "2026-11-26",
+      "title": "New look, smarter playback and a TV guide (test build)",
+      "highlights": [
+        "A new Home: no more glass box over the spotlight, a centred menu bar and a cleaner font.",
+        "Films and shows now start in their original language at the best real resolution, often 4K.",
+        "Click the picture to pause, double-click for fullscreen, and the controls show in fullscreen.",
+        "This is a test build. Read Known issues below before you report a bug."
+      ],
+      "changes": [
+        {
+          "area": "Home",
+          "text": "The spotlight drops the glass box: the title sits on the art with a soft fade behind it.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The menu bar is centred and solid, and Search is now a magnifier button at its end.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Looping rows light up only the card you are on, and a hovered card is no longer cut off.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "TVM now uses the Geist font, and buttons are rounded rectangles instead of pills.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "TVM picks the original-language audio and the highest real resolution, and skips upscaled copies.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Click the picture to pause or play, and double-click to go fullscreen.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "The player controls now appear in fullscreen when you move the mouse.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "A TV-style guide shows what is on now and next, with a red line for the current time.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Real-Debrid",
+          "text": "A key set for your account shows up within a minute, without restarting TVM.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "android",
+            "ios"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "Patch notes like these open as a pop-up after an update. Close it with Got it."
+        },
+        {
+          "area": "Accounts",
+          "text": "Verification and password reset emails are live for new accounts."
+        }
+      ],
+      "knownIssues": [
+        "The Settings menu still has its old layout; the redesign is not finished.",
+        "The new on/off switches for each extra feature are not in Settings yet.",
+        "The TV guide is only on Windows, and it has not been tried with a real IPTV list yet.",
+        "The moving trailer on the Home spotlight and theme songs may not play yet.",
+        "Liquid Glass is only partly redone; the full Apple-style rework is still to come.",
+        "The profile editor still uses the old pill buttons.",
+        "This iPhone build has not been tested on a phone yet, and Roku has not been tried on a TV.",
+        "Picking another version of a film may not be available everywhere yet."
+      ]
+    },
+    {
       "version": "1.3.2",
       "date": "2026-11-26",
       "title": "Character avatars and Real-Debrid fix",

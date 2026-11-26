@@ -197,7 +197,7 @@ TEST(the_title_dissolves_in_over_480_milliseconds) {
     scene.Tick(480.0);
     HeroPainter end;
     scene.Paint(end);
-    REQUIRE_NEAR(end.Find("Alpha")->color.a, 0.95, 1e-9);
+    REQUIRE_NEAR(end.Find("Alpha")->color.a, 1.0, 1e-9);
     REQUIRE(!scene.Animating());
 }
 
@@ -294,7 +294,7 @@ TEST(the_copy_is_not_faded_with_the_page) {
     HeroPainter painter;
     scene.Paint(painter);
     // The title keeps its full colour: only the pictures and the vignette fade.
-    REQUIRE_NEAR(painter.Find("Alpha")->color.a, 0.95, 1e-9);
+    REQUIRE_NEAR(painter.Find("Alpha")->color.a, 1.0, 1e-9);
 }
 
 }  // namespace

@@ -49,9 +49,14 @@ public:
     }
     void PushClip(const Box& /*box*/) override {}
     void PopClip() override {}
+    void Path(const Box& /*box*/, double /*viewBox*/, std::string_view /*data*/,
+              const tvm::ui::PathStyle& /*style*/) override {
+        ++pathCount;
+    }
     void Glass(const Box& box, double /*radius*/, const tvm::ui::GlassStyle& style) override {
         glasses.push_back({box, style});
     }
+    int pathCount = 0;
 
     bool Has(const std::string& text) const {
         for (const std::string& drawn : texts) {
@@ -475,7 +480,9 @@ TEST(tvm_stream_opens_on_watch_now_under_its_chrome) {
     scene->Paint(painter);
     REQUIRE(painter.Has("Play"));
     REQUIRE(painter.Has("Details"));
-    REQUIRE(painter.Has("Search"));
+    // Top nav replaces the "Search" text label with a spyglass icon path.
+    REQUIRE(!painter.Has("Search"));
+    REQUIRE(painter.pathCount >= 1);
     REQUIRE(painter.Has("TVM"));
     // The launcher's kicker belongs to Home, not to TVM Stream.
     REQUIRE(!painter.Has("HOME"));

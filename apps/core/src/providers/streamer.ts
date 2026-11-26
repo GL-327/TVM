@@ -1,3 +1,4 @@
+import { describeVersion, supportsVersion, type PlaybackClient } from './versions.ts';
 import { createFfmpegToolkit, decidePlayback, directMimeFor, type FfmpegToolkit } from './ffmpeg.ts';
 import { createDirectRegistry, createStreamSessions, type DirectRegistry, type StreamSessionService } from './streamSessions.ts';
 
@@ -14,11 +15,12 @@ export interface ResolvedFileStream {
   sessionId?: string;
   timeOffset?: number;
   durationSeconds?: number;
+  audioLanguages?: string[];
 }
 
 export interface StreamerService {
   ready(): boolean;
-  resolveFile(url: string, options: { maxHeight: number; startAt?: number; filename?: string }): Promise<ResolvedFileStream | null>;
+  resolveFile(url: string, options: { maxHeight: number; startAt?: number; filename?: string; client?: PlaybackClient }): Promise<ResolvedFileStream | null>;
   sessions: StreamSessionService;
   direct: DirectRegistry;
 }
@@ -81,12 +83,30 @@ export function createStreamer(options: StreamerOptions): StreamerService {
         const name = opts.filename ?? url;
         const mime =
           extensionDirectMime(name) ?? extensionDirectMime(url) ?? extensionLooseMime(name) ?? extensionLooseMime(url);
-        if (mime === null) return null;
+        if (mime === null || (opts.client && mime === 'video/x-matroska' && opts.client.mkv !== true)) return null;
         const token = direct.mint(url, mime);
         return { url: `/api/stream/direct/${token}`, mimeType: mime, transport: 'direct' };
       }
 
       const decision = decidePlayback(probe, opts.maxHeight);
+      if (opts.client) {
+        const name = opts.filename ?? url;
+        const guessed = describeVersion({ title: name, url, quality: 0, cached: true }, null);
+        const matroska = /\bmatroska\b/.test(probe.container) && !/\.webm$/i.test(name);
+        if (probe.videoHeight > opts.maxHeight ||
+            !supportsVersion({ ...guessed, codec: probe.videoCodec, hdr: probe.hdr ? guessed.hdr ?? 'hdr10' : guessed.hdr },
+              matroska ? name + '.mkv' : name, opts.client)) return null;
+        const basicAudio = !probe.audioCodec || ['aac', 'mp3', 'opus', 'vorbis'].includes(probe.audioCodec);
+        const supportedVideo = ['h264', 'hevc', 'av1', 'vp8', 'vp9'].includes(probe.videoCodec ?? '') &&
+          (probe.videoCodec !== 'h264' || probe.videoBitDepth <= 8);
+        const negotiatedDirect = supportedVideo && basicAudio &&
+          (matroska && opts.client.mkv === true || /\b(?:mp4|mov|m4v)\b/.test(probe.container) && probe.videoCodec === 'hevc');
+        const mime = decision.mode === 'direct' ? decision.mimeType
+          : negotiatedDirect ? matroska ? 'video/x-matroska' : 'video/mp4' : null;
+        if (!mime) return null;
+        return { url: `/api/stream/direct/${direct.mint(url, mime)}`, mimeType: mime,
+          transport: 'direct', durationSeconds: probe.durationSeconds, audioLanguages: probe.audioLanguages };
+      }
       if (decision.mode === 'direct') {
         const token = direct.mint(url, decision.mimeType);
         return {

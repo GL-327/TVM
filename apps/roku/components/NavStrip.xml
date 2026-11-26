@@ -12,19 +12,19 @@
   <script type="text/brightscript" uri="NavStrip.brs" />
   <children>
     <BrandLockup id="wordmark" kind="wordmark" translation="[160, 80]" />
-    <GlassPanel id="pillGlass" shape="pill" width="1848" height="144" translation="[996, 72]" />
-    <GlassPanel id="activePill" width="296" height="112" shape="pill" active="true" translation="[1020, 88]" />
-    <GlassPanel id="hl" width="296" height="112" shape="pill" active="true" translation="[1020, 88]" />
-    <Poster id="hlRing" uri="pkg:/images/glass/focus-ring.9.png" width="328" height="144" translation="[1004, 72]" visible="false" />
-    <Group id="tabs" translation="[996, 72]" />
+    <GlassPanel id="pillGlass" shape="pill" tintColor="0x12141AFF" width="1692" height="144" translation="[1074, 72]" />
+    <GlassPanel id="activePill" width="296" height="112" shape="pill" tintColor="0xF5F7FAFF" translation="[1098, 88]" />
+    <GlassPanel id="hl" width="296" height="112" shape="pill" tintColor="0xF5F7FAFF" translation="[1098, 88]" />
+    <Poster id="hlRing" uri="pkg:/images/glass/focus-ring.9.png" width="328" height="144" translation="[1082, 72]" visible="false" />
+    <Group id="tabs" translation="[1074, 72]" />
     <Group id="orbGroup" translation="[3536, 72]">
       <Poster id="orbRing" uri="pkg:/images/glass/focus-ring.9.png" width="176" height="176" translation="[-16, -16]" visible="false" />
       <Poster id="orb" uri="pkg:/images/glass/orb.png" width="144" height="144" />
       <Label id="orbInitial" width="144" height="144" horizAlign="center" vertAlign="center" color="0xF5F5F5FF" />
     </Group>
     <Animation id="hlAnim" duration="0.18" easeFunction="outCubic" optional="true">
-      <Vector2DFieldInterpolator id="hlMove" key="[0.0, 0.74, 1.0]" keyValue="[[1020.0, 88.0], [1020.0, 88.0], [1020.0, 88.0]]" fieldToInterp="hl.translation" />
-      <Vector2DFieldInterpolator id="hlRingMove" key="[0.0, 1.0]" keyValue="[[1004.0, 72.0], [1004.0, 72.0]]" fieldToInterp="hlRing.translation" />
+      <Vector2DFieldInterpolator id="hlMove" key="[0.0, 0.74, 1.0]" keyValue="[[1098.0, 88.0], [1098.0, 88.0], [1098.0, 88.0]]" fieldToInterp="hl.translation" />
+      <Vector2DFieldInterpolator id="hlRingMove" key="[0.0, 1.0]" keyValue="[[1082.0, 72.0], [1082.0, 72.0]]" fieldToInterp="hlRing.translation" />
       <Vector2DFieldInterpolator id="hlStretch" key="[0.0, 0.5, 1.0]" keyValue="[[1.0, 1.0], [1.18, 1.0], [1.0, 1.0]]" fieldToInterp="hl.scale" />
     </Animation>
   </children>

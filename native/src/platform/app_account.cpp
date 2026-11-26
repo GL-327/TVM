@@ -290,16 +290,40 @@ coreapi::RealDebridStatus App::CoreRealDebrid() const {
     }
 }
 
-playback::Resolution App::CorePlayback(const std::string& id, const std::string& title, int maxHeight) const {
+playback::Resolution App::CorePlayback(const std::string& id, const std::string& title, int maxHeight, const std::string& versionId, bool versions) const {
     playback::Resolution result;
     try {
         if (!core_->Status().usable) throw std::runtime_error("Sign in with an active account.");
         const auto plan = core_->Call("/api/plan");
         const int cap = plan.value("maxHeight", 1080);
         result.bestHeight = cap;
-        const auto body = core_->Call("/api/playback", "POST", {{"id", id}, {"title", title}, {"native", true},
-            {"screenHeight", maxHeight > 0 ? maxHeight : 1080}, {"maxHeight", std::min(cap, maxHeight > 0 ? maxHeight : 1080)}});
+        const int screen = maxHeight > 0 ? maxHeight : 1080;
+        nlohmann::json input{{"id", id}, {"title", title}, {"native", true}, {"screenHeight", screen},
+            {"maxHeight", std::min(cap, screen)},
+            {"client", {{"player", "mpv"}, {"maxHeight", screen}, {"hevc", true}, {"hdr", true}, {"mkv", true}}}};
+        const auto parsed = playback::ParsePlayId(id);
+        if (parsed && parsed->season) input["season"] = *parsed->season;
+        if (parsed && parsed->episode) input["episode"] = *parsed->episode;
+        if (!versionId.empty()) input["versionId"] = versionId;
+        try { result.preferences = core_->Call("/api/prefs"); } catch (...) {}
+        const auto body = core_->Call("/api/playback", "POST", input);
+        if (body.contains("version") && body["version"].is_object()) result.version = body["version"];
+        if (body.contains("originalLanguage") && body["originalLanguage"].is_string())
+            result.originalLanguage = body["originalLanguage"].get<std::string>();
         result.url = body.value("url", std::string());
+        if (result.url.starts_with('/')) result.url = core_->origin() + result.url;
+        result.transport = playback::PlaybackTransport(result.url, body.value("engine", ""), body.value("transport", ""));
+        if (versions && parsed && extras::ParsePreferences(result.preferences).Enabled("versionPicker")) {
+            std::string query = "?id=" + parsed->imdb;
+            if (parsed->season) query += "&season=" + std::to_string(*parsed->season);
+            if (parsed->episode) query += "&episode=" + std::to_string(*parsed->episode);
+            try {
+                const auto choices = core_->Call("/api/playback/versions" + query);
+                if (choices.contains("versions") && choices["versions"].is_array()) result.versions = choices["versions"];
+                if (result.originalLanguage.empty() && choices.contains("originalLanguage") && choices["originalLanguage"].is_string())
+                    result.originalLanguage = choices["originalLanguage"].get<std::string>();
+            } catch (...) {}
+        }
         if (body.contains("subtitles") && body["subtitles"].is_array()) result.subtitles = body["subtitles"];
         if (body.contains("segments") && body["segments"].is_object()) result.segments = body["segments"];
         // The core sends a clean "title" beside the raw, URL-encoded "filename"; a file name is only a last resort,

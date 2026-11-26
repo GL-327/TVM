@@ -12,6 +12,11 @@
     <field id="position" type="float" value="0" />
     <field id="hasNext" type="boolean" value="false" onChange="onPlayerState" />
     <field id="nextTitle" type="string" onChange="onPlayerState" />
+    <field id="hasVersions" type="boolean" value="false" onChange="onPlayerState" />
+    <field id="versionLabel" type="string" onChange="onPlayerState" />
+    <field id="sleepEnabled" type="boolean" value="false" onChange="onPlayerState" />
+    <field id="sleepMode" type="string" value="off" onChange="onPlayerState" />
+    <field id="sleepRemaining" type="integer" value="0" onChange="onPlayerState" />
     <field id="audioTracks" type="array" />
     <field id="audioCurrent" type="string" />
     <field id="subtitleTracks" type="array" />

@@ -49,6 +49,8 @@ export interface CatalogBundle {
 export interface TitleMeta {
   item: MediaItem;
   children: MediaItem[];
+  originalLanguage?: unknown;
+  tmdbId?: number;
 }
 
 /** Cinemeta reuses some IMDb ids: /meta/movie/tt1196946 is Le Mans, /meta/series is The Mentalist. */
@@ -370,6 +372,8 @@ export function createCatalogService(options: CatalogServiceOptions) {
             if (item === null) return null;
             return {
               item,
+              originalLanguage: body.meta.original_language ?? body.meta.originalLanguage,
+              tmdbId: Number(body.meta.moviedb_id) || undefined,
               children: kind === 'series' ? mapCinemetaVideos(item, body.meta.videos) : [],
             };
           } catch {

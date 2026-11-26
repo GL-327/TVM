@@ -117,12 +117,13 @@ void SettingsScreen::BuildRows() {
     };
 
     group("Picture");
-    row(RowKind::Motion, "motion", "Motion");
     row(RowKind::Performance, "performance", "Performance mode");
 
     group("Look");
     row(RowKind::Theme, "themes", "Theme");
-    row(RowKind::Glass, "glass", "Liquid Glass");
+    row(RowKind::Glass, "font", "Font");
+    row(RowKind::Glass, "reduce-transparency", "Reduce transparency");
+    row(RowKind::Motion, "motion", "Reduce motion");
 
     group("Language");
     row(RowKind::Language, "language", "App language");
@@ -202,14 +203,14 @@ void SettingsScreen::RefreshDetails() {
 std::string SettingsScreen::DetailFor(const Row& row) const {
     switch (row.kind) {
     case RowKind::Motion:
-        return motion_.preference == motion::MotionPreference::Reduced ? "Reduced · freeze decorative loops"
-                                                                       : "Auto · UI animates";
+        return motion::PrefersReducedMotion(motion_) ? "On · simpler animation" : "Off · full animation";
     case RowKind::Performance:
         return motion_.performanceMode ? "On · simpler effects and motion" : "Off · full UI motion";
     case RowKind::Theme:
         return store_.Look() == Theme::Light ? "Light" : "Dark";
     case RowKind::Glass:
-        return store_.Glass() == GlassClarity::Tinted ? "Tinted - more contrast" : store_.Glass() == GlassClarity::Clear ? "Clear - less blur" : "Default - balanced glass";
+        if (row.key == "font") return std::string(UiFontName(store_.Font()));
+        return store_.ReduceTransparency() ? "On · solid surfaces" : "Off · Liquid Glass";
     case RowKind::Language:
         return LanguageName(core_.language);
     case RowKind::AutoUpdate:
@@ -220,7 +221,7 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
     case RowKind::Push:
     case RowKind::Info:
         if (row.key == "dev-glass") {
-            return store_.Glass() == GlassClarity::Tinted ? "Tinted" : store_.Glass() == GlassClarity::Clear ? "Clear" : "Default";
+            return store_.ReduceTransparency() ? "Solid surfaces" : "Liquid Glass";
         }
         return row.detail;
     case RowKind::Group:
@@ -394,7 +395,12 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
         return std::nullopt;
 
     case RowKind::Glass:
-        store_.SaveGlass(store_.Glass() == GlassClarity::Clear ? GlassClarity::Default : store_.Glass() == GlassClarity::Default ? GlassClarity::Tinted : GlassClarity::Clear);
+        if (row.key == "font") {
+            const UiFont current = store_.Font();
+            store_.SetFont(current == UiFont::Geist ? UiFont::Inter : current == UiFont::Inter ? UiFont::System : UiFont::Geist);
+        } else {
+            store_.SetReduceTransparency(!store_.ReduceTransparency());
+        }
         RefreshDetails();
         return std::nullopt;
 

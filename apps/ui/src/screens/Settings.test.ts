@@ -10,23 +10,18 @@ function read(name: string): string {
 }
 
 describe('Settings picture group', () => {
-  it('puts Motion and Performance at the top, before themes and privacy', () => {
+  it('keeps Motion and Performance in Appearance, with the new two-pane layout', () => {
     const src = read('Settings.tsx');
-    const picture = src.indexOf('settings-group__title">Picture');
-    const motion = src.indexOf('id="motion"');
-    const performance = src.indexOf('id="performance"');
-    const look = src.indexOf('settings-group__title">Look');
-    const privacy = src.indexOf('id="privacy"');
-    const theme = src.indexOf('id={`theme-${spec.id}`}');
-    expect(picture).toBeGreaterThan(-1);
-    expect(motion).toBeGreaterThan(picture);
+    const appearance = src.indexOf('appearance: [');
+    const motion = src.indexOf("toggle('motion'");
+    const performance = src.indexOf("toggle('performance'");
+    const home = src.indexOf('    home: [');
+    expect(appearance).toBeGreaterThan(-1);
+    expect(motion).toBeGreaterThan(appearance);
     expect(performance).toBeGreaterThan(motion);
-    expect(look).toBeGreaterThan(performance);
-    expect(theme).toBeGreaterThan(look);
-    expect(privacy).toBeGreaterThan(theme);
+    expect(home).toBeGreaterThan(performance);
     expect(src).toContain('Performance mode');
-    expect(src).toContain('data-wrap="y"');
-    expect(src).toContain('settings-list');
+    expect(src).toContain('settings-item');
   });
 
   it('opens Settings on Performance so the row is on screen', () => {
@@ -59,8 +54,8 @@ describe('Settings 10-foot type stays on theme ink', () => {
 describe('hidden studio controls', () => {
   it('does not list Developer until developer mode is on', () => {
     const src = read('Settings.tsx');
-    expect(src).toContain('{plan.developer ? (');
-    expect(src).toContain('id="developer"');
+    expect(src).toContain("id !== 'developer' || admin");
+    expect(src).toContain("action('developer'");
   });
 
   it('hides live channel diagnostics until developer mode is on', () => {

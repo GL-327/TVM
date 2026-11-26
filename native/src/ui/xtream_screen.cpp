@@ -9,6 +9,11 @@ namespace tvm::ui {
 
 namespace {
 
+Color WithAlpha(Color color, double alpha) {
+    color.a *= alpha;
+    return color;
+}
+
 constexpr double kSafeXRem = 2.5;
 constexpr double kSafeYRem = 1.5;
 
@@ -27,12 +32,14 @@ constexpr double kRowLabelWidthRem = 16.0;
 constexpr double kRowHintWidthRem = 12.0;
 constexpr double kMessageTopRem = 24.0;
 constexpr double kMessageHeightRem = 1.5;
-constexpr double kButtonsTopRem = 26.0;
-constexpr double kButtonHeightRem = 3.5;
+constexpr double kButtonsTopRem = 26.25;
+constexpr double kButtonHeightRem = 2.75;
 constexpr double kButtonGapRem = 1.5;
 constexpr double kSaveWidthRem = 18.0;
 constexpr double kDisconnectWidthRem = 16.0;
 constexpr double kRowRadiusRem = 0.5;
+constexpr double kControlRadiusRem = 0.75;
+constexpr double kCardRadiusRem = 1.0;
 
 constexpr char kServerKey[] = "server";
 constexpr char kUsernameKey[] = "username";
@@ -171,6 +178,14 @@ void XtreamScreen::Paint(Painter& painter) const {
     painter.Paragraph(Box{x, kickerY + metrics.Rem(kLedeTopRem), contentWidth, metrics.Rem(kLedeHeightRem)}, kLede,
                       TextStyle{metrics.Rem(1.0625), false}, tokens::kTextMuted);
 
+    // Outer setup surface card (radius 16px) housing status rows and surface-2 input fields (radius 12px).
+    const double cardPad = metrics.Rem(1.0);
+    const Box card{x - cardPad, kickerY + metrics.Rem(kAccountTopRem) - cardPad * 0.75,
+                   contentWidth + 2.0 * cardPad,
+                   metrics.Rem(kPasswordTopRem - kAccountTopRem + kRowHeightRem) + cardPad * 1.5};
+    painter.FillRoundRect(card, metrics.Rem(kCardRadiusRem), tokens::kSurface);
+    painter.StrokeRoundRect(card, metrics.Rem(kCardRadiusRem), 1.0, tokens::kBorderSoft);
+
     // The facts are in the order the rows are drawn: account, channels, then the three fields.
     const std::vector<std::pair<std::string, std::string>> facts = Facts();
     const std::vector<std::string> keys{"account", "channels", kServerKey, kUsernameKey, kPasswordKey};
@@ -180,23 +195,20 @@ void XtreamScreen::Paint(Painter& painter) const {
         const Box row = field ? *BoxOf(key)
                               : Box{x, kickerY + metrics.Rem(RowTopRem(key)), contentWidth, metrics.Rem(kRowHeightRem)};
         const bool focused = field && focused_ == key;
-        const double ringWidth = metrics.Rem(kFocusRingWidthRem);
-        GlassStyle rowGlass;
-        rowGlass.kind = GlassKind::Panel;
-        rowGlass.focused = focused;
-        rowGlass.focusAmount = focused ? 1.0 : 0.0;
-        rowGlass.reduceTransparency = tokens::reduceTransparency;
-        rowGlass.tint = focused ? tokens::kSurfaceHover : tokens::kSurface;
-        rowGlass.ringWidth = ringWidth;
-        rowGlass.ringOutset = metrics.Rem(kFocusRingOffsetRem) + ringWidth / 2.0;
-        rowGlass.ringColor = tokens::kFocusRing;
-        painter.Glass(row, metrics.Rem(kRowRadiusRem), rowGlass);
+        const double radius = metrics.Rem(field ? kControlRadiusRem : kRowRadiusRem);
+        if (field) {
+            painter.FillRoundRect(row, radius, focused ? tokens::kSurfaceHover : tokens::kBackgroundElevated);
+            painter.StrokeRoundRect(row, radius, focused ? metrics.Rem(kFocusRingWidthRem) : 1.0,
+                                    focused ? tokens::kFocusRing : tokens::kBorderSoft);
+        } else {
+            painter.FillRoundRect(row, radius, WithAlpha(tokens::kGlassFill, 0.75));
+        }
 
         painter.Text(Box{row.x + metrics.Rem(1.0), row.y, metrics.Rem(kRowLabelWidthRem), row.height}, facts[i].first,
-                     TextStyle{metrics.Rem(1.0625), false}, focused ? tokens::kText : tokens::kTextMuted);
+                     TextStyle{metrics.Rem(1.0), false, 500}, focused ? tokens::kText : tokens::kTextMuted);
         painter.Text(Box{row.x + metrics.Rem(kRowLabelWidthRem), row.y,
                          row.width - metrics.Rem(kRowLabelWidthRem + kRowHintWidthRem + 1.0), row.height},
-                     facts[i].second, TextStyle{metrics.Rem(1.0625), false}, tokens::kText);
+                     facts[i].second, TextStyle{metrics.Rem(1.0), false}, tokens::kText);
         if (field) {
             painter.Text(Box{row.Right() - metrics.Rem(kRowHintWidthRem + 1.0), row.y, metrics.Rem(kRowHintWidthRem),
                              row.height},
@@ -205,16 +217,35 @@ void XtreamScreen::Paint(Painter& painter) const {
     }
 
     if (!view_.message.empty()) {
-        painter.Text(Box{x, kickerY + metrics.Rem(kMessageTopRem), contentWidth, metrics.Rem(kMessageHeightRem)},
-                     view_.message, TextStyle{metrics.Rem(1.0625), false}, tokens::kTextMuted);
+        painter.Text(Box{x, kickerY + metrics.Rem(kMessageTopRem + 0.5), contentWidth, metrics.Rem(kMessageHeightRem)},
+                     view_.message, TextStyle{metrics.Rem(1.0), false}, tokens::kTextMuted);
     }
 
     for (const std::vector<std::string>& row : Grid()) {
         for (const std::string& key : row) {
             if (key != kSaveKey && key != kDisconnectKey) continue;
             const std::optional<Box> box = BoxOf(key);
-            const ButtonLook look{key == kSaveKey, ShowsFocus(focused_, key), buttonFocus_.Amount(key, clockMs_)};
-            if (box.has_value()) DrawButton(painter, metrics, *box, LabelOf(key), look);
+            if (!box.has_value()) continue;
+            const bool primary = key == kSaveKey;
+            const bool focused = ShowsFocus(focused_, key);
+            const double radius = metrics.Rem(kControlRadiusRem);
+            const Color solidPrimary{tokens::kPrimary.r, tokens::kPrimary.g, tokens::kPrimary.b, 1.0};
+            if (primary) {
+                painter.FillRoundRect(*box, radius, focused ? Mix(solidPrimary, Rgb(0xFFFFFF), 0.16) : solidPrimary);
+            } else {
+                GlassStyle btnGlass;
+                btnGlass.kind = GlassKind::Card;
+                btnGlass.focused = focused;
+                btnGlass.focusAmount = focused ? 1.0 : 0.0;
+                btnGlass.reduceTransparency = tokens::reduceTransparency;
+                btnGlass.tint = focused ? tokens::kSurfaceHover : tokens::kGlassFill;
+                painter.Glass(*box, radius, btnGlass);
+                painter.StrokeRoundRect(*box, radius, 1.0, tokens::kGlassBorder);
+            }
+            if (focused) painter.StrokeRoundRect(*box, radius, metrics.Rem(kFocusRingWidthRem), tokens::kFocusRing);
+            const double pad = metrics.Rem(1.0);
+            painter.Text(Box{box->x + pad, box->y, box->width - 2.0 * pad, box->height}, LabelOf(key),
+                         TextStyle{metrics.Rem(0.98), true, 650}, primary ? tokens::kOnPrimary : tokens::kText);
         }
     }
 }

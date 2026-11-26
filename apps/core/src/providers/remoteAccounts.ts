@@ -9,7 +9,40 @@ interface ServiceAccount {
   id: string; email: string; displayName: string; role: 'member' | 'admin';
   status: 'waiting' | 'active' | 'suspended'; tier: AccountTier; liveTv: boolean;
   emailVerified: boolean; termsVersion: string | null; hasRdToken: boolean; createdAt: string;
+  rdUsername?: string | null; rdPremiumUntil?: string | null; rdCheckedAt?: string | null;
   note?: string | null; activatedAt?: string | null; lastSeenAt?: string | null; sessionCount?: number;
+}
+
+export interface AccountsConfig {
+  announcement: { id: string; text: string; level: 'info' | 'warning' | 'critical'; link?: string } | null;
+  minVersion: string | null;
+  flags: Record<string, boolean>;
+  openSignups: boolean;
+  mail: boolean;
+}
+
+export const DEFAULT_ACCOUNTS_CONFIG: AccountsConfig = {
+  announcement: null, minVersion: null, flags: {}, openSignups: false, mail: false,
+};
+
+function publicConfig(input: Partial<AccountsConfig>): AccountsConfig {
+  const a = input.announcement;
+  let link: string | undefined;
+  if (typeof a?.link === 'string') {
+    try {
+      const url = new URL(a.link);
+      if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) link = url.href;
+    } catch { /* Ignore invalid links. */ }
+  }
+  return {
+    announcement: a && typeof a.id === 'string' && typeof a.text === 'string' &&
+      ['info', 'warning', 'critical'].includes(a.level)
+      ? { id: a.id, text: a.text, level: a.level, ...(link ? { link } : {}) } : null,
+    minVersion: typeof input.minVersion === 'string' ? input.minVersion : null,
+    flags: Object.fromEntries(Object.entries(input.flags ?? {}).filter(([, value]) => typeof value === 'boolean')),
+    openSignups: input.openSignups === true,
+    mail: input.mail === true,
+  };
 }
 
 export class AccountsError extends Error {
@@ -40,7 +73,8 @@ function adminAccount(a: ServiceAccount): AdminAccount {
   const r = record(a);
   return { ...publicAccount(r), activatedAt: r.activatedAt, lastSeenAt: r.lastSeenAt,
     signIns: 0, lastClient: null, note: r.note, activeSessions: a.sessionCount ?? 0,
-    emailVerifiedAt: r.emailVerifiedAt, rdKeyHint: a.hasRdToken ? '••••' : null };
+    emailVerifiedAt: r.emailVerifiedAt, rdUsername: a.rdUsername ?? null,
+    rdPremiumUntil: a.rdPremiumUntil ?? null, rdCheckedAt: a.rdCheckedAt ?? null, rdKeyHint: a.hasRdToken ? '••••' : null };
 }
 
 export function createRemoteAccountsService(options: {
@@ -53,11 +87,13 @@ export function createRemoteAccountsService(options: {
   const sessionPath = join(dataDir, 'secrets', 'account-sessions.enc');
   const keyPath = join(dataDir, 'secrets', 'accounts-admin-key.enc');
   const rdCache = new Map<string, { token: string | null; expires: number; timer: NodeJS.Timeout }>();
+  const rdPending = new Map<string, Promise<string | null>>();
   const forgetRd = (session: string): void => {
+    rdPending.delete(session);
     clearTimeout(rdCache.get(session)?.timer);
     rdCache.delete(session);
   };
-  const clearRd = (): void => { for (const session of rdCache.keys()) forgetRd(session); };
+  const clearRd = (): void => { for (const session of new Set([...rdCache.keys(), ...rdPending.keys()])) forgetRd(session); };
   const credentials = (path: string): { origin: string; tokens?: string[]; key?: string } | null => {
     const saved = readSealed<{ origin: string; tokens?: string[]; key?: string }>(dataDir, path);
     return saved?.origin === origin ? saved : null;
@@ -67,17 +103,21 @@ export function createRemoteAccountsService(options: {
     if (keep) tokens.push(token);
     writeSealed(dataDir, sessionPath, { origin, tokens });
   };
-  const request = async <T>(path: string, method = 'GET', body?: unknown, bearer?: string): Promise<T> => {
+  const exchange = async (path: string, method = 'GET', body?: unknown, bearer?: string, accept = 'application/json'): Promise<Response> => {
     let response: Response;
     try {
       response = await fetchImpl(`${origin}${path}`, {
         method, redirect: 'error', signal: AbortSignal.timeout(15_000),
-        headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        headers: { accept, ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch { throw new AccountsError(503); }
     if (!response.ok) throw new AccountsError(response.status, response.headers.get('retry-after'));
+    return response;
+  };
+  const request = async <T>(path: string, method = 'GET', body?: unknown, bearer?: string): Promise<T> => {
+    const response = await exchange(path, method, body, bearer);
     if (response.status === 204) return undefined as T;
     try { return await response.json() as T; } catch { throw new AccountsError(503); }
   };
@@ -86,9 +126,7 @@ export function createRemoteAccountsService(options: {
     try {
       const result = await request<{ account: ServiceAccount }>('/v1/me', 'GET', undefined, token);
       const a = record(result.account);
-      if (a.suspended || !result.account.hasRdToken || !a.activated) forgetRd(token);
-      // A key the owner just set must not wait out a cached "no key".
-      else if (rdCache.get(token)?.token === null) forgetRd(token);
+      if (a.suspended || !result.account.hasRdToken || !a.activated || rdCache.get(token)?.token === null) forgetRd(token);
       return a.suspended ? null : a;
     } catch (error) {
       forgetRd(token);
@@ -96,11 +134,17 @@ export function createRemoteAccountsService(options: {
       throw error;
     }
   };
-  const admin = async <T>(path: string, method = 'GET', body?: unknown): Promise<T> => {
+  const adminKey = async (): Promise<string> => {
     const key = credentials(keyPath)?.key;
     if (!key || (await resolve(currentSessionToken()))?.role !== 'dev') throw new AccountsError(403);
-    return request<T>(`/v1/admin/${path}`, method, body, key);
+    return key;
   };
+  const admin = async <T>(path: string, method = 'GET', body?: unknown): Promise<T> =>
+    request<T>(`/v1/admin/${path}`, method, body, await adminKey());
+  let config = DEFAULT_ACCOUNTS_CONFIG;
+  let configExpires = -Infinity;
+  let configPending: Promise<AccountsConfig> | undefined;
+  let configGeneration = 0;
   const listRemote = async (filter: { search?: string; state?: 'all' | 'waiting' | 'active' | 'suspended' } = {}): Promise<ServiceAccount[]> => {
     const query = new URLSearchParams({ state: filter.state ?? 'all', search: filter.search ?? '' });
     const all: ServiceAccount[] = [];
@@ -129,6 +173,43 @@ export function createRemoteAccountsService(options: {
   };
   return {
     termsVersion,
+    config(): Promise<AccountsConfig> {
+      if (now() < configExpires) return Promise.resolve(config);
+      if (configPending) return configPending;
+      const generation = configGeneration;
+      const task = request<Partial<AccountsConfig>>('/v1/config').then(publicConfig).then(value => {
+        if (generation === configGeneration) {
+          config = value;
+          configExpires = now() + 60_000;
+        }
+        return value;
+      }).catch(() => {
+        if (generation === configGeneration) configExpires = now() + 15_000;
+        return config;
+      }).finally(() => { if (configPending === task) configPending = undefined; });
+      configPending = task;
+      return task;
+    },
+    async resendVerification(email?: unknown): Promise<void> {
+      if (email === undefined) await exchange('/v1/me/verify/resend', 'POST', undefined, requiredSession());
+      else await exchange('/v1/verify/resend', 'POST', { email });
+    },
+    async forgotPassword(email: unknown): Promise<void> {
+      await exchange('/v1/password/forgot', 'POST', { email });
+    },
+    async mirrorAdmin(path: string, method: string, body?: unknown): Promise<Response> {
+      const response = await exchange(`/v1/admin/${path}`, method, body, await adminKey(),
+        path === 'accounts.csv' ? 'text/csv' : 'application/json');
+      if (method !== 'GET') {
+        clearRd();
+        if (path === 'config') {
+          configGeneration++;
+          configExpires = -Infinity;
+          configPending = undefined;
+        }
+      }
+      return response;
+    },
     hasAdminKey: (): boolean => !!credentials(keyPath)?.key,
     installAdminKey(key: string): void {
       if (key.length > 4096 || /[\r\n]/.test(key)) throw new AccountsError(400);
@@ -166,31 +247,46 @@ export function createRemoteAccountsService(options: {
     cachedRdTokenFor(token: string | undefined): string | null {
       if (!token) return null;
       const cached = rdCache.get(token);
-      if (!cached || cached.expires <= now()) { forgetRd(token); return null; }
+      if (!cached) return null;
+      if (cached.expires <= now()) { forgetRd(token); return null; }
       return cached.token;
     },
-    async rdTokenFor(token: string | undefined): Promise<string | null> {
+    forgetRdToken(token: string | undefined, rejected?: string): void {
+      if (token && (rejected === undefined || rdCache.get(token)?.token === rejected)) forgetRd(token);
+    },
+    async rdTokenFor(token: string | undefined, fresh = false): Promise<string | null> {
       if (!token) return null;
+      if (fresh) forgetRd(token);
       const cached = rdCache.get(token);
       if (cached && cached.expires > now()) return cached.token;
+      const pending = rdPending.get(token);
+      if (pending) return pending;
       forgetRd(token);
-      try {
-        const result = await request<{ token: string | null }>('/v1/me/rd-token', 'GET', undefined, token);
+      const task = request<{ token: string | null }>('/v1/me/rd-token', 'GET', undefined, token).then(result => {
+        if (rdPending.get(token) !== task) return rdCache.get(token)?.token ?? null;
+        const value = result.token?.trim() || null;
         // Keep a real key for 10 minutes, but recheck a missing one after 30 seconds.
-        const ttl = result.token === null ? 30_000 : 10 * 60_000;
-        const timer = setTimeout(() => forgetRd(token), ttl);
+        const ttl = value === null ? 30_000 : 10 * 60_000;
+        const timer = setTimeout(() => {
+          if (rdCache.get(token)?.timer === timer) forgetRd(token);
+        }, ttl);
         timer.unref();
-        rdCache.set(token, { token: result.token, expires: now() + ttl, timer });
-        return result.token;
-      } catch (error) {
+        rdCache.set(token, { token: value, expires: now() + ttl, timer });
+        return value;
+      }).catch((error: unknown) => {
         if (error instanceof AccountsError && [401, 403].includes(error.status)) return null;
         throw error;
-      }
+      }).finally(() => {
+        if (rdPending.get(token) === task) rdPending.delete(token);
+      });
+      rdPending.set(token, task);
+      return task;
     },
     async setOwnRdToken(token: string) {
       const session = requiredSession();
       forgetRd(session);
       const result = await request<{ account: ServiceAccount }>('/v1/me/rd-token', 'PUT', { token: token.trim() }, session);
+      forgetRd(session);
       return publicAccount(record(result.account));
     },
     async list(filter: { search?: string; state?: 'all' | 'waiting' | 'active' | 'suspended' } = {}) {

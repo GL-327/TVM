@@ -146,12 +146,18 @@ end sub
 
 sub paintCards()
   col = m.top.focusCol
+  selected = invalid
   for each key in m.liveCards
     slot = Int(Val(key))
     card = m.liveCards[key]
-    card.hasFocusStyle = (col >= 0 and slot = m.focusSlot)
+    if col >= 0 and slot = m.focusSlot
+      selected = card
+    else
+      card.hasFocusStyle = false
+    end if
     card.dimmed = (col >= 0 and slot <> m.focusSlot)
   end for
+  if selected <> invalid then selected.hasFocusStyle = true
 end sub
 
 function stepFocus(movement as Object) as Boolean
@@ -210,7 +216,9 @@ sub slideTo(x as Float)
     m.track.translation = [x, 100]
     return
   end if
-  if tvmReduceMotion() or Abs(startX - x) < 2
+  focusX = startX + m.focusSlot * cardPitch()
+  ' Snap the viewport if motion would reveal an offscreen focus ring.
+  if focusX < 96 or focusX + cardWidth() > 3744 or tvmReduceMotion() or Abs(startX - x) < 2
     m.slideAnim.control = "stop"
     m.track.translation = [x, 100]
     return

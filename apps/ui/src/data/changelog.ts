@@ -272,3 +272,8 @@ export async function presentPendingChangelog(pushModal: (name: string, options?
     presentInflight = null;
   }
 }
+
+/** The pop-up shows once per installed version, and only when the service switch is on. */
+export function shouldShowPatchNotesPopup(flag: boolean | undefined, seenVersion: string | null, installedVersion = currentAppVersion()): boolean {
+  return flag === true && shouldShowReleaseCornerCard(seenVersion, installedVersion);
+}

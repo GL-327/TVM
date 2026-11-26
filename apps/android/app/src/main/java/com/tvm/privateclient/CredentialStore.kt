@@ -60,9 +60,12 @@ object CredentialStore {
  * Reads and writes never throw; a phone that cannot reach secure storage just
  * signs in again.
  */
-class EncryptedSessionVault(private val context: Context) : TvmSessionVault {
+class EncryptedSessionVault(
+    private val context: Context,
+    private val keyName: String = KEY,
+) : TvmSessionVault {
     override fun read(): String? = try {
-        prefs().getString(KEY, null)?.ifEmpty { null }
+        prefs().getString(keyName, null)?.ifEmpty { null }
     } catch (_: Exception) {
         null
     }
@@ -70,7 +73,7 @@ class EncryptedSessionVault(private val context: Context) : TvmSessionVault {
     override fun write(token: String?) {
         try {
             val edit = prefs().edit()
-            if (token.isNullOrEmpty()) edit.remove(KEY) else edit.putString(KEY, token)
+            if (token.isNullOrEmpty()) edit.remove(keyName) else edit.putString(keyName, token)
             edit.apply()
         } catch (_: Exception) {
             // Secure storage is locked or unavailable. The session still works until the app closes.

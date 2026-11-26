@@ -38,13 +38,10 @@ export function readPerformanceMode(): boolean {
   }
 }
 
-/**
- * True only when Settings → Motion is Reduced, or Performance mode is on.
- * `auto` and `full` keep decorative loops running even if the OS reports
- * `prefers-reduced-motion: reduce` (Windows/GPU often set that).
- */
 export function prefersReducedMotion(): boolean {
-  return readPerformanceMode() || readMotionPreference() === 'reduced';
+  return readPerformanceMode() || readMotionPreference() === 'reduced'
+    || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    || globalThis.document?.documentElement.dataset.simulateMotion === 'reduced';
 }
 
 function syncMotion(): void {
@@ -81,6 +78,7 @@ export function applyMotionPreference(value: MotionPreference): MotionPreference
   if (!observingVisibility && typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
     observingVisibility = true;
     document.addEventListener('visibilitychange', syncVisibility);
+    globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener('change', syncMotion);
     syncVisibility();
   }
   try {

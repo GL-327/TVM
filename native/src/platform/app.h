@@ -54,6 +54,7 @@
 #include "ui/shell.h"
 #include "ui/live_playlist_screen.h"
 #include "ui/live_tv_view.h"
+#include "ui/guide_view.h"
 #include "ui/xtream_screen.h"
 
 namespace tvm::platform {
@@ -124,6 +125,8 @@ private:
     std::vector<ExternalSubtitle> pendingSubtitles_;
     std::vector<ExternalSubtitle> externalSubtitles_;
     bool subtitlePreferenceApplied_ = false;
+    std::optional<int> pendingAudioTrackId_;
+    int pendingAudioWaitTicks_ = 0;
     std::string subtitleChoice_;
 
     void RefreshProfilePolicy();
@@ -132,6 +135,8 @@ private:
     void FilterView(ui::SceneView& view) const;
     void SyncReleaseNotice(double nowMs);
     void DismissReleaseNotice(double nowMs);
+    std::atomic<int> patchPopupFlag_{-1};  // -1 unknown, 0 off, 1 on: flags.patchNotesPopup from Core
+    bool patchPopupAsked_ = false;
     std::unique_ptr<content::ReleaseNotice> releaseNotice_;
     double updatesCheckedMs_ = 0;
     // Turns the Home hero to its next title every eight seconds, while Home is on screen and not reduced.
@@ -191,6 +196,17 @@ private:
     // Live TV channels. The catalogue is read on a worker, and the screen is rebuilt here from
     // the catalogue and the picks. Picking a channel saves the picks at once.
     void SyncLiveTv();
+    void RefreshGuide();
+    void TickGuide(double now);
+    bool GuideActive() const;
+    bool HandleGuideKey(WPARAM key);
+    bool HandleGuideMouse(UINT message, WPARAM buttons, LPARAM point);
+    void WatchGuideChannel(const std::string& id);
+    guide::View guide_;
+    guide::Time guideLoadedStart_ = 0, guideLoadedEnd_ = 0, guideClock_ = 0;
+    double guideTuneAt_ = 0, guideRetryAt_ = 0;
+    bool guideVisible_ = true, guideFetching_ = false, guideSearch_ = false;
+    std::string guideDigits_;
     void RefreshLiveTv();
     void ApplyLiveTv();
     void SetLiveChoosing(bool choosing);
@@ -261,7 +277,7 @@ private:
                        bool isError = false, std::string errorField = "");
     coreapi::RealDebridStatus CoreRealDebrid() const;
     std::optional<admin::MailSettings> CoreMail() const;
-    playback::Resolution CorePlayback(const std::string& id, const std::string& title, int maxHeight = 0) const;
+    playback::Resolution CorePlayback(const std::string& id, const std::string& title, int maxHeight = 0, const std::string& versionId = {}, bool versions = false) const;
     // The info page on top when it has a field to type into.
     ui::InfoScreen* TypingPage();
     // Keeps what was typed into a page's field, and filters Accounts as its search is typed.
@@ -319,6 +335,18 @@ private:
     // Playback. The stream is found on a worker, then mpv plays it in a child window, and the player's
     // chrome is drawn over it in the overlay window. Leaving the player ends the session.
     void SyncPlayer();
+    void TickPlaybackTools(double now);
+    void VideoClickAction(mpv::VideoClicks::Action action);
+    void UpdatePlaybackTools(const mpv::State& state);
+    void OpenTrailer(const std::string& url, const std::string& title);
+    mpv::VideoClicks videoClicks_;
+    bool videoPressed_ = false, audioPreferenceApplied_ = false, playerStyleApplied_ = false;
+    bool minimizePaused_ = false, playerNightInitialized_ = false;
+    std::optional<double> sleepDeadline_;
+    bool sleepAtEnd_ = false;
+    std::string playerVersionId_, playerTransport_, playerVersionLabel_, playerAudioLanguage_;
+    std::string playerTrailerUrl_, playerYtdlpPath_;
+    extras::Preferences playerPrefs_;
     void StartPlayback();
     void PrepareHls(playback::Resolution& resolution, int height) const;
     void SwitchHls(int height);
@@ -371,6 +399,8 @@ private:
     coreapi::RealDebridStatus rdStatus_;
     bool rdStatusLoaded_ = false;
     bool rdStatusChecking_ = false;
+    double rdCheckedMs_ = -60000;
+    bool rdHomeShown_ = false, realDebridChanging_ = false;
     bool rdOnboardingDismissed_ = false;
     bool rdOnboardingPrompted_ = false;
     Graphics graphics_;
@@ -625,5 +655,7 @@ private:
     // catalogue, the artwork and the shell they may still use go away.
     std::unique_ptr<Background> background_;
 };
+
+void PrepareMpv(coreapi::Client& client);
 
 }  // namespace tvm::platform

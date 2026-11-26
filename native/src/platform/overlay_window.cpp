@@ -48,9 +48,24 @@ OverlayWindow::~OverlayWindow() {
 }
 
 void OverlayWindow::Show(bool visible) {
+    if (!visible) topmost_ = false;
     if (visible == visible_) return;
     visible_ = visible;
+    if (visible) topmost_ = false;
     ShowWindow(window_, visible ? SW_SHOWNA : SW_HIDE);
+}
+
+void OverlayWindow::SetForeground(bool foreground) {
+    if (foreground == topmost_) return;
+    if (SetWindowPos(window_, foreground ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER)) topmost_ = foreground;
+}
+
+void OverlayWindow::ResetZOrder() {
+    topmost_ = false;
+    if (!visible_ || window_ == nullptr) return;
+    const HWND foreground = GetForegroundWindow();
+    SetForeground(foreground && GetAncestor(foreground, GA_ROOTOWNER) == owner_);
 }
 
 void OverlayWindow::EnsureSurface(Graphics& graphics, int width, int height) {
@@ -76,6 +91,8 @@ void OverlayWindow::EnsureSurface(Graphics& graphics, int width, int height) {
     height_ = height;
 
     target_ = graphics.CreateDcTarget();
+    // Layout and the layered bitmap both use physical client pixels.
+    target_->SetDpi(96.0f, 96.0f);
     const RECT bounds{0, 0, width, height};
     if (FAILED(target_->BindDC(dc_, &bounds))) throw std::runtime_error("the player overlay target failed");
 }
@@ -97,7 +114,9 @@ void OverlayWindow::Paint(Graphics& graphics, const std::function<void(ID2D1Rend
     GetClientRect(owner_, &client);
     const int width = client.right - client.left;
     const int height = client.bottom - client.top;
-    if (width <= 0 || height <= 0 || IsIconic(owner_)) return;
+    if (width <= 0 || height <= 0 || IsIconic(owner_) || !IsWindowVisible(owner_)) return;
+    const HWND foreground = GetForegroundWindow();
+    SetForeground(foreground && GetAncestor(foreground, GA_ROOTOWNER) == owner_);
     POINT origin{0, 0};
     ClientToScreen(owner_, &origin);
 

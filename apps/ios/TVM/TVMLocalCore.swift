@@ -27,7 +27,8 @@ final class TVMLocalCore {
         session: URLSession? = nil,
         store: TVMStore = TVMStore(),
         accountsTransport: TVMAccountsTransport? = nil,
-        sessionVault: TVMSessionVault? = nil
+        sessionVault: TVMSessionVault? = nil,
+        adminVault: TVMSessionVault? = nil
     ) {
         self.store = store
         // Titles known to carry another title's artwork, before any picture is asked for.
@@ -51,7 +52,8 @@ final class TVMLocalCore {
         reviews = TVMReviews(itemLookup: { id in await mediaInstance.item(id) }, session: self.session)
         accounts = TVMAccounts(
             transport: accountsTransport ?? TVMURLSessionTransport(),
-            vault: sessionVault ?? TVMKeychainSessionVault()
+            vault: sessionVault ?? TVMKeychainSessionVault(),
+            adminVault: adminVault ?? (sessionVault == nil ? TVMKeychainSessionVault(account: "admin_key") : TVMMemorySessionVault())
         )
         downloads = TVMDownloads(store: store) { id, language, height in
             await mediaInstance.download(id: id, language: language, maxHeight: height)
@@ -64,6 +66,11 @@ final class TVMLocalCore {
             livePicks = Set(saved["picks"] as? [String] ?? [])
             liveChannels = saved["channels"] as? [[String: Any]] ?? []
         }
+    }
+
+    /// The app came back to the foreground: forget cached account, key and config answers so changes show at once.
+    func onForeground() {
+        accounts.invalidateCaches()
     }
 
     /// Dev mode belongs to an owner (admin) account, so dev-only routes check
@@ -113,14 +120,49 @@ final class TVMLocalCore {
         }
         if path == "/api/prefs" && method == "PUT" {
             var prefs = TVMPrefs.load(store)
-            if let language = json["language"] as? String, TVMPrefs.languages.contains(language) {
-                prefs.language = language
-            }
-            if let auto = json["autoUpdate"] as? Bool {
-                prefs.autoUpdate = auto
-            }
+            prefs.merge(json)
             prefs.save(store)
             return .json(200, prefs.json())
+        }
+        // The version picker needs the ranking engine wired to this phone's sources; until then the interface sees "no choices".
+        if path == "/api/playback/versions" && method == "GET" {
+            return .json(200, ["originalLanguage": NSNull(), "versions": [Any]()])
+        }
+        if path == "/api/config" && method == "GET" {
+            return .json(200, await accounts.config())
+        }
+        if path == "/api/announcement" && method == "GET" {
+            return .json(200, await accounts.announcement())
+        }
+        // Hero clips, theme songs and yt-dlp need a desktop; phones say so and the interface hides the feature.
+        if path.hasPrefix("/api/extras/") && path != "/api/extras/surprise" && (method == "GET" || method == "HEAD") {
+            return .json(404, ["status": "unavailable", "error": "unavailable"])
+        }
+        if path == "/api/extras/surprise" && method == "GET" {
+            if let item = media.watchlist().randomElement() { return .json(200, ["item": item.json()]) }
+            return .json(200, ["item": NSNull()])
+        }
+        if path == "/api/progress/remove" && method == "POST" {
+            guard let id = JSONValue.string(json["id"]), TVMWebhook.isValidProgressId(id) else {
+                return .json(400, ["error": "invalid progress id"])
+            }
+            store.removeContinueWatching(profileId: media.activeProfile(), id: id)
+            return .json(200, ["ok": true])
+        }
+        if path == "/api/progress/watched" && method == "POST" {
+            guard let id = JSONValue.string(json["id"]), let watched = json["watched"] as? Bool,
+                  TVMWebhook.isValidProgressId(id) else {
+                return .json(400, ["error": "invalid progress"])
+            }
+            var target = id
+            if let season = JSONValue.int(json["season"]), season >= 0,
+               let episode = JSONValue.int(json["episode"]), episode >= 1,
+               id.range(of: #":\d+:\d+$"#, options: .regularExpression) == nil {
+                target = "\(id):\(season):\(episode)"
+            }
+            guard TVMWebhook.isValidProgressId(target) else { return .json(400, ["error": "invalid progress id"]) }
+            store.setWatched(profileId: media.activeProfile(), id: target, watched: watched)
+            return .json(200, ["ok": true])
         }
         if path == "/api/update/status" && method == "GET" {
             return .json(200, TVMUpdater.snapshot(store: store).json())
@@ -474,7 +516,15 @@ final class TVMLocalCore {
                 "canSendEmail": false,
             ])
         }
-        // Phones do not send email; the desktop TVM does.
+        if path == "/api/account/verify/resend" && method == "POST" {
+            let reply = await accounts.resendVerification(token: bearerToken(headers), rawEmail: JSONValue.string(json["email"]))
+            return .json(reply.0, reply.1)
+        }
+        if path == "/api/account/password/forgot" && method == "POST" {
+            let reply = await accounts.forgotPassword(rawEmail: JSONValue.string(json["email"]))
+            return .json(reply.0, reply.1)
+        }
+        // Phones do not send email themselves; the accounts service does.
         if (path == "/api/account/email/send" || path == "/api/account/email/verify") && method == "POST" {
             return .json(503, ["error": "This phone cannot send email. Ask the owner to switch your account on."])
         }
@@ -489,7 +539,40 @@ final class TVMLocalCore {
             }
         }
 
-        // Accounts are run from the web dashboard, never from a phone.
+        // The developer menu: install the admin key (kept in the Keychain, never sent to the interface), then mirror the service admin API.
+        if path == "/api/admin/key" && method == "GET" {
+            guard await devRequest(headers) else { return .json(403, ["error": "developer_required"]) }
+            return .json(200, ["installed": accounts.hasAdminKey()])
+        }
+        if path == "/api/admin/key" && method == "POST" {
+            let reply = await accounts.installAdminKey(token: bearerToken(headers), rawKey: JSONValue.string(json["key"]) ?? "")
+            var body = reply.1
+            body["installed"] = accounts.hasAdminKey()
+            return .json(reply.0, body)
+        }
+        let adminAccountPath = #"^/api/admin/accounts/[A-Za-z0-9_-]{1,128}/(?:sessions|profile|password|tier)$|^/api/admin/accounts/[A-Za-z0-9_-]{1,128}/sessions/[A-Za-z0-9_-]{1,128}$"#
+        if path == "/api/admin/config" || path == "/api/admin/audit" || path == "/api/admin/accounts.csv" ||
+            path == "/api/admin/rd/test" || path == "/api/admin/accounts" || path == "/api/admin/accounts/bulk" ||
+            path.range(of: adminAccountPath, options: .regularExpression) != nil {
+            let allowed: Bool
+            if path == "/api/admin/config" { allowed = method == "GET" || method == "PUT" }
+            else if path == "/api/admin/rd/test" || path == "/api/admin/accounts/bulk" { allowed = method == "POST" }
+            else if path.hasSuffix("/profile") || path.hasSuffix("/password") || path.hasSuffix("/tier") { allowed = method == "POST" }
+            else if path.contains("/sessions/") { allowed = method == "DELETE" }
+            else { allowed = method == "GET" }
+            if !allowed { return .json(405, ["error": "method_not_allowed"]) }
+            var v1 = String(path.dropFirst("/api/admin/".count))
+            if method == "GET" {
+                let pairs = ["offset", "type", "search", "state"].compactMap { key -> String? in
+                    guard let value = query[key], !value.isEmpty,
+                          let encoded = value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+                    return "\(key)=\(encoded)"
+                }
+                if !pairs.isEmpty { v1 += "?" + pairs.joined(separator: "&") }
+            }
+            let sendBody: [String: Any]? = (method == "GET" || method == "DELETE") ? nil : json
+            return await accounts.mirrorAdmin(token: bearerToken(headers), v1Path: v1, method: method, body: sendBody)
+        }
         if path == "/api/admin/accounts" || path.hasPrefix("/api/admin/accounts/") {
             return .json(403, ["error": "use_dashboard"])
         }

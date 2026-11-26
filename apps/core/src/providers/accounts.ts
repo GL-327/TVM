@@ -222,6 +222,9 @@ export interface AdminAccount extends PublicAccount {
   activeSessions: number;
   emailVerifiedAt: string | null;
   rdKeyHint: string | null;
+  rdUsername?: string | null;
+  rdPremiumUntil?: string | null;
+  rdCheckedAt?: string | null;
 }
 
 function keyHint(token: string | null): string | null {

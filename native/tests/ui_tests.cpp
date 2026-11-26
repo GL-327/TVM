@@ -99,16 +99,16 @@ std::string Key(std::size_t rail, std::size_t index) {
 TEST(layout_follows_the_design_tokens_at_1080p) {
     Scene scene = MakeScene(SmallRails());
     // rem = 16px. Safe area 40px by 24px. A rail inset of 16px. Cards 168px
-    // wide with 16px between them. Heading 28px tall, 16px to its rail.
+    // wide with 16px between them. Heading 33.6px tall (1.5rem * 1.4), 20px (1.25rem) to its rail.
     REQUIRE_NEAR(scene.metrics().rem, 16.0, 1e-9);
     REQUIRE_NEAR(scene.CardBox(0, 0).x, 40.0 + 16.0, 1e-9);
     REQUIRE_NEAR(scene.CardBox(0, 0).width, 168.0, 1e-9);
     REQUIRE_NEAR(scene.CardBox(0, 1).x - scene.CardBox(0, 0).x, 168.0 + 16.0, 1e-9);
-    REQUIRE_NEAR(scene.CardBox(0, 0).y, 24.0 + 28.0 + 16.0, 1e-9);
+    REQUIRE_NEAR(scene.CardBox(0, 0).y, 24.0 + 33.6 + 20.0, 1e-9);
     // 252px poster, 12px gap, 28px label.
     REQUIRE_NEAR(scene.CardBox(0, 0).height, 252.0 + 12.0 + 28.0, 1e-9);
     // Second section starts after the first section and 32px of section spacing.
-    REQUIRE_NEAR(scene.CardBox(1, 0).y - scene.CardBox(0, 0).y, (28.0 + 16.0 + 292.0) + 32.0, 1e-9);
+    REQUIRE_NEAR(scene.CardBox(1, 0).y - scene.CardBox(0, 0).y, (33.6 + 20.0 + 292.0) + 32.0, 1e-9);
 }
 
 TEST(metrics_scale_with_the_window_height) {
@@ -252,17 +252,17 @@ TEST(a_rail_camera_centres_the_focused_card) {
 }
 
 TEST(the_page_scrolls_to_show_a_lower_rail_but_not_past_the_end) {
-    // Four rails: sections are 336px tall (28 heading, 16 gap, 292 rail), with
-    // 32px between them. The page is 1440px of content in a 1080px window, so
-    // it can scroll by 1440 + 2 * 24 - 1080 = 408px.
+    // Four rails: sections are 345.6px tall (33.6 heading, 20 gap, 292 rail), with
+    // 32px between them. The page is 1478.4px of content in a 1080px window, so
+    // it can scroll by 1478.4 + 2 * 24 - 1080 = 446.4px.
     Scene scene = MakeScene({{"A", 5}, {"B", 5}, {"C", 5}, {"D", 5}});
     double now = 0.0;
     for (int r = 0; r < 3; ++r) {
         REQUIRE(scene.Navigate(Direction::Down, now));
         now = Settle(scene, now);
     }
-    REQUIRE_NEAR(scene.PageScroll(), 408.0, 1e-6);
-    // The lower rail's top: 24 + 3 * 368 + 44 - 408 = 764px, inside the 1080px window.
+    REQUIRE_NEAR(scene.PageScroll(), 446.4, 1e-6);
+    // The lower rail's top: 24 + 3 * 377.6 + 53.6 - 446.4 = 764px, inside the 1080px window.
     REQUIRE_NEAR(scene.CardBox(3, 0).y, 764.0, 1e-6);
 }
 
@@ -284,10 +284,10 @@ TEST(only_the_focused_card_draws_a_ring) {
     RecordingPainter painter;
     scene.Paint(painter);
 
-    // The poster's outline is 0.16rem = 2.56px wide. Poster borders are hairlines.
+    // The poster's outline is 0.125rem = 2.0px wide. Poster borders are hairlines.
     int rings = 0;
     for (const auto& stroke : painter.strokes) {
-        if (std::abs(stroke.width - 2.56) < 1e-6) ++rings;
+        if (std::abs(stroke.width - 2.0) < 1e-6) ++rings;
     }
     REQUIRE_EQ(rings, 1);
     REQUIRE_EQ(painter.clipDepth, 0);
@@ -312,12 +312,13 @@ TEST(the_focused_poster_is_drawn_at_the_focus_scale) {
     RecordingPainter painter;
     scene.Paint(painter);
 
-    // Posters are filled in paint order: card 0 of rail 0 first, then card 1.
+    // Unfocused posters are filled first and the focused card is painted last so its scale and ring sit on top.
     REQUIRE(painter.fills.size() >= 2);
-    // At rest the artwork sits on whole pixels (so no partly covered row shows at its edges), so the focused size is
-    // the poster focus scale to within a pixel.
-    REQUIRE_NEAR(painter.fills[0].width, 168.0 * tvm::ui::kPosterFocusScale, 1.0);  // Focused.
-    REQUIRE_NEAR(painter.fills[1].width, 168.0, 1.0);         // Not focused.
+    REQUIRE_NEAR(painter.fills.front().width, 168.0, 1.0);
+    bool focusedSized = false;
+    for (const Box& fill : painter.fills)
+        if (std::abs(fill.width - 168.0 * tvm::ui::kPosterFocusScale) <= 1.0) focusedSized = true;
+    REQUIRE(focusedSized);
 }
 
 TEST(optical_glass_material_is_applied_to_cards_hero_pills_and_nav_capsule) {

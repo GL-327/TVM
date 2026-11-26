@@ -14,6 +14,7 @@ sub init()
   m.meta = m.top.findNode("meta")
   m.synopsis = m.top.findNode("synopsis")
   m.play = m.top.findNode("play")
+  m.versionsBtn = m.top.findNode("versions")
   m.imdbBtn = m.top.findNode("imdbBtn")
   m.save = m.top.findNode("save")
   m.back = m.top.findNode("back")
@@ -22,11 +23,22 @@ sub init()
   m.title.font = tvmFontScreenTitle()
   m.imdb.font = tvmFont("bold", 56)
   m.meta.font = tvmFontSecondary()
+  qBadge = m.top.findNode("qualityBadge")
+  if qBadge <> invalid then qBadge.font = tvmFontMeta()
   m.synopsis.font = tvmFontSecondary()
+  if m.global <> invalid
+    if m.global.hasField("rokuPrefs") then m.global.observeField("rokuPrefs", "onPrefsChange")
+    if m.global.hasField("remoteFlags") then m.global.observeField("remoteFlags", "onPrefsChange")
+  end if
   m.play.variant = "glassPill"
   m.play.accent = true
   m.play.pillWidth = 400
   m.play.label = "Play"
+  if m.versionsBtn <> invalid
+    m.versionsBtn.variant = "glassPill"
+    m.versionsBtn.pillWidth = 380
+    m.versionsBtn.label = "Versions"
+  end if
   m.imdbBtn.variant = "glassPill"
   m.imdbBtn.pillWidth = 380
   m.imdbBtn.label = "IMDb"
@@ -62,6 +74,11 @@ end sub
 sub buildActions()
   m.actions = []
   if not m.seriesLike then m.actions.Push({ id: "play", node: m.play })
+  if m.versionsBtn <> invalid
+    showVersions = (not m.seriesLike and tvmExtraEnabled("versionPicker"))
+    m.versionsBtn.visible = showVersions
+    if showVersions then m.actions.Push({ id: "versions", node: m.versionsBtn })
+  end if
   m.actions.Push({ id: "imdb", node: m.imdbBtn })
   m.actions.Push({ id: "save", node: m.save })
   if m.top.connectedServices <> invalid and m.top.connectedServices.Count() > 0 then m.actions.Push({ id: "watch-on", node: m.watchOn })
@@ -141,7 +158,8 @@ sub onItem()
 
   m.title.text = aaGet(item, "title", "Title")
   rating = asText(aaGet(item, "imdbRating", aaGet(item, "rating", "")))
-  score = imdbScoreText(rating)
+  score = ""
+  if tvmExtraEnabled("ratings") then score = imdbScoreText(rating)
   if score <> ""
     m.imdb.text = "IMDb " + score + " /10"
     m.imdb.color = "0x000000FF"
@@ -165,6 +183,7 @@ sub onItem()
   if score = "" and rating <> "" then bits.Push(rating)
   if runtime <> "" then bits.Push(runtime)
   m.meta.text = joinBits(bits)
+  paintQualityBadge(item)
   m.synopsis.text = aaGet(item, "synopsis", "")
 
   art = preferHeroUri(item)
@@ -182,6 +201,50 @@ sub onItem()
   ' re-delivered item (renderStack after the player closes) keeps its episodes.
   if idChanged or wasSeries <> m.seriesLike then onChildren()
   paintFocus()
+end sub
+
+sub onPrefsChange()
+  buildActions()
+  onItem()
+  paintFocus()
+end sub
+
+sub paintQualityBadge(item as Object)
+  bg = m.top.findNode("qualityBadgeBg")
+  lbl = m.top.findNode("qualityBadge")
+  if bg = invalid or lbl = invalid then return
+  if not tvmExtraEnabled("qualityBadges") or item = invalid
+    bg.visible = false : lbl.visible = false : return
+  end if
+  parts = []
+  q = aaGet(item, "resolution", aaGet(item, "height", 0))
+  if q = 2160
+    parts.Push("4K")
+  else if q = 1080 or q = 720
+    parts.Push(StrI(q).Trim() + "p")
+  else
+    qs = asText(aaGet(item, "quality", ""))
+    if qs <> "" then parts.Push(UCase(qs))
+  end if
+  hdr = LCase(asText(aaGet(item, "hdr", "")))
+  if hdr = "dv" then parts.Push("Dolby Vision")
+  if hdr = "hdr10+" then parts.Push("HDR10+")
+  if hdr = "hdr10" or hdr = "hdr" then parts.Push("HDR10")
+  if aaGet(item, "atmos", false) = true then parts.Push("Atmos")
+  badge = parts.Join("  ·  ")
+  if badge = ""
+    bg.visible = false : lbl.visible = false : return
+  end if
+  w = Int(Len(badge) * 24) + 72
+  if w < 180 then w = 180
+  if w > 720 then w = 720
+  metaTextLen = Len(m.meta.text) * 24 + 80
+  bx = m.meta.translation[0] + metaTextLen
+  if bx > 2400 then bx = 2400
+  bg.width = w : bg.translation = [bx, 706]
+  lbl.width = w - 32 : lbl.translation = [bx + 16, 710]
+  lbl.text = badge
+  bg.visible = true : lbl.visible = true
 end sub
 
 sub onSaved()
@@ -449,6 +512,7 @@ sub activateAction()
   if id = "" then return
   m.actions[m.col].node.pressed = true
   if id = "play" then emit("play", invalid)
+  if id = "versions" then emit("versions", invalid)
   if id = "imdb" then emit("reviews", invalid)
   if id = "watch-on" then emit("watch-on", invalid)
   if id = "save" then emit("save", invalid)

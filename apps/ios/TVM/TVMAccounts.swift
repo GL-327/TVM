@@ -77,11 +77,17 @@ final class TVMMemorySessionVault: TVMSessionVault {
 /// and Real-Debrid keys live in the accounts service. Reads and writes never
 /// throw: a Keychain that is locked or unavailable just means signing in again.
 final class TVMKeychainSessionVault: TVMSessionVault {
+    private let account: String
+
+    init(account: String = "session") {
+        self.account = account
+    }
+
     private var query: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "TVM.Standalone.AccountSession",
-            kSecAttrAccount as String: "session",
+            kSecAttrAccount as String: account,
         ]
     }
 
@@ -210,10 +216,14 @@ struct TVMAccount {
 final class TVMAccounts {
     /// How long an answer about an account is trusted before the service is asked again.
     static let accountTTL: TimeInterval = 30
-    /// How long a fetched Real-Debrid key stays in memory.
-    static let rdTTL: TimeInterval = 10 * 60
-    /// A failed key fetch is not repeated on every request.
-    private static let rdFailureTTL: TimeInterval = 30
+    /// How long a fetched Real-Debrid key stays in memory (bounded under 1 minute for rotations).
+    static let rdTTL: TimeInterval = 45
+    /// Empty or failed key fetches are retried promptly.
+    private static let rdNullTTL: TimeInterval = 5
+    private static let rdFailureTTL: TimeInterval = rdNullTTL
+    /// Public config TTL (5 min on success, 15s on failure).
+    static let configTTL: TimeInterval = 5 * 60
+    private static let configErrorTTL: TimeInterval = 15
 
     private struct CachedAccount {
         let account: TVMAccount
@@ -227,20 +237,25 @@ final class TVMAccounts {
 
     private var transport: TVMAccountsTransport
     private var vault: TVMSessionVault
+    private var adminVault: TVMSessionVault
     private let origin: String
     private let now: () -> Date
     private let lock = NSLock()
     private var accountCache: [String: CachedAccount] = [:]
     private var rdCache: [String: CachedKey] = [:]
+    private var configCache: [String: Any] = TVMAccounts.defaultConfig()
+    private var configExpires: Date = .distantPast
 
     init(
         transport: TVMAccountsTransport = TVMURLSessionTransport(),
         vault: TVMSessionVault = TVMKeychainSessionVault(),
         origin: String = tvmAccountsURL,
-        now: @escaping () -> Date = { Date() }
+        now: @escaping () -> Date = { Date() },
+        adminVault: TVMSessionVault = TVMMemorySessionVault()
     ) {
         self.transport = transport
         self.vault = vault
+        self.adminVault = adminVault
         self.origin = origin
         self.now = now
     }
@@ -270,14 +285,95 @@ final class TVMAccounts {
         return body()
     }
 
-    private func call(_ method: String, _ path: String, bearer: String? = nil, body: [String: Any]? = nil) async throws -> (status: Int, json: [String: Any]) {
+    private func callRaw(_ method: String, _ path: String, bearer: String? = nil, body: [String: Any]? = nil) async throws -> (status: Int, body: Data) {
         guard let url = URL(string: origin + path) else { throw TVMAccountError(TVMAccounts.unreachable, status: 503) }
         do {
-            let reply = try await transport.send(method: method, url: url, bearer: bearer, body: body.map { JSONValue.data($0) })
-            return (reply.status, JSONValue.object(reply.body))
+            return try await transport.send(method: method, url: url, bearer: bearer, body: body.map { JSONValue.data($0) })
         } catch {
             throw TVMAccountError(TVMAccounts.unreachable, status: 503)
         }
+    }
+
+    private func call(_ method: String, _ path: String, bearer: String? = nil, body: [String: Any]? = nil) async throws -> (status: Int, json: [String: Any]) {
+        let reply = try await callRaw(method, path, bearer: bearer, body: body)
+        return (reply.status, JSONValue.object(reply.body))
+    }
+
+    private static func defaultConfig() -> [String: Any] {
+        [
+            "announcement": NSNull(),
+            "minVersion": NSNull(),
+            "flags": [String: Bool](),
+            "openSignups": false,
+            "mail": false,
+        ]
+    }
+
+    private static func safeHttpUrl(_ raw: Any?) -> String? {
+        guard let text = JSONValue.string(raw), let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              url.host != nil, url.user == nil, url.password == nil else { return nil }
+        return url.absoluteString
+    }
+
+    private static func publicConfig(_ raw: [String: Any]) -> [String: Any] {
+        var announcement: Any = NSNull()
+        if let a = raw["announcement"] as? [String: Any],
+           let id = JSONValue.string(a["id"]),
+           let text = JSONValue.string(a["text"]),
+           let level = JSONValue.string(a["level"]),
+           ["info", "warning", "critical"].contains(level) {
+            var item: [String: Any] = ["id": id, "text": text, "level": level]
+            if let link = safeHttpUrl(a["link"]) { item["link"] = link }
+            announcement = item
+        }
+        var flagsOut: [String: Bool] = [:]
+        if let flags = raw["flags"] as? [String: Any] {
+            for (k, v) in flags {
+                if let boolVal = v as? Bool { flagsOut[k] = boolVal }
+            }
+        }
+        let minVersion = JSONValue.string(raw["minVersion"])
+        return [
+            "announcement": announcement,
+            "minVersion": JSONValue.orNull(minVersion),
+            "flags": flagsOut,
+            "openSignups": (raw["openSignups"] as? Bool) == true,
+            "mail": (raw["mail"] as? Bool) == true,
+        ]
+    }
+
+    func config(force: Bool = false) async -> [String: Any] {
+        let current = now()
+        if !force, let hit = locked({ current < configExpires ? configCache : nil }) {
+            return hit
+        }
+        do {
+            let reply = try await call("GET", "/v1/config")
+            if (200...299).contains(reply.status) {
+                let mapped = Self.publicConfig(reply.json)
+                return locked { () -> [String: Any] in
+                    configCache = mapped
+                    configExpires = now().addingTimeInterval(Self.configTTL)
+                    return mapped
+                }
+            }
+        } catch {
+            // Retain last-known config during transient failure.
+        }
+        return locked { () -> [String: Any] in
+            configExpires = now().addingTimeInterval(Self.configErrorTTL)
+            return configCache
+        }
+    }
+
+    func announcement() async -> [String: Any] {
+        let cfg = await config()
+        return [
+            "announcement": cfg["announcement"] ?? NSNull(),
+            "minVersion": cfg["minVersion"] ?? NSNull(),
+            "flags": cfg["flags"] ?? [String: Bool](),
+        ]
     }
 
     private static func failure(_ status: Int, _ fallback: String) -> TVMAccountError {
@@ -393,9 +489,43 @@ final class TVMAccounts {
     func forgetEverything() async {
         if let held = vault.read() { await revoke(held) }
         vault.write(nil)
+        adminVault.write(nil)
         locked {
             accountCache.removeAll()
             rdCache.removeAll()
+            configCache = Self.defaultConfig()
+            configExpires = .distantPast
+        }
+    }
+
+    func invalidateCaches() {
+        locked {
+            accountCache.removeAll()
+            rdCache.removeAll()
+            configExpires = .distantPast
+        }
+    }
+
+    func cachedRdTokenFor(token: String?) -> String? {
+        guard let token, !token.isEmpty else { return nil }
+        return locked { () -> String? in
+            guard let cached = rdCache[token] else { return nil }
+            if cached.expires <= now() {
+                rdCache.removeValue(forKey: token)
+                return nil
+            }
+            return cached.token
+        }
+    }
+
+    func forgetRdToken(token: String?, rejected: String? = nil) {
+        guard let token, !token.isEmpty else { return }
+        locked {
+            if let rejected {
+                if rdCache[token]?.token == rejected { rdCache.removeValue(forKey: token) }
+            } else {
+                rdCache.removeValue(forKey: token)
+            }
         }
     }
 
@@ -434,8 +564,10 @@ final class TVMAccounts {
         }
         locked {
             accountCache[token] = CachedAccount(account: account, at: now())
-            // A change on the service (switched off, key removed) must not leave an old key in memory.
-            if !account.activated || !account.hasRdToken { rdCache.removeValue(forKey: token) }
+            // A change on the service (switched off, key removed, or cached null) must not leave stale state.
+            if !account.activated || !account.hasRdToken || rdCache[token]?.token == nil {
+                rdCache.removeValue(forKey: token)
+            }
         }
         return .found(account)
     }
@@ -446,23 +578,115 @@ final class TVMAccounts {
     }
 
     /// The account's own Real-Debrid key for this session, if it has one. Fetched on demand, held in memory only.
-    func rdTokenFor(token: String?) async -> String? {
+    func rdTokenFor(token: String?, fresh: Bool = false) async -> String? {
         guard let token, !token.isEmpty,
               let account = await resolve(token: token),
               account.activated, account.hasRdToken else { return nil }
+        if fresh { locked { _ = rdCache.removeValue(forKey: token) } }
         if let cached = locked({ rdCache[token] }), cached.expires > now() { return cached.token }
         do {
             let reply = try await call("GET", "/v1/me/rd-token", bearer: token)
             if reply.status == 200 {
                 let key = (reply.json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                locked { rdCache[token] = CachedKey(token: key, expires: now().addingTimeInterval(TVMAccounts.rdTTL)) }
+                let ttl = key == nil ? TVMAccounts.rdNullTTL : TVMAccounts.rdTTL
+                locked { rdCache[token] = CachedKey(token: key, expires: now().addingTimeInterval(ttl)) }
                 return key
+            }
+            if reply.status == 401 || reply.status == 403 {
+                locked { _ = rdCache.removeValue(forKey: token) }
+                return nil
             }
         } catch {
             // Fall through to the short failure cache.
         }
         locked { rdCache[token] = CachedKey(token: nil, expires: now().addingTimeInterval(TVMAccounts.rdFailureTTL)) }
         return nil
+    }
+
+    func resendVerification(token: String?, rawEmail: String?) async -> (Int, [String: Any]) {
+        do {
+            if let token, !token.isEmpty {
+                let reply = try await call("POST", "/v1/me/verify/resend", bearer: token)
+                if (200...299).contains(reply.status) { return (202, ["ok": true]) }
+                if reply.status == 401 {
+                    forget(token)
+                    return (401, ["error": "Sign in first."])
+                }
+                return (reply.status, ["error": (reply.json["error"] as? String) ?? "Could not send verification link."])
+            } else {
+                let email = Self.normalize(rawEmail ?? "")
+                guard Self.emailLooksValid(email) else { return (400, ["error": "Enter a valid email address."]) }
+                _ = try await call("POST", "/v1/verify/resend", body: ["email": email])
+                return (202, ["ok": true])
+            }
+        } catch {
+            return (503, ["error": TVMAccounts.unreachable])
+        }
+    }
+
+    func forgotPassword(rawEmail: String?) async -> (Int, [String: Any]) {
+        let email = Self.normalize(rawEmail ?? "")
+        guard Self.emailLooksValid(email) else { return (400, ["error": "Enter a valid email address."]) }
+        do {
+            _ = try await call("POST", "/v1/password/forgot", body: ["email": email])
+            return (202, ["ok": true])
+        } catch {
+            return (503, ["error": TVMAccounts.unreachable])
+        }
+    }
+
+    func hasAdminKey() -> Bool {
+        !(adminVault.read() ?? "").isEmpty
+    }
+
+    func installAdminKey(token: String?, rawKey: String) async -> (Int, [String: Any]) {
+        guard let actor = await resolve(token: token) else { return (401, ["error": "Sign in first."]) }
+        guard actor.isDev else { return (403, ["error": "developer_required"]) }
+        guard rawKey.utf16.count <= 4096, rawKey.rangeOfCharacter(from: .newlines) == nil else {
+            return (400, ["error": "invalid_key"])
+        }
+        let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.isEmpty {
+            adminVault.write(nil)
+            locked { configExpires = .distantPast }
+            return (200, ["ok": true, "configured": false])
+        }
+        do {
+            let reply = try await callRaw("GET", "/v1/admin/config", bearer: key)
+            if (200...299).contains(reply.status) {
+                adminVault.write(key)
+                locked { configExpires = .distantPast }
+                return (200, ["ok": true, "configured": true])
+            }
+            if reply.status == 401 || reply.status == 403 {
+                return (403, ["error": "invalid_key"])
+            }
+            return (503, ["error": "TVM accounts cannot be reached."])
+        } catch {
+            return (503, ["error": "TVM accounts cannot be reached."])
+        }
+    }
+
+    func mirrorAdmin(token: String?, v1Path: String, method: String, body: [String: Any]? = nil) async -> HTTPReply {
+        guard let actor = await resolve(token: token) else { return .json(401, ["error": "Sign in first."]) }
+        guard actor.isDev else { return .json(403, ["error": "developer_required"]) }
+        guard let key = adminVault.read(), !key.isEmpty else { return .json(403, ["error": "admin_key_required"]) }
+        do {
+            let cleanPath = v1Path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let reply = try await callRaw(method, "/v1/admin/\(cleanPath)", bearer: key, body: method == "GET" ? nil : body)
+            if method != "GET" {
+                locked {
+                    rdCache.removeAll()
+                    if cleanPath == "config" || cleanPath.hasPrefix("config?") { configExpires = .distantPast }
+                }
+            }
+            if reply.status == 204 { return .empty(204) }
+            let type = cleanPath.hasPrefix("accounts.csv") ? "text/csv; charset=utf-8" : "application/json; charset=utf-8"
+            let data = reply.body.isEmpty ? Data("{}".utf8) : reply.body
+            return .bytes(reply.status, type: type, data: data)
+        } catch {
+            return .json(503, ["error": "TVM accounts cannot be reached."])
+        }
     }
 
     func acceptTerms(token: String) async -> Result<[String: Any], TVMAccountError> {

@@ -150,6 +150,9 @@ struct StandaloneRoot: View {
             pageReady = true
             dismissIntroIfReady()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tvmWillEnterForeground)) { _ in
+            runtime.core.onForeground()
+        }
         .onChange(of: runtime.error) { error in
             if error != nil { pageReady = true; dismissIntroIfReady() }
         }
@@ -261,6 +264,9 @@ struct PlayerShell: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .tvmInterfaceDidApply)) { _ in
             reloadPage()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tvmWillEnterForeground)) { _ in
+            // Coordinated by StandaloneRoot when running the on-device core.
         }
         .sheet(isPresented: $showHomeCore) {
             OptionalHomeCoreSheet(model: lan) {

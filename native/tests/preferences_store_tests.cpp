@@ -91,4 +91,38 @@ TEST(store_theme_survives_motion_changes_and_keeps_unknown_preferences) {
     REQUIRE(store.Look() == tvm::ui::Theme::Dark);
 }
 
+TEST(store_font_and_reduce_transparency_round_trip) {
+    TempFolder folder;
+    tvm::ui::FilePreferenceStore store(folder.path());
+    REQUIRE(store.Font() == tvm::ui::UiFont::Geist);
+    REQUIRE(!store.ReduceTransparency());
+
+    store.SetFont(tvm::ui::UiFont::Inter);
+    store.SetReduceTransparency(true);
+    REQUIRE(store.Font() == tvm::ui::UiFont::Inter);
+    REQUIRE(store.ReduceTransparency());
+
+    tvm::ui::FilePreferenceStore reopened(folder.path());
+    REQUIRE(reopened.Font() == tvm::ui::UiFont::Inter);
+    REQUIRE(reopened.ReduceTransparency());
+
+    store.SetFont(tvm::ui::UiFont::System);
+    REQUIRE(store.Font() == tvm::ui::UiFont::System);
+}
+
+TEST(store_silently_removes_legacy_glass_preference_without_disturbing_other_settings) {
+    TempFolder folder;
+    const auto path = folder.path() / L"ui-prefs.json";
+    tvm::util::WriteFileAtomically(path, R"({"theme":"light","glass":"tinted","futureSetting":42})");
+    tvm::ui::FilePreferenceStore store(folder.path());
+    REQUIRE(store.Look() == tvm::ui::Theme::Light);
+    REQUIRE(!store.ReduceTransparency());
+
+    store.SetReduceTransparency(true);
+    const std::string saved = tvm::util::ReadTextFile(path).value_or("");
+    REQUIRE(saved.find("\"glass\"") == std::string::npos);
+    REQUIRE(saved.find("\"futureSetting\":42") != std::string::npos);
+    REQUIRE(saved.find("\"reduceTransparency\":true") != std::string::npos);
+}
+
 }  // namespace

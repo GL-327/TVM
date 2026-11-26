@@ -1668,6 +1668,14 @@ void App::ShowServiceHub(const hubs::Hub& hub) {
         hero.title = hub.hero->title;
         hero.backdropUrl = catalog::PreferBackdrop(hub.hero->id, hub.hero->backdrop, hub.hero->poster);
         hero.hue = hub.hero->hue;
+        hero.rating = hub.hero->rating;
+        if (hub.hero->year) hero.meta = std::to_string(*hub.hero->year);
+        if (!hub.hero->genres.empty()) {
+            if (!hero.meta.empty()) hero.meta += " · ";
+            hero.meta += hub.hero->genres.front();
+        }
+        const auto imdb = catalog::ImdbIdFrom(hero.itemId);
+        if (!imdb.empty()) hero.logoUrl = "https://images.metahub.space/logo/medium/" + imdb + "/img";
         heroes.push_back(hero);
     }
     const double now = NowMs();
@@ -1676,7 +1684,10 @@ void App::ShowServiceHub(const hubs::Hub& hub) {
     scene->SetView(view, now);
     if (first && !heroes.empty()) scene->FocusItem("hero-play", now, true);
     scene->SetImageReady([this](const std::string& url) { return artwork_->Lookup(url).has_value(); });
-    for (const ui::HeroData& hero : heroes) QueueArtwork(hero.backdropUrl);
+    for (const ui::HeroData& hero : heroes) {
+        QueueArtwork(hero.backdropUrl);
+        QueueArtwork(hero.logoUrl);
+    }
     QueueRailArtwork(view.rails);
     dirty_ = true;
 }

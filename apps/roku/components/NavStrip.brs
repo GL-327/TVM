@@ -18,7 +18,7 @@ sub init()
   m.hlStretch = m.top.findNode("hlStretch")
   m.spec = tvmNavSpec()
   m.labels = []
-  m.pillX = 996
+  m.pillX = 1074
   m.pitch = 300
   m.orbInitial.font = tvmFontLabel()
   size = tvmTypeSize(tvmTypeSecondary())
@@ -32,8 +32,18 @@ sub init()
     label.horizAlign = "center"
     label.vertAlign = "center"
     label.translation = [24 + (i * m.pitch), 0]
-    m.tabs.appendChild(label)
-    m.labels.Push(label)
+    if m.spec[i].id = "search"
+      icon = CreateObject("roSGNode", "Poster")
+      icon.id = "Search"
+      icon.uri = "pkg:/images/icons/search.png"
+      icon.width = 60 : icon.height = 60
+      icon.translation = [24 + i * m.pitch + 42, 42]
+      m.tabs.appendChild(icon)
+      m.labels.Push(icon)
+    else
+      m.tabs.appendChild(label)
+      m.labels.Push(label)
+    end if
     i = i + 1
   end while
   m.orbGroup.scaleRotateCenter = [72, 72]
@@ -70,21 +80,24 @@ sub paint()
 
   m.activePill.visible = (col <> active)
   m.activePill.translation = [m.pillX + 24 + (active * m.pitch), 88]
-  m.hl.active = (col = active)
-  m.hl.scaleRotateCenter = [148, 56]
+  m.activePill.width = navThumbWidth(active)
+  m.hl.width = navThumbWidth(col)
+  m.hl.tintColor = "0xFFFFFF24"
+  if col = active then m.hl.tintColor = "0xF5F7FAFF"
+  m.hl.scaleRotateCenter = [m.hl.width / 2, 56]
   m.hl.scale = [1.0, 1.0]
-  if onTab and not tvmReduceMotion() then m.hl.scale = [tvmPillFocusScale(), tvmPillFocusScale()]
   m.hl.focused = onTab
   m.hlRing.visible = false
 
   i = 0
   while i < m.labels.Count()
-    if i = active
-      m.labels[i].color = "0xFFFFFFFF"
-    else if i = col or i = active
-      m.labels[i].color = tvmText()
+    ink = "0xA9B0BCFF"
+    if i = col then ink = "0xF5F7FAFF"
+    if i = active then ink = "0x12141AFF"
+    if m.spec[i].id = "search"
+      m.labels[i].blendColor = ink
     else
-      m.labels[i].color = tvmMuted()
+      m.labels[i].color = ink
     end if
     i = i + 1
   end while
@@ -101,7 +114,6 @@ end sub
 
 sub moveHighlight(x as Float)
   y = 88
-  if m.top.hasBarFocus and m.top.focusCol < m.spec.Count() and not tvmReduceMotion() then y = y - tvmFocusLift()
   if m.hlX = x and m.hlY = y then return
   m.hlY = y
   fromX = m.hlX
@@ -122,7 +134,11 @@ sub moveHighlight(x as Float)
   m.hlMove.keyValue = [current, [x + overshoot, y], [x, y]]
   m.hlRingMove.keyValue = [[startX - 16, 72], [x - 16, 72]]
   scale = 1.0
-  if m.top.hasBarFocus then scale = tvmPillFocusScale()
   m.hlStretch.keyValue = [[scale, scale], [1.18, scale], [scale, scale]]
   m.hlAnim.control = "start"
 end sub
+
+function navThumbWidth(col as Integer) as Integer
+  if col = 5 then return 144
+  return 296
+end function

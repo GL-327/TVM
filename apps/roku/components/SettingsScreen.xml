@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="SettingsScreen" extends="Group">
   <interface>
-    <field id="extrasPrefs" type="assocarray" onChange="paintExtrasPrefs" />
-    <field id="coreUrl" type="string" onChange="onCoreUrl" />
-    <field id="health" type="assocarray" onChange="onHealth" />
-    <field id="themeId" type="string" onChange="onThemeId" />
+    <field id="extrasPrefs" type="assocarray" onChange="paintSettings" />
+    <field id="coreUrl" type="string" onChange="paintSettings" />
+    <field id="health" type="assocarray" onChange="paintSettings" />
+    <field id="themeId" type="string" onChange="paintSettings" />
+    <field id="admin" type="boolean" onChange="paintSettings" />
+    <field id="query" type="string" onChange="onSettingsQuery" />
+    <field id="homeRows" type="array" onChange="paintSettings" />
     <field id="focusKey" type="string" />
     <field id="action" type="assocarray" alwaysNotify="true" />
     <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
@@ -17,10 +20,8 @@
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
   <script type="text/brightscript" uri="SettingsScreen.brs" />
   <children>
-    <Label id="kicker" text="Device and services" translation="[160, 144]" color="0x8A8A8AFF" font="font:SmallSystemFont" />
-    <Label id="heading" text="Settings" translation="[160, 220]" color="0xF5F5F5FF" font="font:LargeBoldSystemFont" />
-    <Group translation="[0, 360]" clippingRect="[0, 0, 3840, 1800]">
-      <Group id="list" translation="[160, 80]" />
-    </Group>
+    <Rectangle id="settingsBg" width="3840" height="2160" />
+    <Group id="navigation" translation="[160, 100]" />
+    <Group id="panel" translation="[1260, 136]" />
   </children>
 </component>

@@ -7,6 +7,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
 import java.time.Instant
@@ -20,9 +21,153 @@ import java.util.zip.GZIPInputStream
  * from GitHub. Same file names, same JSON, same rules. Change one, change both.
  */
 
-/** Language and automatic updates, as TVMPrefs. */
-data class TvmPrefs(var language: String, var autoUpdate: Boolean) {
-    fun json(): JSONObject = Json.obj("language" to language, "autoUpdate" to autoUpdate)
+data class SubtitleStylePref(
+    var size: String = "m",
+    var color: String = "white",
+    var background: String = "shadow",
+) {
+    fun json(): JSONObject = Json.obj("size" to size, "color" to color, "background" to background)
+}
+
+data class HomeSectionPref(
+    val id: String,
+    val visible: Boolean,
+) {
+    fun json(): JSONObject = Json.obj("id" to id, "visible" to visible)
+}
+
+/** Preferences stored in prefs.json, mirroring apps/core/src/prefs.ts and TVMPrefs. */
+data class TvmPrefs(
+    var language: String = DEFAULT_LANGUAGE,
+    var autoUpdate: Boolean = true,
+    var skipSegments: String = "button",
+    var autoplayNext: Boolean = true,
+    var subtitleLanguages: List<String> = listOf("eng"),
+    var heroPreviews: Boolean = true,
+    var quality: String = "original",
+    var audioLanguage: String = "original",
+    var skipUpscaled: Boolean = true,
+    var subtitleMode: String = "foreign",
+    var subtitleStyle: SubtitleStylePref = SubtitleStylePref(),
+    var extras: MutableMap<String, Boolean> = EXTRA_DEFAULTS.toMutableMap(),
+    var webhookUrl: String? = null,
+    var homeSections: List<HomeSectionPref> = emptyList(),
+) {
+    fun merge(raw: JSONObject): TvmPrefs {
+        val langRaw = raw.opt("language") as? String
+        if (langRaw != null && langRaw in LANGUAGES) language = langRaw
+
+        (raw.opt("autoUpdate") as? Boolean)?.let { autoUpdate = it }
+
+        val skipRaw = raw.opt("skipSegments") as? String
+        if (skipRaw != null && skipRaw in SKIP_MODES) skipSegments = skipRaw
+
+        (raw.opt("autoplayNext") as? Boolean)?.let { autoplayNext = it }
+
+        val subsArr = raw.optJSONArray("subtitleLanguages")
+        if (subsArr != null) {
+            val cleaned = LinkedHashSet<String>()
+            for (i in 0 until subsArr.length()) {
+                val code = subsArr.opt(i) as? String ?: continue
+                if (SUBTITLE_LANG_RE.matches(code)) {
+                    cleaned.add(code)
+                    if (cleaned.size >= 20) break
+                }
+            }
+            if (cleaned.isNotEmpty()) subtitleLanguages = cleaned.toList()
+        }
+
+        (raw.opt("heroPreviews") as? Boolean)?.let { heroPreviews = it }
+
+        val qualityRaw = raw.opt("quality") as? String
+        if (qualityRaw != null && qualityRaw in QUALITIES) quality = qualityRaw
+
+        val audioRaw = raw.opt("audioLanguage") as? String
+        if (audioRaw != null && AUDIO_LANG_RE.matches(audioRaw)) audioLanguage = audioRaw
+
+        (raw.opt("skipUpscaled") as? Boolean)?.let { skipUpscaled = it }
+
+        val subModeRaw = raw.opt("subtitleMode") as? String
+        if (subModeRaw != null && subModeRaw in SUBTITLE_MODES) subtitleMode = subModeRaw
+
+        val styleRaw = raw.optJSONObject("subtitleStyle")
+        if (styleRaw != null) {
+            val s = styleRaw.opt("size") as? String
+            if (s != null && s in SUBTITLE_SIZES) subtitleStyle.size = s
+            val c = styleRaw.opt("color") as? String
+            if (c != null && c in SUBTITLE_COLORS) subtitleStyle.color = c
+            val b = styleRaw.opt("background") as? String
+            if (b != null && b in SUBTITLE_BACKGROUNDS) subtitleStyle.background = b
+        }
+
+        val extrasRaw = raw.optJSONObject("extras")
+        if (extrasRaw != null) {
+            for (key in EXTRA_DEFAULTS.keys) {
+                val v = extrasRaw.opt(key)
+                if (v is Boolean) extras[key] = v
+            }
+        }
+
+        if (raw.has("webhookUrl")) {
+            val urlRaw = raw.opt("webhookUrl")
+            if (urlRaw == null || urlRaw === JSONObject.NULL) {
+                webhookUrl = null
+            } else if (urlRaw is String) {
+                if (urlRaw.isEmpty()) {
+                    webhookUrl = null
+                } else if (urlRaw.length <= 2048) {
+                    val parsed = runCatching { URI(urlRaw) }.getOrNull()
+                    val scheme = parsed?.scheme?.lowercase(Locale.US)
+                    if (parsed != null && (scheme == "http" || scheme == "https") &&
+                        !parsed.host.isNullOrEmpty() && parsed.userInfo == null
+                    ) {
+                        webhookUrl = parsed.toString()
+                    }
+                }
+            }
+        }
+
+        if (raw.has("homeSections")) {
+            val arr = raw.optJSONArray("homeSections")
+            if (arr != null) {
+                val map = LinkedHashMap<String, Boolean>()
+                val limit = minOf(arr.length(), 100)
+                for (i in 0 until limit) {
+                    val row = arr.optJSONObject(i) ?: continue
+                    val id = row.opt("id") as? String ?: continue
+                    val vis = row.opt("visible") as? Boolean ?: continue
+                    if (SECTION_ID_RE.matches(id)) map[id] = vis
+                }
+                homeSections = map.entries.map { HomeSectionPref(it.key, it.value) }
+            }
+        }
+        return this
+    }
+
+    fun json(): JSONObject {
+        val extrasJson = JSONObject()
+        for (key in EXTRA_DEFAULTS.keys) {
+            extrasJson.put(key, extras[key] ?: EXTRA_DEFAULTS[key]!!)
+        }
+        val sectionsJson = JSONArray()
+        for (row in homeSections) sectionsJson.put(row.json())
+        return JSONObject().apply {
+            put("language", language)
+            put("autoUpdate", autoUpdate)
+            put("skipSegments", skipSegments)
+            put("autoplayNext", autoplayNext)
+            put("subtitleLanguages", JSONArray(subtitleLanguages))
+            put("heroPreviews", heroPreviews)
+            put("quality", quality)
+            put("audioLanguage", audioLanguage)
+            put("skipUpscaled", skipUpscaled)
+            put("subtitleMode", subtitleMode)
+            put("subtitleStyle", subtitleStyle.json())
+            put("extras", extrasJson)
+            put("webhookUrl", webhookUrl ?: JSONObject.NULL)
+            put("homeSections", sectionsJson)
+        }
+    }
 
     fun save(store: TvmStore) {
         store.writeJSON("prefs.json", json())
@@ -31,13 +176,44 @@ data class TvmPrefs(var language: String, var autoUpdate: Boolean) {
     companion object {
         const val DEFAULT_LANGUAGE = "en"
         val LANGUAGES: Set<String> = setOf("en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh")
+        val SKIP_MODES: Set<String> = setOf("off", "button", "auto")
+        val QUALITIES: Set<String> = setOf("original", "2160", "1080", "720", "saver")
+        val SUBTITLE_MODES: Set<String> = setOf("off", "foreign", "always")
+        val SUBTITLE_SIZES: Set<String> = setOf("s", "m", "l", "xl")
+        val SUBTITLE_COLORS: Set<String> = setOf("white", "yellow", "cyan")
+        val SUBTITLE_BACKGROUNDS: Set<String> = setOf("shadow", "box", "none")
+        val SUBTITLE_LANG_RE = Regex("^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$")
+        val AUDIO_LANG_RE = Regex("^(?:original|[a-z]{3})$")
+        val SECTION_ID_RE = Regex("^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
+
+        val EXTRA_DEFAULTS: Map<String, Boolean> = linkedMapOf(
+            "onlineSubtitles" to true,
+            "trailers" to true,
+            "trailerBackdrops" to true,
+            "collections" to true,
+            "comingUp" to true,
+            "watchStats" to true,
+            "animeTitles" to true,
+            "ratings" to true,
+            "qualityBadges" to true,
+            "versionPicker" to true,
+            "chapters" to true,
+            "seekPreviews" to true,
+            "themeSongs" to false,
+            "spoilerBlur" to false,
+            "surpriseMe" to true,
+            "autoCollections" to true,
+            "sleepTimer" to true,
+            "nightMode" to false,
+            "pauseOnMinimize" to true,
+            "shortcutsOverlay" to true,
+            "webhook" to false,
+            "announcements" to true,
+        )
 
         fun load(store: TvmStore): TvmPrefs {
             val saved = store.readJSON("prefs.json") as? JSONObject ?: JSONObject()
-            val language = saved.opt("language") as? String
-            val allowed = if (language != null && language in LANGUAGES) language else DEFAULT_LANGUAGE
-            val auto = saved.opt("autoUpdate") as? Boolean ?: true
-            return TvmPrefs(allowed, auto)
+            return TvmPrefs().merge(saved)
         }
 
         fun acceptLanguage(code: String): String {

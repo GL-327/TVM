@@ -95,6 +95,8 @@ private:
     // The list of seasons, which opens under the season picker.
     Dropdown seasonList_;
     void PickSeason(std::size_t index, double nowMs);
+    std::optional<Command> PickList(std::size_t index, double nowMs);
+    bool versionList_ = false;
 };
 
 }  // namespace tvm::ui

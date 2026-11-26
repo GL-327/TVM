@@ -6,6 +6,7 @@ export interface ProgressEntry {
   position: number;
   duration: number;
   updated: string;
+  hiddenFromContinueWatching?: boolean;
   completedAt?: string;
   completions?: number;
   completedTitle?: string;
@@ -28,12 +29,38 @@ export function writeProgress(dataDir: string, id: string, position: number, dur
   const updated = new Date().toISOString();
   const finished = isFinished({ position, duration });
   const firstCrossing = finished && !isFinished(previous);
-  all[id] = { ...previous, position, duration, updated,
+  all[id] = { ...previous, position, duration, updated, hiddenFromContinueWatching: false,
     ...(finished ? { completedAt: firstCrossing ? updated : previous?.completedAt ?? updated } : {}),
     completions: (previous?.completions ?? (previous?.completedAt || isFinished(previous) ? 1 : 0)) + (firstCrossing ? 1 : 0),
   };
   writeSealed(dataDir, progressPath(dataDir), all);
   return all;
+}
+
+export function removeContinueWatching(dataDir: string, id: string): void {
+  const all = readProgress(dataDir);
+  let changed = false;
+  for (const [key, entry] of Object.entries(all)) {
+    if ((key === id || key.startsWith(id + ':')) && !entry.hiddenFromContinueWatching && !isFinished(entry)) {
+      entry.hiddenFromContinueWatching = true;
+      changed = true;
+    }
+  }
+  if (changed) writeSealed(dataDir, progressPath(dataDir), all);
+}
+
+export function setWatched(dataDir: string, id: string, watched: boolean): void {
+  const all = readProgress(dataDir);
+  const old = Object.hasOwn(all, id) ? all[id] : undefined;
+  if (watched) {
+    if (isFinished(old)) return;
+    const duration = old?.duration && old.duration > 0 ? old.duration : 1;
+    writeProgress(dataDir, id, duration, duration);
+  } else if (old) {
+    const { completedAt: _at, completedTitle: _title, completedYear: _year, ...history } = old;
+    all[id] = { ...history, position: 0, updated: new Date().toISOString() };
+    writeSealed(dataDir, progressPath(dataDir), all);
+  }
 }
 
 export function isFinished(entry: { position: number; duration: number } | undefined): boolean {

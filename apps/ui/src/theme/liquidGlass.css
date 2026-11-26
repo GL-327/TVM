@@ -11,83 +11,46 @@
  */
 
 :root,
-html[data-glass='default'],
-html[data-theme='dark'],
-html[data-theme='dark'][data-glass='default'] {
-  --tvm-glass27-accent: #2f6bff;
-  --tvm-glass27-blur-chrome: blur(14px) saturate(180%) brightness(1.08);
-  --tvm-glass27-blur-sheet: blur(26px) saturate(180%) brightness(1.08);
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.09);
-  --tvm-glass27-surface-sheet: rgba(16, 20, 30, 0.52);
-  --tvm-glass27-surface-tint: rgba(255, 255, 255, 0.09);
-  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.28);
+html[data-theme='dark'] {
+  --tvm-glass27-accent: #6ec8ff;
+  --tvm-glass27-blur-chrome: blur(3px) saturate(160%) brightness(1.06);
+  --tvm-glass27-blur-sheet: blur(7px) saturate(160%) brightness(1.06);
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.05);
+  --tvm-glass27-surface-sheet: rgba(7, 8, 11, 0.66);
+  --tvm-glass27-surface-tint: rgba(255, 255, 255, 0.05);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.24);
   --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.60);
-  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.50);
-  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.30);
-  --tvm-glass27-rim-bottom: rgba(255, 255, 255, 0.10);
-  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.22);
+  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.56);
+  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.20);
+  --tvm-glass27-rim-bottom: rgba(255, 255, 255, 0.24);
+  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.24);
   --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.22);
   --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.70);
   --tvm-glass27-thumb-specular: rgba(255, 255, 255, 0.40);
-  --tvm-glass27-well-tint: rgba(255, 255, 255, 0.06);
-  --tvm-glass27-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.20);
-  --tvm-glass27-shadow-lift: 0 18px 42px rgba(0, 0, 0, 0.36), 0 2px 4px rgba(0, 0, 0, 0.22);
-  --tvm-glass27-text: rgba(255, 255, 255, 0.95);
-  --tvm-glass27-text-secondary: rgba(255, 255, 255, 0.66);
+  --tvm-glass27-well-tint: rgba(255, 255, 255, 0.05);
+  --tvm-glass27-shadow: 0 10px 30px rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.20);
+  --tvm-glass27-shadow-lift: 0 18px 42px rgba(0, 0, 0, 0.38), 0 2px 4px rgba(0, 0, 0, 0.22);
+  --tvm-glass27-text: #f5f7fa;
+  --tvm-glass27-text-secondary: #a9b0bc;
   --tvm-glass27-press-scale: 0.96;
   --tvm-glass27-focus-scale: 1.05;
   --tvm-glass27-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
 
   --tvm-glass-bg:
-    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
-    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.05) 26%, transparent 45%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.06));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 30%),
+    var(--tvm-glass27-surface);
   --tvm-glass-bg-elevated:
-    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
-    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.06) 28%, transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 30%),
     var(--tvm-glass27-surface-sheet);
   --tvm-glass-blur: var(--tvm-glass27-blur-chrome);
   --tvm-glass-rim-light: inset 0 1px 0 var(--tvm-glass27-rim-top), inset 1px 0 0 var(--tvm-glass27-rim-side);
-  --tvm-glass-rim-chroma: inset 0 -1px 0 var(--tvm-glass27-rim-bottom), inset 0 0 0 1px var(--tvm-glass27-dark-inner);
+  --tvm-glass-rim-chroma: inset 0 -1px 0 var(--tvm-glass27-rim-bottom), 0 0 0 1px var(--tvm-glass27-dark-inner);
   --tvm-glass-shadow: var(--tvm-glass27-shadow);
 }
 
-html[data-glass='clear'],
-html[data-theme='dark'][data-glass='clear'] {
-  --tvm-glass27-blur-chrome: blur(10px) saturate(165%) brightness(1.06);
-  --tvm-glass27-blur-sheet: blur(18px) saturate(170%) brightness(1.06);
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.05);
-  --tvm-glass27-surface-sheet: rgba(12, 16, 24, 0.36);
-  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.24);
-  --tvm-glass-bg:
-    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
-    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.03) 26%, transparent 45%),
-    rgba(255, 255, 255, 0.05);
-  --tvm-glass-bg-elevated:
-    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
-    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.04) 26%, transparent 45%),
-    var(--tvm-glass27-surface-sheet);
-}
-
-html[data-glass='tinted'],
-html[data-theme='dark'][data-glass='tinted'] {
-  --tvm-glass27-blur-chrome: blur(18px) saturate(185%) brightness(1.08);
-  --tvm-glass27-blur-sheet: blur(30px) saturate(190%) brightness(1.08);
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.14);
-  --tvm-glass27-surface-sheet: rgba(12, 18, 30, 0.72);
-  --tvm-glass-bg:
-    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
-    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.08) 28%, transparent 48%),
-    linear-gradient(180deg, rgba(22, 30, 46, 0.56), rgba(14, 20, 32, 0.64));
-  --tvm-glass-bg-elevated:
-    radial-gradient(64% 2px at 50% 0%, var(--tvm-glass27-specular-arc) 0%, transparent 100%),
-    linear-gradient(135deg, var(--tvm-glass27-specular-top-left) 0%, rgba(255, 255, 255, 0.08) 28%, transparent 48%),
-    var(--tvm-glass27-surface-sheet);
-}
-
 html[data-theme='light'] {
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.56);
-  --tvm-glass27-surface-sheet: rgba(250, 249, 245, 0.78);
+  --tvm-glass27-surface: rgba(248, 249, 252, 0.64);
+  --tvm-glass27-surface-sheet: rgba(248, 249, 252, 0.82);
   --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.52);
   --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.86);
   --tvm-glass27-rim-top: rgba(255, 255, 255, 0.90);
@@ -103,21 +66,11 @@ html[data-theme='light'] {
   --tvm-glass27-text-secondary: #2a5a68;
 }
 
-html[data-theme='light'][data-glass='clear'] {
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.36);
-  --tvm-glass27-surface-sheet: rgba(255, 254, 250, 0.56);
-}
-
-html[data-theme='light'][data-glass='tinted'] {
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.72);
-  --tvm-glass27-surface-sheet: rgba(244, 248, 252, 0.88);
-}
-
 /* Base Liquid Glass surface */
 .glass {
   position: relative;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid var(--tvm-glass27-rim-bottom);
   border-top-color: var(--tvm-glass27-rim-top);
   border-left-color: var(--tvm-glass27-rim-side);
@@ -179,7 +132,7 @@ html[data-theme='light'][data-glass='tinted'] {
 .tvm-button--primary {
   position: relative;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-top-color: var(--tvm-glass27-rim-top);
   border-left-color: rgba(255, 255, 255, 0.36);
@@ -1285,3 +1238,17 @@ html.phone-shell .changelog-card {
 
 
 
+
+/* Patch notes pop-up (shown once per new version when the service switch is on) */
+.patch-notes { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgb(0 0 0 / 0.55); padding: 1rem; }
+.patch-notes__sheet { width: min(45rem, 100%); max-height: min(44rem, 92vh); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.patch-notes__body { overflow-y: auto; padding: 1.6rem 1.8rem 1rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.patch-notes__chip { align-self: flex-start; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; background: var(--tvm-accent, #7cc4ff); color: #04121f; }
+.patch-notes__title { margin: 0; font-size: 1.9rem; line-height: 1.15; }
+.patch-notes__highlights { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.35rem; font-weight: 600; }
+.patch-notes__group h2, .patch-notes__issues h2 { margin: 0 0 0.35rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }
+.patch-notes__group ul, .patch-notes__issues ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; }
+.patch-notes__tag { margin-left: 0.5rem; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 0.7rem; background: rgb(255 255 255 / 0.12); }
+.patch-notes__issues { padding: 0.8rem 1rem; border-radius: 0.8rem; border: 1px solid #f5b94a; background: rgb(245 185 74 / 0.12); }
+.patch-notes__issues h2 { color: #f5b94a; opacity: 1; }
+.patch-notes__footer { padding: 0.9rem 1.8rem 1.3rem; display: flex; justify-content: flex-end; }

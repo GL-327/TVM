@@ -332,6 +332,31 @@ function isHttpUrl(value as String) as Boolean
   return Left(u, 7) = "http://" or Left(u, 8) = "https://"
 end function
 
+function rokuPlaybackClient() as Object
+  di = CreateObject("roDeviceInfo")
+  mode = LCase(di.GetVideoMode())
+  maxH = 720
+  if Instr(1, mode, "2160") > 0 or Instr(1, mode, "4k") > 0
+    maxH = 2160
+  else if Instr(1, mode, "1440") > 0
+    maxH = 1440
+  else if Instr(1, mode, "1080") > 0
+    maxH = 1080
+  end if
+  props = di.GetDisplayProperties()
+  hdrOk = aaGet(props, "Hdr10", false) = true or aaGet(props, "DolbyVision", false) = true or aaGet(props, "HLG", false) = true or aaGet(props, "Hdr10Plus", false) = true
+  hevcOk = aaGet(di.CanDecodeVideo({ codec: "hevc", profile: "main", level: "4.1" }), "result", false) = true
+  mkvOk = aaGet(di.CanDecodeVideo({ codec: "mpeg4 avc", profile: "high", level: "4.1", container: "mkv" }), "result", false) = true
+  return {
+    player: "roku"
+    maxHeight: maxH
+    screenHeight: maxH
+    hevc: hevcOk
+    hdr: hdrOk
+    mkv: mkvOk
+  }
+end function
+
 function playbackBody(item as Object) as String
   body = {}
   id = asText(aaGet(item, "id", ""))
@@ -343,12 +368,17 @@ function playbackBody(item as Object) as String
   if season <> invalid then body.season = season
   episode = aaGet(item, "episode", invalid)
   if episode <> invalid then body.episode = episode
+  versionId = asText(aaGet(item, "versionId", ""))
+  if versionId <> "" then body.versionId = versionId
   link = asText(aaGet(item, "link", ""))
   if link = "" and Left(id, 5) <> "live:"
     maybeUrl = asText(aaGet(item, "url", ""))
     if isHttpUrl(maybeUrl) then link = maybeUrl
   end if
   if link <> "" then body.link = link
+  client = rokuPlaybackClient()
+  body.client = client
+  body.screenHeight = client.screenHeight
   return FormatJson(body)
 end function
 

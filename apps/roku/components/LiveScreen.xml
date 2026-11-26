@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <component name="LiveScreen" extends="Group">
   <interface>
+    <field id="guide" type="assocarray" onChange="onGuideData" />
+    <field id="guideQuery" type="string" onChange="onGuideQuery" />
     <field id="status" type="assocarray" onChange="onStatus" />
     <field id="mode" type="string" value="loading" onChange="onMode" />
     <field id="action" type="assocarray" alwaysNotify="true" />
@@ -13,6 +15,7 @@
   <script type="text/brightscript" uri="pkg:/source/focus.brs" />
   <script type="text/brightscript" uri="LiveScreen.brs" />
   <children>
+    <Group id="channelList" visible="false">
     <NavStrip id="ribbon" />
     <Label id="kicker" translation="[160, 280]" color="0x8A8A8AFF" text="Live TV" />
     <Label id="heading" translation="[160, 352]" color="0xF5F5F5FF" text="Your channels" />
@@ -23,6 +26,8 @@
     <Label id="loading" translation="[160, 560]" color="0xC4C4C4FF" text="Loading..." />
     <FocusButton id="choose" translation="[160, 1920]" />
     <FocusButton id="playlist" translation="[700, 1920]" />
-    <FocusButton id="nextPage" translation="[1240, 1920]" />
+    <FocusButton id="nextPage" translation="[1240, 1920]" label="Guide" variant="glassPill" />
+    </Group>
+    <GuideGrid id="guideGrid" />
   </children>
 </component>

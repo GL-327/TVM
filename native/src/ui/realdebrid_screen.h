@@ -22,6 +22,8 @@ struct RealDebridView {
     bool configured = false;
     std::optional<std::string> username;
     bool premium = false;
+    // "account" when provided by the TVM account, "device" or "" for a local token.
+    std::string source;
     // "", "needs-auth" or "unreachable", as the client reports them.
     std::string error;
     // A request is in flight. The buttons do nothing until it finishes.

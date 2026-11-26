@@ -100,9 +100,14 @@ export function PinPadModal({
         <h2 className="pin-sheet__title">{title}</h2>
         {subtitle !== undefined && <p className="page__lede">{subtitle}</p>}
 
-        <div key={shakeKey} className={`pin-dots${shakeKey > 0 ? ' pin-dots--shake' : ''}`} aria-label={`Entered ${pin.length} of ${digits} digits`}>
+        <div key={shakeKey} className={`pin-boxes pin-dots${shakeKey > 0 ? ' pin-dots--shake' : ''}`} aria-label={`Entered ${pin.length} of ${digits} digits`}>
           {Array.from({ length: digits }, (_, idx) => (
-            <span key={idx} className={`pin-dot${idx < pin.length ? ' pin-dot--filled' : ''}`} />
+            <span
+              key={idx}
+              className={`pin-box${idx < pin.length ? ' pin-box--filled pin-dot--filled' : idx === pin.length ? ' pin-box--active' : ''}`}
+            >
+              {idx < pin.length ? '●' : ''}
+            </span>
           ))}
         </div>
 

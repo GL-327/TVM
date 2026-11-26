@@ -202,10 +202,10 @@ function navStep(col as Integer, intent as String, count as Integer) as Integer
   return result
 end function
 
-' Hero buttons: 0 Play, 1 Details.
-function heroStep(col as Integer, intent as String) as Integer
+' Hero buttons: 0 Play, 1 Details, 2 Surprise me (when visible).
+function heroStep(col as Integer, intent as String, count = 2 as Integer) as Integer
   result = col
   if intent = "left" and result > 0 then result = result - 1
-  if intent = "right" and result < 1 then result = result + 1
+  if intent = "right" and result < count - 1 then result = result + 1
   return result
 end function

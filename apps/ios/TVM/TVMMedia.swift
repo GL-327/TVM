@@ -506,7 +506,7 @@ final class TVMMedia {
     /// Where playback of `id` stopped, for an offline copy to carry on from.
     func resumePosition(_ id: String) -> Double? {
         let progress = store.progress(for: activeProfile())[id]
-        return TVMTitle.progressRatio(progress).flatMap { _ in progress?.position }
+        return TVMTitle.resumePosition(progress)
     }
 
     func play(
@@ -800,7 +800,7 @@ final class TVMMedia {
     private func playFromLink(_ link: String, mediaId: String?) async -> (Int, [String: Any]) {
         do {
             let progress = mediaId.flatMap { store.progress(for: activeProfile())[$0] }
-            let startAt = TVMTitle.progressRatio(progress).flatMap { _ in progress?.position }
+            let startAt = TVMTitle.resumePosition(progress)
             var playURL = link
             var filename = URL(string: link)?.lastPathComponent ?? "stream"
             var mime = "application/octet-stream"

@@ -23,6 +23,8 @@
   <script type="text/brightscript" uri="pkg:/source/localCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/contentCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/playbackCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/guideCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/reviewsCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/accountsCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/extrasCore.brs" />

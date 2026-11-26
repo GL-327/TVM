@@ -52,9 +52,11 @@ void RealDebridScreen::Layout(double width, double height) {
 
 void RealDebridScreen::SetView(RealDebridView view) {
     view_ = std::move(view);
-    // Disconnect goes when nothing is connected, so focus moves back to the first button.
+    // Hidden controls drop out, so focus moves to the first visible button.
     const std::vector<std::string> items = Items();
-    if (std::find(items.begin(), items.end(), focused_) == items.end()) focused_ = kPasteKey;
+    if (std::find(items.begin(), items.end(), focused_) == items.end()) {
+        focused_ = items.empty() ? std::string(kTermsKey) : items.front();
+    }
 }
 
 std::vector<std::pair<std::string, std::string>> RealDebridScreen::Facts() const {
@@ -68,7 +70,9 @@ std::vector<std::pair<std::string, std::string>> RealDebridScreen::Facts() const
     } else {
         facts.emplace_back("Account", "Not configured");
     }
-    if (view_.loaded && view_.configured) facts.emplace_back("Token", "This machine\xE2\x80\x99s");
+    if (view_.loaded && view_.configured) {
+        facts.emplace_back("Token", view_.source == "account" ? "Connected through your TVM account" : "This machine\xE2\x80\x99s");
+    }
     facts.emplace_back("Premium", !view_.loaded ? unknown : view_.premium ? "Yes" : "No");
 
     std::string status = "Ready";
@@ -86,6 +90,7 @@ std::vector<std::pair<std::string, std::string>> RealDebridScreen::Facts() const
 }
 
 std::vector<std::string> RealDebridScreen::Items() const {
+    if (view_.configured && view_.source == "account") return {kTermsKey};
     std::vector<std::string> items{kPasteKey};
     if (view_.configured) items.push_back(kDisconnectKey);
     items.push_back(kTermsKey);
@@ -134,7 +139,11 @@ void RealDebridScreen::Paint(Painter& painter) const {
     // Tall enough for the descenders, which the text clip would otherwise cut.
     painter.Text(Box{x, kickerY + metrics.Rem(1.0), width_ - 2.0 * x, metrics.Rem(3.25)}, "Real-Debrid",
                  TextStyle{metrics.Rem(2.75), true}, tokens::kText);
-    painter.Paragraph(Box{x, kickerY + metrics.Rem(kLedeTopRem), contentWidth, metrics.Rem(kLedeHeightRem)}, kLede,
+    const std::string lede = (view_.configured && view_.source == "account")
+        ? "Connected through your TVM account. Core manages your Real-Debrid key automatically; "
+          "use only content you are authorised to watch."
+        : std::string(kLede);
+    painter.Paragraph(Box{x, kickerY + metrics.Rem(kLedeTopRem), contentWidth, metrics.Rem(kLedeHeightRem)}, lede,
                       TextStyle{metrics.Rem(1.0625), false}, tokens::kTextMuted);
 
     double top = kickerY + metrics.Rem(kRowsTopRem);

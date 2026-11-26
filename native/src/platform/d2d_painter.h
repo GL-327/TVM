@@ -24,12 +24,17 @@ public:
     void Clear(ui::Color color) override;
     void SetBackdrop(const ui::Box& box, const std::string& url, double focusX = 0.7, double focusY = 0.2) override;
     void Glass(const ui::Box& box, double radius, const ui::GlassStyle& style = {}) override;
+    ui::Color GlassInk(ui::Color fallback) const override { return glassInk_.value_or(fallback); }
     void FillRoundRect(const ui::Box& box, double radius, ui::Color color) override;
     void StrokeRoundRect(const ui::Box& box, double radius, double width, ui::Color color) override;
     bool Image(const ui::Box& box, const std::string& url, double radius) override;
     bool ImageFaded(const ui::Box& box, const std::string& url, double radius, double opacity, double focusX,
                     double focusY) override;
     bool ImageContain(const ui::Box& box, const std::string& url) override;
+    bool HeroVideo(const ui::Box& box, double opacity, double focusX, double focusY) override;
+    bool SpotlightLogo(const ui::Box& box, const std::string& url, double opacity, double blur, double sweep) override;
+    void BeginLightParticles() override;
+    void EndLightParticles() override;
     void FillPolygon(const std::vector<ui::Point>& points, ui::Color color) override;
     void FillPolygonLinear(const std::vector<ui::Point>& points, double x0, double y0, double x1, double y1,
                            const std::vector<ui::GradientStop>& stops) override;
@@ -52,6 +57,7 @@ public:
     void PopOpacity() override;
 
 private:
+    void DrawLabel(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color, bool wrap);
     ID2D1SolidColorBrush* Brush(ui::Color color);
     ComPtr<ID2D1GradientStopCollection> Stops(const std::vector<ui::GradientStop>& stops);
     // The closed outline through `points`, or nothing when there are fewer than three points.
@@ -66,6 +72,9 @@ private:
     ArtworkStore* artwork_;
     ImageCache* images_;
     GlassLens* lens_;
+    std::optional<ui::Color> glassInk_;
+    ComPtr<ID2D1DeviceContext> particleContext_;
+    D2D1_PRIMITIVE_BLEND previousParticleBlend_ = D2D1_PRIMITIVE_BLEND_SOURCE_OVER;
     ComPtr<ID2D1SolidColorBrush> solidBrush_;
     // Gradient stops made this frame, by their positions and colours: the glass surfaces of a frame share most
     // of theirs, so each set is made once.

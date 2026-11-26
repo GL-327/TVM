@@ -106,12 +106,13 @@ function lensAllowed(): boolean {
   if (!lensSupported(navigator.userAgent, navigator.maxTouchPoints ?? 0)) return false;
   const root = document.documentElement;
   // Performance mode and Reduce Transparency both ask for the plain material.
-  if (root.dataset.perf === 'on') return false;
+  if (root.dataset.perf === 'on' || root.dataset.transparency === 'reduced') return false;
   if (window.matchMedia?.('(prefers-reduced-transparency: reduce)').matches) return false;
   return true;
 }
 
 let lensCount = 0;
+const textures = new Map<string, { url: string; width: number; height: number; scale: number }>();
 
 function svgHost(): SVGSVGElement {
   let host = document.getElementById('tvm-liquid-lenses') as SVGSVGElement | null;
@@ -143,6 +144,7 @@ function mapDataUrl(map: LensMap): string | null {
 export interface LensOptions {
   /** Standard deviation of the diffusion under the glass, in CSS pixels. */
   blur?: number;
+  active?: boolean;
   /** Colour lift behind the glass. */
   saturate?: number;
 }
@@ -152,58 +154,117 @@ export interface LensOptions {
  * browser can. The element keeps its CSS glass (wash, rim, shadow); only its `backdrop-filter` is replaced.
  */
 export function useLiquidLens(ref: RefObject<HTMLElement | null>, options: LensOptions = {}): void {
-  const { blur = 4, saturate = 1.75 } = options;
+  const { blur = 3, saturate = 1.6, active = true } = options;
   useEffect(() => {
     const element = ref.current;
-    if (element === null || element.closest('.gate') !== null || !lensAllowed() || typeof ResizeObserver === 'undefined') return undefined;
-    lensCount += 1;
-    const id = `tvm-lens-${lensCount}`;
+    if (element === null || !active || typeof ResizeObserver === 'undefined') return undefined;
     const svgNs = 'http://www.w3.org/2000/svg';
-    const filter = document.createElementNS(svgNs, 'filter');
-    filter.id = id;
-    filter.setAttribute('color-interpolation-filters', 'sRGB');
-    filter.setAttribute('x', '0');
-    filter.setAttribute('y', '0');
-    filter.setAttribute('width', '100%');
-    filter.setAttribute('height', '100%');
-    svgHost().appendChild(filter);
-
-    let lastKey = '';
-    const rebuild = () => {
-      const box = element.getBoundingClientRect();
-      if (box.width < 8 || box.height < 8) return;
-      const radius = Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
-      const key = `${Math.round(box.width)}x${Math.round(box.height)}r${Math.round(radius)}`;
-      if (key === lastKey) return;
-      lastKey = key;
-      const map = buildLensMap(box.width, box.height, radius);
-      const url = mapDataUrl(map);
-      if (url === null) return;
-      filter.innerHTML =
-        `<feGaussianBlur in="SourceGraphic" stdDeviation="${blur}" edgeMode="duplicate" result="diffused"/>` +
-        `<feImage href="${url}" x="0" y="0" width="${map.width}" height="${map.height}" preserveAspectRatio="none" result="lens"/>` +
-        `<feDisplacementMap in="diffused" in2="lens" scale="${map.scale}" xChannelSelector="R" yChannelSelector="G" result="bent"/>` +
-        `<feColorMatrix in="bent" type="saturate" values="${saturate}"/>`;
-      element.style.setProperty('backdrop-filter', `url(#${id})`);
-      element.style.setProperty('-webkit-backdrop-filter', `url(#${id})`);
-      element.dataset.lens = 'on';
+    const surface = element.closest<HTMLElement>('.glass, .tvm-button--glass') ?? element;
+    const shine = (event: PointerEvent): void => {
+      if (event.pointerType === 'touch') return;
+      const rect = surface.getBoundingClientRect();
+      surface.style.setProperty('--glass-x', (event.clientX - rect.left) + 'px');
+      surface.style.setProperty('--glass-y', (event.clientY - rect.top) + 'px');
     };
+    surface.addEventListener('pointermove', shine, { passive: true });
 
+    let filter: SVGFilterElement | null = null;
+    let observer: ResizeObserver | null = null;
     let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(rebuild);
-    });
-    observer.observe(element);
-    rebuild();
+    let lastKey = '';
 
-    return () => {
+    const detachLens = (): void => {
       cancelAnimationFrame(frame);
-      observer.disconnect();
-      filter.remove();
+      frame = 0;
+      lastKey = '';
+      observer?.disconnect();
+      observer = null;
+      filter?.remove();
+      filter = null;
       element.style.removeProperty('backdrop-filter');
       element.style.removeProperty('-webkit-backdrop-filter');
       delete element.dataset.lens;
     };
-  }, [ref, blur, saturate]);
+
+    const attachOrSync = (): void => {
+      if (!lensAllowed()) {
+        detachLens();
+        return;
+      }
+      if (!filter) {
+        lensCount += 1;
+        filter = document.createElementNS(svgNs, 'filter');
+        filter.id = `tvm-lens-${lensCount}`;
+        filter.setAttribute('color-interpolation-filters', 'sRGB');
+        filter.setAttribute('x', '0');
+        filter.setAttribute('y', '0');
+        filter.setAttribute('width', '100%');
+        filter.setAttribute('height', '100%');
+        svgHost().appendChild(filter);
+      }
+
+      const rebuild = (): void => {
+        if (!filter || !lensAllowed()) return;
+        const box = { width: element.offsetWidth, height: element.offsetHeight };
+        if (box.width < 8 || box.height < 8) return;
+        const radius = Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
+        const key = `${Math.round(box.width)}x${Math.round(box.height)}r${Math.round(radius)}`;
+        if (key === lastKey) return;
+        lastKey = key;
+        let texture = textures.get(key);
+        if (!texture) {
+          const map = buildLensMap(box.width, box.height, radius);
+          const url = mapDataUrl(map);
+          if (url === null) return;
+          texture = { url, width: map.width, height: map.height, scale: map.scale };
+          if (textures.size >= 48) textures.delete(textures.keys().next().value ?? '');
+          textures.set(key, texture);
+        }
+        const { url, ...map } = texture;
+        // Sub-pixel dispersion (0.65px) only moves the bent bezel while keeping the interior intact.
+        const rScale = (map.scale + 0.65).toFixed(2);
+        const gScale = map.scale.toFixed(2);
+        const bScale = Math.max(0.5, map.scale - 0.65).toFixed(2);
+        filter.innerHTML =
+          `<feGaussianBlur in="SourceGraphic" stdDeviation="${blur}" edgeMode="duplicate" result="diffused"/>` +
+          `<feImage href="${url}" x="0" y="0" width="${map.width}" height="${map.height}" preserveAspectRatio="none" result="lens"/>` +
+          `<feDisplacementMap in="diffused" in2="lens" scale="${rScale}" xChannelSelector="R" yChannelSelector="G" result="dispR"/>` +
+          `<feColorMatrix in="dispR" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>` +
+          `<feDisplacementMap in="diffused" in2="lens" scale="${gScale}" xChannelSelector="R" yChannelSelector="G" result="dispG"/>` +
+          `<feColorMatrix in="dispG" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>` +
+          `<feDisplacementMap in="diffused" in2="lens" scale="${bScale}" xChannelSelector="R" yChannelSelector="G" result="dispB"/>` +
+          `<feColorMatrix in="dispB" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>` +
+          `<feBlend in="r" in2="g" mode="screen" result="rg"/>` +
+          `<feBlend in="rg" in2="b" mode="screen" result="bent"/>` +
+          `<feColorMatrix in="bent" type="saturate" values="${saturate}"/>`;
+        const id = filter.id;
+        element.style.setProperty('backdrop-filter', `url(#${id})`);
+        element.style.setProperty('-webkit-backdrop-filter', `url(#${id})`);
+        element.dataset.lens = 'on';
+      };
+
+      if (!observer) {
+        observer = new ResizeObserver(() => {
+          cancelAnimationFrame(frame);
+          frame = requestAnimationFrame(rebuild);
+        });
+        observer.observe(element);
+      }
+      rebuild();
+    };
+
+    attachOrSync();
+    window.addEventListener('tvm:appearance', attachOrSync);
+    const attrObserver = typeof MutationObserver !== 'undefined'
+      ? new MutationObserver(attachOrSync)
+      : null;
+    attrObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-transparency', 'data-perf'] });
+
+    return () => {
+      window.removeEventListener('tvm:appearance', attachOrSync);
+      attrObserver?.disconnect();
+      detachLens();
+      surface.removeEventListener('pointermove', shine);
+    };
+  }, [ref, blur, saturate, active]);
 }

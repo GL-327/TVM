@@ -8,7 +8,7 @@ function torrentioHeaders(extra?: Record<string, string>): Headers {
 }
 
 const CAM_PATTERN = /\b(cam|camrip|telesync|tsrip|hdcam|hdts)\b/i;
-const CACHED_PATTERN = /⚡|\bcached\b|\brd\+|\bdownloaded\b/i;
+const CACHED_PATTERN = /\u26a1|\bcached\b|\brd\+|\bdownloaded\b/i;
 
 export interface DebridStream {
   url: string;
@@ -16,6 +16,7 @@ export interface DebridStream {
   quality: number;
   cached: boolean;
   description?: string;
+  releaseId?: string;
 }
 
 export function torrentioBaseUrl(token: string): string {
@@ -82,6 +83,8 @@ export function parseDebridStream(raw: Record<string, unknown>): DebridStream | 
     quality: qualityScore(`${String(raw.name ?? '')} ${title}`),
     cached: CACHED_PATTERN.test(`${String(raw.name ?? '')} ${title}`),
     description: `${String(raw.name ?? '')} ${String(raw.title ?? '')}`,
+    ...(typeof raw.infoHash === 'string' && /^[a-f0-9]{40}$/i.test(raw.infoHash)
+      ? { releaseId: `${raw.infoHash.toLowerCase()}:${Number.isInteger(raw.fileIdx) ? raw.fileIdx : ''}` } : {}),
   };
 }
 

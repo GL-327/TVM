@@ -154,4 +154,21 @@ TEST(reduced_motion_snaps_tokens_and_the_glass_sweep) {
     REQUIRE_NEAR(tvm::motion::GlassSweepMs(performance), 0.0, 1e-9);
 }
 
+TEST(spring_progress_eases_from_zero_and_settles_to_one) {
+    REQUIRE_NEAR(tvm::motion::SpringProgress(0.0), 0.0, 1e-9);
+    const double mid = tvm::motion::SpringProgress(90.0);
+    REQUIRE(mid > 0.2 && mid < 1.2);
+    REQUIRE_NEAR(tvm::motion::SpringProgress(450.0), 1.0, 1e-3);
+    REQUIRE_NEAR(tvm::motion::SpringProgress(800.0), 1.0, 1e-4);
+}
+
+TEST(system_reduced_motion_gates_auto_while_preserving_explicit_choice) {
+    tvm::motion::SetSystemReducedMotion(true);
+    REQUIRE(tvm::motion::PrefersReducedMotion(MotionSettings{MotionPreference::Auto, false}));
+    REQUIRE(!tvm::motion::PrefersReducedMotion(MotionSettings{MotionPreference::Full, false}));
+    REQUIRE(tvm::motion::PrefersReducedMotion(MotionSettings{MotionPreference::Reduced, false}));
+    tvm::motion::SetSystemReducedMotion(false);
+    REQUIRE(!tvm::motion::PrefersReducedMotion(MotionSettings{MotionPreference::Auto, false}));
+}
+
 }  // namespace

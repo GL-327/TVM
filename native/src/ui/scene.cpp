@@ -19,7 +19,7 @@ constexpr motion::CubicBezier kGlassEase{0.32, 0.72, 0.0, 1.0};
 constexpr double kEmphasisInMs = 150.0;
 constexpr double kEmphasisOutMs = 220.0;
 constexpr double kPressInMs = 70.0;
-constexpr double kPressOutMs = 240.0;
+constexpr double kPressOutMs = 320.0;
 constexpr double kIndicatorMs = 380.0;
 // The focus highlight starts just after the plate brightens and crosses in under a second.
 constexpr double kSweepDelayMs = 90.0;
@@ -34,10 +34,10 @@ constexpr double kSafeYRem = 1.5;
 constexpr double kSectionSpacingRem = 2.0;
 // Heading to rail, inside one section. It clears the focus ring, which grows
 // about 11px above a focused poster.
-constexpr double kHeadingGapRem = 1.0;
+constexpr double kHeadingGapRem = 1.25;
 constexpr double kRailSpacingRem = 1.0;
 constexpr double kRailInsetRem = 1.0;
-constexpr double kHeadingSizeRem = 1.25;
+constexpr double kHeadingSizeRem = 1.5;
 // The home camera parks the focused row 72px below the top at 1080p.
 constexpr double kRowCameraPadRem = 4.5;
 // Reference height the metrics are measured against: rem = height / 67.5.
@@ -81,6 +81,9 @@ constexpr double kHeroFadeSpan = 0.92;
 constexpr char kHeroPlayKey[] = "hero-play";
 constexpr char kHeroInfoKey[] = "hero-info";
 constexpr char kHeroImdbKey[] = "hero-imdb";
+constexpr char kHeroMuteKey[] = "hero-mute";
+constexpr char kVolumeGlyph[] = "M5 12h5l6-5v18l-6-5H5zM21 11a7 7 0 0 1 0 10m3-13a11 11 0 0 1 0 16";
+constexpr char kMutedGlyph[] = "M5 12h5l6-5v18l-6-5H5zM21 13l6 6m0-6-6 6";
 constexpr std::string_view kWatchLabel = "Play";
 constexpr std::string_view kLearnLabel = "Details";
 constexpr std::string_view kDefaultMetaLabel = "Movie \xC2\xB7 Drama \xC2\xB7 2h 6m \xC2\xB7 4K";
@@ -90,9 +93,9 @@ constexpr char kPlayTrianglePath[] = "m10 6 16 10-16 10z";
 constexpr double kChromePadTopRem = 2.0;      // 32px top inset at 1080p
 constexpr double kChromePadBottomRem = 0.85;
 constexpr double kChromeLinkHeightRem = 2.75; // 44px inner tab height inside 56px capsule
-constexpr double kChromeLinkPadRem = 1.35;    // 21.6px horizontal tab padding
+constexpr double kChromeLinkPadRem = 1.05;
 constexpr double kChromeGapRem = 0.35;        // gap between tabs in the capsule
-constexpr double kChromeFontRem = 1.375;      // 22px nav tab label
+constexpr double kChromeFontRem = 0.875;
 constexpr double kCapsulePadRem = 0.375;      // 6px padding around tabs inside the outer glass capsule
 constexpr double kOrbSizeRem = 3.25;          // 52px circular profile orb at 1080p
 constexpr int kChromeWeight = 560;
@@ -118,7 +121,7 @@ constexpr double kButtonGapRowRem = 0.75;
 constexpr char kSearchGlyph[] = "M14 5a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM21 21l6 6";
 
 bool IsHeroKey(const std::string& key) {
-    return key == kHeroPlayKey || key == kHeroInfoKey || key == kHeroImdbKey;
+    return key == kHeroPlayKey || key == kHeroInfoKey || key == kHeroImdbKey || key == kHeroMuteKey;
 }
 
 // The colour at a fraction of its own opacity.
@@ -207,7 +210,12 @@ std::string ToUpperAscii(std::string text) {
 }
 
 // The width of a stream chrome link, in rems.
+bool SearchTab(const TopButton& button) {
+    return !button.orb && !button.lockup && button.label == "Search";
+}
+
 double ChromeLinkWidthRem(const TopButton& button) {
+    if (SearchTab(button)) return kChromeLinkHeightRem;
     if (button.orb) return kOrbSizeRem;
     if (button.lockup) {
         return EstimateRem(button.label, kWordmarkFontRem, 0.14) + 1.2;
@@ -335,10 +343,10 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     activeTab_ = ActiveTabIndex();
     if (activeTab_ != activeWas) {
         indicatorMove_.reset();
-        if (activeTab_.has_value() && activeWas.has_value() && indicatorWas.has_value() && viewportWidth_ > 0.0 &&
-            !motion::PrefersReducedMotion(motion_)) {
+        if (activeTab_.has_value() && activeWas.has_value() && indicatorWas.has_value() && viewportWidth_ > 0.0) {
             indicatorFrom_ = *indicatorWas;
-            indicatorMove_ = motion::Tween(0.0, 1.0, nowMs, kIndicatorMs, kGlassEase);
+            indicatorCrossFade_ = motion::PrefersReducedMotion(motion_);
+            indicatorMove_ = motion::Tween(0.0, 1.0, nowMs, indicatorCrossFade_ ? 150.0 : kIndicatorMs, motion::kLinear);
         }
     }
     SetRails(view.rails);
@@ -397,12 +405,13 @@ std::optional<std::size_t> Scene::ActiveTabIndex() const {
 std::optional<Box> Scene::TabIndicatorBox() const {
     if (!activeTab_.has_value() || *activeTab_ >= tops_.size() || !Streamy()) return std::nullopt;
     const Box to = TopBoxScreen(*activeTab_);
-    if (!indicatorMove_.has_value() || indicatorMove_->Done(clockMs_)) return to;
-    const double t = std::clamp(indicatorMove_->Value(clockMs_), 0.0, 1.0);
+    if (!indicatorMove_.has_value() || indicatorMove_->Done(clockMs_) || indicatorCrossFade_) return to;
+    const double elapsed = indicatorMove_->Value(clockMs_) * kIndicatorMs;
+    const double t = std::clamp(motion::SpringProgress(elapsed), 0.0, 1.0);
     Box box = LerpBox(indicatorFrom_, to, t);
     // The glass stretches a little along its path, like a drop of liquid, and settles back as it arrives.
     const double travel = std::fabs(to.CenterX() - indicatorFrom_.CenterX());
-    const double stretch = std::min(to.height * 0.45, travel * 0.10) * std::sin(kPi * t);
+    const double stretch = std::min(box.width * 0.25, travel * 0.16) * std::sin(kPi * t);
     box.x -= stretch / 2.0;
     box.width += stretch;
     return box;
@@ -416,6 +425,10 @@ double Scene::EmphasisOf(const std::string& key) const {
 
 double Scene::PressOf(const std::string& key) const {
     if (pressKey_.empty() || key != pressKey_) return 0.0;
+    if (pressReleasedAt_) {
+        const double elapsed = clockMs_ - *pressReleasedAt_;
+        return elapsed >= kPressOutMs ? 0.0 : releaseDepth_ * (1.0 - motion::SpringProgress(std::max(0.0, elapsed)));
+    }
     return std::clamp(press_.Value(clockMs_), 0.0, 1.0);
 }
 
@@ -444,6 +457,7 @@ void Scene::EaseFocusedLook(bool shown, double nowMs) {
 }
 
 void Scene::PointerLeft(double nowMs) {
+    pointerSlot_.reset();
     if (focusHidden_) return;
     focusHidden_ = true;
     EaseFocusedLook(false, nowMs);
@@ -451,6 +465,7 @@ void Scene::PointerLeft(double nowMs) {
 
 void Scene::PointerAt(double x, double y, double nowMs) {
     std::optional<std::size_t> under;
+    pointerSlot_.reset();
     const bool belowHeader = !(HasLaneHeader() && y < HeaderTop());
     // The row's hover zone reaches past its box by the lift and grow of a hovered poster, so moving from a poster
     // to its arrow, or across the titles to the next row, does not drop the arrows on the way.
@@ -459,6 +474,15 @@ void Scene::PointerAt(double x, double y, double nowMs) {
         const Box b = rails_[r]->box();
         if (Contains(Box{b.x, b.y - pad, b.width, b.height + 2.0 * pad}, x, y)) {
             if (!under.has_value() || Contains(b, x, y)) under = r;
+        }
+    }
+    if (under && Contains(rails_[*under]->box(), x, y)) {
+        if (const auto slot = rails_[*under]->SlotAt(x)) {
+            pointerSlot_ = std::pair{*under, *slot};
+            if (focus_.Focused() == cards_[GlobalIndex(*under, slot->index)].key) {
+                focusedSlot_ = pointerSlot_;
+                rails_[*under]->SetFocusSlot(*slot);
+            }
         }
     }
     arrowHover_.clear();
@@ -561,10 +585,13 @@ void Scene::SetPressed(const std::optional<std::string>& key, double nowMs) {
     const bool reduced = motion::PrefersReducedMotion(motion_);
     if (key.has_value()) {
         const double from = PressOf(*key);
+        pressReleasedAt_.reset();
         pressKey_ = *key;
         press_ = motion::Tween(from, 1.0, nowMs, reduced ? 0.0 : kPressInMs, motion::kEaseOut);
     } else if (!pressKey_.empty()) {
-        press_ = motion::Tween(PressOf(pressKey_), 0.0, nowMs, reduced ? 0.0 : kPressOutMs, kGlassEase);
+        releaseDepth_ = reduced ? 0.0 : PressOf(pressKey_);
+        pressReleasedAt_ = nowMs;
+        press_ = motion::Tween{};
     }
 }
 
@@ -575,7 +602,8 @@ double Scene::EntranceStage(double delayMs, double durationMs) const {
 }
 
 bool Scene::ControlsAnimating() const {
-    if (!press_.Done(clockMs_)) return true;
+    if (!press_.Done(clockMs_) || (pressReleasedAt_ && releaseDepth_ > 0.0 && clockMs_ - *pressReleasedAt_ < kPressOutMs))
+        return true;
     if (indicatorMove_.has_value() && !indicatorMove_->Done(clockMs_)) return true;
     if (chromeEntranceStart_.has_value() && clockMs_ - *chromeEntranceStart_ < kChromeEntranceMs) return true;
     if (const std::optional<std::string> focused = focus_.Focused()) {
@@ -594,6 +622,8 @@ void Scene::Build(const std::vector<RailData>& rails) {
     railCamera_.clear();
     pageCamera_ = motion::CameraTween{};
     pageScroll_ = 0.0;
+    focusedSlot_.reset();
+    pointerSlot_.reset();
     cards_.clear();
     cardByKey_.clear();
     railOffset_.clear();
@@ -682,6 +712,9 @@ void Scene::ShowHero(std::size_t index, double nowMs) {
     // The title dissolves in as soon as the title changes. The picture waits for its file.
     if (hero.itemId != heroTitleId_) {
         heroTitleId_ = hero.itemId;
+        spotlightStartMs_ = nowMs;
+        spotlightElapsedMs_ = 0.0;
+        SetHeroClip(false, false, nowMs);
         titleFade_ = motion::Tween(0.0, 1.0, nowMs, reduced ? 0.0 : kHeroDissolveMs, kHeroEase);
     }
     if (hero.backdropUrl.empty()) {
@@ -714,6 +747,41 @@ void Scene::StartHeroArt(double nowMs) {
     artFade_ = motion::Tween(first ? 1.0 : 0.0, 1.0, nowMs, first || reduced ? 0.0 : kHeroDissolveMs, kHeroEase);
 }
 
+bool Scene::Spotlight() const {
+    if (!Streamy() || !HeroActive()) return false;
+    const auto& hero = heroes_[heroIndex_];
+    return hero.body.empty() || !hero.eventKicker.empty() || hero.accent.has_value();
+}
+
+std::string Scene::HeroClipId() const {
+    return Spotlight() ? heroes_[heroIndex_].itemId : std::string{};
+}
+
+void Scene::SetHeroClip(bool hasFrame, bool canUnmute, double nowMs) {
+    const bool wasPlaying = clipStartedAt_.has_value();
+    clipCanUnmute_ = hasFrame && canUnmute;
+    if (hasFrame && !wasPlaying) {
+        clipStartedAt_ = nowMs;
+    } else if (!hasFrame) {
+        clipStartedAt_.reset();
+        if (focus_.Focused() == kHeroMuteKey) FocusKey(kHeroInfoKey, nowMs, false);
+    }
+    if (wasPlaying != hasFrame && viewportWidth_ > 0.0) SyncFocus();
+}
+
+Box Scene::ParallaxCopy(Box box) const {
+    if (!tokens::reduceMotion && tokens::pointer && viewportWidth_ > 0.0 && viewportHeight_ > 0.0) {
+        box.x -= (tokens::pointer->x / viewportWidth_ - 0.5) * viewportWidth_ * 0.005;
+        box.y -= (tokens::pointer->y / viewportHeight_ - 0.5) * viewportHeight_ * 0.005;
+    }
+    return box;
+}
+
+Box Scene::SpotlightMediaBox() const {
+    const auto hero = HeroBox();
+    return {hero.x, std::round(hero.y), hero.width, std::round(std::max(hero.height * 1.45, viewportHeight_ * 0.78))};
+}
+
 Box Scene::HeroBox() const {
     return Box{0.0, -pageScroll_, viewportWidth_, heroHeight_};
 }
@@ -741,6 +809,37 @@ Scene::HeroBoxes Scene::HeroLayout() const {
     if (hasDots) bottom -= dot + metrics_.Rem(kHeroDotsMarginRem);
 
     const bool compact = CompactViewport(viewportWidth_, viewportHeight_);
+    if (Spotlight()) {
+        const auto& data = heroes_[heroIndex_];
+        const double buttonHeight = metrics_.Rem(2.75);
+        const double gap = metrics_.Rem(0.65);
+        const double width = std::max(1.0, viewportWidth_ - 2.0 * x);
+        const double logoWidth = std::min(width, viewportWidth_ * (compact ? 0.82 : 0.44));
+        const double textWidth = std::min(width, std::max(logoWidth, metrics_.Rem(23.0)));
+        const double playWidth = std::min((width - buttonHeight - 2.0 * gap) * 0.59,
+            metrics_.Rem(std::max(6.6, EstimateRem(PlayLabel(), 0.875) + 3.0)));
+        const double infoWidth = std::min((width - buttonHeight - 2.0 * gap) * 0.41,
+            metrics_.Rem(std::max(5.6, EstimateRem(InfoLabel(), 0.875) + 2.0)));
+        boxes.watch = {x, bottom - buttonHeight, playWidth, buttonHeight};
+        boxes.learn = {boxes.watch.Right() + gap, boxes.watch.y, infoWidth, buttonHeight};
+        boxes.mute = {boxes.learn.Right() + gap, boxes.watch.y, buttonHeight, buttonHeight};
+        boxes.meta = {x, boxes.watch.y - metrics_.Rem(2.25), textWidth, metrics_.Rem(1.35)};
+        const double bodyHeight = data.body.empty() ? 0.0 : metrics_.Rem(compact ? 2.65 : 1.5);
+        boxes.body = {x, boxes.meta.y - bodyHeight - metrics_.Rem(0.3), textWidth, bodyHeight};
+        const bool longTitle = data.title.size() > (compact ? 18u : 31u);
+        const double logoHeight = metrics_.Rem(!data.logoUrl.empty() || longTitle ? 6.2 : 3.65);
+        boxes.title = {x, boxes.body.y - logoHeight - metrics_.Rem(0.45), logoWidth, logoHeight};
+        boxes.kicker = {x, boxes.title.y - metrics_.Rem(2.15), textWidth, metrics_.Rem(1.65)};
+        boxes.watch = ParallaxCopy(boxes.watch);
+        boxes.learn = ParallaxCopy(boxes.learn);
+        boxes.mute = ParallaxCopy(boxes.mute);
+        boxes.body = ParallaxCopy(boxes.body);
+        boxes.title = ParallaxCopy(boxes.title);
+        boxes.kicker = ParallaxCopy(boxes.kicker);
+        boxes.meta = ParallaxCopy(boxes.meta);
+        boxes.dots = ParallaxCopy(boxes.dots);
+        return boxes;
+    }
     const double pillHeight =
         compact ? std::max(44.0, metrics_.Rem(kHeroLearnHeightRem)) : metrics_.Rem(kHeroLearnHeightRem);
     const double learnWidthRem =
@@ -794,7 +893,7 @@ Scene::HeroBoxes Scene::HeroLayout() const {
 }
 
 std::optional<Box> Scene::HeroRatingBox() const {
-    if (!HeroActive() || heroes_[heroIndex_].rating.empty()) return std::nullopt;
+    if (!HeroActive() || Spotlight() || heroes_[heroIndex_].rating.empty()) return std::nullopt;
     const auto boxes = HeroLayout();
     const double width = metrics_.Rem(9.5), height = metrics_.Rem(2.3);
     double x = boxes.learn.Right() + metrics_.Rem(1.2);
@@ -815,6 +914,56 @@ void Scene::PaintHeroRating(Painter& painter) const {
 }
 
 void Scene::PaintHeroBackdrop(Painter& painter) const {
+    if (Spotlight()) {
+        const Box stage = SpotlightMediaBox();
+        if (stage.Bottom() <= 0.0) return;
+        const auto& data = heroes_[heroIndex_];
+        const bool still = tokens::reduceMotion || motion::PrefersReducedMotion(motion_);
+        const double seconds = spotlightElapsedMs_ / 1000.0;
+        const double drift = still ? 0.0 : (1.0 - std::cos(seconds * kPi / 20.0)) / 2.0;
+        const double scroll = std::clamp(pageScroll_ / std::max(1.0, stage.height), 0.0, 1.0);
+        const double detail = still ? 0.0 : 0.08 * drift + 0.04 * scroll;
+        Box media = ScaledAbout(stage, 1.0 + detail + (still ? 0.0 : 0.032));
+        if (!still && tokens::pointer) {
+            media.x += (tokens::pointer->x / viewportWidth_ - 0.5) * viewportWidth_ * 0.03;
+            media.y += (tokens::pointer->y / viewportHeight_ - 0.5) * stage.height * 0.03;
+        }
+        const double focusX = 0.69 - 0.07 * drift;
+        const double focusY = 0.24 + 0.07 * drift;
+        const double fade = 1.0 - scroll * 0.65;
+        const std::string art = artCurrent_.empty() ? "asset:lighthouse.jpg" : artCurrent_;
+        const double dissolve = artFade_ ? std::clamp(artFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
+        painter.SetBackdrop(media, art, focusX, focusY);
+        if (dissolve < 1.0 && !artPrevious_.empty()) painter.ImageFaded(media, artPrevious_, 0, fade, focusX, focusY);
+        if (!painter.ImageFaded(media, art, 0, dissolve * fade, focusX, focusY))
+            painter.ImageFaded(media, "asset:lighthouse.jpg", 0, fade, focusX, focusY);
+        if (!still && clipStartedAt_)
+            painter.HeroVideo(media, fade * std::clamp((clockMs_ - *clipStartedAt_) / 600.0, 0.0, 1.0), focusX, focusY);
+
+        const Color ground = tokens::kBackground;
+        painter.FillLinearGradient(stage, stage.x, stage.y, stage.x + stage.width * 0.58, stage.y,
+                                   {{0.0, WithAlpha(ground, 0.89)}, {0.43, WithAlpha(ground, 0.62)},
+                                    {0.80, WithAlpha(ground, 0.22)}, {1.0, WithAlpha(ground, 0.0)}});
+        painter.FillRadialGradient(stage, stage.CenterX(), stage.y + stage.height * 0.38,
+                                   stage.width * 0.72, stage.height * 0.80,
+                                   {{0.0, Rgb(0, 0.0)}, {0.61, Rgb(0, 0.0)}, {1.0, Rgb(0, 0.30)}});
+        if (data.glow || data.accent) {
+            const Color glow = data.glow.value_or(data.accent.value_or(tokens::kAccentStrong));
+            const double breath = still ? 0.26 : 0.30 + 0.08 * std::sin(seconds * kPi / 3.0);
+            const auto logo = HeroLayout().title;
+            painter.FillRadialGradient(stage, logo.x + logo.width * 0.30, logo.CenterY(),
+                                       stage.width * 0.51, stage.height * 0.54,
+                                       {{0.0, WithAlpha(glow, breath * fade)}, {0.40, WithAlpha(glow, breath * fade * 0.39)},
+                                        {1.0, WithAlpha(glow, 0.0)}});
+            if (!still) PaintHeroParticles(painter, stage, data.effect, data.accent.value_or(glow), glow, seconds, fade);
+        }
+        painter.FillLinearGradient(stage, stage.x, stage.y, stage.x, stage.Bottom(),
+                                   {{0.0, WithAlpha(ground, 0.0)}, {0.38, WithAlpha(ground, 0.0)},
+                                    {0.60, WithAlpha(ground, 0.44)}, {0.83, WithAlpha(ground, 0.92)}, {1.0, ground}});
+        painter.FillRoundRect({stage.x, stage.Bottom() - 1.0, stage.width, media.Bottom() - stage.Bottom() + 2.0},
+                              0.0, ground);
+        return;
+    }
     const Box hero = HeroBox();
     // The full-bleed hero artwork extends behind the Continue Watching shelf and fades smoothly into the ink ground.
     // On whole pixels, so the picture and the scrim closing it never share a partly covered last row (a thin line).
@@ -876,7 +1025,106 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
     painter.FillRoundRect(Box{backdrop.x, backdrop.Bottom() - 2.0, backdrop.width, 3.0}, 0.0, background);
 }
 
+void Scene::PaintSpotlight(Painter& painter) const {
+    const auto& data = heroes_[heroIndex_];
+    const auto boxes = HeroLayout();
+    if (boxes.watch.Bottom() <= 0.0) return;
+    const bool still = tokens::reduceMotion || motion::PrefersReducedMotion(motion_);
+    const double elapsed = std::max(0.0, clockMs_ - spotlightStartMs_);
+    const auto appear = [&](double delay, double length) {
+        return still ? 1.0 : motion::kMotionEase.Ease(std::clamp((elapsed - delay) / length, 0.0, 1.0));
+    };
+    const auto rise = [&](Box box, double shown) {
+        box.y += metrics_.Rem(0.5) * (1.0 - shown);
+        return box;
+    };
+    const bool light = tokens::kBackground.r > 0.5;
+    const Color headline = light ? Rgb(0x10141C) : Rgb(0xF5F7FA);
+    const Color secondary = light ? Rgb(0x293A49) : Rgb(0xCBD0DA);
+    const Color accent = data.accent.value_or(tokens::kAccentStrong);
+
+    const std::string kicker = ToUpperAscii(!data.eventKicker.empty() ? data.eventKicker
+        : data.accent && !data.meta.empty() ? data.meta : kicker_.empty() ? "Spotlight" : kicker_);
+    const double kickerShown = appear(0.0, 360.0);
+    const auto kickerStyle = type::Overline(metrics_.rem);
+    const double inset = metrics_.Rem(0.60);
+    const double dot = metrics_.Rem(0.36);
+    const double kickerWidth = std::min(boxes.kicker.width, painter.MeasureText(kicker, kickerStyle) + inset * 3.0 + dot);
+    const auto chip = rise(Box{boxes.kicker.x, boxes.kicker.y, kickerWidth, boxes.kicker.height}, kickerShown);
+    const double pulse = still ? 1.0 : 0.79 + 0.21 * std::sin(spotlightElapsedMs_ * kPi / 850.0);
+    painter.FillRoundRect(chip, chip.height / 2.0, Faded(light ? Rgb(0xFFFFFF, 0.75) : Rgb(0x111318, 0.82), kickerShown));
+    painter.StrokeRoundRect(chip, chip.height / 2.0, 1.0, Faded(Mix(accent, headline, 0.12), 0.40 * kickerShown));
+    painter.FillRoundRect({chip.x + inset, chip.CenterY() - dot / 2.0, dot, dot}, dot / 2.0,
+                          Faded(accent, pulse * kickerShown));
+    painter.Text({chip.x + 2.0 * inset + dot, chip.y, std::max(1.0, kickerWidth - inset * 2.0 - dot), chip.height},
+                 kicker, kickerStyle, Faded(headline, kickerShown));
+
+    const double resolved = appear(0.0, 900.0);
+    const double sweep = !still && elapsed >= 900.0 ? std::fmod(elapsed - 900.0, 9000.0) / 1050.0 : -1.0;
+    Box logo = ScaledAbout(boxes.title, 0.96 + 0.04 * resolved);
+    logo.x = boxes.title.x;
+    const double blur = metrics_.Rem(0.75) * (1.0 - resolved);
+    if (data.logoUrl.empty() || !painter.SpotlightLogo(logo, data.logoUrl, resolved, blur, sweep)) {
+        const auto titleStyle = type::Display(metrics_.rem);
+        if (painter.MeasureText(data.title, titleStyle) > logo.width)
+            painter.Paragraph(logo, data.title, titleStyle, Faded(headline, resolved));
+        else painter.Text(logo, data.title, titleStyle, Faded(headline, resolved));
+    }
+
+    const double line = appear(80.0, 420.0);
+    if (!data.body.empty()) {
+        const auto body = rise(boxes.body, line);
+        if (body.height > metrics_.Rem(2.0)) painter.Paragraph(body, data.body, type::Body(metrics_.rem), Faded(secondary, line));
+        else painter.Text(body, data.body, type::Body(metrics_.rem), Faded(secondary, line));
+    }
+    const double meta = appear(160.0, 420.0);
+    std::string facts = data.accent && data.eventKicker.empty() ? "" : data.meta;
+    if (!data.rating.empty()) {
+        if (!facts.empty()) facts += "  ·  ";
+        facts += "IMDb " + data.rating;
+    }
+    auto metaStyle = type::Caption(metrics_.rem);
+    metaStyle.tabular = true;
+    painter.Text(rise(boxes.meta, meta), facts, metaStyle, Faded(secondary, meta));
+
+    const double actions = appear(240.0, 440.0);
+    const auto play = rise(boxes.watch, actions);
+    painter.FillRadialGradient({play.x - 20.0, play.y - 18.0, play.width + 40.0, play.height + 44.0},
+                               play.CenterX(), play.CenterY() + 8.0, play.width * 0.78, play.height * 0.94,
+                               {{0.0, Faded(accent, actions * 0.48)}, {1.0, Faded(accent, 0.0)}});
+    DrawButton(painter, metrics_, play, PlayLabel(), ButtonLook{true, ShowsFocus(kHeroPlayKey), EmphasisOf(kHeroPlayKey),
+               PressOf(kHeroPlayKey), actions, kPlayTrianglePath, data.accent.value_or(Rgb(0xF5F7FA))});
+    DrawButton(painter, metrics_, rise(boxes.learn, actions), InfoLabel(),
+               ButtonLook{false, ShowsFocus(kHeroInfoKey), EmphasisOf(kHeroInfoKey), PressOf(kHeroInfoKey), actions});
+    if (clipStartedAt_ && !still) {
+        Box mute = ScaledAbout(rise(boxes.mute, actions), 1.0 - 0.03 * PressOf(kHeroMuteKey));
+        mute.y -= metrics_.Rem(0.125) * EmphasisOf(kHeroMuteKey);
+        GlassStyle style;
+        style.adaptiveInk = true;
+        style.focusAmount = EmphasisOf(kHeroMuteKey);
+        style.focused = ShowsFocus(kHeroMuteKey);
+        style.opacity = actions;
+        style.ringColor = tokens::kFocusRing;
+        painter.Glass(mute, mute.height / 2.0, style);
+        const double size = metrics_.Rem(1.36);
+        painter.Path({mute.CenterX() - size / 2.0, mute.CenterY() - size / 2.0, size, size}, 32.0,
+                     heroMuted_ || !clipCanUnmute_ ? kMutedGlyph : kVolumeGlyph,
+                     PathStyle{Rgb(0, 0.0), Faded(painter.GlassInk(headline), actions), 2.0});
+    }
+
+    for (std::size_t i = 0; i < heroes_.size() && heroes_.size() > 1; ++i) {
+        const double size = metrics_.Rem(kHeroDotRem);
+        const double x = boxes.dots.x + static_cast<double>(i) * metrics_.Rem(kHeroDotRem + kHeroDotGapRem);
+        painter.FillRoundRect({x, boxes.dots.y, size, size}, size / 2.0,
+                              Faded(headline, (i == heroIndex_ ? 0.9 : 0.32) * actions));
+    }
+}
+
 void Scene::PaintHero(Painter& painter) const {
+    if (Spotlight()) {
+        PaintSpotlight(painter);
+        return;
+    }
     const HeroData& data = heroes_[heroIndex_];
     const HeroBoxes boxes = HeroLayout();
     const TextStyle kickerStyle{metrics_.Rem(kHeroKickerFontRem), true};
@@ -1180,8 +1428,9 @@ void Scene::PaintLaneHeader(Painter& painter) const {
             else if (hover > 0.01) painter.Glass(item.box, item.box.height / 2.0, glass::NavHover(hover));
             const TextStyle style{metrics_.Rem(0.95), true, button.on ? 700 : 600};
             const double textWidth = painter.MeasureText(button.label, style);
+            const Color labelInk = button.on ? Rgb(0x111318, 0.96) : glass::InkOnPlate(hover);
             painter.Text(Box{item.box.CenterX() - textWidth / 2.0, item.box.y, textWidth + 2.0, item.box.height},
-                         button.label, style, glass::InkOnPlate(button.on ? 1.0 : hover));
+                         button.label, style, labelInk);
             continue;
         }
         DrawButton(painter, metrics_, item.box, button.label,
@@ -1399,19 +1648,21 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         capsule.y -= barRise;
         GlassStyle capsuleGlass;
         capsuleGlass.kind = GlassKind::Pill;
+        capsuleGlass.solid = true;
+        capsuleGlass.tint = WithAlpha(tokens::kSurface, tokens::reduceTransparency ? 1.0 : 0.97);
         capsuleGlass.reduceTransparency = tokens::reduceTransparency;
         capsuleGlass.opacity = barStage;
         painter.Glass(capsule, capsule.height / 2.0, capsuleGlass);
     }
 
     // 2. Top-left TVM wordmark (drawn as static brand mark when no lockup button is in tops_).
-    if (!hasLockup && !compact) {
+    if (!hasLockup) {
         painter.Text(Box{safeX, topY - metrics_.Rem(0.25), metrics_.Rem(7.5), tabHeight + metrics_.Rem(0.5)}, "TVM",
                      TextStyle{metrics_.Rem(kWordmarkFontRem), true, 800}, Faded(tokens::kText, barStage));
     }
 
     // 3. Top-right profile orb (drawn as ambient profile orb when no orb button is in tops_).
-    if (!hasOrb && !compact && orbStage > 0.0) {
+    if (!hasOrb && orbStage > 0.0) {
         const double orbSize = metrics_.Rem(kOrbSizeRem);
         const Box orbBox{viewportWidth_ - safeX - orbSize, topY + (tabHeight - orbSize) / 2.0, orbSize, orbSize};
         GlassStyle orbGlass;
@@ -1443,7 +1694,15 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         tabGlass.focused = focused;
         tabGlass.focusAmount = focused ? std::max(emphasis, 1e-3) : emphasis;
         tabGlass.pressAmount = press;
-        tabGlass.opacity = indicatorStage;
+        const bool crossFade = indicatorCrossFade_ && indicatorMove_.has_value() && !indicatorMove_->Done(clockMs_);
+        const double arrived = crossFade ? indicatorMove_->Value(clockMs_) : 1.0;
+        tabGlass.opacity = indicatorStage * arrived;
+        if (crossFade) {
+            GlassStyle previous = tabGlass;
+            previous.focused = false;
+            previous.opacity = indicatorStage * (1.0 - arrived);
+            painter.Glass(indicatorFrom_, indicatorFrom_.height / 2.0, previous);
+        }
         tabGlass.reduceTransparency = tokens::reduceTransparency;
         tabGlass.ringWidth = metrics_.Rem(kFocusRingWidthRem);
         tabGlass.ringOutset = metrics_.Rem(0.08);
@@ -1534,27 +1793,27 @@ void Scene::PaintStreamChrome(Painter& painter) const {
             painter.Glass(tabShape, tabShape.height / 2.0, tabGlass);
         }
 
+        const bool crossFade = indicatorCrossFade_ && indicatorMove_.has_value() && !indicatorMove_->Done(clockMs_);
+        if (crossFade) {
+            const double arrived = indicatorMove_->Value(clockMs_);
+            const bool old = std::abs(indicatorFrom_.CenterX() - box.CenterX()) < 1.0;
+            under = selectedTab ? arrived : old ? 1.0 - arrived : 0.0;
+        }
+        const Color resting = Mix(tokens::kTextMuted, tokens::kText, 0.52 + 0.48 * emphasis);
+        const Color ink = Faded(Mix(resting, kPlateInk, under), labelStage);
+        const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
+        if (SearchTab(tops_[i])) {
+            const double size = metrics_.Rem(1.45);
+            painter.Path(Box{box.CenterX() - size / 2.0, box.CenterY() - size / 2.0 - textRise, size, size},
+                         32.0, kSearchGlyph, PathStyle{Rgb(0, 0.0), ink, 2.6});
+            continue;
+        }
         const bool strong = tops_[i].on || focused;
         const TextStyle tabStyle{metrics_.Rem(kChromeFontRem), strong, strong ? 650 : kChromeWeight};
         const double textWidth = painter.MeasureText(tops_[i].label, tabStyle);
         const double textX = std::max(box.x + metrics_.Rem(0.5), box.CenterX() - textWidth / 2.0);
-        // Clear glass lets bright artwork through, so resting labels sit closer to full white than muted grey,
-        // and in the dark theme a soft shadow keeps them legible over a white sky or a light branch.
-        const Color resting = Mix(Mix(tokens::kTextMuted, tokens::kText, 0.55), tokens::kText, emphasis);
-        // On the selected glass, or on a hovered tab's bright plate, the label is dark.
-        const double plated = tokens::reduceTransparency ? under : std::max(under, hover);
-        const Color textColor = Faded(Mix(resting, tokens::kOnPrimary, plated), labelStage);
-        const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
-        const Box labelBox{textX, box.y - textRise, textWidth + metrics_.Rem(0.8), box.height};
-        const bool lightTheme = tokens::kBackground.r + tokens::kBackground.g + tokens::kBackground.b > 1.5;
-        if (!lightTheme && plated < 0.99) {
-            const Color shade = Rgb(0x000000, 0.42 * (1.0 - plated) * labelStage);
-            painter.Text(Box{labelBox.x, labelBox.y + 1.0, labelBox.width, labelBox.height}, tops_[i].label, tabStyle,
-                         shade);
-            painter.Text(Box{labelBox.x + 0.6, labelBox.y + 1.6, labelBox.width, labelBox.height}, tops_[i].label,
-                         tabStyle, Faded(shade, 0.5));
-        }
-        painter.Text(labelBox, tops_[i].label, tabStyle, textColor);
+        const Box labelBox{textX, box.y - textRise, std::min(textWidth + 4.0, box.Right() - textX), box.height};
+        painter.Text(labelBox, tops_[i].label, tabStyle, ink);
     }
 }
 
@@ -1573,41 +1832,43 @@ Box Scene::TopBoxScreen(std::size_t index) const {
         const bool compact = CompactViewport(viewportWidth_, viewportHeight_);
         const double safeX = metrics_.Rem(kSafeXRem + (compact ? 0.0 : kRailInsetRem));
         const double topY = metrics_.Rem(kChromePadTopRem);
-        const double height = compact ? std::max(44.0, metrics_.Rem(kChromeLinkHeightRem))
-                                      : metrics_.Rem(kChromeLinkHeightRem);
-        if (compact) {
-            FlowLayout flow(safeX, topY, viewportWidth_ - 2.0 * safeX, metrics_.Rem(kChromeGapRem));
-            Box box;
-            for (std::size_t i = 0; i <= index && i < tops_.size(); ++i)
-                box = flow.Place(metrics_.Rem(ChromeLinkWidthRem(tops_[i])), height);
-            return box;
-        }
-        if (index < tops_.size() && tops_[index].lockup) {
-            return Box{safeX, topY, metrics_.Rem(ChromeLinkWidthRem(tops_[index])), height};
-        }
-        if (index < tops_.size() && tops_[index].orb) {
-            const double orbSize = metrics_.Rem(kOrbSizeRem);
-            return Box{viewportWidth_ - safeX - orbSize, topY + (height - orbSize) / 2.0, orbSize, orbSize};
-        }
-        // Centred glass capsule tabs.
+        const double height = metrics_.Rem(kChromeLinkHeightRem);
         const double gap = metrics_.Rem(kChromeGapRem);
+        const double capsulePad = metrics_.Rem(kCapsulePadRem);
         double totalWidth = 0.0;
+        double wordmark = metrics_.Rem(5.5);
         std::size_t tabCount = 0;
-        for (const TopButton& b : tops_) {
-            if (b.lockup || b.orb) continue;
-            totalWidth += metrics_.Rem(ChromeLinkWidthRem(b));
+        for (const TopButton& button : tops_) {
+            if (button.lockup) { wordmark = metrics_.Rem(ChromeLinkWidthRem(button)); continue; }
+            if (button.orb) continue;
+            totalWidth += metrics_.Rem(ChromeLinkWidthRem(button));
             ++tabCount;
         }
-        if (tabCount > 1) totalWidth += gap * static_cast<double>(tabCount - 1);
-        double cursorX = std::max(safeX + metrics_.Rem(5.5), (viewportWidth_ - totalWidth) / 2.0);
-        Box box{cursorX, topY, 0.0, height};
-        for (std::size_t i = 0; i <= index && i < tops_.size(); ++i) {
+        const double gaps = gap * static_cast<double>(tabCount > 0 ? tabCount - 1 : 0);
+        const double orb = metrics_.Rem(kOrbSizeRem);
+        const double left = safeX + wordmark + gap + capsulePad;
+        const double right = viewportWidth_ - safeX - orb - gap - capsulePad;
+        const bool twoRows = totalWidth + gaps > right - left;
+        const double tabsY = topY + (twoRows ? orb + metrics_.Rem(0.85) : 0.0);
+        const double available = std::max(1.0, twoRows ? viewportWidth_ - 2.0 * (safeX + capsulePad) : right - left);
+        const double searchWidth = height;
+        const bool hasSearch = std::any_of(tops_.begin(), tops_.end(), SearchTab);
+        const double fixed = hasSearch ? searchWidth : 0.0;
+        const double shrink = std::clamp((available - gaps - fixed) / std::max(1.0, totalWidth - fixed), 0.48, 1.0);
+        const double span = fixed + (totalWidth - fixed) * shrink + gaps;
+        const double centred = (viewportWidth_ - span) / 2.0;
+
+        if (tops_[index].lockup) return Box{safeX, topY, wordmark, height};
+        if (tops_[index].orb) return Box{viewportWidth_ - safeX - orb, topY + (height - orb) / 2.0, orb, orb};
+
+        double cursor = twoRows ? centred : std::clamp(centred, left, std::max(left, right - span));
+        for (std::size_t i = 0; i <= index; ++i) {
             if (tops_[i].lockup || tops_[i].orb) continue;
-            const double w = metrics_.Rem(ChromeLinkWidthRem(tops_[i]));
-            box = Box{cursorX, topY, w, height};
-            cursorX += w + gap;
+            const double width = SearchTab(tops_[i]) ? searchWidth : metrics_.Rem(ChromeLinkWidthRem(tops_[i])) * shrink;
+            if (i == index) return Box{cursor, tabsY, width, height};
+            cursor += width + gap;
         }
-        return box;
+        return {};
     }
     // The buttons sit in the header row, at the top right, and go leftwards in order. They scroll with the page.
     const double width = std::min(metrics_.Rem(kTopButtonWidthRem), std::max(1.0, viewportWidth_ - 2.0 * metrics_.Rem(kSafeXRem)));
@@ -1625,7 +1886,7 @@ void Scene::Layout(double width, double height) {
     metrics_.rem = ViewportRem(width, height);
 
     // The hero takes the top of the window, and the rails start below it.
-    const double heroFraction = Streamy() ? 0.425 : kHeroHeightFraction;
+    const double heroFraction = Spotlight() ? 0.53 : Streamy() ? 0.425 : kHeroHeightFraction;
     const double heroGapRem = Streamy() ? 0.5 : kHeroRailGapRem;
     heroHeight_ = HeroActive() ? std::max(heroFraction * height,
         (CompactViewport(width, height) ? HeaderTop() + metrics_.Rem(24.0) : 0.0)) : 0.0;
@@ -1647,6 +1908,8 @@ void Scene::Layout(double width, double height) {
             focus_.SetFocus(cards_.front().key);
             cards_.front().card->SetFocusAmount(1.0);
             cards_.front().card->SetFocused(true);
+            focusedSlot_ = std::pair{std::size_t{0}, rails_.front()->NearestSlot(0)};
+            rails_.front()->SetFocusSlot(focusedSlot_->second);
         }
     }
 }
@@ -1713,10 +1976,13 @@ void Scene::SyncFocus() {
         focus_.Upsert(node);
     }
 
+    if (!clipStartedAt_ && focus_.Contains(kHeroMuteKey)) focus_.Remove(kHeroMuteKey);
     if (HeroActive()) {
         const HeroBoxes boxes = HeroLayout();
         for (const auto& [key, box] : {std::pair<const char*, Box>{kHeroPlayKey, boxes.watch},
-                                       std::pair<const char*, Box>{kHeroInfoKey, boxes.learn}}) {
+                                       std::pair<const char*, Box>{kHeroInfoKey, boxes.learn},
+                                       std::pair<const char*, Box>{kHeroMuteKey, boxes.mute}}) {
+            if (key == kHeroMuteKey && !clipStartedAt_) continue;
             nav::FocusNode button;
             button.key = key;
             button.parent = kPageKey;
@@ -1731,6 +1997,8 @@ void Scene::SyncFocus() {
 }
 
 bool Scene::Tick(double nowMs) {
+    if (spotlightRunning_ && HeroOnscreen() && !motion::PrefersReducedMotion(motion_))
+        spotlightElapsedMs_ += std::clamp(nowMs - std::max(clockMs_, spotlightStartMs_), 0.0, 100.0);
     clockMs_ = nowMs;
     timeline_.Advance(nowMs);
     StartHeroArt(nowMs);
@@ -1770,12 +2038,14 @@ bool Scene::Animating() const {
     const bool arrowsFading = arrowRail_.has_value() &&
                               (!arrowFade_.Done(clockMs_) || !arrowSide_[0].Done(clockMs_) || !arrowSide_[1].Done(clockMs_));
     // The search field's caret blinks while the field has the focus.
+    const bool spotlightMoving = Spotlight() && spotlightRunning_ && HeroOnscreen() &&
+                                 !motion::PrefersReducedMotion(motion_);
     const bool caretBlinking = SearchEditing() && Streamy() &&
                                !motion::PrefersReducedMotion(motion_);
     // The search placeholders breathe while a search runs.
     const bool searching = loading_ && searchField_ && rails_.empty() && !motion::PrefersReducedMotion(motion_);
     return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving || contentFading ||
-           ControlsAnimating() || searching || arrowsFading || caretBlinking;
+           ControlsAnimating() || searching || arrowsFading || caretBlinking || spotlightMoving;
 }
 
 bool Scene::CameraActive() const {
@@ -1883,6 +2153,14 @@ bool Scene::NavigateFocus(nav::Direction direction, double nowMs) {
 
     // The hero's two glass pills (Play and Details) sit side by side, both for regular titles and notices.
     if (HeroActive() && IsHeroKey(*focused)) {
+        if (*focused == kHeroInfoKey && direction == nav::Direction::Right && clipStartedAt_) {
+            FocusKey(kHeroMuteKey, nowMs, true);
+            return true;
+        }
+        if (*focused == kHeroMuteKey && direction == nav::Direction::Left) {
+            FocusKey(kHeroInfoKey, nowMs, true);
+            return true;
+        }
         if (*focused == kHeroInfoKey && direction == nav::Direction::Right && HeroRatingBox()) { FocusKey(kHeroImdbKey, nowMs, true); return true; }
         if (*focused == kHeroImdbKey && direction == nav::Direction::Left) { FocusKey(kHeroInfoKey, nowMs, true); return true; }
         const bool onPlay = *focused == kHeroPlayKey;
@@ -2046,7 +2324,9 @@ std::optional<Command> Scene::Select(double nowMs) {
     // command goes out now.
     if (!cardByKey_.contains(*focused) && !motion::PrefersReducedMotion(motion_)) {
         pressKey_ = *focused;
-        press_ = motion::Tween(1.0, 0.0, nowMs, kPressOutMs, kGlassEase);
+        releaseDepth_ = 1.0;
+        pressReleasedAt_ = nowMs;
+        press_ = motion::Tween{};
     }
 
     if (const std::optional<std::size_t> top = TopIndexOf(*focused)) return tops_[*top].command;
@@ -2066,6 +2346,10 @@ std::optional<Command> Scene::Select(double nowMs) {
 
     // Watch opens the title on the hero, as its card would. Browse opens the TVM Stream page.
     // On TVM Stream both open the billboard's title, as Library.tsx does. A notice brings its own commands.
+    if (*focused == kHeroMuteKey && clipStartedAt_) {
+        if (clipCanUnmute_) heroMuted_ = !heroMuted_;
+        return std::nullopt;
+    }
     if (*focused == kHeroImdbKey && HeroActive()) {
         Command command; command.name = "imdb-open"; command.action = true; command.params["id"] = heroes_[heroIndex_].itemId; return command;
     }
@@ -2147,6 +2431,7 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
         const HeroBoxes boxes = HeroLayout();
         if (Contains(boxes.watch, x, y)) return std::string(kHeroPlayKey);
         if (Contains(boxes.learn, x, y)) return std::string(kHeroInfoKey);
+        if (clipStartedAt_ && Contains(boxes.mute, x, y)) return std::string(kHeroMuteKey);
         if (const auto box = HeroRatingBox(); box && Contains(*box, x, y)) return std::string(kHeroImdbKey);
     }
     // A rail's arrows sit over its cards, so they are found first.
@@ -2270,6 +2555,21 @@ void Scene::FocusKey(const std::string& key, double nowMs, bool withCamera) {
     focus_.SetFocus(key);
 
     const auto card = cardByKey_.find(key);
+    const auto lastSlot = focusedSlot_;
+    if (focusedSlot_) rails_[focusedSlot_->first]->SetFocusSlot(std::nullopt);
+    focusedSlot_.reset();
+    if (card != cardByKey_.end()) {
+        const CardRef& next = cards_[card->second];
+        Rail& rail = *rails_[next.rail];
+        std::optional<double> anchor;
+        if (lastSlot && lastSlot->first == next.rail)
+            anchor = rail.ContentLeftOf(lastSlot->second) + cards_[GlobalIndex(next.rail, lastSlot->second.index)].card->box().width / 2.0;
+        const Rail::Slot slot = !withCamera && pointerSlot_ && pointerSlot_->first == next.rail &&
+                                        pointerSlot_->second.index == next.index
+                                    ? pointerSlot_->second : rail.NearestSlot(next.index, anchor);
+        focusedSlot_ = std::pair{next.rail, slot};
+        rail.SetFocusSlot(slot);
+    }
     // A rebuild that keeps the focus while the pointer rests elsewhere keeps it unlit.
     if (card != cardByKey_.end()) AnimateFocus(card->second, focusHidden_ ? 0.0 : 1.0, nowMs);
     if (!withCamera) return;
@@ -2285,7 +2585,7 @@ void Scene::FocusKey(const std::string& key, double nowMs, bool withCamera) {
         const Rail& rail = *rails_[next.rail];
         const double viewport = rail.box().width;
         const double cardWidth = next.card->box().width;
-        const double goal = nav::CenteredRowOffset(rail.scroll(), rail.box().x + rail.ContentLeftOf(next.index) - rail.scroll(),
+        const double goal = nav::CenteredRowOffset(rail.scroll(), rail.box().x + rail.ContentLeftOf(focusedSlot_->second) - rail.scroll(),
                                                    cardWidth, rail.box().x, viewport);
         StartRailCamera(next.rail, goal, moved);
 

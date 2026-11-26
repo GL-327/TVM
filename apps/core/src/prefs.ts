@@ -3,6 +3,21 @@ import { prefsPath } from './update/paths.ts';
 
 const LANGUAGES = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh']);
 
+export const EXTRA_DEFAULTS = {
+  onlineSubtitles: true, trailers: true, trailerBackdrops: true, collections: true,
+  comingUp: true, watchStats: true, animeTitles: true, ratings: true, qualityBadges: true,
+  versionPicker: true, chapters: true, seekPreviews: true, themeSongs: false,
+  spoilerBlur: false, surpriseMe: true, autoCollections: true, sleepTimer: true,
+  nightMode: false, pauseOnMinimize: true, shortcutsOverlay: true, webhook: false, announcements: true,
+};
+type Extras = typeof EXTRA_DEFAULTS;
+export type Quality = 'original' | '2160' | '1080' | '720' | 'saver';
+export interface SubtitleStyle {
+  size: 's' | 'm' | 'l' | 'xl';
+  color: 'white' | 'yellow' | 'cyan';
+  background: 'shadow' | 'box' | 'none';
+}
+
 export interface CorePrefs {
   language: string;
   autoUpdate: boolean;
@@ -10,17 +25,58 @@ export interface CorePrefs {
   autoplayNext: boolean;
   subtitleLanguages: string[];
   heroPreviews: boolean;
+  quality: Quality;
+  audioLanguage: string;
+  skipUpscaled: boolean;
+  subtitleMode: 'off' | 'foreign' | 'always';
+  subtitleStyle: SubtitleStyle;
+  extras: Extras;
+  webhookUrl: string | null;
+  homeSections: { id: string; visible: boolean }[];
 }
+
+export type PrefsPatch = Partial<Omit<CorePrefs, 'extras' | 'subtitleStyle'>> & {
+  extras?: Partial<Extras>;
+  subtitleStyle?: Partial<SubtitleStyle>;
+};
 
 export const DEFAULT_PREFS: CorePrefs = {
   language: 'en', autoUpdate: true, skipSegments: 'button', autoplayNext: true,
   subtitleLanguages: ['eng'], heroPreviews: true,
+  quality: 'original', audioLanguage: 'original', skipUpscaled: true, subtitleMode: 'foreign',
+  subtitleStyle: { size: 'm', color: 'white', background: 'shadow' },
+  extras: EXTRA_DEFAULTS, webhookUrl: null, homeSections: [],
 };
 
-function normalizePrefs(raw: Partial<CorePrefs>, current: CorePrefs): CorePrefs {
+function choice<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? value as T : fallback;
+}
+
+function normalizePrefs(raw: PrefsPatch, current: CorePrefs): CorePrefs {
   const subtitleLanguages = Array.isArray(raw.subtitleLanguages)
     ? [...new Set(raw.subtitleLanguages.filter((v): v is string => typeof v === 'string' && /^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(v)))].slice(0, 20)
     : current.subtitleLanguages;
+  const extras = { ...current.extras };
+  for (const id of Object.keys(EXTRA_DEFAULTS) as (keyof Extras)[]) {
+    const value = raw.extras?.[id];
+    if (typeof value === 'boolean') extras[id] = value;
+  }
+  let webhookUrl = current.webhookUrl;
+  if (raw.webhookUrl === null || raw.webhookUrl === '') webhookUrl = null;
+  if (typeof raw.webhookUrl === 'string' && raw.webhookUrl.length <= 2048) {
+    try {
+      const url = new URL(raw.webhookUrl);
+      if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) webhookUrl = url.href;
+    } catch { /* Retain the current URL. */ }
+  }
+  const sections = new Map<string, boolean>();
+  if (Array.isArray(raw.homeSections)) {
+    for (const row of raw.homeSections.slice(0, 100)) {
+      if (row && typeof row.id === 'string' && /^[a-z\d][a-z\d-]{0,63}$/i.test(row.id) && typeof row.visible === 'boolean') {
+        sections.set(row.id, row.visible);
+      }
+    }
+  }
   return {
     language: typeof raw.language === 'string' && LANGUAGES.has(raw.language) ? raw.language : current.language,
     autoUpdate: typeof raw.autoUpdate === 'boolean' ? raw.autoUpdate : current.autoUpdate,
@@ -28,6 +84,18 @@ function normalizePrefs(raw: Partial<CorePrefs>, current: CorePrefs): CorePrefs 
     autoplayNext: typeof raw.autoplayNext === 'boolean' ? raw.autoplayNext : current.autoplayNext,
     subtitleLanguages: subtitleLanguages.length ? [...subtitleLanguages] : [...current.subtitleLanguages],
     heroPreviews: typeof raw.heroPreviews === 'boolean' ? raw.heroPreviews : current.heroPreviews,
+    quality: choice(raw.quality, ['original', '2160', '1080', '720', 'saver'], current.quality),
+    audioLanguage: typeof raw.audioLanguage === 'string' && /^(original|[a-z]{3})$/.test(raw.audioLanguage)
+      ? raw.audioLanguage : current.audioLanguage,
+    skipUpscaled: typeof raw.skipUpscaled === 'boolean' ? raw.skipUpscaled : current.skipUpscaled,
+    subtitleMode: choice(raw.subtitleMode, ['off', 'foreign', 'always'], current.subtitleMode),
+    subtitleStyle: {
+      size: choice(raw.subtitleStyle?.size, ['s', 'm', 'l', 'xl'], current.subtitleStyle.size),
+      color: choice(raw.subtitleStyle?.color, ['white', 'yellow', 'cyan'], current.subtitleStyle.color),
+      background: choice(raw.subtitleStyle?.background, ['shadow', 'box', 'none'], current.subtitleStyle.background),
+    },
+    extras, webhookUrl,
+    homeSections: Array.isArray(raw.homeSections) ? [...sections].map(([id, visible]) => ({ id, visible })) : [...current.homeSections],
   };
 }
 
@@ -36,11 +104,11 @@ export function readPrefs(dataDir: string): CorePrefs {
     const raw = JSON.parse(readFileSync(prefsPath(dataDir), 'utf8')) as Partial<CorePrefs>;
     return normalizePrefs(raw, DEFAULT_PREFS);
   } catch {
-    return { ...DEFAULT_PREFS, subtitleLanguages: [...DEFAULT_PREFS.subtitleLanguages] };
+    return normalizePrefs({}, DEFAULT_PREFS);
   }
 }
 
-export function writePrefs(dataDir: string, patch: Partial<CorePrefs>): CorePrefs {
+export function writePrefs(dataDir: string, patch: PrefsPatch): CorePrefs {
   const current = readPrefs(dataDir);
   const next = normalizePrefs(patch, current);
   mkdirSync(dataDir, { recursive: true });

@@ -40,7 +40,7 @@ describe('ribbon destinations match Home chrome', () => {
     expect(src).toContain("navigate.push('mail-settings')");
     expect(src).not.toContain('switchProfile');
     expect(src).not.toContain('Household');
-    expect(read('../components/Ribbon.tsx')).toContain('<span className="ribbon__label">Account</span>');
+    expect(read('../components/Ribbon.tsx')).toContain("['more-profile', 'Account', 'profile']");
     expect(read('../nav/registry.ts')).toContain("profile: { component: Account, defaultFocus: 'realdebrid' }");
   });
 });

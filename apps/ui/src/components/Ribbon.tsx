@@ -1,325 +1,91 @@
-import { useEffect, useRef, useState, type ReactNode, type WheelEvent } from 'react';
-import { enterTvmStream, isKidsProfile, peekActiveProfile, subscribeProfiles } from '../data/profiles';
+import { useEffect, useRef, useState } from 'react';
+import { isKidsProfile, peekActiveProfile, subscribeProfiles } from '../data/profiles';
 import { useNavigate } from '../nav/ViewStackContext';
-import { usePhoneShell } from '../nav/usePhoneShell';
 import { FocusButton } from './FocusButton';
+import { IconProfile, IconSearch, IconSettings } from './Icons';
+import { SelectionDroplet } from './SelectionDroplet';
 import { useLiquidLens } from './liquidLens';
-import {
-  IconApps,
-  IconHome,
-  IconInputs,
-  IconLive,
-  IconProfile,
-  IconSearch,
-  IconSettings,
-  IconStream,
-  IconWatchlist,
-} from './Icons';
 
-type RibbonTab = 'home' | 'library' | 'search' | 'live' | 'apps' | 'settings' | 'profile' | 'watchlist';
+type RibbonTab = 'home' | 'movies' | 'shows' | 'library' | 'search' | 'live' | 'apps' | 'settings' | 'profile' | 'watchlist';
+const lastSelection = { left: 0, width: 0 };
 
-interface RibbonProps {
-  active?: RibbonTab;
-}
-
-const HIDE_MS = 240;
-
-/** Destinations a phone keeps on the bar. The rest live behind More. */
-const PHONE_PRIMARY: readonly RibbonTab[] = ['home', 'search', 'live', 'watchlist'];
-
-function passWheelToPage(event: WheelEvent<HTMLElement>): void {
-  const page = event.currentTarget.closest<HTMLElement>('.page, .home');
-  if (page === null || event.deltaY === 0) return;
-  page.scrollTop += event.deltaY;
-}
-
-/**
- * One bar, two shapes.
- *
- * On a television this is a hover/focus peek at the top of a 1920px stage: it
- * holds every destination at once because a D-pad crosses nine icons as
- * cheaply as five, and because nothing is competing for the space.
- *
- * A phone is the other way round. Nine destinations wrapped onto two rows and
- * took about a sixth of the screen, which is a keyboard, not a tab bar. So the
- * phone gets the platform's own shape — four destinations and a More tab
- * that opens the rest as a sheet. The same screens are reachable either way;
- * what changes is how many of them are on the glass at once.
- *
- * HDMI Inputs is dropped on a phone rather than moved into the sheet. It tells
- * you to switch your television's input, which is not a thing a phone can do.
- */
-export function Ribbon({ active = 'home' }: RibbonProps): React.JSX.Element {
+export function Ribbon({ active = 'home', onLane }: {
+  active?: RibbonTab; onLane?: (lane: 'all' | 'movies' | 'shows') => void;
+}): React.JSX.Element {
   const navigate = useNavigate();
-  const phone = usePhoneShell();
-  const rootRef = useRef<HTMLElement>(null);
-  const frostRef = useRef<HTMLDivElement>(null);
-  const hideRef = useRef(0);
-  // The bar is the one piece of glass on every screen, so it refracts like the Windows app's capsule.
-  useLiquidLens(frostRef, { blur: 5 });
-  const [open, setOpen] = useState(false);
+  const track = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
+  useLiquidLens(sheet, { blur: 7, active: more });
   const [kids, setKids] = useState(() => isKidsProfile(peekActiveProfile()));
+  useEffect(() => subscribeProfiles(() => setKids(isKidsProfile(peekActiveProfile()))), []);
 
   useEffect(() => {
-    setKids(isKidsProfile(peekActiveProfile()));
-    return subscribeProfiles(() => {
-      setKids(isKidsProfile(peekActiveProfile()));
-    });
-  }, []);
-
-  const show = (): void => {
-    window.clearTimeout(hideRef.current);
-    setOpen(true);
-  };
-
-  const scheduleHide = (): void => {
-    window.clearTimeout(hideRef.current);
-    hideRef.current = window.setTimeout(() => {
-      const root = rootRef.current;
-      if (root?.contains(document.activeElement) === true || root?.querySelector('[data-focused="true"]') !== null) {
-        setOpen(true);
-        return;
-      }
-      setOpen(false);
-    }, HIDE_MS);
-  };
-
-  useEffect(() => {
-    const root = rootRef.current;
-    if (root === null) return undefined;
-    const onFocusIn = (): void => show();
-    const onFocusOut = (): void => scheduleHide();
-    root.addEventListener('focusin', onFocusIn);
-    root.addEventListener('focusout', onFocusOut);
-    return () => {
-      root.removeEventListener('focusin', onFocusIn);
-      root.removeEventListener('focusout', onFocusOut);
-      window.clearTimeout(hideRef.current);
-    };
-  }, []);
-
-  // A sheet that outlives the bar it belongs to would sit over the next screen.
-  useEffect(() => { setMore(false); }, [active, phone]);
-
-  useEffect(() => {
-    if (!more) return undefined;
-    const onBack = (): void => setMore(false);
-    window.addEventListener('tvm:navigate-back', onBack);
-    return () => window.removeEventListener('tvm:navigate-back', onBack);
+    if (!more) return;
+    const close = (): void => setMore(false);
+    window.addEventListener('tvm:navigate-back', close);
+    return () => window.removeEventListener('tvm:navigate-back', close);
   }, [more]);
 
-  const go = (run: () => void) => (): void => {
-    setMore(false);
-    run();
+  const browse = (lane: 'all' | 'movies' | 'shows'): void => {
+    if (onLane) onLane(lane);
+    else navigate.push('library', { params: { lane } });
   };
-
-  const openLibrary = go(() => { void enterTvmStream(navigate); });
-  const openApps = go(() => navigate.push('apps'));
-  const openSettings = go(() => navigate.push('settings'));
-  const openProfile = go(() => navigate.push('profile'));
-
-  const tab = (
-    id: string,
-    label: string,
-    glyph: ReactNode,
-    on: boolean,
-    onSelect: () => void,
-    extra = '',
-  ): React.JSX.Element => (
-    <FocusButton
-      id={id}
-      className={`ribbon__icon${on ? ' ribbon__icon--on' : ''}${extra === '' ? '' : ` ${extra}`}`}
-      onSelect={onSelect}
-    >
-      <span className="ribbon__glyph">{glyph}</span>
-      <span className="ribbon__label">{label}</span>
-    </FocusButton>
-  );
-
-  const phoneBar = (
-    <div className="ribbon__list ribbon__list--tabs" data-wrap="row">
-      {tab('home-dock', 'Home', <IconHome />, active === 'home', go(() => navigate.home()))}
-      {tab(
-        'search',
-        'Search',
-        <IconSearch />,
-        active === 'search',
-        go(() => navigate.pushModal('search', { params: { from: 'home' } })),
-        'ribbon-search',
-      )}
-      {tab('live', 'Live TV', <IconLive />, active === 'live', go(() => navigate.push('live')))}
-      {tab('watchlist', 'Watchlist', <IconWatchlist />, active === 'watchlist', go(() => navigate.push('watchlist')))}
-      <FocusButton
-        id="more"
-        className={`ribbon__icon ribbon__icon--more${more || !PHONE_PRIMARY.includes(active) ? ' ribbon__icon--on' : ''}`}
-        onSelect={() => setMore((value) => !value)}
-      >
-        <span className="ribbon__avatar">
-          <IconProfile className="ribbon__avatar-svg" />
-        </span>
-        <span className="ribbon__label">More</span>
-      </FocusButton>
-    </div>
-  );
-
-  const moreSheet = (
-    <>
-      <button
-        type="button"
-        className="ribbon-sheet__scrim"
-        aria-label="Close"
-        tabIndex={-1}
-        onClick={() => setMore(false)}
-      />
-      <div className="ribbon-sheet glass glass--sheet glass-appear" role="menu" aria-label="More">
-        <span className="ribbon-sheet__grip" aria-hidden="true" />
-        <FocusButton
-          id="more-profiles"
-          className="ribbon-sheet__row"
-          onSelect={go(() => navigate.push('profiles'))}
-        >
-          <span className="ribbon-sheet__glyph"><IconProfile /></span>
-          <span className="ribbon-sheet__text">
-            <strong>Switch profile</strong>
-            <span>Choose who is watching</span>
-          </span>
-        </FocusButton>
-        {!kids && (
-          <FocusButton
-            id="more-profile"
-            className={`ribbon-sheet__row${active === 'profile' ? ' ribbon-sheet__row--on' : ''}`}
-            onSelect={openProfile}
-          >
-            <span className="ribbon-sheet__glyph"><IconProfile /></span>
-            <span className="ribbon-sheet__text">
-              <strong>Account</strong>
-              <span>Who is signed in, your access, and signing out</span>
-            </span>
-          </FocusButton>
-        )}
-        <FocusButton
-          id="more-library"
-          className={`ribbon-sheet__row${active === 'library' ? ' ribbon-sheet__row--on' : ''}`}
-          onSelect={openLibrary}
-        >
-          <span className="ribbon-sheet__glyph"><IconStream /></span>
-          <span className="ribbon-sheet__text">
-            <strong>TVM Library</strong>
-            <span>Films and series</span>
-          </span>
-        </FocusButton>
-        <FocusButton
-          id="more-apps"
-          className={`ribbon-sheet__row${active === 'apps' ? ' ribbon-sheet__row--on' : ''}`}
-          onSelect={openApps}
-        >
-          <span className="ribbon-sheet__glyph"><IconApps /></span>
-          <span className="ribbon-sheet__text">
-            <strong>Apps</strong>
-            <span>Studios and services</span>
-          </span>
-        </FocusButton>
-        {!kids && (
-          <FocusButton
-            id="more-settings"
-            className={`ribbon-sheet__row${active === 'settings' ? ' ribbon-sheet__row--on' : ''}`}
-            onSelect={openSettings}
-          >
-            <span className="ribbon-sheet__glyph"><IconSettings /></span>
-            <span className="ribbon-sheet__text">
-              <strong>Settings</strong>
-              <span>Picture, sound, account and updates</span>
-            </span>
-          </FocusButton>
-        )}
-      </div>
-    </>
-  );
-
-  const tvList = (
-    <div className="ribbon__list" data-wrap="row">
-      {tab('home-dock', 'Home', <IconHome />, active === 'home', () => navigate.home())}
-      {tab(
-        'search',
-        'Search',
-        <IconSearch />,
-        active === 'search',
-        () => navigate.pushModal('search', { params: { from: 'home' } }),
-        'ribbon-search',
-      )}
-      {tab('inputs', 'Inputs', <IconInputs />, false, () =>
-        navigate.pushModal('notice', {
-          params: {
-            title: 'Inputs',
-            body: 'This computer outputs over HDMI. Switch the television input to this device to watch TVM.',
-          },
-        }),
-      )}
-      {tab('live', 'Live TV', <IconLive />, active === 'live', () => navigate.push('live'))}
-      {tab('watchlist', 'Watchlist', <IconWatchlist />, active === 'watchlist', () => navigate.push('watchlist'))}
-      <FocusButton
-        id="library"
-        className={`ribbon__icon${active === 'library' ? ' ribbon__icon--on' : ''}`}
-        onSelect={() => void enterTvmStream(navigate)}
-      >
-        <span className="ribbon__glyph ribbon__glyph--tvm">TVM</span>
-        <span className="ribbon__label">Library</span>
-      </FocusButton>
-      {tab('apps', 'Apps', <IconApps />, active === 'apps', () => navigate.push('apps'))}
-      <span className="ribbon__spacer" aria-hidden="true" />
-      {kids ? (
-        <FocusButton
-          id="switch-profile"
-          className="ribbon__icon"
-          onSelect={() => navigate.push('profiles')}
-        >
-          <span className="ribbon__avatar">
-            <IconProfile className="ribbon__avatar-svg" />
-          </span>
-          <span className="ribbon__label">Profiles</span>
-        </FocusButton>
-      ) : (
-        <>
-          {tab('settings', 'Settings', <IconSettings />, active === 'settings', () => navigate.push('settings'))}
-          <FocusButton
-            id="profile"
-            className={`ribbon__icon${active === 'profile' ? ' ribbon__icon--on' : ''}`}
-            onSelect={() => navigate.push('profile')}
-          >
-            <span className="ribbon__avatar">
-              <IconProfile className="ribbon__avatar-svg" />
-            </span>
-            <span className="ribbon__label">Account</span>
-          </FocusButton>
-        </>
-      )}
-    </div>
-  );
+  const tabs = [
+    ['home-dock', 'home', 'Home', () => navigate.home()],
+    ['movies', 'movies', 'Movies', () => browse('movies')],
+    ['series', 'shows', 'Series', () => browse('shows')],
+    ['live', 'live', 'Live TV', () => navigate.push('live')],
+    ['library', 'library', 'Library', () => browse('all')],
+  ] as const;
+  const menu = [
+    ['more-profiles', 'Switch profile', 'profiles'],
+    ['more-profile', 'Account', 'profile'],
+    ['more-library', 'TVM Library', 'library'],
+    ['watchlist', 'My List', 'watchlist'],
+    ['more-apps', 'Apps', 'apps'],
+    ['more-settings', 'Settings', 'settings'],
+  ] as const;
 
   return (
-    <>
-      <div
-        className="ribbon-zone"
-        aria-hidden="true"
-        onPointerEnter={show}
-        onPointerLeave={scheduleHide}
-        onWheel={passWheelToPage}
-      />
-      <nav
-        ref={rootRef}
-        className={`ribbon${open ? ' ribbon--open' : ''}${phone ? ' ribbon--tabs' : ''}${more ? ' ribbon--more' : ''}`}
-        aria-label="TVM"
-        data-open={open ? 'true' : undefined}
-        onPointerEnter={show}
-        onPointerLeave={scheduleHide}
-        onWheel={passWheelToPage}
-      >
-        {phone && more ? moreSheet : null}
-        <div ref={frostRef} className="ribbon__frost glass glass--chrome">
-          {phone ? phoneBar : tvList}
+    <nav className="ribbon ribbon--open polish-nav" aria-label="TVM">
+      <FocusButton id="tvm-home" className="polish-nav__brand" ariaLabel="TVM Home" onSelect={() => navigate.home()}>
+        TVM
+      </FocusButton>
+      <div className="ribbon__frost polish-nav__capsule">
+        <div className="ribbon__list polish-nav__items" ref={track} data-wrap="row">
+          <SelectionDroplet track={track} selected={tabs.find((item) => item[1] === active)?.[0] ?? ''}
+            className="polish-nav__droplet" history={lastSelection} />
+          {tabs.map(([id, tab, title, select]) => (
+            <FocusButton key={id} id={id} className="polish-nav__tab" ariaPressed={active === tab}
+              tabIndex={0} onSelect={select}>{title}</FocusButton>
+          ))}
+          <FocusButton id="search" className="polish-nav__tab polish-nav__search ribbon-search"
+            title="Search" ariaLabel="Search" tabIndex={0} onSelect={() => navigate.pushModal('search', { params: { from: 'home' } })}>
+            <IconSearch />
+          </FocusButton>
         </div>
-      </nav>
-    </>
+      </div>
+      <div className="polish-nav__side" data-wrap="row">
+        {!kids && <FocusButton id="settings" className="polish-nav__icon polish-nav__settings" title="Settings"
+          ariaLabel="Settings" tabIndex={0} onSelect={() => navigate.push('settings')}><IconSettings /></FocusButton>}
+        <FocusButton id="more" className="polish-nav__icon" title="Profile and more" ariaLabel="Profile and more"
+          ariaExpanded={more} tabIndex={0} onSelect={() => setMore(!more)}>
+          <span className="ribbon__avatar"><IconProfile className="ribbon__avatar-svg" /></span>
+        </FocusButton>
+      </div>
+      {more && <>
+        <button className="polish-nav__dismiss" type="button" aria-label="Close menu" onClick={() => setMore(false)} />
+        <div ref={sheet} className="polish-nav__menu glass glass--sheet" aria-label="Profile and more">
+          {menu.filter(([, , screen]) => !kids || screen !== 'profile' && screen !== 'settings').map(([id, label, screen]) => (
+            <FocusButton key={id} id={id} tabIndex={0} className="polish-nav__menu-item" onSelect={() => {
+              setMore(false);
+              if (screen === 'library') browse('all');
+              else navigate.push(screen);
+            }}>{label}</FocusButton>
+          ))}
+        </div>
+      </>}
+    </nav>
   );
 }

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <sstream>
+#include <shellapi.h>
 #include "core/js.h"
 #include "core/profiles.h"
 #include "core/util.h"
@@ -35,6 +36,83 @@ std::string Hours(double seconds) {
 }
 }
 
+void App::VideoClickAction(mpv::VideoClicks::Action action) {
+    if (action == mpv::VideoClicks::Action::None || !playerOpen_) return;
+    ApplyPlayerAction(ui::Command{false, action == mpv::VideoClicks::Action::Fullscreen ? "player-fullscreen" : "player-toggle", {}, true});
+}
+
+void App::TickPlaybackTools(double now) {
+    VideoClickAction(videoClicks_.Tick(now));
+    if (!playerOpen_ || !sleepDeadline_ || now < *sleepDeadline_) return;
+    sleepDeadline_.reset();
+    minimizePaused_ = false;
+    playerView_.sleepMinutes = 0;
+    playerView_.paused = true;
+    mpv_->SetPaused(true);
+    shell_->SetPlayerView(playerView_, now);
+    dirty_ = true;
+}
+
+void App::UpdatePlaybackTools(const mpv::State& state) {
+    const auto known = [](const std::string& value) { return value.empty() ? "Unavailable" : value; };
+    const double average = state.duration > 0 ? state.fileBytes * 8 / state.duration : 0;
+    const double bitrate = state.bitrate > 0 ? state.bitrate : average;
+    char rate[40]{};
+    if (bitrate > 0) std::snprintf(rate, sizeof(rate), "%.1f Mb/s%s", bitrate / 1000000, state.bitrate > 0 ? "" : " average");
+    playerView_.stats = {
+        {"Source", known(playerTransport_)}, {"Version", known(playerVersionLabel_)},
+        {"Resolution", state.width > 0 && state.height > 0 ? std::to_string(state.width) + " × " + std::to_string(state.height) : "Unavailable"},
+        {"Codec", known(state.codec)}, {"Dynamic range", known(state.hdr)}, {"Container", known(state.container)},
+        {"Bitrate", known(rate)}, {"Dropped frames", std::to_string(state.droppedFrames)},
+    };
+    if (playerPrefs_.Enabled("chapters")) playerView_.chapters = state.chapters;
+    if (!state.started) return;
+    if (!audioPreferenceApplied_ && !playerAudioLanguage_.empty()) {
+        for (const auto& track : state.tracks) {
+            if (track.type != "audio" || !mpv::SameLanguage(track.lang, playerAudioLanguage_)) continue;
+            audioPreferenceApplied_ = true;
+            if (!track.selected) {
+                pendingAudioTrackId_ = track.id;
+                pendingAudioWaitTicks_ = 12;
+                subtitlePreferenceApplied_ = false;
+                mpv_->SetProperty("aid", track.id);
+            }
+            break;
+        }
+    }
+    if (!playerStyleApplied_) {
+        playerStyleApplied_ = true;
+        const auto& prefs = playerPrefs_;
+        mpv_->SetProperty("sub-scale", prefs.subtitleSize == "s" ? 0.82 : prefs.subtitleSize == "l" ? 1.22 : prefs.subtitleSize == "xl" ? 1.48 : 1.0);
+        mpv_->SetProperty("sub-color", prefs.subtitleColor == "yellow" ? "#FFFF00" : prefs.subtitleColor == "cyan" ? "#00FFFF" : "#FFFFFF");
+        mpv_->SetProperty("sub-shadow-offset", prefs.subtitleBackground == "shadow" ? 2 : 0);
+        mpv_->SetProperty("sub-border-size", prefs.subtitleBackground == "none" ? 0 : 2);
+        mpv_->SetProperty("sub-border-style", prefs.subtitleBackground == "box" ? "opaque-box" : "outline-and-shadow");
+        mpv_->SetProperty("sub-ass-override", "force");
+    }
+    if (!playerNightInitialized_) {
+        playerNightInitialized_ = true;
+        if (playerView_.nightMode) mpv_->SetNightMode(true);
+    }
+}
+
+void App::OpenTrailer(const std::string& url, const std::string& title) {
+    if (!extrasPrefs_.Enabled("trailers") || !url.starts_with("https://www.youtube.com/watch?v=")) return;
+    background_->Run([this, url, title] {
+        std::string executable;
+        try { executable = core_->Call("/api/extras/ytdlp").value("path", ""); } catch (...) {}
+        if (!executable.empty()) PrepareMpv(*core_);
+        background_->PostToUi([this, url, title, executable] {
+            if (shell_->ActiveScreenName() != "details") return;
+            if (executable.empty() || !mpv::FindMpvExecutable(util::ProcessEnvironment())) {
+                ShellExecuteW(window_, L"open", util::ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            } else {
+                shell_->Execute(ui::Command{false, "player", {{"title", title}, {"trailer", url}, {"ytdlp", executable}}, false}, NowMs());
+            }
+        });
+    });
+}
+
 void App::RefreshExtrasHome() {
     if (!account_.usable || extrasHomeBusy_ || NowMs() - extrasHomeCheckedMs_ < 300000) return;
     extrasHomeBusy_ = true; extrasHomeCheckedMs_ = NowMs();
@@ -42,7 +120,7 @@ void App::RefreshExtrasHome() {
     background_->Run([this, epoch, prefs = extrasPrefs_]() mutable {
         ui::RailData rail; rail.id = "extras-upcoming"; rail.title = "New episodes this week";
         try { prefs = extras::ParsePreferences(core_->Call("/api/prefs")); } catch (...) {}
-        try {
+        if (prefs.Enabled("comingUp")) try {
             const auto body = core_->Call("/api/extras/upcoming/home");
             if (body.contains("items") && body["items"].is_array()) for (const auto& entry : body["items"]) {
                 if (!entry.is_object() || !entry.contains("item")) continue;
@@ -80,6 +158,7 @@ void App::LoadPlayerExtras(int generation, const playback::Resolution& resolutio
             for (std::size_t i = 0; i < segments.size(); ++i) if (segments[i]) playerSegments_[i] = segments[i];
         });
     });
+    if (!playerPrefs_.Enabled("onlineSubtitles")) return;
     background_->Run([this, generation, query, subtitles = resolution.subtitles] () mutable {
         // A timed-out playback enrichment is retried without holding up the picture.
         if (subtitles.empty()) try { subtitles = core_->Call("/api/extras/subtitles" + query).value("subtitles", nlohmann::json::array()); } catch (...) {}
@@ -105,7 +184,8 @@ void App::LoadPlayerExtras(int generation, const playback::Resolution& resolutio
 }
 
 void App::LoadPreferredSubtitle() {
-    const auto preferred = subtitleChoice_.empty() ? extrasPrefs_.languages : std::vector<std::string>{subtitleChoice_};
+    if (!playerPrefs_.Enabled("onlineSubtitles") || subtitleChoice_.empty() || subtitleChoice_ == "off") return;
+    const auto preferred = std::vector<std::string>{subtitleChoice_};
     for (const auto& language : preferred) for (std::size_t i = 0; i < externalSubtitles_.size(); ++i) {
         const auto& track = externalSubtitles_[i];
         if (track.language == language || (!mpv::LanguageName(language).empty() && mpv::LanguageName(track.language) == mpv::LanguageName(language))) {
@@ -134,24 +214,55 @@ void App::RequestSubtitle(std::size_t index) {
 }
 
 void App::ApplyExtrasState(const mpv::State& state) {
-    if (playerLive_ || !state.started) return;
+    if (!state.started) return;
     if (!pendingSubtitles_.empty()) {
         for (const auto& subtitle : pendingSubtitles_) {
-            const auto preferred = subtitleChoice_.empty() ? extrasPrefs_.languages.front() : subtitleChoice_;
+            const auto preferred = subtitleChoice_.empty() ? playerPrefs_.languages.front() : subtitleChoice_;
             const bool select = subtitle.language == preferred || (!mpv::LanguageName(preferred).empty() && mpv::LanguageName(subtitle.language) == mpv::LanguageName(preferred));
             mpv_->AddSubtitle(subtitle.file, subtitle.label, subtitle.language, select);
             if (select) subtitlePreferenceApplied_ = true;
         }
         pendingSubtitles_.clear();
     }
-    if (!subtitlePreferenceApplied_) {
-        const auto preferred = subtitleChoice_.empty() ? extrasPrefs_.languages.front() : subtitleChoice_;
-        if (preferred == "off") { mpv_->SetProperty("sid", "no"); subtitlePreferenceApplied_ = true; }
-        else for (const auto& track : state.tracks) if (track.type == "sub" && (track.lang == preferred || (!mpv::LanguageName(track.lang).empty() && mpv::LanguageName(track.lang) == mpv::LanguageName(preferred)))) {
-            mpv_->SetProperty("sid", track.id); subtitlePreferenceApplied_ = true; break;
+    const auto selectedAudio = std::find_if(state.tracks.begin(), state.tracks.end(), [](const auto& track) {
+        return track.type == "audio" && track.selected;
+    });
+    if (pendingAudioTrackId_) {
+        if ((selectedAudio != state.tracks.end() && selectedAudio->id == *pendingAudioTrackId_) || pendingAudioWaitTicks_ <= 0) {
+            pendingAudioTrackId_.reset();
+            pendingAudioWaitTicks_ = 0;
+        } else {
+            --pendingAudioWaitTicks_;
         }
     }
-    const auto skip = segmentSession_.Update(playerSegments_, state.position, playerView_.duration, NowMs(), state.paused || mpv::Buffering(state) ? "off" : extrasPrefs_.skip);
+    if (!subtitlePreferenceApplied_ && !pendingAudioTrackId_) {
+        if (selectedAudio != state.tracks.end() || playerPrefs_.subtitleMode != "foreign") {
+            const auto& prefs = playerPrefs_;
+            const bool enable = prefs.subtitleMode == "always" ||
+                (prefs.subtitleMode == "foreign" && !selectedAudio->lang.empty() && !mpv::SameLanguage(selectedAudio->lang, prefs.language));
+            subtitlePreferenceApplied_ = true;
+            const mpv::Track* selected = nullptr;
+            if (enable) for (const auto& language : prefs.languages) {
+                for (const auto& track : state.tracks) {
+                    if (track.type == "sub" && mpv::SameLanguage(track.lang, language)) {
+                        selected = &track;
+                        break;
+                    }
+                }
+                if (selected) break;
+            }
+            if (selected) mpv_->SetProperty("sid", selected->id);
+            else {
+                mpv_->SetProperty("sid", "no");
+                if (enable && !prefs.languages.empty()) {
+                    subtitleChoice_ = prefs.languages.front();
+                    LoadPreferredSubtitle();
+                }
+            }
+        }
+    }
+    if (playerLive_ || !playerTrailerUrl_.empty()) return;
+    const auto skip = segmentSession_.Update(playerSegments_, state.position, playerView_.duration, NowMs(), state.paused || mpv::Buffering(state) ? "off" : playerPrefs_.skip);
     playerView_.recap = skip.visible;
     playerView_.skipLabel = skip.label;
     playerView_.recapEnd = skip.target;
@@ -164,7 +275,7 @@ void App::ApplyExtrasState(const mpv::State& state) {
     playerView_.nextUp = ready;
     playerView_.nextWindow = 10;
     playerView_.nextRemaining = nextCountdown_.Update(ready, !state.paused && !mpv::Buffering(state), NowMs());
-    playerView_.nextAutoplay = extrasPrefs_.autoplay;
+    playerView_.nextAutoplay = playerPrefs_.autoplay && !sleepAtEnd_;
 }
 
 void App::LoadExtrasPage() {

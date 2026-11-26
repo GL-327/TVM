@@ -68,6 +68,7 @@ data class RdStream(
     val phoneHint: Boolean,
     /** The rest of the description (languages as flags, size), for downloads' language rule. */
     val details: String = "",
+    val releaseId: String? = null,
 )
 
 /** Mirrors RdClientError; callers distinguish the first two from everything else. */
@@ -369,7 +370,6 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
         return streams.sortedWith(Comparator<RdStream> { left, right ->
             if (left.quality != right.quality) return@Comparator right.quality.compareTo(left.quality)
             if (left.cached != right.cached) return@Comparator if (left.cached) -1 else 1
-            if (left.phoneHint != right.phoneHint) return@Comparator if (left.phoneHint) -1 else 1
             0
         })
     }
@@ -387,16 +387,20 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
         if (CAM_LABEL.containsMatchIn(label)) return null
         val phoneHint = PHONE_LABEL.containsMatchIn(label)
         val cached = CACHED_LABEL.containsMatchIn(label)
+        val fileIdx = Json.int(raw.opt("fileIdx")) ?: Json.int(raw.opt("fileidx"))
+        val cleanHash = infoHash?.lowercase(Locale.US)?.takeIf { HEX40.matches(it) }
+        val releaseId = cleanHash?.let { "$it:${fileIdx?.toString() ?: ""}" }
         return RdStream(
             url = url,
             title = title,
             name = name,
             infoHash = infoHash,
-            fileIdx = Json.int(raw.opt("fileIdx")) ?: Json.int(raw.opt("fileidx")),
+            fileIdx = fileIdx,
             quality = qualityScore(label),
             cached = cached,
             phoneHint = phoneHint,
-            details = titleSource,
+            details = "$name $titleSource".trim(),
+            releaseId = releaseId,
         )
     }
 
@@ -542,12 +546,11 @@ class TvmRealDebrid(private val tokens: RdTokenStore) {
             RegexOption.IGNORE_CASE,
         )
 
-        // Quality matching is deliberately case-sensitive, as in the Swift: "4K" scores
-        // as the 10-point default, not as UHD.
-        val UHD = Regex("""\b2160p|4k|uhd\b""")
-        val UHD_ANY_CASE = Regex("""\b(2160p|4k|uhd)\b""", RegexOption.IGNORE_CASE)
-        val HD1080 = Regex("""\b1080p\b""")
-        val HD720 = Regex("""\b720p\b""")
-        val SD480 = Regex("""\b480p\b""")
+        val UHD = Regex("""\b(?:2160p|4k|uhd)\b""", RegexOption.IGNORE_CASE)
+        val UHD_ANY_CASE = UHD
+        val HD1080 = Regex("""\b1080p\b""", RegexOption.IGNORE_CASE)
+        val HD720 = Regex("""\b720p\b""", RegexOption.IGNORE_CASE)
+        val SD480 = Regex("""\b480p\b""", RegexOption.IGNORE_CASE)
+        val HEX40 = Regex("""^[a-f0-9]{40}$""")
     }
 }

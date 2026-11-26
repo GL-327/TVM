@@ -87,13 +87,15 @@ sub init()
   m.msgTimer.repeat = false
   m.msgTimer.observeField("fire", "onMsgClear")
   if m.skipRecap <> invalid
-    m.skipRecap.variant = "pill"
+    m.skipRecap.variant = "glassPill"
+    m.skipRecap.pillWidth = 380
     m.skipRecap.label = "Skip Recap"
     m.skipRecap.itemId = "player-skip-recap"
     m.skipRecap.visible = false
   end if
   if m.nextUp <> invalid
-    m.nextUp.variant = "pill"
+    m.nextUp.variant = "glassPill"
+    m.nextUp.pillWidth = 280
     m.nextUp.label = "Next"
     m.nextUp.itemId = "player-next"
     m.nextUp.visible = false
@@ -218,7 +220,10 @@ sub onState()
     m.buffer.visible = false
     showChrome()
   else if state = "finished"
-    if nextIsOffered() and not m.upCancelled and aaGet(m.extrasPrefs, "autoplayNext", true) = true
+    if m.sleepMode = "end"
+      m.sleepMode = "off"
+      closePlayer()
+    else if nextIsOffered() and not m.upCancelled and aaGet(m.extrasPrefs, "autoplayNext", true) = true
       doNext()
     else
       closePlayer()
@@ -951,6 +956,11 @@ sub pushCCState()
   m.cc.nextTitle = asText(m.top.nextTitle)
   m.cc.playing = (m.video.state = "playing" or m.video.state = "buffering")
   m.cc.position = m.position
+  m.cc.hasVersions = tvmExtraEnabled("versionPicker")
+  m.cc.versionLabel = asText(m.top.versionLabel)
+  m.cc.sleepEnabled = tvmExtraEnabled("sleepTimer")
+  m.cc.sleepMode = asText(m.sleepMode)
+  m.cc.sleepRemaining = m.sleepRemaining
   if m.ccOpen <> true then return
   if m.video.hasField("availableAudioTracks") then m.cc.audioTracks = m.video.availableAudioTracks
   if m.video.hasField("currentAudioTrack") then m.cc.audioCurrent = asText(m.video.currentAudioTrack)
@@ -1008,9 +1018,24 @@ sub onCCAction()
     else if id = "next"
       if nextIsOffered() then doNext()
     end if
+  else if kind = "sleep"
+    applySleepTimer(asText(aaGet(action, "mode", "off")), true)
+  else if kind = "openVersions"
+    saveProgress(true)
+    emit("pickVersion", { position: m.position })
   else if kind = "audio"
     id = asText(aaGet(action, "trackId", ""))
-    if id <> "" and m.video.hasField("audioTrack") then m.video.audioTrack = id
+    if id <> "" and m.video.hasField("audioTrack")
+      m.audioChosen = true
+      m.video.audioTrack = id
+      for each t in aaArray(m.video, "availableAudioTracks")
+        if asText(aaGet(t, "TrackName", "")) = id
+          m.activeAudioLang = playerNormLang(asText(aaGet(t, "Language", "")))
+          exit for
+        end if
+      end for
+      onExtrasTracks()
+    end if
   else if kind = "subtitle"
     applySubtitle(asText(aaGet(action, "trackId", "")), aaGet(action, "off", false) = true)
     rememberPlayerSubtitle(asText(aaGet(action, "trackId", "")), aaGet(action, "off", false) = true)

@@ -66,6 +66,8 @@ function lcRoute(ctx as Object) as Object
 
   if path = "/api/health"
     return { status: 200, json: { ok: true, status: "ok", version: "standalone", standalone: true } }
+  else if path = "/api/config" and mth = "GET"
+    return lcGetPublicConfig(ctx)
   end if
 
   if path = "/api/account" and mth = "GET"
@@ -92,8 +94,10 @@ function lcRoute(ctx as Object) as Object
     return lcPricingAccept(ctx)
   else if path = "/api/account/email/verify" and mth = "POST"
     return { status: 404, json: { error: "not_supported" } }
-  else if path = "/api/account/email/send" and mth = "POST"
-    return { status: 503, json: { error: "This Roku runs standalone and cannot send email." } }
+  else if (path = "/api/account/email/send" or path = "/api/account/verify/resend") and mth = "POST"
+    return lcResendVerify(ctx)
+  else if path = "/api/account/password/forgot" and mth = "POST"
+    return lcForgotPassword(ctx)
   else if path = "/api/profiles" and mth = "GET"
     return { status: 200, json: lcGetProfiles() }
   else if path = "/api/profiles" and mth = "POST"
@@ -128,12 +132,16 @@ function lcRoute(ctx as Object) as Object
     return { status: 200, json: lcGetLive(ctx) }
   else if path = "/api/live" and mth = "PUT"
     return lcSaveLiveUrl(ctx)
+  else if path = "/api/live/guide" and mth = "GET"
+    return lcLiveGuide(ctx)
   else if path = "/api/live/catalog" and mth = "GET"
     return { status: 200, json: lcGetLiveCatalog(ctx) }
   else if path = "/api/live/picks" and mth = "POST"
     return lcToggleLivePick(ctx)
   else if path = "/api/live/picks/group" and mth = "POST"
     return lcToggleLiveGroup(ctx)
+  else if path = "/api/playback/versions" and mth = "GET"
+    return lcListVersions(ctx)
   else if path = "/api/playback" and mth = "POST"
     return lcPlayback(ctx)
   else if path = "/api/progress" and mth = "POST"
@@ -548,6 +556,13 @@ function lcSaveProgress(ctx as Object) as Object
   if dur > 0 then ratio = (posSec * 1.0) / (dur * 1.0)
   if ratio >= 0.92
     if pm.DoesExist(id) then pm.Delete(id)
+    finAll = lcReadRegJson("localFinished", {})
+    if GetInterface(finAll, "ifAssociativeArray") = invalid then finAll = {}
+    finPid = lcAaGet(finAll, pid, {})
+    if GetInterface(finPid, "ifAssociativeArray") = invalid then finPid = {}
+    finPid[id] = true
+    finAll[pid] = finPid
+    lcWriteRegJson("localFinished", finAll)
   else if posSec > 5
     pm[id] = { position: posSec, duration: dur, ratio: ratio, updatedAt: lcNowSeconds() }
   end if
@@ -691,6 +706,27 @@ function lcGenreSpecs() as Object
   ]
 end function
 
+function lcFinishedMap(pid as String) as Object
+  all = lcReadRegJson("localFinished", {})
+  if GetInterface(all, "ifAssociativeArray") = invalid then return {}
+  m = lcAaGet(all, pid, {})
+  if GetInterface(m, "ifAssociativeArray") = invalid then return {}
+  return m
+end function
+
+function lcProgressRatio(entry as Dynamic) as Float
+  if entry = invalid then return 0.0
+  if GetInterface(entry, "ifAssociativeArray") <> invalid
+    r = lcAaGet(entry, "ratio", invalid)
+    if r <> invalid then return r * 1.0
+    position = lcAaGet(entry, "position", 0)
+    dur = lcAaGet(entry, "duration", 0)
+    if dur > 0 then return (position * 1.0) / (dur * 1.0)
+    return 0.0
+  end if
+  return entry * 1.0
+end function
+
 function lcAttachProgress(items as Object, pm as Object) as Object
   out = []
   for each item in items
@@ -700,7 +736,7 @@ function lcAttachProgress(items as Object, pm as Object) as Object
       for each k in item
         copy[k] = item[k]
       end for
-      copy.progress = pm[id]
+      copy.progress = lcProgressRatio(pm[id])
       out.Push(copy)
     else
       out.Push(item)
@@ -776,7 +812,7 @@ function lcGetHome(ctx as Object) as Object
         copy[k] = src[k]
       end for
       copy.id = id
-      copy.progress = pm[id]
+      copy.progress = lcProgressRatio(pm[id])
       cw.Push(copy)
     end if
   end for
@@ -863,6 +899,9 @@ function lcGetChildren(id as String) as Object
   if meta = invalid then return []
   videos = lcAaGet(meta, "videos", [])
   if Type(videos) <> "roArray" then return []
+  pid = lcActiveProfileId({ profileId: m.top.profileId })
+  pm = lcProgressMap(pid)
+  fin = lcFinishedMap(pid)
   showTitle = lcAaText(meta, "name", "")
   backdrop = lcAaText(meta, "background", "")
   poster = lcAaText(meta, "poster", "")
@@ -875,7 +914,7 @@ function lcGetChildren(id as String) as Object
       epId = lcAaText(v, "id", id + ":" + StrI(s).Trim() + ":" + StrI(e).Trim())
       thumb = lcAaText(v, "thumbnail", backdrop)
       if thumb = "" then thumb = poster
-      out.Push({
+      row = {
         id: epId
         title: epTitle
         episodeName: epTitle
@@ -889,7 +928,10 @@ function lcGetChildren(id as String) as Object
         backdrop: thumb
         aired: lcAaText(v, "released", "")
         playable: true
-      })
+      }
+      if pm.DoesExist(epId) then row.progress = lcProgressRatio(pm[epId])
+      if fin.DoesExist(epId) then row.watched = true
+      out.Push(row)
     end if
   end for
   return out
@@ -916,6 +958,8 @@ end function
 ' ---- Real-Debrid ----
 
 function lcRdTokenInfo(ctx as Object) as Object
+  ' Read the account key live. A missing key must never survive the request.
+  if lcAaText(ctx, "accountToken") = "" then return { token: "", source: "none" }
   res = lcAccountsHttp(ctx, "/v1/me/rd-token")
   if res.ok then return { token: lcAaText(res.json, "token"), source: "account" }
   return { token: "", source: "none" }
@@ -936,6 +980,10 @@ end function
 
 function lcGetRdStatus(ctx as Object) as Object
   info = lcRdTokenInfo(ctx)
+  return lcValidateRdToken(info)
+end function
+
+function lcValidateRdToken(info as Object) as Object
   tok = info.token
   src = info.source
   if tok = "" then return { configured: false, premium: false, username: "", source: "none" }
@@ -984,7 +1032,7 @@ function lcParseM3u(text as String) as Object
   lines = text.Replace(chr(13), "").Tokenize(chr(10))
   curName = ""
   curGroup = ""
-  curLogo = ""
+  curLogo = "" : curEpg = "" : curNumber = 0
   for each rawLine in lines
     line = rawLine.Trim()
     if line <> ""
@@ -996,6 +1044,8 @@ function lcParseM3u(text as String) as Object
         if comma > 0 then curName = Mid(line, comma + 1).Trim()
         curGroup = lcM3uAttr(line, "group-title")
         curLogo = lcM3uAttr(line, "tvg-logo")
+        curEpg = lcM3uAttr(line, "tvg-id")
+        curNumber = Int(Val(lcM3uAttr(line, "tvg-chno")))
       else if Left(line, 1) <> "#"
         if Left(LCase(line), 7) = "http://" or Left(LCase(line), 8) = "https://"
           if curName = "" then curName = "Channel " + StrI(channels.Count() + 1).Trim()
@@ -1004,11 +1054,15 @@ function lcParseM3u(text as String) as Object
             title: curName
             group: curGroup
             logo: curLogo
+            epgId: curEpg
+            number: curNumber
+            source: "m3u"
+            streamId: lcXtreamStreamId(line)
             url: line
             kind: "live"
             playable: true
           })
-          curName = ""
+          curName = "" : curGroup = "" : curLogo = "" : curEpg = "" : curNumber = 0
           if channels.Count() >= 2000 then exit for
         end if
       end if
@@ -1035,6 +1089,11 @@ function lcGetLive(ctx as Object) as Object
     if res.ok and res.body <> ""
       all = lcParseM3u(res.body)
       lcWriteTmpJson("tvm_live_channels.json", { channels: all })
+      if not state.DoesExist("epgUrls")
+        state.epgUrls = lcPlaylistGuideUrls(res.body, state.url)
+        state.xtreamEpg = lcXtreamEpgUrl(state.url)
+        lcWriteRegJson("localLive", state)
+      end if
     end if
   end if
   picksSet = {}
@@ -1073,6 +1132,11 @@ end function
 
 function lcSaveLiveUrl(ctx as Object) as Object
   url = lcAaText(ctx.body, "url", "").Trim()
+  if lcAaText(ctx.body, "server") <> ""
+    server = lcAaText(ctx.body, "server").Trim()
+    while Right(server, 1) = "/" : server = Left(server, Len(server) - 1) : end while
+    url = server + "/get.php?username=" + lcUrlEncode(lcAaText(ctx.body, "username")) + "&password=" + lcUrlEncode(lcAaText(ctx.body, "password")) + "&type=m3u_plus&output=m3u8"
+  end if
   if url = ""
     lcWriteRegJson("localLive", { url: "", picks: [] })
     DeleteFile("tmp:/tvm_live_channels.json")
@@ -1092,7 +1156,7 @@ function lcSaveLiveUrl(ctx as Object) as Object
     picks.Push(ch.id)
     if picks.Count() >= 48 then exit for
   end for
-  lcWriteRegJson("localLive", { url: url, picks: picks })
+  lcWriteRegJson("localLive", { url: url, picks: picks, epgUrls: lcPlaylistGuideUrls(res.body, url), xtreamEpg: lcXtreamEpgUrl(url) })
   return { status: 200, json: lcGetLive(ctx) }
 end function
 
@@ -1235,7 +1299,8 @@ function lcPlayback(ctx as Object) as Object
     return { status: 404, json: { kind: "unavailable", reason: "empty" } }
   end if
 
-  tok = lcRdToken(ctx)
+  info = lcRdTokenInfo(ctx)
+  tok = info.token
 
   ' Direct link
   if link <> ""
@@ -1264,86 +1329,139 @@ function lcPlayback(ctx as Object) as Object
     return { status: 409, json: { kind: "unavailable", reason: "not-configured" } }
   end if
 
-  ' Verify RD token quickly
-  st = lcGetRdStatus(ctx)
-  if lcAaText(st, "error", "") = "needs-auth"
+  st = lcValidateRdToken(info)
+  if lcAaText(st, "error") = "needs-auth"
     return { status: 409, json: { kind: "unavailable", reason: "needs-auth" } }
   end if
-
-  ' Extract IMDB ID + optional season/episode
-  imdb = ""
-  parts = id.Tokenize(":")
-  if parts.Count() > 0 and Left(LCase(parts[0]), 2) = "tt" then imdb = parts[0]
-  season = lcAaGet(ctx.body, "season", invalid)
-  episode = lcAaGet(ctx.body, "episode", invalid)
-  if parts.Count() >= 3 and season = invalid
-    season = Int(Val(parts[1]))
-    episode = Int(Val(parts[2]))
-  end if
-  if imdb = ""
-    return { status: 409, json: { kind: "unavailable", reason: "empty" } }
-  end if
-
-  tPath = "/realdebrid=" + lcUrlEncode(tok) + "/stream/movie/" + imdb + ".json"
-  if season <> invalid and episode <> invalid
-    tPath = "/realdebrid=" + lcUrlEncode(tok) + "/stream/series/" + imdb + ":" + StrI(Int(season)).Trim() + ":" + StrI(Int(episode)).Trim() + ".json"
-  end if
-
-  tRes = lcHttp("https://torrentio.strem.fun" + tPath, "GET", "", {}, 15000)
-  if not tRes.ok or tRes.json = invalid
-    return { status: 409, json: { kind: "unavailable", reason: "empty" } }
-  end if
-  streams = lcAaGet(tRes.json, "streams", [])
-  if Type(streams) <> "roArray" or streams.Count() = 0
-    return { status: 409, json: { kind: "unavailable", reason: "empty" } }
-  end if
-
-  ' Prefer streams that carry an infoHash (directly or inside Torrentio resolve URL)
-  ' and resolve via Real-Debrid API.
-  hashRegex = CreateObject("roRegex", "/([0-9a-f]{40})/[^/]*/([0-9]+|null)/", "i")
+  prefs = lcExtrasPrefs(ctx)
+  manual = lcAaInt(ctx.body, "quality", 0)
+  if manual > 0 then prefs.quality = StrI(manual).Trim()
+  request = lcPlaybackSelection(ctx.body, tok, prefs, lcAaGet(ctx.body, "client", {}))
+  versions = []
+  requested = lcAaText(ctx.body, "versionId")
+  for each row in request.rows
+    versions.Push(row.version)
+  end for
   tried = 0
-  availableQualities = lcStreamQualities(lcRankStreams(streams))
-  streams = lcRankStreams(streams, lcAaInt(ctx.body, "quality", 0))
-  for each s in streams
+  for each row in request.rows
     if tried >= 4 then exit for
-    sName = lcAaText(s, "name", "")
-    sTitle = lcAaText(s, "title", "")
-    sUrl = lcAaText(s, "url", "")
-    label = LCase(sName + " " + sTitle)
-    if Instr(1, label, "cam") = 0 and Instr(1, label, "tsrip") = 0
-      infoHash = lcAaText(s, "infoHash", lcAaText(s, "info_hash", ""))
-      fileIdx = lcAaGet(s, "fileIdx", invalid)
-      if infoHash = "" and sUrl <> ""
-        matches = hashRegex.Match(sUrl)
-        if matches <> invalid and matches.Count() >= 2
-          infoHash = matches[1]
-          if fileIdx = invalid and matches.Count() >= 3 and matches[2] <> "null"
-            fileIdx = Int(Val(matches[2]))
-          end if
-        end if
-      end if
-      if infoHash <> ""
-        tried = tried + 1
-        dl = lcResolveMagnetViaRd(tok, infoHash, fileIdx)
-        if dl <> invalid
-          return {
-            status: 200
-            json: {
-              kind: "stream"
-              url: dl.download
-              mimeType: dl.mimeType
-              title: title
-              startAt: startAt
-              resolution: lcStreamHeight(s)
-              qualities: availableQualities
-            }
-          }
-        end if
+    version = row.version
+    if requested = "" or requested = version.id
+      tried = tried + 1
+      hash = lcStreamHash(row.stream)
+      idx = invalid
+      if hash.index >= 0 then idx = hash.index
+      dl = lcResolveMagnetViaRd(tok, hash.hash, idx)
+      if dl <> invalid
+        audio = lcAaText(prefs, "audioLanguage", "original")
+        if audio = "original" then audio = request.original
+        return { status: 200, json: {
+          kind: "stream", url: dl.download, mimeType: dl.mimeType, title: title, startAt: startAt
+          resolution: version.height, version: version, versions: versions
+          originalLanguage: request.original, audioLanguage: audio, audioLanguages: version.languages
+          subtitleMode: lcAaText(prefs, "subtitleMode", "foreign")
+        } }
       end if
     end if
   end for
-
   return { status: 409, json: { kind: "unavailable", reason: "not-in-library" } }
+end function
+
+function lcListVersions(ctx as Object) as Object
+  id = lcAaText(ctx.query, "id")
+  token = lcRdToken(ctx)
+  if token = "" then return { status: 200, json: { versions: [], originalLanguage: invalid } }
+  if lcProfileLevel(ctx).maxAge < 18
+    media = lcGetMedia(id.Split(":")[0])
+    if media.status <> 200 or not lcAllowed(media.json, lcProfileLevel(ctx)) then return { status: 403, json: { error: "Title unavailable for this profile." } }
+  end if
+  request = lcPlaybackSelection(ctx.query, token, lcExtrasPrefs(ctx), { maxHeight: lcScreenHeight(), player: "roku" })
+  versions = []
+  for each row in request.rows
+    versions.Push(row.version)
+  end for
+  return { status: 200, json: { versions: versions, originalLanguage: request.original } }
+end function
+
+function lcResolveOriginalLanguage(meta as Object) as String
+  raw = lcAaText(meta, "original_language", lcAaText(meta, "originalLanguage", lcAaText(meta, "language")))
+  if raw <> ""
+    first = raw.Split(",")[0].Trim()
+    code = lcLanguage(first)
+    if code <> "" then return code
+  end if
+  tmdb = lcAaText(meta, "moviedb_id", lcAaText(meta, "tmdb_id"))
+  if tmdb <> "" and Val(tmdb) > 0
+    kind = "movie"
+    if LCase(lcAaText(meta, "type")) = "series" then kind = "tv"
+    cacheKey = "origlang_" + kind + "_" + tmdb
+    cached = lcExtrasCache(cacheKey)
+    if cached <> invalid then return lcAaText(cached, "lang")
+    res = lcHttp("https://www.themoviedb.org/" + kind + "/" + tmdb + "?language=en-US", "GET", "", {}, 2500)
+    if res.ok and res.body <> ""
+      match = CreateObject("roRegex", "Original Language</bdi>\s*</strong>\s*([^<]+)", "i").Match(res.body)
+      if match.Count() > 1
+        code = lcLanguage(match[1].Trim())
+        if code <> ""
+          lcExtrasRemember(cacheKey, { lang: code }, 86400 * 7)
+          return code
+        end if
+      end if
+    end if
+  end if
+  return ""
+end function
+
+function lcEpisodeRuntimeText(meta as Object, season as Integer, episode as Integer) as String
+  if meta = invalid or season < 0 or episode < 0 then return ""
+  videos = lcAaGet(meta, "videos", [])
+  if Type(videos) <> "roArray" then return ""
+  for each v in videos
+    if lcAaInt(v, "season", -1) = season and lcAaInt(v, "episode", -1) = episode
+      rt = lcAaText(v, "runtime")
+      if rt <> "" then return rt
+    end if
+  end for
+  return ""
+end function
+
+function lcPlaybackSelection(args as Object, token as String, prefs as Object, client as Object) as Object
+  id = lcAaText(args, "id")
+  parts = id.Split(":")
+  imdb = parts[0]
+  empty = { rows: [], original: "" }
+  if not CreateObject("roRegex", "^tt[0-9]{5,12}$", "").IsMatch(imdb) then return empty
+  season = lcAaInt(args, "season", -1)
+  episode = lcAaInt(args, "episode", -1)
+  if parts.Count() >= 3 and season < 0
+    season = Int(Val(parts[1])) : episode = Int(Val(parts[2]))
+  end if
+  meta = lcFetchMetaRaw(imdb)
+  if LCase(lcAaText(meta, "type")) = "series" and (season < 0 or episode < 0)
+    videos = lcAaGet(meta, "videos", [])
+    if Type(videos) = "roArray"
+      for each v in videos
+        s = lcAaInt(v, "season", 0) : e = lcAaInt(v, "episode", 0)
+        if s > 0 and e > 0
+          season = s : episode = e : exit for
+        end if
+      end for
+    end if
+  end if
+  path = "/stream/movie/" + imdb + ".json"
+  if season >= 0 and episode >= 0 then path = "/stream/series/" + imdb + ":" + StrI(season).Trim() + ":" + StrI(episode).Trim() + ".json"
+  ' VOD copies are un-restricted into the original RD download in lcPlayback.
+  result = lcHttp("https://torrentio.strem.fun/realdebrid=" + lcUrlEncode(token) + path, "GET", "", {}, 12000)
+  if not result.ok then return empty
+  streams = lcAaGet(result.json, "streams", [])
+  if Type(streams) <> "roArray" or streams.Count() = 0 then return empty
+  original = lcResolveOriginalLanguage(meta)
+  epRuntime = lcEpisodeRuntimeText(meta, season, episode)
+  runtimeText = epRuntime
+  if runtimeText = "" then runtimeText = lcAaText(meta, "runtime")
+  runtime = lcRuntimeSeconds(runtimeText, 0)
+  if season >= 0 and runtime <= 0 then runtime = 0
+  return { rows: lcRankVersions(streams, original, runtime, prefs, client), original: original }
 end function
 
 function lcResolveMagnetViaRd(token as String, infoHash as String, fileIdx as Dynamic) as Object
@@ -1359,14 +1477,25 @@ function lcResolveMagnetViaRd(token as String, infoHash as String, fileIdx as Dy
     if infoRes.ok and infoRes.json <> invalid
       st = lcAaText(infoRes.json, "status", "")
       if st = "waiting_files_selection"
-        sel = "all"
+        sel = ""
+        files = lcAaGet(infoRes.json, "files", [])
         if fileIdx <> invalid
-          files = lcAaGet(infoRes.json, "files", [])
           idxNum = Int(fileIdx)
           if Type(files) = "roArray" and idxNum >= 0 and idxNum < files.Count()
             sel = StrI(lcAaInt(files[idxNum], "id", 1)).Trim()
           end if
         end if
+        if sel = "" and Type(files) = "roArray"
+          largest = 0
+          for each file in files
+            path = LCase(lcAaText(file, "path"))
+            size = lcAaGet(file, "bytes", 0)
+            if size > largest and (Right(path, 4) = ".mkv" or Right(path, 4) = ".mp4" or Right(path, 4) = ".m4v")
+              largest = size : sel = StrI(lcAaInt(file, "id")).Trim()
+            end if
+          end for
+        end if
+        if sel = "" then exit for
         lcRdRequest(token, "/torrents/selectFiles/" + tid, "POST", "files=" + lcUrlEncode(sel))
       else if st = "downloaded"
         links = lcAaGet(infoRes.json, "links", [])

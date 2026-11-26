@@ -84,8 +84,12 @@ bool Shell::Animating() const {
 
 void Shell::Paint(Painter& painter) const {
     const ThemeScope theme(ActiveScreenName() == "player" ? Theme::Dark : store_.Look(),
-                           motion_.performanceMode, motion::PrefersReducedMotion(motion_));
-    const GlassScope glass(store_.Glass());
+                           store_.ReduceTransparency() || motion_.performanceMode, motion::PrefersReducedMotion(motion_));
+    const FontScope font(store_.Font());
+    tokens::pointer = pointer_;
+    struct ResetPointer {
+        ~ResetPointer() { tokens::pointer.reset(); }
+    } resetPointer;
     // The screen under any modals is painted first, then each modal in order. A screen that shows the stage
     // lets the stage paint first, behind it.
     const nav::ViewEntry& visible = nav::VisibleScreen(stack_);
@@ -101,7 +105,9 @@ void Shell::Paint(Painter& painter) const {
     if (const auto back = BackBox()) {
         painter.Glass(*back, back->height / 2, backFocused_ ? glass::NavSelected() : glass::NavCapsule());
         const double inset = back->width * 0.24;
-        painter.Path({back->x + inset, back->y + inset, back->width - 2 * inset, back->height - 2 * inset}, 24, "M15 5l-7 7 7 7", {{0,0,0,0}, Rgb(0xFFFFFF, 0.95), 2.3, false});
+        const Color chevronInk = painter.GlassInk(Rgb(0xFFFFFF, 0.95));
+        painter.Path({back->x + inset, back->y + inset, back->width - 2 * inset, back->height - 2 * inset}, 24,
+                     "M15 5l-7 7 7 7", {{0, 0, 0, 0}, chevronInk, 2.3, false});
     }
     if (releaseCard_ && ActiveScreenName() == "home") {
         const Box card = ReleaseBox();
@@ -117,6 +123,54 @@ void Shell::Paint(Painter& painter) const {
         }
         painter.Text({x, card.Bottom() - 3.5 * rem, width, 2.5 * rem}, "All changes", {0.95 * rem, true, 600}, Rgb(0x9DBDFF));
     }
+    if (patchNotes_) {
+        const double rem = ViewportRem(width_, height_);
+        painter.FillRoundRect({0, 0, width_, height_}, 0, Rgb(0x000000, 0.66));
+        const double sheetW = std::min(width_ - 3 * rem, 720.0);
+        const double sheetH = std::min(height_ - 3 * rem, 40 * rem);
+        const Box sheet{(width_ - sheetW) / 2, (height_ - sheetH) / 2, sheetW, sheetH};
+        painter.Glass(sheet, 22 * rem / 16, glass::MenuPanel());
+        const double x = sheet.x + 1.8 * rem, w = sheet.width - 3.6 * rem;
+        const Box button = PatchButtonBox();
+        painter.FillRoundRect({x, sheet.y + 1.6 * rem, 9 * rem, 1.8 * rem}, 0.9 * rem, Rgb(0x2F6BFF, 0.35));
+        painter.Text({x + 0.8 * rem, sheet.y + 1.6 * rem, 8 * rem, 1.8 * rem}, "TVM " + patchNotes_->version, {0.9 * rem, true, 650}, Rgb(0xFFFFFF, 0.95));
+        painter.Paragraph({x, sheet.y + 3.8 * rem, w, 3.4 * rem}, patchNotes_->title, {1.7 * rem, true, 700}, Rgb(0xFFFFFF, 0.97));
+        double y = sheet.y + 7.4 * rem;
+        const double limit = button.y - 1 * rem;
+        painter.PushClip({sheet.x, sheet.y, sheet.width, limit - sheet.y});
+        const auto lines = [&](const std::vector<std::string>& rows, const TextStyle& style, Color color, const std::string& bullet) {
+            for (const std::string& row : rows) {
+                if (y + 1.6 * rem > limit) return;
+                painter.Paragraph({x, y, w, 2.8 * rem}, bullet + row, style, color);
+                y += (row.size() * style.sizePx * 0.5 > w ? 3.0 : 1.9) * rem * (style.sizePx > rem ? 1.0 : 1.0);
+            }
+        };
+        lines(patchNotes_->highlights, {1.0 * rem, true, 650}, Rgb(0xFFFFFF, 0.95), "");
+        if (!patchNotes_->changes.empty()) {
+            y += 0.5 * rem;
+            lines(patchNotes_->changes, {0.88 * rem, false}, Rgb(0xFFFFFF, 0.7), "- ");
+        }
+        if (!patchNotes_->knownIssues.empty()) {
+            y += 0.7 * rem;
+            if (y + 1.6 * rem <= limit) {
+                painter.Text({x, y, w, 1.8 * rem}, "Known issues", {0.95 * rem, true, 700}, Rgb(0xFFC857));
+                y += 2.0 * rem;
+                lines(patchNotes_->knownIssues, {0.88 * rem, false}, Rgb(0xFFC857, 0.9), "! ");
+            }
+        }
+        painter.PopClip();
+        painter.FillRoundRect(button, button.height / 2, Rgb(0xFFFFFF, 0.94));
+        painter.StrokeRoundRect(button, button.height / 2, 2.0, Rgb(0x9DBDFF, 0.9));
+        painter.Text({button.x + button.width / 2 - 1.5 * rem, button.y + button.height * 0.2, button.width, button.height * 0.6}, "Got it", {1.0 * rem, true, 700}, Rgb(0x0B0F17));
+    }
+}
+
+Box Shell::PatchButtonBox() const {
+    const double rem = ViewportRem(width_, height_);
+    const double sheetW = std::min(width_ - 3 * rem, 720.0);
+    const double sheetH = std::min(height_ - 3 * rem, 40 * rem);
+    const double left = (width_ - sheetW) / 2, top = (height_ - sheetH) / 2;
+    return {left + sheetW - 1.8 * rem - 9 * rem, top + sheetH - 1.6 * rem - 2.8 * rem, 9 * rem, 2.8 * rem};
 }
 
 std::optional<Box> Shell::BackBox() const {
@@ -133,11 +187,13 @@ Box Shell::ReleaseBox() const {
 }
 std::optional<std::string> Shell::Hit(double x, double y) {
     const auto inside = [&](const Box& box) { return x >= box.x && y >= box.y && x < box.Right() && y < box.Bottom(); };
+    if (patchNotes_) return inside(PatchButtonBox()) ? std::optional<std::string>("shell-patch-ok") : std::optional<std::string>("shell-patch-sink");
     if (const auto back = BackBox(); back && inside(*back)) return "shell-back";
     if (releaseCard_ && ActiveScreenName() == "home" && inside(ReleaseBox())) return "shell-changelog";
     return Top().ItemAt(x, y);
 }
 bool Shell::ActivateChrome(const std::string& key, double nowMs) {
+    if (key.rfind("shell-patch", 0) == 0) return true;
     if (key == "shell-back") { backFocused_ = false; Back(nowMs); return true; }
     if (key == "shell-changelog") { Command command; command.name = "changelog"; Open(command, nowMs); return true; }
     return false;
@@ -420,6 +476,7 @@ void Shell::ApplyMotionIfChanged() {
 }
 
 void Shell::MouseMove(double x, double y, bool buttonDown, double nowMs) {
+    pointer_ = Point{x, y};
     const nav::MouseState::MoveResult result = mouse_.OnMove(x, y, buttonDown);
     clicks_.Move(0, x, y);
     if (mouseDrag_.has_value() && buttonDown) {
@@ -464,6 +521,7 @@ void Shell::HoverAt(double x, double y, double nowMs) {
 }
 
 void Shell::MouseLeave(double nowMs) {
+    pointer_.reset();
     pointerIn_ = false;
     Top().PointerAt(-1.0, -1.0, nowMs);
     Top().PointerLeft(nowMs);

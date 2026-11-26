@@ -148,11 +148,23 @@ final class TVMStore {
                 position: position,
                 duration: duration,
                 updated: entry["updated"] as? String ?? "",
+                hiddenFromContinueWatching: (entry["hiddenFromContinueWatching"] as? Bool) == true,
                 completedAt: entry["completedAt"] as? String,
                 completions: entry["completions"] as? Int ?? 0
             )
         }
         return out
+    }
+
+    private func saveProgressMap(_ all: [String: ProgressEntry], profileId: String) {
+        let body = all.mapValues { entry -> [String: Any] in
+            var value: [String: Any] = ["position": entry.position, "duration": entry.duration, "updated": entry.updated, "completions": entry.completions]
+            if entry.hiddenFromContinueWatching { value["hiddenFromContinueWatching"] = true }
+            if let completedAt = entry.completedAt { value["completedAt"] = completedAt }
+            return value
+        }
+        try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
+        try? JSONValue.data(body).write(to: profileDir(profileId).appendingPathComponent("progress.json"), options: .atomic)
     }
 
     func writeProgress(profileId: String, id: String, position: Double, duration: Double) {
@@ -162,15 +174,45 @@ final class TVMStore {
         let now = ISO8601DateFormatter().string(from: Date())
         let finished = position / duration > 0.96
         all[id] = ProgressEntry(position: position, duration: duration, updated: now,
+            hiddenFromContinueWatching: false,
             completedAt: finished && previous?.isFinished != true ? now : previous?.completedAt ?? (finished ? now : nil),
             completions: max(previous?.completions ?? 0, previous?.isFinished == true ? 1 : 0) + (finished && previous?.isFinished != true ? 1 : 0))
-        let body = all.mapValues { entry -> [String: Any] in
-            var value: [String: Any] = ["position": entry.position, "duration": entry.duration, "updated": entry.updated, "completions": entry.completions]
-            if let completedAt = entry.completedAt { value["completedAt"] = completedAt }
-            return value
+        saveProgressMap(all, profileId: profileId)
+    }
+
+    func removeContinueWatching(profileId: String, id: String) {
+        guard !id.isEmpty else { return }
+        var all = progress(for: profileId)
+        var changed = false
+        for (key, var entry) in all {
+            if (key == id || key.hasPrefix(id + ":")) && !entry.hiddenFromContinueWatching && !entry.isFinished {
+                entry.hiddenFromContinueWatching = true
+                all[key] = entry
+                changed = true
+            }
         }
-        try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
-        try? JSONValue.data(body).write(to: profileDir(profileId).appendingPathComponent("progress.json"), options: .atomic)
+        if changed { saveProgressMap(all, profileId: profileId) }
+    }
+
+    func setWatched(profileId: String, id: String, watched: Bool) {
+        guard !id.isEmpty else { return }
+        var all = progress(for: profileId)
+        let old = all[id]
+        if watched {
+            if old?.isFinished == true { return }
+            let duration = (old?.duration ?? 0) > 0 ? old!.duration : 1
+            writeProgress(profileId: profileId, id: id, position: duration, duration: duration)
+        } else if let old {
+            all[id] = ProgressEntry(
+                position: 0,
+                duration: old.duration,
+                updated: ISO8601DateFormatter().string(from: Date()),
+                hiddenFromContinueWatching: old.hiddenFromContinueWatching,
+                completedAt: nil,
+                completions: old.completions
+            )
+            saveProgressMap(all, profileId: profileId)
+        }
     }
 
     // Only the caller's confirmed completed media enter this profile's notebook.

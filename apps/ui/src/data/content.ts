@@ -31,6 +31,7 @@ export interface ChangelogRelease {
   title: string;
   highlights: string[];
   changes: ChangelogChange[];
+  knownIssues?: string[];
 }
 
 export interface ChangelogContent {
@@ -53,6 +54,7 @@ export interface ContentEvent {
   end: string;
   accent: string;
   glow: string;
+  effect?: 'embers' | 'sparks' | 'snow' | 'dust' | 'stars' | 'none';
   line: string;
   rail: ContentEventRail;
   avatarSet: string;

@@ -149,6 +149,7 @@ add_library(tvm_engine STATIC
   src/ui/intro.h
   src/ui/live_playlist_screen.cpp
   src/ui/live_playlist_screen.h
+  src/ui/guide_view.cpp
   src/ui/live_tv_view.cpp
   src/ui/live_tv_view.h
   src/ui/realdebrid_screen.cpp
@@ -161,6 +162,8 @@ add_library(tvm_engine STATIC
   src/ui/settings_screen.h
   src/ui/shell.cpp
   src/ui/shell.h
+  src/ui/hero_particles.cpp
+  src/ui/hero_particles.h
   src/ui/scene.cpp
   src/ui/scene.h
   src/ui/widget.cpp
@@ -177,6 +180,7 @@ add_library(tvm_platform STATIC
   src/platform/app_account.cpp
   src/platform/app_update.cpp
   src/platform/app_extras.cpp
+  src/platform/app_guide.cpp
   src/platform/app_content.cpp
   src/platform/app_services.cpp
   src/platform/app_pages.cpp
@@ -199,10 +203,12 @@ add_library(tvm_platform STATIC
   src/platform/glass_lens.h
   src/platform/graphics.cpp
   src/platform/graphics.h
+  src/platform/video_texture.cpp
+  src/platform/video_texture.h
   src/platform/snapshot.cpp
   src/platform/snapshot.h
 )
-target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dxguid dwrite windowscodecs ole32 shell32 user32 gdi32 winmm advapi32)
+target_link_libraries(tvm_platform PUBLIC tvm_engine d2d1 dxguid dwrite windowscodecs ole32 shell32 user32 gdi32 winmm advapi32 mfplat mfreadwrite mfuuid)
 
 # Resource id 1 is the TVM icon; App registers its window class with it.
 set(TVM_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/tvm.ico")
@@ -235,6 +241,7 @@ if(MINGW)
 endif()
 
 add_executable(tvm_tests
+  tests/native_features_tests.cpp
   tests/extras_tests.cpp
   tests/main.cpp
   tests/features_1_1_tests.cpp

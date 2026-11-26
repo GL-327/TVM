@@ -523,6 +523,16 @@ final class StandaloneTests: XCTestCase {
         XCTAssertEqual(TVMPrefs.acceptLanguage("en"), "en,en-US;q=0.9")
     }
 
+    func testPrefsKeepDefaultsAndRejectBadValues() {
+        var prefs = TVMPrefs()
+        prefs.merge(["quality": "4k", "skipSegments": "auto", "webhookUrl": "ftp://x", "extras": ["themeSongs": true, "nope": true]])
+        XCTAssertEqual(prefs.quality, "original")
+        XCTAssertEqual(prefs.skipSegments, "auto")
+        XCTAssertNil(prefs.webhookUrl)
+        XCTAssertEqual(prefs.extras["themeSongs"], true)
+        XCTAssertNil(prefs.extras["nope"])
+    }
+
     func testUpdateSnapshotAllowsInAppApply() {
         let store = TVMStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("tvm-upd-\(UUID().uuidString)"))
         testFolders.append(store.root)
@@ -734,7 +744,6 @@ final class StandaloneTests: XCTestCase {
         let core = testCore(accounts: service)
         let owner = try await signInThroughCore(core, email: "owner@example.com")
         let routes: [(String, String)] = [
-            ("GET", "/api/admin/accounts"),
             ("POST", "/api/admin/accounts/activate"),
             ("POST", "/api/admin/accounts/suspend"),
             ("POST", "/api/admin/accounts/note"),
@@ -743,6 +752,9 @@ final class StandaloneTests: XCTestCase {
             ("POST", "/api/admin/accounts/rd"),
             ("POST", "/api/admin/accounts/verify"),
         ]
+        // The admin-key mirror needs a signed-in developer.
+        let mirrored = try await send(core, "GET", "/api/admin/accounts", body: [:], token: nil)
+        XCTAssertEqual(mirrored.status, 401)
         for (method, path) in routes {
             for who in [nil, owner] as [String?] {
                 let reply = try await send(core, method, path, body: ["id": "x"], token: who)

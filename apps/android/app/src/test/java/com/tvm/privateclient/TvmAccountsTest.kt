@@ -418,7 +418,6 @@ class TvmAccountsTest {
         val owner = call(c, "POST", "/api/account/signin", JSONObject().put("email", "owner@example.com").put("password", password))
             .second.getString("token")
         val routes = listOf(
-            "GET" to "/api/admin/accounts",
             "POST" to "/api/admin/accounts/activate",
             "POST" to "/api/admin/accounts/suspend",
             "POST" to "/api/admin/accounts/note",
@@ -427,6 +426,8 @@ class TvmAccountsTest {
             "POST" to "/api/admin/accounts/rd",
             "POST" to "/api/admin/accounts/verify",
         )
+        // The admin-key mirror needs a signed-in developer.
+        assertEquals(401, call(c, "GET", "/api/admin/accounts", JSONObject(), null).first)
         for ((method, path) in routes) {
             for (who in listOf(null, owner)) {
                 val reply = call(c, method, path, JSONObject().put("id", "x"), who)

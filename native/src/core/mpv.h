@@ -23,6 +23,8 @@ struct LaunchOptions {
     std::optional<double> startAt;
     // The boost filter's starting gain, from BoostGain.
     double boost = 1.0;
+    std::string ytdlpPath;
+    std::string audioLanguage;
 };
 
 // The audio filter that makes the sound louder than the file's own level: a gain, then a limiter that
@@ -51,7 +53,9 @@ std::optional<std::filesystem::path> FindMpvExecutable(const util::EnvLookup& en
 // The properties TVM watches. `cache-buffering-state` is a percentage, so `paused-for-cache` is the
 // one that means "stalled".
 inline constexpr const char* kObservedProperties[] = {"time-pos", "duration", "pause", "paused-for-cache",
-                                                      "eof-reached", "track-list", "speed", "cache-speed", "demuxer-cache-duration", "cache-buffering-state"};
+                                                      "eof-reached", "track-list", "speed", "cache-speed", "demuxer-cache-duration", "cache-buffering-state",
+                                                      "chapter-list", "video-params", "video-format", "file-format",
+                                                      "file-size", "video-bitrate", "frame-drop-count"};
 
 // One of the file's tracks, as mpv's track-list reports it.
 struct Track {
@@ -80,7 +84,18 @@ std::string LanguageName(const std::string& code);
 // nothing to a viewer (aac, opus) are left out.
 std::string AudioDetail(const Track& track);
 
+struct Chapter {
+    double time = 0;
+    std::string title;
+    bool operator==(const Chapter&) const = default;
+};
+
 struct State {
+    std::vector<Chapter> chapters;
+    int width = 0, height = 0;
+    std::string hdr, codec, container;
+    double fileBytes = 0, bitrate = 0;
+    int droppedFrames = 0;
     double position = 0.0;
     double duration = 0.0;
     bool paused = false;
@@ -95,6 +110,23 @@ struct State {
     double bufferPercent = 0;
 
     bool operator==(const State&) const = default;
+};
+
+bool SameLanguage(const std::string& left, const std::string& right);
+std::optional<double> AdjacentChapter(const std::vector<Chapter>& chapters, double position, int direction);
+
+class VideoClicks {
+public:
+    explicit VideoClicks(double delayMs = 260) : delayMs_(delayMs) {}
+    enum class Action { None, Pause, Fullscreen };
+    Action Click(double now, int x, int y, int toleranceX, int toleranceY);
+    Action Tick(double now);
+    double Wait(double now, double otherwise) const;
+    void Cancel() { deadline_.reset(); }
+private:
+    double delayMs_;
+    std::optional<double> deadline_;
+    int x_ = 0, y_ = 0;
 };
 
 State InitialState(std::optional<double> startAt);

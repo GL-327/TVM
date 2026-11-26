@@ -106,6 +106,9 @@ struct StreamChoice {
     bool cached = false;
 };
 
+std::string VersionLabel(const nlohmann::json& version);
+std::string PlaybackTransport(const std::string& url, const std::string& engine, const std::string& transport);
+
 struct Resolution {
     std::string url;
     std::string title;
@@ -120,6 +123,12 @@ struct Resolution {
 
     nlohmann::json subtitles = nlohmann::json::array();
     nlohmann::json segments = nlohmann::json::object();
+    std::string originalLanguage;
+    std::string transport;
+    nlohmann::json version = nullptr;
+    nlohmann::json versions = nlohmann::json::array();
+    nlohmann::json preferences = nullptr;
+    std::string ytdlpPath;
     bool ok() const { return !url.empty(); }
 };
 

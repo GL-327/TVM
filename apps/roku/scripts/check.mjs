@@ -546,7 +546,7 @@ if (!/m\.global\.addFields/.test(sceneBrs) || !/function screenNode\(/.test(scen
 if (!/function loadReduceMotion\(/.test(configBrs) || !/function loadReduceTransparency\(/.test(configBrs)) {
   fail("config.brs must load reduce-motion and reduce-transparency settings");
 }
-if (!settingsBrs.includes("Reduce Motion") || !settingsBrs.includes("Reduce Transparency")) {
+if (!/Reduce [Mm]otion/.test(settingsBrs) || !/Reduce [Tt]ransparency/.test(settingsBrs)) {
   fail("SettingsScreen must offer Reduce Motion and Reduce Transparency");
 }
 

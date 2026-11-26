@@ -17,8 +17,8 @@
     <Poster id="shadow" />
     <Poster id="glow" visible="false" />
     <Poster id="tint" />
-    <Poster id="bodyGradient" />
-    <Poster id="sheen" />
+    <Poster id="bodyGradient" visible="false" />
+    <Poster id="sheen" visible="false" />
     <Poster id="rim" uri="pkg:/images/glass/panel.9.png" />
   </children>
 </component>

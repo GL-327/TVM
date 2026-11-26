@@ -1,5 +1,9 @@
 sub init()
   m.top.focusable = true
+  m.guide = m.top.findNode("guideGrid")
+  m.guide.observeField("action", "onGuideAction")
+  m.listMode = false
+  m.top.observeField("focusedChild", "onLiveFocus")
   m.ribbon = m.top.findNode("ribbon")
   m.heading = m.top.findNode("heading") : m.heading.font = tvmFontTitle()
   m.lede = m.top.findNode("lede") : m.lede.font = tvmFontBody()
@@ -7,7 +11,7 @@ sub init()
   m.grid = m.top.findNode("grid")
   m.choose = m.top.findNode("choose") : m.choose.variant = "glassPill" : m.choose.label = "Choose channels" : m.choose.pillWidth = 560
   m.playlist = m.top.findNode("playlist") : m.playlist.variant = "glassPill" : m.playlist.label = "Playlist"
-  m.top.findNode("nextPage").visible = false
+  m.listBtn = m.top.findNode("nextPage")
   m.top.findNode("loading").visible = false
   m.top.findNode("empty").visible = false
   m.top.findNode("error").visible = false
@@ -21,6 +25,7 @@ end sub
 
 sub onStatus()
   channels = aaArray(m.top.status, "channels")
+  m.guide.channels = channels
   groups = [] : byGroup = {}
   for each source in ["free", "playlist"]
     for each ch in channels
@@ -84,6 +89,7 @@ sub paintFocus()
   m.ribbon.hasBarFocus = m.zone = "ribbon" : m.ribbon.focusCol = m.navCol
   m.choose.hasFocusStyle = m.zone = "choose"
   m.playlist.hasFocusStyle = m.zone = "playlist"
+  m.listBtn.hasFocusStyle = m.zone = "guide"
   for each tile in m.tiles
     tile.node.hasFocusStyle = (m.zone = "grid" and tile.index = m.col)
   end for
@@ -103,21 +109,29 @@ end sub
 function onKeyEvent(key as String, press as Boolean) as Boolean
   if not press then return false
   intent = intentFromKey(key)
-  if intent = "back" then return false
+  if not m.listMode then return false
+  if intent = "back" then toggleChannelList() : return true
   if m.zone = "ribbon"
     if intent = "left" or intent = "right" then m.navCol = navStep(m.navCol, intent, tvmNavSpec().Count() + 1)
     if intent = "down" then m.zone = "grid" : rebuildPage()
     if intent = "select"
       if m.navCol >= tvmNavSpec().Count() then emit("you", invalid) else emit("nav", { id: tvmNavSpec()[m.navCol].id })
     end if
-  else if m.zone = "choose" or m.zone = "playlist"
+  else if m.zone = "choose" or m.zone = "playlist" or m.zone = "guide"
     if intent = "up"
       if m.groups.Count() > 0 then m.zone = "grid" : rebuildPage() else m.zone = "ribbon"
     end if
-    if intent = "left" then m.zone = "choose"
-    if intent = "right" then m.zone = "playlist"
+    before = m.zone
+    if intent = "left"
+      if before = "guide" then m.zone = "playlist" else m.zone = "choose"
+    end if
+    if intent = "right"
+      if before = "choose" then m.zone = "playlist" else m.zone = "guide"
+    end if
     if intent = "select"
-      if m.zone = "choose" then emit("picks", invalid) else emit("playlist", invalid)
+      if m.zone = "choose" then emit("picks", invalid)
+      if m.zone = "playlist" then emit("playlist", invalid)
+      if m.zone = "guide" then toggleChannelList()
     end if
   else if m.groups.Count() > 0
     count = m.groups[m.row].items.Count()
@@ -137,5 +151,37 @@ end function
 
 sub onRemoteIntent()
   key = keyFromIntent(m.top.remoteIntent)
-  if key <> "" then onKeyEvent(key, true)
+  if m.listMode
+    if key <> "" then onKeyEvent(key, true)
+  else
+    m.guide.remoteIntent = m.top.remoteIntent
+  end if
+end sub
+
+sub onLiveFocus()
+  if m.top.hasFocus() and not m.listMode then m.guide.setFocus(true)
+end sub
+
+sub onGuideData()
+  m.guide.guide = m.top.guide
+end sub
+
+sub onGuideQuery()
+  m.guide.query = m.top.guideQuery
+end sub
+
+sub toggleChannelList()
+  m.listMode = not m.listMode
+  m.top.findNode("channelList").visible = m.listMode
+  m.guide.visible = not m.listMode
+  if m.listMode then m.top.setFocus(true) else m.guide.setFocus(true)
+end sub
+
+sub onGuideAction()
+  action = m.guide.action
+  if action.type = "channels"
+    toggleChannelList()
+  else
+    emit(action.type, action)
+  end if
 end sub

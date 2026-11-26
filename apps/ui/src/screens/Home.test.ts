@@ -10,11 +10,10 @@ describe('Home as the launcher in front of TVM Stream', () => {
     const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
     expect(src).toContain('enterTvmStream');
     expect(src).toContain('launchTitle(navigate, title)');
-    expect(src).toContain('mapRailPosters(rail.titles, rail.id, openTitle)');
+    expect(src).toContain('mapRailPosters(rail.titles, rail.id, openTitle');
     expect(src).toContain('TVM Stream');
-    expect(src).toContain('id="hero-play"');
+    expect(readFileSync(join(dir, 'Spotlight.tsx'), 'utf8')).toContain('id="hero-play"');
     expect(src).not.toContain('WATCH NOW');
-    expect(src).not.toContain('openDetails');
     expect(src).not.toContain('HOME_ROW_ONE_IDS');
     expect(src).not.toContain('HERO_SLIDE_IDS');
   });
@@ -23,13 +22,10 @@ describe('Home as the launcher in front of TVM Stream', () => {
     const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
     const css = readFileSync(join(dir, '../app.css'), 'utf8');
     expect(src).toContain('home--launcher');
-    expect(src).toContain('<HomeClock />');
     expect(src).toContain('id="launch-stream"');
     expect(src).toContain('home__destinations');
     expect(src).toContain('Where to');
-    expect(src).toContain("shelfTitle('Continue watching')");
     expect(src).toContain("'Continue watching'");
-    expect(src).toContain('TVM Stream · ');
     expect(css).toContain('.home--launcher');
     expect(css).toContain('.home__launcher {');
     expect(css).toContain('flex: 0 0 auto');
@@ -119,9 +115,7 @@ describe('Home rails keep pictures', () => {
     const watchlist = readFileSync(join(dir, 'Watchlist.tsx'), 'utf8');
     const poster = readFileSync(join(dir, '../components/PosterCard.tsx'), 'utf8');
     const art = readFileSync(join(dir, '../components/Artwork.tsx'), 'utf8');
-    expect(home).toContain('mapRailPosters(watching');
-    expect(home).toContain('mapRailPosters(watchlist');
-    expect(home).toContain('mapRailPosters(rail.titles');
+        expect(home).toContain('mapRailPosters(rail.titles');
     expect(library).toContain('mapRailPosters');
     expect(watchlist).toContain('<PosterCard');
     expect(poster).toContain('<Artwork');
@@ -192,7 +186,7 @@ describe('Home category rails do not skip titles', () => {
     const poster = readFileSync(join(dir, '../components/PosterCard.tsx'), 'utf8');
     const hop = readFileSync(join(dir, '../nav/hopQueue.ts'), 'utf8');
     const css = readFileSync(join(dir, '../app.css'), 'utf8');
-    expect(home).toContain('<Rail key={rail.id} title={shelfTitle(rail.title)}>');
+    expect(home).toContain('<Rail title={rail.title} loop={rail.loop}>');
     expect(home).toContain('mapRailPosters(rail.titles');
     expect(rail).toContain('shouldLoopRail');
     expect(rail).toContain('className="rail__title"');

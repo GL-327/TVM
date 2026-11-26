@@ -1,35 +1,25 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openModals, visibleScreen } from '@tvm/nav';
 import { ErrorState } from '../components/ErrorState';
 import { FocusButton } from '../components/FocusButton';
-import { ImdbBadge } from '../components/ImdbBadge';
 import { mapRailPosters } from '../components/PosterCard';
 import { Rail, RailPaging } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
 import { RailSkeletons } from '../components/Skeleton';
-import { BrandLockup } from '../components/BrandLockup';
 import { IconApps, IconLive, IconStream, IconWatchlist } from '../components/Icons';
-import { HeroArt } from '../components/HeroArt';
 import { ART_REFERRER } from '../components/artFace';
 import { PageScene } from '../components/PageScene';
-import { ToastPill, useToast } from '../components/ToastPill';
-import { ChangelogCornerCard } from '../components/ChangelogCornerCard';
+import { PatchNotesPopup } from '../components/PatchNotesPopup';
 import { preferBackdrop } from '../data/artwork';
 import {
-  fetchExtrasTrailers,
   fetchExtrasUpcomingHome,
   formatEpisodeCode,
   formatUpcomingShort,
-  readRuntimeHeroPreviewGuard,
-  shouldPlayHeroPreview,
-  youtubeEmbedUrl,
-  type ExtrasTrailer,
   type ExtrasUpcomingHomeItem,
 } from '../data/extras';
-import { addWatchlist, asTitle, fetchHome, peekHome, removeWatchlist, toMediaItem, type CatalogRail } from '../data/media';
+import { apiFetch, asTitle, fetchHome, peekHome, toMediaItem, type CatalogRail, type MediaItem } from '../data/media';
 import { filterItemsByAge } from '../data/parental';
-import { imdbIdFrom } from '../data/playId';
-import { hydratePrefs, PREFS_CHANGED_EVENT, readPrefs } from '../data/prefs';
+import { PREFS_CHANGED_EVENT, readPrefs } from '../data/prefs';
 import { effectiveProfileMaxAge, fetchProfiles, peekActiveProfile, subscribeProfiles } from '../data/profiles';
 import { fetchActiveEvents, type ActiveEvent } from '../data/events';
 import { usePagedRails } from '../data/usePagedRails';
@@ -42,88 +32,25 @@ import { type Title } from '../data/catalog';
 import { useNavigate, useViewStack } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { heroScrollFade } from './heroFade';
+import { Spotlight } from './Spotlight';
+import { extraEnabled } from '../data/polishPrefs';
+import { currentAppVersion } from '../data/changelog';
+import { updateRequired, useReleaseConfig } from '../data/releaseConfig';
+import { openDetails } from '../data/openDetails';
 import { prefersReducedMotion, subscribeMotionPreference } from '../theme/motion';
 
-const CLOCK_TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const CLOCK_DATE = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-
-/** Launcher clock. Ticks once a minute; nothing else on Home re-renders for it. */
-function HomeClock(): React.JSX.Element {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const tick = (): void => setNow(new Date());
-    const timer = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return (
-    <p className="home__clock" aria-live="off">
-      <span className="home__clock-time">{CLOCK_TIME.format(now)}</span>
-      <span className="home__clock-date">{CLOCK_DATE.format(now)}</span>
-    </p>
-  );
-}
-
-/** Rails on Home are TVM Stream's; say so on every shelf so Home never reads as TVM Stream. */
-function shelfTitle(title: string): string {
-  return `TVM Stream · ${title}`;
-}
-
-const HomeShelves = memo(function HomeShelves({
-  watching,
-  eventRail,
-  upcomingTitles,
-  watchlist,
-  catalogRails,
-  loading,
-  openTitle,
-  onLoadMore,
-}: {
-  watching: Title[];
-  eventRail: { id: string; title: string; titles: Title[] } | null;
-  upcomingTitles: Title[];
-  watchlist: Title[];
-  catalogRails: Array<{ id: string; title: string; more?: boolean; titles: Title[] }>;
-  loading: boolean;
-  openTitle: (title: Title) => void;
-  onLoadMore: (railId: string) => void;
+type Shelf = { id: string; title: string; more?: boolean; titles: Title[]; loop?: boolean };
+const HomeShelves = memo(function HomeShelves({ shelves, loading, openTitle, onLoadMore }: {
+  shelves: Shelf[]; loading: boolean; openTitle: (title: Title) => void; onLoadMore: (id: string) => void;
 }): React.JSX.Element {
-  return (
-    <div className="home__shelf">
-      {watching.length > 0 && (
-        <Rail title={shelfTitle('Continue watching')} loop={false}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
-      )}
-
-      {eventRail !== null && eventRail.titles.length > 0 && (
-        <Rail id={eventRail.id} title={eventRail.title} loop={eventRail.titles.length >= 2}>
-          {mapRailPosters(eventRail.titles, eventRail.id, openTitle)}
-        </Rail>
-      )}
-
-      {upcomingTitles.length > 0 && (
-        <Rail id="upcoming-week" title={shelfTitle('New episodes this week')} loop={false}>
-          {mapRailPosters(upcomingTitles, 'upcoming-week', openTitle)}
-        </Rail>
-      )}
-
-      {watchlist.length > 0 && (
-        <Rail title={shelfTitle('Watchlist')} loop={false}>{mapRailPosters(watchlist, 'watchlist', openTitle)}</Rail>
-      )}
-
-      {catalogRails.length > 0 ? (
-        catalogRails.map((rail) => (
-          <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
-            <Rail key={rail.id} title={shelfTitle(rail.title)}>
-              {mapRailPosters(rail.titles, rail.id, openTitle)}
-            </Rail>
-          </RailPaging>
-        ))
-      ) : loading ? (
-        <Rail bare id="for-you-1">
-          <RailSkeletons count={8} label="Loading TVM Stream" />
-        </Rail>
-      ) : null}
-    </div>
-  );
+  return <div className="home__shelf">
+    {shelves.map((rail) => <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
+      <Rail title={rail.title} loop={rail.loop}>
+        {mapRailPosters(rail.titles, rail.id, openTitle, rail.id === 'continue' ? { layout: 'landscape' } : undefined)}
+      </Rail>
+    </RailPaging>)}
+    {loading && !shelves.length && <Rail bare id="for-you-1"><RailSkeletons count={8} label="Loading TVM Stream" /></Rail>}
+  </div>;
 });
 
 export function Home(_props: ScreenProps): React.JSX.Element {
@@ -146,19 +73,17 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   );
   const [slide, setSlide] = useState(0);
   const [tick, setTick] = useState(0);
-  const [watchlistBusy, setWatchlistBusy] = useState(false);
-  const [heroPreviews, setHeroPreviews] = useState(() => readPrefs().heroPreviews);
+  const [prefs, setPrefs] = useState(readPrefs);
+  const config = useReleaseConfig();
+  const [surprise, setSurprise] = useState<MediaItem | null>(null);
   const [reducedMotion, setReducedMotion] = useState(() => prefersReducedMotion());
   const [heroScrolledOut, setHeroScrolledOut] = useState(false);
   const [docHidden, setDocHidden] = useState(() => (typeof document !== 'undefined' ? document.hidden : false));
-  const [previewTrailer, setPreviewTrailer] = useState<ExtrasTrailer | null>(null);
-  const { message: toast, showToast } = useToast();
 
   useEffect(() => {
     void fetchPlan().then((status) => {
       applyPlanClass(status);
     });
-    void hydratePrefs().then((prefs) => setHeroPreviews(prefs.heroPreviews));
     void fetchProfiles().then(() => setMaxAge(effectiveProfileMaxAge(peekActiveProfile())));
     const unsubProfiles = subscribeProfiles(() => {
       setMaxAge(effectiveProfileMaxAge(peekActiveProfile()));
@@ -167,7 +92,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       });
     });
     const unsubMotion = subscribeMotionPreference(() => setReducedMotion(prefersReducedMotion()));
-    const onPrefs = (): void => setHeroPreviews(readPrefs().heroPreviews);
+    const onPrefs = (): void => setPrefs(readPrefs());
     const onVisibility = (): void => setDocHidden(document.hidden);
     window.addEventListener(PREFS_CHANGED_EVENT, onPrefs);
     document.addEventListener('visibilitychange', onVisibility);
@@ -218,32 +143,17 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     const fromRails = rails.filter(rail => rail.id !== 'anime-adapted').flatMap((rail) => rail.items.map(asTitle)).filter((title) => title.backdrop !== '');
     const merged = [...(featured !== null ? [featured] : []), ...watching, ...fromRails];
     const seen = new Set<string>();
+    const allowed = new Set(filterItemsByAge(merged.map(toMediaItem), maxAge).map((item) => item.id));
     return merged.filter((title) => {
+      if (!allowed.has(title.id)) return false;
       if (seen.has(title.id) || seen.has(title.title)) return false;
       seen.add(title.id);
       seen.add(title.title);
       return true;
     }).slice(0, 4);
-  }, [featured, rails, watching]);
+  }, [featured, maxAge, rails, watching]);
 
   const displayHero = heroes[slide % Math.max(heroes.length, 1)];
-  const heroSaved = displayHero !== undefined && watchlist.some((entry) => entry.id === displayHero.id);
-
-  const toggleHeroWatchlist = useCallback(async (): Promise<void> => {
-    if (displayHero === undefined || watchlistBusy) return;
-    setWatchlistBusy(true);
-    try {
-      const next = heroSaved
-        ? await removeWatchlist(displayHero.id)
-        : await addWatchlist(toMediaItem(displayHero));
-      setWatchlist(next.map(asTitle));
-      showToast(heroSaved ? 'Removed from My List' : 'Added to My List');
-    } catch {
-      showToast('Could not update My List');
-    } finally {
-      setWatchlistBusy(false);
-    }
-  }, [displayHero, heroSaved, showToast, watchlistBusy]);
   const catalogRails = useMemo(
     () =>
       pagedRails
@@ -289,30 +199,15 @@ export function Home(_props: ScreenProps): React.JSX.Element {
    * changes under a finger and waits a full interval after a swipe. Nothing
    * else sends it.
    */
-  const [heroNudge, setHeroNudge] = useState(0);
   useEffect(() => {
     if (heroes.length < 2) return;
     const step = (event: Event): void => {
       const by = Number((event as CustomEvent<number>).detail) || 0;
       if (by !== 0) setSlide((value) => (((value + by) % heroes.length) + heroes.length) % heroes.length);
-      setHeroNudge((value) => value + 1);
     };
     window.addEventListener('tvm:hero-step', step);
     return () => window.removeEventListener('tvm:hero-step', step);
   }, [heroes.length]);
-
-  useEffect(() => {
-    if (heroes.length < 2 || previewTrailer !== null) return;
-    const timer = window.setInterval(() => {
-      if (document.hidden || prefersReducedMotion()) return;
-      const page = pageRef.current;
-      if (page === null || page.scrollTop > page.clientHeight * 0.35) return;
-      const activeScreen = document.activeElement?.closest('[data-screen]');
-      if (activeScreen !== null && activeScreen !== undefined && activeScreen.getAttribute('data-screen') !== 'home') return;
-      setSlide((value) => (value + 1) % heroes.length);
-    }, 8_000);
-    return () => window.clearInterval(timer);
-  }, [heroes.length, heroNudge, previewTrailer]);
 
   useEffect(() => {
     const page = pageRef.current;
@@ -324,6 +219,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       raf = 0;
       const height = stage.offsetHeight;
       stage.style.setProperty('--hero-fade', String(heroScrollFade(page.scrollTop, height)));
+      stage.style.setProperty('--spotlight-scroll', String(Math.min(1, page.scrollTop / Math.max(1, height))));
       const scrolledOut = height > 0 && page.scrollTop > height * 0.35;
       setHeroScrolledOut((prev) => (prev === scrolledOut ? prev : scrolledOut));
     };
@@ -386,37 +282,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     </div>
   );
 
-  if (failed && loading === false && displayHero === undefined && catalogRails.length === 0) {
-    return (
-      <main className="home home--launcher" ref={pageRef}>
-        <PageScene />
-        <Ribbon active="home" />
-        <section className="stage stage--home">
-          <HomeClock />
-          <div className="stage__copy">
-            <p className="stage__kicker home__kicker">
-              <span className="home__kicker-home">Home</span>
-            </p>
-            <h1 className="stage__title">Welcome</h1>
-          </div>
-        </section>
-        {launcher}
-        <div className="home__shelf">
-          <ErrorState
-            title="Home could not load"
-            body="TVM could not reach the local core. Check that the app is running, then retry."
-            onRetry={() => {
-              setLoading(true);
-              setFailed(false);
-              setTick((value) => value + 1);
-            }}
-          />
-        </div>
-      </main>
-    );
-  }
-
-  const liveEvent = activeEvents[0] ?? null;
+  const liveEvent = prefs.spotlightEvents && maxAge >= 18 ? activeEvents[0] ?? null : null;
   const eventSpotlight = useMemo<Title | undefined>(() => {
     if (liveEvent === null) return undefined;
     const raw = liveEvent.spotlight ?? liveEvent.items.find((item) => item.backdrop !== '') ?? liveEvent.items[0];
@@ -462,32 +328,17 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   }, [maxAge, upcomingHome]);
 
   const hero = liveEvent !== null ? eventSpotlight : displayHero;
-  const heroSrc = hero === undefined ? '' : preferBackdrop(hero.id, hero.backdrop, hero.poster);
-
   useEffect(() => {
-    setPreviewTrailer(null);
-    if (hero === undefined || !homeActive || heroScrolledOut) return undefined;
-    const guard = readRuntimeHeroPreviewGuard(heroPreviews, reducedMotion || docHidden);
-    if (!shouldPlayHeroPreview(guard)) return undefined;
-    const imdb = imdbIdFrom(hero.id);
-    if (imdb === null) return undefined;
-
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      const liveGuard = readRuntimeHeroPreviewGuard(readPrefs().heroPreviews, prefersReducedMotion());
-      if (cancelled || !shouldPlayHeroPreview(liveGuard)) return;
-      void fetchExtrasTrailers(imdb).then((list) => {
-        if (cancelled || list === null || list.length === 0) return;
-        const check = readRuntimeHeroPreviewGuard(readPrefs().heroPreviews, prefersReducedMotion());
-        if (shouldPlayHeroPreview(check)) setPreviewTrailer(list[0] ?? null);
-      });
-    }, 4_000);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [docHidden, hero?.id, heroNudge, heroPreviews, heroScrolledOut, homeActive, reducedMotion]);
+    setSurprise(null);
+    if (!extraEnabled('surpriseMe', prefs) || !homeActive) return;
+    const controller = new AbortController();
+    void apiFetch('/api/extras/surprise', { signal: controller.signal }).then(async (response) => {
+      if (!response.ok) return;
+      const { item } = await response.json() as { item?: MediaItem };
+      if (item && !controller.signal.aborted && filterItemsByAge([item], maxAge).length) setSurprise(item);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [prefs, config, maxAge, homeActive]);
 
   const openEventRail = useCallback((): void => {
     if (liveEvent === null) return;
@@ -502,135 +353,46 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     if (key !== null) requestFocus(key);
   }, [eventSpotlight, liveEvent, openTitle]);
 
-  const heroStyle = liveEvent !== null
-    ? ({
-        ['--tvm-glass27-primary' as string]: liveEvent.accent,
-        ['--tvm-event-accent' as string]: liveEvent.accent,
-        ['--tvm-event-glow' as string]: liveEvent.glow,
-      } as CSSProperties)
-    : undefined;
+  const shelves: Shelf[] = [
+    { id: 'continue', title: 'Continue watching', titles: filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle), loop: false },
+    ...(eventRail ? [eventRail] : []),
+    ...(extraEnabled('comingUp', prefs) ? [{ id: 'upcoming', title: 'New episodes this week', titles: upcomingTitles, loop: false }] : []),
+    { id: 'my-list', title: 'My List', titles: filterItemsByAge(watchlist.map(toMediaItem), maxAge).map(asTitle), loop: false },
+    ...catalogRails,
+  ];
+  const sections = new Map(prefs.homeSections.map((section, index) => [section.id, { ...section, index }]));
+  const autoOrder = sections.get('automatic');
+  const priority = (id: string): number => sections.get(id)?.index ?? (id.startsWith('auto-') ? autoOrder?.index : undefined) ?? 1000;
+  const visibleShelves = shelves.filter(({ id, titles }) => titles.length > 0 && sections.get(id)?.visible !== false &&
+    (!id.startsWith('auto-') || extraEnabled('autoCollections', prefs) && autoOrder?.visible !== false))
+    .sort((a, b) => priority(a.id) - priority(b.id));
+
+  const minUpdateNeeded = updateRequired(currentAppVersion(), config?.minVersion);
 
   return (
-    <main className="home home--launcher" ref={pageRef}>
+    <main className="home home--launcher polish-home" ref={pageRef}>
       <PageScene />
       <Ribbon active="home" />
-      <section className={`stage stage--home${liveEvent !== null ? ' stage--event' : ''}`} style={heroStyle}>
-        {hero !== undefined ? (
-          <>
-            <HeroArt src={heroSrc} hue={hero.hue} />
-            {previewTrailer !== null && (
-              <div className="stage__preview" aria-hidden="true">
-                <iframe
-                  key={previewTrailer.youtubeId}
-                  className="stage__preview-video"
-                  src={youtubeEmbedUrl(previewTrailer.youtubeId, { muted: true, loop: true })}
-                  title=""
-                  tabIndex={-1}
-                  allow="autoplay; encrypted-media"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              </div>
-            )}
-          </>
-        ) : loading ? (
-          <div className="stage__pictures" aria-hidden="true">
-            <div className="stage__art stage__art--pending art--pending">
-              <span className="skeleton skeleton--art" />
-            </div>
-          </div>
-        ) : null}
-        {liveEvent !== null && <div className="stage__event-glow" aria-hidden="true" />}
-        <div className="stage__vignette" aria-hidden="true" />
-        <HomeClock />
-        <div className="stage__copy">
-          <p className="stage__kicker home__kicker">
-            <span className="home__kicker-home">Home</span>
-            {liveEvent !== null ? (
-              <span className="home__kicker-source stage__event-kicker">{liveEvent.kicker}</span>
-            ) : hero !== undefined ? (
-              <span className="home__kicker-source">Featured on TVM Stream</span>
-            ) : null}
-            {hero !== undefined && hero.rating !== '' && (
-              <ImdbBadge compact id="hero-imdb" mediaId={hero.id} rating={hero.rating} isSeries={hero.kind === 'series'} />
-            )}
-          </p>
-          {liveEvent !== null ? (
-            <>
-              <h1 key={liveEvent.id} className="stage__title">{liveEvent.title}</h1>
-              <p className="stage__event-line glass-scrim">{liveEvent.line}</p>
-            </>
-          ) : hero !== undefined ? (
-            <h1 key={hero.id} className={`stage__title${hero.wordmark === 'ember' ? ' stage__title--ember' : ''}`}>{hero.title}</h1>
-          ) : (
-            <h1 className="stage__title">Welcome</h1>
-          )}
-          {liveEvent !== null ? (
-            <div className="stage__actions" data-wrap="row">
-              <FocusButton id="hero-play" variant="primary" onSelect={openEventRail}>
-                {/catch up/i.test(liveEvent.line) ? 'Catch up' : 'Watch the saga'}
-              </FocusButton>
-              {eventSpotlight !== undefined && (
-                <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={() => openTitle(eventSpotlight)}>
-                  Details
-                </FocusButton>
-              )}
-            </div>
-          ) : (
-            <>
-              <p className="stage__watchline">
-                <FocusButton
-                  id="hero-play"
-                  className="stage__watchnow"
-                  onSelect={() => (hero !== undefined ? openTitle(hero) : openStream())}
-                >
-                  {hero !== undefined ? 'Watch' : 'TVM Stream'}
-                </FocusButton>
-                <span className="stage__watchline-rule" aria-hidden="true">
-                  |
-                </span>
-                <BrandLockup focusId="hero-mark" />
-              </p>
-              <div className="stage__actions" data-wrap="row">
-                <FocusButton id="hero-info" className="tvm-button--glass stage__learn" onSelect={openStream}>
-                  Browse TVM Stream
-                </FocusButton>
-                {hero !== undefined && (
-                  <FocusButton
-                    id="hero-watchlist"
-                    className="tvm-button--glass stage__watchlist"
-                    disabled={watchlistBusy}
-                    onSelect={() => void toggleHeroWatchlist()}
-                  >
-                    {heroSaved ? '✓ In My List' : '+ My List'}
-                  </FocusButton>
-                )}
-              </div>
-              {heroes.length > 1 && (
-                <div className="stage__dots" aria-hidden="true">
-                  {heroes.map((item, index) => (
-                    <span key={item.id} className={`stage__dot${index === slide ? ' stage__dot--on' : ''}`} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-
+      <Spotlight hero={hero} event={liveEvent} enabled={prefs.heroPreviews}
+        reduced={reducedMotion} active={homeActive && !docHidden && !heroScrolledOut}
+        announcement={extraEnabled('announcements', prefs) ? config?.announcement : null}
+        rating={extraEnabled('ratings', prefs)}
+        onPlay={liveEvent ? openEventRail : () => hero ? openTitle(hero) : openStream()}
+        onDetails={() => { if (hero) void openDetails(navigate, hero); }}
+        onSurprise={surprise ? () => openTitle(asTitle(surprise)) : undefined} />
+      {minUpdateNeeded && (
+        <aside className="spotlight__announcement spotlight__announcement--critical" role="alert" style={{ marginInline: 'var(--tvm-gutter)', marginBlockEnd: 16 }}>
+          <span>Update required — a newer TVM build ({config?.minVersion}) is needed to keep playing.</span>
+          <FocusButton id="home-update-required" variant="quiet" onSelect={() => navigate.push('updates')}>
+            Open updates
+          </FocusButton>
+        </aside>
+      )}
+      {failed && !hero && <ErrorState title="Home could not load" body="Check that the local TVM service is running."
+        onRetry={() => { setLoading(true); setFailed(false); setTick((value) => value + 1); }} />}
+      <HomeShelves shelves={visibleShelves} loading={loading} openTitle={openTitle} onLoadMore={loadMoreRail} />
       {launcher}
-
-      <HomeShelves
-        watching={filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle)}
-        eventRail={eventRail !== null ? { ...eventRail, titles: filterItemsByAge(eventRail.titles.map(toMediaItem), maxAge).map(asTitle) } : null}
-        upcomingTitles={upcomingTitles}
-        watchlist={filterItemsByAge(watchlist.map(toMediaItem), maxAge).map(asTitle)}
-        catalogRails={catalogRails}
-        loading={loading}
-        openTitle={openTitle}
-        onLoadMore={loadMoreRail}
-      />
-      <ChangelogCornerCard />
-      <ToastPill message={toast} />
+      <PatchNotesPopup />
     </main>
   );
 }

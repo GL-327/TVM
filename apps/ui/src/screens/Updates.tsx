@@ -6,7 +6,8 @@ import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import { formatAppDate } from '../i18n/locale';
 import { readAutoUpdate, savePrefs } from '../data/prefs';
-import { rememberPendingChangelog, type ChangelogEntry, type ChangelogRecord, parseChangelogRecord } from '../data/changelog';
+import { currentAppVersion, rememberPendingChangelog, type ChangelogEntry, type ChangelogRecord, parseChangelogRecord } from '../data/changelog';
+import { updateRequired, useReleaseConfig } from '../data/releaseConfig';
 
 type UpdateKind =
   | 'idle'
@@ -67,6 +68,7 @@ const EMPTY: UpdateStatus = {
 
 export function Updates(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
+  const releaseConfig = useReleaseConfig();
   const [status, setStatus] = useState<UpdateStatus>(EMPTY);
   const [busy, setBusy] = useState<'check' | 'apply' | 'token' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -170,12 +172,21 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
   const appBuild = typeof status.appBuild === 'string' && status.appBuild !== 'unknown'
     ? status.appBuild.slice(0, 7)
     : null;
+  const minUpdateNeeded = updateRequired(status.current || currentAppVersion(), releaseConfig?.minVersion);
 
   return (
     <main className="page page--settings">
       <TopBar title="Updates" />
       <p className="stage__kicker">GLogic Studios</p>
       <h1 className="page__heading">Updates</h1>
+      {minUpdateNeeded && (
+        <aside className="spotlight__announcement spotlight__announcement--critical" role="alert">
+          <span>
+            Update required — your installed build ({status.current || currentAppVersion()}) is older than the
+            required version ({releaseConfig?.minVersion}).
+          </span>
+        </aside>
+      )}
       <p className="page__lede">
         Builds come from GitHub ({status.channel}). When automatic updates are on, this app checks as
         soon as it opens and applies the latest interface. Turn that off in Settings to stay on this

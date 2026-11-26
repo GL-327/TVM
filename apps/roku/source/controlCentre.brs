@@ -58,7 +58,7 @@ end function
 
 ' ---- Playback tab ----
 
-' state: { playing, hasNext, nextTitle, live }
+' state: { playing, hasNext, nextTitle, live, hasVersions, versionLabel, sleepEnabled, sleepLabel }
 function ccPlaybackRows(state as Object) as Object
   rows = []
   playing = (aaGet(state, "playing", false) = true)
@@ -78,6 +78,47 @@ function ccPlaybackRows(state as Object) as Object
     detail = asText(aaGet(state, "nextTitle", ""))
     rows.Push(ccRow("next", "Next episode", "forward", "chevron", true, detail))
   end if
+  if not live and aaGet(state, "hasVersions", false) = true
+    rows.Push(ccRow("versions", "Versions", "apps", "chevron", true, asText(aaGet(state, "versionLabel", ""))))
+  end if
+  if aaGet(state, "sleepEnabled", false) = true
+    sleepDetail = asText(aaGet(state, "sleepLabel", "Off"))
+    if sleepDetail = "" then sleepDetail = "Off"
+    rows.Push(ccRow("sleep", "Sleep timer", "", "chevron", true, sleepDetail))
+  end if
+  return rows
+end function
+
+function ccSleepLabel(mode as String, remaining = 0 as Integer) as String
+  if mode = "end" then return "End of episode"
+  if remaining > 0
+    mins = Int((remaining + 59) / 60)
+    if mins <= 1 then return "1 min left"
+    return StrI(mins).Trim() + " min left"
+  end if
+  if mode = "15" or mode = "30" or mode = "45" or mode = "60" then return mode + " min"
+  return "Off"
+end function
+
+function ccSleepRows(currentMode as String, isSeries = false as Boolean) as Object
+  rows = [ccHeader("hdr:sleep", "Sleep timer", "Stop playback automatically")]
+  opts = [
+    { id: "off", label: "Off", detail: "Do not stop automatically" }
+    { id: "15", label: "15 minutes", detail: "" }
+    { id: "30", label: "30 minutes", detail: "" }
+    { id: "45", label: "45 minutes", detail: "" }
+    { id: "60", label: "60 minutes", detail: "" }
+  ]
+  if isSeries then opts.Push({ id: "end", label: "End of episode", detail: "Stop when this episode finishes" })
+  for each opt in opts
+    chosen = (opt.id = currentMode)
+    trailing = "none"
+    if chosen then trailing = "check"
+    row = ccRow("sleep:" + opt.id, opt.label, "", trailing, true, opt.detail)
+    row.checked = chosen
+    rows.Push(row)
+  end for
+  rows.Push(ccRow("sleep:back", "Back", "back", "none", true, ""))
   return rows
 end function
 

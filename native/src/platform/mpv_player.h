@@ -43,11 +43,12 @@ public:
     // Starts mpv on `url`. A session already playing is stopped first. False, with the error
     // event, when mpv could not be started.
     bool Start(const std::filesystem::path& executable, const std::string& url, std::optional<double> startAt,
-               double volume, bool muted);
+               double volume, bool muted, const std::string& ytdlpPath = {}, const std::string& audioLanguage = {});
     // Ends the session and hides the picture. Safe to call when nothing plays.
     void Stop();
     bool Active() const { return process_ != nullptr; }
 
+    void SetNightMode(bool enabled);
     void AddSubtitle(const std::string& file, const std::string& label, const std::string& language, bool select);
     void TogglePause();
     void SetPaused(bool paused);

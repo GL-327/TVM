@@ -36,7 +36,8 @@ test('Extras observers, settings and remote actions are connected to the player 
   assert.match(scene, /loadDetailsExtras\(task\.json\)/);
   assert.match(player, /content\.subtitleTracks = m\.extraTracks/);
   assert.match(extras, /m\.video\.content\.subtitleTracks = m\.extraTracks/);
-  assert.match(extras, /m\.video\.subtitleTrack = track\.TrackName/);
+  assert.match(extras, /applySubtitle\(asText\(aaGet\(track, "TrackName", ""\)\), false\)/);
+  assert.match(player, /m\.video\.subtitleTrack = trackId/);
   assert.match(extras, /m\.upCancelled = true/);
   assert.match(player, /m\.skipSeen\[segment\.key\]\.TotalMilliseconds\(\) < 8000/);
   assert.doesNotMatch(player, /return 90|m\.position < 90/);

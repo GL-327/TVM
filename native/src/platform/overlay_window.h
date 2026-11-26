@@ -22,6 +22,8 @@ public:
     OverlayWindow& operator=(const OverlayWindow&) = delete;
 
     void Show(bool visible);
+    void SetForeground(bool foreground);
+    void ResetZOrder();
     bool Visible() const { return visible_; }
     // Draws a frame over the owner's client area, which `draw` paints onto a cleared, transparent target.
     void Paint(Graphics& graphics, const std::function<void(ID2D1RenderTarget*)>& draw);
@@ -33,7 +35,7 @@ private:
     HINSTANCE instance_;
     HWND owner_;
     HWND window_ = nullptr;
-    bool visible_ = false;
+    bool visible_ = false, topmost_ = false;
 
     HDC dc_ = nullptr;
     HBITMAP bitmap_ = nullptr;

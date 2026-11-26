@@ -29,7 +29,10 @@
     <Poster id="imdbBadge" width="420" height="72" translation="[192, 706]" uri="pkg:/images/glass/chip-fill.9.png" blendColor="0xF5C518FF" />
     <Label id="imdb" translation="[212, 710]" width="380" height="64" horizAlign="center" color="0x000000FF" />
     <Label id="meta" translation="[600, 710]" width="2400" height="64" color="0xD8D9E8FF" />
+    <Poster id="qualityBadgeBg" width="380" height="72" translation="[1900, 706]" uri="pkg:/images/glass/chip-fill.9.png" blendColor="0x232733EE" visible="false" />
+    <Label id="qualityBadge" translation="[1916, 710]" width="348" height="64" horizAlign="center" color="0xF5F7FAFF" visible="false" />
     <FocusButton id="play" translation="[160, 830]" />
+    <FocusButton id="versions" translation="[600, 830]" visible="false" />
     <FocusButton id="imdbBtn" translation="[600, 830]" />
     <FocusButton id="save" translation="[1040, 830]" />
     <FocusButton id="watchOn" translation="[2200, 830]" visible="false" />

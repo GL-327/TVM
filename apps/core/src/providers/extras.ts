@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { createPreviewMedia } from './previewMedia.ts';
 import { readPrefs, writePrefs } from '../prefs.ts';
 import { readPrivateJson } from './privateJson.ts';
 import { isFinished, readProgress, type ProgressEntry } from './progress.ts';
@@ -355,6 +356,8 @@ function watchedDelta(position: number, previous: { position: number; updated: s
 
 export interface CoreExtrasOptions {
   dataDir: string;
+  env?: NodeJS.ProcessEnv;
+  title?: (id: string) => Promise<{ tmdbId?: number; series: boolean } | null>;
   scope: () => string;
   fetch?: typeof fetch;
   now?: () => number;
@@ -434,6 +437,16 @@ function diskCache(dataDir: string, now: () => number) {
 export function createCoreExtras(options: CoreExtrasOptions) {
   const now = options.now ?? Date.now;
   const client: ExtrasClient = createExtras({ fetch: options.fetch, now, cache: diskCache(options.dataDir, now) });
+  const previews = createPreviewMedia({ dataDir: options.dataDir, env: options.env, now, fetch: options.fetch,
+    trailers: id => client.trailers(id), title: options.title ?? (async () => null) });
+  const prefs = () => readPrefs(options.dataDir);
+  async function canPreview(id: string): Promise<boolean> {
+    if (!validImdb(id)) return false;
+    const filter = options.filter();
+    const item = await within(options.item(id), null);
+    // Adult profiles may play an event whose details catalogue is still warming.
+    return (await filter([item ?? fallbackItem(id)])).length > 0;
+  }
   const known = new Map<string, MediaItem>();
   const knownItem = (id: string): MediaItem | undefined => {
     const source = known.get(id) ?? known.get(imdbOf(id) ?? '');
@@ -528,7 +541,7 @@ export function createCoreExtras(options: CoreExtrasOptions) {
     return { next: await client.upcoming(id) };
   }
   function recordProgress(id: string, position: number, duration: number, previous?: ProgressEntry): void {
-    if (!Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration <= 0) return;
+    if (!prefs().extras.watchStats || !Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration <= 0) return;
     const scope = options.scope();
     try {
       const state = stateFor(scope);
@@ -563,8 +576,10 @@ export function createCoreExtras(options: CoreExtrasOptions) {
     // Start both in parallel and keep either result that arrives inside the budget.
     let subtitles: Awaited<ReturnType<ExtrasClient['subtitles']>> = [];
     let segments = emptySegments();
+    const settings = prefs();
     const work = Promise.all([
-      client.subtitles({ ...input, id }, languages(scope)).then(value => { subtitles = value; }),
+      settings.extras.onlineSubtitles && settings.subtitleMode !== 'off'
+        ? client.subtitles({ ...input, id }, languages(scope)).then(value => { subtitles = value; }) : undefined,
       client.segments({ ...input, id, title, anime }).then(value => { segments = value; }),
     ]).catch(() => {});
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -572,7 +587,8 @@ export function createCoreExtras(options: CoreExtrasOptions) {
     finally { clearTimeout(timer); }
     return { ...result, subtitles: [...(result.subtitles ?? []), ...subtitles], segments };
   }
-  return { client, collection, upcoming, upcomingHome, stats, clearStats, recordProgress, remember, languages, saveLanguage, enrichPlayback };
+  return { client, collection, upcoming, upcomingHome, stats, clearStats, recordProgress, remember, languages, saveLanguage, enrichPlayback,
+    previews, prefs: prefs, canPreview };
 }
 export type CoreExtras = ReturnType<typeof createCoreExtras>;
 
@@ -585,6 +601,20 @@ export async function extrasRoute(extras: CoreExtras, path: string, method: stri
   };
   if (method === 'POST' && path === '/api/extras/stats/clear') { extras.clearStats(); return { status: 204, body: null }; }
   if (method !== 'GET') return null;
+  const prefs = extras.prefs();
+  if (path === '/api/extras/hero-clip') {
+    const clip = prefs.heroPreviews && await extras.canPreview(input.id)
+      ? await extras.previews.hero(input.id) : { status: 'unavailable' };
+    return { status: clip.status === 'ready' ? 200 : clip.status === 'preparing' ? 202 : 404, body: clip };
+  }
+  if (path === '/api/extras/theme') {
+    const theme = prefs.extras.themeSongs && await extras.canPreview(input.id) ? await extras.previews.theme(input.id) : null;
+    return { status: theme ? 200 : 404, body: theme ?? { error: 'unavailable' } };
+  }
+  if (path === '/api/extras/ytdlp') {
+    const file = prefs.extras.trailers ? await extras.previews.ytdlp() : null;
+    return { status: file ? 200 : 404, body: file ? { path: file } : { error: 'unavailable' } };
+  }
   if (path === '/api/extras/subtitle.vtt') {
     const url = query.get('u') ?? '';
     if (!isSubtitleUrl(url)) return { status: 400, body: { error: 'invalid_subtitle_url' } };
@@ -592,13 +622,13 @@ export async function extrasRoute(extras: CoreExtras, path: string, method: stri
     return { status: 200, text: text ?? 'WEBVTT\n\n' };
   }
   const result = path === '/api/extras/segments' ? await within(extras.client.segments(input), emptySegments())
-    : path === '/api/extras/subtitles' ? { subtitles: await extras.client.subtitles(input, extras.languages()) }
-    : path === '/api/extras/trailers' ? { trailers: await extras.client.trailers(input.id) }
-    : path === '/api/extras/collection' ? await within(extras.collection(input.id), { name: null, items: [] })
-    : path === '/api/extras/upcoming/home' ? await within(extras.upcomingHome(), { items: [] })
-    : path === '/api/extras/upcoming' ? await within(extras.upcoming(input.id), { next: null })
+    : path === '/api/extras/subtitles' ? { subtitles: prefs.extras.onlineSubtitles ? await extras.client.subtitles(input, extras.languages()) : [] }
+    : path === '/api/extras/trailers' ? { trailers: prefs.extras.trailers || prefs.extras.trailerBackdrops ? await extras.client.trailers(input.id) : [] }
+    : path === '/api/extras/collection' ? (prefs.extras.collections ? await within(extras.collection(input.id), { name: null, items: [] }) : { name: null, items: [] })
+    : path === '/api/extras/upcoming/home' ? (prefs.extras.comingUp ? await within(extras.upcomingHome(), { items: [] }) : { items: [] })
+    : path === '/api/extras/upcoming' ? (prefs.extras.comingUp ? await within(extras.upcoming(input.id), { next: null }) : { next: null })
     : path === '/api/extras/stats' ? extras.stats()
-    : path === '/api/extras/anime-title' ? await extras.client.animeTitle(input.title ?? '') : undefined;
+    : path === '/api/extras/anime-title' ? (prefs.extras.animeTitles ? await extras.client.animeTitle(input.title ?? '') : { english: null, malId: null }) : undefined;
   return result === undefined ? null : { status: 200, body: result };
 }
 

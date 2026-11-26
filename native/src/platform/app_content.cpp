@@ -66,9 +66,46 @@ void App::SyncReleaseNotice(double nowMs) {
     if (shell_->ActiveScreenName() != "home" || streamLane_ != "all" || intro_->Animating()) {
         shell_->SetReleaseCard(std::nullopt); return;
     }
+    // Whether the notes come as a pop-up is the account service's call (flags.patchNotesPopup), asked once.
+    if (patchPopupFlag_ < 0) {
+        if (!patchPopupAsked_) {
+            patchPopupAsked_ = true;
+            background_->Run([this] {
+                int flag = 0;
+                try {
+                    const auto config = core_->Call("/api/config");
+                    if (config.contains("flags") && config["flags"].is_object()) flag = config["flags"].value("patchNotesPopup", false) ? 1 : 0;
+                } catch (...) {}
+                patchPopupFlag_ = flag;
+            });
+        }
+        return;
+    }
     releaseNotice_->Show(nowMs);
     const auto data = content_->Read("changelog");
     if (!data.contains("releases")) return;
+    if (patchPopupFlag_ == 1 && !shell_->HasPatchNotes() && !data["releases"].empty()) {
+        const auto& release = data["releases"][0];
+        ui::Shell::PatchNotes notes;
+        notes.version = release.value("version", "");
+        notes.title = release.value("title", "");
+        const auto strings = [](const nlohmann::json& list, std::vector<std::string>& out) {
+            if (!list.is_array()) return;
+            for (const auto& line : list) if (line.is_string()) out.push_back(line.get<std::string>());
+        };
+        strings(release.value("highlights", nlohmann::json::array()), notes.highlights);
+        if (release.contains("changes") && release["changes"].is_array())
+            for (const auto& change : release["changes"]) {
+                if (change.is_string()) notes.changes.push_back(change.get<std::string>());
+                else if (change.is_object() && change.contains("text") && change["text"].is_string()) notes.changes.push_back(change["text"].get<std::string>());
+            }
+        strings(release.value("knownIssues", nlohmann::json::array()), notes.knownIssues);
+        shell_->SetReleaseCard(std::nullopt);
+        shell_->SetPatchNotes(std::move(notes));
+        dirty_ = true;
+        return;
+    }
+    if (patchPopupFlag_ == 1) return;
     for (const auto& release : data["releases"]) if (release.value("version", "") == config::kCoreVersion) {
         ui::Shell::ReleaseCard card;
         card.version = config::kCoreVersion;
@@ -81,7 +118,7 @@ void App::SyncReleaseNotice(double nowMs) {
 void App::DismissReleaseNotice(double nowMs) {
     if (!releaseNotice_ || !releaseNotice_->Input(nowMs)) return;
     try { util::WriteFileAtomically(dataDir_ / "last-seen-version", releaseNotice_->Seen()); } catch (...) {}
-    shell_->SetReleaseCard(std::nullopt); dirty_ = true;
+    shell_->SetReleaseCard(std::nullopt); shell_->SetPatchNotes(std::nullopt); dirty_ = true;
 }
 void App::AskProfilePin(const ui::Command& pending, const std::string& id) {
     pendingProfileAction_ = pending;

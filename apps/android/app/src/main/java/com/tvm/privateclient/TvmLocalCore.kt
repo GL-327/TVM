@@ -34,8 +34,14 @@ class TvmLocalCore(
     val reviews: TvmReviews = TvmReviews(media::item),
     accountsHttp: TvmAccountsHttp = TvmAccountsHttp.Default,
     sessionVault: TvmSessionVault = MemorySessionVault(),
+    adminVault: TvmSessionVault = MemorySessionVault(),
 ) {
-    private val accounts = TvmAccounts(bundledAccess, accountsHttp, sessionVault)
+    private val accounts = TvmAccounts(bundledAccess, accountsHttp, sessionVault, adminVault = adminVault)
+
+    /** The app came back to the foreground: forget cached account, key and config answers so changes show at once. */
+    fun onForeground() {
+        accounts.invalidateCaches()
+    }
 
     /** The interface this app serves, and the updater that keeps it current. */
     val bundledUi = TvmBundledUi(store, app)
@@ -87,6 +93,7 @@ class TvmLocalCore(
     private val liveReflector = TvmLiveReflector()
 
     companion object {
+        private val ADMIN_ACCOUNT_PATH = Regex("^/api/admin/accounts/[A-Za-z0-9_-]{1,128}/(?:sessions|profile|password|tier)$|^/api/admin/accounts/[A-Za-z0-9_-]{1,128}/sessions/[A-Za-z0-9_-]{1,128}$")
         private const val PICK_LIMIT = 48
         private const val MAX_CHANNELS = 2000
 
@@ -103,6 +110,7 @@ class TvmLocalCore(
             http: TvmHttp = TvmHttp.Default,
             accountsHttp: TvmAccountsHttp = TvmAccountsHttp.Default,
             sessionVault: TvmSessionVault = MemorySessionVault(),
+            adminVault: TvmSessionVault = MemorySessionVault(),
         ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
@@ -114,7 +122,7 @@ class TvmLocalCore(
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans, content, pinGuard)
             val reviews = TvmReviews(media::item)
-            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault)
+            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault)
         }
     }
 
@@ -185,13 +193,40 @@ class TvmLocalCore(
 
         if (path == "/api/prefs" && method == "GET") return HttpReply.json(200, TvmPrefs.load(store).json())
         if (path == "/api/prefs" && method == "PUT") {
-            val prefs = TvmPrefs.load(store)
-            val language = json.opt("language") as? String
-            if (language != null && language in TvmPrefs.LANGUAGES) prefs.language = language
-            val auto = json.opt("autoUpdate") as? Boolean
-            if (auto != null) prefs.autoUpdate = auto
+            val prefs = TvmPrefs.load(store).merge(json)
             prefs.save(store)
             return HttpReply.json(200, prefs.json())
+        }
+        if (path == "/api/config" && method == "GET") return HttpReply.json(200, accounts.config())
+        if (path == "/api/announcement" && method == "GET") return HttpReply.json(200, accounts.announcement())
+        // Hero clips, theme songs and yt-dlp need a desktop; phones say so and the interface hides the feature.
+        if (path.startsWith("/api/extras/") && path != "/api/extras/surprise" && (method == "GET" || method == "HEAD")) {
+            return HttpReply.json(404, Json.obj("status" to "unavailable", "error" to "unavailable"))
+        }
+        if (path == "/api/extras/surprise" && method == "GET") {
+            val pool = media.watchlist()
+            return HttpReply.json(200, Json.obj("item" to (if (pool.isEmpty()) null else pool.random().json())))
+        }
+        if (path == "/api/progress/remove" && method == "POST") {
+            val id = Json.string(json.opt("id"))
+            if (id == null || !TvmWebhook.isValidProgressId(id)) return HttpReply.json(400, Json.obj("error" to "invalid progress id"))
+            store.removeContinueWatching(media.activeProfile(), id)
+            return HttpReply.json(200, Json.obj("ok" to true))
+        }
+        if (path == "/api/progress/watched" && method == "POST") {
+            val id = Json.string(json.opt("id"))
+            val watched = json.opt("watched") as? Boolean
+            if (id == null || watched == null || !TvmWebhook.isValidProgressId(id)) {
+                return HttpReply.json(400, Json.obj("error" to "invalid progress"))
+            }
+            val season = Json.int(json.opt("season"))
+            val episode = Json.int(json.opt("episode"))
+            val target = if (season != null && season >= 0 && episode != null && episode >= 1 && !Regex(""":\d+:\d+$""").containsMatchIn(id)) {
+                "$id:$season:$episode"
+            } else id
+            if (!TvmWebhook.isValidProgressId(target)) return HttpReply.json(400, Json.obj("error" to "invalid progress id"))
+            store.setWatched(media.activeProfile(), target, watched)
+            return HttpReply.json(200, Json.obj("ok" to true))
         }
         if (path == "/api/update/status" && method == "GET") return HttpReply.json(200, updater.snapshot())
         if (path == "/api/update/check" && method == "POST") {
@@ -419,7 +454,15 @@ class TvmLocalCore(
                 Json.int(json.opt("episode")),
                 screenHeight = Json.int(json.opt("screenHeight")),
                 maxHeight = Json.int(json.opt("maxHeight")),
+                versionId = Json.string(json.opt("versionId")),
             )
+            return HttpReply.json(status, payload)
+        }
+
+        if ((path == "/api/playback/versions" || path == "/api/versions") && method == "GET") {
+            val id = query["id"]
+            if (id.isNullOrEmpty()) return HttpReply.json(400, Json.obj("error" to "id required"))
+            val (status, payload) = media.versions(id, query["season"]?.toIntOrNull(), query["episode"]?.toIntOrNull(), null)
             return HttpReply.json(status, payload)
         }
 
@@ -567,7 +610,15 @@ class TvmLocalCore(
                 put("canSendEmail", false)
             })
         }
-        // Phones do not send email; the desktop TVM does.
+        if (path == "/api/account/verify/resend" && method == "POST") {
+            val (status, body) = accounts.resendVerification(bearerToken(headers), Json.string(json.opt("email")))
+            return HttpReply.json(status, body)
+        }
+        if (path == "/api/account/password/forgot" && method == "POST") {
+            val (status, body) = accounts.forgotPassword(Json.string(json.opt("email")))
+            return HttpReply.json(status, body)
+        }
+        // Phones do not send email themselves; the accounts service does.
         if ((path == "/api/account/email/send" || path == "/api/account/email/verify") && method == "POST") {
             return HttpReply.json(
                 503,
@@ -587,7 +638,36 @@ class TvmLocalCore(
             return HttpReply.json(200, body)
         }
 
-        // Accounts are run from the web dashboard, never from a phone.
+        // The developer menu: install the admin key (kept in secure storage, never sent to the interface), then mirror the service admin API.
+        if (path == "/api/admin/key") {
+            if (method == "GET") {
+                if (!devRequest(headers)) return HttpReply.json(403, Json.obj("error" to "developer_required"))
+                return HttpReply.json(200, Json.obj("installed" to accounts.hasAdminKey()))
+            }
+            if (method == "POST") {
+                val (status, body) = accounts.installAdminKey(bearerToken(headers), Json.string(json.opt("key")) ?: "")
+                return HttpReply.json(status, body.apply { put("installed", accounts.hasAdminKey()) })
+            }
+        }
+        if (path == "/api/admin/config" || path == "/api/admin/audit" || path == "/api/admin/accounts.csv" ||
+            path == "/api/admin/rd/test" || path == "/api/admin/accounts" || path == "/api/admin/accounts/bulk" ||
+            ADMIN_ACCOUNT_PATH.matches(path)
+        ) {
+            val allowed = when {
+                path == "/api/admin/config" -> method == "GET" || method == "PUT"
+                path == "/api/admin/rd/test" || path == "/api/admin/accounts/bulk" -> method == "POST"
+                path.endsWith("/profile") || path.endsWith("/password") || path.endsWith("/tier") -> method == "POST"
+                path.contains("/sessions/") -> method == "DELETE"
+                else -> method == "GET"
+            }
+            if (!allowed) return HttpReply.json(405, Json.obj("error" to "method_not_allowed"))
+            var v1 = path.removePrefix("/api/admin/")
+            if (method == "GET" && query.isNotEmpty()) {
+                val keep = listOf("offset", "type", "search", "state").filter { !query[it].isNullOrEmpty() }
+                if (keep.isNotEmpty()) v1 += "?" + keep.joinToString("&") { "$it=" + java.net.URLEncoder.encode(query[it]!!, "UTF-8") }
+            }
+            return accounts.mirrorAdmin(bearerToken(headers), v1, method, if (method == "GET" || method == "DELETE") null else json)
+        }
         if (path == "/api/admin/accounts" || path.startsWith("/api/admin/accounts/")) {
             return HttpReply.json(403, Json.obj("error" to "use_dashboard"))
         }

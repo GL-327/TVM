@@ -530,10 +530,43 @@ class TvmMedia(
         }))
     }
 
+    /**
+     * The copies of a title this phone could play, best first, for the version picker.
+     * Capabilities are this phone's own decoders unless the interface says otherwise.
+     */
+    suspend fun versions(id: String, season: Int?, episode: Int?, client: PlaybackClient?): Pair<Int, JSONObject> {
+        val none: Pair<Int, JSONObject> = 200 to Json.obj("originalLanguage" to null, "versions" to Json.array(emptyList<JSONObject>()))
+        val token: String = rd.tokenValue() ?: return none
+        val imdb = resolveImdb(id, null) ?: return none
+        val parsed = TvmTitle.parsePlayId(id)
+        val extra = TvmTitle.seasonEpisode(id)
+        val s = season ?: parsed?.season ?: extra?.season
+        val e = episode ?: parsed?.episode ?: extra?.episode
+        val meta = catalog.meta(imdb)
+        val streams = rd.torrentioStreams(token, imdb, s, e)
+        val prefs = TvmPrefs.load(store)
+        val caps = TvmDeviceCodecs.caps
+        val phone = client ?: PlaybackClient(
+            player = "exoplayer",
+            maxHeight = TvmDeviceCodecs.screenHeight,
+            hevc = caps.hevc,
+            hdr = caps.hevc10,
+            mkv = true,
+        )
+        val original = catalog.originalLanguageFor(meta)
+        val runtime = TvmVersions.runtimeSeconds(meta?.item?.runtime)
+        val ranked = TvmVersions.rankVersions(streams, prefs, original, runtime, plans.maxHeight(), phone)
+        val reply = Json.obj(
+            "versions" to Json.array(ranked.map { it.version.json() }),
+            "originalLanguage" to original,
+        )
+        return 200 to reply
+    }
+
     /** Where to start [id] again (seconds), for a download played on the phone. */
     fun resumePosition(id: String): Double? {
         val entry: ProgressEntry? = store.progress(activeProfile())[id]
-        return if (TvmTitle.progressRatio(entry) != null) entry?.position else null
+        return TvmTitle.resumePosition(entry)
     }
 
     suspend fun play(
@@ -545,6 +578,7 @@ class TvmMedia(
         download: DownloadPrefs? = null,
         screenHeight: Int? = null,
         maxHeight: Int? = null,
+        versionId: String? = null,
     ): Pair<Int, JSONObject> {
         if (!plans.mobileAllowed()) {
             return 403 to Json.obj("kind" to "unavailable", "reason" to "mobile-plan-required")
@@ -598,6 +632,7 @@ class TvmMedia(
                 download,
                 screenHeight,
                 maxHeight,
+                versionId,
             )
             if (found.first == 200 || libraryCopy == null) return found
         }
@@ -809,7 +844,7 @@ class TvmMedia(
             val entry: ProgressEntry? = if (mediaId == null) null else store.progress(activeProfile())[mediaId]
             // Resume only where the ratio rules say there is something to resume;
             // the value handed back is the raw position, not the ratio.
-            val startAt: Double? = if (TvmTitle.progressRatio(entry) != null) entry?.position else null
+            val startAt: Double? = TvmTitle.resumePosition(entry)
             var playUrl: String = link
             var filename: String = runCatching { URI(link) }.getOrNull()?.path?.substringAfterLast('/') ?: "stream"
             var mime = "application/octet-stream"
@@ -872,6 +907,7 @@ class TvmMedia(
         download: DownloadPrefs? = null,
         screenHeight: Int? = null,
         maxHeight: Int? = null,
+        versionId: String? = null,
     ): Pair<Int, JSONObject> {
         val token: String = rd.tokenValue()
             ?: return 409 to Json.obj("kind" to "unavailable", "reason" to "not-configured")
@@ -919,7 +955,16 @@ class TvmMedia(
         // A source whose file is named as another episode, or as a commentary
         // edition or other extra, is not this episode (TvmEpisodeMatch).
         val proper: List<RdStream> = fresh.filter { TvmEpisodeMatch.fit(TvmEpisodeMatch.sourceFile(it.details.ifEmpty { it.title }), seasonNo, episodeNo) != TvmEpisodeMatch.Fit.WRONG }
-        val ranked: List<RdStream> = TvmPlaybackChoice.order(proper, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
+        // A person's own pick (versionId) goes first; otherwise copies marked as upscaled are
+        // left out when the person asked for that and a genuine copy exists.
+        val prefs = TvmPrefs.load(store)
+        val genuine: List<RdStream> = proper.filter { !TvmVersions.isUpscaled(it) }
+        val pool: List<RdStream> = if (versionId == null && prefs.skipUpscaled && genuine.isNotEmpty()) genuine else proper
+        var ranked: List<RdStream> = TvmPlaybackChoice.order(pool, label, { rd.streamHeight(label(it)) }, TvmDeviceCodecs.caps).take(8)
+        if (versionId != null) {
+            val picked = proper.firstOrNull { TvmVersions.describeVersion(it, null).id == versionId }
+            if (picked != null) ranked = listOf(picked) + ranked.filter { it !== picked }.take(7)
+        }
         Log.i(TAG, "sources for $imdb S${seasonNo}E${episodeNo}: ${streams.size} found, height cap $height, ${fresh.size} not failed here, ${proper.size} this episode, trying ${ranked.size}")
         var last: JSONObject = Json.obj("kind" to "unavailable", "reason" to if (fresh.isEmpty()) "unsupported" else "empty")
         // A copy whose real file turns out larger than the screen (its search

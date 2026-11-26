@@ -42,19 +42,13 @@ namespace {
 constexpr std::uint32_t kMaxSide = 2048;
 constexpr std::size_t kMaxKernels = 48;
 
-// The slab: a flat sheet of glass whose edge rolls over in a convex bezel, as Liquid Glass does. Only the bezel
-// bends light, so the middle of a control shows what is behind it undistorted while the rim pulls in a compressed,
-// strongly bent ring of what lies inside it. The numbers follow the open fits of iOS 26 and 27 glass (Kyant0's
-// Backdrop and the Flutter liquid_glass_renderer): the bezel is half the shorter half-side, at most 24 px (16 px on
-// the 64 px navigation capsule, 12 px on a button), and the rim shift is 1.75 times the bezel, never past the
-// middle.
-constexpr double kBevelFraction = 0.28;
-constexpr double kMinBevel = 6.0;
-constexpr double kMaxBevel = 22.0;
-constexpr double kShiftPerBevel = 1.75;
+// A convex bezel gives the silhouette a strong inward pull while the centre stays flat.
+constexpr double kBevelFraction = 0.44;
+constexpr double kMaxBevel = 18.0;
+constexpr double kShiftPerBevel = 1.95;
 // Dispersion: red bends a little less and blue a little more. Apple's glass shows almost none, so it is kept to a
 // few percent of the shift, which only colours the strongly bent rim on high-contrast edges.
-constexpr double kChroma = 0.04;
+constexpr double kChroma = 0.014;
 // Light falls from the upper left, steeper than 45 degrees, so top edges catch more of it than the sides.
 constexpr double kLightX = -0.50;
 constexpr double kLightY = -0.866;
@@ -62,9 +56,9 @@ constexpr double kLightY = -0.866;
 // wide, strongest where the edge faces the light and half as strong where it faces directly away (light reflected
 // inside the glass). iOS 27 made it brighter.
 constexpr double kGlint = 1.0;
-constexpr double kGlintWidth = 1.4;
-constexpr double kGlintBleed = 0.21;
-constexpr double kFarSide = 0.50;
+constexpr double kGlintWidth = 1.2;
+constexpr double kGlintBleed = 0.12;
+constexpr double kFarSide = 0.41;
 // A faint white veil over the outer few pixels, where the bezel turns to grazing and reflects more than it passes.
 constexpr double kRimVeil = 0.12;
 constexpr double kRimVeilWidth = 3.0;
@@ -74,13 +68,7 @@ constexpr double kContourWidth = 1.0;
 constexpr double kContourBleed = 0.30;
 constexpr double kContourDirectionality = 0.85;
 // Colour behind the glass is lifted a little, as Apple's material does after it diffuses the picture.
-constexpr float kVibrancySaturation = 1.8f;
-// How far the glass diffuses what is behind it, as a share of the surface's shorter half-side. Clear glass (the
-// default) softens it just enough to keep labels legible; frosted glass scatters it like Apple's tinted setting.
-constexpr double kClearSigma = 0.12;
-constexpr double kClearSigmaMin = 1.5;
-constexpr double kClearSigmaMax = 5.0;
-constexpr double kFrostSigma = 0.35;
+constexpr float kVibrancySaturation = 1.6f;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
 // for the first time always measures, so a still frame adapts at once.
 constexpr int kMeasuresPerFrame = 3;
@@ -123,15 +111,15 @@ D2D1_MATRIX_5X4_F SaturationMatrix(float s) {
     const float lg = 0.7152f * inv;
     const float lb = 0.0722f * inv;
     D2D1_MATRIX_5X4_F m{};
-    m.m[0][0] = (lr + s) * 1.08f;
+    m.m[0][0] = (lr + s) * 1.035f;
     m.m[1][0] = lg;
     m.m[2][0] = lb;
     m.m[0][1] = lr;
-    m.m[1][1] = (lg + s) * 1.08f;
+    m.m[1][1] = (lg + s) * 1.035f;
     m.m[2][1] = lb;
     m.m[0][2] = lr;
     m.m[1][2] = lg;
-    m.m[2][2] = (lb + s) * 1.08f;
+    m.m[2][2] = (lb + s) * 1.035f;
     m.m[3][3] = 1.0f;
     return m;
 }
@@ -245,7 +233,7 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
     const double hx = w / 2.0;
     const double hy = h / 2.0;
     const double half = std::min(hx, hy);
-    const double bevel = std::clamp(kBevelFraction * half, std::min(kMinBevel, half), std::min(kMaxBevel, half));
+    const double bevel = std::min(kBevelFraction * half, kMaxBevel);
     const double amount = std::min(kShiftPerBevel * bevel, 0.9 * half);
     const double lightLength = std::hypot(kLightX, kLightY);
     const double lx = kLightX / lightLength;
@@ -268,14 +256,14 @@ GlassLens::Kernel* GlassLens::KernelFor(const Placement& placement, double radiu
             // nothing at the inner end of the bezel and the full shift at the rim, where the face is vertical. The
             // ray leans inward, so each rim pixel shows the picture a little further inside.
             const double rimward = std::clamp(1.0 - d / bevel, 0.0, 1.0);
-            const double shift = amount * (1.0 - std::sqrt(1.0 - rimward * rimward));
+            const double shift = amount * rimward * rimward * (1.0 + 0.35 * (1.0 - rimward));
             shiftX[i] = -shift * nx;
             shiftY[i] = -shift * ny;
             maxShift = std::max({maxShift, std::fabs(shiftX[i]), std::fabs(shiftY[i])});
 
             // How squarely this stretch of rim faces the light (1), faces away from it (-1) or runs across it (0).
             const double facing = nx * lx + ny * ly;
-            const double lobe = facing > 0.0 ? facing : kFarSide * -facing;
+            const double lobe = 0.15 + (facing > 0.0 ? 0.80 * facing : kFarSide * -facing);
 
             const double glint = kGlint * lobe *
                                  (std::clamp(1.0 - d / kGlintWidth, 0.0, 1.0) +
@@ -405,8 +393,8 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     const float channelScale[3] = {scale * static_cast<float>(1.0 - kChroma), scale,
                                    scale * static_cast<float>(1.0 + kChroma)};
     ID2D1Effect* scatter = frosted ? frost_.Get() : soften_.Get();
-    const double sigma = ui::tokens::clearGlass ? std::clamp(kClearSigma * kernel->half, kClearSigmaMin, kClearSigmaMax)
-                                               : frosted ? std::clamp(kFrostSigma * kernel->half, 26.0, 26.0) : 14.0;
+    const double sigma = frosted ? std::clamp(kernel->half * 0.10, 6.0, 8.0)
+                                 : std::clamp(kernel->half * 0.12, 2.0, 4.0);
     scatter->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, static_cast<FLOAT>(sigma));
     scatter->SetInput(0, kernel->capture.Get());
     for (int c = 0; c < 3; ++c) {

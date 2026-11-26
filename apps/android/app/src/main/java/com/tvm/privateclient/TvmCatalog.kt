@@ -27,7 +27,12 @@ data class CatalogBundle(
     val catalog: List<MediaItem>,
 )
 
-data class TitleMeta(val item: MediaItem, val children: List<MediaItem>)
+data class TitleMeta(
+    val item: MediaItem,
+    val children: List<MediaItem>,
+    val originalLanguage: String? = null,
+    val tmdbId: Int? = null,
+)
 
 /**
  * @param store the same on-disk store the rest of the client uses; `catalog-cache.json` lives there.
@@ -46,6 +51,7 @@ class TvmCatalog(
     private val genreMem: MutableMap<String, Pair<Long, List<MediaItem>>> = mutableMapOf()
     private val pageMem: MutableMap<String, Pair<Long, List<MediaItem>>> = mutableMapOf()
     private val metaMem: MutableMap<String, Pair<Long, TitleMeta>> = mutableMapOf()
+    private val originalLanguageMem = LinkedHashMap<Int, Pair<Long, String?>>()
     private val popularityMem: MutableMap<String, Pair<Long, Double>> = mutableMapOf()
     private val fallback: List<MediaItem>
 
@@ -64,6 +70,7 @@ class TvmCatalog(
             genreMem.clear()
             pageMem.clear()
             metaMem.clear()
+            originalLanguageMem.clear()
         }
         store.clearCacheFiles()
     }
@@ -231,7 +238,45 @@ class TvmCatalog(
         val raw = body.opt("meta") as? JSONObject ?: return null
         val item = mapMeta(raw, kind) ?: return null
         val children = if (kind == "series") mapVideos(item, raw.opt("videos")) else emptyList()
-        return TitleMeta(item, children)
+        val origLang = (raw.opt("original_language") as? String) ?: (raw.opt("originalLanguage") as? String)
+        val tmdb = Json.int(raw.opt("moviedb_id"))?.takeIf { it > 0 }
+        return TitleMeta(item, children, origLang, tmdb)
+    }
+
+    fun originalLanguageFor(meta: TitleMeta?): String? {
+        if (meta == null) return null
+        TvmVersions.languageCode(meta.originalLanguage)?.let { return it }
+        val tmdbId = meta.tmdbId ?: return null
+        val current = System.currentTimeMillis()
+        synchronized(lock) {
+            val cached = originalLanguageMem[tmdbId]
+            if (cached != null && current < cached.first) return cached.second
+        }
+        val kind = if (meta.item.kind == "series") "tv" else "movie"
+        val fetched: String? = runCatching {
+            val conn = URI("https://www.themoviedb.org/$kind/$tmdbId?language=en-US").toURL().openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 2_500
+                conn.readTimeout = 2_500
+                conn.useCaches = false
+                if (conn.responseCode !in 200..299) return@runCatching null
+                val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val raw = TMDB_ORIG_LANG.find(html)?.groupValues?.get(1)
+                TvmVersions.languageCode(raw)
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrNull()
+        val ttl = if (fetched != null) 7L * 86_400_000L else 60_000L
+        synchronized(lock) {
+            while (originalLanguageMem.size >= 512) {
+                val oldest = originalLanguageMem.keys.firstOrNull() ?: break
+                originalLanguageMem.remove(oldest)
+            }
+            originalLanguageMem[tmdbId] = (System.currentTimeMillis() + ttl) to fetched
+        }
+        return fetched
     }
 
     private fun fetchCatalog(path: String, kind: String): List<MediaItem> =
@@ -485,5 +530,6 @@ class TvmCatalog(
         const val RANK_TIMEOUT_MS = 4_000
         val IMDB_ID = Regex("""^tt\d+$""")
         val YEAR = Regex("""\b(19|20)\d{2}\b""")
+        val TMDB_ORIG_LANG = Regex("""Original Language</bdi>\s*</strong>\s*([^<]+)""", RegexOption.IGNORE_CASE)
     }
 }

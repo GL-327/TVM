@@ -9,6 +9,7 @@
   <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
   <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
   <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/config.brs" />
   <script type="text/brightscript" uri="PosterCard.brs" />
   <children>
     <Group id="body">
@@ -18,6 +19,8 @@
       <MaskGroup id="mask">
         <Poster id="art" loadDisplayMode="scaleToZoom" />
       </MaskGroup>
+      <Poster id="badgeBg" uri="pkg:/images/glass/chip-fill.9.png" blendColor="0x12141AE6" visible="false" />
+      <Label id="badgeText" color="0xF5F7FAFF" horizAlign="center" vertAlign="center" maxLines="1" visible="false" />
       <Poster id="progressTrack" uri="pkg:/images/glass/progress.9.png" blendColor="0xFFFFFF55" visible="false" />
       <Poster id="progressFill" uri="pkg:/images/glass/progress.9.png" blendColor="0xF5F5F5FF" visible="false" />
       <Label id="caption" color="0xF5F5F5FF" horizAlign="left" maxLines="1" visible="false" />

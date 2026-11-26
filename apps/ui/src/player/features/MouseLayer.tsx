@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import type { PlayerEngine, PlayerSession } from '../PlayerRoot';
+import { toggleFullscreen } from './KeyboardMap';
 
 /** Matches the existing player chrome auto-hide so the pointer and controls leave together. */
 export const MOUSE_IDLE_MS = 3_200;
@@ -352,11 +353,19 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
     }
   };
 
+  /** Double-click on the picture toggles fullscreen (the two clicks cancel out as pause/play). */
+  const onDoubleClick = (event: MouseEvent): void => {
+    if (event.button !== 0 || !host.contains(event.target as Node) || !isVideoToggleTarget(event.target)) return;
+    event.preventDefault();
+    void toggleFullscreen();
+  };
+
   host.addEventListener('pointermove', onPointerMove);
   host.addEventListener('pointerdown', onPointerDown, true);
   host.addEventListener('pointerup', onPointerUp, true);
   host.addEventListener('pointercancel', onPointerUp, true);
   host.addEventListener('click', onClick, true);
+  host.addEventListener('dblclick', onDoubleClick, true);
   window.addEventListener('keydown', hideCursor);
 
   return () => {
@@ -366,6 +375,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
     host.removeEventListener('pointerup', onPointerUp, true);
     host.removeEventListener('pointercancel', onPointerUp, true);
     host.removeEventListener('click', onClick, true);
+    host.removeEventListener('dblclick', onDoubleClick, true);
     window.removeEventListener('keydown', hideCursor);
     host.classList.remove('player--mouse-idle', 'player--mouse-active');
     host.removeAttribute('data-mouse-idle');

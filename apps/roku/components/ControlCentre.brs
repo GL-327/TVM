@@ -160,6 +160,7 @@ sub openPanel()
   m.subState = ccSubtitleCurrent(m.top.captionMode, m.top.subtitleCurrent, subs)
   m.audioCur = m.top.audioCurrent
   m.tab = "playback"
+  m.playbackSub = ""
   m.tabs.activeIndex = 0
   m.tabs.previewIndex = 0
   m.zone = "rows"
@@ -178,6 +179,7 @@ end sub
 sub closePanel(arg as Dynamic)
   reason = "back"
   if GetInterface(arg, "ifString") <> invalid then reason = arg
+  m.playbackSub = ""
   ' Leaving the player also stops any handoff timers (and with them polling).
   if reason = "teardown"
     m.pollTimer.control = "stop"
@@ -264,7 +266,20 @@ function buildModel(tabId as String) as Object
     }
     return ccDeviceRows(ctx)
   end if
-  return ccPlaybackRows({ playing: m.top.playing, hasNext: m.top.hasNext, nextTitle: m.top.nextTitle, live: not ccIsVod(m.top.mediaKind, m.top.mediaId) })
+  isVod = ccIsVod(m.top.mediaKind, m.top.mediaId)
+  if m.playbackSub = "sleep"
+    return ccSleepRows(asText(aaGet(m.top, "sleepMode", "off")), LCase(asText(m.top.mediaKind)) = "series")
+  end if
+  return ccPlaybackRows({
+    playing: m.top.playing
+    hasNext: m.top.hasNext
+    nextTitle: m.top.nextTitle
+    live: not isVod
+    hasVersions: (isVod and m.top.hasVersions = true)
+    versionLabel: m.top.versionLabel
+    sleepEnabled: (m.top.sleepEnabled = true)
+    sleepLabel: ccSleepLabel(asText(aaGet(m.top, "sleepMode", "off")), m.top.sleepRemaining)
+  })
 end function
 
 ' ---- Tabs ----
@@ -273,6 +288,7 @@ sub setTab(id as String)
   if id = "" or id = m.tab then return
   m.memory[m.tab] = m.focusId
   m.tab = id
+  m.playbackSub = ""
   m.focusId = ""
   if m.memory.DoesExist(id) then m.focusId = m.memory[id]
   m.first = 0
@@ -299,6 +315,13 @@ end sub
 function handleIntent(intent as String) as Object
   m.idle.Mark()
   if not m.top.isOpen then return { type: "none" }
+  if intent = "back" and m.tab = "playback" and m.playbackSub = "sleep"
+    m.playbackSub = ""
+    m.focusId = "sleep"
+    refreshRows()
+    paintAll()
+    return { type: "none" }
+  end if
   if intent = "back" or intent = "info"
     closePanel("back")
     return { type: "close" }
@@ -358,7 +381,26 @@ sub activateRow()
   pressPlate()
   id = row.id
   if m.tab = "playback"
-    emit("playback", { id: id })
+    if id = "sleep"
+      m.playbackSub = "sleep"
+      m.focusId = "sleep:" + asText(aaGet(m.top, "sleepMode", "off"))
+      refreshRows()
+    else if id = "sleep:back"
+      m.playbackSub = ""
+      m.focusId = "sleep"
+      refreshRows()
+    else if Left(id, 6) = "sleep:"
+      mode = Mid(id, 7)
+      m.playbackSub = ""
+      m.focusId = "sleep"
+      emit("sleep", { mode: mode })
+      refreshRows()
+    else if id = "versions"
+      emit("openVersions", {})
+      closePanel("versions")
+    else
+      emit("playback", { id: id })
+    end if
   else if m.tab = "audio"
     if Left(id, 6) = "audio:"
       m.audioCur = Mid(id, 7)

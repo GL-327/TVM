@@ -4,6 +4,13 @@
     <field id="chosenQuality" type="integer" value="0" />
     <field id="resolution" type="integer" value="0" />
     <field id="qualities" type="array" />
+    <field id="versions" type="array" />
+    <field id="versionLabel" type="string" />
+    <field id="originalLanguage" type="string" />
+    <field id="audioLanguage" type="string" />
+    <field id="audioLanguages" type="array" />
+    <field id="subtitleMode" type="string" />
+    <field id="sleepDefault" type="string" value="off" />
     <field id="geo" type="string" />
     <field id="streamUrl" type="string" />
     <field id="streamTitle" type="string" />
@@ -70,13 +77,16 @@
     </Group>
     <Label id="status" translation="[160, 1520]" width="3520" color="0xF5F5F5FF" />
     <FocusButton id="skipRecap" translation="[2320, 1864]" visible="false" />
-    <Group id="upCard" translation="[2660, 1240]" visible="false">
-      <GlassPanel width="1000" height="580" shape="panel" />
-      <Poster id="upImage" translation="[48, 48]" width="320" height="180" loadDisplayMode="scaleToZoom" />
-      <Label id="upTitle" translation="[400, 48]" width="550" height="180" wrap="true" maxLines="3" />
-      <Label id="upCountdown" translation="[48, 260]" width="900" height="80" />
-      <FocusButton id="upPlay" translation="[48, 390]" />
-      <FocusButton id="upCancel" translation="[480, 390]" />
+    <Group id="upCard" translation="[2580, 1180]" visible="false">
+      <Rectangle id="upBg" width="1100" height="500" color="0x12141AF2" />
+      <GlassPanel width="1100" height="500" shape="panel" />
+      <MaskGroup id="upMask" translation="[48, 48]" maskUri="pkg:/images/glass/mask-wide.png" maskSize="[320, 180]">
+        <Poster id="upImage" width="320" height="180" loadDisplayMode="scaleToZoom" />
+      </MaskGroup>
+      <Label id="upTitle" translation="[408, 48]" width="644" height="180" wrap="true" maxLines="3" />
+      <Label id="upCountdown" translation="[48, 254]" width="1004" height="64" />
+      <FocusButton id="upPlay" translation="[48, 336]" />
+      <FocusButton id="upCancel" translation="[572, 336]" />
     </Group>
     <Timer id="extrasTick" duration="1" repeat="true" />
     <OrbitLoader id="orbit" translation="[1400, 760]" />

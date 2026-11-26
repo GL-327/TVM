@@ -47,8 +47,9 @@ struct RdStream {
     var quality: Int
     var cached: Bool
     var phoneHint: Bool
-    /// The whole description (torrent name, the file in a pack, size), for TVMEpisodeMatch.
+    /// The whole description (torrent name, the file in a pack, size), for TVMEpisodeMatch & TVMVersions.
     var details: String = ""
+    var releaseId: String? = nil
 }
 
 final class NoFollowRedirects: NSObject, URLSessionTaskDelegate {
@@ -350,7 +351,6 @@ final class TVMRealDebrid {
         return streams.sorted { left, right in
             if left.quality != right.quality { return left.quality > right.quality }
             if left.cached != right.cached { return left.cached && !right.cached }
-            if left.phoneHint != right.phoneHint { return left.phoneHint && !right.phoneHint }
             return false
         }
     }
@@ -363,7 +363,8 @@ final class TVMRealDebrid {
             return nil
         }
         let name = JSONValue.string(raw["name"]) ?? ""
-        let title = (JSONValue.string(raw["title"]) ?? name).split(separator: "\n").first.map(String.init) ?? "Stream"
+        let titleSource = JSONValue.string(raw["title"]) ?? name
+        let title = titleSource.split(separator: "\n").first.map(String.init) ?? "Stream"
         let label = "\(name) \(title)"
         if label.range(of: #"\b(cam|camrip|telesync|tsrip|hdcam|hdts)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
             return nil
@@ -373,16 +374,24 @@ final class TVMRealDebrid {
             options: [.regularExpression, .caseInsensitive]
         ) != nil
         let cached = label.range(of: #"⚡|\bcached\b|\brd\+|\bdownloaded\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        let fileIdx = JSONValue.int(raw["fileIdx"]) ?? JSONValue.int(raw["fileidx"])
+        let releaseId: String?
+        if let hash = infoHash?.lowercased(), hash.range(of: #"^[a-f0-9]{40}$"#, options: .regularExpression) != nil {
+            releaseId = "\(hash):\(fileIdx.map(String.init) ?? "")"
+        } else {
+            releaseId = nil
+        }
         return RdStream(
             url: url,
             title: title,
             name: name,
             infoHash: infoHash,
-            fileIdx: JSONValue.int(raw["fileIdx"]) ?? JSONValue.int(raw["fileidx"]),
+            fileIdx: fileIdx,
             quality: qualityScore(label),
             cached: cached,
             phoneHint: phoneHint,
-            details: JSONValue.string(raw["title"]) ?? name
+            details: "\(name) \(titleSource)".trimmingCharacters(in: .whitespacesAndNewlines),
+            releaseId: releaseId
         )
     }
 
@@ -398,18 +407,18 @@ final class TVMRealDebrid {
     }
 
     private func qualityScore(_ label: String) -> Int {
-        if label.range(of: #"\b2160p|4k|uhd\b"#, options: .regularExpression) != nil { return 40 }
-        if label.range(of: #"\b1080p\b"#, options: .regularExpression) != nil { return 30 }
-        if label.range(of: #"\b720p\b"#, options: .regularExpression) != nil { return 15 }
-        if label.range(of: #"\b480p\b"#, options: .regularExpression) != nil { return 5 }
+        if label.range(of: #"\b(?:2160p|4k|uhd)\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 40 }
+        if label.range(of: #"\b1080p\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 30 }
+        if label.range(of: #"\b720p\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 15 }
+        if label.range(of: #"\b480p\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 5 }
         return 10
     }
 
     func streamHeight(_ label: String) -> Int {
-        if label.range(of: #"\b2160p|4k|uhd\b"#, options: .regularExpression) != nil { return 2160 }
-        if label.range(of: #"\b1080p\b"#, options: .regularExpression) != nil { return 1080 }
-        if label.range(of: #"\b720p\b"#, options: .regularExpression) != nil { return 720 }
-        if label.range(of: #"\b480p\b"#, options: .regularExpression) != nil { return 480 }
+        if label.range(of: #"\b(?:2160p|4k|uhd)\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 2160 }
+        if label.range(of: #"\b1080p\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 1080 }
+        if label.range(of: #"\b720p\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 720 }
+        if label.range(of: #"\b480p\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return 480 }
         return 1080
     }
 

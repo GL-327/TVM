@@ -3,7 +3,7 @@ import Foundation
 enum StandalonePolicy {
     static let requiresLANToken = false
     static let bundledLANToken: String? = nil
-    static let version = "1.3.2"
+    static let version = "1.4.0"
     /// What this build's native code provides to the interface. Bump it, and
     /// scripts/native-api.json, when the interface starts relying on a new
     /// native route; an interface that needs more is never applied here.
@@ -196,6 +196,7 @@ struct ProgressEntry {
     var position: Double
     var duration: Double
     var updated: String
+    var hiddenFromContinueWatching: Bool = false
     var completedAt: String? = nil
     var completions: Int = 0
     var isFinished: Bool { position.isFinite && duration.isFinite && duration > 0 && position / duration > 0.96 }

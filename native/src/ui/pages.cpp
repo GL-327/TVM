@@ -253,7 +253,8 @@ void PageScreen::Paint(Painter& painter) const {
             disabledGlass.disabled = true;
             disabledGlass.reduceTransparency = tokens::reduceTransparency;
             disabledGlass.tint = tokens::kSurface;
-            painter.Glass(box, box.height / 2.0, disabledGlass);
+            const double radius = metrics.Rem(box.height < metrics.Rem(2.5) ? 0.625 : 0.75);
+            painter.Glass(box, radius, disabledGlass);
             const TextStyle style{Rem(kButtonLabelRem), true};
             const double width = painter.MeasureText(button.label, style);
             painter.Text(Box{box.CenterX() - width / 2.0, box.y, width + 2.0, box.height}, button.label, style,

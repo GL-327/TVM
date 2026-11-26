@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "motion/preferences.h"
 #include "nav/focus_tree.h"
@@ -34,6 +35,11 @@ class Shell {
 public:
     struct ReleaseCard { std::string version, title; std::vector<std::string> highlights; };
     void SetReleaseCard(std::optional<ReleaseCard> card) { releaseCard_ = std::move(card); }
+    // The patch notes pop-up: a modal sheet over the whole app, closed with "Got it", Enter or Esc.
+    struct PatchNotes { std::string version, title; std::vector<std::string> highlights, changes, knownIssues; };
+    void SetPatchNotes(std::optional<PatchNotes> notes) { patchNotes_ = std::move(notes); }
+    bool HasPatchNotes() const { return patchNotes_.has_value(); }
+    Box PatchButtonBox() const;
     // `root` is the home screen. It is the bottom of the stack and is never removed.
     Shell(std::unique_ptr<Screen> root, PreferenceStore& store);
 
@@ -122,6 +128,7 @@ private:
     std::optional<Box> BackBox() const;
     Box ReleaseBox() const;
     std::optional<ReleaseCard> releaseCard_;
+    std::optional<PatchNotes> patchNotes_;
     bool backFocused_ = false;
 
     nav::ViewStackState stack_;
@@ -138,6 +145,7 @@ private:
     std::function<bool(const Command&)> guard_;
 
     nav::MouseState mouse_;
+    std::optional<Point> pointer_;
     nav::ClickTracker clicks_;
     // Where the pointer last was over the window, and until when content moving under it (a wheel spin, an arrow's
     // glide, a coasting drag) should re-pick what is hovered. Any key ends that, so the remote's focus is not taken.

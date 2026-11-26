@@ -36,6 +36,11 @@ sub onRokuContentRefreshed()
 end sub
 
 sub loadEvents()
+  if aaGet(m.global.rokuPrefs, "spotlightEvents", true) = false
+    m.eventsTask = invalid
+    m.homeNode.event = {}
+    return
+  end if
   m.eventProfile = m.profileId
   m.eventDate = sceneLocalDate()
   m.eventsTask = startApiGet(joinCorePath(m.coreUrl, "/api/events/active"), "onEventsLoaded")
@@ -138,3 +143,53 @@ sub dismissReleaseCards()
     end if
   end if
 end sub
+
+' Patch notes pop-up (spec 14). Only when the service flag patchNotesPopup is
+' true, on the first launch of a newer version. Otherwise the small card above
+' keeps working as before.
+sub maybeShowPatchNotes(flags as Dynamic)
+  if GetInterface(flags, "ifAssociativeArray") = invalid then return
+  if aaGet(flags, "patchNotesPopup", false) <> true then return
+  if not m.releasePending or m.patchNotesShown = true then return
+  if m.stack = invalid then return
+  if visibleScreen(m.stack).name <> "home" or activeEntry(m.stack).kind = "modal" then return
+  releases = aaArray(uiContent("changelog"), "releases")
+  if releases.Count() = 0 then return
+  m.patchNotesShown = true
+  m.releasePending = false
+  m.releaseCard.visible = false
+  if m.homeNode <> invalid then m.homeNode.releaseShortcut = false
+  section = registrySection()
+  section.Write("lastSeenVersion", m.installedVersion) : section.Flush()
+  release = releases[0]
+  navigate("modal", "notice", {
+    title: "What's new in TVM " + asText(aaGet(release, "version", m.installedVersion)) + ": " + asText(aaGet(release, "title", ""))
+    body: patchNotesBody(release)
+    buttonLabel: "Got it"
+    tall: true
+  })
+end sub
+
+function patchNotesBody(release as Object) as String
+  lines = []
+  for each highlight in aaArray(release, "highlights")
+    lines.Push("- " + asText(highlight))
+  end for
+  changes = aaArray(release, "changes")
+  if changes.Count() > 0
+    lines.Push("") : lines.Push("Changes")
+    shown = 0
+    for each change in changes
+      if shown >= 8 then exit for
+      lines.Push("- " + asText(aaGet(change, "text", change))) : shown = shown + 1
+    end for
+  end if
+  issues = aaArray(release, "knownIssues")
+  if issues.Count() > 0
+    lines.Push("") : lines.Push("Known issues")
+    for each issue in issues
+      lines.Push("- " + asText(issue))
+    end for
+  end if
+  return lines.Join(Chr(10))
+end function
