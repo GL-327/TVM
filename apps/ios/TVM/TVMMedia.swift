@@ -38,7 +38,9 @@ final class TVMMedia {
         let height = min(capFor(download: nil, screenHeight: screenHeight, maxHeight: maxHeight), TVMVersions.qualityCap(TVMPrefs.load(store).quality))
         guard (version.height ?? 1080) <= height,
               TVMVersions.supportsVersion(version, filename: filename, client: TVMVersions.phoneClient(client, maxHeight: height)),
-              TVMPlayback.phoneCanPlay(filename: filename, mimeType: result.1["mimeType"] as? String, url: url) else {
+              // The iPhone plays through VLC, so Matroska and other network containers are fine; AVPlayer's
+              // narrower phoneCanPlay check would wrongly refuse them.
+              TVMPlayback.nativeCanOpen(url) else {
             return (409, ["kind": "unavailable", "reason": "unsupported"])
         }
         return (200, withPlaybackDetails(result.1))

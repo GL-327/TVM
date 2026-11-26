@@ -3,6 +3,99 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.4",
+      "date": "2026-11-26",
+      "title": "Polish and phone fixes (test build)",
+      "highlights": [
+        "The Hunger Games films are in story order, and long poster titles wrap when selected.",
+        "The browse backdrop is one still colour wash, which is lighter on slower devices.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Home",
+          "text": "The Hunger Games films now appear in story order in a numbered collection.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Long poster titles wrap when selected, and the full title is available on hover.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Look",
+          "text": "The browse backdrop uses one static color wash instead of six moving layers.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "Episode cards show longer titles and summaries without squeezing the episode number.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Navigation",
+          "text": "Back buttons expand to show their label on hover or focus.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "The chapter setting now explains that markers depend on metadata from the video source.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "On Android, a guide that downloads only partly is no longer kept as if it were complete.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "On iPhone, MKV films play again instead of saying they are unsupported.",
+          "platforms": [
+            "ios"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet."
+      ]
+    },
+    {
       "version": "1.4.3",
       "date": "2026-11-26",
       "title": "Settings, the TV guide and extras everywhere (test build)",
@@ -255,66 +348,6 @@
         {
           "area": "Updates",
           "text": "After an update the written notes show once, without a second list of raw commit titles.",
-          "platforms": [
-            "web",
-            "desktop",
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "area": "Home",
-          "text": "The Hunger Games films now appear in story order in a numbered collection.",
-          "platforms": [
-            "web",
-            "desktop",
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "area": "Home",
-          "text": "Long poster titles wrap when selected, and the full title is available on hover.",
-          "platforms": [
-            "web",
-            "desktop",
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "area": "Look",
-          "text": "The browse backdrop uses one static color wash instead of six moving layers.",
-          "platforms": [
-            "web",
-            "desktop",
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "area": "Details",
-          "text": "Episode cards show longer titles and summaries without squeezing the episode number.",
-          "platforms": [
-            "web",
-            "desktop",
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "area": "Navigation",
-          "text": "Back buttons expand to show their label on hover or focus.",
-          "platforms": [
-            "web",
-            "desktop",
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "area": "Playback",
-          "text": "The chapter setting now explains that markers depend on metadata from the video source.",
           "platforms": [
             "web",
             "desktop",

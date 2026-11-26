@@ -93,10 +93,12 @@ object TvmXmlTv {
             var value = StringBuilder()
             var valid = false
             var count = 0
+            // A truncated download can end without closing its tags; never cache it as a whole feed.
+            var depth = 0
             while (parser.eventType != XmlPullParser.END_DOCUMENT) {
                 when (parser.eventType) {
                     XmlPullParser.DOCDECL -> check(!parser.text.orEmpty().contains('[')) { "XMLTV entity declarations are not supported" }
-                    XmlPullParser.START_TAG -> when (parser.name) {
+                    XmlPullParser.START_TAG -> { depth++; when (parser.name) {
                         "tv" -> valid = true
                         "channel" -> { record = "channel"; channel = parser.getAttributeValue(null, "id").orEmpty().lowercase(Locale.ROOT) }
                         "programme" -> {
@@ -109,9 +111,10 @@ object TvmXmlTv {
                         }
                         "display-name", "title", "sub-title", "desc", "category", "episode-num" -> { field = parser.name; value = StringBuilder() }
                         "icon" -> parser.getAttributeValue(null, "src")?.takeIf { safeUrl(it) }?.let { programme?.put("image", it) }
-                    }
+                    } }
                     XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF -> if (field.isNotEmpty() && value.length < 6000) value.append(parser.text.orEmpty().take(6000 - value.length))
                     XmlPullParser.END_TAG -> {
+                        depth--
                         if (parser.name == field) {
                             val text = value.toString().replace(Regex("\\s+"), " ").trim()
                             if (record == "channel" && field == "display-name" && nameKey(text) in names) aliases.putIfAbsent(nameKey(text), channel)
@@ -131,7 +134,7 @@ object TvmXmlTv {
                 }
                 parser.nextToken()
             }
-            check(valid)
+            check(valid && depth == 0)
             for ((name, id) in aliases) rows["id:$id"]?.let { rows["name:$name"] = it }
             return rows
         } finally { limited.close() }
