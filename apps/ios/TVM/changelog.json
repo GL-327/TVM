@@ -3,6 +3,54 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.2",
+      "date": "2026-11-26",
+      "title": "Phone layout fixes (test build)",
+      "highlights": [
+        "On phones, Search and Settings respond to taps again, and swiping a row no longer blocks scrolling.",
+        "Still a test build: check Known issues below."
+      ],
+      "changes": [
+        {
+          "area": "Phones",
+          "text": "Search is back as an icon at the top right, so the bottom bar has its five tabs again.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Phones",
+          "text": "Swiping across a row of posters no longer stops the page from scrolling up and down.",
+          "platforms": [
+            "ios",
+            "android",
+            "web"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Theme is a segmented choice under Appearance.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "The Settings redesign is on Windows only; web, phones and Roku still have the old layout.",
+        "Settings has no search yet, and there is no switch for each extra feature yet.",
+        "The TV guide is only on Windows, and it has not been tried with a real IPTV list yet.",
+        "The moving trailer on the Home spotlight and theme songs may not play yet.",
+        "Liquid Glass is only partly redone; the full Apple-style rework is still to come.",
+        "This iPhone build has not been tested on a phone yet, and Roku has not been tried on a TV.",
+        "Picking another version of a film may not be available everywhere yet.",
+        "The profile editor on web, phones and Roku still uses the old pill buttons."
+      ]
+    },
+    {
       "version": "1.4.1",
       "date": "2026-11-26",
       "title": "Settings redesign on Windows (test build)",

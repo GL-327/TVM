@@ -20,7 +20,7 @@ import { applyTheme, readStoredTheme } from '../theme/apply';
 import { applyAccent, applyFont, applyTransparency, readAccent, readFont, readTransparency } from '../theme/appearance';
 import { THEMES } from '../theme/registry';
 import { applyMotionPreference, applyPerformanceMode, readMotionPreference, readPerformanceMode } from '../theme/motion';
-import { action, audioRows, extraRows, playbackRows, select, toggle, type SettingsRow } from './settingsControls';
+import { action, audioRows, extraRows, playbackRows, segment, select, toggle, type SettingsRow } from './settingsControls';
 import './settings.css';
 
 const CATEGORIES = [
@@ -131,7 +131,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
       select('font', 'Font', 'Choose the typeface for menus and labels.', font,
         [{ id: 'geist', label: 'Geist' }, { id: 'inter', label: 'Inter' }, { id: 'system', label: 'System' }],
         (value) => { applyFont(value); setFont(value); }),
-      select('theme', 'Theme', 'Choose your interface colours.', theme, THEMES.map(({ id, name }) => ({ id, label: name })),
+      segment('theme', 'Theme', 'Choose your interface colours.', theme, THEMES.map(({ id, name }) => ({ id, label: name })),
         (value) => setTheme(applyTheme(value))),
       ...(theme === 'dark' ? [select('accent', 'Accent colour', 'Highlight colour for active controls.', accent,
         [

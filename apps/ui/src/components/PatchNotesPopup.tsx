@@ -9,6 +9,7 @@ import {
   shouldShowPatchNotesPopup,
 } from '../data/changelog';
 import type { ChangelogRelease } from '../data/content';
+import { shouldSkipIntro } from '../brand/TvmIntro';
 import { fetchReleaseConfig } from '../data/releaseConfig';
 import { ChangelogCornerCard } from './ChangelogCornerCard';
 
@@ -81,6 +82,9 @@ export function PatchNotesPopup(): React.JSX.Element | null {
 
   useEffect(() => {
     let active = true;
+    // Automated runs (?e2e=1 or a WebDriver browser) never get a blocking modal,
+    // as with the intro: it would sit over every control the tests tap.
+    if (shouldSkipIntro()) { setMode('card'); return undefined; }
     void fetchReleaseConfig().then(async (config) => {
       if (!active) return;
       if (!shouldShowPatchNotesPopup(config?.flags?.patchNotesPopup, readSeenReleaseVersion(), version)) {

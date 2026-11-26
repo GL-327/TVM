@@ -5,6 +5,7 @@ import { FocusButton } from './FocusButton';
 import { IconProfile, IconSearch, IconSettings } from './Icons';
 import { SelectionDroplet } from './SelectionDroplet';
 import { useLiquidLens } from './liquidLens';
+import { usePhoneShell } from '../nav/usePhoneShell';
 
 type RibbonTab = 'home' | 'movies' | 'shows' | 'library' | 'search' | 'live' | 'apps' | 'settings' | 'profile' | 'watchlist';
 const lastSelection = { left: 0, width: 0 };
@@ -13,6 +14,9 @@ export function Ribbon({ active = 'home', onLane }: {
   active?: RibbonTab; onLane?: (lane: 'all' | 'movies' | 'shows') => void;
 }): React.JSX.Element {
   const navigate = useNavigate();
+  // On a phone the capsule is the bottom tab bar: five tabs, no more. Search
+  // moves to the top bar beside Settings so every control keeps a 44 px target.
+  const phone = usePhoneShell();
   const track = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
@@ -38,6 +42,12 @@ export function Ribbon({ active = 'home', onLane }: {
     ['live', 'live', 'Live TV', () => navigate.push('live')],
     ['library', 'library', 'Library', () => browse('all')],
   ] as const;
+  const searchButton = (
+    <FocusButton id="search" className={`${phone ? 'polish-nav__icon' : 'polish-nav__tab'} polish-nav__search ribbon-search`}
+      title="Search" ariaLabel="Search" tabIndex={0} onSelect={() => navigate.pushModal('search', { params: { from: 'home' } })}>
+      <IconSearch />
+    </FocusButton>
+  );
   const menu = [
     ['more-profiles', 'Switch profile', 'profiles'],
     ['more-profile', 'Account', 'profile'],
@@ -60,13 +70,11 @@ export function Ribbon({ active = 'home', onLane }: {
             <FocusButton key={id} id={id} className="polish-nav__tab" ariaPressed={active === tab}
               tabIndex={0} onSelect={select}>{title}</FocusButton>
           ))}
-          <FocusButton id="search" className="polish-nav__tab polish-nav__search ribbon-search"
-            title="Search" ariaLabel="Search" tabIndex={0} onSelect={() => navigate.pushModal('search', { params: { from: 'home' } })}>
-            <IconSearch />
-          </FocusButton>
+          {!phone && searchButton}
         </div>
       </div>
       <div className="polish-nav__side" data-wrap="row">
+        {phone && searchButton}
         {!kids && <FocusButton id="settings" className="polish-nav__icon polish-nav__settings" title="Settings"
           ariaLabel="Settings" tabIndex={0} onSelect={() => navigate.push('settings')}><IconSettings /></FocusButton>}
         <FocusButton id="more" className="polish-nav__icon" title="Profile and more" ariaLabel="Profile and more"

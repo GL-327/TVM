@@ -1,4 +1,4 @@
-# Handoff: TVM 1.4.1 (test build)
+# Handoff: TVM 1.4.2 (test build)
 
 Written 2026-11-26 around 05:00 UK by Claude on the owner's desktop, for whoever picks this up next (the
 owner's laptop session). **Read this before changing anything.** Delete this file once everything below is
@@ -9,7 +9,7 @@ done, and remove the pointer to it at the top of `CLAUDE.md`.
 The owner asked for a big polish pass. The full list and the design are in `docs/1.4/spec.md`, which is
 the contract every builder worked from. Codex and Gemini each ran out of usage within about 15 minutes of
 starting six parallel builders. Claude Sonnet helpers then made every area build and pass its tests.
-The owner asked for a push before morning **even if unfinished**, so 1.4.0 went out as a test build, and 1.4.1 added the Windows Settings redesign. Its
+The owner asked for a push before morning **even if unfinished**, so 1.4.0 went out as a test build, 1.4.1 added the Windows Settings redesign, and 1.4.2 fixed phone-layout regressions that the CI "responsive-web" Playwright job caught in 1.4.0 (see `docs/1.4/report-ui-mobile-fix.md`). On GitHub, 1.4.0 built and published every app, and the iPhone app compiled in CI. Its
 patch notes (a pop-up this time) list the known issues, and so does the section below.
 
 Each area's own report, from the builder that last touched it, is in `docs/1.4/report-*.md`.
@@ -35,7 +35,7 @@ Nothing was tried on a real device.
 | Web/phone UI (`apps/ui`) | Nav with magnifier, no double selection, no hover clipping, Geist, click to pause, double-click fullscreen, patch-notes pop-up. | Only the sign-in screen was seen in a browser. Guide, Settings redesign, Stats overlay, version picker and extras switches not audited or not done. Controls in fullscreen not verified. |
 | Roku (`apps/roku`) | Fixed all BrighterScript errors. Patch-notes dialog. | Not run on a TV. The redesign items in `docs/1.4/report-roku.md` need a remote-navigation pass. |
 | Android | Builds and passes tests. `/api/config`, announcement, RD fix, prefs, verify/forgot, versions. | `/api/live/guide`. The webhook is not called. Default version auto-pick still uses the old ordering. |
-| iPhone | Project check passes; a static review fixed likely compile errors. | **Never compiled**; CI is the first real build. Versions not wired to playback. No guide endpoint. |
+| iPhone | Project check passes, and it compiled and built the IPA in CI for 1.4.0. | Never run on a phone. Versions not wired to playback. No guide endpoint. |
 
 ## Accounts service (private repo GL-327/TVM-accounts, already deployed)
 

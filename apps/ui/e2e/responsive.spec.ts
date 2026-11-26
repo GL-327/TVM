@@ -71,6 +71,8 @@ for (const device of [
         await expect(page.locator('[data-screen="settings"]')).toBeVisible();
         await checkWidth();
         await expect(page.locator('[data-focus-id="linux-desktop"]')).toHaveCount(0);
+        // Settings is categories now (spec 8): Theme lives under Appearance.
+        await page.locator('[data-focus-id="settings-category-appearance"]').click();
         const theme = page.locator('[data-focus-id="theme-light"]');
         await expect(theme).toBeVisible();
         await theme.click();

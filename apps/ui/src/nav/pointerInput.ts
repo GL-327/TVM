@@ -267,10 +267,24 @@ function canScroll(el: HTMLElement, axis: 'x' | 'y'): boolean {
  * `overflow: hidden` precisely so no scrollbar shows on a TV, yet they scroll
  * fine when written to, and they are exactly what the wheel should drive.
  */
+/**
+ * An `overflow: visible` box (the new `.rail`, whose padding and negative
+ * margins make scrollHeight exceed clientHeight) never scrolls, so it must not
+ * be mistaken for the page camera and swallow a vertical pan.
+ */
+function overflowsVisibly(el: HTMLElement, axis: 'x' | 'y'): boolean {
+  try {
+    const css = getComputedStyle(el);
+    return (axis === 'x' ? css.overflowX : css.overflowY) === 'visible';
+  } catch {
+    return false;
+  }
+}
+
 export function nearestScrollable(start: Element | null, axis: 'x' | 'y'): HTMLElement | null {
   let node: Element | null = start;
   while (node !== null && node !== document.body) {
-    if (node instanceof HTMLElement && canScroll(node, axis)) return node;
+    if (node instanceof HTMLElement && canScroll(node, axis) && !overflowsVisibly(node, axis)) return node;
     node = node.parentElement;
   }
   return null;
