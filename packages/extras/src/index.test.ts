@@ -6,35 +6,31 @@ const binding = (value: string) => ({ value });
 afterEach(() => { vi.useRealTimers(); });
 
 describe('shared extras (mocked fetch)', () => {
-  it('maps IMDb through the right Wikidata property and normalizes IntroDB milliseconds', async () => {
-    const fetcher = vi.fn<typeof fetch>(async url => String(url).includes('wikidata')
-      ? json({ results: { bindings: [{ tmdb: binding('1396') }] } })
-      : json({ intro: [{ start_ms: 228665, end_ms: 246498 }], recap: [{ start_ms: null, end_ms: 18000 }], credits: [{ start_ms: 3432884, end_ms: null }] }));
+  it('looks up an IMDb episode directly and normalizes IntroDB milliseconds', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      json({ intro: [{ start_ms: 228665, end_ms: 246498 }], recap: [{ start_ms: null, end_ms: 18000 }], credits: [{ start_ms: 3432884, end_ms: null }] }));
     const client = createExtras({ fetch: fetcher });
     const result = await client.segments({ id: 'tt0903747', season: 1, episode: 1 });
     expect(result).toEqual({ intro: { start: 228.665, end: 246.498 }, recap: { start: 0, end: 18 }, credits: { start: 3432.884, end: null }, source: 'theintrodb' });
-    expect(decodeURIComponent(String(fetcher.mock.calls[0]?.[0]))).toContain('wdt:P4983');
-    expect(String(fetcher.mock.calls[1]?.[0])).toContain('season=1&episode=1');
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://api.theintrodb.org/v4/media?imdb_id=tt0903747&season=1&episode=1');
     await client.segments({ id: 'tt0903747', season: 1, episode: 1 });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('uses film identifiers and rejects malformed ranges and untrusted IMDb input', async () => {
-    const fetcher = vi.fn<typeof fetch>(async url => String(url).includes('wikidata')
-      ? json({ results: { bindings: [{ tmdb: binding('157336') }] } })
-      : json({ intro: [{ start_ms: -1, end_ms: 100 }, { start_ms: 100, end_ms: 100 }], recap: [{ start_ms: 1, end_ms: null }] }));
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      json({ intro: [{ start_ms: -1, end_ms: 100 }, { start_ms: 100, end_ms: 100 }], recap: [{ start_ms: 1, end_ms: null }] }));
     const client = createExtras({ fetch: fetcher });
     expect(await client.segments({ id: 'tt0816692' })).toEqual(emptySegments());
-    expect(decodeURIComponent(String(fetcher.mock.calls[0]?.[0]))).toContain('wdt:P4947');
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://api.theintrodb.org/v4/media?imdb_id=tt0816692');
     await client.segments({ id: 'tt1". } SERVICE <http://localhost> {' });
     await client.segments({ id: 'tt0903747', season: -1, episode: 1 });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to AniList/AniSkip even if Wikidata fails and preserves seconds', async () => {
+  it('falls back to AniList/AniSkip when TheIntroDB fails and preserves seconds', async () => {
     const fetcher = vi.fn<typeof fetch>(async (url, init) => {
-      if (String(url).includes('wikidata')) throw new Error('offline');
-      if (String(url).includes('cinemeta')) return json({});
+      if (String(url).includes('theintrodb')) throw new Error('offline');
       if (String(url).includes('anilist')) {
         expect(init?.method).toBe('POST');
         expect(JSON.parse(String(init?.body)).variables.search).toBe('Jujutsu Kaisen');
@@ -53,10 +49,9 @@ describe('shared extras (mocked fetch)', () => {
   });
 
   it('does not call anime services when primary timestamps exist', async () => {
-    const fetcher = vi.fn<typeof fetch>(async url => String(url).includes('wikidata')
-      ? json({ results: { bindings: [{ tmdb: binding('95479') }] } }) : json({ intro: [{ start_ms: 1000, end_ms: 90000 }] }));
+    const fetcher = vi.fn<typeof fetch>(async () => json({ intro: [{ start_ms: 1000, end_ms: 90000 }] }));
     expect((await createExtras({ fetch: fetcher }).segments({ id: 'tt12343534', season: 1, episode: 1, anime: true, title: 'Jujutsu Kaisen' })).source).toBe('theintrodb');
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates subtitles by canonical language, respects ranking and sorts preferences', async () => {
@@ -127,7 +122,7 @@ describe('shared extras (mocked fetch)', () => {
 
   it('caches TVmaze ids and handles absent embeds for ended shows', async () => {
     const fetcher = vi.fn<typeof fetch>(async url => String(url).includes('/lookup/') ? json({ id: 169 }) : json({ _embedded: { nextepisode: { season: 6, number: 1, name: 'Return', airstamp: '2026-11-27T20:00:00Z' } } }));
-    const c = createExtras({ fetch: fetcher });
+    const c = createExtras({ fetch: fetcher, now: () => Date.parse('2026-11-26T20:00:00Z') });
     expect(await c.upcoming('tt0903747')).toEqual({ season: 6, episode: 1, name: 'Return', airstamp: '2026-11-27T20:00:00Z' });
     await c.upcoming('tt0903747');
     expect(fetcher).toHaveBeenCalledTimes(2);

@@ -1,4 +1,4 @@
-import { languageCode } from './versions.ts';
+import { languageCode, type PlaybackClient } from './versions.ts';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -23,7 +23,16 @@ export interface MediaProbe {
   audioCodec: string | null;
   audioChannels: number;
   audioLanguages?: string[];
+  audioTracks?: AudioTrack[];
   hdr?: boolean;
+}
+
+interface AudioTrack {
+  index: number;
+  codec: string | null;
+  channels: number;
+  language: string | null;
+  default: boolean;
 }
 
 export type PlaybackDecision =
@@ -32,6 +41,10 @@ export type PlaybackDecision =
       mode: 'hls';
       video: 'copy' | 'h264';
       audio: 'copy' | 'aac';
+      audioIndex?: number;
+      toneMap?: boolean;
+      videoHeight?: number;
+      hevcTag?: boolean;
       /** Encode target height when the source exceeds the plan cap. */
       scaleToHeight?: number;
     };
@@ -76,11 +89,12 @@ function wingetFfmpegPaths(exe: string, local: string): string[] {
   return found;
 }
 
-function candidatePaths(name: string, env: NodeJS.ProcessEnv): string[] {
+function candidatePaths(name: string, env: NodeJS.ProcessEnv, dataDir?: string): string[] {
   const exe = process.platform === 'win32' ? `${name}.exe` : name;
   const list: string[] = [];
   const override = env[`TVM_${name.toUpperCase()}`]?.trim();
   if (override !== undefined && override !== '') list.push(override);
+  if (dataDir) list.push(join(dataDir, 'tools', 'ffmpeg', exe));
   for (const dir of (env['PATH'] ?? env['Path'] ?? '').split(delimiter)) {
     if (dir !== '') list.push(join(dir, exe));
   }
@@ -102,8 +116,8 @@ function candidatePaths(name: string, env: NodeJS.ProcessEnv): string[] {
   return list;
 }
 
-export function locateBinary(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  for (const path of candidatePaths(name, env)) {
+export function locateBinary(name: string, env: NodeJS.ProcessEnv = process.env, dataDir?: string): string | null {
+  for (const path of candidatePaths(name, env, dataDir)) {
     try {
       if (existsSync(path)) return path;
     } catch {
@@ -156,6 +170,10 @@ export function parseProbeOutput(json: string): MediaProbe | null {
     streams.find((s) => s.codec_type === 'audio' && s.disposition?.default === 1) ??
     streams.find((s) => s.codec_type === 'audio');
   if (video === undefined && audio === undefined) return null;
+  const audioTracks = streams.filter(s => s.codec_type === 'audio').map((s, index): AudioTrack => ({
+    index, codec: s.codec_name?.toLowerCase() ?? null, channels: num(s.channels),
+    language: languageCode(s.tags?.language), default: s === audio,
+  }));
   return {
     container: (body.format?.format_name ?? '').toLowerCase(),
     durationSeconds: num(body.format?.duration),
@@ -164,8 +182,8 @@ export function parseProbeOutput(json: string): MediaProbe | null {
     videoBitDepth: video === undefined ? 8 : bitDepthOf(video),
     audioCodec: audio?.codec_name?.toLowerCase() ?? null,
     audioChannels: num(audio?.channels),
-    audioLanguages: [...new Set(streams.filter(s => s.codec_type === 'audio')
-      .map(s => languageCode(s.tags?.language)).filter((code): code is string => !!code && code !== 'und'))],
+    audioLanguages: [...new Set(audioTracks.map(track => track.language).filter((code): code is string => code !== null))],
+    ...(audioTracks.length > 1 ? { audioTracks } : {}),
     hdr: /^(smpte2084|arib-std-b67)$/.test(video?.color_transfer ?? ''),
   };
 }
@@ -184,10 +202,6 @@ const HLS_COPY_VIDEO = new Set(['h264', 'vp9', 'av1']);
 // fMP4 HLS with Opus or MP3 audio is not portable across WebKit/Chromium.
 const HLS_COPY_AUDIO = new Set(['aac']);
 
-export function directMimeFor(container: string): string {
-  return MP4_CONTAINERS.test(container) ? 'video/mp4' : 'video/webm';
-}
-
 /**
  * One deterministic call decides how a file reaches the player:
  *
@@ -199,50 +213,72 @@ export function directMimeFor(container: string): string {
  * - `hls h264` — everything else (HEVC, 10-bit, interlaced VC-1, …) encodes
  *                down to H.264/AAC capped at the plan height.
  */
-export function decidePlayback(probe: MediaProbe, maxHeight: number): PlaybackDecision {
+export function chooseAudioTrack(probe: MediaProbe, languages: readonly string[] = []): AudioTrack | undefined {
+  const tracks = probe.audioTracks;
+  if (!tracks?.length) return undefined;
+  for (const language of languages) {
+    const matching = tracks.filter(track => track.language === language);
+    const main = matching.find(track => track.default);
+    if (main ?? matching[0]) return main ?? matching[0];
+  }
+  return tracks.find(track => track.default) ?? tracks[0];
+}
+
+export function decidePlayback(probe: MediaProbe, maxHeight: number, options: {
+  client?: PlaybackClient; filename?: string; audioTrack?: AudioTrack;
+} = {}): PlaybackDecision {
   const video = probe.videoCodec;
-  const audio = probe.audioCodec;
+  const track = options.audioTrack;
+  const audio = track ? track.codec : probe.audioCodec;
   const withinCap = probe.videoHeight <= maxHeight || probe.videoHeight === 0;
   const eightBitH264 = video !== 'h264' || probe.videoBitDepth <= 8;
+  const hevc = video === 'hevc' && options.client?.hevc === true;
+  const toneMap = probe.hdr === true && options.client?.hdr !== true;
+  const matroska = MATROSKA_CONTAINERS.test(probe.container);
+  const mkv = /\.mkv$/i.test(options.filename ?? '');
 
   const mp4Direct =
     MP4_CONTAINERS.test(probe.container) &&
-    video !== null && MP4_VIDEO.has(video) && eightBitH264 &&
+    video !== null && (MP4_VIDEO.has(video) || hevc) && eightBitH264 &&
     (audio === null || MP4_AUDIO.has(audio));
   const webmDirect =
-    MATROSKA_CONTAINERS.test(probe.container) &&
+    matroska && (!mkv || options.client?.mkv !== false) &&
     video !== null && WEBM_VIDEO.has(video) &&
     (audio === null || WEBM_AUDIO.has(audio));
-  if ((mp4Direct || webmDirect) && withinCap) {
-    return { mode: 'direct', mimeType: mp4Direct ? 'video/mp4' : 'video/webm' };
+  const mkvDirect = matroska && mkv && options.client?.mkv === true &&
+    video !== null && (MP4_VIDEO.has(video) || WEBM_VIDEO.has(video) || hevc) && eightBitH264 &&
+    (audio === null || MP4_AUDIO.has(audio) || WEBM_AUDIO.has(audio));
+  if ((mp4Direct || webmDirect || mkvDirect) && withinCap && !toneMap && (!track || track.index === 0)) {
+    return { mode: 'direct', mimeType: mp4Direct ? 'video/mp4' : mkvDirect ? 'video/x-matroska' : 'video/webm' };
   }
 
   const videoCopy =
-    video !== null && HLS_COPY_VIDEO.has(video) && withinCap && (video !== 'h264' || probe.videoBitDepth <= 8);
-  const audioCopy = audio !== null && HLS_COPY_AUDIO.has(audio) && probe.audioChannels <= 6;
+    video !== null && (HLS_COPY_VIDEO.has(video) || hevc) && withinCap && eightBitH264 && !toneMap;
+  const audioCopy = audio !== null && HLS_COPY_AUDIO.has(audio) && (track?.channels ?? probe.audioChannels) <= 6;
+  const audioChoice = { audio: audioCopy ? 'copy' as const : 'aac' as const,
+    ...(track ? { audioIndex: track.index } : {}) };
   if (videoCopy) {
-    return { mode: 'hls', video: 'copy', audio: audioCopy ? 'copy' : 'aac' };
+    return { mode: 'hls', video: 'copy', ...audioChoice, ...(hevc ? { hevcTag: true } : {}) };
   }
-  // Re-encoding tops out at 1080p: a live 4K x264 encode cannot hold realtime
-  // on ordinary hardware, and 1080p is transparent on a TV at these bitrates.
-  const encodeCap = Math.min(maxHeight, 1080);
   return {
     mode: 'hls',
     video: 'h264',
-    audio: audioCopy ? 'copy' : 'aac',
-    ...(probe.videoHeight > encodeCap && probe.videoHeight > 0 ? { scaleToHeight: encodeCap } : {}),
+    ...audioChoice,
+    ...(!withinCap ? { scaleToHeight: maxHeight } : {}),
+    ...(probe.videoHeight > 1080 && maxHeight > 1080 ? { videoHeight: Math.min(probe.videoHeight, maxHeight) } : {}),
+    ...(toneMap ? { toneMap: true } : {}),
   };
 }
 
 const PROBE_TIMEOUT_MS = 25_000;
 
-export function createFfmpegToolkit(env: NodeJS.ProcessEnv = process.env): FfmpegToolkit {
+export function createFfmpegToolkit(env: NodeJS.ProcessEnv = process.env, dataDir?: string): FfmpegToolkit {
   let ffprobe: string | null | undefined;
   let ffmpeg: string | null | undefined;
   let encoder: H264Encoder | undefined;
 
-  const probePath = (): string | null => (ffprobe ??= locateBinary('ffprobe', env));
-  const mpegPath = (): string | null => (ffmpeg ??= locateBinary('ffmpeg', env));
+  const probePath = (): string | null => (ffprobe ??= locateBinary('ffprobe', env, dataDir));
+  const mpegPath = (): string | null => (ffmpeg ??= locateBinary('ffmpeg', env, dataDir));
 
   return {
     available: () => mpegPath() !== null && probePath() !== null,

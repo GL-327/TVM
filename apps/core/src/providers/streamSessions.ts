@@ -59,11 +59,11 @@ const SAFE_FILE = /^[A-Za-z0-9_.-]+$/;
 
 /** Encoder-specific quality/rate flags; keyframe cadence and pix_fmt are shared. */
 const ENCODER_ARGS: Record<H264Encoder, string[]> = {
-  libx264: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-profile:v', 'high', '-sc_threshold', '0'],
-  h264_nvenc: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '22', '-b:v', '0', '-profile:v', 'high', '-forced-idr', '1'],
-  h264_qsv: ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '22', '-forced_idr', '1'],
-  h264_amf: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '21', '-qp_p', '23'],
-  h264_videotoolbox: ['-c:v', 'h264_videotoolbox', '-b:v', '8M', '-allow_sw', '1', '-realtime', '1', '-profile:v', 'high'],
+  libx264: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '17', '-profile:v', 'high', '-sc_threshold', '0'],
+  h264_nvenc: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '18', '-b:v', '0', '-profile:v', 'high', '-forced-idr', '1'],
+  h264_qsv: ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '18', '-forced_idr', '1'],
+  h264_amf: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '17', '-qp_p', '19'],
+  h264_videotoolbox: ['-c:v', 'h264_videotoolbox', '-allow_sw', '1', '-realtime', '1', '-profile:v', 'high'],
 };
 
 export function hlsArgs(input: OpenSessionInput, _outDir: string, encoder: H264Encoder = 'libx264'): string[] {
@@ -80,14 +80,16 @@ export function hlsArgs(input: OpenSessionInput, _outDir: string, encoder: H264E
   }
   // GPU-assisted decode only alongside a GPU encode attempt, so the libx264
   // fallback is a fully independent pure-software path.
-  if (decision.video === 'h264' && encoder !== 'libx264') args.push('-hwaccel', 'auto');
+  if (decision.video === 'h264' && encoder !== 'libx264' && !decision.toneMap) args.push('-hwaccel', 'auto');
   const startAt = input.startAt ?? 0;
   if (startAt > 0) args.push('-ss', String(startAt));
-  args.push('-i', input.inputUrl, '-map', '0:v:0?', '-map', '0:a:0?', '-sn', '-dn');
+  args.push('-i', input.inputUrl, '-map', '0:v:0?', '-map', `0:a:${decision.audioIndex ?? 0}?`, '-sn', '-dn');
 
   if (decision.video === 'copy') {
     args.push('-c:v', 'copy');
+    if (decision.hevcTag) args.push('-tag:v', 'hvc1');
   } else {
+    if (encoder === 'h264_videotoolbox') args.push('-b:v', (decision.videoHeight ?? 0) > 1080 ? '25M' : '12M');
     args.push(
       ...ENCODER_ARGS[encoder],
       '-pix_fmt', encoder === 'h264_qsv' ? 'nv12' : 'yuv420p',
@@ -96,9 +98,12 @@ export function hlsArgs(input: OpenSessionInput, _outDir: string, encoder: H264E
       '-keyint_min', '96',
       '-force_key_frames', `expr:gte(t,n_forced*${HLS_SEGMENT_SECONDS})`,
     );
-    if (decision.scaleToHeight !== undefined) {
-      args.push('-vf', `scale=-2:min(${decision.scaleToHeight}\\,ih)`);
-    }
+    const filters = [];
+    if (decision.scaleToHeight !== undefined) filters.push(`scale=-2:trunc(min(${decision.scaleToHeight}\\,ih)/2)*2`);
+    if (decision.toneMap) filters.push('zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709',
+      'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv');
+    if (filters.length) args.push('-vf', filters.join(','));
+    if (decision.toneMap) args.push('-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709');
   }
   if (decision.audio === 'copy') {
     args.push('-c:a', 'copy');
@@ -277,7 +282,8 @@ export function createStreamSessions(options: StreamSessionOptions): StreamSessi
         if (existing.input.inputUrl !== input.inputUrl) continue;
         touch(existing);
         const startAt = Math.max(0, input.startAt ?? 0);
-        if (!existing.ended && Math.abs(startAt - existing.offset) < 3) {
+        if (!existing.ended && Math.abs(startAt - existing.offset) < 3 &&
+            JSON.stringify(existing.input.decision) === JSON.stringify(input.decision)) {
           return { id: existing.id, offset: existing.offset, durationSeconds: existing.durationSeconds };
         }
         existing.input = input;

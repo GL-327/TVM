@@ -11,6 +11,7 @@ import {
   pickDebridStream,
   rankDebridStreams,
   resolveTorrentioUrl,
+  releaseTier,
   TORRENTIO_USER_AGENT,
   torrentioStreamPaths,
 } from './torrentio.ts';
@@ -28,7 +29,7 @@ describe('torrentio stream pick', () => {
     expect(torrentioStreamPaths('tt0944947', 1, 1)[0]).toBe('stream/series/tt0944947:1:1.json');
   });
 
-  it('drops CAM rips and prefers a cached 1080p', () => {
+  it('classifies CAM rips and prefers a cached 1080p', () => {
     const cam = parseDebridStream({ name: 'CAM', title: 'camrip', url: 'https://cdn.example/cam.mp4' });
     const cached = parseDebridStream({
       name: 'Torrentio\n1080p ⚡',
@@ -40,7 +41,7 @@ describe('torrentio stream pick', () => {
       title: 'Oppenheimer 720p',
       url: 'https://real-debrid.com/d/LOW',
     });
-    expect(cam).toBeNull();
+    expect(cam && releaseTier(cam)).toBe('cinema');
     expect(pickDebridStream([hd!, cached!])?.url).toBe('https://real-debrid.com/d/OPP');
     expect(rankDebridStreams([hd!, cached!]).map((stream) => stream.url)).toEqual([
       'https://real-debrid.com/d/OPP',

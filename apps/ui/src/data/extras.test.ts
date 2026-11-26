@@ -112,7 +112,7 @@ describe('extras API client and graceful 404/failure fallback', () => {
           { status: 200 },
         );
       }
-      if (url.startsWith('https://api.theintrodb.org/v2/media')) {
+      if (url.startsWith('https://api.theintrodb.org/v4/media?imdb_id=tt1160419')) {
         return new Response(
           JSON.stringify({
             intro: [{ start_ms: 5000, end_ms: 45000 }],

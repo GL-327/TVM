@@ -97,8 +97,8 @@ export function Spotlight({ hero, event, enabled, active, reduced, rating, annou
     data-active={active && !reduced} style={style} onPointerMove={parallax} onPointerLeave={() => {
       stage.current?.style.removeProperty('--spotlight-x'); stage.current?.style.removeProperty('--spotlight-y');
     }}>
-    <div className="spotlight__media" aria-hidden="true">
-      {hero && <HeroArt src={preferBackdrop(hero.id, hero.backdrop, hero.poster)} hue={hero.hue} />}
+    <div className="spotlight__media" data-clip-ready={clip !== null && clip === readyClip && active} aria-hidden="true">
+      {hero && <HeroArt src={preferBackdrop(hero.id, hero.backdrop, hero.poster, true)} hue={hero.hue} />}
       {clip && <video key={clip} ref={video} src={clip} muted={muted} loop playsInline preload="auto"
         className={'spotlight__video' + (clip === readyClip && active ? ' spotlight__video--ready' : '')}
         onPlaying={() => { setReadyClip(clip); setPlaying(true); }} onPause={() => setPlaying(false)}

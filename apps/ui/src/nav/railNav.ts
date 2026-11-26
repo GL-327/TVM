@@ -11,6 +11,9 @@ import { canonicalFocusId, isLoopClone, isWrapAcross } from './loopingRail';
 
 export const VERTICAL_ROW_SELECTOR = [
   '.stage__copy',
+  '.hub__welcome',
+  '.hub__shortcuts',
+  '.hub__list',
   '.ribbon',
   '.stream-chrome',
   '.rail__track',

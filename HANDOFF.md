@@ -1,4 +1,6 @@
-# Handoff: TVM 1.4.6 (test build)
+# Handoff: TVM 1.4.8 (test build)
+
+> 1.4.7 fixed tablet top-bar taps. 1.4.8 added the Hub page, artwork-led Movies/Series, the quality and English fixes, the cinema-recording fallback and the extras checks: see `docs/1.4/report-core3.md` and `report-ui3.md`. Still open: the full iOS 26/27 glass pass, and the new look and intros on Windows and Roku.
 
 Written 2026-11-26 by Claude on the owner's laptop, continuing the 1.4 polish that the desktop session could not
 finish. **Read this before changing anything.** Delete this file once everything below is done, and remove the

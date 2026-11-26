@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
-describe('Home as the launcher in front of TVM Stream', () => {
+describe('Hub and Home', () => {
   it('lands on the chosen title after the front-door checks, and browses TVM Stream from the hero', () => {
     const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
     expect(src).toContain('enterTvmStream');
-    expect(src).toContain('launchTitle(navigate, title)');
+    expect(src).toContain('launchTitle(navigate, title, true)');
     expect(src).toContain('mapRailPosters(rail.titles, rail.id, openTitle');
     expect(src).toContain('TVM Stream');
     expect(readFileSync(join(dir, 'Spotlight.tsx'), 'utf8')).toContain('id="hero-play"');
@@ -18,26 +18,16 @@ describe('Home as the launcher in front of TVM Stream', () => {
     expect(src).not.toContain('HERO_SLIDE_IDS');
   });
 
-  it('looks like a launcher, not a second TVM Stream page', () => {
-    const src = readFileSync(join(dir, 'Home.tsx'), 'utf8');
-    const css = readFileSync(join(dir, '../app.css'), 'utf8');
-    expect(src).toContain('home--launcher');
-    expect(src).toContain('id="launch-stream"');
-    expect(src).toContain('home__destinations');
-    expect(src).toContain('Where to');
-    expect(src).toContain("'Continue watching'");
-    expect(css).toContain('.home--launcher');
-    expect(css).toContain('.home__launcher {');
-    expect(css).toContain('flex: 0 0 auto');
-    expect(css).toContain('.launch-tile--stream');
-    expect(css).toContain('top: var(--tvm-safe-y)');
-    expect(css).toContain('.tvm-button.launch-tile');
-    expect(css).toMatch(/\.tvm-button\.launch-tile \{[\s\S]*color:\s*var\(--tvm-text\)/);
-    const library = readFileSync(join(dir, 'Library.tsx'), 'utf8');
-    expect(library).not.toContain('HomeClock');
-    expect(library).not.toContain('home__launcher');
-    expect(library).not.toContain('launch-tile');
-    expect(library).not.toContain('home--launcher');
+  it('gives Hub the shortcuts and keeps Home on the catalogue', () => {
+    const hub = readFileSync(join(dir, 'Hub.tsx'), 'utf8');
+    const home = readFileSync(join(dir, 'Home.tsx'), 'utf8');
+    expect(hub).toContain('aria-label="Quick links"');
+    expect(hub).toContain('title="Apps & services"');
+    expect(hub).toContain('title="Free live TV"');
+    expect(hub).toContain("navigate.push('home')");
+    expect(home).toContain("'Continue watching'");
+    expect(home).toContain("'Featured'");
+    expect(home).not.toContain('hub__shortcuts');
   });
 
   it('presents the Hunger Games as a numbered story collection in chronological order', () => {

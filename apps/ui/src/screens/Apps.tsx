@@ -4,23 +4,12 @@ import { BackButton } from '../components/BackButton';
 import { FocusButton } from '../components/FocusButton';
 import { PageScene } from '../components/PageScene';
 import { Ribbon } from '../components/Ribbon';
-import { appTileOpen, fallbackApps, fetchApps, prefetchAppHub } from '../data/apps';
+import { fallbackApps, fetchApps, openAppTile } from '../data/apps';
 import { TVM_STREAM, type AppTile } from '../data/catalog';
 import { applyPlanClass, fetchPlan } from '../data/plan';
-import { enterTvmStream } from '../data/profiles';
 import { focusExists, requestFocus } from '../nav/focusEngine';
-import { useFocusScope, useNavigate, type Navigate } from '../nav/ViewStackContext';
+import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
-
-function openAppTile(navigate: Navigate, app: AppTile): void {
-  const dest = appTileOpen(app.id);
-  if (dest.kind === 'library') {
-    void enterTvmStream(navigate);
-    return;
-  }
-  prefetchAppHub(dest.id);
-  navigate.push('service', { params: { id: dest.id } });
-}
 
 export function Apps(_props: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();

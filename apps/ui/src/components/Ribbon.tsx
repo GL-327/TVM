@@ -5,21 +5,25 @@ import { FocusButton } from './FocusButton';
 import { IconProfile, IconSearch, IconSettings } from './Icons';
 import { SelectionDroplet } from './SelectionDroplet';
 import { useLiquidLens } from './liquidLens';
+import { fetchExtrasStats } from '../data/extras';
+import { uiExtraEnabled, useExtraPrefs } from '../data/uiExtras';
 import { usePhoneShell } from '../nav/usePhoneShell';
 
-type RibbonTab = 'home' | 'movies' | 'shows' | 'library' | 'search' | 'live' | 'apps' | 'settings' | 'profile' | 'watchlist';
+type RibbonTab = 'hub' | 'home' | 'movies' | 'shows' | 'library' | 'search' | 'live' | 'apps' | 'settings' | 'profile' | 'watchlist';
 const lastSelection = { left: 0, width: 0 };
 
 export function Ribbon({ active = 'home', onLane }: {
   active?: RibbonTab; onLane?: (lane: 'all' | 'movies' | 'shows') => void;
 }): React.JSX.Element {
   const navigate = useNavigate();
-  // On a phone the capsule is the bottom tab bar: five tabs, no more. Search
-  // moves to the top bar beside Settings so every control keeps a 44 px target.
+  const prefs = useExtraPrefs();
+  // On phones, Search sits beside Settings at the top.
   const phone = usePhoneShell();
   const track = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
+  const [statsAvailable, setStatsAvailable] = useState(false);
+  const statsEnabled = uiExtraEnabled('watchStats', prefs);
   useLiquidLens(sheet, { blur: 7, active: more });
   const [kids, setKids] = useState(() => isKidsProfile(peekActiveProfile()));
   useEffect(() => subscribeProfiles(() => setKids(isKidsProfile(peekActiveProfile()))), []);
@@ -31,12 +35,26 @@ export function Ribbon({ active = 'home', onLane }: {
     return () => window.removeEventListener('tvm:navigate-back', close);
   }, [more]);
 
+  useEffect(() => {
+    if (!more || !statsEnabled || kids) return;
+    const request = new AbortController();
+    void fetchExtrasStats(request.signal).then((stats) => {
+      if (!request.signal.aborted) setStatsAvailable(stats !== null);
+    });
+    return () => request.abort();
+  }, [kids, more, statsEnabled]);
+
   const browse = (lane: 'all' | 'movies' | 'shows'): void => {
     if (onLane) onLane(lane);
     else navigate.push('library', { params: { lane } });
   };
   const tabs = [
-    ['home-dock', 'home', 'Home', () => navigate.home()],
+    ['hub-dock', 'hub', 'Hub', () => { if (active !== 'hub') navigate.home(); }],
+    ['home-dock', 'home', 'Home', () => {
+      if (active === 'home') return;
+      if (active !== 'hub') navigate.home();
+      navigate.push('home');
+    }],
     ['movies', 'movies', 'Movies', () => browse('movies')],
     ['series', 'shows', 'Series', () => browse('shows')],
     ['live', 'live', 'Live TV', () => navigate.push('live')],
@@ -52,6 +70,7 @@ export function Ribbon({ active = 'home', onLane }: {
     ['more-profiles', 'Switch profile', 'profiles'],
     ['more-profile', 'Account', 'profile'],
     ['more-library', 'TVM Library', 'library'],
+    ['more-stats', 'Your stats', 'stats'],
     ['watchlist', 'My List', 'watchlist'],
     ['more-apps', 'Apps', 'apps'],
     ['more-settings', 'Settings', 'settings'],
@@ -59,7 +78,7 @@ export function Ribbon({ active = 'home', onLane }: {
 
   return (
     <nav className="ribbon ribbon--open polish-nav" aria-label="TVM" data-wrap={phone ? undefined : 'row'}>
-      <FocusButton id="tvm-home" className="polish-nav__brand" ariaLabel="TVM Home" onSelect={() => navigate.home()}>
+      <FocusButton id="tvm-home" className="polish-nav__brand" ariaLabel="TVM Hub" onSelect={() => navigate.home()}>
         TVM
       </FocusButton>
       <div className="ribbon__frost polish-nav__capsule">
@@ -85,7 +104,8 @@ export function Ribbon({ active = 'home', onLane }: {
       {more && <>
         <button className="polish-nav__dismiss" type="button" aria-label="Close menu" onClick={() => setMore(false)} />
         <div ref={sheet} className="polish-nav__menu glass glass--sheet" aria-label="Profile and more" data-wrap="y">
-          {menu.filter(([, , screen]) => !kids || screen !== 'profile' && screen !== 'settings').map(([id, label, screen]) => (
+          {menu.filter(([, , screen]) => (!kids || !['profile', 'settings', 'stats'].includes(screen)) &&
+            (screen !== 'stats' || statsEnabled && statsAvailable)).map(([id, label, screen]) => (
             <FocusButton key={id} id={id} tabIndex={0} className="polish-nav__menu-item" onSelect={() => {
               setMore(false);
               if (screen === 'library') browse('all');

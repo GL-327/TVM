@@ -107,8 +107,12 @@ export function readAppSubtitles(
 
 /** Attach playback sidecar files as native `<track>` elements. No network of our own. */
 export function attachAppSubtitleTracks(video: HTMLVideoElement, subtitles: readonly AppSubtitle[]): void {
+  const existing = [...video.querySelectorAll<HTMLTrackElement>('track[data-tvm-sub]')];
+  for (const node of existing) {
+    if (!subtitles.some((sub) => sub.url === node.dataset.tvmSub)) node.remove();
+  }
   for (const sub of subtitles) {
-    const already = [...video.querySelectorAll('track')].some((node) => node.dataset.tvmSub === sub.url);
+    const already = existing.some((node) => node.dataset.tvmSub === sub.url);
     if (already) continue;
     const track = document.createElement('track');
     track.kind = 'subtitles';

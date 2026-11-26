@@ -34,17 +34,17 @@ export const RD_NOTICE = {
 /**
  * Home → title. Instead of dropping the viewer at TVM Stream's front door,
  * run its checks (profile, plan, Real-Debrid) and land on the title itself.
- * Home stays underneath so Back returns to Home.
+ * With keepScreen, Back returns to the catalogue that opened Details.
  *
  * Movies and series both open details — never the player. Playback needs a
  * resolved stream; a series still needs a season pick first.
  */
-export async function launchTitle(navigate: Navigate, title: Title): Promise<void> {
+export async function launchTitle(navigate: Navigate, title: Title, keepScreen = false): Promise<void> {
   const params = detailsParams(title);
   // Home already checked this viewer. In particular, don't wait for another
   // Real-Debrid status call before opening a title that is already on screen.
   if (currentProfileId() !== '' && peekHome()?.rd.configured === true) {
-    navigate.home();
+    if (!keepScreen) navigate.home();
     navigate.push('details', { params });
     return;
   }
@@ -54,7 +54,7 @@ export async function launchTitle(navigate: Navigate, title: Title): Promise<voi
   } catch {
     checks = EMPTY_CHECKS;
   }
-  navigate.home();
+  if (!keepScreen) navigate.home();
   if (!checks.profileActive) {
     navigate.push('profiles', { params: { next: 'details', nextParams: params } });
     return;

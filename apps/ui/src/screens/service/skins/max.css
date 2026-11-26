@@ -377,7 +377,7 @@
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: none;
+  cursor: pointer;
   transform: translateZ(0);
   contain: layout style;
 }

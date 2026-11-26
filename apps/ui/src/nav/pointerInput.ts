@@ -1,20 +1,3 @@
-/**
- * Mouse support for a UI that was built remote-first.
- *
- * The appliance hides the cursor (`body { cursor: none }`) and only revealed it
- * for `?desktop=1` or after a *click* — so on a laptop the pointer was invisible
- * until you guessed where to press. Hover did nothing, and the wheel did nothing
- * because the page scrollers are driven by the D-pad camera rather than by
- * native overflow.
- *
- * This module makes the two input styles coexist:
- *   - the cursor appears the moment the mouse actually moves, and goes away
- *     again as soon as the remote is used, so the ten-foot view stays clean;
- *   - hovering moves focus, so a click always lands on the same element the
- *     D-pad would have activated;
- *   - the wheel scrolls the nearest scrollable ancestor, including the
- *     `overflow: hidden` page scrollers, which still scroll programmatically.
- */
 import { focusKeyFor } from './railNav';
 import { requestFocus } from './focusEngine';
 import { cancelPendingReveal, suppressNextReveal } from './revealFocused';
@@ -345,13 +328,13 @@ export function startPointerInput(): () => void {
     }
   };
 
-  const showCursor = (): void => {
+  const activateMouseMode = (): void => {
     if (mouseActive) return;
     mouseActive = true;
     root.classList.add(DESKTOP_CLASS);
   };
 
-  const hideCursor = (): void => {
+  const leaveMouseMode = (): void => {
     if (!mouseActive) return;
     mouseActive = false;
     lastX = Number.NaN;
@@ -365,7 +348,7 @@ export function startPointerInput(): () => void {
     hoverTarget = null;
     if (node === null || !node.isConnected || !mouseActive) return;
     if (node === document.activeElement) return;
-    if (node.closest('[data-loop-clone="true"]') !== null) return;
+    if (node.matches('.poster, .channel-card') || node.closest('[data-loop-clone="true"]') !== null) return;
     const key = focusKeyFor(node);
     if (key === null) return;
     // Focus without panning: the content must not slide out from under the cursor.
@@ -422,12 +405,13 @@ export function startPointerInput(): () => void {
     if (dx < MOVE_EPSILON && dy < MOVE_EPSILON) return;
     lastX = event.clientX;
     lastY = event.clientY;
-    showCursor();
+    activateMouseMode();
 
     const target = event.target;
     if (!(target instanceof Element)) return;
     const host = target.closest<HTMLElement>('[data-focus-id]');
     if (host === null || host.closest('[inert]') !== null) { clearHover(); return; }
+    if (host.matches('.poster, .channel-card')) { clearHover(); return; }
     hoverTarget = host;
     if (hoverRaf === 0) hoverRaf = requestAnimationFrame(applyHover);
   };
@@ -461,7 +445,7 @@ export function startPointerInput(): () => void {
       };
       return;
     }
-    if (isMouse(event)) showCursor();
+    if (isMouse(event)) activateMouseMode();
     clearHover();
     // Focus waits until pointerup. Focusing on the way down re-renders the
     // card (and, for a conveyor clone, jumps the camera onto the other copy)
@@ -529,7 +513,7 @@ export function startPointerInput(): () => void {
 
   const onWheel = (event: WheelEvent): void => {
     if (event.ctrlKey || event.defaultPrevented) return; // preserve pinch-zoom and owned controls
-    showCursor();
+    activateMouseMode();
     const target = event.target instanceof Element ? event.target : null;
     if (target !== null && target.closest('input, textarea, select, [contenteditable="true"], [inert]') !== null) return;
     clearHover();
@@ -584,7 +568,7 @@ export function startPointerInput(): () => void {
     pan(page, 'y', step);
   };
 
-  // Any remote/keyboard press means the viewer is back on the couch —
+  // Keyboard input leaves mouse navigation mode —
   // except typing in a field, which must keep its keys and the caret.
   const onKeyDown = (event: KeyboardEvent): void => {
     if (navShouldIgnoreKey(event, isPhoneNavShell())) {
@@ -592,7 +576,7 @@ export function startPointerInput(): () => void {
       return;
     }
     if (isTextEntryTarget(event.target)) return;
-    hideCursor();
+    leaveMouseMode();
   };
 
   const stopFields = bindKeyboardFields(document);

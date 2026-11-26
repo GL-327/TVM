@@ -32,7 +32,7 @@ for (const device of [
   test.describe(device.name, () => {
     test.use({ hasTouch: device.touch, isMobile: device.touch, userAgent: device.userAgent });
     for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
-      test(`Home and Settings fit ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      test(`Hub, Home and Settings fit ${viewport.width}x${viewport.height}`, async ({ page }) => {
         await page.setViewportSize(viewport);
         await allowAccount(page);
         await page.addInitScript((bootKey) => {
@@ -52,12 +52,15 @@ for (const device of [
         await page.route('**/api/prefs', route => route.fulfill({ json: { language: 'en', autoUpdate: true } }));
         await page.route('**/api/update/**', route => route.fulfill({ json: { configured: false, available: null, applyAllowed: false, kind: 'up_to_date', notice: null } }));
         await page.goto('/?e2e=1');
-        await expect(page.locator('.home__shelf')).toBeVisible();
+        await expect(page.locator('.hub')).toBeVisible();
         const checkWidth = async () => {
           expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width + 1);
           const frame = await page.locator('.app').boundingBox();
           expect(frame!.width).toBeLessThanOrEqual(viewport.width + 1);
         };
+        await checkWidth();
+        await page.getByRole('button', { name: 'Home', exact: true }).click();
+        await expect(page.locator('.home__shelf')).toBeVisible();
         await checkWidth();
         const more = page.locator('[data-focus-id="more"]');
         if (await more.count()) {

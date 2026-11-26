@@ -37,7 +37,7 @@ export const Artwork = memo(function Artwork({
   eager = false,
 }: ArtworkProps): React.JSX.Element {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const original = kind === 'backdrop' ? preferBackdrop(title.id, title.backdrop, title.poster) : preferPoster(title.id, title.poster, title.backdrop);
+  const original = kind === 'backdrop' ? preferBackdrop(title.id, title.backdrop, title.poster, eager) : preferPoster(title.id, title.poster, title.backdrop);
   const failed = original === '' || failedSrc === original;
   const style = { ['--poster-hue' as string]: String(title.hue) } as CSSProperties;
 
@@ -60,7 +60,7 @@ export const Artwork = memo(function Artwork({
           src={original}
           alt=""
           loading={eager ? 'eager' : 'lazy'}
-          fetchPriority={decorative ? 'low' : eager ? 'high' : 'auto'}
+          fetchPriority={eager ? 'high' : decorative ? 'low' : 'auto'}
           decoding="async"
           referrerPolicy={ART_REFERRER}
           draggable={false}

@@ -43,6 +43,8 @@ export type PlaybackResolution =
       version?: Version;
       originalLanguage?: string | null;
       audioLanguages?: string[];
+      season?: number;
+      episode?: number;
     }
   | {
       kind: 'unavailable';

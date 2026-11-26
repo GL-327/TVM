@@ -49,6 +49,7 @@ export interface PlayerSession {
   volume: number;
   muted: boolean;
   controlsVisible: boolean;
+  settingsOpen?: boolean;
   skipRecap: boolean;
   segments?: PlaybackSegments | null;
   subtitles?: readonly PlaybackSubtitle[];
@@ -240,8 +241,9 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
   const navigate = useNavigate();
   const session = sourceSession;
   const extras = usePlaybackExtras(session);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const idle = useIdleChrome({
-    paused: session.paused || extras.holdChrome,
+    paused: session.paused || extras.holdChrome || settingsOpen,
     buffering: session.buffering,
     busy: session.busy,
     error: session.error,
@@ -255,7 +257,7 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
       mediaId: session.mediaId,
     }),
   });
-  const visibleSession = useMemo(() => ({ ...sourceSession, controlsVisible: idle.chromeVisible }), [sourceSession, idle.chromeVisible]);
+  const visibleSession = useMemo(() => ({ ...sourceSession, controlsVisible: idle.chromeVisible, settingsOpen }), [sourceSession, idle.chromeVisible, settingsOpen]);
 
   useEffect(() => {
     const player = document.querySelector('.player');
@@ -291,7 +293,7 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
             volumeBy={session.adjustVolume}
           />
         </Slot>
-        <div inert={extras.holdChrome || undefined}><CinemaControls session={visibleSession}
+        <div inert={extras.holdChrome || undefined}><CinemaControls session={visibleSession} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen}
           progress={<Slot><ProgressBar {...visibleSession} /></Slot>}
           volume={<Slot><VolumeControl {...visibleSession} /></Slot>}
           tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot>{extras.tools}</>}

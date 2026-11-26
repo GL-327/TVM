@@ -234,7 +234,7 @@ export function NextUp(props: NextUpProps = {}): React.JSX.Element | null {
 
   const hasSessionClock = position !== undefined && duration !== undefined;
   const clock = hasSessionClock ? { position, duration } : native ?? fallbackClock;
-  const blocked = sessionBlocksNextUp({ hidden: props.hidden, overlay, busy, error }) || domBlocked;
+  const blocked = sessionBlocksNextUp({ hidden: props.hidden ?? session?.settingsOpen, overlay, busy, error }) || domBlocked;
 
   useEffect(() => {
     setDismissed(false);
@@ -451,6 +451,7 @@ const NEXT_UP_STYLES = `
   color: var(--player-ink, var(--tvm-text, #fff));
   animation: next-up-in 360ms var(--tvm-glass27-spring, cubic-bezier(0.34, 1.36, 0.64, 1)) both;
 }
+.player[data-chrome-visible='true'] .next-up { bottom: 10.5rem; }
 .next-up__drain {
   position: absolute;
   inset: 0 auto auto 0;

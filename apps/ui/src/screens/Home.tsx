@@ -6,10 +6,8 @@ import { mapRailPosters } from '../components/PosterCard';
 import { Rail, RailPaging } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
 import { RailSkeletons } from '../components/Skeleton';
-import { IconApps, IconLive, IconStream, IconWatchlist } from '../components/Icons';
 import { ART_REFERRER } from '../components/artFace';
-import { PageScene } from '../components/PageScene';
-import { PatchNotesPopup } from '../components/PatchNotesPopup';
+import { BrowseAmbience } from '../components/BrowseAmbience';
 import { preferBackdrop } from '../data/artwork';
 import {
   fetchExtrasUpcomingHome,
@@ -36,7 +34,7 @@ import { Spotlight } from './Spotlight';
 import { extraEnabled } from '../data/polishPrefs';
 import { currentAppVersion } from '../data/changelog';
 import { updateRequired, useReleaseConfig } from '../data/releaseConfig';
-import { openDetails } from '../data/openDetails';
+import { openDetails, openPlayback } from '../data/openDetails';
 import { prefersReducedMotion, subscribeMotionPreference } from '../theme/motion';
 
 type Shelf = { id: string; title: string; more?: boolean; titles: Title[]; loop?: boolean; numbered?: boolean };
@@ -46,7 +44,7 @@ const HomeShelves = memo(function HomeShelves({ shelves, loading, openTitle, onL
   return <div className="home__shelf">
     {shelves.map((rail) => <RailPaging key={rail.id} railId={rail.id} hasMore={rail.more === true} onNearEnd={() => onLoadMore(rail.id)}>
       <Rail title={rail.title} loop={rail.loop} className={rail.numbered ? 'rail--numbered' : undefined}>
-        {mapRailPosters(rail.titles, rail.id, openTitle, rail.id === 'continue' ? { layout: 'landscape' } : undefined)}
+        {mapRailPosters(rail.titles, rail.id, openTitle, ['continue', 'featured'].includes(rail.id) ? { layout: 'landscape' } : undefined)}
       </Rail>
     </RailPaging>)}
     {loading && !shelves.length && <Rail bare id="for-you-1"><RailSkeletons count={8} label="Loading TVM Stream" /></Rail>}
@@ -181,7 +179,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     if (heroes.length < 2) return;
     const timer = window.setTimeout(() => {
       for (const item of heroes) {
-        const src = preferBackdrop(item.id, item.backdrop, item.poster);
+        const src = preferBackdrop(item.id, item.backdrop, item.poster, true);
         if (src === '') continue;
         const warm = new Image();
         warm.decoding = 'async';
@@ -245,45 +243,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
 
   const openTitle = useCallback(
     (title: Title): void => {
-      void launchTitle(navigate, title);
+      void launchTitle(navigate, title, true);
     },
     [navigate],
-  );
-
-  const launcher = (
-    <div className="home__destinations">
-      <p className="home__launcher-kicker">Where to</p>
-      <nav className="home__launcher" aria-label="Where to">
-        <FocusButton id="launch-stream" className="launch-tile launch-tile--stream" onSelect={openStream}>
-          <span className="launch-tile__mark launch-tile__mark--stream">
-            <IconStream className="launch-tile__glyph" />
-          </span>
-          <strong>TVM Stream</strong>
-          <span>Films and series</span>
-        </FocusButton>
-        <FocusButton id="launch-live" className="launch-tile" onSelect={() => navigate.push('live')}>
-          <span className="launch-tile__mark launch-tile__mark--live">
-            <IconLive className="launch-tile__glyph" />
-          </span>
-          <strong>Live TV</strong>
-          <span>Channels and guide</span>
-        </FocusButton>
-        <FocusButton id="launch-watchlist" className="launch-tile" onSelect={() => navigate.push('watchlist')}>
-          <span className="launch-tile__mark launch-tile__mark--list">
-            <IconWatchlist className="launch-tile__glyph" />
-          </span>
-          <strong>Watchlist</strong>
-          <span>Saved for later</span>
-        </FocusButton>
-        <FocusButton id="launch-apps" className="launch-tile" onSelect={() => navigate.push('apps')}>
-          <span className="launch-tile__mark launch-tile__mark--apps">
-            <IconApps className="launch-tile__glyph" />
-          </span>
-          <strong>Apps</strong>
-          <span>Studios and services</span>
-        </FocusButton>
-      </nav>
-    </div>
   );
 
   const liveEvent = prefs.spotlightEvents && maxAge >= 18 ? activeEvents[0] ?? null : null;
@@ -358,8 +320,12 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     if (key !== null) requestFocus(key);
   }, [eventSpotlight, liveEvent, openTitle]);
 
+  const featuredTitles = [...new Map([...(featured ? [featured] : []), ...catalogRails.flatMap((rail) => rail.titles)]
+    .filter((title) => title.backdrop !== '' && filterItemsByAge([toMediaItem(title)], maxAge).length > 0)
+    .map((title) => [title.id, title])).values()].slice(0, 8);
   const shelves: Shelf[] = [
     { id: 'continue', title: 'Continue watching', titles: filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle), loop: false },
+    { id: 'featured', title: 'Featured', titles: featuredTitles, loop: false },
     ...(eventRail ? [eventRail] : []),
     ...(extraEnabled('comingUp', prefs) ? [{ id: 'upcoming', title: 'New episodes this week', titles: upcomingTitles, loop: false }] : []),
     { id: 'my-list', title: 'My List', titles: filterItemsByAge(watchlist.map(toMediaItem), maxAge).map(asTitle), loop: false },
@@ -375,14 +341,14 @@ export function Home(_props: ScreenProps): React.JSX.Element {
   const minUpdateNeeded = updateRequired(currentAppVersion(), config?.minVersion);
 
   return (
-    <main className="home home--launcher polish-home" ref={pageRef}>
-      <PageScene />
+    <main className="home polish-home cinematic-browse" ref={pageRef}>
+      <BrowseAmbience page={pageRef} />
       <Ribbon active="home" />
       <Spotlight hero={hero} event={liveEvent} enabled={prefs.heroPreviews}
         reduced={reducedMotion} active={homeActive && !docHidden && !heroScrolledOut}
         announcement={extraEnabled('announcements', prefs) ? config?.announcement : null}
         rating={extraEnabled('ratings', prefs)}
-        onPlay={liveEvent ? openEventRail : () => hero ? openTitle(hero) : openStream()}
+        onPlay={liveEvent ? openEventRail : () => hero ? openPlayback(navigate, hero) : openStream()}
         onDetails={() => { if (hero) void openDetails(navigate, hero); }}
         onSurprise={surprise ? () => openTitle(asTitle(surprise)) : undefined} />
       {minUpdateNeeded && (
@@ -396,8 +362,6 @@ export function Home(_props: ScreenProps): React.JSX.Element {
       {failed && !hero && <ErrorState title="Home could not load" body="Check that the local TVM service is running."
         onRetry={() => { setLoading(true); setFailed(false); setTick((value) => value + 1); }} />}
       <HomeShelves shelves={visibleShelves} loading={loading} openTitle={openTitle} onLoadMore={loadMoreRail} />
-      {launcher}
-      <PatchNotesPopup />
     </main>
   );
 }

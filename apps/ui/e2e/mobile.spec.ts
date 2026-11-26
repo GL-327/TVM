@@ -71,9 +71,10 @@ test.describe('iPhone WebKit', () => {
   test('horizontal rails yield vertical pans to the page', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await ready(page, true);
+    await page.getByRole('button', { name: 'Home', exact: true }).tap();
     // The loading skeleton also has a visible rail track. Measure the page
-    // only after the four fixture rails replace it.
-    await expect(page.locator('.home .rail')).toHaveCount(4);
+    // only after Featured and the four fixture rails replace it.
+    await expect(page.locator('.home .rail')).toHaveCount(5);
     const rail = page.locator('.rail__track').first();
     await expect(rail).toBeVisible();
     const style = await rail.evaluate((el) => {
@@ -84,8 +85,6 @@ test.describe('iPhone WebKit', () => {
     expect(style.overflowX).toBe('hidden');
     const root = await page.evaluate(() => getComputedStyle(document.documentElement).touchAction);
     expect(root).toMatch(/pan-y/);
-    const launcher = await page.locator('.home__launcher').evaluate((el) => getComputedStyle(el).overflowX);
-    expect(launcher).toBe('hidden');
     // A page that fits on one screen cannot pan, and would fail below for a
     // reason that has nothing to do with rails. Say so here instead.
     const room = await page.locator('.home').evaluate((el) => el.scrollHeight - el.clientHeight);
@@ -129,9 +128,10 @@ test.describe('iPhone WebKit', () => {
     test(`Premium opens a usable 16:9 layout at ${size.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(size);
       await ready(page, true);
+      await expect(page.getByRole('navigation', { name: 'Quick links' })).toBeVisible();
+      await page.getByRole('button', { name: 'Home', exact: true }).tap();
       await expect(page.locator('.home__shelf')).toBeVisible();
       await expect(page.locator('.mobile-plan-gate')).toHaveCount(0);
-      for (const label of await page.locator('.home__launcher strong').all()) await expect(label).toBeVisible();
       expect(await page.evaluate(() => typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function')).toBe(true);
       const frame = await page.locator('.app').boundingBox();
       expect(frame!.width / frame!.height).toBeCloseTo(16 / 9, 2);
@@ -163,9 +163,9 @@ test.describe('iPhone WebKit', () => {
     await expect(page.locator('[data-screen="details"]')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Test film' })).toBeVisible();
     await page.evaluate(() => window.dispatchEvent(new Event('tvm:navigate-back')));
-    await expect(page.locator('.home__shelf')).toBeVisible();
+    await expect(page.locator('.hub')).toBeVisible();
     await page.evaluate(() => window.dispatchEvent(new Event('tvm:navigate-back')));
-    await expect(page.locator('.home__shelf')).toBeVisible();
+    await expect(page.locator('.hub')).toBeVisible();
   });
 
   test('defaults to English and keeps the profile icon inside its oval', async ({ page }) => {
@@ -186,7 +186,7 @@ test.describe('iPhone WebKit', () => {
     expect(face!.y + face!.height).toBeLessThanOrEqual(oval!.y + oval!.height + 1);
   });
 
-  test('a left-edge swipe leaves Settings without a Back button', async ({ page }) => {
+  test('a left-edge swipe leaves Settings and returns to Hub', async ({ page }) => {
     await ready(page, true);
     await page.locator('[data-focus-id="more"]').tap();
     await page.locator('[data-focus-id="more-settings"]').tap();
@@ -195,14 +195,14 @@ test.describe('iPhone WebKit', () => {
     await page.mouse.down();
     await page.mouse.move(110, 248);
     await page.mouse.up();
-    await expect(page.locator('.home__shelf')).toBeVisible();
+    await expect(page.locator('.hub')).toBeVisible();
   });
 
   for (const size of [{ width: 375, height: 667 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
     test(`fits the full iOS viewport without sideways document scrolling at ${size.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(size);
       await ready(page, true);
-      await expect(page.locator('.home__shelf')).toBeVisible();
+      await expect(page.locator('.hub')).toBeVisible();
       const bounds = await page.locator('.app').boundingBox();
       expect(bounds!.width).toBe(size.width);
       expect(bounds!.height).toBeCloseTo(size.height, 0);
@@ -221,7 +221,7 @@ test.describe('iPhone WebKit', () => {
       expect(overflow.left).toBe(0);
       expect(overflow.homeWidth).toBeLessThanOrEqual(overflow.homeClient + 1);
       const tabs = await page.locator('.ribbon__list button:visible').all();
-      expect(tabs).toHaveLength(5);
+      expect(tabs).toHaveLength(6);
       for (const tab of tabs) {
         const box = await tab.boundingBox();
         expect(box!.height).toBeGreaterThanOrEqual(44);

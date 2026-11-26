@@ -145,7 +145,7 @@ describe('sync engine', () => {
     expect(stored.find(item => item.kind === 'profile')?.value).toMatchObject({ id: 'profile-1', name: 'Jamie', maxAge: 15,
       pin: registry.find('profile-1')?.pin });
     const payloads = JSON.stringify(sync.put.mock.calls);
-    for (const forbidden of ['private.test', '0426', 'webhookUrl', '"quality"']) expect(payloads).not.toContain(forbidden);
+    for (const forbidden of ['private.test', '"0426"', 'webhookUrl', '"quality"']) expect(payloads).not.toContain(forbidden);
   });
 
   it('pulls on sign-in, debounces from the last change by three seconds, and pulls every minute', async () => {

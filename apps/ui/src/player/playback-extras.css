@@ -19,7 +19,7 @@
 .playback-extra-sheet .extras-select { margin-bottom: 1rem; }
 .player .cinema-chrome .cinema-chrome__settings-toggle { display: inline-flex; }
 .player .cinema-chrome .cinema-chrome__settings-group { position: relative; }
-.player .cinema-chrome .cinema-chrome__settings-panel { display: none; position: absolute; right: 0; bottom: calc(100% + .75rem); width: 18rem; min-width: 0; max-width: calc(100vw - 2rem); max-height: calc(100dvh - 7rem); overflow: auto; padding: .7rem; gap: .3rem; flex-direction: column; align-items: stretch; border: 1px solid #ffffff35; border-radius: 12px; background: #171a20; box-shadow: 0 10px 40px #000a; pointer-events: auto; }
+.player .cinema-chrome .cinema-chrome__settings-panel { display: none; position: absolute; z-index: 5; right: 0; bottom: calc(100% + .75rem); width: 18rem; min-width: 0; max-width: calc(100vw - 2rem); max-height: calc(100dvh - 7rem); overflow: auto; padding: .7rem; gap: .3rem; flex-direction: column; align-items: stretch; border: 1px solid #ffffff35; border-radius: 12px; background: #171a20; box-shadow: 0 10px 40px #000a; pointer-events: auto; }
 .player .cinema-chrome .cinema-chrome__settings-group[data-open='true'] .cinema-chrome__settings-panel { display: flex; }
 .player .cinema-chrome .cinema-chrome__settings-heading { display: block; padding: .2rem .5rem .5rem; font-size: .75rem; color: #a9b0bc; }
 .player .cinema-chrome .cinema-chrome__settings-panel > div { flex-shrink: 0; }

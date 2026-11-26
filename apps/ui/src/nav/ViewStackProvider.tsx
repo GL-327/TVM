@@ -28,7 +28,7 @@ import { conveyorHop, wrapHop } from './wrapFocus';
 import { FocusScopeProvider, ViewStackContextProvider, useNavigate as useScreenNavigate } from './ViewStackContext';
 import type { Navigate } from './ViewStackContext';
 import { screenDefinition } from './registry';
-import { setActiveProfileId } from '../data/media';
+import { apiFetch, setActiveProfileId } from '../data/media';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { FocusButton } from '../components/FocusButton';
 import { MobilePlanGate } from '../components/MobilePlanGate';
@@ -41,15 +41,15 @@ startFocusEngine();
 async function resolveRoot(): Promise<string> {
   if (new URLSearchParams(window.location.search).get('recovery') === '1') return 'recovery';
   try {
-    const response = await fetch('/api/profiles', { signal: AbortSignal.timeout(2500) });
+    const response = await apiFetch('/api/profiles', { signal: AbortSignal.timeout(2500) });
     if (response.ok) {
       const body = (await response.json()) as { activeId?: string };
       if (typeof body.activeId === 'string' && body.activeId !== '') setActiveProfileId(body.activeId);
     }
   } catch {
-    // Home still opens if core is down. TVM Stream asks for a token later.
+    // Hub still opens if Core is down. TVM Stream asks for a token later.
   }
-  return 'home';
+  return 'hub';
 }
 
 function isEditable(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
@@ -147,7 +147,7 @@ export function ViewStackProvider({ initialScreen }: { initialScreen?: 'donate' 
           holdIfRecent
           eyebrow="TVM"
           title="Starting…"
-          body="Loading your home screen. The remote is ready as soon as Home appears."
+          body="Loading your home screen. The remote is ready as soon as Hub appears."
         />
       </div>
     );
@@ -250,7 +250,7 @@ function ViewStack({ root }: { root: string }): React.JSX.Element {
       if (activeEntry(state).name === 'search') return;
       event.preventDefault();
       navigate.pushModal('search', {
-        params: { from: visibleScreen(state).name === 'home' ? 'home' : 'app' },
+        params: { from: ['hub', 'home'].includes(visibleScreen(state).name) ? 'home' : 'app' },
       });
     };
     window.addEventListener('keydown', onShortcut);

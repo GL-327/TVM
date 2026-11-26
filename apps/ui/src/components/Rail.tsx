@@ -12,7 +12,8 @@ import {
   readLoopSetWidth,
   shouldLoopRail,
 } from '../nav/loopingRail';
-import { isScrollAnimating, jumpAxis } from '../nav/scrollAnim';
+import { isScrollAnimating, jumpAxis, scrollAxis, scrollTarget } from '../nav/scrollAnim';
+import { IconChevronLeft } from './Icons';
 import { installHoverYield } from './hoverYield';
 import { watchRailBitmaps } from './railBitmaps';
 
@@ -134,6 +135,7 @@ function LoopingTrack({
   // Paging grows the row linearly until the source is exhausted, then flips to an endless ring.
   const looping = loop && !hasMore && shouldLoopRail(items.length);
   const stamp = items.map((child, index) => String(child.key ?? index)).join('|');
+  const viewport = useRef<HTMLDivElement>(null);
   const prevLoopRef = useRef<{ looping: boolean; scrollLeft: number }>({
     looping,
     scrollLeft: 0,
@@ -185,7 +187,15 @@ function LoopingTrack({
       }
     };
 
+    const syncEdges = (): void => {
+      const end = el.scrollWidth - el.clientWidth;
+      const left = end > 2 && (looping || el.scrollLeft > 2);
+      const right = end > 2 && (looping || el.scrollLeft < end - 2);
+      viewport.current?.toggleAttribute('data-left', left);
+      viewport.current?.toggleAttribute('data-right', right);
+    };
     checkNearEnd();
+    syncEdges();
 
     let resizeRaf = 0;
     const resize = new ResizeObserver(() => {
@@ -197,6 +207,7 @@ function LoopingTrack({
           syncConveyor(el, leadCopies, setLeadCopies, { looping: true, scrollLeft: el.scrollLeft });
         }
         checkNearEnd();
+        syncEdges();
       });
     });
     resize.observe(el);
@@ -228,6 +239,7 @@ function LoopingTrack({
         parkRaf = 0;
         if (!el.isConnected) return;
         checkNearEnd();
+        syncEdges();
         if (el.dataset.looping === 'true') tryParkLoop(false);
       });
     };
@@ -252,15 +264,26 @@ function LoopingTrack({
     };
   }, [hasMore, items.length, leadCopies, looping, onNearEnd, stamp]);
 
+  const scroll = (direction: number): void => {
+    const track = ref.current;
+    if (track) scrollAxis(track, 'x', scrollTarget(track, 'x') + direction * track.clientWidth * 0.78);
+  };
+
   return (
-    <div
-      ref={ref}
-      className="rail__track"
-      data-wrap="row"
-      data-loop-count={looping ? String(items.length) : undefined}
-      data-loop-lead={looping ? String(leadCopies) : undefined}
-    >
-      {painted}
+    <div ref={viewport} className="rail__viewport">
+      <div
+        ref={ref}
+        className="rail__track"
+        data-wrap="row"
+        data-loop-count={looping ? String(items.length) : undefined}
+        data-loop-lead={looping ? String(leadCopies) : undefined}
+      >
+        {painted}
+      </div>
+      <button type="button" className="rail__chevron rail__chevron--left glass glass--chrome" tabIndex={-1}
+        aria-label="Scroll rail left" onClick={() => scroll(-1)}><IconChevronLeft /></button>
+      <button type="button" className="rail__chevron rail__chevron--right glass glass--chrome" tabIndex={-1}
+        aria-label="Scroll rail right" onClick={() => scroll(1)}><IconChevronLeft /></button>
     </div>
   );
 }

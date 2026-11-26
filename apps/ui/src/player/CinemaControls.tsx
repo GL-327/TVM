@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { FocusButton } from '../components/FocusButton';
 import { requestFocus } from '../nav/focusEngine';
 import { useFocusScope } from '../nav/ViewStackContext';
@@ -17,14 +17,14 @@ export function PlayerGlyph({ name }: { name: PlayerGlyphName }): React.JSX.Elem
   </svg>;
 }
 
-export function CinemaControls({ session, progress, volume, tools, actions, fullscreen }: {
+export function CinemaControls({ session, progress, volume, tools, actions, fullscreen, settingsOpen, setSettingsOpen }: {
   session: PlayerSession; progress: ReactNode; volume: ReactNode; tools: ReactNode; actions: ReactNode; fullscreen: ReactNode;
+  settingsOpen: boolean; setSettingsOpen: (open: boolean) => void;
 }): React.JSX.Element {
   const visible = session.controlsVisible;
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const scope = useFocusScope();
-  useEffect(() => { if (!visible) setSettingsOpen(false); }, [visible]);
+  useEffect(() => { if (!visible) setSettingsOpen(false); }, [setSettingsOpen, visible]);
   useEffect(() => {
     if (!settingsOpen) return;
     const frame = requestAnimationFrame(() => {
@@ -42,7 +42,7 @@ export function CinemaControls({ session, progress, volume, tools, actions, full
     };
     window.addEventListener('keydown', onBack, true);
     return () => { cancelAnimationFrame(frame); window.removeEventListener('keydown', onBack, true); };
-  }, [settingsOpen, scope]);
+  }, [scope, setSettingsOpen, settingsOpen]);
   const episode = session.season !== undefined && session.episode !== undefined ? `S${session.season} · E${session.episode}` : null;
   return <div className="cinema-chrome" data-player-chrome="" data-chrome={visible ? 'visible' : 'hidden'}
     aria-hidden={!visible ? true : undefined} inert={!visible ? true : undefined}>
@@ -69,7 +69,7 @@ export function CinemaControls({ session, progress, volume, tools, actions, full
         <div className="cinema-chrome__now"><span>{session.title === 'Loading' ? 'Preparing your film' : session.title}</span>{episode && <small>{episode}</small>}</div>
         <div className="cinema-chrome__tools" data-wrap="row">
           <div className="cinema-chrome__settings-group" data-open={settingsOpen ? 'true' : 'false'}>
-            <FocusButton id="player-settings" className="cinema-chrome__settings-toggle" ariaLabel="Playback settings" ariaExpanded={settingsOpen} title="Playback settings" onSelect={() => { session.showControls(); setSettingsOpen((open) => !open); }}>
+            <FocusButton id="player-settings" className="cinema-chrome__settings-toggle" ariaLabel="Playback settings" ariaExpanded={settingsOpen} title="Playback settings" onSelect={() => { session.showControls(); setSettingsOpen(!settingsOpen); }}>
               <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9h24M4 16h24M4 23h24" /><circle cx="11" cy="9" r="3" fill="#14171c" /><circle cx="22" cy="16" r="3" fill="#14171c" /><circle cx="14" cy="23" r="3" fill="#14171c" /></svg>
             </FocusButton>
             <div ref={settingsPanel} className="cinema-chrome__settings-panel" data-player-menu={settingsOpen ? 'settings' : undefined} data-wrap="row"><span className="cinema-chrome__settings-heading">Playback settings</span>{tools}</div>

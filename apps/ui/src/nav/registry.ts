@@ -1,6 +1,7 @@
 import { lazy, type ComponentType } from 'react';
 import { Details } from '../screens/Details';
 import { ConfirmModal } from '../screens/ConfirmModal';
+import { Hub } from '../screens/Hub';
 import { Home } from '../screens/Home';
 import { NoticeModal } from '../screens/NoticeModal';
 
@@ -48,6 +49,7 @@ export interface ScreenDefinition {
 }
 
 const SCREENS: Readonly<Record<string, ScreenDefinition>> = {
+  hub: { component: Hub, defaultFocus: 'hub-browse' },
   home: { component: Home, defaultFocus: 'hero-play' },
   library: { component: Library, defaultFocus: 'stream-search' },
   watchlist: { component: Watchlist, defaultFocus: 'watchlist' },

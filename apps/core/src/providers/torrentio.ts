@@ -7,16 +7,38 @@ function torrentioHeaders(extra?: Record<string, string>): Headers {
   return headers;
 }
 
-const CAM_PATTERN = /\b(cam|camrip|telesync|tsrip|hdcam|hdts)\b/i;
+const CINEMA_RECORDING = /(?:^|[^a-z0-9])(?:hd[ ._-]?)?(?:cam(?:rip)?|ts(?:rip)?|tc(?:rip)?|tele[ ._-]?(?:sync|cine))(?=$|[^a-z0-9])/i;
+const PRE_RELEASE = /(?:^|[^a-z0-9])(?:screener|dvdscr(?:eener)?|scr|workprint)(?=$|[^a-z0-9])/i;
 const CACHED_PATTERN = /\u26a1|\bcached\b|\brd\+|\bdownloaded\b/i;
 
-export interface DebridStream {
-  url: string;
+export interface TorrentioRelease {
   title: string;
   quality: number;
   cached: boolean;
   description?: string;
+  filename?: string;
+  sizeBytes?: number;
+  pack?: boolean;
+  providerLabel?: string;
   releaseId?: string;
+}
+
+export interface DebridStream extends TorrentioRelease {
+  url: string;
+}
+
+export function releaseTier(release: TorrentioRelease): 'retail' | 'cinema' | 'screener' {
+  // A terminal .ts is a container extension. A TS release tag is not.
+  const tags = [release.title, release.filename].map(name => name?.replace(/\.ts$/i, '')
+    .replace(/^.*?\b(?:19\d{2}|20\d{2}|s\d{1,3}e\d{1,3})\b/i, ''));
+  const label = [release.providerLabel, ...tags].join(' ');
+  if (PRE_RELEASE.test(label)) return 'screener';
+  return CINEMA_RECORDING.test(label) ? 'cinema' : 'retail';
+}
+
+export function withCinemaFallback<T extends TorrentioRelease>(releases: readonly T[]): T[] {
+  const retail = releases.filter(release => releaseTier(release) === 'retail');
+  return retail.length ? retail : releases.filter(release => releaseTier(release) === 'cinema');
 }
 
 export function torrentioBaseUrl(token: string): string {
@@ -70,22 +92,37 @@ function qualityScore(label: string): number {
   return 10;
 }
 
+export function parseTorrentioRelease(raw: Record<string, unknown>): TorrentioRelease {
+  const description = typeof raw.description === 'string' ? raw.description : String(raw.title ?? '');
+  const lines = description.split(/\r?\n/);
+  const title = (lines[0] || String(raw.name || 'Stream')).trim();
+  const name = String(raw.name ?? '');
+  const hints = raw.behaviorHints as { filename?: unknown; videoSize?: unknown } | undefined;
+  const filename = typeof hints?.filename === 'string' ? hints.filename :
+    lines.slice(1).find(line => /\.(?:mkv|mp4|m4v|avi|webm|ts)$/i.test(line));
+  const pack = !!filename && !/\bs\d{1,3}[ ._-]*e\d{1,3}\b/i.test(title) &&
+    /\b(?:s\d{1,3}|seasons?|complete)\b|сезон|серии:/i.test(title);
+  return {
+    title,
+    quality: qualityScore(`${name} ${title}`),
+    cached: CACHED_PATTERN.test(name.replace(/\b(?:not[ -]cached|uncached)\b/gi, '')),
+    description: [name, description].join('\n'),
+    providerLabel: name.split(/\r?\n/).at(-1),
+    ...(filename ? { filename } : {}),
+    ...(pack ? { pack } : {}),
+    ...(typeof hints?.videoSize === 'number' && Number.isSafeInteger(hints.videoSize) && hints.videoSize > 0
+      ? { sizeBytes: hints.videoSize } : {}),
+    ...(typeof raw.infoHash === 'string' && /^[a-f0-9]{40}$/i.test(raw.infoHash)
+      ? { releaseId: `${raw.infoHash.toLowerCase()}:${Number.isInteger(raw.fileIdx) ? raw.fileIdx : ''}` } : {}),
+  };
+}
+
 export function parseDebridStream(raw: Record<string, unknown>): DebridStream | null {
   const url = typeof raw.url === 'string' ? raw.url : '';
   if (!/^https?:\/\//i.test(url) || /failed_access|videos\/failed|copyright|infringement/i.test(url)) {
     return null;
   }
-  const title = String(raw.title || raw.name || 'Stream').split('\n')[0] ?? 'Stream';
-  if (CAM_PATTERN.test(title)) return null;
-  return {
-    url,
-    title,
-    quality: qualityScore(`${String(raw.name ?? '')} ${title}`),
-    cached: CACHED_PATTERN.test(`${String(raw.name ?? '')} ${title}`),
-    description: `${String(raw.name ?? '')} ${String(raw.title ?? '')}`,
-    ...(typeof raw.infoHash === 'string' && /^[a-f0-9]{40}$/i.test(raw.infoHash)
-      ? { releaseId: `${raw.infoHash.toLowerCase()}:${Number.isInteger(raw.fileIdx) ? raw.fileIdx : ''}` } : {}),
-  };
+  return { ...parseTorrentioRelease(raw), url };
 }
 
 export const PLAYABLE_STREAM_LIMIT = 5;
@@ -173,16 +210,17 @@ export function needsUnrestrict(url: string): boolean {
   return !isLikelyDirectPlayUrl(url);
 }
 
-export async function fetchTorrentioStreams(
-  token: string,
+async function fetchReleases<T extends TorrentioRelease>(
+  base: string,
   imdb: string,
   season: number | undefined,
   episode: number | undefined,
   fetchImpl: typeof fetch,
-): Promise<DebridStream[]> {
-  const base = torrentioBaseUrl(token);
+  parse: (raw: Record<string, unknown>) => T | null,
+  identity: (release: T) => string,
+): Promise<T[]> {
   const seen = new Set<string>();
-  const streams: DebridStream[] = [];
+  const streams: T[] = [];
   for (const path of torrentioStreamPaths(imdb, season, episode)) {
     try {
       const response = await fetchImpl(`${base}/${path}`, {
@@ -196,10 +234,11 @@ export async function fetchTorrentioStreams(
       } catch {
         continue;
       }
-      for (const raw of body.streams ?? []) {
-        const stream = parseDebridStream(raw);
-        if (stream === null || seen.has(stream.url)) continue;
-        seen.add(stream.url);
+      for (const raw of Array.isArray(body.streams) ? body.streams : []) {
+        if (!raw || typeof raw !== 'object') continue;
+        const stream = parse(raw);
+        if (!stream || seen.has(identity(stream))) continue;
+        seen.add(identity(stream));
         streams.push(stream);
       }
       if (streams.length > 0) break;
@@ -208,4 +247,17 @@ export async function fetchTorrentioStreams(
     }
   }
   return streams;
+}
+
+export function fetchTorrentioStreams(token: string, imdb: string, season: number | undefined,
+  episode: number | undefined, fetchImpl: typeof fetch): Promise<DebridStream[]> {
+  return fetchReleases(torrentioBaseUrl(token), imdb, season, episode, fetchImpl, parseDebridStream, stream => stream.url);
+}
+
+/** Public listings contain release metadata only. Playback still requires a resolved Debrid link. */
+export function fetchTorrentioReleases(imdb: string, season: number | undefined,
+  episode: number | undefined, fetchImpl: typeof fetch): Promise<TorrentioRelease[]> {
+  return fetchReleases(TORRENTIO_BASE, imdb, season, episode, fetchImpl,
+    raw => typeof raw.infoHash === 'string' ? parseTorrentioRelease(raw) : null,
+    release => release.releaseId ?? release.description ?? release.title);
 }

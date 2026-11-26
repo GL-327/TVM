@@ -61,7 +61,6 @@ html.desktop-shell .player .cinema-chrome .tvm-button:hover { background: #fffff
 .player .cinema-chrome__recap { position: absolute; right: 0; bottom: calc(100% + 1.4rem); }
 .player .cinema-chrome__recap .player-skip-recap { position: static; }
 .player .cinema-chrome__recap .tvm-button { width: auto; padding-inline: 1.2rem; background: #f5f5f5; color: #14171c; font-size: .85rem; border-radius: .3rem; }
-.player[data-chrome-hidden='true'], .player[data-chrome-hidden='true'] * { cursor: none !important; }
 .player-root[data-controls='hidden'] :is(.player-remote-hints, .player-title-overlay) { visibility: hidden; pointer-events: none; }
 .cinema-chrome[inert], .cinema-chrome[inert] * { pointer-events: none !important; }
 @media (max-width: 1000px) { .player .cinema-chrome__toolbar { gap: .8rem; } .player .cinema-chrome__transport, .player .cinema-chrome__tools { gap: .35rem; } .player .cinema-chrome .player-volume__meter { width: 3.5rem; } .player .cinema-chrome .player-volume__track { width: 3rem; } .player .cinema-chrome__now { font-size: .85rem; } }

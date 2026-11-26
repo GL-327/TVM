@@ -9,6 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react';
+import { FocusButton } from '../../components/FocusButton';
+import { IconChevronLeft } from '../../components/Icons';
 import type { PlaybackSegments } from '../../data/media';
 import { uiExtraEnabled, useExtraPrefs } from '../../data/uiExtras';
 import { revealFocused } from '../../nav/revealFocused';
@@ -237,6 +239,12 @@ const CSS = `
   pointer-events: none;
 }
 .tvm-progress__legend li { display: inline-flex; align-items: center; gap: .3rem; }
+.tvm-progress__legend .tvm-button.tvm-progress__chapter {
+  width: 32px; min-width: 32px; min-height: 30px; padding: 0; border-radius: 6px; border: 0;
+  background: rgb(0 0 0 / .45); color: #fff; font-size: inherit; pointer-events: auto;
+}
+.tvm-progress__chapter svg { width: 16px; height: 16px; }
+.tvm-progress__chapter--next svg { transform: rotate(180deg); }
 .tvm-progress__legend-key { width: .7rem; height: .2rem; border-radius: 2px; }
 .tvm-progress__legend-key[data-marker='chapter'] { width: 2px; height: .65rem; }
 
@@ -543,9 +551,13 @@ export function ProgressBar({
   const prefs = useExtraPrefs();
   const chaptersEnabled = seekable && uiExtraEnabled('chapters', prefs);
   const chapters = useChapterStarts(resolveVideo, chaptersEnabled);
+  const visibleSegments = prefs.skipSegments === 'off' ? null : segments;
   const markers = useMemo(() => seekable
-    ? timelineMarkers(length, segments, chaptersEnabled ? chapters : undefined) : [],
-  [chapters, chaptersEnabled, length, seekable, segments]);
+    ? timelineMarkers(length, visibleSegments, chaptersEnabled ? chapters : undefined) : [],
+  [chapters, chaptersEnabled, length, seekable, visibleSegments]);
+  const chapterStarts = markers.filter(({ kind }) => kind === 'chapter').map(({ start }) => start).sort((a, b) => a - b);
+  const previousChapter = [0, ...chapterStarts].filter((start) => start < time - 2).at(-1);
+  const nextChapter = chapterStarts.find((start) => start > time + 0.5);
   const markerKinds = new Set(markers.map(({ kind }) => kind));
   const legendId = useId();
 
@@ -747,7 +759,17 @@ export function ProgressBar({
       {markers.length > 0 && (
         <ul className="tvm-progress__legend" id={legendId} aria-label="Timeline markers">
           {Array.from(markerKinds, (kind) => (
-            <li key={kind}><span className="tvm-progress__legend-key" data-marker={kind} aria-hidden="true" />{MARKER_LABELS[kind]}</li>
+            <li key={kind}>
+              <span className="tvm-progress__legend-key" data-marker={kind} aria-hidden="true" />{MARKER_LABELS[kind]}
+              {kind === 'chapter' && <>
+                <FocusButton id="player-chapter-previous" className="tvm-progress__chapter" variant="quiet"
+                  ariaLabel="Previous chapter" title="Previous chapter"
+                  disabled={previousChapter === undefined} onSelect={() => commitPreview(previousChapter)}><IconChevronLeft /></FocusButton>
+                <FocusButton id="player-chapter-next" className="tvm-progress__chapter tvm-progress__chapter--next" variant="quiet"
+                  ariaLabel="Next chapter" title="Next chapter"
+                  disabled={nextChapter === undefined} onSelect={() => commitPreview(nextChapter)}><IconChevronLeft /></FocusButton>
+              </>}
+            </li>
           ))}
         </ul>
       )}

@@ -56,8 +56,8 @@ const CURSOR_CSS = `
   .player.player--mouse-active [data-focus-id] {
     cursor: pointer !important;
   }
-  .player.player--mouse-idle,
-  .player.player--mouse-idle * {
+  .player:fullscreen[data-playing='true'][data-chrome-hidden='true'].player--mouse-idle,
+  .player:fullscreen[data-playing='true'][data-chrome-hidden='true'].player--mouse-idle * {
     cursor: none !important;
   }
   /* PlayerRoot is pointer-events: none; these targets must still receive a mouse. */
@@ -218,7 +218,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   if (host === document.body || host === document.documentElement) return () => undefined;
 
   ensureCursorStyles();
-  setCursorIdle(host, true);
+  setCursorIdle(host, false);
 
   const idleMs = bindings.idleMs ?? MOUSE_IDLE_MS;
   let idleTimer: number | null = null;
@@ -277,6 +277,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
 
   const onPointerDown = (event: PointerEvent): void => {
     lastPointerType = event.pointerType || 'mouse';
+    if (lastPointerType !== 'touch') pokeCursor();
     if (event.button !== 0 || !host.contains(event.target as Node)) return;
     const active = document.activeElement;
     priorFocus = active instanceof HTMLElement ? active : null;
@@ -366,7 +367,9 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
   host.addEventListener('pointercancel', onPointerUp, true);
   host.addEventListener('click', onClick, true);
   host.addEventListener('dblclick', onDoubleClick, true);
-  window.addEventListener('keydown', hideCursor);
+  window.addEventListener('keydown', pokeCursor);
+  document.addEventListener('fullscreenchange', pokeCursor);
+  pokeCursor();
 
   return () => {
     if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -376,7 +379,8 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
     host.removeEventListener('pointercancel', onPointerUp, true);
     host.removeEventListener('click', onClick, true);
     host.removeEventListener('dblclick', onDoubleClick, true);
-    window.removeEventListener('keydown', hideCursor);
+    window.removeEventListener('keydown', pokeCursor);
+    document.removeEventListener('fullscreenchange', pokeCursor);
     host.classList.remove('player--mouse-idle', 'player--mouse-active');
     host.removeAttribute('data-mouse-idle');
   };

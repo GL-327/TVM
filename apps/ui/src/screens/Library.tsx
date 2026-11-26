@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BrandLockup } from '../components/BrandLockup';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { openModals, visibleScreen } from '@tvm/nav';
+import { BrowseAmbience } from '../components/BrowseAmbience';
 import { FocusButton } from '../components/FocusButton';
-import { HeroArt } from '../components/HeroArt';
 import { fieldValue, FocusField } from '../components/FocusField';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { introPlayedThisSession, shouldSkipIntro, TvmIntro } from '../brand/TvmIntro';
 import { mapRailPosters } from '../components/PosterCard';
 import { Rail, RailPaging } from '../components/Rail';
 import { Ribbon } from '../components/Ribbon';
-import { preferBackdrop } from '../data/artwork';
 import { type Title } from '../data/catalog';
 import {
+  apiFetch,
   asTitle,
   fetchHome,
   peekHome,
@@ -18,15 +18,20 @@ import {
   toMediaItem,
   type CatalogRail,
   type RdStatus,
+  type MediaItem,
 } from '../data/media';
 import { filterItemsByAge } from '../data/parental';
 import { usePagedRails } from '../data/usePagedRails';
-import { openDetails } from '../data/openDetails';
+import { openDetails, openPlayback } from '../data/openDetails';
 import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
 import { effectiveProfileMaxAge, fetchProfiles, type Profile } from '../data/profiles';
 import { requestFocus } from '../nav/focusEngine';
-import { useFocusScope, useNavigate } from '../nav/ViewStackContext';
+import { useFocusScope, useNavigate, useViewStack } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
+
+import { useExtraPrefs, uiExtraEnabled } from '../data/uiExtras';
+import { prefersReducedMotion, subscribeMotionPreference } from '../theme/motion';
+import { Spotlight } from './Spotlight';
 
 const RD_EMPTY: RdStatus = { configured: false, username: null, premium: false, error: null };
 
@@ -39,6 +44,15 @@ function inLane(title: Title, lane: 'all' | 'shows' | 'movies'): boolean {
 export function Library({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
   const scope = useFocusScope();
+  const stack = useViewStack();
+  const active = visibleScreen(stack).name === 'library' && openModals(stack).length === 0;
+  const page = useRef<HTMLElement>(null);
+  const heroVisible = useRef<HTMLDivElement>(null);
+  const [onScreen, setOnScreen] = useState(true);
+  const [visible, setVisible] = useState(() => !document.hidden);
+  const [reduced, setReduced] = useState(prefersReducedMotion);
+  const prefs = useExtraPrefs();
+  const [surprise, setSurprise] = useState<MediaItem | null>(null);
   const cached = peekHome();
   const [watching, setWatching] = useState<Title[]>(() => (cached?.continueWatching ?? []).map(asTitle));
   const [watchlist, setWatchlist] = useState<Title[]>(() => (cached?.watchlist ?? []).map(asTitle));
@@ -125,9 +139,7 @@ export function Library({ params }: ScreenProps): React.JSX.Element {
     }
   };
 
-  const openTitle = (title: Title): void => {
-    openDetails(navigate, title);
-  };
+  const openTitle = useCallback((title: Title): void => openDetails(navigate, title), [navigate]);
 
   const maxAge = effectiveProfileMaxAge(profile);
   const visibleRails = useMemo(() => {
@@ -140,20 +152,56 @@ export function Library({ params }: ScreenProps): React.JSX.Element {
   }, [lane, maxAge, pagedRails]);
 
   const watchingLane = useMemo(
-    () => (lane !== 'movies' ? filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle) : []),
+    () => filterItemsByAge(watching.map(toMediaItem), maxAge).map(asTitle).filter((title) => inLane(title, lane)),
     [lane, maxAge, watching],
   );
   const visibleWatchlist = useMemo(
     () => filterItemsByAge(watchlist.map(toMediaItem), maxAge).map(asTitle).filter((title) => inLane(title, lane)),
     [lane, maxAge, watchlist],
   );
-  const billboard = featured ?? watchingLane[0] ?? visibleRails[0]?.titles[0];
-  const heroSrc = billboard === undefined ? '' : preferBackdrop(billboard.id, billboard.backdrop, billboard.poster);
+  const eligibleFeatured = featured && inLane(featured, lane) && filterItemsByAge([toMediaItem(featured)], maxAge).length ? featured : null;
+  const candidates = [...new Map([...(eligibleFeatured ? [eligibleFeatured] : []),
+    ...visibleRails.flatMap((rail) => rail.titles)].map((title) => [title.id, title])).values()];
+  const featuredTitles = candidates.filter((title) => title.backdrop !== '').slice(0, 8);
+  const billboard = featuredTitles[0] ?? candidates[0] ?? watchingLane[0];
+  const showHero = rdReady && !loading && billboard !== undefined;
+  const maySurprise = uiExtraEnabled('surpriseMe', prefs);
+
+  useEffect(() => {
+    const sync = (): void => setVisible(!document.hidden);
+    document.addEventListener('visibilitychange', sync);
+    const unsubscribe = subscribeMotionPreference(() => setReduced(prefersReducedMotion()));
+    return () => { document.removeEventListener('visibilitychange', sync); unsubscribe(); };
+  }, []);
+  useEffect(() => {
+    if (!showHero || !heroVisible.current) return;
+    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry?.isIntersecting === true),
+      { root: page.current, threshold: 0.45 });
+    observer.observe(heroVisible.current);
+    return () => observer.disconnect();
+  }, [showHero]);
+  useEffect(() => {
+    setSurprise(null);
+    if (!active || !maySurprise) return;
+    const controller = new AbortController();
+    void apiFetch('/api/extras/surprise', { signal: controller.signal }).then(async (response) => {
+      if (!response.ok) return;
+      const { item } = await response.json() as { item?: MediaItem };
+      if (item && !controller.signal.aborted && filterItemsByAge([item], maxAge).length) setSurprise(item);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [active, maxAge, maySurprise]);
+  const selectLane = (next: typeof lane): void => {
+    if (next === lane) return;
+    setLane(next);
+    page.current?.scrollTo({ top: 0 });
+  };
 
   return (
-    <main className={`home stream-page stream-page--${plan.stream}`}>
+    <main ref={page} className={`home stream-page stream-page--${plan.stream} cinematic-browse`}>
+      <BrowseAmbience page={page} />
       {!introDone && <TvmIntro variant="stream" pending={loading} onDone={() => setIntroDone(true)} />}
-      <Ribbon active={lane === 'all' ? 'library' : lane} onLane={setLane} />
+      <Ribbon active={lane === 'all' ? 'library' : lane} onLane={selectLane} />
 
       {loading && introDone ? (
         <LoadingScreen
@@ -191,38 +239,29 @@ export function Library({ params }: ScreenProps): React.JSX.Element {
             <FocusButton id="save" variant="primary" disabled={busy} onSelect={() => void connect(fieldValue('token'))}>
               {busy ? 'Connecting…' : 'Continue'}
             </FocusButton>
-            <FocusButton id="stream-back" className="tvm-button--glass" onSelect={() => navigate.home()}>
-              Back to Home
+            <FocusButton id="stream-back" className="tvm-button--glass" onSelect={() => navigate.pop()}>
+              Back
             </FocusButton>
           </div>
         </section>
       ) : null}
 
-      {rdReady && !loading && plan.stream !== 'basic' && billboard !== undefined && (
-        <section className="stage">
-          <HeroArt src={heroSrc} hue={billboard.hue} />
-          <div className="stage__vignette" aria-hidden="true" />
-          <div className="stage__copy">
-            <h1 className="stage__title">{billboard.title}</h1>
-            <p className="stage__watchline">
-              <FocusButton id="stream-hero-play" className="stage__watchnow" onSelect={() => openTitle(billboard)}>
-                WATCH NOW
-              </FocusButton>
-              <span className="stage__watchline-rule" aria-hidden="true">
-                |
-              </span>
-              <BrandLockup focusId="stream-hero-mark" />
-            </p>
-            <FocusButton id="stream-hero-info" className="tvm-button--glass stage__learn" onSelect={() => openTitle(billboard)}>
-              Learn More
-            </FocusButton>
-          </div>
-        </section>
-      )}
+      {showHero && <div ref={heroVisible} className="browse__hero">
+        <Spotlight hero={billboard} event={null} enabled={prefs.heroPreviews} reduced={reduced}
+          active={active && onScreen && visible} rating={uiExtraEnabled('ratings', prefs)}
+          onPlay={() => openPlayback(navigate, billboard)} onDetails={() => openTitle(billboard)}
+          onSurprise={maySurprise && surprise ? () => openTitle(asTitle(surprise)) : undefined} />
+      </div>}
 
       {rdReady && !loading && watchingLane.length > 0 && (
         <Rail title="Continue Watching" loop={false}>
           {mapRailPosters(watchingLane, 'continue', openTitle, { layout: 'landscape' })}
+        </Rail>
+      )}
+
+      {rdReady && !loading && featuredTitles.length > 0 && (
+        <Rail title="Featured" id="library-featured" loop={false}>
+          {mapRailPosters(featuredTitles, 'library-featured', openTitle, { layout: 'landscape' })}
         </Rail>
       )}
 

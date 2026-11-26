@@ -36,7 +36,7 @@ function useCoreClip(id: string | null, enabled: boolean): { url: string | null;
           return;
         }
         const body = response.ok ? await response.json() as { status?: string; url?: string } : {};
-        if (!controller.signal.aborted) setState({ id, url: body.status === 'ready' && body.url ? body.url : null });
+        if (!controller.signal.aborted) setState({ id, url: body.status === 'ready' && body.url ? new URL(body.url, response.url || window.location.href).href : null });
       } catch {
         if (!controller.signal.aborted) setState({ id, url: null });
       }
@@ -81,10 +81,10 @@ export function DetailsMedia({ id, trailerId, active }: { id: string; trailerId?
   useEffect(() => {
     setReady(false);
     setLoaded(false);
-    if (!backdrop || !trailerId || !playing) return;
+    if (!backdrop || !playing) return;
     const timer = window.setTimeout(() => setReady(true), 3_000);
     return () => window.clearTimeout(timer);
-  }, [backdrop, id, trailerId, playing]);
+  }, [backdrop, id, playing]);
 
   useEffect(() => {
     if (!theme || !playing || !id) return;

@@ -20,7 +20,6 @@
   --intro-paper: color-mix(in srgb, var(--tvm-text, #fff) 88%, #fff);
   background: var(--intro-bg);
   color: var(--intro-ink);
-  cursor: none;
   contain: layout paint;
 }
 

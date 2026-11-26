@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import { useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+import { preferBackdrop } from '../data/artwork';
 import type { Title } from '../data/catalog';
 import { prefetchDetails } from '../data/openDetails';
 import { revealFocused } from '../nav/revealFocused';
@@ -71,9 +72,10 @@ const PosterFace = memo(function PosterFace({
           <span className="poster__progress-bar" style={{ width: `${Math.round(progress * 100)}%` }} />
         </span>
       )}
+      {title.title.length > 36 && <span className="poster__caption" aria-hidden="true">{title.title}</span>}
       <span className="poster__meta">
         <span className="poster__title">{title.title}</span>
-        <span className="poster__year">{title.episodeLabel ?? (title.year > 0 ? title.year : '')}</span>
+        {title.episodeLabel && <span className="poster__year">{title.episodeLabel}</span>}
       </span>
     </>
   );
@@ -91,7 +93,8 @@ function PosterClone({
   const id = posterFocusId(prefix, title.id, index, loopCopy);
   const prefetch = useDetailsPrefetch(title);
   return (
-    <LoopClone className={`poster poster--${layout}`} focusId={id} loopCopy={loopCopy} onClick={() => onSelect(title)} {...prefetch}>
+    <LoopClone className={`poster poster--${layout}`} focusId={id} loopCopy={loopCopy}
+      title={title.title} ambientArt={preferBackdrop(title.id, title.backdrop, title.poster)} ambientHue={title.hue} onClick={() => onSelect(title)} {...prefetch}>
       <PosterFace title={title} layout={layout} decorative />
     </LoopClone>
   );
@@ -143,6 +146,8 @@ const PosterFocusable = memo(function PosterFocusable({
       className={`poster poster--${layout}`}
       tabIndex={-1}
       data-focus-id={id}
+      data-ambient-art={preferBackdrop(title.id, title.backdrop, title.poster)}
+      data-ambient-hue={title.hue}
       data-focused={focused ? 'true' : undefined}
       data-loop-copy="1"
       onClick={onClick}

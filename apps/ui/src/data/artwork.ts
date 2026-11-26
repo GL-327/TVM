@@ -61,8 +61,9 @@ export function upgradeImageUrl(url: string, kind: ArtworkKind): string {
   return next;
 }
 
-export function preferBackdrop(id: string, backdrop: string, poster: string): string {
-  const wide = upgradeImageUrl(backdrop, 'backdrop');
+export function preferBackdrop(id: string, backdrop: string, poster: string, hero = false): string {
+  const preview = upgradeImageUrl(backdrop, 'backdrop');
+  const wide = hero ? preview.replace('image.tmdb.org/t/p/w780/', 'image.tmdb.org/t/p/w1280/') : preview;
   if (wide !== '') return wide;
   const imdb = imdbIdFrom(id);
   if (imdb !== null) return metahubBackdrop(imdb);

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { decidePlayback, parseProbeOutput, pickH264Encoders, type MediaProbe } from './ffmpeg.ts';
+import { chooseAudioTrack, decidePlayback, parseProbeOutput, pickH264Encoders, type MediaProbe } from './ffmpeg.ts';
 import { extensionDirectMime } from './streamer.ts';
 import { createDirectRegistry, createStreamSessions, hlsArgs, playlistReady } from './streamSessions.ts';
 
@@ -85,7 +85,7 @@ describe('playback decisions', () => {
     });
   });
 
-  it('transcodes HEVC to H.264 and caps a 4K re-encode at 1080p', () => {
+  it('transcodes HEVC to H.264 at source resolution within the cap', () => {
     expect(decidePlayback(probe({ videoCodec: 'hevc', audioCodec: 'dts' }), 2160)).toEqual({
       mode: 'hls',
       video: 'h264',
@@ -95,7 +95,7 @@ describe('playback decisions', () => {
       mode: 'hls',
       video: 'h264',
       audio: 'aac',
-      scaleToHeight: 1080,
+      videoHeight: 2160,
     });
   });
 
@@ -107,6 +107,26 @@ describe('playback decisions', () => {
   it('downscales when the file exceeds the plan height cap', () => {
     const decision = decidePlayback(probe({ container: 'mov,mp4', videoHeight: 2160 }), 720);
     expect(decision).toEqual({ mode: 'hls', video: 'h264', audio: 'copy', scaleToHeight: 720 });
+  });
+
+  it('keeps compatible HEVC untouched and tone maps when a browser cannot display HDR', () => {
+    const hdr = probe({ container: 'mov,mp4', videoCodec: 'hevc', videoHeight: 2160, hdr: true });
+    expect(decidePlayback(hdr, 2160, { client: { player: 'html5', hevc: true, hdr: true } }))
+      .toEqual({ mode: 'direct', mimeType: 'video/mp4' });
+    const decision = decidePlayback(hdr, 2160, { client: { player: 'html5', hevc: true, hdr: false } });
+    expect(decision).toEqual({ mode: 'hls', video: 'h264', audio: 'copy', videoHeight: 2160, toneMap: true });
+  });
+
+  it('copies the video and maps the English audio when a dub is the file default', () => {
+    const input = probe({ container: 'mov,mp4', audioTracks: [
+      { index: 0, codec: 'aac', channels: 2, language: 'fra', default: true },
+      { index: 1, codec: 'aac', channels: 2, language: 'eng', default: false },
+    ] });
+    const decision = decidePlayback(input, 2160, { audioTrack: chooseAudioTrack(input, ['eng']) });
+    expect(decision).toEqual({ mode: 'hls', video: 'copy', audio: 'copy', audioIndex: 1 });
+    if (decision.mode === 'hls') {
+      expect(hlsArgs({ inputUrl: 'https://cdn.example/multi.mp4', decision }, '/tmp/out')).toContain('0:a:1?');
+    }
   });
 });
 
@@ -136,6 +156,7 @@ describe('hls session arguments', () => {
       '/tmp/out',
     );
     expect(args[args.indexOf('-c:v') + 1]).toBe('libx264');
+    expect(args[args.indexOf('-crf') + 1]).toBe('17');
     expect(args.join(' ')).toContain('-force_key_frames');
     expect(args[args.indexOf('-vf') + 1]).toContain('1080');
     expect(args[args.indexOf('-c:a') + 1]).toBe('aac');

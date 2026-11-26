@@ -14,6 +14,7 @@ import { hydratePrefs } from './data/prefs';
 import { applyStoredTheme, applyTheme, readStoredTheme } from './theme/apply';
 import { applyAccent, applyFont, applyTransparency } from './theme/appearance';
 import './theme/polish.css';
+import './theme/browse.css';
 import { applyStoredMotionPreference, applyStoredPerformanceMode } from './theme/motion';
 import { applyStoredLanguage } from './i18n/locale';
 

@@ -414,6 +414,35 @@ describe('media service', () => {
     expect(await media.play({ id: 'tt15398776' })).toEqual({ kind: 'unavailable', reason: 'empty' });
   });
 
+  it('lists released cinema recordings without a Debrid key while keeping playback credential-gated', async () => {
+    const dir = await dataDir();
+    const calls: string[] = [];
+    const id = 'tt32558705';
+    const media = createMediaService({
+      dataDir: dir,
+      rd: createRealDebrid({ dataDir: dir, env: {} }),
+      fetch: async (input) => {
+        const url = String(input);
+        calls.push(url);
+        if (url.includes('/meta/movie/')) return Response.json({
+          meta: { id, name: 'The Hunger Games: Sunrise on the Reaping', original_language: 'en', released: '2026-11-20', runtime: '158 min' },
+        });
+        if (url.includes('/stream/movie/')) return Response.json({ streams: [
+          { name: 'Torrentio\nCAM', title: 'The.Hunger.Games.Sunrise.on.the.Reaping.2026.CAM.720p.FR.EN-CinemaCity',
+            infoHash: 'a'.repeat(40), fileIdx: 0 },
+        ] });
+        return new Response(null, { status: 404 });
+      },
+    });
+    expect(await media.item(id)).toMatchObject({ playable: true });
+    const list = await media.versions!(id);
+    expect(list).toEqual({ originalLanguage: 'eng', versions: [
+      expect.objectContaining({ label: 'Cinema recording, low quality', height: 720, languages: ['fra', 'eng'], recommended: true }),
+    ] });
+    expect(calls).toContain(`https://torrentio.strem.fun/stream/movie/${id}.json`);
+    expect(await media.play({ id })).toEqual({ kind: 'unavailable', reason: 'not-configured' });
+  });
+
   it('reports empty when Torrentio fetch aborts', async () => {
     const dir = await dataDir();
     const media = createMediaService({

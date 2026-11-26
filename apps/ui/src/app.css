@@ -22,7 +22,6 @@ body {
   font-family: var(--tvm-font-family);
   font-size: var(--tvm-font-size-body);
   line-height: var(--tvm-line-height-body);
-  cursor: none;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -1061,7 +1060,7 @@ body,
   background: transparent;
   color: inherit;
   font: inherit;
-  cursor: none;
+  cursor: pointer;
   text-align: left;
 }
 
@@ -1338,7 +1337,7 @@ img.stage__art.art--ready {
   font-family: inherit;
   font-size: var(--tvm-font-size-body);
   font-weight: 680;
-  cursor: none;
+  cursor: pointer;
 }
 
 .tvm-button__label {
@@ -1747,7 +1746,7 @@ img.stage__art.art--ready {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   color: var(--tvm-text);
   font: inherit;
-  cursor: none;
+  cursor: text;
   transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 

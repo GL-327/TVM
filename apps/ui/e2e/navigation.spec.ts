@@ -15,6 +15,7 @@ async function focusedId(page: Page): Promise<string | null> {
 const CHROME = new Set([
   'library',
   'search',
+  'hub-dock',
   'home-dock',
   'tvm-home',
   'more',
@@ -351,7 +352,7 @@ async function stubUnconfigured(page: Page): Promise<void> {
 test.beforeEach(async ({ page }) => {
   await stubReady(page);
   await page.goto('/');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await waitForFocus(page);
 });
 
@@ -361,17 +362,17 @@ test('something is always focused after every remote key', async ({ page }) => {
     await page.waitForTimeout(80);
     await waitForFocus(page);
   }
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
 });
 
 test('Back at the root does not blank the screen', async ({ page }) => {
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await waitForFocus(page);
 });
 
-test('Back from a depth of three returns Home one step at a time', async ({ page }) => {
+test('Back from a depth of three returns Hub one step at a time', async ({ page }) => {
   await enterTvmStream(page);
 
   await pressUntil(page, 'films-tt0816692-0');
@@ -382,9 +383,9 @@ test('Back from a depth of three returns Home one step at a time', async ({ page
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-screen="library"]')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await waitForFocus(page);
 });
 
@@ -405,11 +406,11 @@ test('a modal traps focus and Back closes the modal', async ({ page }) => {
   expect(onKeyboard).toBe(true);
   const trapped = await focusedId(page);
   expect(trapped === 'close' || trapped === 'open' || trapped === 'query' || trapped?.startsWith('key-')).toBe(true);
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
 
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-screen="search"]')).toHaveCount(0);
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await waitForFocus(page);
 });
 
@@ -454,17 +455,22 @@ test('TVM Stream asks who is watching every time it opens', async ({ page }) => 
   await expect(page.locator('[data-screen="profiles"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: "Who's watching?" })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await page.locator('[data-focus-id="launch-stream"]').click();
   await expect(page.locator('[data-screen="profiles"]')).toBeVisible();
 });
 
-test('Home opens without a Real-Debrid token', async ({ page }) => {
+test('Hub and Home open without a Real-Debrid token', async ({ page }) => {
   await stubUnconfigured(page);
   await page.goto('/');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await expect(page.locator('[data-screen="profiles"]')).toHaveCount(0);
   await expect(page.locator('[data-screen="setup"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Home', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Hub', exact: true }).click();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
 });
 
 test('open ribbon sits in the top center', async ({ page }) => {
@@ -503,7 +509,7 @@ test('TVM Stream asks for a token and Enter on the field saves', async ({ page }
     });
   });
   await page.goto('/');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await enterTvmStream(page);
   await pressUntil(page, 'token');
 
@@ -539,12 +545,12 @@ test('TVM Stream Down from the token field reaches Continue', async ({ page }) =
   expect(await focusedId(page)).toBe('save');
 });
 
-test('Back leaves TVM Stream without a token and returns Home', async ({ page }) => {
+test('Back leaves TVM Stream without a token and returns Hub', async ({ page }) => {
   await stubUnconfigured(page);
   await page.goto('/');
   await enterTvmStream(page);
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await expect(page.locator('[data-screen="setup"]')).toHaveCount(0);
   await waitForFocus(page);
 });
@@ -736,7 +742,7 @@ test('MAX shows the mock live pack in the programme guide', async ({ page }) => 
     }),
   );
   await page.goto('/');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
   await waitForFocus(page);
   await pressUntil(page, 'live');
   await page.keyboard.press('Enter');
@@ -749,6 +755,7 @@ test('MAX shows the mock live pack in the programme guide', async ({ page }) => 
 });
 
 test('clicking a film opens the title instead of only jumping the row', async ({ page }) => {
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
   const poster = page.locator('[data-focus-id="films-tt0816692-0"]');
   await expect(poster).toBeVisible();
   await poster.click();
@@ -849,7 +856,7 @@ test('volume and speed work without scrubbing, and playback markers have a legen
   expect(await video.evaluate((node: HTMLVideoElement) => node.currentTime)).toBeCloseTo(before);
 });
 
-test('Live TV opens the guide with free channels and setup, and Back returns Home', async ({ page }) => {
+test('Live TV opens the guide with free channels and setup, and Back returns Hub', async ({ page }) => {
   await pressUntil(page, 'live');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-screen="live"]')).toBeVisible();
@@ -864,7 +871,7 @@ test('Live TV opens the guide with free channels and setup, and Back returns Hom
   await waitForFocus(page);
   await pressUntil(page, 'live-back');
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await expect(page.locator('[data-screen="hub"]')).toBeVisible();
 });
 
 test('a cold first video request recovers and idle chrome stays hidden', async ({ page }, testInfo) => {

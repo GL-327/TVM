@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CorePrefs } from '../prefs.ts';
-import type { DebridStream } from './torrentio.ts';
+import { releaseTier, withCinemaFallback, type TorrentioRelease } from './torrentio.ts';
 
 export interface PlaybackClient {
   player: 'mpv' | 'html5' | 'exoplayer' | 'avplayer' | 'roku';
@@ -44,37 +44,51 @@ const LEGACY: Record<string, string> = {
 const display = new Intl.DisplayNames('en', { type: 'language' });
 const names = new Map(Object.entries(ISO).map(([two, three]) => [display.of(two)?.toLowerCase() ?? two, three]));
 const flags: Record<string, string> = {
-  US: 'eng', GB: 'eng', FR: 'fra', DE: 'deu', ES: 'spa', MX: 'spa', IT: 'ita', BR: 'por', PT: 'por',
+  US: 'eng', GB: 'eng', AU: 'eng', FR: 'fra', DE: 'deu', ES: 'spa', MX: 'spa', IT: 'ita', BR: 'por', PT: 'por',
   JP: 'jpn', KR: 'kor', CN: 'zho', TW: 'zho', HK: 'yue', RU: 'rus', UA: 'ukr', PL: 'pol', TR: 'tur',
   NL: 'nld', SE: 'swe', DK: 'dan', FI: 'fin', NO: 'nor', CZ: 'ces', HU: 'hun', RO: 'ron', GR: 'ell',
-  IL: 'heb', IR: 'fas', SA: 'ara', TH: 'tha', VN: 'vie', ID: 'ind',
+  IL: 'heb', IR: 'fas', SA: 'ara', TH: 'tha', VN: 'vie', ID: 'ind', IN: 'hin', BD: 'ben',
+  PK: 'urd', RS: 'srp', HR: 'hrv', BG: 'bul', SK: 'slk', MY: 'msa', PH: 'tgl',
 };
+const AUDIO_ALIAS: Record<string, string> = {
+  latino: 'spa', latam: 'spa', castilian: 'spa', truefrench: 'fra', vf: 'fra', vff: 'fra',
+  vfq: 'fra', vf2: 'fra', pldub: 'pol',
+};
+const LANGUAGES = new Set(Object.values(ISO));
 
 export function languageCode(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const code = value.trim().toLowerCase();
+  const code = value.trim().toLowerCase().split(/[-_]/)[0]!;
+  if (code === 'und' || code === 'mul' || code === 'zxx') return null;
   return LEGACY[code] ?? ISO[code] ?? names.get(code) ?? (/^[a-z]{3}$/.test(code) ? code : null);
 }
 
-function releaseLanguages(release: string, title: string): string[] {
-  // Torrentio puts audio flags after the filename. Codes must be bounded:
-  // arbitrary three-letter words in a movie title are not language labels.
+function releaseLanguages(release: TorrentioRelease): string[] {
+  // Torrentio emits audio flags separately from the filename and release name.
   const languages = new Set<string>();
-  for (const pair of release.matchAll(/[\u{1f1e6}-\u{1f1ff}]{2}/gu)) {
+  for (const pair of (release.description ?? '').matchAll(/[\u{1f1e6}-\u{1f1ff}]{2}/gu)) {
     const country = [...pair[0]].map(c => String.fromCharCode(c.codePointAt(0)! - 0x1f1e6 + 65)).join('');
     if (flags[country]) languages.add(flags[country]);
   }
-  const tags = release.replace(title, '').split(/[^A-Za-z]+/);
-  const fileTags = title.split(/(?:2160p|1080p|720p|480p|\b4k\b)/i).slice(1).join(' ').split(/[^A-Za-z]+/);
-  for (const tag of [...tags, ...fileTags]) {
-    const code = tag.toLowerCase();
-    const language = names.get(code) ?? LEGACY[code] ?? (Object.values(ISO).includes(code) ? code : undefined);
-    if (language) languages.add(language);
+  for (const title of new Set([release.title, release.filename])) {
+    if (!title) continue;
+    // Start at the year, episode, or quality so words in the title aren't audio tags.
+    const boundary = /\b(?:19\d{2}|20\d{2}|s\d{1,2}e\d{1,3}|(?:2160|1440|1080|720|576|480|360)[pi]|4k|uhd)\b/i.exec(title);
+    if (!boundary) continue;
+    const tags = title.slice(boundary.index + boundary[0].length)
+      .replace(/\b(?:multi[ ._-]?)?(?:sub(?:s|titles?)?|softsubs?|hardsubs?)\b[^+\]]*/gi, '');
+    for (const tag of tags.match(/[a-z][a-z0-9]*/gi) ?? []) {
+      const code = tag.toLowerCase();
+      const language = AUDIO_ALIAS[code] ?? names.get(code) ?? LEGACY[code] ??
+        (LANGUAGES.has(code) ? code : /^\p{Lu}{2}$/u.test(tag) || /^(?:en|fr|es|it|pt|ru)$/.test(code) ? ISO[code] : undefined);
+      if (language) languages.add(language);
+    }
   }
   return [...languages];
 }
 
-export const POOR_RELEASE = /\b(?:cam|hdcam|camrip|telesync|telecine|hdts|hdtc|tsrip|ts|tc|screener|dvdscr|dvdscreener|scr|workprint)\b/i;
+const DUB = /(?:^|[^a-z0-9])(?:dub(?:bed|lado|laj)?|fandub|(?:pl|rus|ita|hin|hindi)\s*dub)(?=$|[^a-z0-9])/i;
+const MULTI_AUDIO = /\b(?:dual(?:[ ._-]?audio)?|multi(?:[ ._-]?audio)?)(?![ ._-]?subs?\b)\b/i;
 const UPSCALED = /\b(?:up[ ._-]?scal(?:e[ds]?|ing)|aius|ups|re[ ._-]?grad(?:e[ds]?|ing))\b/i;
 const SOURCE_RANK: Record<Version['source'], number> = { remux: 5, bluray: 4, 'web-dl': 3, webrip: 2, hdtv: 1, other: 0 };
 const SOURCE_LABEL: Record<Version['source'], string> = { remux: 'REMUX', bluray: 'BluRay', 'web-dl': 'WEB-DL', webrip: 'WEBRip', hdtv: 'HDTV', other: '' };
@@ -115,19 +129,32 @@ export function supportsVersion(version: Version, filename: string, client?: Pla
   return true;
 }
 
-export function describeVersion(stream: DebridStream, seconds: number | null): Version {
+function heightOf(label: string): number | null {
+  return /\b(?:4k|uhd|2160p)\b/i.test(label) ? 2160 :
+    Number(label.match(/\b(1440|1080|720|576|480|360)[pi]\b/i)?.[1]) || null;
+}
+
+function sourceOf(label: string): Version['source'] | null {
+  return /\b(?:bd[ ._-]?)?remux\b/i.test(label) ? 'remux' : /\b(?:blu[ ._-]?ray|bdrip|brrip)\b/i.test(label) ? 'bluray' :
+    /\bweb[ ._-]?dl\b/i.test(label) ? 'web-dl' : /\bweb[ ._-]?rip\b/i.test(label) ? 'webrip' :
+      /\bhdtv\b/i.test(label) ? 'hdtv' : null;
+}
+
+function codecOf(label: string): string | null {
+  return /\b(?:hevc|[xh][ ._-]?265)\b/i.test(label) ? 'hevc' :
+    /\b(?:avc|[xh][ ._-]?264)\b/i.test(label) ? 'h264' : /\bav1\b/i.test(label) ? 'av1' :
+      /\bvp9\b/i.test(label) ? 'vp9' : /\bvp8\b/i.test(label) ? 'vp8' : null;
+}
+
+export function describeVersion(stream: TorrentioRelease & { url?: string }, seconds: number | null): Version {
   const release = stream.description ?? stream.title;
-  const height = /\b(?:4k|uhd|2160p)\b/i.test(release) ? 2160 :
-    Number(release.match(/\b(1440|1080|720|576|480|360)[pi]\b/i)?.[1]) || null;
+  const file = stream.filename ?? '';
+  const height = heightOf(file) ?? heightOf(stream.title) ?? heightOf(release);
   const hdr = /\b(?:dv|dovi|dolby[ ._-]?vision)\b/i.test(release) ? 'dv' :
     /\bhdr10(?:\+|plus)/i.test(release) ? 'hdr10+' : /\bhlg\b/i.test(release) ? 'hlg' :
       /\bhdr(?:10)?\b/i.test(release) ? 'hdr10' : null;
-  const source = /\bremux\b/i.test(release) ? 'remux' : /\b(?:blu[ ._-]?ray|bdrip|brrip)\b/i.test(release) ? 'bluray' :
-    /\bweb[ ._-]?dl\b/i.test(release) ? 'web-dl' : /\bweb[ ._-]?rip\b/i.test(release) ? 'webrip' :
-      /\bhdtv\b/i.test(release) ? 'hdtv' : 'other';
-  const codec = /\b(?:hevc|[xh][ ._-]?265)\b/i.test(release) ? 'hevc' :
-    /\b(?:avc|[xh][ ._-]?264)\b/i.test(release) ? 'h264' : /\bav1\b/i.test(release) ? 'av1' :
-      /\bvp9\b/i.test(release) ? 'vp9' : /\bvp8\b/i.test(release) ? 'vp8' : null;
+  const source = sourceOf(file) ?? sourceOf(release) ?? 'other';
+  const codec = codecOf(file) ?? codecOf(release);
   const audioCodec = release.match(/\b(true[ ._-]?hd|dts[ ._-]?hd(?:[ ._-]?ma)?|dts[ ._-]?x|dts|ddp|eac3|dd\+|aac|ac3|flac|opus)(?=\b|\d)/i)?.[1];
   const audio = {
     codec: audioCodec?.toLowerCase().replace(/[ ._]/g, '-') ?? null,
@@ -135,47 +162,63 @@ export function describeVersion(stream: DebridStream, seconds: number | null): V
     atmos: /\batmos\b/i.test(release),
   };
   const size = release.match(/\b(\d+(?:[.,]\d+)?)\s*([kmgt])(?:i)?b\b/i);
-  const sizeBytes = size ? Math.round(Number(size[1]!.replace(',', '.')) * 1024 ** ('kmgt'.indexOf(size[2]!.toLowerCase()) + 1)) : null;
+  // The provider's displayed size can be the whole season. Only use it for
+  // an episode when the listing is for that file or reports its byte count.
+  const sizeBytes = stream.sizeBytes ?? (!stream.pack && size
+    ? Math.round(Number(size[1]!.replace(',', '.')) * 1024 ** ('kmgt'.indexOf(size[2]!.toLowerCase()) + 1)) : null);
   const bitrateMbps = sizeBytes && seconds ? Math.round(sizeBytes * 80 / seconds / 1e6) / 10 : null;
   const hdrLabel = hdr === 'dv' ? 'Dolby Vision' : hdr?.toUpperCase();
-  const label = [height === 2160 ? '4K' : height ? `${height}p` : null, hdrLabel, SOURCE_LABEL[source],
-    bitrateMbps ? `${bitrateMbps} Mb/s` : null].filter(Boolean).join(' \u00b7 ') || stream.title;
+  const label = releaseTier(stream) === 'cinema' ? 'Cinema recording, low quality' :
+    [height === 2160 ? '4K' : height ? `${height}p` : null, hdrLabel, SOURCE_LABEL[source],
+      bitrateMbps ? `${bitrateMbps} Mb/s` : null].filter(Boolean).join(' \u00b7 ') || stream.title;
+  const identity = stream.releaseId ?? stream.url?.split('?')[0]!.replace(/realdebrid=[^/]+/i, 'realdebrid') ?? stream.title;
   return {
-    id: createHash('sha256').update(stream.title).update('\0').update(release).update('\0')
-      .update(stream.releaseId ?? stream.url.split('?')[0]!.replace(/realdebrid=[^/]+/i, 'realdebrid')).digest('hex').slice(0, 24),
-    label, height, hdr, source, codec, sizeBytes, bitrateMbps, audio, languages: releaseLanguages(release, stream.title),
-    upscaled: UPSCALED.test(release), cached: stream.cached, recommended: false,
+    id: createHash('sha256').update(identity).update('\0').update(stream.title).digest('hex').slice(0, 24),
+    label, height, hdr, source, codec, sizeBytes, bitrateMbps, audio, languages: releaseLanguages(stream),
+    upscaled: UPSCALED.test(release) || UPSCALED.test(file), cached: stream.cached, recommended: false,
   };
 }
 
-export function rankVersions(streams: readonly DebridStream[], options: {
+export function preferredAudio(prefs: CorePrefs, originalLanguage: string | null): string {
+  return (prefs.audioLanguage === 'original' ? originalLanguage : languageCode(prefs.audioLanguage)) ?? originalLanguage ?? 'eng';
+}
+
+export function rankVersions<T extends TorrentioRelease & { url?: string }>(streams: readonly T[], options: {
   prefs: CorePrefs; originalLanguage: string | null; runtime: number | null; maxHeight: number; client?: PlaybackClient;
-}): { stream: DebridStream; version: Version }[] {
-  const { prefs, originalLanguage, runtime, maxHeight, client } = options;
+  canConvert?: boolean;
+}): { stream: T; version: Version }[] {
+  const { prefs, originalLanguage, runtime, maxHeight, client, canConvert } = options;
   const cap = Math.min(maxHeight, client?.maxHeight ?? Infinity,
     qualityCap(prefs.quality));
-  const preferred = prefs.audioLanguage === 'original' ? originalLanguage : languageCode(prefs.audioLanguage);
-  const match = (v: Version) => preferred && v.languages.includes(preferred) ? 1 : 0;
+  const preferred = preferredAudio(prefs, originalLanguage);
+  const audioRank = (v: Version, stream: T): number => {
+    if (v.languages.includes(preferred)) return 0;
+    if (originalLanguage && v.languages.includes(originalLanguage)) return 1;
+    const label = stream.description ?? stream.title;
+    if (v.languages.includes('eng')) return 3;
+    if (v.languages.length || (DUB.test(stream.title) && !MULTI_AUDIO.test(label))) return 4;
+    if (MULTI_AUDIO.test(label)) return 2;
+    // Untagged releases normally carry original audio. Don't let a small encode
+    // win just because it spells out the original language in its filename.
+    return prefs.audioLanguage === 'original' && releaseTier(stream) === 'retail' ? 0 : 1;
+  };
   const seen = new Set<string>();
-  const eligible = streams.flatMap(stream => {
-    const release = (stream.description ?? stream.title).replace(/\.(?:mkv|mp4|avi|ts|m4v|webm)\b/gi, '');
-    if (POOR_RELEASE.test(stream.title) || POOR_RELEASE.test(release) || /\.m3u8(?:\?|$)/i.test(stream.url)) return [];
+  const eligible = withCinemaFallback(streams).flatMap(stream => {
+    if (/\.m3u8(?:\?|$)/i.test(stream.url ?? '')) return [];
     const v = describeVersion(stream, runtime);
-    if ((v.height ?? 1080) > cap || (v.upscaled && (prefs.skipUpscaled || prefs.quality === 'original'))) return [];
-    if (!supportsVersion(v, stream.title + ' ' + stream.url, client)) return [];
-    if (originalLanguage && prefs.audioLanguage === 'original' &&
-      ((v.languages.length > 0 && !v.languages.includes(originalLanguage)) ||
-        (v.languages.length === 0 && /\b(?:dub(?:bed)?|fandub)\b/i.test(stream.title) && !/\b(?:dual|multi)\b/i.test(stream.title)))) return [];
+    if ((v.height ?? 0) > cap || (v.upscaled && (prefs.skipUpscaled || prefs.quality === 'original'))) return [];
+    if (!(client?.player === 'html5' && canConvert) &&
+        !supportsVersion(v, [stream.title, stream.filename, stream.url].join(' '), client)) return [];
     if (seen.has(v.id)) return [];
     seen.add(v.id);
-    return [{ stream, version: v }];
+    return [{ stream, version: v, audioRank: audioRank(v, stream) }];
   });
-  eligible.sort(({ version: a }, { version: b }) =>
-    match(b) - match(a) ||
+  eligible.sort(({ version: a, audioRank: aa }, { version: b, audioRank: ba }) =>
+    aa - ba ||
     (prefs.quality === 'saver'
-      ? Number(b.cached) - Number(a.cached) || (a.sizeBytes ?? Infinity) - (b.sizeBytes ?? Infinity) || (a.height ?? 1080) - (b.height ?? 1080)
-      : (b.height ?? 1080) - (a.height ?? 1080) || Number(b.cached) - Number(a.cached) ||
+      ? Number(b.cached) - Number(a.cached) || (a.sizeBytes ?? Infinity) - (b.sizeBytes ?? Infinity) || (a.height ?? 0) - (b.height ?? 0)
+      : (b.height ?? 0) - (a.height ?? 0) || Number(b.cached) - Number(a.cached) ||
         SOURCE_RANK[b.source] - SOURCE_RANK[a.source] || (b.bitrateMbps ?? b.sizeBytes ?? 0) - (a.bitrateMbps ?? a.sizeBytes ?? 0)));
   if (eligible[0]) eligible[0].version.recommended = true;
-  return eligible;
+  return eligible.map(({ stream, version }) => ({ stream, version }));
 }

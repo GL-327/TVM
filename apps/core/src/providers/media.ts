@@ -36,6 +36,7 @@ import {
 } from './title.ts';
 import {
   extractImdb,
+  fetchTorrentioReleases,
   fetchTorrentioStreams,
   isTorrentioHost,
   needsUnrestrict,
@@ -46,6 +47,7 @@ import {
   rankDebridStreams,
   streamHeight,
   resolveTorrentioUrl,
+  withCinemaFallback,
 } from './torrentio.ts';
 import type { CatalogRail, HomePayload, MediaItem, PlaybackResolution, RdStatus } from './types.ts';
 import { addWatchlist, readWatchlist, removeWatchlist, type WatchlistItem } from './watchlist.ts';
@@ -53,7 +55,7 @@ import { downloadLanguageMatches, type DownloadPreferences } from './downloadPre
 import { createPlaybackWebhook, type PlaybackEvent } from './playbackWebhook.ts';
 import { currentSyncDirectory } from '../requestContext.ts';
 import { readPrefs } from '../prefs.ts';
-import { describeVersion, languageCode, qualityCap, rankVersions, runtimeSeconds, supportsVersion, type PlaybackClient, type Version } from './versions.ts';
+import { describeVersion, languageCode, preferredAudio, qualityCap, rankVersions, runtimeSeconds, supportsVersion, type PlaybackClient, type Version } from './versions.ts';
 import { createCoreExtras, type CoreExtras, type ExtrasPlaybackResolution } from './extras.ts';
 
 export interface MediaService {
@@ -647,33 +649,40 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     return matches.find((item) => item.playable)?.id ?? null;
   };
 
-  /**
-   * From a raw file URL to a guaranteed-playable stream. ffprobe decides
-   * direct / remux / transcode; nothing is guessed from filenames, and the
-   * player never sees an upstream URL (Range proxy or local HLS only).
-   */
-  const originalLanguageCache = new Map<number, { until: number; value: Promise<string | null> }>();
-  const originalLanguageFor = (meta: TitleMeta | null): Promise<string | null> => {
+  const originalLanguageCache = new Map<string, { until: number; value: Promise<string | null> }>();
+  const originalLanguageFor = (imdb: string, meta: TitleMeta | null): Promise<string | null> => {
     const declared = languageCode(meta?.originalLanguage);
-    if (declared || !meta?.tmdbId) return Promise.resolve(declared);
-    const id = meta.tmdbId;
-    const cached = originalLanguageCache.get(id);
+    if (declared) return Promise.resolve(declared);
+    const cached = originalLanguageCache.get(imdb);
     if (cached && cached.until > Date.now()) return cached.value;
     if (originalLanguageCache.size >= 512) originalLanguageCache.delete(originalLanguageCache.keys().next().value!);
-    const kind = meta.item.kind === 'series' ? 'tv' : 'movie';
     const read = async () => {
-      // Cinemeta supplies the TMDB identifier but usually omits the language.
-      // Read the canonical title's Original Language field, never infer it from country.
-      const response = await fetchImpl(`https://www.themoviedb.org/${kind}/${id}?language=en-US`, {
+      if (meta?.tmdbId) {
+        try {
+          const kind = meta.item.kind === 'series' ? 'tv' : 'movie';
+          const response = await fetchImpl(`https://www.themoviedb.org/${kind}/${meta.tmdbId}?language=en-US`, {
+            signal: AbortSignal.timeout(3500),
+          });
+          if (response.ok) {
+            const raw = (await response.text()).match(/Original Language(?:<\/bdi>)?\s*<\/strong>\s*([^<]+)/i)?.[1];
+            const code = languageCode(raw);
+            if (code) return code;
+          }
+        } catch { /* Use the IMDb mapping when the TMDB page cannot be read. */ }
+      }
+      const query = `SELECT DISTINCT ?code WHERE { ?title wdt:P345 "${imdb}"; wdt:P364 ?language. ?language wdt:P220 ?code. } LIMIT 2`;
+      const response = await fetchImpl(`https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}`, {
+        headers: { accept: 'application/sparql-results+json', 'user-agent': 'TVM-client (https://github.com/GL-327/TVM)' },
         signal: AbortSignal.timeout(2500),
       });
       if (!response.ok) return null;
-      const raw = (await response.text()).match(/Original Language<\/bdi>\s*<\/strong>\s*([^<]+)/i)?.[1];
-      return languageCode(raw);
+      const data = await response.json() as { results?: { bindings?: Array<{ code?: { value?: unknown } }> } };
+      const codes = [...new Set(data.results?.bindings?.map(row => languageCode(row.code?.value)).filter(Boolean))];
+      return codes.length === 1 ? codes[0]! : null;
     };
     const entry = { until: Date.now() + 7 * 86_400_000, value: read().catch(() => null) };
     void entry.value.then(value => { if (value === null) entry.until = Date.now() + 60_000; });
-    originalLanguageCache.set(id, entry);
+    originalLanguageCache.set(imdb, entry);
     return entry.value;
   };
 
@@ -686,6 +695,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     native = false,
     client?: PlaybackClient,
     cap?: number,
+    originalLanguage: string | null = null,
   ): Promise<PlaybackResolution> => {
     if (download !== undefined) {
       const limit = Math.min(download.maxHeight, options.plan?.().maxHeight ?? 2160);
@@ -697,7 +707,8 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     const prefs = readPrefs(dataDir);
     const maxHeight = Math.min(options.plan?.().maxHeight ?? 2160, cap ?? Infinity, client?.maxHeight ?? Infinity, qualityCap(prefs.quality));
     const version = describeVersion({ url: downloadUrl, title: filename, quality: 0, cached: true }, null);
-    if (client && (!supportsVersion(version, filename, client) || (version.height ?? 0) > maxHeight)) {
+    if (client && client.player !== 'html5' &&
+        (!supportsVersion(version, filename, client) || (version.height ?? 0) > maxHeight)) {
       return { kind: 'unavailable', reason: 'unsupported' };
     }
     // Desktop mpv decodes the original file and owns its finite timeline.
@@ -717,7 +728,9 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         ...(startAt !== undefined ? { startAt } : {}),
       };
     }
-    const resolved = await streamer.resolveFile(downloadUrl, { maxHeight, filename, client, ...(startAt !== undefined ? { startAt } : {}) });
+    const preferred = preferredAudio(prefs, originalLanguage);
+    const audioLanguages = originalLanguage && originalLanguage !== preferred ? [preferred, originalLanguage] : [preferred];
+    const resolved = await streamer.resolveFile(downloadUrl, { maxHeight, filename, client, audioLanguages, startAt });
     if (resolved === null) return { kind: 'unavailable', reason: streamer.ready() ? 'unsupported' : 'needs-converter' };
     console.log(`tvm-core: play transport=${resolved.transport} mime=${resolved.mimeType} file=${filename}`);
     return {
@@ -738,9 +751,13 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     };
   };
 
-  const playFromLink = async (link: string, mediaId?: string, download?: DownloadPreferences, requestedStart?: number, native = false, client?: PlaybackClient, cap?: number): Promise<PlaybackResolution> => {
+  const playFromLink = async (link: string, mediaId?: string, download?: DownloadPreferences, requestedStart?: number,
+    native = false, client?: PlaybackClient, cap?: number, originalLanguage?: string | null): Promise<PlaybackResolution> => {
     if (!isHttpUrl(link)) return { kind: 'unavailable', reason: 'unsupported' };
     try {
+      const imdb = mediaId ? extractImdb(mediaId) : null;
+      const language = originalLanguage === undefined && !download && imdb
+        ? await originalLanguageFor(imdb, await catalog.meta(imdb)) : originalLanguage;
       const startAt = requestedStart ?? (mediaId === undefined ? undefined : resumePosition(readProgress(scope())[mediaId]));
       if (!needsUnrestrict(link)) {
         const tail = new URL(link).pathname.split('/').pop() || 'stream';
@@ -759,7 +776,7 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
             ...(startAt !== undefined ? { startAt } : {}),
           };
         }
-        return resolveFileStream(link, filename, parseFilename(filename).title, startAt, download, native, client, cap);
+        return resolveFileStream(link, filename, parseFilename(filename).title, startAt, download, native, client, cap, language);
       }
       const unrestricted = await rd.unrestrict(link);
       if (unrestricted.download === undefined || unrestricted.download === '') {
@@ -772,28 +789,23 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       if (download !== undefined && !downloadLanguageMatches(unrestricted.filename, download.language)) {
         return { kind: 'unavailable', reason: 'empty' };
       }
-      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt, download, native, client, cap);
+      return await resolveFileStream(unrestricted.download, unrestricted.filename, title, startAt, download, native, client, cap, language);
     } catch (error) {
       if (error instanceof Error && error.name === 'RdAuth') return { kind: 'unavailable', reason: 'needs-auth' };
       return { kind: 'unavailable', reason: 'unsupported' };
     }
   };
 
-  const torrentioCandidates = async (
-    imdb: string, season: number | undefined, episode: number | undefined, token: string,
-  ) => {
-    const meta = await catalog.meta(imdb);
-    if (meta?.item.kind === 'series' && (season === undefined || episode === undefined)) {
-      season ??= meta.children[0]?.season;
+  const torrentioContext = (imdb: string, season?: number, episode?: number) => catalog.meta(imdb).then(meta => {
+    if (meta?.item.kind === 'series') {
+      season ??= meta.children.find(child => child.season === 1)?.season ?? meta.children[0]?.season;
       episode ??= meta.children.find(child => child.season === season)?.episode;
     }
-    const [streams, originalLanguage] = await Promise.all([
-      fetchTorrentioStreams(token, imdb, season, episode, fetchImpl), originalLanguageFor(meta),
-    ]);
     const episodeMeta = meta?.children.find(child => child.season === season && child.episode === episode);
     const runtime = runtimeSeconds(episodeMeta?.runtime ?? meta?.item.runtime);
-    return { streams, originalLanguage, runtime, season, episode };
-  };
+    if (meta) extras.remember(meta.item);
+    return { originalLanguage: originalLanguageFor(imdb, meta), runtime, season, episode };
+  });
 
   const playFromTorrentio = async (
     imdb: string,
@@ -812,28 +824,38 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
       const pooled = options.plan?.().id === 'free' ? options.poolToken?.() ?? null : null;
       const token = personal ?? pooled;
       if (token === null) return { kind: 'unavailable', reason: 'not-configured' };
-      const { streams, originalLanguage, runtime, season: seasonNo, episode: episodeNo } =
-        await torrentioCandidates(imdb, season, episode, token);
+      const context = await torrentioContext(imdb, season, episode);
+      const { runtime, season: seasonNo, episode: episodeNo } = context;
+      const [streams, originalLanguage] = await Promise.all([
+        fetchTorrentioStreams(token, imdb, seasonNo, episodeNo, fetchImpl), context.originalLanguage,
+      ]);
       const height = Math.min(options.plan?.().maxHeight ?? 2160, download?.maxHeight ?? 2160, screenCap);
       const ranked = download === undefined
-        ? rankVersions(streams, { prefs: readPrefs(dataDir), originalLanguage, runtime, maxHeight: height, client })
+        ? rankVersions(streams, { prefs: readPrefs(dataDir), originalLanguage, runtime, maxHeight: height, client,
+          canConvert: options.streamer?.ready() })
           .filter(row => versionId === undefined || row.version.id === versionId).slice(0, PLAYABLE_STREAM_LIMIT)
-        : capStreamsToHeight(rankDebridStreams(streams.filter(stream =>
+        : capStreamsToHeight(rankDebridStreams(withCinemaFallback(streams).filter(stream =>
           downloadLanguageMatches(stream.description ?? stream.title, download.language) &&
           streamHeight(stream.description ?? stream.title) <= height)), height)
           .slice(0, PLAYABLE_STREAM_LIMIT).map(stream => ({ stream, version: undefined }));
       if (ranked.length === 0) return { kind: 'unavailable', reason: 'empty' };
       const id =
         mediaId ?? (seasonNo !== undefined && episodeNo !== undefined ? `${imdb}:${seasonNo}:${episodeNo}` : imdb);
+      if (!download) {
+        const lookups = extras.playbackExtras({ id: imdb, season: seasonNo, episode: episodeNo, originalLanguage });
+        void Promise.all([lookups.subtitles, lookups.segments]).catch(() => {});
+      }
       let last: PlaybackResolution = { kind: 'unavailable', reason: 'empty' };
       for (const { stream, version } of ranked) {
         const resolved = await resolveTorrentioUrl(stream.url, fetchImpl);
         if (resolved === null || isTorrentioHost(resolved) || /\.m3u8(?:\?|$)/i.test(resolved)) continue;
         // Language was checked against the release metadata, which also
         // describes multilingual files whose hoster filename omits it.
-        const result = await playFromLink(resolved, id, download === undefined ? undefined : { ...download, language: 'original' }, requestedStart, native, client, height);
+        const result = await playFromLink(resolved, id, download === undefined ? undefined : { ...download, language: 'original' },
+          requestedStart, native, client, height, originalLanguage);
         if (result.kind === 'stream') return version ? {
-          ...result, version, originalLanguage, audioLanguages: result.audioLanguages?.length ? result.audioLanguages : version.languages,
+          ...result, version, originalLanguage, audioLanguages: result.audioLanguages ?? version.languages,
+          season: seasonNo, episode: episodeNo,
         } : result;
         last = result;
         if (result.reason === 'needs-auth') return result;
@@ -988,13 +1010,17 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
     async versions(id, season, episode) {
       const imdb = extractImdb(id);
       const token = rd.tokenValue();
-      if (!imdb || !token) return { originalLanguage: null, versions: [] };
+      if (!imdb || !await extras.canPreview(imdb)) return { originalLanguage: null, versions: [] };
       const tail = parseSeasonEpisode(id);
-      const { streams, originalLanguage, runtime } =
-        await torrentioCandidates(imdb, season ?? tail?.season, episode ?? tail?.episode, token);
+      const context = await torrentioContext(imdb, season ?? tail?.season, episode ?? tail?.episode);
+      const [streams, originalLanguage] = await Promise.all([
+        token ? fetchTorrentioStreams(token, imdb, context.season, context.episode, fetchImpl)
+          : fetchTorrentioReleases(imdb, context.season, context.episode, fetchImpl),
+        context.originalLanguage,
+      ]);
       return {
         originalLanguage,
-        versions: rankVersions(streams, { prefs: readPrefs(dataDir), originalLanguage, runtime,
+        versions: rankVersions(streams, { prefs: readPrefs(dataDir), originalLanguage, runtime: context.runtime,
           maxHeight: options.plan?.().maxHeight ?? 2160 }).map(row => row.version),
       };
     },
@@ -1287,12 +1313,15 @@ export function createMediaService(options: MediaServiceOptions): MediaService {
         if (input.download) return result;
         const version = result.version ?? describeVersion({ url: result.url, title: result.filename, quality: 0, cached: true },
           result.durationSeconds || null);
-        const enriched = { ...result, version, originalLanguage: result.originalLanguage ?? (id ? await originalLanguageFor(await catalog.meta(id)) : null),
-          audioLanguages: result.audioLanguages?.length ? result.audioLanguages : version.languages };
+        const originalLanguage = result.originalLanguage !== undefined ? result.originalLanguage
+          : id ? await originalLanguageFor(id, await catalog.meta(id)) : null;
+        const enriched = { ...result, version, originalLanguage, audioLanguages: result.audioLanguages ?? version.languages };
         if (!id) return enriched;
-        const season = input.season ?? parsed?.season;
-        const episode = input.episode ?? parsed?.episode;
-        return extras.enrichPlayback(enriched, { id, season, episode, title: input.title }, profileScope);
+        const tail = input.id ? parseSeasonEpisode(input.id) : null;
+        const season = result.season ?? input.season ?? tail?.season;
+        const episode = result.episode ?? input.episode ?? tail?.episode;
+        return extras.enrichPlayback(enriched, { id, season, episode, title: input.title,
+          originalLanguage }, profileScope);
       }).finally(() => { if (playbackPending.get(key) === task) playbackPending.delete(key); });
       playbackPending.set(key, task);
       return task;

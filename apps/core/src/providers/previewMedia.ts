@@ -46,7 +46,7 @@ export async function renderHeroClip(youtubeId: string, output: string, stage: s
   const seconds = Math.min(38, Math.floor(duration));
   const start = Math.max(0, Math.round((duration - seconds) / 2));
   const input = join(stage, 'source.mp4');
-  await runTool(bin, [...ytArgs, '--ffmpeg-location', ffmpeg, '--format', 'bv*[ext=mp4][height<=1080]',
+  await runTool(bin, [...ytArgs, '--ffmpeg-location', ffmpeg, '--format', 'bv*[ext=mp4][height<=1080]/bv*[height<=1080]',
     '--download-sections', `*${start}-${start + seconds}`, '--force-keyframes-at-cuts',
     '--max-filesize', '96M', '--output', input, '--', url], { ...toolOptions, timeout: 80_000 });
   await runTool(ffmpeg, ['-nostdin', '-hide_banner', '-loglevel', 'error', '-i', input, '-map', '0:v:0', '-an',
@@ -67,7 +67,7 @@ export async function renderHeroClip(youtubeId: string, output: string, stage: s
 async function renderTheme(youtubeId: string, output: string, stage: string, tools: Toolset): Promise<void> {
   const [bin, { ffmpeg }] = await Promise.all([tools.ytdlp(), tools.ffmpeg()]);
   const source = join(stage, 'audio.m4a');
-  await runTool(bin, [...ytArgs, '--format', 'ba[ext=m4a]', '--max-filesize', '24M', '--output', source, '--', videoUrl(youtubeId)],
+  await runTool(bin, [...ytArgs, '--format', 'ba[ext=m4a]/ba', '--max-filesize', '24M', '--output', source, '--', videoUrl(youtubeId)],
     { ...toolOptions, timeout: 55_000 });
   await runTool(ffmpeg, ['-nostdin', '-hide_banner', '-loglevel', 'error', '-i', source, '-map', '0:a:0',
     '-vn', '-t', '90', '-af', 'volume=0.5', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', output],

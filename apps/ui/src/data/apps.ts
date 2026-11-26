@@ -1,4 +1,6 @@
 import { APPS, MORE_APPS, TITLES, TVM_STREAM, type AppTile } from './catalog';
+import type { Navigate } from '../nav/ViewStackContext';
+import { enterTvmStream } from './profiles';
 import { apiFetch, toMediaItem } from './media';
 
 export const MOCK_APP_IDS = ['netflix', 'prime', 'max', 'appletv', 'disney', 'hulu', 'peacock'] as const;
@@ -29,6 +31,16 @@ export type AppTileOpen = { kind: 'service'; id: string } | { kind: 'library' };
 export function appTileOpen(id: string): AppTileOpen {
   if (id === 'tvm-stream') return { kind: 'library' };
   return { kind: 'service', id };
+}
+
+export function openAppTile(navigate: Navigate, app: AppTile): void {
+  const destination = appTileOpen(app.id);
+  if (destination.kind === 'library') {
+    void enterTvmStream(navigate);
+    return;
+  }
+  prefetchAppHub(destination.id);
+  navigate.push('service', { params: { id: destination.id } });
 }
 
 export interface AppsCatalog {

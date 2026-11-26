@@ -5,7 +5,7 @@ import { fetchExtrasSegments, fetchExtrasSubtitles, isAnimeCandidate, type Extra
 import { freeChannelErrorCopy } from '../data/freeLive';
 import { apiFetch, requestPlayback, saveProgress, type PlaybackResult, type PlaybackSubtitle } from '../data/media';
 import { imdbIdFrom } from '../data/playId';
-import { hydratePrefs } from '../data/prefs';
+import { hydratePrefs, readPrefs } from '../data/prefs';
 import { FALLBACK_PLAN, fetchPlan, tickUsage, type PlanStatus } from '../data/plan';
 import { playbackErrorMessage } from '../data/playbackErrors';
 import { useNavigate } from '../nav/ViewStackContext';
@@ -13,6 +13,7 @@ import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverla
 import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
 import { OrbitLoader } from '../components/OrbitLoader';
 import { extraEnabled } from '../data/polishPrefs';
+import { useExtraPrefs } from '../data/uiExtras';
 import { FranchiseIntro, introSkippedForAutomation, markIntroPlayed, planIntro, type IntroPick } from '../intros';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
 import { nativePlaybackBridge } from '../player/iosEngine';
@@ -29,6 +30,8 @@ import type { ScreenProps } from '../nav/registry';
  */
 export function Player({ params }: ScreenProps): React.JSX.Element {
   const navigate = useNavigate();
+  const prefs = useExtraPrefs();
+  const onlineSubtitles = extraEnabled('onlineSubtitles', prefs);
   const videoRef = useRef<HTMLVideoElement>(null);
   const engineRef = useRef<PlayerEngine | null>(null);
   const planRef = useRef<PlanStatus>(FALLBACK_PLAN);
@@ -417,7 +420,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
             if (!cancelled && loaded !== null) setSegments(loaded);
           });
         }
-        if (imdb !== null) {
+        if (imdb !== null && extraEnabled('onlineSubtitles', readPrefs())) {
           void fetchExtrasSubtitles(
             { id: imdb, season: playbackSeason, episode: playbackEpisode },
             request.signal,
@@ -663,6 +666,8 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
   }, [error]);
 
   const busy = loading || (buffering && !hasFrame);
+  const subtitles = useMemo(() => onlineSubtitles ? streamSubtitles : streamSubtitles.filter(({ url }) =>
+    !url.startsWith('blob:') && !url.startsWith('data:') && !url.includes('/api/extras/subtitle.vtt?')), [onlineSubtitles, streamSubtitles]);
   const session: PlayerSession = useMemo(
     () => ({
       videoRef,
@@ -682,7 +687,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       controlsVisible: true,
       skipRecap,
       segments,
-      subtitles: streamSubtitles,
+      subtitles,
       badges,
       overlay,
       live,
@@ -730,7 +735,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
     segments,
     showControls,
     skipRecap,
-    streamSubtitles,
+    subtitles,
     title,
     togglePlayback,
     volume,
@@ -741,6 +746,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
       className={`player player--${loading ? 'loading' : playbackEngine} ${shell}${busy ? ' player--busy' : ''}${live ? ' player--live' : ''}`}
       data-player=""
       data-player-shell=""
+      data-playing={!loading && !paused && !buffering && !busy && !overlay && !error ? 'true' : undefined}
       data-engine={loading ? 'loading' : playbackEngine}
       data-live-mode={live ? 'true' : undefined}
       role="dialog"

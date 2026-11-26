@@ -80,6 +80,7 @@ const SCROLLER_SELECTOR = [
 
 const PAGE_TOP_FOCUS = [
   '.stage',
+  '.hub__hero',
   '.stream-chrome',
   '.service-hero',
   '.service-nav',

@@ -284,7 +284,7 @@ export async function fetchExtrasSubtitles(
         url,
       });
     }
-    subtitlesCache.set(key, list);
+    if (list.length > 0) subtitlesCache.set(key, list);
     return list;
   } catch {
     return null;
@@ -322,7 +322,7 @@ export async function fetchExtrasTrailers(id: string, signal?: AbortSignal): Pro
         name: typeof row.name === 'string' && row.name.trim() !== '' ? row.name.trim() : 'Trailer',
       });
     }
-    trailersCache.set(imdb, out);
+    if (out.length > 0) trailersCache.set(imdb, out);
     return out;
   } catch {
     return null;
@@ -363,7 +363,7 @@ export async function fetchExtrasCollection(id: string, signal?: AbortSignal): P
       name: typeof body.name === 'string' && body.name.trim() !== '' ? body.name.trim() : null,
       items,
     };
-    collectionCache.set(cacheKey, result);
+    if (result.items.length >= 2) collectionCache.set(cacheKey, result);
     return result;
   } catch {
     return null;
@@ -416,7 +416,7 @@ export async function fetchExtrasUpcoming(id: string, signal?: AbortSignal): Pro
     if (!res.ok) return null;
     const body = (await res.json()) as { next?: unknown };
     const next = parseUpcomingEpisode(body.next);
-    upcomingCache.set(imdb, next);
+    if (next !== null) upcomingCache.set(imdb, next);
     return next;
   } catch {
     return null;
@@ -519,7 +519,7 @@ export async function fetchExtrasAnimeTitle(title: string, signal?: AbortSignal)
       english: typeof body.english === 'string' && body.english.trim() !== '' ? body.english.trim() : null,
       malId: asFiniteNumber(body.malId),
     };
-    animeTitleCache.set(key, result);
+    if (result.english !== null || result.malId !== null) animeTitleCache.set(key, result);
     return result;
   } catch {
     return null;

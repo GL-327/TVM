@@ -34,7 +34,7 @@
   inset: 0;
 }
 
-.spotlight[data-active='true'] .spotlight__media:not(:has(.spotlight__video--ready)) .stage__pictures {
+.spotlight[data-active='true'] .spotlight__media[data-clip-ready='false'] .stage__pictures {
   animation: spotlight-kenburns 22s ease-in-out infinite alternate;
   will-change: transform;
 }

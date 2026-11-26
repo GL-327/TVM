@@ -255,7 +255,11 @@ function broadcastPrefs(prefs: AppPrefs): void {
   }
 }
 
+let pendingWrite = Promise.resolve();
+let localRevision = 0;
+
 export async function savePrefs(patch: Partial<AppPrefs>): Promise<AppPrefs> {
+  localRevision += 1;
   const current = readPrefs();
   const next: AppPrefs = {
     ...mergePolishPrefs(current, patch),
@@ -274,23 +278,26 @@ export async function savePrefs(patch: Partial<AppPrefs>): Promise<AppPrefs> {
   applyHeroPreviews(next.heroPreviews);
   storePolishPrefs(next);
   broadcastPrefs(next);
-  try {
+  // Preserve the user's order when several switches are changed in quick succession.
+  pendingWrite = pendingWrite.then(async () => {
     await apiFetch('/api/prefs', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
     });
-  } catch {
-    // on-device core may be restarting; localStorage already holds the choice
-  }
+  }).catch(() => undefined);
+  await pendingWrite;
   return next;
 }
 
 export async function hydratePrefs(): Promise<AppPrefs> {
+  const revision = localRevision;
+  await pendingWrite;
   try {
     const response = await apiFetch('/api/prefs');
     if (response.ok) {
       const body = (await response.json()) as Partial<AppPrefs>;
+      if (revision !== localRevision) return readPrefs();
       storePolishPrefs(mergePolishPrefs(readPolishPrefs(), body));
       if (typeof body.language === 'string' && isLanguageId(body.language)) applyLanguage(body.language);
       else applyLanguage(DEFAULT_LANGUAGE);

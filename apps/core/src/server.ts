@@ -2404,6 +2404,7 @@ export function createCoreServer(options: CoreOptions = {}): Server {
     createMediaService({
       content,
       dataDir,
+      env,
       rd: createRealDebrid({
         dataDir,
         env,

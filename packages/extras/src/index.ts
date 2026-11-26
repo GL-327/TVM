@@ -146,34 +146,26 @@ export function createExtras(options: ExtrasOptions = {}) {
     return cached(key, DAY, emptySegments(), async () => {
       let result = emptySegments();
       try {
-        const series = input.season !== undefined && input.episode !== undefined;
-        const tmdb = await cached(`tmdb:${input.id}:${series}`, 30 * DAY, null as string | null, async () => {
-          try {
-            const matches = await sparql(`SELECT ?tmdb WHERE { ?item wdt:P345 "${input.id}"; wdt:${series ? 'P4983' : 'P4947'} ?tmdb. } LIMIT 1`);
-            const id = binding(matches[0] ?? {}, 'tmdb');
-            if (/^\d+$/.test(id)) return id;
-          } catch { /* Some networks block Wikidata. Cinemeta also carries the mapping. */ }
-          const meta = row((await json(`https://v3-cinemeta.strem.io/meta/${series ? 'series' : 'movie'}/${input.id}.json`)).meta);
-          const id = typeof meta.moviedb_id === 'number' ? String(meta.moviedb_id) : str(meta.moviedb_id);
-          return /^\d+$/.test(id) ? id : null;
-        });
-        if (tmdb) {
-          const params = new URLSearchParams({ tmdb_id: tmdb });
-          if (series) { params.set('season', String(input.season)); params.set('episode', String(input.episode)); }
-          const data = await json(`https://api.theintrodb.org/v2/media?${params}`);
-          const range = (value: unknown, credits = false): { start: number; end: number | null } | null => {
-            for (const s of rows(value)) {
-              // TheIntroDB uses null to mean the beginning of the media.
-              const start = s.start_ms === null ? 0 : s.start_ms;
-              if (typeof start !== 'number' || !Number.isFinite(start) || start < 0) continue;
-              if (credits && s.end_ms === null) return { start: start / 1000, end: null };
-              if (positive(s.end_ms) && s.end_ms > start) return { start: start / 1000, end: s.end_ms / 1000 };
-            }
-            return null;
-          };
-          result = { intro: range(data.intro) as Segment | null, recap: range(data.recap) as Segment | null, credits: range(data.credits, true), source: null };
-          if (result.intro || result.recap || result.credits) result.source = 'theintrodb';
+        // v4 accepts IMDb ids directly. An external ID lookup here used to
+        // spend most of the playback enrichment deadline before reading any timestamps.
+        const params = new URLSearchParams({ imdb_id: input.id });
+        if (input.season !== undefined && input.episode !== undefined) {
+          params.set('season', String(input.season));
+          params.set('episode', String(input.episode));
         }
+        const data = await json(`https://api.theintrodb.org/v4/media?${params}`);
+        const range = (value: unknown, credits = false): { start: number; end: number | null } | null => {
+          for (const s of rows(value)) {
+            // TheIntroDB uses null to mean the beginning of the media.
+            const start = s.start_ms === null ? 0 : s.start_ms;
+            if (typeof start !== 'number' || !Number.isFinite(start) || start < 0) continue;
+            if (credits && s.end_ms === null) return { start: start / 1000, end: null };
+            if (positive(s.end_ms) && s.end_ms > start) return { start: start / 1000, end: s.end_ms / 1000 };
+          }
+          return null;
+        };
+        result = { intro: range(data.intro) as Segment | null, recap: range(data.recap) as Segment | null, credits: range(data.credits, true), source: null };
+        if (result.intro || result.recap || result.credits) result.source = 'theintrodb';
       } catch { /* Anime fallback still runs when the primary service is down. */ }
       if (result.source || !input.anime || !input.title || !input.episode) return result;
       const anime = await animeTitle(input.title);
@@ -287,7 +279,7 @@ export function createExtras(options: ExtrasOptions = {}) {
       if (!show) return null;
       const data = await json(`https://api.tvmaze.com/shows/${show}?embed=nextepisode`);
       const next = row(row(data._embedded).nextepisode);
-      if (!positive(next.season) || !positive(next.number) || !str(next.airstamp) || !Number.isFinite(Date.parse(str(next.airstamp)))) return null;
+      if (!positive(next.season) || !positive(next.number) || !(Date.parse(str(next.airstamp)) >= now())) return null;
       return { season: next.season, episode: next.number, name: str(next.name), airstamp: str(next.airstamp) };
     });
   }

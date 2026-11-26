@@ -230,7 +230,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
         return;
       }
       remember(trimmed);
-      void launchTitle(navigate, asTitle(items[0]));
+      void launchTitle(navigate, asTitle(items[0]), true);
     } catch {
       if (!controller.signal.aborted) setMessage('Search is unavailable. Check your connection and try again.');
     } finally {
@@ -313,7 +313,7 @@ export function SearchModal({ params }: ScreenProps): React.JSX.Element {
             results={visibleResults}
             onSelect={(item) => {
               remember(query);
-              void launchTitle(navigate, asTitle(item));
+              void launchTitle(navigate, asTitle(item), true);
             }}
           />
         )}

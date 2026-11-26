@@ -92,6 +92,12 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const scope = useFocusScope();
   const stack = useViewStack();
   const prefs = useExtraPrefs();
+  const showTrailers = uiExtraEnabled('trailers', prefs);
+  const loadTrailers = showTrailers || uiExtraEnabled('trailerBackdrops', prefs);
+  const showCollection = uiExtraEnabled('collections', prefs);
+  const showComingUp = uiExtraEnabled('comingUp', prefs);
+  const showAnimeTitles = uiExtraEnabled('animeTitles', prefs);
+  const showRatings = uiExtraEnabled('ratings', prefs);
   const id = typeof params['id'] === 'string' ? params['id'] : '';
   const catalog = titleById(id);
   const snapshot = titleFromDetailsParams(params, catalog);
@@ -215,14 +221,14 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     let cancelled = false;
     const imdb = imdbIdFrom(title.id);
     if (imdb !== null) {
-      void fetchExtrasTrailers(imdb).then((list) => {
+      if (loadTrailers) void fetchExtrasTrailers(imdb).then((list) => {
         if (!cancelled && list !== null) setTrailers(list);
       });
-      void fetchExtrasCollection(imdb).then((col) => {
+      if (showCollection) void fetchExtrasCollection(imdb).then((col) => {
         if (!cancelled && col !== null) setCollection(col);
       });
     }
-    if (isAnimeCandidate(title.genres) && title.title.trim() !== '') {
+    if (showAnimeTitles && isAnimeCandidate(title.genres) && title.title.trim() !== '') {
       void fetchExtrasAnimeTitle(title.title).then((info) => {
         if (!cancelled && info !== null) setAnimeInfo(info);
       });
@@ -230,10 +236,10 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [title?.genres, title?.id, title?.title]);
+  }, [loadTrailers, showAnimeTitles, showCollection, title?.genres, title?.id, title?.title]);
 
   useEffect(() => {
-    if (!seriesLike || title === undefined) {
+    if (!showComingUp || !seriesLike || title === undefined) {
       setUpcoming(null);
       return undefined;
     }
@@ -249,11 +255,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [seriesLike, title?.id]);
+  }, [seriesLike, showComingUp, title?.id]);
 
   const collectionItems = useMemo(
-    () => (title === undefined ? [] : visibleCollectionItems(collection, title.id)),
-    [collection, title],
+    () => (title === undefined || !showCollection ? [] : visibleCollectionItems(collection, title.id)),
+    [collection, showCollection, title],
   );
 
   const hasTitle = title !== undefined;
@@ -307,7 +313,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
   const score = imdbScore(title.rating);
   const certificate = certificateLabel(title.rating);
   const imdbUrl = imdbTitleUrl(title.id);
-  const englishSubtitle = animeInfo !== null ? shouldShowAnimeEnglishTitle(title.title, animeInfo.english) : null;
+  const englishSubtitle = showAnimeTitles && animeInfo !== null ? shouldShowAnimeEnglishTitle(title.title, animeInfo.english) : null;
   const upcomingDate = upcoming !== null ? formatUpcomingDate(upcoming.airstamp) : null;
   const isAnimeTitle = animeInfo?.malId != null || title.genres.some((genre) => /^anime$/i.test(genre));
 
@@ -362,7 +368,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
       media={<DetailsMedia id={imdbIdFrom(title.id) ?? title.id} trailerId={trailers[0]?.youtubeId}
         active={stack.entries.at(-1)?.key === scope && !trailerOpen} />}
       overlay={
-        trailerOpen && trailers.length > 0 ? (
+        showTrailers && trailerOpen && trailers.length > 0 ? (
           <TrailerModal
             title={title.title}
             trailers={trailers}
@@ -382,11 +388,11 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
         <div className="details__copy">
           <p className="stage__kicker">{seriesLike ? 'Series' : 'Film'}</p>
           <h1 className="stage__title">{title.title}</h1>
-          {(isAnimeTitle || englishSubtitle !== null) && (
-            <p className="details__anime-subtitle" aria-hidden={englishSubtitle === null}>{englishSubtitle}</p>
+          {englishSubtitle !== null && (
+            <p className="details__anime-subtitle">{englishSubtitle}</p>
           )}
           <p className="stage__meta">
-            {(score !== null || imdbUrl !== null) && (
+            {showRatings && (score !== null || imdbUrl !== null) && (
               <ImdbBadge
                 id="details-imdb-badge"
                 mediaId={title.id}
@@ -431,7 +437,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
             <FocusButton id="watchlist" className="tvm-button--glass" onSelect={toggleWatchlist}>
               {saved ? 'Remove from My List' : 'Add to My List'}
             </FocusButton>
-            {trailers.length > 0 && (
+            {showTrailers && trailers.length > 0 && (
               <FocusButton id="trailer" className="tvm-button--glass" onSelect={() => setTrailerOpen(true)}>
                 Trailer
               </FocusButton>
@@ -449,7 +455,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
             </label>}
             <VersionSelect identity={versionIdentity} versions={versions} />
           </div>}
-          {seriesLike && upcomingDate !== null && upcoming !== null && (
+          {showComingUp && seriesLike && upcomingDate !== null && upcoming !== null && (
             <p className="details__coming-up">
               <span className="details__coming-up-badge glass glass--chrome">Coming up</span>
               <span>
@@ -530,7 +536,7 @@ export function Details({ params }: ScreenProps): React.JSX.Element {
                   file.season !== undefined && file.episode !== undefined
                     ? `S${String(file.season).padStart(2, '0')}E${String(file.episode).padStart(2, '0')}`
                     : 'Episode';
-                const episodeScore = imdbScore(file.rating);
+                const episodeScore = showRatings ? imdbScore(file.rating) : null;
                 const aired = file.aired !== undefined ? formatAired(file.aired) : null;
                 const hideSpoilers = uiExtraEnabled('spoilerBlur', prefs) && !episodeIsWatched(file);
                 const hideSummary = hideSpoilers && !revealed.has(file.id);

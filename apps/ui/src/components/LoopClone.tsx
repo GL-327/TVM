@@ -5,6 +5,9 @@ export function LoopClone({
   className,
   focusId,
   loopCopy,
+  title,
+  ambientArt,
+  ambientHue,
   onClick,
   onPointerEnter,
   onPointerLeave,
@@ -13,6 +16,9 @@ export function LoopClone({
   className: string;
   focusId: string;
   loopCopy: number;
+  title?: string;
+  ambientArt?: string;
+  ambientHue?: number;
   onClick?: MouseEventHandler;
   onPointerEnter?: PointerEventHandler<HTMLDivElement>;
   onPointerLeave?: PointerEventHandler<HTMLDivElement>;
@@ -24,6 +30,9 @@ export function LoopClone({
       data-focus-id={focusId}
       data-loop-clone="true"
       data-loop-copy={String(loopCopy)}
+      title={title}
+      data-ambient-art={ambientArt}
+      data-ambient-hue={ambientHue}
       aria-hidden="true"
       onClick={onClick}
       onPointerEnter={onPointerEnter}

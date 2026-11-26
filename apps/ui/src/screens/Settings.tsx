@@ -119,7 +119,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
     }
   }, [category, query]);
 
-  const save = (patch: Partial<AppPrefs>): void => { void savePrefs(patch).then(setPrefs); };
+  const save = (patch: Partial<AppPrefs>): void => { void savePrefs(patch); };
   const jump = (screen: string): (() => void) => () => navigate.push(screen);
   const display = CATEGORIES.filter(([id]) => id !== 'developer' || admin)
     .filter(([id]) => id !== 'stats' || stats && isExtraAllowed('watchStats') && prefs.extras.watchStats !== false);
@@ -149,7 +149,7 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
     }
   };
   const sections = [
-    ['continue', 'Continue watching'], ['my-list', 'My List'], ['upcoming', 'New episodes this week'], ['automatic', 'Automatic collections'],
+    ['continue', 'Continue watching'], ['featured', 'Featured'], ['my-list', 'My List'], ['upcoming', 'New episodes this week'], ['automatic', 'Automatic collections'],
     ...(peekHome()?.rails ?? []).map((rail) => [rail.id, rail.title]),
   ];
   const sectionNames = new Map(sections.map(([id, label]) => [id!, label!]));

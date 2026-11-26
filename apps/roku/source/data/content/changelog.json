@@ -3,6 +3,112 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.8",
+      "date": "2026-11-26",
+      "title": "A Hub to start from, and better picture (test build)",
+      "highlights": [
+        "A new Hub greets you with Continue watching, your apps and a few free live channels.",
+        "Films and episodes pick English or the original language at the best real quality again.",
+        "Movies and Series are led by big artwork, and the page takes on the colours of what you focus."
+      ],
+      "changes": [
+        {
+          "area": "Hub",
+          "text": "Hub opens first: a greeting, Continue watching, your apps and services, and six free live channels.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "TVM finds each film's original language properly, so English versions win over dubs again.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "In the browser, files that need converting keep their full resolution and the right audio track.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "New releases that only exist as cinema recordings can be watched, marked Cinema recording, low quality.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Movies and Series have a wide Featured row, and the background fades to the focused title.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Long titles stop at two lines with the full name on focus, and row arrows sit cleanly at the edges.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "The Settings Back button sits beside the title and shows Back when you point at it.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "The mouse pointer no longer disappears outside fullscreen playback.",
+          "platforms": [
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Extras",
+          "text": "Each extra feature follows its switch in Settings, Extras again.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Home rows cannot be reordered on Windows yet.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "The full iOS-style Liquid Glass and cinematic streaming redesign is still to come.",
+        "Franchise intros are not on Windows or Roku yet."
+      ]
+    },
+    {
       "version": "1.4.7",
       "date": "2026-11-26",
       "title": "Tablet fix (test build)",
