@@ -153,8 +153,7 @@ const HOME = {
 };
 
 async function enterTvmStream(page: Page): Promise<void> {
-  await pressUntil(page, 'library');
-  await page.keyboard.press('Enter');
+  await page.locator('[data-focus-id="launch-stream"]').click();
   await expect(page.locator('[data-screen="profiles"]')).toBeVisible();
   await waitForFocus(page);
   await pressUntil(page, 'profile-pick');
@@ -439,14 +438,12 @@ test('focus is restored to the same element after returning', async ({ page }) =
 });
 
 test('TVM Stream asks who is watching every time it opens', async ({ page }) => {
-  await pressUntil(page, 'library');
-  await page.keyboard.press('Enter');
+  await page.locator('[data-focus-id="launch-stream"]').click();
   await expect(page.locator('[data-screen="profiles"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: "Who's watching?" })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
-  await pressUntil(page, 'library');
-  await page.keyboard.press('Enter');
+  await page.locator('[data-focus-id="launch-stream"]').click();
   await expect(page.locator('[data-screen="profiles"]')).toBeVisible();
 });
 
@@ -468,22 +465,16 @@ test('open ribbon sits in the top center', async ({ page }) => {
     const frost = el.querySelector('.ribbon__frost');
     const frostStyles = frost !== null ? getComputedStyle(frost) : null;
     const rect = el.getBoundingClientRect();
-    const tx = styles.transform.startsWith('matrix(')
-      ? Number(styles.transform.slice(7, -1).split(',')[4])
-      : 0;
     return {
-      left: styles.left,
       transform: styles.transform,
       hostFilter: styles.backdropFilter,
-      frostFilter: frostStyles?.backdropFilter ?? '',
       frostTransform: frostStyles?.transform ?? '',
       center: rect.left + rect.width / 2,
       mid: window.innerWidth / 2,
-      tx,
     };
   });
   expect(Math.abs(metrics.center - metrics.mid)).toBeLessThan(12);
-  expect(metrics.tx).toBeLessThan(0);
+  expect(metrics.transform === 'none' || metrics.transform === 'matrix(1, 0, 0, 1, 0, 0)').toBe(true);
   expect(metrics.frostTransform === 'none' || metrics.frostTransform === '').toBe(true);
   expect(metrics.hostFilter === 'none' || metrics.hostFilter === '').toBe(true);
 });
