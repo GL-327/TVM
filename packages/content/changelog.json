@@ -26,7 +26,7 @@
         },
         {
           "area": "Player",
-          "text": "Android's player has Zoom: Fit to screen, or Zoom to fill the whole screen up to the notch.",
+          "text": "Spread two fingers on a video on Android to zoom it to fill the screen; pinch to fit it back.",
           "platforms": [
             "android"
           ]

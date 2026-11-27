@@ -191,11 +191,11 @@ index 0d7e618..f31a0ee 100644
      method: 'POST',
      headers: { 'content-type': 'application/json' },
 diff --git a/apps/ui/src/player/PlayerRoot.tsx b/apps/ui/src/player/PlayerRoot.tsx
-index 4f45356..cbdc4e9 100644
+index 4f45356..1348006 100644
 --- a/apps/ui/src/player/PlayerRoot.tsx
 +++ b/apps/ui/src/player/PlayerRoot.tsx
 @@ -1,3 +1,4 @@
-+import { SleepTimerPicker, StatsPicker, ZoomPicker } from './features/SleepAndStats';
++import { SleepTimerPicker, StatsPicker } from './features/SleepAndStats';
  import {
    Component,
    createContext,
@@ -204,7 +204,7 @@ index 4f45356..cbdc4e9 100644
            progress={<Slot><ProgressBar {...visibleSession} /></Slot>}
            volume={<Slot><VolumeControl {...visibleSession} /></Slot>}
 -          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot></>}
-+          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot><Slot><SleepTimerPicker {...visibleSession} /></Slot><Slot><StatsPicker {...visibleSession} /></Slot><Slot><ZoomPicker {...visibleSession} /></Slot></>}
++          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot><Slot><SleepTimerPicker {...visibleSession} /></Slot><Slot><StatsPicker {...visibleSession} /></Slot></>}
            fullscreen={<FullscreenControl />}
            actions={<>
              {!session.live && <FocusButton id="player-download" ariaLabel="Download" title="Download" onSelect={() => {
@@ -225,10 +225,10 @@ index 3c114d6..63a198d 100644
    };
 diff --git a/apps/ui/src/player/features/SleepAndStats.tsx b/apps/ui/src/player/features/SleepAndStats.tsx
 new file mode 100644
-index 0000000..4156cdf
+index 0000000..542b5fd
 --- /dev/null
 +++ b/apps/ui/src/player/features/SleepAndStats.tsx
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,90 @@
 +import { useCallback, useEffect, useState } from 'react';
 +import { FocusButton } from '../../components/FocusButton';
 +import { requestFocus } from '../../nav/focusEngine';
@@ -248,9 +248,6 @@ index 0000000..4156cdf
 +  { id: '45', label: '45 minutes' }, { id: '60', label: '1 hour' }, { id: 'end', label: 'End of episode' },
 +];
 +const STATS: Option[] = [{ id: 'off', label: 'Hidden' }, { id: 'on', label: 'Shown' }];
-+const ZOOM: Option[] = [{ id: 'fit', label: 'Fit to screen' }, { id: 'fill', label: 'Zoom to fill' }];
-+// The zoom choice lasts for the app's run, as the native player keeps it.
-+let zoomChoice = 'fit';
 +
 +function Picker({ name, heading, options, value, label, onPick, controlsVisible, showControls }: {
 +  name: string; heading: string; options: Option[]; value: string; label: string;
@@ -322,21 +319,21 @@ index 0000000..4156cdf
 +      controlsVisible={controlsVisible} showControls={showControls} />
 +  );
 +}
-+
-+export function ZoomPicker({ engine, controlsVisible, showControls }: PlayerSession): React.JSX.Element | null {
-+  const [zoom, setZoom] = useState(zoomChoice);
-+  if (engine !== 'native') return null;
-+  return (
-+    <Picker name="zoom" heading="Zoom" options={ZOOM} value={zoom} label={zoom === 'fill' ? 'Fill' : 'Fit'}
-+      onPick={(id) => { zoomChoice = id; setZoom(id); sendNative('zoom', { fill: id === 'fill' }); }}
-+      controlsVisible={controlsVisible} showControls={showControls} />
-+  );
-+}
 diff --git a/apps/ui/src/player/iosEngine.ts b/apps/ui/src/player/iosEngine.ts
-index bc2d286..cf42d81 100644
+index bc2d286..16e8b4a 100644
 --- a/apps/ui/src/player/iosEngine.ts
 +++ b/apps/ui/src/player/iosEngine.ts
-@@ -46,6 +46,13 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
+@@ -29,6 +29,9 @@ export function nativePlaybackBridge(): NativeBridge | undefined {
+   return iosPlaybackBridge() ?? androidPlaybackBridge();
+ }
+ 
++// Zoomed to fill or fitted, as last pinched: kept for the next video in this run.
++let zoomFilled = false;
++
+ /** Native owns the picture/controls; React keeps progress, billing and navigation. */
+ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptions, events: EngineEvents): PlayerEngine {
+   const bridge = nativePlaybackBridge()!;
+@@ -46,6 +49,39 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
    const send = (command: string, payload: Record<string, unknown> = {}): void => {
      if (!destroyed) bridge.postMessage({ id, command, ...payload });
    };
@@ -347,15 +344,41 @@ index bc2d286..cf42d81 100644
 +    send(detail.command, detail.payload ?? {});
 +  };
 +  window.addEventListener('tvm:native-player-command', onExtraCommand);
++  // Pinch on the video: spreading two fingers zooms the picture to fill the whole screen (into the notch, edges
++  // cropped); pinching them together fits it back. Like the zoom in streaming apps, it snaps between the two.
++  let pinchStart = 0;
++  let pinchDone = false;
++  const spread = (touches: TouchList): number =>
++    Math.hypot(touches[0]!.clientX - touches[1]!.clientX, touches[0]!.clientY - touches[1]!.clientY);
++  const onPinchStart = (event: TouchEvent): void => {
++    if (event.touches.length === 2) { pinchStart = spread(event.touches); pinchDone = false; }
++  };
++  const onPinchMove = (event: TouchEvent): void => {
++    if (event.touches.length !== 2 || pinchStart <= 0 || pinchDone) return;
++    const ratio = spread(event.touches) / pinchStart;
++    if (ratio > 1.18 || ratio < 0.85) {
++      pinchDone = true;
++      zoomFilled = ratio > 1;
++      send('zoom', { fill: zoomFilled });
++    }
++  };
++  const onPinchEnd = (event: TouchEvent): void => {
++    if (event.touches.length < 2) pinchStart = 0;
++  };
++  window.addEventListener('touchstart', onPinchStart, { passive: true });
++  window.addEventListener('touchmove', onPinchMove, { passive: true });
++  window.addEventListener('touchend', onPinchEnd, { passive: true });
++  window.addEventListener('touchcancel', onPinchEnd, { passive: true });
++  if (zoomFilled) send('zoom', { fill: true });
    const receive = (event: Event): void => {
      const data = (event as CustomEvent<NativeMessage>).detail;
      if (destroyed || data?.id !== id) return;
-@@ -79,7 +86,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
+@@ -79,7 +115,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
          initialMuted: options.initialMuted ?? false,
        });
      },
 -    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); },
-+    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); window.removeEventListener('tvm:native-player-command', onExtraCommand); },
++    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); window.removeEventListener('tvm:native-player-command', onExtraCommand); window.removeEventListener('touchstart', onPinchStart); window.removeEventListener('touchmove', onPinchMove); window.removeEventListener('touchend', onPinchEnd); window.removeEventListener('touchcancel', onPinchEnd); },
      play: () => send('play'), pause: () => send('pause'),
      toggle: () => send(paused ? 'play' : 'pause'), // paused starts true so the first toggle plays
      seekBy: (delta) => send('seek', { seconds: Math.max(0, position + delta) }),
