@@ -82,6 +82,10 @@ every decision, is a zip the owner keeps (`session-export-*.zip`); ask for it if
 | 1.4.12 | Clear glass navigation, more reliable Windows updates |
 | 1.4.13 | iPhone finds MKV streams again and stays signed in after closing |
 | 1.4.14 | **Account sync on iPhone, Android and Roku**; the trailer streams from the `media` release instead of being bundled |
+| 1.4.15 | Original-language audio track (English when unknown), dubs only when chosen |
+| 1.4.16 | Invite code on sign-up, maintenance banner (with the accounts dev panel, migration 0006) |
+| 1.4.17 | Stats, sleep timer and night mode over the native video on phones; watched episodes on phones |
+| 1.4.18 | Roku start page and franchise intros |
 
 Reports from each builder are in `docs/1.4/report-*.md`, and briefs in `docs/agents/briefs/`.
 

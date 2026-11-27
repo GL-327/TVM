@@ -1,4 +1,4 @@
-# Handoff: TVM 1.4.14
+# Handoff: TVM 1.4.18
 
 Rewritten 2026-11-27 by the lead session (Claude, owner's PC). Delete this file, and the pointer at the top of
 `CLAUDE.md`, when everything below is done. Older detail lives in git history and `docs/1.4/report-*.md`.
@@ -14,19 +14,29 @@ Rewritten 2026-11-27 by the lead session (Claude, owner's PC). Delete this file,
   (`releases/download/media/tvm-trailer.mp4`) on React and Windows. GitHub serves it as `application/octet-stream`;
   Chromium plays it (checked), iPhone is untested. To change the trailer, replace that asset: no app release needed.
 
+## Since 1.4.14 (same day)
+
+- **1.4.15** original-language audio track (English when unknown) on Windows, phones and Roku; dubs only when
+  chosen in Settings. **1.4.16** invite code on sign-up + maintenance banner everywhere (pairs with the dev panel,
+  accounts repo `8f40bf6`, migration 0006, **not deployed yet**). **1.4.17** Stats / sleep timer / night mode over
+  the native video on phones, watched episodes on phones. **1.4.18** Roku start page + franchise intros
+  (`docs/1.4/report-roku-hub.md`).
+- Phone sync is green in CI (iOS and Android tests). The Android job caches Gradle and Robolectric jars.
+
 ## Open, in order
 
-1. **Real-device tests (owner):** iPhone streams play and it stays signed in after closing; sync on a phone and
-   Roku against the PC; the streamed trailer on iPhone (if it fails: proxy it through the iOS engine's local server
-   with `video/mp4` and Range).
-2. **Update now** on Windows: test it on a build that has a pending update (auto-update itself works).
-3. **Dev panel** (Gemini next): `docs/agents/briefs/job-devpanel.md`. Accounts service changes are tested locally,
-   then deployed by the lead after `npx wrangler login` on this PC. App side: invite code field + maintenance banner.
-4. **Phone player overlays:** Stats, sleep timer and night mode over the native video, and `watched` on episodes.
-5. **Roku:** Hub page, franchise intros and the new look (after sync and the dev panel, which also touch Roku).
-6. **Trailer v3:** the preview (model stills, turntable, voice tests) goes to the owner first. Full trailer only
-   after a yes; then upload it to the `media` release.
-7. **Windows look:** keep improving it first (clear Liquid Glass only, see `docs/LIQUID_GLASS.md`), then port to React.
+1. **Real-device tests (owner):** iPhone streams, staying signed in, sync between a phone, Roku and the PC, the
+   streamed trailer on iPhone (if it fails: proxy it through the iOS engine with `video/mp4` and Range), phone
+   Stats / sleep / night mode, the Roku start page and intros.
+2. **Update now** on Windows: the owner presses it on the installed 1.4.13 (auto-update itself works).
+3. **Deploy the accounts service** after the owner runs `npx wrangler login` in `Desktop\TVM-accounts`:
+   `npx wrangler d1 migrations apply tvm-accounts --remote`, `npx wrangler deploy`, then check `/admin`,
+   `/v1/config` and an existing member sign-in.
+4. **Trailer v3:** preview sent to the owner (VRoid sample model, af_heart / af_bella). Full trailer only after a
+   yes; fix the flat crown block and the light temple edge; then upload to the `media` release. Work dir:
+   `C:\Users\Arthur\TVM-work\trailer3\`.
+5. **Windows look:** keep improving it first (clear Liquid Glass only, `docs/LIQUID_GLASS.md`); show the owner a
+   preview before big changes, then port to React. Roku's remaining screens get the new look after that.
 
 ## Owner decisions pending
 
