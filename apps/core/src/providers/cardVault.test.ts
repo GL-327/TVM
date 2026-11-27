@@ -71,7 +71,12 @@ describe('card vault', () => {
     // earlier build sealed the PAN for "a future processor"; holding one at all
     // is what PCI DSS forbids, so there is no longer anywhere for it to go.
     expect(JSON.stringify(minted)).not.toContain(pan);
-    expect(JSON.stringify(minted)).not.toContain('123');
+    // No CVC field and no stored value equal to it. (Searching the whole JSON for "123" was flaky: the random
+    // token id and the timestamp contain those digits now and then.)
+    const strings: string[] = [];
+    const json = JSON.stringify(minted, (_key, value: unknown) => { if (typeof value === 'string') strings.push(value); return value; });
+    expect(json).not.toMatch(/"cv[cv]2?"\s*:/i);
+    expect(strings).not.toContain('123');
     expect(Object.keys(minted)).toEqual(['token']);
 
     const state = rememberToken(emptyCardVault(), minted.token);

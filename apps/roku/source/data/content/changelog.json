@@ -3,6 +3,99 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.19",
+      "date": "2026-11-27",
+      "title": "Android's classic look",
+      "highlights": [
+        "Android looks as it did on 18 November again, and keeps sign-in, sync and the new player tools."
+      ],
+      "changes": [
+        {
+          "area": "Android",
+          "text": "Android looks as it did on 18 November again; sign-in, sync, invite codes, sleep timer and Stats still work.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Going back to Home on Android no longer jolts as the Hunger Games row loads in.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Android",
+          "text": "Pulling past the top of Home on Android is smooth; the page no longer restyles on every frame.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Sunrise on the Reaping leads the featured titles at the top of Home on Android.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Spread two fingers on a video on Android to zoom it to fill the screen; pinch to fit it back.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The Hunger Games row on Android lines up with Home, with short film names and a small, clear order switch.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Android",
+          "text": "A soft fade under the phone's status bar keeps the time and battery readable over scrolling posters.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Home on Android has The Hunger Games section in its colours, with a switch between story and release order.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "Live TV on Android lists all the free channels Windows has, grouped by country, before your own.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Android",
+          "text": "Pulling past the top or bottom of a page on Android is smooth again, even straight after opening the app.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Tapping the video on Android no longer jumps playback; only the timeline moves it.",
+          "platforms": [
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Stats, the sleep timer and night mode on phones have not been tried on a real phone yet.",
+        "The Roku start page and intros have not been tried on a real Roku yet."
+      ]
+    },
+    {
       "version": "1.4.18",
       "date": "2026-11-27",
       "title": "A start page and intros on Roku",

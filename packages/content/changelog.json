@@ -3,13 +3,20 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
-      "version": "1.4.18",
+      "version": "1.4.19",
       "date": "2026-11-27",
-      "title": "A start page and intros on Roku",
+      "title": "Android's classic look",
       "highlights": [
-        "Roku opens on a start page with a big featured title, Continue watching, your apps and free live TV."
+        "Android looks as it did on 18 November again, and keeps sign-in, sync and the new player tools."
       ],
       "changes": [
+        {
+          "area": "Android",
+          "text": "Android looks as it did on 18 November again; sign-in, sync, invite codes, sleep timer and Stats still work.",
+          "platforms": [
+            "android"
+          ]
+        },
         {
           "area": "Home",
           "text": "Going back to Home on Android no longer jolts as the Hunger Games row loads in.",
@@ -79,14 +86,23 @@
           "platforms": [
             "android"
           ]
-        },
-        {
-          "area": "Android",
-          "text": "Android looks as it did on 18 November again; sign-in, sync, invite codes, sleep timer and Stats still work.",
-          "platforms": [
-            "android"
-          ]
-        },
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Stats, the sleep timer and night mode on phones have not been tried on a real phone yet.",
+        "The Roku start page and intros have not been tried on a real Roku yet."
+      ]
+    },
+    {
+      "version": "1.4.18",
+      "date": "2026-11-27",
+      "title": "A start page and intros on Roku",
+      "highlights": [
+        "Roku opens on a start page with a big featured title, Continue watching, your apps and free live TV."
+      ],
+      "changes": [
         {
           "area": "Home",
           "text": "Roku opens on a start page: a greeting, a featured title, Continue watching, Apps and free live TV.",
