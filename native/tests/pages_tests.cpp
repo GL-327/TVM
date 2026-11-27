@@ -348,12 +348,14 @@ TEST(account_screen_flows_two_step_signin_create_waiting_paused_terms_and_signed
     screen.SetFieldValue("password", "short");
     REQUIRE(!screen.ActivateItem("account:register", 0.0).has_value());
     screen.SetFieldValue("password", "analytical10");
+    screen.SetFieldValue("invite", "INVITE-42");
     REQUIRE(!screen.ActivateItem("account:register", 0.0).has_value());  // Terms not checked yet.
     REQUIRE(!screen.ActivateItem("account:toggle-terms", 0.0).has_value());
     const std::optional<Command> reg = screen.ActivateItem("account:register", 0.0);
     REQUIRE(reg.has_value());
     REQUIRE_EQ(reg->name, std::string("account-register"));
     REQUIRE_EQ(reg->params.at("name"), std::string("Ada Lovelace"));
+    REQUIRE_EQ(reg->params.at("inviteCode"), std::string("INVITE-42"));
 
     // Waiting for approval never shows raw "awaiting_activation".
     tvm::ui::AccountView waitView;

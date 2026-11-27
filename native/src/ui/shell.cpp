@@ -116,6 +116,18 @@ void Shell::Paint(Painter& painter) const {
         }
         screens_.at(modal.key)->Paint(painter);
     }
+    if (maintenanceBanner_ && !maintenanceBanner_->empty() && ActiveScreenName() == "home" && nav::OpenModals(stack_).empty()) {
+        const double rem = ViewportRem(width_, height_);
+        const double w = std::min(width_ - 3 * rem, 42 * rem);
+        const double h = 2.5 * rem;
+        const Box bar{(width_ - w) / 2.0, 5.9 * rem, w, h};
+        painter.Glass(bar, h / 2.0, glass::MenuPanel());
+        painter.StrokeRoundRect(bar, h / 2.0, 1.0, Rgb(0xF59E0B, 0.55));
+        painter.FillRoundRect(Box{bar.x + 1.0 * rem, bar.y + (h - 0.55 * rem) / 2.0, 0.55 * rem, 0.55 * rem},
+                              0.275 * rem, Rgb(0xF59E0B));
+        painter.Text(Box{bar.x + 2.0 * rem, bar.y, w - 3.0 * rem, h}, *maintenanceBanner_,
+                     {0.88 * rem, true, 600}, Rgb(0xFEF3C7, 0.96));
+    }
     if (releaseCard_ && ActiveScreenName() == "home") {
         const Box card = ReleaseBox();
         const double rem = ViewportRem(width_, height_);

@@ -673,6 +673,7 @@ int App::Run(int showCommand) {
         preview.Update(clipId, showingHome && home_->HeroOnscreen() && supportedMotion, home_->HeroMuted());
         home_->SetHeroClip(preview.Ready(), preview.HasAudio(), now);
         dirty_ = dirty_ || wasPlaying != home_->HeroClipPlaying();
+        SyncPublicConfig(now);
         SyncReleaseNotice(now);
         if (now - updatesCheckedMs_ >= update::NextCheckDelayMs(updatesRetrySoon_) && store_->CorePrefs().autoUpdate) CheckForUpdates();
         PageRails();

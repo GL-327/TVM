@@ -309,6 +309,7 @@ final class TVMAccounts {
             "flags": [String: Bool](),
             "openSignups": false,
             "mail": false,
+            "maintenance": ["on": false, "message": ""] as [String: Any],
         ]
     }
 
@@ -337,12 +338,18 @@ final class TVMAccounts {
             }
         }
         let minVersion = JSONValue.string(raw["minVersion"])
+        let maint = raw["maintenance"] as? [String: Any]
+        let maintenance: [String: Any] = [
+            "on": (maint?["on"] as? Bool) == true,
+            "message": JSONValue.string(maint?["message"]) ?? "",
+        ]
         return [
             "announcement": announcement,
             "minVersion": JSONValue.orNull(minVersion),
             "flags": flagsOut,
             "openSignups": (raw["openSignups"] as? Bool) == true,
             "mail": (raw["mail"] as? Bool) == true,
+            "maintenance": maintenance,
         ]
     }
 
@@ -376,6 +383,7 @@ final class TVMAccounts {
             "announcement": cfg["announcement"] ?? NSNull(),
             "minVersion": cfg["minVersion"] ?? NSNull(),
             "flags": cfg["flags"] ?? [String: Bool](),
+            "maintenance": cfg["maintenance"] ?? (["on": false, "message": ""] as [String: Any]),
         ]
     }
 
@@ -422,7 +430,7 @@ final class TVMAccounts {
 
     // MARK: Actions
 
-    func register(email rawEmail: String, password: String, displayName: String?, client: String?) async -> Result<[String: Any], TVMAccountError> {
+    func register(email rawEmail: String, password: String, displayName: String?, client: String?, inviteCode: String? = nil) async -> Result<[String: Any], TVMAccountError> {
         let email = TVMAccounts.normalize(rawEmail)
         guard TVMAccounts.emailLooksValid(email) else { return .failure(TVMAccountError("Enter a valid email address.")) }
         guard password.utf16.count >= 10 else { return .failure(TVMAccountError("Use at least 10 characters.")) }
@@ -430,8 +438,12 @@ final class TVMAccounts {
         var body: [String: Any] = ["email": email, "password": password]
         if let name = TVMAccounts.cleaned(displayName, limit: 80) { body["displayName"] = name }
         if let agent = TVMAccounts.cleaned(client, limit: 200) { body["client"] = agent }
+        if let code = TVMAccounts.cleaned(inviteCode, limit: 64) { body["inviteCode"] = code }
         do {
             let reply = try await call("POST", "/v1/register", body: body)
+            if reply.status == 400, JSONValue.string(reply.json["error"]) == "invalid_invite" {
+                throw TVMAccountError("invalid_invite")
+            }
             guard reply.status == 201 || reply.status == 200 else {
                 throw TVMAccounts.failure(reply.status, "That account could not be created. If it already exists, sign in instead.")
             }

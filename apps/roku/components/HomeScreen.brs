@@ -28,6 +28,9 @@ sub init()
   m.playBtn = m.top.findNode("playBtn")
   m.detailsBtn = m.top.findNode("detailsBtn")
   m.surpriseBtn = m.top.findNode("surpriseBtn")
+  m.maintenanceBar = m.top.findNode("maintenanceBar")
+  m.maintenanceDot = m.top.findNode("maintenanceDot")
+  m.maintenanceText = m.top.findNode("maintenanceText")
   m.announceBar = m.top.findNode("announceBar")
   m.announceGlass = m.top.findNode("announceGlass")
   m.announceDot = m.top.findNode("announceDot")
@@ -76,6 +79,7 @@ sub init()
     m.surpriseBtn.itemId = "hero-surprise"
     m.surpriseBtn.visible = false
   end if
+  if m.maintenanceText <> invalid then m.maintenanceText.font = tvmFontMeta()
   if m.announceText <> invalid then m.announceText.font = tvmFontMeta()
 
   m.nav.activeId = "home"
@@ -568,6 +572,7 @@ sub paintFocus()
   m.playBtn.hasFocusStyle = (m.zone = "hero" and m.heroCol = 0)
   m.detailsBtn.hasFocusStyle = (m.zone = "hero" and m.heroCol = 1)
   if m.surpriseBtn <> invalid then m.surpriseBtn.hasFocusStyle = (m.zone = "hero" and m.heroCol = 2)
+  if m.maintenanceBar <> invalid then paintMaintenanceBar()
   if m.announceBar <> invalid then paintAnnouncementBar()
 
   inRails = (m.zone = "rails")
@@ -876,10 +881,16 @@ sub refreshHomePrefs()
   if m.top.payload <> invalid then onPayload()
   if isMediaItem(m.heroItem) then paintHeroCopy(m.heroItem)
   syncSurpriseButton()
+  paintMaintenanceBar()
   paintAnnouncementBar()
 end sub
 
 sub onAnnouncement()
+  paintAnnouncementBar()
+end sub
+
+sub onMaintenance()
+  paintMaintenanceBar()
   paintAnnouncementBar()
 end sub
 
@@ -900,6 +911,19 @@ sub syncSurpriseButton()
   end if
 end sub
 
+sub paintMaintenanceBar()
+  if m.maintenanceBar = invalid or m.maintenanceText = invalid then return
+  maint = m.top.maintenance
+  show = (m.top.mode = "ready" and m.zone <> "rails" and maint <> invalid and aaGet(maint, "on", false) = true)
+  m.maintenanceBar.visible = show
+  if not show then return
+  msg = asText(aaGet(maint, "message", "")).Trim()
+  if msg = "" then msg = "TVM is undergoing maintenance. Playback remains available."
+  if m.maintenanceDot <> invalid then m.maintenanceDot.blendColor = tvmWarning()
+  if m.maintenanceText <> invalid then m.maintenanceText.color = tvmText()
+  m.maintenanceText.text = msg
+end sub
+
 sub paintAnnouncementBar()
   if m.announceBar = invalid or m.announceText = invalid then return
   ann = m.top.announcement
@@ -907,6 +931,11 @@ sub paintAnnouncementBar()
   show = (m.top.mode = "ready" and m.zone <> "rails" and tvmExtraEnabled("announcements") and ann <> invalid and text <> "")
   m.announceBar.visible = show
   if not show then return
+  if m.maintenanceBar <> invalid and m.maintenanceBar.visible = true
+    m.announceBar.translation = [160, 272]
+  else
+    m.announceBar.translation = [160, 188]
+  end if
   level = LCase(asText(aaGet(ann, "level", "info")))
   dotColor = tvmAccentBlue()
   if level = "warning" then dotColor = tvmWarning()

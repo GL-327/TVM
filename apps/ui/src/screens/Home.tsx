@@ -339,6 +339,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
     .sort((a, b) => priority(a.id) - priority(b.id));
 
   const minUpdateNeeded = updateRequired(currentAppVersion(), config?.minVersion);
+  const maintenance = config?.maintenance;
 
   return (
     <main className="home polish-home cinematic-browse" ref={pageRef}>
@@ -351,6 +352,11 @@ export function Home(_props: ScreenProps): React.JSX.Element {
         onPlay={liveEvent ? openEventRail : () => hero ? openPlayback(navigate, hero) : openStream()}
         onDetails={() => { if (hero) void openDetails(navigate, hero); }}
         onSurprise={surprise ? () => openTitle(asTitle(surprise)) : undefined} />
+      {maintenance?.on && (
+        <aside className="spotlight__announcement spotlight__announcement--warning" role="status" style={{ marginInline: 'var(--tvm-gutter)', marginBlockEnd: 16 }}>
+          <span>{maintenance.message || 'TVM is undergoing maintenance. Playback remains available.'}</span>
+        </aside>
+      )}
       {minUpdateNeeded && (
         <aside className="spotlight__announcement spotlight__announcement--critical" role="alert" style={{ marginInline: 'var(--tvm-gutter)', marginBlockEnd: 16 }}>
           <span>Update required — a newer TVM build ({config?.minVersion}) is needed to keep playing.</span>

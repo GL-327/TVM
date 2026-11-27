@@ -101,6 +101,7 @@ const CODE_MESSAGES: Readonly<Record<string, string>> = {
   invalid_flags: 'Those settings were not valid.',
   unauthorized: 'Please sign in again to continue.',
   bad_request: 'Check what you entered and try again.',
+  invalid_invite: 'That invite code is invalid, expired, or has already been used.',
   conflict: 'An account already exists for this email. Sign in instead.',
   service_unavailable: "We couldn't reach TVM. Check your connection and try again.",
 };

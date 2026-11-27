@@ -111,7 +111,8 @@ public:
     std::string Subtitle(const std::string& url) const;
     AccountState Status() const;
     AccountState SignIn(const std::string& email, const std::string& password);
-    void Register(const std::string& email, const std::string& password, const std::string& name);
+    void Register(const std::string& email, const std::string& password, const std::string& name,
+                  const std::string& inviteCode = "");
     void SignOut();
     TermsDocument Terms() const;
     TiersDocument Tiers() const;

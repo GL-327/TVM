@@ -35,6 +35,7 @@ sub init()
   m.accountEmail = ""
   m.accountPassword = ""
   m.accountName = ""
+  m.accountInviteCode = ""
   m.accountMode = "phone"
   m.accountPasswordPlain = false
   m.accountTermsAgreed = false
@@ -1004,6 +1005,7 @@ sub onAccountAction()
   if kind = "editEmail" then showKeyboard("accountEmail", "Email", m.accountEmail, "Next")
   if kind = "editPassword" then showKeyboard("accountPassword", "Password", "", "Next")
   if kind = "editName" then showKeyboard("accountName", "Your name (optional)", m.accountName, "Next")
+  if kind = "editInvite" then showKeyboard("accountInvite", "Invite code (optional)", m.accountInviteCode, "Next")
   if kind = "codeSignIn" or kind = "backToPhone"
     m.accountFieldError = ""
     m.accountMode = "phone"
@@ -1027,6 +1029,7 @@ sub onAccountAction()
     stopDevicePollTimer()
     m.accountFieldError = ""
     m.accountPassword = ""
+    m.accountInviteCode = ""
     m.accountTermsAgreed = false
     m.accountPasswordPlain = false
     m.accountMode = "register_name"
@@ -1042,6 +1045,8 @@ sub onAccountAction()
   if kind = "prevStep"
     m.accountFieldError = ""
     if m.accountMode = "register_terms"
+      m.accountMode = "register_invite"
+    else if m.accountMode = "register_invite"
       m.accountMode = "register_password"
     else if m.accountMode = "register_password"
       m.accountMode = "register_email"
@@ -1112,6 +1117,7 @@ sub onAccountAction()
     m.accountToken = ""
     saveAccountToken("")
     m.accountPassword = ""
+    m.accountInviteCode = ""
     m.accountPasswordPlain = false
     m.accountTermsAgreed = false
     m.accountFieldError = ""
@@ -1471,7 +1477,7 @@ sub onKeyboardButton()
     err = tvmAccountValidatePassword(m.accountPassword, isReg)
     m.accountFieldError = err
     if err = "" and isReg
-      m.accountMode = "register_terms"
+      m.accountMode = "register_invite"
     end if
     paintAccountGate(m.accountState)
     if m.accountMode = "signin_password" and err = "" and m.accountNode <> invalid
@@ -1484,6 +1490,14 @@ sub onKeyboardButton()
     m.accountName = text.Trim()
     m.accountFieldError = ""
     if m.accountMode = "register_name" then m.accountMode = "register_email"
+    paintAccountGate(m.accountState)
+    restoreScreenFocus()
+    return
+  end if
+  if mode = "accountInvite"
+    m.accountInviteCode = text.Trim()
+    m.accountFieldError = ""
+    if m.accountMode = "register_invite" then m.accountMode = "register_terms"
     paintAccountGate(m.accountState)
     restoreScreenFocus()
     return
@@ -1703,6 +1717,7 @@ sub paintAccountGate(json as Object)
   m.accountNode.signedAs = email
   m.accountNode.emailDetail = m.accountEmail
   m.accountNode.nameDetail = m.accountName
+  m.accountNode.inviteDetail = m.accountInviteCode
   m.accountNode.passwordLength = Len(m.accountPassword)
   m.accountNode.showPassword = (m.accountPasswordPlain = true)
   if m.accountPasswordPlain = true
@@ -1766,7 +1781,7 @@ sub paintAccountGate(json as Object)
     m.accountNode.phase = "terms"
   else
     stopWaitingTimer()
-    if m.accountMode <> "signin_email" and m.accountMode <> "signin_password" and m.accountMode <> "register_name" and m.accountMode <> "register_email" and m.accountMode <> "register_password" and m.accountMode <> "register_terms"
+    if m.accountMode <> "signin_email" and m.accountMode <> "signin_password" and m.accountMode <> "register_name" and m.accountMode <> "register_email" and m.accountMode <> "register_password" and m.accountMode <> "register_invite" and m.accountMode <> "register_terms"
       m.accountMode = "phone"
     end if
     m.accountNode.phase = m.accountMode
@@ -1832,6 +1847,11 @@ sub advanceAccountStep()
       paintAccountGate(m.accountState)
       return
     end if
+    m.accountMode = "register_invite"
+    paintAccountGate(m.accountState)
+    return
+  end if
+  if m.accountMode = "register_invite"
     m.accountMode = "register_terms"
     paintAccountGate(m.accountState)
     return
@@ -1842,7 +1862,7 @@ sub submitAccount()
   m.accountFieldError = ""
   email = m.accountEmail.Trim()
   password = m.accountPassword
-  isReg = (m.accountMode = "register_terms" or m.accountMode = "register_password" or m.accountMode = "register_email" or m.accountMode = "register_name")
+  isReg = (m.accountMode = "register_terms" or m.accountMode = "register_invite" or m.accountMode = "register_password" or m.accountMode = "register_email" or m.accountMode = "register_name")
 
   emailErr = tvmAccountValidateEmail(email)
   if emailErr <> ""
@@ -1878,6 +1898,7 @@ sub submitAccount()
   body.password = password
   if isReg
     body.displayName = m.accountName
+    if m.accountInviteCode.Trim() <> "" then body.inviteCode = m.accountInviteCode.Trim()
     m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/register"), "POST", FormatJson(body), "onAccountRegisterDone")
     return
   end if
@@ -1895,6 +1916,9 @@ sub onAccountRegisterDone()
     if task.statusCode = 409
       m.accountMode = "register_email"
       m.accountFieldError = "An account with that email already exists. Try signing in instead."
+    else if LCase(raw) = "invalid_invite"
+      m.accountMode = "register_invite"
+      m.accountFieldError = msg
     else if m.accountNode <> invalid
       m.accountNode.status = msg
     end if
@@ -1969,6 +1993,7 @@ sub onAccountSignOutDone()
   m.accountEmail = ""
   m.accountPassword = ""
   m.accountName = ""
+  m.accountInviteCode = ""
   m.accountPasswordPlain = false
   m.accountTermsAgreed = false
   m.accountFieldError = ""
@@ -2262,6 +2287,7 @@ sub onRokuPublicConfigDone()
   maybeShowPatchNotes(flags)
   if m.homeNode <> invalid
     m.homeNode.announcement = aaGet(cfg, "announcement", invalid)
+    m.homeNode.maintenance = aaGet(cfg, "maintenance", invalid)
     m.homeNode.callFunc("refreshHomePrefs")
   end if
   if m.settingsNode <> invalid then m.settingsNode.extrasPrefs = m.rokuExtrasPrefs

@@ -6,6 +6,7 @@
     <field id="releaseShortcut" type="boolean" value="false" />
     <field id="event" type="assocarray" onChange="onEvent" />
     <field id="announcement" type="assocarray" onChange="onAnnouncement" />
+    <field id="maintenance" type="assocarray" onChange="onMaintenance" />
     <field id="surpriseItem" type="assocarray" onChange="onSurpriseItem" />
     <field id="appendPage" type="assocarray" alwaysNotify="true" onChange="onAppendPage" />
     <field id="mode" type="string" value="loading" onChange="onMode" />
@@ -53,6 +54,11 @@
       </Group>
     </Group>
     <Group id="rails" translation="[0, 1160]" />
+    <Group id="maintenanceBar" translation="[160, 188]" visible="false">
+      <GlassPanel id="maintenanceGlass" shape="pill" width="1600" height="72" />
+      <Poster id="maintenanceDot" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[28, 28]" />
+      <Label id="maintenanceText" translation="[64, 8]" width="1500" height="56" vertAlign="center" maxLines="1" color="0xF5F7FAFF" />
+    </Group>
     <Group id="announceBar" translation="[160, 188]" visible="false">
       <GlassPanel id="announceGlass" shape="pill" width="1600" height="72" />
       <Poster id="announceDot" uri="pkg:/images/glass/dot.png" width="16" height="16" translation="[28, 28]" />

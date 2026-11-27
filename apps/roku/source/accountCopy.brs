@@ -118,6 +118,7 @@ function friendlyAccountError(rawError as Dynamic, statusCode = 0 as Integer, co
   if lower = "forbidden" then return "You don't have permission to do that."
   if lower = "account_required" or lower = "unauthorized" then return "Please sign in again to continue."
   if lower = "not_found" then return "This copy of TVM needs an update before it can do that."
+  if lower = "invalid_invite" then return "That invite code is invalid or has already been used."
   if lower = "bad_request" or lower = "too_large" or lower = "https_required" then return "Check what you entered and try again."
   if lower = "conflict" then return "An account already exists for this email. Sign in instead."
   if lower = "invalid_json" then return "TVM received an unexpected reply. Try again."

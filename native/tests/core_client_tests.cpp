@@ -196,3 +196,22 @@ TEST(account_copy_helpers_translate_statuses_validate_inputs_and_hide_raw_errors
     REQUIRE_EQ(tiers.tiers.size(), std::size_t{2});
     REQUIRE_EQ(tiers.tiers[1].yearlyPence, 15000);
 }
+
+TEST(native_register_forwards_optional_invite_code_and_translates_invalid_invite) {
+    REQUIRE_EQ(coreapi::FriendlyAccountError("HTTP 400 invalid_invite"),
+               std::string("That invite code is invalid or has already been used."));
+
+    Folder folder;
+    std::vector<nlohmann::json> bodies;
+    coreapi::Client client(folder.path, 7345, [&](const std::string& url, const http::Options& options) -> std::optional<http::Response> {
+        REQUIRE(url.ends_with("/api/account/register"));
+        REQUIRE_EQ(options.method, "POST");
+        bodies.push_back(nlohmann::json::parse(options.body));
+        return http::Response{201, "{\"account\":{\"id\":\"acc_1\"}}"};
+    });
+    client.Register("invited@example.test", "analytical10", "Ada", "INVITE-77");
+    client.Register("plain@example.test", "analytical10", "Plain");
+    REQUIRE_EQ(bodies.size(), std::size_t{2});
+    REQUIRE_EQ(bodies[0].at("inviteCode"), "INVITE-77");
+    REQUIRE(!bodies[1].contains("inviteCode"));
+}

@@ -103,6 +103,7 @@ describe('the door', () => {
     expect(reset).toContain("setEmail('')");
     expect(reset).toContain("setPassword('')");
     expect(reset).toContain("setDisplayName('')");
+    expect(reset).toContain("setInviteCode('')");
     expect(reset).toContain("setEmailCode('')");
     expect(reset).toContain('setAgreedTerms(false)');
     expect(reset).toContain('setNotice(null)');
@@ -157,5 +158,12 @@ describe('the door', () => {
     // writes account state itself.
     expect(src).not.toContain('localStorage.setItem');
     expect(src).not.toContain('activateAccount');
+  });
+
+  it('offers an optional invite code field on account creation', () => {
+    const src = gate();
+    expect(src).toContain('id="gate-invite"');
+    expect(src).toContain('Optional invite code');
+    expect(src).toContain('inviteCode: nextInvite');
   });
 });

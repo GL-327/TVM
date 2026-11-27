@@ -1719,6 +1719,7 @@ std::string* AccountScreen::FieldStorage(const std::string& field) {
     if (field == "email") return &email_;
     if (field == "password") return &password_;
     if (field == "name") return &name_;
+    if (field == "invite") return &invite_;
     if (field == "code") return &code_;
     return nullptr;
 }
@@ -1727,6 +1728,7 @@ const std::string* AccountScreen::FieldStorage(const std::string& field) const {
     if (field == "email") return &email_;
     if (field == "password") return &password_;
     if (field == "name") return &name_;
+    if (field == "invite") return &invite_;
     if (field == "code") return &code_;
     return nullptr;
 }
@@ -1760,7 +1762,8 @@ void AccountScreen::SetView(AccountView view) {
         step_ = *view_.forceStep;
         if (step_ == AccountStep::SignInEmail) activeField_ = "email";
         else if (step_ == AccountStep::SignInPassword) activeField_ = "password";
-        else if (step_ == AccountStep::CreateAccount && activeField_ != "name" && activeField_ != "email" && activeField_ != "password") {
+        else if (step_ == AccountStep::CreateAccount && activeField_ != "name" && activeField_ != "email" &&
+                 activeField_ != "password" && activeField_ != "invite") {
             activeField_ = "name";
         } else if (step_ == AccountStep::EmailVerify) activeField_ = "code";
     } else if (view_.account.signedIn) {
@@ -1776,6 +1779,7 @@ void AccountScreen::SetView(AccountView view) {
         step_ = AccountStep::SignInEmail;
         activeField_ = "email";
         password_.clear();
+        invite_.clear();
         code_.clear();
         forgotOpen_ = false;
         editing_ = true;
@@ -1889,6 +1893,12 @@ std::optional<Command> AccountScreen::SubmitActiveField(double /*nowMs*/) {
             editing_ = true;
             return std::nullopt;
         }
+        if (activeField_ == "password") {
+            activeField_ = "invite";
+            focused_ = "field:invite";
+            editing_ = true;
+            return std::nullopt;
+        }
         return TryRegister();
     }
     return Select(clockMs_);
@@ -1897,7 +1907,7 @@ std::optional<Command> AccountScreen::SubmitActiveField(double /*nowMs*/) {
 bool AccountScreen::CycleField(bool backwards, double /*nowMs*/) {
     if (privacyOpen_) return false;
     std::vector<std::string> fields;
-    if (step_ == AccountStep::CreateAccount) fields = {"field:name", "field:email", "field:password", "account:toggle-terms", "account:register"};
+    if (step_ == AccountStep::CreateAccount) fields = {"field:name", "field:email", "field:password", "field:invite", "account:toggle-terms", "account:register"};
     else if (step_ == AccountStep::SignInEmail) fields = {"field:email", "account:continue", "account:to-register", "account:privacy"};
     else if (step_ == AccountStep::SignInPassword) fields = {"field:password", "account:toggle-password", "account:signin", "account:forgot", "account:change-email"};
     else return false;
@@ -1987,6 +1997,8 @@ std::optional<Command> AccountScreen::TryRegister() {
     command.params["email"] = email_;
     command.params["password"] = password_;
     command.params["name"] = CleanEmail(name_);
+    const std::string invite = CleanEmail(invite_);
+    if (!invite.empty()) command.params["inviteCode"] = invite;
     return command;
 }
 
@@ -2180,8 +2192,13 @@ void AccountScreen::Arrange() {
         ry += scale * 1.55 + fieldH;
         if (!err.empty() && errField == "email") ry += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.55;
         ry += fieldGap + scale * 1.55 + fieldH;
-        ry += scale * 1.45;
-        if (!err.empty() && errField.empty()) ry += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.6;
+        ry += (!err.empty() && errField == "password")
+                  ? std::max(scale * 1.45, WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.55)
+                  : scale * 1.45;
+        ry += fieldGap + scale * 1.55 + fieldH;
+        if (!err.empty() && errField == "invite") ry += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.55;
+        else if (!err.empty() && errField.empty()) ry += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.6;
+        else ry += scale * 0.6;
         ry += scale * 2.1;
         if (!err.empty() && errField == "terms") ry += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.55;
         ry += gap + buttonH + (compact ? scale * 2.0 : scale * 2.4);
@@ -2287,9 +2304,18 @@ void AccountScreen::Arrange() {
         buttons_.push_back(PageButton{"field:password", "Password", Box{innerX_, y, iw - toggleW, fieldH}, row, false, false, true});
         buttons_.push_back(PageButton{"account:toggle-password", showPassword_ ? "Hide password" : "Show password",
                                       Box{innerX_ + iw - toggleW, y, toggleW, fieldH}, row++, false, false, true});
-        y += fieldH + scale * 1.45;
-        if (!err.empty() && errField.empty()) {
+        y += fieldH + ((!err.empty() && errField == "password")
+                           ? std::max(scale * 1.45, WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.55)
+                           : scale * 1.45);
+        y += fieldGap + scale * 1.55;
+        buttons_.push_back(PageButton{"field:invite", "Invite code (optional)", Box{innerX_, y, iw, fieldH}, row++, false, false, true});
+        y += fieldH;
+        if (!err.empty() && errField == "invite") {
+            y += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.55;
+        } else if (!err.empty() && errField.empty()) {
             y += WrappedHeight(iw - scale * 1.6, scale * 0.85, scale * 1.2, err) + scale * 0.6;
+        } else {
+            y += scale * 0.6;
         }
         const double termsW = iw * 0.62;
         buttons_.push_back(PageButton{"account:toggle-terms", "I agree to the terms",
@@ -2564,7 +2590,10 @@ void AccountScreen::PaintContent(Painter& painter, double scroll) const {
                 painter.Text(Box{ix, pf->Bottom() + scale * 0.22, iw, scale * 1.2},
                              "Use at least 10 characters.", TextStyle{scale * 0.82, false}, kFaint);
             }
-            if (!err.empty() && errField.empty()) drawError(pf->Bottom() + scale * 1.65, err);
+        }
+        if (const auto inv = BoxOf("field:invite")) {
+            painter.Text(Box{ix, inv->y - scale * 1.55, iw, scale * 1.22}, "Invite code (optional)", TextStyle{scale * 0.84, true, 650}, kInk);
+            if (!err.empty() && (errField == "invite" || errField.empty())) drawError(inv->Bottom() + scale * 0.25, err);
         }
         if (const auto tf = BoxOf("account:toggle-terms")) {
             if (!err.empty() && errField == "terms") drawError(tf->Bottom() + scale * 0.25, err);
@@ -2727,7 +2756,8 @@ void AccountScreen::PaintCustom(Painter& painter, const PageButton& button, cons
             field == "name" ? "Your name (optional)"
                             : (field == "email" ? "you@example.com"
                                                 : (field == "password" ? (step_ == AccountStep::CreateAccount ? "At least 10 characters" : "Your password")
-                                                                       : "Verification code"));
+                                                                       : (field == "invite" ? "From the owner, if you have one"
+                                                                                            : "Verification code")));
         const TextStyle valStyle{scale * 0.96, false};
         const double maxTextW = std::max(40.0, box.width - scale * 1.7);
         while (!shown.empty() && painter.MeasureText(shown, valStyle) > maxTextW) {

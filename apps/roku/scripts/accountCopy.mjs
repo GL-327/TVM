@@ -61,6 +61,7 @@ const CODE_MESSAGES = {
   account_required: 'Please sign in again to continue.',
   unauthorized: 'Please sign in again to continue.',
   not_found: 'This copy of TVM needs an update before it can do that.',
+  invalid_invite: 'That invite code is invalid or has already been used.',
   bad_request: 'Check what you entered and try again.',
   too_large: 'Check what you entered and try again.',
   https_required: 'Check what you entered and try again.',

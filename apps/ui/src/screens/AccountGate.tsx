@@ -151,6 +151,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -186,6 +187,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     setEmail('');
     setPassword('');
     setDisplayName('');
+    setInviteCode('');
     setEmailCode('');
     setAgreedTerms(false);
     setShowPassword(false);
@@ -312,8 +314,10 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     const nextName = typed('gate-name', displayName).trim();
     const nextEmail = typed('gate-email', email).trim();
     const nextPassword = typed('gate-password', password);
+    const nextInvite = typed('gate-invite', inviteCode).trim();
     setDisplayName(nextName);
     setEmail(nextEmail);
+    setInviteCode(nextInvite);
 
     const nextEmailError = validateEmailInput(nextEmail);
     const nextPasswordError = validatePasswordInput(nextPassword, true);
@@ -336,7 +340,12 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
     }
 
     try {
-      await registerAccount({ email: nextEmail, password: nextPassword, displayName: nextName });
+      await registerAccount({
+        email: nextEmail,
+        password: nextPassword,
+        displayName: nextName,
+        ...(nextInvite !== '' ? { inviteCode: nextInvite } : {}),
+      });
       const nextState = await signIn({ email: nextEmail, password: nextPassword });
       setPassword('');
       onChanged(nextState);
@@ -748,8 +757,8 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
                       const current = typed('gate-password', password);
                       if (current !== '') setPasswordError(validatePasswordInput(current, true));
                     }}
-                    onConfirm={() => void submitRegister()}
-                    afterPasteFocusId="gate-agree-terms"
+                    onConfirm={next('gate-invite')}
+                    afterPasteFocusId="gate-invite"
                     placeholder="Create a password"
                   />
                   <FocusButton
@@ -767,6 +776,24 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
                 </div>
                 <p id="gate-password-hint" className="gate__helper">Use at least {MIN_PASSWORD_LENGTH} characters.</p>
                 <FieldError id="gate-password-error" message={passwordError} />
+              </div>
+
+              <div className="gate__field">
+                <label className="gate__label" htmlFor="gate-invite-input">Invite code</label>
+                <FocusField
+                  id="gate-invite"
+                  inputId="gate-invite-input"
+                  name="inviteCode"
+                  autoComplete="off"
+                  enterKeyHint="go"
+                  tabIndex={0}
+                  disabled={busy}
+                  value={inviteCode}
+                  onChange={setInviteCode}
+                  onConfirm={() => void submitRegister()}
+                  afterPasteFocusId="gate-agree-terms"
+                  placeholder="Optional invite code"
+                />
               </div>
 
               <div className="gate__field">

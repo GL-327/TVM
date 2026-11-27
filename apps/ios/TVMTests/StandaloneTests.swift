@@ -966,6 +966,8 @@ final class FakeAccountsService: TVMAccountsTransport {
     var log: [String] = []
     var bodies: [[String: Any]] = []
     var down = false
+    var maintenanceOn = false
+    var maintenanceMessage = ""
     private var counter = 0
 
     func count(_ prefix: String) -> Int { log.filter { $0.hasPrefix(prefix) }.count }
@@ -1003,14 +1005,29 @@ final class FakeAccountsService: TVMAccountsTransport {
         let unauthorized = reply(401, ["error": "unauthorized"])
 
         switch (method, path) {
+        case ("GET", "/v1/config"):
+            let maint: [String: Any] = ["on": maintenanceOn, "message": maintenanceMessage]
+            return reply(200, [
+                "announcement": NSNull(),
+                "minVersion": NSNull(),
+                "flags": [String: Bool](),
+                "openSignups": false,
+                "mail": false,
+                "maintenance": maint,
+            ])
         case ("POST", "/v1/register"):
             let email = json["email"] as? String ?? ""
+            let inviteCode = json["inviteCode"] as? String ?? ""
+            if inviteCode == "BAD-CODE" {
+                return reply(400, ["error": "invalid_invite"])
+            }
             // A duplicate gets the same receipt, so the service never says who has an account.
             if members.contains(where: { $0.email == email }) {
                 return reply(201, ["account": account(Member(id: "acc_new", email: email, password: ""))])
             }
             counter += 1
-            let made = Member(id: "acc_\(counter)", email: email, password: json["password"] as? String ?? "")
+            let status = inviteCode == "INVITE-OK" ? "active" : "waiting"
+            let made = Member(id: "acc_\(counter)", email: email, password: json["password"] as? String ?? "", status: status)
             members.append(made)
             return reply(201, ["account": account(made)])
         case ("POST", "/v1/signin"):
@@ -1318,5 +1335,57 @@ final class TVMAccountsTests: XCTestCase {
         clock = clock.addingTimeInterval(TVMAccounts.accountTTL + 1)
         let dropped = await accounts.rdTokenFor(token: live)
         XCTAssertNil(dropped)
+    }
+
+    func testInviteCodeIsForwardedAndInvalidInvitePreservesReason() async {
+        let accounts = makeAccounts()
+        let ok = await accounts.register(
+            email: "invited@example.com",
+            password: FakeAccountsService.password,
+            displayName: "Invited",
+            client: "test agent",
+            inviteCode: "INVITE-OK"
+        )
+        switch ok {
+        case .success(let account):
+            XCTAssertEqual(account["activated"] as? Bool, true)
+            XCTAssertEqual(service.bodies.first?["inviteCode"] as? String, "INVITE-OK")
+        case .failure(let err):
+            XCTFail("Expected invite signup success, got \(err.message)")
+        }
+
+        let bad = await accounts.register(
+            email: "rejected@example.com",
+            password: FakeAccountsService.password,
+            displayName: "Rejected",
+            client: "test agent",
+            inviteCode: "BAD-CODE"
+        )
+        switch bad {
+        case .success:
+            XCTFail("Expected invalid_invite failure")
+        case .failure(let err):
+            XCTAssertEqual(err.message, "invalid_invite")
+        }
+    }
+
+    func testPublicConfigAndAnnouncementSurfaceMaintenanceBanner() async {
+        let accounts = makeAccounts()
+        let before = await accounts.config(force: true)
+        let off = before["maintenance"] as? [String: Any]
+        XCTAssertEqual(off?["on"] as? Bool, false)
+        XCTAssertEqual(off?["message"] as? String, "")
+
+        service.maintenanceOn = true
+        service.maintenanceMessage = "Storage maintenance tonight."
+        let after = await accounts.config(force: true)
+        let on = after["maintenance"] as? [String: Any]
+        XCTAssertEqual(on?["on"] as? Bool, true)
+        XCTAssertEqual(on?["message"] as? String, "Storage maintenance tonight.")
+
+        let ann = await accounts.announcement()
+        let annMaint = ann["maintenance"] as? [String: Any]
+        XCTAssertEqual(annMaint?["on"] as? Bool, true)
+        XCTAssertEqual(annMaint?["message"] as? String, "Storage maintenance tonight.")
     }
 }

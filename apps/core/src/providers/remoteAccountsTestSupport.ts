@@ -19,7 +19,10 @@ export function mockAccountsApi() {
     const credential = (headers.get('authorization') ?? '').replace(/^Bearer /, '');
     const body = init?.body ? JSON.parse(String(init.body)) : {};
     const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
-    if (path === '/v1/register') return json({ account: member }, 201);
+    if (path === '/v1/register') {
+      if (body.inviteCode === 'BAD-CODE') return json({ error: 'invalid_invite' }, 400);
+      return json({ account: member }, 201);
+    }
     if (path === '/v1/signin') {
       if (body.password === 'wrong') return json({ error: 'invalid' }, 401);
       const account = body.email === owner.email ? owner : member;

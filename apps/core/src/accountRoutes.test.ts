@@ -184,6 +184,16 @@ describe('remote account HTTP compatibility', () => {
     const approved = await f.call('/api/hub/v1/pair/approve', { token: 'admin-session', body: { userCode: paired.body.userCode } });
     expect(approved).toMatchObject({ status: 503, body: { error: 'remote_pairing_unavailable' } });
   });
+  it('forwards optional inviteCode on registration and surfaces invalid_invite cleanly', async () => {
+    const f = await boot();
+    const bad = await f.call('/api/account/register', { body: { email: 'x@example.com', password: 'test-password', inviteCode: 'BAD-CODE' } });
+    expect(bad.status).toBe(400);
+    expect(bad.body).toEqual({ error: 'invalid_invite' });
+    const ok = await f.call('/api/account/register', { body: { email: 'x@example.com', password: 'test-password', inviteCode: ' GOOD-CODE ' } });
+    expect(ok.status).toBe(200);
+    const registerCalls = f.api.mock.calls.filter(([url]) => String(url).endsWith('/v1/register'));
+    expect(JSON.parse(String(registerCalls.at(-1)?.[1]?.body))).toMatchObject({ inviteCode: 'GOOD-CODE' });
+  });
   it('returns moved for local email codes and lets remote admin verification drive account state', async () => {
     const f = await boot();
     for (const path of ['/api/account/email/send', '/api/account/email/verify']) {

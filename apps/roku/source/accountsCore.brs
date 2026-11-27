@@ -108,8 +108,15 @@ end function
 
 function lcRegisterAccount(ctx as Object) as Object
   body = { email: lcAaText(ctx.body, "email"), password: lcAaText(ctx.body, "password"), displayName: lcAaText(ctx.body, "displayName"), client: "TVM Roku" }
+  inv = lcAaText(ctx.body, "inviteCode")
+  if inv <> "" then body.inviteCode = inv
   res = lcAccountsHttp(ctx, "/v1/register", "POST", body)
-  if not res.ok then return lcAccountsError(res)
+  if not res.ok
+    if res.status = 400 and res.json <> invalid and lcAaText(res.json, "error") = "invalid_invite"
+      return { status: 400, json: { error: "invalid_invite" } }
+    end if
+    return lcAccountsError(res)
+  end if
   return { status: 201, json: { account: lcPublicAccount(lcAaGet(res.json, "account", invalid)) } }
 end function
 
@@ -157,17 +164,20 @@ function lcSanitizeDeviceClient(raw as String) as String
 end function
 
 function lcGetPublicConfig(ctx as Object) as Object
-  fallback = { announcement: invalid, minVersion: invalid, flags: {}, openSignups: false, mail: false }
+  fallback = { announcement: invalid, minVersion: invalid, flags: {}, openSignups: false, mail: false, maintenance: { on: false, message: "" } }
   cached = lcReadTmpJson("tvm_public_config.json", 60)
   if cached <> invalid then return { status: 200, json: cached }
   res = lcAccountsHttp(ctx, "/v1/config", "GET", invalid, false)
   if not res.ok or res.json = invalid then return { status: 200, json: fallback }
+  rawMaint = lcAaGet(res.json, "maintenance", invalid)
+  maint = { on: lcAaBool(rawMaint, "on", false), message: lcAaText(rawMaint, "message") }
   cfg = {
     announcement: lcAaGet(res.json, "announcement", invalid)
     minVersion: lcAaGet(res.json, "minVersion", invalid)
     flags: lcAaGet(res.json, "flags", {})
     openSignups: lcAaBool(res.json, "openSignups", false)
     mail: lcAaBool(res.json, "mail", false)
+    maintenance: maint
   }
   lcWriteTmpJson("tvm_public_config.json", cfg)
   return { status: 200, json: cfg }

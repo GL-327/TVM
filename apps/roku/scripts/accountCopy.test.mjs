@@ -99,6 +99,7 @@ test('BrightScript accountCopy.brs matches JS reference across all helpers', { t
         check(friendlyPlanName("stream-live") = "Stream + Live", "plan name")
         check(friendlyAccountError("rate_limited", 429, "signin") = "${friendlyAccountError('rate_limited', 429, 'signin')}", "rate limit")
         check(friendlyAccountError("invalid", 401, "signin") = "${friendlyAccountError('invalid', 401, 'signin')}", "invalid signin")
+        check(friendlyAccountError("invalid_invite", 400, "register") = "${friendlyAccountError('invalid_invite', 400, 'register')}", "invalid invite")
         pollWait = devicePollAction(428, "pending", 5)
         check(pollWait.action = "wait" and pollWait.interval = 5, "poll pending")
         pollSlow = devicePollAction(429, "slow_down", 5)

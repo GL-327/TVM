@@ -35,6 +35,7 @@ class Shell {
 public:
     struct ReleaseCard { std::string version, title; std::vector<std::string> highlights; };
     void SetReleaseCard(std::optional<ReleaseCard> card) { releaseCard_ = std::move(card); }
+    void SetMaintenanceBanner(std::optional<std::string> message) { maintenanceBanner_ = std::move(message); }
     // The patch notes pop-up: a modal sheet over the whole app, closed with "Got it", Enter or Esc. Its body scrolls
     // when the notes are longer than the sheet (wheel, Up and Down, Page Up and Page Down).
     struct PatchChange {
@@ -158,6 +159,7 @@ private:
     bool ActivateChrome(const std::string& key, double nowMs);
     Box ReleaseBox() const;
     std::optional<ReleaseCard> releaseCard_;
+    std::optional<std::string> maintenanceBanner_;
     std::optional<PatchNotes> patchNotes_;
     double patchScroll_ = 0.0;
     enum class PatchItem { Highlight, Area, Change, IssuesHeading, Issue };

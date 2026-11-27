@@ -79,7 +79,7 @@ export async function fetchAccount(): Promise<AccountState> {
   }
 }
 
-export async function registerAccount(input: { email: string; password: string; displayName?: string }): Promise<AccountView> {
+export async function registerAccount(input: { email: string; password: string; displayName?: string; inviteCode?: string }): Promise<AccountView> {
   return json<AccountView>('/api/account/register', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

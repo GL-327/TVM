@@ -162,6 +162,7 @@ class TvmAccounts(
         put("flags", JSONObject())
         put("openSignups", false)
         put("mail", false)
+        put("maintenance", Json.obj("on" to false, "message" to ""))
     }
 
     private fun safeHttpUrl(raw: String?): String? {
@@ -195,12 +196,16 @@ class TvmAccounts(
             }
         }
         val minVersion = (raw.opt("minVersion") as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        val maint = raw.optJSONObject("maintenance")
+        val maintOn = maint?.optBoolean("on", false) == true
+        val maintMsg = (maint?.opt("message") as? String)?.trim() ?: ""
         return JSONObject().apply {
             put("announcement", announcement ?: JSONObject.NULL)
             put("minVersion", minVersion ?: JSONObject.NULL)
             put("flags", flagsOut)
             put("openSignups", raw.optBoolean("openSignups", false))
             put("mail", raw.optBoolean("mail", false))
+            put("maintenance", Json.obj("on" to maintOn, "message" to maintMsg))
         }
     }
 
@@ -238,6 +243,7 @@ class TvmAccounts(
             put("announcement", cfg.opt("announcement") ?: JSONObject.NULL)
             put("minVersion", cfg.opt("minVersion") ?: JSONObject.NULL)
             put("flags", cfg.optJSONObject("flags") ?: JSONObject())
+            put("maintenance", cfg.optJSONObject("maintenance") ?: Json.obj("on" to false, "message" to ""))
         }
     }
 
@@ -324,7 +330,13 @@ class TvmAccounts(
 
     // ---- Actions ----------------------------------------------------------
 
-    fun register(rawEmail: String, password: String, displayName: String?, client: String?): Result<JSONObject> {
+    fun register(
+        rawEmail: String,
+        password: String,
+        displayName: String?,
+        client: String?,
+        inviteCode: String? = null,
+    ): Result<JSONObject> {
         val email = normalize(rawEmail)
         if (!emailLooksValid(email)) return Result.failure(Exception("Enter a valid email address."))
         if (password.length < 10) return Result.failure(Exception("Use at least 10 characters."))
@@ -334,7 +346,12 @@ class TvmAccounts(
             val name = displayName?.trim()?.filter { !it.isISOControl() }?.take(80)
             if (!name.isNullOrEmpty()) body.put("displayName", name)
             clientName(client)?.let { body.put("client", it) }
+            val code = inviteCode?.trim()?.filter { !it.isISOControl() }?.take(64)
+            if (!code.isNullOrEmpty()) body.put("inviteCode", code)
             val (status, reply) = call("POST", "/v1/register", null, body)
+            if (status == 400 && reply.text("error") == "invalid_invite") {
+                throw AccountsException(400, "invalid_invite")
+            }
             if (status != 201 && status != 200) {
                 throw failure(status, "That account could not be created. If it already exists, sign in instead.")
             }

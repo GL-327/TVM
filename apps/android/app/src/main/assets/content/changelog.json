@@ -3,6 +3,30 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.16",
+      "date": "2026-11-27",
+      "title": "Invite codes and maintenance notices",
+      "highlights": [
+        "Sign-up has an optional Invite code field: a valid code lets you in straight away."
+      ],
+      "changes": [
+        {
+          "area": "Account",
+          "text": "Sign-up has an optional Invite code field; a valid code approves the account without waiting."
+        },
+        {
+          "area": "Home",
+          "text": "When TVM is under maintenance, Home shows a short notice. Playback keeps working."
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Franchise intros are not on Roku yet."
+      ]
+    },
+    {
       "version": "1.4.15",
       "date": "2026-11-27",
       "title": "The right audio track",

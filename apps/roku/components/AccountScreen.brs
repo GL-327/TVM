@@ -295,6 +295,7 @@ function focusGrid() as Object
   if phase = "register_name" then return [["well"], ["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"], ["btnLink"]]
   if phase = "register_email" then return [["well"], ["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"]]
   if phase = "register_password" then return [["well"], ["btnShowPass"], ["btnPrimary"], ["btnSecondary1"]]
+  if phase = "register_invite" then return [["well"], ["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"]]
   if phase = "register_terms" then return [["check"], ["btnLink"], ["btnPrimary"], ["btnSecondary1"], ["btnSecondary2"]]
   if phase = "waiting" or phase = "unreachable" then return [["btnPrimary"], ["btnSecondary1"], ["btnLink"]]
   if phase = "suspended" then return [["btnSecondary1"], ["btnLink"]]
@@ -485,6 +486,19 @@ sub paintSingleCardPhase(phase as String, busy as Boolean)
     placeButton(m.btnShowPass, innerX, 1044, 896, showPassLabel(), false, false)
     placeButton(m.btnPrimary, innerX, 1220, innerW, "Continue", true, busy)
     placeButton(m.btnSecondary1, innerX, 1396, innerW, "Back", false, false)
+    cardH = 1280
+    cardY = 320
+  else if phase = "register_invite"
+    m.kickerLabel.text = "CREATE ACCOUNT"
+    m.headingLabel.text = "Invite code (optional)"
+    m.ledeLabel.text = "If the owner gave you an invite code, enter it now. Otherwise just continue."
+    m.wellGroup.visible = true
+    m.wellGroup.translation = [innerX, 728]
+    m.wellCaption.text = "Invite code (optional)"
+    paintWellValue(asText(m.top.inviteDetail), "From the owner, if you have one", false, fieldError, "Skipped if left blank")
+    placeButton(m.btnPrimary, innerX, 1044, innerW, "Continue", true, busy)
+    placeButton(m.btnSecondary1, innerX, 1220, innerW, "Back", false, false)
+    placeButton(m.btnSecondary2, innerX, 1392, innerW, "I already have an account", false, false)
     cardH = 1280
     cardY = 320
   else if phase = "register_terms"
@@ -825,7 +839,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     else if phase = "signin_password"
       emit("backToEmail")
       return true
-    else if phase = "register_email" or phase = "register_password" or phase = "register_terms"
+    else if phase = "register_email" or phase = "register_password" or phase = "register_invite" or phase = "register_terms"
       emit("prevStep")
       return true
     end if
@@ -898,6 +912,7 @@ sub activateFocused(focusedId as String, phase as String)
     if phase = "signin_email" or phase = "register_email" then emit("editEmail")
     if phase = "signin_password" or phase = "register_password" then emit("editPassword")
     if phase = "register_name" then emit("editName")
+    if phase = "register_invite" then emit("editInvite")
   end if
   if focusedId = "check" then emit("toggleTermsAgree")
   if focusedId = "btnShowPass" then emit("toggleShowPassword")
@@ -913,7 +928,7 @@ sub activateFocused(focusedId as String, phase as String)
     paint()
   end if
   if focusedId = "btnPrimary"
-    if phase = "signin_email" or phase = "register_name" or phase = "register_email" or phase = "register_password"
+    if phase = "signin_email" or phase = "register_name" or phase = "register_email" or phase = "register_password" or phase = "register_invite"
       emit("nextStep")
     else if phase = "signin_password" or phase = "register_terms"
       emit("submit")
@@ -934,7 +949,7 @@ sub activateFocused(focusedId as String, phase as String)
       emit("backToPhone")
     else if phase = "register_name"
       emit("backToSignin")
-    else if phase = "register_email" or phase = "register_password" or phase = "register_terms"
+    else if phase = "register_email" or phase = "register_password" or phase = "register_invite" or phase = "register_terms"
       emit("prevStep")
     else if phase = "waiting" or phase = "unreachable" or phase = "suspended" or phase = "terms"
       emit("signout")
@@ -949,7 +964,7 @@ sub activateFocused(focusedId as String, phase as String)
       emit("startRegister")
     else if phase = "register_name"
       emit("backToPhone")
-    else if phase = "register_email" or phase = "register_terms"
+    else if phase = "register_email" or phase = "register_invite" or phase = "register_terms"
       emit("backToSignin")
     else if phase = "check_inbox" or phase = "verify"
       emit("signout")

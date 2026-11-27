@@ -77,6 +77,7 @@ describe('accountCopy status & error mapping', () => {
       'not_configured',
       'missing_token',
       'no_processor',
+      'invalid_invite',
       '401',
       '403',
       '404',

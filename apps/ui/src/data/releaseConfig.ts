@@ -3,12 +3,14 @@ import { apiFetch } from './media';
 import { applyRemoteFlags } from './polishPrefs';
 
 export interface Announcement { id: string; text: string; level: 'info' | 'warning' | 'critical'; link?: string }
+export interface MaintenanceConfig { on: boolean; message: string }
 export interface ReleaseConfig {
   announcement: Announcement | null;
   minVersion: string | null;
   flags: Record<string, boolean>;
   mail?: boolean;
   openSignups?: boolean;
+  maintenance?: MaintenanceConfig;
 }
 
 let config: ReleaseConfig | null = null;

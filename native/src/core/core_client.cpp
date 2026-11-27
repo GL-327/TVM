@@ -254,6 +254,9 @@ std::string FriendlyAccountError(const std::string& raw) {
     if (ContainsAny(lower, {"email_unverified"})) {
         return "Confirm your email to continue.";
     }
+    if (ContainsAny(lower, {"invalid_invite"})) {
+        return "That invite code is invalid or has already been used.";
+    }
     if (ContainsAny(lower, {"authorization_pending", "428"})) {
         return "Finish signing in on your phone or browser.";
     }
@@ -422,8 +425,11 @@ AccountState Client::SignIn(const std::string& email, const std::string& passwor
     SaveToken(token);
     return Status();
 }
-void Client::Register(const std::string& email, const std::string& password, const std::string& name) {
-    Call("/api/account/register", "POST", {{"email", email}, {"password", password}, {"displayName", name}});
+void Client::Register(const std::string& email, const std::string& password, const std::string& name,
+                      const std::string& inviteCode) {
+    nlohmann::json body = {{"email", email}, {"password", password}, {"displayName", name}};
+    if (!inviteCode.empty()) body["inviteCode"] = inviteCode;
+    Call("/api/account/register", "POST", body);
 }
 void Client::SignOut() {
     try { Call("/api/account/signout", "POST"); }

@@ -433,6 +433,7 @@ private:
     std::string email_;
     std::string password_;
     std::string name_;
+    std::string invite_;
     std::string code_;
     std::string activeField_ = "email";
     bool editing_ = true;

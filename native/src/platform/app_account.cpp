@@ -11,6 +11,9 @@ std::string Param(const ui::Command& command, const char* key) {
 
 std::string InferAccountErrorField(const std::string& reason, const std::string& message) {
     const std::string friendly = coreapi::FriendlyAccountError(message);
+    if (reason == "invalid_invite" || friendly.find("invite") != std::string::npos) {
+        return "invite";
+    }
     if (reason == "invalid_credentials" || reason == "password_too_short" || reason == "password_too_long" ||
         reason == "password_too_common" || friendly.find("password") != std::string::npos ||
         friendly.find("10 characters") != std::string::npos) {
@@ -201,6 +204,7 @@ void App::HandleAccountCommand(const ui::Command& command) {
     const std::string password = Param(command, "password");
     const std::string name = Param(command, "name");
     const std::string code = Param(command, "code");
+    const std::string inviteCode = Param(command, "inviteCode");
 
     accountBusy_ = true;
     accountMessage_.clear();
@@ -208,7 +212,7 @@ void App::HandleAccountCommand(const ui::Command& command) {
     accountErrorField_.clear();
     SyncAccountScreen();
 
-    background_->Run([this, action, email, password, name, code] {
+    background_->Run([this, action, email, password, name, code, inviteCode] {
         coreapi::AccountState next = account_;
         std::string message;
         std::string errorField;
@@ -218,7 +222,7 @@ void App::HandleAccountCommand(const ui::Command& command) {
             if (action == "account-signin") {
                 next = core_->SignIn(email, password);
             } else if (action == "account-register") {
-                core_->Register(email, password, name);
+                core_->Register(email, password, name, inviteCode);
                 next = core_->SignIn(email, password);
             } else if (action == "account-signout") {
                 core_->SignOut();

@@ -20,10 +20,12 @@ export interface AccountsConfig {
   flags: Record<string, boolean>;
   openSignups: boolean;
   mail: boolean;
+  maintenance: { on: boolean; message: string };
 }
 
 export const DEFAULT_ACCOUNTS_CONFIG: AccountsConfig = {
   announcement: null, minVersion: null, flags: {}, openSignups: false, mail: false,
+  maintenance: { on: false, message: '' },
 };
 
 function publicConfig(input: Partial<AccountsConfig>): AccountsConfig {
@@ -35,6 +37,11 @@ function publicConfig(input: Partial<AccountsConfig>): AccountsConfig {
       if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) link = url.href;
     } catch { /* Ignore invalid links. */ }
   }
+  const m = input.maintenance;
+  const maintenance = {
+    on: m?.on === true,
+    message: typeof m?.message === 'string' ? m.message.trim() : '',
+  };
   return {
     announcement: a && typeof a.id === 'string' && typeof a.text === 'string' &&
       ['info', 'warning', 'critical'].includes(a.level)
@@ -43,14 +50,15 @@ function publicConfig(input: Partial<AccountsConfig>): AccountsConfig {
     flags: Object.fromEntries(Object.entries(input.flags ?? {}).filter(([, value]) => typeof value === 'boolean')),
     openSignups: input.openSignups === true,
     mail: input.mail === true,
+    maintenance,
   };
 }
 
 export class AccountsError extends Error {
   readonly status: number;
   readonly retryAfter: string | null;
-  constructor(status: number, retryAfter: string | null = null) {
-    super(status === 503 ? 'accounts_unavailable' : status === 429 ? 'rate_limited' : status === 403 ? 'forbidden' : 'invalid');
+  constructor(status: number, retryAfter: string | null = null, code?: string) {
+    super(code ?? (status === 503 ? 'accounts_unavailable' : status === 429 ? 'rate_limited' : status === 403 ? 'forbidden' : 'invalid'));
     this.status = status;
     this.retryAfter = retryAfter;
   }
@@ -114,7 +122,14 @@ export function createRemoteAccountsService(options: {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch { throw new AccountsError(503); }
-    if (!response.ok) throw new AccountsError(response.status, response.headers.get('retry-after'));
+    if (!response.ok) {
+      let code: string | undefined;
+      if (response.status === 400) {
+        const errBody = await response.json().catch(() => null) as { error?: unknown } | null;
+        if (errBody?.error === 'invalid_invite') code = 'invalid_invite';
+      }
+      throw new AccountsError(response.status, response.headers.get('retry-after'), code);
+    }
     return response;
   };
   const request = async <T>(path: string, method = 'GET', body?: unknown, bearer?: string): Promise<T> => {
@@ -226,11 +241,13 @@ export function createRemoteAccountsService(options: {
       if (!key.trim()) deleteSecret(keyPath);
       else writeSealed(dataDir, keyPath, { origin, key: key.trim() });
     },
-    async register(input: { email?: unknown; password?: unknown; displayName?: unknown; client?: string | null }) {
+    async register(input: { email?: unknown; password?: unknown; displayName?: unknown; client?: string | null; inviteCode?: unknown }) {
+      const inviteCode = typeof input.inviteCode === 'string' ? input.inviteCode.trim() : '';
       const result = await request<{ account: ServiceAccount }>('/v1/register', 'POST', {
         email: input.email, password: input.password,
         ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
         ...(input.client == null ? {} : { client: input.client }),
+        ...(inviteCode ? { inviteCode } : {}),
       });
       return publicAccount(record(result.account));
     },

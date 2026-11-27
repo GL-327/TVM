@@ -95,6 +95,38 @@ bool App::ShowPatchNotesPopup() {
     return true;
 }
 
+void App::SyncPublicConfig(double nowMs) {
+    if (!accountSettled_ || configFetching_ || nowMs - configCheckedMs_ < 300000.0) return;
+    configFetching_ = true;
+    configCheckedMs_ = nowMs;
+    patchPopupAsked_ = true;
+    background_->Run([this] {
+        int flag = -1;
+        std::optional<std::string> maintenance;
+        bool ok = false;
+        try {
+            const auto config = core_->Call("/api/config");
+            ok = true;
+            if (config.contains("flags") && config["flags"].is_object()) {
+                flag = config["flags"].value("patchNotesPopup", false) ? 1 : 0;
+            }
+            if (config.contains("maintenance") && config["maintenance"].is_object() &&
+                config["maintenance"].value("on", false)) {
+                std::string msg = config["maintenance"].value("message", "");
+                if (msg.empty()) msg = "TVM is undergoing maintenance. Playback remains available.";
+                maintenance = std::move(msg);
+            }
+        } catch (...) {}
+        background_->PostToUi([this, ok, flag, maintenance = std::move(maintenance)]() mutable {
+            configFetching_ = false;
+            if (!ok) return;
+            if (flag >= 0) patchPopupFlag_ = flag;
+            shell_->SetMaintenanceBanner(std::move(maintenance));
+            dirty_ = true;
+        });
+    });
+}
+
 void App::SyncReleaseNotice(double nowMs) {
     if (!releaseNotice_ || !releaseNotice_->Pending()) return;
     if (shell_->ActiveScreenName() != "home" || streamLane_ != "all" || intro_->Animating()) {

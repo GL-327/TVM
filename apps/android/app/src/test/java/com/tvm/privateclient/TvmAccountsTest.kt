@@ -50,6 +50,8 @@ class TvmAccountsTest {
         val log = mutableListOf<String>()
         val bodies = mutableListOf<JSONObject>()
         var down = false
+        var maintenanceOn = false
+        var maintenanceMessage = ""
         private var counter = 0
 
         fun count(prefix: String) = log.count { it.startsWith(prefix) }
@@ -77,12 +79,33 @@ class TvmAccountsTest {
             fun session(): Member? = bearer?.let { sessions[it] }?.takeIf { it.status != "suspended" }
 
             return when {
+                method == "GET" && path == "/v1/config" -> {
+                    val maint = JSONObject().put("on", maintenanceOn).put("message", maintenanceMessage)
+                    reply(
+                        200,
+                        JSONObject()
+                            .put("announcement", JSONObject.NULL)
+                            .put("minVersion", JSONObject.NULL)
+                            .put("flags", JSONObject())
+                            .put("openSignups", false)
+                            .put("mail", false)
+                            .put("maintenance", maint),
+                    )
+                }
                 method == "POST" && path == "/v1/register" -> {
                     val email = json.getString("email")
-                    // A duplicate gets the same receipt, so the service never says who has an account.
-                    val existing = members.firstOrNull { it.email == email }
-                    val made = existing ?: Member("acc_${++counter}", email, json.getString("password")).also { members.add(it) }
-                    reply(201, JSONObject().put("account", account(if (existing == null) made else Member("acc_new", email, ""))))
+                    val inviteCode = json.opt("inviteCode") as? String ?: ""
+                    if (inviteCode == "BAD-CODE") {
+                        reply(400, JSONObject().put("error", "invalid_invite"))
+                    } else {
+                        // A duplicate gets the same receipt, so the service never says who has an account.
+                        val existing = members.firstOrNull { it.email == email }
+                        val made = existing ?: Member("acc_${++counter}", email, json.getString("password")).also {
+                            if (inviteCode == "INVITE-OK") it.status = "active"
+                            members.add(it)
+                        }
+                        reply(201, JSONObject().put("account", account(if (existing == null) made else Member("acc_new", email, ""))))
+                    }
                 }
                 method == "POST" && path == "/v1/signin" -> {
                     val m = members.firstOrNull { it.email == json.getString("email") }
@@ -545,6 +568,36 @@ class TvmAccountsTest {
         val channels = call(c, "GET", "/api/live").second.getJSONArray("channels")
         assertEquals("live:test:dw-news", channels.getJSONObject(0).getString("id"))
         assertFalse(channels.getJSONObject(0).has("url"))
+    }
+
+    @Test
+    fun inviteCodeIsForwardedAndInvalidInvitePreservesReason() {
+        val a = accounts()
+        val approved = a.register("invited@example.com", password, "Invited", "test agent", "INVITE-OK").getOrThrow()
+        assertTrue(approved.getBoolean("activated"))
+        assertEquals("INVITE-OK", service.bodies.single().getString("inviteCode"))
+
+        val rejected = a.register("rejected@example.com", password, "Rejected", "test agent", "BAD-CODE")
+        assertTrue(rejected.isFailure)
+        assertEquals("invalid_invite", rejected.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun publicConfigAndAnnouncementSurfaceMaintenanceBanner() {
+        val a = accounts()
+        val off = a.config(force = true).getJSONObject("maintenance")
+        assertFalse(off.getBoolean("on"))
+        assertEquals("", off.getString("message"))
+
+        service.maintenanceOn = true
+        service.maintenanceMessage = "Storage maintenance tonight."
+        val on = a.config(force = true).getJSONObject("maintenance")
+        assertTrue(on.getBoolean("on"))
+        assertEquals("Storage maintenance tonight.", on.getString("message"))
+
+        val ann = a.announcement().getJSONObject("maintenance")
+        assertTrue(ann.getBoolean("on"))
+        assertEquals("Storage maintenance tonight.", ann.getString("message"))
     }
 
     private companion object {

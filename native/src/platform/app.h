@@ -136,8 +136,11 @@ private:
     bool Allowed(const catalog::MediaItem& item) const;
     void PageRails();
     void FilterView(ui::SceneView& view) const;
+    void SyncPublicConfig(double nowMs);
     void SyncReleaseNotice(double nowMs);
     void DismissReleaseNotice(double nowMs);
+    double configCheckedMs_ = -300000.0;
+    bool configFetching_ = false;
     std::atomic<int> patchPopupFlag_{-1};  // -1 unknown, 0 off, 1 on: flags.patchNotesPopup from Core
     bool patchPopupAsked_ = false;
     std::unique_ptr<content::ReleaseNotice> releaseNotice_;

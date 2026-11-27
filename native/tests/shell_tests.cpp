@@ -1370,3 +1370,22 @@ TEST(details_open_to_first_paint_benchmark) {
     REQUIRE(immediateAvgMs < beforeAvgMs);
     REQUIRE(prefetchAvgMs < beforeAvgMs);
 }
+
+TEST(shell_paints_maintenance_banner_only_on_home) {
+    MemoryStore store;
+    Shell shell = MakeShell(store);
+    shell.SetMaintenanceBanner(std::string("Scheduled storage upgrade at midnight."));
+    {
+        ArtRecordingPainter painter;
+        shell.Paint(painter);
+        REQUIRE(painter.HasText("Scheduled storage upgrade at midnight."));
+    }
+    Command settings;
+    settings.name = "settings";
+    shell.Execute(settings, 0.0);
+    {
+        ArtRecordingPainter painter;
+        shell.Paint(painter);
+        REQUIRE(!painter.HasText("Scheduled storage upgrade at midnight."));
+    }
+}

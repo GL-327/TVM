@@ -9,6 +9,7 @@
     <field id="busy" type="boolean" value="false" onChange="onFieldChange" />
     <field id="emailDetail" type="string" onChange="onFieldChange" />
     <field id="nameDetail" type="string" onChange="onFieldChange" />
+    <field id="inviteDetail" type="string" onChange="onFieldChange" />
     <field id="passwordLength" type="integer" value="0" onChange="onFieldChange" />
     <field id="passwordPlain" type="string" onChange="onFieldChange" />
     <field id="showPassword" type="boolean" value="false" onChange="onFieldChange" />

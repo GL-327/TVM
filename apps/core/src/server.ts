@@ -740,7 +740,9 @@ async function handleApi(
 
   if (path === '/api/announcement' && request.method === 'GET') {
     const config = 'config' in accounts ? await accounts.config() : DEFAULT_ACCOUNTS_CONFIG;
-    sendJson(response, 200, { announcement: config.announcement, minVersion: config.minVersion, flags: config.flags });
+    sendJson(response, 200, {
+      announcement: config.announcement, minVersion: config.minVersion, flags: config.flags, maintenance: config.maintenance,
+    });
     return true;
   }
 

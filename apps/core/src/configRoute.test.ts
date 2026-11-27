@@ -25,15 +25,22 @@ async function get(fetchImpl: typeof fetch, times = 1) {
 }
 
 describe('GET /api/config', () => {
-  it('passes the service config and flags through, cached', async () => {
+  it('passes the service config, flags and maintenance banner through, cached', async () => {
     const api = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       announcement: null, minVersion: '1.4.0', flags: { patchNotesPopup: true, junk: 'x' }, openSignups: true, mail: false,
+      maintenance: { on: true, message: 'Scheduled maintenance tonight.' },
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
-    expect(await get(api, 2)).toMatchObject({ minVersion: '1.4.0', flags: { patchNotesPopup: true }, openSignups: true });
+    expect(await get(api, 2)).toMatchObject({
+      minVersion: '1.4.0', flags: { patchNotesPopup: true }, openSignups: true,
+      maintenance: { on: true, message: 'Scheduled maintenance tonight.' },
+    });
     expect(api).toHaveBeenCalledTimes(1);
   });
   it('returns defaults when the service is unreachable', async () => {
     const api = vi.fn<typeof fetch>(async () => { throw new Error('down'); });
-    expect(await get(api)).toEqual({ announcement: null, minVersion: null, flags: {}, openSignups: false, mail: false });
+    expect(await get(api)).toEqual({
+      announcement: null, minVersion: null, flags: {}, openSignups: false, mail: false,
+      maintenance: { on: false, message: '' },
+    });
   });
 });
