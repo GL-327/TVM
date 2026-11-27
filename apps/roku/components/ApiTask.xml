@@ -28,5 +28,6 @@
   <script type="text/brightscript" uri="pkg:/source/reviewsCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/accountsCore.brs" />
   <script type="text/brightscript" uri="pkg:/source/extrasCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/syncCore.brs" />
   <script type="text/brightscript" uri="ApiTask.brs" />
 </component>

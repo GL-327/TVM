@@ -23,6 +23,11 @@ data class ProfileRegistry(var activeId: String, val profiles: MutableList<Profi
 
 class TvmStore(private val root: File) {
     private val monitor = Any()
+    @Volatile
+    private var activeDir: File? = null
+    @Volatile
+    var onSyncStoreChanged: (() -> Unit)? = null
+
     /*
      * Profile colours, starting on the brand, matching apps/core/src/providers/profiles.ts.
      * The first hue was 350 — crimson — so the one profile a fresh install creates was
@@ -42,6 +47,25 @@ class TvmStore(private val root: File) {
             XtreamKeychain.attach(root)
         }
     }
+
+    internal fun rootDir(): File = root
+
+    fun activeSyncDir(): File? = synchronized(monitor) { activeDir }
+
+    fun setActiveDirectory(dir: File?) {
+        synchronized(monitor) {
+            activeDir = dir
+            dir?.mkdirs()
+        }
+    }
+
+    fun notifySyncChanged() {
+        onSyncStoreChanged?.invoke()
+    }
+
+    private fun scopeRoot(): File = activeDir ?: root
+
+    private fun profilesFile(): File = File(scopeRoot(), "profiles.json")
 
     fun file(name: String): File = File(root, name)
 
@@ -69,6 +93,7 @@ class TvmStore(private val root: File) {
 
     fun factoryReset() {
         synchronized(monitor) {
+            activeDir = null
             val children = root.listFiles()
             if (children != null) {
                 for (child in children) child.deleteRecursively()
@@ -79,79 +104,102 @@ class TvmStore(private val root: File) {
         }
     }
 
+    private fun readProfilesLocked(): ProfileRegistry? {
+        val document = readJsonFile(profilesFile()) as? JSONObject ?: return null
+        val list = document.opt("profiles") as? JSONArray ?: return null
+        val knownKeys = setOf("id", "name", "hue", "created", "avatar", "kind", "maxAge", "pin", "locked")
+        val profiles = ArrayList<ProfileRecord>()
+        for (index in 0 until list.length()) {
+            val item = list.opt(index) as? JSONObject ?: continue
+            val id = item.opt("id") as? String ?: continue
+            val name = item.opt("name") as? String ?: continue
+            val kind = if (item.opt("kind") as? String == "kids") "kids" else "standard"
+            val maxAge = TvmParental.normalizeAge(item.opt("maxAge"), kind) ?: TvmParental.defaultAge(kind)
+            val avatarRaw = (item.opt("avatar") as? String)?.trim()
+            val avatar = if (avatarRaw != null && TvmPins.AVATAR_RE.matches(avatarRaw)) avatarRaw else null
+            val pinObj = item.opt("pin") as? JSONObject
+            val pin = if (pinObj != null) {
+                val hash = pinObj.opt("hash") as? String
+                val salt = pinObj.opt("salt") as? String
+                val iter = (pinObj.opt("iter") as? Number)?.toInt() ?: TvmPins.PIN_ITERATIONS
+                if (!hash.isNullOrBlank() && !salt.isNullOrBlank() && iter > 0) {
+                    ProfilePin(hash = hash, salt = salt, iter = iter)
+                } else null
+            } else null
+            val extra = LinkedHashMap<String, Any?>()
+            val keys = item.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key !in knownKeys) extra[key] = item.opt(key)
+            }
+            profiles.add(
+                ProfileRecord(
+                    id = id,
+                    name = name,
+                    hue = (item.opt("hue") as? Number)?.toInt() ?: hues[index % hues.size],
+                    created = item.opt("created") as? String ?: isoNow(),
+                    avatar = avatar,
+                    kind = kind,
+                    maxAge = maxAge,
+                    pin = pin,
+                    extra = extra,
+                ),
+            )
+        }
+        val first = profiles.firstOrNull() ?: return null
+        val active = document.opt("activeId") as? String
+        val activeId = if (profiles.any { it.id == active }) (active ?: first.id) else first.id
+        return ProfileRegistry(activeId, profiles)
+    }
+
+    private fun writeProfilesLocked(activeId: String, profiles: List<ProfileRecord>) {
+        writeAtomic(
+            profilesFile(),
+            serialize(
+                Json.obj(
+                    "activeId" to activeId,
+                    "profiles" to Json.array(profiles.map { it.storageJson() }),
+                ),
+            ),
+        )
+        profileDir(activeId).mkdirs()
+    }
+
+    private fun profilesEqual(a: List<ProfileRecord>, b: List<ProfileRecord>): Boolean {
+        if (a.size != b.size) return false
+        for (i in a.indices) {
+            val left = a[i]
+            val right = b[i]
+            if (left.id != right.id || left.name != right.name || left.hue != right.hue ||
+                left.created != right.created || left.avatar != right.avatar ||
+                left.kind != right.kind || left.maxAge != right.maxAge || left.pin != right.pin
+            ) return false
+        }
+        return true
+    }
+
     fun profiles(): ProfileRegistry {
         synchronized(monitor) {
-            val document = readJsonFile(file("profiles.json")) as? JSONObject
-            val list = document?.opt("profiles") as? JSONArray
-            if (document != null && list != null) {
-                val knownKeys = setOf("id", "name", "hue", "created", "avatar", "kind", "maxAge", "pin", "locked")
-                val profiles = ArrayList<ProfileRecord>()
-                for (index in 0 until list.length()) {
-                    val item = list.opt(index) as? JSONObject ?: continue
-                    val id = item.opt("id") as? String ?: continue
-                    val name = item.opt("name") as? String ?: continue
-                    val kind = if (item.opt("kind") as? String == "kids") "kids" else "standard"
-                    val maxAge = TvmParental.normalizeAge(item.opt("maxAge"), kind) ?: TvmParental.defaultAge(kind)
-                    val avatarRaw = (item.opt("avatar") as? String)?.trim()
-                    val avatar = if (avatarRaw != null && TvmPins.AVATAR_RE.matches(avatarRaw)) avatarRaw else null
-                    val pinObj = item.opt("pin") as? JSONObject
-                    val pin = if (pinObj != null) {
-                        val hash = pinObj.opt("hash") as? String
-                        val salt = pinObj.opt("salt") as? String
-                        val iter = (pinObj.opt("iter") as? Number)?.toInt() ?: TvmPins.PIN_ITERATIONS
-                        if (!hash.isNullOrBlank() && !salt.isNullOrBlank() && iter > 0) {
-                            ProfilePin(hash = hash, salt = salt, iter = iter)
-                        } else null
-                    } else null
-                    val extra = LinkedHashMap<String, Any?>()
-                    val keys = item.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        if (key !in knownKeys) extra[key] = item.opt(key)
-                    }
-                    profiles.add(
-                        ProfileRecord(
-                            id = id,
-                            name = name,
-                            hue = (item.opt("hue") as? Number)?.toInt() ?: hues[index % hues.size],
-                            created = item.opt("created") as? String ?: isoNow(),
-                            avatar = avatar,
-                            kind = kind,
-                            maxAge = maxAge,
-                            pin = pin,
-                            extra = extra,
-                        ),
-                    )
-                }
-                val first = profiles.firstOrNull()
-                if (first != null) {
-                    val active = document.opt("activeId") as? String
-                    val activeId = if (profiles.any { it.id == active }) (active ?: first.id) else first.id
-                    return ProfileRegistry(activeId, profiles)
-                }
-            }
+            readProfilesLocked()?.let { return it }
             val first = ProfileRecord(
                 id = "profile-1",
                 name = "Profile 1",
                 hue = hues[0],
                 created = isoNow(),
             )
-            saveProfiles(activeId = first.id, profiles = listOf(first))
+            writeProfilesLocked(activeId = first.id, profiles = listOf(first))
             return ProfileRegistry(first.id, arrayListOf(first))
         }
     }
 
     fun saveProfiles(activeId: String, profiles: List<ProfileRecord>) {
+        var changed = false
         synchronized(monitor) {
-            writeJSON(
-                "profiles.json",
-                Json.obj(
-                    "activeId" to activeId,
-                    "profiles" to Json.array(profiles.map { it.storageJson() }),
-                ),
-            )
-            profileDir(activeId).mkdirs()
+            val existing = readProfilesLocked()
+            changed = existing == null || !profilesEqual(existing.profiles, profiles)
+            writeProfilesLocked(activeId, profiles)
         }
+        if (changed) onSyncStoreChanged?.invoke()
     }
 
     fun contentCacheFile(name: String): File = File(root, "content-cache/$name.json")
@@ -183,7 +231,7 @@ class TvmStore(private val root: File) {
         }
     }
 
-    fun profileDir(id: String): File = File(root, "profiles/$id")
+    fun profileDir(id: String): File = File(scopeRoot(), "profiles/$id")
 
     fun progress(profileId: String): Map<String, ProgressEntry> {
         synchronized(monitor) {
@@ -198,13 +246,34 @@ class TvmStore(private val root: File) {
                 val entry = parsed.opt(id) as? JSONObject ?: return emptyMap()
                 val position = (entry.opt("position") as? Number)?.toDouble() ?: continue
                 val duration = (entry.opt("duration") as? Number)?.toDouble() ?: continue
+                val present = LinkedHashSet<String>()
+                if (entry.has("hiddenFromContinueWatching") && entry.opt("hiddenFromContinueWatching") is Boolean) {
+                    present.add("hiddenFromContinueWatching")
+                }
+                val completedAt = entry.opt("completedAt") as? String
+                if (completedAt != null) present.add("completedAt")
+                if (entry.has("completions") && entry.opt("completions") is Number) {
+                    present.add("completions")
+                }
+                val completedTitle = entry.opt("completedTitle") as? String
+                if (completedTitle != null) present.add("completedTitle")
+                val completedYearRaw = entry.opt("completedYear")
+                val completedYear = if (entry.has("completedYear") &&
+                    (completedYearRaw === JSONObject.NULL || completedYearRaw is Number)
+                ) {
+                    present.add("completedYear")
+                    Json.int(completedYearRaw)
+                } else null
                 out[id] = ProgressEntry(
                     position = position,
                     duration = duration,
                     updated = entry.opt("updated") as? String ?: "",
                     hiddenFromContinueWatching = entry.optBoolean("hiddenFromContinueWatching", false),
-                    completedAt = entry.opt("completedAt") as? String,
+                    completedAt = completedAt,
                     completions = (entry.opt("completions") as? Number)?.toInt() ?: 0,
+                    completedTitle = completedTitle,
+                    completedYear = completedYear,
+                    syncPresentKeys = present,
                 )
             }
             return out
@@ -218,10 +287,18 @@ class TvmStore(private val root: File) {
                 "position" to entry.position,
                 "duration" to entry.duration,
                 "updated" to entry.updated,
-                "completions" to entry.completions,
             )
-            if (entry.hiddenFromContinueWatching) value.put("hiddenFromContinueWatching", true)
+            if (entry.hiddenFromContinueWatching || "hiddenFromContinueWatching" in entry.syncPresentKeys) {
+                value.put("hiddenFromContinueWatching", entry.hiddenFromContinueWatching)
+            }
             entry.completedAt?.let { value.put("completedAt", it) }
+            if (entry.completions != 0 || "completions" in entry.syncPresentKeys) {
+                value.put("completions", entry.completions)
+            }
+            entry.completedTitle?.let { value.put("completedTitle", it) }
+            if (entry.completedYear != null || "completedYear" in entry.syncPresentKeys) {
+                value.put("completedYear", entry.completedYear ?: JSONObject.NULL)
+            }
             body.put(key, value)
         }
         profileDir(profileId).mkdirs()
@@ -237,44 +314,70 @@ class TvmStore(private val root: File) {
             val finished = position / duration > 0.96
             val previousFinished = previous?.isFinished == true
             val newlyFinished = finished && !previousFinished
+            val completedAt = if (newlyFinished) now else (previous?.completedAt ?: if (finished) now else null)
+            val present = LinkedHashSet<String>()
+            present.add("hiddenFromContinueWatching")
+            present.add("completions")
+            if (completedAt != null) present.add("completedAt")
+            if (previous?.completedTitle != null) present.add("completedTitle")
+            if (previous != null && (previous.completedYear != null || "completedYear" in previous.syncPresentKeys)) {
+                present.add("completedYear")
+            }
             all[id] = ProgressEntry(
                 position = position,
                 duration = duration,
                 updated = now,
                 hiddenFromContinueWatching = false,
-                completedAt = if (newlyFinished) now else (previous?.completedAt ?: if (finished) now else null),
+                completedAt = completedAt,
                 completions = maxOf(previous?.completions ?: 0, if (previousFinished) 1 else 0) +
                     (if (newlyFinished) 1 else 0),
+                completedTitle = previous?.completedTitle,
+                completedYear = previous?.completedYear,
+                syncPresentKeys = present,
             )
             saveProgressMap(profileId, all)
         }
+        onSyncStoreChanged?.invoke()
     }
 
     fun removeContinueWatching(profileId: String, id: String) {
         if (id.isEmpty()) return
+        var changed = false
         synchronized(monitor) {
             val all = LinkedHashMap(progress(profileId))
-            var changed = false
+            val now = isoNow()
             for ((key, entry) in all.entries.toList()) {
                 if ((key == id || key.startsWith("$id:")) && !entry.hiddenFromContinueWatching && !entry.isFinished) {
-                    all[key] = entry.copy(hiddenFromContinueWatching = true)
+                    all[key] = entry.copy(
+                        hiddenFromContinueWatching = true,
+                        updated = now,
+                        syncPresentKeys = entry.syncPresentKeys + "hiddenFromContinueWatching",
+                    )
                     changed = true
                 }
             }
             if (changed) saveProgressMap(profileId, all)
         }
+        if (changed) onSyncStoreChanged?.invoke()
     }
 
     fun setWatched(profileId: String, id: String, watched: Boolean) {
         if (id.isEmpty()) return
+        if (watched) {
+            var targetDuration: Double? = null
+            synchronized(monitor) {
+                val old = progress(profileId)[id]
+                if (old?.isFinished == true) return
+                targetDuration = if (old != null && old.duration > 0) old.duration else 1.0
+            }
+            targetDuration?.let { writeProgress(profileId, id, it, it) }
+            return
+        }
+        var changed = false
         synchronized(monitor) {
             val all = LinkedHashMap(progress(profileId))
             val old = all[id]
-            if (watched) {
-                if (old?.isFinished == true) return
-                val duration = if (old != null && old.duration > 0) old.duration else 1.0
-                writeProgress(profileId, id, duration, duration)
-            } else if (old != null) {
+            if (old != null) {
                 all[id] = ProgressEntry(
                     position = 0.0,
                     duration = old.duration,
@@ -282,10 +385,15 @@ class TvmStore(private val root: File) {
                     hiddenFromContinueWatching = old.hiddenFromContinueWatching,
                     completedAt = null,
                     completions = old.completions,
+                    completedTitle = null,
+                    completedYear = null,
+                    syncPresentKeys = old.syncPresentKeys - setOf("completedAt", "completedTitle", "completedYear"),
                 )
                 saveProgressMap(profileId, all)
+                changed = true
             }
         }
+        if (changed) onSyncStoreChanged?.invoke()
     }
 
     // Only the caller's confirmed completed media enter this profile's notebook.
@@ -355,11 +463,13 @@ class TvmStore(private val root: File) {
     fun writeWatchlist(profileId: String, items: List<MediaItem>) {
         synchronized(monitor) {
             profileDir(profileId).mkdirs()
+            val stored = if (activeDir != null) items else items.take(200)
             writeAtomic(
                 File(profileDir(profileId), "watchlist.json"),
-                serialize(Json.array(items.take(200).map { it.json() })),
+                serialize(Json.array(stored.map { it.json() })),
             )
         }
+        onSyncStoreChanged?.invoke()
     }
 
     fun personalExport(activeId: String, profiles: List<ProfileRecord>, billing: JSONObject): JSONObject {

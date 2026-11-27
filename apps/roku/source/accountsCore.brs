@@ -77,11 +77,13 @@ function lcGetAccount(ctx as Object) as Object
   if not res.ok
     if res.status = 401
       sec = lcReg() : sec.Delete("accountToken") : sec.Flush()
+      syncClearOnSignOut()
       return { status: 200, json: { signedIn: false, usable: { ok: false, reason: "no_account" } } }
     end if
     return lcAccountsError(res)
   end if
   acc = lcAaGet(res.json, "account", invalid)
+  if acc <> invalid then syncBindAccount(ctx.accountToken, lcAaText(acc, "id", ""))
   return { status: 200, json: { signedIn: true, account: lcPublicAccount(acc), usable: lcAccountUsable(acc), canSendEmail: true, standalone: true } }
 end function
 
@@ -116,19 +118,26 @@ function lcSignInAccount(ctx as Object) as Object
   res = lcAccountsHttp(ctx, "/v1/signin", "POST", body)
   if not res.ok then return lcAccountsError(res)
   acc = lcAaGet(res.json, "account", invalid)
-  return { status: 200, json: { token: lcAaText(res.json, "session"), account: lcPublicAccount(acc), usable: lcAccountUsable(acc) } }
+  session = lcAaText(res.json, "session")
+  if acc <> invalid and session <> ""
+    syncBindAccount(session, lcAaText(acc, "id", ""))
+    syncResetBackoff()
+  end if
+  return { status: 200, json: { token: session, account: lcPublicAccount(acc), usable: lcAccountUsable(acc) } }
 end function
 
 function lcAcceptTerms(ctx as Object) as Object
   res = lcAccountsHttp(ctx, "/v1/me/terms", "POST", { version: lcTermsVersion() })
   if not res.ok then return lcAccountsError(res)
   acc = lcAaGet(res.json, "account", invalid)
+  if acc <> invalid then syncBindAccount(ctx.accountToken, lcAaText(acc, "id", ""))
   return { status: 200, json: { account: lcPublicAccount(acc), usable: lcAccountUsable(acc) } }
 end function
 
 function lcSignOut(ctx as Object) as Object
   res = lcAccountsHttp(ctx, "/v1/signout", "POST")
   sec = lcReg() : sec.Delete("accountToken") : sec.Flush()
+  syncClearOnSignOut()
   if not res.ok and res.status <> 401 then return lcAccountsError(res)
   return { status: 200, json: { ok: true } }
 end function
@@ -185,6 +194,8 @@ function lcDevicePoll(ctx as Object) as Object
     if session = "" or acc = invalid
       return { status: 502, json: { state: "error", error: "unavailable" } }
     end if
+    syncBindAccount(session, lcAaText(acc, "id", ""))
+    syncResetBackoff()
     return {
       status: 200
       json: {

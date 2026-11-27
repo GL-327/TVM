@@ -239,6 +239,8 @@ class MainActivity : AppCompatActivity() {
         nativePlayer = null
         localServer?.stop()
         localServer = null
+        core?.close()
+        core = null
         webView.stopLoading()
         webView.webViewClient = android.webkit.WebViewClient()
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -287,6 +289,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 apply.join(20_000)
                 val pending = apply.isAlive
+                runCatching { made.restoreSyncFromVault() }
                 val server = TvmLocalServer(made, { path -> made.bundledUi.read(path) }) { bootScript }
                 server.start()
                 runOnUiThread {

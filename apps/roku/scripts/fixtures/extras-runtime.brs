@@ -200,3 +200,12 @@ end function
 
 sub fakeMark()
 end sub
+
+sub syncBindAccount(token as String, accountId as String)
+end sub
+
+sub syncResetBackoff()
+end sub
+
+sub syncClearOnSignOut()
+end sub

@@ -42,6 +42,7 @@ final class StandaloneRuntime: ObservableObject {
         // already current. If the network is slow we still open, and reload
         // when the download finishes.
         TVMBundledUI.prepare(store: core.store)
+        core.restoreSyncFromVault()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-TVMSmokeTour") { TVMShellScripts.tourToken = await core.accounts.smokeTourToken() }
         #endif

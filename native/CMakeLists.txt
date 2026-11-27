@@ -241,12 +241,7 @@ add_custom_command(TARGET tvm POST_BUILD
 add_custom_command(TARGET tvm POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${TVM_REPO_ROOT}/packages/content" "$<TARGET_FILE_DIR:tvm>/content")
-add_custom_command(TARGET tvm POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:tvm>/media"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${TVM_REPO_ROOT}/apps/ui/public/media/tvm-trailer.mp4" "$<TARGET_FILE_DIR:tvm>/media/tvm-trailer.mp4")
 install(DIRECTORY "${TVM_REPO_ROOT}/packages/content/" DESTINATION content FILES_MATCHING PATTERN "*.json")
-install(FILES "${TVM_REPO_ROOT}/apps/ui/public/media/tvm-trailer.mp4" DESTINATION media)
 install(TARGETS tvm RUNTIME DESTINATION .)
 install(DIRECTORY assets DESTINATION .)
 install(FILES update-native.ps1 DESTINATION bin)

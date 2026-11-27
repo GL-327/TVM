@@ -4,7 +4,8 @@ import { useNavigate } from '../nav/ViewStackContext';
 import type { ScreenProps } from '../nav/registry';
 import './devTools.css';
 
-export const TRAILER_SRC = '/media/tvm-trailer.mp4';
+/** Hosted on the `media` GitHub release (served as video/mp4 with Range), so the app bundle stays small. */
+export const TRAILER_SRC = 'https://github.com/GL-327/TVM/releases/download/media/tvm-trailer.mp4';
 
 /** A simple sheet that plays the TVM trailer. Play/pause and close are focusable for a remote. */
 export function TrailerModal(_props: ScreenProps): React.JSX.Element {

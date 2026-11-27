@@ -9,6 +9,7 @@ final class TVMLocalCore {
     let media: TVMMedia
     let reviews: TVMReviews
     let accounts: TVMAccounts
+    let accountSync: TVMAccountSync
     /// Films and episodes saved on the iPhone (TVMDownloads).
     let downloads: TVMDownloads
     private let startedAt = Date()
@@ -30,7 +31,8 @@ final class TVMLocalCore {
         store: TVMStore = TVMStore(),
         accountsTransport: TVMAccountsTransport? = nil,
         sessionVault: TVMSessionVault? = nil,
-        adminVault: TVMSessionVault? = nil
+        adminVault: TVMSessionVault? = nil,
+        syncTransport: TVMSyncTransport? = nil
     ) {
         self.store = store
         // Titles known to carry another title's artwork, before any picture is asked for.
@@ -57,6 +59,21 @@ final class TVMLocalCore {
             vault: sessionVault ?? TVMKeychainSessionVault(),
             adminVault: adminVault ?? (sessionVault == nil ? TVMKeychainSessionVault(account: "admin_key") : TVMMemorySessionVault())
         )
+        let resolvedSyncTransport: TVMSyncTransport = syncTransport
+            ?? accountsTransport.map { TVMAccountsSyncAdapter(transport: $0) }
+            ?? TVMURLSessionSyncTransport()
+        let syncInstance = TVMAccountSync(
+            store: store,
+            origin: accounts.syncOrigin,
+            transport: resolvedSyncTransport,
+            reloadProfiles: { [weak mediaInstance] in
+                mediaInstance?.pinGuard.clearSessionUnlocks()
+            }
+        )
+        accountSync = syncInstance
+        store.onSyncStoreChanged = { [weak syncInstance] in
+            syncInstance?.notifyLocalChange()
+        }
         downloads = TVMDownloads(store: store) { id, language, height in
             await mediaInstance.download(id: id, language: language, maxHeight: height)
         }
@@ -75,9 +92,20 @@ final class TVMLocalCore {
         }
     }
 
+    deinit {
+        accountSync.clearAll()
+    }
+
+    func restoreSyncFromVault() {
+        if let token = accounts.currentSessionToken {
+            accountSync.restore(token: token)
+        }
+    }
+
     /// The app came back to the foreground: forget cached account, key and config answers so changes show at once.
     func onForeground() {
         accounts.invalidateCaches()
+        accountSync.onForeground()
     }
 
     /// Dev mode belongs to an owner (admin) account, so dev-only routes check
@@ -485,13 +513,25 @@ final class TVMLocalCore {
             case .failure(let error): return .json(accountStatus(error, otherwise: 400), ["error": error.message])
             }
         }
+        if path == "/api/sync/status" && method == "GET" {
+            return .json(200, accountSync.status(token: bearerToken(headers)).json())
+        }
+        if path == "/api/sync/now" && method == "POST" {
+            return .json(200, await accountSync.syncNow(token: bearerToken(headers)).json())
+        }
         if path == "/api/account/signin" && method == "POST" {
             switch await accounts.signIn(
                 email: json["email"] as? String ?? "",
                 password: json["password"] as? String ?? "",
                 client: headers["user-agent"]
             ) {
-            case .success(let body): return .json(200, body)
+            case .success(let body):
+                if let token = body["token"] as? String,
+                   let accountObj = body["account"] as? [String: Any],
+                   let accountId = accountObj["id"] as? String {
+                    accountSync.bind(token: token, accountId: accountId, signingIn: true)
+                }
+                return .json(200, body)
             case .failure(let error): return .json(accountStatus(error, otherwise: 401), ["error": error.message])
             }
         }
@@ -502,6 +542,7 @@ final class TVMLocalCore {
         if path == "/api/account/signout" && method == "POST" {
             if let token = bearerToken(headers) {
                 let leaving = await accounts.resolve(token: token)
+                accountSync.signOut(token: token)
                 await accounts.signOut(token: token)
                 // Developer mode goes with the owner account.
                 if leaving?.isDev == true { plans.setDeveloper(false) }
@@ -510,13 +551,16 @@ final class TVMLocalCore {
         }
         if path == "/api/account" && method == "GET" {
             let version = TVMAccounts.termsVersion()
+            let token = bearerToken(headers)
             let account: TVMAccount
-            switch await accounts.lookup(token: bearerToken(headers)) {
+            switch await accounts.lookup(token: token) {
             case .found(let found):
+                if let token { accountSync.bind(token: token, accountId: found.id, signingIn: false) }
                 account = found
             case .unavailable:
                 return .json(503, ["error": "TVM accounts cannot be reached. Check your connection and try again."])
             case .signedOut:
+                if let token { accountSync.detach(token: token) }
                 return .json(200, [
                     "signedIn": false, "account": NSNull(),
                     "usable": ["ok": false, "reason": "no_account"],
@@ -637,6 +681,7 @@ final class TVMLocalCore {
             if path == "/api/privacy/erase", json["confirmation"] as? String != "ERASE_LOCAL_DATA" {
                 return .json(400, ["error": "confirmation_required"])
             }
+            accountSync.clearAll()
             await accounts.forgetEverything()
             store.factoryReset()
             TVMBundledUI.invalidate()

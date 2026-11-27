@@ -34,15 +34,49 @@ class TvmLocalCore(
     val content: TvmContent = TvmContent(store, http = http),
     val reviews: TvmReviews = TvmReviews(media::item),
     accountsHttp: TvmAccountsHttp = TvmAccountsHttp.Default,
-    sessionVault: TvmSessionVault = MemorySessionVault(),
+    private val sessionVault: TvmSessionVault = MemorySessionVault(),
     adminVault: TvmSessionVault = MemorySessionVault(),
     guideCacheDir: File = store.file("cache/guide"),
+    syncHttp: TvmSyncHttp? = null,
 ) {
     private val accounts = TvmAccounts(bundledAccess, accountsHttp, sessionVault, adminVault = adminVault)
+    private val resolvedSyncHttp: TvmSyncHttp = syncHttp ?: if (accountsHttp === TvmAccountsHttp.Default) {
+        TvmSyncHttp.Default
+    } else {
+        TvmSyncHttp { method, url, bearer, _, body, timeoutMs ->
+            val (status, replyBody) = accountsHttp.send(method, url, bearer, body, timeoutMs)
+            SyncHttpReply(status = status, body = replyBody)
+        }
+    }
+    val sync: TvmAccountSync = TvmAccountSync(
+        store = store,
+        origin = TVM_ACCOUNTS_URL,
+        http = resolvedSyncHttp,
+        reloadProfiles = { store.profiles() },
+        onSessionRejected = { rejected ->
+            if (sessionVault.read() == rejected) runCatching { sessionVault.write(null) }
+            accounts.invalidateCaches()
+        },
+    )
+
+    fun restoreSyncFromVault() {
+        val token = sessionVault.read() ?: return
+        sync.restore(token)
+    }
 
     /** The app came back to the foreground: forget cached account, key and config answers so changes show at once. */
     fun onForeground() {
         accounts.invalidateCaches()
+        val token = sessionVault.read()
+        if (token != null && !sync.hasSession(token)) {
+            sync.restore(token)
+        } else {
+            sync.onForeground()
+        }
+    }
+
+    fun close() {
+        sync.close()
     }
 
     /** The interface this app serves, and the updater that keeps it current. */
@@ -116,6 +150,7 @@ class TvmLocalCore(
             sessionVault: TvmSessionVault = MemorySessionVault(),
             adminVault: TvmSessionVault = MemorySessionVault(),
             guideCacheDir: File = File(root, "cache/guide"),
+            syncHttp: TvmSyncHttp? = null,
         ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
@@ -127,11 +162,12 @@ class TvmLocalCore(
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans, content, pinGuard)
             val reviews = TvmReviews(media::item)
-            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault, guideCacheDir)
+            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault, guideCacheDir, syncHttp)
         }
     }
 
     init {
+        store.onSyncStoreChanged = { sync.notifyStoreChanged() }
         val saved = store.readJSON("live.json") as? JSONObject
         if (saved != null) {
             liveUrl = Json.string(saved.opt("url"))
@@ -601,7 +637,14 @@ class TvmLocalCore(
                 headers["user-agent"],
             )
             return result.fold(
-                { HttpReply.json(200, it) },
+                { reply ->
+                    val token = reply.text("token")
+                    val accountId = reply.optJSONObject("account")?.text("id").orEmpty()
+                    if (token.isNotEmpty() && accountId.isNotEmpty()) {
+                        sync.bind(token, accountId, signingIn = true)
+                    }
+                    HttpReply.json(200, reply)
+                },
                 { HttpReply.json(accountStatus(it, 401), Json.obj("error" to (it.message ?: "Sign in failed."))) },
             )
         }
@@ -613,6 +656,7 @@ class TvmLocalCore(
             val token = bearerToken(headers)
             if (token != null) {
                 val leaving = accounts.resolve(token)
+                sync.signOut(token)
                 accounts.signOut(token)
                 // Developer mode goes with the owner account.
                 if (leaving?.text("role") == "dev") plans.setDeveloper(false)
@@ -621,17 +665,25 @@ class TvmLocalCore(
         }
         if (path == "/api/account" && method == "GET") {
             val version = accounts.termsVersion()
-            val account = when (val found = accounts.lookup(bearerToken(headers))) {
+            val token = bearerToken(headers)
+            val account = when (val found = accounts.lookup(token)) {
                 is AccountLookup.Found -> found.account
                 AccountLookup.Unavailable ->
                     return HttpReply.json(503, Json.obj("error" to "TVM accounts cannot be reached. Check your connection and try again."))
-                AccountLookup.SignedOut -> return HttpReply.json(200, JSONObject().apply {
-                    put("signedIn", false)
-                    put("account", JSONObject.NULL)
-                    put("usable", JSONObject().put("ok", false).put("reason", "no_account"))
-                    put("termsVersion", version)
-                    put("canSendEmail", false)
-                })
+                AccountLookup.SignedOut -> {
+                    if (token != null) sync.signOut(token)
+                    return HttpReply.json(200, JSONObject().apply {
+                        put("signedIn", false)
+                        put("account", JSONObject.NULL)
+                        put("usable", JSONObject().put("ok", false).put("reason", "no_account"))
+                        put("termsVersion", version)
+                        put("canSendEmail", false)
+                    })
+                }
+            }
+            if (token != null) {
+                val accountId = account.text("id")
+                if (accountId.isNotEmpty()) sync.bind(token, accountId, signingIn = false)
             }
             if (account.text("role") == "dev" && !plans.developer()) plans.setDeveloper(true)
             applyAccountTier(account)
@@ -642,6 +694,12 @@ class TvmLocalCore(
                 put("termsVersion", version)
                 put("canSendEmail", false)
             })
+        }
+        if (path == "/api/sync/status" && method == "GET") {
+            return HttpReply.json(200, sync.status(bearerToken(headers)).json())
+        }
+        if (path == "/api/sync/now" && method == "POST") {
+            return HttpReply.json(200, sync.syncNow(bearerToken(headers)).json())
         }
         if (path == "/api/account/verify/resend" && method == "POST") {
             val (status, body) = accounts.resendVerification(bearerToken(headers), Json.string(json.opt("email")))
@@ -751,6 +809,7 @@ class TvmLocalCore(
             if (path == "/api/privacy/erase" && Json.string(json.opt("confirmation")) != "ERASE_LOCAL_DATA") {
                 return HttpReply.json(400, Json.obj("error" to "confirmation_required"))
             }
+            sync.clearAll()
             accounts.forgetEverything()
             store.factoryReset()
             bundledUi.invalidate()

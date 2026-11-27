@@ -124,10 +124,8 @@ void App::OpenTrailer(const std::string& url, const std::string& title) {
 }
 
 void App::OpenAppTrailer() {
-    wchar_t exe[32768]{};
-    GetModuleFileNameW(nullptr, exe, static_cast<DWORD>(std::size(exe)));
-    const std::filesystem::path bundled = std::filesystem::path(exe).parent_path() / "media" / "tvm-trailer.mp4";
-    std::string source = std::filesystem::exists(bundled) ? bundled.string() : (core_->origin() + "/media/tvm-trailer.mp4");
+    // Streamed from the `media` GitHub release (same URL as the React app), not shipped in the install.
+    const std::string source = "https://github.com/GL-327/TVM/releases/download/media/tvm-trailer.mp4";
     background_->Run([this, source] {
         PrepareMpv(*core_);
         background_->PostToUi([this, source] {

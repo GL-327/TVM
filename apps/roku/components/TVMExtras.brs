@@ -108,6 +108,7 @@ sub onExtrasSettings(event as Object)
     pending = m.settingsPrefsDeferred : m.settingsPrefsDeferred = invalid
     saveRokuPreference(pending)
   end if
+  if UCase(task.requestMethod) = "PUT" then scheduleSyncPush()
 end sub
 
 sub changeExtrasSetting(kind as String)

@@ -53,6 +53,7 @@ struct TVMPrefs {
         "shortcutsOverlay": true,
         "webhook": false,
         "announcements": true,
+        "franchiseIntros": true,
     ]
 
     var language: String = TVMPrefs.defaultLanguage
@@ -70,11 +71,68 @@ struct TVMPrefs {
     var webhookUrl: String? = nil
     var homeSections: [HomeSectionPref] = []
 
-    static func load(_ store: TVMStore) -> TVMPrefs {
+    static func loadDevice(_ store: TVMStore) -> TVMPrefs {
         let object = store.readJSON("prefs.json") as? [String: Any] ?? [:]
         var prefs = TVMPrefs()
         prefs.merge(object)
         return prefs
+    }
+
+    static func load(_ store: TVMStore) -> TVMPrefs {
+        let device = loadDevice(store)
+        guard let syncDir = store.activeSyncDir() else { return device }
+        let synced = readSyncPrefs(in: syncDir)
+        var base = device
+        base.subtitleLanguages = TVMPrefs().subtitleLanguages
+        base.extras = TVMPrefs.extraDefaults
+        base.audioLanguage = TVMPrefs().audioLanguage
+        base.skipSegments = TVMPrefs().skipSegments
+        base.autoplayNext = TVMPrefs().autoplayNext
+        base.subtitleStyle = SubtitleStylePref()
+        base.homeSections = []
+        var patch: [String: Any] = [:]
+        var syncedExtras: [String: Bool] = [:]
+        for (key, value) in synced {
+            if key.hasPrefix("extras.") {
+                let extraKey = String(key.dropFirst("extras.".count))
+                if let boolVal = TVMSyncSchema.strictBool(value) {
+                    syncedExtras[extraKey] = boolVal
+                }
+            } else {
+                patch[key] = value
+            }
+        }
+        if !syncedExtras.isEmpty { patch["extras"] = syncedExtras }
+        base.merge(patch)
+        return base
+    }
+
+    static func readSyncPrefs(in directory: URL) -> [String: Any] {
+        let url = directory.appendingPathComponent("sync-prefs.json")
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    static func writeSyncPrefs(_ values: [String: Any], in directory: URL) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("sync-prefs.json")
+        try? Data(TVMSyncCanonical.json(values).utf8).write(to: url, options: .atomic)
+    }
+
+    func syncValues() -> [String: Any] {
+        var out: [String: Any] = [
+            "subtitleLanguages": subtitleLanguages,
+            "subtitleStyle": subtitleStyle.json(),
+            "audioLanguage": audioLanguage,
+            "skipSegments": skipSegments,
+            "autoplayNext": autoplayNext,
+            "homeSections": homeSections.map { $0.json() },
+        ]
+        for (key, def) in Self.extraDefaults {
+            out["extras.\(key)"] = extras[key] ?? def
+        }
+        return out
     }
 
     @discardableResult
@@ -147,7 +205,32 @@ struct TVMPrefs {
     }
 
     func save(_ store: TVMStore) {
-        store.writeJSON("prefs.json", json())
+        guard let syncDir = store.activeSyncDir() else {
+            store.writeJSON("prefs.json", json())
+            return
+        }
+        let before = TVMPrefs.load(store).syncValues()
+        let after = syncValues()
+        var syncValuesMap = TVMPrefs.readSyncPrefs(in: syncDir)
+        var changed = false
+        for key in TVMSyncSchema.syncPrefs {
+            if TVMSyncCanonical.json(before[key]) == TVMSyncCanonical.json(after[key]) { continue }
+            syncValuesMap[key] = after[key]
+            changed = true
+        }
+        if changed {
+            TVMPrefs.writeSyncPrefs(syncValuesMap, in: syncDir)
+            store.notifySyncChanged()
+        }
+        var device = TVMPrefs.loadDevice(store)
+        device.language = language
+        device.autoUpdate = autoUpdate
+        device.heroPreviews = heroPreviews
+        device.quality = quality
+        device.skipUpscaled = skipUpscaled
+        device.subtitleMode = subtitleMode
+        device.webhookUrl = webhookUrl
+        store.writeJSON("prefs.json", device.json())
     }
 
     func json() -> [String: Any] {

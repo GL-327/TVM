@@ -1,0 +1,354 @@
+{
+  "now": 1795780800000,
+  "etag": "\"1\"",
+  "putBody": {
+    "items": [
+      {
+        "kind": "progress",
+        "key": "profile-1/tt0137523",
+        "value": {
+          "position": 30,
+          "duration": 8340,
+          "updated": "2026-11-27T12:46:28.050Z",
+          "hiddenFromContinueWatching": false,
+          "completions": 0
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "watchlist",
+        "key": "profile-1/tt0137523",
+        "value": {
+          "id": "tt0137523",
+          "title": "Fight Club",
+          "year": 1999,
+          "kind": "movie",
+          "synopsis": "An insomniac office worker and a devil-may-care soap maker form an underground fight club.",
+          "poster": "https://images.metahub.space/poster/medium/tt0137523/img",
+          "backdrop": "https://images.metahub.space/background/medium/tt0137523/img",
+          "genres": [
+            "Drama"
+          ],
+          "rating": "8.8",
+          "playable": true,
+          "hue": 215,
+          "added": "2026-11-27T12:46:28.574Z"
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "profile",
+        "key": "profile-1",
+        "value": {
+          "id": "profile-1",
+          "name": "Jamie",
+          "hue": 221,
+          "created": "2026-11-27T12:46:27.421Z",
+          "avatar": "space/comet",
+          "kind": "standard",
+          "maxAge": 15,
+          "pin": null
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "subtitleLanguages",
+        "value": [
+          "eng",
+          "fra"
+        ],
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "subtitleStyle",
+        "value": {
+          "size": "l",
+          "color": "yellow",
+          "background": "box"
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "audioLanguage",
+        "value": "fra",
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "homeSections",
+        "value": [
+          {
+            "id": "continue",
+            "visible": true
+          },
+          {
+            "id": "featured",
+            "visible": false
+          }
+        ],
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "extras.ratings",
+        "value": false,
+        "updatedAt": 1795780800000,
+        "deleted": false
+      }
+    ]
+  },
+  "getResponse": {
+    "items": [
+      {
+        "kind": "progress",
+        "key": "profile-1/tt0137523",
+        "value": {
+          "position": 30,
+          "duration": 8340,
+          "updated": "2026-11-27T12:46:28.050Z",
+          "hiddenFromContinueWatching": false,
+          "completions": 0
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "watchlist",
+        "key": "profile-1/tt0137523",
+        "value": {
+          "id": "tt0137523",
+          "title": "Fight Club",
+          "year": 1999,
+          "kind": "movie",
+          "synopsis": "An insomniac office worker and a devil-may-care soap maker form an underground fight club.",
+          "poster": "https://images.metahub.space/poster/medium/tt0137523/img",
+          "backdrop": "https://images.metahub.space/background/medium/tt0137523/img",
+          "genres": [
+            "Drama"
+          ],
+          "rating": "8.8",
+          "playable": true,
+          "hue": 215,
+          "added": "2026-11-27T12:46:28.574Z"
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "profile",
+        "key": "profile-1",
+        "value": {
+          "id": "profile-1",
+          "name": "Jamie",
+          "hue": 221,
+          "created": "2026-11-27T12:46:27.421Z",
+          "avatar": "space/comet",
+          "kind": "standard",
+          "maxAge": 15,
+          "pin": null
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "subtitleLanguages",
+        "value": [
+          "eng",
+          "fra"
+        ],
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "subtitleStyle",
+        "value": {
+          "size": "l",
+          "color": "yellow",
+          "background": "box"
+        },
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "audioLanguage",
+        "value": "fra",
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "homeSections",
+        "value": [
+          {
+            "id": "continue",
+            "visible": true
+          },
+          {
+            "id": "featured",
+            "visible": false
+          }
+        ],
+        "updatedAt": 1795780800000,
+        "deleted": false
+      },
+      {
+        "kind": "preference",
+        "key": "extras.ratings",
+        "value": false,
+        "updatedAt": 1795780800000,
+        "deleted": false
+      }
+    ],
+    "now": 1795780800000
+  },
+  "expected": {
+    "progress:profile-1/tt0137523": {
+      "id": "progress:profile-1/tt0137523",
+      "hash": "Pn2wpTzqXrkobcEiWp6dAgUTAlY6HuzRHNJgTyyP-9I",
+      "updatedAt": 1795780800000
+    },
+    "watchlist:profile-1/tt0137523": {
+      "id": "watchlist:profile-1/tt0137523",
+      "hash": "rKaOWZMI9ue8GSzC95RLbdr25FfSt2cxd5V0V95ePmc",
+      "updatedAt": 1795780800000
+    },
+    "profile:profile-1": {
+      "id": "profile:profile-1",
+      "hash": "KG1w6ssdjzpZqyaXjQIZ2AhEwJMSW1V-yPcsrr746S4",
+      "updatedAt": 1795780800000
+    },
+    "preference:subtitleLanguages": {
+      "id": "preference:subtitleLanguages",
+      "hash": "YckOILBIZDN4okI9k-dqn0js0E1nWvzpgr5AOilfEzs",
+      "updatedAt": 1795780800000
+    },
+    "preference:subtitleStyle": {
+      "id": "preference:subtitleStyle",
+      "hash": "6pYVHnd91mXrSd7lXt0I_zjkC235FQq9WLDII_uhAYo",
+      "updatedAt": 1795780800000
+    },
+    "preference:audioLanguage": {
+      "id": "preference:audioLanguage",
+      "hash": "RnQdqxRkhLGBwLgLoeYPPrIIoI8cWT2qnGSZCd_fzFE",
+      "updatedAt": 1795780800000
+    },
+    "preference:homeSections": {
+      "id": "preference:homeSections",
+      "hash": "W3aQ-vHeab-8_nBpJ11Ds0dp5Fm8Q_Cc1lEjLqFtHt8",
+      "updatedAt": 1795780800000
+    },
+    "preference:extras.ratings": {
+      "id": "preference:extras.ratings",
+      "hash": "_LzxZZCN0YqeSff_J4EBdtuOn2O0NSITdBZkJFIk-Ko",
+      "updatedAt": 1795780800000
+    }
+  },
+  "invalidCases": [
+    {
+      "kind": "preference",
+      "key": "quality",
+      "value": "720",
+      "updatedAt": 1795780800000,
+      "deleted": false
+    },
+    {
+      "kind": "preference",
+      "key": "webhookUrl",
+      "value": "https://example.com",
+      "updatedAt": 1795780800000,
+      "deleted": false
+    },
+    {
+      "kind": "profile",
+      "key": "con",
+      "value": {
+        "id": "con",
+        "name": "Bad",
+        "hue": 10,
+        "created": "2026-11-27T12:00:00.000Z",
+        "avatar": null,
+        "kind": "standard",
+        "maxAge": 18,
+        "pin": null
+      },
+      "updatedAt": 1795780800000,
+      "deleted": false
+    },
+    {
+      "kind": "watchlist",
+      "key": "profile-1/tt0137523",
+      "value": {
+        "id": "tt0137523",
+        "title": "Bad",
+        "year": 2020,
+        "kind": "movie",
+        "synopsis": "",
+        "poster": "http://insecure.example/p.jpg",
+        "backdrop": "",
+        "genres": [],
+        "rating": "",
+        "playable": true,
+        "hue": 10,
+        "added": "2026-11-27T12:00:00.000Z"
+      },
+      "updatedAt": 1795780800000,
+      "deleted": false
+    },
+    {
+      "kind": "watchlist",
+      "key": "profile-1/tt0137524",
+      "value": {
+        "id": "tt0137524",
+        "title": "Bearer secret-token",
+        "year": 2020,
+        "kind": "movie",
+        "synopsis": "",
+        "poster": "",
+        "backdrop": "",
+        "genres": [],
+        "rating": "",
+        "playable": true,
+        "hue": 10,
+        "added": "2026-11-27T12:00:00.000Z"
+      },
+      "updatedAt": 1795780800000,
+      "deleted": false
+    },
+    {
+      "kind": "progress",
+      "key": "profile-1/tt0137523",
+      "value": {
+        "position": 30,
+        "duration": 120,
+        "updated": "2026-11-27T12:00:00.000Z"
+      },
+      "updatedAt": 1795781160000,
+      "deleted": false
+    },
+    {
+      "kind": "progress",
+      "key": "profile-1/tt0137523",
+      "value": {
+        "position": 30,
+        "duration": 120,
+        "updated": "2026-11-27T12:00:00.000Z",
+        "extraField": true
+      },
+      "updatedAt": 1795780800000,
+      "deleted": false
+    }
+  ]
+}

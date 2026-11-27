@@ -47,33 +47,45 @@ function lcExtraDefaults() as Object
     watchStats: true, animeTitles: true, ratings: true, qualityBadges: true, versionPicker: true
     chapters: false, seekPreviews: false, themeSongs: false, spoilerBlur: false, surpriseMe: true
     autoCollections: true, sleepTimer: true, nightMode: false, pauseOnMinimize: false
-    shortcutsOverlay: false, webhook: false, announcements: true
+    shortcutsOverlay: false, webhook: false, announcements: true, franchiseIntros: true
   }
 end function
 
 function lcExtrasPrefs(ctx as Object) as Object
   all = lcReadRegJson("extrasPrefs", {})
   prefs = lcAaGet(all, lcActiveProfileId(ctx), {})
-  mode = lcAaText(prefs, "skipSegments", "button")
+  synced = syncReadPrefs()
+  merged = {}
+  for each k in prefs
+    merged[k] = prefs[k]
+  end for
+  for each k in ["skipSegments", "autoplayNext", "subtitleLanguages", "audioLanguage", "subtitleStyle", "homeSections"]
+    if synced.DoesExist(k) then merged[k] = synced[k]
+  end for
+  mode = lcAaText(merged, "skipSegments", "button")
   if mode <> "off" and mode <> "auto" then mode = "button"
   extras = lcExtraDefaults()
-  given = lcAaGet(prefs, "extras", {})
+  given = lcAaGet(merged, "extras", {})
   for each key in extras
     extras[key] = lcAaBool(given, key, extras[key])
+    if synced.DoesExist("extras." + key) and syncIsBool(synced["extras." + key])
+      extras[key] = synced["extras." + key]
+    end if
   end for
   return {
-    skipSegments: mode, autoplayNext: lcAaBool(prefs, "autoplayNext", true)
-    subtitleLanguages: lcAaGet(prefs, "subtitleLanguages", ["eng"]), subtitleLanguage: lcAaText(prefs, "subtitleLanguage", "eng")
-    quality: lcAaText(prefs, "quality", "original"), audioLanguage: lcAaText(prefs, "audioLanguage", "original")
-    skipUpscaled: lcAaBool(prefs, "skipUpscaled", true), subtitleMode: lcAaText(prefs, "subtitleMode", "foreign")
-    subtitleStyle: lcAaGet(prefs, "subtitleStyle", { size: "m", color: "white", background: "shadow" })
-    extras: extras, sleepDefault: lcAaText(prefs, "sleepDefault", "off")
-    spotlightEvents: lcAaBool(prefs, "spotlightEvents", true), homeSections: lcAaGet(prefs, "homeSections", [])
+    skipSegments: mode, autoplayNext: lcAaBool(merged, "autoplayNext", true)
+    subtitleLanguages: lcAaGet(merged, "subtitleLanguages", ["eng"]), subtitleLanguage: lcAaText(merged, "subtitleLanguage", "eng")
+    quality: lcAaText(merged, "quality", "original"), audioLanguage: lcAaText(merged, "audioLanguage", "original")
+    skipUpscaled: lcAaBool(merged, "skipUpscaled", true), subtitleMode: lcAaText(merged, "subtitleMode", "foreign")
+    subtitleStyle: lcAaGet(merged, "subtitleStyle", { size: "m", color: "white", background: "shadow" })
+    extras: extras, sleepDefault: lcAaText(merged, "sleepDefault", "off")
+    spotlightEvents: lcAaBool(merged, "spotlightEvents", true), homeSections: lcAaGet(merged, "homeSections", [])
     webhookUrl: invalid, heroPreviews: false
   }
 end function
 
 sub lcSaveExtrasPrefs(ctx as Object)
+  before = lcExtrasPrefs(ctx)
   prefs = lcExtrasPrefs(ctx)
   body = ctx.body
   for each key in ["skipSegments", "autoplayNext", "subtitleLanguages", "subtitleLanguage", "quality", "audioLanguage", "skipUpscaled", "subtitleMode", "sleepDefault", "spotlightEvents"]
@@ -99,6 +111,24 @@ sub lcSaveExtrasPrefs(ctx as Object)
   all = lcReadRegJson("extrasPrefs", {})
   all[lcActiveProfileId(ctx)] = prefs
   lcWriteRegJson("extrasPrefs", all)
+
+  syncValues = syncReadPrefs()
+  syncChanged = false
+  for each key in syncPrefKeys()
+    if Left(key, 7) = "extras."
+      ek = Mid(key, 8)
+      beforeVal = before.extras[ek]
+      afterVal = prefs.extras[ek]
+    else
+      beforeVal = before[key]
+      afterVal = prefs[key]
+    end if
+    if syncCanonicalJson(beforeVal) <> syncCanonicalJson(afterVal)
+      syncValues[key] = afterVal
+      syncChanged = true
+    end if
+  end for
+  if syncChanged then syncWritePrefs(syncValues)
 end sub
 
 ' Registry holds only small, normalized public metadata (bounded to 9 KB).

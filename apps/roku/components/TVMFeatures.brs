@@ -316,6 +316,7 @@ sub onProfileEditorSaved()
   m.editorPin = invalid : m.editorCurrentPin = "" : m.editorAdultPin = ""
   loadProfiles(true)
   loadHome()
+  scheduleSyncPush()
 end sub
 
 sub onFeatureAction(event as Object)

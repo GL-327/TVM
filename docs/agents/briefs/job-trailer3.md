@@ -30,7 +30,7 @@ The owner's feedback on v2: "not quite what I want. I want the correct voice tim
    - Then the selling beats and the two jokes, with snappy cuts on the music.
 4. Output:
    - Write .../scratchpad/trailer/TVM-trailer-v3.mp4
-   - Replace C:\Users\Gathe\Desktop\TVM\apps\ui\public\media\tvm-trailer.mp4 with it
+   - Upload it to the `media` GitHub release as `tvm-trailer.mp4` (the lead does this; the apps stream it from there)
    - Make a contact sheet every 1 s (contact-v3.png), and look at it.
    - Never run git commands that change state.
 

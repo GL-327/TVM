@@ -146,6 +146,10 @@ function lcRoute(ctx as Object) as Object
     return lcPlayback(ctx)
   else if path = "/api/progress" and mth = "POST"
     return lcSaveProgress(ctx)
+  else if path = "/api/sync/status" and mth = "GET"
+    return syncHandleStatus(ctx)
+  else if path = "/api/sync/now" and mth = "POST"
+    return syncHandleNow(ctx)
   else if path = "/api/update/status" and mth = "GET"
     return { status: 200, json: { current: "standalone", autoUpdate: false } }
   else if path = "/api/maintenance/clear-cache" and mth = "POST"
@@ -311,8 +315,9 @@ end sub
 
 sub lcFactoryReset()
   lcClearCacheFiles()
+  syncClearAllSyncedState(true)
   sec = lcReg()
-  for each k in ["localAccounts", "localSessions", "localProfiles", "localWatchlist", "localProgress", "localRdToken", "localLive", "accountToken"]
+  for each k in ["localAccounts", "localSessions", "localProfiles", "localWatchlist", "localProgress", "localFinished", "localRdToken", "localLive", "accountToken", "extrasPrefs", "extrasStats", "extrasCache", "profileServices", "syncLedger", "syncPrefs", "syncOwner"]
     if sec.Exists(k) then sec.Delete(k)
   end for
   sec.Flush()
@@ -321,7 +326,7 @@ end sub
 ' ---- HTTP client ----
 
 function lcHttp(url as String, method = "GET" as String, body = "" as String, headers = {} as Object, timeoutMs = 15000 as Integer) as Object
-  out = { ok: false, status: 0, body: "", json: invalid }
+  out = { ok: false, status: 0, body: "", json: invalid, headers: {}, etag: "", retryAfter: "" }
   xfer = CreateObject("roUrlTransfer")
   port = CreateObject("roMessagePort")
   xfer.SetPort(port)
@@ -357,6 +362,19 @@ function lcHttp(url as String, method = "GET" as String, body = "" as String, he
   if type(msg) <> "roUrlEvent" then return out
 
   code = msg.GetResponseCode()
+  hdrs = msg.GetResponseHeaders()
+  if hdrs <> invalid and GetInterface(hdrs, "ifAssociativeArray") <> invalid
+    out.headers = hdrs
+    for each hk in hdrs
+      lk = LCase(hk)
+      hv = hdrs[hk]
+      if Type(hv) = "roArray" and hv.Count() > 0 then hv = hv[0]
+      hs = ""
+      if Type(hv) = "String" or Type(hv) = "roString" then hs = hv
+      if lk = "etag" then out.etag = hs
+      if lk = "retry-after" then out.retryAfter = hs
+    end for
+  end if
   text = msg.GetString()
   if text = invalid then text = ""
   out.status = code
@@ -506,10 +524,28 @@ function lcAddWatchlist(ctx as Object) as Object
   item = lcAaGet(ctx.body, "item", ctx.body)
   id = lcAaText(item, "id", "")
   if id = "" then return { status: 400, json: { error: "Missing title id." } }
+  kind = LCase(lcAaText(item, "kind", "movie"))
+  if kind <> "series" and kind <> "file" then kind = "movie"
+  genres = lcAaGet(item, "genres", [])
+  if Type(genres) <> "roArray" then genres = []
+  norm = {
+    id: id
+    title: lcAaText(item, "title", id)
+    year: lcAaGet(item, "year", invalid)
+    kind: kind
+    synopsis: lcAaText(item, "synopsis", "")
+    poster: lcAaText(item, "poster", "")
+    backdrop: lcAaText(item, "backdrop", "")
+    genres: genres
+    rating: lcAaText(item, "rating", "")
+    playable: lcAaBool(item, "playable", false)
+    hue: lcAaInt(item, "hue", 220)
+    added: lcNowIso()
+  }
   all = lcReadRegJson("localWatchlist", {})
   if GetInterface(all, "ifAssociativeArray") = invalid then all = {}
   list = lcGetWatchlist(pid)
-  out = [item]
+  out = [norm]
   for each existing in list
     if lcAaText(existing, "id", "") <> id
       out.Push(existing)
@@ -538,9 +574,9 @@ end function
 function lcProgressMap(pid as String) as Object
   all = lcReadRegJson("localProgress", {})
   if GetInterface(all, "ifAssociativeArray") = invalid then return {}
-  m = lcAaGet(all, pid, {})
-  if GetInterface(m, "ifAssociativeArray") = invalid then return {}
-  return m
+  pm = lcAaGet(all, pid, {})
+  if GetInterface(pm, "ifAssociativeArray") = invalid then return {}
+  return pm
 end function
 
 function lcSaveProgress(ctx as Object) as Object
@@ -552,19 +588,60 @@ function lcSaveProgress(ctx as Object) as Object
   all = lcReadRegJson("localProgress", {})
   if GetInterface(all, "ifAssociativeArray") = invalid then all = {}
   pm = lcProgressMap(pid)
+  nowIso = lcNowIso()
+  finAll = lcReadRegJson("localFinished", {})
+  if GetInterface(finAll, "ifAssociativeArray") = invalid then finAll = {}
+  finPid = lcAaGet(finAll, pid, {})
+  if GetInterface(finPid, "ifAssociativeArray") = invalid then finPid = {}
+  prev = lcAaGet(pm, id, invalid)
+  if prev = invalid then prev = lcAaGet(finPid, id, invalid)
+  prevFinished = false
+  prevCompletions = 0
+  if Type(prev) = "Boolean" or Type(prev) = "roBoolean"
+    prevFinished = (prev = true)
+    if prevFinished then prevCompletions = 1
+  else if GetInterface(prev, "ifAssociativeArray") <> invalid
+    prevDur = lcAaGet(prev, "duration", 0)
+    prevPos = lcAaGet(prev, "position", 0)
+    if prevDur > 0 and (prevPos * 1.0) / (prevDur * 1.0) >= 0.92 then prevFinished = true
+    prevCompletions = lcAaInt(prev, "completions", 0)
+    if prevCompletions = 0 and (prevFinished or lcAaText(prev, "completedAt", "") <> "") then prevCompletions = 1
+  end if
   ratio = 0.0
   if dur > 0 then ratio = (posSec * 1.0) / (dur * 1.0)
   if ratio >= 0.92
     if pm.DoesExist(id) then pm.Delete(id)
-    finAll = lcReadRegJson("localFinished", {})
-    if GetInterface(finAll, "ifAssociativeArray") = invalid then finAll = {}
-    finPid = lcAaGet(finAll, pid, {})
-    if GetInterface(finPid, "ifAssociativeArray") = invalid then finPid = {}
-    finPid[id] = true
+    completions = prevCompletions
+    if not prevFinished then completions = completions + 1
+    finPid[id] = {
+      position: posSec
+      duration: dur
+      updated: nowIso
+      "hiddenFromContinueWatching": false
+      "completedAt": nowIso
+      completions: completions
+    }
     finAll[pid] = finPid
     lcWriteRegJson("localFinished", finAll)
   else if posSec > 5
-    pm[id] = { position: posSec, duration: dur, ratio: ratio, updatedAt: lcNowSeconds() }
+    if finPid.DoesExist(id)
+      finPid.Delete(id)
+      finAll[pid] = finPid
+      lcWriteRegJson("localFinished", finAll)
+    end if
+    entry = {
+      position: posSec
+      duration: dur
+      ratio: ratio
+      "updatedAt": lcNowSeconds()
+      updated: nowIso
+      "hiddenFromContinueWatching": false
+      completions: prevCompletions
+    }
+    if GetInterface(prev, "ifAssociativeArray") <> invalid and lcAaText(prev, "completedAt", "") <> ""
+      entry["completedAt"] = lcAaText(prev, "completedAt", "")
+    end if
+    pm[id] = entry
   end if
   ' Keep progress map bounded so registry stays small.
   keys = pm.Keys()
@@ -709,9 +786,9 @@ end function
 function lcFinishedMap(pid as String) as Object
   all = lcReadRegJson("localFinished", {})
   if GetInterface(all, "ifAssociativeArray") = invalid then return {}
-  m = lcAaGet(all, pid, {})
-  if GetInterface(m, "ifAssociativeArray") = invalid then return {}
-  return m
+  fin = lcAaGet(all, pid, {})
+  if GetInterface(fin, "ifAssociativeArray") = invalid then return {}
+  return fin
 end function
 
 function lcProgressRatio(entry as Dynamic) as Float
@@ -802,18 +879,20 @@ function lcGetHome(ctx as Object) as Object
     byId[lcAaText(item, "id", "")] = item
   end for
   for each id in pm.Keys()
-    baseId = id
-    colon = Instr(1, id, ":")
-    if colon > 0 then baseId = Left(id, colon - 1)
-    if byId.DoesExist(baseId)
-      src = byId[baseId]
-      copy = {}
-      for each k in src
-        copy[k] = src[k]
-      end for
-      copy.id = id
-      copy.progress = lcProgressRatio(pm[id])
-      cw.Push(copy)
+    if not lcAaBool(pm[id], "hiddenFromContinueWatching", false)
+      baseId = id
+      colon = Instr(1, id, ":")
+      if colon > 0 then baseId = Left(id, colon - 1)
+      if byId.DoesExist(baseId)
+        src = byId[baseId]
+        copy = {}
+        for each k in src
+          copy[k] = src[k]
+        end for
+        copy.id = id
+        copy.progress = lcProgressRatio(pm[id])
+        cw.Push(copy)
+      end if
     end if
   end for
 

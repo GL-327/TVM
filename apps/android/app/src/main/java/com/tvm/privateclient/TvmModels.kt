@@ -298,6 +298,9 @@ data class ProgressEntry(
     val hiddenFromContinueWatching: Boolean = false,
     val completedAt: String? = null,
     val completions: Int = 0,
+    val completedTitle: String? = null,
+    val completedYear: Int? = null,
+    val syncPresentKeys: Set<String> = emptySet(),
 ) {
     val isFinished: Boolean
         get() = position.isFinite() && duration.isFinite() && duration > 0 && position / duration > 0.96

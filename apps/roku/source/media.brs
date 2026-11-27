@@ -318,6 +318,7 @@ function watchlistBody(item as Object) as String
   slim.synopsis = synopsis
   slim.poster = asText(aaGet(item, "poster", ""))
   slim.backdrop = asText(aaGet(item, "backdrop", ""))
+  slim.genres = aaArray(item, "genres")
   slim.rating = asText(aaGet(item, "rating", ""))
   slim.playable = aaGet(item, "playable", false)
   hue = aaGet(item, "hue", invalid)

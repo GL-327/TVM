@@ -3,6 +3,69 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.14",
+      "date": "2026-11-27",
+      "title": "Sync on phones and Roku",
+      "highlights": [
+        "Profiles, Continue Watching, your list and settings now sync on iPhone, Android and Roku.",
+        "The TVM trailer streams when you open it, so the apps download about 15 MB less."
+      ],
+      "changes": [
+        {
+          "area": "Account",
+          "text": "Sign in on iPhone, Android or Roku and your profiles, progress and My List match your other devices.",
+          "platforms": [
+            "ios",
+            "android",
+            "roku"
+          ]
+        },
+        {
+          "area": "Account",
+          "text": "Subtitle, audio and Home row settings follow you between devices; quality and language stay per device.",
+          "platforms": [
+            "ios",
+            "android",
+            "roku"
+          ]
+        },
+        {
+          "area": "Account",
+          "text": "Settings > Account shows when the phone last synced, with a Sync now button.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Account",
+          "text": "Signing out of a phone or Roku removes that account's synced data from the device.",
+          "platforms": [
+            "ios",
+            "android",
+            "roku"
+          ]
+        },
+        {
+          "area": "Extras",
+          "text": "About > Watch the TVM trailer now streams the trailer instead of storing it in the app.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Franchise intros are not on Roku yet."
+      ]
+    },
+    {
       "version": "1.4.13",
       "date": "2026-11-27",
       "title": "iPhone playback and sign-in fixes",

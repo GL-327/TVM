@@ -87,7 +87,7 @@ function lcProfilesStore() as Object
     if not p.DoesExist("kind") then p.kind = "standard"
     age = 18
     if p.kind = "kids" then age = 7
-    if not p.DoesExist("maxAge") then p.maxAge = age
+    if not p.DoesExist("maxAge") then p["maxAge"] = age
     if not p.DoesExist("hue") then p.hue = 220
     if not p.DoesExist("avatar") then p.avatar = invalid
   end for
@@ -124,7 +124,11 @@ function lcPinError(data as Object, p as Object, pin as String) as Dynamic
   retry = lcAaInt(p, "pinUntil", 0) - lcNowSeconds()
   if retry > 0 then return { status: 403, json: { error: "pin-cooldown", retryAfter: retry } }
   if pin = "" then return { status: 403, json: { error: "pin-required" } }
-  hash = lcSha256Hex(lcAaText(saved, "salt") + ":" + pin)
+  if saved.DoesExist("iter")
+    hash = syncPbkdf2Sha256(pin, lcAaText(saved, "salt"), lcAaInt(saved, "iter", 20000))
+  else
+    hash = lcSha256Hex(lcAaText(saved, "salt") + ":" + pin)
+  end if
   if lcPinValid(pin) and lcConstantTimeEquals(hash, lcAaText(saved, "hash"))
     p.pinTries = 0
     p.pinUntil = 0

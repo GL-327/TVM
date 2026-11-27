@@ -109,6 +109,10 @@ sub init()
   m.nextPlayItem = invalid
   m.homeSilent = false
   m.searchTimer = invalid
+  m.syncTask = invalid
+  m.syncEpoch = 0
+  m.syncRequestEpoch = 0
+  m.syncQueued = false
   m.livePicksQuery = ""
   m.livePicksGroup = ""
   m.livePicksOffset = 0
@@ -129,6 +133,18 @@ sub init()
   poll.observeField("fire", "onHomePoll")
   m.homePoll = poll
   poll.control = "start"
+
+  syncPoll = CreateObject("roSGNode", "Timer")
+  syncPoll.duration = 60
+  syncPoll.repeat = true
+  syncPoll.observeField("fire", "onSyncPoll")
+  m.syncPoll = syncPoll
+
+  syncPush = CreateObject("roSGNode", "Timer")
+  syncPush.duration = 3
+  syncPush.repeat = false
+  syncPush.observeField("fire", "onSyncPushTimer")
+  m.syncPushTimer = syncPush
 end sub
 
 sub applyCurrentTheme()
@@ -615,6 +631,8 @@ sub onHubAction()
   else if kind = "signedOut"
     signOutAccount()
   else if kind = "revoked"
+    stopSyncTimers()
+    m.syncEpoch = m.syncEpoch + 1
     hubForgetThisRoku()
     m.accountToken = ""
     saveAccountToken("")
@@ -1264,6 +1282,10 @@ sub onPlayerAction()
     playNextFromPlayer()
     return
   end if
+  if kind = "subtitleRemembered"
+    scheduleSyncPush()
+    return
+  end if
   navigate("pop", "", {})
 end sub
 
@@ -1476,6 +1498,8 @@ end sub
 sub applyCoreUrl(text as String)
   url = normalizeCoreUrl(text)
   if url = "" or LCase(url) = "standalone"
+    stopSyncTimers()
+    m.syncEpoch = m.syncEpoch + 1
     saveCoreBaseUrl("")
     saveCoreToken("")
     saveAccountToken("")
@@ -1500,6 +1524,8 @@ sub applyCoreUrl(text as String)
     return
   end if
   if LCase(url) <> LCase(m.coreUrl)
+    stopSyncTimers()
+    m.syncEpoch = m.syncEpoch + 1
     m.coreToken = ""
     saveCoreToken("")
     m.accountToken = ""
@@ -1646,6 +1672,12 @@ sub enterHome()
   end if
   m.justRegistered = false
   stopResendCooldown()
+  if m.coreUrl = "" and isAccountToken(m.accountToken)
+    if m.syncPoll <> invalid then m.syncPoll.control = "start"
+    triggerSyncNow(true)
+  else
+    stopSyncTimers()
+  end if
 end sub
 
 sub showAccountGate(json as Object)
@@ -1919,11 +1951,15 @@ end sub
 sub signOutAccount()
   stopDeviceSignIn()
   stopWaitingTimer()
+  stopSyncTimers()
+  m.syncEpoch = m.syncEpoch + 1
   hubSignOutQuiet()
   m.accountTask = startApiRequest(joinCorePath(m.coreUrl, "/api/account/signout"), "POST", "{}", "onAccountSignOutDone")
 end sub
 
 sub onAccountSignOutDone()
+  stopSyncTimers()
+  m.syncEpoch = m.syncEpoch + 1
   saveRdOwnFlag(false)
   m.rd = {}
   m.justRegistered = false
@@ -2620,6 +2656,7 @@ sub onCreateProfileDone()
   m.profileId = asText(aaGet(task.json, "activeId", ""))
   if m.profilesNode <> invalid then m.profilesNode.registry = task.json
   restoreScreenFocus()
+  scheduleSyncPush()
 end sub
 
 function rdOwnKeyPrefName() as String
@@ -2857,6 +2894,8 @@ sub onCacheDone()
 end sub
 
 sub onResetDone()
+  stopSyncTimers()
+  m.syncEpoch = m.syncEpoch + 1
   m.profileId = ""
   loadHome()
   navigate("home", "home", {})
@@ -2889,6 +2928,7 @@ sub onWatchlistDone()
   if visibleScreen(m.stack).name = "catalog" and m.catalogKind = "watchlist"
     loadCatalog({ kind: "watchlist" })
   end if
+  scheduleSyncPush()
 end sub
 
 sub startPlayback(item as Object)
@@ -3304,6 +3344,8 @@ sub postProgress(action as Object)
 end sub
 
 sub onProgressDone()
+  task = m.progressTask
+  if task <> invalid and task.ok then scheduleSyncPush()
 end sub
 
 sub onRemoveProfileDone()
@@ -3316,6 +3358,7 @@ sub onRemoveProfileDone()
   if m.profilesNode <> invalid then m.profilesNode.registry = task.json
   m.profileId = asText(aaGet(task.json, "activeId", ""))
   restoreScreenFocus()
+  scheduleSyncPush()
 end sub
 
 ' ---- TVM Hub: this Roku as an installation and a command target ----
@@ -3350,6 +3393,8 @@ end sub
 
 sub onHubStatus()
   if m.hubAgent.status = "revoked"
+    stopSyncTimers()
+    m.syncEpoch = m.syncEpoch + 1
     m.accountToken = ""
     saveAccountToken("")
     body = {}
@@ -3721,3 +3766,76 @@ function isRokuAdmin() as Boolean
   role = asText(aaGet(aaGet(m.accountState, "account", {}), "role", ""))
   return role = "admin" or role = "owner"
 end function
+
+sub triggerSyncNow(force = false as Boolean)
+  if m.coreUrl <> "" or not isAccountToken(m.accountToken) then return
+  if m.syncTask <> invalid and not m.syncTask.done
+    m.syncQueued = true
+    return
+  end if
+  m.syncQueued = false
+  if m.syncEpoch = invalid then m.syncEpoch = 0
+  m.syncRequestEpoch = m.syncEpoch
+  body = "{}"
+  if force then body = FormatJson({ force: true })
+  m.syncTask = startApiRequest("local:/api/sync/now", "POST", body, "onSyncDone")
+end sub
+
+sub scheduleSyncPush()
+  if m.coreUrl <> "" or not isAccountToken(m.accountToken) then return
+  if m.syncPushTimer <> invalid
+    m.syncPushTimer.control = "stop"
+    m.syncPushTimer.control = "start"
+  end if
+end sub
+
+sub onSyncPoll()
+  if m.coreUrl <> "" or not isAccountToken(m.accountToken)
+    stopSyncTimers()
+    return
+  end if
+  if m.stack = invalid then return
+  if visibleScreen(m.stack).name <> "home" then return
+  usable = aaGet(m.accountState, "usable", {})
+  if aaGet(usable, "ok", false) <> true then return
+  triggerSyncNow(false)
+end sub
+
+sub onSyncPushTimer()
+  if m.coreUrl <> "" or not isAccountToken(m.accountToken) then return
+  triggerSyncNow(false)
+end sub
+
+sub stopSyncTimers()
+  if m.syncPoll <> invalid then m.syncPoll.control = "stop"
+  if m.syncPushTimer <> invalid then m.syncPushTimer.control = "stop"
+  m.syncQueued = false
+end sub
+
+sub onSyncDone()
+  task = m.syncTask
+  if task = invalid then return
+  if m.syncRequestEpoch <> m.syncEpoch then return
+  if task.statusCode = 401
+    stopSyncTimers()
+    m.syncEpoch = m.syncEpoch + 1
+    m.accountToken = ""
+    saveAccountToken("")
+    showAccountGate({ signedIn: false })
+    return
+  end if
+  if task.ok and task.json <> invalid
+    if aaGet(task.json, "changed", false) = true
+      loadProfiles(false)
+      loadExtrasSettings()
+      if m.stack <> invalid and visibleScreen(m.stack).name = "home"
+        m.homeSilent = true
+        loadHome()
+      end if
+    end if
+  end if
+  if m.syncQueued = true
+    m.syncQueued = false
+    triggerSyncNow(false)
+  end if
+end sub

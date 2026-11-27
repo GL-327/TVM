@@ -240,6 +240,7 @@ sub rememberPlayerSubtitle(trackId as String, off as Boolean)
 end sub
 
 sub onSubtitleRemembered()
+  emit("subtitleRemembered", invalid)
 end sub
 
 sub onPlayerNext(event as Object)

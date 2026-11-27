@@ -170,7 +170,34 @@ data class TvmPrefs(
     }
 
     fun save(store: TvmStore) {
-        store.writeJSON("prefs.json", json())
+        val syncDir = store.activeSyncDir()
+        if (syncDir == null) {
+            store.writeJSON("prefs.json", json())
+            return
+        }
+        val current = load(store)
+        val device = loadDevice(store)
+        val before = syncPrefValues(current)
+        val after = syncPrefValues(this)
+        val values = SyncStores.readSyncPrefs(syncDir)
+        var changed = false
+        for (key in SyncSchema.SYNC_PREFS) {
+            if (SyncSchema.canonicalJson(before[key]) == SyncSchema.canonicalJson(after[key])) continue
+            values.put(key, after[key] ?: JSONObject.NULL)
+            changed = true
+        }
+        if (changed) {
+            SyncStores.saveSyncPrefs(syncDir, values)
+            store.notifySyncChanged()
+        }
+        device.language = language
+        device.autoUpdate = autoUpdate
+        device.heroPreviews = heroPreviews
+        device.quality = quality
+        device.skipUpscaled = skipUpscaled
+        device.subtitleMode = subtitleMode
+        device.webhookUrl = webhookUrl
+        store.writeJSON("prefs.json", device.json())
     }
 
     companion object {
@@ -209,11 +236,55 @@ data class TvmPrefs(
             "shortcutsOverlay" to true,
             "webhook" to false,
             "announcements" to true,
+            "franchiseIntros" to true,
         )
 
-        fun load(store: TvmStore): TvmPrefs {
+        fun syncPrefValues(prefs: TvmPrefs): Map<String, Any?> {
+            val out = LinkedHashMap<String, Any?>()
+            out["subtitleLanguages"] = JSONArray(prefs.subtitleLanguages)
+            out["subtitleStyle"] = prefs.subtitleStyle.json()
+            out["audioLanguage"] = prefs.audioLanguage
+            out["skipSegments"] = prefs.skipSegments
+            out["autoplayNext"] = prefs.autoplayNext
+            out["homeSections"] = Json.array(prefs.homeSections.map { it.json() })
+            for (id in EXTRA_DEFAULTS.keys) {
+                out["extras.$id"] = prefs.extras[id] ?: EXTRA_DEFAULTS[id]!!
+            }
+            return out
+        }
+
+        private fun loadDevice(store: TvmStore): TvmPrefs {
             val saved = store.readJSON("prefs.json") as? JSONObject ?: JSONObject()
             return TvmPrefs().merge(saved)
+        }
+
+        private fun overlaySyncedPrefs(device: TvmPrefs, syncRaw: JSONObject): TvmPrefs {
+            val patch = JSONObject()
+            for (key in listOf("subtitleLanguages", "subtitleStyle", "audioLanguage", "skipSegments", "autoplayNext", "homeSections")) {
+                if (syncRaw.has(key)) patch.put(key, syncRaw.opt(key) ?: JSONObject.NULL)
+            }
+            val extrasObj = JSONObject()
+            for (id in EXTRA_DEFAULTS.keys) {
+                val value = syncRaw.opt("extras.$id")
+                extrasObj.put(id, if (value is Boolean) value else EXTRA_DEFAULTS[id]!!)
+            }
+            patch.put("extras", extrasObj)
+            return TvmPrefs(
+                language = device.language,
+                autoUpdate = device.autoUpdate,
+                heroPreviews = device.heroPreviews,
+                quality = device.quality,
+                skipUpscaled = device.skipUpscaled,
+                subtitleMode = device.subtitleMode,
+                webhookUrl = device.webhookUrl,
+            ).merge(patch)
+        }
+
+        fun load(store: TvmStore): TvmPrefs {
+            val device = loadDevice(store)
+            val syncDir = store.activeSyncDir() ?: return device
+            val syncRaw = SyncStores.readSyncPrefs(syncDir)
+            return overlaySyncedPrefs(device, syncRaw)
         }
 
         fun acceptLanguage(code: String): String {

@@ -14,7 +14,7 @@ every decision, is a zip the owner keeps (`session-export-*.zip`); ask for it if
 
 **Releases**
 - Every change a viewer can notice adds a line to `packages/content/changelog.json` in the same commit (rules in `CHANGELOG-RULES.md`, checked by `node scripts/check-changelog.mjs`).
-- A release bumps the version everywhere: root `package.json`, `apps/core/package.json`, `apps/ui/package.json`, `apps/core/src/config.ts` CORE_VERSION, Android `versionName`, iOS `Info.plist`, `TVMModels.swift`, `project.pbxproj` (2×), and `apps/roku/manifest` `build_version`. Use `docs/agents/tools/bump-*.mjs` as the template.
+- A release bumps the version everywhere: root `package.json`, `apps/core/package.json`, `apps/ui/package.json`, `apps/core/src/config.ts` CORE_VERSION, Android `versionName`, iOS `Info.plist`, `TVMModels.swift`, `project.pbxproj` (2×), and `apps/roku/manifest` `build_version`. Run `node docs/agents/tools/bump-version.mjs <from> <to>`.
 - Never add lines to an already-released version; add a new version instead.
 - Copy `changelog.json` to `apps/ios/TVM/`, `apps/roku/source/data/content/` and `apps/android/app/src/main/assets/content/`.
 - Releases may carry `knownIssues` (shown in the patch-notes pop-up).
@@ -78,6 +78,10 @@ every decision, is a zip the owner keeps (`session-export-*.zip`); ask for it if
 | 1.4.8 | **Hub page**, artwork-led Movies/Series, English/quality fixes, cinema-recording fallback |
 | 1.4.9 | TVM trailer v1 + developer tools (web) |
 | 1.4.10 | Shooting star back on launch, update-check retry |
+| 1.4.11 | Windows parity: Hub page, widescreen Movies/Series, Direct2D franchise intros, PyGlass refraction, dev tools |
+| 1.4.12 | Clear glass navigation, more reliable Windows updates |
+| 1.4.13 | iPhone finds MKV streams again and stays signed in after closing |
+| 1.4.14 | **Account sync on iPhone, Android and Roku**; the trailer streams from the `media` release instead of being bundled |
 
 Reports from each builder are in `docs/1.4/report-*.md`, and briefs in `docs/agents/briefs/`.
 
@@ -138,7 +142,7 @@ The original clones are in `~/.claude/skill-sources/`. To set them up on another
 
 ## 6. Everything still to do (in priority order)
 
-1. **Windows catch-up, 1.4.11.** A Gemini agent ("TVM 1.4.11 Windows parity") was working on it at handover. Brief: `docs/agents/briefs/job-native4.md`.
+1. **Windows catch-up** landed in 1.4.11 and 1.4.12; keep improving the Windows look first (see `HANDOFF.md`). Brief: `docs/agents/briefs/job-native4.md`.
    - If it didn't finish, check `git status` and the native build, then finish it.
    - Version number shown at the top of Settings, and an **"Update now"** emergency button (window + Core), on Windows and React.
    - Hub page, cozy artwork-led Movies/Series, franchise intros, trailer and dev tools on **Windows**: parity with React.
@@ -149,7 +153,7 @@ The original clones are in `~/.claude/skill-sources/`. To set them up on another
 3. **The streaming look** (owner: "looks like a database"). The web got the Hub and artwork-led rows in 1.4.8, but the owner still wants it warmer and more premium. Brief: `docs/agents/briefs/job-glass2.md`.
 4. **Phones and Roku**: join account sync (Core sync module in `apps/core/src/sync/`; API in the accounts README). Bring the intros, Hub and new look to Roku.
 5. Test on real devices: Windows, iPhone, Android, Roku. Check that quality is 4K/English via the Stats overlay (I).
-6. App size doubled in 1.4.9 because the 15 MB trailer MP4 ships in the UI bundle. Consider hosting it as a release asset or streaming it.
+6. Done in 1.4.14: the trailer streams from the `media` release (`releases/download/media/tvm-trailer.mp4`); replace that asset to update it.
 7. When all of `HANDOFF.md` is done: delete HANDOFF.md and the pointer at the top of CLAUDE.md.
 
 ## 7. Lessons learned

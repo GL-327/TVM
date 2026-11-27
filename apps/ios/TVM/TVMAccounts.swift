@@ -241,6 +241,9 @@ final class TVMAccounts {
     private let origin: String
     private let now: () -> Date
     private let lock = NSLock()
+
+    var syncOrigin: String { origin }
+    var currentSessionToken: String? { vault.read() }
     private var accountCache: [String: CachedAccount] = [:]
     private var rdCache: [String: CachedKey] = [:]
     private var configCache: [String: Any] = TVMAccounts.defaultConfig()

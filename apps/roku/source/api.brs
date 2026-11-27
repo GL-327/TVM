@@ -15,7 +15,7 @@ end function
 
 function startApiRequest(url as String, method as String, body as String, callback as String) as Object
   ' Accounts always use the private service through the on-device Task adapter.
-  for each route in ["/api/account", "/api/rd/"]
+  for each route in ["/api/account", "/api/rd/", "/api/sync/"]
     at = Instr(1, url, route)
     if at > 0 then url = "local:" + Mid(url, at)
   end for

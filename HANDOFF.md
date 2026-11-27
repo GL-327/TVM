@@ -1,108 +1,42 @@
-# Handoff: TVM 1.4.12
+# Handoff: TVM 1.4.14
 
-GitHub published the 1.4.11 Windows package from `57ea38a`. Its SHA-256 and embedded Windows/Core build IDs matched the release metadata. The 1.4.3 updater applied it to an isolated copy of the installed renderer, and that copy rendered the Settings screen successfully.
+Rewritten 2026-11-27 by the lead session (Claude, owner's PC). Delete this file, and the pointer at the top of
+`CLAUDE.md`, when everything below is done. Older detail lives in git history and `docs/1.4/report-*.md`.
 
-The 1.4.12 candidate fixes update status and retry behavior. Windows checks the native release independently of the GitHub commit list and retries failed checks and downloads sooner. Update now reports failed checks and waits for the expected Core build in a new process before reporting a restart.
+## State
 
-The Windows TV guide keeps the mouse pointer visible. The floating Back button was removed from the Windows shell. Settings, the guide and the separate Live TV page have page-level Back controls. The navigation pill uses clearer glass, focus highlights are neutral, and the compact Hub keeps the artwork in a wider frame above the greeting.
+- **1.4.13** (iPhone MKV streams, iPhone stays signed in) passed every CI workflow. The installed Windows app
+  updated itself from 1.4.12 to 1.4.13 about two minutes after launch, and Core reported 1.4.13.
+- **1.4.14** adds account sync to iPhone, Android and Roku (Gemini; report `docs/1.4/report-phone-sync.md`). The
+  engines match Core's ids, hashes, last-writer-wins, first-sync merge and sign-out rules, checked against a fixture
+  generated from Core's own code. Android and iOS compile for the first time in CI.
+- The TVM trailer is no longer bundled. It streams from the `media` GitHub pre-release
+  (`releases/download/media/tvm-trailer.mp4`) on React and Windows. GitHub serves it as `application/octet-stream`;
+  Chromium plays it (checked), iPhone is untested. To change the trailer, replace that asset: no app release needed.
 
-The final local checks passed: 618 Windows tests, 569 web unit tests, workspace type checks, and the iOS, Android and Roku project checks. The phone browser run passed all 21 iPhone WebKit and Android/desktop Chromium layout tests. The updater pass also ran 716 Core tests and all 48 browser tests with the standard configuration. The packaged Core and web UI passed a smoke test using a local accounts fixture.
+## Open, in order
 
-The GitHub iOS preview combines the 1.4.12 interface with the 1.4.11 native binary. It requires re-signing. Automatic interface updates are enabled by default and use the same iOS feed. A physical-device launch and an update from the next compatible feed are still to be tested.
+1. **Real-device tests (owner):** iPhone streams play and it stays signed in after closing; sync on a phone and
+   Roku against the PC; the streamed trailer on iPhone (if it fails: proxy it through the iOS engine's local server
+   with `video/mp4` and Range).
+2. **Update now** on Windows: test it on a build that has a pending update (auto-update itself works).
+3. **Dev panel** (Gemini next): `docs/agents/briefs/job-devpanel.md`. Accounts service changes are tested locally,
+   then deployed by the lead after `npx wrangler login` on this PC. App side: invite code field + maintenance banner.
+4. **Phone player overlays:** Stats, sleep timer and night mode over the native video, and `watched` on episodes.
+5. **Roku:** Hub page, franchise intros and the new look (after sync and the dev panel, which also touch Roku).
+6. **Trailer v3:** the preview (model stills, turntable, voice tests) goes to the owner first. Full trailer only
+   after a yes; then upload it to the `media` release.
+7. **Windows look:** keep improving it first (clear Liquid Glass only, see `docs/LIQUID_GLASS.md`), then port to React.
 
-Phone and Roku account sync and the phone player overlays are still open. The repository carries the v1 trailer. The v3 trailer brief calls for an original rigged character and normal and whispered voice samples for review before production.
+## Owner decisions pending
 
-> 1.4.7 fixed tablet top-bar taps. 1.4.8 added the Hub page, artwork-led Movies/Series, the quality and English fixes, the cinema-recording fallback and the extras checks: see `docs/1.4/report-core3.md` and `report-ui3.md`. 1.4.11 brought Windows to parity with the Hub page, widescreen Movies/Series lanes, procedural Direct2D Hunger Games and Doomsday intros, PyGlass refraction + Bloom silk ribbons (Windows and web), About trailer playback and Settings Developer tools. Still open: phone/Roku sync and phone player overlays.
-
-## Update: 1.4.11 (autonomous finish, 2026-11-27)
-
-- **Windows parity (native4):** fixed the stale version badge (`TVM 1.4.11`) and `"Update now"` on Windows About; added the native Hub start page (`SceneStyle::Hub`, greeting, spotlight hero, Continue watching, apps rail, free live channels); updated Movies/Series to hero backdrop + 16:9 widescreen cards (`CardData::landscape`) + genre filter chips + episode subtitle; implemented procedural Direct2D Hunger Games (Mockingjay ring, embers, feathers) and Avengers: Doomsday (emerald steel armor wall, rune rings, lightning arcs, steel mask) franchise intros in `ui/franchise_intro.*` with once-per-session gating and reduced-motion static title cards; tuned PyGlass bevel refraction and chromatic rim dispersion + Windows 11 Bloom 3D ribbons in `Stage`, `D2DPainter`, `glass_lens.cpp` and web `PageScene.tsx`/`browse.css`/`liquidGlass.css`; wired `About > Watch the TVM trailer` and `Settings > Developer` tools (Diagnostics, Show FPS, Watch trailer, Show patch notes, Replay intros, Copy diagnostics, Clear local caches, Reset usage counters).
-
-
-Written 2026-11-26 by Claude on the owner's laptop, continuing the 1.4 polish that the desktop session could not
-finish. **Read this before changing anything.** Delete this file once everything below is done, and remove the
-pointer to it at the top of `CLAUDE.md`.
-
-The contract is still `docs/1.4/spec.md`. Each builder's report is in `docs/1.4/report-*.md`; the 1.4.3 ones end
-in `-143.md`. 1.4.3 was built by Claude (lead, web audit, Core, integration), OpenAI Codex (phone engines, Roku,
-web extras), Gemini in Antigravity (Liquid Glass) and a Claude Sonnet helper (Windows Settings).
-
-## Update: 1.4.6 (desktop session, 2026-11-26 night)
-
-- **Web look reset:** the owner found 1.4.5 laggy and generated-looking, so apps/ui went back to the **1.3.2 glass,
-  liquid lens and backdrop** (theme/glass.ts, liquidLens.ts, liquidGlass.css, scene.css, SceneField.tsx). The
-  1.4 fixes stayed: centred nav and magnifier, one lit card, no hover clipping, Settings, guide, sync, patch notes.
-  The event row is a plain row again, and the kicker no longer covers the wordmark. Report: `docs/1.4/report-ui-restore.md`.
-- **Hover lag fixed:** two `main:has(...:hover)` rules in polish.css re-styled about 700 elements per hover; they are
-  replaced by an attribute on `<html>` (`components/hoverYield.ts`), and the poster placeholders no longer
-  shimmer. Arrow keys across a row: 5-11 fps went to 30-72 fps on first use, 75 fps warm. Report: `docs/1.4/report-hover-lag.md`.
-- **Franchise intros (web, desktop, phones):** `apps/ui/src/intros/**` and `packages/content/intros.json` (6
-  Hunger Games ids, 74 Marvel/X-Men ids, regex fallback). Each is 3.8 s over loading, skippable, has an Extras
-  switch, and plays once per title per session. **Not on Windows or Roku yet.**
-- **Still wanted by the owner:** the full iOS 26/27 Liquid Glass and a cinematic, less "database" streaming look.
-  The brief is in `docs/1.4/brief-glass2.md`. Do this next, then bring the look and intros to Windows.
-
-## Update: 1.4.4 and 1.4.5 (desktop session, 2026-11-26 evening)
-
-- **1.4.4:** merged the Copilot cloud agent branch (Hunger Games order, wrapping poster titles, static backdrop,
-  episode cards, back-button labels, navigation test updates) and deleted the branch. Fixed the two phone CI
-  failures (Android guide parser accepted unclosed XMLTV; iPhone refused MKV although it plays through VLC).
-- **1.4.5 (Codex, then Gemini, then the lead):**
-  - **Account sync is live** on the accounts service (migration 0005, `GET/PUT /v1/me/data`, strict per-kind
-    schemas, no keys or passwords, 20,000 items per account) and in Core (pull on sign-in and every 60 s, push
-    3 s after a change, last writer wins, first-sync merge, offline backoff, `/api/sync/status`, `/api/sync/now`).
-    **Phones and Roku do not sync yet**: their engines need the same client.
-  - Web: all 48 Playwright tests pass (navigation fixed: product bugs vs stale tests are listed in
-    `docs/1.4/report-web-144.md`); Details prefetch after 150 ms hover/focus; seek-bar mark legend and
-    tooltips; Live TV/guide Back button unified; Show FPS switch; small polish.
-  - Windows: Show FPS, Home row order from `homeSections`, webhook/volume boost/poster-title Settings rows,
-    Details prefetch. **Not done on Windows:** seek-bar mark legend, Live TV Back button style, and checking or
-    finishing the native Liquid Glass job (the Gemini run stopped partway).
-  - iPhone: webhook events were dropped when the webhook object was released; fixed.
-- Checks before the 1.4.5 push: typecheck, Core 707, UI 553 and build, Playwright 48/48, accounts 53,
-  Windows build and tests (608), content and changelog. Android unit tests passed locally on 1.4.4.
-
-## State (from 1.4.3)
-
-Checks run locally before committing:
-- Core typecheck and tests (695+)
-- web UI typecheck, tests (546+) and build
-- Playwright `mobile.spec.ts` and `responsive.spec.ts`
-- Roku BrighterScript (0 errors), tests (451, including a BrightScript runtime test), package and check
-- Android and iOS project checks
-- content and changelog checks
-- Windows build and `tvm_tests.exe` (600)
-
-Android/Kotlin and iOS/Swift cannot be compiled on the laptop (no Android SDK, no Swift); **CI is their first
-compile**. Nothing was tried on a real phone, Roku or TV.
-
-| Area | Done in 1.4.3 | Still open |
-|---|---|---|
-| Windows | Settings: Playback, Audio & subtitles, Home screen, Extras (22 switches), search, icons, Back to list. Guide re-polls while Core says `refreshing`. Patch-notes pop-up scrolls with platform tags. Profile editor avatar-set tiles. | Liquid Glass rework to the web recipe (Gemini job `report-glass-native-143.md`; check whether it landed). Home row order. Webhook URL, volume boost, accent and poster titles rows. |
-| Web / desktop / phone UI | Audited in a browser. Fixed hero overlapping the nav at 720p, Settings search icon / scroll / top fade, guide auto-refresh and logo fallback, Details legibility, duplicate commit-list modal. Codex: Stats (I), version picker, quality badges, sleep timer, night mode, pause when hidden, shortcuts (?), spoiler blur, trailer backdrops (now Core's clean clip first, YouTube fallback cropped), theme songs. Gemini: Liquid Glass per spec 3.1 (lens, rim, adaptive tint, droplet; nav highlight bug fixed). | Phones: Stats / sleep timer / night mode do not draw over the native video surfaces. Spoiler blur on phones needs `watched` on episodes from the phone engines. |
-| Core | Guide `refreshing` flag + first guide tests. Episodes carry `watched`. Hero clip verified end to end (H.264 1080p, ~38 s, muted, Range). | Theme songs: lookup works, YouTube refused the audio download during testing. |
-| Roku | Settings/guide/profile/patch-notes remote paths, AvatarPicker, 4-box PIN, glass rims + soft art behind panels, ranking fixes, guide re-poll, manifest 1.4.3. `IndexOf` calls replaced (not on every Roku OS). | Not run on a TV. |
-| Android | Live guide (XmlPullParser), webhook events, default auto-pick uses the 1.4 ranking, client caps, version/originalLanguage in responses. | Compile in CI. Device test. |
-| iPhone | Live guide (XMLParser), versions wired, webhook. Lead fix: ranking keeps MKV/TrueHD/DTS because the iPhone plays through VLC. | Compile in CI. Device test. |
-
-## Owner item 6 (bitrate)
-
-Windows (mpv), Android and Roku play Real-Debrid's original `unrestrict` download link; the web path only
-transcodes when the browser cannot decode the codec, at quality-based CRF 20. The low bitrate came from the old
-ranking letting small encodes win. The 1.4 ranking (original language, highest native resolution, REMUX > BluRay >
-WEB-DL, higher bitrate, no upscales/cams) fixes it on every platform. Verify with Stats (I) on a real title.
-
-## Next, in order
-
-1. Phones and Roku: join account sync (same client as Core: `apps/core/src/providers` sync module; API in the accounts README).
-1a. Windows: seek-bar mark legend, Live TV Back button style, native Liquid Glass (spec section 3.1).
-2. Test 1.4.3 on Windows, a phone and Roku; fix anything that blocks watching first.
-3. Windows Liquid Glass: integrate or finish Gemini's native job.
-4. Phones: draw Stats / sleep timer / night mode in the native players; send `watched` on episodes.
-5. When done: update the notes, delete this file and the CLAUDE.md pointer.
+- 12 commits on main (52563c6..759ee35) are authored by "Claude" with co-author lines. Fixing them needs a history
+  rewrite and force-push, coordinated with GL-328. Do nothing until the owner says so.
 
 ## Lessons for whoever runs builders
 
-- Give each builder its own folders; five ran at once without conflicts this way.
-- Antigravity needs "Always allow" (or turbo) before a headless Gemini run, or it waits forever on the first read.
-- Codex's sandbox cannot fetch npm packages or delete temp folders; rerun its network-dependent tests yourself.
+- Give each builder its own folders, and no two builders on the same platform files at once.
+- Builders don't commit, bump versions or write the changelog: the lead does the release.
+- Antigravity needs "Always allow" (or Turbo). If the network drops, its agents stop: `agentapi send-message <id>`
+  "continue" resumes them.
+- Android and iOS do not compile on the owner's PC (no JDK 21 / Android SDK, no Swift): CI is the first compile.
