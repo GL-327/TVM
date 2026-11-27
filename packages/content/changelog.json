@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Home",
+          "text": "Going back to Home on Android no longer jolts as the Hunger Games row loads in.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Android",
           "text": "Pulling past the top of Home on Android is smooth; the page no longer restyles on every frame.",
           "platforms": [

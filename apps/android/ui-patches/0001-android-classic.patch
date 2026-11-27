@@ -90,10 +90,10 @@ index 0000000..29120f3
 +}
 diff --git a/apps/ui/src/components/EventShelf.tsx b/apps/ui/src/components/EventShelf.tsx
 new file mode 100644
-index 0000000..c4746a1
+index 0000000..bd37cbe
 --- /dev/null
 +++ b/apps/ui/src/components/EventShelf.tsx
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,91 @@
 +import { useMemo, useState } from 'react';
 +import { FocusButton } from './FocusButton';
 +import { mapRailPosters } from './PosterCard';
@@ -167,14 +167,22 @@ index 0000000..c4746a1
 +}
 +
 +/** The release event running now, if any (packages/content/events.json through the phone's core). */
++// The last answer, so Home shows the event at once when it is opened again: fetched fresh each time, it appeared a
++// moment after Home and pushed the page down (a jolt when switching back to Home).
++let lastEvent: ActiveEvent | null | undefined;
++export function peekActiveEvent(): ActiveEvent | null | undefined {
++  return lastEvent;
++}
++
 +export async function fetchActiveEvent(): Promise<ActiveEvent | null> {
 +  try {
 +    const response = await apiFetch('/api/events/active');
-+    if (!response.ok) return null;
++    if (!response.ok) return lastEvent ?? null;
 +    const body = (await response.json()) as { events?: ActiveEvent[] };
-+    return body.events?.find((entry) => (entry.items?.length ?? 0) > 0) ?? null;
++    lastEvent = body.events?.find((entry) => (entry.items?.length ?? 0) > 0) ?? null;
++    return lastEvent;
 +  } catch {
-+    return null;
++    return lastEvent ?? null;
 +  }
 +}
 diff --git a/apps/ui/src/data/account.ts b/apps/ui/src/data/account.ts
@@ -449,14 +457,14 @@ index f99dcc8..e9079f2 100644
            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
          </form>
 diff --git a/apps/ui/src/screens/Home.tsx b/apps/ui/src/screens/Home.tsx
-index fea7332..98acf61 100644
+index fea7332..db5658f 100644
 --- a/apps/ui/src/screens/Home.tsx
 +++ b/apps/ui/src/screens/Home.tsx
 @@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
  import { ErrorState } from '../components/ErrorState';
  import { FocusButton } from '../components/FocusButton';
  import { mapRailPosters } from '../components/PosterCard';
-+import { EventShelf, fetchActiveEvent, type ActiveEvent } from '../components/EventShelf';
++import { EventShelf, fetchActiveEvent, peekActiveEvent, type ActiveEvent } from '../components/EventShelf';
  import { Rail } from '../components/Rail';
  import { Ribbon } from '../components/Ribbon';
  import { RailSkeletons } from '../components/Skeleton';
@@ -479,22 +487,25 @@ index fea7332..98acf61 100644
        {watching.length > 0 && (
          <Rail title={shelfTitle('Continue watching')}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
        )}
-@@ -92,6 +96,14 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+@@ -92,6 +96,17 @@ export function Home(_props: ScreenProps): React.JSX.Element {
    const [watching, setWatching] = useState<Title[]>(() => (cached?.continueWatching ?? []).map(asTitle));
    const [watchlist, setWatchlist] = useState<Title[]>(() => (cached?.watchlist ?? []).map(asTitle));
    const [rails, setRails] = useState<CatalogRail[]>(cached?.rails ?? []);
 +  // The release event running now (The Hunger Games: Sunrise on the Reaping): its film leads the featured titles at
 +  // the top and its row sits first in the shelves.
-+  const [event, setEvent] = useState<ActiveEvent | null>(null);
++  const [event, setEvent] = useState<ActiveEvent | null>(() => peekActiveEvent() ?? null);
 +  useEffect(() => {
 +    let alive = true;
-+    void fetchActiveEvent().then((next) => { if (alive) setEvent(next); });
++    // Refreshed quietly; only a real change re-renders (the same event again keeps the page still).
++    void fetchActiveEvent().then((next) => {
++      if (alive) setEvent((current) => (current?.id === next?.id && current?.items?.length === next?.items?.length ? current : next));
++    });
 +    return () => { alive = false; };
 +  }, []);
    const [featured, setFeatured] = useState<Title | null>(() =>
      cached?.featured !== null && cached?.featured !== undefined ? asTitle(cached.featured) : null,
    );
-@@ -135,7 +147,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+@@ -135,7 +150,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
  
    const heroes = useMemo(() => {
      const fromRails = rails.filter(rail => rail.id !== 'anime-adapted').flatMap((rail) => rail.items.map(asTitle)).filter((title) => title.backdrop !== '');
@@ -505,7 +516,7 @@ index fea7332..98acf61 100644
      const seen = new Set<string>();
      return merged.filter((title) => {
        if (seen.has(title.id) || seen.has(title.title)) return false;
-@@ -143,7 +157,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+@@ -143,7 +160,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
        seen.add(title.title);
        return true;
      }).slice(0, 4);
@@ -514,7 +525,7 @@ index fea7332..98acf61 100644
  
    const displayHero = heroes[slide % Math.max(heroes.length, 1)];
    const catalogRails = useMemo(
-@@ -374,6 +388,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+@@ -374,6 +391,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
          catalogRails={catalogRails}
          loading={loading}
          openTitle={openTitle}
