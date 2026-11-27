@@ -217,7 +217,9 @@ void App::RefreshContent() {
             ui::RailData rail;
             rail.id = event["rail"].value("id", "");
             rail.title = event["rail"].value("title", "Catch up");
-            rail.loop = true;
+            // A saga in story order is finite: it starts at the first film and stops at the last, never looping
+            // round (which repeated the films and opened mid-way), as the web Home does.
+            rail.loop = false;
             std::set<std::string> ids;
             for (const auto& id : event["rail"]["items"]) {
                 if (!id.is_string()) continue;
