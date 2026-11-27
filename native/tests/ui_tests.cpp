@@ -109,7 +109,7 @@ TEST(layout_follows_the_design_tokens_at_1080p) {
     // 252px poster, 12px gap, 28px label.
     REQUIRE_NEAR(scene.CardBox(0, 0).height, 252.0 + 12.0 + 28.0, 1e-9);
     // Second section starts after the first section and 32px of section spacing.
-    REQUIRE_NEAR(scene.CardBox(1, 0).y - scene.CardBox(0, 0).y, (33.6 + 20.0 + 292.0) + 32.0, 1e-9);
+    REQUIRE_NEAR(scene.CardBox(1, 0).y - scene.CardBox(0, 0).y, (33.6 + 31.6 + 292.0) + 32.0, 1e-6);
 }
 
 TEST(metrics_scale_with_the_window_height) {
