@@ -311,18 +311,21 @@ void DetailsScreen::Paint(Painter& painter) const {
 }
 
 void DetailsScreen::PaintBack(Painter& painter) const {
-    // A minimal arrow: no pill and no word, a thick rounded stroke on a soft shadow so it reads over any backdrop.
-    // The pointer or the remote brightens it and grows it a touch; there is no outline around it.
+    // Just the arrow: no circle, pill or word behind it. A thick rounded stroke on a soft two-layer shadow reads over
+    // any backdrop; the pointer or the remote brightens it and grows it a touch.
     const Box box = *BoxOf(kBackKey);
-    painter.Glass(box, box.height / 2.0, glass::NavCapsule());
     const double amount = buttonFocus_.Amount(kBackKey, clockMs_);
-    const double glyph = Rem(1.75) * (1.0 + 0.12 * amount);
+    const double glyph = Rem(1.9) * (1.0 + 0.10 * amount);
     const Box arrow{box.CenterX() - glyph / 2.0, box.CenterY() - glyph / 2.0, glyph, glyph};
-    painter.Path(Box{arrow.x, arrow.y + 1.5, arrow.width, arrow.height}, 24.0, "M15 5l-7 7 7 7",
-                 PathStyle{Color{0, 0, 0, 0}, Rgb(0x000000, 0.45), 2.4, false});
+    constexpr char kArrow[] = "M15 4.5l-7.5 7.5 7.5 7.5";
+    constexpr double kStroke = 3.2;
+    painter.Path(Box{arrow.x, arrow.y + 1.5, arrow.width, arrow.height}, 24.0, kArrow,
+                 PathStyle{Color{0, 0, 0, 0}, Rgb(0x000000, 0.42), kStroke + 0.8, false});
+    painter.Path(Box{arrow.x + 0.6, arrow.y + 2.4, arrow.width, arrow.height}, 24.0, kArrow,
+                 PathStyle{Color{0, 0, 0, 0}, Rgb(0x000000, 0.18), kStroke + 1.6, false});
     Color ink = tokens::kText;
-    ink.a = 0.78 + 0.22 * amount;
-    painter.Path(arrow, 24.0, "M15 5l-7 7 7 7", PathStyle{Color{0, 0, 0, 0}, ink, 2.4, false});
+    ink.a = 0.82 + 0.18 * amount;
+    painter.Path(arrow, 24.0, kArrow, PathStyle{Color{0, 0, 0, 0}, ink, kStroke, false});
 }
 
 void DetailsScreen::PaintPage(Painter& painter) const {
