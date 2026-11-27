@@ -146,6 +146,14 @@ The original clones are in `~/.claude/skill-sources/`. To set them up on another
 
 ## 6. Everything still to do (in priority order)
 
+> **Android keeps the 18 November 2026 look** (owner's request: later updates broke its UI). The Kotlin app is
+> today's (sign-in, sync, invite codes, sleep timer, Stats, watched episodes), but its interface is `apps/ui` as it
+> was at the commit in `apps/android/UI_PIN` (`e88ab31`) plus `apps/android/ui-patches/*.patch` (sign-in clean-up and
+> invite code, Sleep timer and Stats pickers styled like the speed picker), built by `apps/android/build-pinned-ui.sh`
+> for the APK (`mobile.yml`) and the `android-ui` feed (`ui-feed.yml`). The shell CSS is the 18 November one.
+> Do not restyle Android or move the pin unless the owner asks; no extra buttons.
+
+
 1. **Windows catch-up** landed in 1.4.11 and 1.4.12; keep improving the Windows look first (see `HANDOFF.md`). Brief: `docs/agents/briefs/job-native4.md`.
    - If it didn't finish, check `git status` and the native build, then finish it.
    - Version number shown at the top of Settings, and an **"Update now"** emergency button (window + Core), on Windows and React.

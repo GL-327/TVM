@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Android",
+          "text": "Android looks as it did on 18 November again; sign-in, sync, invite codes, sleep timer and Stats still work.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Home",
           "text": "Roku opens on a start page: a greeting, a featured title, Continue watching, Apps and free live TV.",
           "platforms": [

@@ -28,8 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The changelog and the commit history come from here.
-          fetch-depth: 250
+          # The changelog and the commit history come from here. Full history: the Android interface is built from
+          # the commit in apps/android/UI_PIN (the 18 November app).
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 11.22.0
@@ -48,16 +49,14 @@ jobs:
           set -euo pipefail
           node apps/ios/bundle-ui.mjs --copy-only
           node apps/ios/write-changelog.mjs
-          node apps/android/bundle-ui.mjs --copy-only
-          node scripts/stamp-ui-bundle.mjs apps/android/app/src/main/assets/ui android
           mkdir -p feed
           # ustar keeps every entry a plain header both phone extractors read.
           tar --format=ustar -czf feed/tvm-ios-ui.tar.gz -C apps/ios/TVM/BundledUI .
-          tar --format=ustar -czf feed/tvm-android-ui.tar.gz -C apps/android/app/src/main/assets/ui .
           node scripts/write-update-feed.mjs --channel ios-ui --asset feed/tvm-ios-ui.tar.gz \
             --out feed/tvm-ios-ui.json --bundle apps/ios/TVM/BundledUI
-          node scripts/write-update-feed.mjs --channel android-ui --asset feed/tvm-android-ui.tar.gz \
-            --out feed/tvm-android-ui.json --bundle apps/android/app/src/main/assets/ui
+          # Android is restored to 18 November: its feed carries the interface pinned in apps/android/UI_PIN, built
+          # and described with that commit's own scripts, so installed phones never pull today's interface.
+          bash apps/android/build-pinned-ui.sh --feed feed
           ls -la feed
 
       - name: Check the bundles unpack as the phones will

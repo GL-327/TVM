@@ -1,0 +1,220 @@
+diff --git a/apps/ui/src/data/account.ts b/apps/ui/src/data/account.ts
+index 0d7e618..f31a0ee 100644
+--- a/apps/ui/src/data/account.ts
++++ b/apps/ui/src/data/account.ts
+@@ -79,7 +79,7 @@ export async function fetchAccount(): Promise<AccountState> {
+   }
+ }
+ 
+-export async function registerAccount(input: { email: string; password: string; displayName?: string }): Promise<AccountView> {
++export async function registerAccount(input: { email: string; password: string; displayName?: string; inviteCode?: string }): Promise<AccountView> {
+   return json<AccountView>('/api/account/register', {
+     method: 'POST',
+     headers: { 'content-type': 'application/json' },
+diff --git a/apps/ui/src/player/PlayerRoot.tsx b/apps/ui/src/player/PlayerRoot.tsx
+index 4f45356..1348006 100644
+--- a/apps/ui/src/player/PlayerRoot.tsx
++++ b/apps/ui/src/player/PlayerRoot.tsx
+@@ -1,3 +1,4 @@
++import { SleepTimerPicker, StatsPicker } from './features/SleepAndStats';
+ import {
+   Component,
+   createContext,
+@@ -287,7 +288,7 @@ export function PlayerRoot({ session: sourceSession, children }: PlayerRootProps
+         <CinemaControls session={visibleSession}
+           progress={<Slot><ProgressBar {...visibleSession} /></Slot>}
+           volume={<Slot><VolumeControl {...visibleSession} /></Slot>}
+-          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot></>}
++          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot><Slot><SleepTimerPicker {...visibleSession} /></Slot><Slot><StatsPicker {...visibleSession} /></Slot></>}
+           fullscreen={<FullscreenControl />}
+           actions={<>
+             {!session.live && <FocusButton id="player-download" ariaLabel="Download" title="Download" onSelect={() => {
+diff --git a/apps/ui/src/player/features/SleepAndStats.tsx b/apps/ui/src/player/features/SleepAndStats.tsx
+new file mode 100644
+index 0000000..542b5fd
+--- /dev/null
++++ b/apps/ui/src/player/features/SleepAndStats.tsx
+@@ -0,0 +1,90 @@
++import { useCallback, useEffect, useState } from 'react';
++import { FocusButton } from '../../components/FocusButton';
++import { requestFocus } from '../../nav/focusEngine';
++import { useScopedFocusKey } from '../../nav/ViewStackContext';
++import type { PlayerSession } from '../PlayerRoot';
++
++// Android only: the native player runs the sleep timer and draws the stats. These pickers are built exactly like
++// PlaybackSpeed (same classes, same menu) so the player looks as it always has; they only tell the native player.
++const COMMAND_EVENT = 'tvm:native-player-command';
++function sendNative(command: string, payload: Record<string, unknown> = {}): void {
++  window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { command, payload } }));
++}
++
++type Option = { id: string; label: string };
++const SLEEP: Option[] = [
++  { id: 'off', label: 'Off' }, { id: '15', label: '15 minutes' }, { id: '30', label: '30 minutes' },
++  { id: '45', label: '45 minutes' }, { id: '60', label: '1 hour' }, { id: 'end', label: 'End of episode' },
++];
++const STATS: Option[] = [{ id: 'off', label: 'Hidden' }, { id: 'on', label: 'Shown' }];
++
++function Picker({ name, heading, options, value, label, onPick, controlsVisible, showControls }: {
++  name: string; heading: string; options: Option[]; value: string; label: string;
++  onPick: (id: string) => void; controlsVisible: boolean; showControls: () => void;
++}): React.JSX.Element {
++  const [open, setOpen] = useState(false);
++  const toggleKey = useScopedFocusKey(`player-${name}`);
++  const selectedKey = useScopedFocusKey(`player-${name}-${value}`);
++  const close = useCallback(() => { setOpen(false); requestFocus(toggleKey); }, [toggleKey]);
++  useEffect(() => { if (!controlsVisible) setOpen(false); }, [controlsVisible]);
++  useEffect(() => {
++    if (!open) return;
++    const frame = window.requestAnimationFrame(() => requestFocus(selectedKey));
++    const onKey = (event: KeyboardEvent): void => {
++      if (!['Escape', 'Backspace', 'BrowserBack', 'GoBack'].includes(event.key)) return;
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      close();
++    };
++    window.addEventListener('keydown', onKey, true);
++    return () => { window.cancelAnimationFrame(frame); window.removeEventListener('keydown', onKey, true); };
++  }, [close, open, selectedKey]);
++  return (
++    <div className="player-speed" data-player-feature={name}>
++      <FocusButton id={`player-${name}`} className="player-speed__toggle" disabled={!controlsVisible} onSelect={() => {
++        showControls();
++        if (open) close(); else setOpen(true);
++      }}>
++        <span aria-label={heading}>{label}</span>
++      </FocusButton>
++      {open && (
++        <div className="player-speed__menu" role="menu" aria-label={heading} data-player-menu={name} data-wrap="y"
++          onPointerDown={(event) => event.stopPropagation()}>
++          <p className="player-speed__heading">{heading}</p>
++          {options.map((option) => (
++            <FocusButton key={option.id} id={`player-${name}-${option.id}`} className="player-speed__option"
++              detail={value === option.id ? 'Selected' : undefined}
++              onSelect={() => { onPick(option.id); showControls(); close(); }}
++              onArrowPress={(direction) => {
++                if (direction === 'left' || direction === 'right') { close(); return false; }
++                return true;
++              }}>
++              {option.label}
++            </FocusButton>
++          ))}
++        </div>
++      )}
++    </div>
++  );
++}
++
++export function SleepTimerPicker({ engine, controlsVisible, showControls }: PlayerSession): React.JSX.Element | null {
++  const [choice, setChoice] = useState('off');
++  if (engine !== 'native') return null;
++  return (
++    <Picker name="sleep" heading="Sleep timer" options={SLEEP} value={choice}
++      label={choice === 'off' ? 'Sleep' : choice === 'end' ? 'Sleep: end' : `Sleep: ${choice}m`}
++      onPick={(id) => { setChoice(id); sendNative('sleepTimer', { choice: id }); }}
++      controlsVisible={controlsVisible} showControls={showControls} />
++  );
++}
++
++export function StatsPicker({ engine, controlsVisible, showControls }: PlayerSession): React.JSX.Element | null {
++  const [shown, setShown] = useState('off');
++  if (engine !== 'native') return null;
++  return (
++    <Picker name="stats" heading="Stats" options={STATS} value={shown} label="Stats"
++      onPick={(id) => { setShown(id); sendNative('stats', { visible: id === 'on' }); }}
++      controlsVisible={controlsVisible} showControls={showControls} />
++  );
++}
+diff --git a/apps/ui/src/player/iosEngine.ts b/apps/ui/src/player/iosEngine.ts
+index bc2d286..cf42d81 100644
+--- a/apps/ui/src/player/iosEngine.ts
++++ b/apps/ui/src/player/iosEngine.ts
+@@ -46,6 +46,13 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
+   const send = (command: string, payload: Record<string, unknown> = {}): void => {
+     if (!destroyed) bridge.postMessage({ id, command, ...payload });
+   };
++  // Sleep timer and Stats (SleepAndStats.tsx) ask the native player through this event.
++  const onExtraCommand = (raw: Event): void => {
++    const detail = (raw as CustomEvent<{ command?: string; payload?: Record<string, unknown> }>).detail;
++    if (destroyed || typeof detail?.command !== 'string') return;
++    send(detail.command, detail.payload ?? {});
++  };
++  window.addEventListener('tvm:native-player-command', onExtraCommand);
+   const receive = (event: Event): void => {
+     const data = (event as CustomEvent<NativeMessage>).detail;
+     if (destroyed || data?.id !== id) return;
+@@ -79,7 +86,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
+         initialMuted: options.initialMuted ?? false,
+       });
+     },
+-    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); },
++    destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); window.removeEventListener('tvm:native-player-command', onExtraCommand); },
+     play: () => send('play'), pause: () => send('pause'),
+     toggle: () => send(paused ? 'play' : 'pause'), // paused starts true so the first toggle plays
+     seekBy: (delta) => send('seek', { seconds: Math.max(0, position + delta) }),
+diff --git a/apps/ui/src/screens/AccountGate.tsx b/apps/ui/src/screens/AccountGate.tsx
+index f99dcc8..e9079f2 100644
+--- a/apps/ui/src/screens/AccountGate.tsx
++++ b/apps/ui/src/screens/AccountGate.tsx
+@@ -132,6 +132,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
+   const [email, setEmail] = useState('');
+   const [password, setPassword] = useState('');
+   const [displayName, setDisplayName] = useState('');
++  const [inviteCode, setInviteCode] = useState('');
+   const [devCode, setDevCode] = useState('');
+   const [devBuild, setDevBuild] = useState<AppBuild | null>(null);
+   const [emailCode, setEmailCode] = useState('');
+@@ -192,7 +193,8 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
+     const nextPassword = typed('gate-password', password);
+     const nextName = typed('gate-name', displayName).trim();
+     if (mode === 'register') {
+-      await registerAccount({ email: nextEmail, password: nextPassword, displayName: nextName });
++      const invite = inviteCode.trim();
++      await registerAccount({ email: nextEmail, password: nextPassword, displayName: nextName, ...(invite !== '' ? { inviteCode: invite } : {}) });
+       // Straight in, so they land on the next step rather than a form they
+       // have just filled in.
+       onChanged(await signIn({ email: nextEmail, password: nextPassword }));
+@@ -446,7 +448,7 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
+             ? 'TVM is not open to the public. Sign in with the account the app owner set up for you.'
+             : state.canSendEmail === true
+               ? "We'll email you a code to confirm your address. After that the app owner switches the account on by hand."
+-              : 'Creating an account does not give you access on its own. The app owner switches accounts on by hand.'}
++              : 'Have an invite code? Add it and your account is ready straight away. Otherwise the app owner switches it on.'}
+         </p>
+ 
+         {notice !== null && <p className="gate__notice" role="status">{notice}</p>}
+@@ -506,6 +508,22 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
+               placeholder={mode === 'register' ? 'At least 10 characters' : 'Your password'}
+             />
+           </label>
++          {mode === 'register' && (
++            <label className="gate__field">
++              <span>Invite code</span>
++              <FocusField
++                id="gate-invite"
++                name="invite"
++                autoComplete="off"
++                enterKeyHint="go"
++                value={inviteCode}
++                onChange={setInviteCode}
++                onConfirm={() => void submit()}
++                afterPasteFocusId="gate-submit"
++                placeholder="Optional"
++              />
++            </label>
++          )}
+ 
+           <div className="gate__actions">
+             <FocusButton id="gate-submit" variant="primary" disabled={busy} onSelect={() => void submit()}>
+@@ -514,11 +532,6 @@ export function AccountGate({ state, onChanged }: AccountGateProps): React.JSX.E
+             <FocusButton id="gate-switch" disabled={busy} onSelect={() => switchMode(mode === 'signin' ? 'register' : 'signin')}>
+               {mode === 'signin' ? 'I need an account' : 'I already have an account'}
+             </FocusButton>
+-            {mode === 'signin' && (
+-              <FocusButton id="gate-dev" disabled={busy} onSelect={() => switchMode('dev')}>
+-                I'm a dev
+-              </FocusButton>
+-            )}
+           </div>
+           <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
+         </form>

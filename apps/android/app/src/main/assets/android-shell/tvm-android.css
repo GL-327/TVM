@@ -2004,7 +2004,7 @@ html.tvm-android:not(.tvma-keys) .details .tvm-button.season-row-btn[data-focuse
 }
 
 html.tvm-android.tvma-keys .tvm-button[data-focused='true'] {
-  outline: 2px solid var(--tvm-focus-ring-color, #f5f5f5);
+  outline: 2px solid var(--tvma-accent);
   outline-offset: 2px;
 }
 

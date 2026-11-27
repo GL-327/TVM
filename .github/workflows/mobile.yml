@@ -42,7 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 250
+          # Android builds its interface from the commit in apps/android/UI_PIN (18 November), so it needs history.
+          fetch-depth: 0
       - name: Skip when the Android tree is not in this commit
         id: android
         run: |
@@ -80,19 +81,9 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
       - name: Bundle the production UI into the Android app
         if: steps.android.outputs.present == 'true'
-        run: |
-          corepack pnpm install --frozen-lockfile
-          node apps/android/bundle-ui.mjs
-          node scripts/export-access.mjs
-          node apps/android/export-fallback-catalog.mjs
-          node scripts/write-build-info.mjs android
-          # Stamped exactly as the android-ui feed is, so the app can tell
-          # whether a published interface is newer than the one it carries.
-          node scripts/stamp-ui-bundle.mjs apps/android/app/src/main/assets/ui android
-          test -f apps/android/app/src/main/assets/ui/index.html
-          test -f apps/android/app/src/main/assets/ui/build-info.json
-          test -f apps/android/app/src/main/assets/BuildInfo.json
-          test -f apps/android/app/src/main/assets/Access.json
+        # Android keeps the 18 November look: its interface is apps/ui as it was at apps/android/UI_PIN plus
+        # apps/android/ui-patches, built with that commit's own scripts (web and iPhone keep today's apps/ui).
+        run: bash apps/android/build-pinned-ui.sh
       # TVM_ANDROID_SIGNING holds the key every APK is signed with, so a new
       # one installs over the last. First line: the keystore password. Rest:
       # the PKCS12 keystore, base64. Without it the APK gets a throwaway debug

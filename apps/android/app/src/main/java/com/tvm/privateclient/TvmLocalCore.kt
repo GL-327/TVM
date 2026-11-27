@@ -627,6 +627,7 @@ class TvmLocalCore(
                 Json.string(json.opt("password")) ?: "",
                 Json.string(json.opt("displayName")),
                 headers["user-agent"],
+                Json.string(json.opt("inviteCode")),
             )
             return result.fold(
                 { HttpReply.json(200, it) },

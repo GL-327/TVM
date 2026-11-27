@@ -522,6 +522,8 @@ class TvmNativeVideoOverlayView(
             isFocusable = true
             contentDescription = "Toggle playback stats"
             setOnClickListener { onToggleStats() }
+            // Stats is switched on from the player's settings (the 18 November look has no button on the video).
+            visibility = View.GONE
         }
         pillStrip.addView(
             statsToggleBtn,
