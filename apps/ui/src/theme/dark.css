@@ -30,9 +30,9 @@ html[data-theme='dark'] {
   --tvm-warning: #f5a524;
   --tvm-info: #6ec8ff;
 
-  --tvm-focus-ring-color: #9edcff;
+  --tvm-focus-ring-color: #f5f5f5;
   --tvm-shadow-card: 0 0.8rem 2rem rgba(0, 0, 0, 0.62);
-  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(74, 160, 224, 0.28);
+  --tvm-shadow-focus: 0 0.55rem 1.2rem rgba(0, 0, 0, 0.48);
 
   /* Liquid Glass, tuned to the open fits of iOS 27 glass (Kyant0 Backdrop, Flutter liquid_glass_renderer):
      a neutral grey wash rather than a coloured one, the picture diffused and its colour lifted behind it, a
@@ -45,7 +45,7 @@ html[data-theme='dark'] {
   --tvm-glass-rim-chroma: inset 0 -1px 0 rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.42);
   --tvm-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.025) 36%, transparent 58%);
   --tvm-glass-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.30);
-  --tvm-glass-focus-glow: 0 0 0 0.14rem rgba(158, 220, 255, 0.88), 0 0.85rem 2.2rem rgba(74, 160, 224, 0.34);
+  --tvm-glass-focus-glow: 0 0 0 0.11rem rgba(255, 255, 255, 0.88), 0 0.55rem 1.2rem rgba(0, 0, 0, 0.45);
 
   --tvm-scene-sky: #14284c;
   --tvm-scene-sky-mid: #0c1c38;

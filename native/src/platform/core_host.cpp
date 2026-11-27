@@ -13,6 +13,7 @@
 
 #include "core/util.h"
 #include "core/config.h"
+#include "core/update_policy.h"
 
 namespace tvm::platform {
 
@@ -66,19 +67,20 @@ void CatchUpCore(const coreapi::Client& client, const std::string& marker) {
             if (!client.Call("/api/update/status").value("autoUpdate", false)) return;
         } catch (...) { return; }
     }
+    nlohmann::json status;
     std::string applied;
     try {
-        const auto status = client.Call("/api/update/check", "POST", nlohmann::json::object());
+        status = client.Call("/api/update/check", "POST", nlohmann::json::object());
         if (status.value("kind", std::string()) != "available" || !status.value("applyAllowed", false)) return;
         const auto result = client.Call("/api/update/apply", "POST", nlohmann::json::object());
         if (!result.value("changed", false) || result.value("restart", std::string()) != "self") return;
-        applied = result.value("commit", std::string());
+        if (result.contains("commit") && result["commit"].is_string()) applied = result["commit"].get<std::string>();
     } catch (...) {
         return;  // Offline or refused: keep using the Core that is running.
     }
     // The Core exits and starts the new build; it is back once it reports that
     // build's commit (the version can stay the same).
-    (void)WaitForCoreRestart(client, marker, running, applied);
+    (void)WaitForCoreRestart(client, marker, status, applied);
 }
 }  // namespace
 
@@ -93,13 +95,18 @@ std::string ReadRuntimeMarker(const coreapi::Client& client) {
 }
 
 bool WaitForCoreRestart(const coreapi::Client& client, const std::string& marker,
-                        const std::string& previousVersion, const std::string& appliedCommit) {
-    for (int attempt = 0; attempt < 240; ++attempt) {
+                        const nlohmann::json& previous, const std::string& appliedCommit) {
+    const std::string previousBoot = previous.value("bootId", std::string());
+    const std::string previousVersion = previous.value("current", std::string());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+    while (std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         if (!SameCore(client, marker)) continue;
         try {
-            const auto now = client.Call("/api/update/status").value("currentCommit", std::string());
-            if (appliedCommit.empty() ? RunningVersion(client) != previousVersion : now == appliedCommit) return true;
+            const auto status = client.Call("/api/update/status");
+            const std::string boot = status.value("bootId", std::string());
+            if (!update::IsNewCoreBoot(previousBoot, previousVersion, boot, status.value("current", std::string()))) continue;
+            if (appliedCommit.empty() || (status.contains("currentCommit") && status["currentCommit"] == appliedCommit)) return true;
         } catch (...) {}
     }
     return false;

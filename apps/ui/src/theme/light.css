@@ -30,9 +30,9 @@
   --tvm-warning: #c48a18;
   --tvm-info: #1a6a8a;
 
-  --tvm-focus-ring-color: #0ea884;
+  --tvm-focus-ring-color: #27272a;
   --tvm-shadow-card: 0 0.8rem 2rem rgba(18, 50, 74, 0.12);
-  --tvm-shadow-focus: 0 0.7rem 1.8rem rgba(30, 201, 160, 0.22);
+  --tvm-shadow-focus: 0 0.55rem 1.25rem rgba(39, 39, 42, 0.24);
 
   /* Liquid Glass, tuned to the open fits of iOS 27 glass: a near-white wash, the picture diffused and its colour
      lifted, a bright top glint with half as much on the far edge, a faint dark contour so the shape holds on pale
@@ -44,7 +44,7 @@
   --tvm-glass-rim-chroma: inset 0 -1px 0 rgba(255, 255, 255, 0.50), 0 0 0 0.5px rgba(0, 0, 0, 0.14);
   --tvm-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.08) 40%, transparent 64%);
   --tvm-glass-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.12);
-  --tvm-glass-focus-glow: 0 0 0 0.14rem rgba(14, 168, 132, 0.82), 0 0.75rem 2rem rgba(30, 201, 160, 0.28);
+  --tvm-glass-focus-glow: 0 0 0 0.11rem rgba(39, 39, 42, 0.88), 0 0.55rem 1.25rem rgba(39, 39, 42, 0.24);
 
   --tvm-scene-sky: #d2f2ff;
   --tvm-scene-sky-mid: #e4fff6;

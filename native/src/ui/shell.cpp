@@ -6,7 +6,6 @@
 #include <stdexcept>
 
 #include "ui/details_screen.h"
-#include "ui/controls.h"
 #include "ui/downloads_screen.h"
 #include "ui/pending_screen.h"
 #include "ui/profile_chooser.h"
@@ -117,7 +116,6 @@ void Shell::Paint(Painter& painter) const {
         }
         screens_.at(modal.key)->Paint(painter);
     }
-    if (const auto back = BackBox()) controls::PaintBackButton(painter, *back, backFocused_);
     if (releaseCard_ && ActiveScreenName() == "home") {
         const Box card = ReleaseBox();
         const double rem = ViewportRem(width_, height_);
@@ -303,11 +301,6 @@ Box Shell::PatchButtonBox() const {
     return {left + sheetW - 1.8 * rem - 9 * rem, top + sheetH - 1.6 * rem - 2.8 * rem, 9 * rem, 2.8 * rem};
 }
 
-std::optional<Box> Shell::BackBox() const {
-    const auto name = ActiveScreenName();
-    if (!nav::CanGoBack(stack_) || name == "player" || name == "details" || name == "profile-menu") return std::nullopt;
-    return controls::BackButtonBox(width_, height_);
-}
 Box Shell::ReleaseBox() const {
     const double rem = ViewportRem(width_, height_);
     const double width = std::min(width_ - 3 * rem, 31 * rem);
@@ -316,13 +309,11 @@ Box Shell::ReleaseBox() const {
 std::optional<std::string> Shell::Hit(double x, double y) {
     const auto inside = [&](const Box& box) { return x >= box.x && y >= box.y && x < box.Right() && y < box.Bottom(); };
     if (patchNotes_) return inside(PatchButtonBox()) ? std::optional<std::string>("shell-patch-ok") : std::optional<std::string>("shell-patch-sink");
-    if (const auto back = BackBox(); back && inside(*back)) return "shell-back";
     if (releaseCard_ && ActiveScreenName() == "home" && inside(ReleaseBox())) return "shell-changelog";
     return Top().ItemAt(x, y);
 }
 bool Shell::ActivateChrome(const std::string& key, double nowMs) {
     if (key.rfind("shell-patch", 0) == 0) return true;
-    if (key == "shell-back") { backFocused_ = false; Back(nowMs); return true; }
     if (key == "shell-changelog") { Command command; command.name = "changelog"; Open(command, nowMs); return true; }
     return false;
 }
@@ -480,13 +471,11 @@ void Shell::KeyPressed() {
 void Shell::Navigate(nav::Direction direction, double nowMs) {
     rehoverUntilMs_ = 0.0;
     KeyPressed();
-    if (backFocused_) { if (direction == nav::Direction::Down || direction == nav::Direction::Right) backFocused_ = false; return; }
-    if (!Top().Navigate(direction, nowMs) && direction == nav::Direction::Up && BackBox()) backFocused_ = true;
+    Top().Navigate(direction, nowMs);
 }
 
 void Shell::Select(double nowMs) {
     KeyPressed();
-    if (backFocused_) { ActivateChrome("shell-back", nowMs); return; }
     const std::optional<Command> command = Top().Select(nowMs);
     if (command.has_value()) Open(*command, nowMs);
     ApplyMotionIfChanged();
@@ -494,7 +483,6 @@ void Shell::Select(double nowMs) {
 
 bool Shell::Back(double nowMs) {
     KeyPressed();
-    backFocused_ = false;
     if (Top().CloseOverlay(nowMs)) return true;
     if (!nav::CanGoBack(stack_)) return false;
 

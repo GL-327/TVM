@@ -15,6 +15,6 @@ std::string ReadRuntimeMarker(const coreapi::Client& client);
 
 // Waits for Core to restart after an applied update until it answers on the expected commit or version.
 bool WaitForCoreRestart(const coreapi::Client& client, const std::string& marker,
-                        const std::string& previousVersion, const std::string& appliedCommit);
+                        const nlohmann::json& previous, const std::string& appliedCommit);
 
 }  // namespace tvm::platform

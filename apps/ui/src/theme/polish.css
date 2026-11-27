@@ -211,7 +211,7 @@ html body .page:has(.polish-nav):not(.home):not(.details):not(.page--guide) {
   padding-top: 90px;
 }
 
-/* Single centred navigation capsule (spec 3.3: solid #12141A at ~94% + 3.1 specular rim + shadow) */
+/* One centred glass capsule with a directional highlight and readable labels over artwork. */
 html .ribbon.polish-nav {
   position: fixed; inset: 0 0 auto; z-index: 40; width: 100%; max-width: none; height: 76px;
   display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); gap: 12px; align-items: center;
@@ -225,19 +225,21 @@ html .polish-nav .polish-nav__capsule {
   border-radius: 999px;
   border: 0;
   background:
-    linear-gradient(180deg, rgb(255 255 255 / .06) 0%, transparent 30%),
-    color-mix(in srgb, var(--tvm-surface, #12141a) 94%, transparent);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: var(--tvm-material-rim), var(--tvm-material-shadow);
+    linear-gradient(165deg, rgb(255 255 255 / .24), transparent 43%, rgb(10 10 12 / .17)),
+    color-mix(in srgb, var(--tvm-surface, #12141a) 44%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(145%);
+  backdrop-filter: blur(12px) saturate(145%);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .46), inset 0 -1px 0 rgb(255 255 255 / .17), var(--tvm-material-shadow);
 }
 html[data-theme='light'] .polish-nav .polish-nav__capsule {
   background:
     linear-gradient(180deg, rgb(255 255 255 / .55) 0%, transparent 35%),
-    color-mix(in srgb, var(--tvm-bg-deep, #efe8d4) 94%, transparent);
+    color-mix(in srgb, var(--tvm-surface, #fffdf6) 74%, transparent);
 }
 html[data-transparency='reduced'] .polish-nav .polish-nav__capsule {
   background: var(--tvm-surface, #12141a);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 html .polish-nav .polish-nav__items { position: relative; display: flex; align-items: center; width: auto; max-width: none; overflow: visible; gap: 2px; }
 .polish-nav__droplet {
@@ -256,6 +258,10 @@ html body .polish-nav .polish-nav__tab {
   box-shadow: none; font-size: .875rem; font-weight: 550; white-space: nowrap;
 }
 html body .polish-nav .polish-nav__tab[aria-pressed='true'] { color: #0e1015; font-weight: 600; }
+html[data-theme='dark'] body .polish-nav .polish-nav__tab:not([aria-pressed='true']) {
+  color: var(--tvm-text);
+  text-shadow: 0 1px 3px #000;
+}
 html[data-theme='light'] body .polish-nav .polish-nav__tab[aria-pressed='true'] { color: #12324a; }
 html body .polish-nav .polish-nav__tab:not([aria-pressed='true']):hover {
   background: rgb(255 255 255 / .07);
@@ -295,18 +301,15 @@ html .stream-page:has(.polish-nav) { padding-top: 84px; }
 
 @media (max-width: 720px), (pointer: coarse) and (max-height: 480px) {
   html .ribbon.polish-nav {
-    inset: 0 0 auto; height: 56px;
+    inset: 0 0 auto; height: calc(56px + var(--tvm-chrome-top, 0px));
     display: flex; justify-content: space-between; align-items: center;
-    padding: 0 var(--tvm-gutter);
+    padding: var(--tvm-chrome-top, 0px) var(--tvm-gutter) 0;
     background: linear-gradient(180deg, color-mix(in srgb, var(--tvm-bg) 82%, transparent), transparent);
   }
   html .polish-nav .polish-nav__capsule {
-    position: fixed; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 44;
+    position: fixed; left: 50%; bottom: max(10px, calc(var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)) + 6px)); z-index: 44;
     transform: translateX(-50%); width: auto; max-width: calc(100vw - 16px);
     overflow-x: auto; scrollbar-width: none;
-    background:
-      linear-gradient(180deg, rgb(255 255 255 / .06) 0%, transparent 30%),
-      color-mix(in srgb, var(--tvm-surface, #12141a) 94%, transparent);
     border-radius: 999px;
   }
   html .polish-nav .polish-nav__capsule::-webkit-scrollbar { display: none; }
@@ -315,7 +318,7 @@ html .stream-page:has(.polish-nav) { padding-top: 84px; }
     min-height: 44px; height: 44px; padding: 0 10px; font-size: .78rem;
   }
   html body .polish-nav .polish-nav__icon { width: 44px; height: 44px; min-height: 44px; flex: 0 0 auto; }
-  html .polish-nav__menu { top: 58px; right: var(--tvm-gutter); }
+  html .polish-nav__menu { top: calc(58px + var(--tvm-chrome-top, 0px)); right: var(--tvm-gutter); }
   html.keyboard-open .polish-nav .polish-nav__capsule { display: none; }
   html body .page:has(.polish-nav):not(.home):not(.details):not(.page--guide) {
     padding-top: max(62px, calc(var(--tvm-safe-y) + 46px));

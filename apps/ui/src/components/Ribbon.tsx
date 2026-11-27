@@ -19,12 +19,14 @@ export function Ribbon({ active = 'home', onLane }: {
   const prefs = useExtraPrefs();
   // On phones, Search sits beside Settings at the top.
   const phone = usePhoneShell();
+  const capsule = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
   const [statsAvailable, setStatsAvailable] = useState(false);
   const statsEnabled = uiExtraEnabled('watchStats', prefs);
   useLiquidLens(sheet, { blur: 7, active: more });
+  useLiquidLens(capsule, { blur: 4 });
   const [kids, setKids] = useState(() => isKidsProfile(peekActiveProfile()));
   useEffect(() => subscribeProfiles(() => setKids(isKidsProfile(peekActiveProfile()))), []);
 
@@ -81,7 +83,7 @@ export function Ribbon({ active = 'home', onLane }: {
       <FocusButton id="tvm-home" className="polish-nav__brand" ariaLabel="TVM Hub" onSelect={() => navigate.home()}>
         TVM
       </FocusButton>
-      <div className="ribbon__frost polish-nav__capsule">
+      <div className="ribbon__frost polish-nav__capsule" ref={capsule}>
         <div className="ribbon__list polish-nav__items" ref={track} data-wrap={phone ? 'row' : 'none'}>
           <SelectionDroplet track={track} selected={tabs.find((item) => item[1] === active)?.[0] ?? ''}
             className="polish-nav__droplet" history={lastSelection} />

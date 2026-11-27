@@ -14,7 +14,7 @@ if (-not $Apply) {
     $createdStage = $false
     try {
     $installed = Get-Content -LiteralPath $infoPath -Raw | ConvertFrom-Json
-    $release = Invoke-RestMethod 'https://api.github.com/repos/GL-327/TVM/releases/tags/native-windows' -Headers @{Accept='application/vnd.github+json';'User-Agent'='TVM-Native'}
+    $release = Invoke-RestMethod 'https://api.github.com/repos/GL-327/TVM/releases/tags/native-windows' -Headers @{Accept='application/vnd.github+json';'User-Agent'='TVM-Native'} -TimeoutSec 30
     $asset = $release.assets | Where-Object { $_.name -ceq 'TVM-native-windows.zip' } | Select-Object -First 1
     if (-not $asset -or $asset.label -notmatch '^[a-f0-9]{40}$' -or $asset.digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'No verifiable native update is published yet.' }
     if ($installed.commit -ceq $asset.label) { exit 10 }
@@ -26,7 +26,7 @@ if (-not $Apply) {
     New-Item -ItemType Directory -Path $Stage | Out-Null
     $createdStage = $true
     $zipPath = Join-Path $Stage 'package.zip'
-    Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zipPath
+    Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zipPath -TimeoutSec 600
     if ((Get-Item -LiteralPath $zipPath).Length -ne $asset.size -or ('sha256:' + (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()) -cne $asset.digest) { throw 'Native update checksum failed.' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($zipPath)

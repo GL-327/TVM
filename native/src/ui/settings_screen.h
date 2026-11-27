@@ -179,7 +179,7 @@ private:
         std::string title;
     };
 
-    enum class Pane { Content, Categories, Search };
+    enum class Pane { Content, Categories, Search, Back };
 
     void BuildRows();
     std::vector<int> PresentCategories() const;
@@ -195,6 +195,7 @@ private:
     Box SegmentTrack(const Row& row) const;
     Box CategoryBox(std::size_t slot) const;
     Box SearchBox() const;
+    Box HeaderBackBox() const;
     std::string Caption(const Row& row) const;
     void RefreshDetails();
     std::string DetailFor(const Row& row) const;

@@ -22,8 +22,8 @@ $global:TvmUpdaterFixtureAsset = [pscustomobject]@{
     size=(Get-Item $zipPath).Length
     browser_download_url='https://github.com/GL-327/TVM/releases/download/native-windows/TVM-native-windows.zip'
 }
-function Invoke-RestMethod { param($Uri,$Headers) return @{ assets=@($global:TvmUpdaterFixtureAsset) } }
-function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing) Copy-Item -LiteralPath $global:TvmUpdaterFixtureZip -Destination $OutFile }
+function Invoke-RestMethod { param($Uri,$Headers,$TimeoutSec) return @{ assets=@($global:TvmUpdaterFixtureAsset) } }
+function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing,$TimeoutSec) Copy-Item -LiteralPath $global:TvmUpdaterFixtureZip -Destination $OutFile }
 function Start-Process { param($FilePath,$ArgumentList,$WindowStyle) $global:TvmUpdaterHelperArgs = $ArgumentList }
 function Require($Condition, $Message) { if (-not $Condition) { throw $Message } }
 function Expect-Rejection($Text) {

@@ -400,6 +400,21 @@ html[data-transparency='reduced'] .browse-ambience__art img { opacity: .14; }
   html body .home.cinematic-browse, html body .home.hub { padding-bottom: 84px; }
 }
 
+@media (max-width: 600px) and (orientation: portrait) {
+  .hub__hero { display: block; min-height: 0; padding: 0; }
+  .hub__hero:has(.hub__hero-art img) { padding-top: 53%; }
+  .hub__hero-art { bottom: auto; height: auto; aspect-ratio: 16 / 9; }
+  .hub__hero-art img { object-position: center; }
+  .hub__hero::after {
+    background: linear-gradient(0deg, #171211 36%, rgb(23 18 17 / .65) 49%, transparent 68%);
+  }
+  .hub__welcome { padding: 0 18px 19px; }
+  .hub__hero:not(:has(.hub__hero-art img)) .hub__welcome { padding-top: 24px; }
+  .hub__hero:not(:has(.hub__hero-art img)) .hub__hero-caption { display: none; }
+  .hub__welcome h1 { max-width: none; font-size: clamp(1.45rem, 5.8vw, 2rem); line-height: 1.1; }
+  .hub__hero-caption { top: 12px; right: 12px; }
+}
+
 html body .cinematic-browse .spotlight__meta > span:not(.imdb-badge) {
   margin: 0;
   padding: 0;

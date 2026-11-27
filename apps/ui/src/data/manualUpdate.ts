@@ -1,8 +1,19 @@
-import { currentAppVersion, rememberPendingChangelog, type ChangelogEntry } from './changelog';
+import { rememberPendingChangelog, type ChangelogEntry } from './changelog';
+
+type UpdateKind =
+  | 'idle'
+  | 'no_release'
+  | 'up_to_date'
+  | 'available'
+  | 'auth_required'
+  | 'rate_limited'
+  | 'app_update_required'
+  | 'failed';
 
 export interface CoreUpdateStatus {
   current: string;
   currentCommit?: string | null;
+  bootId?: string;
   appBuild?: string | null;
   install?: 'checkout' | 'package';
   channel?: string;
@@ -11,7 +22,7 @@ export interface CoreUpdateStatus {
   configured?: boolean;
   applyAllowed?: boolean;
   applyReason?: string | null;
-  kind?: string;
+  kind?: UpdateKind;
   notice?: string | null;
 }
 
@@ -25,7 +36,7 @@ export interface ManualUpdateOutcome {
 
 export async function fetchCoreUpdateStatus(signal?: AbortSignal): Promise<CoreUpdateStatus | null> {
   try {
-    const response = await fetch('/api/update/status', { signal });
+    const response = await fetch('/api/update/status', { cache: 'no-store', signal });
     if (!response.ok) return null;
     return (await response.json()) as CoreUpdateStatus;
   } catch {
@@ -35,28 +46,42 @@ export async function fetchCoreUpdateStatus(signal?: AbortSignal): Promise<CoreU
 
 export function formatEngineLabel(status: CoreUpdateStatus | null): string {
   if (status === null || typeof status.current !== 'string' || status.current.trim() === '') {
-    return `Engine v${currentAppVersion()}`;
+    return 'Engine version unavailable';
   }
   const commit = typeof status.currentCommit === 'string' ? status.currentCommit.trim().slice(0, 7) : '';
   return commit === '' ? `Engine v${status.current}` : `Engine v${status.current} · build ${commit}`;
 }
 
+export function describeUpdateCheck(status: CoreUpdateStatus): string {
+  if (status.notice) return status.notice;
+  if (status.kind === 'up_to_date') return 'You are on the latest published build.';
+  if (status.available) return `Build ${status.available.version} is available.`;
+  if (status.kind === 'no_release') return 'No update has been published yet.';
+  if (status.kind === 'app_update_required') return 'Install a newer version of the app to update.';
+  return 'The update check did not finish. Try again.';
+}
+
 async function waitForCoreRestart(
-  previousVersion: string,
+  previous: CoreUpdateStatus,
   appliedCommit: string,
   maxAttempts = 80,
   delayMs = 300,
 ): Promise<CoreUpdateStatus | null> {
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+  const deadline = Date.now() + maxAttempts * delayMs;
+  while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
-    const next = await fetchCoreUpdateStatus();
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const next = await fetchCoreUpdateStatus(AbortSignal.timeout(Math.min(remaining, 1500)));
     if (next === null) continue;
     const commit = typeof next.currentCommit === 'string' ? next.currentCommit.trim() : '';
-    if (appliedCommit !== '' ? commit === appliedCommit : next.current !== previousVersion) {
-      return next;
-    }
-    // Even if commit stayed on dev watch or same build id, returning health after a restart succeeds.
-    if (attempt > 2) return next;
+    const versionChanged = Boolean(next.current && previous.current && next.current !== previous.current);
+    // A connection failure can occur while the same legacy Core is still running.
+    const restarted = next.bootId
+      ? next.bootId !== previous.bootId
+      : !previous.bootId && versionChanged;
+    const expectedBuild = appliedCommit !== '' ? commit === appliedCommit : Boolean(next.bootId) || versionChanged;
+    if (restarted && expectedBuild) return next;
   }
   return null;
 }
@@ -69,8 +94,6 @@ export async function runManualCoreUpdate(
   onProgress?: (message: string) => void,
 ): Promise<ManualUpdateOutcome> {
   onProgress?.('Checking Core for updates…');
-  const before = await fetchCoreUpdateStatus();
-  const previousVersion = before?.current ?? currentAppVersion();
 
   const checkResp = await fetch('/api/update/check', { method: 'POST' });
   const checkBody = (await checkResp.json()) as CoreUpdateStatus & { error?: string };
@@ -84,12 +107,14 @@ export async function runManualCoreUpdate(
   }
 
   const available = checkBody.available ?? null;
-  if (available === null && checkBody.kind === 'up_to_date') {
+  if (available === null || checkBody.kind === 'up_to_date' || checkBody.applyAllowed === false) {
     return {
       changed: false,
       restarted: false,
       reload: false,
-      message: checkBody.notice ?? 'Core is already up to date.',
+      message: available !== null && checkBody.applyAllowed === false
+        ? checkBody.applyReason ?? 'Core update could not be applied.'
+        : describeUpdateCheck(checkBody),
       status: checkBody,
     };
   }
@@ -120,7 +145,7 @@ export async function runManualCoreUpdate(
       changed: false,
       restarted: false,
       reload: false,
-      message: 'This copy is already on the latest build.',
+      message: latest ? describeUpdateCheck(latest) : 'No new update was applied.',
       status: latest ?? checkBody,
     };
   }
@@ -144,7 +169,7 @@ export async function runManualCoreUpdate(
 
   if (applyBody.restart === 'self' || applyBody.restart === 'automatic') {
     onProgress?.('Core updated. Waiting for Core to restart…');
-    const restarted = await waitForCoreRestart(previousVersion, applyBody.commit ?? '');
+    const restarted = await waitForCoreRestart(checkBody, applyBody.commit ?? available.commit ?? '');
     if (restarted !== null) {
       return {
         changed: true,
@@ -157,8 +182,8 @@ export async function runManualCoreUpdate(
     return {
       changed: true,
       restarted: false,
-      reload: true,
-      message: 'Update applied. Reloading interface…',
+      reload: false,
+      message: 'Update applied. Core has not restarted yet. Reopen TVM when it is ready.',
     };
   }
 

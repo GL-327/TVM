@@ -1,4 +1,16 @@
-# Handoff: TVM 1.4.8 (test build)
+# Handoff: TVM 1.4.12
+
+GitHub published the 1.4.11 Windows package from `57ea38a`. Its SHA-256 and embedded Windows/Core build IDs matched the release metadata. The 1.4.3 updater applied it to an isolated copy of the installed renderer, and that copy rendered the Settings screen successfully.
+
+The 1.4.12 candidate fixes update status and retry behavior. Windows checks the native release independently of the GitHub commit list and retries failed checks and downloads sooner. Update now reports failed checks and waits for the expected Core build in a new process before reporting a restart.
+
+The Windows TV guide keeps the mouse pointer visible. The floating Back button was removed from the Windows shell. Settings, the guide and the separate Live TV page have page-level Back controls. The navigation pill uses clearer glass, focus highlights are neutral, and the compact Hub keeps the artwork in a wider frame above the greeting.
+
+The final local checks passed: 618 Windows tests, 569 web unit tests, workspace type checks, and the iOS, Android and Roku project checks. The phone browser run passed all 21 iPhone WebKit and Android/desktop Chromium layout tests. The updater pass also ran 716 Core tests and all 48 browser tests with the standard configuration. The packaged Core and web UI passed a smoke test using a local accounts fixture.
+
+The GitHub iOS preview combines the 1.4.12 interface with the 1.4.11 native binary. It requires re-signing. Automatic interface updates are enabled by default and use the same iOS feed. A physical-device launch and an update from the next compatible feed are still to be tested.
+
+Phone and Roku account sync and the phone player overlays are still open. The repository carries the v1 trailer. The v3 trailer brief calls for an original rigged character and normal and whispered voice samples for review before production.
 
 > 1.4.7 fixed tablet top-bar taps. 1.4.8 added the Hub page, artwork-led Movies/Series, the quality and English fixes, the cinema-recording fallback and the extras checks: see `docs/1.4/report-core3.md` and `report-ui3.md`. 1.4.11 brought Windows to parity with the Hub page, widescreen Movies/Series lanes, procedural Direct2D Hunger Games and Doomsday intros, PyGlass refraction + Bloom silk ribbons (Windows and web), About trailer playback and Settings Developer tools. Still open: phone/Roku sync and phone player overlays.
 

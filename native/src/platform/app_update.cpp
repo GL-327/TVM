@@ -6,6 +6,11 @@
 namespace tvm::platform {
 namespace {
 
+std::string StatusText(const nlohmann::json& status, const char* key) {
+    const auto field = status.find(key);
+    return field != status.end() && field->is_string() ? field->get<std::string>() : std::string();
+}
+
 DWORD RunNativeUpdaterProcess(const std::filesystem::path& script, const std::filesystem::path& root) {
     DWORD result = 1;
     wchar_t system[32768]{};
@@ -94,24 +99,24 @@ void App::ForceUpdateNow() {
         try {
             EnsureCore(*core_);
             const std::string marker = ReadRuntimeMarker(*core_);
-            std::string previousVersion;
-            try {
-                const auto st = core_->Call("/api/update/status");
-                if (st.is_object()) previousVersion = st.value("current", std::string());
-            } catch (...) {}
-
-            progress("Checking Core (/api/update/check)\xE2\x80\xA6");
+            progress("Checking Core for updates\xE2\x80\xA6");
             const auto check = core_->Call("/api/update/check", "POST", nlohmann::json::object());
             coreVer = check.value("current", std::string());
             if (check.contains("currentCommit") && check["currentCommit"].is_string()) {
                 coreCommit = check["currentCommit"].get<std::string>();
             }
-            const bool hasUpdate = check.value("kind", std::string()) == "available" ||
-                                   (check.contains("available") && check["available"].is_object());
+            const bool hasUpdate = check.contains("available") && check["available"].is_object();
             if (!hasUpdate) {
-                coreSummary = "Core up to date";
+                coreSummary = StatusText(check, "notice");
+                if (coreSummary.empty()) {
+                    coreSummary = check.value("kind", std::string()) == "up_to_date"
+                        ? "Core is up to date" : "Core update check did not finish";
+                }
+            } else if (!check.value("applyAllowed", false)) {
+                coreSummary = StatusText(check, "applyReason");
+                if (coreSummary.empty()) coreSummary = "Core update could not be applied";
             } else {
-                progress("Applying Core update (/api/update/apply)\xE2\x80\xA6");
+                progress("Applying Core update\xE2\x80\xA6");
                 try {
                     const auto apply = core_->Call("/api/update/apply", "POST", nlohmann::json::object());
                     const bool changed = apply.value("changed", false);
@@ -119,10 +124,17 @@ void App::ForceUpdateNow() {
                     const std::string appliedCommit =
                         apply.contains("commit") && apply["commit"].is_string() ? apply["commit"].get<std::string>() : std::string();
                     if (!changed) {
-                        coreSummary = "Core already current";
+                        const auto latest = core_->Call("/api/update/status");
+                        coreSummary = StatusText(latest, "notice");
+                        if (coreSummary.empty()) {
+                            coreSummary = StatusText(latest, "kind") == "up_to_date"
+                                ? "Core is up to date" : "Core did not confirm an update";
+                        }
                     } else if (restart == "self" || restart == "automatic") {
                         progress("Core updated. Waiting for Core to restart\xE2\x80\xA6");
-                        const bool restarted = WaitForCoreRestart(*core_, marker, previousVersion, appliedCommit);
+                        const auto expectedCommit = appliedCommit.empty()
+                            ? StatusText(check["available"], "commit") : appliedCommit;
+                        const bool restarted = WaitForCoreRestart(*core_, marker, check, expectedCommit);
                         if (restarted) {
                             try {
                                 const auto st = core_->Call("/api/update/status");
@@ -140,15 +152,17 @@ void App::ForceUpdateNow() {
                     } else {
                         coreSummary = "Core updated (manual Core restart needed)";
                     }
+                } catch (const coreapi::RequestError& error) {
+                    coreSummary = "Core: " + (error.reason.empty() ? std::string(error.what()) : error.reason);
                 } catch (const std::exception& error) {
                     coreSummary = std::string("Core: ") + error.what();
                 }
             }
         } catch (const std::exception& error) {
-            coreSummary = std::string("Core offline: ") + error.what();
+            coreSummary = std::string("Core update check failed: ") + error.what();
         }
 
-        progress("Checking window update (update-native.ps1)\xE2\x80\xA6");
+        progress("Checking the Windows app for updates\xE2\x80\xA6");
         std::string windowSummary;
         bool relaunch = false;
         const auto script = std::filesystem::is_regular_file(root / L"bin/update-native.ps1")
@@ -211,6 +225,7 @@ void App::InstallNativeUpdate() {
         const DWORD result = RunNativeUpdaterProcess(root / L"bin/update-native.ps1", root);
         background_->PostToUi([this, result, root] {
             updatesView_.busy = false;
+            updatesRetrySoon_ = result != 0 && result != 10 && result != 11;
             updatesView_.message = result == 0    ? "Update verified. Restarting TVM..."
                                    : result == 10 ? "This native build is current."
                                    : result == 11 ? "This copy is newer than the published build, so it is kept."

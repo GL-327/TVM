@@ -7,35 +7,16 @@ import type { ScreenProps } from '../nav/registry';
 import { formatAppDate } from '../i18n/locale';
 import { readAutoUpdate, savePrefs } from '../data/prefs';
 import { currentAppVersion, rememberPendingChangelog, type ChangelogEntry, type ChangelogRecord, parseChangelogRecord } from '../data/changelog';
-import { runManualCoreUpdate } from '../data/manualUpdate';
+import { describeUpdateCheck, runManualCoreUpdate, type CoreUpdateStatus } from '../data/manualUpdate';
 import { updateRequired, useReleaseConfig } from '../data/releaseConfig';
 
-type UpdateKind =
-  | 'idle'
-  | 'no_release'
-  | 'up_to_date'
-  | 'available'
-  | 'auth_required'
-  | 'rate_limited'
-  | 'app_update_required'
-  | 'failed';
-
-interface UpdateStatus {
-  current: string;
-  /** The build this copy is running, when the core knows it. */
-  currentCommit?: string | null;
-  /** The build the installed app was made from. Phones only; see the row below. */
-  appBuild?: string | null;
-  /** checkout: a git clone; package: a downloaded bundle; phone cores leave it out. */
-  install?: 'checkout' | 'package';
+interface UpdateStatus extends CoreUpdateStatus {
   channel: string;
   lastCheck: string | null;
   available: { version: string; commit?: string; notes: string; changelog?: ChangelogEntry[] } | null;
   configured: boolean;
   applyAllowed: boolean;
   applyReason: string | null;
-  kind?: UpdateKind;
-  notice?: string | null;
   autoUpdate?: boolean;
   changelog?: ChangelogRecord | null;
 }
@@ -98,10 +79,7 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
         return;
       }
       setStatus(body);
-      setMessage(
-        body.notice ??
-          (body.available === null ? 'You are on the latest published app build.' : `Version ${body.available.version} is available.`),
-      );
+      setMessage(describeUpdateCheck(body));
     } catch {
       setMessage('Check failed. Confirm this PC can reach GitHub.');
     } finally {
@@ -115,7 +93,7 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
     try {
       const outcome = await runManualCoreUpdate((msg) => setMessage(msg));
       setMessage(outcome.message);
-      await refresh().catch(() => undefined);
+      if (outcome.status) setStatus((previous) => ({ ...previous, ...outcome.status }));
       if (outcome.reload) window.setTimeout(() => window.location.reload(), 400);
     } catch {
       setMessage('Update failed.');

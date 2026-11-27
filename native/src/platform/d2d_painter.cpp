@@ -142,6 +142,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
     const bool card = style.kind == ui::GlassKind::Card;
     const bool sheet = style.kind == ui::GlassKind::Panel || style.frosted;
     const bool hoverPlate = style.focusPlate && style.kind == ui::GlassKind::Tab;
+    const bool clearPill = !solid && style.kind == ui::GlassKind::Pill && style.adaptiveInk;
     const double focus = std::clamp(style.focusAmount > 0.0 ? style.focusAmount : (style.focused ? 1.0 : 0.0), 0.0, 1.0);
     const double press = std::clamp(style.pressAmount > 0.0 ? style.pressAmount : (style.pressed ? 1.0 : 0.0), 0.0, 1.0);
     const auto white = [alpha](double a) { return Rgb(0xFFFFFF, a * alpha); };
@@ -205,7 +206,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                 }
                 // Video in mpv's separate window can't be sampled. Give its controls a clear wash.
                 Color fallback = style.tint.value_or(tokens::kSurface);
-                fallback.a = alpha * (backdropBrush_ ? (sheet ? 0.52 : 0.40) : (sheet ? 0.78 : 0.62));
+                fallback.a = alpha * (backdropBrush_ ? (sheet ? 0.52 : clearPill ? 0.25 : 0.40) : (sheet ? 0.78 : 0.62));
                 FillRoundRect(box, radius, fallback);
             } else if (behind >= 0.0) {
                 const double bright = std::clamp((behind - 0.26) / 0.42, 0.0, 1.0);
@@ -244,7 +245,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         const ui::Box contour{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
         StrokeRoundRect(contour, radius + 0.5, 1.0, black(0.18));
         if (lens_ && clipDepth_ == 0) {
-            lens_->DrawRim(box, radius, rim, 0.18 * alpha);
+            lens_->DrawRim(box, radius, rim, (clearPill ? 0.32 : 0.18) * alpha);
         } else {
             const auto stops = Stops({{0.0, white(0.75 * rim)}, {0.46, white(0.15 * rim)},
                                       {0.62, white(0.15 * rim)}, {1.0, white(0.35 * rim)}});

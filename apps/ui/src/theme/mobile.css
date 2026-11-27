@@ -1319,16 +1319,16 @@ html.phone-shell .ribbon-zone {
   display: none;
 }
 
-html.phone-shell .ribbon,
-html.phone-shell .ribbon--open,
-html.phone-shell .ribbon:focus-within,
-html.phone-shell .ribbon:has([data-focused='true']),
-html.phone-shell[data-theme='glass'] .ribbon,
-html.phone-shell[data-theme='glass'] .ribbon--open,
-html.phone-shell[data-theme='glass'] .ribbon:focus-within,
-html.phone-shell[data-theme='glass'] .ribbon:has([data-focused='true']),
-html.phone-shell[data-theme='synthwave'] .ribbon,
-html.phone-shell[data-theme='synthwave'] .ribbon--open {
+html.phone-shell .ribbon:where(:not(.polish-nav)),
+html.phone-shell .ribbon--open:where(:not(.polish-nav)),
+html.phone-shell .ribbon:where(:not(.polish-nav)):focus-within,
+html.phone-shell .ribbon:where(:not(.polish-nav)):has([data-focused='true']),
+html.phone-shell[data-theme='glass'] .ribbon:where(:not(.polish-nav)),
+html.phone-shell[data-theme='glass'] .ribbon--open:where(:not(.polish-nav)),
+html.phone-shell[data-theme='glass'] .ribbon:where(:not(.polish-nav)):focus-within,
+html.phone-shell[data-theme='glass'] .ribbon:where(:not(.polish-nav)):has([data-focused='true']),
+html.phone-shell[data-theme='synthwave'] .ribbon:where(:not(.polish-nav)),
+html.phone-shell[data-theme='synthwave'] .ribbon--open:where(:not(.polish-nav)) {
   top: auto;
   left: 0;
   right: 0;
@@ -1346,8 +1346,8 @@ html.phone-shell[data-theme='synthwave'] .ribbon--open {
   border-radius: 0;
 }
 
-html.phone-shell .ribbon__frost,
-html.phone-shell[data-theme='glass'] .ribbon__frost {
+html.phone-shell .ribbon__frost:where(:not(.polish-nav__capsule)),
+html.phone-shell[data-theme='glass'] .ribbon__frost:where(:not(.polish-nav__capsule)) {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -1364,8 +1364,8 @@ html.phone-shell[data-theme='glass'] .ribbon__list--tabs {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
-html.phone-shell .ribbon__list,
-html.phone-shell[data-theme='glass'] .ribbon__list {
+html.phone-shell .ribbon__list:where(:not(.polish-nav__items)),
+html.phone-shell[data-theme='glass'] .ribbon__list:where(:not(.polish-nav__items)) {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
@@ -1398,8 +1398,8 @@ html.phone-shell[data-orientation='portrait'] .home__launcher {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-html.phone-shell[data-orientation='portrait'] .ribbon__list,
-html.phone-shell[data-orientation='portrait'][data-theme='glass'] .ribbon__list {
+html.phone-shell[data-orientation='portrait'] .ribbon__list:where(:not(.polish-nav__items)),
+html.phone-shell[data-orientation='portrait'][data-theme='glass'] .ribbon__list:where(:not(.polish-nav__items)) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -1438,13 +1438,13 @@ html.phone-shell[data-orientation='landscape'] .tvm-button.launch-tile {
   padding: 0.6rem;
 }
 
-html.phone-shell[data-orientation='landscape'] .ribbon,
-html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon {
+html.phone-shell[data-orientation='landscape'] .ribbon:where(:not(.polish-nav)),
+html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon:where(:not(.polish-nav)) {
   padding-block: 0.12rem calc(0.12rem + var(--tvm-chrome-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
-html.phone-shell[data-orientation='landscape'] .ribbon__list,
-html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon__list {
+html.phone-shell[data-orientation='landscape'] .ribbon__list:where(:not(.polish-nav__items)),
+html.phone-shell[data-orientation='landscape'][data-theme='glass'] .ribbon__list:where(:not(.polish-nav__items)) {
   grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
@@ -1589,7 +1589,7 @@ html.phone-shell #root {
 }
 html.phone-shell .search-pill__panel,
 html.phone-shell .setup-card,
-html.phone-shell .ribbon {
+html.phone-shell .ribbon:where(:not(.polish-nav)) {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;

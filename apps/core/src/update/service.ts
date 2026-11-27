@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { deleteSecret, readSecret, writeSecret } from '../providers/secrets.ts';
 import { CORE_VERSION } from '../config.ts';
@@ -64,6 +64,7 @@ export interface AvailableUpdate {
 export interface UpdateStatus {
   current: string;
   currentCommit: string | null;
+  bootId: string;
   install: InstallKind;
   channel: string;
   lastCheck: string | null;
@@ -213,6 +214,8 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   const watching = options.watching ?? runningUnderWatch();
   const channel = kind === 'checkout' ? `git:${repo}#main` : `github:${repo}#${FEED_TAGS.desktop}`;
   const envCommit = env['TVM_GIT_SHA']?.trim() ?? '';
+  const bootId = randomUUID();
+  let stagedPackageCommit: string | null = null;
 
   let commitCache: string | null | undefined =
     options.currentCommit !== undefined && options.currentCommit !== ''
@@ -247,10 +250,11 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     return {
       current: currentVersion,
       currentCommit: commitCache ?? null,
+      bootId,
       install: kind,
       channel,
       lastCheck: cache.lastCheck,
-      available: cache.available,
+      available: stagedPackageCommit === null ? cache.available : null,
       configured: resolveToken(dataDir, env) !== null,
       // A package's permission is policy; a checkout's depends on its state,
       // which only a check can see.
@@ -261,8 +265,10 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
           : checked
             ? (cache.applyReason ?? null)
             : 'Check for updates first.',
-      kind: checked ? (cache.kind ?? (cache.available === null ? 'up_to_date' : 'available')) : 'idle',
-      notice: cache.notice ?? null,
+      kind: checked && stagedPackageCommit === null
+        ? (cache.kind ?? (cache.available === null ? 'up_to_date' : 'available'))
+        : 'idle',
+      notice: stagedPackageCommit === null ? cache.notice ?? null : 'A Core update is staged. Restart TVM to finish.',
       changelog: readChangelogFile(dataDir),
     };
   };
@@ -362,6 +368,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   // ---- package -------------------------------------------------------------
 
   const checkPackage = async (): Promise<UpdateStatus> => {
+    if (stagedPackageCommit !== null) return snapshot();
     const found = await readManifest();
     if (found.manifest === null) {
       return remember({ available: null, kind: found.kind, notice: noticeFor(found.kind, found.detail) });
@@ -393,6 +400,9 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       error.name = 'ApplyRefused';
       throw error;
     }
+    if (stagedPackageCommit !== null) {
+      return { version: shortCommit(stagedPackageCommit), commit: stagedPackageCommit, changed: false, restart: 'manual' };
+    }
     const found = await readManifest();
     if (found.manifest === null) throw new Error(noticeFor(found.kind, found.detail));
     const manifest = found.manifest;
@@ -414,7 +424,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     writeFileSync(currentPointer(dataDir), `${id}\n`, { encoding: 'utf8' });
     // This process is on its way out; a later apply before it exits must not
     // unpack the same build again under the replacement that is starting.
-    commitCache = manifest.commit;
+    stagedPackageCommit = manifest.commit;
 
     const entries = changesSince(manifest, from);
     writeChangelogFile(dataDir, {
@@ -425,7 +435,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       appliedAt: now().toISOString(),
       entries: entries.length > 0 ? entries : [{ sha: id, title: `Build ${id}`, body: '', date: null }],
     });
-    remember({ available: null, kind: 'up_to_date', notice: `Applied build ${id}. TVM is restarting.` });
+    remember({ available: null, kind: 'up_to_date', notice: `Applied build ${id}.` });
     log(`tvm-core: applied desktop build ${id}`);
     return { version: id, commit: manifest.commit, changed: true, restart: 'self' };
   };

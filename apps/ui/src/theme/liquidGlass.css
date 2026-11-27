@@ -405,7 +405,7 @@ html[data-theme='light'][data-glass='tinted'] {
 
 .tvm-button.glass-segment__option:focus,
 .tvm-button.glass-segment__option[data-focused='true'] {
-  outline: 2px solid var(--tvm-focus-ring-color, #9edcff);
+  outline: 2px solid var(--tvm-focus-ring-color, #f5f5f5);
   outline-offset: 2px;
   transform: none;
 }

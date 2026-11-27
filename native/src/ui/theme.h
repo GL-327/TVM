@@ -61,13 +61,13 @@ struct Palette {
 
 inline constexpr Palette kDarkPalette{
     Rgb(0x07080B), Rgb(0x12141A), Rgb(0x1A1D25), Rgb(0xFFFFFF, 0.08),
-    Rgb(0xF5F7FA), Rgb(0xA9B0BC), Rgb(0x6E7684), Rgb(0x9EDCFF),
+    Rgb(0xF5F7FA), Rgb(0xA9B0BC), Rgb(0x6E7684), Rgb(0xF5F5F5),
     Rgb(0x000000), Rgb(0x232733), Rgb(0x9EDCFF), Rgb(0x000000),
     Rgb(0xFFFFFF, 0.06), Rgb(0xFFFFFF, 0.22), Rgb(0xFFFFFF, 0.10),
     Rgb(0x2F6BFF), Rgb(0xFFFFFF)};
 inline constexpr Palette kLightPalette{
     Rgb(0xF4F1E4), Rgb(0xFFFDF6), Rgb(0xE7FFF6), Rgb(0x124856, 0.16),
-    Rgb(0x12324A), Rgb(0x2A5A68), Rgb(0x4A7A82), Rgb(0x0EA884),
+    Rgb(0x12324A), Rgb(0x2A5A68), Rgb(0x4A7A82), Rgb(0x27272A),
     Rgb(0xEFE8D4), Rgb(0xFFFAF0), Rgb(0x0EA884), Rgb(0xF4F1E4),
     Rgb(0xFFFFFF, 0.50), Rgb(0x124856, 0.16), Rgb(0xFFFFFF, 0.62),
     Rgb(0x2F6BFF), Rgb(0xFFFFFF)};
@@ -123,7 +123,6 @@ public:
         tokens::palette = theme == Theme::Light ? kLightPalette : kDarkPalette;
         if (theme == Theme::Dark) {
             tokens::palette.accentStrong = Rgb(AccentColour(accent));
-            tokens::palette.focusRing = tokens::palette.accentStrong;
         }
         tokens::posterTitles = posterTitles;
         tokens::reduceTransparency = reducedTransparency;

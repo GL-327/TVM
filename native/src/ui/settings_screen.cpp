@@ -938,6 +938,11 @@ Box SettingsScreen::SearchBox() const {
     return Box{paneLeft_, metrics_.Rem(kSafeYRem) + metrics_.Rem(kSearchTopRem), paneWidth_, metrics_.Rem(kSearchHeightRem)};
 }
 
+Box SettingsScreen::HeaderBackBox() const {
+    const double size = metrics_.Rem(2.4);
+    return Box{paneLeft_, metrics_.Rem(kSafeYRem), size, size};
+}
+
 Box SettingsScreen::SegmentTrack(const Row& row) const {
     const Box box = ScreenBox(row);
     const double y = row.key == "skip-segments" ? box.Bottom() - metrics_.Rem(1.7) : box.CenterY();
@@ -1026,7 +1031,16 @@ bool SettingsScreen::Navigate(nav::Direction direction, double nowMs) {
     // An open list takes the arrows.
     if (select_.IsOpen()) return select_.Navigate(direction, nowMs);
 
+    if (pane_ == Pane::Back) {
+        if (direction != nav::Direction::Down && direction != nav::Direction::Right) return false;
+        pane_ = Pane::Search;
+        return true;
+    }
     if (pane_ == Pane::Search) {
+        if (direction == nav::Direction::Up) {
+            pane_ = Pane::Back;
+            return true;
+        }
         if (direction == nav::Direction::Down || direction == nav::Direction::Right) {
             // Into the matches, or with nothing typed, down the list of categories.
             if (!term_.empty() && focus_.has_value()) {
@@ -1152,6 +1166,7 @@ std::optional<Command> SettingsScreen::Select(double nowMs) {
         PickOption(select_.Highlighted(), nowMs);
         return std::nullopt;
     }
+    if (pane_ == Pane::Back) return Command{false, "back", {}, true};
     if (pane_ == Pane::Search) {
         // Enter in the field moves on to what it found.
         if (!term_.empty() && focus_.has_value()) {
@@ -1283,6 +1298,7 @@ std::optional<Command> SettingsScreen::ApplyRow(std::size_t index) {
 }
 
 std::optional<std::string> SettingsScreen::FocusedKey() const {
+    if (pane_ == Pane::Back) return "settings-back";
     if (pane_ == Pane::Search) return std::string("search");
     if (pane_ == Pane::Categories) return std::string("cat:") + kCategories[static_cast<std::size_t>(categoryFocus_)].id;
     if (!focus_.has_value()) return std::nullopt;
@@ -1353,6 +1369,11 @@ bool SettingsScreen::FocusItem(const std::string& key, double nowMs, bool withCa
     }
     // Text fields take the focus for editing on click, not on hover.
     if (key == "search" || webhookDraft_) return false;
+    if (key == "settings-back") {
+        if (pane_ == Pane::Back) return false;
+        pane_ = Pane::Back;
+        return true;
+    }
     if (key.rfind("cat:", 0) == 0) {
         const std::string id = key.substr(4);
         for (std::size_t c = 0; c < kCategories.size(); ++c) {
@@ -1398,6 +1419,8 @@ std::optional<std::string> SettingsScreen::ItemAt(double x, double y) const {
     }
     const Box search = SearchBox();
     if (x >= search.x && x < search.Right() && y >= search.y && y < search.Bottom()) return std::string("search");
+    const Box back = HeaderBackBox();
+    if (x >= back.x && x < back.Right() && y >= back.y && y < back.Bottom()) return "settings-back";
     const std::vector<int> present = PresentCategories();
     for (std::size_t slot = 0; slot < present.size(); ++slot) {
         const Box box = CategoryBox(slot);
@@ -1453,6 +1476,10 @@ std::optional<Command> SettingsScreen::ActivateItem(const std::string& key, doub
     if (key == "search") {
         pane_ = Pane::Search;
         return std::nullopt;
+    }
+    if (key == "settings-back") {
+        pane_ = Pane::Back;
+        return Command{false, "back", {}, true};
     }
     if (key.rfind("cat:", 0) == 0) {
         const std::string id = key.substr(4);
@@ -1557,8 +1584,10 @@ void SettingsScreen::Paint(Painter& painter) const {
     const bool searching = !term_.empty();
 
     // Left pane: the title, the search field and the categories. It does not scroll.
-    painter.Text(Box{paneLeft_, metrics_.Rem(kSafeYRem), paneWidth_, metrics_.Rem(2.4)}, "Settings", type::H2(rem),
-                 tokens::kText);
+    const Box back = HeaderBackBox();
+    controls::PaintBackButton(painter, back, showFocus && pane_ == Pane::Back);
+    painter.Text(Box{back.Right() + 0.35 * rem, back.y, paneWidth_ - back.width - 0.35 * rem, back.height},
+                 "Settings", type::H2(rem), tokens::kText);
     PaintSearch(painter, showFocus && pane_ == Pane::Search);
     const std::vector<int> present = PresentCategories();
     for (std::size_t slot = 0; slot < present.size(); ++slot) {

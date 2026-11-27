@@ -343,6 +343,7 @@ describe('update service: packaged install', () => {
         'tvm-app.tar.gz': () => new Response(archive),
       }),
     });
+    const bootId = service.status().bootId;
     await expect(service.apply()).resolves.toEqual({ version: '3333333', commit: NEW, changed: true, restart: 'self' });
     expect(await readFile(join(dir, 'app', 'current'), 'utf8')).toBe('3333333\n');
     expect(await readFile(join(dir, 'app', '3333333', 'core', 'index.js'), 'utf8')).toBe('ok');
@@ -351,7 +352,11 @@ describe('update service: packaged install', () => {
     expect(changelog?.pending).toBe(true);
     expect(changelog?.entries.map((entry) => entry.title)).toEqual(['Third change', 'Second change']);
     expect(service.markChangelogSeen()?.pending).toBe(false);
-    expect(service.status().kind).toBe('up_to_date');
+    expect(service.status()).toMatchObject({ bootId, currentCommit: OLD, kind: 'idle' });
+    expect(await service.check()).toMatchObject({ bootId, currentCommit: OLD, available: null });
+    const restarted = createUpdateService({ dataDir: dir, install: PACKAGE, currentCommit: NEW });
+    expect(restarted.status()).toMatchObject({ currentCommit: NEW, kind: 'up_to_date' });
+    expect(restarted.status().bootId).not.toBe(bootId);
   });
 
   // The desktop window catches an older Core up while the six-hourly check may

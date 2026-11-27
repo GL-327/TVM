@@ -4,8 +4,17 @@
 // copy built locally, or from a commit that is not published yet, must never be "updated" back to an older release.
 
 #include <string>
+#include <string_view>
 
 namespace tvm::update {
+
+// A legacy Core reports its compiled version but has no process identifier.
+// Briefly losing the connection cannot prove it restarted.
+inline bool IsNewCoreBoot(std::string_view previousBoot, std::string_view previousVersion,
+                          std::string_view boot, std::string_view version) {
+    if (!boot.empty()) return boot != previousBoot;
+    return previousBoot.empty() && !previousVersion.empty() && !version.empty() && version != previousVersion;
+}
 
 // The first 19 characters of an ISO 8601 UTC time ("2026-11-22T14:42:19"), which order correctly as text.
 inline std::string IsoSeconds(const std::string& iso) {

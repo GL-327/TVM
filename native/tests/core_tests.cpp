@@ -207,6 +207,15 @@ TEST(native_update_retries_soon_after_a_failed_or_held_check) {
     REQUIRE_EQ(tvm::update::NextCheckDelayMs(true), 600000.0);
 }
 
+TEST(core_update_requires_a_new_boot_or_a_changed_legacy_version) {
+    REQUIRE(!tvm::update::IsNewCoreBoot("", "1.4.11", "", "1.4.11"));
+    REQUIRE(!tvm::update::IsNewCoreBoot("", "1.4.11", "", ""));
+    REQUIRE(!tvm::update::IsNewCoreBoot("before", "1.4.11", "before", "1.4.12"));
+    REQUIRE(!tvm::update::IsNewCoreBoot("before", "1.4.11", "", "1.4.12"));
+    REQUIRE(tvm::update::IsNewCoreBoot("", "1.4.11", "after", "1.4.11"));
+    REQUIRE(tvm::update::IsNewCoreBoot("", "1.4.10", "", "1.4.11"));
+}
+
 TEST(ctrl_backspace_erases_the_previous_word) {
     REQUIRE_EQ(tvm::util::ErasePreviousWord("hello big world"), std::string("hello big "));
     REQUIRE_EQ(tvm::util::ErasePreviousWord("hello big "), std::string("hello "));

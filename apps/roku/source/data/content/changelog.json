@@ -3,6 +3,89 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.12",
+      "date": "2026-11-27",
+      "title": "Glass navigation and clearer updates",
+      "highlights": [
+        "TVM now distinguishes a failed update check from a current build.",
+        "The navigation bar has clearer glass, and phone layout keeps the artwork and controls readable."
+      ],
+      "changes": [
+        {
+          "area": "Updates",
+          "text": "Update now waits for the new engine before saying TVM has restarted.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "Failed update checks show the error instead of suggesting the app is up to date.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "Windows retries sooner when it cannot check or download an update.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Navigation",
+          "text": "The app-wide Back button is gone. Settings and the TV guide have their own header arrows.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "The mouse pointer stays visible in the Windows TV guide.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Appearance",
+          "text": "The navigation pill shows more of the artwork through Liquid Glass.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Appearance",
+          "text": "Keyboard and remote focus use a neutral highlight without a blue outline.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Hub",
+          "text": "Portrait phones keep the full Hub artwork and give the welcome text its own space.",
+          "platforms": [
+            "web",
+            "ios",
+            "android"
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.4.11",
       "date": "2026-11-27",
       "title": "Windows parity, Hub, Bloom ribbons and glass",
@@ -13,6 +96,69 @@
         "All platforms share the corrected version badge without the placeholder tag."
       ],
       "changes": [
+        {
+          "area": "Navigation",
+          "text": "The navigation bar is clear Liquid Glass again instead of a flat grey bar, and stays at the top on Live TV.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The Hunger Games row runs once in story order, from The Ballad of Songbirds & Snakes to Mockingjay Part 2.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Hovered posters no longer cover the row heading or get their tops cut off.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Row arrows come back when you return to a row, and the hero fades into the rows below without a hard line.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The glow under Play and Watch the saga fades out softly instead of ending in a square edge.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The blue ribbon background now plays only on the Hub and profile chooser, and no longer cuts off.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "The back button is a plain, thicker arrow without the circle behind it.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Player buttons show the same glass as the details buttons when you hover them, and nothing when you don't.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "The mouse pointer comes back in the TV guide as soon as you move it.",
+          "platforms": [
+            "windows"
+          ]
+        },
         {
           "area": "Hub",
           "text": "Added the Hub start page with greeting, hero spotlight, Continue watching, apps and free live channels.",

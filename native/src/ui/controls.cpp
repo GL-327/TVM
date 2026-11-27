@@ -25,12 +25,10 @@ Box BackButtonBox(double width, double height) {
 }
 
 void PaintBackButton(Painter& painter, const Box& box, bool focused) {
-    auto material = focused ? glass::NavSelected() : glass::NavCapsule();
-    material.adaptiveInk = true;
-    painter.Glass(box, box.height / 2.0, material);
+    if (focused) painter.FillRoundRect(box, box.height * 0.24, tokens::kSurfaceHover);
     const double inset = box.width * 0.24;
     painter.Path({box.x + inset, box.y + inset, box.width - 2.0 * inset, box.height - 2.0 * inset}, 24.0,
-                 "M15 5l-7 7 7 7", {Rgb(0, 0.0), painter.GlassInk(tokens::kText), 2.3, false});
+                 "M15 5l-7 7 7 7", {Rgb(0, 0.0), tokens::kText, 2.8, false});
 }
 
 void PaintFrameMeter(Painter& painter, double width, double height, double frameMs) {

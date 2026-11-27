@@ -1678,8 +1678,8 @@ void Scene::PaintStreamChrome(Painter& painter) const {
     // deepening when the page scrolls down.
     const double height = ChromeHeight() + metrics_.Rem(2.5);
     const double scrollAlpha = std::clamp(pageScroll_ / std::max(1.0, metrics_.Rem(8.0)), 0.0, 1.0);
-    const double topAlpha = 0.36 + 0.62 * scrollAlpha;
-    const double midAlpha = 0.16 + 0.76 * scrollAlpha;
+    const double topAlpha = 0.26 + 0.70 * scrollAlpha;
+    const double midAlpha = 0.09 + 0.80 * scrollAlpha;
     painter.FillLinearGradient(Box{0.0, 0.0, viewportWidth_, height}, 0.0, 0.0, 0.0, height,
                                {GradientStop{0.0, WithAlpha(tokens::kBackground, topAlpha)},
                                 GradientStop{0.66, WithAlpha(tokens::kBackground, midAlpha)},
@@ -1722,18 +1722,17 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         maxB = std::max(maxB, b.Bottom());
         hasCapsuleTabs = true;
     }
+    std::optional<Color> capsuleInk;
     if (hasCapsuleTabs && barStage > 0.0) {
         const double pad = metrics_.Rem(kCapsulePadRem);
         Box capsule = ScaledAbout(Box{minX - pad, minY - pad, (maxR - minX) + 2.0 * pad, (maxB - minY) + 2.0 * pad},
                                   0.96 + 0.04 * barStage);
         capsule.y -= barRise;
-        GlassStyle capsuleGlass;
-        // Real Liquid Glass: the picture behind is refracted through the capsule (never a solid fill). Reduce
-        // Transparency alone makes it opaque. See docs/LIQUID_GLASS.md.
-        capsuleGlass.kind = GlassKind::Pill;
-        capsuleGlass.reduceTransparency = tokens::reduceTransparency;
-        capsuleGlass.opacity = barStage;
+        GlassStyle capsuleGlass = glass::NavCapsule(barStage);
+        capsuleGlass.adaptiveInk = true;
         painter.Glass(capsule, capsule.height / 2.0, capsuleGlass);
+        const Color sampledInk = painter.GlassInk(Rgb(0, 0.0));
+        if (sampledInk.a > 0.0) capsuleInk = sampledInk;
     }
 
     // 2. Top-left TVM wordmark (drawn as static brand mark when no lockup button is in tops_).
@@ -1880,13 +1879,14 @@ void Scene::PaintStreamChrome(Painter& painter) const {
             const bool old = std::abs(indicatorFrom_.CenterX() - box.CenterX()) < 1.0;
             under = selectedTab ? arrived : old ? 1.0 - arrived : 0.0;
         }
-        const Color resting = Mix(tokens::kTextMuted, tokens::kText, 0.52 + 0.48 * emphasis);
+        const Color resting = capsuleInk.value_or(Mix(tokens::kTextMuted, tokens::kText, 0.52 + 0.48 * emphasis));
         const Color ink = Faded(Mix(resting, kPlateInk, under), labelStage);
         const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
         // Clear glass lets a bright sky through, so a label off the plate carries a soft two-layer shadow (dark
         // theme only); on the light plate it needs none.
         const bool lightTheme = tokens::kBackground.r > 0.5;
-        const double shadowAlpha = lightTheme || tokens::reduceTransparency ? 0.0 : 0.42 * (1.0 - under) * labelStage;
+        const double shadowAlpha = lightTheme || tokens::reduceTransparency || resting.r < 0.5
+            ? 0.0 : 0.42 * (1.0 - under) * labelStage;
         if (SearchTab(tops_[i])) {
             const double size = metrics_.Rem(1.45);
             const Box glyph{box.CenterX() - size / 2.0, box.CenterY() - size / 2.0 - textRise, size, size};

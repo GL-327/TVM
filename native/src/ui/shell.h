@@ -156,7 +156,6 @@ private:
     void Pan(const ScrollSurface& surface, double delta, nav::WheelMode mode, double nowMs);
     std::optional<std::string> Hit(double x, double y);
     bool ActivateChrome(const std::string& key, double nowMs);
-    std::optional<Box> BackBox() const;
     Box ReleaseBox() const;
     std::optional<ReleaseCard> releaseCard_;
     std::optional<PatchNotes> patchNotes_;
@@ -171,7 +170,6 @@ private:
     ManualUpdateState manualUpdate_;
     HomeSectionLabels homeLabels_ = HomeSections();
     PrefsSink prefsSink_;
-    bool backFocused_ = false;
 
     nav::ViewStackState stack_;
     std::map<std::string, std::unique_ptr<Screen>> screens_;

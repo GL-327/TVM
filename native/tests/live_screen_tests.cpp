@@ -432,18 +432,20 @@ TEST(shell_opens_the_channel_screen_and_takes_a_view_on_its_scene) {
     REQUIRE_EQ(shell.ActiveScreenName(), std::string("player"));
 }
 
-TEST(live_tv_back_button_is_the_shared_glass_back_button) {
+TEST(live_tv_shell_does_not_intercept_the_page_corner_with_a_back_button) {
     MemoryStore store;
     Shell shell(std::make_unique<LiveTvLauncher>(), store);
     shell.Layout(1920.0, 1080.0);
     shell.Select(0.0);
     REQUIRE_EQ(shell.ActiveScreenName(), std::string("live-tv"));
-    // The same box the guide and the other screens use: hit-testing its centre reaches the shell's Back.
+    // A click at the old overlay location stays on this screen. The shell still supports the Back action.
     const auto back = tvm::ui::controls::BackButtonBox(1920.0, 1080.0);
     REQUIRE_EQ(back.width, back.height);
     shell.MouseDown(back.CenterX(), back.CenterY(), 0.0);
     shell.MouseUp(back.CenterX(), back.CenterY(), 10.0);
-    REQUIRE(shell.ActiveScreenName() != std::string("live-tv"));
+    REQUIRE_EQ(shell.ActiveScreenName(), std::string("live-tv"));
+    REQUIRE(shell.Back(20.0));
+    REQUIRE_EQ(shell.ActiveScreenName(), std::string("home"));
 }
 
 }  // namespace

@@ -974,6 +974,10 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (HandlePointer(message, wParam)) return 0;
         break;
     case WM_SETCURSOR:
+        if (LOWORD(lParam) == HTCLIENT && GuideActive()) {
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+            return TRUE;
+        }
         // The cursor stays hidden until the mouse moves, so the ten-foot view is clean.
         // Over the playing picture the cursor goes with the chrome, as the web player hides it.
         if (ui::PlayerScreen* player = shell_->ActivePlayer();
@@ -2159,13 +2163,14 @@ void App::ApplyLiveTv() {
     }
     // Channel logos are pictures like posters: fetch them, or every channel stays a plain tile.
     QueueRailArtwork(view.rails);
-    shell_->SetLiveTvView(view, NowMs());
     if (streamLane_ == "live") {
         ui::SceneView lane = view;
         lane.kicker = "Channels";
         lane.heading = "Live TV";
         ShowPageLane(std::move(lane));
     }
+    view.topButtons.insert(view.topButtons.begin(), ui::TopButton{"Back", ui::Command{false, "back", {}, true}});
+    shell_->SetLiveTvView(view, NowMs());
     // The channel check lists the same channels' groups.
     if (pageName_ == "live-check") ShowInfoPage();
     dirty_ = true;
@@ -3234,8 +3239,8 @@ void App::TypedIntoPage(ui::InfoScreen& page) {
 }
 
 void App::CheckForUpdates() {
-    updatesCheckedMs_ = NowMs();
     if (updatesView_.busy) return;
+    updatesCheckedMs_ = NowMs();
     updatesView_.busy = true;
     updatesView_.message.clear();
     ShowUpdates();
@@ -3257,14 +3262,21 @@ void App::CheckForUpdates() {
         const std::string installedCommit = installed.is_object() ? installed.value("commit", std::string()) : std::string();
         const std::string installedBuiltAt = installed.is_object() ? installed.value("builtAt", std::string()) : std::string();
         bool olderPublished = false;
+        bool releaseFound = false;
         if (release.has_value() && release->ok()) {
             const nlohmann::json body = nlohmann::json::parse(release->body, nullptr, false);
             if (body.is_object() && body.contains("assets") && body["assets"].is_array()) {
                 for (const auto& asset : body["assets"]) {
-                    if (asset.value("name", std::string()) != "TVM-native-windows.zip" || !asset.contains("label") || !asset["label"].is_string()) continue;
+                    if (!asset.contains("name") || asset["name"] != "TVM-native-windows.zip" ||
+                        !asset.contains("label") || !asset["label"].is_string() ||
+                        !asset.contains("digest") || !asset["digest"].is_string() ||
+                        !asset.contains("updated_at") || !asset["updated_at"].is_string()) continue;
                     const auto commit = asset["label"].get<std::string>();
-                    const std::string publishedAt = asset.value("updated_at", std::string());
-                    if (commit.size() == 40 && commit != installedCommit) {
+                    const auto publishedAt = asset["updated_at"].get<std::string>();
+                    const auto digest = asset["digest"].get<std::string>();
+                    if (commit.size() != 40 || digest.size() != 71 || !digest.starts_with("sha256:") || publishedAt.size() < 19) continue;
+                    releaseFound = true;
+                    if (commit != installedCommit) {
                         // Only a newer build replaces this copy. A copy built here, or from a commit not yet published,
                         // is never "updated" back to an older release (which closed TVM and reopened an older one).
                         if (update::ShouldInstall(installedCommit, installedBuiltAt, commit, publishedAt)) {
@@ -3274,12 +3286,13 @@ void App::CheckForUpdates() {
                             olderPublished = !installedCommit.empty();
                         }
                     }
+                    break;
                 }
             }
         }
         std::vector<std::string> changes;
-        bool reached = commits.has_value() && commits->ok();
-        if (reached) {
+        const bool gotChanges = commits.has_value() && commits->ok();
+        if (gotChanges) {
             const nlohmann::json body = nlohmann::json::parse(commits->body, nullptr, false);
             for (const nlohmann::json& item : body.is_array() ? body : nlohmann::json::array()) {
                 const std::string message =
@@ -3290,7 +3303,7 @@ void App::CheckForUpdates() {
                 changes.push_back(title);
             }
         }
-        background_->PostToUi([this, available, changes, reached, updateNeeded, olderPublished] {
+        background_->PostToUi([this, available, changes, gotChanges, releaseFound, updateNeeded, olderPublished] {
             updatesView_.busy = false;
             SYSTEMTIME now{};
             GetLocalTime(&now);
@@ -3299,17 +3312,17 @@ void App::CheckForUpdates() {
                           now.wMinute);
             updatesView_.lastCheck = stamp;
             updatesView_.available = available;
-            if (reached) updatesView_.changes = changes;
-            updatesView_.message = !reached            ? "Check failed. Confirm this PC can reach GitHub."
+            if (gotChanges) updatesView_.changes = changes;
+            updatesView_.message = !releaseFound       ? "Could not verify the published Windows update. Try again later."
                                    : olderPublished    ? "This copy is newer than the published build, so it is kept."
-                                   : available.empty() ? "No newer native package is published. The changes below are the latest."
+                                   : available.empty() ? "No newer Windows package is available for this copy."
                                                        : available + " is published. Install it to update this copy.";
             ShowUpdates();
             // Installing closes TVM, so it waits while a film plays or a download runs, and is tried again soon
             // rather than in six hours. A failed check (no network yet after sign-in or wake) is also retried soon.
             const bool installNow = updateNeeded && store_->CorePrefs().autoUpdate;
             const bool held = installNow && (playerOpen_ || downloadRunning_);
-            updatesRetrySoon_ = !reached || held;
+            updatesRetrySoon_ = !releaseFound || held;
             if (installNow && !held) InstallNativeUpdate();
         });
     });

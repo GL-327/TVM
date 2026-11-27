@@ -156,14 +156,10 @@ void App::LayoutGuide() {
 bool App::HandleGuideMouse(UINT message, WPARAM buttons, LPARAM point) {
     if (message == WM_MOUSEMOVE) {
         auto cursor = ClientPoint(point);
-        // A key hides the cursor (as on a TV); the guide takes the mouse itself, so its moves bring it back here.
-        // Windows repeats a move under a still cursor, so only a real move counts.
+        // Keep the shell's pointer state in sync when moving between the guide and its navigation tabs.
         if (cursor.x != lastMouse_.x || cursor.y != lastMouse_.y) {
             lastMouse_ = cursor;
-            if (!shell_->CursorVisible()) {
-                shell_->ShowPointer();
-                SetCursor(LoadCursorW(nullptr, IDC_ARROW));
-            }
+            shell_->ShowPointer();
         }
         dirty_ = guide_.Hover(cursor.x, cursor.y - static_cast<LONG>(guideInset_)) || dirty_;
     } else if (message == WM_MOUSELEAVE) {
