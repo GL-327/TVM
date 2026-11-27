@@ -809,6 +809,19 @@ void D2dPainter::PushLinearOpacity(double y0, double y1, double topAlpha, double
     opacityLayers_.push_back(true);
 }
 
+void D2dPainter::PushTranslate(double dx, double dy) {
+    D2D1_MATRIX_3X2_F current{};
+    target_->GetTransform(&current);
+    transforms_.push_back(current);
+    target_->SetTransform(current * D2D1::Matrix3x2F::Translation(static_cast<FLOAT>(dx), static_cast<FLOAT>(dy)));
+}
+
+void D2dPainter::PopTranslate() {
+    if (transforms_.empty()) return;
+    target_->SetTransform(transforms_.back());
+    transforms_.pop_back();
+}
+
 void D2dPainter::PopOpacity() {
     if (opacityLayers_.empty()) return;
     if (opacityLayers_.back()) target_->PopLayer();

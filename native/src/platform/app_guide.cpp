@@ -1,3 +1,4 @@
+#include <cmath>
 #include "platform/app.h"
 
 #include <windowsx.h>
@@ -138,9 +139,23 @@ bool App::HandleGuideKey(WPARAM key) {
     return true;
 }
 
+double App::GuideInset() const {
+    // On the Live TV lane of Home the navigation pill stays over the guide; the guide starts under it.
+    if (home_ == nullptr || shell_->ActiveScreenName() != "home") return 0.0;
+    return std::ceil(home_->NavChromeHeight());
+}
+
+void App::LayoutGuide() {
+    RECT client{};
+    GetClientRect(window_, &client);
+    guideInset_ = GuideInset();
+    guide_.Layout(static_cast<double>(client.right - client.left),
+                  std::max(0.0, static_cast<double>(client.bottom - client.top) - guideInset_));
+}
+
 bool App::HandleGuideMouse(UINT message, WPARAM buttons, LPARAM point) {
     if (message == WM_MOUSEMOVE) {
-        const auto cursor = ClientPoint(point);
+        auto cursor = ClientPoint(point);
         // A key hides the cursor (as on a TV); the guide takes the mouse itself, so its moves bring it back here.
         // Windows repeats a move under a still cursor, so only a real move counts.
         if (cursor.x != lastMouse_.x || cursor.y != lastMouse_.y) {
@@ -150,12 +165,12 @@ bool App::HandleGuideMouse(UINT message, WPARAM buttons, LPARAM point) {
                 SetCursor(LoadCursorW(nullptr, IDC_ARROW));
             }
         }
-        dirty_ = guide_.Hover(cursor.x, cursor.y) || dirty_;
+        dirty_ = guide_.Hover(cursor.x, cursor.y - static_cast<LONG>(guideInset_)) || dirty_;
     } else if (message == WM_MOUSELEAVE) {
         dirty_ = guide_.Hover(-1, -1) || dirty_;
     } else if (message == WM_LBUTTONUP) {
         const auto cursor = ClientPoint(point);
-        const auto action = guide_.Click(cursor.x, cursor.y, guideClock_);
+        const auto action = guide_.Click(cursor.x, cursor.y - static_cast<LONG>(guideInset_), guideClock_);
         if (action == "@search") { guideSearch_ = true; guide_.Search(""); }
         else if (action == "@channels") guideVisible_ = false;
         else if (action == "@back") HandleGuideKey(VK_ESCAPE);

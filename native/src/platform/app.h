@@ -455,6 +455,10 @@ private:
     std::unique_ptr<ui::Intro> streamIntro_;
     // Owned by the shell. Kept to set the catalogue's rails and status.
     ui::Scene* home_ = nullptr;
+    // Live TV keeps the navigation pill: the guide sits below it by this much (0 when the guide is its own screen).
+    double guideInset_ = 0.0;
+    double GuideInset() const;
+    void LayoutGuide();
     nav::AxisHopQueue hops_;
     double lastHopMs_ = -1.0e9;
     bool dirty_ = true;

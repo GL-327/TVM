@@ -203,6 +203,10 @@ public:
     bool Tick(double nowMs) override;
     bool Animating() const override;
     bool ShowsStage() const override { return style_ == SceneStyle::Hub; }
+    // The navigation pill and its chrome alone, for a surface drawn in place of the page (the Live TV guide), and the
+    // height that chrome takes at the top of the window.
+    void PaintNavChrome(Painter& painter) const { PaintStreamChrome(painter); }
+    double NavChromeHeight() const { return ChromeHeight(); }
     void Paint(Painter& painter) const override;
 
     bool Navigate(nav::Direction direction, double nowMs) override;

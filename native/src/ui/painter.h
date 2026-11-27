@@ -230,6 +230,9 @@ public:
     virtual void PopOpacity() {}
     // Like PushOpacity, but the opacity runs from `topAlpha` at y0 to `bottomAlpha` at y1 (held beyond), so what is
     // drawn until PopOpacity fades out down the page and whatever lies under it shows through: a crossfade.
+    // Everything drawn until PopTranslate is moved by (dx, dy).
+    virtual void PushTranslate(double /*dx*/, double /*dy*/) {}
+    virtual void PopTranslate() {}
     virtual void PushLinearOpacity(double /*y0*/, double /*y1*/, double /*topAlpha*/, double /*bottomAlpha*/) {}
 
 protected:

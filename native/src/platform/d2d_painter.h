@@ -56,6 +56,8 @@ public:
     void PushOpacity(double opacity) override;
     void PopOpacity() override;
     void PushLinearOpacity(double y0, double y1, double topAlpha, double bottomAlpha) override;
+    void PushTranslate(double dx, double dy) override;
+    void PopTranslate() override;
 
 private:
     void DrawLabel(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color, bool wrap);
@@ -83,6 +85,8 @@ private:
     int clipDepth_ = 0;
     // Each pushed clip, in order: true for a shaped clip (a layer), false for an axis-aligned one.
     std::vector<bool> clipLayers_;
+    // The transforms in force before each PushTranslate.
+    std::vector<D2D1_MATRIX_3X2_F> transforms_;
     // Each PushOpacity, in order: whether it pushed a layer.
     std::vector<bool> opacityLayers_;
     // The open line through `points` (or closed), as a geometry.

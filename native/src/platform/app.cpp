@@ -1113,7 +1113,17 @@ POINT App::ClientPoint(LPARAM lParam) const {
 }
 
 bool App::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam) {
-    if (GuideActive()) return HandleGuideMouse(message, wParam, lParam);
+    if (GuideActive()) {
+        // Over the navigation pill the mouse is Home's (its tabs, profile and search); below it, the guide's.
+        const bool wheel = message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL;
+        const bool overChrome = guideInset_ > 0.0 && !wheel && message != WM_MOUSELEAVE &&
+                                ClientPoint(lParam).y < static_cast<LONG>(guideInset_);
+        if (!overChrome) {
+            if (guideInset_ > 0.0 && message == WM_MOUSEMOVE) shell_->MouseLeave(NowMs());
+            return HandleGuideMouse(message, wParam, lParam);
+        }
+        guide_.Hover(-1, -1);
+    }
     const double now = NowMs();
     ui::PlayerScreen* player = shell_->ActivePlayer();
     switch (message) {
@@ -1255,7 +1265,7 @@ void App::Resize() {
     if (width == 0 || height == 0) return;
 
     shell_->Layout(width, height);
-    guide_.Layout(width, height);
+    LayoutGuide();
     if (target_) {
         target_->Resize(D2D1::SizeU(width, height));
     }
@@ -1298,7 +1308,16 @@ void App::Render() {
         if (GuideActive()) {
             const ui::ThemeScope theme(ui::Theme::Dark, store_->ReduceTransparency() || store_->Motion().performanceMode);
             const ui::FontScope font(store_->Font());
-            guide_.Paint(painter, guideClock_);
+            if (GuideInset() != guideInset_) LayoutGuide();
+            if (guideInset_ > 0.0) {
+                // The guide under the navigation pill: the pill and its chrome are Home's, drawn over the guide's top.
+                painter.PushTranslate(0.0, guideInset_);
+                guide_.Paint(painter, guideClock_);
+                painter.PopTranslate();
+                home_->PaintNavChrome(painter);
+            } else {
+                guide_.Paint(painter, guideClock_);
+            }
         } else {
             shell_->Paint(painter);
         }
