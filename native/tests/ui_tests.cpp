@@ -99,12 +99,13 @@ std::string Key(std::size_t rail, std::size_t index) {
 TEST(layout_follows_the_design_tokens_at_1080p) {
     Scene scene = MakeScene(SmallRails());
     // rem = 16px. Safe area 40px by 24px. A rail inset of 16px. Cards 168px
-    // wide with 16px between them. Heading 33.6px tall (1.5rem * 1.4), 20px (1.25rem) to its rail.
+    // wide with 16px between them. Heading 33.6px tall (1.5rem * 1.4), then 31.6px to its rail: the gap takes a hovered
+    // poster's rise (its grow, lift and ring), so the card never covers the heading.
     REQUIRE_NEAR(scene.metrics().rem, 16.0, 1e-9);
     REQUIRE_NEAR(scene.CardBox(0, 0).x, 40.0 + 16.0, 1e-9);
     REQUIRE_NEAR(scene.CardBox(0, 0).width, 168.0, 1e-9);
     REQUIRE_NEAR(scene.CardBox(0, 1).x - scene.CardBox(0, 0).x, 168.0 + 16.0, 1e-9);
-    REQUIRE_NEAR(scene.CardBox(0, 0).y, 24.0 + 33.6 + 20.0, 1e-9);
+    REQUIRE_NEAR(scene.CardBox(0, 0).y, 24.0 + 33.6 + 31.6, 1e-6);
     // 252px poster, 12px gap, 28px label.
     REQUIRE_NEAR(scene.CardBox(0, 0).height, 252.0 + 12.0 + 28.0, 1e-9);
     // Second section starts after the first section and 32px of section spacing.
@@ -261,8 +262,9 @@ TEST(the_page_scrolls_to_show_a_lower_rail_but_not_past_the_end) {
         REQUIRE(scene.Navigate(Direction::Down, now));
         now = Settle(scene, now);
     }
-    REQUIRE_NEAR(scene.PageScroll(), 446.4, 1e-6);
-    // The lower rail's top: 24 + 3 * 377.6 + 53.6 - 446.4 = 764px, inside the 1080px window.
+    REQUIRE_NEAR(scene.PageScroll(), 492.8, 1e-6);
+    // The lower rail's top: 24 + 3 * 389.2 + 65.2 - 492.8 = 764px, inside the 1080px window (each section is 11.6px
+    // taller now that the heading gap takes a hovered poster's rise).
     REQUIRE_NEAR(scene.CardBox(3, 0).y, 764.0, 1e-6);
 }
 

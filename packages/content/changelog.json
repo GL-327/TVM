@@ -14,6 +14,69 @@
       ],
       "changes": [
         {
+          "area": "Navigation",
+          "text": "The navigation bar is clear Liquid Glass again instead of a flat grey bar, and stays at the top on Live TV.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The Hunger Games row runs once in story order, from The Ballad of Songbirds & Snakes to Mockingjay Part 2.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Hovered posters no longer cover the row heading or get their tops cut off.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Row arrows come back when you return to a row, and the hero fades into the rows below without a hard line.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The glow under Play and Watch the saga fades out softly instead of ending in a square edge.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "The blue ribbon background now plays only on the Hub and profile chooser, and no longer cuts off.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Details",
+          "text": "The back button is a plain, thicker arrow without the circle behind it.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Player buttons show the same glass as the details buttons when you hover them, and nothing when you don't.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Live TV",
+          "text": "The mouse pointer comes back in the TV guide as soon as you move it.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
           "area": "Hub",
           "text": "Added the Hub start page with greeting, hero spotlight, Continue watching, apps and free live channels.",
           "platforms": [
