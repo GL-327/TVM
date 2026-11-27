@@ -1,31 +1,52 @@
 diff --git a/apps/ui/src/components/EventShelf.css b/apps/ui/src/components/EventShelf.css
 new file mode 100644
-index 0000000..4b22f52
+index 0000000..e67e838
 --- /dev/null
 +++ b/apps/ui/src/components/EventShelf.css
-@@ -0,0 +1,58 @@
-+/* A release event's section on Home: a soft wash of the event's colours behind its row, the kicker in its accent,
-+   and a small two-way switch for the order. Everything else is the ordinary row. */
-+.event-shelf {
+@@ -0,0 +1,94 @@
++/* A release event's row on Home. It lines up with every other row (same 20px gutter and spacing), carries a small
++   accent label above its title, a compact order switch on the title line, and a soft wash of the event's colours
++   that fades out on every side. */
++.home__shelf > .event-shelf {
 +  position: relative;
-+  padding-top: 14px;
 +  isolation: isolate;
++  padding-top: 20px;
 +}
 +
 +.event-shelf::before {
 +  content: '';
 +  position: absolute;
-+  inset: -12px 0 -8px;
++  inset: -24px 0 -16px;
 +  z-index: -1;
 +  pointer-events: none;
-+  background:
-+    radial-gradient(70% 90% at 18% 30%, color-mix(in srgb, var(--event-glow) 26%, transparent), transparent 70%),
-+    radial-gradient(60% 80% at 85% 70%, color-mix(in srgb, var(--event-accent) 14%, transparent), transparent 72%);
++  background: radial-gradient(85% 70% at 22% 45%, color-mix(in srgb, var(--event-glow) 22%, transparent), transparent 75%);
++  -webkit-mask-image: linear-gradient(180deg, transparent, #000 25%, #000 70%, transparent);
++  mask-image: linear-gradient(180deg, transparent, #000 25%, #000 70%, transparent);
++}
++
++/* The row itself sits as Home's rows do (they get this as direct children of the shelf). */
++.event-shelf > .rail {
++  margin: 0 !important;
++  padding: 0 !important;
++  min-height: 0;
++}
++
++.event-shelf .rail__header {
++  display: flex !important;
++  align-items: center;
++  justify-content: space-between;
++  gap: 12px;
++  margin: 0 0 12px !important;
++  padding: 0 20px !important;
++}
++
++.event-shelf .rail__header .rail__title {
++  margin: 0 !important;
 +}
 +
 +.event-shelf__kicker {
-+  margin: 0 0 2px;
-+  padding-inline: var(--page-gutter, 20px);
++  margin: 0 0 4px;
++  padding: 0 20px;
 +  font-size: 11px;
 +  font-weight: 800;
 +  letter-spacing: 0.14em;
@@ -33,41 +54,56 @@ index 0000000..4b22f52
 +  color: var(--event-accent);
 +}
 +
-+.event-shelf__line {
-+  margin: 0 0 2px;
-+  padding-inline: var(--page-gutter, 20px);
-+  font-size: 13px;
-+  color: rgba(255, 255, 255, 0.72);
-+}
-+
 +.event-shelf__order {
 +  display: inline-flex;
++  flex: none;
 +  gap: 2px;
 +  padding: 2px;
 +  border-radius: 999px;
-+  background: rgba(255, 255, 255, 0.08);
++  background: rgba(255, 255, 255, 0.1);
 +}
 +
-+.event-shelf__chip {
-+  min-height: 0;
-+  padding: 4px 10px;
-+  border-radius: 999px;
-+  font-size: 12px;
-+  font-weight: 650;
-+  color: rgba(255, 255, 255, 0.7);
-+  background: transparent;
++/* Compact, and the same colours whether or not it has focus (the default focus look turned the selected option
++   dark blue with dark text). */
++html body .event-shelf .event-shelf__chip,
++html body .event-shelf .event-shelf__chip[data-focused='true'] {
++  min-width: 0 !important;
++  min-height: 0 !important;
++  height: auto !important;
++  padding: 4px 10px !important;
++  border: 0 !important;
++  border-radius: 999px !important;
++  outline: none !important;
++  box-shadow: none !important;
++  transform: none !important;
++  background: transparent !important;
++  color: rgba(255, 255, 255, 0.78) !important;
++  font-size: 12px !important;
++  font-weight: 650 !important;
++  line-height: 1.2 !important;
 +}
 +
-+.event-shelf__chip--on {
-+  color: #111;
-+  background: var(--event-accent);
++html body .event-shelf .event-shelf__chip * {
++  color: inherit !important;
++  font: inherit !important;
++}
++
++html body .event-shelf .event-shelf__chip.event-shelf__chip--on,
++html body .event-shelf .event-shelf__chip.event-shelf__chip--on[data-focused='true'] {
++  background: var(--event-accent) !important;
++  color: #14100a !important;
++}
++
++html body .event-shelf .event-shelf__chip:not(.event-shelf__chip--on)[data-focused='true'] {
++  background: rgba(255, 255, 255, 0.14) !important;
++  color: #fff !important;
 +}
 diff --git a/apps/ui/src/components/EventShelf.tsx b/apps/ui/src/components/EventShelf.tsx
 new file mode 100644
-index 0000000..7da15b0
+index 0000000..788a7ea
 --- /dev/null
 +++ b/apps/ui/src/components/EventShelf.tsx
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,81 @@
 +import { useEffect, useMemo, useState } from 'react';
 +import { FocusButton } from './FocusButton';
 +import { mapRailPosters } from './PosterCard';
@@ -107,7 +143,9 @@ index 0000000..7da15b0
 +  }, []);
 +
 +  const titles = useMemo(() => {
-+    const story = (event?.items ?? []).map(asTitle);
++    // Every film in a saga starts with the same words, so the cut-off labels all read the same; the row shows the
++    // part that tells them apart ("Catching Fire", "Mockingjay Part 1"). The franchise is in the row's title.
++    const story = (event?.items ?? []).map(asTitle).map((title) => ({ ...title, title: shortName(title.title) }));
 +    if (order === 'story') return story;
 +    // Release order: by year, the story order breaking ties.
 +    return story.map((title, index) => ({ title, index }))
@@ -135,12 +173,17 @@ index 0000000..7da15b0
 +  return (
 +    <section className="event-shelf" style={style} aria-label={event.title}>
 +      {event.kicker !== undefined && event.kicker !== '' && <p className="event-shelf__kicker">{event.kicker}</p>}
-+      {event.line !== undefined && event.line !== '' && <p className="event-shelf__line">{event.line}</p>}
 +      <Rail id={event.rail?.id ?? `event-${event.id}`} title={name} action={toggle}>
 +        {mapRailPosters(titles, `event-${event.id}-${order}`, openTitle)}
 +      </Rail>
 +    </section>
 +  );
++}
++
++function shortName(name: string): string {
++  const parts = name.split(/:\s+/);
++  const rest = parts.length > 1 ? parts.slice(1).join(': ') : name;
++  return rest.replace(/^The Ballad of\s+/i, '').replace(/\s+-\s+Part\s+/i, ' Part ').trim() || name;
 +}
 diff --git a/apps/ui/src/data/account.ts b/apps/ui/src/data/account.ts
 index 0d7e618..f31a0ee 100644

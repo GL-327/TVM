@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Home",
+          "text": "The Hunger Games row on Android lines up with Home, with short film names and a small, clear order switch.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Android",
           "text": "A soft fade under the phone's status bar keeps the time and battery readable over scrolling posters.",
           "platforms": [
