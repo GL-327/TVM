@@ -113,6 +113,17 @@ jobs:
           printf '%s\n' "$secret" | sed -n '2,$p' | tr -d ' \n' | base64 -d > "$RUNNER_TEMP/tvm-android.p12"
           echo "TVM_ANDROID_KEYSTORE=$RUNNER_TEMP/tvm-android.p12" >> "$GITHUB_ENV"
           echo "TVM_ANDROID_KEYSTORE_PASSWORD=$password" >> "$GITHUB_ENV"
+      # Gradle's dependencies and Robolectric's android-all jars. Robolectric downloads those jars at test time
+      # and the download flakes (MavenArtifactFetcher), which turned whole runs red; a warm cache skips it.
+      - uses: actions/cache@v4
+        if: steps.android.outputs.present == 'true'
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.m2/repository/org/robolectric
+          key: android-gradle-${{ hashFiles('apps/android/**/*.gradle.kts', 'apps/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: android-gradle-
       - name: Assemble debug APK
         if: steps.android.outputs.present == 'true'
         working-directory: apps/android
