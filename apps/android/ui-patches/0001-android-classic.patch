@@ -1,3 +1,147 @@
+diff --git a/apps/ui/src/components/EventShelf.css b/apps/ui/src/components/EventShelf.css
+new file mode 100644
+index 0000000..4b22f52
+--- /dev/null
++++ b/apps/ui/src/components/EventShelf.css
+@@ -0,0 +1,58 @@
++/* A release event's section on Home: a soft wash of the event's colours behind its row, the kicker in its accent,
++   and a small two-way switch for the order. Everything else is the ordinary row. */
++.event-shelf {
++  position: relative;
++  padding-top: 14px;
++  isolation: isolate;
++}
++
++.event-shelf::before {
++  content: '';
++  position: absolute;
++  inset: -12px 0 -8px;
++  z-index: -1;
++  pointer-events: none;
++  background:
++    radial-gradient(70% 90% at 18% 30%, color-mix(in srgb, var(--event-glow) 26%, transparent), transparent 70%),
++    radial-gradient(60% 80% at 85% 70%, color-mix(in srgb, var(--event-accent) 14%, transparent), transparent 72%);
++}
++
++.event-shelf__kicker {
++  margin: 0 0 2px;
++  padding-inline: var(--page-gutter, 20px);
++  font-size: 11px;
++  font-weight: 800;
++  letter-spacing: 0.14em;
++  text-transform: uppercase;
++  color: var(--event-accent);
++}
++
++.event-shelf__line {
++  margin: 0 0 2px;
++  padding-inline: var(--page-gutter, 20px);
++  font-size: 13px;
++  color: rgba(255, 255, 255, 0.72);
++}
++
++.event-shelf__order {
++  display: inline-flex;
++  gap: 2px;
++  padding: 2px;
++  border-radius: 999px;
++  background: rgba(255, 255, 255, 0.08);
++}
++
++.event-shelf__chip {
++  min-height: 0;
++  padding: 4px 10px;
++  border-radius: 999px;
++  font-size: 12px;
++  font-weight: 650;
++  color: rgba(255, 255, 255, 0.7);
++  background: transparent;
++}
++
++.event-shelf__chip--on {
++  color: #111;
++  background: var(--event-accent);
++}
+diff --git a/apps/ui/src/components/EventShelf.tsx b/apps/ui/src/components/EventShelf.tsx
+new file mode 100644
+index 0000000..7da15b0
+--- /dev/null
++++ b/apps/ui/src/components/EventShelf.tsx
+@@ -0,0 +1,74 @@
++import { useEffect, useMemo, useState } from 'react';
++import { FocusButton } from './FocusButton';
++import { mapRailPosters } from './PosterCard';
++import { Rail } from './Rail';
++import { apiFetch, asTitle, type MediaItem } from '../data/media';
++import type { Title } from '../data/catalog';
++import './EventShelf.css';
++
++// Android: a big release (packages/content/events.json, e.g. The Hunger Games: Sunrise on the Reaping) gets its own
++// themed section on Home, in the event's colours, with its films in story order or release order.
++interface ActiveEvent {
++  id: string;
++  title: string;
++  line?: string;
++  kicker?: string;
++  accent?: string;
++  glow?: string;
++  rail?: { id?: string; title?: string };
++  items?: MediaItem[];
++}
++
++type Order = 'story' | 'release';
++
++export function EventShelf({ openTitle }: { openTitle: (title: Title) => void }): React.JSX.Element | null {
++  const [event, setEvent] = useState<ActiveEvent | null>(null);
++  const [order, setOrder] = useState<Order>('story');
++
++  useEffect(() => {
++    let alive = true;
++    apiFetch('/api/events/active')
++      .then((response) => (response.ok ? response.json() : null))
++      .then((body: { events?: ActiveEvent[] } | null) => {
++        if (alive) setEvent(body?.events?.find((entry) => (entry.items?.length ?? 0) > 0) ?? null);
++      })
++      .catch(() => undefined);
++    return () => { alive = false; };
++  }, []);
++
++  const titles = useMemo(() => {
++    const story = (event?.items ?? []).map(asTitle);
++    if (order === 'story') return story;
++    // Release order: by year, the story order breaking ties.
++    return story.map((title, index) => ({ title, index }))
++      .sort((a, b) => (a.title.year ?? 9999) - (b.title.year ?? 9999) || a.index - b.index)
++      .map((entry) => entry.title);
++  }, [event, order]);
++
++  if (event === null || titles.length === 0) return null;
++  const style = {
++    '--event-accent': event.accent ?? '#E8A33D',
++    '--event-glow': event.glow ?? event.accent ?? '#FF6A2A',
++  } as React.CSSProperties;
++  const name = (event.rail?.title ?? event.title).replace(/,\s*in story order$/i, '');
++  const toggle = (
++    <div className="event-shelf__order" role="group" aria-label="Order">
++      {(['story', 'release'] as const).map((value) => (
++        <FocusButton key={value} id={`event-order-${value}`}
++          className={`event-shelf__chip${order === value ? ' event-shelf__chip--on' : ''}`}
++          onSelect={() => setOrder(value)}>
++          {value === 'story' ? 'Story order' : 'Release order'}
++        </FocusButton>
++      ))}
++    </div>
++  );
++  return (
++    <section className="event-shelf" style={style} aria-label={event.title}>
++      {event.kicker !== undefined && event.kicker !== '' && <p className="event-shelf__kicker">{event.kicker}</p>}
++      {event.line !== undefined && event.line !== '' && <p className="event-shelf__line">{event.line}</p>}
++      <Rail id={event.rail?.id ?? `event-${event.id}`} title={name} action={toggle}>
++        {mapRailPosters(titles, `event-${event.id}-${order}`, openTitle)}
++      </Rail>
++    </section>
++  );
++}
 diff --git a/apps/ui/src/data/account.ts b/apps/ui/src/data/account.ts
 index 0d7e618..f31a0ee 100644
 --- a/apps/ui/src/data/account.ts
@@ -233,3 +377,77 @@ index f99dcc8..e9079f2 100644
            </div>
            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
          </form>
+diff --git a/apps/ui/src/screens/Home.tsx b/apps/ui/src/screens/Home.tsx
+index fea7332..7e5baa7 100644
+--- a/apps/ui/src/screens/Home.tsx
++++ b/apps/ui/src/screens/Home.tsx
+@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { ErrorState } from '../components/ErrorState';
+ import { FocusButton } from '../components/FocusButton';
+ import { mapRailPosters } from '../components/PosterCard';
++import { EventShelf } from '../components/EventShelf';
+ import { Rail } from '../components/Rail';
+ import { Ribbon } from '../components/Ribbon';
+ import { RailSkeletons } from '../components/Skeleton';
+@@ -60,6 +61,7 @@ const HomeShelves = memo(function HomeShelves({
+ }): React.JSX.Element {
+   return (
+     <div className="home__shelf">
++      <EventShelf openTitle={openTitle} />
+       {watching.length > 0 && (
+         <Rail title={shelfTitle('Continue watching')}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
+       )}
+diff --git a/apps/ui/src/screens/LiveTV.tsx b/apps/ui/src/screens/LiveTV.tsx
+index 76b737b..1926ad3 100644
+--- a/apps/ui/src/screens/LiveTV.tsx
++++ b/apps/ui/src/screens/LiveTV.tsx
+@@ -8,7 +8,7 @@ import { LoadingScreen } from '../components/LoadingScreen';
+ import { PageScene } from '../components/PageScene';
+ import { Rail } from '../components/Rail';
+ import { Ribbon } from '../components/Ribbon';
+-import { fetchLive, saveXtream, type LiveChannel, type LiveStatus } from '../data/media';
++import { apiFetch, fetchLive, saveXtream, type LiveChannel, type LiveStatus } from '../data/media';
+ import { applyPlanClass, FALLBACK_PLAN, fetchPlan, type PlanStatus } from '../data/plan';
+ import { requestFocus } from '../nav/focusEngine';
+ import { bindKeyboardFields } from '../nav/pointerInput';
+@@ -42,6 +42,22 @@ function groupedChannels(channels: LiveChannel[]): Array<{ name: string; channel
+ }
+ 
+ export function LiveTV(_props: ScreenProps): React.JSX.Element {
++  // Android: the free channels every TVM app lists (packages/content/free-channels.json), first, grouped as they are
++  // on Windows. They play through the phone's own core as live:free:<id>.
++  const [freeChannels, setFreeChannels] = useState<LiveChannel[]>([]);
++  useEffect(() => {
++    let alive = true;
++    apiFetch('/api/live/free')
++      .then((response) => (response.ok ? response.json() : null))
++      .then((body: { channels?: Array<{ id: string; name: string; group?: string; logo?: string }> } | null) => {
++        if (!alive || body?.channels === undefined) return;
++        setFreeChannels(body.channels.map((row) => ({
++          id: `live:free:${row.id}`, name: row.name, logo: row.logo, group: `Free · ${row.group ?? 'TV'}`,
++        })));
++      })
++      .catch(() => undefined);
++    return () => { alive = false; };
++  }, []);
+   const navigate = useNavigate();
+   const scope = useFocusScope();
+   const [status, setStatus] = useState<LiveStatus>(EMPTY);
+@@ -56,7 +72,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
+   const pageRef = useRef<HTMLElement>(null);
+   // The login form, until there is something to watch. The dev account's test
+   // channels count, so they can be played before any provider is added.
+-  const needsLogin = status.configured !== true && status.channels.length === 0;
++  const needsLogin = status.configured !== true && status.channels.length === 0 && freeChannels.length === 0;
+ 
+   const load = (): void => {
+     setLoading(true);
+@@ -110,7 +126,7 @@ export function LiveTV(_props: ScreenProps): React.JSX.Element {
+     }
+   };
+ 
+-  const channels = status.channels;
++  const channels = useMemo(() => [...freeChannels, ...status.channels], [freeChannels, status.channels]);
+   const gated = !loading && needsLogin;
+   const locked = !gated && !plan.liveTv && channels.length === 0 && (status.total ?? 0) === 0;
+   const groups = useMemo(() => groupedChannels(channels), [channels]);

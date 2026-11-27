@@ -33,8 +33,17 @@ node scripts/write-build-info.mjs android
 node scripts/stamp-ui-bundle.mjs apps/android/app/src/main/assets/ui android
 
 ASSETS="apps/android/app/src/main/assets"
+# Only the interface comes from the pinned commit. Everything else in the assets is today's (the shell CSS and JS
+# are kept in this checkout), and the files today's app reads are made by today's scripts.
 mkdir -p "$ROOT/$ASSETS"
-cp -a "$WORK/$ASSETS/." "$ROOT/$ASSETS/"
+rm -rf "$ROOT/$ASSETS/ui"
+cp -a "$WORK/$ASSETS/ui" "$ROOT/$ASSETS/ui"
+(
+  cd "$ROOT"
+  node scripts/export-access.mjs
+  node apps/android/export-fallback-catalog.mjs
+  node scripts/write-build-info.mjs android
+)
 
 if [ -n "$FEED" ]; then
   # ustar keeps every entry a plain header the phone's extractor reads.
