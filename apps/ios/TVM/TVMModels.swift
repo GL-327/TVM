@@ -3,7 +3,7 @@ import Foundation
 enum StandalonePolicy {
     static let requiresLANToken = false
     static let bundledLANToken: String? = nil
-    static let version = "1.4.16"
+    static let version = "1.4.17"
     /// What this build's native code provides to the interface. Bump it, and
     /// scripts/native-api.json, when the interface starts relying on a new
     /// native route; an interface that needs more is never applied here.
@@ -39,6 +39,7 @@ struct MediaItem: Equatable {
     var showTitle: String?
     var aired: String?
     var added: String?
+    var watched: Bool? = nil
 
     func json() -> [String: Any] {
         var body: [String: Any] = [
@@ -64,6 +65,7 @@ struct MediaItem: Equatable {
         if let showTitle { body["showTitle"] = showTitle }
         if let aired { body["aired"] = aired }
         if let added { body["added"] = added }
+        if let watched { body["watched"] = watched }
         return body
     }
 
@@ -93,7 +95,8 @@ struct MediaItem: Equatable {
             episodeName: object["episodeName"] as? String,
             showTitle: object["showTitle"] as? String,
             aired: object["aired"] as? String,
-            added: object["added"] as? String
+            added: object["added"] as? String,
+            watched: object["watched"] as? Bool
         )
     }
 }

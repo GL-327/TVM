@@ -453,13 +453,29 @@ final class TVMMedia {
         return nil
     }
 
-    func children(_ id: String) async -> [MediaItem] {
-        if let parsed = TVMTitle.parsePlayId(id), let meta = await catalog.meta(parsed.imdb) {
-            store.rememberMedia(meta.children, profileId: activeProfile())
-            return meta.children
+    /// Adds the active profile's finished state to episode lists, matching Core's `markWatched`.
+    static func markWatched(_ items: [MediaItem], progress: [String: ProgressEntry]) -> [MediaItem] {
+        items.map { item in
+            let entry = progress[item.id]
+            let watched = (entry?.isFinished ?? false) || entry?.completedAt != nil
+            if item.watched == watched { return item }
+            var copy = item
+            copy.watched = watched
+            return copy
         }
-        let items = (try? await loadChildren(id)) ?? []
-        store.rememberMedia(items, profileId: activeProfile())
+    }
+
+    func children(_ id: String) async -> [MediaItem] {
+        let profileId = activeProfile()
+        let progress = store.progress(for: profileId)
+        if let parsed = TVMTitle.parsePlayId(id), let meta = await catalog.meta(parsed.imdb) {
+            let items = Self.markWatched(applyProgress(meta.children, progress), progress: progress)
+            store.rememberMedia(items, profileId: profileId)
+            return items
+        }
+        let raw = (try? await loadChildren(id)) ?? []
+        let items = Self.markWatched(raw, progress: progress)
+        store.rememberMedia(items, profileId: profileId)
         return items
     }
 

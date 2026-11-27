@@ -124,4 +124,108 @@ final class Phone143Tests: XCTestCase {
         // Sends run on detached utility tasks; a busy CI simulator can take several seconds to schedule them.
         await fulfillment(of: [received], timeout: 15)
     }
+
+    func testMarkWatchedSetsEpisodeFlagAndRoundTripsJSON() {
+        func ep(_ id: String) -> MediaItem {
+            MediaItem(
+                id: id, title: id, year: 2026, kind: "series", synopsis: "",
+                poster: "", backdrop: "", genres: [], rating: "", runtime: nil,
+                playable: true, progress: nil, filename: nil, hue: 0, mimeType: nil,
+                season: 1, episode: 1, episodeName: nil, showTitle: nil, aired: nil, added: nil
+            )
+        }
+        let progress: [String: ProgressEntry] = [
+            "tt1:1:1": ProgressEntry(position: 2920, duration: 3000, updated: "2026-11-01T00:00:00Z"),
+            "tt1:1:2": ProgressEntry(position: 600, duration: 3000, updated: "2026-11-01T00:00:00Z"),
+            "tt1:1:3": ProgressEntry(position: 0, duration: 3000, updated: "2026-11-01T00:00:00Z", completedAt: "2026-10-01T00:00:00Z"),
+        ]
+        let items = TVMMedia.markWatched([ep("tt1:1:1"), ep("tt1:1:2"), ep("tt1:1:3"), ep("tt1:1:4")], progress: progress)
+        XCTAssertEqual(items.map { $0.watched }, [true, false, true, false])
+        XCTAssertEqual(MediaItem.parse(items[0].json())?.watched, true)
+        XCTAssertEqual(MediaItem.parse(items[1].json())?.watched, false)
+        XCTAssertNil(MediaItem.parse(ep("tt9").json())?.watched)
+    }
+
+    func testNativeCompressorOptionsAndSleepTimerState() {
+        XCTAssertTrue(TVMVideoEngine.compressorOptions(enabled: false).isEmpty)
+        let onOpts = TVMVideoEngine.compressorOptions(enabled: true)
+        XCTAssertEqual(onOpts["audio-filter"] as? String, "compressor")
+
+        XCTAssertNil(tvmSleepDeadlineMs("off", nowMs: 1_000))
+        XCTAssertEqual(tvmSleepDeadlineMs("30", nowMs: 1_000), 1_000 + 30 * 60_000)
+        XCTAssertEqual(tvmSleepFadeFactor(elapsedMs: 2_500), 0.5, accuracy: 0.001)
+        XCTAssertEqual(tvmFormatRemainingSleep(4_200), "0:05")
+        XCTAssertEqual(tvmFormatRemainingSleep(900_000), "15:00")
+        XCTAssertEqual(tvmFormatRemainingSleep(3_665_000), "1:01:05")
+
+        var tracker = TVMSleepTimerState()
+        tracker.reset(choice: "15", nowMs: 0)
+        let mid = tracker.step(nowMs: 60_000, position: 60, duration: 1_800, paused: false)
+        XCTAssertFalse(mid.snapshot.fading)
+        XCTAssertEqual(mid.snapshot.remainingMs, 14 * 60_000)
+
+        let fading = tracker.step(nowMs: 15 * 60_000 + 2_500, position: 902.5, duration: 1_800, paused: false)
+        XCTAssertTrue(fading.snapshot.fading)
+        XCTAssertEqual(tracker.fadeFactor, 0.5, accuracy: 0.02)
+
+        let expired = tracker.step(nowMs: 15 * 60_000 + 5_000, position: 905, duration: 1_800, paused: false)
+        XCTAssertTrue(expired.justExpired)
+        XCTAssertTrue(expired.snapshot.expired)
+        XCTAssertEqual(tracker.fadeFactor, 0, accuracy: 0.001)
+
+        tracker.reset(choice: "end", nowMs: 0)
+        XCTAssertFalse(tvmSleepShouldStart(choice: "end", deadlineMs: nil, nowMs: 0, position: 1_796, duration: 1_800, paused: true))
+        let endTrigger = tracker.step(nowMs: 1_000, position: 1_796, duration: 1_800, paused: false)
+        XCTAssertTrue(endTrigger.snapshot.fading)
+    }
+
+    func testNativeStatsBuilderFormatsVLCTelemetry() {
+        // Little-endian FourCC 'h','v','c','1' and 'e','a','c','3'
+        let hevcFourCC: UInt32 = 0x31637668
+        let eac3FourCC: UInt32 = 0x33636165
+        XCTAssertEqual(TVMNativeStatsBuilder.decodeFourCC(hevcFourCC), "HEVC")
+        XCTAssertEqual(TVMNativeStatsBuilder.decodeFourCC(eac3FourCC), "EAC3")
+        XCTAssertEqual(TVMNativeStatsBuilder.formatChannels(6), "5.1")
+
+        let meta = TVMNativePlaybackMeta(
+            source: "REMUX",
+            versionLabel: "2160p REMUX",
+            codec: nil,
+            hdr: "dv",
+            mimeType: "video/x-matroska"
+        )
+        let payload = TVMNativeStatsBuilder.build(
+            videoWidth: 3840,
+            videoHeight: 2160,
+            tracks: [
+                ["type": "video", "codec": NSNumber(value: hevcFourCC), "width": 3840, "height": 2160],
+                ["type": "audio", "id": 1, "codec": NSNumber(value: eac3FourCC), "language": "eng", "channelsNumber": 6],
+            ],
+            currentAudioId: 1,
+            activeAudioName: "English",
+            activeSubtitleName: "English",
+            lostPictures: 2,
+            displayedPictures: 4198,
+            decodedVideo: 4200,
+            demuxBitrateMBs: 3.0, // 3.0 * 8.0 = 24.0 Mb/s
+            inputBitrateMBs: 3.0,
+            readBytes: 30_000_000,
+            demuxReadBytes: 6_000_000, // 24 MB unread @ 3 MB/s = 8.0 s
+            durationSeconds: 3600,
+            live: false,
+            meta: meta
+        )
+        let rows = Dictionary(uniqueKeysWithValues: TVMNativeStatsBuilder.rows(from: payload))
+        XCTAssertEqual(rows["Resolution"], "3840 × 2160")
+        XCTAssertEqual(rows["Container / MIME"], "video/x-matroska")
+        XCTAssertEqual(rows["Codecs"], "HEVC · EAC3")
+        XCTAssertEqual(rows["HDR"], "Dolby Vision")
+        XCTAssertEqual(rows["Audio"], "eng · 5.1")
+        XCTAssertEqual(rows["Subtitles"], "English")
+        XCTAssertEqual(rows["Frames dropped / total"], "2 / 4200")
+        XCTAssertEqual(rows["Bitrate"], "24.0 Mb/s")
+        XCTAssertEqual(rows["Source"], "REMUX")
+        XCTAssertEqual(rows["Version"], "2160p REMUX")
+        XCTAssertEqual(rows["Buffer ahead"], "8.0 s")
+    }
 }

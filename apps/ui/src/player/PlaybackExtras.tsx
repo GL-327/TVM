@@ -7,7 +7,15 @@ import type { SleepTimer } from '../data/polishPrefs';
 import { requestFocus } from '../nav/focusEngine';
 import { useFocusScope } from '../nav/ViewStackContext';
 import { applyNightMode, applyTemporaryVolume } from './audioGain';
-import { formatStats, SLEEP_OPTIONS, sleepDeadline, sleepFadeFactor, sleepShouldStart } from './extrasLogic';
+import { formatRemainingSleep, formatStats, SLEEP_OPTIONS, sleepDeadline, sleepFadeFactor, sleepShouldStart } from './extrasLogic';
+import {
+  NATIVE_SLEEP_EVENT,
+  NATIVE_STATS_EVENT,
+  nativePlaybackBridge,
+  sendNativePlayerCommand,
+  type NativeSleepSnapshot,
+  type NativeStatsSnapshot,
+} from './iosEngine';
 import { playerShortcutRows } from './features/KeyboardMap';
 import type { PlayerSession } from './PlayerRoot';
 import './playback-extras.css';
@@ -25,8 +33,12 @@ export function usePlaybackExtras(session: PlayerSession): {
   const [stats, setStats] = useState(false);
   const [, refresh] = useState(0);
   const [timerChoice, setTimerChoice] = useState<SleepTimer>(prefs.sleepTimerDefault);
+  const [timerRevision, setTimerRevision] = useState(0);
   const [expired, setExpired] = useState(false);
   const [fading, setFading] = useState(false);
+  const [nativeStats, setNativeStats] = useState<NativeStatsSnapshot | undefined>(undefined);
+  const [sleepRemainingMs, setSleepRemainingMs] = useState<number | null>(null);
+  const syncedSleepChoice = useRef<SleepTimer | null>(null);
   const customized = useRef(false);
   const restoreVolume = useRef<(() => void) | undefined>(undefined);
   const timerEnabled = uiExtraEnabled('sleepTimer', prefs);
@@ -52,6 +64,10 @@ export function usePlaybackExtras(session: PlayerSession): {
   }, [sheet, shortcutsEnabled, timerEnabled, versionsEnabled]);
 
   useEffect(() => {
+    if (session.engine === 'native') {
+      sendNativePlayerCommand('nightMode', { enabled: night });
+      return () => { sendNativePlayerCommand('nightMode', { enabled: false }); };
+    }
     const video = session.videoRef.current;
     if (!video || session.engine !== 'html5') return;
     const apply = (): void => { if (video.currentSrc || video.src) applyNightMode(video, night); };
@@ -113,12 +129,64 @@ export function usePlaybackExtras(session: PlayerSession): {
   }, [sheet, expired, scope]);
 
   useEffect(() => {
+    if (session.engine !== 'native') { setNativeStats(undefined); return; }
+    const onNativeStats = (raw: Event): void => {
+      const detail = (raw as CustomEvent<{ visible?: boolean; stats?: NativeStatsSnapshot }>).detail;
+      if (typeof detail?.visible === 'boolean') setStats(detail.visible);
+      if (detail?.stats) setNativeStats(detail.stats);
+    };
+    window.addEventListener(NATIVE_STATS_EVENT, onNativeStats);
+    return () => { window.removeEventListener(NATIVE_STATS_EVENT, onNativeStats); };
+  }, [session.engine]);
+
+  useEffect(() => {
+    if (session.engine !== 'native') return;
+    sendNativePlayerCommand('extrasUi', { sheetOpen: sheet !== null || expired });
+  }, [session.engine, sheet, expired]);
+
+  useEffect(() => {
+    if (session.engine !== 'native') return;
+    const onNativeSleep = (raw: Event): void => {
+      const sleep = (raw as CustomEvent<{ sleep?: NativeSleepSnapshot }>).detail?.sleep;
+      if (!sleep) return;
+      const validChoice = SLEEP_OPTIONS.some(([id]) => id === sleep.choice) ? (sleep.choice as SleepTimer) : 'off';
+      syncedSleepChoice.current = validChoice;
+      setTimerChoice((current) => (current === validChoice ? current : validChoice));
+      setFading(sleep.fading);
+      setExpired(sleep.expired);
+      setSleepRemainingMs(sleep.remainingMs);
+    };
+    window.addEventListener(NATIVE_SLEEP_EVENT, onNativeSleep);
+    return () => { window.removeEventListener(NATIVE_SLEEP_EVENT, onNativeSleep); };
+  }, [session.engine]);
+
+  useEffect(() => {
+    if (session.engine !== 'native') return;
+    const effective = timerEnabled ? timerChoice : 'off';
+    if (syncedSleepChoice.current === effective) {
+      syncedSleepChoice.current = null;
+      return;
+    }
+    sendNativePlayerCommand('sleepTimer', { choice: effective });
+    if (effective === 'off') {
+      setSleepRemainingMs(null);
+      setFading(false);
+      setExpired(false);
+    }
+  }, [session.engine, timerEnabled, timerChoice, timerRevision, session.mediaId]);
+
+  useEffect(() => {
+    if (session.engine === 'native') return;
     setFading(false);
-    if (!timerEnabled || timerChoice === 'off' || expired) return;
+    if (!timerEnabled || timerChoice === 'off' || expired) {
+      setSleepRemainingMs(null);
+      return;
+    }
     const deadline = sleepDeadline(timerChoice, Date.now());
     let fadeStarted: number | null = null;
     let volume = 1;
     let completed = false;
+    let lastShownSec = -1;
     const restore = (): void => {
       const current = latest.current;
       applyTemporaryVolume(current.videoRef.current, volume, current.muted, current.engine === 'native');
@@ -131,6 +199,7 @@ export function usePlaybackExtras(session: PlayerSession): {
       latest.current.showControls();
       setExpired(true);
       setFading(false);
+      setSleepRemainingMs(0);
     };
     const startFade = (now: number): void => {
       fadeStarted = now;
@@ -142,6 +211,14 @@ export function usePlaybackExtras(session: PlayerSession): {
       if (completed) return;
       const current = latest.current;
       const now = Date.now();
+      const rawRem = timerChoice === 'end'
+        ? (current.duration > 0 ? Math.max(0, (current.duration - current.position) * 1000) : null)
+        : deadline !== null ? Math.max(0, deadline - now) : null;
+      const remSec = rawRem === null ? -1 : Math.ceil(rawRem / 1000);
+      if (remSec !== lastShownSec) {
+        lastShownSec = remSec;
+        setSleepRemainingMs(rawRem);
+      }
       if (fadeStarted === null && sleepShouldStart(timerChoice, deadline, now, current.position, current.duration, current.paused)) startFade(now);
       if (fadeStarted === null) return;
       const factor = sleepFadeFactor(now - fadeStarted);
@@ -162,21 +239,50 @@ export function usePlaybackExtras(session: PlayerSession): {
       // Keep silence until Resume after expiry; cancellation or leaving restores the room's volume.
       if (!completed && restoreVolume.current) { restore(); restoreVolume.current = undefined; }
     };
-  }, [timerChoice, timerEnabled, session.mediaId, expired]);
+  }, [session.engine, timerChoice, timerRevision, timerEnabled, session.mediaId, expired]);
 
   useEffect(() => () => { restoreVolume.current?.(); restoreVolume.current = undefined; }, []);
   useEffect(() => {
     if (timerEnabled) return;
     restoreVolume.current?.(); restoreVolume.current = undefined;
     setExpired(false);
+    setSleepRemainingMs(null);
   }, [timerEnabled]);
 
   const open = (next: Sheet): void => { session.showControls(); setSheet((current) => current === next ? null : next); };
   const info = readPlaybackInfo({ id: session.mediaId, season: session.season, episode: session.episode });
+  useEffect(() => {
+    if (session.engine !== 'native' || !info) return;
+    sendNativePlayerCommand('playbackInfo', {
+      ...(info.version?.source ? { source: info.version.source.toUpperCase() } : {}),
+      ...(info.version?.label ? { versionLabel: info.version.label } : {}),
+      ...(info.version?.codec ? { codec: info.version.codec } : {}),
+      ...(info.version?.hdr ? { hdr: info.version.hdr } : {}),
+      ...(info.mimeType ? { mimeType: info.mimeType } : {}),
+      ...(info.version?.bitrateMbps != null ? { bitrateMbps: info.version.bitrateMbps } : {}),
+      ...(info.sizeBytes != null ? { sizeBytes: info.sizeBytes } : info.version?.sizeBytes != null ? { sizeBytes: info.version.sizeBytes } : {}),
+      ...(info.durationSeconds != null ? { durationSeconds: info.durationSeconds } : {}),
+    });
+  }, [session.engine, info]);
+  const remainingLabel = formatRemainingSleep(sleepRemainingMs);
+  const nativeOverlayOwned = session.engine === 'native' && Boolean(nativePlaybackBridge());
+  const toggleStats = (): void => {
+    setStats((value) => {
+      const next = !value;
+      if (session.engine === 'native') sendNativePlayerCommand('stats', { visible: next });
+      return next;
+    });
+  };
+  const closeStats = (): void => {
+    setStats(false);
+    if (session.engine === 'native') sendNativePlayerCommand('stats', { visible: false });
+  };
   const resume = (): void => {
     restoreVolume.current?.(); restoreVolume.current = undefined;
     customized.current = true;
-    setTimerChoice('off'); setExpired(false);
+    syncedSleepChoice.current = 'off';
+    setTimerChoice('off'); setExpired(false); setSleepRemainingMs(null);
+    if (session.engine === 'native') sendNativePlayerCommand('sleepResume', {});
     if (session.duration > 0 && session.position >= session.duration - 0.2) session.seekTo(0);
     session.play();
     requestFocus(`${scope}/player-play`);
@@ -185,24 +291,24 @@ export function usePlaybackExtras(session: PlayerSession): {
     stopNextUp: timerEnabled && (timerChoice === 'end' || fading || expired),
     holdChrome: sheet !== null || expired,
     tools: <>
-      <FocusButton id="player-extra-stats" onSelect={() => setStats((value) => !value)} ariaLabel="Playback stats">Stats</FocusButton>
+      <FocusButton id="player-extra-stats" onSelect={toggleStats} ariaLabel="Playback stats">Stats</FocusButton>
       {versionsEnabled && versions.length > 0 && <FocusButton id="player-extra-versions" onSelect={() => open('versions')}>Version</FocusButton>}
-      {timerEnabled && <FocusButton id="player-extra-sleep" onSelect={() => open('sleep')}>Sleep timer</FocusButton>}
+      {timerEnabled && <FocusButton id="player-extra-sleep" onSelect={() => open('sleep')}>{remainingLabel ? `Sleep timer · ${remainingLabel}` : 'Sleep timer'}</FocusButton>}
       {shortcutsEnabled && <FocusButton id="player-extra-shortcuts" onSelect={() => open('shortcuts')}>Shortcuts</FocusButton>}
     </>,
     overlays: <>
-      {stats && <aside className="playback-stats" aria-label="Playback stats">
-        <div className="playback-stats__heading"><strong>Playback stats</strong><button type="button" aria-label="Close playback stats" onClick={() => setStats(false)}>×</button></div>
-        <dl>{formatStats(session.videoRef.current, info, session.duration).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>
+      {stats && !nativeOverlayOwned && <aside className="playback-stats" aria-label="Playback stats">
+        <div className="playback-stats__heading"><strong>Playback stats</strong><button type="button" aria-label="Close playback stats" onClick={closeStats}>×</button></div>
+        <dl>{formatStats(session.videoRef.current, info, session.duration, nativeStats).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>
       </aside>}
       {(sheet || expired) && <div className="playback-extra-scrim" data-player-menu="extras" onClick={() => { if (!expired) closeSheet(); }}>
         <section className="playback-extra-sheet" role="dialog" aria-modal="true" aria-label={expired ? 'Sleep timer ended' : sheet === 'versions' ? 'Version' : sheet === 'sleep' ? 'Sleep timer' : 'Keyboard shortcuts'}
           data-wrap="column" onClick={(event) => event.stopPropagation()}>
-          <h2>{expired ? 'Sleep timer ended' : sheet === 'versions' ? 'Version' : sheet === 'sleep' ? 'Sleep timer' : 'Keyboard shortcuts'}</h2>
+          <h2>{expired ? 'Sleep timer ended' : sheet === 'versions' ? 'Version' : sheet === 'sleep' ? (remainingLabel ? `Sleep timer · ${remainingLabel}` : 'Sleep timer') : 'Keyboard shortcuts'}</h2>
           {expired ? <FocusButton id="player-sleep-resume" variant="primary" onSelect={resume}>Resume</FocusButton> : <>
             {sheet === 'versions' && <VersionSelect identity={{ id: session.mediaId, season: session.season, episode: session.episode }} versions={versions} onChange={() => { closeSheet(); session.retry(); }} />}
             {sheet === 'sleep' && <div className="playback-extra-options">{SLEEP_OPTIONS.filter(([id]) => id !== 'end' || (!session.live && session.episode !== undefined)).map(([id, label]) =>
-              <FocusButton key={id} id={`player-sleep-${id}`} onSelect={() => { customized.current = true; restoreVolume.current?.(); restoreVolume.current = undefined; setTimerChoice(id); closeSheet(); }}>
+              <FocusButton key={id} id={`player-sleep-${id}`} onSelect={() => { customized.current = true; restoreVolume.current?.(); restoreVolume.current = undefined; syncedSleepChoice.current = null; setTimerChoice(id); setTimerRevision((n) => n + 1); closeSheet(); }}>
                 {label}{timerChoice === id ? ' ✓' : ''}
               </FocusButton>)}</div>}
             {sheet === 'shortcuts' && <dl className="playback-shortcuts">{playerShortcutRows().map(([key, description]) => <div key={key}><dt><kbd>{key}</kbd></dt><dd>{description}</dd></div>)}</dl>}

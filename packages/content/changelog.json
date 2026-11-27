@@ -3,6 +3,54 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.17",
+      "date": "2026-11-27",
+      "title": "Player tools on phones",
+      "highlights": [
+        "Stats, the sleep timer and night mode now work over the video on iPhone and Android."
+      ],
+      "changes": [
+        {
+          "area": "Player",
+          "text": "Stats shows resolution, codecs, HDR, audio, bitrate and buffer over the video on phones.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "The sleep timer keeps counting while the video fills the screen, fades the sound, then pauses.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Player",
+          "text": "Night mode evens out loud and quiet scenes on phones, as it does on the web.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "area": "Library",
+          "text": "Watched episodes are marked on phones, so spoiler blur covers the ones you haven't seen.",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Franchise intros are not on Roku yet.",
+        "Stats, the sleep timer and night mode on phones have not been tried on a real phone yet."
+      ]
+    },
+    {
       "version": "1.4.16",
       "date": "2026-11-27",
       "title": "Invite codes and maintenance notices",

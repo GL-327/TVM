@@ -153,6 +153,7 @@ data class MediaItem(
     val showTitle: String? = null,
     val aired: String? = null,
     val added: String? = null,
+    val watched: Boolean? = null,
 ) {
     fun json(): JSONObject {
         val body = Json.obj(
@@ -180,6 +181,7 @@ data class MediaItem(
         showTitle?.let { body.put("showTitle", it) }
         aired?.let { body.put("aired", it) }
         added?.let { body.put("added", it) }
+        watched?.let { body.put("watched", it) }
         return body
     }
 
@@ -210,6 +212,7 @@ data class MediaItem(
                 showTitle = Json.string(o.opt("showTitle")),
                 aired = Json.string(o.opt("aired")),
                 added = Json.string(o.opt("added")),
+                watched = o.opt("watched") as? Boolean,
             )
         }
     }

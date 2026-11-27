@@ -471,16 +471,19 @@ class TvmMedia(
     }
 
     suspend fun children(id: String): List<MediaItem> {
+        val profile = activeProfile()
+        val progress = store.progress(profile)
         val parsed = TvmTitle.parsePlayId(id)
         if (parsed != null) {
             val meta = catalog.meta(parsed.imdb)
             if (meta != null) {
-                store.rememberMedia(meta.children, activeProfile())
-                return meta.children
+                val items = markWatched(applyProgress(meta.children, progress), progress)
+                store.rememberMedia(items, profile)
+                return items
             }
         }
-        val items: List<MediaItem> = childrenOrEmpty(id)
-        store.rememberMedia(items, activeProfile())
+        val items: List<MediaItem> = markWatched(childrenOrEmpty(id), progress)
+        store.rememberMedia(items, profile)
         return items
     }
 
@@ -1499,6 +1502,14 @@ class TvmMedia(
     data class RailSource(val kind: String, val list: String, val genre: String? = null)
 
     companion object {
+        /** Adds the active profile's finished state to episode lists, matching Core's `markWatched`. */
+        fun markWatched(items: List<MediaItem>, progress: Map<String, ProgressEntry>): List<MediaItem> =
+            items.map { item ->
+                val entry = progress[item.id]
+                val watched = (entry?.isFinished == true) || entry?.completedAt != null
+                if (item.watched == watched) item else item.copy(watched = watched)
+            }
+
         val PROFILE_HUES: List<Int> = listOf(221, 190, 145, 38, 315)
         const val LIBRARY_TTL_MS: Long = 45_000
         const val RAIL_LIMIT: Int = 40

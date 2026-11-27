@@ -128,6 +128,8 @@ final class TVMWebHostController: UIViewController {
     let webView: WKWebView
     /// The film's picture (TVMVideoEngine), under the transparent page while it plays.
     let videoContainer = UIView()
+    /// Pass-through glass overlays (stats panel, tap target, sleep timer) above the video.
+    let videoOverlayContainer = TVMPassThroughOverlayView()
     private var offsetWatch: NSKeyValueObservation?
 
     init(webView: WKWebView) {
@@ -150,7 +152,9 @@ final class TVMWebHostController: UIViewController {
         videoContainer.backgroundColor = .black
         videoContainer.isHidden = true
         videoContainer.isUserInteractionEnabled = false
-        for child in [videoContainer, webView] {
+        videoOverlayContainer.backgroundColor = .clear
+        videoOverlayContainer.isHidden = true
+        for child in [videoContainer, webView, videoOverlayContainer] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
             NSLayoutConstraint.activate([
@@ -169,13 +173,23 @@ final class TVMWebHostController: UIViewController {
         }
     }
 
-    /// Shows the engine's picture under the page, filling the screen.
+    /// Shows the engine's picture under the page, and attaches its glass overlay over the video.
     func showVideo(_ engine: TVMVideoEngine) {
         videoContainer.subviews.forEach { $0.removeFromSuperview() }
         engine.view.frame = videoContainer.bounds
         engine.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         videoContainer.addSubview(engine.view)
         videoContainer.isHidden = false
+        videoOverlayContainer.subviews.forEach { $0.removeFromSuperview() }
+        engine.overlayView.translatesAutoresizingMaskIntoConstraints = false
+        videoOverlayContainer.addSubview(engine.overlayView)
+        NSLayoutConstraint.activate([
+            engine.overlayView.topAnchor.constraint(equalTo: videoOverlayContainer.topAnchor),
+            engine.overlayView.leadingAnchor.constraint(equalTo: videoOverlayContainer.leadingAnchor),
+            engine.overlayView.trailingAnchor.constraint(equalTo: videoOverlayContainer.trailingAnchor),
+            engine.overlayView.bottomAnchor.constraint(equalTo: videoOverlayContainer.bottomAnchor),
+        ])
+        videoOverlayContainer.isHidden = false
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
@@ -184,6 +198,8 @@ final class TVMWebHostController: UIViewController {
     func hideVideo() {
         videoContainer.subviews.forEach { $0.removeFromSuperview() }
         videoContainer.isHidden = true
+        videoOverlayContainer.subviews.forEach { $0.removeFromSuperview() }
+        videoOverlayContainer.isHidden = true
         webView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
     }

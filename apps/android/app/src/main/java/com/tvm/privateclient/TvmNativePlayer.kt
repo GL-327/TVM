@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.FrameLayout
+import androidx.core.view.ViewCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem as Media3Item
@@ -64,6 +65,15 @@ class TvmNativePlayer(
     private var isLive = false
     /** Last level from the slider. Mute must not throw that away and unmute at full. */
     private var level = 1f
+    private var isMuted = false
+    private var statsVisible = false
+    private var reactSheetOpen = false
+    private var playbackMeta = TvmPlaybackMeta()
+    private val sleepTracker = TvmSleepTimerState()
+    private val nightAudio = TvmNightAudioController()
+    private var overlayView: TvmNativeVideoOverlayView? = null
+    /** The selected audio track, for telemetry. */
+    private var audioFormat: Format? = null
     /** The player screen is open (shell-enter), whether or not a stream is playing yet. */
     private var shellHeld = false
     /** The video track being played, for diagnosing a failure. */
@@ -117,10 +127,30 @@ class TvmNativePlayer(
                 val volume = message.optDouble("volume", 1.0)
                 if (volume.isFinite()) {
                     level = volume.coerceIn(0.0, 1.0).toFloat()
-                    player?.volume = level
+                    isMuted = level == 0f
+                    applyCurrentVolume()
                 }
             }
-            "mute" -> player?.volume = if (message.optBoolean("muted", false)) 0f else level
+            "mute" -> {
+                isMuted = message.optBoolean("muted", false)
+                applyCurrentVolume()
+            }
+            "nightMode" -> nightAudio.setEnabled(message.optBoolean("enabled", false))
+            "sleepTimer" -> configureSleepTimer(message.text("choice", "off"))
+            "sleepResume" -> resumeFromSleepTimer()
+            "stats" -> {
+                val hasVisible = message.has("visible") && !message.isNull("visible")
+                val next = if (hasVisible) message.optBoolean("visible", !statsVisible) else !statsVisible
+                setStatsVisible(next, notify = !hasVisible)
+            }
+            "playbackInfo" -> {
+                playbackMeta.update(message)
+                if (statsVisible) overlayView?.updateStatsRows(TvmNativeStats.rows(collectStats()))
+            }
+            "extrasUi" -> {
+                reactSheetOpen = message.optBoolean("sheetOpen", false)
+                overlayView?.setSheetOpen(reactSheetOpen)
+            }
             "rate" -> {
                 val rate = message.optDouble("rate", 1.0)
                 if (rate.isFinite()) {
@@ -216,6 +246,7 @@ class TvmNativePlayer(
             }
         }
         videoFormat = null
+        audioFormat = null
         val playerBuilder = ExoPlayer.Builder(activity, renderers)
         if (!live) playerBuilder.setLoadControl(TvmPlaybackBuffer.forFilm())
         val exo = playerBuilder
@@ -240,7 +271,8 @@ class TvmNativePlayer(
             .build()
         val initialVolume = message.optDouble("initialVolume", 1.0)
         level = if (initialVolume.isFinite()) initialVolume.coerceIn(0.0, 1.0).toFloat() else 1f
-        exo.volume = if (message.optBoolean("initialMuted", false)) 0f else level
+        isMuted = message.optBoolean("initialMuted", false) || level == 0f
+        applyCurrentVolume()
 
         val builder = Media3Item.Builder().setUri(url)
         // Let Media3 sniff rather than trusting a provider's Content-Type,
@@ -249,6 +281,10 @@ class TvmNativePlayer(
         exo.setMediaItem(builder.build())
 
         exo.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                nightAudio.onAudioSessionIdChanged(audioSessionId)
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 // The full story for development logs (adb logcat -s TVMPlayer):
                 // the error code, the stream's format and the decoder's own cause.
@@ -271,6 +307,10 @@ class TvmNativePlayer(
                 videoFormat = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
                     ?.let { group -> (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } }
                     ?: videoFormat
+                audioFormat = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                    ?.let { group -> (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } }
+                    ?: exo.audioFormat
+                    ?: audioFormat
                 videoFormat?.let { Log.i(TAG, "video: ${formatLabel(it)} codecs=${it.codecs} ${it.width}x${it.height} software=$software") }
                 val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
                 hasVideoTrack = video.isNotEmpty()
@@ -341,7 +381,19 @@ class TvmNativePlayer(
 
             private var stalledAt = 0L
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) emit(id, "ended", JSONObject())
+                if (state == Player.STATE_ENDED) {
+                    if (sleepTracker.choice == "end" && !sleepTracker.expired) {
+                        val nowMs = System.currentTimeMillis()
+                        sleepTracker.forceExpire(nowMs)
+                        applyCurrentVolume()
+                        exo.pause()
+                        overlayView?.updateSleep(sleepTracker.choice, "0:00", expired = true, sheetOpen = reactSheetOpen)
+                        emitSleep(id, nowMs)
+                        pushState(id)
+                        return
+                    }
+                    emit(id, "ended", JSONObject())
+                }
                 // Each stall after the start, for telling the Wi-Fi from the source (adb logcat -s TVMPlayer).
                 if (state == Player.STATE_BUFFERING && firstFrame) {
                     stalledAt = android.os.SystemClock.elapsedRealtime()
@@ -359,6 +411,7 @@ class TvmNativePlayer(
         // The picture is behind the WebView. An opaque page or WebView paints black over it.
         webView.setBackgroundColor(Color.TRANSPARENT)
         attachView(exo)
+        nightAudio.onAudioSessionIdChanged(exo.audioSessionId)
         onPlaying(true)
         if (startAtMs > 0) exo.seekTo(startAtMs)
         exo.prepare()
@@ -427,10 +480,13 @@ class TvmNativePlayer(
     /** The player and its view only; the session (id, landscape, page) stays. */
     private fun releasePlayer() {
         stallCheck?.let(main::removeCallbacks)
+        nightAudio.release()
         player?.release()
         player = null
         view?.player = null
         view = null
+        overlayView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
+        overlayView = null
         container?.let { frame -> (frame.parent as? ViewGroup)?.removeView(frame) }
         container = null
     }
@@ -498,6 +554,116 @@ class TvmNativePlayer(
         // raised WebView would also cover the native menu and error pane.
         container = frame
         view = playerView
+
+        val overlay = TvmNativeVideoOverlayView(
+            activity,
+            onToggleStats = { setStatsVisible(!statsVisible, notify = true) },
+            onResumeSleep = { resumeFromSleepTimer() },
+            onDismissSleep = { dismissSleepExpiredOverlay() },
+        )
+        val webIdx = root.indexOfChild(webView)
+        val overlayIdx = if (webIdx >= 0) minOf(webIdx + 1, root.childCount) else root.childCount
+        root.addView(
+            overlay,
+            overlayIdx,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        ViewCompat.requestApplyInsets(overlay)
+        overlayView = overlay
+        overlay.setStatsVisible(statsVisible, reactSheetOpen)
+        val snap = sleepTracker.snapshot(
+            System.currentTimeMillis(),
+            exo.currentPosition / 1000.0,
+            if (exo.duration > 0) exo.duration / 1000.0 else 0.0,
+        )
+        overlay.updateSleep(snap.choice, TvmSleepLogic.formatRemaining(snap.remainingMs), snap.expired, reactSheetOpen)
+    }
+
+    private fun applyCurrentVolume() {
+        val factor = sleepTracker.fadeFactor
+        player?.volume = if (isMuted) 0f else (level * factor).coerceIn(0f, 1f)
+    }
+
+    private fun setStatsVisible(visible: Boolean, notify: Boolean) {
+        statsVisible = visible
+        overlayView?.setStatsVisible(visible, reactSheetOpen)
+        val stats = collectStats()
+        if (visible) overlayView?.updateStatsRows(TvmNativeStats.rows(stats))
+        if (notify) {
+            sessionId?.let { emit(it, "stats", Json.obj("visible" to visible, "stats" to stats)) }
+        }
+    }
+
+    private fun configureSleepTimer(choice: String) {
+        val nowMs = System.currentTimeMillis()
+        val exo = player
+        val posSec = (exo?.currentPosition ?: 0L) / 1000.0
+        val durSec = (exo?.duration ?: -1L).let { if (it > 0L) it / 1000.0 else 0.0 }
+        sleepTracker.reset(choice, nowMs)
+        applyCurrentVolume()
+        val snap = sleepTracker.snapshot(nowMs, posSec, durSec)
+        overlayView?.updateSleep(snap.choice, TvmSleepLogic.formatRemaining(snap.remainingMs), snap.expired, reactSheetOpen)
+        sessionId?.let { emitSleep(it, nowMs) }
+    }
+
+    private fun resumeFromSleepTimer() {
+        val nowMs = System.currentTimeMillis()
+        sleepTracker.reset("off", nowMs)
+        applyCurrentVolume()
+        val exo = player
+        if (exo != null) {
+            if (!isLive && exo.duration > 0L && exo.currentPosition >= exo.duration - 500L) {
+                exo.seekTo(0L)
+            }
+            exo.play()
+        }
+        overlayView?.updateSleep("off", null, expired = false, sheetOpen = reactSheetOpen)
+        sessionId?.let { id ->
+            emitSleep(id, nowMs)
+            pushState(id)
+        }
+    }
+
+    private fun dismissSleepExpiredOverlay() {
+        val nowMs = System.currentTimeMillis()
+        sleepTracker.reset("off", nowMs)
+        applyCurrentVolume()
+        overlayView?.updateSleep("off", null, expired = false, sheetOpen = reactSheetOpen)
+        sessionId?.let { emitSleep(it, nowMs) }
+    }
+
+    private fun emitSleep(id: String, nowMs: Long) {
+        val exo = player
+        val posSec = (exo?.currentPosition ?: 0L) / 1000.0
+        val durSec = (exo?.duration ?: -1L).let { if (it > 0L) it / 1000.0 else 0.0 }
+        emit(id, "sleep", sleepTracker.snapshot(nowMs, posSec, durSec).json())
+    }
+
+    private fun collectStats(): JSONObject {
+        val exo = player
+        val vs = exo?.videoSize
+        val counters = exo?.videoDecoderCounters
+        val activeSub = exo?.currentTracks?.let { tracks ->
+            TvmSubtitles.rows(tracks).firstOrNull { it.selected }?.label
+        }
+        val durationSec = (exo?.duration ?: -1L).let { if (it > 0L) it / 1000.0 else 0.0 }
+        val bufferSec = exo?.totalBufferedDuration?.takeIf { it >= 0L }?.let { it / 1000.0 }
+        return TvmNativeStats.buildJson(
+            videoWidth = vs?.width ?: 0,
+            videoHeight = vs?.height ?: 0,
+            videoFormat = videoFormat,
+            audioFormat = exo?.audioFormat ?: audioFormat,
+            droppedFrames = counters?.droppedBufferCount,
+            renderedFrames = counters?.renderedOutputBufferCount,
+            bufferSeconds = bufferSec,
+            activeSubtitle = activeSub,
+            durationSeconds = durationSec,
+            live = isLive,
+            meta = playbackMeta,
+        )
     }
 
     private fun startTicking(id: String) {
@@ -506,6 +672,23 @@ class TvmNativePlayer(
         val tick = object : Runnable {
             override fun run() {
                 if (!ticking || sessionId != id) return
+                player?.let { exo ->
+                    val nowMs = System.currentTimeMillis()
+                    val posSec = exo.currentPosition / 1000.0
+                    val durSec = if (exo.duration > 0L) exo.duration / 1000.0 else 0.0
+                    val step = sleepTracker.step(nowMs, posSec, durSec, !exo.isPlaying)
+                    if (step.volumeChanged) applyCurrentVolume()
+                    if (step.justExpired) exo.pause()
+                    if (step.active || step.stateChanged) {
+                        overlayView?.updateSleep(
+                            step.snapshot.choice,
+                            TvmSleepLogic.formatRemaining(step.snapshot.remainingMs),
+                            step.snapshot.expired,
+                            reactSheetOpen,
+                        )
+                        if (step.stateChanged) emitSleep(id, nowMs)
+                    }
+                }
                 pushState(id)
                 // Sound for six seconds and still no picture: the video is not
                 // reaching the screen (Media3 may play the sound on its own).
@@ -524,31 +707,38 @@ class TvmNativePlayer(
     private fun pushState(id: String) {
         val exo = player ?: return
         val duration = exo.duration
-        emit(
-            id,
-            "state",
-            Json.obj(
-                "position" to exo.currentPosition / 1000.0,
-                "duration" to if (duration > 0) duration / 1000.0 else 0.0,
-                // Paused only when the viewer (or the app) paused it. While it
-                // waits for more of the stream it is loading, not paused: the
-                // page showed a play button that did nothing during a stall.
-                "paused" to !exo.playWhenReady,
-                "buffering" to (exo.playbackState == Player.STATE_BUFFERING),
-                "hasFrame" to firstFrame,
-                // The sound actually being decoded and handed to the audio
-                // output, for diagnostics and the emulator test: the codec, and
-                // a count that grows while sound plays.
-                "audio" to (exo.audioFormat?.sampleMimeType ?: ""),
-                "audioBuffers" to (exo.audioDecoderCounters?.renderedOutputBufferCount ?: 0),
-                // C.TIME_UNSET until the manifest establishes a live window.
-                "liveDrift" to if (isLive && exo.currentLiveOffset != C.TIME_UNSET) {
-                    (exo.currentLiveOffset / 1000.0).coerceAtLeast(0.0)
-                } else {
-                    0.0
-                },
-            ),
+        val payload = Json.obj(
+            "position" to exo.currentPosition / 1000.0,
+            "duration" to if (duration > 0) duration / 1000.0 else 0.0,
+            // Paused only when the viewer (or the app) paused it. While it
+            // waits for more of the stream it is loading, not paused: the
+            // page showed a play button that did nothing during a stall.
+            "paused" to !exo.playWhenReady,
+            "buffering" to (exo.playbackState == Player.STATE_BUFFERING),
+            "hasFrame" to firstFrame,
+            // The sound actually being decoded and handed to the audio
+            // output, for diagnostics and the emulator test: the codec, and
+            // a count that grows while sound plays.
+            "audio" to (exo.audioFormat?.sampleMimeType ?: ""),
+            "audioBuffers" to (exo.audioDecoderCounters?.renderedOutputBufferCount ?: 0),
+            // C.TIME_UNSET until the manifest establishes a live window.
+            "liveDrift" to if (isLive && exo.currentLiveOffset != C.TIME_UNSET) {
+                (exo.currentLiveOffset / 1000.0).coerceAtLeast(0.0)
+            } else {
+                0.0
+            },
         )
+        if (statsVisible) {
+            val stats = collectStats()
+            payload.put("stats", stats)
+            overlayView?.updateStatsRows(TvmNativeStats.rows(stats))
+        }
+        if (sleepTracker.choice != "off" || sleepTracker.expired) {
+            val posSec = exo.currentPosition / 1000.0
+            val durSec = if (duration > 0L) duration / 1000.0 else 0.0
+            payload.put("sleep", sleepTracker.snapshot(System.currentTimeMillis(), posSec, durSec).json())
+        }
+        emit(id, "state", payload)
     }
 
     fun close(id: String?, notify: Boolean, leaving: Boolean = true) {
@@ -556,14 +746,21 @@ class TvmNativePlayer(
         ticking = false
         stallCheck?.let(main::removeCallbacks)
         stallCheck = null
+        nightAudio.release()
         player?.release()
         player = null
         view?.player = null
         view = null
+        overlayView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
+        overlayView = null
         container?.let { frame ->
             (frame.parent as? ViewGroup)?.removeView(frame)
         }
         container = null
+        sleepTracker.reset("off", System.currentTimeMillis())
+        playbackMeta = TvmPlaybackMeta()
+        statsVisible = false
+        reactSheetOpen = false
         webView.setBackgroundColor(Color.BLACK)
         heldFrom = null
         sentSubtitles = null
