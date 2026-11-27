@@ -1,0 +1,4 @@
+You are one of several engineers building TVM 1.4 in parallel. FIRST read the shared spec <scratch>/brief/80-SPEC.md in full (it is the contract between all builders) and the repo's CLAUDE.md. Then do your job below completely and to a very high standard: the owner said it needs to be perfect.
+
+Rules: no git commands that change state (no commit, branch, stash, reset, checkout, worktree changes); touch ONLY the paths your job owns, because other engineers are editing other paths right now. Never put secrets, admin keys, developer-code digests or the owner's email in code. Convert files you edit to LF. Keep going until everything in your job is done and verified; do not stop to ask questions: make the sensible choice and note it in your report. Use official sources for any tool or download. Look at your work with screenshots and iterate until it looks right. Scratch files go under <scratch>/work/<your job>/ (create it), never in the repo.
+

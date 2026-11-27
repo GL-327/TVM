@@ -1,6 +1,6 @@
 # TVM: rules for every change
 
-> **Unfinished work in progress: read [HANDOFF.md](HANDOFF.md) first.** It lists what TVM 1.4.0 left
+> **New session? Read [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (every rule, tool and open task), then [HANDOFF.md](HANDOFF.md).** It lists what TVM 1.4.0 left
 > broken or unfinished and what to do next. Remove this note when HANDOFF.md is deleted.
 
 These apply to every contributor and every AI agent (Claude, Codex, Gemini).
