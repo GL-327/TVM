@@ -383,7 +383,7 @@ object SyncSchema {
         }
     }
 
-    private fun validPreference(key: String, value: Any?): Boolean = when (key) {
+    private fun validPreference(key: String, value: Any?): Boolean { return when (key) {
         "subtitleLanguages" -> {
             val arr = value as? JSONArray ?: return false
             if (arr.length() > 20) return false
@@ -407,7 +407,7 @@ object SyncSchema {
             }
         }
         else -> key in extraKeys && value is Boolean
-    }
+    } }
 
     fun validSyncKey(kind: String, key: Any?): Boolean {
         if (key !is String || key.isEmpty() || key.length > 200) return false
