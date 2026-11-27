@@ -27,7 +27,7 @@ export function resolveAccountsUrl(env: NodeJS.ProcessEnv = process.env): string
 }
 
 /** Kept in step with package.json by a test; see config.test.ts. */
-export const CORE_VERSION = '1.4.17';
+export const CORE_VERSION = '1.4.18';
 
 const IPV4 =
   /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d{1,2})$/;

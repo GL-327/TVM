@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="FranchiseIntro" extends="Group">
+  <interface>
+    <field id="pick" type="assocarray" onChange="onPick" />
+    <field id="staticCard" type="boolean" value="false" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/introCore.brs" />
+  <script type="text/brightscript" uri="FranchiseIntro.brs" />
+  <children>
+    <Group id="root">
+      <Rectangle id="bg" width="3840" height="2160" color="0x000000FF" />
+      <Group id="stage">
+        <Poster id="glow" uri="pkg:/images/intro/ember.png" width="2600" height="2600" translation="[620, -220]" scaleRotateCenter="[1300, 1300]" opacity="0" />
+        <Poster id="ring1" uri="pkg:/images/intro/ring.png" width="1600" height="1600" translation="[1120, 280]" scaleRotateCenter="[800, 800]" opacity="0" />
+        <Poster id="ring2" uri="pkg:/images/intro/ring.png" width="1600" height="1600" translation="[1120, 280]" scaleRotateCenter="[800, 800]" opacity="0" />
+        <Group id="embers" />
+        <Poster id="beam" uri="pkg:/images/intro/beam.png" width="3200" height="96" translation="[320, 1032]" scaleRotateCenter="[1600, 48]" opacity="0" />
+        <Group id="card" translation="[0, 900]" opacity="0">
+          <Label id="mainTitle" width="3840" height="220" horizAlign="center" vertAlign="center" color="0xFFFFFFFF" />
+          <Label id="subTitle" translation="[0, 250]" width="3840" height="100" horizAlign="center" vertAlign="center" color="0xF5F5F5FF" />
+        </Group>
+        <Rectangle id="rule" translation="[1470, 1130]" width="900" height="6" color="0xFFFFFFFF" scaleRotateCenter="[450, 3]" opacity="0" />
+      </Group>
+      <Label id="skipHint" text="Press any key to skip" translation="[0, 1960]" width="3840" height="64" horizAlign="center" color="0xFFFFFF88" opacity="0" />
+    </Group>
+    <Timer id="endTimer" repeat="false" />
+    <Animation id="glowIn" duration="1.4" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 0.85]" fieldToInterp="glow.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.45, 0.45], [1.0, 1.0]]" fieldToInterp="glow.scale" />
+    </Animation>
+    <Animation id="ring1Go" delay="0.2" duration="1.9" easeFunction="outQuad" optional="true">
+      <FloatFieldInterpolator key="[0.0, 0.2, 1.0]" keyValue="[0.0, 0.95, 0.0]" fieldToInterp="ring1.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.15, 0.15], [1.5, 1.5]]" fieldToInterp="ring1.scale" />
+    </Animation>
+    <Animation id="ring2Go" delay="0.75" duration="1.9" easeFunction="outQuad" optional="true">
+      <FloatFieldInterpolator key="[0.0, 0.2, 1.0]" keyValue="[0.0, 0.7, 0.0]" fieldToInterp="ring2.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.15, 0.15], [1.3, 1.3]]" fieldToInterp="ring2.scale" />
+    </Animation>
+    <Animation id="beamGo" delay="1.0" duration="1.2" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator key="[0.0, 0.3, 1.0]" keyValue="[0.0, 1.0, 0.4]" fieldToInterp="beam.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.1, 1.0], [1.0, 1.0]]" fieldToInterp="beam.scale" />
+    </Animation>
+    <Animation id="cardIn" delay="1.2" duration="0.9" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="card.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.0, 940.0], [0.0, 900.0]]" fieldToInterp="card.translation" />
+    </Animation>
+    <Animation id="ruleIn" delay="1.7" duration="0.8" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="rule.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.0, 1.0], [1.0, 1.0]]" fieldToInterp="rule.scale" />
+    </Animation>
+    <Animation id="hintIn" delay="0.8" duration="0.6" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="skipHint.opacity" />
+    </Animation>
+    <Animation id="fadeOut" duration="0.45" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[1.0, 0.0]" fieldToInterp="root.opacity" />
+    </Animation>
+  </children>
+</component>

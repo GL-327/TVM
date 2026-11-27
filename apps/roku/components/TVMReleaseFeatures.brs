@@ -68,7 +68,7 @@ sub updateBackHint()
   if m.stack = invalid then return
   entry = activeEntry(m.stack)
   screen = visibleScreen(m.stack)
-  topLevel = screen.name = "home" or screen.name = "live" or screen.name = "library"
+  topLevel = screen.name = "home" or screen.name = "start" or screen.name = "live" or screen.name = "library"
   if screen.name = "catalog"
     nav = asText(aaGet(screen.params, "navId", ""))
     topLevel = nav = "movies" or nav = "series"

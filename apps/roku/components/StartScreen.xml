@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="StartScreen" extends="Group">
+  <interface>
+    <field id="payload" type="assocarray" onChange="onPayload" />
+    <field id="profileName" type="string" onChange="onGreeting" />
+    <field id="freeChannels" type="array" onChange="onChannels" />
+    <field id="action" type="assocarray" alwaysNotify="true" />
+    <field id="remoteIntent" type="string" alwaysNotify="true" onChange="onRemoteIntent" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/intents.brs" />
+  <script type="text/brightscript" uri="pkg:/source/media.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tokens.brs" />
+  <script type="text/brightscript" uri="pkg:/source/fonts.brs" />
+  <script type="text/brightscript" uri="pkg:/source/focus.brs" />
+  <script type="text/brightscript" uri="pkg:/source/startCore.brs" />
+  <script type="text/brightscript" uri="StartScreen.brs" />
+  <children>
+    <Group id="heroMedia">
+      <Poster id="heroFallback" width="3840" height="2160" loadWidth="1280" loadHeight="720" loadDisplayMode="scaleToZoom" uri="pkg:/images/lighthouse.jpg" />
+      <Poster id="heroArt" width="3840" height="2160" loadWidth="1920" loadHeight="1080" loadDisplayMode="scaleToZoom" opacity="0" />
+    </Group>
+    <Poster id="vignetteLeft" width="2200" height="2160" uri="pkg:/images/chrome/hero-vignette-left.png" />
+    <Poster id="vignetteBottom" width="3840" height="1100" translation="[0, 1060]" uri="pkg:/images/chrome/hero-vignette-bottom.png" />
+    <Rectangle id="railScrim" width="3840" height="2160" color="0x000000B8" visible="false" />
+    <Group id="heroCopy" translation="[160, 520]">
+      <Label id="greeting" width="2600" height="200" vertAlign="bottom" color="0xF5F5F5FF" />
+      <Label id="prompt" translation="[0, 220]" width="2200" height="80" color="0xD8D9E8FF" />
+      <FocusButton id="browseBtn" translation="[0, 350]" />
+      <FocusButton id="searchBtn" translation="[460, 350]" />
+      <Label id="caption" translation="[0, 590]" width="2200" height="64" color="0xD8D9E8FF" />
+    </Group>
+    <Group id="rows" translation="[0, 1500]" />
+    <NavStrip id="nav" translation="[0, 0]" />
+    <Animation id="heroFade" duration="0.7" easeFunction="inOutQuad" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroArt.opacity" />
+    </Animation>
+    <Animation id="copyIn" duration="0.8" easeFunction="outCubic" optional="true">
+      <FloatFieldInterpolator key="[0.0, 1.0]" keyValue="[0.0, 1.0]" fieldToInterp="heroCopy.opacity" />
+      <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[160.0, 548.0], [160.0, 520.0]]" fieldToInterp="heroCopy.translation" />
+    </Animation>
+    <Animation id="rowsAnim" duration="0.22" easeFunction="outCubic" optional="true">
+      <Vector2DFieldInterpolator id="rowsInterp" key="[0.0, 1.0]" keyValue="[[0.0, 1500.0], [0.0, 1500.0]]" fieldToInterp="rows.translation" />
+    </Animation>
+  </children>
+</component>

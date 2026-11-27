@@ -1,6 +1,6 @@
 ' TVM 1.1 routes. Called only on ApiTask, never on the render thread.
 function lcContentNames() as Object
-  return { changelog: "releases", events: "events", "free-channels": "channels", services: "services", avatars: "sets", parental: "levels" }
+  return { changelog: "releases", events: "events", "free-channels": "channels", services: "services", avatars: "sets", parental: "levels", intros: "intros" }
 end function
 
 function lcValidContent(name as String, data as Dynamic) as Boolean
@@ -20,6 +20,10 @@ function lcValidContent(name as String, data as Dynamic) as Boolean
     end if
     if name = "free-channels" and (lcAaText(row, "name") = "" or Left(lcAaText(row, "url"), 8) <> "https://") then return false
     if name = "free-channels" and lcAaText(row, "group") = "" then return false
+    if name = "intros"
+      if Type(lcAaGet(row, "imdbIds", invalid)) <> "roArray" or lcAaText(row, "titlePattern") = "" then return false
+      if lcAaText(row, "style") <> "mockingjay" and lcAaText(row, "style") <> "doom" then return false
+    end if
     if name = "services"
       if lcAaText(row, "name") = "" then return false
       roku = lcAaText(row, "roku")
@@ -64,7 +68,7 @@ end function
 
 function lcRefreshContent() as Object
   stamps = lcReadRegJson("contentChecked", {})
-  for each name in ["events", "free-channels", "services", "avatars"]
+  for each name in ["events", "free-channels", "services", "avatars", "intros"]
     now = lcNowSeconds()
     if now - lcAaInt(stamps, name, 0) >= 21600
       stamps[name] = now

@@ -1,6 +1,6 @@
 {
   "name": "@tvm/ui",
-  "version": "1.4.17",
+  "version": "1.4.18",
   "private": true,
   "type": "module",
   "scripts": {

@@ -16,6 +16,13 @@ sub init()
   applyCurrentTheme()
   m.featureNodes = {}
   m.pageTasks = {}
+  m.startNode = invalid
+  m.startFreeTask = invalid
+  m.homePayload = invalid
+  m.introPlayed = {}
+  m.introNode = invalid
+  m.introKey = ""
+  m.heldPlay = invalid
   m.kidsProfile = false
   m.profileMaxAge = 18
   m.selectedVersionId = ""
@@ -218,6 +225,7 @@ function screenNode(name as String) as Object
   if name = "service" then return m.serviceNode
   if name = "realdebrid" then return m.rdNode
   if name = "hub" then return m.hubNode
+  if name = "start" then return m.startNode
   return invalid
 end function
 
@@ -306,6 +314,7 @@ sub navigate(kind as String, name as String, params as Object)
     if name = "service" then loadService(params)
     if name = "details" then loadDetails(params)
     if name = "hub" then m.hubNode.reset = true
+    if name = "start" then loadStart()
     if featureName(name) then loadFeature(name, params)
   end if
 end sub
@@ -415,6 +424,11 @@ sub renderStack()
     m.rdNode.visible = true
     loadRdStatus()
     if top.kind <> "modal" then m.rdNode.setFocus(true)
+  else if screen.name = "start"
+    ensureStart()
+    m.startNode.profileName = m.profileName
+    m.startNode.visible = true
+    if top.kind <> "modal" then m.startNode.setFocus(true)
   else if screen.name = "hub"
     ensureHub()
     syncHubNode()
@@ -462,9 +476,12 @@ sub hideScreens()
   if m.serviceNode <> invalid then m.serviceNode.visible = false
   if m.rdNode <> invalid then m.rdNode.visible = false
   if m.hubNode <> invalid then m.hubNode.visible = false
+  if m.startNode <> invalid then m.startNode.visible = false
 end sub
 
 sub clearOverlays()
+  m.introNode = invalid
+  m.heldPlay = invalid
   hadPlayer = playerOverlayOpen()
   while m.overlayHost.getChildCount() > 0
     m.overlayHost.removeChildIndex(0)
@@ -599,6 +616,40 @@ sub ensureRealDebrid()
   node.observeField("action", "onRdScreenAction")
   m.screenHost.appendChild(node)
   m.rdNode = node
+end sub
+
+sub ensureStart()
+  if m.startNode <> invalid then return
+  node = CreateObject("roSGNode", "StartScreen")
+  node.observeField("action", "onStartAction")
+  m.screenHost.appendChild(node)
+  m.startNode = node
+end sub
+
+' Start page data: the Home payload is shared with Home; free channels come from the local core.
+sub loadStart()
+  if m.startNode = invalid then return
+  if m.homePayload <> invalid then m.startNode.payload = m.homePayload
+  m.startFreeTask = startApiRequest("local:/api/roku/free-fallback", "POST", FormatJson({ maxAge: m.profileMaxAge }), "onStartFreeDone")
+end sub
+
+sub onStartFreeDone(event as Object)
+  task = event.GetRoSGNode()
+  if task <> m.startFreeTask or task.profileId <> m.profileId then return
+  if m.startNode = invalid or not task.ok then return
+  m.startNode.freeChannels = aaArray(task.json, "channels")
+end sub
+
+sub onStartAction()
+  action = m.startNode.action
+  if action = invalid then return
+  kind = aaGet(action, "type", "")
+  if handleNavAction(action) then return
+  if kind = "browse" then navigate("home", "home", {})
+  if kind = "search" then navigate("modal", "search", {})
+  if kind = "details" then navigate("push", "details", { item: aaGet(action, "item", {}) })
+  if kind = "play" then startPlayback(aaGet(action, "item", {}))
+  if kind = "openApp" then openServiceHub(asText(aaGet(action, "id", "")), asText(aaGet(action, "name", "App")))
 end sub
 
 sub ensureHub()
@@ -857,7 +908,9 @@ sub onYouAction()
   navigate("pop", "", {})
   if m.kidsProfile and id <> "profiles" then return
   if id = "services" then navigate("push", "services", {})
-  if id = "hub"
+  if id = "start"
+    navigate("push", "start", {})
+  else if id = "hub"
     navigate("push", "hub", {})
   else if id = "profiles"
     navigate("push", "profiles", {})
@@ -1672,7 +1725,9 @@ sub enterHome()
   stopDeviceSignIn()
   stopWaitingTimer()
   m.stack = createViewStack("home")
+  m.stack = viewStackPush(m.stack, "start", {})
   renderStack()
+  loadStart()
   startHubAgent()
   loadHealth(false)
   loadHome()
@@ -2337,7 +2392,9 @@ sub onHomeDone(event as Object)
 
   payload = task.json
   m.homeSilent = false
+  m.homePayload = payload
   m.homeNode.payload = payload
+  if m.startNode <> invalid then m.startNode.payload = payload
   loadHomeExtras(payload)
   if m.eventProfile <> m.profileId
     m.homeNode.event = {}
@@ -3010,6 +3067,7 @@ sub postPlayback(item as Object)
   body = ParseJson(playbackBody(reqItem))
   if m.selectedQuality <> invalid and m.selectedQuality > 0 then body.quality = m.selectedQuality
   navigate("modal", "loading", {})
+  maybeStartIntro(item)
   url = joinCorePath(m.coreUrl, "/api/playback")
   if aaGet(item, "source", "") = "free" and m.liveFailed = true
     url = "local:/api/roku/free-playback" : body.maxAge = m.profileMaxAge
@@ -3021,6 +3079,10 @@ sub onPlayDone(event as Object)
   task = event.GetRoSGNode()
   if task <> m.playTask then return
   if activeEntry(m.stack).name <> "loading" then return
+  if m.introNode <> invalid
+    m.heldPlay = event
+    return
+  end if
   navigate("pop", "", {})
   json = {}
   if task <> invalid then json = task.json
@@ -3762,6 +3824,45 @@ sub onSearchDialogTyping()
   panel = m.overlayHost.getChild(0)
   panel.query = dialog.text
   scheduleSearch(dialog.text)
+end sub
+
+' Franchise intro over the loading phase: once per title per session, honours the
+' franchiseIntros extra, skipped for live TV. A finished stream request waits for the intro.
+sub maybeStartIntro(item as Object)
+  m.introNode = invalid
+  m.heldPlay = invalid
+  m.introKey = ""
+  title = asText(aaGet(item, "title", ""))
+  if title = "" then title = asText(aaGet(item, "name", ""))
+  input = { id: asText(aaGet(item, "id", "")), title: title, live: playItemIsLive(item), enabled: tvmExtraEnabled("franchiseIntros"), automation: false }
+  pick = introPlan(input, introDefs(uiContent("intros")), m.introPlayed)
+  if pick = invalid then return
+  m.introKey = pick.titleKey
+  node = CreateObject("roSGNode", "FranchiseIntro")
+  node.observeField("action", "onIntroAction")
+  node.staticCard = introStaticCard(tvmReduceMotion(), m.uiMetrics.height)
+  m.overlayHost.appendChild(node)
+  node.pick = pick
+  node.setFocus(true)
+  m.introNode = node
+end sub
+
+sub onIntroAction()
+  node = m.introNode
+  if node = invalid then return
+  action = node.action
+  if action = invalid then return
+  if aaGet(action, "type", "") <> "done" then return
+  introMarkPlayed(m.introPlayed, m.introKey)
+  m.introNode = invalid
+  held = m.heldPlay
+  m.heldPlay = invalid
+  m.overlayHost.removeChild(node)
+  if held <> invalid
+    onPlayDone(held)
+  else if m.overlayHost.getChildCount() > 0
+    m.overlayHost.getChild(0).setFocus(true)
+  end if
 end sub
 
 sub showLoadingOrbit()

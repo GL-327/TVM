@@ -592,6 +592,7 @@ end function
 ' ribbon reached is lost.
 function tvmYouMenuSpec() as Object
   return [
+    { id: "start", label: "Start page", detail: "Greeting, continue watching, apps" }
     { id: "hub", label: "TVM Hub", detail: "Your devices" }
     { id: "profiles", label: "Switch profile", detail: "Who is watching" }
     { id: "settings", label: "Settings", detail: "Display, network and access" }

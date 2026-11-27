@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-export const contentNames = ['changelog', 'events', 'free-channels', 'services', 'avatars', 'parental'];
+export const contentNames = ['changelog', 'events', 'free-channels', 'services', 'avatars', 'parental', 'intros'];
 export function syncContent() {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const source = fileURLToPath(new URL('../../../packages/content/', import.meta.url));

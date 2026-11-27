@@ -16,6 +16,8 @@
   <script type="text/brightscript" uri="pkg:/source/accountCopy.brs" />
   <script type="text/brightscript" uri="pkg:/source/hub.brs" />
   <script type="text/brightscript" uri="pkg:/source/hubCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/introCore.brs" />
+  <script type="text/brightscript" uri="pkg:/source/startCore.brs" />
   <script type="text/brightscript" uri="TVMFeatures.brs" />
   <script type="text/brightscript" uri="TVMReleaseFeatures.brs" />
   <script type="text/brightscript" uri="TVMExtras.brs" />
