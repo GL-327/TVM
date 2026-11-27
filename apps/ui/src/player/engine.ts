@@ -175,6 +175,8 @@ export interface EngineOptions {
   maxHeight?: number;
   initialVolume?: number;
   initialMuted?: boolean;
+  /** ISO 639 code the native player should pick its audio track by (see nativeAudioLanguage). */
+  audioLanguage?: string;
   fetchImpl?: typeof fetch;
 }
 

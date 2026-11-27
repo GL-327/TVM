@@ -673,6 +673,7 @@ int App::Run(int showCommand) {
         preview.Update(clipId, showingHome && home_->HeroOnscreen() && supportedMotion, home_->HeroMuted());
         home_->SetHeroClip(preview.Ready(), preview.HasAudio(), now);
         dirty_ = dirty_ || wasPlaying != home_->HeroClipPlaying();
+        SyncPublicConfig(now);
         SyncReleaseNotice(now);
         if (now - updatesCheckedMs_ >= update::NextCheckDelayMs(updatesRetrySoon_) && store_->CorePrefs().autoUpdate) CheckForUpdates();
         PageRails();
@@ -4051,7 +4052,11 @@ void App::LaunchPlayback(int generation, const playback::Resolution& resolution)
     }
     playerView_.nightAvailable = true;
     playerView_.nightMode = playerPrefs_.Enabled("nightMode");
-    playerAudioLanguage_ = playerPrefs_.audioLanguage == "original" ? resolution.originalLanguage : playerPrefs_.audioLanguage;
+    // Same rule as Core's preferredAudio: an unknown original language means English, never the file's default
+    // track (often a Russian or other dub in multi-audio releases). A dub plays only when Settings picks it.
+    playerAudioLanguage_ = playerPrefs_.audioLanguage == "original"
+        ? (resolution.originalLanguage.empty() ? std::string("eng") : resolution.originalLanguage)
+        : playerPrefs_.audioLanguage;
     playerTransport_ = resolution.transport.empty() ? playback::PlaybackTransport(resolution.url, "", "") : resolution.transport;
     playerVersionLabel_ = playback::VersionLabel(resolution.version);
     const auto current = resolution.version.is_object() ? resolution.version.value("id", playerVersionId_) : playerVersionId_;

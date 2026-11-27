@@ -419,7 +419,8 @@ struct TVMWebView: UIViewControllerRepresentable {
                 let start = data["startAt"] as? Double ?? 0
                 let next = TVMVideoEngine(id: id, url: url, startAt: start.isFinite ? max(0, start) : 0, live: data["live"] as? Bool ?? false,
                                           initialVolume: data["initialVolume"] as? Double ?? 1,
-                                          initialMuted: data["initialMuted"] as? Bool ?? false)
+                                          initialMuted: data["initialMuted"] as? Bool ?? false,
+                                          audioLanguage: data["audioLanguage"] as? String ?? "eng")
                 next.onEvent = { [weak self] in self?.publishPlayer($0) }
                 next.onFinish = { [weak self, weak next] in
                     guard let self, let next, self.engine === next else { return }

@@ -102,6 +102,8 @@ sub onAutoAudioTracks()
   pref = asText(m.top.audioLanguage)
   if pref = "" or pref = "original" then pref = asText(aaGet(m.extrasPrefs, "audioLanguage", "original"))
   if pref = "original" then pref = asText(m.top.originalLanguage)
+  ' Unknown original language means English, never the file's default track (often a dub), as in Core.
+  if pref = "" or pref = "original" then pref = "eng"
   wanted = playerNormLang(pref)
   matched = false
   if wanted <> ""

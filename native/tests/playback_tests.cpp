@@ -200,6 +200,17 @@ TEST(mpv_draws_into_tvms_window_with_its_own_controls_off) {
     REQUIRE_EQ(args.back(), options.url);
 }
 
+TEST(audio_language_outranks_the_files_default_dub_in_both_code_forms) {
+    tvm::mpv::LaunchOptions options;
+    options.url = "https://cdn.example/film.mkv";
+    options.audioLanguage = "eng";
+    const std::vector<std::string> args = tvm::mpv::BuildArgs(options);
+    REQUIRE(std::find(args.begin(), args.end(), "--alang=eng,en") != args.end());
+    REQUIRE_EQ(tvm::mpv::AudioLanguageList("rus"), std::string("rus,ru"));
+    REQUIRE_EQ(tvm::mpv::AudioLanguageList("xyz"), std::string("xyz"));
+    REQUIRE(tvm::mpv::AudioLanguageList("").empty());
+}
+
 TEST(sound_past_100_percent_is_a_limited_boost_not_mpvs_own_volume) {
     tvm::mpv::LaunchOptions options;
     options.url = "https://cdn.example/film.mkv";

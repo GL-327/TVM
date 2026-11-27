@@ -35,6 +35,10 @@ std::string BoostFilter(double gain);
 // 200% is 3x, 400% is 9x and 1000% is 40x (+32 dB): as loud as a browser volume booster, without its clipping.
 double BoostGain(double volume);
 
+// mpv's --alang list for a 3-letter language code: the code and its 2-letter form ("eng" -> "eng,en"), because
+// Matroska tags tracks with 3-letter codes and MP4/HLS often with 2-letter ones. Empty input stays empty.
+std::string AudioLanguageList(const std::string& code);
+
 // mpv draws into TVM's own child window, with its controls, its on-screen text and its own key
 // bindings turned off, so TVM's chrome is the only one. auto-copy is the decode path that paints
 // into a foreign window.

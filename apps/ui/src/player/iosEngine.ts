@@ -83,6 +83,7 @@ export function createIOSPlayerEngine(stream: EngineStream, options: EngineOptio
         live: options.live,
         initialVolume: Math.max(0, Math.min(1, options.initialVolume ?? 1)),
         initialMuted: options.initialMuted ?? false,
+        ...(options.audioLanguage ? { audioLanguage: options.audioLanguage } : {}),
       });
     },
     destroy: () => { send('stop'); destroyed = true; window.removeEventListener('tvm:native-player', receive); window.removeEventListener(TEMPORARY_VOLUME_EVENT, temporaryVolume); },

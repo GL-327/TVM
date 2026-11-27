@@ -19,6 +19,21 @@ std::filesystem::path EnvPath(const util::EnvLookup& env, const wchar_t* name) {
 
 }  // namespace
 
+std::string AudioLanguageList(const std::string& code) {
+    static const std::pair<const char*, const char*> kTwoLetter[] = {
+        {"eng", "en"}, {"spa", "es"}, {"fra", "fr"}, {"fre", "fr"}, {"deu", "de"}, {"ger", "de"}, {"ita", "it"},
+        {"por", "pt"}, {"jpn", "ja"}, {"kor", "ko"}, {"zho", "zh"}, {"chi", "zh"}, {"ara", "ar"}, {"hin", "hi"},
+        {"rus", "ru"}, {"nld", "nl"}, {"dut", "nl"}, {"pol", "pl"}, {"tur", "tr"}, {"ukr", "uk"}, {"swe", "sv"},
+        {"nor", "no"}, {"dan", "da"}, {"fin", "fi"}, {"ces", "cs"}, {"cze", "cs"}, {"hun", "hu"}, {"ell", "el"},
+        {"gre", "el"}, {"heb", "he"}, {"tha", "th"}, {"vie", "vi"}, {"ind", "id"}, {"ron", "ro"}, {"rum", "ro"},
+    };
+    if (code.empty()) return {};
+    for (const auto& [three, two] : kTwoLetter) {
+        if (code == three) return code + "," + two;
+    }
+    return code;
+}
+
 std::string BoostFilter(double gain) {
     std::ostringstream filter;
     filter.imbue(std::locale::classic());
@@ -71,7 +86,8 @@ std::vector<std::string> BuildArgs(const LaunchOptions& options) {
     if (!options.ytdlpPath.empty()) {
         args.push_back("--script-opts-append=ytdl_hook-ytdl_path=" + options.ytdlpPath);
     }
-    if (!options.audioLanguage.empty()) args.push_back("--alang=" + options.audioLanguage);
+    // --alang outranks the file's own default flag, which in many multi-audio releases is a dub.
+    if (!options.audioLanguage.empty()) args.push_back("--alang=" + AudioLanguageList(options.audioLanguage));
     if (options.startAt.has_value() && std::isfinite(*options.startAt) && *options.startAt > 0.0) {
         std::ostringstream start;
         start << "--start=" << *options.startAt;

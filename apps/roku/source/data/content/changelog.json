@@ -3,6 +3,42 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.15",
+      "date": "2026-11-27",
+      "title": "The right audio track",
+      "highlights": [
+        "Films and shows start in their original language, or English, instead of a dub the file marks as default."
+      ],
+      "changes": [
+        {
+          "area": "Playback",
+          "text": "Playback starts on the original-language track, or English when TVM can't tell, not the file's default dub.",
+          "platforms": [
+            "windows",
+            "ios",
+            "android",
+            "roku"
+          ]
+        },
+        {
+          "area": "Playback",
+          "text": "A dubbed track, such as Russian, plays only when you pick that language in Settings > Audio language.",
+          "platforms": [
+            "windows",
+            "ios",
+            "android",
+            "roku"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Franchise intros are not on Roku yet."
+      ]
+    },
+    {
       "version": "1.4.14",
       "date": "2026-11-27",
       "title": "Sync on phones and Roku",

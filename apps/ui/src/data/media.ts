@@ -154,6 +154,8 @@ export type PlaybackResult =
       segments?: PlaybackSegments | null;
       version?: Version;
       sizeBytes?: number;
+      /** The title's original language (ISO 639-2, e.g. "eng"), when the engine knows it. */
+      originalLanguage?: string | null;
     }
   | { kind: 'unavailable'; reason: string };
 

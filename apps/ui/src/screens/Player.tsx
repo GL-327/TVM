@@ -12,7 +12,8 @@ import { useNavigate } from '../nav/ViewStackContext';
 import { isLivePlayback, liveOverlayPolicy } from '../player/features/LiveOverlay';
 import { GoLive, GO_LIVE_CSS, useLiveDrift } from '../player/features/GoLive';
 import { OrbitLoader } from '../components/OrbitLoader';
-import { extraEnabled } from '../data/polishPrefs';
+import { extraEnabled, readPolishPrefs } from '../data/polishPrefs';
+import { nativeAudioLanguage } from '../player/audioLanguage';
 import { useExtraPrefs } from '../data/uiExtras';
 import { FranchiseIntro, introSkippedForAutomation, markIntroPlayed, planIntro, type IntroPick } from '../intros';
 import { createPlayerEngine, type EngineStream, type PlayerEngine } from '../player/engine';
@@ -238,6 +239,7 @@ export function Player({ params }: ScreenProps): React.JSX.Element {
           maxHeight: effectiveStreamMaxHeight(planCap, screenTargetHeight()),
           initialVolume: audioRef.current.volume,
           initialMuted: audioRef.current.muted,
+          audioLanguage: nativeAudioLanguage(readPolishPrefs().audioLanguage, stream.originalLanguage),
         },
         {
           onTime: (nextPosition, nextDuration) => {

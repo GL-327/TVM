@@ -47,9 +47,15 @@ final class TVMVideoEngine: NSObject {
     private var lastProgressAt = Date()
     private var errorSince: Date?
     private var audioChecked = false
+    /// ISO 639 code VLC picks the sound track by (the title's original language, English when unknown, or the
+    /// language chosen in Settings). Without it VLC keeps the file's default track, often a dub.
+    private let audioLanguage: String
 
-    init(id: String, url: URL, startAt: Double, live: Bool, initialVolume: Double = 1, initialMuted: Bool = false) {
+    init(id: String, url: URL, startAt: Double, live: Bool, initialVolume: Double = 1, initialMuted: Bool = false,
+         audioLanguage: String = "eng") {
         sessionID = id; source = url; resumeAt = startAt; self.live = live
+        let code = audioLanguage.trimmingCharacters(in: .whitespaces).lowercased()
+        self.audioLanguage = (2...3).contains(code.count) && code.allSatisfy({ $0 >= "a" && $0 <= "z" }) ? code : "eng"
         audioLevel = initialVolume.isFinite ? Int32(max(0, min(100, initialVolume * 100))) : 100
         initiallyMuted = initialMuted
         super.init()
@@ -97,6 +103,7 @@ final class TVMVideoEngine: NSObject {
             "file-caching": 3000,
             "live-caching": 3000,
             "http-user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 TVM-iOS",
+            "audio-language": audioLanguage,
         ])
         player.media = media
         player.play()

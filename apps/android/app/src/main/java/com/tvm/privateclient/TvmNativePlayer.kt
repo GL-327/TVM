@@ -229,9 +229,14 @@ class TvmNativePlayer(
             .setHandleAudioBecomingNoisy(true)
             .build()
         player = exo
-        // The main sound track before a commentary or description track.
+        // The main sound track before a commentary or description track, in the language Settings asks for
+        // (the title's original language by default, English when unknown). Without it Media3 keeps the
+        // file's default track, which in many multi-audio releases is a dub.
+        val audioLanguage = Json.string(message.opt("audioLanguage"))?.trim()?.lowercase()
+            ?.takeIf { Regex("^[a-z]{2,3}$").matches(it) } ?: "eng"
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
             .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
+            .setPreferredAudioLanguages(audioLanguage)
             .build()
         val initialVolume = message.optDouble("initialVolume", 1.0)
         level = if (initialVolume.isFinite()) initialVolume.coerceIn(0.0, 1.0).toFloat() else 1f
