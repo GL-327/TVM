@@ -146,7 +146,9 @@ class TvmSleepTimerState {
         var stateChanged = false
 
         if (fadeStartMs == null && TvmSleepLogic.shouldStart(choice, deadlineMs, nowMs, positionSec, durationSec, paused)) {
-            fadeStartMs = nowMs
+            // A timed choice fades from its deadline even when the tick that notices it is late.
+            val deadline = deadlineMs
+            fadeStartMs = if (choice != "end" && deadline != null) minOf(deadline, nowMs) else nowMs
             fading = true
             stateChanged = true
         }
@@ -289,7 +291,10 @@ object TvmNativeStats {
         val vCodec = codecName(videoFormat?.sampleMimeType, videoFormat?.codecs).ifEmpty { meta.codec.orEmpty() }.ifEmpty { "Unknown" }
         val aCodec = codecName(audioFormat?.sampleMimeType, audioFormat?.codecs).ifEmpty { "Unknown" }
         val aChannels = formatChannels(audioFormat?.channelCount)
-        val aLang = audioFormat?.language?.trim()?.takeIf { it.isNotEmpty() }
+        // Media3 normalises "jpn" to "ja"; Stats shows the 3-letter code, as the iPhone and the web do.
+        val aLang = audioFormat?.language?.trim()?.takeIf { it.isNotEmpty() }?.let { code ->
+            if (code.length == 2) runCatching { Locale(code).isO3Language }.getOrNull()?.takeIf { it.isNotEmpty() } ?: code else code
+        }
             ?: audioFormat?.label?.trim()?.takeIf { it.isNotEmpty() }
         val hdr = hdrLabel(
             sampleMime = videoFormat?.sampleMimeType,

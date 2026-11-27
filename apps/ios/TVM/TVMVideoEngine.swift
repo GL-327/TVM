@@ -723,7 +723,9 @@ struct TVMSleepTimerState {
             duration: duration,
             paused: paused
         ) {
-            fadeStartMs = nowMs
+            // A timed choice fades from its deadline even when the tick that notices it is late (the app was
+            // in the background), so the 5 s fade and the pause land on time, as on Android and the web.
+            fadeStartMs = choice == "end" ? nowMs : min(deadlineMs ?? nowMs, nowMs)
             fading = true
             stateChanged = true
         }
