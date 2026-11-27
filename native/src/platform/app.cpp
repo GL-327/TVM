@@ -4,6 +4,7 @@
 #include <timeapi.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <iterator>
 #include <cmath>
@@ -335,7 +336,11 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         if (command.name == "player" && freeId != command.params.end() && freeId->second.rfind("live:free:", 0) == 0) return true;
         if (command.action && command.name.rfind("player-", 0) == 0 && playerId_.rfind("live:free:", 0) == 0) return true;
         if (command.action) {
-            if (command.name == "back" || command.name == "stream-home") return true;
+            if (command.name == "back" || command.name == "stream-home" || command.name == "update-now" ||
+                command.name == "open-app-trailer") {
+                return true;
+            }
+            if (command.name.rfind("dev-", 0) == 0 && account_.developer) return true;
             if (command.name.rfind("updates-", 0) == 0) return true;
             if (command.name.rfind("account-", 0) == 0 || command.name == "plans-choose") return true;
             if (command.name.rfind("info:", 0) == 0) return coreapi::AllowsRoute(account_, pageName_);
@@ -356,6 +361,15 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
         } else if (command.name == "trailer-open" && id != command.params.end()) {
             const auto title = titles_.find(id->second);
             if (title != titles_.end()) OpenTrailer(title->second.trailerUrl, title->second.title);
+        } else if (command.name == "open-app-trailer") {
+            OpenAppTrailer();
+        } else if (command.name == "dev-patch-notes") {
+            ShowPatchNotesPopup();
+        } else if (command.name == "dev-copy-diagnostics") {
+            CopyDiagnosticsText();
+        } else if (command.name == "dev-replay-intro") {
+            const auto style = command.params.find("style");
+            ReplayFranchiseIntro(style == command.params.end() ? "mockingjay" : style->second);
         } else if (command.name == "event-rail") {
             for (const auto& rail : eventRails_) if (!rail.cards.empty()) { home_->FocusTitle(rail.cards.front().itemId, NowMs()); break; }
             dirty_ = true;
@@ -459,6 +473,8 @@ App::App(HINSTANCE instance, const AppOptions& options) : instance_(instance) {
             CheckForUpdates();
         } else if (command.name == "updates-download") {
             InstallNativeUpdate();
+        } else if (command.name == "update-now") {
+            ForceUpdateNow();
         } else if (command.name == "updates-auto") {
             prefs::CorePrefsPatch patch;
             patch.autoUpdate = !store_->CorePrefs().autoUpdate;
@@ -1851,10 +1867,33 @@ void App::MaybePromptRealDebrid() {
 }
 
 void App::UpdateSettingsDiagnostics() {
+    wchar_t executable[32768]{};
+    GetModuleFileNameW(nullptr, executable, 32768);
+    const auto installedPath = std::filesystem::path(executable).parent_path() / L"native-build.json";
+    const auto installed =
+        nlohmann::json::parse(util::StripBom(util::ReadTextFile(installedPath).value_or("{}")), nullptr, false);
+    const std::string installedCommit =
+        installed.is_object() ? installed.value("commit", std::string()) : std::string();
+    const std::string commit = installedCommit.empty() ? std::string(config::kBuildCommit) : installedCommit;
+
+    ui::VersionSummary summary;
+    summary.windowVersion = config::FormatWindowVersion(config::kCoreVersion, commit);
+    if (!engineVersion_.empty()) {
+        summary.engineVersion = "Engine v" + engineVersion_;
+        if (!engineCommit_.empty()) {
+            const std::string shortSha = engineCommit_.size() > 7 ? engineCommit_.substr(0, 7) : engineCommit_;
+            summary.engineVersion += " \xC2\xB7 build " + shortSha;
+        }
+    } else {
+        summary.engineVersion = std::string("Engine v") + config::kCoreVersion + " \xC2\xB7 checking\xE2\x80\xA6";
+    }
+    shell_->SetSettingsVersionSummary(summary);
+    if (engineVersion_.empty() && !engineVersionFetching_) RefreshEngineVersion();
+
     ui::DeveloperDiagnostics diag;
     diag.active = account_.usable && account_.developer;
     if (diag.active) {
-        diag.buildVersion = std::string("v") + config::kCoreVersion + " \xC2\xB7 Native Windows";
+        diag.buildVersion = summary.windowVersion + " \xC2\xB7 Native Windows";
         if (rdStatusLoaded_) {
             diag.rdTokenSource = rdStatus_.source.empty()
                                      ? (rdStatus_.configured ? "device" : "Not configured")
@@ -2056,11 +2095,11 @@ void App::RefreshLiveTv() {
     });
 }
 
-void App::ApplyLiveTv() {
-    std::erase_if(liveCatalog_.channels, [](const auto& channel) { return channel.id.rfind("live:free:", 0) == 0; });
+std::vector<catalog::LiveChannel> App::LoadFreeChannels() const {
     std::vector<catalog::LiveChannel> free;
     const auto data = content_->Read("free-channels");
-    if (data.contains("channels")) for (const auto& row : data["channels"]) {
+    if (!data.contains("channels")) return free;
+    for (const auto& row : data["channels"]) {
         const auto group = row.value("group", "Live");
         if (!content::AllowsLive(parental_, profileMaxAge_, group)) continue;
         catalog::LiveChannel channel;
@@ -2071,8 +2110,14 @@ void App::ApplyLiveTv() {
         channel.logo = row.value("logo", "");
         channel.source = "free";
         if (row.contains("geo") && row["geo"].is_string()) channel.geo = row["geo"].get<std::string>();
-        free.push_back(channel);
+        if (!channel.url.empty()) free.push_back(std::move(channel));
     }
+    return free;
+}
+
+void App::ApplyLiveTv() {
+    std::erase_if(liveCatalog_.channels, [](const auto& channel) { return channel.id.rfind("live:free:", 0) == 0; });
+    std::vector<catalog::LiveChannel> free = LoadFreeChannels();
     ui::LiveTvState state;
     state.freeChannels = free;
     state.loaded = liveLoaded_;
@@ -2285,15 +2330,17 @@ void App::RefreshStreamStatus() {
 
 void App::SetStreamLane(const std::string& lane) {
     const std::string previous = streamLane_;
-    streamLane_ = lane == "movies" || lane == "shows" || IsPageLane(lane) ? lane : "all";
+    streamLane_ = (lane == "hub" || lane == "movies" || lane == "shows" || IsPageLane(lane)) ? lane : "all";
     // Live TV reads its source again on each visit, so a login saved in between shows; the player opening over it
     // is not a new visit.
     if (previous == "live" && streamLane_ != "live") liveOpened_ = false;
-    if (!IsPageLane(streamLane_)) RebuildStream();
+    if (!IsPageLane(streamLane_) && streamLane_ != "hub") RebuildStream();
     RebuildHome();
     // Home, Movies and Series keep their own transition: the hero dissolve and the sliding tab glass. A page with no
     // hero fades its content in from the ground behind the chrome, with the same timing and easing.
-    if (previous != streamLane_ && (IsPageLane(previous) || IsPageLane(streamLane_))) home_->FadeContentIn(NowMs());
+    if (previous != streamLane_ && (IsPageLane(previous) || IsPageLane(streamLane_) || previous == "hub" || streamLane_ == "hub")) {
+        home_->FadeContentIn(NowMs());
+    }
 }
 
 void App::OpenStreamTab(const std::string& lane) {
@@ -2327,6 +2374,7 @@ std::vector<ui::TopButton> App::StreamNav(bool root) const {
     const std::string profileName = profiles::ActiveName(dataDir_).value_or("Profile");
     const auto on = [&](const std::string& lane) { return root && streamLane_ == lane; };
     return {
+        ui::TopButton{"Hub", tab("hub"), on("hub")},
         ui::TopButton{"Home", tab("all"), on("all")},
         ui::TopButton{"Movies", tab("movies"), on("movies")},
         ui::TopButton{"Series", tab("shows"), on("shows")},
@@ -2469,6 +2517,192 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
     }
     const std::optional<paths::fs::path> folder = profiles::ActiveFolder(dataDir_);
     view.topButtons = StreamNav(root);
+    if (root && streamLane_ == "hub") {
+        view.pageKey = "home:hub";
+        view.style = ui::SceneStyle::Hub;
+        SYSTEMTIME clock{};
+        GetLocalTime(&clock);
+        const char* part = clock.wHour < 12 ? "Good morning" : (clock.wHour < 18 ? "Good afternoon" : "Good evening");
+        const std::optional<std::string> profileName = profiles::ActiveName(dataDir_);
+        const std::string trimmed = profileName ? util::Trim(*profileName) : std::string();
+        view.hubGreeting = trimmed.empty() ? std::string(part) : (std::string(part) + ", " + trimmed);
+        view.hubSubtitle = "What are you in the mood for?";
+        view.pageButtons = {
+            ui::TopButton{"Browse Home", act("stream-tab", "all"), true},
+            ui::TopButton{"Movies", act("stream-tab", "movies"), false},
+            ui::TopButton{"Series", act("stream-tab", "shows"), false},
+            ui::TopButton{"Live TV", act("stream-tab", "live"), false},
+            ui::TopButton{"Search", act("stream-tab", "search"), false},
+        };
+        view.hubFooter = ui::TopButton{"My List", act("stream-tab", "library"), false};
+
+        // Featured hero caption & backdrop (matching Hub.tsx hero logic).
+        const catalog::ProgressMap progress = folder.has_value() ? catalog::ReadProgress(*folder) : nlohmann::json::object();
+        const std::vector<catalog::ProgressItem> watching =
+            catalog::PickContinueWatching(catalog::ApplyProgress(bundle_.catalog, progress), progress);
+        std::vector<catalog::MediaItem> watchingTitles;
+        for (const catalog::ProgressItem& entry : watching) {
+            if (Allowed(entry.item)) watchingTitles.push_back(entry.item);
+        }
+        std::vector<catalog::HomeRail> hubHeroRails =
+            catalog::BuildHomeRails(bundle_, shelves_, watchingTitles, {}, CurrentYear());
+        for (const auto& rail : hubHeroRails) {
+            for (const auto& item : rail.items) {
+                if (Allowed(item) && !item.backdrop.empty()) {
+                    view.hubHeroCaption = item.title;
+                    view.hubBackdropUrl = catalog::PreferBackdrop(item.id, item.backdrop, item.poster);
+                    break;
+                }
+            }
+            if (!view.hubBackdropUrl.empty()) break;
+        }
+        if (view.hubBackdropUrl.empty() && !watchingTitles.empty()) {
+            view.hubHeroCaption = watchingTitles.front().title;
+            view.hubBackdropUrl = catalog::PreferBackdrop(watchingTitles.front().id, watchingTitles.front().backdrop, watchingTitles.front().poster);
+        }
+        if (view.hubBackdropUrl.empty()) view.hubBackdropUrl = "asset:lighthouse.jpg";
+
+        // 1. Continue Watching
+        std::vector<catalog::ProgressItem> allowedWatching;
+        for (const catalog::ProgressItem& entry : watching) {
+            if (Allowed(entry.item)) allowedWatching.push_back(entry);
+        }
+        if (!allowedWatching.empty()) {
+            ui::RailData rail = ui::ContinueWatchingRail(allowedWatching);
+            rail.title = "Continue watching";
+            for (ui::CardData& card : rail.cards) {
+                if (card.itemId.find(':') != std::string::npos || card.posterUrl.find("/movie/") != std::string::npos) {
+                    ui::Command play;
+                    play.name = "player";
+                    play.modal = true;
+                    play.params["id"] = card.itemId;
+                    play.params["title"] = card.title;
+                    card.command = play;
+                }
+            }
+            view.rails.push_back(std::move(rail));
+        }
+
+        // 2. Apps & services
+        ui::RailData appsRail;
+        appsRail.id = "hub-apps";
+        appsRail.title = "Apps & services";
+        {
+            ui::CardData streamTile;
+            streamTile.itemId = "hub-app:tvm-stream";
+            streamTile.title = "TVM STREAM";
+            streamTile.subtitle = "Personal library";
+            streamTile.tileColor = ui::Rgb(0x182644);
+            streamTile.command = open("tvm-stream", false);
+            appsRail.cards.push_back(std::move(streamTile));
+        }
+        std::set<std::string> listedApps{"tvm-stream"};
+        for (const hubs::Spec& spec : hubs::Specs()) {
+            listedApps.insert(spec.id);
+            ui::CardData tile;
+            tile.itemId = "hub-app:" + spec.id;
+            tile.title = spec.wordmark;
+            tile.subtitle = spec.name;
+            tile.tileColor = ui::Rgb(spec.accent);
+            ui::Command cmd;
+            cmd.name = "service";
+            cmd.params["id"] = spec.id;
+            tile.command = cmd;
+            appsRail.cards.push_back(std::move(tile));
+        }
+        const auto servicesJson = content_->Read("services");
+        if (servicesJson.contains("services") && servicesJson["services"].is_array()) {
+            for (const auto& svc : servicesJson["services"]) {
+                const std::string id = svc.value("id", "");
+                if (id.empty() || listedApps.contains(id)) continue;
+                listedApps.insert(id);
+                ui::CardData tile;
+                tile.itemId = "hub-service:" + id;
+                tile.title = svc.value("name", id);
+                tile.subtitle = "Streaming service";
+                tile.tileColor = ui::Rgb(0x282327);
+                ui::Command cmd;
+                cmd.name = "service-watch";
+                cmd.action = true;
+                cmd.params["id"] = id;
+                tile.command = cmd;
+                appsRail.cards.push_back(std::move(tile));
+            }
+        }
+        {
+            ui::CardData allApps;
+            allApps.itemId = "hub-apps-all";
+            allApps.title = "All apps \xE2\x80\xBA";
+            allApps.subtitle = "Open directory";
+            allApps.tileColor = ui::Rgb(0x1D222D);
+            allApps.command = open("apps", false);
+            appsRail.cards.push_back(std::move(allApps));
+        }
+        view.rails.push_back(std::move(appsRail));
+
+        // 3. Free live TV (6 channels: bbc-one, bbc-two, bbc-news, cbbc, dw-english, weathernation)
+        std::vector<catalog::LiveChannel> free = LoadFreeChannels();
+        if (!free.empty()) {
+            // Keep free channels registered in liveCatalog_ so clicking a channel on Hub plays immediately.
+            std::erase_if(liveCatalog_.channels, [](const auto& ch) { return ch.id.rfind("live:free:", 0) == 0; });
+            liveCatalog_.channels.insert(liveCatalog_.channels.begin(), free.begin(), free.end());
+
+            static constexpr std::array<const char*, 6> kPopular = {
+                "bbc-one", "bbc-two", "bbc-news", "cbbc", "dw-english", "weathernation"
+            };
+            std::vector<catalog::LiveChannel> picked;
+            std::set<std::string> usedIds;
+            for (const char* slug : kPopular) {
+                const std::string want = std::string("live:free:") + slug;
+                for (const auto& ch : free) {
+                    if (ch.id == want && usedIds.insert(ch.id).second) picked.push_back(ch);
+                }
+            }
+            for (const auto& ch : free) {
+                if (picked.size() >= 6) break;
+                if (usedIds.insert(ch.id).second) picked.push_back(ch);
+            }
+            if (!picked.empty()) {
+                ui::RailData liveRail;
+                liveRail.id = "hub-live";
+                liveRail.title = "Free live TV";
+                for (const auto& ch : picked) {
+                    ui::CardData card;
+                    card.itemId = ch.id;
+                    card.title = ch.name;
+                    card.posterUrl = ch.logo.value_or("");
+                    card.logo = true;
+                    card.subtitle = "Free live channel";
+                    ui::Command play;
+                    play.name = "player";
+                    play.modal = true;
+                    play.params["id"] = ch.id;
+                    play.params["title"] = ch.name;
+                    card.command = play;
+                    liveRail.cards.push_back(std::move(card));
+                }
+                ui::CardData guideCard;
+                guideCard.itemId = "hub-guide-open";
+                guideCard.title = "Open guide \xE2\x80\xBA";
+                guideCard.subtitle = "All channels";
+                guideCard.tileColor = ui::Rgb(0x1D222D);
+                guideCard.command = act("stream-tab", "live");
+                liveRail.cards.push_back(std::move(guideCard));
+                view.rails.push_back(std::move(liveRail));
+            }
+        }
+
+        const double now = NowMs();
+        const bool first = !scene.FocusedKey().has_value() || scene.HeroCount() > 0;
+        scene.SetHeroes({}, now);
+        scene.SetView(view, now);
+        if (first || !scene.FocusedKey().has_value()) scene.FocusItem("page:0", now, true);
+        scene.SetImageReady([this](const std::string& url) { return artwork_->Lookup(url).has_value(); });
+        QueueArtwork(view.hubBackdropUrl, true);
+        QueueRailArtwork(view.rails);
+        dirty_ = true;
+        return;
+    }
     if (!root) {
         // A TVM Stream page pushed over Home marks its own lane.
         for (ui::TopButton& button : view.topButtons) {
@@ -2530,6 +2764,28 @@ void App::BuildBrowse(ui::Scene& scene, bool root) {
             ui::RailData rail = ui::ContinueWatchingRail(watchingLane);
             rail.title = "Continue Watching";
             view.rails.push_back(std::move(rail));
+        }
+        {
+            ui::RailData featured;
+            featured.id = "featured";
+            featured.title = "Featured";
+            std::set<std::string> seenFeatured;
+            if (!watchingLane.empty()) seenFeatured.insert(watchingLane.front().item.id);
+            for (const catalog::HomeRail& src : catalogRails) {
+                for (const catalog::MediaItem& item : src.items) {
+                    if (!inLane(item) || !seenFeatured.insert(item.id).second) continue;
+                    const std::string art = catalog::PreferBackdrop(item.id, item.backdrop, item.poster);
+                    if (art.empty()) continue;
+                    ui::CardData card = ui::CardFromMedia(item);
+                    card.posterUrl = art;
+                    card.backdropUrl = art;
+                    card.landscape = true;
+                    featured.cards.push_back(std::move(card));
+                    if (featured.cards.size() >= 8) break;
+                }
+                if (featured.cards.size() >= 8) break;
+            }
+            if (!featured.cards.empty()) view.rails.push_back(std::move(featured));
         }
         if (root && streamLane_ != "movies" && !upcomingRail_.cards.empty()) view.rails.push_back(upcomingRail_);
         if (root && streamLane_ == "all" && store_->SpotlightEvents()) {
@@ -3510,6 +3766,29 @@ void App::SyncPlayer() {
     const auto titleParam = entry.params.find("title");
     playerTitleHint_ = titleParam == entry.params.end() ? "" : titleParam->second;
     playerRetryAt_.reset();
+    playerIntroOnly_ = false;
+    const auto replay = entry.params.find("replayIntro");
+    if (replay != entry.params.end()) {
+        playerIntroOnly_ = true;
+        playerView_ = ui::PlayerView{};
+        playerView_.phase = ui::PlayerView::Phase::Resolving;
+        const std::string want = replay->second;
+        ui::FranchiseIntroPlan chosen = want == "doom"
+            ? ui::FranchiseIntroPlan{"avengers-doomsday", "avengers-doomsday", "doom", "#3FA34D", "#1E6B2A", "Avengers: Doomsday", 3800.0}
+            : ui::FranchiseIntroPlan{"hunger-games", "sunrise-on-the-reaping", "mockingjay", "#E8A33D", "#FF6A2A", "Catching Fire", 3800.0};
+        for (const ui::FranchiseIntroSpec& spec : ui::ParseFranchiseIntros(content_->Read("intros"))) {
+            if (spec.style == want) {
+                chosen = ui::FranchiseIntroPlan{spec.id, spec.event, spec.style, spec.accent, spec.glow,
+                                                want == "doom" ? "Avengers: Doomsday" : "Catching Fire", spec.durationMs};
+                break;
+            }
+        }
+        playerView_.title = chosen.title;
+        shell_->SetPlayerView(playerView_, NowMs());
+        if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->StartIntro(chosen, NowMs());
+        dirty_ = true;
+        return;
+    }
     playerVersionId_ = entry.params.contains("versionId") ? entry.params.at("versionId") : "";
     playerTrailerUrl_ = entry.params.contains("trailer") ? entry.params.at("trailer") : "";
     playerYtdlpPath_ = entry.params.contains("ytdlp") ? entry.params.at("ytdlp") : "";
@@ -3540,6 +3819,8 @@ void App::StartPlayback() {
         playerScreenHeight_ = static_cast<int>(display.dmPelsHeight);
     playerHlsSwitching_ = false; playerStallSince_ = 0; playerHealthySince_ = 0;
     const int generation = ++playerGeneration_;
+    pendingIntroResolution_.reset();
+    if (auto* player = shell_->ActivePlayer()) player->ResetIntro();
     playerSegments_ = {}; segmentSession_ = {}; pendingSubtitles_.clear(); externalSubtitles_.clear();
     subtitlePreferenceApplied_ = false; pendingAudioTrackId_.reset(); pendingAudioWaitTicks_ = 0;
     subtitleChoice_.clear(); nextCountdown_ = {};
@@ -3593,6 +3874,13 @@ void App::StartPlayback() {
     playerView_.volume = playerVolume_;
     playerView_.muted = playerMuted_;
     shell_->SetPlayerView(playerView_, NowMs());
+    if (!playerLive_ && playerTrailerUrl_.empty() && playerPrefs_.Enabled("franchiseIntros")) {
+        if (const auto plan = ui::PlanFranchiseIntro(content_->Read("intros"), playerId_, title, playedIntros_);
+            plan.has_value()) {
+            playedIntros_.insert(plan->id);
+            if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->StartIntro(*plan, NowMs());
+        }
+    }
     dirty_ = true;
 
     if (!playerTrailerUrl_.empty()) {
@@ -3659,6 +3947,42 @@ void App::FinishResolve(int generation, const playback::Resolution& resolution) 
         return;
     }
 
+    const std::optional<std::filesystem::path> executable = mpv::FindMpvExecutable(util::ProcessEnvironment());
+    if (!executable.has_value()) {
+        ShowPlayerError("Playback stopped",
+                        "Native playback is not installed on this device. Install mpv or set TVM_MPV_PATH, then retry.");
+        return;
+    }
+
+    if (ui::PlayerScreen* player = shell_->ActivePlayer();
+        player != nullptr && player->IntroActive() && !player->IntroReleased()) {
+        pendingIntroResolution_ = resolution;
+        pendingIntroGeneration_ = generation;
+        dirty_ = true;
+        return;
+    }
+
+    LaunchPlayback(generation, resolution);
+}
+
+void App::MaybeLaunchPendingIntroPlayback() {
+    if (!playerOpen_ || !pendingIntroResolution_.has_value() || pendingIntroGeneration_ != playerGeneration_) return;
+    ui::PlayerScreen* player = shell_->ActivePlayer();
+    if (player != nullptr && player->IntroActive() && !player->IntroReleased()) return;
+    const playback::Resolution resolution = *pendingIntroResolution_;
+    pendingIntroResolution_.reset();
+    LaunchPlayback(playerGeneration_, resolution);
+}
+
+void App::SkipPlayerIntro() {
+    if (ui::PlayerScreen* player = shell_->ActivePlayer()) {
+        if (player->SkipIntro(NowMs())) dirty_ = true;
+    }
+    MaybeLaunchPendingIntroPlayback();
+}
+
+void App::LaunchPlayback(int generation, const playback::Resolution& resolution) {
+    if (generation != playerGeneration_ || !playerOpen_) return;
     const std::optional<std::filesystem::path> executable = mpv::FindMpvExecutable(util::ProcessEnvironment());
     if (!executable.has_value()) {
         ShowPlayerError("Playback stopped",
@@ -3824,7 +4148,10 @@ void App::OnPlayerState(const mpv::State& state) {
         PlayNextEpisode(); return;
     }
     // A picture means the stream works, so the retries start again from nothing.
-    if (state.started) playerRecoveries_ = 0;
+    if (state.started) {
+        playerRecoveries_ = 0;
+        if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->SetIntroPlaybackReady(true, NowMs());
+    }
     shell_->SetPlayerView(playerView_, NowMs());
     SavePlayerProgress(false);
     dirty_ = true;
@@ -3852,6 +4179,8 @@ void App::OnPlayerError(const std::string& message) {
 }
 
 void App::ShowPlayerError(const std::string& title, const std::string& body) {
+    pendingIntroResolution_.reset();
+    if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->ResetIntro();
     SavePlayerProgress(true);
     mpv_->Stop();
     overlay_->Show(false);
@@ -3886,6 +4215,9 @@ void App::SavePlayerProgress(bool force) {
 }
 
 void App::StopPlayback() {
+    playerIntroOnly_ = false;
+    pendingIntroResolution_.reset();
+    if (ui::PlayerScreen* player = shell_->ActivePlayer()) player->ResetIntro();
     SavePlayerProgress(true);
     ++playerGeneration_;
     mpv_->Stop();
@@ -3981,7 +4313,10 @@ void App::ToggleFullscreen() {
 
 void App::ApplyPlayerAction(const ui::Command& command) {
     const double now = NowMs();
-    if (command.name == "player-close") {
+    if (command.name == "player-intro-skip") {
+        SkipPlayerIntro();
+        return;
+    } else if (command.name == "player-close") {
         shell_->Back(now);
     } else if (command.name == "player-retry") {
         if (playerView_.errorNextChannel) {
@@ -4285,6 +4620,7 @@ void App::PlayNextEpisode() {
                     : (play.has_value() ? play->imdb : playerId_) + ":" + std::to_string(next.season.value_or(1)) + ":" +
                           std::to_string(next.episode.value_or(1));
     playerRetryAt_.reset();
+    playerIntroOnly_ = false;
     playerRecoveries_ = 0;
     streamChoices_.clear();
     playerManualHeight_ = 0;
@@ -4374,6 +4710,10 @@ bool App::HandleScrub(UINT message, POINT point) {
 
 bool App::HandlePlayerKey(WPARAM virtualKey, LPARAM flags) {
     ui::PlayerScreen* player = shell_->ActivePlayer();
+    if (player != nullptr && player->IntroActive() && !player->IntroReleased()) {
+        if (!(flags & (1 << 30))) SkipPlayerIntro();
+        return true;
+    }
     if (player == nullptr || player->view().phase != ui::PlayerView::Phase::Playing) return false;
     const double now = NowMs();
     const char* tool = nullptr;

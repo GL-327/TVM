@@ -15,17 +15,17 @@ html[data-glass='default'],
 html[data-theme='dark'],
 html[data-theme='dark'][data-glass='default'] {
   --tvm-glass27-accent: #2f6bff;
-  --tvm-glass27-blur-chrome: blur(14px) saturate(180%) brightness(1.08);
-  --tvm-glass27-blur-sheet: blur(26px) saturate(180%) brightness(1.08);
-  --tvm-glass27-surface: rgba(255, 255, 255, 0.09);
-  --tvm-glass27-surface-sheet: rgba(16, 20, 30, 0.52);
-  --tvm-glass27-surface-tint: rgba(255, 255, 255, 0.09);
-  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.28);
-  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.60);
-  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.50);
-  --tvm-glass27-rim-side: rgba(255, 255, 255, 0.30);
-  --tvm-glass27-rim-bottom: rgba(255, 255, 255, 0.10);
-  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.22);
+  --tvm-glass27-blur-chrome: blur(14px) saturate(210%) brightness(1.09);
+  --tvm-glass27-blur-sheet: blur(24px) saturate(215%) brightness(1.09);
+  --tvm-glass27-surface: rgba(255, 255, 255, 0.08);
+  --tvm-glass27-surface-sheet: rgba(12, 16, 26, 0.34);
+  --tvm-glass27-surface-tint: rgba(255, 255, 255, 0.08);
+  --tvm-glass27-specular-top-left: rgba(255, 255, 255, 0.36);
+  --tvm-glass27-specular-arc: rgba(255, 255, 255, 0.72);
+  --tvm-glass27-rim-top: rgba(255, 255, 255, 0.62);
+  --tvm-glass27-rim-side: rgba(145, 210, 255, 0.38);
+  --tvm-glass27-rim-bottom: rgba(255, 165, 215, 0.18);
+  --tvm-glass27-dark-inner: rgba(0, 0, 0, 0.14);
   --tvm-glass27-thumb-tint: rgba(255, 255, 255, 0.22);
   --tvm-glass27-thumb-rim: rgba(255, 255, 255, 0.70);
   --tvm-glass27-thumb-specular: rgba(255, 255, 255, 0.40);

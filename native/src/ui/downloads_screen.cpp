@@ -491,8 +491,8 @@ void DownloadsScreen::PaintJob(Painter& painter, const DownloadJobView& job, con
 void DownloadsScreen::Paint(Painter& painter) const {
     if (width_ <= 0.0 || height_ <= 0.0) return;
     const Metrics metrics{ViewportRem(width_, height_)};
-    // The page it was opened over dims; the sheet floats over it.
-    painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0, Rgb(0x000000, 0.62));
+    // The page / stage behind it softens slightly; the frosted PyGlass sheet floats over it.
+    painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0, Rgb(0x03060E, 0.28));
     const Layout_ layout = Arrange();
     const Box& sheet = layout.sheet;
     const double radius = Rem(kRadiusRem);

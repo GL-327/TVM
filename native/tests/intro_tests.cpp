@@ -8,6 +8,7 @@
 #include "harness.h"
 #include "motion/preferences.h"
 #include "ui/intro.h"
+#include "ui/franchise_intro.h"
 #include "ui/logo_reveal.h"
 #include "ui/painter.h"
 
@@ -481,6 +482,105 @@ TEST(skipping_the_reveal_fades_it_out_and_reduced_motion_shows_the_last_frame) {
     RevealPainter last = RevealFrame(still, 10.0);
     // Three letters, the two sweeps, the upper arc and the star are all there.
     REQUIRE(last.polygons >= 7);
+}
+
+TEST(franchise_intro_matches_by_imdb_and_regex_and_plays_once_per_session) {
+    const auto catalog = nlohmann::json::parse(R"({
+        "schema": 1,
+        "intros": [
+            {
+                "id": "hunger-games",
+                "event": "sunrise-on-the-reaping",
+                "style": "mockingjay",
+                "imdbIds": ["tt1951264"],
+                "titlePattern": "\\b(hunger games|mockingjay)\\b",
+                "accent": "#E8A33D",
+                "glow": "#FF6A2A",
+                "durationMs": 3800,
+                "titles": { "tt1951264": "Catching Fire" }
+            },
+            {
+                "id": "avengers-doomsday",
+                "event": "avengers-doomsday",
+                "style": "doom",
+                "imdbIds": ["tt21357150"],
+                "titlePattern": "\\bavengers\\b",
+                "accent": "#3FA34D",
+                "glow": "#1E6B2A",
+                "durationMs": 3800,
+                "titles": { "tt21357150": "Avengers: Doomsday" }
+            }
+        ]
+    })");
+    std::set<std::string> played;
+    const auto hg = tvm::ui::PlanFranchiseIntro(catalog, "tt1951264:1:1", "Something", played);
+    REQUIRE(hg.has_value());
+    REQUIRE_EQ(hg->id, std::string("hunger-games"));
+    REQUIRE_EQ(hg->title, std::string("Catching Fire"));
+
+    played.insert(hg->id);
+    REQUIRE(!tvm::ui::PlanFranchiseIntro(catalog, "tt9999999", "The Hunger Games: Mockingjay", played).has_value());
+
+    const auto doom = tvm::ui::PlanFranchiseIntro(catalog, "tt0000001", "Avengers: Endgame (2019)", played);
+    REQUIRE(doom.has_value());
+    REQUIRE_EQ(doom->style, std::string("doom"));
+    REQUIRE_EQ(doom->title, std::string("Avengers: Endgame"));
+}
+
+TEST(franchise_intro_draws_both_scenes_holds_and_skips_cleanly) {
+    class ScenePainter final : public tvm::ui::Painter {
+    public:
+        void Clear(Color) override {}
+        void FillRoundRect(const Box&, double, Color) override {}
+        void StrokeRoundRect(const Box&, double, double, Color) override {}
+        bool Image(const Box&, const std::string&, double) override { return true; }
+        bool ImageFaded(const Box&, const std::string&, double, double, double, double) override { return true; }
+        void Paragraph(const Box&, std::string_view, const TextStyle&, Color) override {}
+        void Text(const Box&, std::string_view t, const TextStyle&, Color) override {
+            texts.push_back(std::string(t));
+        }
+        void PushClip(const Box&) override {}
+        void PopClip() override {}
+        void FillPolygon(const std::vector<tvm::ui::Point>&, Color) override { ++polygons; }
+        void FillPolygonLinear(const std::vector<tvm::ui::Point>&, double, double, double, double,
+                               const std::vector<tvm::ui::GradientStop>&) override { ++polygons; }
+        void StrokePolyline(const std::vector<tvm::ui::Point>&, double, Color, bool) override { ++polylines; }
+        std::vector<std::string> texts;
+        int polygons = 0;
+        int polylines = 0;
+    };
+
+    tvm::ui::FranchiseIntro intro(Auto());
+    intro.Start({"hunger-games", "sunrise", "mockingjay", "#E8A33D", "#FF6A2A", "Catching Fire", 3200.0}, 0.0);
+    intro.Tick(2600.0);
+    REQUIRE(intro.Active());
+    REQUIRE(!intro.Released());
+    ScenePainter hgPaint;
+    intro.Paint(hgPaint, 1920.0, 1080.0);
+    REQUIRE(hgPaint.polygons > 10);
+    REQUIRE(hgPaint.polylines > 10);
+    REQUIRE(std::find(hgPaint.texts.begin(), hgPaint.texts.end(), "THE HUNGER GAMES") != hgPaint.texts.end());
+
+    // Holds after durationMs until playback is ready, then crossfades out.
+    intro.Tick(3300.0);
+    REQUIRE(intro.Released());
+    REQUIRE(intro.Active());
+    intro.SetPlaybackReady(true, 3300.0);
+    intro.Tick(3800.0);
+    REQUIRE(!intro.Active());
+
+    // Skip immediately releases and fades out.
+    intro.Start({"avengers-doomsday", "doomsday", "doom", "#3FA34D", "#1E6B2A", "Avengers: Doomsday", 3800.0}, 4000.0);
+    intro.Tick(6600.0);
+    ScenePainter doomPaint;
+    intro.Paint(doomPaint, 1920.0, 1080.0);
+    REQUIRE(doomPaint.polygons > 10);
+    REQUIRE(doomPaint.polylines > 10);
+    REQUIRE(std::find(doomPaint.texts.begin(), doomPaint.texts.end(), "DOOMSDAY") != doomPaint.texts.end());
+    intro.Skip(6600.0);
+    REQUIRE(intro.Released());
+    intro.Tick(6900.0);
+    REQUIRE(!intro.Active());
 }
 
 }  // namespace

@@ -78,9 +78,12 @@ bool Shell::Animating() const {
     for (const auto& [key, screen] : screens_) {
         if (screen->Animating()) return true;
     }
-    // The stage moves on its own clock, but only while a screen shows it.
-    const Screen& visible = *screens_.at(nav::VisibleScreen(stack_).key);
-    return visible.ShowsStage() && stage_.Moving();
+    // The stage moves on its own clock, while the visible screen or an open modal shows it.
+    if (screens_.at(nav::VisibleScreen(stack_).key)->ShowsStage() && stage_.Moving()) return true;
+    for (const nav::ViewEntry& modal : nav::OpenModals(stack_)) {
+        if (screens_.at(modal.key)->ShowsStage() && stage_.Moving()) return true;
+    }
+    return false;
 }
 
 void Shell::Paint(Painter& painter) const {
@@ -95,13 +98,20 @@ void Shell::Paint(Painter& painter) const {
     // The screen under any modals is painted first, then each modal in order. A screen that shows the stage
     // lets the stage paint first, behind it.
     const nav::ViewEntry& visible = nav::VisibleScreen(stack_);
-    if (screens_.at(visible.key)->ShowsStage()) {
+    const bool visibleStage = screens_.at(visible.key)->ShowsStage();
+    if (visibleStage) {
         // The ground under the stage is the app's own background, `.app` in the dark theme, which is black.
         painter.Clear(tokens::kBackgroundDeep);
         stage_.Paint(painter, width_, height_, clock_);
     }
     screens_.at(visible.key)->Paint(painter);
+    bool modalStageDrawn = visibleStage;
     for (const nav::ViewEntry& modal : nav::OpenModals(stack_)) {
+        if (!modalStageDrawn && screens_.at(modal.key)->ShowsStage()) {
+            painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0, Rgb(0x03060E, 0.68));
+            stage_.Paint(painter, width_, height_, clock_);
+            modalStageDrawn = true;
+        }
         screens_.at(modal.key)->Paint(painter);
     }
     if (const auto back = BackBox()) controls::PaintBackButton(painter, *back, backFocused_);
@@ -389,9 +399,26 @@ void Shell::SetPlayerView(const PlayerView& view, double nowMs) {
 }
 
 void Shell::SetDeveloperDiagnostics(const DeveloperDiagnostics& diag) {
+    devDiag_ = diag;
     for (auto& [key, screen] : screens_) {
         auto* settings = dynamic_cast<SettingsScreen*>(screen.get());
         if (settings != nullptr) settings->SetDeveloperDiagnostics(diag);
+    }
+}
+
+void Shell::SetSettingsVersionSummary(const VersionSummary& summary) {
+    versionSummary_ = summary;
+    for (auto& [key, screen] : screens_) {
+        auto* settings = dynamic_cast<SettingsScreen*>(screen.get());
+        if (settings != nullptr) settings->SetVersionSummary(summary);
+    }
+}
+
+void Shell::SetManualUpdateState(const ManualUpdateState& state) {
+    manualUpdate_ = state;
+    for (auto& [key, screen] : screens_) {
+        auto* settings = dynamic_cast<SettingsScreen*>(screen.get());
+        if (settings != nullptr) settings->SetManualUpdateState(state);
     }
 }
 
@@ -533,6 +560,11 @@ std::unique_ptr<Screen> Shell::MakeScreen(const nav::ViewEntry& entry) {
         auto settings = std::make_unique<SettingsScreen>(store_, motion_);
         settings->SetHomeSectionLabels(homeLabels_);
         settings->SetCoreSettings(coreSettings_);
+        settings->SetDeveloperDiagnostics(devDiag_);
+        if (!versionSummary_.windowVersion.empty() || !versionSummary_.engineVersion.empty()) {
+            settings->SetVersionSummary(versionSummary_);
+        }
+        settings->SetManualUpdateState(manualUpdate_);
         settings->SetPrefsSink(prefsSink_);
         return settings;
     }

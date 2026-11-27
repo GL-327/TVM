@@ -204,13 +204,13 @@ void Heading::Paint(Painter& painter, const Metrics& metrics) const {
 // ------------------------------------------------------------------- Card
 
 Size Card::Measure(double /*availableWidth*/, const Metrics& metrics) {
-    if (logo_) {
+    if (logo_ || tile_.has_value()) {
         return Size{metrics.Rem(kChannelWidthRem), metrics.Rem(kChannelHeightRem) + metrics.Rem(kCardLabelGapRem) +
                                                        metrics.Rem(kCardLabelHeightRem) * (subtitle_.empty() ? 1.0 : 1.8)};
     }
     if (feature_) return Size{metrics.Rem(30.0), metrics.Rem(16.9)};
     if (category_) return Size{metrics.Rem(kCategoryWidthRem), metrics.Rem(kCategoryHeightRem)};
-    if (progress_.has_value()) {
+    if (landscape_ || progress_.has_value()) {
         return Size{metrics.Rem(kLandscapeWidthRem), metrics.Rem(kLandscapeHeightRem)};
     }
     return Size{metrics.Rem(kPosterWidthRem),
@@ -246,6 +246,44 @@ void Card::Paint(Painter& painter, const Metrics& metrics) const {
 void Card::PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) const {
     const double focus = ownsFocus ? std::clamp(focusAmount_, 0.0, 1.0) : 0.0;
     const bool focused = ownsFocus && focused_;
+    if (tile_.has_value()) {
+        const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
+        const double artHeight = metrics.Rem(kChannelHeightRem);
+        const double scale = 1.0 + (kPosterFocusScale - 1.0) * motionFocus;
+        const double width = box_.width * scale;
+        const double height = artHeight * scale;
+        const double bottom = box_.y + artHeight - metrics.Rem(kPosterLiftRem) * motionFocus;
+        const Box tile = SnappedArt(Box{box_.CenterX() - width / 2.0, bottom - height, width, height}, focus);
+        const double radius = metrics.Rem(kPosterRadiusRem);
+        const Color base = *tile_;
+        const Color top = Mix(base, Rgb(0xFFFFFF), 0.14);
+        painter.FillRoundRectLinear(tile, radius, tile.x, tile.y, tile.x, tile.Bottom(),
+                                    {GradientStop{0.0, top}, GradientStop{1.0, base}});
+        const double lum = 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b;
+        const Color ink = lum > 0.58 ? Rgb(0x111318) : Rgb(0xFFFFFF);
+        const TextStyle wordStyle{metrics.Rem(1.32), true, 800};
+        const double textWidth = std::min(tile.width - metrics.Rem(1.4), painter.MeasureText(title_, wordStyle));
+        painter.Text(Box{tile.CenterX() - textWidth / 2.0, tile.y, textWidth + 4.0, tile.height},
+                     title_, wordStyle, ink);
+        GlassStyle glass;
+        glass.kind = GlassKind::Card;
+        glass.focused = focused;
+        glass.focusAmount = focus;
+        glass.reduceTransparency = tokens::reduceTransparency;
+        glass.rimOnly = true;
+        glass.border = Rgb(0xFFFFFF, 0.22);
+        glass.ringColor = kPosterRing;
+        glass.ringWidth = metrics.Rem(kPosterRingWidthRem);
+        glass.ringOutset = metrics.Rem(kPosterRingOffsetRem) + glass.ringWidth / 2.0;
+        painter.Glass(tile, radius, glass);
+        if (!subtitle_.empty()) {
+            const Box label{box_.x, box_.y + artHeight + metrics.Rem(kCardLabelGapRem), box_.width,
+                            metrics.Rem(kCardLabelHeightRem)};
+            painter.Text(label, subtitle_, TextStyle{metrics.Rem(kCardTitleRem * 0.88), false, 500},
+                         Mix(tokens::kTextMuted, tokens::kText, focus));
+        }
+        return;
+    }
     if (logo_) {
         // The channel tile grows from its foot and lifts as a poster does, over a dark plate that keeps any logo
         // (white, black or coloured) readable, with the existing card glass for its rim and focus.
@@ -299,7 +337,7 @@ void Card::PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) c
         return;
     }
     const double motionFocus = tokens::reduceMotion ? 0.0 : focus;
-    const bool landscape = progress_.has_value() || feature_ || category_;
+    const bool landscape = landscape_ || progress_.has_value() || feature_ || category_;
     const double artHeight = landscape ? box_.height : metrics.Rem(kPosterHeightRem);
     const double radius = metrics.Rem(landscape ? kLandscapeRadiusRem : kPosterRadiusRem);
 
@@ -358,37 +396,45 @@ void Card::PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) c
         }
         return;
     }
-    if (progress_.has_value()) {
-        // Continue Watching landscape card: title centred on placeholder or over bottom scrim, plus inset progress bar.
-        const TextStyle titleStyle{metrics.Rem(1.375), false, 500};
-        const double titleWidth = painter.MeasureText(title_, titleStyle);
+    if (landscape_ || progress_.has_value()) {
+        // Landscape card (Featured or Continue Watching): title over warm bottom scrim, plus progress bar when present.
+        const TextStyle titleStyle{metrics.Rem(1.125), true, 650};
         if (!hasArt) {
-            const double tx = std::max(poster.x + metrics.Rem(1.0), poster.CenterX() - titleWidth / 2.0);
-            painter.Text(Box{tx, poster.y, std::max(0.0, poster.Right() - tx - metrics.Rem(1.0)), poster.height * 0.88},
-                         title_, titleStyle, Mix(tokens::kTextMuted, tokens::kText, focus));
+            const double tx = metrics.Rem(1.1);
+            painter.Paragraph(Box{poster.x + tx, poster.y + poster.height * 0.28,
+                                  std::max(0.0, poster.width - 2.0 * tx), poster.height * 0.48},
+                              title_, TextStyle{metrics.Rem(1.3), true, 600},
+                              Mix(tokens::kTextMuted, tokens::kText, focus));
         } else {
-            // Subtle bottom scrim so the progress bar and title remain legible over bright frames. It covers the
-            // picture's whole lower 36%, right to its edges and foot, and is rounded with the picture: it used to stop
-            // 2 px short (a bright strip of picture showed below it) and its square corners poked out of the curve.
-            const double scrimTop = poster.Bottom() - poster.height * 0.36;
+            const double scrimTop = poster.Bottom() - poster.height * 0.44;
             painter.FillRoundRectLinear(poster, radius, poster.x, scrimTop, poster.x, poster.Bottom(),
                                         {GradientStop{0.0, Rgb(0x000000, 0.0)},
-                                         GradientStop{1.0, Rgb(0x04080E, 0.68)}});
-            painter.Text(Box{poster.x + metrics.Rem(kProgressInsetXRem),
-                             poster.Bottom() - metrics.Rem(kProgressInsetBottomRem + 2.1),
-                             poster.width - 2.0 * metrics.Rem(kProgressInsetXRem), metrics.Rem(1.6)},
-                         title_, TextStyle{metrics.Rem(1.125), true, 600}, Rgb(0xF5F7FA, 0.92));
+                                         GradientStop{1.0, Rgb(0x0C0805, 0.86)}});
+            const double insetX = metrics.Rem(kProgressInsetXRem);
+            const double titleBottom = metrics.Rem(progress_.has_value() ? (kProgressInsetBottomRem + 0.55) : 0.75);
+            const double titleH = metrics.Rem(2.9);
+            const Box titleBox{poster.x + insetX, poster.Bottom() - titleBottom - titleH,
+                               std::max(0.0, poster.width - 2.0 * insetX), titleH};
+            if (painter.MeasureText(title_, titleStyle) > titleBox.width) {
+                painter.Paragraph(titleBox, title_, titleStyle, Rgb(0xF5F7FA, 0.95));
+            } else {
+                painter.Text(Box{titleBox.x, poster.Bottom() - titleBottom - metrics.Rem(1.65),
+                                 titleBox.width, metrics.Rem(1.65)},
+                             title_, titleStyle, Rgb(0xF5F7FA, 0.95));
+            }
         }
-        const double barHeight = metrics.Rem(kProgressBarRem);
-        const double insetX = metrics.Rem(kProgressInsetXRem);
-        const double insetBottom = metrics.Rem(kProgressInsetBottomRem);
-        const Box track{poster.x + insetX, poster.Bottom() - insetBottom - barHeight,
-                        std::max(0.0, poster.width - 2.0 * insetX), barHeight};
-        painter.FillRoundRect(track, barHeight / 2.0, kProgressTrack);
-        const double watched = std::clamp(*progress_, 0.0, 1.0);
-        if (watched > 0.0) {
-            painter.FillRoundRect(Box{track.x, track.y, track.width * watched, track.height}, barHeight / 2.0,
-                                  Rgb(0xF5F7FA, 0.96));
+        if (progress_.has_value()) {
+            const double barHeight = metrics.Rem(kProgressBarRem);
+            const double insetX = metrics.Rem(kProgressInsetXRem);
+            const double insetBottom = metrics.Rem(kProgressInsetBottomRem);
+            const Box track{poster.x + insetX, poster.Bottom() - insetBottom - barHeight,
+                            std::max(0.0, poster.width - 2.0 * insetX), barHeight};
+            painter.FillRoundRect(track, barHeight / 2.0, kProgressTrack);
+            const double watched = std::clamp(*progress_, 0.0, 1.0);
+            if (watched > 0.0) {
+                painter.FillRoundRect(Box{track.x, track.y, track.width * watched, track.height}, barHeight / 2.0,
+                                      Rgb(0xF5F7FA, 0.96));
+            }
         }
         return;
     }
@@ -398,8 +444,8 @@ void Card::PaintCopy(Painter& painter, const Metrics& metrics, bool ownsFocus) c
                     metrics.Rem(kCardLabelHeightRem)};
     const TextStyle titleStyle{metrics.Rem(kCardTitleRem), false};
     const Color titleInk = Mix(tokens::kTextMuted, tokens::kText, focus);
-    if (focused && subtitle_.empty() && painter.MeasureText(title_, titleStyle) > label.width) {
-        painter.Paragraph(Box{label.x, label.y, label.width, metrics.Rem(kCardLabelHeightRem * 1.9)},
+    if (subtitle_.empty() && painter.MeasureText(title_, titleStyle) > label.width) {
+        painter.Paragraph(Box{label.x, label.y, label.width, metrics.Rem(kCardLabelHeightRem * 1.95)},
                           title_, titleStyle, titleInk);
     } else {
         painter.Text(label, title_, titleStyle, titleInk);

@@ -236,6 +236,11 @@ std::string RailKey(std::size_t rail) {
 constexpr const char* kPageKey = "page";
 constexpr const char* kSearchFieldKey = "search-field";
 constexpr const char* kPageButtonPrefix = "page:";
+constexpr const char* kHubFooterKey = "hub-watchlist";
+constexpr double kHubHeroGapRem = 0.85;
+constexpr double kHubShortcutHeightRem = 3.35;
+constexpr double kHubShortcutGapRem = 0.75;
+constexpr double kHubBottomMarginRem = 4.6;
 // The page header under the stream chrome.
 constexpr double kLaneKickerRem = 0.8125;
 constexpr double kLaneHeadingRem = 2.25;
@@ -332,6 +337,11 @@ void Scene::SetView(const SceneView& view, double nowMs) {
     heading_ = view.heading;
     brandWord_ = view.brandWord;
     brandColor_ = view.brandColor;
+    hubGreeting_ = view.hubGreeting;
+    hubSubtitle_ = view.hubSubtitle;
+    hubBackdropUrl_ = view.hubBackdropUrl;
+    hubHeroCaption_ = view.hubHeroCaption;
+    hubFooter_ = view.hubFooter;
     pageButtons_ = view.pageButtons;
     searchField_ = view.searchField;
     loading_ = view.loading;
@@ -538,6 +548,7 @@ void Scene::PaintRailArrows(Painter& painter) const {
     if (outer <= 0.01) return;
     const std::size_t rail = *arrowRail_;
     if (!RailArrowShape(rail).has_value()) return;
+    const double radius = metrics_.Rem(0.65);
     for (const bool next : {false, true}) {
         const double side = std::clamp(arrowSide_[next ? 1 : 0].Value(clockMs_), 0.0, 1.0);
         if (side <= 0.01) continue;
@@ -546,13 +557,13 @@ void Scene::PaintRailArrows(Painter& painter) const {
         const double fade = outer * side;
         const std::string key = std::string(next ? "rail-next:" : "rail-prev:") + std::to_string(rail);
         const bool hovered = arrowHover_ == key && RailArrowBox(rail, next).has_value();
-        // The nav pill's glass: the resting capsule, and its hover plate under the pointer.
-        painter.Glass(*box, box->height / 2.0, glass::NavCapsule(fade));
-        if (hovered) painter.Glass(*box, box->height / 2.0, glass::NavHover(1.0, fade));
-        const double glyph = box->width * 0.46;
+        const Color surface = Mix(tokens::kSurface, tokens::kSurfaceHover, hovered ? 0.85 : 0.0);
+        painter.FillRoundRect(*box, radius, WithAlpha(surface, 0.91 * fade));
+        painter.StrokeRoundRect(*box, radius, 1.0, Rgb(0xFFFFFF, (hovered ? 0.34 : 0.16) * fade));
+        const double glyph = box->width * 0.44;
         painter.Path(Box{box->CenterX() - glyph / 2.0, box->CenterY() - glyph / 2.0, glyph, glyph}, 24.0,
                      next ? "M9 5l7 7-7 7" : "M15 5l-7 7 7 7",
-                     PathStyle{Color{0, 0, 0, 0}, glass::InkOnPlate(hovered ? 1.0 : 0.0, fade), 2.6, false});
+                     PathStyle{Color{0, 0, 0, 0}, Rgb(0xF5F7FA, (hovered ? 1.0 : 0.86) * fade), 2.4, false});
     }
 }
 
@@ -639,10 +650,14 @@ void Scene::Build(const std::vector<RailData>& rails) {
             auto card = std::make_unique<Card>(data.title, key, data.itemId, data.posterUrl, data.progress);
             card->SetDetailsArtwork(data.backdropUrl, data.detailsPosterUrl);
             if (data.logo) card->SetLogo(data.subtitle);
+            else if (data.tileColor.has_value()) card->SetTile(*data.tileColor, data.subtitle);
             else if (data.feature) card->SetFeature(data.subtitle);
             else if (data.category) card->SetCategory();
-            else if (!data.subtitle.empty()) card->SetSubtitle(data.subtitle);
-            cards_.push_back(CardRef{card.get(), r, i, key});
+            else {
+                if (data.landscape) card->SetLandscape();
+                if (!data.subtitle.empty()) card->SetSubtitle(data.subtitle);
+            }
+            cards_.push_back(CardRef{card.get(), r, i, key, data.command});
             cardByKey_[key] = cards_.size() - 1;
             rail->Add(std::move(card));
         }
@@ -1304,7 +1319,30 @@ double Scene::HeaderTop() const {
 }
 
 bool Scene::HasLaneHeader() const {
-    return Streamy() && !HeroActive() && (!heading_.empty() || searchField_ || !pageButtons_.empty());
+    return Streamy() && !HeroActive() && !HubMode() && (!heading_.empty() || searchField_ || !pageButtons_.empty());
+}
+
+Box Scene::HubHeroBox() const {
+    const double safeX = metrics_.Rem(kSafeXRem);
+    const double heroH = std::clamp(viewportHeight_ * 0.27, metrics_.Rem(13.5), metrics_.Rem(19.5));
+    return Box{safeX, ChromeHeight() + metrics_.Rem(kHubHeroGapRem) - pageScroll_,
+               std::max(0.0, viewportWidth_ - 2.0 * safeX), heroH};
+}
+
+double Scene::HubHeaderHeight() const {
+    if (!HubMode()) return 0.0;
+    const double heroH = std::clamp(viewportHeight_ * 0.27, metrics_.Rem(13.5), metrics_.Rem(19.5));
+    return metrics_.Rem(kHubHeroGapRem) + heroH + metrics_.Rem(kHubHeroGapRem) +
+           metrics_.Rem(kHubShortcutHeightRem) + metrics_.Rem(1.4);
+}
+
+std::optional<Box> Scene::HubFooterBox() const {
+    if (!HubMode() || !hubFooter_.has_value()) return std::nullopt;
+    const double safeX = metrics_.Rem(kSafeXRem);
+    const double y = (page_->box().height > 0.0 ? page_->box().Bottom() : (pageTopOffset_ - pageScroll_)) +
+                     metrics_.Rem(0.9);
+    const double width = std::max(metrics_.Rem(8.5), metrics_.Rem(PageButtonWidthRem(*hubFooter_) + 1.2));
+    return Box{safeX, y, width, metrics_.Rem(kLaneButtonRem)};
 }
 
 std::optional<Box> Scene::LaneHeadingBox() const {
@@ -1319,6 +1357,30 @@ std::optional<Box> Scene::LaneHeadingBox() const {
 
 std::vector<Scene::HeaderItem> Scene::HeaderItems() const {
     std::vector<HeaderItem> items;
+    if (HubMode()) {
+        const Box hero = HubHeroBox();
+        if (!pageButtons_.empty()) {
+            const double btnH = metrics_.Rem(kButtonRowRem);
+            const double btnW = metrics_.Rem(PageButtonWidthRem(pageButtons_[0]) + 1.0);
+            items.push_back(HeaderItem{kPageButtonPrefix + std::string("0"),
+                                       Box{hero.x + metrics_.Rem(2.4), hero.Bottom() - metrics_.Rem(1.85) - btnH, btnW, btnH},
+                                       0});
+        }
+        const std::size_t shortcuts = pageButtons_.size() > 1 ? pageButtons_.size() - 1 : 0;
+        if (shortcuts > 0) {
+            const double gap = metrics_.Rem(kHubShortcutGapRem);
+            const double totalW = std::max(0.0, hero.width - gap * static_cast<double>(shortcuts - 1));
+            const double colW = totalW / static_cast<double>(shortcuts);
+            const double rowY = hero.Bottom() + metrics_.Rem(kHubHeroGapRem);
+            const double rowH = metrics_.Rem(kHubShortcutHeightRem);
+            for (std::size_t i = 0; i < shortcuts; ++i) {
+                items.push_back(HeaderItem{kPageButtonPrefix + std::to_string(i + 1),
+                                           Box{hero.x + static_cast<double>(i) * (colW + gap), rowY, colW, rowH},
+                                           static_cast<int>(i + 1)});
+            }
+        }
+        return items;
+    }
     if (!Streamy() || HeroActive()) return items;
     const double x = metrics_.Rem(kSafeXRem + (CompactViewport(viewportWidth_, viewportHeight_) ? 0.0 : kRailInsetRem));
     const double width = viewportWidth_ - 2.0 * x;
@@ -1891,19 +1953,22 @@ void Scene::Layout(double width, double height) {
     heroHeight_ = HeroActive() ? std::max(heroFraction * height,
         (CompactViewport(width, height) ? HeaderTop() + metrics_.Rem(24.0) : 0.0)) : 0.0;
     pageTopOffset_ = HeroActive() ? heroHeight_ + metrics_.Rem(heroGapRem)
-                                 : std::max(0.0, HeaderTop() - metrics_.Rem(kSafeYRem));
+                                  : HubMode() ? ChromeHeight() + HubHeaderHeight()
+                                              : std::max(0.0, HeaderTop() - metrics_.Rem(kSafeYRem));
 
     const double contentWidth = width - 2.0 * metrics_.Rem(kSafeXRem);
     railsHeight_ = page_->Measure(contentWidth, metrics_).height;
-    pageContentHeight_ = railsHeight_ + pageTopOffset_;
+    pageContentHeight_ = railsHeight_ + pageTopOffset_ + (HubMode() && hubFooter_.has_value() ? metrics_.Rem(kHubBottomMarginRem) : 0.0);
     pageScroll_ = std::clamp(pageScroll_, 0.0, MaxPageScroll());
     Arrange();
     SyncFocus();
 
-    // Home starts on Watch, as the web Home does. Without a hero, the first card has the focus.
+    // Home starts on Watch, as the web Home does. Hub starts on Browse Home. Without a hero, the first card has the focus.
     if (!focus_.Focused().has_value()) {
         if (HeroActive()) {
             focus_.SetFocus(kHeroPlayKey);
+        } else if (HubMode() && !HeaderItems().empty()) {
+            focus_.SetFocus(HeaderItems().front().key);
         } else if (!cards_.empty()) {
             focus_.SetFocus(cards_.front().key);
             cards_.front().card->SetFocusAmount(1.0);
@@ -1918,8 +1983,8 @@ void Scene::Arrange() {
     // With a hero, the rails start below it. Without one, the page starts below the header, and below
     // the status line while one is shown, so the two never overlap.
     const double headerTop = HeaderTop();
-    const double pageTop = HeroActive() ? pageTopOffset_
-                                        : headerTop + (status_.empty() ? 0.0 : metrics_.Rem(kStatusRowRem));
+    const double pageTop = (HeroActive() || HubMode()) ? pageTopOffset_
+                                                       : headerTop + (status_.empty() ? 0.0 : metrics_.Rem(kStatusRowRem));
     const Box page{metrics_.Rem(kSafeXRem), pageTop - pageScroll_, viewportWidth_ - 2.0 * metrics_.Rem(kSafeXRem),
                    railsHeight_};
     page_->Arrange(page, metrics_);
@@ -1975,6 +2040,14 @@ void Scene::SyncFocus() {
         node.rect = nav::Rect{item.box.x, item.box.y, item.box.Right(), item.box.Bottom()};
         focus_.Upsert(node);
     }
+    if (focus_.Contains(kHubFooterKey)) focus_.Remove(kHubFooterKey);
+    if (const std::optional<Box> footer = HubFooterBox()) {
+        nav::FocusNode node;
+        node.key = kHubFooterKey;
+        node.parent = kPageKey;
+        node.rect = nav::Rect{footer->x, footer->y, footer->Right(), footer->Bottom()};
+        focus_.Upsert(node);
+    }
 
     if (!clipStartedAt_ && focus_.Contains(kHeroMuteKey)) focus_.Remove(kHeroMuteKey);
     if (HeroActive()) {
@@ -2002,6 +2075,7 @@ bool Scene::Tick(double nowMs) {
     clockMs_ = nowMs;
     timeline_.Advance(nowMs);
     StartHeroArt(nowMs);
+    SyncAmbience(nowMs);
 
     const bool reduced = motion::PrefersReducedMotion(motion_);
     bool moved = false;
@@ -2034,6 +2108,9 @@ bool Scene::Tick(double nowMs) {
 bool Scene::Animating() const {
     const bool titleMoving = titleFade_.has_value() && !titleFade_->Done(clockMs_);
     const bool pictureMoving = artFade_.has_value() && !artFade_->Done(clockMs_);
+    const bool ambienceWaiting = ShowAmbience() && !ambientCandidate_.empty() && ambientCandidate_ != ambientTarget_ &&
+                                 ambientCandidateAt_ >= 0.0;
+    const bool ambienceMoving = ambientFade_.has_value() && !ambientFade_->Done(clockMs_);
     const bool contentFading = contentFade_.has_value() && !contentFade_->Done(clockMs_);
     const bool arrowsFading = arrowRail_.has_value() &&
                               (!arrowFade_.Done(clockMs_) || !arrowSide_[0].Done(clockMs_) || !arrowSide_[1].Done(clockMs_));
@@ -2044,8 +2121,8 @@ bool Scene::Animating() const {
                                !motion::PrefersReducedMotion(motion_);
     // The search placeholders breathe while a search runs.
     const bool searching = loading_ && searchField_ && rails_.empty() && !motion::PrefersReducedMotion(motion_);
-    return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving || contentFading ||
-           ControlsAnimating() || searching || arrowsFading || caretBlinking || spotlightMoving;
+    return timeline_.size() > 0 || CameraActive() || titleMoving || pictureMoving || ambienceWaiting || ambienceMoving ||
+           contentFading || ControlsAnimating() || searching || arrowsFading || caretBlinking || spotlightMoving;
 }
 
 bool Scene::CameraActive() const {
@@ -2119,6 +2196,26 @@ bool Scene::NavigateFocus(nav::Direction direction, double nowMs) {
         if (closest < 0) return std::nullopt;
         return cards_[GlobalIndex(0, static_cast<std::size_t>(closest))].key;
     };
+
+    if (*focused == kHubFooterKey) {
+        if (direction == nav::Direction::Up) {
+            if (!rails_.empty()) {
+                const Box footer = HubFooterBox().value_or(Box{});
+                std::vector<double> centers;
+                for (const auto& child : rails_.back()->children()) centers.push_back(child->box().CenterX());
+                const int closest = nav::PickClosestIndex(centers, footer.CenterX());
+                if (closest >= 0) {
+                    FocusKey(cards_[GlobalIndex(rails_.size() - 1, static_cast<std::size_t>(closest))].key, nowMs, true);
+                    return true;
+                }
+            }
+            if (!header.empty()) {
+                FocusKey(header.back().key, nowMs, true);
+                return true;
+            }
+        }
+        return false;
+    }
 
     if (const std::optional<std::size_t> at = HeaderIndexOf(*focused)) {
         const Box from = header[*at].box;
@@ -2309,6 +2406,9 @@ bool Scene::NavigateFocus(nav::Direction direction, double nowMs) {
             for (const auto& child : rails_[targetRail]->children()) centers.push_back(child->box().CenterX());
             const int closest = nav::PickClosestIndex(centers, current.card->box().CenterX());
             if (closest >= 0) target = GlobalIndex(targetRail, static_cast<std::size_t>(closest));
+        } else if (direction == nav::Direction::Down && current.rail + 1 == rails_.size() && HubFooterBox().has_value()) {
+            FocusKey(kHubFooterKey, nowMs, true);
+            return true;
         }
     }
 
@@ -2330,6 +2430,8 @@ std::optional<Command> Scene::Select(double nowMs) {
     }
 
     if (const std::optional<std::size_t> top = TopIndexOf(*focused)) return tops_[*top].command;
+    if (*focused == kHubFooterKey && hubFooter_.has_value()) return hubFooter_->command;
+
     if (const std::optional<std::size_t> at = HeaderIndexOf(*focused)) {
         const HeaderItem item = HeaderItems()[*at];
         if (item.button >= 0) return pageButtons_[static_cast<std::size_t>(item.button)].command;
@@ -2371,6 +2473,7 @@ std::optional<Command> Scene::Select(double nowMs) {
     }
 
     const CardRef& card = cards_[cardByKey_.at(*focused)];
+    if (card.command.has_value()) return *card.command;
     Command command;
     if (card.card->itemId().rfind("browse:", 0) == 0) {
         // A Browse tile on Search: the app shows that genre's titles.
@@ -2409,7 +2512,8 @@ bool Scene::FocusItem(const std::string& key, double nowMs, bool withCamera) {
     // A rail arrow is not a focus stop: the hover look is set by PointerAt.
     if (key.rfind("rail-", 0) == 0) return false;
     if (focus_.Focused() == std::optional<std::string>(key)) return false;
-    if (TopIndexOf(key).has_value() || (HeroActive() && IsHeroKey(key)) || HeaderIndexOf(key).has_value()) {
+    if (TopIndexOf(key).has_value() || (HeroActive() && IsHeroKey(key)) || HeaderIndexOf(key).has_value() ||
+        (key == kHubFooterKey && HubFooterBox().has_value())) {
         FocusKey(key, nowMs, withCamera);
         return true;
     }
@@ -2427,6 +2531,9 @@ std::optional<std::string> Scene::ItemAt(double x, double y) const {
         // The clear mark at the end of a field with something typed in it.
         if (item.button < 0 && !query_.empty() && x > item.box.Right() - metrics_.Rem(3.2)) return std::string("search-clear");
         return item.key;
+    }
+    if (const std::optional<Box> footer = HubFooterBox(); footer && Contains(*footer, x, y)) {
+        return std::string(kHubFooterKey);
     }
     // Under the header nothing scrolled beneath it can be picked.
     if (HasLaneHeader() && y < HeaderTop()) return std::nullopt;
@@ -2579,8 +2686,8 @@ void Scene::FocusKey(const std::string& key, double nowMs, bool withCamera) {
 
     bool moved = false;
     if (card == cardByKey_.end()) {
-        // The button is in the header, so the page comes back to the top.
-        StartPageCamera(0.0, moved);
+        // Hub footer scrolls down to show My List; header buttons bring the page back to the top.
+        StartPageCamera(key == kHubFooterKey ? MaxPageScroll() : 0.0, moved);
     } else {
         // Bring the card to the middle of its rail, then its row under the
         // chrome. A short hop lands at once. A longer one is eased by the camera.
@@ -2645,10 +2752,165 @@ void Scene::AnimateFocus(std::size_t cardIndex, double to, double nowMs) {
     });
 }
 
+void Scene::PaintHub(Painter& painter) const {
+    const double rem = metrics_.rem;
+    const Box hero = HubHeroBox();
+    if (hero.Bottom() > 0.0 && hero.y < viewportHeight_) {
+        const double radius = 1.35 * rem;
+        painter.FillRoundRect(hero, radius, Rgb(0x16141C, 0.72));
+        if (!hubBackdropUrl_.empty()) {
+            painter.ImageFaded(hero, hubBackdropUrl_, radius, 0.48, 0.72, 0.32);
+        }
+        painter.FillRoundRectLinear(hero, radius, hero.x, hero.y, hero.Right(), hero.y,
+                                    {GradientStop{0.0, Rgb(0x141219, 0.94)},
+                                     GradientStop{0.58, Rgb(0x141219, 0.72)},
+                                     GradientStop{1.0, Rgb(0x141219, 0.28)}});
+        GlassStyle heroRim;
+        heroRim.kind = GlassKind::Panel;
+        heroRim.rimOnly = true;
+        heroRim.reduceTransparency = tokens::reduceTransparency;
+        heroRim.border = Rgb(0xFFFFFF, 0.16);
+        painter.Glass(hero, radius, heroRim);
+
+        const double textX = hero.x + 2.4 * rem;
+        const double textY = hero.y + 2.1 * rem;
+        const double textW = std::max(0.0, hero.width - 14.0 * rem);
+        if (!hubGreeting_.empty()) {
+            painter.Text(Box{textX, textY, textW, 2.9 * rem}, hubGreeting_,
+                         TextStyle{2.25 * rem, true, 750}, tokens::kText);
+        }
+        if (!hubSubtitle_.empty()) {
+            painter.Text(Box{textX, textY + 3.0 * rem, textW, 1.6 * rem}, hubSubtitle_,
+                         TextStyle{1.0625 * rem, false, 450}, Rgb(0xEADBD0, 0.92));
+        }
+        if (!hubHeroCaption_.empty()) {
+            const TextStyle kickerStyle{0.78 * rem, true, 600};
+            const TextStyle titleStyle{1.1 * rem, true, 700};
+            const std::string tag = "On Home";
+            const double tagW = painter.MeasureText(tag, kickerStyle);
+            const double capW = std::min(hero.width * 0.42, painter.MeasureText(hubHeroCaption_, titleStyle) + 4.0);
+            const double rightX = hero.Right() - 2.2 * rem;
+            painter.Text(Box{rightX - tagW, hero.Bottom() - 3.65 * rem, tagW + 4.0, 1.2 * rem},
+                         tag, kickerStyle, Rgb(0xECD6C7, 0.85));
+            painter.Text(Box{rightX - capW, hero.Bottom() - 2.35 * rem, capW, 1.55 * rem},
+                         hubHeroCaption_, titleStyle, tokens::kText);
+        }
+    }
+
+    static constexpr const char* kShortcutIcons[4] = {
+        "M8 5v14l11-7Z",
+        "M4 8h16v11H4z M7 5h10 M10 2h4",
+        "M3 6h18v12H3z M9 21h6 M12 18v3",
+        kSearchGlyph,
+    };
+    for (const HeaderItem& item : HeaderItems()) {
+        if (item.button < 0 || item.button >= static_cast<int>(pageButtons_.size())) continue;
+        if (item.box.Bottom() < 0.0 || item.box.y >= viewportHeight_) continue;
+        const TopButton& button = pageButtons_[static_cast<std::size_t>(item.button)];
+        const bool focused = ShowsFocus(item.key);
+        const double emphasis = EmphasisOf(item.key);
+        const double focusAmt = focused ? std::max(emphasis, 1e-3) : emphasis;
+        if (item.button == 0) {
+            DrawButton(painter, metrics_, item.box, button.label, ButtonLook{true, focused, focusAmt});
+            continue;
+        }
+        GlassStyle pill = glass::NavCapsule();
+        pill.kind = GlassKind::Panel;
+        pill.focused = focused;
+        pill.focusAmount = focusAmt;
+        pill.pressAmount = PressOf(item.key);
+        pill.reduceTransparency = tokens::reduceTransparency;
+        pill.tint = Mix(tokens::kSurface, tokens::kSurfaceHover, focusAmt);
+        pill.border = Rgb(0xFFFFFF, focused ? 0.34 : 0.14);
+        pill.ringColor = tokens::kFocusRing;
+        pill.ringWidth = metrics_.Rem(kFocusRingWidthRem);
+        pill.ringOutset = metrics_.Rem(kFocusRingOffsetRem) + pill.ringWidth / 2.0;
+        painter.Glass(item.box, 0.85 * rem, pill);
+
+        const double iconSize = 1.15 * rem;
+        const TextStyle labelStyle{0.95 * rem, true, 600};
+        const double labelW = painter.MeasureText(button.label, labelStyle);
+        const double groupW = iconSize + 0.55 * rem + labelW;
+        const double startX = std::max(item.box.x + 0.8 * rem, item.box.CenterX() - groupW / 2.0);
+        const std::size_t iconIdx = static_cast<std::size_t>(std::clamp(item.button - 1, 0, 3));
+        painter.Path(Box{startX, item.box.CenterY() - iconSize / 2.0, iconSize, iconSize}, 24.0,
+                     kShortcutIcons[iconIdx],
+                     PathStyle{Color{0, 0, 0, 0}, focused ? tokens::kAccentStrong : Rgb(0xE3A974, 0.92), 1.9, false});
+        painter.Text(Box{startX + iconSize + 0.55 * rem, item.box.y,
+                         std::max(0.0, item.box.Right() - (startX + iconSize + 0.65 * rem)), item.box.height},
+                     button.label, labelStyle, tokens::kText);
+    }
+}
+
+void Scene::SyncAmbience(double nowMs) {
+    if (!ShowAmbience()) {
+        ambientCandidate_.clear();
+        ambientTarget_.clear();
+        ambientCurrent_.clear();
+        ambientPrevious_.clear();
+        ambientFade_.reset();
+        return;
+    }
+    std::string wanted;
+    if (pointerSlot_ && pointerSlot_->first < rails_.size() &&
+        pointerSlot_->second.index < rails_[pointerSlot_->first]->children().size()) {
+        wanted = rails_[pointerSlot_->first]->children()[pointerSlot_->second.index]->backdropUrl();
+    } else if (const Card* focusedCard = FocusedDetailsCard()) {
+        wanted = focusedCard->backdropUrl();
+    }
+    if (wanted != ambientCandidate_) {
+        ambientCandidate_ = wanted;
+        ambientCandidateAt_ = nowMs;
+    }
+    if (ambientCandidate_.empty()) return;
+    if (ambientCandidateAt_ >= 0.0 && nowMs - ambientCandidateAt_ < 160.0) return;
+    if (ambientCandidate_ == ambientCurrent_) return;
+    if (imageReady_ && !imageReady_(ambientCandidate_)) return;
+
+    const bool reduced = motion::PrefersReducedMotion(motion_);
+    ambientPrevious_ = ambientCurrent_;
+    ambientCurrent_ = ambientCandidate_;
+    ambientTarget_ = ambientCandidate_;
+    ambientFade_ = motion::Tween(0.0, 1.0, nowMs, reduced ? 0.0 : 560.0, kHeroEase);
+}
+
+void Scene::PaintAmbience(Painter& painter) const {
+    if (!ShowAmbience()) return;
+    const Box viewport{0.0, 0.0, viewportWidth_, viewportHeight_};
+    const double fade = ambientFade_.has_value() ? std::clamp(ambientFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
+    if (!ambientPrevious_.empty() && fade < 1.0) {
+        painter.ImageFaded(viewport, ambientPrevious_, 0.0, 0.25 * (1.0 - fade), 0.7, 0.3);
+    }
+    if (!ambientCurrent_.empty()) {
+        painter.ImageFaded(viewport, ambientCurrent_, 0.0, 0.25 * fade, 0.7, 0.3);
+    }
+    if (!ambientCurrent_.empty() || !ambientPrevious_.empty()) {
+        painter.FillLinearGradient(viewport, 0.0, 0.0, 0.0, viewportHeight_,
+                                   {GradientStop{0.0, WithAlpha(tokens::kBackground, 0.56)},
+                                    GradientStop{0.62, WithAlpha(tokens::kBackground, 0.26)},
+                                    GradientStop{1.0, WithAlpha(tokens::kBackground, 0.72)}});
+    }
+}
+
 void Scene::Paint(Painter& painter) const {
-    painter.Clear(tokens::kBackground);
+    if (!ShowsStage()) painter.Clear(tokens::kBackground);
+    if (ShowAmbience()) PaintAmbience(painter);
+    if (HubMode()) {
+        // Soft ground veil at bottom of the Bloom backdrop so scrolled rails stay legible.
+        painter.FillLinearGradient(Box{0.0, 0.0, viewportWidth_, viewportHeight_}, 0.0, 0.0, 0.0, viewportHeight_,
+                                   {GradientStop{0.0, WithAlpha(tokens::kBackground, 0.18)},
+                                    GradientStop{0.55, WithAlpha(tokens::kBackground, 0.52)},
+                                    GradientStop{1.0, WithAlpha(tokens::kBackground, 0.82)}});
+        PaintHub(painter);
+    }
     if (HeroActive()) PaintHeroBackdrop(painter);
     page_->Paint(painter, metrics_);
+    if (const std::optional<Box> footer = HubFooterBox(); footer && hubFooter_.has_value()) {
+        const bool focused = ShowsFocus(kHubFooterKey);
+        const double emphasis = EmphasisOf(kHubFooterKey);
+        DrawButton(painter, metrics_, *footer, hubFooter_->label,
+                   ButtonLook{false, focused, focused ? std::max(emphasis, 1e-3) : emphasis});
+    }
     PaintRailArrows(painter);
     if (HeroActive()) PaintHero(painter);
     // Switching to or from Live TV, Library or Search: the new page's content fades in from the ground.

@@ -41,6 +41,9 @@ public:
     // address the file was for, when it is known.
     std::optional<std::string> Forget(const paths::fs::path& file);
 
+    // Clears remembered artwork lookups and deletes cached image files on disk.
+    void Clear();
+
     // Painting asks for pictures it has no file for yet. The window thread collects them each frame and queues the
     // downloads, so whatever is on screen is fetched first and a failed picture is asked for again.
     void Want(const std::string& url) const;

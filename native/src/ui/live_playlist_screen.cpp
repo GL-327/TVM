@@ -157,9 +157,8 @@ bool LivePlaylistScreen::Animating() const {
 
 void LivePlaylistScreen::Paint(Painter& painter) const {
     const Metrics metrics{ViewportRem(width_, height_)};
-    painter.Clear(tokens::kBackground);
-    // A plain page: the glass is told there is no picture behind it.
-    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
+    const bool light = tokens::kBackground.r > 0.5;
+    painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0, light ? Rgb(0xF6F8FC, 0.54) : Rgb(0x050914, 0.36));
 
     const double x = metrics.Rem(kSafeXRem);
     const double kickerY = metrics.Rem(kSafeYRem);

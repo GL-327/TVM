@@ -297,4 +297,50 @@ TEST(the_copy_is_not_faded_with_the_page) {
     REQUIRE_NEAR(painter.Find("Alpha")->color.a, 1.0, 1e-9);
 }
 
+TEST(browse_movies_series_featured_landscape_two_line_titles_and_ambience) {
+    tvm::ui::SceneView view;
+    view.style = tvm::ui::SceneStyle::Stream;
+    view.pageKey = "stream:movies";
+    tvm::ui::RailData featured;
+    featured.id = "featured";
+    featured.title = "Featured";
+    tvm::ui::CardData card;
+    card.itemId = "tt1234567";
+    card.title = "A Very Long Movie Title That Wraps Cleanly Onto Two Lines With Ellipsis";
+    card.posterUrl = "https://example.test/backdrop.jpg";
+    card.backdropUrl = "https://example.test/backdrop.jpg";
+    card.landscape = true;
+    featured.cards.push_back(card);
+
+    tvm::ui::RailData posters;
+    posters.id = "popular";
+    posters.title = "Popular films";
+    tvm::ui::CardData pcard;
+    pcard.itemId = "tt7654321";
+    pcard.title = "Another Unfocused Long Poster Title That Must Wrap To Two Lines At Rest";
+    pcard.posterUrl = "https://example.test/poster.jpg";
+    pcard.backdropUrl = "https://example.test/poster-bg.jpg";
+    posters.cards.push_back(pcard);
+    view.rails = {featured, posters};
+
+    Scene scene({}, Auto());
+    scene.SetView(view, 0.0);
+    scene.Layout(1920.0, 1080.0);
+    REQUIRE(scene.FocusedKey() == std::optional<std::string>("card:0:0"));
+    for (double t = 16.0; t <= 400.0; t += 16.0) scene.Tick(t);
+
+    HeroPainter painter;
+    scene.Paint(painter);
+    bool sawAmbience = false;
+    for (const auto& pic : painter.pictures) {
+        if (pic.url == "https://example.test/backdrop.jpg" && pic.opacity > 0.05 && pic.opacity < 0.4) {
+            sawAmbience = true;
+        }
+    }
+    REQUIRE(sawAmbience);
+    REQUIRE(scene.FocusItem("card:1:0", 400.0, true));
+    REQUIRE_NEAR(scene.CardBox(0, 0).width, 26.25 * 16.0, 1.0);
+    REQUIRE_NEAR(scene.CardBox(0, 0).height, 14.75 * 16.0, 1.0);
+}
+
 }  // namespace

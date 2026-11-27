@@ -31,7 +31,7 @@ constexpr std::pair<std::string_view, bool> kSwitchDefaults[] = {
     {"qualityBadges", true}, {"versionPicker", true}, {"chapters", true}, {"seekPreviews", true},
     {"themeSongs", false}, {"spoilerBlur", false}, {"surpriseMe", true}, {"autoCollections", true},
     {"sleepTimer", true}, {"nightMode", false}, {"pauseOnMinimize", true}, {"shortcutsOverlay", true},
-    {"webhook", false}, {"announcements", true},
+    {"webhook", false}, {"announcements", true}, {"franchiseIntros", true},
 };
 
 void ReadChoice(const nlohmann::json& body, const char* key, std::string& out,

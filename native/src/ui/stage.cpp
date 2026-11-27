@@ -1,5 +1,6 @@
 #include "ui/stage.h"
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -174,6 +175,92 @@ void PaintLayer(Painter& painter, const Box& viewport, const Box& box, const Pos
     painter.FillRadialGradient(viewport, x, y, pose.scale * radial.rx, pose.scale * radial.ry, radial.stops);
 }
 
+// Paints a layered Windows 11 Bloom wave field of overlapping 3D-folded indigo/blue/violet ribbons.
+void PaintBloomRibbons(Painter& painter, double width, double height, double clockMs, double strength) {
+    const double t = clockMs * 0.00024;
+    const double diag = std::hypot(width, height);
+    // Deep sapphire/indigo back-lighting behind the silk waves.
+    painter.FillRadialGradient(Box{0.0, 0.0, width, height}, width * 0.72, height * 0.44, width * 0.68, height * 0.72,
+                               {GradientStop{0.0, Rgb(0x2F6BFF, 0.22 * strength)},
+                                GradientStop{0.45, Rgb(0x4338CA, 0.14 * strength)},
+                                GradientStop{1.0, Rgb(0x0B1530, 0.0)}});
+    painter.FillRadialGradient(Box{0.0, 0.0, width, height}, width * 0.22, height * 0.78, width * 0.52, height * 0.52,
+                               {GradientStop{0.0, Rgb(0x1E40AF, 0.18 * strength)},
+                                GradientStop{0.6, Rgb(0x312E81, 0.08 * strength)},
+                                GradientStop{1.0, Rgb(0x07101C, 0.0)}});
+
+    struct RibbonSpec {
+        double phase;
+        double baseX;
+        double baseY;
+        double spanX;
+        double spanY;
+        double arch;
+        double sway;
+        double halfWidth;
+        Color c0;
+        Color c1;
+        Color c2;
+        Color crease;
+        double widthScale;
+    };
+    const std::array<RibbonSpec, 4> ribbons = {{
+        // 0: Deep cobalt velvet foundation ribbon sweeping low left -> upper right.
+        {0.0, 0.02, 0.88, 1.06, -0.58, 0.16, 0.042, 0.24,
+         Rgb(0x0A1C4A, 0.84 * strength), Rgb(0x1D4ED8, 0.86 * strength), Rgb(0x0F1738, 0.78 * strength),
+         Rgb(0x60A5FA, 0.36 * strength), 1.15},
+        // 1: Intersecting royal electric-blue wave arching across center-right.
+        {1.3, 0.14, 0.98, 0.94, -0.82, 0.22, 0.052, 0.19,
+         Rgb(0x142E7A, 0.82 * strength), Rgb(0x2F6BFF, 0.90 * strength), Rgb(0x1E3A8A, 0.74 * strength),
+         Rgb(0x93C5FD, 0.55 * strength), 1.0},
+        // 2: Deep amethyst/violet sculpted fold wrapping opposite curvature.
+        {2.6, 0.28, 1.04, 0.76, -0.96, -0.18, 0.048, 0.16,
+         Rgb(0x23175E, 0.80 * strength), Rgb(0x6D4AFF, 0.82 * strength), Rgb(0x1E296B, 0.70 * strength),
+         Rgb(0xC4B5FD, 0.48 * strength), 0.92},
+        // 3: Iridescent cyan crest ribbon foreground fold for high-contrast glass dispersion.
+        {3.9, 0.42, 0.95, 0.64, -0.86, 0.19, 0.036, 0.125,
+         Rgb(0x1E40AF, 0.68 * strength), Rgb(0x38BDF8, 0.82 * strength), Rgb(0x2563EB, 0.64 * strength),
+         Rgb(0xE0F2FE, 0.72 * strength), 0.85},
+    }};
+
+    constexpr int kSteps = 28;
+    for (const RibbonSpec& r : ribbons) {
+        std::vector<Point> topEdge;
+        std::vector<Point> bottomEdge;
+        topEdge.reserve(static_cast<std::size_t>(kSteps) + 1);
+        bottomEdge.reserve(static_cast<std::size_t>(kSteps) + 1);
+
+        const double ph = t + r.phase;
+        for (int i = 0; i <= kSteps; ++i) {
+            const double u = static_cast<double>(i) / kSteps;
+            const double wave = std::sin(u * 3.14159265 + ph * 0.7) * r.arch +
+                                std::sin(u * 5.2 + ph * 1.15) * r.sway;
+            const double sx = (r.baseX + r.spanX * u + std::cos(u * 2.6 + ph) * 0.04) * width;
+            const double sy = (r.baseY + r.spanY * u + wave) * height;
+            // Ribbon pinches organically at ends and twists across center.
+            const double env = std::sin(u * 3.14159265);
+            const double twist = 0.55 + 0.45 * std::cos(u * 3.6 + ph * 0.8);
+            const double halfT = diag * r.halfWidth * (0.28 + 0.72 * env) * twist * r.widthScale;
+            const double tilt = std::cos(u * 2.4 + ph * 0.5) * 0.42;
+            const double nx = -r.spanY * 0.45 + tilt * 0.35;
+            const double ny = r.spanX * 0.75;
+            const double nlen = std::max(1e-5, std::hypot(nx, ny));
+            const double ox = (nx / nlen) * halfT;
+            const double oy = (ny / nlen) * halfT;
+            topEdge.push_back(Point{sx - ox * 0.55, sy - oy * 0.75});
+            bottomEdge.push_back(Point{sx + ox * 0.75, sy + oy * 0.95});
+        }
+
+        std::vector<Point> poly = topEdge;
+        for (int i = kSteps; i >= 0; --i) poly.push_back(bottomEdge[static_cast<std::size_t>(i)]);
+        const Point& midTop = topEdge[static_cast<std::size_t>(kSteps / 2)];
+        const Point& midBot = bottomEdge[static_cast<std::size_t>(kSteps / 2)];
+        painter.FillPolygonLinear(poly, midTop.x, midTop.y, midBot.x, midBot.y,
+                                  {GradientStop{0.0, r.c1}, GradientStop{0.48, r.c0}, GradientStop{1.0, r.c2}});
+        painter.StrokePolyline(topEdge, std::max(1.5, diag * 0.0022), r.crease);
+    }
+}
+
 }  // namespace
 
 Stage::Stage(motion::MotionSettings motion) : motion_(motion) {}
@@ -222,6 +309,8 @@ void Stage::Paint(Painter& painter, double width, double height, double clockMs)
 
     const Pose specPose = poseOf(kSpecDrift, spec, kSpecOpacity, kReducedGlowOpacity);
     PaintLayer(painter, viewport, spec, specPose, SpecGradient(spec), specPose.opacity * kContainerOpacity);
+
+    PaintBloomRibbons(painter, width, height, reduced ? 4200.0 : clockMs, reduced ? 0.85 : 1.0);
 }
 
 }  // namespace tvm::ui

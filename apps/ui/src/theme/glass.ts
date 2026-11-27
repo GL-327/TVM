@@ -8,6 +8,13 @@ export const GLASS_STYLES: readonly { id: GlassStyle; label: string }[] = [
 
 export const DEFAULT_GLASS_STYLE: GlassStyle = 'default';
 export const GLASS_STORAGE_KEY = 'tvm.glass';
+// PyGlass-calibrated optical targets: convex bevel refraction, visible rim RGB dispersion, low interior tint wash.
+export const GLASS_MATERIAL_TUNING = {
+  bevelFraction: 0.5,
+  shiftPerBevel: 2.35,
+  rimDispersionPx: 2.4,
+  vibrancySaturation: 1.82,
+} as const;
 
 const listeners = new Set<(style: GlassStyle) => void>();
 

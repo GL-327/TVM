@@ -23,6 +23,7 @@
 #include "core/extras.h"
 #include "core/mpv.h"
 #include "ui/button_focus.h"
+#include "ui/franchise_intro.h"
 #include "ui/layout.h"
 #include "ui/orbit.h"
 #include "ui/screen_base.h"
@@ -172,6 +173,17 @@ public:
     bool Tick(double nowMs) override;
     bool Animating() const override;
     void Paint(Painter& painter) const override;
+    void SetMotion(const motion::MotionSettings& motion) override {
+        ScreenBase::SetMotion(motion);
+        intro_.SetMotion(motion);
+    }
+
+    void StartIntro(const FranchiseIntroPlan& plan, double nowMs);
+    void SetIntroPlaybackReady(bool ready, double nowMs);
+    bool SkipIntro(double nowMs);
+    void ResetIntro();
+    bool IntroActive() const { return intro_.Active(); }
+    bool IntroReleased() const { return intro_.Released(); }
 
     void SetView(const PlayerView& view, double nowMs);
     const PlayerView& view() const { return view_; }
@@ -235,6 +247,8 @@ private:
     std::optional<Command> Activate(const std::string& key);
     double Rem(double rems) const { return rems * ViewportRem(width_, height_); }
     void PaintQueue(Painter& painter) const;
+    void PaintPlayer(Painter& painter) const;
+    FranchiseIntro intro_;
     void PaintChrome(Painter& painter, double opacity) const;
     void PaintError(Painter& painter) const;
     void PaintSpinner(Painter& painter) const;

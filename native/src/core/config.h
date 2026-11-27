@@ -15,6 +15,15 @@ inline constexpr std::uint16_t kDefaultCorePort = 7345;
 
 // Kept equal to the root package.json version. config tests compare them.
 inline constexpr char kCoreVersion[] = TVM_VERSION;
+inline constexpr char kBuildCommit[] = TVM_GIT_COMMIT;
+
+// Formats the window version line shown at the top of Settings, e.g. "TVM 1.4.11 · build 2af8d1a".
+inline std::string FormatWindowVersion(const std::string& version = kCoreVersion,
+                                       const std::string& commit = kBuildCommit) {
+    const std::string trimmed = util::Trim(commit);
+    const std::string shortSha = trimmed.size() > 7 ? trimmed.substr(0, 7) : trimmed;
+    return shortSha.empty() ? ("TVM " + version) : ("TVM " + version + " \xC2\xB7 build " + shortSha);
+}
 
 // Throws std::runtime_error for a value that is not a port, rather than
 // falling back to some other port nobody expects.

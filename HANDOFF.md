@@ -1,6 +1,11 @@
 # Handoff: TVM 1.4.8 (test build)
 
-> 1.4.7 fixed tablet top-bar taps. 1.4.8 added the Hub page, artwork-led Movies/Series, the quality and English fixes, the cinema-recording fallback and the extras checks: see `docs/1.4/report-core3.md` and `report-ui3.md`. Still open: the full iOS 26/27 glass pass, and the new look and intros on Windows and Roku.
+> 1.4.7 fixed tablet top-bar taps. 1.4.8 added the Hub page, artwork-led Movies/Series, the quality and English fixes, the cinema-recording fallback and the extras checks: see `docs/1.4/report-core3.md` and `report-ui3.md`. 1.4.11 brought Windows to parity with the Hub page, widescreen Movies/Series lanes, procedural Direct2D Hunger Games and Doomsday intros, PyGlass refraction + Bloom silk ribbons (Windows and web), About trailer playback and Settings Developer tools. Still open: phone/Roku sync and phone player overlays.
+
+## Update: 1.4.11 (autonomous finish, 2026-11-27)
+
+- **Windows parity (native4):** fixed the stale version badge (`TVM 1.4.11`) and `"Update now"` on Windows About; added the native Hub start page (`SceneStyle::Hub`, greeting, spotlight hero, Continue watching, apps rail, free live channels); updated Movies/Series to hero backdrop + 16:9 widescreen cards (`CardData::landscape`) + genre filter chips + episode subtitle; implemented procedural Direct2D Hunger Games (Mockingjay ring, embers, feathers) and Avengers: Doomsday (emerald steel armor wall, rune rings, lightning arcs, steel mask) franchise intros in `ui/franchise_intro.*` with once-per-session gating and reduced-motion static title cards; tuned PyGlass bevel refraction and chromatic rim dispersion + Windows 11 Bloom 3D ribbons in `Stage`, `D2DPainter`, `glass_lens.cpp` and web `PageScene.tsx`/`browse.css`/`liquidGlass.css`; wired `About > Watch the TVM trailer` and `Settings > Developer` tools (Diagnostics, Show FPS, Watch trailer, Show patch notes, Replay intros, Copy diagnostics, Clear local caches, Reset usage counters).
+
 
 Written 2026-11-26 by Claude on the owner's laptop, continuing the 1.4 polish that the desktop session could not
 finish. **Read this before changing anything.** Delete this file once everything below is done, and remove the

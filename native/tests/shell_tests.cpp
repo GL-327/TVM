@@ -163,7 +163,7 @@ TEST(settings_lists_the_web_rows_in_order) {
     for (const auto& [id, label] : tvm::ui::HomeSections()) expected.push_back(label);
     const std::vector<std::string> tail = {
         "Playback", "Online subtitles", "Chapters", "Seek previews", "Version picker", "Sleep timer", "Night mode",
-        "Pause when hidden", "Keyboard shortcuts",
+        "Pause when hidden", "Keyboard shortcuts", "Franchise intros",
         "Details pages", "Trailers", "Trailer backdrops", "Collections", "IMDb ratings", "Quality badges",
         "English anime titles", "Theme songs", "Spoiler blur",
         "Home and activity", "Coming up", "Surprise me", "Automatic collections", "Announcements", "Watch stats",
@@ -172,13 +172,97 @@ TEST(settings_lists_the_web_rows_in_order) {
         "Real-Debrid", "Real-Debrid",
         "Downloads", "Downloads",
         // What's new is the native build's way to the changelog, which the web shows only after it updates itself.
-        "Updates", "Updates", "Check for updates on launch", "What's new",
+        "Updates", "Update now", "Updates", "Check for updates on launch", "What's new",
         "Your stats", "Your stats",
+        "Version", "TVM build", "Watch the TVM trailer",
         "This device", "Network", "Display", "Diagnostics",
         "Maintenance", "Clear cache", "Fully reset", "Restart",
     };
     expected.insert(expected.end(), tail.begin(), tail.end());
     REQUIRE(settings.RowLabels() == expected);
+}
+
+TEST(settings_shows_version_summary_and_update_now_action) {
+    MemoryStore store;
+    SettingsScreen settings(store, MotionSettings{});
+    settings.Layout(1920.0, 1080.0);
+
+    tvm::ui::VersionSummary summary;
+    summary.windowVersion = "TVM 1.4.11 \xC2\xB7 build abc1234";
+    summary.engineVersion = "Engine v1.4.11 \xC2\xB7 build abc1234";
+    settings.SetVersionSummary(summary);
+    REQUIRE_EQ(settings.DetailOf("about-version"), std::string("TVM 1.4.11 \xC2\xB7 build abc1234"));
+
+    const std::optional<Command> cmd = settings.ActivateItem("update-now", 0.0);
+    REQUIRE(cmd.has_value());
+    REQUIRE_EQ(cmd->name, std::string("update-now"));
+    REQUIRE(cmd->action);
+
+    settings.SetManualUpdateState({true, "Applying Core update..."});
+    REQUIRE_EQ(settings.DetailOf("update-now"), std::string("Updating\xE2\x80\xA6"));
+    settings.SetManualUpdateState({false, "Core up to date."});
+    REQUIRE_EQ(settings.DetailOf("update-now"), std::string("Run"));
+}
+
+TEST(hub_screen_renders_greeting_shortcuts_tiles_and_free_channels) {
+    MemoryStore store;
+    tvm::ui::SceneView view;
+    view.style = tvm::ui::SceneStyle::Hub;
+    view.pageKey = "home:hub";
+    view.hubGreeting = "Good evening, Ada";
+    view.hubSubtitle = "What are you in the mood for?";
+    view.hubHeroCaption = "Dune: Part Two";
+    view.pageButtons = {
+        tvm::ui::TopButton{"Browse Home", tvm::ui::Command{false, "stream-tab", {{"lane", "all"}}, true}, true},
+        tvm::ui::TopButton{"Movies", tvm::ui::Command{false, "stream-tab", {{"lane", "movies"}}, true}, false},
+        tvm::ui::TopButton{"Series", tvm::ui::Command{false, "stream-tab", {{"lane", "shows"}}, true}, false},
+        tvm::ui::TopButton{"Live TV", tvm::ui::Command{false, "stream-tab", {{"lane", "live"}}, true}, false},
+        tvm::ui::TopButton{"Search", tvm::ui::Command{false, "stream-tab", {{"lane", "search"}}, true}, false},
+    };
+    view.hubFooter = tvm::ui::TopButton{"My List", tvm::ui::Command{false, "stream-tab", {{"lane", "library"}}, true}, false};
+
+    tvm::ui::RailData apps;
+    apps.id = "hub-apps";
+    apps.title = "Apps & services";
+    tvm::ui::CardData netflix;
+    netflix.itemId = "hub-app:netflix";
+    netflix.title = "NETFLIX";
+    netflix.subtitle = "Netflix";
+    netflix.tileColor = tvm::ui::Rgb(0xE50914);
+    netflix.command = tvm::ui::Command{false, "service", {{"id", "netflix"}}, false};
+    apps.cards.push_back(netflix);
+
+    tvm::ui::RailData live;
+    live.id = "hub-live";
+    live.title = "Free live TV";
+    tvm::ui::CardData bbc;
+    bbc.itemId = "live:free:bbc-one";
+    bbc.title = "BBC One";
+    bbc.logo = true;
+    bbc.command = tvm::ui::Command{true, "player", {{"id", "live:free:bbc-one"}}, false};
+    live.cards.push_back(bbc);
+    view.rails = {apps, live};
+
+    Scene scene(std::vector<RailSpec>{}, MotionSettings{});
+    scene.SetView(view, 0.0);
+    scene.Layout(1920.0, 1080.0);
+    REQUIRE(scene.ShowsStage());
+    REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("page:0"));
+    REQUIRE_EQ(scene.Select(0.0)->params.at("lane"), std::string("all"));
+
+    REQUIRE(scene.Navigate(Direction::Down, 100.0));
+    REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("page:1"));
+    REQUIRE_EQ(scene.Select(100.0)->params.at("lane"), std::string("movies"));
+
+    REQUIRE(scene.Navigate(Direction::Down, 200.0));
+    REQUIRE_EQ(scene.Select(200.0)->name, std::string("service"));
+    REQUIRE(scene.Navigate(Direction::Down, 300.0));
+    REQUIRE_EQ(scene.Select(300.0)->name, std::string("player"));
+    REQUIRE(scene.Navigate(Direction::Down, 400.0));
+    REQUIRE_EQ(scene.FocusedKey(), std::optional<std::string>("hub-watchlist"));
+    REQUIRE_EQ(scene.Select(400.0)->params.at("lane"), std::string("library"));
+    REQUIRE(scene.Navigate(Direction::Up, 500.0));
+    REQUIRE_EQ(scene.Select(500.0)->name, std::string("player"));
 }
 
 TEST(settings_surfaces_developer_diagnostics_when_dev_account_active) {
@@ -195,12 +279,39 @@ TEST(settings_surfaces_developer_diagnostics_when_dev_account_active) {
     const std::vector<std::string> labels = settings.RowLabels();
     REQUIRE(std::find(labels.begin(), labels.end(), "Developer Diagnostics") != labels.end());
     REQUIRE(std::find(labels.begin(), labels.end(), "Show FPS") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Watch the TVM trailer") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Force patch notes pop-up") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Replay Hunger Games intro") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Replay Doomsday intro") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Copy diagnostics") != labels.end());
+    REQUIRE(std::find(labels.begin(), labels.end(), "Quick cache refresh") != labels.end());
     REQUIRE_EQ(settings.DetailOf("dev-build"), std::string("v1.0.0 · Native Windows"));
     REQUIRE_EQ(settings.DetailOf("dev-rd-source"), std::string("account"));
     REQUIRE_EQ(settings.DetailOf("dev-glass"), std::string("Liquid Glass"));
 
     settings.ActivateItem("show-fps", 0.0);
     REQUIRE(store.showFps_);
+
+    const std::optional<Command> aboutTrailer = settings.ActivateItem("about-trailer", 0.0);
+    REQUIRE(aboutTrailer.has_value());
+    REQUIRE_EQ(aboutTrailer->name, std::string("open-app-trailer"));
+    REQUIRE(aboutTrailer->action);
+
+    const std::optional<Command> devTrailer = settings.ActivateItem("dev-trailer", 0.0);
+    REQUIRE(devTrailer.has_value());
+    REQUIRE_EQ(devTrailer->name, std::string("open-app-trailer"));
+    REQUIRE(devTrailer->action);
+
+    const std::optional<Command> devPatch = settings.ActivateItem("dev-patch-notes", 0.0);
+    REQUIRE(devPatch.has_value());
+    REQUIRE_EQ(devPatch->name, std::string("dev-patch-notes"));
+    REQUIRE(devPatch->action);
+
+    const std::optional<Command> replayHg = settings.ActivateItem("dev-replay-hg", 0.0);
+    REQUIRE(replayHg.has_value());
+    REQUIRE_EQ(replayHg->name, std::string("dev-replay-intro"));
+    REQUIRE_EQ(replayHg->params.at("style"), std::string("mockingjay"));
+    REQUIRE(replayHg->action);
 
     const std::optional<Command> refresh = settings.ActivateItem("dev-refresh-cache", 0.0);
     REQUIRE(refresh.has_value());

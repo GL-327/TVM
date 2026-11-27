@@ -536,7 +536,27 @@ void PlayerScreen::SetPressed(const std::optional<std::string>& key, double nowM
     }
 }
 
+void PlayerScreen::StartIntro(const FranchiseIntroPlan& plan, double nowMs) {
+    intro_.SetMotion(motion_);
+    intro_.Start(plan, nowMs);
+}
+
+void PlayerScreen::SetIntroPlaybackReady(bool ready, double nowMs) {
+    intro_.SetPlaybackReady(ready, nowMs);
+}
+
+bool PlayerScreen::SkipIntro(double nowMs) {
+    if (!intro_.Active() || intro_.Released()) return false;
+    intro_.Skip(nowMs);
+    return true;
+}
+
+void PlayerScreen::ResetIntro() {
+    intro_.Reset();
+}
+
 bool PlayerScreen::Tick(double nowMs) {
+    intro_.Tick(nowMs);
     if (nowMs - lastCacheMs_ >= 200) {
         bufferGain_ = std::max(0.0, view_.cacheSeconds - lastCacheSeconds_) / std::max(0.2, (nowMs - lastCacheMs_) / 1000.0);
         lastCacheSeconds_ = view_.cacheSeconds;
@@ -566,6 +586,7 @@ bool PlayerScreen::Tick(double nowMs) {
 }
 
 bool PlayerScreen::Animating() const {
+    if (intro_.Animating()) return true;
     if (clockMs_ < flashUntilMs_) return true;
     if (buttonFocus_.Animating(clockMs_)) return true;
     if (!press_.Done(clockMs_)) return true;
@@ -763,6 +784,15 @@ std::optional<Box> PlayerScreen::BoxOf(const std::string& key) const {
 }
 
 void PlayerScreen::Paint(Painter& painter) const {
+    if (intro_.Active()) {
+        if (!intro_.Covers()) PaintPlayer(painter);
+        intro_.Paint(painter, width_, height_);
+        return;
+    }
+    PaintPlayer(painter);
+}
+
+void PlayerScreen::PaintPlayer(Painter& painter) const {
     switch (view_.phase) {
     case PlayerView::Phase::Resolving:
         painter.Clear(Rgb(0x000000));
@@ -1547,6 +1577,7 @@ void PlayerScreen::PaintError(Painter& painter) const {
 }
 
 bool PlayerScreen::Navigate(nav::Direction direction, double nowMs) {
+    if (SkipIntro(nowMs)) return true;
     ShowChrome(nowMs);
     if (MenuOpen()) {
         // An open menu holds the remote: up and down move along its rows.
@@ -1579,6 +1610,7 @@ bool PlayerScreen::Navigate(nav::Direction direction, double nowMs) {
 }
 
 std::optional<Command> PlayerScreen::Select(double nowMs) {
+    if (SkipIntro(nowMs)) return Command{false, "player-intro-skip", {}, true};
     // OK on a faded chrome brings it back and plays or pauses, as the remote's OK does.
     const bool hidden = ChromeOpacity(nowMs) < 1.0;
     ShowChrome(nowMs);
@@ -1619,6 +1651,7 @@ bool PlayerScreen::FocusButton(const std::string& key, double nowMs, bool /*with
 }
 
 std::optional<std::string> PlayerScreen::ItemAt(double x, double y) const {
+    if (intro_.Active() && !intro_.Released()) return std::optional<std::string>("intro-skip");
     if (const std::optional<Box> panel = MenuBox()) {
         // The open menu's rows come first, as the panel sits over everything else.
         const std::size_t count = MenuOptions(menu_).size();
@@ -1646,6 +1679,10 @@ std::optional<std::string> PlayerScreen::ItemAt(double x, double y) const {
 }
 
 std::optional<Command> PlayerScreen::ActivateItem(const std::string& key, double nowMs) {
+    if (key == "intro-skip" || (intro_.Active() && !intro_.Released())) {
+        SkipIntro(nowMs);
+        return Command{false, "player-intro-skip", {}, true};
+    }
     ShowChrome(nowMs);
     if (key.rfind(kMenuPrefix, 0) == 0) return Activate(key);
     // A click anywhere else closes the menu first, as a click outside a web menu does.

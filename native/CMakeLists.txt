@@ -14,7 +14,17 @@ set(TVM_REPO_ROOT "${PROJECT_SOURCE_DIR}/.." CACHE PATH "The TVM repository that
 
 file(READ "${TVM_REPO_ROOT}/package.json" TVM_PACKAGE_JSON)
 string(JSON TVM_VERSION GET "${TVM_PACKAGE_JSON}" version)
-add_compile_definitions(TVM_VERSION="${TVM_VERSION}")
+execute_process(
+  COMMAND git rev-parse --short HEAD
+  WORKING_DIRECTORY "${TVM_REPO_ROOT}"
+  OUTPUT_VARIABLE TVM_GIT_COMMIT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+if(NOT TVM_GIT_COMMIT)
+  set(TVM_GIT_COMMIT "local")
+endif()
+add_compile_definitions(TVM_VERSION="${TVM_VERSION}" TVM_GIT_COMMIT="${TVM_GIT_COMMIT}")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -141,6 +151,8 @@ add_library(tvm_engine STATIC
   src/ui/stage.cpp
   src/ui/stage.h
   src/ui/intro.cpp
+  src/ui/franchise_intro.cpp
+  src/ui/franchise_intro.h
   src/ui/logo_reveal.cpp
   src/ui/profile_editor.cpp
   src/ui/profile_chooser.cpp
@@ -229,7 +241,12 @@ add_custom_command(TARGET tvm POST_BUILD
 add_custom_command(TARGET tvm POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     "${TVM_REPO_ROOT}/packages/content" "$<TARGET_FILE_DIR:tvm>/content")
+add_custom_command(TARGET tvm POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:tvm>/media"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${TVM_REPO_ROOT}/apps/ui/public/media/tvm-trailer.mp4" "$<TARGET_FILE_DIR:tvm>/media/tvm-trailer.mp4")
 install(DIRECTORY "${TVM_REPO_ROOT}/packages/content/" DESTINATION content FILES_MATCHING PATTERN "*.json")
+install(FILES "${TVM_REPO_ROOT}/apps/ui/public/media/tvm-trailer.mp4" DESTINATION media)
 install(TARGETS tvm RUNTIME DESTINATION .)
 install(DIRECTORY assets DESTINATION .)
 install(FILES update-native.ps1 DESTINATION bin)

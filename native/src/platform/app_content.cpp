@@ -61,6 +61,40 @@ void App::SwitchHls(int height) {
     });
 }
 
+bool App::ShowPatchNotesPopup() {
+    const auto data = content_->Read("changelog");
+    if (!data.contains("releases") || !data["releases"].is_array() || data["releases"].empty()) return false;
+    const auto& release = data["releases"][0];
+    ui::Shell::PatchNotes notes;
+    notes.version = release.value("version", "");
+    notes.title = release.value("title", "");
+    const auto strings = [](const nlohmann::json& list, std::vector<std::string>& out) {
+        if (!list.is_array()) return;
+        for (const auto& line : list) if (line.is_string()) out.push_back(line.get<std::string>());
+    };
+    strings(release.value("highlights", nlohmann::json::array()), notes.highlights);
+    if (release.contains("changes") && release["changes"].is_array())
+        for (const auto& change : release["changes"]) {
+            ui::Shell::PatchChange entry;
+            if (change.is_string()) {
+                entry.text = change.get<std::string>();
+            } else if (change.is_object() && change.contains("text") && change["text"].is_string()) {
+                entry.text = change["text"].get<std::string>();
+                entry.area = change.value("area", "");
+                if (change.contains("platforms") && change["platforms"].is_array())
+                    for (const auto& platform : change["platforms"]) if (platform.is_string()) entry.platforms.push_back(platform.get<std::string>());
+            } else {
+                continue;
+            }
+            notes.changes.push_back(std::move(entry));
+        }
+    strings(release.value("knownIssues", nlohmann::json::array()), notes.knownIssues);
+    shell_->SetReleaseCard(std::nullopt);
+    shell_->SetPatchNotes(std::move(notes));
+    dirty_ = true;
+    return true;
+}
+
 void App::SyncReleaseNotice(double nowMs) {
     if (!releaseNotice_ || !releaseNotice_->Pending()) return;
     if (shell_->ActiveScreenName() != "home" || streamLane_ != "all" || intro_->Animating()) {
@@ -82,40 +116,10 @@ void App::SyncReleaseNotice(double nowMs) {
         return;
     }
     releaseNotice_->Show(nowMs);
+    if (patchPopupFlag_ == 1 && !shell_->HasPatchNotes() && ShowPatchNotesPopup()) return;
+    if (patchPopupFlag_ == 1) return;
     const auto data = content_->Read("changelog");
     if (!data.contains("releases")) return;
-    if (patchPopupFlag_ == 1 && !shell_->HasPatchNotes() && !data["releases"].empty()) {
-        const auto& release = data["releases"][0];
-        ui::Shell::PatchNotes notes;
-        notes.version = release.value("version", "");
-        notes.title = release.value("title", "");
-        const auto strings = [](const nlohmann::json& list, std::vector<std::string>& out) {
-            if (!list.is_array()) return;
-            for (const auto& line : list) if (line.is_string()) out.push_back(line.get<std::string>());
-        };
-        strings(release.value("highlights", nlohmann::json::array()), notes.highlights);
-        if (release.contains("changes") && release["changes"].is_array())
-            for (const auto& change : release["changes"]) {
-                ui::Shell::PatchChange entry;
-                if (change.is_string()) {
-                    entry.text = change.get<std::string>();
-                } else if (change.is_object() && change.contains("text") && change["text"].is_string()) {
-                    entry.text = change["text"].get<std::string>();
-                    entry.area = change.value("area", "");
-                    if (change.contains("platforms") && change["platforms"].is_array())
-                        for (const auto& platform : change["platforms"]) if (platform.is_string()) entry.platforms.push_back(platform.get<std::string>());
-                } else {
-                    continue;
-                }
-                notes.changes.push_back(std::move(entry));
-            }
-        strings(release.value("knownIssues", nlohmann::json::array()), notes.knownIssues);
-        shell_->SetReleaseCard(std::nullopt);
-        shell_->SetPatchNotes(std::move(notes));
-        dirty_ = true;
-        return;
-    }
-    if (patchPopupFlag_ == 1) return;
     for (const auto& release : data["releases"]) if (release.value("version", "") == config::kCoreVersion) {
         ui::Shell::ReleaseCard card;
         card.version = config::kCoreVersion;

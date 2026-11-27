@@ -78,24 +78,35 @@ void CatchUpCore(const coreapi::Client& client, const std::string& marker) {
     }
     // The Core exits and starts the new build; it is back once it reports that
     // build's commit (the version can stay the same).
-    for (int attempt = 0; attempt < 240; ++attempt) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-        if (!SameCore(client, marker)) continue;
-        try {
-            const auto now = client.Call("/api/update/status").value("currentCommit", std::string());
-            if (applied.empty() ? RunningVersion(client) != running : now == applied) return;
-        } catch (...) {}
-    }
+    (void)WaitForCoreRestart(client, marker, running, applied);
 }
 }  // namespace
 
-void EnsureCore(const coreapi::Client& client) {
+std::string ReadRuntimeMarker(const coreapi::Client& client) {
     const auto markerPath = client.dataDir() / L"native-runtime-id";
     std::string marker = util::ReadTextFile(markerPath).value_or("");
     if (marker.empty()) {
         marker = util::Base64Encode(util::RandomBytes(24));
         util::WriteFileAtomically(markerPath, marker);
     }
+    return marker;
+}
+
+bool WaitForCoreRestart(const coreapi::Client& client, const std::string& marker,
+                        const std::string& previousVersion, const std::string& appliedCommit) {
+    for (int attempt = 0; attempt < 240; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        if (!SameCore(client, marker)) continue;
+        try {
+            const auto now = client.Call("/api/update/status").value("currentCommit", std::string());
+            if (appliedCommit.empty() ? RunningVersion(client) != previousVersion : now == appliedCommit) return true;
+        } catch (...) {}
+    }
+    return false;
+}
+
+void EnsureCore(const coreapi::Client& client) {
+    const std::string marker = ReadRuntimeMarker(client);
     if (SameCore(client, marker)) {
         // A Core this launch did not start may predate the window's update.
         CatchUpCore(client, marker);

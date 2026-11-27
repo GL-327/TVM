@@ -42,6 +42,16 @@ void App::VideoClickAction(mpv::VideoClicks::Action action) {
 }
 
 void App::TickPlaybackTools(double now) {
+    MaybeLaunchPendingIntroPlayback();
+    if (playerIntroOnly_) {
+        ui::PlayerScreen* player = shell_->ActivePlayer();
+        if (player == nullptr || !player->IntroActive()) {
+            playerIntroOnly_ = false;
+            shell_->Back(now);
+            dirty_ = true;
+        }
+        return;
+    }
     VideoClickAction(videoClicks_.Tick(now));
     if (!playerOpen_ || !sleepDeadline_ || now < *sleepDeadline_) return;
     sleepDeadline_.reset();
@@ -108,6 +118,23 @@ void App::OpenTrailer(const std::string& url, const std::string& title) {
                 ShellExecuteW(window_, L"open", util::ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             } else {
                 shell_->Execute(ui::Command{false, "player", {{"title", title}, {"trailer", url}, {"ytdlp", executable}}, false}, NowMs());
+            }
+        });
+    });
+}
+
+void App::OpenAppTrailer() {
+    wchar_t exe[32768]{};
+    GetModuleFileNameW(nullptr, exe, static_cast<DWORD>(std::size(exe)));
+    const std::filesystem::path bundled = std::filesystem::path(exe).parent_path() / "media" / "tvm-trailer.mp4";
+    std::string source = std::filesystem::exists(bundled) ? bundled.string() : (core_->origin() + "/media/tvm-trailer.mp4");
+    background_->Run([this, source] {
+        PrepareMpv(*core_);
+        background_->PostToUi([this, source] {
+            if (mpv::FindMpvExecutable(util::ProcessEnvironment())) {
+                shell_->Execute(ui::Command{false, "player", {{"title", "TVM"}, {"trailer", source}}, false}, NowMs());
+            } else {
+                ShellExecuteW(window_, L"open", util::ToWide(source).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             }
         });
     });

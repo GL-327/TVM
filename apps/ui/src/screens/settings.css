@@ -4,16 +4,16 @@ html body .polish-settings.page {
   padding: 90px var(--tvm-gutter) 38px;
   /* No flex gap: the scene and the scrim band below would each add 32px. */
   row-gap: 0;
-  background: var(--tvm-bg);
+  background: transparent;
 }
-.polish-settings > .home__scene { opacity: .18; }
+.polish-settings > .home__scene { opacity: .90; }
 /* The nav floats, so rows scrolled up under it showed through around the capsule and
    between the icon buttons. Pin the scrim across 0..padding-top so sticky clamping
    inside the padded scroller never pushes it down over the panel heading. */
 .polish-settings::before {
   content: ''; position: fixed; inset: 0 0 auto; z-index: 5; height: var(--tvm-settings-scrim);
   pointer-events: none;
-  background: linear-gradient(180deg, var(--tvm-bg) 0 58%, color-mix(in srgb, var(--tvm-bg) 0%, transparent) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tvm-bg) 72%, transparent) 0 58%, transparent 100%);
 }
 .settings-layout {
   position: relative; display: grid; grid-template-columns: 240px minmax(0, 1fr);
@@ -43,10 +43,22 @@ html body .tvm-button.settings-category[aria-pressed='true'] {
 .settings-category__chevron { margin-left: auto; color: var(--tvm-text-faint); }
 html body .settings-panel.settings-list { display: grid; gap: 14px; width: 100%; max-width: none; margin: 0; padding: 0; }
 .settings-panel__header { display: flex; gap: 12px; align-items: flex-start; padding-block: 5px 14px; }
+.settings-panel__lead { flex: 1 1 auto; min-width: 0; }
+.settings-version-badge {
+  display: grid; justify-items: end; gap: 2px; text-align: right; flex: 0 0 auto; padding-top: 6px;
+}
+.settings-version-badge strong { font-size: .8125rem; font-weight: 600; color: var(--tvm-text); }
+.settings-version-badge span { font-size: .75rem; color: var(--tvm-text-muted); }
 .settings-panel__header h1 { margin: 0 0 6px; font-size: 2.25rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
 .settings-panel__header p { margin: 0; color: var(--tvm-text-muted); font-size: .9375rem; }
 html body .polish-settings .settings-group {
-  display: block; margin: 0; padding: 0; background: var(--tvm-surface); border: 1px solid var(--tvm-border-soft); border-radius: 16px;
+  display: block; margin: 0; padding: 0;
+  background: color-mix(in srgb, var(--tvm-surface) 58%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(195%);
+  backdrop-filter: blur(18px) saturate(195%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-top-color: rgba(255, 255, 255, 0.28);
+  border-radius: 16px;
 }
 .settings-group + .settings-group { margin-top: 12px; }
 .settings-panel .settings-group__title { padding: 14px 20px; margin: 0; border-bottom: 1px solid var(--tvm-border-soft); font-size: .875rem; }

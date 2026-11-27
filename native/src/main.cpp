@@ -752,13 +752,58 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
     tvm::ui::Shell shell(std::move(root), store);
     shell.Layout(width, height);
     // Live TV, Library and Search are lanes of Home under the same chrome.
-    const int lane = screen == L"live"           ? 3
+    const int lane = screen == L"hub"            ? -1
+                     : screen == L"live"         ? 3
                      : screen == L"library"      ? 4
                      : screen == L"search"       ? 5
                      : screen == L"search-typing" ? 5
                      : screen == L"search-empty"  ? 6
                                                   : 0;
     if (home != nullptr && lane > 0) ShowSnapshotLane(*home, lane, lane, art, 0.0);
+    if (home != nullptr && screen == L"hub") {
+        tvm::ui::SceneView hubView;
+        hubView.style = tvm::ui::SceneStyle::Hub;
+        hubView.pageKey = "home:hub";
+        hubView.hubGreeting = "Good evening, Ada";
+        hubView.hubSubtitle = "What are you in the mood for?";
+        hubView.hubHeroCaption = "Dune: Part Two";
+        hubView.hubBackdropUrl = art.empty() ? "asset:lighthouse.jpg" : art;
+        hubView.topButtons = {
+            {"Hub", {}, true}, {"Home", {}, false}, {"Movies", {}, false}, {"Series", {}, false},
+            {"Live TV", {}, false}, {"Library", {}, false}, {"Search", {}, false},
+            {"Ada", {}, false, false, true},
+        };
+        hubView.pageButtons = {
+            {"Browse Home", {}, true}, {"Movies", {}, false}, {"Series", {}, false},
+            {"Live TV", {}, false}, {"Search", {}, false},
+        };
+        hubView.hubFooter = tvm::ui::TopButton{"My List", {}, false};
+        tvm::ui::RailData cw{"continue", "Continue watching", {}};
+        for (int i = 0; i < 4; ++i) {
+            cw.cards.push_back({"tt100" + std::to_string(i), i == 0 ? "Dune: Part Two" : ("Title " + std::to_string(i + 1)),
+                                art.empty() ? "asset:lighthouse.jpg" : art, 0.35 + i * 0.15});
+        }
+        tvm::ui::RailData apps{"hub-apps", "Apps & services", {}};
+        apps.cards.push_back({"hub-app:tvm-stream", "TVM STREAM", "", std::nullopt, false, "Personal library", false, false, tvm::ui::Rgb(0x182644)});
+        apps.cards.push_back({"hub-app:netflix", "NETFLIX", "", std::nullopt, false, "Netflix", false, false, tvm::ui::Rgb(0xE50914)});
+        apps.cards.push_back({"hub-app:prime", "prime video", "", std::nullopt, false, "Prime Video", false, false, tvm::ui::Rgb(0x00A8E1)});
+        apps.cards.push_back({"hub-app:max", "max", "", std::nullopt, false, "HBO Max", false, false, tvm::ui::Rgb(0x002BE7)});
+        apps.cards.push_back({"hub-app:disney", "disney+", "", std::nullopt, false, "Disney+", false, false, tvm::ui::Rgb(0x113C8C)});
+        apps.cards.push_back({"hub-app:hulu", "hulu", "", std::nullopt, false, "Hulu", false, false, tvm::ui::Rgb(0x1CE783)});
+        tvm::ui::RailData live{"hub-live", "Free live TV", {}};
+        for (const char* name : {"BBC One", "BBC Two", "BBC News", "CBBC", "DW English", "WeatherNation"}) {
+            tvm::ui::CardData ch;
+            ch.itemId = std::string("live:free:") + name;
+            ch.title = name;
+            ch.logo = true;
+            ch.subtitle = "Free live channel";
+            live.cards.push_back(std::move(ch));
+        }
+        hubView.rails = {std::move(cw), std::move(apps), std::move(live)};
+        home->SetHeroes({}, 0.0);
+        home->SetView(hubView, 0.0);
+        home->FocusItem("page:0", 0.0, false);
+    }
     // The field taking typing: its accent line and caret.
     if (home != nullptr && screen == L"search-typing") home->FocusItem("search-field", 0.0, false);
     // Settings with the App language list open.
@@ -782,7 +827,12 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             core.homeSections = {{"continue", true}, {"for-you", true}, {"my-list", true}, {"upcoming", false}};
             page.SetCoreSettings(std::move(core));
         } else if (id == "developer") {
-            page.SetDeveloperDiagnostics({true, "TVM 1.4.4", "Not connected", "Liquid Glass"});
+            tvm::ui::DeveloperDiagnostics diag;
+            diag.active = true;
+            diag.buildVersion = "TVM 1.4.11";
+            diag.rdTokenSource = "Not connected";
+            diag.glassMode = "Liquid Glass";
+            page.SetDeveloperDiagnostics(std::move(diag));
             store.SaveShowFps(true);
         }
         if (id == "select") {
@@ -907,6 +957,36 @@ int RunSnapshot(const std::wstring& path, unsigned width, unsigned height, const
             view.cadence = (screen == L"plans-monthly") ? "month" : "year";
             view.compareOpen = (screen == L"plans-compare");
             plans->SetView(view);
+        }
+    } else if (screen == L"glass-dialog") {
+        tvm::ui::Command open;
+        open.name = "confirm";
+        open.modal = true;
+        shell.Execute(open, 0.0);
+        if (auto* info = dynamic_cast<tvm::ui::InfoScreen*>(&shell.ActiveScreen())) {
+            tvm::ui::InfoView view;
+            view.centeredCard = true;
+            view.kicker = "TVM Glass";
+            view.heading = "Refractive Sheet";
+            view.lede = "Check liquid glass bevel refraction, chromatic dispersion and 3D bloom ribbons.";
+            view.filters = {{{"info:pill-a", "Clear", true}, {"info:pill-b", "Balanced"}, {"info:pill-c", "Vibrant"}}};
+            view.field = true;
+            view.fieldLabel = "Search filter";
+            view.fieldPlaceholder = "Filter preview items...";
+            view.actions = {{{"info:apply", "Apply changes", true}, {"back", "Close"}}};
+            info->SetView(view);
+        }
+    } else if (screen == L"intro-hg" || screen == L"intro-doom") {
+        tvm::ui::Command open;
+        open.name = "player";
+        open.params["title"] = (screen == L"intro-hg") ? "The Hunger Games: Catching Fire" : "Avengers: Doomsday";
+        shell.Execute(open, 0.0);
+        if (auto* player = shell.ActivePlayer()) {
+            const tvm::ui::FranchiseIntroPlan plan = (screen == L"intro-hg")
+                ? tvm::ui::FranchiseIntroPlan{"hunger-games", "sunrise-on-the-reaping", "mockingjay", "#E8A33D", "#FF6A2A", "Catching Fire", 3800.0}
+                : tvm::ui::FranchiseIntroPlan{"avengers-doomsday", "avengers-doomsday", "doom", "#3FA34D", "#1E6B2A", "Avengers: Doomsday", 3800.0};
+            player->StartIntro(plan, 0.0);
+            player->Tick(screen == L"intro-hg" ? 2750.0 : 2850.0);
         }
     }
 

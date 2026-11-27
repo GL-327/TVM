@@ -105,6 +105,20 @@ std::optional<std::string> ArtworkStore::Forget(const paths::fs::path& file) {
     return url->second;
 }
 
+void ArtworkStore::Clear() {
+    std::error_code ignored;
+    if (paths::fs::is_directory(cacheDir_, ignored)) {
+        for (const auto& entry : paths::fs::directory_iterator(cacheDir_, ignored)) {
+            if (entry.is_regular_file(ignored)) paths::fs::remove(entry.path(), ignored);
+        }
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    known_.clear();
+    urls_.clear();
+    wanted_.clear();
+    wantedSet_.clear();
+}
+
 void ArtworkStore::Want(const std::string& url) const {
     std::lock_guard<std::mutex> lock(mutex_);
     if (wanted_.size() >= kMaxWanted || !wantedSet_.insert(url).second) return;

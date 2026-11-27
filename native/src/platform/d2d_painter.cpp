@@ -203,23 +203,23 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
                     backdropBrush_->SetTransform(base);
                     target_->FillRoundedRectangle(ToRounded(core, std::max(0.0, radius - bezel)), backdropBrush_.Get());
                 }
-                // Video in mpv's separate window can't be sampled. Give its controls a readable wash.
+                // Video in mpv's separate window can't be sampled. Give its controls a clear wash.
                 Color fallback = style.tint.value_or(tokens::kSurface);
-                fallback.a = alpha * (backdropBrush_ ? (sheet ? 0.64 : 0.48) : (sheet ? 0.86 : 0.68));
+                fallback.a = alpha * (backdropBrush_ ? (sheet ? 0.52 : 0.40) : (sheet ? 0.78 : 0.62));
                 FillRoundRect(box, radius, fallback);
             } else if (behind >= 0.0) {
                 const double bright = std::clamp((behind - 0.26) / 0.42, 0.0, 1.0);
-                const double dim = 0.20 * bright;
-                const double lift = 0.05 * (1.0 - bright);
+                const double dim = 0.13 * bright;
+                const double lift = 0.07 * (1.0 - bright);
                 FillRoundRect(box, radius, black(dim));
                 FillRoundRect(box, radius, white(lift));
                 if (style.adaptiveInk) {
                     const double shown = std::min(1.0, behind * 1.05) * (1.0 - dim) * (1.0 - lift) + lift;
                     glassInk_ = shown >= 0.46 ? Rgb(0x000000) : Rgb(0xFFFFFF);
                 } else if (sheet) {
-                    // Sheets keep their themed labels and use a restrained surface wash over artwork.
+                    // Light translucent wash keeps bloom waves visible through PyGlass sheets.
                     Color tint = tokens::kSurface;
-                    tint.a = alpha * (light ? 0.52 : 0.34 * bright);
+                    tint.a = alpha * (light ? 0.34 : 0.18 * bright);
                     FillRoundRect(box, radius, tint);
                 }
             }
@@ -228,7 +228,7 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
 
     if (!card && !hoverPlate && !style.activeTab) {
         FillRoundRectLinear(box, radius, box.x, box.y, box.x, box.Bottom(),
-                            {{0.0, white(0.065)}, {0.30, white(0.0)}, {1.0, white(0.0)}});
+                            {{0.0, white(0.11)}, {0.34, white(0.025)}, {1.0, white(0.0)}});
         if (tokens::pointer && !tokens::reduceMotion && !solid && focus > 0.001) {
             const auto point = *tokens::pointer;
             const auto stops = Stops({{0.0, white(0.10 * focus)}, {1.0, white(0.0)}});
@@ -240,11 +240,11 @@ void D2dPainter::Glass(const ui::Box& box, double radius, const ui::GlassStyle& 
         }
     }
     if (!hoverPlate && !card && !style.activeTab) {
-        const double rim = alpha * (0.80 + 0.16 * focus) * (1.0 - 0.15 * press);
+        const double rim = alpha * (0.88 + 0.12 * focus) * (1.0 - 0.15 * press);
         const ui::Box contour{box.x - 0.5, box.y - 0.5, box.width + 1.0, box.height + 1.0};
-        StrokeRoundRect(contour, radius + 0.5, 1.0, black(0.22));
+        StrokeRoundRect(contour, radius + 0.5, 1.0, black(0.18));
         if (lens_ && clipDepth_ == 0) {
-            lens_->DrawRim(box, radius, rim, 0.23 * alpha);
+            lens_->DrawRim(box, radius, rim, 0.18 * alpha);
         } else {
             const auto stops = Stops({{0.0, white(0.75 * rim)}, {0.46, white(0.15 * rim)},
                                       {0.62, white(0.15 * rim)}, {1.0, white(0.35 * rim)}});

@@ -11,7 +11,7 @@
 
 namespace tvm::content {
 namespace {
-constexpr std::array<const char*, 6> kNames{"changelog", "events", "free-channels", "services", "avatars", "parental"};
+constexpr std::array<const char*, 7> kNames{"changelog", "events", "free-channels", "services", "avatars", "parental", "intros"};
 std::string Key(const std::string& name) {
     return name == "free-channels" ? "channels" : name == "changelog" ? "releases" : name == "avatars" ? "sets" : name == "parental" ? "levels" : name;
 }
@@ -52,6 +52,9 @@ bool Store::Valid(const std::string& name, const nlohmann::json& data) {
             if (name == "services" && (!string("name") || !string("home") || !string("signin") || !http::IsWebUrl(row["home"]) || !http::IsWebUrl(row["signin"]))) return false;
             if (name == "events" && (!string("start") || !string("end") || !string("release") || !string("imdbId") || !row.contains("rail") || !row["rail"].is_object() || !row["rail"].contains("items") || !row["rail"]["items"].is_array())) return false;
             if (name == "avatars" && (!string("title") || !row.contains("avatars") || !row["avatars"].is_array())) return false;
+            if (name == "intros" && (!string("style") || !string("accent") || !string("glow") ||
+                                     !row.contains("durationMs") || !row["durationMs"].is_number() ||
+                                     !row.contains("imdbIds") || !row["imdbIds"].is_array())) return false;
         }
     }
     return true;

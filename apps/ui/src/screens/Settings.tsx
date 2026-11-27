@@ -9,6 +9,8 @@ import { Ribbon } from '../components/Ribbon';
 import { Switch } from '../components/Switch';
 import { fetchAccount, isDevAccount } from '../data/account';
 import { currentAppVersion } from '../data/changelog';
+import { buildCommit } from '../data/devTools';
+import { fetchCoreUpdateStatus, formatEngineLabel, runManualCoreUpdate, type CoreUpdateStatus } from '../data/manualUpdate';
 import { apiFetch, fetchRdStatus, peekHome } from '../data/media';
 import { isExtraAllowed } from '../data/polishPrefs';
 import { PREFS_CHANGED_EVENT, readPrefs, savePrefs, type AppPrefs } from '../data/prefs';
@@ -97,12 +99,16 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
   const [showFps, setShowFps] = useShowFps();
   const [rd, setRd] = useState('Connect or manage your key');
   const [stats, setStats] = useState(true);
+  const [coreStatus, setCoreStatus] = useState<CoreUpdateStatus | null>(null);
+  const [updatingNow, setUpdatingNow] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   useReleaseConfig();
 
   useEffect(() => {
     void fetchAccount().then((state) => setAdmin(isDevAccount(state))).catch(() => undefined);
     void fetchRdStatus().then((status) => setRd(status?.configured ? status.username ?? 'Connected' : 'Connect your account'));
     void apiFetch('/api/extras/stats').then((response) => setStats(response.status !== 404)).catch(() => undefined);
+    void fetchCoreUpdateStatus().then((status) => setCoreStatus(status)).catch(() => undefined);
     const update = (): void => setPrefs(readPrefs());
     window.addEventListener(PREFS_CHANGED_EVENT, update);
     return () => window.removeEventListener(PREFS_CHANGED_EVENT, update);
@@ -121,6 +127,21 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
 
   const save = (patch: Partial<AppPrefs>): void => { void savePrefs(patch); };
   const jump = (screen: string): (() => void) => () => navigate.push(screen);
+  const triggerUpdateNow = (): void => {
+    if (updatingNow) return;
+    setUpdatingNow(true);
+    setUpdateMessage('Checking Core for updates…');
+    void runManualCoreUpdate((msg) => setUpdateMessage(msg))
+      .then((outcome) => {
+        setUpdateMessage(outcome.message);
+        if (outcome.status) setCoreStatus(outcome.status);
+        if (outcome.reload) window.setTimeout(() => window.location.reload(), 400);
+      })
+      .catch(() => setUpdateMessage('Update failed. Confirm Core is running and reachable.'))
+      .finally(() => setUpdatingNow(false));
+  };
+  const windowVersionLabel = `TVM ${currentAppVersion()} · build ${buildCommit()}`;
+  const engineVersionLabel = formatEngineLabel(coreStatus);
   const display = CATEGORIES.filter(([id]) => id !== 'developer' || admin)
     .filter(([id]) => id !== 'stats' || stats && isExtraAllowed('watchStats') && prefs.extras.watchStats !== false);
   const active = display.find(([id]) => id === category) ?? CATEGORIES[0];
@@ -219,12 +240,24 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
     rd: [action('realdebrid', 'Real-Debrid account', 'Manage the key for your own subscription.', jump('realdebrid'), rd)],
     downloads: [action('downloads', 'Saved videos', 'View download progress and manage offline videos.', () => navigate.pushModal('downloads'))],
     updates: [
+      {
+        id: 'update-now',
+        title: 'Update now',
+        detail: updateMessage ?? 'Force a Core update check and apply right away.',
+        control: (
+          <FocusButton id="update-now" tabIndex={0} className="settings-open" disabled={updatingNow}
+            ariaLabel="Update now" onSelect={triggerUpdateNow}>
+            {updatingNow ? 'Updating…' : 'Update now'}<span aria-hidden="true">›</span>
+          </FocusButton>
+        ),
+      },
       action('updates', 'Check for updates', 'View the installed version and available updates.', jump('updates')),
       toggle('auto-update', 'Automatic updates', 'Check for and apply updates when TVM opens.', prefs.autoUpdate, (autoUpdate) => save({ autoUpdate })),
       action('roku-updates', 'Roku updates', 'Install TVM updates on your Roku.', jump('roku-updates')),
     ],
     stats: [action('your-stats', 'Watch history & stats', 'Review watch time, genres and recent titles.', jump('stats'))],
     about: [
+      action('about-version', windowVersionLabel, engineVersionLabel, jump('updates'), 'Updates'),
       action('whats-new', "What's new", 'Read the release notes.', jump('whats-new'), currentAppVersion()),
       action('trailer', 'Watch the TVM trailer', 'How two friends and a lot of AI built TVM.', () => navigate.pushModal('trailer')),
       action('network', 'Network', 'Connection details for this device.', () => navigate.push('system-info', { params: { section: 'network' } })),
@@ -280,7 +313,11 @@ export function Settings({ params }: ScreenProps): React.JSX.Element {
         <section ref={panel} className="settings-panel settings-list" data-wrap="y">
           <header className="settings-panel__header">
             {pushed && <BackButton id="settings-category-back" />}
-            <div><h1>{term ? 'Search results' : active[1]}</h1><p>{term ? 'Settings matching your search.' : active[2]}</p></div>
+            <div className="settings-panel__lead"><h1>{term ? 'Search results' : active[1]}</h1><p>{term ? 'Settings matching your search.' : active[2]}</p></div>
+            <div className="settings-version-badge" aria-label="TVM version">
+              <strong>{windowVersionLabel}</strong>
+              <span>{engineVersionLabel}</span>
+            </div>
           </header>
           {term ? results.length ? results.map((result) => <div key={result.id}>{renderGroup(result.rows, result.name)}</div>)
             : <p className="settings-empty">No settings match “{query.trim()}”.</p>

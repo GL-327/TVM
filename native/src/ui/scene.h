@@ -49,8 +49,11 @@ struct CardData {
     bool feature = false;
     // A Browse tile on Search (a genre). OK sends `search-browse` with its title as the genre, not Details.
     bool category = false;
+    std::optional<Color> tileColor;
+    std::optional<Command> command;
     std::string backdropUrl;
     std::string detailsPosterUrl;
+    bool landscape = false;
 };
 
 struct RailData {
@@ -90,6 +93,7 @@ struct TopButton {
 // billboard hero with WATCH NOW and the "tvm stream" lockup (apps/ui/src/screens/Library.tsx).
 enum class SceneStyle {
     Home,
+    Hub,
     Stream,
     // The search page: the search field across the top, with the results as rails of posters under it.
     Search,
@@ -137,6 +141,12 @@ struct SceneView {
     std::string heading;
     // A service hub's wordmark and colour, which take the "tvm stream" lockup's place on the billboard.
     std::string brandWord;
+    // Hub view content: welcome hero card + 4 quick-link shortcuts + bottom My List link.
+    std::string hubGreeting;
+    std::string hubSubtitle;
+    std::string hubBackdropUrl;
+    std::string hubHeroCaption;
+    std::optional<TopButton> hubFooter;
     // A page under the stream chrome (Live TV, Library, Search): its own controls in a row under the chrome, kept
     // apart from the chrome's tabs, and a search field above them. They stay put while the rails scroll.
     std::vector<TopButton> pageButtons;
@@ -192,6 +202,7 @@ public:
     void Layout(double width, double height) override;
     bool Tick(double nowMs) override;
     bool Animating() const override;
+    bool ShowsStage() const override { return style_ == SceneStyle::Hub; }
     void Paint(Painter& painter) const override;
 
     bool Navigate(nav::Direction direction, double nowMs) override;
@@ -258,6 +269,7 @@ private:
         std::size_t rail;
         std::size_t index;
         std::string key;
+        std::optional<Command> command;
         // Timeline id of the focus fade in flight, or 0.
         motion::Timeline::Id focusAnimation = 0;
     };
@@ -276,7 +288,15 @@ private:
         Box mute;
     };
 
-    bool Streamy() const { return style_ == SceneStyle::Stream; }
+    bool Streamy() const { return style_ == SceneStyle::Stream || style_ == SceneStyle::Hub; }
+    bool HubMode() const { return style_ == SceneStyle::Hub; }
+    Box HubHeroBox() const;
+    double HubHeaderHeight() const;
+    std::optional<Box> HubFooterBox() const;
+    void PaintHub(Painter& painter) const;
+    void SyncAmbience(double nowMs);
+    void PaintAmbience(Painter& painter) const;
+    bool ShowAmbience() const { return !HubMode() && !HasLaneHeader() && (Streamy() || style_ == SceneStyle::Home); }
     // The page header under the stream chrome: its heading, search field and control row, in window pixels.
     struct HeaderItem {
         std::string key;
@@ -346,6 +366,11 @@ private:
     std::string heading_;
     std::string brandWord_;
     std::optional<Color> brandColor_;
+    std::string hubGreeting_;
+    std::string hubSubtitle_;
+    std::string hubBackdropUrl_;
+    std::string hubHeroCaption_;
+    std::optional<TopButton> hubFooter_;
 
     std::unique_ptr<Stack> page_;
     std::vector<Rail*> rails_;
@@ -390,6 +415,12 @@ private:
     std::string artPrevious_;
     std::string artPending_;
     std::optional<motion::Tween> artFade_;
+    std::string ambientCandidate_;
+    double ambientCandidateAt_ = -1.0;
+    std::string ambientTarget_;
+    std::string ambientCurrent_;
+    std::string ambientPrevious_;
+    std::optional<motion::Tween> ambientFade_;
     std::optional<motion::Tween> titleFade_;
     std::function<bool(const std::string&)> imageReady_;
     // The clock of the last tick. The hero's fades read it while painting.

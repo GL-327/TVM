@@ -238,6 +238,10 @@ void PageScreen::Paint(Painter& painter) const {
         painter.Clear(tokens::kBackground);
         // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
         painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
+    } else if (NeedsStageScrim()) {
+        const bool light = tokens::kBackground.r > 0.5;
+        painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0,
+                              light ? Rgb(0xF6F8FC, 0.52) : Rgb(0x050914, 0.34));
     }
     PaintContent(painter, scroll_);
     for (const PageButton& button : Buttons()) {

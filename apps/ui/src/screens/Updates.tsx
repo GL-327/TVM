@@ -7,6 +7,7 @@ import type { ScreenProps } from '../nav/registry';
 import { formatAppDate } from '../i18n/locale';
 import { readAutoUpdate, savePrefs } from '../data/prefs';
 import { currentAppVersion, rememberPendingChangelog, type ChangelogEntry, type ChangelogRecord, parseChangelogRecord } from '../data/changelog';
+import { runManualCoreUpdate } from '../data/manualUpdate';
 import { updateRequired, useReleaseConfig } from '../data/releaseConfig';
 
 type UpdateKind =
@@ -103,6 +104,21 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       );
     } catch {
       setMessage('Check failed. Confirm this PC can reach GitHub.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const forceUpdateNow = async (): Promise<void> => {
+    setBusy('apply');
+    setMessage('Checking Core for updates…');
+    try {
+      const outcome = await runManualCoreUpdate((msg) => setMessage(msg));
+      setMessage(outcome.message);
+      await refresh().catch(() => undefined);
+      if (outcome.reload) window.setTimeout(() => window.location.reload(), 400);
+    } catch {
+      setMessage('Update failed.');
     } finally {
       setBusy(null);
     }
@@ -243,6 +259,9 @@ export function Updates(_props: ScreenProps): React.JSX.Element {
       <div className="hero__actions">
         <FocusButton id="check" variant="primary" disabled={busy !== null} onSelect={() => void check()}>
           {busy === 'check' ? 'Checking…' : 'Check now'}
+        </FocusButton>
+        <FocusButton id="update-now" disabled={busy !== null} onSelect={() => void forceUpdateNow()}>
+          {busy === 'apply' ? 'Updating…' : 'Update now'}
         </FocusButton>
         <FocusButton
           id="apply"

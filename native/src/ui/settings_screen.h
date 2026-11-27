@@ -32,6 +32,20 @@ struct DeveloperDiagnostics {
     bool operator==(const DeveloperDiagnostics&) const = default;
 };
 
+struct VersionSummary {
+    std::string windowVersion;
+    std::string engineVersion;
+
+    bool operator==(const VersionSummary&) const = default;
+};
+
+struct ManualUpdateState {
+    bool busy = false;
+    std::string status;
+
+    bool operator==(const ManualUpdateState&) const = default;
+};
+
 // The Core preferences the Settings rows show. Each is addressed by the path it has in /api/prefs ("quality",
 // "subtitleStyle.size", "extras.trailers"), and holds its value as text: "1" or "0" for a switch.
 struct CoreSettings {
@@ -61,6 +75,7 @@ public:
     bool Tick(double nowMs) override;
     bool Animating() const override;
     void Paint(Painter& painter) const override;
+    bool ShowsStage() const override { return true; }
 
     bool Navigate(nav::Direction direction, double nowMs) override;
     std::optional<Command> Select(double nowMs) override;
@@ -77,6 +92,8 @@ public:
     // The App language list, or the list of the Select row that is open. Exposed for tests.
     const Dropdown& LanguageList() const { return select_; }
     void SetDeveloperDiagnostics(DeveloperDiagnostics diag);
+    void SetVersionSummary(VersionSummary summary);
+    void SetManualUpdateState(ManualUpdateState state);
     // The answer of GET /api/prefs, for the playback, subtitle, Home and Extras rows.
     void SetCoreSettings(CoreSettings settings);
     void SetHomeSectionLabels(HomeSectionLabels labels);
@@ -210,6 +227,8 @@ private:
     std::vector<HomeSection> homeRows_;
     int homeControl_ = 2;
     DeveloperDiagnostics diag_;
+    VersionSummary versionSummary_;
+    ManualUpdateState manualUpdate_;
     Metrics metrics_;
     double width_ = 0.0;
     double height_ = 0.0;

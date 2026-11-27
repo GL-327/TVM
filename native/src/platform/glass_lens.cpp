@@ -42,32 +42,27 @@ namespace {
 constexpr std::uint32_t kMaxSide = 2048;
 constexpr std::size_t kMaxKernels = 48;
 
-// A convex bezel gives the silhouette a strong inward pull while the centre stays flat.
-constexpr double kBevelFraction = 0.44;
-constexpr double kMaxBevel = 18.0;
-constexpr double kShiftPerBevel = 1.95;
-// Dispersion: red bends a little less and blue a little more. Apple's glass shows almost none, so it is kept to a
-// few percent of the shift, which only colours the strongly bent rim on high-contrast edges.
-constexpr double kMaxDispersion = 0.65;
+// A convex bezel gives the silhouette a strong inward pull while the centre stays flat (tuned after PyGlass).
+constexpr double kBevelFraction = 0.50;
+constexpr double kMaxBevel = 24.0;
+constexpr double kShiftPerBevel = 2.35;
+// Dispersion: red bends slightly less and blue slightly more along high-contrast rims.
+constexpr double kMaxDispersion = 2.40;
 // Light falls from the upper left, steeper than 45 degrees, so top edges catch more of it than the sides.
 constexpr double kLightX = -0.50;
 constexpr double kLightY = -0.866;
-// The specular glint: a neutral white line about a pixel wide at the silhouette with a faint bleed four times as
-// wide, strongest where the edge faces the light and half as strong where it faces directly away (light reflected
-// inside the glass). iOS 27 made it brighter.
-constexpr double kGlintWidth = 1.0;
-constexpr double kGlintBleed = 0.06;
-constexpr double kFarSide = 0.20;
-// A faint white veil over the outer few pixels, where the bezel turns to grazing and reflects more than it passes.
-constexpr double kRimVeil = 0.12;
-constexpr double kRimVeilWidth = 3.0;
-// iOS 27's darker edge: a thin shade along the silhouette, strongest where the edge runs across the light and gone
-// where it faces it, which gives the glass its depth against any backdrop.
+// The specular glint: a crisp line at the silhouette with soft inner bleed and grazing Fresnel veil.
+constexpr double kGlintWidth = 1.1;
+constexpr double kGlintBleed = 0.11;
+constexpr double kFarSide = 0.28;
+constexpr double kRimVeil = 0.20;
+constexpr double kRimVeilWidth = 4.2;
+// Darker hairline contour outside the bright specular edge for separation over vivid bloom waves.
 constexpr double kContourWidth = 1.0;
-constexpr double kContourBleed = 0.30;
+constexpr double kContourBleed = 0.24;
 constexpr double kContourDirectionality = 0.85;
-// Colour behind the glass is lifted a little, as Apple's material does after it diffuses the picture.
-constexpr float kVibrancySaturation = 1.65f;
+// Colour behind the glass is lifted dynamically as PyGlass vibrancy boosts saturated ripples.
+constexpr float kVibrancySaturation = 1.82f;
 // How many surfaces may measure brightness in one frame, and how many frames a reading lasts. A surface seen
 // for the first time always measures, so a still frame adapts at once.
 constexpr int kMeasuresPerFrame = 3;
@@ -389,7 +384,7 @@ bool GlassLens::DrawRefraction(const ui::Box& box, double radius, double opacity
     }
 
     const float scale = static_cast<float>(2.0 * kernel->maxShift);
-    const float dispersion = static_cast<float>(std::min(kMaxDispersion, 0.014 * kernel->maxShift));
+    const float dispersion = static_cast<float>(std::min(kMaxDispersion, 0.042 * kernel->maxShift));
     const float channelScale[3] = {scale - 2.0f * dispersion, scale, scale + 2.0f * dispersion};
     ID2D1Effect* scatter = frosted ? frost_.Get() : soften_.Get();
     const double sigma = frosted ? std::clamp(kernel->half * 0.10, 6.0, 8.0)

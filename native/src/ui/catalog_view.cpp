@@ -11,7 +11,7 @@ namespace tvm::ui {
 
 HomeSectionLabels HomeSections() {
     HomeSectionLabels choices{
-        {"continue", "Continue watching"}, {"upcoming", "New episodes this week"}, {"my-list", "My List"},
+        {"continue", "Continue watching"}, {"featured", "Featured"}, {"upcoming", "New episodes this week"}, {"my-list", "My List"},
         {"for-you", "You might like"}, {"films", "Popular films"}, {"series", "Popular series"},
         {"top-films", "Top rated films"}, {"top-series", "Top rated series"}, {"new-films", "New films"},
         {"new-series", "Recently updated"}, {"because", "Because you watched"}

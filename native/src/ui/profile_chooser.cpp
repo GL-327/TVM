@@ -365,8 +365,8 @@ std::optional<Command> ProfileChooser::Activate(const std::string& key, double n
 }
 
 void ProfileChooser::Paint(Painter& painter) const {
-    painter.Clear(tokens::kBackground);
-    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
+    const bool light = tokens::kBackground.r > 0.5;
+    painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0, light ? Rgb(0xF6F8FC, 0.54) : Rgb(0x050914, 0.36));
     const Metrics metrics{ViewportRem(width_, height_)};
 
     // The title, centred, at 12% of the height.

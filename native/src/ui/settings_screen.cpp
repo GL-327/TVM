@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <utility>
 
+#include "core/config.h"
 #include "motion/camera.h"
 #include "nav/wrap.h"
 #include "ui/controls.h"
@@ -140,7 +141,7 @@ struct ExtraDef {
     int group;
 };
 
-constexpr std::array<ExtraDef, 22> kExtras = {{
+constexpr std::array<ExtraDef, 23> kExtras = {{
     {"onlineSubtitles", "1", "Online subtitles", "Find additional tracks through OpenSubtitles.", "", 0},
     {"chapters", "1", "Chapters", "Show chapter markers when the player exposes them.", "", 0},
     {"seekPreviews", "1", "Seek previews", "Show a thumbnail while scrubbing.", "Native mpv only", 0},
@@ -149,6 +150,7 @@ constexpr std::array<ExtraDef, 22> kExtras = {{
     {"nightMode", "0", "Night mode", "Reduce the difference between quiet and loud sounds.", "", 0},
     {"pauseOnMinimize", "1", "Pause when hidden", "Pause when the window is hidden or minimised.", "Desktop and web", 0},
     {"shortcutsOverlay", "1", "Keyboard shortcuts", "Press ? in the player to see shortcuts.", "Desktop and web", 0},
+    {"franchiseIntros", "1", "Franchise intros", "Play a short animated intro when a Hunger Games or Marvel film starts.", "", 0},
     {"trailers", "1", "Trailers", "Watch trailers inside TVM.", "", 1},
     {"trailerBackdrops", "1", "Trailer backdrops", "Play a muted trailer on the Details page.", "Desktop and web", 1},
     {"collections", "1", "Collections", "Show related films on Details.", "", 1},
@@ -340,6 +342,8 @@ nlohmann::json CoreSettings::Patch(const std::string& pref, const std::string& v
 SettingsScreen::SettingsScreen(PreferenceStore& store, motion::MotionSettings motion)
     : store_(store), core_(store.CorePrefs()) {
     motion_ = motion;
+    versionSummary_.windowVersion = config::FormatWindowVersion();
+    versionSummary_.engineVersion = std::string("Engine ") + config::kCoreVersion;
     BuildRows();
 }
 
@@ -499,6 +503,7 @@ void SettingsScreen::BuildRows() {
 
     cat = kUpdates;
     group("Updates");
+    push("update-now", "Update now", "Update window and Core right away", Command{false, "update-now", {}, true});
     push("updates", "Updates", "GLogic Studios", Open("updates"));
     row(RowKind::AutoUpdate, "auto-update", "Check for updates on launch");
     push("changelog", "What's new", "Release notes for TVM", Open("changelog", {}, true));
@@ -508,6 +513,9 @@ void SettingsScreen::BuildRows() {
     push("stats", "Your stats", "Watch time and history", Open("stats"));
 
     cat = kAbout;
+    group("Version");
+    row(RowKind::Info, "about-version", "TVM build");
+    push("about-trailer", "Watch the TVM trailer", "See how TVM works", Command{false, "open-app-trailer", {}, true});
     group("This device");
     push("network", "Network", "Connected or offline", Open("system-info", {{"section", "network"}}));
     push("display", "Display", "Panel, window and stream cap", Open("system-info", {{"section", "display"}}));
@@ -528,11 +536,22 @@ void SettingsScreen::BuildRows() {
         cat = kDeveloper;
         group("Accounts");
         push("accounts", "Accounts", "Manage member access", Open("accounts"));
+        push("dev-tools", "Developer tools", "Plan overrides, live checks and shortcuts", Open("developer"));
         group("Developer Diagnostics");
         row(RowKind::Info, "dev-build", "Build info", diag_.buildVersion);
         row(RowKind::Info, "dev-rd-source", "RD token source", diag_.rdTokenSource);
         row(RowKind::Info, "dev-glass", "Glass mode");
         pref(Ctl::Switch, "show-fps", "Show FPS", "Show the Windows frame rate and frame time in a corner.", "showFps");
+        push("dev-diagnostics", "Copy diagnostics", "Version, commit, device and RD source",
+             Command{false, "dev-copy-diagnostics", {}, true});
+        group("Tools and replays");
+        push("dev-trailer", "Watch the TVM trailer", "Plays the explainer", Command{false, "open-app-trailer", {}, true});
+        push("dev-patch-notes", "Force patch notes pop-up", "Shows the newest notes now",
+             Command{false, "dev-patch-notes", {}, true});
+        push("dev-replay-hg", "Replay Hunger Games intro", "Mockingjay animation preview",
+             Command{false, "dev-replay-intro", {{"style", "mockingjay"}}, true});
+        push("dev-replay-doom", "Replay Doomsday intro", "Doomsday animation preview",
+             Command{false, "dev-replay-intro", {{"style", "doom"}}, true});
         push("dev-refresh-cache", "Quick cache refresh", "Reload catalog and artwork",
              Command{false, "dev-refresh-cache", {}, true});
     }
@@ -587,6 +606,18 @@ void SettingsScreen::SetDeveloperDiagnostics(DeveloperDiagnostics diag) {
     if (diag_ == diag) return;
     diag_ = std::move(diag);
     RebuildRowsKeepingFocus();
+}
+
+void SettingsScreen::SetVersionSummary(VersionSummary summary) {
+    if (versionSummary_ == summary) return;
+    versionSummary_ = std::move(summary);
+    RefreshDetails();
+}
+
+void SettingsScreen::SetManualUpdateState(ManualUpdateState state) {
+    if (manualUpdate_ == state) return;
+    manualUpdate_ = std::move(state);
+    RefreshDetails();
 }
 
 void SettingsScreen::RebuildRowsKeepingFocus() {
@@ -683,6 +714,7 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
         if (row.ctl == Ctl::Slider) return PrefValue(row.pref) + "%";
         return OptionLabel(row, PrefValue(row.pref));
     case RowKind::Push:
+        if (row.key == "update-now") return manualUpdate_.busy ? "Updating\xE2\x80\xA6" : "Run";
         if (row.key == "subtitle-languages") {
             std::string names;
             for (const std::string& code : settings_.subtitleLanguages) {
@@ -693,6 +725,7 @@ std::string SettingsScreen::DetailFor(const Row& row) const {
         }
         return row.detail;
     case RowKind::Info:
+        if (row.key == "about-version") return versionSummary_.windowVersion;
         if (row.key == "dev-glass") {
             return store_.ReduceTransparency() ? "Solid surfaces" : "Liquid Glass";
         }
@@ -767,6 +800,10 @@ void SettingsScreen::SetSegment(const Row& row, std::size_t index) {
 }
 
 std::string SettingsScreen::Caption(const Row& row) const {
+    if (row.key == "update-now") {
+        return manualUpdate_.status.empty() ? row.desc : manualUpdate_.status;
+    }
+    if (row.key == "about-version") return versionSummary_.engineVersion;
     if (row.kind == RowKind::Pref || row.kind == RowKind::Preview) return row.desc;
     if (row.kind == RowKind::Push) return row.desc.empty() ? row.detail : row.desc;
     if (row.kind == RowKind::Info || row.kind == RowKind::HomeSection) return "";
@@ -1511,9 +1548,9 @@ void SettingsScreen::PaintSearch(Painter& painter, bool focused) const {
 }
 
 void SettingsScreen::Paint(Painter& painter) const {
-    painter.Clear(tokens::kBackground);
-    // A plain page: no picture behind it. The glass is told there is no backdrop, so nothing faint shows through.
-    painter.SetBackdrop(Box{0.0, 0.0, 0.0, 0.0}, "", 0.5, 0.2);
+    const bool light = tokens::kBackground.r > 0.5;
+    painter.FillRoundRect(Box{0.0, 0.0, width_, height_}, 0.0,
+                          light ? Rgb(0xF6F8FC, 0.54) : Rgb(0x050914, 0.34));
 
     const double rem = metrics_.rem;
     const bool showFocus = !focusHidden_;
@@ -1546,6 +1583,19 @@ void SettingsScreen::Paint(Painter& painter) const {
                  type::H1(rem), tokens::kText);
     painter.Text(Box{contentLeft_, headY + metrics_.Rem(3.3), contentWidth_, metrics_.Rem(1.6)},
                  searching ? "Settings matching your search." : def.description, type::Body(rem), tokens::kTextMuted);
+    if (contentWidth_ >= metrics_.Rem(32.0) && !versionSummary_.windowVersion.empty()) {
+        const TextStyle winStyle{0.875 * rem, true, 600};
+        const double winWidth = std::min(contentWidth_ * 0.48, painter.MeasureText(versionSummary_.windowVersion, winStyle) + 4.0);
+        const double rightEdge = contentLeft_ + contentWidth_;
+        painter.Text(Box{rightEdge - winWidth, headY + 0.35 * rem, winWidth, 1.35 * rem},
+                     versionSummary_.windowVersion, winStyle, tokens::kText);
+        if (!versionSummary_.engineVersion.empty()) {
+            const TextStyle engStyle{0.78 * rem, false, 500};
+            const double engWidth = std::min(contentWidth_ * 0.48, painter.MeasureText(versionSummary_.engineVersion, engStyle) + 4.0);
+            painter.Text(Box{rightEdge - engWidth, headY + 1.75 * rem, engWidth, 1.2 * rem},
+                         versionSummary_.engineVersion, engStyle, tokens::kTextMuted);
+        }
+    }
 
     if (searching && headings_.empty()) {
         painter.Text(Box{contentLeft_, metrics_.Rem(kSafeYRem) + metrics_.Rem(6.2) - pageScroll_, contentWidth_, metrics_.Rem(2.0)},
@@ -1555,8 +1605,10 @@ void SettingsScreen::Paint(Painter& painter) const {
     for (const CardBox& card : cards_) {
         const Box box{contentLeft_, card.top - pageScroll_, contentWidth_, card.height};
         if (box.Bottom() < -20.0 || box.y > height_ + 20.0) continue;
-        painter.FillRoundRect(box, metrics_.Rem(kCardRadiusRem), tokens::kSurface);
-        painter.StrokeRoundRect(box, metrics_.Rem(kCardRadiusRem), 1.0, tokens::kBorderSoft);
+        GlassStyle cardGlass = glass::SheetPanel();
+        cardGlass.frosted = true;
+        cardGlass.tint = Color{tokens::kSurface.r, tokens::kSurface.g, tokens::kSurface.b, light ? 0.62 : 0.42};
+        painter.Glass(box, metrics_.Rem(kCardRadiusRem), cardGlass);
     }
 
     const auto heading = [&](double top, const std::string& text) {

@@ -36,6 +36,8 @@ public:
     bool Tick(double nowMs) override;
     bool Animating() const override;
     void Paint(Painter& painter) const override;
+    bool ShowsStage() const override { return true; }
+    virtual bool NeedsStageScrim() const { return true; }
 
     bool Navigate(nav::Direction direction, double nowMs) override;
     std::optional<Command> Select(double nowMs) override;
@@ -307,7 +309,8 @@ public:
     void ClearField() { fieldText_.clear(); }
     // A page with several fields shows one at a time, so the app puts the chosen one's text back.
     void SetFieldText(std::string text) { fieldText_ = std::move(text); }
-    bool ShowsStage() const override { return view_.centeredCard; }
+    bool ShowsStage() const override { return true; }
+    bool NeedsStageScrim() const override { return !view_.centeredCard; }
 
 protected:
     std::vector<PageButton> Buttons() const override { return buttons_; }

@@ -184,20 +184,19 @@ IDWriteTextFormat* Graphics::CachedFormat(double sizePx, int weight, bool wrap) 
     Check(format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING), "text alignment");
 
     if (wrap) {
-        // Paragraphs wrap at words and start at the top of their box.
+        // Paragraphs wrap at words and start at the top of their box, with ellipsis when clipped.
         Check(format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP), "text wrapping");
         Check(format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR), "paragraph alignment");
     } else {
         // Labels are one line, centred vertically, and end with an ellipsis.
         Check(format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP), "text wrapping");
         Check(format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER), "paragraph alignment");
-
-        ComPtr<IDWriteInlineObject> ellipsis;
-        Check(dwrite_->CreateEllipsisTrimmingSign(format.Get(), &ellipsis), "ellipsis");
-        DWRITE_TRIMMING trimming{};
-        trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
-        Check(format->SetTrimming(&trimming, ellipsis.Get()), "trimming");
     }
+    ComPtr<IDWriteInlineObject> ellipsis;
+    Check(dwrite_->CreateEllipsisTrimmingSign(format.Get(), &ellipsis), "ellipsis");
+    DWRITE_TRIMMING trimming{};
+    trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
+    Check(format->SetTrimming(&trimming, ellipsis.Get()), "trimming");
 
     IDWriteTextFormat* raw = format.Get();
     formats_.emplace(key, std::move(format));

@@ -48,6 +48,7 @@ public:
     void Paint(Painter& painter) const override;
     bool Tick(double nowMs) override;
     bool Animating() const override;
+    bool ShowsStage() const override { return true; }
 
     // Replaces what the screen shows. The focus stays on a control that still exists.
     void SetView(XtreamView view);

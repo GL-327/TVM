@@ -3,6 +3,73 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.11",
+      "date": "2026-11-27",
+      "title": "Windows parity, Hub, Bloom ribbons and glass",
+      "highlights": [
+        "Windows gets the Hub page, wide Movie and Series lanes, and Hunger Games and Doomsday intros.",
+        "Liquid Glass refracts more clearly over new blue-violet Bloom silk ribbons on Windows and web.",
+        "Windows Settings gains Update now, Settings About trailer playback and Developer tools.",
+        "All platforms share the corrected version badge without the placeholder tag."
+      ],
+      "changes": [
+        {
+          "area": "Hub",
+          "text": "Added the Hub start page with greeting, hero spotlight, Continue watching, apps and free live channels.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Browse",
+          "text": "Movies and Series now show hero backdrops, 16:9 widescreen cards and genre-filtered carousels.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Intros",
+          "text": "Hunger Games and Avengers Doomsday intros play once per session over stream loading and skip on any key.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Glass",
+          "text": "Tuned PyGlass bevel refraction, chromatic rim edges and Bloom ribbons over translucent Settings cards.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "Settings About reads the real build version and Update now checks and applies updates on demand.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop"
+          ]
+        },
+        {
+          "area": "Developer",
+          "text": "Settings About opens the TVM trailer and Developer gains diagnostics, cache clear and intro replays.",
+          "platforms": [
+            "windows"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Theme songs could not be tested from start to finish; YouTube refused the download during testing.",
+        "The TV guide has not been tried with a real IPTV list.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "Franchise intros are not on Roku yet."
+      ]
+    },
+    {
       "version": "1.4.10",
       "date": "2026-11-27",
       "title": "Shooting star and steadier updates (test build)",

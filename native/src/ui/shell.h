@@ -117,6 +117,8 @@ public:
     void SetPlayerView(const PlayerView& view, double nowMs);
     // Updates Developer Diagnostics on any open Settings screen.
     void SetDeveloperDiagnostics(const DeveloperDiagnostics& diag);
+    void SetSettingsVersionSummary(const VersionSummary& summary);
+    void SetManualUpdateState(const ManualUpdateState& state);
     // Hands every Settings screen, open now or opened later, the Core preferences it shows.
     void SetCoreSettings(const CoreSettings& settings);
     void SetHomeSectionLabels(HomeSectionLabels labels);
@@ -162,6 +164,9 @@ private:
     // scrolling). Returns the height of everything, so the same walk paints and measures.
     double WalkPatch(const std::function<void(PatchItem, double, double, const PatchChange&)>& emit) const;
     CoreSettings coreSettings_;
+    DeveloperDiagnostics devDiag_;
+    VersionSummary versionSummary_;
+    ManualUpdateState manualUpdate_;
     HomeSectionLabels homeLabels_ = HomeSections();
     PrefsSink prefsSink_;
     bool backFocused_ = false;

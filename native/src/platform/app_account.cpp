@@ -136,6 +136,7 @@ void App::FinishAccount(const coreapi::AccountState& state, const std::string& m
         StopPlayback();
         for (auto& job : downloads_) { job.cancel->store(true); if (job.state == "queued") job.state = "cancelled"; }
         if (!onAccount || (!wasUsable && state.usable)) {
+            if (!wasUsable && state.usable) streamLane_ = "hub";
             shell_->PopToRoot(NowMs());
         }
         streamStatusLoaded_ = false;

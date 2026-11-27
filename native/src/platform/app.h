@@ -228,6 +228,7 @@ private:
     int guideRepolls_ = 0;
     bool guideVisible_ = true, guideFetching_ = false, guideSearch_ = false;
     std::string guideDigits_;
+    std::vector<catalog::LiveChannel> LoadFreeChannels() const;
     void RefreshLiveTv();
     void ApplyLiveTv();
     void SetLiveChoosing(bool choosing);
@@ -278,6 +279,8 @@ private:
     std::string profileEditPin_, profileEditId_, adultApprovalId_, adultApprovalPin_;
     void CheckForUpdates();
     void InstallNativeUpdate();
+    void ForceUpdateNow();
+    void RefreshEngineVersion();
     void ShowUpdates();
 
     // The info pages: Legal, Donate, Downloads, What's new, Diagnostics, System info, Setup, Recovery, the
@@ -328,6 +331,10 @@ private:
     // Removes everything TVM keeps in its data folder, then starts a fresh copy, as the web reload does.
     void EraseLocalData();
     void LoadAccounts();
+    void CopyDiagnosticsText();
+    void ClearAllLocalCaches();
+    bool ShowPatchNotesPopup();
+    void ReplayFranchiseIntro(const std::string& style);
     void LoadDownloadEpisodes(const std::string& seriesId);
     void QueueDownloads();
     void PumpDownloads();
@@ -360,20 +367,27 @@ private:
     void VideoClickAction(mpv::VideoClicks::Action action);
     void UpdatePlaybackTools(const mpv::State& state);
     void OpenTrailer(const std::string& url, const std::string& title);
+    void OpenAppTrailer();
     mpv::VideoClicks videoClicks_;
     bool videoPressed_ = false, audioPreferenceApplied_ = false, playerStyleApplied_ = false;
-    bool minimizePaused_ = false, playerNightInitialized_ = false;
+    bool minimizePaused_ = false, playerNightInitialized_ = false, playerIntroOnly_ = false;
     std::optional<double> sleepDeadline_;
     bool sleepAtEnd_ = false;
     std::string playerVersionId_, playerTransport_, playerVersionLabel_, playerAudioLanguage_;
     std::string playerTrailerUrl_, playerYtdlpPath_;
     extras::Preferences playerPrefs_;
     void StartPlayback();
+    void LaunchPlayback(int generation, const playback::Resolution& resolution);
+    void MaybeLaunchPendingIntroPlayback();
+    void SkipPlayerIntro();
     void PrepareHls(playback::Resolution& resolution, int height) const;
     void SwitchHls(int height);
     void StopPlayback();
     void ApplyPlayerAction(const ui::Command& command);
     void FinishResolve(int generation, const playback::Resolution& resolution);
+    std::set<std::string> playedIntros_;
+    std::optional<playback::Resolution> pendingIntroResolution_;
+    int pendingIntroGeneration_ = 0;
     void OnPlayerState(const mpv::State& state);
     void OnPlayerError(const std::string& message);
     void ShowPlayerError(const std::string& title, const std::string& body);
@@ -511,7 +525,7 @@ private:
     std::string livePlaylistText_;
 
     // TVM Stream as shown: its lane, and the Real-Debrid status it last read.
-    std::string streamLane_ = "all";
+    std::string streamLane_ = "hub";
     bool streamOpened_ = false;
     bool streamStatusLoaded_ = false;
     realdebrid::Status streamStatus_;
@@ -522,6 +536,10 @@ private:
     std::string watchlistFilter_ = "all";
     std::string watchlistSort_ = "saved";
     ui::UpdatesView updatesView_;
+    bool manualUpdateBusy_ = false;
+    bool engineVersionFetching_ = false;
+    std::string engineVersion_;
+    std::string engineCommit_;
 
     // The info page on top, its params, and what it says. The fields a page types into are kept by
     // "<page>.<field>"; a secret is held only while its page is open.

@@ -223,12 +223,12 @@ TEST(the_extras_page_has_a_switch_for_every_extra_with_its_note) {
     Page page;
     page.screen.ActivateItem("cat:extras", 0.0);
     const std::vector<std::string> keys = page.screen.ShownKeys();
-    REQUIRE_EQ(keys.size(), std::size_t{23});
+    REQUIRE_EQ(keys.size(), std::size_t{24});
     REQUIRE(Has(keys, "webhook-url"));
     for (const char* id : {"onlineSubtitles", "trailers", "trailerBackdrops", "collections", "comingUp", "watchStats",
                            "animeTitles", "ratings", "qualityBadges", "versionPicker", "chapters", "seekPreviews",
                            "themeSongs", "spoilerBlur", "surpriseMe", "autoCollections", "sleepTimer", "nightMode",
-                           "pauseOnMinimize", "shortcutsOverlay", "webhook", "announcements"}) {
+                           "pauseOnMinimize", "shortcutsOverlay", "franchiseIntros", "webhook", "announcements"}) {
         REQUIRE(Has(keys, std::string("extra-") + id));
     }
     // The defaults are those in Core: theme songs, spoiler blur, night mode and the webhook start off.

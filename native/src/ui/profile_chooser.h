@@ -51,6 +51,7 @@ public:
     void Layout(double width, double height) override;
     bool Tick(double nowMs) override;
     bool Animating() const override;
+    bool ShowsStage() const override { return true; }
     void Paint(Painter& painter) const override;
 
     bool Navigate(nav::Direction direction, double nowMs) override;
@@ -110,6 +111,7 @@ public:
     void Layout(double width, double height) override;
     bool Tick(double nowMs) override;
     bool Animating() const override;
+    bool ShowsStage() const override { return true; }
     void Paint(Painter& painter) const override;
 
     bool Navigate(nav::Direction direction, double nowMs) override;

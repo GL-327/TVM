@@ -274,6 +274,45 @@ void App::ApplyInfoAction(const ui::Command& command) {
     };
 
     if (verb.starts_with("extras-")) { ExtrasAction(verb.substr(7)); return; }
+    if (verb.starts_with("dev-") && account_.developer) {
+        if (verb == "dev-trailer") { OpenAppTrailer(); return; }
+        if (verb == "dev-patch-notes") { ShowPatchNotesPopup(); return; }
+        if (verb == "dev-replay-hg") { ReplayFranchiseIntro("mockingjay"); return; }
+        if (verb == "dev-replay-doom") { ReplayFranchiseIntro("doom"); return; }
+        if (verb == "dev-copy-diagnostics") { CopyDiagnosticsText(); say("Diagnostics copied to clipboard."); ShowInfoPage(); return; }
+        if (verb == "dev-clear-cache") { ClearAllLocalCaches(); say("Cleared local artwork and catalog caches."); ShowInfoPage(); return; }
+        if (verb == "dev-reset-usage") {
+            background_->Run([this] {
+                std::string msg = "Reset weekly usage hours.";
+                try { core_->Call("/api/usage/reset", "POST"); } catch (const std::exception& e) { msg = e.what(); }
+                background_->PostToUi([this, msg] { pageMessage_ = msg; pageMessageBad_ = false; if (pageName_ == "developer") ShowInfoPage(); });
+            });
+            return;
+        }
+        if (verb == "dev-mocks" || verb == "dev-livetv") {
+            background_->Run([this, mocks = (verb == "dev-mocks")] {
+                std::string msg;
+                try {
+                    const auto plan = core_->Call("/api/plan");
+                    const auto cur = plan.contains("overrides") && plan["overrides"].is_object() ? plan["overrides"] : nlohmann::json::object();
+                    const nlohmann::json body = mocks
+                        ? nlohmann::json{{"mocks", !cur.value("mocks", false)}}
+                        : nlohmann::json{{"liveTv", !cur.value("liveTv", false)}};
+                    core_->Call("/api/dev/overrides", "PUT", body);
+                    msg = mocks ? "Toggled mock streamers." : "Toggled Live TV override.";
+                } catch (const std::exception& e) { msg = e.what(); }
+                background_->PostToUi([this, msg] {
+                    RefreshAccount();
+                    pageMessage_ = msg; pageMessageBad_ = false;
+                    if (pageName_ == "developer") ShowInfoPage();
+                });
+            });
+            return;
+        }
+        if (verb == "dev-home") { shell_->PopToRoot(NowMs()); return; }
+        if (verb == "dev-live") { shell_->Execute(ui::Command{false, "live-tv", {}, false}, NowMs()); return; }
+        if (verb == "dev-apps") { shell_->Execute(ui::Command{false, "apps", {}, false}, NowMs()); return; }
+    }
     if (verb.rfind("field-", 0) == 0) {
         // Moves the field to another of the page's inputs, with that input's text.
         fieldMode_ = verb.substr(6);
@@ -1553,11 +1592,62 @@ ui::InfoView App::AccountsView() const {
 
 // ------------------------------------------------------------------ Developer and Apps
 
+void App::CopyDiagnosticsText() {
+    RECT client{};
+    GetClientRect(window_, &client);
+    const std::string text = "TVM " + config::FormatWindowVersion() + "\nCore " + std::string(config::kCoreVersion) +
+                             "\nViewport " + std::to_string(client.right - client.left) + "x" + std::to_string(client.bottom - client.top) +
+                             "\nRD source " + rdStatus_.source + "\nGlass " + (store_->ReduceTransparency() ? "Solid" : "Liquid Glass");
+    const std::wstring wide = util::ToWide(text);
+    if (OpenClipboard(window_)) {
+        EmptyClipboard();
+        const std::size_t bytes = (wide.size() + 1) * sizeof(wchar_t);
+        if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
+            if (void* ptr = GlobalLock(mem)) {
+                std::memcpy(ptr, wide.c_str(), bytes);
+                GlobalUnlock(mem);
+                SetClipboardData(CF_UNICODETEXT, mem);
+            } else {
+                GlobalFree(mem);
+            }
+        }
+        CloseClipboard();
+    }
+}
+
+void App::ClearAllLocalCaches() {
+    titles_.clear();
+    hubs_.clear();
+    if (artwork_) artwork_->Clear();
+    background_->Run([this] {
+        try { core_->Call("/api/maintenance/clear-cache", "POST"); } catch (...) {}
+        background_->PostToUi([this] {
+            LoadCatalog();
+            if (account_.usable) RefreshRdStatus();
+            RebuildHome();
+            dirty_ = true;
+        });
+    });
+}
+
+void App::ReplayFranchiseIntro(const std::string& style) {
+    shell_->Execute(ui::Command{false, "player", {{"replayIntro", style}}, false}, NowMs());
+}
+
 ui::InfoView App::DeveloperView() const {
-    ui::InfoView view; view.kicker = "TVM"; view.heading = "Account tools";
-    view.lede = "Sign in with your TVM account. Account administration is handled through Core.";
+    ui::InfoView view; view.kicker = "Developer"; view.heading = "Developer tools";
+    view.lede = "Overrides, intro previews, diagnostics and navigation shortcuts on this machine.";
+    view.message = pageMessage_;
+    view.messageBad = pageMessageBad_;
     view.actions = {{Button("open:account", "Your account", true), Button("back", "Back")}};
-    if (account_.developer) view.actions.push_back({Button("open:accounts", "Accounts", true), Button("open:live-check", "Channel check")});
+    if (account_.developer) {
+        view.actions.push_back({Button("open:accounts", "Accounts", true), Button("open:live-check", "Channel check"), Button("open:mail-settings", "Mail settings")});
+        view.actions.push_back({Button("info:dev-mocks", "Mock streamers"), Button("info:dev-livetv", "Live TV override"), Button("info:dev-reset-usage", "Reset weekly hours")});
+        view.actions.push_back({Button("info:dev-trailer", "Watch the TVM trailer"), Button("info:dev-patch-notes", "Force patch notes pop-up")});
+        view.actions.push_back({Button("info:dev-replay-hg", "Replay Hunger Games intro"), Button("info:dev-replay-doom", "Replay Doomsday intro")});
+        view.actions.push_back({Button("info:dev-copy-diagnostics", "Copy diagnostics"), Button("info:dev-clear-cache", "Clear local caches")});
+        view.actions.push_back({Button("info:dev-home", "Jump Home"), Button("info:dev-live", "Jump Live TV"), Button("info:dev-apps", "Jump Apps")});
+    }
     return view;
 }
 

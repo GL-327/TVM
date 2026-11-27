@@ -103,6 +103,73 @@ html[data-card-hover] body :is(.cinematic-browse, .hub) .poster--landscape:not(:
 .cinematic-browse .poster__network,
 .cinematic-browse .poster__episode { display: none; }
 
+/* Layered Windows 11 Bloom-inspired 3D ribbons in TVM blues & violets for Hub, Settings, and modals. */
+.home__scene--mesh {
+  overflow: hidden;
+  background:
+    radial-gradient(64% 58% at 74% 46%, rgba(47, 107, 255, 0.24), transparent 68%),
+    radial-gradient(52% 46% at 24% 78%, rgba(67, 56, 202, 0.18), transparent 72%),
+    linear-gradient(160deg, #050a14 0%, #071228 55%, #040710 100%);
+}
+.home__bloom-ribbon {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 58% 42% 66% 34% / 44% 56% 44% 56%;
+  border-top: 1px solid rgba(168, 222, 255, 0.42);
+  box-shadow: inset 0 18px 42px rgba(125, 211, 252, 0.18), 0 24px 64px rgba(15, 38, 105, 0.35);
+  will-change: transform;
+}
+.home__bloom-ribbon--1 {
+  inset: 14% -8% -18% 12%;
+  background: linear-gradient(128deg, rgba(14, 34, 92, 0.85) 0%, rgba(29, 78, 216, 0.72) 52%, rgba(15, 23, 56, 0.20) 100%);
+  transform: perspective(1100px) rotateX(22deg) rotateZ(-14deg);
+  animation: tvm-bloom-float-1 22s ease-in-out infinite alternate;
+}
+.home__bloom-ribbon--2 {
+  inset: 20% -14% -10% 24%;
+  border-top-color: rgba(147, 197, 253, 0.56);
+  background: linear-gradient(140deg, rgba(47, 107, 255, 0.64) 0%, rgba(96, 165, 250, 0.42) 48%, rgba(30, 58, 138, 0.12) 100%);
+  transform: perspective(1000px) rotateX(28deg) rotateY(-12deg) rotateZ(12deg);
+  animation: tvm-bloom-float-2 27s ease-in-out infinite alternate;
+}
+.home__bloom-ribbon--3 {
+  inset: 28% 4% -24% 20%;
+  border-top-color: rgba(196, 181, 253, 0.48);
+  background: linear-gradient(116deg, rgba(67, 56, 202, 0.58) 0%, rgba(109, 74, 255, 0.52) 52%, rgba(30, 41, 107, 0.12) 100%);
+  transform: perspective(1050px) rotateX(-18deg) rotateY(16deg) rotateZ(-22deg);
+  animation: tvm-bloom-float-3 24s ease-in-out infinite alternate;
+}
+.home__bloom-ribbon--4 {
+  inset: 32% -6% 4% 38%;
+  border-top-color: rgba(224, 242, 254, 0.68);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.48) 0%, rgba(37, 99, 235, 0.36) 58%, transparent 100%);
+  transform: perspective(950px) rotateX(18deg) rotateZ(-8deg);
+  animation: tvm-bloom-float-4 19s ease-in-out infinite alternate;
+}
+@keyframes tvm-bloom-float-1 {
+  from { transform: perspective(1100px) rotateX(22deg) rotateZ(-14deg) translate3d(-2%, 2%, 0) scale(1); }
+  to { transform: perspective(1100px) rotateX(26deg) rotateZ(-10deg) translate3d(3%, -3%, 0) scale(1.06); }
+}
+@keyframes tvm-bloom-float-2 {
+  from { transform: perspective(1000px) rotateX(28deg) rotateY(-12deg) rotateZ(12deg) translate3d(2%, -2%, 0) scale(1.02); }
+  to { transform: perspective(1000px) rotateX(22deg) rotateY(-6deg) rotateZ(16deg) translate3d(-3%, 3%, 0) scale(1.08); }
+}
+@keyframes tvm-bloom-float-3 {
+  from { transform: perspective(1050px) rotateX(-18deg) rotateY(16deg) rotateZ(-22deg) translate3d(-1%, 3%, 0); }
+  to { transform: perspective(1050px) rotateX(-12deg) rotateY(10deg) rotateZ(-16deg) translate3d(3%, -2%, 0); }
+}
+@keyframes tvm-bloom-float-4 {
+  from { transform: perspective(950px) rotateX(18deg) rotateZ(-8deg) translate3d(0, 2%, 0); }
+  to { transform: perspective(950px) rotateX(24deg) rotateZ(-3deg) translate3d(-3%, -2%, 0); }
+}
+html[data-motion='reduced'] .home__bloom-ribbon,
+html[data-perf='on'] .home__bloom-ribbon {
+  animation: none !important;
+}
+html[data-perf='on'] .home__bloom-ribbon {
+  display: none;
+}
+
 html body .poster .poster__title {
   display: -webkit-box;
   -webkit-box-orient: vertical;

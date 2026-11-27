@@ -165,9 +165,18 @@ public:
         subtitle_ = std::move(meta);
     }
     bool feature() const { return feature_; }
+    // A Featured card: 16:9 landscape artwork with bottom scrim and title overlay, without a progress bar.
+    void SetLandscape() { landscape_ = true; }
+    bool landscape() const { return landscape_; }
     // A Browse tile on Search: a tall picture with the category's name over its foot, as the Apple TV app's Browse
     // tiles are. It grows and lifts on focus as the other cards do.
     void SetCategory() { category_ = true; }
+    // A coloured brand/app tile on Hub: 16:9 gradient plate with centred wordmark and optional subtitle.
+    void SetTile(Color fill, std::string subtitle = "") {
+        tile_ = fill;
+        subtitle_ = std::move(subtitle);
+    }
+    bool hasTile() const { return tile_.has_value(); }
 
     const std::string& itemId() const { return itemId_; }
     const std::string& posterUrl() const { return posterUrl_; }
@@ -197,6 +206,8 @@ private:
     bool logo_ = false;
     bool feature_ = false;
     bool category_ = false;
+    bool landscape_ = false;
+    std::optional<Color> tile_;
     std::string subtitle_;
     std::string title_;
     std::string focusKey_;
