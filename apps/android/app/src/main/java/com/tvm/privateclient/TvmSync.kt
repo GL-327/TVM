@@ -532,7 +532,7 @@ object SyncStores {
         try {
             target.parentFile?.mkdirs()
             val bytes = text.toByteArray(Charsets.UTF_8)
-            val temp = File(target.parentFile, target.name + ".tmp")
+            val temp = File(target.parentFile, "${target.name}.${Thread.currentThread().id}.tmp")
             try {
                 temp.writeBytes(bytes)
                 try {
@@ -1103,6 +1103,7 @@ class SyncEngine(
     private val sessionRejected: (String) -> Unit,
     private val now: () -> Long = System::currentTimeMillis,
     private val scheduler: TvmSyncScheduler = TvmSyncScheduler.Executor(),
+    private val storeMonitor: Any? = null,
 ) {
     companion object {
         const val PULL_MS: Long = 60_000L
@@ -1289,10 +1290,17 @@ class SyncEngine(
         state = next
     }
 
+    private fun <T> withStoreMonitor(block: () -> T): T =
+        if (storeMonitor != null) synchronized(storeMonitor) { block() } else block()
+
     private fun finishApplicationLocked() {
         val staged = state.applying ?: return
-        SyncStores.applyItems(directory, staged.items, reloadProfiles)
+        var profilesChanged = false
+        withStoreMonitor {
+            SyncStores.applyItems(directory, staged.items) { profilesChanged = true }
+        }
         saveLocked(State.fromCheckpoint(staged.checkpoint))
+        if (profilesChanged) reloadProfiles()
     }
 
     private fun captureLocked() {
@@ -1305,7 +1313,7 @@ class SyncEngine(
                 known.add(id.substring(8))
             }
         }
-        val local = SyncStores.snapshot(directory, current, legacyDir, known)
+        val local = withStoreMonitor { SyncStores.snapshot(directory, current, legacyDir, known) }
         val ledger = SyncLedger(LinkedHashMap(state.versions), LinkedHashMap(state.pending))
         if (SyncMerge.observeLocal(ledger, local, current)) {
             saveLocked(state.copy(versions = ledger.versions, pending = ledger.pending))
@@ -1472,23 +1480,29 @@ class SyncEngine(
 
     private fun executeSync(force: Boolean, session: String, epoch: Long, task: CompletableFuture<Unit>) {
         try {
-            synchronized(lock) { captureLocked() }
-            pull(session, epoch)
-            if (!isCurrent(epoch)) return
-            val shouldPush = synchronized(lock) {
-                if (changeDue <= now()) changeDue = Long.MAX_VALUE
-                force || changeDue == Long.MAX_VALUE
+            synchronized(lock) {
+                if (!isCurrent(epoch)) return
+                captureLocked()
             }
-            if (shouldPush) {
-                val queue = synchronized(lock) { state.pending.values.toList() }
+            pull(session, epoch)
+            val queue = synchronized(lock) {
+                if (!isCurrent(epoch)) return
+                captureLocked()
+                if (changeDue <= now()) changeDue = Long.MAX_VALUE
+                if (force || changeDue == Long.MAX_VALUE) state.pending.values.toList() else emptyList()
+            }
+            if (queue.isNotEmpty()) {
                 var offset = 0
                 while (offset < queue.size) {
                     val end = minOf(offset + SyncSchema.MAX_ITEMS, queue.size)
                     val batch = queue.subList(offset, end)
-                    val gen = synchronized(lock) { state.generation } ?: throw SyncHttpException(503)
+                    val gen = synchronized(lock) {
+                        if (!isCurrent(epoch)) return
+                        state.generation
+                    } ?: throw SyncHttpException(503)
                     transport.putSyncItems(session, batch, gen)
-                    if (!isCurrent(epoch)) return
                     synchronized(lock) {
+                        if (!isCurrent(epoch)) return
                         captureLocked()
                         val nextPending = LinkedHashMap(state.pending)
                         for (item in batch) {
@@ -1501,12 +1515,12 @@ class SyncEngine(
                     }
                     offset = end
                 }
-                if (queue.isNotEmpty()) pull(session, epoch)
+                pull(session, epoch)
             }
-            if (!isCurrent(epoch)) return
             synchronized(lock) {
+                if (!isCurrent(epoch)) return
                 val at = now()
-                if (changeDue <= at && state.pending.isEmpty()) changeDue = Long.MAX_VALUE
+                if (changeDue <= at && !dirty && state.pending.isEmpty()) changeDue = Long.MAX_VALUE
                 saveLocked(state.copy(lastSyncAt = at))
                 pullDue = at + PULL_MS
                 failures = 0
@@ -1672,6 +1686,7 @@ class TvmAccountSync(
             },
             now = now,
             scheduler = schedulerFactory(),
+            storeMonitor = store.storeMonitor(),
         )
         return AccountEntry(accountDir, engine).also { accounts[accountHash] = it }
     }
@@ -1706,14 +1721,18 @@ class TvmAccountSync(
                             SyncSchema.canonicalJson(JSONObject().put("owner", hash)),
                         )
                     }
-                    SyncStores.initializeStores(accountDir, if (legacy) root else null)
+                    store.withStoreLock {
+                        SyncStores.initializeStores(accountDir, if (legacy) root else null)
+                    }
                     SyncStores.writeAtomic(
                         markerFile,
                         SyncSchema.canonicalJson(JSONObject().put("legacy", legacy)),
                     )
                 } else {
                     legacy = marker.opt("legacy") == true
-                    SyncStores.loadProfiles(accountDir)
+                    store.withStoreLock {
+                        SyncStores.loadProfiles(accountDir)
+                    }
                 }
                 current = makeEngineLocked(hash, accountDir, legacy)
             }

@@ -32,7 +32,8 @@ final class TVMLocalCore {
         accountsTransport: TVMAccountsTransport? = nil,
         sessionVault: TVMSessionVault? = nil,
         adminVault: TVMSessionVault? = nil,
-        syncTransport: TVMSyncTransport? = nil
+        syncTransport: TVMSyncTransport? = nil,
+        nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000.0) }
     ) {
         self.store = store
         // Titles known to carry another title's artwork, before any picture is asked for.
@@ -68,7 +69,8 @@ final class TVMLocalCore {
             transport: resolvedSyncTransport,
             reloadProfiles: { [weak mediaInstance] in
                 mediaInstance?.pinGuard.clearSessionUnlocks()
-            }
+            },
+            nowMs: nowMs
         )
         accountSync = syncInstance
         store.onSyncStoreChanged = { [weak syncInstance] in

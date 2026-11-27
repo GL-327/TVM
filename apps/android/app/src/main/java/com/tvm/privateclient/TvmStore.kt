@@ -50,6 +50,10 @@ class TvmStore(private val root: File) {
 
     internal fun rootDir(): File = root
 
+    internal fun storeMonitor(): Any = monitor
+
+    internal fun <T> withStoreLock(block: () -> T): T = synchronized(monitor) { block() }
+
     fun activeSyncDir(): File? = synchronized(monitor) { activeDir }
 
     fun setActiveDirectory(dir: File?) {
@@ -565,7 +569,7 @@ class TvmStore(private val root: File) {
     private fun writeAtomic(target: File, bytes: ByteArray) {
         try {
             target.parentFile?.mkdirs()
-            val temp = File(target.parentFile, target.name + ".tmp")
+            val temp = File(target.parentFile, "${target.name}.${Thread.currentThread().id}.tmp")
             try {
                 temp.writeBytes(bytes)
                 try {

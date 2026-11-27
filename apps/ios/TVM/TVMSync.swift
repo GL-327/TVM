@@ -601,44 +601,46 @@ enum TVMSyncStores {
     }
 
     static func initializeStores(directory: URL, store: TVMStore, legacy: URL?) {
-        guard let legacy else {
-            _ = store.profiles(in: directory)
-            return
-        }
-        let registry = store.profiles(in: legacy)
-        store.writeProfiles(activeId: registry.activeId, profiles: registry.profiles, in: directory)
-        for profile in registry.profiles where TVMSyncSchema.profileId(profile.id) {
-            let from = store.profileDir(profile.id, in: legacy)
-            let to = store.profileDir(profile.id, in: directory)
-            let progress = store.progress(for: profile.id, in: legacy)
-            if !progress.isEmpty {
-                store.writeProgressMap(progress, profileId: profile.id, in: directory)
+        store.withStoreLock {
+            guard let legacy else {
+                _ = store.profiles(in: directory)
+                return
             }
-            let watchlist = store.watchlist(for: profile.id, in: legacy)
-            if !watchlist.isEmpty {
-                store.writeWatchlistItems(watchlist, profileId: profile.id, in: directory)
-            }
-            for filename in ["services.json", "recent-media.json", "finished-notebook.json", "extras-history.json"] {
-                let src = from.appendingPathComponent(filename)
-                if fm.fileExists(atPath: src.path) {
-                    try? fm.createDirectory(at: to, withIntermediateDirectories: true)
-                    let dst = to.appendingPathComponent(filename)
-                    try? fm.removeItem(at: dst)
-                    try? fm.copyItem(at: src, to: dst)
+            let registry = store.profiles(in: legacy)
+            store.writeProfiles(activeId: registry.activeId, profiles: registry.profiles, in: directory)
+            for profile in registry.profiles where TVMSyncSchema.profileId(profile.id) {
+                let from = store.profileDir(profile.id, in: legacy)
+                let to = store.profileDir(profile.id, in: directory)
+                let progress = store.progress(for: profile.id, in: legacy)
+                if !progress.isEmpty {
+                    store.writeProgressMap(progress, profileId: profile.id, in: directory)
+                }
+                let watchlist = store.watchlist(for: profile.id, in: legacy)
+                if !watchlist.isEmpty {
+                    store.writeWatchlistItems(watchlist, profileId: profile.id, in: directory)
+                }
+                for filename in ["services.json", "recent-media.json", "finished-notebook.json", "extras-history.json"] {
+                    let src = from.appendingPathComponent(filename)
+                    if fm.fileExists(atPath: src.path) {
+                        try? fm.createDirectory(at: to, withIntermediateDirectories: true)
+                        let dst = to.appendingPathComponent(filename)
+                        try? fm.removeItem(at: dst)
+                        try? fm.copyItem(at: src, to: dst)
+                    }
                 }
             }
-        }
-        let device = TVMPrefs.loadDevice(store)
-        let values = device.syncValues()
-        let defaults = TVMPrefs().syncValues()
-        var chosen: [String: Any] = [:]
-        for (key, value) in values {
-            if TVMSyncCanonical.json(value) != TVMSyncCanonical.json(defaults[key]) {
-                chosen[key] = value
+            let device = TVMPrefs.loadDevice(store)
+            let values = device.syncValues()
+            let defaults = TVMPrefs().syncValues()
+            var chosen: [String: Any] = [:]
+            for (key, value) in values {
+                if TVMSyncCanonical.json(value) != TVMSyncCanonical.json(defaults[key]) {
+                    chosen[key] = value
+                }
             }
-        }
-        if !chosen.isEmpty {
-            TVMPrefs.writeSyncPrefs(chosen, in: directory)
+            if !chosen.isEmpty {
+                TVMPrefs.writeSyncPrefs(chosen, in: directory)
+            }
         }
     }
 
@@ -649,118 +651,120 @@ enum TVMSyncStores {
         legacy: URL? = nil,
         knownProfiles: Set<String> = []
     ) -> [String: TVMSnapshotItem] {
-        var result: [String: TVMSnapshotItem] = [:]
-        let registry = store.profiles(in: directory)
-        var mediaProfiles = Set<String>()
+        store.withStoreLock {
+            var result: [String: TVMSnapshotItem] = [:]
+            let registry = store.profiles(in: directory)
+            var mediaProfiles = Set<String>()
 
-        func add(kind: String, key: String, value: Any?, initial: Int64, changedAt: Int64) {
-            let clamped = max(0, min(initial, nowMs))
-            let raw: [String: Any] = [
-                "kind": kind,
-                "key": key,
-                "value": value ?? NSNull(),
-                "updatedAt": clamped,
-            ]
-            guard let item = TVMSyncSchema.parseSyncItem(raw, nowMs: nowMs),
-                  TVMSyncSchema.syncValueBytes(value) <= TVMSyncSchema.maxValueBytes else { return }
-            result[item.itemId] = TVMSnapshotItem(item: item, hash: TVMSyncCanonical.valueHash(value), changedAt: changedAt)
-            if (kind == "progress" || kind == "watchlist"), let slash = key.firstIndex(of: "/") {
-                mediaProfiles.insert(String(key[..<slash]))
+            func add(kind: String, key: String, value: Any?, initial: Int64, changedAt: Int64) {
+                let clamped = max(0, min(initial, nowMs))
+                let raw: [String: Any] = [
+                    "kind": kind,
+                    "key": key,
+                    "value": value ?? NSNull(),
+                    "updatedAt": clamped,
+                ]
+                guard let item = TVMSyncSchema.parseSyncItem(raw, nowMs: nowMs),
+                      TVMSyncSchema.syncValueBytes(value) <= TVMSyncSchema.maxValueBytes else { return }
+                result[item.itemId] = TVMSnapshotItem(item: item, hash: TVMSyncCanonical.valueHash(value), changedAt: changedAt)
+                if (kind == "progress" || kind == "watchlist"), let slash = key.firstIndex(of: "/") {
+                    mediaProfiles.insert(String(key[..<slash]))
+                }
             }
-        }
 
-        let profilesRoot = directory.appendingPathComponent("profiles", isDirectory: true)
-        if let children = try? fm.contentsOfDirectory(
-            at: profilesRoot,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) {
-            for child in children {
-                let isDir = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                let dirName = child.lastPathComponent
-                guard isDir, TVMSyncSchema.profileId(dirName) else { continue }
-                let scope = store.profileDir(dirName, in: directory)
+            let profilesRoot = directory.appendingPathComponent("profiles", isDirectory: true)
+            if let children = try? fm.contentsOfDirectory(
+                at: profilesRoot,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for child in children {
+                    let isDir = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                    let dirName = child.lastPathComponent
+                    guard isDir, TVMSyncSchema.profileId(dirName) else { continue }
+                    let scope = store.profileDir(dirName, in: directory)
 
-                let progressTime = modifiedMs(scope.appendingPathComponent("progress.json"))
-                for (id, entry) in store.progress(for: dirName, in: directory) {
-                    let updated = TVMSyncSchema.parseIsoMsLenient(entry.updated) ?? progressTime
-                    var value: [String: Any] = [
-                        "position": entry.position,
-                        "duration": entry.duration,
-                        "updated": TVMSyncSchema.isoTimestamp(entry.updated, fallbackMs: updated),
-                    ]
-                    if entry.syncPresentKeys.isEmpty {
-                        value["completions"] = entry.completions
-                        if entry.hiddenFromContinueWatching { value["hiddenFromContinueWatching"] = true }
-                    } else {
-                        if entry.syncPresentKeys.contains("hiddenFromContinueWatching") || entry.hiddenFromContinueWatching {
-                            value["hiddenFromContinueWatching"] = entry.hiddenFromContinueWatching
-                        }
-                        if entry.syncPresentKeys.contains("completions") || entry.completions != 0 {
+                    let progressTime = modifiedMs(scope.appendingPathComponent("progress.json"))
+                    for (id, entry) in store.progress(for: dirName, in: directory) {
+                        let updated = TVMSyncSchema.parseIsoMsLenient(entry.updated) ?? progressTime
+                        var value: [String: Any] = [
+                            "position": entry.position,
+                            "duration": entry.duration,
+                            "updated": TVMSyncSchema.isoTimestamp(entry.updated, fallbackMs: updated),
+                        ]
+                        if entry.syncPresentKeys.isEmpty {
                             value["completions"] = entry.completions
+                            if entry.hiddenFromContinueWatching { value["hiddenFromContinueWatching"] = true }
+                        } else {
+                            if entry.syncPresentKeys.contains("hiddenFromContinueWatching") || entry.hiddenFromContinueWatching {
+                                value["hiddenFromContinueWatching"] = entry.hiddenFromContinueWatching
+                            }
+                            if entry.syncPresentKeys.contains("completions") || entry.completions != 0 {
+                                value["completions"] = entry.completions
+                            }
                         }
+                        if let completedAt = entry.completedAt {
+                            value["completedAt"] = TVMSyncSchema.isoTimestamp(completedAt, fallbackMs: updated)
+                        }
+                        if let completedTitle = entry.completedTitle {
+                            value["completedTitle"] = completedTitle
+                        }
+                        if let completedYear = entry.completedYear {
+                            value["completedYear"] = completedYear
+                        } else if entry.syncPresentKeys.contains("completedYear") {
+                            value["completedYear"] = NSNull()
+                        }
+                        add(kind: "progress", key: "\(dirName)/\(id)", value: value, initial: updated, changedAt: updated)
                     }
-                    if let completedAt = entry.completedAt {
-                        value["completedAt"] = TVMSyncSchema.isoTimestamp(completedAt, fallbackMs: updated)
-                    }
-                    if let completedTitle = entry.completedTitle {
-                        value["completedTitle"] = completedTitle
-                    }
-                    if let completedYear = entry.completedYear {
-                        value["completedYear"] = completedYear
-                    } else if entry.syncPresentKeys.contains("completedYear") {
-                        value["completedYear"] = NSNull()
-                    }
-                    add(kind: "progress", key: "\(dirName)/\(id)", value: value, initial: updated, changedAt: updated)
-                }
 
-                let watchlistTime = modifiedMs(scope.appendingPathComponent("watchlist.json"))
-                for entry in store.watchlist(for: dirName, in: directory) {
-                    let added = (entry.added.flatMap { TVMSyncSchema.parseIsoMsLenient($0) }) ?? watchlistTime
-                    let value: [String: Any] = [
-                        "id": entry.id,
-                        "title": entry.title,
-                        "year": JSONValue.orNull(entry.year),
-                        "kind": entry.kind,
-                        "synopsis": entry.synopsis,
-                        "poster": TVMSyncSchema.publicSyncArtwork(entry.poster),
-                        "backdrop": TVMSyncSchema.publicSyncArtwork(entry.backdrop),
-                        "genres": entry.genres,
-                        "rating": entry.rating,
-                        "playable": entry.playable,
-                        "hue": entry.hue,
-                        "added": TVMSyncSchema.isoTimestamp(entry.added, fallbackMs: added),
-                    ]
-                    add(kind: "watchlist", key: "\(dirName)/\(entry.id)", value: value, initial: added, changedAt: added)
+                    let watchlistTime = modifiedMs(scope.appendingPathComponent("watchlist.json"))
+                    for entry in store.watchlist(for: dirName, in: directory) {
+                        let added = (entry.added.flatMap { TVMSyncSchema.parseIsoMsLenient($0) }) ?? watchlistTime
+                        let value: [String: Any] = [
+                            "id": entry.id,
+                            "title": entry.title,
+                            "year": JSONValue.orNull(entry.year),
+                            "kind": entry.kind,
+                            "synopsis": entry.synopsis,
+                            "poster": TVMSyncSchema.publicSyncArtwork(entry.poster),
+                            "backdrop": TVMSyncSchema.publicSyncArtwork(entry.backdrop),
+                            "genres": entry.genres,
+                            "rating": entry.rating,
+                            "playable": entry.playable,
+                            "hue": entry.hue,
+                            "added": TVMSyncSchema.isoTimestamp(entry.added, fallbackMs: added),
+                        ]
+                        add(kind: "watchlist", key: "\(dirName)/\(entry.id)", value: value, initial: added, changedAt: added)
+                    }
                 }
             }
-        }
 
-        let profileTime = modifiedMs(directory.appendingPathComponent("profiles.json"))
-        let legacyProfileTime = legacy.map { modifiedMs($0.appendingPathComponent("profiles.json")) } ?? profileTime
-        for row in registry.profiles {
-            let untouched = untouchedProfile(row)
-            if untouched && !mediaProfiles.contains(row.id) && !knownProfiles.contains(row.id) { continue }
-            let pinValue: Any = row.pin.map { ["hash": $0.hash, "salt": $0.salt, "iter": $0.iter] as Any } ?? NSNull()
-            let value: [String: Any] = [
-                "id": row.id,
-                "name": row.name,
-                "hue": row.hue,
-                "created": TVMSyncSchema.isoTimestamp(row.created, fallbackMs: profileTime),
-                "avatar": JSONValue.orNull(row.avatar),
-                "kind": row.kind,
-                "maxAge": row.maxAge,
-                "pin": pinValue,
-            ]
-            add(kind: "profile", key: row.id, value: value, initial: untouched ? 0 : legacyProfileTime, changedAt: profileTime)
-        }
+            let profileTime = modifiedMs(directory.appendingPathComponent("profiles.json"))
+            let legacyProfileTime = legacy.map { modifiedMs($0.appendingPathComponent("profiles.json")) } ?? profileTime
+            for row in registry.profiles {
+                let untouched = untouchedProfile(row)
+                if untouched && !mediaProfiles.contains(row.id) && !knownProfiles.contains(row.id) { continue }
+                let pinValue: Any = row.pin.map { ["hash": $0.hash, "salt": $0.salt, "iter": $0.iter] as Any } ?? NSNull()
+                let value: [String: Any] = [
+                    "id": row.id,
+                    "name": row.name,
+                    "hue": row.hue,
+                    "created": TVMSyncSchema.isoTimestamp(row.created, fallbackMs: profileTime),
+                    "avatar": JSONValue.orNull(row.avatar),
+                    "kind": row.kind,
+                    "maxAge": row.maxAge,
+                    "pin": pinValue,
+                ]
+                add(kind: "profile", key: row.id, value: value, initial: untouched ? 0 : legacyProfileTime, changedAt: profileTime)
+            }
 
-        let preferenceTime = modifiedMs(directory.appendingPathComponent("sync-prefs.json"))
-        let legacyPreferenceTime = legacy.map { modifiedMs($0.appendingPathComponent("prefs.json")) } ?? preferenceTime
-        for (key, value) in TVMPrefs.readSyncPrefs(in: directory) {
-            add(kind: "preference", key: key, value: value, initial: legacyPreferenceTime, changedAt: preferenceTime)
+            let preferenceTime = modifiedMs(directory.appendingPathComponent("sync-prefs.json"))
+            let legacyPreferenceTime = legacy.map { modifiedMs($0.appendingPathComponent("prefs.json")) } ?? preferenceTime
+            for (key, value) in TVMPrefs.readSyncPrefs(in: directory) {
+                add(kind: "preference", key: key, value: value, initial: legacyPreferenceTime, changedAt: preferenceTime)
+            }
+            return result
         }
-        return result
     }
 
     static func applyItems(
@@ -783,90 +787,95 @@ enum TVMSyncStores {
         }
 
         store.withSyncSuppressed {
-            for key in groupOrder {
-                guard let group = groups[key], let kind = group.first?.kind else { continue }
-                if kind == "profile" {
-                    let registry = store.profiles(in: directory)
-                    var rows: [String: ProfileRecord] = Dictionary(uniqueKeysWithValues: registry.profiles.map { ($0.id, $0) })
-                    for item in group {
-                        if item.deleted {
-                            rows.removeValue(forKey: item.key)
-                        } else if let obj = item.value as? [String: Any], let parsed = parseProfileRecord(obj) {
-                            rows[item.key] = parsed
-                        }
-                    }
-                    if rows.count > 1, registry.profiles.count == 1, let previous = registry.profiles.first,
-                       untouchedProfile(previous),
-                       !group.contains(where: { $0.key == previous.id }),
-                       store.progress(for: previous.id, in: directory).isEmpty,
-                       store.watchlist(for: previous.id, in: directory).isEmpty {
-                        rows.removeValue(forKey: previous.id)
-                    }
-                    var profiles = rows.values.sorted {
-                        if $0.created != $1.created { return $0.created < $1.created }
-                        return $0.id < $1.id
-                    }
-                    if profiles.isEmpty {
-                        profiles.append(ProfileRecord(
-                            id: "profile-\(UUID().uuidString)",
-                            name: "Profile 1",
-                            hue: 221,
-                            created: TVMSyncSchema.formatIsoMs(Int64(Date().timeIntervalSince1970 * 1000.0))
-                        ))
-                    }
-                    let activeId = profiles.contains(where: { $0.id == registry.activeId })
-                        ? registry.activeId
-                        : (profiles.first(where: { $0.pin == nil }) ?? profiles[0]).id
-                    store.writeProfiles(activeId: activeId, profiles: profiles, in: directory)
-                    reloadProfiles()
-                } else if kind == "preference" {
-                    var prefs = TVMPrefs.readSyncPrefs(in: directory)
-                    for item in group {
-                        if item.deleted {
-                            prefs.removeValue(forKey: item.key)
-                        } else if let val = item.value {
-                            prefs[item.key] = val
-                        }
-                    }
-                    TVMPrefs.writeSyncPrefs(prefs, in: directory)
-                } else {
-                    guard let colon = key.firstIndex(of: ":") else { continue }
-                    let profileId = String(key[key.index(after: colon)...])
-                    if kind == "progress" {
-                        var progress = store.progress(for: profileId, in: directory)
+            let shouldReload: Bool = store.withStoreLock {
+                var didReloadProfiles = false
+                for key in groupOrder {
+                    guard let group = groups[key], let kind = group.first?.kind else { continue }
+                    if kind == "profile" {
+                        let registry = store.profiles(in: directory)
+                        var rows: [String: ProfileRecord] = Dictionary(uniqueKeysWithValues: registry.profiles.map { ($0.id, $0) })
                         for item in group {
-                            guard let slash = item.key.firstIndex(of: "/") else { continue }
-                            let id = String(item.key[item.key.index(after: slash)...])
                             if item.deleted {
-                                progress.removeValue(forKey: id)
-                            } else if let obj = item.value as? [String: Any], let entry = parseProgressEntry(obj) {
-                                progress[id] = entry
+                                rows.removeValue(forKey: item.key)
+                            } else if let obj = item.value as? [String: Any], let parsed = parseProfileRecord(obj) {
+                                rows[item.key] = parsed
                             }
                         }
-                        store.writeProgressMap(progress, profileId: profileId, in: directory)
+                        if rows.count > 1, registry.profiles.count == 1, let previous = registry.profiles.first,
+                           untouchedProfile(previous),
+                           !group.contains(where: { $0.key == previous.id }),
+                           store.progress(for: previous.id, in: directory).isEmpty,
+                           store.watchlist(for: previous.id, in: directory).isEmpty {
+                            rows.removeValue(forKey: previous.id)
+                        }
+                        var profiles = rows.values.sorted {
+                            if $0.created != $1.created { return $0.created < $1.created }
+                            return $0.id < $1.id
+                        }
+                        if profiles.isEmpty {
+                            profiles.append(ProfileRecord(
+                                id: "profile-\(UUID().uuidString)",
+                                name: "Profile 1",
+                                hue: 221,
+                                created: TVMSyncSchema.formatIsoMs(Int64(Date().timeIntervalSince1970 * 1000.0))
+                            ))
+                        }
+                        let activeId = profiles.contains(where: { $0.id == registry.activeId })
+                            ? registry.activeId
+                            : (profiles.first(where: { $0.pin == nil }) ?? profiles[0]).id
+                        store.writeProfiles(activeId: activeId, profiles: profiles, in: directory)
+                        didReloadProfiles = true
+                    } else if kind == "preference" {
+                        var prefs = TVMPrefs.readSyncPrefs(in: directory)
+                        for item in group {
+                            if item.deleted {
+                                prefs.removeValue(forKey: item.key)
+                            } else if let val = item.value {
+                                prefs[item.key] = val
+                            }
+                        }
+                        TVMPrefs.writeSyncPrefs(prefs, in: directory)
                     } else {
-                        var watchlist: [String: MediaItem] = Dictionary(
-                            uniqueKeysWithValues: store.watchlist(for: profileId, in: directory).map { ($0.id, $0) }
-                        )
-                        for item in group {
-                            guard let slash = item.key.firstIndex(of: "/") else { continue }
-                            let id = String(item.key[item.key.index(after: slash)...])
-                            if item.deleted {
-                                watchlist.removeValue(forKey: id)
-                            } else if let media = MediaItem.parse(item.value) {
-                                watchlist[id] = media
+                        guard let colon = key.firstIndex(of: ":") else { continue }
+                        let profileId = String(key[key.index(after: colon)...])
+                        if kind == "progress" {
+                            var progress = store.progress(for: profileId, in: directory)
+                            for item in group {
+                                guard let slash = item.key.firstIndex(of: "/") else { continue }
+                                let id = String(item.key[item.key.index(after: slash)...])
+                                if item.deleted {
+                                    progress.removeValue(forKey: id)
+                                } else if let obj = item.value as? [String: Any], let entry = parseProgressEntry(obj) {
+                                    progress[id] = entry
+                                }
                             }
+                            store.writeProgressMap(progress, profileId: profileId, in: directory)
+                        } else {
+                            var watchlist: [String: MediaItem] = Dictionary(
+                                uniqueKeysWithValues: store.watchlist(for: profileId, in: directory).map { ($0.id, $0) }
+                            )
+                            for item in group {
+                                guard let slash = item.key.firstIndex(of: "/") else { continue }
+                                let id = String(item.key[item.key.index(after: slash)...])
+                                if item.deleted {
+                                    watchlist.removeValue(forKey: id)
+                                } else if let media = MediaItem.parse(item.value) {
+                                    watchlist[id] = media
+                                }
+                            }
+                            let ordered = watchlist.values.sorted { a, b in
+                                let da = a.added.flatMap { TVMSyncSchema.parseIsoMsLenient($0) } ?? 0
+                                let db = b.added.flatMap { TVMSyncSchema.parseIsoMsLenient($0) } ?? 0
+                                if da != db { return da > db }
+                                return a.id < b.id
+                            }
+                            store.writeWatchlistItems(ordered, profileId: profileId, in: directory)
                         }
-                        let ordered = watchlist.values.sorted { a, b in
-                            let da = a.added.flatMap { TVMSyncSchema.parseIsoMsLenient($0) } ?? 0
-                            let db = b.added.flatMap { TVMSyncSchema.parseIsoMsLenient($0) } ?? 0
-                            if da != db { return da > db }
-                            return a.id < b.id
-                        }
-                        store.writeWatchlistItems(ordered, profileId: profileId, in: directory)
                     }
                 }
+                return didReloadProfiles
             }
+            if shouldReload { reloadProfiles() }
         }
     }
 
@@ -1195,7 +1204,8 @@ final class TVMSyncEngine {
             if force {
                 lock.lock()
                 let now = nowMs()
-                let needsRetry = (pullDue != nil && pullDue! <= now) || dirty || !state.checkpoint.pending.isEmpty
+                let needsRetry = !stopped && !disabled && token != nil &&
+                    ((pullDue != nil && pullDue! <= now) || dirty || !state.checkpoint.pending.isEmpty)
                 lock.unlock()
                 if needsRetry {
                     await run(force: true)
@@ -1241,16 +1251,22 @@ final class TVMSyncEngine {
         var rejectedSession: String?
         do {
             lock.lock()
+            guard !stopped, generation == epoch else {
+                lock.unlock()
+                finishJob(rejectedSession: nil)
+                return
+            }
             captureLocked()
             lock.unlock()
 
             try await pull(session: session, epoch: epoch)
-            guard isCurrent(epoch) else {
+            lock.lock()
+            guard !stopped, generation == epoch else {
+                lock.unlock()
                 finishJob(rejectedSession: nil)
                 return
             }
-
-            lock.lock()
+            captureLocked()
             if let due = changeDue, due <= nowMs() { changeDue = nil }
             let shouldPush = force || changeDue == nil
             let queue = shouldPush ? Array(state.checkpoint.pending.values) : []
@@ -1262,15 +1278,21 @@ final class TVMSyncEngine {
                     let end = min(queue.count, offset + TVMSyncSchema.maxItems)
                     let batch = Array(queue[offset..<end])
                     lock.lock()
+                    guard !stopped, generation == epoch else {
+                        lock.unlock()
+                        finishJob(rejectedSession: nil)
+                        return
+                    }
                     let match = state.checkpoint.generation
                     lock.unlock()
                     guard let match else { throw SyncHTTPFailure(status: 503) }
                     try await putSyncItems(session: session, items: batch, generation: match)
-                    guard isCurrent(epoch) else {
+                    lock.lock()
+                    guard !stopped, generation == epoch else {
+                        lock.unlock()
                         finishJob(rejectedSession: nil)
                         return
                     }
-                    lock.lock()
                     captureLocked()
                     var next = state
                     for item in batch {
@@ -1287,14 +1309,14 @@ final class TVMSyncEngine {
                 try await pull(session: session, epoch: epoch)
             }
 
-            guard isCurrent(epoch) else {
+            lock.lock()
+            guard !stopped, generation == epoch else {
+                lock.unlock()
                 finishJob(rejectedSession: nil)
                 return
             }
-
-            lock.lock()
             let at = nowMs()
-            if let due = changeDue, due <= at, state.checkpoint.pending.isEmpty {
+            if let due = changeDue, due <= at, !dirty, state.checkpoint.pending.isEmpty {
                 changeDue = nil
             }
             var next = state
@@ -1457,6 +1479,10 @@ final class TVMSyncEngine {
         }
 
         lock.lock()
+        guard !stopped, generation == epoch else {
+            lock.unlock()
+            return
+        }
         captureLocked()
         var next = Checkpoint(
             versions: state.checkpoint.versions,

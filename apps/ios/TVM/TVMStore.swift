@@ -6,9 +6,16 @@ final class TVMStore {
     let root: URL
     private let fileManager = FileManager.default
     private let syncLock = NSLock()
+    private let ioLock = NSRecursiveLock()
     private var _activeDirectory: URL?
     private var _syncSuppressionCount = 0
     private var _onSyncStoreChanged: (() -> Void)?
+
+    func withStoreLock<T>(_ body: () -> T) -> T {
+        ioLock.lock()
+        defer { ioLock.unlock() }
+        return body()
+    }
 
     var onSyncStoreChanged: (() -> Void)? {
         get {
@@ -78,17 +85,23 @@ final class TVMStore {
     func url(_ name: String) -> URL { root.appendingPathComponent(name) }
 
     func readJSON(_ name: String) -> Any? {
-        guard let data = try? Data(contentsOf: url(name)) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data)
+        withStoreLock {
+            guard let data = try? Data(contentsOf: url(name)) else { return nil }
+            return try? JSONSerialization.jsonObject(with: data)
+        }
     }
 
     func writeJSON(_ name: String, _ value: Any) {
-        try? fileManager.createDirectory(at: url(name).deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONValue.data(value).write(to: url(name), options: .atomic)
+        withStoreLock {
+            try? fileManager.createDirectory(at: url(name).deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONValue.data(value).write(to: url(name), options: .atomic)
+        }
     }
 
     func remove(_ name: String) {
-        try? fileManager.removeItem(at: url(name))
+        withStoreLock {
+            try? fileManager.removeItem(at: url(name))
+        }
     }
 
     func clearCacheFiles() {
@@ -96,13 +109,15 @@ final class TVMStore {
     }
 
     func factoryReset() {
-        setActiveDirectory(nil)
-        if let children = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
-            for child in children { try? fileManager.removeItem(at: child) }
+        withStoreLock {
+            setActiveDirectory(nil)
+            if let children = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+                for child in children { try? fileManager.removeItem(at: child) }
+            }
+            RdKeychain.clear()
+            XtreamKeychain.clear()
+            try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         }
-        RdKeychain.clear()
-        XtreamKeychain.clear()
-        try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
     static func strictBool(_ raw: Any?) -> Bool? {
@@ -176,17 +191,19 @@ final class TVMStore {
     }
 
     func profiles(in directory: URL) -> (activeId: String, profiles: [ProfileRecord]) {
-        if let stored = readStoredProfiles(in: directory) {
-            return stored
+        withStoreLock {
+            if let stored = readStoredProfiles(in: directory) {
+                return stored
+            }
+            let first = ProfileRecord(
+                id: "profile-1",
+                name: "Profile 1",
+                hue: hues[0],
+                created: ISO8601DateFormatter().string(from: Date())
+            )
+            writeProfiles(activeId: first.id, profiles: [first], in: directory)
+            return (first.id, [first])
         }
-        let first = ProfileRecord(
-            id: "profile-1",
-            name: "Profile 1",
-            hue: hues[0],
-            created: ISO8601DateFormatter().string(from: Date())
-        )
-        writeProfiles(activeId: first.id, profiles: [first], in: directory)
-        return (first.id, [first])
     }
 
     func profiles() -> (activeId: String, profiles: [ProfileRecord]) {
@@ -194,20 +211,25 @@ final class TVMStore {
     }
 
     func writeProfiles(activeId: String, profiles: [ProfileRecord], in directory: URL) {
-        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("profiles.json")
-        try? JSONValue.data([
-            "activeId": activeId,
-            "profiles": profiles.map { $0.storageJSON() },
-        ]).write(to: url, options: .atomic)
-        try? fileManager.createDirectory(at: profileDir(activeId, in: directory), withIntermediateDirectories: true)
+        withStoreLock {
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent("profiles.json")
+            try? JSONValue.data([
+                "activeId": activeId,
+                "profiles": profiles.map { $0.storageJSON() },
+            ]).write(to: url, options: .atomic)
+            try? fileManager.createDirectory(at: profileDir(activeId, in: directory), withIntermediateDirectories: true)
+        }
     }
 
     func saveProfiles(activeId: String, profiles: [ProfileRecord]) {
-        let dir = dataRoot()
-        let previous = readStoredProfiles(in: dir)?.profiles
-        writeProfiles(activeId: activeId, profiles: profiles, in: dir)
-        if let previous, previous != profiles {
+        let changed: Bool = withStoreLock {
+            let dir = dataRoot()
+            let previous = readStoredProfiles(in: dir)?.profiles
+            writeProfiles(activeId: activeId, profiles: profiles, in: dir)
+            return previous == nil || previous != profiles
+        }
+        if changed {
             notifySyncChanged()
         }
     }
@@ -217,15 +239,17 @@ final class TVMStore {
     }
 
     func connectedServices(for profileId: String, in directory: URL) -> [String] {
-        let url = profileDir(profileId, in: directory).appendingPathComponent("services.json")
-        guard let data = try? Data(contentsOf: url),
-              let doc = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let arr = doc["connected"] as? [Any] else { return [] }
-        var out: [String] = []
-        for raw in arr {
-            if let id = JSONValue.string(raw), !out.contains(id) { out.append(id) }
+        withStoreLock {
+            let url = profileDir(profileId, in: directory).appendingPathComponent("services.json")
+            guard let data = try? Data(contentsOf: url),
+                  let doc = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let arr = doc["connected"] as? [Any] else { return [] }
+            var out: [String] = []
+            for raw in arr {
+                if let id = JSONValue.string(raw), !out.contains(id) { out.append(id) }
+            }
+            return out
         }
-        return out
     }
 
     func connectedServices(for profileId: String) -> [String] {
@@ -233,10 +257,12 @@ final class TVMStore {
     }
 
     func saveConnectedServices(_ connected: [String], profileId: String, in directory: URL) {
-        let scope = profileDir(profileId, in: directory)
-        try? fileManager.createDirectory(at: scope, withIntermediateDirectories: true)
-        let url = scope.appendingPathComponent("services.json")
-        try? JSONValue.data(["connected": connected]).write(to: url, options: .atomic)
+        withStoreLock {
+            let scope = profileDir(profileId, in: directory)
+            try? fileManager.createDirectory(at: scope, withIntermediateDirectories: true)
+            let url = scope.appendingPathComponent("services.json")
+            try? JSONValue.data(["connected": connected]).write(to: url, options: .atomic)
+        }
     }
 
     func saveConnectedServices(_ connected: [String], profileId: String) {
@@ -244,7 +270,9 @@ final class TVMStore {
     }
 
     func removeProfileData(_ profileId: String) {
-        try? fileManager.removeItem(at: profileDir(profileId))
+        withStoreLock {
+            try? fileManager.removeItem(at: profileDir(profileId))
+        }
     }
 
     func profileDir(_ id: String, in directory: URL) -> URL {
@@ -256,25 +284,27 @@ final class TVMStore {
     }
 
     func progress(for profileId: String, in directory: URL) -> [String: ProgressEntry] {
-        guard let object = try? Data(contentsOf: profileDir(profileId, in: directory).appendingPathComponent("progress.json")),
-              let parsed = try? JSONSerialization.jsonObject(with: object) as? [String: [String: Any]] else { return [:] }
-        var out: [String: ProgressEntry] = [:]
-        for (id, entry) in parsed {
-            guard let position = Self.finiteDouble(entry["position"]),
-                  let duration = Self.finiteDouble(entry["duration"]) else { continue }
-            out[id] = ProgressEntry(
-                position: position,
-                duration: duration,
-                updated: entry["updated"] as? String ?? "",
-                hiddenFromContinueWatching: Self.strictBool(entry["hiddenFromContinueWatching"]) == true,
-                completedAt: entry["completedAt"] as? String,
-                completions: Self.strictInt(entry["completions"]) ?? 0,
-                completedTitle: entry["completedTitle"] as? String,
-                completedYear: Self.strictInt(entry["completedYear"]),
-                syncPresentKeys: Set(entry.keys)
-            )
+        withStoreLock {
+            guard let object = try? Data(contentsOf: profileDir(profileId, in: directory).appendingPathComponent("progress.json")),
+                  let parsed = try? JSONSerialization.jsonObject(with: object) as? [String: [String: Any]] else { return [:] }
+            var out: [String: ProgressEntry] = [:]
+            for (id, entry) in parsed {
+                guard let position = Self.finiteDouble(entry["position"]),
+                      let duration = Self.finiteDouble(entry["duration"]) else { continue }
+                out[id] = ProgressEntry(
+                    position: position,
+                    duration: duration,
+                    updated: entry["updated"] as? String ?? "",
+                    hiddenFromContinueWatching: Self.strictBool(entry["hiddenFromContinueWatching"]) == true,
+                    completedAt: entry["completedAt"] as? String,
+                    completions: Self.strictInt(entry["completions"]) ?? 0,
+                    completedTitle: entry["completedTitle"] as? String,
+                    completedYear: Self.strictInt(entry["completedYear"]),
+                    syncPresentKeys: Set(entry.keys)
+                )
+            }
+            return out
         }
-        return out
     }
 
     func progress(for profileId: String) -> [String: ProgressEntry] {
@@ -282,85 +312,102 @@ final class TVMStore {
     }
 
     func writeProgressMap(_ all: [String: ProgressEntry], profileId: String, in directory: URL) {
-        let body = all.mapValues { entry -> [String: Any] in
-            var value: [String: Any] = [
-                "position": entry.position,
-                "duration": entry.duration,
-                "updated": entry.updated,
-            ]
-            if entry.syncPresentKeys.isEmpty {
-                value["completions"] = entry.completions
-                if entry.hiddenFromContinueWatching { value["hiddenFromContinueWatching"] = true }
-            } else {
-                if entry.syncPresentKeys.contains("completions") || entry.completions != 0 {
+        withStoreLock {
+            let body = all.mapValues { entry -> [String: Any] in
+                var value: [String: Any] = [
+                    "position": entry.position,
+                    "duration": entry.duration,
+                    "updated": entry.updated,
+                ]
+                if entry.syncPresentKeys.isEmpty {
                     value["completions"] = entry.completions
+                    if entry.hiddenFromContinueWatching { value["hiddenFromContinueWatching"] = true }
+                } else {
+                    if entry.syncPresentKeys.contains("completions") || entry.completions != 0 {
+                        value["completions"] = entry.completions
+                    }
+                    if entry.syncPresentKeys.contains("hiddenFromContinueWatching") || entry.hiddenFromContinueWatching {
+                        value["hiddenFromContinueWatching"] = entry.hiddenFromContinueWatching
+                    }
                 }
-                if entry.syncPresentKeys.contains("hiddenFromContinueWatching") || entry.hiddenFromContinueWatching {
-                    value["hiddenFromContinueWatching"] = entry.hiddenFromContinueWatching
+                if let completedAt = entry.completedAt { value["completedAt"] = completedAt }
+                if let completedTitle = entry.completedTitle { value["completedTitle"] = completedTitle }
+                if let completedYear = entry.completedYear {
+                    value["completedYear"] = completedYear
+                } else if entry.syncPresentKeys.contains("completedYear") {
+                    value["completedYear"] = NSNull()
                 }
+                return value
             }
-            if let completedAt = entry.completedAt { value["completedAt"] = completedAt }
-            if let completedTitle = entry.completedTitle { value["completedTitle"] = completedTitle }
-            if let completedYear = entry.completedYear {
-                value["completedYear"] = completedYear
-            } else if entry.syncPresentKeys.contains("completedYear") {
-                value["completedYear"] = NSNull()
-            }
-            return value
+            let scope = profileDir(profileId, in: directory)
+            try? fileManager.createDirectory(at: scope, withIntermediateDirectories: true)
+            try? JSONValue.data(body).write(to: scope.appendingPathComponent("progress.json"), options: .atomic)
         }
-        let scope = profileDir(profileId, in: directory)
-        try? fileManager.createDirectory(at: scope, withIntermediateDirectories: true)
-        try? JSONValue.data(body).write(to: scope.appendingPathComponent("progress.json"), options: .atomic)
     }
 
-    private func saveProgressMap(_ all: [String: ProgressEntry], profileId: String) {
+    private func saveProgressMapLocked(_ all: [String: ProgressEntry], profileId: String) {
         writeProgressMap(all, profileId: profileId, in: dataRoot())
-        notifySyncChanged()
     }
 
     func writeProgress(profileId: String, id: String, position: Double, duration: Double) {
         guard !id.isEmpty, position.isFinite, duration.isFinite, position >= 0, duration > 0 else { return }
-        var all = progress(for: profileId)
-        let previous = all[id]
-        let now = ISO8601DateFormatter().string(from: Date())
-        let finished = position / duration > 0.96
-        all[id] = ProgressEntry(
-            position: position,
-            duration: duration,
-            updated: now,
-            hiddenFromContinueWatching: false,
-            completedAt: finished && previous?.isFinished != true ? now : previous?.completedAt ?? (finished ? now : nil),
-            completions: max(previous?.completions ?? 0, previous?.isFinished == true ? 1 : 0) + (finished && previous?.isFinished != true ? 1 : 0),
-            completedTitle: previous?.completedTitle,
-            completedYear: previous?.completedYear
-        )
-        saveProgressMap(all, profileId: profileId)
+        withStoreLock {
+            var all = progress(for: profileId)
+            let previous = all[id]
+            let now = ISO8601DateFormatter().string(from: Date())
+            let finished = position / duration > 0.96
+            all[id] = ProgressEntry(
+                position: position,
+                duration: duration,
+                updated: now,
+                hiddenFromContinueWatching: false,
+                completedAt: finished && previous?.isFinished != true ? now : previous?.completedAt ?? (finished ? now : nil),
+                completions: max(previous?.completions ?? 0, previous?.isFinished == true ? 1 : 0) + (finished && previous?.isFinished != true ? 1 : 0),
+                completedTitle: previous?.completedTitle,
+                completedYear: previous?.completedYear
+            )
+            saveProgressMapLocked(all, profileId: profileId)
+        }
+        notifySyncChanged()
     }
 
     func removeContinueWatching(profileId: String, id: String) {
         guard !id.isEmpty else { return }
-        var all = progress(for: profileId)
-        var changed = false
-        for (key, var entry) in all {
-            if (key == id || key.hasPrefix(id + ":")) && !entry.hiddenFromContinueWatching && !entry.isFinished {
-                entry.hiddenFromContinueWatching = true
-                entry.syncPresentKeys.insert("hiddenFromContinueWatching")
-                all[key] = entry
-                changed = true
+        let changed: Bool = withStoreLock {
+            var all = progress(for: profileId)
+            let now = ISO8601DateFormatter().string(from: Date())
+            var mutated = false
+            for (key, var entry) in all {
+                if (key == id || key.hasPrefix(id + ":")) && !entry.hiddenFromContinueWatching && !entry.isFinished {
+                    entry.hiddenFromContinueWatching = true
+                    entry.updated = now
+                    entry.syncPresentKeys.insert("hiddenFromContinueWatching")
+                    all[key] = entry
+                    mutated = true
+                }
             }
+            if mutated { saveProgressMapLocked(all, profileId: profileId) }
+            return mutated
         }
-        if changed { saveProgressMap(all, profileId: profileId) }
+        if changed { notifySyncChanged() }
     }
 
     func setWatched(profileId: String, id: String, watched: Bool) {
         guard !id.isEmpty else { return }
-        var all = progress(for: profileId)
-        let old = all[id]
         if watched {
-            if old?.isFinished == true { return }
-            let duration = (old?.duration ?? 0) > 0 ? old!.duration : 1
-            writeProgress(profileId: profileId, id: id, position: duration, duration: duration)
-        } else if let old {
+            let duration: Double? = withStoreLock {
+                let old = progress(for: profileId)[id]
+                if old?.isFinished == true { return nil }
+                return (old?.duration ?? 0) > 0 ? old!.duration : 1
+            }
+            if let duration {
+                writeProgress(profileId: profileId, id: id, position: duration, duration: duration)
+            }
+            return
+        }
+        let changed: Bool = withStoreLock {
+            var all = progress(for: profileId)
+            guard let old = all[id] else { return false }
             all[id] = ProgressEntry(
                 position: 0,
                 duration: old.duration,
@@ -368,43 +415,54 @@ final class TVMStore {
                 hiddenFromContinueWatching: old.hiddenFromContinueWatching,
                 completedAt: nil,
                 completions: old.completions,
-                completedTitle: old.completedTitle,
-                completedYear: old.completedYear
+                completedTitle: nil,
+                completedYear: nil,
+                syncPresentKeys: old.syncPresentKeys.subtracting(["completedAt", "completedTitle", "completedYear"])
             )
-            saveProgressMap(all, profileId: profileId)
+            saveProgressMapLocked(all, profileId: profileId)
+            return true
         }
+        if changed { notifySyncChanged() }
     }
 
     // Only the caller's confirmed completed media enter this profile's notebook.
     func finishedNotebook(profileId: String, items: [MediaItem]) -> [[String: Any]] {
-        let path = profileDir(profileId).appendingPathComponent("finished-notebook.json")
-        var saved: [[String: Any]] = []
-        if let data = try? Data(contentsOf: path), let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { saved = rows }
-        let progress = self.progress(for: profileId)
-        let completed = items.filter { progress[$0.id]?.isFinished == true || progress[$0.id]?.completedAt != nil }
-        let ids = Set(completed.map(\.id))
-        let rows: [[String: Any]] = completed.map { ["id": $0.id, "title": $0.title, "year": JSONValue.orNull($0.year)] } + saved.filter { !ids.contains($0["id"] as? String ?? "") }
-        if !completed.isEmpty { try? JSONValue.data(rows).write(to: path, options: .atomic) }
-        return rows
+        withStoreLock {
+            let path = profileDir(profileId).appendingPathComponent("finished-notebook.json")
+            var saved: [[String: Any]] = []
+            if let data = try? Data(contentsOf: path), let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { saved = rows }
+            let progress = self.progress(for: profileId)
+            let completed = items.filter { progress[$0.id]?.isFinished == true || progress[$0.id]?.completedAt != nil }
+            let ids = Set(completed.map(\.id))
+            let rows: [[String: Any]] = completed.map { ["id": $0.id, "title": $0.title, "year": JSONValue.orNull($0.year)] } + saved.filter { !ids.contains($0["id"] as? String ?? "") }
+            if !completed.isEmpty { try? JSONValue.data(rows).write(to: path, options: .atomic) }
+            return rows
+        }
     }
 
     func recentMedia(for profileId: String) -> [MediaItem] {
-        guard let data = try? Data(contentsOf: profileDir(profileId).appendingPathComponent("recent-media.json")),
-              let raw = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
-        return raw.compactMap(MediaItem.parse)
+        withStoreLock {
+            guard let data = try? Data(contentsOf: profileDir(profileId).appendingPathComponent("recent-media.json")),
+                  let raw = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
+            return raw.compactMap(MediaItem.parse)
+        }
     }
 
     func rememberMedia(_ items: [MediaItem], profileId: String) {
-        let ids = Set(items.map(\.id))
-        let saved = Array((items + recentMedia(for: profileId).filter { !ids.contains($0.id) }).prefix(300))
-        try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
-        try? JSONValue.data(saved.map { $0.json() }).write(to: profileDir(profileId).appendingPathComponent("recent-media.json"), options: .atomic)
+        withStoreLock {
+            let ids = Set(items.map(\.id))
+            let saved = Array((items + recentMedia(for: profileId).filter { !ids.contains($0.id) }).prefix(300))
+            try? fileManager.createDirectory(at: profileDir(profileId), withIntermediateDirectories: true)
+            try? JSONValue.data(saved.map { $0.json() }).write(to: profileDir(profileId).appendingPathComponent("recent-media.json"), options: .atomic)
+        }
     }
 
     func watchlist(for profileId: String, in directory: URL) -> [MediaItem] {
-        guard let data = try? Data(contentsOf: profileDir(profileId, in: directory).appendingPathComponent("watchlist.json")),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
-        return parsed.compactMap(MediaItem.parse)
+        withStoreLock {
+            guard let data = try? Data(contentsOf: profileDir(profileId, in: directory).appendingPathComponent("watchlist.json")),
+                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
+            return parsed.compactMap(MediaItem.parse)
+        }
     }
 
     func watchlist(for profileId: String) -> [MediaItem] {
@@ -412,14 +470,18 @@ final class TVMStore {
     }
 
     func writeWatchlistItems(_ items: [MediaItem], profileId: String, in directory: URL) {
-        let scope = profileDir(profileId, in: directory)
-        try? fileManager.createDirectory(at: scope, withIntermediateDirectories: true)
-        try? JSONValue.data(items.prefix(200).map { $0.json() })
-            .write(to: scope.appendingPathComponent("watchlist.json"), options: .atomic)
+        withStoreLock {
+            let scope = profileDir(profileId, in: directory)
+            try? fileManager.createDirectory(at: scope, withIntermediateDirectories: true)
+            try? JSONValue.data(items.prefix(200).map { $0.json() })
+                .write(to: scope.appendingPathComponent("watchlist.json"), options: .atomic)
+        }
     }
 
     func writeWatchlist(profileId: String, items: [MediaItem]) {
-        writeWatchlistItems(items, profileId: profileId, in: dataRoot())
+        withStoreLock {
+            writeWatchlistItems(items, profileId: profileId, in: dataRoot())
+        }
         notifySyncChanged()
     }
 

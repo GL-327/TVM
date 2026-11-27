@@ -212,7 +212,8 @@ final class TVMSyncTests: XCTestCase {
     func testFirstSyncMergesOverHttpKeepsDevicePrefsLocalAndSignOutClearsLedger() async throws {
         let root = makeTempDir("tvm-sync-http")
         let store = TVMStore(root: root)
-        let service = FakeAccountsAndSyncService()
+        let clock = LockedClock(max(Int64(Date().timeIntervalSince1970 * 1000.0) + 1_000, 1_700_000_000_000))
+        let service = FakeAccountsAndSyncService(nowMs: { clock.now() })
         service.join(email: "sync@example.test", status: "active")
 
         // Seed pre-sign-in local data in root.
@@ -244,7 +245,8 @@ final class TVMSyncTests: XCTestCase {
             store: store,
             accountsTransport: service,
             sessionVault: TVMMemorySessionVault(),
-            syncTransport: service
+            syncTransport: service,
+            nowMs: { clock.now() }
         )
 
         let beforeStatus = try await send(core, "GET", "/api/sync/status")
@@ -252,6 +254,7 @@ final class TVMSyncTests: XCTestCase {
         let beforeNow = try await send(core, "POST", "/api/sync/now", body: [:])
         XCTAssertEqual(beforeNow.json["enabled"] as? Bool, false)
 
+        clock.advance()
         let signed = try await send(core, "POST", "/api/account/signin", body: [
             "email": "sync@example.test",
             "password": FakeAccountsAndSyncService.password,
@@ -259,6 +262,7 @@ final class TVMSyncTests: XCTestCase {
         XCTAssertEqual(signed.status, 200)
         let session = try XCTUnwrap(signed.json["token"] as? String)
 
+        clock.advance()
         let firstSync = try await send(core, "POST", "/api/sync/now", body: [:], token: session)
         XCTAssertEqual(firstSync.json["enabled"] as? Bool, true)
         XCTAssertEqual(firstSync.json["pending"] as? Int, 0)
@@ -275,6 +279,7 @@ final class TVMSyncTests: XCTestCase {
         XCTAssertNotNil(service.cloud["progress:profile-1/tt00002"])
         XCTAssertNotNil(service.cloud["preference:audioLanguage"])
 
+        clock.advance()
         _ = try await send(core, "PUT", "/api/prefs", body: ["audioLanguage": "jpn", "quality": "720"], token: session)
         _ = try await send(core, "PUT", "/api/watchlist", body: ["item": ["id": "tt55555", "title": "Watchlisted"]], token: session)
         _ = try await send(core, "POST", "/api/progress/watched", body: ["id": "tt00001", "watched": true], token: session)
@@ -282,11 +287,13 @@ final class TVMSyncTests: XCTestCase {
 
         // Offline outage (503) keeps local edits queued until recovery.
         service.down = true
+        clock.advance()
         let offlineSync = try await send(core, "POST", "/api/sync/now", body: [:], token: session)
         XCTAssertEqual(offlineSync.json["error"] as? String, "Account data could not sync.")
         XCTAssertGreaterThan(offlineSync.json["pending"] as? Int ?? 0, 0)
 
         service.down = false
+        clock.advance()
         let recovered = try await send(core, "POST", "/api/sync/now", body: [:], token: session)
         XCTAssertEqual(recovered.json["pending"] as? Int, 0)
         XCTAssertTrue(recovered.json["error"] is NSNull)
@@ -442,6 +449,27 @@ final class TVMSyncTests: XCTestCase {
 
 // MARK: - Test Doubles
 
+private final class LockedClock {
+    private let lock = NSLock()
+    private var value: Int64
+
+    init(_ initial: Int64) {
+        self.value = initial
+    }
+
+    func now() -> Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func advance(_ delta: Int64 = 1) {
+        lock.lock()
+        value += delta
+        lock.unlock()
+    }
+}
+
 private final class MockSyncTransport: TVMSyncTransport {
     private let lock = NSLock()
     var nextGetReplies: [SyncHTTPReply] = []
@@ -500,6 +528,7 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
     static let password = "a good long password"
 
     private let lock = NSLock()
+    private let nowMs: () -> Int64
     var members: [Member] = []
     var sessions: [String: Member] = [:]
     var cloud: [String: (item: TVMSyncItem, clock: Int64)] = [:]
@@ -508,6 +537,10 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
     private var counter = 0
     private var clock: Int64 = 100
     private let generation = "\"0\""
+
+    init(nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000.0) }) {
+        self.nowMs = nowMs
+    }
 
     func join(email: String, status: String) {
         lock.lock()
@@ -534,6 +567,16 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
         headers: [String: String],
         body: Data?
     ) async throws -> SyncHTTPReply {
+        try handleLocked(method: method, url: url, bearer: bearer, headers: headers, body: body)
+    }
+
+    private func handleLocked(
+        method: String,
+        url: URL,
+        bearer: String?,
+        headers: [String: String],
+        body: Data?
+    ) throws -> SyncHTTPReply {
         lock.lock()
         defer { lock.unlock() }
         if down { throw URLError(.notConnectedToInternet) }
@@ -591,10 +634,10 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
             if let body, let text = String(data: body, encoding: .utf8) {
                 sentPutPayloads.append(text)
             }
-            clock += 1
+            clock = max(clock + 1, nowMs())
             if let rawItems = json["items"] as? [[String: Any]] {
                 for raw in rawItems {
-                    guard let item = TVMSyncSchema.parseSyncItem(raw, nowMs: clock + 1_000_000_000) else { continue }
+                    guard let item = TVMSyncSchema.parseSyncItem(raw, nowMs: clock) else { continue }
                     let prev = cloud[item.itemId]?.item
                     if prev == nil || prev!.updatedAt < item.updatedAt {
                         cloud[item.itemId] = (item, clock)

@@ -79,32 +79,34 @@ struct TVMPrefs {
     }
 
     static func load(_ store: TVMStore) -> TVMPrefs {
-        let device = loadDevice(store)
-        guard let syncDir = store.activeSyncDir() else { return device }
-        let synced = readSyncPrefs(in: syncDir)
-        var base = device
-        base.subtitleLanguages = TVMPrefs().subtitleLanguages
-        base.extras = TVMPrefs.extraDefaults
-        base.audioLanguage = TVMPrefs().audioLanguage
-        base.skipSegments = TVMPrefs().skipSegments
-        base.autoplayNext = TVMPrefs().autoplayNext
-        base.subtitleStyle = SubtitleStylePref()
-        base.homeSections = []
-        var patch: [String: Any] = [:]
-        var syncedExtras: [String: Bool] = [:]
-        for (key, value) in synced {
-            if key.hasPrefix("extras.") {
-                let extraKey = String(key.dropFirst("extras.".count))
-                if let boolVal = TVMSyncSchema.strictBool(value) {
-                    syncedExtras[extraKey] = boolVal
+        store.withStoreLock {
+            let device = loadDevice(store)
+            guard let syncDir = store.activeSyncDir() else { return device }
+            let synced = readSyncPrefs(in: syncDir)
+            var base = device
+            base.subtitleLanguages = TVMPrefs().subtitleLanguages
+            base.extras = TVMPrefs.extraDefaults
+            base.audioLanguage = TVMPrefs().audioLanguage
+            base.skipSegments = TVMPrefs().skipSegments
+            base.autoplayNext = TVMPrefs().autoplayNext
+            base.subtitleStyle = SubtitleStylePref()
+            base.homeSections = []
+            var patch: [String: Any] = [:]
+            var syncedExtras: [String: Bool] = [:]
+            for (key, value) in synced {
+                if key.hasPrefix("extras.") {
+                    let extraKey = String(key.dropFirst("extras.".count))
+                    if let boolVal = TVMSyncSchema.strictBool(value) {
+                        syncedExtras[extraKey] = boolVal
+                    }
+                } else {
+                    patch[key] = value
                 }
-            } else {
-                patch[key] = value
             }
+            if !syncedExtras.isEmpty { patch["extras"] = syncedExtras }
+            base.merge(patch)
+            return base
         }
-        if !syncedExtras.isEmpty { patch["extras"] = syncedExtras }
-        base.merge(patch)
-        return base
     }
 
     static func readSyncPrefs(in directory: URL) -> [String: Any] {
@@ -205,32 +207,37 @@ struct TVMPrefs {
     }
 
     func save(_ store: TVMStore) {
-        guard let syncDir = store.activeSyncDir() else {
-            store.writeJSON("prefs.json", json())
-            return
-        }
-        let before = TVMPrefs.load(store).syncValues()
-        let after = syncValues()
-        var syncValuesMap = TVMPrefs.readSyncPrefs(in: syncDir)
-        var changed = false
-        for key in TVMSyncSchema.syncPrefs {
-            if TVMSyncCanonical.json(before[key]) == TVMSyncCanonical.json(after[key]) { continue }
-            syncValuesMap[key] = after[key]
-            changed = true
+        let changed: Bool = store.withStoreLock {
+            guard let syncDir = store.activeSyncDir() else {
+                store.writeJSON("prefs.json", json())
+                return false
+            }
+            let before = TVMPrefs.load(store).syncValues()
+            let after = syncValues()
+            var syncValuesMap = TVMPrefs.readSyncPrefs(in: syncDir)
+            var dirty = false
+            for key in TVMSyncSchema.syncPrefs {
+                if TVMSyncCanonical.json(before[key]) == TVMSyncCanonical.json(after[key]) { continue }
+                syncValuesMap[key] = after[key]
+                dirty = true
+            }
+            if dirty {
+                TVMPrefs.writeSyncPrefs(syncValuesMap, in: syncDir)
+            }
+            var device = TVMPrefs.loadDevice(store)
+            device.language = language
+            device.autoUpdate = autoUpdate
+            device.heroPreviews = heroPreviews
+            device.quality = quality
+            device.skipUpscaled = skipUpscaled
+            device.subtitleMode = subtitleMode
+            device.webhookUrl = webhookUrl
+            store.writeJSON("prefs.json", device.json())
+            return dirty
         }
         if changed {
-            TVMPrefs.writeSyncPrefs(syncValuesMap, in: syncDir)
             store.notifySyncChanged()
         }
-        var device = TVMPrefs.loadDevice(store)
-        device.language = language
-        device.autoUpdate = autoUpdate
-        device.heroPreviews = heroPreviews
-        device.quality = quality
-        device.skipUpscaled = skipUpscaled
-        device.subtitleMode = subtitleMode
-        device.webhookUrl = webhookUrl
-        store.writeJSON("prefs.json", device.json())
     }
 
     func json() -> [String: Any] {

@@ -38,6 +38,7 @@ class TvmLocalCore(
     adminVault: TvmSessionVault = MemorySessionVault(),
     guideCacheDir: File = store.file("cache/guide"),
     syncHttp: TvmSyncHttp? = null,
+    syncNow: () -> Long = System::currentTimeMillis,
 ) {
     private val accounts = TvmAccounts(bundledAccess, accountsHttp, sessionVault, adminVault = adminVault)
     private val resolvedSyncHttp: TvmSyncHttp = syncHttp ?: if (accountsHttp === TvmAccountsHttp.Default) {
@@ -53,6 +54,7 @@ class TvmLocalCore(
         origin = TVM_ACCOUNTS_URL,
         http = resolvedSyncHttp,
         reloadProfiles = { store.profiles() },
+        now = syncNow,
         onSessionRejected = { rejected ->
             if (sessionVault.read() == rejected) runCatching { sessionVault.write(null) }
             accounts.invalidateCaches()
@@ -151,6 +153,7 @@ class TvmLocalCore(
             adminVault: TvmSessionVault = MemorySessionVault(),
             guideCacheDir: File = File(root, "cache/guide"),
             syncHttp: TvmSyncHttp? = null,
+            syncNow: () -> Long = System::currentTimeMillis,
         ): TvmLocalCore {
             val store = TvmStore(root)
             RdKeychain.attach(root)
@@ -162,7 +165,7 @@ class TvmLocalCore(
             val plans = TvmPlans(root)
             val media = TvmMedia(store, catalog, rd, plans, content, pinGuard)
             val reviews = TvmReviews(media::item)
-            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault, guideCacheDir, syncHttp)
+            return TvmLocalCore(store, catalog, rd, plans, media, app, bundledAccess, http, content, reviews, accountsHttp, sessionVault, adminVault, guideCacheDir, syncHttp, syncNow)
         }
     }
 

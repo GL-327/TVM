@@ -170,34 +170,39 @@ data class TvmPrefs(
     }
 
     fun save(store: TvmStore) {
-        val syncDir = store.activeSyncDir()
-        if (syncDir == null) {
-            store.writeJSON("prefs.json", json())
-            return
-        }
-        val current = load(store)
-        val device = loadDevice(store)
-        val before = syncPrefValues(current)
-        val after = syncPrefValues(this)
-        val values = SyncStores.readSyncPrefs(syncDir)
-        var changed = false
-        for (key in SyncSchema.SYNC_PREFS) {
-            if (SyncSchema.canonicalJson(before[key]) == SyncSchema.canonicalJson(after[key])) continue
-            values.put(key, after[key] ?: JSONObject.NULL)
-            changed = true
+        val changed = store.withStoreLock {
+            val syncDir = store.activeSyncDir()
+            if (syncDir == null) {
+                store.writeJSON("prefs.json", json())
+                return@withStoreLock false
+            }
+            val current = load(store)
+            val device = loadDevice(store)
+            val before = syncPrefValues(current)
+            val after = syncPrefValues(this)
+            val values = SyncStores.readSyncPrefs(syncDir)
+            var dirty = false
+            for (key in SyncSchema.SYNC_PREFS) {
+                if (SyncSchema.canonicalJson(before[key]) == SyncSchema.canonicalJson(after[key])) continue
+                values.put(key, after[key] ?: JSONObject.NULL)
+                dirty = true
+            }
+            if (dirty) {
+                SyncStores.saveSyncPrefs(syncDir, values)
+            }
+            device.language = language
+            device.autoUpdate = autoUpdate
+            device.heroPreviews = heroPreviews
+            device.quality = quality
+            device.skipUpscaled = skipUpscaled
+            device.subtitleMode = subtitleMode
+            device.webhookUrl = webhookUrl
+            store.writeJSON("prefs.json", device.json())
+            dirty
         }
         if (changed) {
-            SyncStores.saveSyncPrefs(syncDir, values)
             store.notifySyncChanged()
         }
-        device.language = language
-        device.autoUpdate = autoUpdate
-        device.heroPreviews = heroPreviews
-        device.quality = quality
-        device.skipUpscaled = skipUpscaled
-        device.subtitleMode = subtitleMode
-        device.webhookUrl = webhookUrl
-        store.writeJSON("prefs.json", device.json())
     }
 
     companion object {
@@ -280,11 +285,11 @@ data class TvmPrefs(
             ).merge(patch)
         }
 
-        fun load(store: TvmStore): TvmPrefs {
+        fun load(store: TvmStore): TvmPrefs = store.withStoreLock {
             val device = loadDevice(store)
-            val syncDir = store.activeSyncDir() ?: return device
+            val syncDir = store.activeSyncDir() ?: return@withStoreLock device
             val syncRaw = SyncStores.readSyncPrefs(syncDir)
-            return overlaySyncedPrefs(device, syncRaw)
+            overlaySyncedPrefs(device, syncRaw)
         }
 
         fun acceptLanguage(code: String): String {

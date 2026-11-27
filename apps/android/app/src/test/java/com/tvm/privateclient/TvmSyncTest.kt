@@ -13,6 +13,7 @@ import org.junit.Test
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicLong
 
 class TvmSyncTest {
     private val dirs = mutableListOf<File>()
@@ -147,27 +148,40 @@ class TvmSyncTest {
         }
     }
 
-    private class FakeBackend : TvmAccountsHttp, TvmSyncHttp {
+    private class FakeBackend(
+        private val now: () -> Long = System::currentTimeMillis,
+    ) : TvmAccountsHttp, TvmSyncHttp {
         class Account(val id: String, val email: String, val pass: String)
 
+        private val lock = Any()
         val accounts = mutableListOf<Account>()
         val sessions = LinkedHashMap<String, Account>()
         val cloudPerAccount = LinkedHashMap<String, LinkedHashMap<String, Pair<SyncItem, Long>>>()
         val generationPerAccount = LinkedHashMap<String, String>()
         val sentPutPayloads = mutableListOf<String>()
         var clock = 100L
-        var down = false
-        var syncDisabled404 = false
-        var injectInvalidRemoteItem: JSONObject? = null
+        @Volatile var down = false
+        @Volatile var syncDisabled404 = false
+        @Volatile var injectInvalidRemoteItem: JSONObject? = null
         private var counter = 0
 
-        fun seedCloud(accountId: String, item: SyncItem, seq: Long = 50L) {
-            val map = cloudPerAccount.getOrPut(accountId) { LinkedHashMap() }
-            map[item.itemId] = item to seq
+        fun addAccount(account: Account) {
+            synchronized(lock) { accounts.add(account) }
         }
 
-        fun cloudOf(accountId: String): Map<String, SyncItem> =
+        fun payloadsSnapshot(): List<String> = synchronized(lock) { sentPutPayloads.toList() }
+
+        fun seedCloud(accountId: String, item: SyncItem, seq: Long = 50L) {
+            synchronized(lock) {
+                clock = maxOf(clock, seq)
+                val map = cloudPerAccount.getOrPut(accountId) { LinkedHashMap() }
+                map[item.itemId] = item to seq
+            }
+        }
+
+        fun cloudOf(accountId: String): Map<String, SyncItem> = synchronized(lock) {
             cloudPerAccount[accountId]?.mapValues { it.value.first } ?: emptyMap()
+        }
 
         private fun accountJson(acc: Account) = JSONObject().apply {
             put("id", acc.id)
@@ -195,7 +209,7 @@ class TvmSyncTest {
             headers: Map<String, String>,
             body: String?,
             timeoutMs: Int,
-        ): SyncHttpReply {
+        ): SyncHttpReply = synchronized(lock) {
             if (down) throw IOException("offline")
             val rawPath = url.removePrefix(TVM_ACCOUNTS_URL)
             val qIdx = rawPath.indexOf('?')
@@ -240,10 +254,10 @@ class TvmSyncTest {
                     sentPutPayloads.add(body ?: "")
                     val json = JSONObject(body ?: "{}")
                     val arr = json.optJSONArray("items") ?: JSONArray()
-                    clock++
+                    clock = maxOf(clock + 1L, now())
                     for (i in 0 until arr.length()) {
                         val raw = arr.getJSONObject(i)
-                        val parsed = SyncSchema.parseSyncItem(raw, Long.MAX_VALUE / 2) ?: continue
+                        val parsed = SyncSchema.parseSyncItem(raw, clock) ?: continue
                         val prev = map[parsed.itemId]?.first
                         if (prev == null || prev.updatedAt < parsed.updatedAt) {
                             map[parsed.itemId] = parsed to clock
@@ -392,8 +406,9 @@ class TvmSyncTest {
             webhookUrl = "https://private.invalid/hook",
         ).save(store)
 
-        val backend = FakeBackend().apply {
-            accounts.add(FakeBackend.Account("acc_sync_http", "sync@example.invalid", passPhrase))
+        val fakeClock = AtomicLong(maxOf(System.currentTimeMillis() + 1_000L, 1_700_000_000_000L))
+        val backend = FakeBackend { fakeClock.get() }.apply {
+            addAccount(FakeBackend.Account("acc_sync_http", "sync@example.invalid", passPhrase))
             seedCloud("acc_sync_http", prefItem("extras.ratings", false, 50L))
             seedCloud(
                 "acc_sync_http",
@@ -414,6 +429,7 @@ class TvmSyncTest {
             accountsHttp = backend,
             sessionVault = vault,
             syncHttp = backend,
+            syncNow = { fakeClock.get() },
         )
         closables.add { core.close() }
 
@@ -426,6 +442,7 @@ class TvmSyncTest {
         assertFalse(call("GET", "/api/sync/status").second.getBoolean("enabled"))
         assertFalse(call("POST", "/api/sync/now", JSONObject()).second.getBoolean("enabled"))
 
+        fakeClock.incrementAndGet()
         val signed = call(
             "POST",
             "/api/account/signin",
@@ -434,6 +451,7 @@ class TvmSyncTest {
         assertEquals(200, signed.first)
         val token = signed.second.getString("token")
 
+        fakeClock.incrementAndGet()
         val first = call("POST", "/api/sync/now", JSONObject(), token)
         assertEquals(200, first.first)
         assertTrue(first.second.getBoolean("enabled"))
@@ -456,15 +474,29 @@ class TvmSyncTest {
             .put("value", "720")
             .put("updatedAt", 999L)
             .put("deleted", false)
+        fakeClock.incrementAndGet()
         val badSync = call("POST", "/api/sync/now", JSONObject(), token).second
         assertEquals("Account data could not sync.", badSync.getString("error"))
         backend.injectInvalidRemoteItem = null
 
+        fakeClock.incrementAndGet()
         call("PUT", "/api/prefs", JSONObject().put("audioLanguage", "jpn").put("quality", "720"), token)
         call("PUT", "/api/watchlist", JSONObject().put("item", JSONObject().put("id", "tt55555").put("title", "Watchlisted")), token)
         call("POST", "/api/progress/watched", JSONObject().put("id", "tt00001").put("watched", true), token)
         call("POST", "/api/progress/remove", JSONObject().put("id", "tt00002"), token)
+        assertTrue(call("GET", "/api/sync/status", token = token).second.getBoolean("enabled"))
 
+        // Offline outage queues new progress + watchlist removal tombstones until recovery.
+        backend.down = true
+        fakeClock.incrementAndGet()
+        assertEquals(200, call("POST", "/api/progress", JSONObject().put("id", "tt99999").put("position", 15).put("duration", 90), token).first)
+        assertEquals(200, call("POST", "/api/watchlist/remove", JSONObject().put("id", "tt55555"), token).first)
+        val offlineSync = call("POST", "/api/sync/now", JSONObject(), token).second
+        assertEquals("Account data could not sync.", offlineSync.getString("error"))
+        assertTrue(offlineSync.getInt("pending") > 0)
+
+        backend.down = false
+        fakeClock.incrementAndGet()
         val synced = call("POST", "/api/sync/now", JSONObject(), token).second
         assertEquals(0, synced.getInt("pending"))
         assertTrue(synced.isNull("error"))
@@ -472,8 +504,10 @@ class TvmSyncTest {
         assertTrue(backend.cloudOf("acc_sync_http")["watchlist:profile-1/tt55555"]?.deleted == true)
         val tt2 = backend.cloudOf("acc_sync_http")["progress:profile-1/tt00002"]?.value as? JSONObject
         assertEquals(true, tt2?.getBoolean("hiddenFromContinueWatching"))
+        val tt9 = backend.cloudOf("acc_sync_http")["progress:profile-1/tt99999"]?.value as? JSONObject
+        assertEquals(15.0, tt9?.getDouble("position") ?: 0.0, 0.01)
 
-        for (payload in backend.sentPutPayloads) {
+        for (payload in backend.payloadsSnapshot()) {
             assertFalse(payload.contains("\"quality\""))
             assertFalse(payload.contains("webhookUrl"))
             assertFalse(payload.contains("private.invalid"))

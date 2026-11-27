@@ -95,3 +95,48 @@ Generated directly from `apps/core/src/sync/` (`C:/Users/Arthur/TVM-work/sync/ge
 - **Android compilation & unit tests (`CI` required):** This Windows host has no Android SDK or Kotlin compiler installed, so Gradle build/compilation of `TvmSync.kt`, `TvmModels.kt`, `TvmStore.kt`, `TvmUpdater.kt`, `TvmLocalCore.kt`, `MainActivity.kt`, and JVM execution of `TvmSyncTest.kt` could not run locally. All edited/created Kotlin files were re-read after the final edit for imports, types, constructors, and nullability; CI must compile Android and run `./gradlew test`.
 - **iOS compilation & XCTest (`CI` / macOS required):** This Windows host has no macOS or Xcode toolchain installed, so `xcodebuild build` / `xcodebuild test` for `TVMSync.swift`, `TVMSyncTests.swift`, and modified Swift files could not run locally. `check-project.mjs` verified Xcode project registration and static contracts (`287 passed`), and all edited/created Swift files were re-read after the final edit for types, concurrency/locking, and `CFBoolean` bridging; CI on macOS must compile and execute `TVMSyncTests`.
 - **Real devices & live `tvm-accounts` sync server:** Live sign-in / `/v1/me/data` round-trips against `tvm-accounts` and real Android, iPhone, and Roku OS hardware (`roEVPDigest`, `roRegistrySection` persistence under size pressure, SceneGraph timer cadence, background/foreground wakeups, and multi-device end-to-end sync) were not exercised here; verification used Core's generated `sync-fixture.json`, in-memory mock transports, and the `brs@0.45.0` interpreter.
+
+---
+
+## CI fixes
+
+Follow-up diagnosis and fixes after Lead's `d5112e5` compile-fix push and the subsequent iOS and Android CI test failures:
+
+### 1. Root Causes Diagnosed
+
+#### iOS (`testFirstSyncMergesOverHttpKeepsDevicePrefsLocalAndSignOutClearsLedger`)
+- **Fake cloud validation clock mismatch (`TVMSyncTests.swift`):** `FakeAccountsAndSyncService` initialized `clock = 100` (with seeded items at `clock: 50`) and validated incoming `PUT /v1/me/data` payloads via `TVMSyncSchema.parseSyncItem(raw, nowMs: clock + 1_000_000_000)` (`~1.0e9` ms, Jan 1970). Real wall-clock timestamps from `TVMStore.isoNow()`, `modifiedMs(...)`, and `TVMAccountSync`'s default clock (~`1.795e12` ms) exceeded `nowMs + futureMs`, so `FakeAccountsAndSyncService.PUT` silently discarded pushed local items while still returning `204`.
+- **Engine stale-epoch & capture gaps (`TVMSync.swift`):** In `TVMSyncEngine.executeRun` and `pull`, `isCurrent(epoch)` was checked before acquiring `lock` rather than inside `lock` right before `captureLocked()` / `finishApplicationLocked()` / `saveLocked()`, leaving a window where `close()` / `detach()` / re-`attach()` could race a finishing pull/push and re-write `ledger.json`. In addition, `executeRun` did not call `captureLocked()` under `lock` between `pull()` completing and building the `queue`, risking missed local edits on forced sync.
+- **Store concurrency & timestamp consistency (`TVMStore.swift`, `TVMUpdater.swift`, `TVMSync.swift`):** `TVMStore` file operations and `TVMPrefs.load`/`save` (`prefs.json` + `sync-prefs.json`) were not serialized against background `TVMSyncStores.snapshot`/`applyItems` execution; `TVMStore.removeContinueWatching` updated `hiddenFromContinueWatching` without bumping `entry.updated`; `TVMStore.setWatched(..., watched: false)` dropped `syncPresentKeys`; and `TVMLocalCore.init` did not accept an injectable `nowMs` clock for deterministic HTTP tests.
+
+#### Android (`firstSyncMergeOverLocalCoreRoutesAndKeepsDevicePrefsLocal`)
+- **Test expectation / missing remove step (`TvmSyncTest.kt`):** The test added `tt55555` via `PUT /api/watchlist` (`deleted = false`) and never captured status or called `POST /api/watchlist/remove` (`tt55555`), yet asserted `backend.cloudOf("acc_sync_http")["watchlist:profile-1/tt55555"]?.deleted == true`.
+- **Unsynchronized `FakeBackend` (`TvmSyncTest.kt`):** `TvmLocalCore` uses `TvmSyncScheduler.Executor()` (`tvm-sync` daemon thread) on `attach()`, calling `FakeBackend.send` concurrently with the JUnit thread while `FakeBackend` accessed `LinkedHashMap`s, `mutableListOf`, `clock`, `down`, `syncDisabled404`, and `injectInvalidRemoteItem` without synchronization.
+- **Engine / store hardening (`TvmSync.kt`, `TvmStore.kt`, `TvmUpdater.kt`, `TvmLocalCore.kt`):** `SyncEngine.executeSync` lacked inside-lock `isCurrent(epoch)` re-checks before mutations and a post-`pull` `captureLocked()` before snapshotting the push queue; `TvmStore` and `SyncStores.writeAtomic` both used `<file>.tmp` without sharing `store`'s monitor across `SyncStores` and `TvmPrefs`; and `TvmLocalCore` lacked an injectable `syncNow` clock parameter.
+
+### 2. Fixes Applied
+
+- **iOS product code:**
+  - [TVMStore.swift](file:///C:/Users/Arthur/Desktop/TVM/apps/ios/TVM/TVMStore.swift): Added `ioLock` (`NSRecursiveLock`) + `withStoreLock` around store file I/O (with `notifySyncChanged()` always invoked outside `ioLock`), updated `removeContinueWatching` to refresh `entry.updated`, and preserved `syncPresentKeys.subtracting(["completedAt", "completedTitle", "completedYear"])` in `setWatched(watched: false)`.
+  - [TVMUpdater.swift](file:///C:/Users/Arthur/Desktop/TVM/apps/ios/TVM/TVMUpdater.swift): Serialized `TVMPrefs.load` and `TVMPrefs.save` reads/writes under `store.withStoreLock`, keeping `store.notifySyncChanged()` outside the lock.
+  - [TVMSync.swift](file:///C:/Users/Arthur/Desktop/TVM/apps/ios/TVM/TVMSync.swift): Serialized `TVMSyncStores.initializeStores`, `snapshot`, and `applyItems` under `store.withStoreLock` (invoking `reloadProfiles()` after unlocking); added inside-lock `!stopped && generation == epoch` guards across `executeRun` and `pull`; added post-`pull` `captureLocked()` inside `executeRun` before snapshotting `queue`; and required `!stopped && !disabled && token != nil` before forced retry after an in-flight job.
+  - [TVMLocalCore.swift](file:///C:/Users/Arthur/Desktop/TVM/apps/ios/TVM/TVMLocalCore.swift): Added optional `nowMs` clock injection parameter forwarding to `TVMAccountSync`.
+- **iOS tests:**
+  - [TVMSyncTests.swift](file:///C:/Users/Arthur/Desktop/TVM/apps/ios/TVMTests/TVMSyncTests.swift): Updated `FakeAccountsAndSyncService` to accept `nowMs`, advance `clock = max(clock + 1, nowMs())` on `PUT /v1/me/data`, validate with `parseSyncItem(raw, nowMs: clock)`, and perform locked handling in a synchronous helper; injected a thread-safe `LockedClock` into `testFirstSyncMergesOverHttpKeepsDevicePrefsLocalAndSignOutClearsLedger`.
+- **Android product code:**
+  - [TvmStore.kt](file:///C:/Users/Arthur/Desktop/TVM/apps/android/app/src/main/java/com/tvm/privateclient/TvmStore.kt): Exposed internal `storeMonitor()` and `withStoreLock`, and made `writeAtomic` use per-thread `.tmp` filenames.
+  - [TvmUpdater.kt](file:///C:/Users/Arthur/Desktop/TVM/apps/android/app/src/main/java/com/tvm/privateclient/TvmUpdater.kt): Serialized `TvmPrefs.load` and `TvmPrefs.save` under `store.withStoreLock` while keeping `store.notifySyncChanged()` outside the lock.
+  - [TvmSync.kt](file:///C:/Users/Arthur/Desktop/TVM/apps/android/app/src/main/java/com/tvm/privateclient/TvmSync.kt): Made `SyncStores.writeAtomic` use per-thread `.tmp` filenames; wired `storeMonitor` / `store.withStoreLock` through `TvmAccountSync` and `SyncEngine` (`initializeStores`, `snapshot`, `applyItems`, calling `reloadProfiles()` outside the monitor); added inside-lock `isCurrent(epoch)` checks and post-`pull` `captureLocked()` inside `executeSync`.
+  - [TvmLocalCore.kt](file:///C:/Users/Arthur/Desktop/TVM/apps/android/app/src/main/java/com/tvm/privateclient/TvmLocalCore.kt): Added optional `syncNow` clock parameter to `TvmLocalCore` and `TvmLocalCore.create(...)`.
+- **Android tests:**
+  - [TvmSyncTest.kt](file:///C:/Users/Arthur/Desktop/TVM/apps/android/app/src/test/java/com/tvm/privateclient/TvmSyncTest.kt): Synchronized `FakeBackend`, added `@Volatile` flags and `now` clock alignment (`clock = maxOf(clock + 1L, now())`, validating `parseSyncItem(raw, clock)`), injected `AtomicLong` deterministic `syncNow` clock in `firstSyncMergeOverLocalCoreRoutesAndKeepsDevicePrefsLocal`, and aligned the test flow with Core (`GET /api/sync/status`, offline `POST /api/progress` for `tt99999` + `POST /api/watchlist/remove` for `tt55555`, offline 503 assertion, recovery sync, and cloud assertions).
+
+### 3. Re-verification (After Final Code Edit)
+- **Line endings & BOM:** `BOM_COUNT=0`, `CRLF_COUNT=0`.
+- **BrighterScript (`apps/roku/bsconfig.json`):** Exited `0` (`Parsing files finished. (1s211.132ms)`, `Validating project finished. (651.158ms)`).
+- **Roku tests (`node --test apps/roku/scripts/`):** Exited `0` (`tests 453`, `pass 453`, `fail 0`, `cancelled 0`, `skipped 0`, `todo 0`, `duration_ms 78236.7002`).
+- **Roku static check (`node apps/roku/scripts/check.mjs`):** Exited `0`.
+- **iOS project check (`node apps/ios/check-project.mjs`):** Exited `0` (`287 passed, 0 warnings, 0 failed`).
+- **Core Vitest (`apps/core`):** Exited `0` (`Test Files 71 passed (71)`, `Tests 717 passed (717)`, including `src/sync/sync.test.ts (12 tests)`).
+- **Content check (`node scripts/check-content.mjs`):** Exited `0` (`Content ok: 12 avatar sets, 2 events, 34 free channels, 16 services.`).
+- **Still requires CI:** Android Gradle compile/unit tests (`./gradlew test` including `TvmSyncTest`) and macOS Xcode build/`TVMSyncTests` could not run on this Windows host and must pass in CI.
