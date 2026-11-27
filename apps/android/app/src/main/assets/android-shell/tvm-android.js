@@ -328,18 +328,25 @@
 
   // Only the children of the scroller that are on screen (or nearly) are stretched and given a layer. Moving and
   // layering every row, most of them far off screen with all their posters, made the first pulls after launch stutter.
+  // A child much taller than the screen (Home's shelf holds every row) is not moved whole: its own children are, the
+  // ones on screen, so a pull never drags every row and poster on the page.
   function markVisible(el) {
+    clearVisible(el);
     var h = window.innerHeight || 0;
-    var kids = el.children;
-    for (var i = 0; i < kids.length; i += 1) {
-      var r = kids[i].getBoundingClientRect();
-      if (r.bottom > -240 && r.top < h + 240) kids[i].setAttribute('data-tvma-vis', '');
-      else if (kids[i].hasAttribute('data-tvma-vis')) kids[i].removeAttribute('data-tvma-vis');
-    }
+    var mark = function (parent, depth) {
+      var kids = parent.children;
+      for (var i = 0; i < kids.length; i += 1) {
+        var r = kids[i].getBoundingClientRect();
+        if (r.bottom <= -240 || r.top >= h + 240) continue;
+        if (depth === 0 && r.height > h * 1.5 && kids[i].children.length > 1) mark(kids[i], 1);
+        else kids[i].setAttribute('data-tvma-vis', '');
+      }
+    };
+    mark(el, 0);
   }
 
   function clearVisible(el) {
-    var kids = el.querySelectorAll(':scope > [data-tvma-vis]');
+    var kids = el.querySelectorAll('[data-tvma-vis]');
     for (var i = 0; i < kids.length; i += 1) kids[i].removeAttribute('data-tvma-vis');
   }
 
