@@ -1709,9 +1709,9 @@ void Scene::PaintStreamChrome(Painter& painter) const {
                                   0.96 + 0.04 * barStage);
         capsule.y -= barRise;
         GlassStyle capsuleGlass;
+        // Real Liquid Glass: the picture behind is refracted through the capsule (never a solid fill). Reduce
+        // Transparency alone makes it opaque. See docs/LIQUID_GLASS.md.
         capsuleGlass.kind = GlassKind::Pill;
-        capsuleGlass.solid = true;
-        capsuleGlass.tint = WithAlpha(tokens::kSurface, tokens::reduceTransparency ? 1.0 : 0.97);
         capsuleGlass.reduceTransparency = tokens::reduceTransparency;
         capsuleGlass.opacity = barStage;
         painter.Glass(capsule, capsule.height / 2.0, capsuleGlass);
@@ -1864,10 +1864,18 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         const Color resting = Mix(tokens::kTextMuted, tokens::kText, 0.52 + 0.48 * emphasis);
         const Color ink = Faded(Mix(resting, kPlateInk, under), labelStage);
         const double textRise = barRise + metrics_.Rem(0.3) * (1.0 - labelStage);
+        // Clear glass lets a bright sky through, so a label off the plate carries a soft two-layer shadow (dark
+        // theme only); on the light plate it needs none.
+        const bool lightTheme = tokens::kBackground.r > 0.5;
+        const double shadowAlpha = lightTheme || tokens::reduceTransparency ? 0.0 : 0.42 * (1.0 - under) * labelStage;
         if (SearchTab(tops_[i])) {
             const double size = metrics_.Rem(1.45);
-            painter.Path(Box{box.CenterX() - size / 2.0, box.CenterY() - size / 2.0 - textRise, size, size},
-                         32.0, kSearchGlyph, PathStyle{Rgb(0, 0.0), ink, 2.6});
+            const Box glyph{box.CenterX() - size / 2.0, box.CenterY() - size / 2.0 - textRise, size, size};
+            if (shadowAlpha > 0.01) {
+                painter.Path(Box{glyph.x, glyph.y + 1.0, glyph.width, glyph.height}, 32.0, kSearchGlyph,
+                             PathStyle{Rgb(0, 0.0), Rgb(0x000000, shadowAlpha), 2.6});
+            }
+            painter.Path(glyph, 32.0, kSearchGlyph, PathStyle{Rgb(0, 0.0), ink, 2.6});
             continue;
         }
         const bool strong = tops_[i].on || focused;
@@ -1875,6 +1883,12 @@ void Scene::PaintStreamChrome(Painter& painter) const {
         const double textWidth = painter.MeasureText(tops_[i].label, tabStyle);
         const double textX = std::max(box.x + metrics_.Rem(0.5), box.CenterX() - textWidth / 2.0);
         const Box labelBox{textX, box.y - textRise, std::min(textWidth + 4.0, box.Right() - textX), box.height};
+        if (shadowAlpha > 0.01) {
+            painter.Text(Box{labelBox.x, labelBox.y + 1.0, labelBox.width, labelBox.height}, tops_[i].label, tabStyle,
+                         Rgb(0x000000, shadowAlpha));
+            painter.Text(Box{labelBox.x + 0.6, labelBox.y + 1.6, labelBox.width, labelBox.height}, tops_[i].label,
+                         tabStyle, Rgb(0x000000, shadowAlpha * 0.5));
+        }
         painter.Text(labelBox, tops_[i].label, tabStyle, ink);
     }
 }
