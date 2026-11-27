@@ -11,6 +11,20 @@
       ],
       "changes": [
         {
+          "area": "Android",
+          "text": "Pulling past the top of Home on Android is smooth; the page no longer restyles on every frame.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "Sunrise on the Reaping leads the featured titles at the top of Home on Android.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Player",
           "text": "Android's player has Zoom: Fit to screen, or Zoom to fill the whole screen up to the notch.",
           "platforms": [

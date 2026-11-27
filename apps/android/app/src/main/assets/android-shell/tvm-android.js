@@ -346,17 +346,41 @@
   }
 
   function clearVisible(el) {
+    if (typeof movers !== 'undefined' && movers) movers.delete(el);
     var kids = el.querySelectorAll('[data-tvma-vis]');
     for (var i = 0; i < kids.length; i += 1) kids[i].removeAttribute('data-tvma-vis');
+  }
+
+  // The offset is written only on the elements that move (the rows on screen and the held-still hero picture), not
+  // on the scroller: --tvm-rubber is registered as not inherited (tvm-android.css), so a frame of the pull restyles
+  // a handful of elements instead of every row and poster on the page (Home has the most).
+  var offsets = typeof WeakMap === 'function' ? new WeakMap() : null;
+  var HELD = '.stage--home .stage__pictures, .stage--home .stage__vignette, .details__stage > *';
+  var movers = typeof WeakMap === 'function' ? new WeakMap() : null;
+  function moving(el) {
+    var cached = movers ? movers.get(el) : undefined;
+    if (cached) return cached;
+    var list = Array.prototype.slice.call(el.querySelectorAll('[data-tvma-vis]'))
+      .concat(Array.prototype.slice.call(el.querySelectorAll(HELD)));
+    if (movers) movers.set(el, list);
+    return list;
+  }
+  function writeOffset(el, value) {
+    var targets = moving(el);
+    for (var i = 0; i < targets.length; i += 1) {
+      if (value === null) targets[i].style.removeProperty('--tvm-rubber');
+      else targets[i].style.setProperty('--tvm-rubber', value);
+    }
   }
 
   function setOffset(el, px) {
     if (Math.abs(px) < 0.25) {
       if (el.hasAttribute('data-tvm-rubber')) {
+        writeOffset(el, null);
         el.removeAttribute('data-tvm-rubber');
         el.removeAttribute('data-tvma-pull');
-        el.style.removeProperty('--tvm-rubber');
       }
+      if (offsets) offsets.delete(el);
       if (!touch || touch.el !== el) { el.removeAttribute('data-tvma-prime'); clearVisible(el); }
       return;
     }
@@ -369,12 +393,13 @@
     // screen (no gap above it, nothing stretched) while the page moves.
     if (px > 0) { if (!el.hasAttribute('data-tvma-pull')) el.setAttribute('data-tvma-pull', ''); }
     else if (el.hasAttribute('data-tvma-pull')) el.removeAttribute('data-tvma-pull');
-    el.style.setProperty('--tvm-rubber', px + 'px');
+    if (offsets) offsets.set(el, px);
+    writeOffset(el, px + 'px');
   }
 
   function currentOffset(el) {
-    var v = parseFloat(el.style.getPropertyValue('--tvm-rubber'));
-    return isFinite(v) ? v : 0;
+    var v = offsets ? offsets.get(el) : undefined;
+    return typeof v === 'number' && isFinite(v) ? v : 0;
   }
 
   var springs = typeof WeakMap === 'function' ? new WeakMap() : null;

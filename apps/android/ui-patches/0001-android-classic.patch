@@ -1,12 +1,11 @@
 diff --git a/apps/ui/src/components/EventShelf.css b/apps/ui/src/components/EventShelf.css
 new file mode 100644
-index 0000000..051dcd4
+index 0000000..29120f3
 --- /dev/null
 +++ b/apps/ui/src/components/EventShelf.css
-@@ -0,0 +1,96 @@
-+/* A release event's row on Home. It lines up with every other row (same 20px gutter and spacing), carries a small
-+   accent label above its title, a compact order switch on the title line, and a soft wash of the event's colours
-+   that fades out on every side. */
+@@ -0,0 +1,84 @@
++/* A release event's row on Home: an ordinary Home row (same gutter and spacing) with a small label in the event's
++   colour above its title and a compact order switch on the title line. No glow or wash behind it. */
 +.home__shelf > .event-shelf {
 +  position: relative;
 +  isolation: isolate;
@@ -14,17 +13,6 @@ index 0000000..051dcd4
 +  padding-top: 20px;
 +}
 +
-+.event-shelf::before {
-+  content: '';
-+  position: absolute;
-+  /* Starts at the row's own top edge: it never spreads up over the Live TV, Watchlist and Apps tiles. */
-+  inset: 0 0 -16px;
-+  z-index: -1;
-+  pointer-events: none;
-+  background: radial-gradient(85% 70% at 22% 45%, color-mix(in srgb, var(--event-glow) 22%, transparent), transparent 75%);
-+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
-+  mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
-+}
 +
 +/* The row itself sits as Home's rows do (they get this as direct children of the shelf). */
 +.event-shelf > .rail {
@@ -102,11 +90,11 @@ index 0000000..051dcd4
 +}
 diff --git a/apps/ui/src/components/EventShelf.tsx b/apps/ui/src/components/EventShelf.tsx
 new file mode 100644
-index 0000000..788a7ea
+index 0000000..c4746a1
 --- /dev/null
 +++ b/apps/ui/src/components/EventShelf.tsx
-@@ -0,0 +1,81 @@
-+import { useEffect, useMemo, useState } from 'react';
+@@ -0,0 +1,83 @@
++import { useMemo, useState } from 'react';
 +import { FocusButton } from './FocusButton';
 +import { mapRailPosters } from './PosterCard';
 +import { Rail } from './Rail';
@@ -116,7 +104,7 @@ index 0000000..788a7ea
 +
 +// Android: a big release (packages/content/events.json, e.g. The Hunger Games: Sunrise on the Reaping) gets its own
 +// themed section on Home, in the event's colours, with its films in story order or release order.
-+interface ActiveEvent {
++export interface ActiveEvent {
 +  id: string;
 +  title: string;
 +  line?: string;
@@ -125,24 +113,14 @@ index 0000000..788a7ea
 +  glow?: string;
 +  rail?: { id?: string; title?: string };
 +  items?: MediaItem[];
++  spotlight?: MediaItem | null;
++  featured?: MediaItem | null;
 +}
 +
 +type Order = 'story' | 'release';
 +
-+export function EventShelf({ openTitle }: { openTitle: (title: Title) => void }): React.JSX.Element | null {
-+  const [event, setEvent] = useState<ActiveEvent | null>(null);
++export function EventShelf({ event, openTitle }: { event: ActiveEvent | null; openTitle: (title: Title) => void }): React.JSX.Element | null {
 +  const [order, setOrder] = useState<Order>('story');
-+
-+  useEffect(() => {
-+    let alive = true;
-+    apiFetch('/api/events/active')
-+      .then((response) => (response.ok ? response.json() : null))
-+      .then((body: { events?: ActiveEvent[] } | null) => {
-+        if (alive) setEvent(body?.events?.find((entry) => (entry.items?.length ?? 0) > 0) ?? null);
-+      })
-+      .catch(() => undefined);
-+    return () => { alive = false; };
-+  }, []);
 +
 +  const titles = useMemo(() => {
 +    // Every film in a saga starts with the same words, so the cut-off labels all read the same; the row shows the
@@ -186,6 +164,18 @@ index 0000000..788a7ea
 +  const parts = name.split(/:\s+/);
 +  const rest = parts.length > 1 ? parts.slice(1).join(': ') : name;
 +  return rest.replace(/^The Ballad of\s+/i, '').replace(/\s+-\s+Part\s+/i, ' Part ').trim() || name;
++}
++
++/** The release event running now, if any (packages/content/events.json through the phone's core). */
++export async function fetchActiveEvent(): Promise<ActiveEvent | null> {
++  try {
++    const response = await apiFetch('/api/events/active');
++    if (!response.ok) return null;
++    const body = (await response.json()) as { events?: ActiveEvent[] };
++    return body.events?.find((entry) => (entry.items?.length ?? 0) > 0) ?? null;
++  } catch {
++    return null;
++  }
 +}
 diff --git a/apps/ui/src/data/account.ts b/apps/ui/src/data/account.ts
 index 0d7e618..f31a0ee 100644
@@ -436,25 +426,79 @@ index f99dcc8..e9079f2 100644
            <button type="submit" className="gate__implicit-submit" tabIndex={-1} aria-hidden="true" />
          </form>
 diff --git a/apps/ui/src/screens/Home.tsx b/apps/ui/src/screens/Home.tsx
-index fea7332..7e5baa7 100644
+index fea7332..98acf61 100644
 --- a/apps/ui/src/screens/Home.tsx
 +++ b/apps/ui/src/screens/Home.tsx
 @@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
  import { ErrorState } from '../components/ErrorState';
  import { FocusButton } from '../components/FocusButton';
  import { mapRailPosters } from '../components/PosterCard';
-+import { EventShelf } from '../components/EventShelf';
++import { EventShelf, fetchActiveEvent, type ActiveEvent } from '../components/EventShelf';
  import { Rail } from '../components/Rail';
  import { Ribbon } from '../components/Ribbon';
  import { RailSkeletons } from '../components/Skeleton';
-@@ -60,6 +61,7 @@ const HomeShelves = memo(function HomeShelves({
+@@ -51,15 +52,18 @@ const HomeShelves = memo(function HomeShelves({
+   catalogRails,
+   loading,
+   openTitle,
++  event,
+ }: {
+   watching: Title[];
+   watchlist: Title[];
+   catalogRails: Array<{ id: string; title: string; titles: Title[] }>;
+   loading: boolean;
+   openTitle: (title: Title) => void;
++  event: ActiveEvent | null;
  }): React.JSX.Element {
    return (
      <div className="home__shelf">
-+      <EventShelf openTitle={openTitle} />
++      <EventShelf event={event} openTitle={openTitle} />
        {watching.length > 0 && (
          <Rail title={shelfTitle('Continue watching')}>{mapRailPosters(watching, 'continue', openTitle)}</Rail>
        )}
+@@ -92,6 +96,14 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+   const [watching, setWatching] = useState<Title[]>(() => (cached?.continueWatching ?? []).map(asTitle));
+   const [watchlist, setWatchlist] = useState<Title[]>(() => (cached?.watchlist ?? []).map(asTitle));
+   const [rails, setRails] = useState<CatalogRail[]>(cached?.rails ?? []);
++  // The release event running now (The Hunger Games: Sunrise on the Reaping): its film leads the featured titles at
++  // the top and its row sits first in the shelves.
++  const [event, setEvent] = useState<ActiveEvent | null>(null);
++  useEffect(() => {
++    let alive = true;
++    void fetchActiveEvent().then((next) => { if (alive) setEvent(next); });
++    return () => { alive = false; };
++  }, []);
+   const [featured, setFeatured] = useState<Title | null>(() =>
+     cached?.featured !== null && cached?.featured !== undefined ? asTitle(cached.featured) : null,
+   );
+@@ -135,7 +147,9 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+ 
+   const heroes = useMemo(() => {
+     const fromRails = rails.filter(rail => rail.id !== 'anime-adapted').flatMap((rail) => rail.items.map(asTitle)).filter((title) => title.backdrop !== '');
+-    const merged = [...(featured !== null ? [featured] : []), ...watching, ...fromRails];
++    const eventPick = event?.spotlight ?? event?.featured ?? null;
++    const eventHero = eventPick !== null && eventPick !== undefined ? [asTitle(eventPick)] : [];
++    const merged = [...eventHero, ...(featured !== null ? [featured] : []), ...watching, ...fromRails];
+     const seen = new Set<string>();
+     return merged.filter((title) => {
+       if (seen.has(title.id) || seen.has(title.title)) return false;
+@@ -143,7 +157,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+       seen.add(title.title);
+       return true;
+     }).slice(0, 4);
+-  }, [featured, rails, watching]);
++  }, [event, featured, rails, watching]);
+ 
+   const displayHero = heroes[slide % Math.max(heroes.length, 1)];
+   const catalogRails = useMemo(
+@@ -374,6 +388,7 @@ export function Home(_props: ScreenProps): React.JSX.Element {
+         catalogRails={catalogRails}
+         loading={loading}
+         openTitle={openTitle}
++        event={event}
+       />
+     </main>
+   );
 diff --git a/apps/ui/src/screens/LiveTV.tsx b/apps/ui/src/screens/LiveTV.tsx
 index 76b737b..1926ad3 100644
 --- a/apps/ui/src/screens/LiveTV.tsx

@@ -1251,6 +1251,13 @@ html.tvm-android .settings-summary {
   background: rgb(var(--tvma-tint) / 0.055);
 }
 
+/* Not inherited: the pull sets it on the few elements that move, so a frame never restyles the whole page. */
+@property --tvm-rubber {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* ---- 6. Overscroll ------------------------------------------------------------
  * tvm-android.js sets --tvm-rubber on the scroller that is being pulled past
  * its edge. The scroller itself is never moved: its fixed tab bar and scene
