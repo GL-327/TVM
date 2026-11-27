@@ -531,7 +531,13 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
     private let nowMs: () -> Int64
     var members: [Member] = []
     var sessions: [String: Member] = [:]
-    var cloud: [String: (item: TVMSyncItem, clock: Int64)] = [:]
+    /// Synced items per account id, like the real service (one account never sees another's data).
+    var clouds: [String: [String: (item: TVMSyncItem, clock: Int64)]] = [:]
+    /// The first account's items; most tests use one account.
+    var cloud: [String: (item: TVMSyncItem, clock: Int64)] {
+        get { clouds["acc_1"] ?? [:] }
+        set { clouds["acc_1"] = newValue }
+    }
     var sentPutPayloads: [String] = []
     var down = false
     private var counter = 0
@@ -627,7 +633,7 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let sinceStr = components?.queryItems?.first(where: { $0.name == "since" })?.value ?? "0"
             let since = Int64(sinceStr) ?? 0
-            let items = cloud.values.filter { $0.clock > since }.map { $0.item.json() }
+            let items = (clouds[member.id] ?? [:]).values.filter { $0.clock > since }.map { $0.item.json() }
             return reply(200, ["items": items, "now": clock], etag: generation)
         }
         if method == "PUT" && url.path == "/v1/me/data" {
@@ -638,9 +644,9 @@ private final class FakeAccountsAndSyncService: TVMAccountsTransport, TVMSyncTra
             if let rawItems = json["items"] as? [[String: Any]] {
                 for raw in rawItems {
                     guard let item = TVMSyncSchema.parseSyncItem(raw, nowMs: clock) else { continue }
-                    let prev = cloud[item.itemId]?.item
+                    let prev = clouds[member.id]?[item.itemId]?.item
                     if prev == nil || prev!.updatedAt < item.updatedAt {
-                        cloud[item.itemId] = (item, clock)
+                        clouds[member.id, default: [:]][item.itemId] = (item, clock)
                     }
                 }
             }
