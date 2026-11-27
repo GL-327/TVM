@@ -581,33 +581,32 @@ TEST(an_episode_shows_its_name_after_season_and_number) {
 }
 }  // namespace
 
-TEST(the_control_glass_shows_only_on_hover_as_the_nav_pills_hover_glass) {
+TEST(the_control_glass_shows_only_on_hover_as_the_details_buttons_glass) {
     PlayerView view = Playing();
     view.subtitles = {tvm::ui::PlayerOption{"no", "Off", "", true}, tvm::ui::PlayerOption{"en", "English", "", false}};
     PlayerScreen player = Player(view);
     player.ShowChrome(0.0);
     player.Tick(400.0);
-    // At rest (focus on Play, which is icon only) no control carries glass: no capsules behind the groups.
+    const Box cc = *player.BoxOf("cc");
+    const auto over = [&](const Box& box) { return std::fabs(box.CenterX() - cc.CenterX()) <= 1.0 && std::fabs(box.CenterY() - cc.CenterY()) <= 4.0; };
+    // At rest (focus on Play, which is icon only) no control carries glass.
     TextPainter rest;
     player.Paint(rest);
-    for (const auto& [box, style] : rest.glasses) {
-        REQUIRE(style.kind != tvm::ui::GlassKind::Pill);
-        REQUIRE(style.kind != tvm::ui::GlassKind::Tab);
-    }
-    // Hovering the subtitles tool brings up the nav pill's hover glass over it, with its light sweep.
+    for (const auto& [box, style] : rest.glasses) REQUIRE(!over(box));
+    // Hovering the subtitles tool brings up the Details buttons' glass over it: clear glass with adaptive ink.
     REQUIRE(player.FocusItem("cc", 500.0, false));
     player.Tick(500.0);
     player.Tick(800.0);
     TextPainter hover;
     player.Paint(hover);
-    const Box cc = *player.BoxOf("cc");
     int found = 0;
     for (const auto& [box, style] : hover.glasses) {
-        if (style.kind != tvm::ui::GlassKind::Tab || std::fabs(box.CenterX() - cc.CenterX()) > 1.0) continue;
+        if (!over(box)) continue;
         ++found;
-        REQUIRE(style.focusPlate);
+        REQUIRE(style.adaptiveInk);
+        REQUIRE(!style.solid);
+        REQUIRE(!style.focusPlate);
         REQUIRE(style.focusAmount > 0.5);
-        REQUIRE(style.sweep >= 0.0 && style.sweep <= 1.0);
     }
     REQUIRE_EQ(found, 1);
     // A press squeezes it.
@@ -616,7 +615,7 @@ TEST(the_control_glass_shows_only_on_hover_as_the_nav_pills_hover_glass) {
     TextPainter pressed;
     player.Paint(pressed);
     bool squeezed = false;
-    for (const auto& [box, style] : pressed.glasses) squeezed = squeezed || (style.kind == tvm::ui::GlassKind::Tab && style.pressAmount > 0.5);
+    for (const auto& [box, style] : pressed.glasses) squeezed = squeezed || (over(box) && style.pressAmount > 0.5);
     REQUIRE(squeezed);
 }
 

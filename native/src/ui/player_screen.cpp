@@ -21,6 +21,9 @@ constexpr double kSweepDelayMs = 90.0;
 constexpr double kSweepMs = 850.0;
 constexpr double kPressInMs = 70.0;
 constexpr double kPressOutMs = 240.0;
+// The Details buttons' focus ring (widget.h kFocusRingWidthRem / kFocusRingOffsetRem).
+constexpr double kButtonRingWidthRem = 0.18;
+constexpr double kButtonRingOffsetRem = 0.14;
 
 // cinema-controls.css, in rems.
 constexpr double kPadXRem = 2.5;           // the header's and footer's left and right
@@ -1453,16 +1456,25 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         return Box{hit.CenterX() - squareSize / 2.0, hit.CenterY() - squareSize / 2.0, squareSize, squareSize};
     };
     const bool reducedLook = tokens::reduceMotion;
+    // The Details buttons' glass (DrawButton): it lifts a little when lit and squeezes 3% on a press.
     const auto grown = [&](const Box& box, double emphasis, double press) {
-        const double scale = reducedLook ? 1.0 : 1.0 + 0.04 * emphasis - 0.05 * press;
-        return Box{box.CenterX() - box.width * scale / 2.0, box.CenterY() - box.height * scale / 2.0, box.width * scale,
-                   box.height * scale};
+        const double scale = reducedLook ? 1.0 : 1.0 - 0.03 * press;
+        const double lift = reducedLook ? 0.0 : Rem(0.125) * emphasis * (1.0 - press);
+        return Box{box.CenterX() - box.width * scale / 2.0, box.CenterY() - box.height * scale / 2.0 - lift,
+                   box.width * scale, box.height * scale};
     };
-    const auto hoverGlass = [&](const char* key, const Box& box, double radius) {
-        const double amount = lit(key);
-        if (amount <= 0.01) return;
+    const double ringWidth = Rem(kButtonRingWidthRem);
+    // Draws a control's glass while it is lit (or `forced`, for a tool whose menu is open) and returns the ink its
+    // label should take on that glass.
+    const auto hoverGlass = [&](const char* key, const Box& box, double radius, bool forced = false) {
+        const double amount = forced ? 1.0 : lit(key);
+        if (amount <= 0.01) return tokens::kText;
         const double press = PressOf(key);
-        painter.Glass(grown(box, amount, press), radius, glass::NavTabHover(amount, press, SweepOf(key), amount * opacity));
+        const bool focused = forced || ShowsFocus(focused_, key);
+        painter.Glass(grown(box, amount, press), radius,
+                      glass::ButtonGlass(amount, focused, press, amount * opacity, ringWidth,
+                                         Rem(kButtonRingOffsetRem) + ringWidth / 2.0));
+        return painter.GlassInk(tokens::kText);
     };
     // The nav labels' shadow: two soft offsets that keep light ink legible over a bright frame, gone on the plate.
     const auto shadowed = [&](double plated, const std::function<void(double dx, double dy, Color ink)>& draw) {
@@ -1471,8 +1483,10 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         draw(0.0, 1.0, shade);
         draw(0.6, 1.6, WithAlpha(shade, shade.a * 0.5));
     };
-    const auto glyph = [&](const Box& box, const std::vector<const char*>& paths, double viewBox, double amount) {
-        const Color ink = glass::NavLabel(amount, amount, opacity);
+    const auto glyph = [&](const Box& box, const std::vector<const char*>& paths, double viewBox, double amount,
+                           Color onGlass) {
+        Color ink = Mix(glass::NavLabel(amount, 0.0, 1.0), onGlass, amount);
+        ink.a *= opacity;
         shadowed(amount, [&](double dx, double dy, Color shade) {
             for (const char* path : paths) {
                 painter.Path(Box{box.x + dx, box.y + dy, box.width, box.height}, viewBox, path,
@@ -1488,9 +1502,9 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     const Box muteSquare = square(mute);
     const Box volumeTrack = VolumeTrackBox();
     const double muteAmount = lit(kMuteKey);
-    hoverGlass(kMuteKey, muteSquare, squareRadius);
+    const Color muteInk = hoverGlass(kMuteKey, muteSquare, squareRadius);
     const bool silent = view_.muted || view_.volume <= 0.0;
-    glyph(GlyphBox(muteSquare, Rem(kGlyphRem) * 0.92), {kSpeakerPath, silent ? kMutedPath : kWavesPath}, 32.0, muteAmount);
+    glyph(GlyphBox(muteSquare, Rem(kGlyphRem) * 0.92), {kSpeakerPath, silent ? kMutedPath : kWavesPath}, 32.0, muteAmount, muteInk);
     const double volumeHeight = Rem(volumeDragging_ ? 0.3 : 0.22);
     const Box volumeBar{volumeTrack.x, volumeTrack.CenterY() - volumeHeight / 2.0, volumeTrack.width, volumeHeight};
     painter.FillRoundRect(Box{volumeBar.x, volumeBar.y + 1.0, volumeBar.width, volumeBar.height}, volumeHeight / 2.0,
@@ -1522,18 +1536,14 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
         const Box box = button(tool.c_str());
         const bool open = menu_ == tool;
         const double amount = lit(tool.c_str());
-        const double press = PressOf(tool);
-        if (open) {
-            painter.Glass(grown(box, amount, press), Rem(0.55), glass::NavTabSelected(amount, press, opacity));
-        } else {
-            hoverGlass(tool.c_str(), box, Rem(0.55));
-        }
+        const Color onGlass = hoverGlass(tool.c_str(), box, Rem(0.55), open);
         const double plated = open ? 1.0 : amount;
         // Subtitles read faint while they are off.
         const bool off = tool == kSubtitlesKey &&
                          std::none_of(view_.subtitles.begin(), view_.subtitles.end(),
                                       [](const PlayerOption& option) { return option.selected && option.id != "no"; });
-        Color label = glass::NavLabel(amount, plated, opacity);
+        Color label = Mix(glass::NavLabel(amount, 0.0, 1.0), onGlass, plated);
+        label.a *= opacity;
         if (off && plated < 0.5) label = WithAlpha(kInkMuted, opacity);
         const TextStyle style{Rem(kToolFontRem), true, 650};
         shadowed(plated, [&](double dx, double dy, Color shade) {
@@ -1545,9 +1555,9 @@ void PlayerScreen::PaintChrome(Painter& painter, double opacity) const {
     // Full screen, at the right: the same rounded square as mute.
     const Box full = button(kFullscreenKey);
     const Box fullSquare = square(full);
-    hoverGlass(kFullscreenKey, fullSquare, squareRadius);
+    const Color fullInk = hoverGlass(kFullscreenKey, fullSquare, squareRadius);
     glyph(GlyphBox(fullSquare, Rem(kGlyphRem) * 0.86), {view_.fullscreen ? kExitFullscreenPath : kFullscreenPath}, 32.0,
-          lit(kFullscreenKey));
+          lit(kFullscreenKey), fullInk);
 
     // The title sits at the top centre (PaintTitleOverlay), so the middle of the control row is the transport's.
 }

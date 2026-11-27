@@ -1,5 +1,7 @@
 #include "ui/widget.h"
 
+#include "ui/glass_styles.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -464,19 +466,14 @@ void DrawButton(Painter& painter, const Metrics& metrics, const Box& box, const 
     const double lift = tokens::reduceMotion ? 0.0 : metrics.Rem(0.125) * focus * (1.0 - look.pressAmount);
     const Box shape{box.CenterX() - width / 2.0, box.CenterY() - height / 2.0 - lift, width, height};
     const double radius = metrics.Rem(box.height < metrics.Rem(2.5) ? 0.625 : 0.75);
-    GlassStyle glass;
-    glass.focused = look.focused;
-    glass.focusAmount = focus;
-    glass.pressAmount = look.pressAmount;
-    glass.opacity = look.opacity;
-    glass.adaptiveInk = !look.primary;
+    const double ringWidth = metrics.Rem(kFocusRingWidthRem);
+    GlassStyle glass = glass::ButtonGlass(focus, look.focused, look.pressAmount, look.opacity, ringWidth,
+                                          metrics.Rem(kFocusRingOffsetRem) + ringWidth / 2.0);
     if (look.primary) {
+        glass.adaptiveInk = false;
         glass.solid = true;
         glass.tint = look.fill.value_or(tokens::kPrimary);
     }
-    glass.ringWidth = metrics.Rem(kFocusRingWidthRem);
-    glass.ringOutset = metrics.Rem(kFocusRingOffsetRem) + glass.ringWidth / 2.0;
-    glass.ringColor = tokens::kFocusRing;
     painter.Glass(shape, radius, glass);
 
     const TextStyle style = type::Label(metrics.rem);

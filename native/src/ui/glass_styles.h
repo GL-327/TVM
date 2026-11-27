@@ -104,6 +104,23 @@ inline Color NavLabel(double emphasis, double plated, double opacity = 1.0) {
     return ink;
 }
 
+// A glass button, exactly as DrawButton draws a secondary button (Details' "Add to My List", "Trailer"): clear
+// refracting glass with its rim, lit by `focus`, squeezed by `press`, with the focus ring while focused, and ink that
+// adapts to what shows through (read it with Painter::GlassInk right after drawing).
+inline GlassStyle ButtonGlass(double focus, bool focused, double press, double opacity, double ringWidth,
+                              double ringOutset) {
+    GlassStyle style;
+    style.focused = focused;
+    style.focusAmount = focus;
+    style.pressAmount = press;
+    style.opacity = opacity;
+    style.adaptiveInk = true;
+    style.ringWidth = ringWidth;
+    style.ringOutset = ringOutset;
+    style.ringColor = tokens::kFocusRing;
+    return style;
+}
+
 // The ink for a label on glass that may carry the light plate: white on clear glass, dark on the plate, eased by
 // `plate` from 0 to 1, as the pill's tab labels turn dark when selected or hovered.
 inline Color InkOnPlate(double plate, double opacity = 1.0) {
