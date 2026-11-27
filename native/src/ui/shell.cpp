@@ -99,7 +99,10 @@ void Shell::Paint(Painter& painter) const {
     // lets the stage paint first, behind it.
     const nav::ViewEntry& visible = nav::VisibleScreen(stack_);
     const bool visibleStage = screens_.at(visible.key)->ShowsStage();
-    if (visibleStage) {
+    if (!visibleStage) {
+        // Screens without the stage stand on the app's own background.
+        painter.Clear(tokens::kBackground);
+    } else {
         // The ground under the stage is the app's own background, `.app` in the dark theme, which is black.
         painter.Clear(tokens::kBackgroundDeep);
         stage_.Paint(painter, width_, height_, clock_);

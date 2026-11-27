@@ -268,7 +268,8 @@ TEST(centered_liquid_glass_signin_card_draws_summaries_and_navigates_modes) {
     view.actions = {{{"info:account-signin", "Sign In", true}}};
     screen.SetView(view);
 
-    REQUIRE(screen.ShowsStage());
+    // The ribbon stage is only for the Hub and the profile chooser.
+    REQUIRE(!screen.ShowsStage());
     TextPainter painter;
     screen.Paint(painter);
     REQUIRE(painter.Has("Sign in to TVM"));

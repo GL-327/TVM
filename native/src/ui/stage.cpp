@@ -1,5 +1,6 @@
 #include "ui/stage.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -223,7 +224,11 @@ void PaintBloomRibbons(Painter& painter, double width, double height, double clo
          Rgb(0xE0F2FE, 0.72 * strength), 0.85},
     }};
 
-    constexpr int kSteps = 28;
+    // Each ribbon is traced past both ends of its path, so its pinched end caps fall outside the window and no
+    // ribbon ends in a cut edge on screen. The width and twist follow the clamped path, as before.
+    constexpr int kSteps = 44;
+    constexpr double kFrom = -0.35;
+    constexpr double kTo = 1.35;
     for (const RibbonSpec& r : ribbons) {
         std::vector<Point> topEdge;
         std::vector<Point> bottomEdge;
@@ -232,16 +237,17 @@ void PaintBloomRibbons(Painter& painter, double width, double height, double clo
 
         const double ph = t + r.phase;
         for (int i = 0; i <= kSteps; ++i) {
-            const double u = static_cast<double>(i) / kSteps;
+            const double u = kFrom + (kTo - kFrom) * static_cast<double>(i) / kSteps;
+            const double uc = std::clamp(u, 0.0, 1.0);
             const double wave = std::sin(u * 3.14159265 + ph * 0.7) * r.arch +
                                 std::sin(u * 5.2 + ph * 1.15) * r.sway;
             const double sx = (r.baseX + r.spanX * u + std::cos(u * 2.6 + ph) * 0.04) * width;
             const double sy = (r.baseY + r.spanY * u + wave) * height;
             // Ribbon pinches organically at ends and twists across center.
-            const double env = std::sin(u * 3.14159265);
-            const double twist = 0.55 + 0.45 * std::cos(u * 3.6 + ph * 0.8);
+            const double env = std::sin(uc * 3.14159265);
+            const double twist = 0.55 + 0.45 * std::cos(uc * 3.6 + ph * 0.8);
             const double halfT = diag * r.halfWidth * (0.28 + 0.72 * env) * twist * r.widthScale;
-            const double tilt = std::cos(u * 2.4 + ph * 0.5) * 0.42;
+            const double tilt = std::cos(uc * 2.4 + ph * 0.5) * 0.42;
             const double nx = -r.spanY * 0.45 + tilt * 0.35;
             const double ny = r.spanX * 0.75;
             const double nlen = std::max(1e-5, std::hypot(nx, ny));

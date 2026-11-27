@@ -48,7 +48,8 @@ public:
     void Paint(Painter& painter) const override;
     bool Tick(double nowMs) override;
     bool Animating() const override;
-    bool ShowsStage() const override { return true; }
+    // The ribbon stage is only for the Hub and the profile chooser.
+    bool ShowsStage() const override { return false; }
 
     // Replaces what the screen shows. The focus stays on a control that still exists.
     void SetView(XtreamView view);

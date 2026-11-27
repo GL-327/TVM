@@ -79,7 +79,8 @@ public:
     void Layout(double width, double height) override;
     bool Tick(double nowMs) override;
     bool Animating() const override;
-    bool ShowsStage() const override { return true; }
+    // The ribbon stage is only for the Hub and the profile chooser.
+    bool ShowsStage() const override { return false; }
     void Paint(Painter& painter) const override;
 
     bool Navigate(nav::Direction direction, double nowMs) override;
