@@ -636,7 +636,20 @@ void Scene::Build(const std::vector<RailData>& rails) {
     page_ = std::make_unique<Stack>(searchField_ ? kSearchSectionSpacingRem : kSectionSpacingRem);
     for (std::size_t r = 0; r < rails.size(); ++r) {
         const RailData& spec = rails[r];
-        auto section = std::make_unique<Stack>(kHeadingGapRem);
+        // A hovered card grows from its foot and lifts, so the room between a heading and its row must take the
+        // tallest card's rise (and its focus ring), or the card covers the heading and its top is cut off.
+        double tallestRem = 0.0;
+        for (const CardData& data : spec.cards) {
+            const double art = data.logo || data.tileColor.has_value() ? kChannelHeightRem
+                               : data.feature                          ? 16.9
+                               : data.category                         ? kCategoryHeightRem
+                               : data.landscape || data.progress.has_value() ? kLandscapeHeightRem
+                                                                             : kPosterHeightRem;
+            tallestRem = std::max(tallestRem, art);
+        }
+        const double riseRem = (kPosterFocusScale - 1.0) * tallestRem + kPosterLiftRem + kPosterRingOffsetRem +
+                               kPosterRingWidthRem + 0.35;
+        auto section = std::make_unique<Stack>(std::max(kHeadingGapRem, riseRem));
         // A row that continues the grid above it has no heading, and takes no room for one.
         if (!spec.title.empty()) section->Add(std::make_unique<Heading>(spec.title, kHeadingSizeRem));
 
