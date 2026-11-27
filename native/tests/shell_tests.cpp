@@ -761,6 +761,23 @@ TEST(a_mouse_drag_along_a_rail_slides_it_and_does_not_open_a_card) {
     REQUIRE_NEAR(scene.PageScroll(), 0.0, 1e-6);
 }
 
+TEST(a_rails_arrows_come_back_when_the_pointer_returns_to_the_same_row) {
+    MemoryStore store;
+    Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 20}});
+    auto& scene = dynamic_cast<Scene&>(shell.ActiveScreen());
+    const tvm::ui::Box card = CardOf(scene, 3, 2);
+    shell.MouseMove(card.CenterX(), card.CenterY(), false, 0.0);
+    shell.MouseMove(card.CenterX() + 4.0, card.CenterY(), false, 10.0);
+    REQUIRE(scene.ArrowsShowing());
+    // Off the row (out of the window), and back onto the same row: the arrows show again.
+    shell.MouseLeave(500.0);
+    REQUIRE(!scene.ArrowsShowing());
+    shell.MouseMove(card.CenterX(), card.CenterY(), false, 1000.0);
+    shell.MouseMove(card.CenterX() + 4.0, card.CenterY(), false, 1010.0);
+    REQUIRE(scene.ArrowRail() == std::optional<std::size_t>(3));
+    REQUIRE(scene.ArrowsShowing());
+}
+
 TEST(rail_arrow_clicks_during_a_glide_add_up_and_never_pull_the_rail_back) {
     MemoryStore store;
     Shell shell = MakeShell(store, {{"A", 5}, {"B", 5}, {"C", 5}, {"Long", 20}});

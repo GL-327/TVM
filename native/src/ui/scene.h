@@ -238,6 +238,8 @@ public:
     // The rail's scroll once its glide ends.
     double RailTarget(std::size_t rail) const;
     std::optional<std::size_t> ArrowRail() const { return arrowRail_; }
+    // Whether the arrows are showing or fading in (for tests).
+    bool ArrowsShowing() const { return arrowRail_.has_value() && arrowFade_.target() > 0.0; }
     void ShowFocus(double nowMs) override;
     // Whether the focused item is drawn focused: false while the pointer rests on empty space.
     bool FocusShown() const { return !focusHidden_; }

@@ -493,12 +493,16 @@ void Scene::PointerAt(double x, double y, double nowMs) {
             }
         }
     }
-    if (under == arrowRail_) return;
+    // Coming back onto the row whose arrows are fading out must bring them back: the row is the same, but they were
+    // leaving (which used to leave them hidden until another row had been visited).
+    const bool showing = arrowFade_.target() > 0.0;
+    if (under == arrowRail_ && (under.has_value() == showing)) return;
     // The arrows fade in over the rail under the pointer, and out as it leaves.
     const bool reduced = motion::PrefersReducedMotion(motion_);
     if (under.has_value()) {
+        const double from = under == arrowRail_ ? arrowFade_.Value(nowMs) : 0.0;
         arrowRail_ = under;
-        arrowFade_ = motion::Tween(0.0, 1.0, nowMs, reduced ? 0.0 : 180.0, kGlassEase);
+        arrowFade_ = motion::Tween(from, 1.0, nowMs, reduced ? 0.0 : 180.0, kGlassEase);
         for (const bool next : {false, true}) {
             const double shown = RailArrowBox(*under, next).has_value() ? 1.0 : 0.0;
             arrowSide_[next ? 1 : 0] = motion::Tween(shown, shown, nowMs, 0.0, kGlassEase);
