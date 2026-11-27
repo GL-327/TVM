@@ -228,6 +228,9 @@ public:
     // Everything drawn until PopOpacity is composited at `opacity`, as one layer.
     virtual void PushOpacity(double /*opacity*/) {}
     virtual void PopOpacity() {}
+    // Like PushOpacity, but the opacity runs from `topAlpha` at y0 to `bottomAlpha` at y1 (held beyond), so what is
+    // drawn until PopOpacity fades out down the page and whatever lies under it shows through: a crossfade.
+    virtual void PushLinearOpacity(double /*y0*/, double /*y1*/, double /*topAlpha*/, double /*bottomAlpha*/) {}
 
 protected:
     static Box BoundsOf(const std::vector<Point>& points, double pad) {

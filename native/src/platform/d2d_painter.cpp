@@ -789,6 +789,26 @@ void D2dPainter::PushOpacity(double opacity) {
     opacityLayers_.push_back(true);
 }
 
+void D2dPainter::PushLinearOpacity(double y0, double y1, double topAlpha, double bottomAlpha) {
+    ComPtr<ID2D1Layer> layer;
+    const ComPtr<ID2D1GradientStopCollection> stops =
+        Stops({ui::GradientStop{0.0, ui::Rgb(0xFFFFFF, std::clamp(topAlpha, 0.0, 1.0))},
+               ui::GradientStop{1.0, ui::Rgb(0xFFFFFF, std::clamp(bottomAlpha, 0.0, 1.0))}});
+    ComPtr<ID2D1LinearGradientBrush> mask;
+    if (FAILED(target_->CreateLayer(nullptr, &layer)) || !stops ||
+        FAILED(target_->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(D2D1::Point2F(0.0f, static_cast<FLOAT>(y0)),
+                                                D2D1::Point2F(0.0f, static_cast<FLOAT>(std::max(y1, y0 + 1.0)))),
+            stops.Get(), &mask))) {
+        opacityLayers_.push_back(false);
+        return;
+    }
+    target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                                             D2D1::IdentityMatrix(), 1.0f, mask.Get()),
+                       layer.Get());
+    opacityLayers_.push_back(true);
+}
+
 void D2dPainter::PopOpacity() {
     if (opacityLayers_.empty()) return;
     if (opacityLayers_.back()) target_->PopLayer();

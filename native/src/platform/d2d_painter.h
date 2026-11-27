@@ -55,6 +55,7 @@ public:
     void StrokePolyline(const std::vector<ui::Point>& points, double width, ui::Color color, bool closed = false) override;
     void PushOpacity(double opacity) override;
     void PopOpacity() override;
+    void PushLinearOpacity(double y0, double y1, double topAlpha, double bottomAlpha) override;
 
 private:
     void DrawLabel(const ui::Box& box, std::string_view text, const ui::TextStyle& style, ui::Color color, bool wrap);

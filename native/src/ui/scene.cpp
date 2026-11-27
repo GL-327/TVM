@@ -956,6 +956,9 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
         const std::string art = artCurrent_.empty() ? "asset:lighthouse.jpg" : artCurrent_;
         const double dissolve = artFade_ ? std::clamp(artFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
         painter.SetBackdrop(media, art, focusX, focusY);
+        // The hero crossfades into the page below: over its lower part it fades out and whatever lies under it (the
+        // focused title's ambience, or the ground) fades in, with no band or edge between them.
+        painter.PushLinearOpacity(stage.y + stage.height * 0.55, stage.Bottom(), 1.0, 0.0);
         if (dissolve < 1.0 && !artPrevious_.empty()) painter.ImageFaded(media, artPrevious_, 0, fade, focusX, focusY);
         if (!painter.ImageFaded(media, art, 0, dissolve * fade, focusX, focusY))
             painter.ImageFaded(media, "asset:lighthouse.jpg", 0, fade, focusX, focusY);
@@ -979,11 +982,7 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
                                         {1.0, WithAlpha(glow, 0.0)}});
             if (!still) PaintHeroParticles(painter, stage, data.effect, data.accent.value_or(glow), glow, seconds, fade);
         }
-        painter.FillLinearGradient(stage, stage.x, stage.y, stage.x, stage.Bottom(),
-                                   {{0.0, WithAlpha(ground, 0.0)}, {0.38, WithAlpha(ground, 0.0)},
-                                    {0.60, WithAlpha(ground, 0.44)}, {0.83, WithAlpha(ground, 0.92)}, {1.0, ground}});
-        painter.FillRoundRect({stage.x, stage.Bottom() - 1.0, stage.width, media.Bottom() - stage.Bottom() + 2.0},
-                              0.0, ground);
+        painter.PopOpacity();
         return;
     }
     const Box hero = HeroBox();
@@ -997,6 +996,8 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
     const double dissolve = artFade_.has_value() ? std::clamp(artFade_->Value(clockMs_), 0.0, 1.0) : 1.0;
 
     painter.SetBackdrop(backdrop, !artCurrent_.empty() ? artCurrent_ : "asset:lighthouse.jpg", 0.7, 0.2);
+    // The hero crossfades into the page below instead of ending on a solid band (see the Spotlight hero above).
+    painter.PushLinearOpacity(backdrop.y + backdrop.height * 0.6, backdrop.Bottom(), 1.0, 0.0);
 
     // Fallback stage gradient under the artwork.
     const LineEnds slant = CssLine(backdrop, 160.0);
@@ -1040,11 +1041,8 @@ void Scene::PaintHeroBackdrop(Painter& painter) const {
                                 GradientStop{0.34, WithAlpha(background, 0.0)},
                                 GradientStop{0.58, WithAlpha(background, fade * 0.36)},
                                 GradientStop{0.82, WithAlpha(background, fade * 0.84)},
-                                // The foot is always the page's own ground, whatever the scroll fade, so the backdrop
-                                // never ends in a hard edge against the page as it scrolls away.
-                                GradientStop{0.96, background},
-                                GradientStop{1.0, background}});
-    painter.FillRoundRect(Box{backdrop.x, backdrop.Bottom() - 2.0, backdrop.width, 3.0}, 0.0, background);
+                                GradientStop{1.0, WithAlpha(background, fade * 0.84)}});
+    painter.PopOpacity();
 }
 
 void Scene::PaintSpotlight(Painter& painter) const {
