@@ -1257,13 +1257,13 @@ html.tvm-android .settings-summary {
  * would move with it.
  */
 
-html.tvm-android :is(.page, .home, .details, .search-pill__panel)[data-tvm-rubber] > :not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
+html.tvm-android :is(.page, .home, .details, .search-pill__panel)[data-tvm-rubber] > [data-tvma-vis]:not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
   transform: translate3d(0, var(--tvm-rubber), 0);
 }
 
 /* Layers are made when a finger lands at an edge (tvm-android.js), before any
    movement, and dropped when the bounce settles. */
-html.tvm-android :is(.page, .home, .details, .search-pill__panel):is([data-tvma-prime], [data-tvm-rubber]) > :not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
+html.tvm-android :is(.page, .home, .details, .search-pill__panel):is([data-tvma-prime], [data-tvm-rubber]) > [data-tvma-vis]:not(.ribbon):not(.ribbon-zone):not(.home__scene):not(.page-scene):not(.search-pill__bar) {
   will-change: transform;
 }
 

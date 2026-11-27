@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Android",
+          "text": "Pulling past the top or bottom of a page on Android is smooth again, even straight after opening the app.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Player",
           "text": "Tapping the video on Android no longer jumps playback; only the timeline moves it.",
           "platforms": [

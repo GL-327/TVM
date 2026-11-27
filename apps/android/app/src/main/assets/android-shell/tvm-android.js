@@ -232,7 +232,7 @@
     // At an edge a pull may follow: give the page's sections their own layers
     // now, while nothing moves, rather than on the pull's first frame (which
     // drew them blank for a frame: the flicker under the hero).
-    if (!off() && (el.scrollTop <= EDGE || el.scrollTop >= touch.max - EDGE)) el.setAttribute('data-tvma-prime', '');
+    if (!off() && (el.scrollTop <= EDGE || el.scrollTop >= touch.max - EDGE)) { markVisible(el); el.setAttribute('data-tvma-prime', ''); }
   }, { capture: true, passive: true });
 
   /** True once the finger has chosen a direction: from then on the browser scrolls. */
@@ -281,7 +281,7 @@
       else if (atBottom && t.clientY < touch.y) { touch.edgeY = t.clientY; touch.edge = -1; }
       // A swipe that reached the edge mid-gesture: the layers are made now,
       // a move before the pull starts, not on the pull's first frame.
-      if (touch.edgeY !== null && !el.hasAttribute('data-tvma-prime')) el.setAttribute('data-tvma-prime', '');
+      if (touch.edgeY !== null && !el.hasAttribute('data-tvma-prime')) { markVisible(el); el.setAttribute('data-tvma-prime', ''); }
       return;
     }
     // The same finger pushed the other way and the page itself began to
@@ -309,7 +309,7 @@
     touch = null;
     var offset = currentOffset(el);
     if (offset !== 0) spring(el, offset, 0);
-    else el.removeAttribute('data-tvma-prime');
+    else { el.removeAttribute('data-tvma-prime'); clearVisible(el); }
   }
   // The gesture ends when its leading finger lifts (or the system cancels it),
   // whatever other fingers are still down.
@@ -326,6 +326,23 @@
     return LIMIT * (1 - 1 / (distance / 170 + 1));
   }
 
+  // Only the children of the scroller that are on screen (or nearly) are stretched and given a layer. Moving and
+  // layering every row, most of them far off screen with all their posters, made the first pulls after launch stutter.
+  function markVisible(el) {
+    var h = window.innerHeight || 0;
+    var kids = el.children;
+    for (var i = 0; i < kids.length; i += 1) {
+      var r = kids[i].getBoundingClientRect();
+      if (r.bottom > -240 && r.top < h + 240) kids[i].setAttribute('data-tvma-vis', '');
+      else if (kids[i].hasAttribute('data-tvma-vis')) kids[i].removeAttribute('data-tvma-vis');
+    }
+  }
+
+  function clearVisible(el) {
+    var kids = el.querySelectorAll(':scope > [data-tvma-vis]');
+    for (var i = 0; i < kids.length; i += 1) kids[i].removeAttribute('data-tvma-vis');
+  }
+
   function setOffset(el, px) {
     if (Math.abs(px) < 0.25) {
       if (el.hasAttribute('data-tvm-rubber')) {
@@ -333,7 +350,7 @@
         el.removeAttribute('data-tvma-pull');
         el.style.removeProperty('--tvm-rubber');
       }
-      if (!touch || touch.el !== el) el.removeAttribute('data-tvma-prime');
+      if (!touch || touch.el !== el) { el.removeAttribute('data-tvma-prime'); clearVisible(el); }
       return;
     }
     // Whole device pixels: the page's sections move as one, with no hairline
