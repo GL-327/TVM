@@ -238,6 +238,15 @@ struct TVMWebView: UIViewControllerRepresentable {
         configuration.userContentController.addUserScript(viewport)
         configuration.userContentController.addUserScript(device)
         configuration.userContentController.addUserScript(lang)
+        // The page keeps its sign-in in localStorage, which belongs to the
+        // on-device server's address. If that address changes between launches
+        // the page starts empty and looks signed out, so hand it the session
+        // the Keychain still holds. Signing out clears both.
+        if session.isStandalone, TVMShellScripts.tourToken == nil, let held = TVMKeychainSessionVault().read() {
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: "try{if(!localStorage.getItem('tvm.account.token'))localStorage.setItem('tvm.account.token',\(TVMShellScripts.jsString(held)));}catch(e){}",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         if let token = TVMShellScripts.tourToken {
             configuration.userContentController.addUserScript(WKUserScript(
                 source: "try{if(!localStorage.getItem('tvm.account.token'))localStorage.setItem('tvm.account.token',\(TVMShellScripts.jsString(token)));}catch(e){}",

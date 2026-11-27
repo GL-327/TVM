@@ -3,6 +3,37 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.13",
+      "date": "2026-11-27",
+      "title": "iPhone playback and sign-in fixes",
+      "highlights": [
+        "iPhone finds streams again instead of saying No streams found.",
+        "iPhone keeps you signed in after you close the app."
+      ],
+      "changes": [
+        {
+          "area": "Playback",
+          "text": "iPhone no longer skips MKV releases, which left most titles with No streams found.",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "area": "Account",
+          "text": "Closing the iPhone app no longer signs you out.",
+          "platforms": [
+            "ios"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Nothing in this build has been tried on a real phone, Roku or TV yet.",
+        "Sync works on computers and the web only so far; phones and Roku do not sync yet.",
+        "On phones, Stats, the sleep timer and night mode do not show over the video yet.",
+        "Franchise intros are not on Roku yet."
+      ]
+    },
+    {
       "version": "1.4.12",
       "date": "2026-11-27",
       "title": "Glass navigation and clearer updates",

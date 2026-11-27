@@ -992,8 +992,10 @@ final class TVMMedia {
             let url = result.1["url"] as? String ?? ""
             let stream = RdStream(url: url, title: filename, name: "", infoHash: nil, fileIdx: nil, quality: 0, cached: true, phoneHint: false, details: filename)
             let version = TVMVersions.describeVersion(stream, seconds: runtime)
+            // The iPhone plays through VLC (TVMVideoEngine), so MKV and other
+            // containers AVPlayer refuses are fine here. Filtering them out
+            // left most titles with "No streams found".
             return (version.height ?? 1080) <= min(height, client?.maxHeight ?? height, TVMVersions.qualityCap(prefs.quality)) &&
-                TVMPlayback.phoneCanPlay(filename: filename, mimeType: result.1["mimeType"] as? String, url: url) &&
                 TVMVersions.supportsVersion(version, filename: filename, client: TVMVersions.phoneClient(client, maxHeight: height))
         }
         var last = ["kind": "unavailable", "reason": "empty"] as [String: Any]
