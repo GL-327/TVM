@@ -87,6 +87,8 @@ public:
     // Any remote or keyboard press hides the cursor.
     void KeyPressed();
     bool CursorVisible() const { return mouse_.cursorVisible(); }
+    // For surfaces that take the mouse themselves (the TV guide): a real move shows the cursor again.
+    void ShowPointer() { mouse_.ShowCursor(); }
 
     // Touch. Only touch pointers are passed in; the caller checks the pointer type.
     void TouchDown(std::uint32_t pointerId, double x, double y, double nowMs);
