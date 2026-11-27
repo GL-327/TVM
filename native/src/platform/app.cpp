@@ -658,7 +658,7 @@ int App::Run(int showCommand) {
         home_->SetHeroClip(preview.Ready(), preview.HasAudio(), now);
         dirty_ = dirty_ || wasPlaying != home_->HeroClipPlaying();
         SyncReleaseNotice(now);
-        if (now - updatesCheckedMs_ >= 21600000.0 && store_->CorePrefs().autoUpdate) CheckForUpdates();
+        if (now - updatesCheckedMs_ >= update::NextCheckDelayMs(updatesRetrySoon_) && store_->CorePrefs().autoUpdate) CheckForUpdates();
         PageRails();
         if (now - contentCheckedMs_ >= 21600000.0 || contentDate_ != content::LocalDate()) RefreshContent();
         SyncArtwork(now);
@@ -3030,7 +3030,12 @@ void App::CheckForUpdates() {
                                    : available.empty() ? "No newer native package is published. The changes below are the latest."
                                                        : available + " is published. Install it to update this copy.";
             ShowUpdates();
-            if (updateNeeded && updatesView_.autoUpdate && !playerOpen_ && !downloadRunning_) InstallNativeUpdate();
+            // Installing closes TVM, so it waits while a film plays or a download runs, and is tried again soon
+            // rather than in six hours. A failed check (no network yet after sign-in or wake) is also retried soon.
+            const bool installNow = updateNeeded && store_->CorePrefs().autoUpdate;
+            const bool held = installNow && (playerOpen_ || downloadRunning_);
+            updatesRetrySoon_ = !reached || held;
+            if (installNow && !held) InstallNativeUpdate();
         });
     });
 }

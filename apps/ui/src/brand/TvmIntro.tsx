@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TvmMark } from './TvmMark';
-import { prefersReducedMotion as reducedMotion, subscribeMotionPreference } from '../theme/motion';
+import { settingsReduceMotion as reducedMotion, subscribeMotionPreference } from '../theme/motion';
 import './TvmIntro.css';
 
 export type TvmIntroVariant = 'tvm' | 'stream';
@@ -154,7 +154,7 @@ export function TvmIntro({
 
   return (
     <div
-      className={`tvm-intro${leaving ? ' tvm-intro--out' : ''}${stream ? ' tvm-intro--stream' : ''}${holding ? ' tvm-intro--hold' : ''}`}
+      className={`tvm-intro${leaving ? ' tvm-intro--out' : ''}${stream ? ' tvm-intro--stream' : ''}${holding ? ' tvm-intro--hold' : ''}${reducedMotion() ? '' : ' tvm-intro--full'}`}
       role="dialog"
       aria-label={stream ? 'TVM Stream' : 'TVM'}
       onClick={skippable ? close : undefined}

@@ -21,4 +21,11 @@ inline bool ShouldInstall(const std::string& installedCommit, const std::string&
     return IsoSeconds(publishedAt) > IsoSeconds(installedBuiltAt);
 }
 
+// How long until the next check for a native update. A check that could not reach GitHub (the PC just woke or
+// signed in before its network was up) or found an update it had to hold back (a film is playing) is retried
+// in ten minutes; otherwise the routine check runs every six hours.
+inline double NextCheckDelayMs(bool retrySoon) {
+    return retrySoon ? 600000.0 : 21600000.0;
+}
+
 }  // namespace tvm::update

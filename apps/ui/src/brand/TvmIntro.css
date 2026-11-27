@@ -436,26 +436,26 @@
 }
 
 
-:root[data-motion='reduced'] .tvm-intro__bloom,
-:root[data-motion='reduced'] .tvm-intro__ring,
-:root[data-motion='reduced'] .tvm-intro__flare,
-:root[data-motion='reduced'] .tvm-intro__mote,
-:root[data-motion='reduced'] .tvm-intro__ray,
-:root[data-motion='reduced'] .tvm-intro__sheen,
-:root[data-motion='reduced'] .tvm-intro__stage,
-:root[data-motion='reduced'] .tvm-intro__mark,
-:root[data-motion='reduced'] .tvm-intro__word span,
-:root[data-motion='reduced'] .tvm-intro__tag,
-:root[data-motion='reduced'] .tvm-intro__skip,
-:root[data-motion='reduced'] .tvm-intro--out {
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__bloom,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__ring,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__flare,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__mote,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__ray,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__sheen,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__stage,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__mark,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__word span,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__tag,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__skip,
+:root[data-motion='reduced'] .tvm-intro--out:not(.tvm-intro--full) {
   animation: none;
   opacity: 1;
   transform: none;
 }
 
-:root[data-motion='reduced'] .tvm-intro__bloom,
-:root[data-motion='reduced'] .tvm-intro__ring,
-:root[data-motion='reduced'] .tvm-intro__flare,
-:root[data-motion='reduced'] .tvm-intro__mote {
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__bloom,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__ring,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__flare,
+:root[data-motion='reduced'] .tvm-intro:not(.tvm-intro--full) .tvm-intro__mote {
   transform: translate(-50%, -50%);
 }

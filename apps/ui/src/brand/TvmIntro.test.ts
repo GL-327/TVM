@@ -79,3 +79,13 @@ describe('loading plate', () => {
     expect(css).toContain('inset: 0');
   });
 });
+
+describe('TVM open sting and the system motion flag', () => {
+  it('follows Settings only, so a machine with animations off still sees it', () => {
+    const src = readFileSync(join(dir, 'TvmIntro.tsx'), 'utf8');
+    const css = readFileSync(join(dir, '..', 'theme', 'motion.css'), 'utf8');
+    expect(src).toContain('settingsReduceMotion as reducedMotion');
+    expect(src).toContain('tvm-intro--full');
+    expect(css).toContain('.tvm-intro--full');
+  });
+});

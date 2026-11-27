@@ -31,6 +31,10 @@ bool PrefersReducedMotion(const MotionSettings& settings) {
            (settings.preference == MotionPreference::Auto && systemReducedMotion);
 }
 
+bool SettingsReduceMotion(const MotionSettings& settings) {
+    return settings.performanceMode || settings.preference == MotionPreference::Reduced;
+}
+
 MotionTokens ResolveMotionTokens(const MotionSettings& settings) {
     if (PrefersReducedMotion(settings)) return {1.0, 1.0, 1.0};
     return {150.0, 220.0, 260.0};

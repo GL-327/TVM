@@ -171,4 +171,12 @@ TEST(system_reduced_motion_gates_auto_while_preserving_explicit_choice) {
     REQUIRE(!tvm::motion::PrefersReducedMotion(MotionSettings{MotionPreference::Auto, false}));
 }
 
+TEST(launch_reveal_ignores_the_system_flag_but_keeps_the_settings_choice) {
+    tvm::motion::SetSystemReducedMotion(true);
+    REQUIRE(!tvm::motion::SettingsReduceMotion(MotionSettings{MotionPreference::Auto, false}));
+    REQUIRE(tvm::motion::SettingsReduceMotion(MotionSettings{MotionPreference::Reduced, false}));
+    REQUIRE(tvm::motion::SettingsReduceMotion(MotionSettings{MotionPreference::Auto, true}));
+    tvm::motion::SetSystemReducedMotion(false);
+}
+
 }  // namespace

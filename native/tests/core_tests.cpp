@@ -202,6 +202,11 @@ TEST(an_update_only_ever_replaces_an_older_build) {
     REQUIRE(!tvm::update::ShouldInstall("", "2026-11-22T10:00:00Z", b, "2026-11-22T14:42:19Z"));
 }
 
+TEST(native_update_retries_soon_after_a_failed_or_held_check) {
+    REQUIRE_EQ(tvm::update::NextCheckDelayMs(false), 21600000.0);
+    REQUIRE_EQ(tvm::update::NextCheckDelayMs(true), 600000.0);
+}
+
 TEST(ctrl_backspace_erases_the_previous_word) {
     REQUIRE_EQ(tvm::util::ErasePreviousWord("hello big world"), std::string("hello big "));
     REQUIRE_EQ(tvm::util::ErasePreviousWord("hello big "), std::string("hello "));

@@ -44,6 +44,15 @@ export function prefersReducedMotion(): boolean {
     || globalThis.document?.documentElement.dataset.simulateMotion === 'reduced';
 }
 
+/**
+ * Only what the viewer chose in TVM (Motion: Reduced, or Performance mode). The
+ * system flag is left out: many machines report it without anyone asking for
+ * less motion. The launch sting follows this, so it still plays there.
+ */
+export function settingsReduceMotion(): boolean {
+  return readPerformanceMode() || readMotionPreference() === 'reduced';
+}
+
 function syncMotion(): void {
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.motion = prefersReducedMotion() ? 'reduced' : 'full';

@@ -142,6 +142,7 @@ private:
     bool patchPopupAsked_ = false;
     std::unique_ptr<content::ReleaseNotice> releaseNotice_;
     double updatesCheckedMs_ = 0;
+    bool updatesRetrySoon_ = false;  // the last check failed or its install was held back
     // Turns the Home hero to its next title every eight seconds, while Home is on screen and not reduced.
     void TurnHero(double now);
     // Queues a download. `onScreen` puts it ahead of pictures fetched in advance.

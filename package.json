@@ -1,6 +1,6 @@
 {
   "name": "tvm",
-  "version": "1.4.9",
+  "version": "1.4.10",
   "private": true,
   "description": "TVM - a remote-first TV media appliance",
   "packageManager": "pnpm@11.22.0",

@@ -41,9 +41,10 @@
 
 /* Opt-in only: Settings → Motion = Reduced, or Performance mode (which sets
    data-motion='reduced'). Auto/full must not match this selector. */
-:root[data-motion='reduced'] *,
-:root[data-motion='reduced'] *::before,
-:root[data-motion='reduced'] *::after {
+/* The launch sting (.tvm-intro--full) follows Settings only, not the system flag. */
+:root[data-motion='reduced'] *:not(.tvm-intro--full, .tvm-intro--full *),
+:root[data-motion='reduced'] *:not(.tvm-intro--full, .tvm-intro--full *)::before,
+:root[data-motion='reduced'] *:not(.tvm-intro--full, .tvm-intro--full *)::after {
   animation-duration: 0.01ms !important;
   animation-delay: 0ms !important;
   animation-iteration-count: 1 !important;

@@ -119,7 +119,7 @@ void LogoReveal::Start(double nowMs) {
 
 double LogoReveal::Elapsed() const {
     if (!started_) return 0.0;
-    if (motion::PrefersReducedMotion(motion_)) return kTotalMs;
+    if (motion::SettingsReduceMotion(motion_)) return kTotalMs;
     return std::clamp(clockMs_ - startMs_, 0.0, kTotalMs);
 }
 
@@ -133,7 +133,7 @@ void LogoReveal::Tick(double nowMs) {
     clockMs_ = nowMs;
     if (!started_ || finished_) return;
     if (!leaving_) {
-        const double done = startMs_ + (motion::PrefersReducedMotion(motion_) ? 0.0 : kTotalMs);
+        const double done = startMs_ + (motion::SettingsReduceMotion(motion_) ? 0.0 : kTotalMs);
         // Once built, it goes as soon as the app is ready, or after the longest hold.
         if (nowMs >= done && (!pending_ || nowMs - done >= kHoldMaxMs)) {
             leaving_ = true;
@@ -411,7 +411,7 @@ void LogoReveal::PaintStar(Painter& painter, const Shapes& shapes, double t) con
 }
 
 void LogoReveal::PaintIdleGlow(Painter& painter, const Shapes& shapes) const {
-    if (motion::PrefersReducedMotion(motion_)) return;
+    if (motion::SettingsReduceMotion(motion_)) return;
     const double held = std::max(0.0, clockMs_ - startMs_ - kTotalMs);
     const double phase = std::fmod(held / kIdlePeriodMs, 1.0);
     const double b = 0.5 - 0.5 * std::cos(2.0 * kPi * phase);
