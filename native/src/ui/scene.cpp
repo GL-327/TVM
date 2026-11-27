@@ -1111,8 +1111,12 @@ void Scene::PaintSpotlight(Painter& painter) const {
 
     const double actions = appear(240.0, 440.0);
     const auto play = rise(boxes.watch, actions);
-    painter.FillRadialGradient({play.x - 20.0, play.y - 18.0, play.width + 40.0, play.height + 44.0},
-                               play.CenterX(), play.CenterY() + 8.0, play.width * 0.78, play.height * 0.94,
+    // The glow is an oval; it is filled over its whole bounds so it fades out softly instead of being cut square.
+    const double glowRx = play.width * 0.78;
+    const double glowRy = play.height * 0.94;
+    const double glowY = play.CenterY() + 8.0;
+    painter.FillRadialGradient({play.CenterX() - glowRx, glowY - glowRy, 2.0 * glowRx, 2.0 * glowRy},
+                               play.CenterX(), glowY, glowRx, glowRy,
                                {{0.0, Faded(accent, actions * 0.48)}, {1.0, Faded(accent, 0.0)}});
     DrawButton(painter, metrics_, play, PlayLabel(), ButtonLook{true, ShowsFocus(kHeroPlayKey), EmphasisOf(kHeroPlayKey),
                PressOf(kHeroPlayKey), actions, kPlayTrianglePath, data.accent.value_or(Rgb(0xF5F7FA))});
