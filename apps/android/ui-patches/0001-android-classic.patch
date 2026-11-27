@@ -29,6 +29,21 @@ index 4f45356..1348006 100644
            fullscreen={<FullscreenControl />}
            actions={<>
              {!session.live && <FocusButton id="player-download" ariaLabel="Download" title="Download" onSelect={() => {
+diff --git a/apps/ui/src/player/features/MouseLayer.tsx b/apps/ui/src/player/features/MouseLayer.tsx
+index 3c114d6..63a198d 100644
+--- a/apps/ui/src/player/features/MouseLayer.tsx
++++ b/apps/ui/src/player/features/MouseLayer.tsx
+@@ -290,9 +290,7 @@ export function bindPlayerMouse(host: HTMLElement, bindings: PlayerMouseBindings
+       return;
+     }
+ 
+-    if (isStageTarget(event.target)) {
+-      canvasDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, seeking: false };
+-    }
++    // Only the timeline seeks: a touch or drag on the picture never moves playback (Android).
+ 
+     retainRemoteFocus();
+   };
 diff --git a/apps/ui/src/player/features/SleepAndStats.tsx b/apps/ui/src/player/features/SleepAndStats.tsx
 new file mode 100644
 index 0000000..542b5fd

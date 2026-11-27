@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Player",
+          "text": "Tapping the video on Android no longer jumps playback; only the timeline moves it.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Android",
           "text": "Android looks as it did on 18 November again; sign-in, sync, invite codes, sleep timer and Stats still work.",
           "platforms": [
