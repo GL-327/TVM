@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Player",
+          "text": "Android's player has Zoom: Fit to screen, or Zoom to fill the whole screen up to the notch.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Home",
           "text": "The Hunger Games row on Android lines up with Home, with short film names and a small, clear order switch.",
           "platforms": [

@@ -201,11 +201,11 @@ index 0d7e618..f31a0ee 100644
      method: 'POST',
      headers: { 'content-type': 'application/json' },
 diff --git a/apps/ui/src/player/PlayerRoot.tsx b/apps/ui/src/player/PlayerRoot.tsx
-index 4f45356..1348006 100644
+index 4f45356..cbdc4e9 100644
 --- a/apps/ui/src/player/PlayerRoot.tsx
 +++ b/apps/ui/src/player/PlayerRoot.tsx
 @@ -1,3 +1,4 @@
-+import { SleepTimerPicker, StatsPicker } from './features/SleepAndStats';
++import { SleepTimerPicker, StatsPicker, ZoomPicker } from './features/SleepAndStats';
  import {
    Component,
    createContext,
@@ -214,7 +214,7 @@ index 4f45356..1348006 100644
            progress={<Slot><ProgressBar {...visibleSession} /></Slot>}
            volume={<Slot><VolumeControl {...visibleSession} /></Slot>}
 -          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot></>}
-+          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot><Slot><SleepTimerPicker {...visibleSession} /></Slot><Slot><StatsPicker {...visibleSession} /></Slot></>}
++          tools={<><Slot><SubtitlePicker {...visibleSession} /></Slot><Slot><AudioPicker {...visibleSession} /></Slot><Slot><QualityPicker {...visibleSession} /></Slot><Slot><PlaybackSpeed {...visibleSession} /></Slot><Slot><SleepTimerPicker {...visibleSession} /></Slot><Slot><StatsPicker {...visibleSession} /></Slot><Slot><ZoomPicker {...visibleSession} /></Slot></>}
            fullscreen={<FullscreenControl />}
            actions={<>
              {!session.live && <FocusButton id="player-download" ariaLabel="Download" title="Download" onSelect={() => {
@@ -235,10 +235,10 @@ index 3c114d6..63a198d 100644
    };
 diff --git a/apps/ui/src/player/features/SleepAndStats.tsx b/apps/ui/src/player/features/SleepAndStats.tsx
 new file mode 100644
-index 0000000..542b5fd
+index 0000000..4156cdf
 --- /dev/null
 +++ b/apps/ui/src/player/features/SleepAndStats.tsx
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,103 @@
 +import { useCallback, useEffect, useState } from 'react';
 +import { FocusButton } from '../../components/FocusButton';
 +import { requestFocus } from '../../nav/focusEngine';
@@ -258,6 +258,9 @@ index 0000000..542b5fd
 +  { id: '45', label: '45 minutes' }, { id: '60', label: '1 hour' }, { id: 'end', label: 'End of episode' },
 +];
 +const STATS: Option[] = [{ id: 'off', label: 'Hidden' }, { id: 'on', label: 'Shown' }];
++const ZOOM: Option[] = [{ id: 'fit', label: 'Fit to screen' }, { id: 'fill', label: 'Zoom to fill' }];
++// The zoom choice lasts for the app's run, as the native player keeps it.
++let zoomChoice = 'fit';
 +
 +function Picker({ name, heading, options, value, label, onPick, controlsVisible, showControls }: {
 +  name: string; heading: string; options: Option[]; value: string; label: string;
@@ -326,6 +329,16 @@ index 0000000..542b5fd
 +  return (
 +    <Picker name="stats" heading="Stats" options={STATS} value={shown} label="Stats"
 +      onPick={(id) => { setShown(id); sendNative('stats', { visible: id === 'on' }); }}
++      controlsVisible={controlsVisible} showControls={showControls} />
++  );
++}
++
++export function ZoomPicker({ engine, controlsVisible, showControls }: PlayerSession): React.JSX.Element | null {
++  const [zoom, setZoom] = useState(zoomChoice);
++  if (engine !== 'native') return null;
++  return (
++    <Picker name="zoom" heading="Zoom" options={ZOOM} value={zoom} label={zoom === 'fill' ? 'Fill' : 'Fit'}
++      onPick={(id) => { zoomChoice = id; setZoom(id); sendNative('zoom', { fill: id === 'fill' }); }}
 +      controlsVisible={controlsVisible} showControls={showControls} />
 +  );
 +}

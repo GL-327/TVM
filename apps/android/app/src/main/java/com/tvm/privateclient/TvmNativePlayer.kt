@@ -46,6 +46,9 @@ private const val TAG = "TVMPlayer"
  * <video> element cannot open Matroska, WebM or MPEG-TS, which is most of what
  * a debrid link or an IPTV channel actually is.
  */
+/** Fill (crop to the whole screen) or fit, as last chosen in the player's Zoom setting. */
+private var zoomFillChoice = false
+
 class TvmNativePlayer(
     private val activity: Activity,
     private val webView: WebView,
@@ -58,6 +61,10 @@ class TvmNativePlayer(
     private val main = Handler(Looper.getMainLooper())
     private var player: ExoPlayer? = null
     private var view: PlayerView? = null
+    // Zoom to fill is the viewer's choice for every video this run, not just this one.
+    private var zoomFill: Boolean
+        get() = zoomFillChoice
+        set(value) { zoomFillChoice = value }
     private var container: FrameLayout? = null
     private var sessionId: String? = null
     private var ticking = false
@@ -136,6 +143,12 @@ class TvmNativePlayer(
                 applyCurrentVolume()
             }
             "nightMode" -> nightAudio.setEnabled(message.optBoolean("enabled", false))
+            "zoom" -> {
+                // Fill: the picture covers the whole screen, into the notch, cropping the edges, instead of fitting
+                // inside it with black bars. Kept for the next video too.
+                zoomFill = message.optBoolean("fill", false)
+                view?.resizeMode = if (zoomFill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
             "sleepTimer" -> configureSleepTimer(message.text("choice", "off"))
             "sleepResume" -> resumeFromSleepTimer()
             "stats" -> {
@@ -523,7 +536,7 @@ class TvmNativePlayer(
             setKeepContentOnPlayerReset(true)
             // As large as the screen allows at the source's own shape: never
             // stretched or cropped.
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            resizeMode = if (zoomFill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShutterBackgroundColor(Color.BLACK)
             // Subtitles in the viewer's own caption style (Android's Caption
             // preferences), a little above the bottom edge.
