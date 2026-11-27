@@ -11,6 +11,13 @@
       ],
       "changes": [
         {
+          "area": "Android",
+          "text": "A soft fade under the phone's status bar keeps the time and battery readable over scrolling posters.",
+          "platforms": [
+            "android"
+          ]
+        },
+        {
           "area": "Home",
           "text": "Home on Android has The Hunger Games section in its colours, with a switch between story and release order.",
           "platforms": [

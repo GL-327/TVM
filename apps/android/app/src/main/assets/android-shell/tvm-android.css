@@ -1424,9 +1424,14 @@ html.tvm-android .app::after {
   left: 0;
   right: 0;
   z-index: 29;
-  height: calc(var(--tvm-chrome-top, 0px) + 18px);
+  /* Covers the status bar (its height comes from the app as --tvm-inset-top) plus a short tail, so posters and
+     words scrolling up never sit under the time, battery and signal icons. */
+  height: calc(max(var(--tvm-chrome-top, 0px), var(--tvm-inset-top, 0px)) + 14px);
   pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--tvm-bg, #05090f) 82%, transparent), transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--tvm-bg, #05090f) 88%, transparent) 0%,
+    color-mix(in srgb, var(--tvm-bg, #05090f) 70%, transparent) 55%,
+    transparent 100%);
 }
 
 html.tvm-android:is(.tvm-cinema, .tvm-native-playback, .tvma-search-open) .app::after {
