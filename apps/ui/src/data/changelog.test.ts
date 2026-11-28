@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  cornerCardLines,
   detectRuntimePlatform,
   filterChangesForPlatform,
   currentAppVersion,
@@ -85,5 +86,19 @@ describe('pending commit list after an interface update', () => {
     const push = vi.fn();
     expect(await presentPendingChangelog(push)).toBe(true);
     expect(push).toHaveBeenCalledWith('changelog', expect.objectContaining({ params: expect.objectContaining({ version: 'abc1234' }) }));
+  });
+});
+
+describe('corner card lines', () => {
+  const change = (text: string, platforms?: string[]) => ({ area: 'Home', text, ...(platforms ? { platforms } : {}) }) as never;
+  it('hides the card when nothing in the release applies to this app', () => {
+    expect(cornerCardLines({ highlights: ['Windows only'], changes: [change('A', ['windows'])] }, 'web')).toBeNull();
+  });
+  it('shows the highlights when every change applies here', () => {
+    expect(cornerCardLines({ highlights: ['Big news'], changes: [change('A'), change('B', ['web', 'ios'])] }, 'web')).toEqual(['Big news']);
+  });
+  it('shows only the lines for this app when some changes are for other apps', () => {
+    expect(cornerCardLines({ highlights: ['Mentions Windows'], changes: [change('Win', ['windows']), change('Web fix', ['web'])] }, 'web'))
+      .toEqual(['Web fix']);
   });
 });

@@ -78,7 +78,7 @@ test('production Roku key paths, release queue, pagination, ranking and RD key r
       handler('NoticePanel', 'noticeKey'),
       functions('components/AvatarPicker.brs', ['currentAvatars']),
       handler('AvatarPicker', 'avatarKey'),
-      functions('components/TVMReleaseFeatures.brs', ['maybeShowPatchNotes', 'maybeShowReleaseCards', 'patchNotesBody', 'releaseHighlights', 'dismissReleaseCards']),
+      functions('components/TVMReleaseFeatures.brs', ['maybeShowPatchNotes', 'maybeShowReleaseCards', 'patchNotesBody', 'releaseTouchesRoku', 'releaseHighlights', 'dismissReleaseCards']),
       read('scripts/fixtures/roku143-runtime.brs'),
     ].join('\n');
     writeFileSync(join(directory, 'main.brs'), source, 'utf8');

@@ -882,7 +882,7 @@ Scene::HeroBoxes Scene::HeroLayout() const {
         boxes.body = Box{x, bottom - metrics_.Rem(kNoticeBodyRem),
                          std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), metrics_.Rem(kNoticeBodyRem)};
         bottom = boxes.body.y - metrics_.Rem(kHeroKickerMarginRem);
-        const double noticeTitle = metrics_.Rem(kNoticeTitleRem * (heroes_[heroIndex_].title.size() > 36 ? 2.4 : 1.2));
+        const double noticeTitle = metrics_.Rem(kNoticeTitleRem * (heroes_[heroIndex_].title.size() > 36 ? 2.8 : 1.3));  // two full Geist lines (~1.3x)
         boxes.title = Box{x, bottom - noticeTitle, std::min(copyWidth * 1.3, viewportWidth_ - 2.0 * x), noticeTitle};
         bottom = boxes.title.y - metrics_.Rem(kHeroKickerMarginRem);
         boxes.kicker = Box{x, bottom - metrics_.Rem(kHeroKickerHeightRem), copyWidth, metrics_.Rem(kHeroKickerHeightRem)};
@@ -905,7 +905,7 @@ Scene::HeroBoxes Scene::HeroLayout() const {
     boxes.meta = Box{x, bottom - metaHeight, copyWidth, metaHeight};
     bottom = boxes.meta.y - metrics_.Rem(kHeroMetaMarginTopRem);
 
-    const double titleHeight = metrics_.Rem(heroes_[heroIndex_].title.size() > 36 ? 7.0 : kHeroTitleFontRem * kHeroTitleLineRem);
+    const double titleHeight = metrics_.Rem(heroes_[heroIndex_].title.size() > 36 ? 8.4 : kHeroTitleFontRem * kHeroTitleLineRem);  // 2 lines of 3 rem
     boxes.title = Box{x, bottom - titleHeight, copyWidth, titleHeight};
     bottom = boxes.title.y - metrics_.Rem(kHeroKickerMarginRem);
 
@@ -1083,7 +1083,14 @@ void Scene::PaintSpotlight(Painter& painter) const {
     logo.x = boxes.title.x;
     const double blur = metrics_.Rem(0.75) * (1.0 - resolved);
     if (data.logoUrl.empty() || !painter.SpotlightLogo(logo, data.logoUrl, resolved, blur, sweep)) {
-        const auto titleStyle = type::Display(metrics_.rem);
+        // A long title ("The Hunger Games: Sunrise on the Reaping") shrinks to fit its one-line box rather than
+        // losing its end to an ellipsis; only past 62% of the display size does it wrap.
+        auto titleStyle = type::Display(metrics_.rem);
+        const double natural = painter.MeasureText(data.title, titleStyle);
+        if (natural > logo.width && natural > 0.0) {
+            if (logo.height >= titleStyle.sizePx * 1.6) titleStyle.sizePx = std::min(titleStyle.sizePx, logo.height / 2.6);  // two lines
+            else titleStyle.sizePx *= std::max(0.62, 0.98 * logo.width / natural);                                       // one line
+        }
         if (painter.MeasureText(data.title, titleStyle) > logo.width)
             painter.Paragraph(logo, data.title, titleStyle, Faded(headline, resolved));
         else painter.Text(logo, data.title, titleStyle, Faded(headline, resolved));

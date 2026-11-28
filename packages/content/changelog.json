@@ -3,6 +3,66 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.5.0",
+      "date": "2026-11-28",
+      "title": "TVM 1.5: fixes everywhere",
+      "highlights": [
+        "Long titles such as The Hunger Games: Sunrise on the Reaping show in full on the Windows Home screen.",
+        "The selected tab in the top bar stays readable after you click it or move to it with the arrow keys.",
+        "Update notes only pop up when the update changed something in the app you're using."
+      ],
+      "changes": [
+        {
+          "area": "Home",
+          "text": "Long titles on the Windows Home spotlight shrink to fit instead of ending in \"...\".",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Your services and other info pages on Windows line up their text with the page heading.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Navigation",
+          "text": "The selected tab keeps its light background when it has focus, so its name stays readable.",
+          "platforms": [
+            "web",
+            "desktop",
+            "ios"
+          ]
+        },
+        {
+          "area": "Home",
+          "text": "On phones, the Home spotlight has a darker fade behind its text, so it reads over bright artwork.",
+          "platforms": [
+            "web",
+            "ios"
+          ]
+        },
+        {
+          "area": "Updates",
+          "text": "The What's new card skips updates that changed nothing in the app you're using.",
+          "platforms": [
+            "windows",
+            "web",
+            "desktop",
+            "ios",
+            "roku"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Stats, the sleep timer and night mode on phones have not been tried on a real phone yet.",
+        "The Roku start page and intros have not been tried on a real Roku yet."
+      ]
+    },
+    {
       "version": "1.4.20",
       "date": "2026-11-28",
       "title": "Cleaner Home and Settings on Windows",

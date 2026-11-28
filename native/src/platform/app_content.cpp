@@ -61,10 +61,22 @@ void App::SwitchHls(int height) {
     });
 }
 
+// True when a release has something for Windows: a change with no platforms (every app) or one that lists
+// "windows". A phones-only or Roku-only release shows no pop-up or card here, as on the web.
+static bool ReleaseTouchesWindows(const nlohmann::json& release) {
+    if (!release.contains("changes") || !release["changes"].is_array() || release["changes"].empty()) return true;
+    for (const auto& change : release["changes"]) {
+        if (!change.is_object() || !change.contains("platforms") || !change["platforms"].is_array()) return true;
+        for (const auto& platform : change["platforms"]) if (platform == "windows") return true;
+    }
+    return false;
+}
+
 bool App::ShowPatchNotesPopup() {
     const auto data = content_->Read("changelog");
     if (!data.contains("releases") || !data["releases"].is_array() || data["releases"].empty()) return false;
     const auto& release = data["releases"][0];
+    if (!ReleaseTouchesWindows(release)) return false;
     ui::Shell::PatchNotes notes;
     notes.version = release.value("version", "");
     notes.title = release.value("title", "");
@@ -153,6 +165,7 @@ void App::SyncReleaseNotice(double nowMs) {
     const auto data = content_->Read("changelog");
     if (!data.contains("releases")) return;
     for (const auto& release : data["releases"]) if (release.value("version", "") == config::kCoreVersion) {
+        if (!ReleaseTouchesWindows(release)) break;
         ui::Shell::ReleaseCard card;
         card.version = config::kCoreVersion;
         if (card.version.ends_with(".0")) card.version.resize(card.version.size() - 2);

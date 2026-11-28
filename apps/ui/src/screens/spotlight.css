@@ -440,8 +440,9 @@ html body .spotlight__actions .tvm-button.spotlight__mute {
       linear-gradient(
         180deg,
         color-mix(in srgb, var(--tvm-bg) 70%, transparent) 0%,
-        color-mix(in srgb, var(--tvm-bg) 24%, transparent) 30%,
-        color-mix(in srgb, var(--tvm-bg) 74%, transparent) 72%,
+        color-mix(in srgb, var(--tvm-bg) 34%, transparent) 24%,
+        /* The copy (label, title or logo, synopsis) sits from about 40% down: keep it readable over bright art. */
+        color-mix(in srgb, var(--tvm-bg) 80%, transparent) 54%,
         var(--tvm-bg) 100%
       );
   }

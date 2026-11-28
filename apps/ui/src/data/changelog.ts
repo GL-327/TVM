@@ -32,6 +32,21 @@ export function filterChangesForPlatform(
   return changes.filter((change) => change.platforms === undefined || change.platforms.includes(platform));
 }
 
+/**
+ * The lines the "Updated" corner card shows on this platform, or null when nothing in the release applies here
+ * (a Windows-only release must not pop up on the web). When only some changes apply, those lines replace the
+ * highlights, which may describe other apps.
+ */
+export function cornerCardLines(
+  release: Pick<ChangelogRelease, 'highlights' | 'changes'>,
+  platform: ChangelogPlatform = detectRuntimePlatform(),
+): string[] | null {
+  const mine = filterChangesForPlatform(release.changes, platform);
+  if (mine.length === 0) return null;
+  const everywhere = mine.length === release.changes.length;
+  return (everywhere && release.highlights.length > 0 ? [...release.highlights] : mine.map((change) => change.text)).slice(0, 4);
+}
+
 export function groupChangesByArea(
   changes: readonly ChangelogChange[],
 ): Array<{ area: string; items: ChangelogChange[] }> {

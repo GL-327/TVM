@@ -263,6 +263,11 @@ html[data-theme='dark'] body .polish-nav .polish-nav__tab:not([aria-pressed='tru
   text-shadow: 0 1px 3px #000;
 }
 html[data-theme='light'] body .polish-nav .polish-nav__tab[aria-pressed='true'] { color: #12324a; }
+/* The selected tab keeps its light plate when it also has focus: the generic focused-button fill sits above the
+   plate and turned the dark label invisible (dark on dark) after clicking a tab or moving to it with the arrows. */
+html body .polish-nav .polish-nav__tab[aria-pressed='true']:is(:focus, [data-focused='true'], .tvm-button--focused) {
+  background: transparent;
+}
 html body .polish-nav .polish-nav__tab:not([aria-pressed='true']):hover {
   background: rgb(255 255 255 / .07);
   color: var(--tvm-text);

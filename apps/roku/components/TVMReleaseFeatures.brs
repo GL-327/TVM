@@ -167,6 +167,13 @@ sub maybeShowPatchNotes(flags as Dynamic)
     if candidate.version = m.installedVersion then release = candidate
   end for
   if release = invalid then return
+  if not releaseTouchesRoku(release)
+    ' Nothing in this release for Roku (a phones- or Windows-only update): counted as seen, no pop-up.
+    m.releasePending = false
+    section = registrySection()
+    section.Write("lastSeenVersion", m.installedVersion) : section.Flush()
+    return
+  end if
   m.patchNotesShown = true
   m.releasePending = false
   m.releaseCard.visible = false
@@ -181,11 +188,38 @@ sub maybeShowPatchNotes(flags as Dynamic)
   })
 end sub
 
+function releaseTouchesRoku(release as Object) as Boolean
+  changes = aaArray(release, "changes")
+  if changes.Count() = 0 then return true
+  for each change in changes
+    platforms = aaArray(change, "platforms")
+    if platforms.Count() = 0 then return true
+    for each platform in platforms
+      if asText(platform) = "roku" then return true
+    end for
+  end for
+  return false
+end function
+
 function patchNotesBody(release as Object) as String
   lines = []
-  for each highlight in aaArray(release, "highlights")
-    lines.Push("- " + asText(highlight))
+  ' Highlights can describe other apps; they show only when every change in the release is for Roku too.
+  allRoku = true
+  for each change in aaArray(release, "changes")
+    platforms = aaArray(change, "platforms")
+    if platforms.Count() > 0
+      seen = false
+      for each platform in platforms
+        if asText(platform) = "roku" then seen = true
+      end for
+      if not seen then allRoku = false
+    end if
   end for
+  if allRoku
+    for each highlight in aaArray(release, "highlights")
+      lines.Push("- " + asText(highlight))
+    end for
+  end if
   changes = aaArray(release, "changes")
   if changes.Count() > 0
     lines.Push("") : lines.Push("Changes")

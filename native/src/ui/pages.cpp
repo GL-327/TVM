@@ -1386,8 +1386,9 @@ void InfoScreen::Arrange() {
         return;
     }
 
-    const double x = Rem(kSafeXRem);
-    const double widthRem = std::min(width_ / rem - 2.0 * kSafeXRem, kInfoWidthRem);
+    // The body lines up with PaintHeader's heading, which sits 3 rem in from the safe edge (room for Back).
+    const double x = Rem(kSafeXRem + 3.0);
+    const double widthRem = std::min(width_ / rem - 2.0 * kSafeXRem - 3.0, kInfoWidthRem);
     headerTop_ = Rem(kSafeYRem);
     fieldX_ = x;
     fieldWidth_ = std::min(Rem(widthRem), Rem(36.0));
@@ -1534,10 +1535,10 @@ void InfoScreen::PaintContent(Painter& painter, double scroll) const {
             }
         }
     } else {
-        const double x = Rem(kSafeXRem);
+        const double x = Rem(kSafeXRem + 3.0);
         PaintHeader(painter, Rem(kSafeYRem) - scroll, view_.kicker, view_.heading, "");
         if (!view_.lede.empty()) {
-            painter.Paragraph(Box{x, ledeTop_ - scroll, std::min(width_ - 2.0 * x, Rem(48.0)), ledeHeight_ + Rem(0.4)},
+            painter.Paragraph(Box{x, ledeTop_ - scroll, std::min(width_ - x - Rem(kSafeXRem), Rem(48.0)), ledeHeight_ + Rem(0.4)},
                               view_.lede, TextStyle{Rem(1.0625), false}, tokens::kTextMuted);
         }
     }

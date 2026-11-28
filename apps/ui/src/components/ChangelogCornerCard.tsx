@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  cornerCardLines,
   currentAppVersion,
   fetchReleaseChangelog,
   markReleaseChangelogSeen,
@@ -21,6 +22,7 @@ export function ChangelogCornerCard(): React.JSX.Element | null {
   const navigate = useNavigate();
   const currentVersion = currentAppVersion();
   const [release, setRelease] = useState<ChangelogRelease | null>(null);
+  const lines = release === null ? null : cornerCardLines(release);
   const [dismissed, setDismissed] = useState(() => !shouldShowReleaseCornerCard(readSeenReleaseVersion(), currentVersion));
 
   useEffect(() => {
@@ -29,6 +31,12 @@ export function ChangelogCornerCard(): React.JSX.Element | null {
     void fetchReleaseChangelog().then((payload) => {
       if (cancelled) return;
       const match = payload.releases.find((r) => r.version === currentVersion) ?? payload.releases[0] ?? null;
+      // Nothing in this release for this app (for example a Windows-only update): no card, and it counts as seen.
+      if (match !== null && cornerCardLines(match) === null) {
+        markReleaseChangelogSeen(currentVersion);
+        setDismissed(true);
+        return;
+      }
       setRelease(match);
     });
     return () => {
@@ -66,7 +74,7 @@ export function ChangelogCornerCard(): React.JSX.Element | null {
     };
   }, [currentVersion, dismissed, release]);
 
-  if (dismissed || release === null) return null;
+  if (dismissed || release === null || lines === null) return null;
 
   return (
     <aside
@@ -77,9 +85,9 @@ export function ChangelogCornerCard(): React.JSX.Element | null {
         <span className="stage__kicker">Updated to {shortReleaseLabel(currentVersion)}</span>
       </div>
       <h2 className="changelog-card__title">{release.title}</h2>
-      {release.highlights.length > 0 && (
+      {lines.length > 0 && (
         <ul className="changelog-card__list">
-          {release.highlights.slice(0, 4).map((line) => (
+          {lines.map((line) => (
             <li key={line}>{line}</li>
           ))}
         </ul>
