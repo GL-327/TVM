@@ -33,7 +33,12 @@ export function App(): React.JSX.Element {
     if (next.usable.ok) {
       // The server applies the account's tier to the plan engine when it
       // answers /api/account, so the styling can only be correct after it has.
-      applyPlanClass(await fetchPlan(undefined, true));
+      try {
+        applyPlanClass(await fetchPlan(undefined, true));
+      } catch {
+        // Plan details can be briefly unavailable (offline, Core restarting): keep the current styling rather
+        // than throwing an unhandled rejection; the next refresh applies it.
+      }
     }
   }, []);
 
