@@ -870,7 +870,8 @@ void SettingsScreen::Arrange() {
     paneLeft_ = safe;
     paneWidth_ = metrics_.Rem(compact ? 8.0 : 17.0);
     contentLeft_ = paneLeft_ + paneWidth_ + metrics_.Rem(compact ? 1.0 : 2.5);
-    contentWidth_ = std::max(metrics_.Rem(12.0), std::min(width_ - contentLeft_ - safe, metrics_.Rem(46.0)));
+    // Up to 64 rem (1024 px at 1080p): the old 46 rem left half a wide window empty.
+    contentWidth_ = std::max(metrics_.Rem(12.0), std::min(width_ - contentLeft_ - safe, metrics_.Rem(64.0)));
     // Fourteen categories need to fit under the search field even in a short window.
     const double categoriesTop = metrics_.Rem(kSafeYRem) + metrics_.Rem(kCategoriesTopRem);
     const double room = height_ - categoriesTop - metrics_.Rem(kSafeYRem);

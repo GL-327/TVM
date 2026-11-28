@@ -1072,12 +1072,10 @@ void Scene::PaintSpotlight(Painter& painter) const {
     const double kickerWidth = std::min(boxes.kicker.width, painter.MeasureText(kicker, kickerStyle) + inset * 3.0 + dot);
     const auto chip = rise(Box{boxes.kicker.x, boxes.kicker.y, kickerWidth, boxes.kicker.height}, kickerShown);
     const double pulse = still ? 1.0 : 0.79 + 0.21 * std::sin(spotlightElapsedMs_ * kPi / 850.0);
-    painter.FillRoundRect(chip, chip.height / 2.0, Faded(light ? Rgb(0xFFFFFF, 0.75) : Rgb(0x111318, 0.82), kickerShown));
-    painter.StrokeRoundRect(chip, chip.height / 2.0, 1.0, Faded(Mix(accent, headline, 0.12), 0.40 * kickerShown));
-    painter.FillRoundRect({chip.x + inset, chip.CenterY() - dot / 2.0, dot, dot}, dot / 2.0,
-                          Faded(accent, pulse * kickerShown));
-    painter.Text({chip.x + 2.0 * inset + dot, chip.y, std::max(1.0, kickerWidth - inset * 2.0 - dot), chip.height},
-                 kicker, kickerStyle, Faded(headline, kickerShown));
+    // A plain overline with the accent dot, not a capsule: fewer pills over the artwork (owner's brief).
+    painter.FillRoundRect({chip.x, chip.CenterY() - dot / 2.0, dot, dot}, dot / 2.0, Faded(accent, pulse * kickerShown));
+    painter.Text({chip.x + inset + dot, chip.y, std::max(1.0, kickerWidth - inset - dot), chip.height},
+                 kicker, kickerStyle, Faded(Mix(headline, accent, 0.18), 0.92 * kickerShown));
 
     const double resolved = appear(0.0, 900.0);
     const double sweep = !still && elapsed >= 900.0 ? std::fmod(elapsed - 900.0, 9000.0) / 1050.0 : -1.0;

@@ -3,6 +3,36 @@
   "note": "What's new, newest first. Every change a viewer can notice adds a line to the top release in the same commit. Rules: CHANGELOG-RULES.md. Checked by scripts/check-changelog.mjs (pnpm check).",
   "releases": [
     {
+      "version": "1.4.20",
+      "date": "2026-11-28",
+      "title": "Cleaner Home and Settings on Windows",
+      "highlights": [
+        "Windows Settings now uses more of a wide window, and the Home spotlight label is no longer a pill."
+      ],
+      "changes": [
+        {
+          "area": "Home",
+          "text": "The Spotlight label on Windows is a plain line with a dot, not a pill over the artwork.",
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "area": "Settings",
+          "text": "Settings on Windows uses a wider column, so a big window no longer looks half empty.",
+          "platforms": [
+            "windows"
+          ]
+        }
+      ],
+      "knownIssues": [
+        "Sync on phones and Roku has not been tried on a real device yet.",
+        "The streamed trailer is untested on iPhone.",
+        "Stats, the sleep timer and night mode on phones have not been tried on a real phone yet.",
+        "The Roku start page and intros have not been tried on a real Roku yet."
+      ]
+    },
+    {
       "version": "1.4.19",
       "date": "2026-11-27",
       "title": "Android's classic look",
